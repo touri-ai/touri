@@ -10,13 +10,13 @@ import type {
   Run,
   Thread,
 } from "@touri/contracts"
-import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react"
+import { Fragment, type KeyboardEvent, type ReactNode, useEffect, useMemo, useState } from "react"
 import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigation"
 import { reconcileApprovalMessages } from "../approvalState"
 import { BOT_ACTIVITY_LABELS, type BotActivity } from "../botActivity"
 import { latestPreview } from "../botPreview"
 import { paletteShortcutLabel } from "../features/commandPalette/shortcut"
-import { getRoutineRunDateLabel, getRoutineRunSidebarDateLabel, t } from "../i18n"
+import { getRoutineRunCountsToday, getRoutineRunDateLabel, getRoutineRunSidebarDateLabel, t } from "../i18n"
 import {
   isFailureNotice,
   isInformationalNotice,
@@ -86,6 +86,28 @@ type SidebarProps = {
   notificationActions: NotificationActions
 }
 
+type SidebarMode = "bots" | "work"
+const SIDEBAR_MODE_KEY = "touri.sidebar.mode"
+
+const getSavedSidebarMode = (): SidebarMode => {
+  if (typeof window === "undefined") return "bots"
+
+  try {
+    return window.localStorage.getItem(SIDEBAR_MODE_KEY) === "work" ? "work" : "bots"
+  } catch {
+    return "bots"
+  }
+}
+
+const getNextSidebarMode = (mode: SidebarMode, key: string): SidebarMode | undefined => {
+  if (key === "Home") return "bots"
+  if (key === "End") return "work"
+  if (key === "ArrowRight" || key === "ArrowDown") return mode === "bots" ? "work" : "bots"
+  if (key === "ArrowLeft" || key === "ArrowUp") return mode === "work" ? "bots" : "work"
+
+  return undefined
+}
+
 const SidebarIcon = ({ children }: { children: ReactNode }) => (
   <svg
     width="16"
@@ -103,6 +125,7 @@ const SidebarIcon = ({ children }: { children: ReactNode }) => (
 )
 
 export const Sidebar = (props: SidebarProps) => {
+  const [sidebarMode, setSidebarMode] = useState(getSavedSidebarMode)
   const sidebarDataByBot = useMemo(
     () => getSidebarDataByBot(props.threads, props.routineRuns ?? []),
     [props.threads, props.routineRuns],
@@ -131,7 +154,7 @@ export const Sidebar = (props: SidebarProps) => {
   // Switching bots inside Preview keeps that view; global pages return to the bot conversation.
   const select = (id: Id): void => {
     props.onNavigate?.()
-    props.onSelect(id)
+    if (id !== props.selectedBotId) props.onSelect(id)
     if (props.section !== "bots") props.onChat()
   }
   const selectThread = (id: Id): void => {
@@ -150,6 +173,29 @@ export const Sidebar = (props: SidebarProps) => {
   )
   const attention = useMemo(() => pendingNotifications(notifications, messages), [notifications, messages])
   const ordered = useSidebarOrder({ ...props, messages, notifications, attention })
+  const botsWaitingCount = [...ordered.activity.values()].filter((activity) => activity.kind === "needs-you").length
+  const attentionThreadIds = new Set(attention.flatMap((item) => (item.threadId ? [item.threadId] : [])))
+  const waitingChannelGroupIds = new Set(
+    props.threads.flatMap((thread) => (thread.groupId && attentionThreadIds.has(thread.id) ? [thread.groupId] : [])),
+  )
+  const workWaitingCount =
+    botsWaitingCount + (props.groups ?? []).filter((group) => waitingChannelGroupIds.has(group.id)).length
+  const selectMode = (mode: SidebarMode): void => {
+    setSidebarMode(mode)
+    try {
+      window.localStorage.setItem(SIDEBAR_MODE_KEY, mode)
+    } catch {
+      return
+    }
+  }
+  const handleModeKeyDown = (event: KeyboardEvent<HTMLButtonElement>): void => {
+    const nextMode = getNextSidebarMode(sidebarMode, event.key)
+    if (!nextMode || nextMode === sidebarMode) return
+
+    event.preventDefault()
+    selectMode(nextMode)
+    event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(`[data-sidebar-mode="${nextMode}"]`)?.focus()
+  }
   return (
     <nav className="bot-sidebar r8-sidebar" aria-label={t("Workspace sidebar")}>
       <div className="traffic-light-row" data-tauri-drag-region="deep">
@@ -200,118 +246,144 @@ export const Sidebar = (props: SidebarProps) => {
           )}
         </div>
       </div>
-      <div className="sidebar-list-heading">
-        <button
-          type="button"
-          className="sidebar-bots-link"
-          aria-current={props.section === "bots" ? "page" : undefined}
-          onClick={() => navigate(props.onChat)}
-        >
-          {t("Bots")} <span>{props.bots.length}</span>
-        </button>
+      <div className="sidebar-mode-tabs" role="tablist" aria-label={t("Sidebar mode")}>
+        {(
+          [
+            { id: "bots", label: t("Bots"), count: botsWaitingCount },
+            { id: "work", label: t("Work mode tab"), count: workWaitingCount },
+          ] as const
+        ).map((mode) => (
+          <button
+            key={mode.id}
+            type="button"
+            role="tab"
+            id={`sidebar-mode-${mode.id}`}
+            data-sidebar-mode={mode.id}
+            aria-selected={sidebarMode === mode.id}
+            aria-controls="sidebar-mode-panel"
+            aria-label={`${mode.label}, ${t("Tab waiting count", { count: mode.count })}`}
+            tabIndex={sidebarMode === mode.id ? 0 : -1}
+            onClick={() => selectMode(mode.id)}
+            onKeyDown={handleModeKeyDown}
+          >
+            <span>{mode.label}</span>
+            <span className="sidebar-mode-count" aria-hidden="true">
+              {mode.count}
+            </span>
+          </button>
+        ))}
       </div>
-      {hasWork && (
-        <button
-          type="button"
-          className="sidebar-work-badge"
-          aria-label={t("View work summary", { running: runningWorkCount, queued: queuedWorkCount })}
-          onClick={() => navigate(() => props.onAdvancedPage("work"))}
-        >
-          <span>
-            {t("Working")} <strong>{runningWorkCount}</strong>
-          </span>
-          <span>{t("Work queued count", { count: queuedWorkCount })}</span>
-          <span className="sidebar-work-action">
-            {t("View work")} <span aria-hidden="true">›</span>
-          </span>
-        </button>
-      )}
-      <div className="bot-groups">
-        <div className="bot-list" ref={ordered.listRef}>
-          {ordered.bots.map((bot, index) => {
-            const kind = ordered.activity.get(bot.id)?.kind
-            const group = kind === "needs-you" ? "needs-you" : kind === "working" ? "working" : "idle"
-            const previousKind = ordered.activity.get(ordered.bots[index - 1]?.id ?? "")?.kind
-            const previousGroup =
-              previousKind === "needs-you" ? "needs-you" : previousKind === "working" ? "working" : "idle"
-            return (
-              <Fragment key={bot.id}>
-                {(index === 0 || group !== previousGroup) && (
-                  <h2 className="bot-status-heading">
-                    {t(group === "needs-you" ? "Needs you" : group === "working" ? "Working" : "Idle bots")}
-                  </h2>
-                )}
-                <BotEntry
-                  key={bot.id}
-                  navigationKey={`${props.section}:${props.advancedPage}:${props.selectedBotId}:${props.selectedThreadId}`}
-                  bot={bot}
-                  activity={ordered.activity.get(bot.id) ?? null}
-                  onHold={ordered.hold}
-                  insertedThreads={insertedThreads}
-                  threads={sidebarDataByBot.get(bot.id)?.threads ?? []}
-                  routineRuns={sidebarDataByBot.get(bot.id)?.routineRuns ?? []}
-                  runs={props.runs ?? []}
-                  routineIds={routineIds}
-                  routinesById={routinesById}
-                  messages={messages}
-                  attention={attention.filter((item) => item.botId === bot.id)}
-                  notifications={notifications}
-                  selected={
-                    props.section === "bots" &&
-                    bot.id === props.selectedBotId &&
-                    !props.threads.find((t) => t.id === props.selectedThreadId)?.groupId
-                  }
-                  expanded={
-                    bot.id === props.selectedBotId &&
-                    !props.threads.find((t) => t.id === props.selectedThreadId)?.groupId
-                  }
-                  selectedThreadId={props.section === "bots" ? props.selectedThreadId : null}
-                  onSelect={() => select(bot.id)}
-                  onSelectThread={selectThread}
-                  onNewThread={() => {
-                    props.onNavigate?.()
-                    if (props.section !== "bots") props.onChat()
-                    props.onNewThread()
-                  }}
-                  onSettings={() => {
-                    select(bot.id)
-                    props.onBotSettings()
-                  }}
-                  onRoutines={() => navigate(() => props.onRoutines(bot.id))}
-                  onRoutineHistory={(routineId) =>
-                    navigate(() => openRoutineHistory(bot.id, routineId ?? selectedRoutineId))
-                  }
-                  onReviewApproval={(target) => navigate(() => props.onReviewApproval(target))}
-                  onNotification={(item) => navigate(() => props.notificationActions.open(item))}
-                  onDelete={props.onDeleteBot}
-                />
-              </Fragment>
-            )
-          })}
+      <div
+        id="sidebar-mode-panel"
+        className="sidebar-mode-panel"
+        role="tabpanel"
+        aria-labelledby={`sidebar-mode-${sidebarMode}`}
+        tabIndex={-1}
+      >
+        {hasWork && (
+          <button
+            type="button"
+            className="sidebar-work-badge"
+            aria-label={t("View work summary", { running: runningWorkCount, queued: queuedWorkCount })}
+            onClick={() => navigate(() => props.onAdvancedPage("work"))}
+          >
+            <span>
+              {t("Working")} <strong>{runningWorkCount}</strong>
+            </span>
+            <span>{t("Work queued count", { count: queuedWorkCount })}</span>
+            <span className="sidebar-work-action">
+              {t("View work")} <span aria-hidden="true">›</span>
+            </span>
+          </button>
+        )}
+        {sidebarMode === "work" && props.onNewGroup && (
+          <GroupSidebar
+            groups={props.groups ?? []}
+            bots={props.bots}
+            threads={props.threads}
+            attentionThreadIds={attentionThreadIds}
+            selectedThreadId={props.selectedThreadId}
+            onSelect={selectThread}
+            onCreate={() => navigate(() => props.onNewGroup?.())}
+            onEdit={(g) => navigate(() => props.onEditGroup?.(g))}
+            onDelete={props.onDeleteGroup}
+            onNewThread={(g) => navigate(() => props.onNewGroupThread?.(g))}
+          />
+        )}
+        <div className="bot-groups">
+          <div className="bot-list" ref={ordered.listRef}>
+            {sidebarMode === "work" && <h2 className="bot-status-heading">{t("Direct messages")}</h2>}
+            {ordered.bots.map((bot, index) => {
+              const kind = ordered.activity.get(bot.id)?.kind
+              const group = kind === "needs-you" ? "needs-you" : kind === "working" ? "working" : "idle"
+              const previousKind = ordered.activity.get(ordered.bots[index - 1]?.id ?? "")?.kind
+              const previousGroup =
+                previousKind === "needs-you" ? "needs-you" : previousKind === "working" ? "working" : "idle"
+              return (
+                <Fragment key={bot.id}>
+                  {sidebarMode === "bots" && (index === 0 || group !== previousGroup) && (
+                    <h2 className="bot-status-heading">
+                      {t(group === "needs-you" ? "Needs you" : group === "working" ? "Working" : "Idle bots")}
+                    </h2>
+                  )}
+                  <BotEntry
+                    navigationKey={`${props.section}:${props.advancedPage}:${props.selectedBotId}:${props.selectedThreadId}`}
+                    bot={bot}
+                    activity={ordered.activity.get(bot.id) ?? null}
+                    onHold={ordered.hold}
+                    insertedThreads={insertedThreads}
+                    threads={sidebarDataByBot.get(bot.id)?.threads ?? []}
+                    routineRuns={sidebarDataByBot.get(bot.id)?.routineRuns ?? []}
+                    runs={props.runs ?? []}
+                    routineIds={routineIds}
+                    routinesById={routinesById}
+                    messages={messages}
+                    attention={attention.filter((item) => item.botId === bot.id)}
+                    notifications={notifications}
+                    selected={
+                      props.section === "bots" &&
+                      bot.id === props.selectedBotId &&
+                      !props.threads.find((t) => t.id === props.selectedThreadId)?.groupId
+                    }
+                    expanded={
+                      bot.id === props.selectedBotId &&
+                      !props.threads.find((t) => t.id === props.selectedThreadId)?.groupId
+                    }
+                    selectedThreadId={props.section === "bots" ? props.selectedThreadId : null}
+                    onSelect={() => select(bot.id)}
+                    onSelectThread={selectThread}
+                    onNewThread={() => {
+                      props.onNavigate?.()
+                      if (props.section !== "bots") props.onChat()
+                      props.onNewThread()
+                    }}
+                    onSettings={() => {
+                      select(bot.id)
+                      props.onBotSettings()
+                    }}
+                    onRoutines={() => navigate(() => props.onRoutines(bot.id))}
+                    onRoutineHistory={(routineId) =>
+                      navigate(() => openRoutineHistory(bot.id, routineId ?? selectedRoutineId))
+                    }
+                    onReviewApproval={(target) => navigate(() => props.onReviewApproval(target))}
+                    onNotification={(item) => navigate(() => props.notificationActions.open(item))}
+                    onDelete={props.onDeleteBot}
+                  />
+                </Fragment>
+              )
+            })}
+          </div>
         </div>
+        {props.onRecovery && (props.recoveryCount ?? 0) > 0 && (
+          <button type="button" className="sidebar-recovery" onClick={() => navigate(() => props.onRecovery?.())}>
+            <SidebarIcon>
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7v5l3 2" />
+            </SidebarIcon>
+            <span>{t("Interrupted tasks")}</span>
+          </button>
+        )}
       </div>
-      {props.onNewGroup && (
-        <GroupSidebar
-          groups={props.groups ?? []}
-          bots={props.bots}
-          threads={props.threads}
-          selectedThreadId={props.selectedThreadId}
-          onSelect={selectThread}
-          onCreate={() => navigate(() => props.onNewGroup?.())}
-          onEdit={(g) => navigate(() => props.onEditGroup?.(g))}
-          onDelete={props.onDeleteGroup}
-          onNewThread={(g) => navigate(() => props.onNewGroupThread?.(g))}
-        />
-      )}
-      {props.onRecovery && (props.recoveryCount ?? 0) > 0 && (
-        <button type="button" className="sidebar-recovery" onClick={() => navigate(() => props.onRecovery?.())}>
-          <SidebarIcon>
-            <circle cx="12" cy="12" r="9" />
-            <path d="M12 7v5l3 2" />
-          </SidebarIcon>
-          <span>{t("Interrupted tasks")}</span>
-        </button>
-      )}
       <div className="sidebar-footer">
         <div className="sidebar-user-row">
           <button type="button" className="user-chip" onClick={() => navigate(props.onSettings)}>
@@ -495,6 +567,10 @@ const BotEntry = ({
     () => (expanded ? getSidebarThreads(threads, routineRuns, selectedThreadId, runningThreadIds, routineIds) : []),
     [expanded, threads, routineRuns, selectedThreadId, runningThreadIds, routineIds],
   )
+  const routineRunCountsToday = useMemo(
+    () => (expanded ? getRoutineRunCountsToday(routineRuns, routinesById) : new Map()),
+    [expanded, routineRuns, routinesById],
+  )
   const visibleUnread = sidebarThreads.reduce((count, entry) => count + entry.unread, 0)
   const botUnread = unread - visibleUnread
   const visibleRoutineIds = sidebarThreads.flatMap(({ routineRun, deletedRoutine }) =>
@@ -606,8 +682,18 @@ const BotEntry = ({
           {sidebarThreads.map(({ thread, routineRun, running, unread, deletedRoutine }) => {
             const timestamp = routineRun?.scheduledFor ?? thread.createdAt
             const timeZone = routineRun ? routinesById.get(routineRun.routineId)?.timezone : undefined
-            const dateLabel =
-              thread.kind === "routine"
+            const routineName = routineRun ? routinesById.get(routineRun.routineId)?.name : undefined
+            const routineSummary =
+              thread.kind === "routine" && !deletedRoutine && routineRun && routineName
+                ? t("Routine summary row", {
+                    name: routineName,
+                    count: routineRunCountsToday.get(routineRun.routineId) ?? 0,
+                  })
+                : undefined
+            const rowTitle = deletedRoutine ? t("Deleted routine") : (routineSummary ?? getSidebarThreadTitle(thread))
+            const dateLabel = routineSummary
+              ? ""
+              : thread.kind === "routine"
                 ? getRoutineRunSidebarDateLabel(timestamp, "pt-BR", timeZone)
                 : relativeThreadDate(thread.updatedAt)
             const dateTitle =
@@ -618,13 +704,18 @@ const BotEntry = ({
                 key={thread.id}
                 inserted={insertedThreads.has(thread.id)}
                 thread={thread}
-                deletedRoutine={deletedRoutine}
+                title={rowTitle}
+                routineHistoryName={routineSummary ? (routineName ?? undefined) : undefined}
                 dateLabel={dateLabel}
                 dateTitle={dateTitle}
                 unread={unread}
                 selected={thread.id === selectedThreadId}
                 running={running}
-                onClick={() => onSelectThread(thread.id)}
+                onClick={() => {
+                  if (routineSummary && routineRun) return onRoutineHistory(routineRun.routineId)
+
+                  onSelectThread(thread.id)
+                }}
               />
             )
           })}
@@ -658,7 +749,8 @@ const BotEntry = ({
 const ThreadRow = ({
   inserted,
   thread,
-  deletedRoutine,
+  title,
+  routineHistoryName,
   dateLabel,
   dateTitle,
   unread,
@@ -667,7 +759,8 @@ const ThreadRow = ({
   onClick,
 }: {
   thread: Thread
-  deletedRoutine: boolean
+  title: string
+  routineHistoryName: string | undefined
   dateLabel: string
   dateTitle: string | undefined
   unread: number
@@ -676,8 +769,6 @@ const ThreadRow = ({
   running: boolean
   onClick: () => void
 }) => {
-  const title = deletedRoutine ? t("Deleted routine") : getSidebarThreadTitle(thread)
-
   return (
     <button
       type="button"
@@ -685,6 +776,7 @@ const ThreadRow = ({
       className={`thread-row ${selected ? "selected" : ""}`}
       onClick={onClick}
       aria-current={selected ? "page" : undefined}
+      aria-label={routineHistoryName ? t("Open routine history for {name}", { name: routineHistoryName }) : undefined}
     >
       <span className="thread-icon" aria-hidden="true">
         {thread.kind === "routine" ? (
@@ -700,7 +792,7 @@ const ThreadRow = ({
       </span>
       <span className="thread-copy">
         <strong title={thread.kind === "routine" ? `${title} · ${dateTitle ?? dateLabel}` : title}>{title}</strong>
-        <small>{dateLabel}</small>
+        {dateLabel && <small>{dateLabel}</small>}
       </span>
       {running ? (
         <span className="sidebar-status-dot state-running" role="img" aria-label={t("Em execução")} />

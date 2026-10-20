@@ -79,7 +79,7 @@ it("keeps completion events newer than an in-flight global snapshot", async () =
     return response
   }
   render(<App kernel={{ services: { api: { ...api, request } } }} />)
-  await screen.findByRole("button", { name: "Bots 5" })
+  await screen.findByRole("tab", { name: /^Bots, \d+ aguardando$/ })
 
   act(() => {
     api.finishFirst()

@@ -13,15 +13,16 @@ const openGroupPanel = (name: string): HTMLElement => {
 }
 
 describe("Grupos", () => {
-  it("keeps an empty group list to one compact create action", async () => {
+  it("keeps an empty channel list ready to create a channel", async () => {
     const api = createMockApi()
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
+    fireEvent.click(screen.getByRole("tab", { name: /^Work,/ }))
 
-    const groups = screen.getByRole("region", { name: "Grupos" })
-    const createGroup = within(groups).getByRole("button", { name: "Criar grupo" })
+    const groups = screen.getByRole("region", { name: "Canais" })
+    const createGroup = within(groups).getByRole("button", { name: "Novo canal" })
     expect(createGroup).toBeVisible()
-    expect(groups.querySelector(".group-sidebar-heading")).toBeNull()
+    expect(groups.querySelector(".group-sidebar-heading")).toHaveTextContent(/Canais\s*0/)
     expect(within(groups).queryByText("Reúna seus bots em uma conversa.")).toBeNull()
 
     fireEvent.click(createGroup)
@@ -45,6 +46,7 @@ describe("Grupos", () => {
     })
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para Bia QA" })
+    fireEvent.click(screen.getByRole("tab", { name: /^Work,/ }))
     await user.click(screen.getByRole("button", { name: /^Equipe QA$/ }))
     const input = await screen.findByRole("textbox", { name: "Mensagem para Equipe QA" })
     await user.click(input)
@@ -87,7 +89,8 @@ describe("Grupos", () => {
     })
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    fireEvent.click(within(screen.getByRole("region", { name: "Grupos" })).getByRole("button", { name: "Produto" }))
+    fireEvent.click(screen.getByRole("tab", { name: /^Work,/ }))
+    fireEvent.click(within(screen.getByRole("region", { name: "Canais" })).getByRole("button", { name: "Produto" }))
     await screen.findByRole("textbox", { name: "Mensagem para Produto" })
     if (!screen.queryByRole("complementary", { name: panelName, exact: true }))
       fireEvent.click(screen.getByRole("button", { name: "Painel do grupo" }))
@@ -118,7 +121,8 @@ describe("Grupos", () => {
     })
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    fireEvent.click(within(screen.getByRole("region", { name: "Grupos" })).getByRole("button", { name: "Equipe QA" }))
+    fireEvent.click(screen.getByRole("tab", { name: /^Work,/ }))
+    fireEvent.click(within(screen.getByRole("region", { name: "Canais" })).getByRole("button", { name: "Equipe QA" }))
     await screen.findByRole("textbox", { name: "Mensagem para Equipe QA" })
     const welcome = screen.getByRole("region", { name: "Comece uma conversa com Equipe QA" })
     expect(within(welcome).getByRole("heading", { name: "Comece uma conversa com Equipe QA" })).toBeVisible()
@@ -139,7 +143,8 @@ describe("Grupos", () => {
     const api = createMockApi()
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    fireEvent.click(screen.getByRole("button", { name: "Criar grupo" }))
+    fireEvent.click(screen.getByRole("tab", { name: /^Work,/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Novo canal" }))
     const modal = screen.getByRole("dialog", { name: "Criar grupo" })
     fireEvent.change(within(modal).getByLabelText("Nome do grupo"), { target: { value: "Produto" } })
     fireEvent.click(within(modal).getByLabelText("mark"))
@@ -172,7 +177,7 @@ describe("Grupos", () => {
       coordinatorBotId: null,
     })
     fireEvent.click(screen.getByRole("button", { name: "+ Nova conversa" }))
-    await within(screen.getByRole("region", { name: "Grupos" })).findByRole("button", {
+    await within(screen.getByRole("region", { name: "Canais" })).findByRole("button", {
       name: "Nova conversa",
     })
     expect(api.calls.some((c) => c.route === "POST /groups/:id/threads")).toBe(true)
@@ -188,6 +193,7 @@ describe("Grupos", () => {
     })
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
+    fireEvent.click(screen.getByRole("tab", { name: /^Work,/ }))
     fireEvent.click(screen.getByRole("button", { name: /^Equipe$/ }))
     await screen.findByRole("textbox", { name: "Mensagem para Equipe" })
     const message: Message = {

@@ -37,6 +37,7 @@ test("title bars leave bot rows, header actions and top-bar controls clickable",
   await pointerClick(panelToggle)
   await expect(panelToggle).not.toHaveAttribute("aria-expanded", expanded ?? "false")
   await pointerClick(panelToggle)
+  await page.getByRole("tab", { name: /^Work,/ }).click()
   await pointerClick(page.getByRole("button", { name: "Planejamento", exact: true }))
   await expect(page.getByRole("textbox", { name: "Mensagem para Planejamento" })).toBeVisible()
   await expect(page.locator(".group-header")).toHaveAttribute("data-tauri-drag-region", "deep")

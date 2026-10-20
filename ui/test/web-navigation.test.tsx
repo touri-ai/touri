@@ -157,6 +157,7 @@ it("restores group conversations from their thread URL and through browser histo
   if (!thread) throw new Error("Missing group conversation")
   const first = render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  fireEvent.click(screen.getByRole("tab", { name: /^Work,/ }))
   fireEvent.click(screen.getByRole("button", { name: "Equipe QA", exact: true }))
   await screen.findByRole("textbox", { name: "Mensagem para Equipe QA" })
   await locationIs(thread.botId, thread.id)

@@ -1,4 +1,4 @@
-import { type Bot, getHostNoun, type HostKind } from "@touri/contracts"
+import { type Bot, getHostNoun, type HostKind, type Routine, type RoutineRun } from "@touri/contracts"
 import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
@@ -1250,6 +1250,15 @@ export const ptBR = {
   "Bot access settings": "Ajustar permissões",
   "Project preview": "Preview do projeto",
   "Bot groups": "Grupos",
+  "Sidebar mode": "Modo da barra lateral",
+  "Work mode tab": "Work",
+  "Tab waiting count": "{count} aguardando",
+  Channels: "Canais",
+  "New channel": "Novo canal",
+  "Direct messages": "Mensagens diretas",
+  "Routine summary row": "Rotina {name} · {count} hoje",
+  "Open routine history for {name}": "Abrir histórico da rotina {name}",
+  "Channel attention count": "{count} precisa de você",
   "Group coordinator suffix": " · coordenador",
   "This bot has no groups yet.": "Este bot ainda não pertence a um grupo.",
   "Bot routines": "Rotinas deste bot",
@@ -3858,6 +3867,15 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Bot access settings": "Adjust permissions",
   "Project preview": "Project preview",
   "Bot groups": "Groups",
+  "Sidebar mode": "Sidebar mode",
+  "Work mode tab": "Work",
+  "Tab waiting count": "{count} waiting",
+  Channels: "Channels",
+  "New channel": "New channel",
+  "Direct messages": "Direct messages",
+  "Routine summary row": "Routine {name} · {count} today",
+  "Open routine history for {name}": "Open history for routine {name}",
+  "Channel attention count": "{count} needs your attention",
   "Group coordinator suffix": " · coordinator",
   "This bot has no groups yet.": "This bot has no groups yet.",
   "Bot routines": "This bot’s routines",
@@ -4712,6 +4730,48 @@ export const getRoutineRunDateLabel = (timestamp: number, locale: Locale = "pt-B
     timeStyle: "short",
     ...(timeZone ? { timeZone } : {}),
   }).format(timestamp)
+
+export const getRoutineRunCountsToday = (
+  routineRuns: readonly RoutineRun[],
+  routines: ReadonlyMap<string, Routine>,
+  now = Date.now(),
+): ReadonlyMap<string, number> => {
+  const formatters = new Map<string, Intl.DateTimeFormat>()
+  const todayByTimeZone = new Map<string, string>()
+  const counts = new Map<string, number>()
+  const getDayKey = (timestamp: number, timeZone: string): string => {
+    const parts = getFormatter(timeZone)
+      .formatToParts(timestamp)
+      .filter((part) => ["year", "month", "day"].includes(part.type))
+      .map((part) => part.value)
+
+    return parts.join("-")
+  }
+  const getFormatter = (timeZone: string): Intl.DateTimeFormat => {
+    const existing = formatters.get(timeZone)
+    if (existing) return existing
+
+    const formatter = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "numeric", day: "numeric" })
+    formatters.set(timeZone, formatter)
+
+    return formatter
+  }
+  // Per-bot indexes avoid recreating date formatters for each run in the sidebar.
+  routineRuns.forEach((run) => {
+    if (!run.threadId) return
+    const routine = routines.get(run.routineId)
+    if (!routine) return
+
+    const timeZone = routine.timezone
+    const today = todayByTimeZone.get(timeZone) ?? getDayKey(now, timeZone)
+    todayByTimeZone.set(timeZone, today)
+    if (getDayKey(run.scheduledFor, timeZone) !== today) return
+
+    counts.set(run.routineId, (counts.get(run.routineId) ?? 0) + 1)
+  })
+
+  return counts
+}
 
 export const getRoutineRunTimeLabel = (timestamp: number, locale: Locale = "pt-BR", timeZone?: string): string =>
   new Intl.DateTimeFormat(locale, { timeStyle: "short", ...(timeZone ? { timeZone } : {}) }).format(timestamp)

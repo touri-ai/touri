@@ -29,8 +29,9 @@ test("group header updates its visible and accessible member count", async ({ pa
       coordinatorBotId: null,
     })
   })
+  await page.getByRole("tab", { name: /^Work,/ }).click()
   await page
-    .getByRole("region", { name: "Grupos", exact: true })
+    .getByRole("region", { name: "Canais", exact: true })
     .getByRole("button", { name: "Equipe", exact: true })
     .click()
   const header = page.locator(".group-header")

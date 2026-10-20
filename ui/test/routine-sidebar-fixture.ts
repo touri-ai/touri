@@ -3,7 +3,7 @@ import { createMockApi } from "../src/api/mock"
 
 export const getRoutineSidebarFixture = async (
   runCount = 28,
-  { withOtherRoutines = false, unreadRuns = 0, withoutRoutineMetadata = false } = {},
+  { withOtherRoutines = false, unreadRuns = 0, withoutRoutineMetadata = false, todayRuns = false } = {},
 ) => {
   const api = createMockApi()
   const state = api.getState()
@@ -23,8 +23,10 @@ export const getRoutineSidebarFixture = async (
     : []
   const fixtureRoutines = [routine, ...otherRoutines]
   const routineRuns = [
-    ...getFixtureRuns(routine.id, runCount, "sidebar", 18),
-    ...otherRoutines.flatMap((routine) => getFixtureRuns(routine.id, 80, routine.id, 22)),
+    ...getFixtureRuns(routine.id, runCount, "sidebar", 18, todayRuns ? Date.now() : undefined),
+    ...otherRoutines.flatMap((routine) =>
+      getFixtureRuns(routine.id, 80, routine.id, 22, todayRuns ? Date.now() : undefined),
+    ),
   ]
   const threads: Thread[] = [
     { ...baseThread, title: "Planejamento da semana", updatedAt: new Date(2026, 9, 18, 7).getTime() },
@@ -71,9 +73,17 @@ export const getRoutineSidebarFixture = async (
   return { api: { ...api, request }, threads, routineRuns, routines: fixtureRoutines }
 }
 
-const getFixtureRuns = (routineId: string, count: number, prefix: string, day: number): RoutineRun[] =>
+const getFixtureRuns = (
+  routineId: string,
+  count: number,
+  prefix: string,
+  day: number,
+  todayTimestamp?: number,
+): RoutineRun[] =>
   Array.from({ length: count }, (_, index) => {
-    const scheduledFor = new Date(2026, 9, day, 8, index * 15).getTime()
+    const scheduledFor = todayTimestamp
+      ? todayTimestamp - (count - index - 1) * 1000
+      : new Date(2026, 9, day, 8, index * 15).getTime()
 
     return {
       id: `${prefix}-run-${index}`,

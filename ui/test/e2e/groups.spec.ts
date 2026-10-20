@@ -13,8 +13,9 @@ for (const theme of ["light", "dark"] as const)
     await page.addInitScript((theme) => localStorage.setItem("touri.appearance.v1", theme), theme)
     await page.goto("/test/e2e/groups-harness.html")
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+    await page.getByRole("tab", { name: /^Work,/ }).click()
     await showBotPanel(page)
-    await page.getByRole("button", { name: "Criar grupo", exact: true }).click()
+    await page.getByRole("button", { name: "Novo canal", exact: true }).click()
     const dialog = page.getByRole("dialog", { name: "Criar grupo" })
     await dialog.getByLabel("Nome do grupo").fill("Produto")
     await dialog.getByRole("checkbox", { name: "mark", exact: true }).check()
@@ -100,6 +101,6 @@ for (const theme of ["light", "dark"] as const)
     await expect(page.getByRole("textbox", { name: "Mensagem para Produto e Operação" })).toBeVisible()
     await page.getByRole("button", { name: "+ Nova conversa", exact: true }).click()
     await expect(
-      page.getByRole("region", { name: "Grupos" }).getByRole("button", { name: "Nova conversa", exact: true }),
+      page.getByRole("region", { name: "Canais" }).getByRole("button", { name: "Nova conversa", exact: true }),
     ).toBeVisible()
   })

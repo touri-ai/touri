@@ -137,7 +137,8 @@ describe("r2 regressions", () => {
     fireEvent.click(screen.getByRole("button", { name: /Criar rotina/ }))
     expect(screen.getByLabelText("Bot")).toHaveValue("bot-onb")
     fireEvent.click(screen.getByRole("button", { name: "Cancelar" }))
-    fireEvent.click(screen.getByRole("button", { name: /^Bots/ }))
+    fireEvent.click(screen.getByRole("tab", { name: /^Bots,/ }))
+    fireEvent.click(screen.getByRole("button", { name: /onb.*Operations/ }))
     expect(screen.getByRole("textbox", { name: "Mensagem para onb" })).toBeVisible()
   })
 

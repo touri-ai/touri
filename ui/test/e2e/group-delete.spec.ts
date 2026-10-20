@@ -22,7 +22,8 @@ test("deletes a group from its sidebar menu after explicit confirmation", async 
       coordinatorBotId: "bot-mark",
     })
   })
-  const groups = page.getByRole("region", { name: "Grupos" })
+  await page.getByRole("tab", { name: /^Work,/ }).click()
+  const groups = page.getByRole("region", { name: "Canais" })
 
   await groups.getByRole("button", { name: "Equipe QA", exact: true }).click()
   await expect(page.getByRole("textbox", { name: "Mensagem para Equipe QA" })).toBeVisible()

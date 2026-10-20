@@ -10,8 +10,8 @@
   box-shadow: 0 0 0 2px var(--surface);
 }
 .group-sidebar {
-  border-top: 1px solid var(--border);
-  padding: 14px 10px;
+  border-top: 1px solid var(--border-subtle);
+  padding: var(--space-12) var(--space-10);
 }
 .modal-card.delete-group-dialog {
   width: min(520px, 100%);
@@ -29,13 +29,13 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-weight: 600;
-  padding: 0 6px 8px;
-  font-size: var(--fs-caption);
+  font-weight: var(--weight-semibold);
+  padding: 0 var(--space-6) var(--space-8);
+  font-size: var(--type-12);
 }
 .group-sidebar-heading small {
-  color: var(--text-2);
-  margin-left: 4px;
+  color: var(--text-secondary);
+  margin-left: var(--space-4);
 }
 .group-sidebar button {
   background: transparent;
@@ -45,9 +45,20 @@
   border-radius: var(--radius-xs);
 }
 .group-sidebar-heading button {
-  width: 28px;
-  height: 28px;
-  font-size: var(--fs-subtitle);
+  width: var(--control-size-compact);
+  height: var(--control-size-compact);
+  font-size: var(--type-18);
+}
+.group-sidebar-heading .channel-create {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: auto;
+  min-height: var(--control-size-compact);
+  padding: 0 var(--space-6);
+  color: var(--text-secondary);
+  font-size: var(--type-11);
+  font-weight: var(--weight-medium);
 }
 .group-empty-create {
   display: flex;
@@ -75,17 +86,41 @@
 .group-select {
   display: flex;
   flex: 1;
-  gap: 9px;
+  gap: var(--space-8);
   align-items: center;
   text-align: left;
-  padding: 9px 6px;
+  padding: var(--space-8) var(--space-6);
   min-width: 0;
-  font-size: var(--fs-meta);
+  font-size: var(--type-13);
 }
-.group-select > span:last-child {
+.group-select > .channel-name {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.channel-hash {
+  color: var(--text-tertiary);
+  font-weight: var(--weight-medium);
+}
+.group-select .group-mascots {
+  margin-left: auto;
+}
+.channel-attention-badge {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 var(--space-5);
+  border: 1px solid var(--border-warning);
+  border-radius: var(--radius-pill);
+  background: var(--surface-warning);
+  color: var(--text-warning);
+  font-size: var(--type-10);
+  line-height: 1;
+  font-weight: var(--weight-semibold);
 }
 .group-sidebar-item.selected,
 .group-sidebar button:hover {

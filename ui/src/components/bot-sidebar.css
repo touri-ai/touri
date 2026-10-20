@@ -37,6 +37,57 @@
   gap: var(--space-8);
   padding: var(--space-4) var(--space-16) var(--space-8);
 }
+.sidebar-mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin: var(--space-8) var(--space-12);
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-12);
+  background: var(--surface-backdrop);
+}
+.sidebar-mode-tabs [role="tab"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-8);
+  min-width: 0;
+  min-height: var(--control-size);
+  padding: 0 var(--space-8);
+  border: 0;
+  border-radius: var(--radius-8);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--type-13);
+  font-weight: var(--weight-medium);
+}
+.sidebar-mode-tabs [role="tab"][aria-selected="true"] {
+  background: var(--surface-selected);
+  color: var(--text-primary);
+  font-weight: var(--weight-semibold);
+}
+.sidebar-mode-tabs [role="tab"]:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.sidebar-mode-count {
+  color: var(--text-tertiary);
+  font-size: var(--type-11);
+  font-variant-numeric: tabular-nums;
+}
+.sidebar-mode-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-color: var(--scrollbar-sidebar) transparent;
+  scrollbar-width: thin;
+}
+.r8-sidebar .sidebar-mode-panel .bot-groups {
+  flex: initial;
+  min-height: auto;
+  overflow: visible;
+}
 .sidebar-brand,
 .sidebar-bots-link {
   display: inline-flex;

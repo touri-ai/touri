@@ -38,6 +38,7 @@ test("group actions send a parallel request and show a confirmed board on deskto
       coordinatorBotId: "bot-mark",
     })
   })
+  await page.getByRole("tab", { name: /^Work,/ }).click()
   await page.getByRole("button", { name: "Equipe", exact: true }).click()
   const input = page.getByRole("textbox", { name: "Mensagem para Equipe", exact: true })
   await input.fill("Revisem o plano")

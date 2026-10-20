@@ -143,7 +143,7 @@ it("shows the active bot name once while keeping bot navigation visible", async 
   expect(botNameAppearances).toBe(1)
   expect(within(header).getByText("Bots")).toBeVisible()
   const sidebar = screen.getByRole("navigation", { name: "Barra lateral" })
-  expect(within(sidebar).getByRole("button", { name: /Bots/ })).toBeVisible()
+  expect(within(sidebar).getByRole("tab", { name: /^Bots,/ })).toBeVisible()
 })
 
 describe("bot preview", () => {

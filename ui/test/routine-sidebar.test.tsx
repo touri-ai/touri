@@ -8,8 +8,10 @@ import { getRoutineSidebarFixture } from "./routine-sidebar-fixture"
 
 afterEach(cleanup)
 
-it("clears every unread run when opening its routine group and leaves another routine unread", async () => {
-  const { api } = await getRoutineSidebarFixture(8, { withOtherRoutines: true, unreadRuns: 9 })
+it("opens the selected routine from its compact sidebar row", async () => {
+  const { api, routines } = await getRoutineSidebarFixture(8, { withOtherRoutines: true, unreadRuns: 9 })
+  const routineId = routines[0]?.id
+  if (!routineId) throw new Error("Missing target routine")
 
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
@@ -19,14 +21,14 @@ it("clears every unread run when opening its routine group and leaves another ro
 
   expect(routine.querySelector(".sidebar-unread")).toHaveTextContent("8")
   fireEvent.click(routine)
-  await screen.findByText("Resumo pronto para conferir.", { selector: "p" })
+  await screen.findByRole("heading", { name: "Rotinas", exact: true })
+  const history = document.querySelector(".routine-run-history")
+  if (!(history instanceof HTMLElement)) throw new Error("Missing routine history")
 
-  await waitFor(() => expect(routine.querySelector(".sidebar-unread")).toBeNull())
+  expect(history).toHaveAttribute("open")
+  expect(within(history).getByRole("combobox", { name: "Filtrar histórico por rotina" })).toHaveValue(routineId)
+  expect(routine.querySelector(".sidebar-unread")).toHaveTextContent("8")
   expect(otherRoutine.querySelector(".sidebar-unread")).toHaveTextContent("1")
-  fireEvent.click(routine)
-
-  expect(routine.querySelector(".sidebar-unread")).toBeNull()
-  expect(document.querySelector(".thread-row.selected")).toHaveTextContent("06:45")
 })
 
 it("groups 128 deleted routine conversations and keeps every result reachable in bounded pages", async () => {
@@ -76,7 +78,7 @@ it("groups 128 deleted routine conversations and keeps every result reachable in
 })
 
 it("groups 28 routine executions without burying ordinary conversations and opens older results from history", async () => {
-  const { api } = await getRoutineSidebarFixture()
+  const { api } = await getRoutineSidebarFixture(28, { todayRuns: true })
 
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
@@ -86,7 +88,7 @@ it("groups 28 routine executions without burying ordinary conversations and open
   expect(rows).toHaveLength(2)
   expect(rows[0]).toHaveTextContent("Planejamento da semana")
   expect(rows[1]).toHaveTextContent("Resumo diário")
-  expect(rows[1]).toHaveTextContent("11:45")
+  expect(rows[1]).toHaveTextContent("Rotina Resumo diário · 28 hoje")
 
   fireEvent.click(screen.getByRole("button", { name: /^Ver trabalho: \d/ }))
   await screen.findByRole("heading", { name: "Trabalho", exact: true })
@@ -108,7 +110,7 @@ it("groups 28 routine executions without burying ordinary conversations and open
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
   const selected = document.querySelector(".thread-row.selected")
-  expect(selected).toHaveTextContent("05:00")
+  expect(selected).toHaveTextContent(/Rotina Resumo diário · \d+ hoje/)
   expect(document.querySelectorAll('[data-bot-entry="bot-mark"] .thread-row')).toHaveLength(2)
   expect(await screen.findByText("Resumo pronto para conferir.", { selector: "p" })).toBeVisible()
 })
@@ -135,7 +137,7 @@ it("keeps routine conversations older than the first history page reachable", as
   fireEvent.click(oldest)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
-  expect(document.querySelector(".thread-row.selected")).toHaveTextContent("05:00")
+  expect(document.querySelector(".thread-row.selected")).toHaveTextContent(/Rotina Resumo diário · \d+ hoje/)
   expect(await screen.findByText("Resumo pronto para conferir.", { selector: "p" })).toBeVisible()
 })
 
@@ -147,15 +149,12 @@ it("opens selected routine history across three bounded pages despite newer runs
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   const conversations = screen.getByRole("region", { name: "Conversas de mark" })
-  fireEvent.click(within(conversations).getByText("Resumo diário", { selector: "strong" }))
-  await screen.findByText("Resumo pronto para conferir.", { selector: "p" })
-  fireEvent.click(within(conversations).getByRole("button", { name: "Histórico de rotinas" }))
+  fireEvent.click(within(conversations).getByRole("button", { name: "Abrir histórico da rotina Resumo diário" }))
   await screen.findByRole("heading", { name: "Rotinas", exact: true })
   const history = document.querySelector(".routine-run-history")
   if (!(history instanceof HTMLElement)) throw new Error("Missing run history")
 
   expect(history).toHaveAttribute("open")
-  expect(screen.getByRole("button", { name: "mark", exact: true })).toHaveAttribute("aria-pressed", "true")
   expect(within(history).getByRole("combobox", { name: "Filtrar histórico por rotina" })).toHaveValue(targetRoutine.id)
   expect(within(history).queryByRole("option", { name: /Resumo de outro bot/ })).toBeNull()
   expect(within(history).getByRole("status")).toHaveTextContent("Execuções 1–50 de 128")
@@ -163,9 +162,10 @@ it("opens selected routine history across three bounded pages despite newer runs
   expect(within(history).queryByText("Outras notícias", { selector: "strong" })).toBeNull()
 
   fireEvent.click(within(history).getByText("Histórico de execuções", { selector: "summary" }))
-  fireEvent.click(within(conversations).getByRole("button", { name: "Histórico de rotinas" }))
+  fireEvent.click(within(conversations).getByRole("button", { name: "Abrir histórico da rotina Resumo diário" }))
 
   expect(history).toHaveAttribute("open")
+  expect(screen.getByRole("button", { name: "mark", exact: true })).toHaveAttribute("aria-pressed", "true")
   expect(within(history).getByRole("combobox", { name: "Filtrar histórico por rotina" })).toHaveValue(targetRoutine.id)
 
   fireEvent.click(within(history).getByRole("button", { name: "Próxima página" }))
@@ -202,7 +202,7 @@ it("opens selected routine history across three bounded pages despite newer runs
   fireEvent.click(oldest)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
-  expect(document.querySelector(".thread-row.selected")).toHaveTextContent("05:00")
+  expect(document.querySelector(".thread-row.selected")).toHaveTextContent(/Rotina Resumo diário · \d+ hoje/)
   expect(await screen.findByText("Resumo pronto para conferir.", { selector: "p" })).toBeVisible()
 })
 
@@ -308,7 +308,7 @@ it("shows routine run time in the routine timezone in the sidebar", async () => 
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   const row = document.querySelector(".thread-row.selected")
 
-  expect(row).toHaveTextContent("16:04")
+  expect(row).toHaveTextContent("Rotina Resumo da caixa de entrada · 0 hoje")
   expect(row?.querySelector(".thread-copy strong")?.getAttribute("title")).toContain("16:04")
   expect(document.querySelector(".routine-run-marker time")).toHaveTextContent("16:04")
   expect(document.querySelector(".routine-run-marker time")?.getAttribute("title")).toContain("16:04")

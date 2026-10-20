@@ -32,6 +32,7 @@ export const GroupSidebar = ({
   groups,
   bots,
   threads,
+  attentionThreadIds = new Set(),
   selectedThreadId,
   onSelect,
   onCreate,
@@ -43,6 +44,7 @@ export const GroupSidebar = ({
   groups: BotGroup[]
   bots: Bot[]
   threads: Thread[]
+  attentionThreadIds?: ReadonlySet<string>
   selectedThreadId: string | null
   onSelect: (id: string) => void
   onCreate: () => void
@@ -51,38 +53,38 @@ export const GroupSidebar = ({
   onDelete?: ((groupId: string) => Promise<void>) | undefined
   locale?: Locale
 }) => (
-  <section className="group-sidebar" aria-label={t("Bot groups", {}, locale)}>
-    {groups.length === 0 ? (
-      <button type="button" className="group-empty-create" onClick={onCreate}>
+  <section className="group-sidebar" aria-label={t("Channels", {}, locale)}>
+    <div className="group-sidebar-heading">
+      <span>
+        {t("Channels", {}, locale)} <small>{groups.length}</small>
+      </span>
+      <button type="button" className="channel-create" onClick={onCreate}>
         <span aria-hidden="true">+</span>
-        {t("Criar grupo", {}, locale)}
+        {t("New channel", {}, locale)}
       </button>
-    ) : (
-      <>
-        <div className="group-sidebar-heading">
-          <span>
-            {t("Bot groups", {}, locale)} <small>{groups.length}</small>
-          </span>
-          <button type="button" aria-label={t("Criar grupo", {}, locale)} onClick={onCreate}>
-            +
-          </button>
-        </div>
-        {groups.map((group) => (
-          <GroupSidebarEntry
-            key={group.id}
-            group={group}
-            bots={bots}
-            threads={threads.filter((thread) => thread.groupId === group.id && !thread.groupThreadId)}
-            selectedThreadId={selectedThreadId}
-            onSelect={onSelect}
-            onEdit={() => onEdit(group)}
-            onNewThread={() => onNewThread(group)}
-            onDelete={onDelete}
-            locale={locale}
-          />
-        ))}
-      </>
-    )}
+    </div>
+    {groups.map((group) => {
+      const groupThreads = threads.filter((thread) => thread.groupId === group.id && !thread.groupThreadId)
+      const unread = groupThreads.reduce((count, thread) => count + thread.unread, 0)
+      const needsAttention = groupThreads.some((thread) => attentionThreadIds.has(thread.id))
+
+      return (
+        <GroupSidebarEntry
+          key={group.id}
+          group={group}
+          bots={bots}
+          threads={groupThreads}
+          unread={unread}
+          needsAttention={needsAttention}
+          selectedThreadId={selectedThreadId}
+          onSelect={onSelect}
+          onEdit={() => onEdit(group)}
+          onNewThread={() => onNewThread(group)}
+          onDelete={onDelete}
+          locale={locale}
+        />
+      )
+    })}
   </section>
 )
 
@@ -90,6 +92,8 @@ const GroupSidebarEntry = ({
   group,
   bots,
   threads,
+  unread,
+  needsAttention,
   selectedThreadId,
   onSelect,
   onEdit,
@@ -100,6 +104,8 @@ const GroupSidebarEntry = ({
   group: BotGroup
   bots: Bot[]
   threads: Thread[]
+  unread: number
+  needsAttention: boolean
   selectedThreadId: string | null
   onSelect: (id: string) => void
   onEdit: () => void
@@ -128,6 +134,10 @@ const GroupSidebarEntry = ({
           }}
           aria-current={selected ? "page" : undefined}
         >
+          <span className="channel-hash" aria-hidden="true">
+            #
+          </span>
+          <span className="channel-name">{group.name}</span>
           <MemberMascots
             bots={group.memberIds.flatMap((id) => {
               const bot = bots.find((bot) => bot.id === id)
@@ -135,7 +145,19 @@ const GroupSidebarEntry = ({
             })}
             locale={locale}
           />
-          <span>{group.name}</span>
+          {needsAttention ? (
+            <span
+              className="channel-attention-badge"
+              role="img"
+              aria-label={t("Channel attention count", { count: 1 }, locale)}
+            >
+              !
+            </span>
+          ) : unread > 0 ? (
+            <span className="sidebar-unread" role="img" aria-label={t("Unread messages", { count: unread }, locale)}>
+              {unread > 99 ? "99+" : unread}
+            </span>
+          ) : null}
         </button>
         <SidebarActionsMenu
           label={t("Ações do grupo {name}", { name: group.name }, locale)}
