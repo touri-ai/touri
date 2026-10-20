@@ -676,3 +676,51 @@
 .r8-sidebar .thread-row.selected .sidebar-unread {
   background: var(--bg);
 }
+
+/* Phone drawer: a header row with room for 44px buttons, clear of notches and home bars, sliding in and out. */
+@media (max-width: 620px) {
+  .sidebar-drawer .bot-sidebar {
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) env(safe-area-inset-left);
+    overflow-x: clip;
+    transform: translateX(-100%);
+    transition: transform var(--motion-calm) cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  .sidebar-drawer[open] .bot-sidebar {
+    transform: none;
+    @starting-style {
+      transform: translateX(-100%);
+    }
+  }
+  .sidebar-drawer {
+    transition:
+      background-color var(--motion-calm) ease,
+      display var(--motion-calm) allow-discrete,
+      overlay var(--motion-calm) allow-discrete;
+  }
+  .sidebar-drawer::backdrop {
+    opacity: 0;
+    transition:
+      opacity var(--motion-calm) ease,
+      display var(--motion-calm) allow-discrete,
+      overlay var(--motion-calm) allow-discrete;
+  }
+  .sidebar-drawer[open]::backdrop {
+    opacity: 1;
+    @starting-style {
+      opacity: 0;
+    }
+  }
+  .r8-sidebar .traffic-light-row {
+    height: auto;
+    min-height: calc(var(--touch-target-size) + var(--space-12));
+    flex-basis: auto;
+    padding-block: var(--space-4);
+  }
+  .r8-sidebar .sidebar-top-actions {
+    flex-shrink: 0;
+  }
+  .r8-sidebar .sidebar-icon-button {
+    min-width: var(--touch-target-size);
+    min-height: var(--touch-target-size);
+  }
+}
