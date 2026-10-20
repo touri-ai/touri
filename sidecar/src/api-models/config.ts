@@ -17,6 +17,21 @@ export const getApiModels = (kernel: Kernel): ApiModel[] =>
       .all() as Array<{ value_json: string }>
   ).map((row) => JSON.parse(row.value_json) as ApiModel)
 
+export const getApiModelForPreset = (kernel: Kernel, preset: ApiModel["preset"]): ApiModel | null => {
+  const rows = (kernel.db as Database)
+    .query("SELECT value_json FROM settings WHERE key GLOB 'api-model:*' ORDER BY key LIMIT 32")
+    .all() as Array<{ value_json: string }>
+  const models = rows.map((row) => {
+    try {
+      return JSON.parse(row.value_json) as ApiModel
+    } catch {
+      return null
+    }
+  })
+
+  return models.find((model) => model?.preset === preset) ?? null
+}
+
 export const getApiModel = (kernel: Kernel, reference: string | null | undefined): ApiModel | null => {
   const id = getApiModelProviderId(reference)
   if (!id) return null

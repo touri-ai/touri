@@ -41,6 +41,8 @@ const makeApiFixture = async (
   kernel.callHost = createHeadlessHost({ secrets })({ publish: kernel.publish, log: kernel.log })
   const logs = new Set<string>()
   const events = new Set<string>()
+  const decisionModels: Array<ApiModel | null> = []
+  kernel.services.provide("browser.updateDecisionModel", (model) => decisionModels.push(model))
   kernel.log = (entry) => {
     logs.add(JSON.stringify(entry))
   }
@@ -79,8 +81,24 @@ const makeApiFixture = async (
     expect(response.status).toBe(201)
     return ((await response.json()) as { model: ApiModel }).model
   }
-  return { api, add, root, kernel, secrets, logs, events, requests }
+  return { api, add, root, kernel, secrets, logs, events, requests, decisionModels }
 }
+
+test("saved OpenRouter models refresh the browser decision adapter and removal clears it", async () => {
+  const f = await makeApiFixture()
+  const response = await f.api("/api-models", {
+    preset: "openrouter",
+    apiKey: key,
+    modelId: "typesafe/jev-1.13",
+    name: "Decisão do navegador",
+  })
+  expect(response.status).toBe(201)
+  const model = ((await response.json()) as { model: ApiModel }).model
+  expect(f.decisionModels).toEqual([model])
+
+  expect((await f.api(`/api-models/${model.id}`, {}, "DELETE")).status).toBe(200)
+  expect(f.decisionModels).toEqual([model, null])
+})
 
 test("API model keys only enter the encrypted server secret store; metadata and events never contain them", async () => {
   const f = await makeApiFixture()

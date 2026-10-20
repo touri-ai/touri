@@ -621,6 +621,8 @@ export type BrowserElement = {
   states: Array<'checked' | 'disabled' | 'expanded' | 'focused' | 'selected' | 'required' | 'readonly'>
   frame: string
   inViewport: boolean
+  formAssociated?: boolean
+  formSubmit?: boolean
 }
 
 export type BrowserActionRecord = {
@@ -674,6 +676,7 @@ export type BrowserErrorCode =
   | 'TAB_HELD_BY_USER'
   | 'TAB_LIMIT'
   | 'REPEATED_FAILURE'
+  | 'USER_TAKEOVER_REQUIRED'
   | 'SECRET_ENTRY_ACTIVE'
   | 'ENGINE_UNAVAILABLE'
   | 'LOCAL_BROWSER_UNAVAILABLE'
@@ -1446,6 +1449,7 @@ export type ServiceMap = {
   'runtime.shutdown': (options?: { appRestart?: boolean }) => Promise<void>
   'projects.info': (args: { projectId: Id; botId?: Id }) => Promise<ProjectInfo | null>
   'browser.tabsForBot': (args: { botId: Id }) => Array<BrowserTabInfo>
+  'browser.updateDecisionModel': (model: ApiModel | null) => void
   'computer.input': ComputerInput
   'computer.isActive': () => { active: boolean; botId: Id | null }
   'notify.emit': (input: NotifyInput) => NotificationRecord

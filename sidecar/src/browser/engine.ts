@@ -380,7 +380,9 @@ const fingerprintForNode = async ({
       if (!element.isConnected) return null;
       const role = element.getAttribute('role') || ({BUTTON:'button',A:'link',INPUT:(element.type === 'search' ? 'searchbox' : 'textbox'),SELECT:'combobox',TEXTAREA:'textbox',H1:'heading',H2:'heading',H3:'heading',H4:'heading',H5:'heading',H6:'heading'}[element.tagName] || 'generic');
       const name = element.getAttribute('aria-label') || element.getAttribute('name') || element.innerText || element.value || '';
-      return { role, name: String(name).trim(), tag: element.tagName.toLowerCase(), textPrefix: String(element.innerText || element.textContent || '').trim().slice(0, 40), href: element.getAttribute('href') || '' };
+      const formAssociated = Boolean(element.form);
+      const formSubmit = formAssociated && ((element.tagName === 'BUTTON' && (element.type || 'submit').toLowerCase() === 'submit') || (element.tagName === 'INPUT' && ['submit', 'image'].includes(element.type)));
+      return { role, name: String(name).trim(), tag: element.tagName.toLowerCase(), textPrefix: String(element.innerText || element.textContent || '').trim().slice(0, 40), href: element.getAttribute('href') || '', formAssociated, formSubmit };
     }`,
         returnByValue: true,
       },
@@ -395,6 +397,8 @@ const fingerprintForNode = async ({
     tag: asString(value.tag) ?? "div",
     textPrefix: asString(value.textPrefix) ?? "",
     href: asString(value.href) ?? "",
+    ...(asBoolean(value.formAssociated) === true ? { formAssociated: true } : {}),
+    ...(asBoolean(value.formSubmit) === true ? { formSubmit: true } : {}),
   }
 }
 
@@ -1053,6 +1057,8 @@ const elementFromNode = (node: NodeRef, page: PageState): BrowserElement => {
     states: node.states,
     frame: node.frame,
     inViewport,
+    ...(node.fingerprint.formAssociated === true ? { formAssociated: true } : {}),
+    ...(node.fingerprint.formSubmit === true ? { formSubmit: true } : {}),
   }
 }
 
@@ -3242,6 +3248,11 @@ export const createBrowserEngine = ({
             hit = resolved
           } else {
             clicked = resolved.node
+            if (button === "left" && clicked?.fingerprint.formSubmit === true)
+              return failure(
+                "USER_TAKEOVER_REQUIRED",
+                "TOURI_BROWSER_TAKEOVER_REQUIRED|form_submit\nAsk the user to take over this browser tab and submit the form directly.",
+              )
             hit = await hitPoint(tab, resolved)
             if (!hit.success && hit.failure.errorCode === "TARGET_CHANGED" && resolved.node) {
               try {
@@ -3455,6 +3466,18 @@ export const createBrowserEngine = ({
           (parts.includes("Ctrl") || parts.includes("ctrl") ? 2 : 0) |
           (parts.includes("Meta") || parts.includes("meta") || parts.includes("Cmd") || parts.includes("cmd") ? 4 : 0) |
           (parts.includes("Shift") || parts.includes("shift") ? 8 : 0)
+        if (rawKey === "Enter") {
+          const formAssociated = await runtimeValue<boolean>(
+            client,
+            "Boolean(document.activeElement && document.activeElement.form)",
+            tab.sessionId,
+          )
+          if (formAssociated)
+            return failure(
+              "USER_TAKEOVER_REQUIRED",
+              "TOURI_BROWSER_TAKEOVER_REQUIRED|form_submit\nAsk the user to take over this browser tab and submit the form directly.",
+            )
+        }
         await dispatchKey({
           tab,
           key: rawKey,

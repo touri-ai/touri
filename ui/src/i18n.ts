@@ -567,6 +567,20 @@ export const ptBR = {
   "O navegador não abriu a página": "O navegador não abriu a página",
   "Navegador ainda não aberto": "Navegador ainda não aberto",
   "Navegador desativado": "Navegador desativado",
+  "The browser decision service has no saved API key. Add one in API model settings. touri will keep using its current browser behavior.":
+    "A decisão assistida do navegador está sem chave salva. Adicione uma em Modelos de API. O touri continuará usando o comportamento atual do navegador.",
+  "The browser decision service has no credit. touri kept using its current browser behavior. Check the page before continuing.":
+    "A decisão assistida do navegador está sem crédito. O touri continuou usando o comportamento atual do navegador. Confira a página antes de continuar.",
+  "The browser decision service could not connect. touri kept using its current browser behavior.":
+    "Não foi possível conectar à decisão assistida do navegador. O touri continuou usando o comportamento atual do navegador.",
+  "The browser decision service returned an invalid answer. touri kept using its current browser behavior.":
+    "A decisão assistida do navegador retornou uma resposta inválida. O touri continuou usando o comportamento atual do navegador.",
+  "I couldn't choose safely. Which option should I use? {choices}":
+    "Não consegui escolher com segurança. Qual opção devo usar? {choices}",
+  "The browser could not choose a target safely. Choose an option in chat before continuing.":
+    "O navegador não conseguiu escolher um alvo com segurança. Escolha uma opção na conversa antes de continuar.",
+  "This browser action needs your confirmation. Take over the tab to complete it.":
+    "Esta ação do navegador precisa da sua confirmação. Assuma a aba para concluí-la.",
   "Peça ao bot para abrir uma página. Ela aparecerá aqui na tela da VM.":
     "Peça ao bot para abrir uma página. Ela aparecerá aqui na tela da VM.",
   "Não foi possível receber a imagem": "Não foi possível receber a imagem",

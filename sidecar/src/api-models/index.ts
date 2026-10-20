@@ -156,6 +156,7 @@ const addModel = async ({ kernel }: Context, body: unknown): Promise<RouteRespon
     await removeKey(kernel, model.id)
     return failure("secret_unavailable", 503)
   }
+  if (model.preset === "openrouter") kernel.services.use("browser.updateDecisionModel")?.(model)
 
   return json(201, { model })
 }
@@ -174,11 +175,16 @@ const testSavedModel = async (context: Context, id: string): Promise<RouteRespon
 }
 
 const removeModel = async (kernel: Kernel, id: string): Promise<RouteResponse> => {
-  const model = getApiModels(kernel).find((candidate) => candidate.id === id)
+  const models = getApiModels(kernel)
+  const model = models.find((candidate) => candidate.id === id)
   if (!model) return json(200, {})
   if (!(await removeKey(kernel, id))) return failure("secret_unavailable", 503)
 
   deleteApiModel(kernel, id)
+  if (model.preset === "openrouter")
+    kernel.services.use("browser.updateDecisionModel")?.(
+      models.find((candidate) => candidate.id !== id && candidate.preset === "openrouter") ?? null,
+    )
 
   return json(200, {})
 }
