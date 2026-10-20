@@ -293,7 +293,7 @@
   min-width: var(--sidebar-row-height);
 }
 
-/* Segmented control: one track, one raised thumb, no borders; a dot says the other mode has news. */
+/* Segmented control: one track, one raised thumb, and the shared neutral count pill. */
 .sidebar-mode-tabs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -332,17 +332,6 @@
   outline: 2px solid var(--link);
   outline-offset: 2px;
 }
-.sidebar-mode-dot {
-  width: 6px;
-  height: 6px;
-  flex: 0 0 6px;
-  border-radius: var(--radius-round);
-  background: var(--info);
-}
-.sidebar-mode-dot.tone-attention {
-  background: var(--warning);
-}
-
 .sidebar-mode-panel {
   padding-bottom: var(--space-8);
 }
@@ -448,7 +437,7 @@
   white-space: nowrap;
 }
 
-/* One count style (a number is always unread); one state style (a dot). */
+/* One count style (its accessible label describes the total); one state style (a dot). */
 .sidebar-unread {
   display: grid;
   flex: 0 0 auto;
