@@ -30,12 +30,12 @@ import { useMascotSnapshot } from "./AvatarRuntime"
 import { BotActionsMenu } from "./BotActionsMenu"
 import { BotAvatar } from "./BotAvatar"
 import { DeleteBotDialog } from "./DeleteBotDialog"
-import { DeletedRoutineHistory } from "./DeletedRoutineHistory"
 import { GlobalAdvancedMenu } from "./GlobalAdvancedMenu"
 import { GroupSidebar } from "./Groups"
 import { useInsertedIds } from "./Motion"
 import { mascotIsBusy } from "./mascotState"
 import { type NotificationActions, NotificationBell } from "./NotificationCenter"
+import { ThreadGroupHistory } from "./ThreadGroupHistory"
 import { type HoldReason, useSidebarOrder } from "./useSidebarOrder"
 import "./bot-sidebar.css"
 
@@ -635,19 +635,31 @@ const BotEntry = ({
             const secondaryLabel = routineRun ? `${countLabel ?? ""} · ${dateLabel}` : (countLabel ?? dateLabel)
 
             return (
-              <ThreadRow
-                key={thread.id}
-                inserted={insertedThreads.has(thread.id)}
-                thread={thread}
-                title={title}
-                countLabel={secondaryLabel}
-                dateLabel={dateLabel}
-                dateTitle={dateTitle}
-                unread={unread}
-                selected={thread.id === selectedThreadId}
-                running={running}
-                onClick={() => onSelectThread(thread.id)}
-              />
+              <Fragment key={thread.id}>
+                <ThreadRow
+                  inserted={insertedThreads.has(thread.id)}
+                  thread={thread}
+                  title={title}
+                  countLabel={secondaryLabel}
+                  dateLabel={dateLabel}
+                  dateTitle={dateTitle}
+                  unread={unread}
+                  selected={thread.id === selectedThreadId}
+                  running={running}
+                  onClick={() => onSelectThread(thread.id)}
+                />
+                {taskGroupName && (
+                  <ThreadGroupHistory
+                    label={t("Task conversation history for {name}", { name: taskGroupName })}
+                    threads={threads}
+                    routineRuns={routineRuns}
+                    routineIds={routineIds}
+                    groupThreadId={thread.id}
+                    selectedThreadId={selectedThreadId}
+                    onSelectThread={onSelectThread}
+                  />
+                )}
+              </Fragment>
             )
           })}
           {visibleRoutineIds.length > 0 && (
@@ -656,7 +668,8 @@ const BotEntry = ({
             </button>
           )}
           {deletedRoutine && (
-            <DeletedRoutineHistory
+            <ThreadGroupHistory
+              label={t("Deleted routine conversations")}
               threads={threads}
               routineRuns={routineRuns}
               routineIds={routineIds}

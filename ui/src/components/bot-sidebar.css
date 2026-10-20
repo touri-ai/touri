@@ -262,11 +262,11 @@
 .r8-sidebar .new-thread-row:hover {
   background: var(--surface-control);
 }
-.deleted-routine-history {
+.thread-group-history {
   padding-left: var(--space-8);
   border-left: 1px solid var(--border);
 }
-.deleted-routine-history > p {
+.thread-group-history > p {
   padding: var(--space-4) var(--space-8);
   color: var(--text-2);
   font-size: var(--fs-caption);

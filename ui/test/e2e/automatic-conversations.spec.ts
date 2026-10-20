@@ -26,7 +26,7 @@ test("automatic task threads no longer flood the sidebar and task mode groups th
   test.setTimeout(30_000)
   await page.goto("/test/e2e/home-harness.html?scenario=thread-noise-before")
   const before = await openConversations(page)
-  await expect(before.filter({ hasText: "lead.reply" })).toHaveCount(12)
+  await expect(before.filter({ hasText: "lead.reply" })).toHaveCount(30)
   await capture(page, "automatic-conversations-before")
 
   await page.goto("/test/e2e/home-harness.html?scenario=thread-noise-main")
@@ -37,9 +37,15 @@ test("automatic task threads no longer flood the sidebar and task mode groups th
 
   await page.goto("/test/e2e/home-harness.html?scenario=thread-noise-grouped")
   const grouped = await openConversations(page)
-  await expect(grouped.filter({ hasText: "Tarefas lead.reply · 12 hoje" })).toHaveCount(1)
+  await expect(grouped.filter({ hasText: "Tarefas lead.reply · 30 hoje" })).toHaveCount(1)
   await expect(grouped.filter({ hasText: "lead.reply" })).toHaveCount(1)
   await capture(page, "automatic-conversations-task-mode")
+
+  await page.getByRole("button", { name: "Histórico de tarefas de lead.reply" }).click()
+  const history = page.getByRole("region", { name: "Histórico de tarefas de lead.reply" })
+  await expect(history.locator(".thread-row")).toHaveCount(30)
+  await history.getByRole("button").last().click()
+  await expect(page.locator(".thread-row.selected").first()).toContainText("Tarefas lead.reply")
 })
 
 for (const view of [
@@ -61,8 +67,12 @@ for (const view of [
 
     await page.goto("/test/e2e/home-harness.html?scenario=thread-noise-grouped")
     const grouped = await openConversations(page)
-    await expect(grouped.filter({ hasText: "Tarefas lead.reply · 12 hoje" })).toHaveCount(1)
+    await expect(grouped.filter({ hasText: "Tarefas lead.reply · 30 hoje" })).toHaveCount(1)
     await capture(page, `automatic-conversations-task-${view.name}`)
+    await page.getByRole("button", { name: "Histórico de tarefas de lead.reply" }).click()
+    const history = page.getByRole("region", { name: "Histórico de tarefas de lead.reply" })
+    await expect(history.locator(".thread-row")).toHaveCount(30)
+    await capture(page, `automatic-conversations-task-history-${view.name}`)
 
     await page.goto("/test/e2e/create-bot-harness.html")
     await page.getByRole("button", { name: "Criar meu primeiro bot", exact: true }).click()
