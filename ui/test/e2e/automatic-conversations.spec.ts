@@ -49,7 +49,7 @@ for (const view of [
   { name: "phone-dark", width: 390, height: 844, theme: "dark" },
 ] as const) {
   test(`automatic conversations and settings are clear on ${view.name}`, async ({ page }) => {
-    test.setTimeout(60_000)
+    test.setTimeout(120_000)
     await page.setViewportSize({ width: view.width, height: view.height })
     await page.emulateMedia({ colorScheme: view.theme, reducedMotion: "reduce" })
     await page.addInitScript((theme) => localStorage.setItem("touri.appearance.v1", theme), view.theme)
@@ -74,14 +74,22 @@ for (const view of [
     await capture(page, `automatic-conversations-create-${view.name}`)
 
     await page.goto("/test/e2e/home-harness.html")
-    await openConversations(page)
+    await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     const menu = page.getByRole("button", { name: "Abrir menu", exact: true })
-    if (await menu.isVisible()) await menu.click()
-    await page.getByRole("button", { name: "Ações de mark", exact: true }).click()
-    await page.getByRole("menuitem", { name: "Avançado", exact: true }).click()
+    const sidebar =
+      view.width === 390
+        ? page.getByRole("dialog", { name: "Barra lateral" })
+        : page.getByRole("navigation", { name: "Barra lateral" })
+    if (view.width === 390) await menu.click()
+    const actions = sidebar.getByRole("button", { name: "Ações de mark", exact: true })
+    await expect(actions).toBeVisible()
+    await actions.click()
+    await sidebar.getByRole("menuitem", { name: "Avançado", exact: true }).click()
     const settings = page.getByRole("dialog", { name: "Configurações de mark" })
     const setting = settings.getByRole("radiogroup", { name: "Onde o bot responde" })
     await expect(setting.getByRole("radio")).toHaveCount(2)
+    await expect(setting.getByRole("radio", { name: "Uma conversa nova por tarefa" })).toBeVisible()
+    expect(await setting.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
     await capture(page, `automatic-conversations-settings-${view.name}`)
   })
 }

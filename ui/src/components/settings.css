@@ -367,7 +367,7 @@
 .settings-avatar-field .avatar-picker-preview {
   margin-bottom: var(--space-8);
 }
-.settings-row-control input:not([type="checkbox"]) {
+.settings-row-control input:not([type="checkbox"], [type="radio"]) {
   width: 230px;
 }
 .settings-modal .settings-grid {
@@ -928,7 +928,7 @@
   .machine-environment-control,
   .settings-model-control,
   .settings-row-control select,
-  .settings-row-control input:not([type="checkbox"]),
+  .settings-row-control input:not([type="checkbox"], [type="radio"]),
   .machine-environment-control select {
     width: 100%;
   }

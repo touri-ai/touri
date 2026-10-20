@@ -285,7 +285,7 @@ it("collapses event task threads by trigger name and marks every reply read toge
       ...mainThread,
       id: "lead-two",
       kind: "chat" as const,
-      title: "lead.reply · 001122334455",
+      title: "lead.reply · a01122334455",
       createdAt: now,
       updatedAt: now + 1,
       unread: 2,
