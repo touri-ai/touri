@@ -3,6 +3,9 @@ import { useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 import type { ApiRequest } from "../../src/api/client"
 import { createMockApi } from "../../src/api/mock"
+import { AvatarRuntimeProvider } from "../../src/components/AvatarRuntime"
+import { BrowserWorkingStatus } from "../../src/components/BrowserWorkingStatus"
+import { VirtualMessageList } from "../../src/components/ChatPanel"
 import { TurnActivity } from "../../src/components/TurnActivity"
 import { InlinePreviewContext } from "../../src/features/desktop/InlineLivePreview"
 import { t } from "../../src/i18n"
@@ -336,5 +339,230 @@ const Fixture = () => {
   )
 }
 
+const wait = (duration: number): Promise<void> => new Promise((resolve) => window.setTimeout(resolve, duration))
+
+const requestBrowserFixture = async (step: string) => {
+  const response = await fetch("/__browser-activity-fixture", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ step }),
+  })
+  if (!response.ok) throw new Error(`The browser fixture could not run ${step}.`)
+
+  return response.json() as Promise<{
+    part?: ToolCallPart
+    snapshot?: { title: string; url: string }
+    image?: string
+  }>
+}
+
+const LiveFixture = () => {
+  const [fixture] = useState(() => {
+    const fixtureApi = createMockApi()
+    const mockBot = fixtureApi.getState().bots[0]
+    const mockThread = fixtureApi.getState().threads[0]
+    if (!mockBot || !mockThread) throw new Error("The mocked bot is missing.")
+    const fixtureBot = { ...mockBot, id: "browser-demo", name: "Lia", machine: "local" as const }
+    const fixtureThread = { ...mockThread, id: "browser-thread", botId: fixtureBot.id }
+    const request = (async (route: string) => {
+      if (route === "GET /browser/tabs") {
+        const result = await requestBrowserFixture("metadata")
+        return result as never
+      }
+      if (route === "GET /bots/:id/browser-preview") {
+        const result = await requestBrowserFixture("preview")
+        return result as never
+      }
+      if (route === "GET /attachments/:id/content") {
+        const result = await requestBrowserFixture("attachment")
+        const imageData = result.image?.split(",")[1] ?? ""
+        return {
+          text: JSON.stringify({ content: [{ type: "image", mimeType: "image/jpeg", data: imageData }] }),
+          offset: 0,
+          nextOffset: null,
+          bytes: Math.floor((imageData.length * 3) / 4),
+        } as never
+      }
+      return {} as never
+    }) as ApiRequest
+    fixtureApi.request = request
+
+    return [fixtureApi, fixtureBot, fixtureThread] as const
+  })
+  const [api, bot, thread] = fixture
+  const [parts, setParts] = useState<ToolCallPart[]>([])
+  const [narrations, setNarrations] = useState<string[]>([])
+  const [running, setRunning] = useState(false)
+  const [started, setStarted] = useState(false)
+  const stopped = useRef(false)
+  const ids = useRef(0)
+  const now = Date.now()
+  const userMessage: Message = {
+    id: "browser-user-request",
+    threadId: thread.id,
+    parentId: null,
+    role: "user",
+    kind: "text",
+    status: "complete",
+    runId: null,
+    text: "Encontre opções fictícias de viagem para Lisboa em 24 de outubro.",
+    parts: [{ type: "text", text: "Encontre opções fictícias de viagem para Lisboa em 24 de outubro." }],
+    sender: null,
+    source: "local",
+    createdAt: now - 2_000,
+    updatedAt: now - 2_000,
+  }
+  const narrationParts = narrations.map((text) => ({ type: "text", text }) as const)
+  const assistantMessage: Message = {
+    id: "browser-assistant-reply",
+    threadId: thread.id,
+    parentId: userMessage.id,
+    role: "assistant",
+    kind: "text",
+    status: running ? "streaming" : "complete",
+    runId: null,
+    text: "",
+    parts: [...narrationParts, ...parts],
+    sender: { id: bot.id, name: bot.name },
+    source: "local",
+    createdAt: now - 1_000,
+    updatedAt: now,
+  }
+
+  const playStep = async (step: string, narration: string, inputJson: string): Promise<void> => {
+    if (stopped.current) return
+    setNarrations((previous) => [...previous, narration])
+    const callId = `browser-flow-${ids.current + 1}`
+    ids.current += 1
+    const toolNames: Record<string, string> = {
+      read: "browser_snapshot",
+      destination: "browser_type",
+      option: "browser_click",
+      cabin: "browser_select_option",
+      calendar: "browser_click",
+      date: "browser_click",
+      search: "browser_click",
+      wait: "browser_wait_for",
+      tabs: "browser_list_tabs",
+      screenshot: "browser_screenshot",
+    }
+    const toolName = toolNames[step] ?? `browser_${step}`
+    const pending: ToolCallPart = {
+      type: "tool_call",
+      callId,
+      tool: `mcp__touri__${toolName}`,
+      summary: `browser_${step}`,
+      inputJson,
+      outputJson: null,
+      startedAt: Date.now(),
+      ok: null,
+    }
+    setParts((previous) => [...previous, pending])
+    await wait(350)
+    if (stopped.current) return
+    const result = await requestBrowserFixture(step)
+    const completedPart = result.part
+    if (!completedPart) throw new Error(`The browser fixture returned no action for ${step}.`)
+    setParts((previous) => previous.map((part) => (part.callId === callId ? { ...completedPart, callId } : part)))
+    if (step === "open") await wait(3_000)
+  }
+
+  const start = async () => {
+    stopped.current = false
+    ids.current = 0
+    setStarted(true)
+    setRunning(true)
+    setNarrations([])
+    setParts([])
+    const script = [
+      ["open", "Vou abrir a busca de viagens.", JSON.stringify({ url: "https://travel.example.test/search" })],
+      ["read", "A página inicial carregou. Vou procurar Lisboa.", "{}"],
+      ["destination", "Estou preenchendo o destino.", '{"target":{"name":"Destination"}}'],
+      ["option", "Encontrei Lisboa. Vou escolher essa opção.", '{"target":{"name":"Lisboa, Portugal"}}'],
+      ["cabin", "Agora vou escolher a cabine.", '{"target":{"name":"Cabin"}}'],
+      ["calendar", "Vou abrir as datas disponíveis.", '{"target":{"name":"Departure date"}}'],
+      ["date", "Vou selecionar 24 de outubro.", '{"target":{"name":"October 24"}}'],
+      ["search", "Tudo pronto. Vou buscar as opções.", '{"target":{"name":"Search trips"}}'],
+      ["wait", "A busca terminou. Vou conferir os resultados.", '{"text":"Two ways to get there"}'],
+      ["read", "Encontrei duas opções fictícias.", "{}"],
+      ["tabs", "Vou conferir a aba atual antes de concluir.", "{}"],
+      ["screenshot", "Vou guardar uma captura dos resultados.", "{}"],
+    ] as const
+    for (const [step, narration, inputJson] of script) {
+      await playStep(step, narration, inputJson)
+      if (stopped.current) return
+    }
+    setParts((previous) => [
+      ...previous,
+      {
+        type: "text",
+        text: "Encontrei duas opções fictícias para **Lisboa, Portugal** em **24 de outubro**:\n\n1. **Voo direto** — 2 h 30 min · cabine executiva · €184.\n2. **Uma conexão** — 4 h 10 min · €139.",
+      },
+    ])
+    setRunning(false)
+  }
+
+  const stop = () => {
+    stopped.current = true
+    setRunning(false)
+  }
+
+  return (
+    <AvatarRuntimeProvider
+      value={{
+        bots: [bot],
+        threads: [thread],
+        messages: [userMessage, assistantMessage],
+        runs: [],
+        notifications: [],
+        loading: false,
+      }}
+    >
+      <InlinePreviewContext.Provider
+        value={{
+          api,
+          bot,
+          machine: undefined,
+          activeCallId: undefined,
+          onOpenComputer: () => undefined,
+        }}
+      >
+        <main className="browser-flow-app" data-theme={params.get("theme") ?? "dark"}>
+          <aside className="browser-flow-sidebar" aria-label="Conversas">
+            <strong>touri</strong>
+            <button type="button" className="browser-flow-sidebar-row" onClick={() => undefined}>
+              <span>Busca de viagem</span>
+              {running && <small>trabalhando</small>}
+            </button>
+          </aside>
+          <section className="browser-flow-chat">
+            <header className="browser-flow-header">
+              <span>Busca de viagem</span>
+              {!started && (
+                <button type="button" className="button" onClick={() => void start()}>
+                  Iniciar busca de viagem
+                </button>
+              )}
+            </header>
+            <div className="browser-flow-messages">
+              <VirtualMessageList
+                api={api}
+                messages={started ? [userMessage, assistantMessage] : [userMessage]}
+                mainThread
+                onSwitchBranch={() => undefined}
+                onRetry={async () => undefined}
+              />
+            </div>
+            <footer className="browser-flow-composer">
+              {running && <BrowserWorkingStatus name={bot.name} onStop={stop} />}
+              <textarea aria-label="Mensagem" placeholder="Escreva uma mensagem…" />
+            </footer>
+          </section>
+        </main>
+      </InlinePreviewContext.Provider>
+    </AvatarRuntimeProvider>
+  )
+}
+
 const root = document.getElementById("root")
-if (root) createRoot(root).render(<Fixture />)
+if (root) createRoot(root).render(params.get("flow") === "live" ? <LiveFixture /> : <Fixture />)

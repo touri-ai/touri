@@ -4,6 +4,7 @@ import { afterEach, expect, test, vi } from "vitest"
 import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { BrowserActivityCard } from "../src/components/BrowserActivityCard"
+import { BrowserWorkingStatus } from "../src/components/BrowserWorkingStatus"
 import {
   getBrowserActivityNotice,
   getBrowserActivityTabId,
@@ -36,6 +37,15 @@ afterEach(() => {
   cleanup()
   setInlinePreviewPreference(true)
   vi.clearAllMocks()
+})
+
+test("the browser working chip exposes a stop control", () => {
+  const onStop = vi.fn()
+  render(<BrowserWorkingStatus name="Lia" onStop={onStop} />)
+
+  expect(screen.getByRole("status")).toHaveTextContent("Lia está trabalhando · No navegador")
+  fireEvent.click(screen.getByRole("button", { name: "Parar tarefa no navegador" }))
+  expect(onStop).toHaveBeenCalledOnce()
 })
 
 const tab = {
@@ -111,13 +121,18 @@ test("shows live browser steps and keeps typed values and URL credentials and qu
   renderCard(parts, false)
 
   expect(screen.getByText("Navegador do Lia")).toBeVisible()
-  expect(screen.getByText("Preencheu Destination")).toBeVisible()
-  expect(screen.getByText("Clicou em Lisboa, Portugal")).toBeVisible()
+  expect(screen.getByText("Preencheu um campo")).toBeVisible()
+  expect(screen.getByText("Clicou")).toBeVisible()
+  expect(screen.getByText("Lia · Clicou")).toBeVisible()
+  expect(screen.getByRole("progressbar", { name: "Progresso do navegador" })).toBeVisible()
+  expect(screen.getByRole("button", { name: "Expandir navegador" })).toBeVisible()
+  expect(screen.getByRole("button", { name: "Recolher cartão do navegador" })).toBeVisible()
+  expect(document.querySelectorAll(".browser-activity-checklist li")).toHaveLength(3)
   await waitFor(() => expect(screen.getByRole("img", { name: "Página atual do navegador" })).toBeVisible())
   expect(document.body.textContent).not.toContain("private search value")
   expect(document.body.textContent).not.toContain("person@example.test")
   expect(document.body.textContent).not.toContain("private-password")
-  expect(screen.getAllByText("https://travel.example.test/results")).toHaveLength(2)
+  expect(screen.getAllByText("https://travel.example.test/results")).toHaveLength(1)
 })
 
 test("take-over holds the browser, opens its view, and the finished card collapses with the final image", async () => {
@@ -157,6 +172,7 @@ test("take-over holds the browser, opens its view, and the finished card collaps
   )
 
   expect(await screen.findByText("Usou o navegador · 3 ações")).toBeVisible()
+  expect(screen.getByText("Ver o que ele fez")).toBeVisible()
   expect(screen.getByRole("img", { name: "Captura final do navegador" })).toBeVisible()
   expect(screen.queryByText("Atividade do navegador")).toBeNull()
   fireEvent.click(screen.getByRole("button", { name: /Usou o navegador/ }))

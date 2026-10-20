@@ -5,33 +5,17 @@ import { asToolRecord, parseToolValue, toolIdentity, toolLeaf } from "./toolPres
 
 const MAX_INPUT_LENGTH = 12_000
 const MAX_OUTPUT_LENGTH = 16_000
-const MAX_LABEL_LENGTH = 72
 
-const getBrowserAction = (part: ToolCallPart): string => toolLeaf(part.tool).replace(/^(browser|computer)_/, "")
+const getBrowserAction = (part: ToolCallPart): string =>
+  toolLeaf(part.tool)
+    .replace(/([a-z])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .replace(/^(browser|computer)_/, "")
 
 const getArgs = (part: ToolCallPart): Record<string, unknown> | null => {
   if (part.inputJson.length > MAX_INPUT_LENGTH) return null
 
   return asToolRecord(parseToolValue(redactToolText(part.inputJson)))
-}
-
-const getSafeLabel = (value: unknown): string | null => {
-  if (typeof value !== "string") return null
-
-  const label = redactToolText(value)
-    .replace(/\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b/gi, "[email]")
-    .replace(/\b(?:\+?\d[\d\s().-]{7,}\d)\b/g, "[number]")
-    .replace(/[\r\n\t]+/g, " ")
-    .trim()
-    .slice(0, MAX_LABEL_LENGTH)
-
-  return label || null
-}
-
-const getTargetName = (args: Record<string, unknown> | null): string | null => {
-  const target = asToolRecord(args?.target)
-
-  return getSafeLabel(target?.name ?? target?.text)
 }
 
 const getOutputTabId = (part: ToolCallPart): string | undefined => {
@@ -78,20 +62,18 @@ export const getBrowserActivityScreenshot = (parts: readonly ToolCallPart[]): To
 
 export const getBrowserActivityLabel = (part: ToolCallPart, locale: Locale): string => {
   if (part.ok === false) return t("Browser action failed. Take over to continue.", {}, locale)
-  if (part.ok == null) return t("Browser action in progress…", {}, locale)
 
   const action = getBrowserAction(part)
-  const target = getTargetName(getArgs(part))
-  const targetArgs = target ? { target } : {}
   const labels: Record<string, keyof typeof ptBR> = {
     open: "Opened a page",
     navigate: "Opened a page",
     snapshot: "Read the page",
-    click: target ? "Clicked {target}" : "Clicked an element",
-    type: target ? "Filled {target}" : "Filled a field",
+    click: "Clicked",
+    type: "Filled a field",
+    fill: "Filled a field",
     fill_form: "Filled a form",
-    select_option: target ? "Selected an option in {target}" : "Selected an option",
-    set_checked: target ? "Updated {target}" : "Updated a choice",
+    select_option: "Selected an option",
+    set_checked: "Updated a choice",
     screenshot: "Took a screenshot",
     take_screenshot: "Took a screenshot",
     scroll: "Scrolled the page",
@@ -101,10 +83,49 @@ export const getBrowserActivityLabel = (part: ToolCallPart, locale: Locale): str
     submit_secret: "Filled a saved credential",
     fill_secret: "Filled a saved credential",
     press: "Pressed a key",
+    list_tabs: "Moved between tabs",
+    switch_tab: "Moved between tabs",
   } satisfies Record<string, keyof typeof ptBR>
   const label = labels[action] ?? "Used the browser"
 
-  return t(label, targetArgs, locale)
+  return t(label, {}, locale)
+}
+
+export const getBrowserActivityCurrentLabel = (part: ToolCallPart, locale: Locale): string => {
+  if (part.ok !== null && part.ok !== undefined) return getBrowserActivityLabel(part, locale)
+
+  const action = getBrowserAction(part)
+  const labels: Record<string, keyof typeof ptBR> = {
+    open: "Opening a page",
+    navigate: "Opening a page",
+    snapshot: "Reading the page",
+    click: "Clicking",
+    type: "Filling a field",
+    fill: "Filling a field",
+    fill_form: "Filling a form",
+    select_option: "Selecting an option",
+    screenshot: "Taking a screenshot",
+    take_screenshot: "Taking a screenshot",
+    scroll: "Moving on the page",
+    hover: "Inspecting an element",
+    wait_for: "Waiting for the page",
+    list_tabs: "Moving between tabs",
+    switch_tab: "Moving between tabs",
+  } satisfies Record<string, keyof typeof ptBR>
+
+  return t(labels[action] ?? "Browser action in progress…", {}, locale)
+}
+
+export const getBrowserActivityKind = (part: ToolCallPart): string => {
+  const action = getBrowserAction(part)
+  if (["open", "navigate"].includes(action)) return "open"
+  if (["snapshot", "wait_for"].includes(action)) return "read"
+  if (action === "click") return "click"
+  if (["type", "fill", "fill_form", "select_option", "set_checked", "fill_secret", "submit_secret"].includes(action))
+    return "fill"
+  if (["screenshot", "take_screenshot"].includes(action)) return "screenshot"
+  if (["list_tabs", "switch_tab"].includes(action)) return "tabs"
+  return "other"
 }
 
 export const getBrowserActivityNotice = (part: ToolCallPart, locale: Locale): string | null => {
@@ -143,4 +164,14 @@ export const getBrowserActivityUrl = (value: string): string => {
   } catch {
     return ""
   }
+}
+
+export const getBrowserActivityOpenUrl = (parts: readonly ToolCallPart[]): string => {
+  const open = parts.reduceRight<ToolCallPart | undefined>(
+    (latest, part) => latest ?? (["open", "navigate"].includes(getBrowserAction(part)) ? part : undefined),
+    undefined,
+  )
+  const args = open ? getArgs(open) : null
+
+  return typeof args?.url === "string" ? getBrowserActivityUrl(args.url) : ""
 }

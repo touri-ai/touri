@@ -15,6 +15,7 @@ import { useProviderLogin } from "../useProviderLogin"
 import type { ThreadCreationStatus } from "../workspaceState"
 import { useMascotComposer } from "./AvatarRuntime"
 import { BotAvatar } from "./BotAvatar"
+import { BrowserWorkingStatus } from "./BrowserWorkingStatus"
 import { ComposerNotice } from "./ComposerNotice"
 import { ComposerProjectChip } from "./ComposerProjectChip"
 import { ErrorText } from "./ErrorDetails"
@@ -701,9 +702,11 @@ export const Composer = ({
     <>
       {notice && <ComposerNotice {...notice} api={api} active={Boolean(activeRun)} loginFlowShown={login.blocked} />}
       {browserWorking && (
-        <div className="composer-browser-status" role="status">
-          {t("{name} is working · In the browser", { name: browserBotName ?? bot?.name ?? "touri" }, locale)}
-        </div>
+        <BrowserWorkingStatus
+          name={browserBotName ?? bot?.name ?? "touri"}
+          locale={locale}
+          onStop={activeRun ? () => void onCancel(activeRun.id) : undefined}
+        />
       )}
       {composer}
     </>

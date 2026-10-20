@@ -723,6 +723,8 @@ const MessageBubble = ({
   const markdown = messageMarkdown(message)
   const text = message.role === "assistant" ? markdown.replace(connectDataMarker, "") : markdown
   const segments = message.role === "assistant" ? assistantSegments({ ...message, parts }) : []
+  const quietBrowserNarration =
+    message.role === "assistant" && message.status === "streaming" && getBrowserActivityTools(parts).length > 0
   const finalText = segments.filter((segment) => segment.type === "text").at(-1)
   const technicalNotice =
     message.role === "system" &&
@@ -880,7 +882,7 @@ const MessageBubble = ({
   return (
     <article
       ref={root}
-      className={`message-bubble ${message.role === "user" ? "message-user" : "message-assistant"}${routinePrompt ? " message-routine-prompt" : ""}`}
+      className={`message-bubble ${message.role === "user" ? "message-user" : "message-assistant"}${routinePrompt ? " message-routine-prompt" : ""}${quietBrowserNarration ? " message-browser-narration" : ""}`}
       data-message-id={message.id}
       data-motion-insert={inserted}
     >
@@ -925,8 +927,18 @@ const MessageBubble = ({
       )}
       {message.role === "assistant" ? (
         segments.map((segment) => {
-          if (segment.type === "text")
-            return <Fragment key={segment.key}>{renderAnswer(segment.text, segment === finalText)}</Fragment>
+          if (segment.type === "text") {
+            const answer = renderAnswer(segment.text, segment === finalText)
+            if (!quietBrowserNarration) return <Fragment key={segment.key}>{answer}</Fragment>
+            if (!answer) return null
+
+            return (
+              <div className="browser-narration" key={segment.key}>
+                <strong>{message.sender?.name ?? bot?.name ?? "touri"}:</strong>
+                {answer}
+              </div>
+            )
+          }
           if (segment.type === "approval")
             return (
               <ApprovalCard
@@ -1474,7 +1486,7 @@ export const ChatPanel = ({
         attachmentButtonRef={attachmentButtonRef}
         activeRun={activeRun}
         browserWorking={browserWorking}
-        browserBotName={bot?.name ?? "touri"}
+        browserBotName={latestReply?.sender?.name ?? bot?.name ?? "touri"}
         botActive={runs.some((run) => run.botId === bot?.id && ["queued", "starting", "running"].includes(run.status))}
         projects={projects}
         onSaveModel={onSaveModel}

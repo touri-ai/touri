@@ -1,12 +1,15 @@
 import type { BrowserTabInfo, Id, MessagePart } from "@touri/contracts"
-import { useContext, useEffect, useRef, useState } from "react"
+import { useContext, useEffect, useId, useRef, useState } from "react"
 import { InlinePreviewContext } from "../features/desktop/InlineLivePreview"
 import { type PreviewFrame, startInlineFrameSource } from "../features/desktop/inlineFrameSource"
 import { useInlinePreviewPreference } from "../features/desktop/inlinePreviewPreference"
 import { type Locale, t } from "../i18n"
 import {
+  getBrowserActivityCurrentLabel,
+  getBrowserActivityKind,
   getBrowserActivityLabel,
   getBrowserActivityNotice,
+  getBrowserActivityOpenUrl,
   getBrowserActivityScreenshot,
   getBrowserActivityTabId,
   getBrowserActivityTime,
@@ -17,6 +20,44 @@ import { StoredToolOutput } from "./ToolOutput"
 import "./browser-activity.css"
 
 const MAX_VISIBLE_ACTIONS = 16
+
+const actionIcons: Record<string, string> = {
+  open: "M5 19h14M5 5h6l2 3h6v11H5z",
+  read: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5",
+  click: "M6 3v15l4-4 3 6 2-1-3-6h5z",
+  fill: "M4 6h16M6 3v6m12-6v6M5 12h14v8H5z",
+  screenshot: "M4 7h4l2-2h4l2 2h4v12H4zM12 11a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
+  tabs: "M3 5h8v14H3zM13 5h8v14h-8z",
+  other: "M12 3v3m0 12v3m9-9h-3M6 12H3m15.4-6.4-2.1 2.1M7.7 16.3l-2.1 2.1m12.8 0-2.1-2.1m-8.6-8.6L5.6 5.6",
+}
+
+const BrowserPreviewImage = ({ src, alt }: { src: string; alt: string }) => {
+  const [frames, setFrames] = useState({ current: src, previous: "" })
+
+  useEffect(() => {
+    setFrames((current) => (current.current === src ? current : { current: src, previous: current.current }))
+    const timer = window.setTimeout(() => {
+      setFrames((current) => (current.current === src ? { current: src, previous: "" } : current))
+    }, 320)
+
+    return () => window.clearTimeout(timer)
+  }, [src])
+
+  return (
+    <div className="browser-activity-preview-frames">
+      <img key={frames.current} className="browser-activity-preview-image" src={frames.current} alt={alt} />
+      {frames.previous && (
+        <img
+          key={frames.previous}
+          className="browser-activity-preview-image browser-activity-preview-image-previous"
+          src={frames.previous}
+          alt=""
+          aria-hidden="true"
+        />
+      )}
+    </div>
+  )
+}
 
 export const hasBrowserActivity = (parts: readonly MessagePart[]): boolean => getBrowserActivityTools(parts).length > 0
 
@@ -49,6 +90,7 @@ export const BrowserActivityCard = ({
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(!finished)
   const [fullView, setFullView] = useState(false)
+  const contentId = useId()
   const section = useRef<HTMLElement>(null)
   const [visible, setVisible] = useState(false)
   const [hidden, setHidden] = useState(document.hidden)
@@ -159,120 +201,57 @@ export const BrowserActivityCard = ({
 
   const screenshot = getBrowserActivityScreenshot(browserTools)
   const actions = browserTools.slice(-MAX_VISIBLE_ACTIONS)
+  const completedActions = browserTools.filter((part) => part.ok === true).slice(-MAX_VISIBLE_ACTIONS)
+  const currentAction = browserTools.at(-1)
   const title = t("Browser for {name}", { name: botName }, locale)
   const summary = t(
     browserTools.length === 1 ? "Used the browser · 1 action" : "Used the browser · {count} actions",
     { count: browserTools.length },
     locale,
   )
-  const url = finished ? "" : getBrowserActivityUrl(preview?.url ?? "")
+  const url = finished ? "" : getBrowserActivityUrl(preview?.url || getBrowserActivityOpenUrl(browserTools))
 
   return (
-    <article
-      className="browser-activity-card"
-      ref={section}
-      aria-label={title}
-      data-finished={finished}
-      data-held={held}
-    >
-      {finished ? (
-        <button
-          type="button"
-          className="browser-activity-summary"
-          aria-expanded={expanded}
-          onClick={() => setExpanded((value) => !value)}
-        >
-          <span className="browser-activity-summary-copy">
-            <strong>{summary}</strong>
-            {url && <small>{url}</small>}
-          </span>
-          {screenshot?.outputAttachmentId ? (
-            <span className="browser-activity-thumbnail">
-              <StoredToolOutput
-                key={screenshot.outputAttachmentId}
-                api={api}
-                attachmentId={screenshot.outputAttachmentId}
-                preview={screenshot.outputPreview}
-                callId={screenshot.callId}
-                browser
-                locale={locale}
-                autoOpen
-                thumbnail
-              />
-            </span>
-          ) : null}
-          <span aria-hidden="true">{expanded ? "−" : "+"}</span>
-        </button>
-      ) : (
-        <header className="browser-activity-header">
-          <div>
-            <strong>{title}</strong>
-            {url && <span title={url}>{url}</span>}
-          </div>
-          {activeTabId && (
-            <button type="button" className="button button-quiet" disabled={busy} onClick={() => void toggleTakeover()}>
-              {busy
-                ? t("Updating browser control…", {}, locale)
-                : held
-                  ? t("Hand back to {name}", { name: botName }, locale)
-                  : t("Take over", {}, locale)}
-            </button>
-          )}
-        </header>
+    <div className="browser-activity-stack">
+      {completedActions.length > 0 && (
+        <ol className="browser-activity-checklist" aria-label={t("Browser steps", {}, locale)}>
+          {completedActions.map((part) => (
+            <li key={part.callId}>
+              <span aria-hidden="true">✓</span>
+              <span>{t("Used the browser", {}, locale)}</span>
+            </li>
+          ))}
+        </ol>
       )}
-      {expanded && (
-        <div
-          className={`browser-activity-content${fullView || finished || !previewEnabled ? " browser-activity-content-full" : ""}`}
-        >
-          {!finished && previewEnabled && (
-            <div className={`browser-activity-preview${fullView ? " browser-activity-preview-full" : ""}`}>
-              {preview?.src ? (
-                <img src={preview.src} alt={t("Current browser page", {}, locale)} />
-              ) : (
-                <p className="browser-activity-placeholder">
-                  {previewError ?? t("Waiting for the browser page…", {}, locale)}
-                </p>
-              )}
-              {preview?.src && previewError && <small role="status">{previewError}</small>}
-              {url && <span title={url}>{url}</span>}
-              <div className="browser-activity-preview-actions">
-                <button type="button" disabled={!preview} onClick={() => setFullView((value) => !value)}>
-                  {fullView ? t("Collapse browser view", {}, locale) : t("Expand browser view", {}, locale)}
-                </button>
-                <button type="button" onClick={() => context?.onOpenComputer()} disabled={!context}>
-                  {t("Open browser", {}, locale)}
-                </button>
-              </div>
-            </div>
-          )}
-          <div
-            className="browser-activity-log"
-            role="log"
-            aria-label={t("Browser activity", {}, locale)}
-            aria-live={finished ? "off" : "polite"}
+      <article
+        className="browser-activity-card"
+        ref={section}
+        aria-label={title}
+        data-finished={finished}
+        data-held={held}
+        data-expanded={expanded}
+      >
+        {!finished && (
+          <span
+            className="browser-activity-progress"
+            role="progressbar"
+            aria-label={t("Browser progress", {}, locale)}
+          />
+        )}
+        {finished ? (
+          <button
+            type="button"
+            className="browser-activity-summary"
+            aria-expanded={expanded}
+            aria-controls={contentId}
+            onClick={() => setExpanded((value) => !value)}
           >
-            <strong>{t("Browser activity", {}, locale)}</strong>
-            <ol>
-              {actions.map((part) => (
-                <li key={part.callId}>
-                  <time dateTime={new Date(part.startedAt ?? part.resolvedAt ?? createdAt).toISOString()}>
-                    {getBrowserActivityTime(part, createdAt, locale)}
-                  </time>
-                  <span>
-                    {getBrowserActivityLabel(part, locale)}
-                    {getBrowserActivityNotice(part, locale) && <small>{getBrowserActivityNotice(part, locale)}</small>}
-                  </span>
-                </li>
-              ))}
-            </ol>
-            {browserTools.length > MAX_VISIBLE_ACTIONS && (
-              <small>{t("Showing the latest {count} browser actions", { count: MAX_VISIBLE_ACTIONS }, locale)}</small>
-            )}
-            {held && <p role="status">{t("You have control of this browser tab.", {}, locale)}</p>}
-            {error && <p role="alert">{error}</p>}
-            {finished && screenshot?.outputAttachmentId && (
-              <section className="browser-activity-final-shot" aria-label={t("Final browser screenshot", {}, locale)}>
-                <strong>{t("Final browser screenshot", {}, locale)}</strong>
+            <span className="browser-activity-summary-copy">
+              <strong>{summary}</strong>
+              <small>{t("See what it did", {}, locale)}</small>
+            </span>
+            {screenshot?.outputAttachmentId ? (
+              <span className="browser-activity-thumbnail">
                 <StoredToolOutput
                   key={screenshot.outputAttachmentId}
                   api={api}
@@ -282,12 +261,147 @@ export const BrowserActivityCard = ({
                   browser
                   locale={locale}
                   autoOpen
+                  thumbnail
                 />
-              </section>
+              </span>
+            ) : null}
+            <span aria-hidden="true">{expanded ? "−" : "+"}</span>
+          </button>
+        ) : (
+          <header className="browser-activity-header">
+            <div className="browser-activity-heading">
+              <strong>{title}</strong>
+              {currentAction && (
+                <span className="browser-activity-subtitle">
+                  {t(
+                    "{name} · {action}",
+                    { name: botName, action: getBrowserActivityCurrentLabel(currentAction, locale) },
+                    locale,
+                  )}
+                </span>
+              )}
+              {url && (
+                <span className="browser-activity-url" title={url}>
+                  {url}
+                </span>
+              )}
+            </div>
+            <div className="browser-activity-header-actions">
+              {activeTabId && (
+                <button
+                  type="button"
+                  className="button button-quiet"
+                  disabled={busy}
+                  onClick={() => void toggleTakeover()}
+                >
+                  {busy
+                    ? t("Updating browser control…", {}, locale)
+                    : held
+                      ? t("Hand back to {name}", { name: botName }, locale)
+                      : t("Take over", {}, locale)}
+                </button>
+              )}
+              {previewEnabled && (
+                <button
+                  type="button"
+                  className="browser-activity-icon-button"
+                  aria-label={fullView ? t("Collapse browser view", {}, locale) : t("Expand browser view", {}, locale)}
+                  aria-pressed={fullView}
+                  disabled={!preview}
+                  onClick={() => setFullView((value) => !value)}
+                >
+                  <span aria-hidden="true">{fullView ? "↙" : "↗"}</span>
+                </button>
+              )}
+              <button
+                type="button"
+                className="browser-activity-icon-button"
+                aria-label={expanded ? t("Collapse browser card", {}, locale) : t("Expand browser card", {}, locale)}
+                aria-expanded={expanded}
+                aria-controls={contentId}
+                onClick={() => setExpanded((value) => !value)}
+              >
+                <span aria-hidden="true">{expanded ? "⌃" : "⌄"}</span>
+              </button>
+            </div>
+          </header>
+        )}
+        {expanded && (
+          <div
+            id={contentId}
+            className={`browser-activity-content${fullView || finished || !previewEnabled ? " browser-activity-content-full" : ""}`}
+          >
+            {!finished && previewEnabled && (
+              <div className={`browser-activity-preview${fullView ? " browser-activity-preview-full" : ""}`}>
+                {preview?.src ? (
+                  <BrowserPreviewImage src={preview.src} alt={t("Current browser page", {}, locale)} />
+                ) : (
+                  <p className="browser-activity-placeholder">
+                    {previewError ?? t("Waiting for the browser page…", {}, locale)}
+                  </p>
+                )}
+                {preview?.src && previewError && <small role="status">{previewError}</small>}
+              </div>
             )}
+            <div
+              className="browser-activity-log"
+              role="log"
+              aria-label={t("Browser activity", {}, locale)}
+              aria-live={finished ? "off" : "polite"}
+            >
+              <strong>{t("Browser activity", {}, locale)}</strong>
+              <ol>
+                {actions.map((part) => (
+                  <li key={part.callId}>
+                    <span className="browser-activity-action-icon" aria-hidden="true">
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d={actionIcons[getBrowserActivityKind(part)] ?? actionIcons.other} />
+                      </svg>
+                    </span>
+                    <span className="browser-activity-action-label">
+                      {getBrowserActivityLabel(part, locale)}
+                      {getBrowserActivityNotice(part, locale) && (
+                        <small>{getBrowserActivityNotice(part, locale)}</small>
+                      )}
+                    </span>
+                    <time dateTime={new Date(part.startedAt ?? part.resolvedAt ?? createdAt).toISOString()}>
+                      {getBrowserActivityTime(part, createdAt, locale)}
+                    </time>
+                  </li>
+                ))}
+              </ol>
+              {browserTools.length > MAX_VISIBLE_ACTIONS && (
+                <small>{t("Showing the latest {count} browser actions", { count: MAX_VISIBLE_ACTIONS }, locale)}</small>
+              )}
+              {held && <p role="status">{t("You have control of this browser tab.", {}, locale)}</p>}
+              {error && <p role="alert">{error}</p>}
+              {finished && screenshot?.outputAttachmentId && (
+                <section className="browser-activity-final-shot" aria-label={t("Final browser screenshot", {}, locale)}>
+                  <strong>{t("Final browser screenshot", {}, locale)}</strong>
+                  <StoredToolOutput
+                    key={screenshot.outputAttachmentId}
+                    api={api}
+                    attachmentId={screenshot.outputAttachmentId}
+                    preview={screenshot.outputPreview}
+                    callId={screenshot.callId}
+                    browser
+                    locale={locale}
+                    autoOpen
+                  />
+                </section>
+              )}
+            </div>
           </div>
-        </div>
-      )}
-    </article>
+        )}
+      </article>
+    </div>
   )
 }

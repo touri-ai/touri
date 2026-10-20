@@ -81,6 +81,31 @@ it("preserves interleaved prose, final text and attachment order without duplica
   expect(view.container.querySelectorAll(".turn-activity")).toHaveLength(1)
 })
 
+it("shows live browser narration as quiet transcript text", async () => {
+  const view = render(
+    <VirtualMessageList
+      {...props}
+      messages={[
+        message(
+          [
+            { type: "text", text: "Estou na página inicial. Agora vou escolher a data." },
+            {
+              ...tool(1, "mcp__touri__browser_click"),
+              ok: null,
+              inputJson: '{"target":{"kind":"role","role":"button","name":"Abrir calendário"}}',
+            },
+          ],
+          { status: "streaming", sender: { id: "bot-mark", name: "Lia" } },
+        ),
+      ]}
+    />,
+  )
+
+  const narration = await screen.findByText("Estou na página inicial. Agora vou escolher a data.")
+  expect(narration.closest(".browser-narration")).not.toBeNull()
+  expect(view.container.querySelector(".browser-activity-card")).toBeVisible()
+})
+
 it.each(["pending", "approved", "denied", "expired"] as const)(
   "keeps a %s approval outside the activity, matched to its tool only once",
   async (decision) => {
