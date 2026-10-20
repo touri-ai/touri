@@ -39,7 +39,8 @@ export const BrowserActivityCard = ({
   const activeTabId = tabId ?? resolvedTabId
   const [preview, setPreview] = useState<PreviewFrame>()
   const [previewError, setPreviewError] = useState<string | null>(null)
-  const [held, setHeld] = useState(false)
+  const [heldTab, setHeldTab] = useState<{ tabId: string; held: boolean }>()
+  const held = heldTab?.tabId === activeTabId && heldTab?.held === true
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(!finished)
@@ -80,6 +81,8 @@ export const BrowserActivityCard = ({
   useEffect(() => {
     if (!api || !botId || finished) return
     let active = true
+    // Events may arrive after the initial snapshot was taken.
+    let hasTabEvent = false
     const selectTab = (tabs: Array<BrowserTabInfo & { ownerBotId: Id | null }>) => {
       const candidate = tabs
         .filter((tab) => tab.ownerBotId === botId && tab.state === "live" && (!tabId || tab.tabId === tabId))
@@ -89,7 +92,7 @@ export const BrowserActivityCard = ({
         )
       if (!candidate || !active) return
       if (!tabId) setResolvedTabId(candidate.tabId)
-      setHeld(candidate.heldByUser)
+      setHeldTab({ tabId: candidate.tabId, held: candidate.heldByUser })
     }
     const unsubscribe = api.subscribe(({ event }) => {
       if (
@@ -98,13 +101,16 @@ export const BrowserActivityCard = ({
         event.tab.state === "live" &&
         (!tabId || event.tab.tabId === tabId)
       ) {
+        hasTabEvent = true
         if (!tabId) setResolvedTabId(event.tab.tabId)
-        setHeld(event.tab.heldByUser)
+        setHeldTab({ tabId: event.tab.tabId, held: event.tab.heldByUser })
       }
     })
     void api
       .request("GET /browser/tabs", { botId })
-      .then(({ tabs }) => selectTab(tabs))
+      .then(({ tabs }) => {
+        if (!hasTabEvent) selectTab(tabs)
+      })
       .catch(() => {})
 
     return () => {
@@ -135,7 +141,7 @@ export const BrowserActivityCard = ({
     setError(null)
     try {
       await api.request("POST /browser/tabs/:id/takeover", { hold: !held }, { id: activeTabId })
-      setHeld(!held)
+      setHeldTab({ tabId: activeTabId, held: !held })
       if (!held) context?.onOpenComputer()
     } catch {
       setError(t("The browser tab could not be updated.", {}, locale))

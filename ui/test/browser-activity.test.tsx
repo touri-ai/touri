@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { BrowserTabInfo, ToolCallPart } from "@touri/contracts"
 import { afterEach, expect, test, vi } from "vitest"
 import type { ApiRequest } from "../src/api/client"
@@ -49,10 +49,10 @@ const getPart = (input: Partial<ToolCallPart> & Pick<ToolCallPart, "callId" | "t
   ...input,
 })
 
-const renderCard = (parts: ToolCallPart[], finished: boolean) => {
+const renderCard = (parts: ToolCallPart[], finished: boolean, getTabs = async () => ({ tabs: [tab] })) => {
   const api = createMockApi()
   const request = vi.fn(async (route: string) => {
-    if (route === "GET /browser/tabs") return { tabs: [tab] }
+    if (route === "GET /browser/tabs") return getTabs()
     if (route === "GET /attachments/:id/content")
       return {
         text: JSON.stringify({
@@ -265,3 +265,21 @@ test.each(["file:///workspace/private.txt", "javascript:alert(1)", "data:text/pl
     expect(getBrowserActivityUrl(url)).toBe("")
   },
 )
+
+test("a delayed tab snapshot cannot undo a newer takeover event", async () => {
+  let resolveTabs: (value: { tabs: (typeof tab)[] }) => void = () => {}
+  const tabs = new Promise<{ tabs: (typeof tab)[] }>((resolve) => {
+    resolveTabs = resolve
+  })
+  const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
+  const { api } = renderCard(parts, false, () => tabs)
+
+  act(() => api.emit({ type: "browser.tab", tab: { ...tab, heldByUser: true } }))
+  await act(async () => {
+    resolveTabs({ tabs: [tab] })
+    await tabs
+  })
+
+  expect(screen.getByRole("button", { name: "Devolver para Lia" })).toBeVisible()
+  expect(screen.queryByRole("button", { name: "Assumir controle" })).toBeNull()
+})

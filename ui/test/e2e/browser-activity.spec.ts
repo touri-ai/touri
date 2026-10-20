@@ -8,7 +8,7 @@ const variants = [
   { name: "phone-light", width: 390, height: 844, theme: "light", colorScheme: "light" as const },
 ]
 
-test.use({ video: "on", reducedMotion: "reduce" })
+test.use({ video: { mode: "on", size: { width: 1440, height: 900 } }, reducedMotion: "reduce" })
 
 test.describe("browser activity experience", () => {
   test.setTimeout(60_000)

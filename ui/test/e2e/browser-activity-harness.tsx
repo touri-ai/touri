@@ -190,6 +190,7 @@ const Fixture = () => {
         ...previous,
         {
           ...makePart(`action-${previous.length + 1}`, "browser_click", { tabId: tab.tabId }),
+          ok: false,
           outputJson: JSON.stringify({ content: [{ type: "text", text: `TOURI_BROWSER_DECISION_HINT|${fallback}` }] }),
         },
       ])
