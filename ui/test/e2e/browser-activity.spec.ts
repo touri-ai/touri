@@ -75,6 +75,9 @@ test.describe("browser activity experience", () => {
       await expect(page.getByText("Abriu a página")).toBeVisible()
       await expect(page.getByText("Tirou um print")).toBeVisible()
       await page.evaluate(() => document.fonts.ready)
+      await page.mouse.move(variant.width - 5, variant.height - 5)
+      await page.mouse.wheel(0, 2_000)
+      await expect(page.getByRole("textbox", { name: "Mensagem", exact: true })).toBeInViewport()
       await page.screenshot({ path: testInfo.outputPath(`browser-activity-${variant.name}.png`), fullPage: true })
 
       const video = page.video()
