@@ -392,6 +392,7 @@ export const createRuntimeEngine = ({
   const active = new Map<Id, Run>()
   const controllers = new Map<Id, AbortController>()
   const executions = new Map<Id, Promise<void>>()
+  const finalizations = new Map<Id, Promise<void>>()
   const providers = new Map<Id, ProviderAdapter>()
   const states = new Map<Id, RunState>()
   const pendingApprovals = new Map<Id, PendingApproval>()
@@ -570,6 +571,25 @@ export const createRuntimeEngine = ({
   }
 
   const finishLiveRun = async (
+    run: Run,
+    prepare: () => Promise<() => boolean>,
+    finish: () => boolean,
+    messageId?: Id,
+  ): Promise<void> => {
+    const pending = finalizations.get(run.id)
+    if (pending) return pending
+
+    // Abort and provider completion can converge; only one preparation may replace a run's snapshot at a time.
+    const operation = finishLiveRunNow(run, prepare, finish, messageId)
+    finalizations.set(run.id, operation)
+    try {
+      await operation
+    } finally {
+      finalizations.delete(run.id)
+    }
+  }
+
+  const finishLiveRunNow = async (
     run: Run,
     prepare: () => Promise<() => boolean>,
     finish: () => boolean,
@@ -2925,6 +2945,8 @@ export const createRuntimeEngine = ({
       await ready
       await Promise.all(Object.values(adapters).map((adapter) => adapter.shutdown()))
       await Promise.all(executions.values())
+      // Queued cancellations can have a terminal write without an execution promise.
+      await Promise.all(finalizations.values())
     })()
     return shutdownPromise
   }

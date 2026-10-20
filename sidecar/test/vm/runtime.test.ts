@@ -1244,6 +1244,29 @@ test("confirmed machine restart cancels every active and queued bot turn before 
   }
 })
 
+test("repeated Stop during VM startup shares one terminal finalization", async () => {
+  const f = await fixture(true)
+  const bot = await f.bot({ vmProviderLogin: true })
+  let entered = false
+  f.fake.provider.ensureImage = () => {
+    entered = true
+    return new Promise(() => {})
+  }
+  const { engine, run, store } = enqueueVmTurn(f, bot)
+  cleanups.push(() => engine.shutdown())
+  for (let attempt = 0; attempt < 200 && !entered; attempt++) await Bun.sleep(5)
+
+  engine.cancel(run.id)
+  engine.cancel(run.id)
+  await waitForTerminal(run)
+
+  expect(entered).toBe(true)
+  expect(run.status).toBe("canceled")
+  const reply = store.activePath({ threadId: run.threadId }).at(-1)
+  expect(reply?.status).toBe("canceled")
+  expect(reply?.parts.filter((part) => part.type === "notice" && part.code === "run_canceled")).toHaveLength(1)
+})
+
 test("unanswered readiness probe times out into a run error event and a pt-BR chat notice without spawning CLI", async () => {
   const f = await fixture(true, { ready: 40 })
   const bot = await f.bot({ vmProviderLogin: true })
