@@ -15,6 +15,7 @@ import { createGroupStore } from "../../src/groups/store"
 import { createKernel } from "../../src/kernel"
 import { collectUnusedOutputBlobs } from "../../src/kernel/data-maintenance"
 import { createEventBus } from "../../src/kernel/event-bus"
+import { createPerformanceStageTracker } from "../../src/kernel/performance"
 import { createRuntimeEngine } from "../../src/runtime/engine"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { init as initStore } from "../../src/store"
@@ -69,14 +70,16 @@ const seedSearchableMessages = (database: Database, threadId: string, count: num
 const fixture = async ({
   callHost,
   collectBlobs,
+  stageTracker,
 }: {
   callHost?: Kernel["callHost"]
   collectBlobs?: typeof collectUnusedOutputBlobs
+  stageTracker?: ReturnType<typeof createPerformanceStageTracker>
 } = {}) => {
   const root = mkdtempSync(join(tmpdir(), "touri-delete-bot-"))
   mkdirSync(join(root, ".codex"))
   writeFileSync(join(root, ".codex/auth.json"), JSON.stringify({ access_token: "fake-test-only" }))
-  const runtime = createKernel({ appData: join(root, "data") })
+  const runtime = createKernel({ appData: join(root, "data"), stageTracker })
   await initStore(runtime.kernel)
   const vault = new Map<string, string>()
   const sessionDeletions = new Map<string, { botExists: boolean; inTransaction: boolean }>()
@@ -1137,7 +1140,8 @@ test("A11 deleting a symlinked bot home preserves the shared project target", as
 })
 
 test("50k message deletion returns quickly, keeps the event loop responsive and purges FTS", async () => {
-  const f = await fixture()
+  const stageTracker = createPerformanceStageTracker()
+  const f = await fixture({ stageTracker })
   const bot = await f.create("Large history", "local")
   const threadId = bot.mainThreadId ?? ""
   seedSearchableMessages(f.db, threadId, 50_000)
@@ -1161,6 +1165,9 @@ test("50k message deletion returns quickly, keeps the event loop responsive and 
   const maxTickMs = sortedTicks.at(-1) ?? 0
   const p99TickMs = sortedTicks[Math.ceil(sortedTicks.length * 0.99) - 1] ?? 0
   console.info(`bot-deletion-performance ${JSON.stringify({ messages: 50_000, requestMs, p99TickMs, maxTickMs })}`)
+  console.info(
+    `bot-deletion-stages ${JSON.stringify(stageTracker.snapshot().map(({ stage, maxMs }) => ({ stage, maxMs })))}`,
+  )
 
   expect(response.status).toBe(202)
   expect(requestMs).toBeLessThan(1000)
