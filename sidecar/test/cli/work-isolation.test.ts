@@ -25,13 +25,27 @@ afterEach(async () => {
 test("member HTTP requests cannot cross person or channel boundaries or perform admin writes", async () => {
   const fixture = await getFixture()
 
-  for (const path of ["/people", "/invites", "/email"]) {
+  for (const path of [
+    "/people",
+    "/invites",
+    "/email",
+    "/settings",
+    "/projects",
+    "/previews",
+    "/routines",
+    "/doctor",
+    "/api-models",
+    "/provider-profiles",
+    "/machines",
+    "/health/details",
+  ]) {
     expect((await fixture.request(path)).status).toBe(403)
   }
   for (const path of ["/threads/owner-chat/messages", "/groups/other-channel/threads"]) {
     expect((await fixture.request(path)).status).toBe(404)
   }
   for (const [method, path, body] of [
+    ["POST", "/health", {}],
     ["POST", "/invites", { role: "admin", email: "new@example.test" }],
     ["DELETE", "/people/owner", {}],
     ["PUT", "/email", {}],

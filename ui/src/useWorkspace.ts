@@ -694,11 +694,15 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
           }
           return response
         }),
-        api.request("GET /projects", {}),
-        api.request("GET /settings", {}),
-        api.request("GET /previews", {}),
+        getOptionalWorkspaceRead(api.request("GET /projects", {}), { projects: [] }),
+        getOptionalWorkspaceRead(api.request("GET /settings", {}), { settings: null }),
+        getOptionalWorkspaceRead(api.request("GET /previews", {}), { previews: [] }),
         api.request("GET /browser/tabs", {}).catch(() => ({ tabs: [] })),
-        api.request("GET /routines", {}),
+        getOptionalWorkspaceRead(api.request("GET /routines", {}), {
+          routines: [],
+          host: undefined,
+          hostKind: undefined,
+        }),
         api.request("GET /routine-runs", {}).catch(() => ({ routineRuns: [] })),
         api.request("GET /notifications", {}).catch(() => ({ notifications: [] })),
         api.request("GET /machines", {}).catch(() => ({
@@ -1782,5 +1786,18 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
       dismissComputerGrant: () => setData((current) => ({ ...current, computerGrantRequest: null })),
       dismissNotice: () => setData((current) => ({ ...current, notice: null, pendingRequestsOnReturn: null })),
     },
+  }
+}
+
+// Members can load their channels while owner-only resources remain forbidden.
+const getOptionalWorkspaceRead = async <Value, Fallback>(
+  request: Promise<Value>,
+  forbidden: Fallback,
+): Promise<Value | Fallback> => {
+  try {
+    return await request
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 403) throw error
+    return forbidden
   }
 }
