@@ -21,6 +21,9 @@ themes.forEach((theme) => {
       ).toBeVisible()
       const label = await badge.getAttribute("aria-label")
       if (!label) throw new Error("Missing work summary label")
+      if (theme === "light" && width === 1440) {
+        await badge.screenshot({ path: info.outputPath("work-summary-before.png") })
+      }
 
       await badge.evaluate((element) => element.setAttribute("aria-label", "Ver trabalho: 3 em execução, 2 na fila"))
       const baseline = await getLabelAudit(page)
