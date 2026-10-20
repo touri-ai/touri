@@ -45,11 +45,15 @@ afterEach(() => {
   delete document.documentElement.dataset.motion
 })
 
-test("A12c: all five elevations compose ambient, key and ring layers and surfaces consume roles", () => {
-  for (const role of ["control", "inline", "popover", "modal", "window"]) {
-    const recipe = tokens.match(new RegExp(`--elevation-${role}:\\s*([^;]+);`))?.[1]
-    expect(recipe, role).toBeDefined()
-    expect(recipe?.split(",")).toHaveLength(3)
+test("A12c: two elevations (e1 cards, e2 menus and dialogs) back every elevation role and surfaces consume roles", () => {
+  const recipe = (name: string) => tokens.match(new RegExp(`--${name}:\\s*([^;]+);`))?.[1]
+  expect(recipe("e1")).toContain("0 1px 2px")
+  expect(recipe("e2")?.split(",")).toHaveLength(2)
+  for (const role of ["control", "inline", "card", "composer", "badge", "chip"]) {
+    expect(recipe(`elevation-${role}`), role).toBe("var(--e1)")
+  }
+  for (const role of ["menu", "popover", "modal", "window", "dialog", "notifications"]) {
+    expect(recipe(`elevation-${role}`), role).toBe("var(--e2)")
   }
   expect(styles).toMatch(/\.tool-call-card\s*\{[^}]*box-shadow: var\(--elevation-inline\)/)
   expect(styles).toContain("box-shadow: var(--elevation-modal)")

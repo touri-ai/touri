@@ -85,7 +85,7 @@ test.describe("motion behavior", () => {
   test("modal scales and fades, then removes inert content after a short exit", async ({ page }) => {
     await page.getByRole("button", { name: /Você Local/ }).click()
     const enter = await probeReveal(page.locator('.motion-modal[data-motion-state="open"]'))
-    expect(enter.duration).toBe(240)
+    expect(enter.duration).toBe(200)
     expect(enter.opacity).toBeGreaterThan(0)
     expect(enter.opacity).toBeLessThan(1)
     expect(enter.scale).toBeGreaterThan(0.98)
@@ -169,7 +169,7 @@ test.describe("motion behavior", () => {
       }
     })
     expect(indicator.measured).toBe(`${indicator.target}px`)
-    expect(indicator?.duration).toBe(240)
+    expect(indicator?.duration).toBe(200)
     expect(indicator?.x).toBeGreaterThan(0)
     expect(indicator?.x).toBeLessThan(indicator?.target ?? 0)
     await page.evaluate(() =>

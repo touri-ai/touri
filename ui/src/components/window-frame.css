@@ -12,7 +12,7 @@
 }
 .window-titlebar {
   flex: 0 0 var(--window-inset-top);
-  background: var(--surface-panel);
+  background: var(--surface);
   -webkit-app-region: drag;
 }
 .window-content {

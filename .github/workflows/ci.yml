@@ -246,6 +246,19 @@ jobs:
             ui/test-results/**/error-context.md
           if-no-files-found: ignore
           retention-days: 7
+      - name: Check chat image layout on desktop and phone in both themes
+        working-directory: ui
+        env:
+          CHAT_IMAGE_CAPTURE: "1"
+        run: bunx playwright test test/e2e/chat-image-layout.spec.ts --workers=1
+      - name: Keep synthetic chat image evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: chat-image-layout
+          path: ui/test-results/**/after-*.png
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Check API model setup and bot selection
         working-directory: ui
         env:

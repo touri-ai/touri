@@ -6,10 +6,10 @@
   min-width: 0;
   flex: 1;
   overflow: hidden;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-12);
-  color: var(--text-primary);
-  background: var(--surface-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  background: var(--surface);
 }
 
 .desktop-toolbar {
@@ -18,22 +18,22 @@
   flex-wrap: wrap;
   gap: var(--space-12);
   padding: var(--space-12) var(--space-16);
-  border-bottom: 1px solid var(--border-divider);
+  border-bottom: 1px solid var(--border);
 }
 
 .desktop-title {
   margin: 0;
-  font-size: var(--type-14);
+  font-size: var(--fs-body);
   font-weight: var(--weight-bold);
 }
 
 .desktop-mode {
   padding: var(--space-4) var(--space-8);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-99);
-  color: var(--text-secondary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-2);
   background: var(--surface-control);
-  font-size: var(--type-12);
+  font-size: var(--fs-caption);
 }
 
 .desktop-toolbar .toolbar-actions {
@@ -46,7 +46,7 @@
   flex: 1;
   min-height: 240px;
   overflow: hidden;
-  background: var(--surface-canvas);
+  background: var(--bg);
 }
 
 .desktop-canvas {
@@ -62,8 +62,8 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-24);
-  color: var(--text-primary);
-  background: var(--surface-canvas);
+  color: var(--text);
+  background: var(--bg);
   text-align: center;
 }
 
@@ -73,10 +73,10 @@
 
 .desktop-input {
   display: grid;
-  gap: var(--space-6);
+  gap: var(--space-8);
   padding: var(--space-12) var(--space-16);
-  border-top: 1px solid var(--border-divider);
-  font-size: var(--type-12);
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-caption);
 }
 
 .desktop-input textarea {
@@ -84,15 +84,15 @@
   min-height: 34px;
   resize: none;
   padding: var(--space-8) var(--space-12);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-8);
-  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
   background: var(--surface-control);
   font: inherit;
 }
 
 .desktop-input small {
-  color: var(--text-secondary);
+  color: var(--text-2);
 }
 
 .desktop-panel .toolbar-actions {
@@ -102,31 +102,31 @@
   margin-left: auto;
 }
 .desktop-panel .panel-toolbar strong {
-  font-size: var(--type-13);
+  font-size: var(--fs-meta);
 }
 .desktop-panel .panel-toolbar button {
-  font-size: var(--type-12);
-  padding: var(--space-6);
+  font-size: var(--fs-caption);
+  padding: var(--space-8);
 }
 
 /* r8 panel: desktop chrome and a viewport that fills its container. */
 .desktop-toolbar {
   gap: var(--space-8);
-  padding: var(--space-10) var(--space-12);
+  padding: var(--space-8) var(--space-12);
   flex-shrink: 0;
-  background: var(--surface-panel);
+  background: var(--surface);
 }
 .desktop-title {
   font-weight: var(--weight-semibold);
-  font-size: var(--type-13);
+  font-size: var(--fs-meta);
 }
 .desktop-mode {
-  font-size: var(--type-11);
+  font-size: var(--fs-caption);
   line-height: 1.5;
 }
 .desktop-toolbar .button {
-  padding: var(--space-6) var(--space-8);
-  font-size: var(--type-11);
+  padding: var(--space-8) var(--space-8);
+  font-size: var(--fs-caption);
 }
 .desktop-canvas {
   width: 100%;
@@ -147,26 +147,26 @@
   width: 32px;
   height: 32px;
   flex-basis: 32px;
-  color: var(--text-secondary);
+  color: var(--text-2);
 }
 .desktop-status strong {
-  font-size: var(--type-13);
+  font-size: var(--fs-meta);
   font-weight: var(--weight-medium);
 }
 .desktop-status p {
   max-width: 360px;
   margin: 0;
-  font-size: var(--type-12);
-  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  color: var(--text-2);
   line-height: 1.7;
   overflow-wrap: anywhere;
 }
 .desktop-input {
   flex-shrink: 0;
-  padding: var(--space-10) var(--space-12);
+  padding: var(--space-8) var(--space-12);
 }
 .desktop-input small {
-  font-size: var(--type-11);
+  font-size: var(--fs-caption);
   line-height: 1.5;
 }
 /* End r8 panel desktop. */
@@ -179,14 +179,14 @@
 }
 .desktop-observe-note {
   margin: 0;
-  color: var(--text-secondary);
-  font-size: var(--type-11);
+  color: var(--text-2);
+  font-size: var(--fs-caption);
   line-height: 1.6;
 }
 /* End r8 panel viewing hint. */
 
 .desktop-panel > .desktop-observe-note {
-  padding: var(--space-10) var(--space-12);
-  border-bottom: 1px solid var(--border-divider);
+  padding: var(--space-8) var(--space-12);
+  border-bottom: 1px solid var(--border);
   background: var(--surface-control);
 }

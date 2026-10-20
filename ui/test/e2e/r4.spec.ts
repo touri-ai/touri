@@ -115,7 +115,7 @@ test("r4 Preview empty state has readable contrast and restores on reload", asyn
   await page.getByRole("button", { name: "Preview do projeto" }).click()
   const heading = page.locator(".screen-empty strong").first()
   await expect(heading).toBeVisible()
-  expect(await heading.evaluate((element) => getComputedStyle(element).color)).toBe("rgb(245, 245, 247)")
+  expect(await heading.evaluate((element) => getComputedStyle(element).color)).toBe("rgb(242, 242, 243)")
   await page.screenshot({ path: `${evidence}/preview-empty.png` })
   await page.reload()
   await expect(page.getByRole("tab", { name: "Logs", exact: true })).toBeVisible()

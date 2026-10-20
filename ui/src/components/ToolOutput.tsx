@@ -12,7 +12,7 @@ import { ToolCode } from "./ToolCode"
 import type { ToolLanguage } from "./toolHighlight"
 import { asToolRecord, parseToolValue } from "./toolPresentation"
 
-type OutputImage = { src: string; mime: string }
+type OutputImage = { src: string; mime: string; caption?: string | undefined }
 const MAX_IMAGE_OUTPUT_BYTES = 20 * 1024 * 1024
 const imageEnvelope = (text: string): boolean =>
   /"type"\s*:\s*"image"|data:image\/[^;]+;base64,|"(?:dataBase64|imageBase64)"\s*:/.test(text)
@@ -69,7 +69,37 @@ const readOutput = (raw: string) => {
     texts.push(localizedPrettyValue(record))
   }
   visit(parseToolValue(raw))
-  return { images, text: texts.join("\n") }
+  const lines = texts.flatMap((text) =>
+    text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean),
+  )
+  const isDownloadAction = (line: string) => /^(?:\[)?(?:baixar imagem|download image)(?:\])?(?:\(.*\))?$/i.test(line)
+  const downloadActions = lines.filter(isDownloadAction)
+  const hasPerImageDownloads = images.length > 0 && downloadActions.length === images.length
+  const isCaption = (line: string) =>
+    line.length <= 80 &&
+    !["{", "}", "[", "]", "`", ":"].some((character) => line.includes(character)) &&
+    !isDownloadAction(line)
+  const captions = hasPerImageDownloads ? lines.filter(isCaption) : []
+  const matchedCaptions = hasPerImageDownloads && captions.length === images.length
+  const labeledImages = matchedCaptions
+    ? images.map((image, index) => ({ ...image, caption: captions[index] }))
+    : images
+  const hiddenLines = new Set([...(hasPerImageDownloads ? downloadActions : []), ...(matchedCaptions ? captions : [])])
+  const visibleText =
+    images.length > 0
+      ? texts
+          .map((text) =>
+            text
+              .split("\n")
+              .filter((line) => !hiddenLines.has(line.trim()))
+              .join("\n"),
+          )
+          .join("\n")
+      : texts.join("\n")
+  return { images: labeledImages, text: visibleText }
 }
 
 export const ToolText = ({ text, language }: { text: string; language?: ToolLanguage | undefined }) => {
@@ -186,7 +216,7 @@ export const ToolOutput = ({
           images={images.map((image, index) => ({
             path: `${callId}-${index + 1}`,
             src: image.src,
-            caption: "Captura de tela da ferramenta",
+            caption: redactToolText(image.caption ?? "Captura de tela da ferramenta"),
             filename: `${callId}-${index + 1}.${image.mime.split("/")[1]}`,
           }))}
         />
