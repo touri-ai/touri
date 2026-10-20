@@ -333,7 +333,7 @@ a {
 .section-tabs b {
   padding: var(--space-1) var(--space-8);
   border-radius: var(--radius-pill);
-  background: var(--info);
+  background: var(--info-fill);
   color: var(--text-on-accent);
   font-size: var(--fs-caption);
 }
@@ -2918,7 +2918,7 @@ a {
   color: var(--link) !important;
 }
 .wizard-active i {
-  background: var(--info);
+  background: var(--info-fill);
   color: var(--text-on-accent);
 }
 .wizard-done i {
@@ -3399,7 +3399,7 @@ a {
   font-size: var(--fs-caption);
 }
 .notification-kind.kind-error {
-  color: var(--brand);
+  color: var(--danger);
 }
 .notification-kind.kind-info {
   color: var(--success);
@@ -4019,21 +4019,21 @@ a {
 .tool-standing-action {
   position: relative;
   color: var(--text-link);
-  font-size: var(--type-12);
+  font-size: var(--fs-caption);
 }
 .tool-standing-confirmation {
   min-width: 0;
   margin: 0;
   padding: var(--space-12);
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-8);
+  border-radius: var(--radius-sm);
   background: var(--surface-tool);
 }
 .tool-standing-confirmation p,
 .tool-standing-resolution p {
-  margin: 0 0 var(--space-10);
+  margin: 0 0 var(--space-8);
   color: var(--text-secondary);
-  font-size: var(--type-12);
+  font-size: var(--fs-caption);
 }
 .approval-standing {
   border: 2px solid var(--accent-approval);
@@ -4665,7 +4665,7 @@ a {
   background: var(--surface-code);
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 0.87em;
+  font-size: max(0.87em, var(--fs-caption));
   line-height: inherit;
   box-decoration-break: clone;
 }

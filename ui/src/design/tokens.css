@@ -13,6 +13,7 @@
   --brand: #dc2626;
   --link: #5aa9ff;
   --info: #5aa9ff;
+  --info-fill: #1f6fd1;
   --success: #34c77b;
   --warning: #f5a524;
   --danger: #ff8c87;
@@ -98,7 +99,7 @@
   --preview-browser-bar: #292524;
   --preview-browser-dot: #78716c;
   --preview-browser-text: #a8a29e;
-  --preview-avatar: #d9480f;
+  --preview-avatar: #c2410c;
   --onboarding-avatar-end: #57534e;
   --font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "DM Sans", sans-serif;
   --font-mono-compact: ui-monospace, "DM Mono", monospace;
@@ -284,12 +285,13 @@
   --text-2: #52525b;
   --link: #0b63c4;
   --info: #0b63c4;
-  --success: #1a7f4b;
-  --warning: #a15c00;
+  --info-fill: #0b63c4;
+  --success: #177a46;
+  --warning: #965800;
   --danger: #b42318;
   --special: #5b3fa0;
   --tint: 9%;
-  /* The approved green (#1a7f4b) needs a lighter wash to stay at 4.5:1 for 12px text. */
+  /* The green needs a lighter wash to stay at 4.5:1 for 12px text. */
   --surface-success: color-mix(in srgb, var(--success) 6%, var(--surface));
   --e1: 0 1px 2px rgb(0 0 0 / 0.1), 0 0 0 1px rgb(0 0 0 / 0.04);
   --e2: 0 12px 32px rgb(0 0 0 / 0.14), 0 0 0 1px rgb(0 0 0 / 0.06);
@@ -298,8 +300,8 @@
   --surface-code: var(--bg);
   --surface-tool: var(--bg);
   --surface-control: var(--overlay);
-  --surface-control-raised: var(--border);
-  --surface-selected: var(--border);
+  --surface-control-raised: #ececef;
+  --surface-selected: #ececef;
   --surface-active: var(--border-strong);
   --surface-indicator: var(--text-2);
   --field-focus: var(--text-2);
@@ -309,6 +311,8 @@
   --surface-chat-user: var(--border);
   --surface-chat-code-header: var(--overlay);
   --surface-chat-prompt: var(--surface);
+  --border-chat-table: var(--border-strong);
+  --surface-settings-switch: #d1d1d6;
   /* end r8 chat tokens */
 }
 

@@ -102,7 +102,7 @@
   font-size: var(--fs-caption);
 }
 .group-thread-list button[aria-current] {
-  color: var(--brand);
+  color: var(--danger);
   font-weight: 600;
 }
 .group-header {

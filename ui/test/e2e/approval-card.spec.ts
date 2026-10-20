@@ -32,7 +32,7 @@ for (const theme of ["light", "dark"]) {
           await expect(pending.locator(".tool-input")).toHaveCount(0)
         } else await expect(pending.locator(".tool-input")).toHaveText("printf QA_R7_NEGADO")
         await expect(pending.getByRole("button", { name: "Aprovar", exact: true })).toHaveCSS("appearance", "none")
-        await expect(pending).toHaveCSS("border-radius", "12px")
+        await expect(pending).toHaveCSS("border-radius", "14px")
         await expect(activity.locator(".activity-dots")).toHaveCount(0)
         await activity.getByRole("link", { name: "Preciso da sua autorização." }).press("Enter")
         await expect(pending).toBeFocused()

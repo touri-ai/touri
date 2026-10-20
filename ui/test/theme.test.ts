@@ -5,6 +5,8 @@ import { initializeTheme, readTheme, setTheme } from "../src/design/theme"
 const tokens = readFileSync("src/design/tokens.css", "utf8")
 const css = readFileSync("src/styles.css", "utf8")
 const motion = readFileSync("src/design/motion.css", "utf8")
+const groups = readFileSync("src/components/groups.css", "utf8")
+const sidebar = readFileSync("src/components/bot-sidebar.css", "utf8")
 const declarations = (source: string): Record<string, string> =>
   Object.fromEntries([...source.matchAll(/(--[\w-]+):\s*([^;]+);/g)].map((match) => [match[1], match[2]]))
 const [base = "", light = ""] = tokens.split(':root[data-theme="light"]')
@@ -62,6 +64,7 @@ afterEach(() => {
 
 const surfaces = ["--bg", "--surface", "--raised", "--overlay"]
 const textRoles = ["--text", "--text-2", "--link", "--info", "--success", "--warning", "--danger"]
+const fills = ["--brand", "--info-fill", "--preview-avatar"]
 const statusPairs = [
   ["--text-danger", "--surface-danger"],
   ["--text-danger", "--surface-notice"],
@@ -71,6 +74,10 @@ const statusPairs = [
   ["--text-secondary", "--surface-control"],
   ["--text-secondary", "--surface-control-raised"],
   ["--text-secondary", "--surface-selected"],
+  ["--text", "--surface-control-raised"],
+  ["--success", "--overlay"],
+  ["--warning", "--surface-selected"],
+  ["--warning", "--surface-control-raised"],
   ["--text-primary", "--surface-chat-user"],
   ["--text-secondary", "--surface-chat-user"],
 ]
@@ -79,8 +86,6 @@ test.each(["dark", "light"] as const)("%s text roles keep 4.5:1 (12px captions i
   const color = palette(theme)
   for (const text of textRoles) {
     for (const surface of surfaces) {
-      // The approved light success green (#1a7f4b) is 4.41:1 on the overlay grey; it is never set on overlays.
-      if (theme === "light" && text === "--success" && surface === "--overlay") continue
       expect(contrast(color(text), color(surface)), `${text} on ${surface}`).toBeGreaterThanOrEqual(4.5)
     }
   }
@@ -89,8 +94,37 @@ test.each(["dark", "light"] as const)("%s text roles keep 4.5:1 (12px captions i
   }
   expect(color("--brand")).toBe("#dc2626")
   expect(color("--danger")).not.toBe(color("--brand"))
-  expect(contrast(color("--text-on-accent"), color("--brand"))).toBeGreaterThanOrEqual(4.5)
-  if (theme === "light") expect(contrast(color("--text-on-accent"), color("--info"))).toBeGreaterThanOrEqual(4.5)
+  for (const fill of fills) {
+    expect(contrast(color("--text-on-accent"), color(fill)), `text on ${fill}`).toBeGreaterThanOrEqual(4.5)
+  }
+  expect(css).toMatch(
+    /\.button-brand,\s*\.brand-button \{[^}]*background: var\(--brand\);[^}]*color: var\(--text-on-accent\)/,
+  )
+  expect(css).toMatch(/\.notification-badge \{[^}]*background: var\(--brand\);[^}]*color: var\(--text-on-accent\)/)
+  expect(css).toMatch(
+    /\.preview-chat-avatar \{[^}]*background: var\(--preview-avatar\);[^}]*color: var\(--text-on-accent\)/,
+  )
+  expect(css).toMatch(/\.section-tabs b \{[^}]*background: var\(--info-fill\);[^}]*color: var\(--text-on-accent\)/)
+  expect(css).toMatch(/\.wizard-active i \{[^}]*background: var\(--info-fill\);[^}]*color: var\(--text-on-accent\)/)
+  expect(sidebar).toMatch(
+    /\.sidebar-unread \{[^}]*background: var\(--surface-control-raised\);[^}]*color: var\(--text\)/,
+  )
+})
+
+test("light selected and raised surfaces keep visible borders", () => {
+  const color = palette("light")
+  for (const fill of ["--surface-selected", "--surface-control-raised"]) {
+    expect(color(fill), fill).toBe("#ececef")
+    expect(color(fill), fill).not.toBe(color("--border"))
+  }
+  expect(color("--border-chat-table")).toBe("#cfcfd6")
+  expect(color("--surface-settings-switch")).toBe("#d1d1d6")
+})
+
+test("errors use the danger role and inline code stays at least 12px", () => {
+  expect(css).toMatch(/\.notification-kind\.kind-error \{[^}]*color: var\(--danger\)/)
+  expect(groups).toMatch(/\.group-thread-list button\[aria-current\] \{[^}]*color: var\(--danger\)/)
+  expect(css).toMatch(/\.markdown-content :not\(pre\) > code \{[^}]*font-size: max\(0\.87em, var\(--fs-caption\)\)/)
 })
 
 test("the semantic roles carry the design system v2 hexes in both themes", () => {
@@ -117,7 +151,9 @@ test("the semantic roles carry the design system v2 hexes in both themes", () =>
     "#52525b",
   ])
   expect(status.map((role) => palette("dark")(role))).toEqual(["#5aa9ff", "#34c77b", "#f5a524"])
-  expect(status.map((role) => palette("light")(role))).toEqual(["#0b63c4", "#1a7f4b", "#a15c00"])
+  expect(status.map((role) => palette("light")(role))).toEqual(["#0b63c4", "#177a46", "#965800"])
+  expect(palette("dark")("--info-fill")).toBe("#1f6fd1")
+  expect(palette("light")("--info-fill")).toBe("#0b63c4")
 })
 
 test("type, space, radius and motion follow the v2 scales and nothing renders below 12px", () => {
