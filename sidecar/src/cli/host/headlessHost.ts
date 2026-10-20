@@ -20,7 +20,7 @@ const account = (params: unknown): string => String((params as { account?: unkno
 type Deps = { secrets: SecretStore; publish: Kernel["publish"] }
 
 const handlers: Record<string, (args: { deps: Deps; params: unknown }) => Promise<HeadlessHostResult>> = {
-  "keychain.get": async ({ deps, params }) => done({ value: deps.secrets.get(account(params)) }),
+  "keychain.get": async ({ deps, params }) => done({ value: await deps.secrets.getAsync(account(params)) }),
   "keychain.set": async ({ deps, params }) => {
     const input = params as HostMethods["keychain.set"]["params"]
     await deps.secrets.set({ account: input.account, value: input.value })

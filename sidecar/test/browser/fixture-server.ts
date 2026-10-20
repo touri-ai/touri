@@ -78,7 +78,7 @@ export const startBrowserFixtureServer = (): Server<undefined> =>
       if (pathname === "/cookie") return page("<p>Cookie page</p>", "document.cookie='touri_fixture=present; path=/'")
       if (pathname === "/ordering")
         return page(
-          '<button id="ordered">Order</button>',
+          '<button id="ordered">Run sequence</button>',
           "window.order=[];document.querySelector('#ordered').addEventListener('click',()=>window.order.push({index:window.order.length,at:performance.now()}))",
         )
       if (pathname === "/navigate-timer")

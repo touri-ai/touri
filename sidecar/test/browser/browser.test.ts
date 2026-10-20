@@ -643,7 +643,7 @@ realSuite("WP6 real Chrome browser acceptance", () => {
       engine.click({
         tabId: ordering.tabId,
         botId: botA,
-        target: { kind: "role", role: "button", name: "Order", exact: true },
+        target: { kind: "role", role: "button", name: "Run sequence", exact: true },
         button: "left",
         clickCount: 1,
         timeoutMs: 10000,
@@ -652,7 +652,7 @@ realSuite("WP6 real Chrome browser acceptance", () => {
       engine.click({
         tabId: ordering.tabId,
         botId: botA,
-        target: { kind: "role", role: "button", name: "Order", exact: true },
+        target: { kind: "role", role: "button", name: "Run sequence", exact: true },
         button: "left",
         clickCount: 1,
         timeoutMs: 10000,
