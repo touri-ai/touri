@@ -1,9 +1,10 @@
 import { redactToolText } from "@touri/contracts/redaction"
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
-import { localizeToolText, t } from "../i18n"
+import { type Locale, localizeToolText, t } from "../i18n"
 import { contrastAnsiColor } from "./ansiContrast"
 import { parseAnsiOutput } from "./ansiOutput"
+import { getBrowserActivityUrl } from "./browserActivityPresentation"
 import { browserToolResult } from "./browserToolPresentation"
 import { DiffOutput } from "./DiffOutput"
 import { EvidenceGallery } from "./EvidenceGallery"
@@ -243,6 +244,9 @@ export const StoredToolOutput = ({
   callId,
   diff = false,
   browser = false,
+  autoOpen = false,
+  thumbnail = false,
+  locale = "pt-BR",
 }: {
   api?: UiApi | undefined
   attachmentId: string
@@ -250,12 +254,16 @@ export const StoredToolOutput = ({
   callId: string
   diff?: boolean
   browser?: boolean
+  autoOpen?: boolean
+  thumbnail?: boolean
+  locale?: Locale | undefined
 }) => {
   const [raw, setRaw] = useState<string | null>(null)
   const [nextOffset, setNextOffset] = useState<number | null>(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<"load" | "image_size" | null>(null)
   const generation = useRef(0)
+  const loadRef = useRef<() => Promise<void>>(async () => {})
   useEffect(() => {
     generation.current += 1
     return () => {
@@ -305,12 +313,29 @@ export const StoredToolOutput = ({
       if (generation.current === attempt) setLoading(false)
     }
   }
-  const result = browser && raw !== null ? browserToolResult(raw) : null
+  loadRef.current = load
+  useEffect(() => {
+    if (autoOpen) void loadRef.current()
+  }, [autoOpen])
+  const result = useMemo(() => (browser && raw !== null ? browserToolResult(raw) : null), [browser, raw])
+  const thumbnailImage = useMemo(
+    () => (thumbnail && result?.output ? readOutput(result.output).images[0] : undefined),
+    [thumbnail, result],
+  )
+  const url = getBrowserActivityUrl(result?.url ?? "")
+  if (thumbnail) {
+    const src = thumbnailImage?.src
+
+    return src ? (
+      <img className="stored-tool-thumbnail" src={src} alt={t("Final browser screenshot", {}, locale)} />
+    ) : null
+  }
+
   return (
     <>
       {raw === null && preview && <ToolText text={preview} />}
       {result?.title && <p className="tool-summary">{result.title}</p>}
-      {result?.url && <p className="tool-summary">{result.url}</p>}
+      {url && <p className="tool-summary">{url}</p>}
       {raw !== null &&
         (diff ? (
           <RevealDetails className="tool-details tool-output" summary="Resultado">

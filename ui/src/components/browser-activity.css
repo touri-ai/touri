@@ -1,0 +1,197 @@
+.browser-activity-card {
+  width: min(660px, 100%);
+  margin: 12px 0;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-caption);
+}
+.browser-activity-header,
+.browser-activity-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+}
+.browser-activity-header > div,
+.browser-activity-summary-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.browser-activity-header span,
+.browser-activity-summary small {
+  overflow: hidden;
+  color: var(--text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.browser-activity-header .button {
+  flex: 0 0 auto;
+}
+.browser-activity-summary {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.browser-activity-summary:hover {
+  background: var(--surface-control);
+}
+.browser-activity-thumbnail {
+  display: grid;
+  width: 144px;
+  height: 84px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: #101014;
+  object-fit: contain;
+}
+.browser-activity-thumbnail > img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.browser-activity-summary > span:last-child {
+  color: var(--text-2);
+  font-size: var(--fs-title);
+}
+.browser-activity-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(180px, 0.8fr);
+  gap: 12px;
+  padding: 0 12px 12px;
+}
+.browser-activity-content-full {
+  grid-template-columns: minmax(0, 1fr);
+}
+.browser-activity-preview-actions button:focus-visible,
+.browser-activity-summary:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+.browser-activity-preview {
+  min-width: 0;
+}
+.browser-activity-preview > img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: #101014;
+  object-fit: contain;
+}
+.browser-activity-preview-full > img {
+  max-height: 70vh;
+  aspect-ratio: auto;
+}
+.browser-activity-placeholder {
+  display: grid;
+  aspect-ratio: 16 / 10;
+  min-height: 150px;
+  place-items: center;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-control);
+  color: var(--text-2);
+  text-align: center;
+}
+.browser-activity-preview > span {
+  display: block;
+  overflow: hidden;
+  margin-top: 5px;
+  color: var(--text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.browser-activity-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+}
+.browser-activity-preview-actions button {
+  min-height: 32px;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.browser-activity-preview-actions button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.browser-activity-log {
+  min-width: 0;
+  max-height: 290px;
+  overflow: auto;
+  padding: 2px 2px 2px 0;
+}
+.browser-activity-log > strong {
+  display: block;
+  margin-bottom: 8px;
+}
+.browser-activity-log ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.browser-activity-log li {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: baseline;
+  gap: 8px;
+}
+.browser-activity-log time {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.browser-activity-log li span {
+  overflow-wrap: anywhere;
+}
+.browser-activity-log li small {
+  display: block;
+  margin-top: 4px;
+}
+.browser-activity-log > p,
+.browser-activity-log > small {
+  display: block;
+  margin: 8px 0 0;
+  color: var(--text-2);
+}
+.browser-activity-final-shot {
+  margin-top: 12px;
+}
+.browser-activity-card[data-finished="true"] .browser-activity-log {
+  max-height: none;
+}
+.browser-activity-final-shot > strong {
+  display: block;
+  margin-bottom: 6px;
+}
+.browser-activity-final-shot .evidence-gallery img {
+  max-height: 180px;
+  object-fit: contain;
+}
+@media (max-width: 600px) {
+  .browser-activity-content {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .browser-activity-thumbnail {
+    width: 96px;
+    height: 60px;
+  }
+}

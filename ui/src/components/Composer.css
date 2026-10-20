@@ -217,6 +217,16 @@
   color: var(--text-2);
   font-size: var(--fs-caption);
 }
+.composer-browser-status {
+  width: min(900px, calc(100% - 48px));
+  margin: 0 auto var(--space-4);
+  padding: var(--space-4) var(--space-8);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: var(--fs-caption);
+}
 .composer-status:empty {
   display: none;
 }

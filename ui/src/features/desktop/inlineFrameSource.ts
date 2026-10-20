@@ -33,7 +33,9 @@ export const startInlineFrameSource = (
   frame: (value: PreviewFrame) => void,
   unavailable: (reason?: string) => void,
   status?: (message: string | null) => void,
+  options: { intervalMs?: number } = {},
 ): (() => void) => {
+  const intervalMs = options.intervalMs ?? 1_000
   let active = true
   let timer: ReturnType<typeof setTimeout> | undefined
   let viewer: import("@novnc/novnc").default | undefined
@@ -90,7 +92,7 @@ export const startInlineFrameSource = (
       } else if (viewer) {
         const image = viewer.getImageData()
         if (!image.width || !image.height || !image.data.some((value, index) => index % 4 === 3 && value)) {
-          timer = setTimeout(() => void sample(), 1_000)
+          timer = setTimeout(() => void sample(), intervalMs)
           return
         }
         source.width = image.width
@@ -105,11 +107,11 @@ export const startInlineFrameSource = (
         ctx.drawImage(source, (640 - width) / 2, (400 - height) / 2, width, height)
         frame({ src: buffer.toDataURL(FRAME_TYPE, FRAME_QUALITY), ...page })
       }
-      if (active) timer = setTimeout(() => void sample(), 1_000)
+      if (active) timer = setTimeout(() => void sample(), intervalMs)
     } catch (error) {
       if (active && bot.machine === "local") {
         status?.(userFacingError(error))
-        timer = setTimeout(() => void sample(), 1_000)
+        timer = setTimeout(() => void sample(), intervalMs)
       } else fail("A prévia perdeu a conexão com a VM.")
     }
   }
