@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><title>estadias · Chicago</title><link rel="stylesheet" href="/site.css"></head>
+<body>
+<header class="top"><span class="brand">estadias</span><a href="/entrar">Entrar</a></header>
+<main>
+  <h1 id="titulo">Buscando estadias…</h1>
+  <div class="stays" id="lista" aria-busy="true"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
+</main>
+<script>
+const stays = [
+  { id: "lakeshore", name: "Hotel Lakeshore", area: "Downtown", rate: "4,8", total: "R$ 4.120", note: "Cancelamento grátis", color: "#c9b79c" },
+  { id: "westloop", name: "Loft no West Loop", area: "West Loop", rate: "4,9", total: "R$ 3.560", note: "Apartamento inteiro", color: "#9fb4c7" },
+  { id: "wicker", name: "Casa Wicker Park", area: "Wicker Park", rate: "4,7", total: "R$ 2.990", note: "2 quartos", color: "#b7c4a5" },
+  { id: "river", name: "Studio River North", area: "River North", rate: "4,6", total: "R$ 2.480", note: "Self check-in", color: "#d2a9a0" },
+]
+const article = (s) => `<article class="stay" aria-label="${s.name}"><div class="photo" style="background:${s.color}"></div><div class="body"><h3>${s.name}</h3><span class="area">${s.area}</span><span class="note">${s.note}</span><div class="row"><span>Nota ${s.rate}</span><span class="total">${s.total}</span></div><a class="go" style="height:38px;margin-top:8px" role="button" href="/entrar?next=/final%3Fhotel%3D${s.id}">Reservar</a></div></article>`
+setTimeout(() => {
+  document.getElementById("titulo").textContent = "4 estadias em Chicago"
+  const lista = document.getElementById("lista")
+  lista.innerHTML = stays.map(article).join("")
+  lista.removeAttribute("aria-busy")
+}, 700)
+</script>
+</body>
+</html>

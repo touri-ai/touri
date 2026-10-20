@@ -1,0 +1,265 @@
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  font-family: "DM Sans", system-ui, sans-serif;
+  color: #1d1d20;
+  background: #fff;
+}
+header.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 40px;
+  border-bottom: 1px solid #e3e3e6;
+}
+header.top a {
+  color: #52525b;
+  text-decoration: none;
+  font-size: 14px;
+}
+header.top .brand {
+  font-size: 22px;
+  font-weight: 700;
+  color: #c2410c;
+}
+main {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 36px 40px;
+}
+h1 {
+  font-size: 34px;
+  margin: 0 0 24px;
+}
+.search {
+  display: flex;
+  gap: 12px;
+  position: relative;
+  align-items: stretch;
+}
+.field {
+  flex: 1;
+  border: 1px solid #d4d4d8;
+  border-radius: 12px;
+  padding: 8px 14px;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  text-align: left;
+  font: inherit;
+}
+.field.wide {
+  flex: 2;
+}
+.field span {
+  font-size: 12px;
+  color: #52525b;
+}
+.field input {
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  padding: 2px 0;
+}
+.field strong {
+  font-size: 16px;
+  font-weight: 600;
+}
+.field .muted {
+  color: #71717a;
+  font-weight: 400;
+}
+.go {
+  border: 0;
+  border-radius: 12px;
+  background: #c2410c;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  padding: 0 28px;
+  cursor: pointer;
+  text-decoration: none;
+  display: grid;
+  place-items: center;
+}
+.go[aria-disabled="true"] {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.suggest {
+  position: absolute;
+  top: 74px;
+  left: 0;
+  width: 52%;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  z-index: 5;
+}
+.suggest button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.suggest button:hover,
+.suggest button:focus-visible {
+  background: #fff3ea;
+}
+.calendar {
+  position: absolute;
+  top: 74px;
+  right: 90px;
+  width: 360px;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  padding: 16px;
+  z-index: 5;
+}
+.calendar h2 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  text-align: center;
+}
+.days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.days button {
+  height: 38px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.days button[disabled] {
+  color: #a1a1aa;
+  cursor: default;
+}
+.days button.edge {
+  background: #1d1d20;
+  color: #fff;
+  font-weight: 700;
+}
+.days button.mid {
+  background: #ececef;
+}
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-top: 150px;
+}
+.tiles div {
+  height: 150px;
+  border-radius: 12px;
+}
+.stays {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18px;
+}
+.stay {
+  border: 1px solid #e3e3e6;
+  border-radius: 14px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.stay .photo {
+  height: 120px;
+}
+.stay .body {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.stay h3 {
+  margin: 0;
+  font-size: 18px;
+}
+.stay .area,
+.stay .note {
+  color: #52525b;
+  font-size: 14px;
+}
+.stay .row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+.stay .total {
+  font-size: 20px;
+  font-weight: 700;
+}
+.skeleton {
+  height: 230px;
+  border-radius: 14px;
+  background: #ececef;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+.card {
+  max-width: 460px;
+  margin: 60px auto;
+  border: 1px solid #e3e3e6;
+  border-radius: 16px;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.card h1 {
+  font-size: 24px;
+  margin: 0;
+}
+.card label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: #52525b;
+}
+.card input {
+  height: 42px;
+  border: 1px solid #d4d4d8;
+  border-radius: 10px;
+  padding: 0 12px;
+  font: inherit;
+}
+.card button {
+  height: 44px;
+  border: 0;
+  border-radius: 10px;
+  background: #1d1d20;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.price {
+  font-size: 32px;
+  font-weight: 700;
+}
