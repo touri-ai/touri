@@ -106,6 +106,18 @@ const insertReply = (f: Awaited<ReturnType<typeof fixture>>, id = "reply", parts
   })
 }
 
+const waitForStorageUpgrade = async (database: Database): Promise<void> => {
+  const deadline = Date.now() + 2_000
+  while (Date.now() < deadline) {
+    const upgrade = database.query("SELECT value FROM schema_meta WHERE key = 'storage_upgrade_22'").get() as {
+      value: string
+    } | null
+    if (!upgrade || upgrade.value === "done") return
+    await Bun.sleep(10)
+  }
+  throw new Error("Storage upgrade did not finish")
+}
+
 test("rejected appends persist safe metadata and replay once with contiguous revisions", async () => {
   const f = await fixture()
   try {
@@ -434,6 +446,7 @@ test("a rolled-back delta cannot poison the next stream even if another write re
 test("retention preserves snapshots, rejects expired cursors, and only compaction may delete immutable entries", async () => {
   const f = await fixture()
   try {
+    await waitForStorageUpgrade(f.db)
     insertReply(f)
     for (let index = 0; index < 12; index++) {
       f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: `${index}|` })
