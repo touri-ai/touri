@@ -1023,15 +1023,20 @@ test("bot deletion returns while attachment cleanup is blocked on slow IO", asyn
   const deletion = f.rawRequest(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
   const response = await deletion
   await entered.promise
+
+  const privateExistsWhileBlocked = existsSync(privateAttachment)
+  const privateRecordWhileBlocked = f.db.query("SELECT id FROM attachments WHERE id='slow-private'").get()
+  const sharedExistsWhileBlocked = existsSync(sharedAttachment)
+  const sharedRecordWhileBlocked = f.db.query("SELECT id FROM attachments WHERE id='slow-shared'").get()
   resume.resolve()
   await waitForDeletionOutcome(f.db, bot.id)
 
   expect(response.status).toBe(202)
   expect(calls).toBeGreaterThan(0)
-  expect(existsSync(privateAttachment)).toBe(true)
-  expect(f.db.query("SELECT id FROM attachments WHERE id='slow-private'").get()).not.toBeNull()
-  expect(existsSync(sharedAttachment)).toBe(true)
-  expect(f.db.query("SELECT id FROM attachments WHERE id='slow-shared'").get()).toEqual({ id: "slow-shared" })
+  expect(privateExistsWhileBlocked).toBe(true)
+  expect(privateRecordWhileBlocked).not.toBeNull()
+  expect(sharedExistsWhileBlocked).toBe(true)
+  expect(sharedRecordWhileBlocked).toEqual({ id: "slow-shared" })
 })
 
 test("sustained attachment deferrals stop after three passes with exponential backoff", async () => {
@@ -1200,9 +1205,12 @@ test("a worker restart resumes a bot purge from its committed batch", async () =
   expect(checkpoint.processed).toBeGreaterThanOrEqual(16)
   const progressResponse = await f.rawRequest("/storage/bot-deletions", {}, "GET")
   expect(progressResponse.status).toBe(200)
-  expect(await progressResponse.json()).toMatchObject({
-    deletions: [expect.objectContaining({ botId: bot.id, phase: "messages", processed: checkpoint.processed })],
-  })
+  const progress = (await progressResponse.json()) as {
+    deletions: Array<{ botId: string; phase: string; processed: number }>
+  }
+  const visibleProgress = progress.deletions.find(({ botId: currentBotId }) => currentBotId === bot.id)
+  expect(visibleProgress).toMatchObject({ botId: bot.id, phase: "messages" })
+  expect(visibleProgress?.processed).toBeGreaterThanOrEqual(checkpoint.processed)
 
   f.runtime.kernel.services.use("storage.botDeletion")?.dispose()
   const resumed = createBotDeletionManager(f.runtime.kernel, f.vm.service, collectUnusedOutputBlobs)

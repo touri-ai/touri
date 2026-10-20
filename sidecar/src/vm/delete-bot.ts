@@ -173,7 +173,8 @@ export const createBotDeletionManager = (
         const batch = pendingBatch
         if (!batch) return
         const busy = data.busy === true
-        batch.reject(new Error(busy ? "SQLITE_BUSY" : "Bot deletion batch failed"))
+        const code = typeof data.code === "string" && data.code.startsWith("SQLITE_") ? data.code : "unexpected"
+        batch.reject(new Error(busy ? "SQLITE_BUSY" : code))
         pendingBatch = undefined
       }
     }
@@ -250,7 +251,10 @@ export const createBotDeletionManager = (
       .query("SELECT id FROM threads WHERE bot_id = ? AND id > ? ORDER BY id LIMIT ?")
       .all(botId, cursor, BATCH_SIZE) as Array<{ id: string }>
     if (!rows.length) {
-      const homes = [relative(kernel.paths.appData, kernel.paths.botsDir), ...getProviderHomePaths(db, botId)]
+      const homes = [
+        relative(kernel.paths.appData, kernel.paths.botsDir),
+        ...(await getProviderHomePaths(kernel.paths.appData)),
+      ]
       for (const path of homes) await removeBotHomeDirectoryAsync({ root: kernel.paths.appData, path, botId })
       updateJob(botId, { phase: "replay", cursor: 0, highWater: 0, fileCursor: "" })
       return false
@@ -639,10 +643,22 @@ const getBotConfigurationPaths = async (runDir: string, threads: { id: string }[
   return paths
 }
 
-const getProviderHomePaths = (db: Database, botId: string): string[] => {
-  const bot = db.query("SELECT provider FROM bots WHERE id = ?").get(botId) as { provider: string } | null
-  if (!bot || !/^[a-z][a-z0-9-]{0,63}$/.test(bot.provider)) return []
+const getProviderHomePaths = async (appData: string): Promise<string[]> => {
+  const root = "provider-homes"
+  const directory = await opendir(join(appData, root)).catch((error: unknown) => {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return null
+    throw error
+  })
+  if (!directory) return []
 
-  const home = `provider-homes/${bot.provider}`
-  return [home, `${home}-vault`]
+  const paths: string[] = []
+  let scanned = 0
+  // Provider roots are few; cap malformed entries to keep background cleanup bounded.
+  for await (const entry of directory) {
+    scanned += 1
+    if (scanned > 32) throw new TouriError("TOURI-E2013")
+    if (!entry.isDirectory() || !/^[a-z][a-z0-9-]{0,63}$/.test(entry.name)) continue
+    paths.push(join(root, entry.name))
+  }
+  return paths
 }
