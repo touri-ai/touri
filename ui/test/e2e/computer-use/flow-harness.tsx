@@ -1,5 +1,5 @@
 import type { BrowserTabInfo, Message, Run } from "@touri/contracts"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 import type { ApiRequest } from "../../../src/api/client"
 import { createMockApi } from "../../../src/api/mock"
@@ -10,7 +10,7 @@ import type { FlowSnapshot } from "./scripted-bot"
 const params = new URLSearchParams(location.search)
 document.documentElement.dataset.theme = params.get("theme") ?? "dark"
 const TAB_ID = "cu-fixture-tab"
-const startedAt = Date.now() - 30_000
+const startedAt = Date.now() - 2_000
 
 type FlowWindow = Window & {
   cuFlow?: { publish: (snapshot: FlowSnapshot) => void; isHeld: () => boolean; sent: () => string[] }
@@ -73,60 +73,64 @@ const Flow = () => {
     }
   }, [api, bot.id])
 
-  const question: Message = {
-    id: "cu-question",
-    threadId: thread.id,
-    parentId: null,
-    role: "user",
-    kind: "text",
-    status: "complete",
-    runId: null,
-    text: "Busca estadias em Chicago de 10 a 14 de novembro e me lista as 4 melhores, com nota e preço total.",
-    parts: [
-      {
-        type: "text",
-        text: "Busca estadias em Chicago de 10 a 14 de novembro e me lista as 4 melhores, com nota e preço total.",
-      },
-    ],
-    sender: null,
-    source: "local",
-    createdAt: startedAt - 1_000,
-    updatedAt: startedAt - 1_000,
-  }
-  const reply: Message = {
-    id: "cu-reply",
-    threadId: thread.id,
-    parentId: question.id,
-    role: "assistant",
-    kind: "text",
-    status: snapshot.running ? "streaming" : "complete",
-    runId: "cu-run",
-    text: "",
-    parts: snapshot.finalText ? [...snapshot.parts, { type: "text", text: snapshot.finalText }] : snapshot.parts,
-    sender: { name: bot.name, id: bot.id },
-    source: "local",
-    createdAt: startedAt,
-    updatedAt: Date.now(),
-  }
-  const run: Run = {
-    id: "cu-run",
-    threadId: thread.id,
-    botId: bot.id,
-    provider: "codex",
-    trigger: "user",
-    requestMessageId: question.id,
-    replyMessageId: reply.id,
-    externalTurnId: null,
-    status: snapshot.running ? "running" : "succeeded",
-    errorClass: null,
-    errorMessage: null,
-    usage: null,
-    routineRunId: null,
-    queuedAt: startedAt,
-    startedAt,
-    providerStartedAt: startedAt,
-    finishedAt: snapshot.running ? null : Date.now(),
-  }
+  const { question, reply, run } = useMemo(() => {
+    const question: Message = {
+      id: "cu-question",
+      threadId: thread.id,
+      parentId: null,
+      role: "user",
+      kind: "text",
+      status: "complete",
+      runId: null,
+      text: "Busca estadias em Chicago de 10 a 14 de novembro e me lista as 4 melhores, com nota e preço total.",
+      parts: [
+        {
+          type: "text",
+          text: "Busca estadias em Chicago de 10 a 14 de novembro e me lista as 4 melhores, com nota e preço total.",
+        },
+      ],
+      sender: null,
+      source: "local",
+      createdAt: startedAt - 1_000,
+      updatedAt: startedAt - 1_000,
+    }
+    const reply: Message = {
+      id: "cu-reply",
+      threadId: thread.id,
+      parentId: question.id,
+      role: "assistant",
+      kind: "text",
+      status: snapshot.running ? "streaming" : "complete",
+      runId: "cu-run",
+      text: "",
+      parts: snapshot.finalText ? [...snapshot.parts, { type: "text", text: snapshot.finalText }] : snapshot.parts,
+      sender: { name: bot.name, id: bot.id },
+      source: "local",
+      createdAt: startedAt,
+      updatedAt: startedAt + snapshot.parts.length,
+    }
+    const run: Run = {
+      id: "cu-run",
+      threadId: thread.id,
+      botId: bot.id,
+      provider: "codex",
+      trigger: "user",
+      requestMessageId: question.id,
+      replyMessageId: reply.id,
+      externalTurnId: null,
+      status: snapshot.running ? "running" : "succeeded",
+      errorClass: null,
+      errorMessage: null,
+      usage: null,
+      routineRunId: null,
+      queuedAt: startedAt,
+      startedAt,
+      providerStartedAt: startedAt,
+      finishedAt: snapshot.running ? null : startedAt + snapshot.parts.length,
+    }
+
+    return { question, reply, run }
+  }, [snapshot, thread, bot])
 
   return (
     <ChatPanel

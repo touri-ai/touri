@@ -20,6 +20,8 @@ const variants = [
   { name: "phone-light", width: 390, height: 844, theme: "light", colorScheme: "light" as const },
 ]
 
+test.use({ video: "on" })
+
 let site: FixtureSite
 
 test.beforeAll(async () => {
@@ -84,7 +86,6 @@ for (const variant of variants) {
     test.use({
       viewport: { width: variant.width, height: variant.height },
       colorScheme: variant.colorScheme,
-      video: { mode: "on", size: { width: variant.width, height: variant.height } },
     })
     test.setTimeout(120_000)
 
@@ -94,7 +95,7 @@ for (const variant of variants) {
         site: page,
         siteUrl: site.url,
         pace,
-        startedAt: Date.now() - 30_000,
+        startedAt: Date.now() - 2_000,
         publish: (snapshot) => ui.evaluate((value) => (window as FlowWindow).cuFlow?.publish(value), snapshot),
         waitForHandback: async () => {
           await ui.waitForFunction(() => (window as FlowWindow).cuFlow?.isHeld() === true, undefined, {
@@ -112,7 +113,7 @@ for (const variant of variants) {
 
     test("ten actions, a login wall, a take-over and a formatted answer", async ({ page: ui, browser }, testInfo) => {
       await ui.goto(`/test/e2e/computer-use/flow-harness.html?theme=${variant.theme}`)
-      await expect(ui.getByRole("textbox", { name: "Mensagem", exact: true })).toBeVisible()
+      await expect(ui.getByRole("textbox", { name: "Mensagem para Léo" })).toBeVisible()
       const chip = ui.locator(".composer-browser-status")
       const card = ui.locator(".browser-activity-card")
       const snapshots: string[] = []
@@ -136,7 +137,7 @@ for (const variant of variants) {
       await ui.getByRole("button", { name: /Devolver para/ }).click()
       await bot.run
 
-      expect(snapshots).toHaveLength(11)
+      expect(snapshots).toHaveLength(12)
       await expect(chip).toHaveCount(0)
       await expect(ui.getByRole("button", { name: /Usou o navegador/ })).toBeVisible()
       await expect(ui.getByRole("listitem")).toHaveCount(4)
@@ -156,46 +157,47 @@ for (const variant of variants) {
         )
     })
 
-    test("the live card follows the concept step by step", async ({ page: ui, browser }) => {
-      test.skip(conceptOnly, "needs the finished card (TOURI_CU_CONCEPT=1)")
-      await ui.goto(`/test/e2e/computer-use/flow-harness.html?theme=${variant.theme}`)
-      const card = ui.getByRole("region", { name: "Navegador do Léo" })
-      const stepChecks: Record<number, () => Promise<void>> = {
-        1: async () => {
-          await expect(card).toContainText("Léo · lendo a página")
-          await expect(card.getByText("Abriu uma página")).toBeVisible()
-          await expect(
-            ui.getByText("Estou na página inicial. Vou digitar Chicago e escolher a sugestão certa."),
-          ).toBeVisible()
-          await expect(ui.getByRole("progressbar")).toBeVisible()
-        },
-        2: async () => expect(card).toContainText("preencheu um campo"),
-        3: async () => expect(card.getByText("Clicou em “Chicago, Illinois, EUA”")).toBeVisible(),
-        6: async () => expect(card).toContainText("estadias.exemplo/s/chicago"),
-        8: async () => expect(ui.getByRole("button", { name: /Usou o navegador · \d+ ações?/ }).first()).toBeVisible(),
-        9: async () => {
-          await expect(card.getByText("Tirou um print")).toBeVisible()
-          await expect(card.getByRole("button", { name: "Assumir controle" })).toBeVisible()
-        },
-      }
-      const bot = await play(ui, browser, async (index) => {
-        await stepChecks[index]?.()
-        const preview = card.getByRole("img", { name: "Página atual do navegador" })
-        const [cardBox, previewBox] = [await card.boundingBox(), await preview.boundingBox()]
-        if (!cardBox || !previewBox) return
-        if (variant.width > 600) expect(previewBox.width / cardBox.width).toBeGreaterThan(0.5)
-        if (variant.width <= 600) expect(previewBox.width / cardBox.width).toBeGreaterThan(0.8)
+    if (!conceptOnly)
+      test("the live card follows the concept step by step", async ({ page: ui, browser }) => {
+        await ui.goto(`/test/e2e/computer-use/flow-harness.html?theme=${variant.theme}`)
+        const card = ui.getByRole("region", { name: "Navegador do Léo" })
+        const stepChecks: Record<number, () => Promise<void>> = {
+          1: async () => {
+            await expect(card).toContainText("Léo · lendo a página")
+            await expect(card.getByText("Abriu uma página")).toBeVisible()
+            await expect(
+              ui.getByText("Estou na página inicial. Vou digitar Chicago e escolher a sugestão certa."),
+            ).toBeVisible()
+            await expect(ui.getByRole("progressbar")).toBeVisible()
+          },
+          2: async () => expect(card).toContainText("preencheu um campo"),
+          3: async () => expect(card.getByText("Clicou em “Chicago, Illinois, EUA”")).toBeVisible(),
+          6: async () => expect(card).toContainText("estadias.exemplo/s/chicago"),
+          8: async () =>
+            expect(ui.getByRole("button", { name: /Usou o navegador · \d+ ações?/ }).first()).toBeVisible(),
+          9: async () => {
+            await expect(card.getByText("Tirou um print")).toBeVisible()
+            await expect(card.getByRole("button", { name: "Assumir controle" })).toBeVisible()
+          },
+        }
+        const bot = await play(ui, browser, async (index) => {
+          await stepChecks[index]?.()
+          const preview = card.getByRole("img", { name: "Página atual do navegador" })
+          const [cardBox, previewBox] = [await card.boundingBox(), await preview.boundingBox()]
+          if (!cardBox || !previewBox) return
+          if (variant.width > 600) expect(previewBox.width / cardBox.width).toBeGreaterThan(0.5)
+          if (variant.width <= 600) expect(previewBox.width / cardBox.width).toBeGreaterThan(0.8)
+        })
+
+        await expect(ui.getByText(/O site pediu login/u)).toBeVisible({ timeout: 60_000 })
+        await ui.getByRole("button", { name: "Assumir controle" }).click()
+        await ui.getByRole("button", { name: /Devolver para/ }).click()
+        await bot.run
+
+        await expect(ui.getByRole("button", { name: /Usou o navegador · \d+ ações/ })).toBeVisible()
+        await ui.getByRole("button", { name: "Ver o que ele fez" }).click()
+        await expect(ui.getByText("Abriu uma página")).toBeVisible()
+        await bot.close()
       })
-
-      await expect(ui.getByText(/O site pediu login/u)).toBeVisible({ timeout: 60_000 })
-      await ui.getByRole("button", { name: "Assumir controle" }).click()
-      await ui.getByRole("button", { name: /Devolver para/ }).click()
-      await bot.run
-
-      await expect(ui.getByRole("button", { name: /Usou o navegador · \d+ ações/ })).toBeVisible()
-      await ui.getByRole("button", { name: "Ver o que ele fez" }).click()
-      await expect(ui.getByText("Abriu uma página")).toBeVisible()
-      await bot.close()
-    })
   })
 }
