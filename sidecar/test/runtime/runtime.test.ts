@@ -94,8 +94,8 @@ const fixture = async ({
   automaticConversationMode?: Bot["automaticConversationMode"]
 } = {}): Promise<Fixture> => {
   const root = mkdtempSync(join(tmpdir(), "touri-wp3-"))
-  // Provider fixtures live outside app data, just like installed user CLIs.
-  const assets = mkdtempSync(join(tmpdir(), "touri-provider-fixture-"))
+  // Keep provider fixtures and captured request logs inside the repository test tree.
+  const assets = mkdtempSync(join(repoRoot, "sidecar", "test", ".runtime-provider-"))
   const fakePath = join(assets, "fake-codex")
   const scenario = join(assets, "scenario.json")
   const logPath = join(assets, "provider.log")
