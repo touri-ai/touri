@@ -15,6 +15,7 @@ for (const width of [1440, 1100]) {
       await page.addInitScript((value) => localStorage.setItem("touri.appearance.v1", value), theme)
       await page.goto("/test/e2e/r8-sidebar-harness.html")
       await expect(page.getByRole("textbox", { name: "Mensagem para touri-qa" })).toBeVisible()
+      await page.getByRole("tab", { name: /^Bots/ }).click()
       await page.evaluate(() => document.fonts.ready)
       if (phase === "after") {
         const sidebar = page.locator(".bot-sidebar")
@@ -27,7 +28,7 @@ for (const width of [1440, 1100]) {
         const footer = await sidebar.locator(".sidebar-footer").boundingBox()
         expect(lastRow && footer && lastRow.y + lastRow.height <= footer.y).toBeTruthy()
         expect(footer && footer.y + footer.height <= 900).toBeTruthy()
-        await sidebar.locator(".bot-groups").evaluate((element) => {
+        await sidebar.locator("#sidebar-mode-panel-bots .bot-groups").evaluate((element) => {
           element.scrollTop = 0
         })
         await expect(sidebar.locator(".thread-row.selected small")).toHaveText("hoje")

@@ -21,8 +21,6 @@ test("switches and remembers Work mode, with channels and routine history", asyn
   const botsTab = page.getByRole("tab", { name: /^Bots,/ })
   const channels = page.getByRole("region", { name: "Canais" })
   await expect(channels.getByRole("button", { name: /^Planejamento/ })).toBeVisible()
-  await expect(page.getByText("Rotina “Resumo diário” · 30 hoje", { exact: true })).toBeVisible()
-  await expect(page.locator('[data-bot-entry="bot-mark"] .thread-row')).toHaveCount(2)
 
   await workTab.focus()
   await page.keyboard.press("ArrowLeft")
@@ -33,7 +31,12 @@ test("switches and remembers Work mode, with channels and routine history", asyn
   await expect(workTab).toBeFocused()
   await expect(workTab).toHaveAttribute("aria-selected", "true")
 
-  await page.getByRole("button", { name: "Abrir histórico da rotina Resumo diário" }).click()
+  await botsTab.click()
+  const botsPanel = page.locator("#sidebar-mode-panel-bots")
+  const routineRow = botsPanel.getByRole("button", { name: "Abrir histórico da rotina Resumo diário" })
+  await expect(routineRow).toContainText("Rotina “Resumo diário” · 30 hoje")
+  await expect(botsPanel.locator('[data-bot-entry="bot-mark"] .thread-row')).toHaveCount(2)
+  await routineRow.click()
   const routineHistory = page.locator(".routine-run-history")
   await expect(routineHistory).toHaveAttribute("open", "")
   await expect(routineHistory.getByRole("button", { name: "Abrir conversa" })).toHaveCount(30)

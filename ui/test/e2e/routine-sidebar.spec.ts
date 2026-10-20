@@ -27,7 +27,7 @@ for (const [name, width, height] of [
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
 
     await expect(routine.locator(".sidebar-unread")).toHaveCount(0)
-    await expect(page.locator(".thread-row.selected")).toContainText("14:45")
+    await expect(page.locator(".thread-row.selected")).toContainText("28 hoje")
     if (directory) await page.screenshot({ path: `${directory}/read-group-${name}.png`, animations: "disabled" })
   })
 
@@ -85,11 +85,11 @@ for (const [name, width, height] of [
 
     await expect(conversations.locator(".thread-row")).toHaveCount(2)
     await expect(conversations.locator(".thread-row").first()).toContainText("Planejamento da semana")
-    await expect(conversations.locator(".thread-row").last()).toContainText("hoje · 14:45")
+    await expect(conversations.locator(".thread-row").last()).toContainText("28 hoje")
     await expect(conversations.locator(".thread-row").last()).not.toContainText("0 hoje")
     await expect(conversations.locator(".thread-row strong").last()).toHaveAttribute(
       "title",
-      "Rotina “Resumo diário” · 18/10/2026, 14:45",
+      "Rotina “Resumo diário” · 28 hoje",
     )
 
     await conversations.getByRole("button", { name: "Histórico de rotinas" }).click()
@@ -104,7 +104,7 @@ for (const [name, width, height] of [
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
 
     await expect(conversations.locator(".thread-row")).toHaveCount(2)
-    await expect(conversations.locator(".thread-row.selected")).toContainText("hoje · 08:00")
+    await expect(conversations.locator(".thread-row.selected")).toContainText("28 hoje")
   })
 
   test(`routine sidebar: ${name} opens results beyond the first history page`, async ({ page }) => {
@@ -124,7 +124,7 @@ for (const [name, width, height] of [
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
 
-    await expect(page.locator(".thread-row.selected")).toContainText("hoje · 08:00")
+    await expect(page.locator(".thread-row.selected")).toContainText("60 hoje")
   })
 
   test(`routine sidebar: ${name} filters a routine and reaches its oldest of 128 results`, async ({ page }) => {
@@ -169,6 +169,6 @@ for (const [name, width, height] of [
     await expect(page.locator(".message-assistant")).toContainText("Resumo pronto para conferir.")
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
 
-    await expect(conversations.locator(".thread-row.selected")).toContainText("hoje · 08:00")
+    await expect(conversations.locator(".thread-row.selected")).toContainText("64 hoje")
   })
 }
