@@ -182,7 +182,7 @@ struct Pinned {
 }
 impl Pinned {
     fn root(root: &Path, private: bool) -> io::Result<Self> {
-        if !root.is_absolute() || root.file_name().is_none() {
+        if !root.is_absolute() {
             return Err(denied());
         }
         // Only local drive paths. UNC/device namespaces are not application data roots.
@@ -190,7 +190,19 @@ impl Pinned {
         {
             return Err(denied());
         }
-        safe_name(root.file_name().unwrap())?;
+        let Some(name) = root.file_name() else {
+            if private || root.parent().is_some() {
+                return Err(denied());
+            }
+            return Ok(Self {
+                original: root.to_path_buf(),
+                path: root.to_path_buf(),
+                handles: vec![pin_dir(root, false)?],
+                descriptor: Descriptor::private()?,
+                private: false,
+            });
+        };
+        safe_name(name)?;
         let parent = root.parent().ok_or_else(denied)?;
         if private {
             fs::create_dir_all(parent)?;
@@ -285,6 +297,59 @@ pub fn ensure_private_directory(path: &Path) -> io::Result<()> {
     Pinned::root(path, true).map(|_| ())
 }
 
+/// Volume serial and full 128-bit identity for a regular, single-link file, including ReFS.
+/// The handle is opened with `FILE_FLAG_OPEN_REPARSE_POINT`, so a leaf that was swapped for a
+/// link is refused instead of followed, and alternate data streams are rejected by name.
+pub fn get_file_identity_for_path(path: &Path) -> io::Result<(u64, u128)> {
+    if !matches!(path.components().next(), Some(Component::Prefix(p)) if matches!(p.kind(), std::path::Prefix::Disk(_) | std::path::Prefix::VerbatimDisk(_)))
+    {
+        return Err(denied());
+    }
+    let stream_name = path
+        .file_name()
+        .map(|name| name.encode_wide().any(|unit| unit == u16::from(b':')))
+        .unwrap_or(true);
+    if stream_name {
+        return Err(denied());
+    }
+    let file = OpenOptions::new()
+        .read(true)
+        .access_mode(FILE_GENERIC_READ)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)?;
+    get_file_identity(&file)
+}
+
+fn get_file_identity(file: &File) -> io::Result<(u64, u128)> {
+    let metadata = file.metadata()?;
+    let mut links: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+    let mut identity: FILE_ID_INFO = unsafe { std::mem::zeroed() };
+    // Both metadata calls use the opened handle; the 128-bit ID also identifies files on ReFS.
+    if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut links) } == 0
+        || unsafe {
+            GetFileInformationByHandleEx(
+                file.as_raw_handle(),
+                FileIdInfo,
+                std::ptr::from_mut(&mut identity).cast(),
+                std::mem::size_of::<FILE_ID_INFO>() as u32,
+            )
+        } == 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    if !metadata.is_file()
+        || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+        || links.nNumberOfLinks != 1
+    {
+        return Err(denied());
+    }
+    Ok((
+        identity.VolumeSerialNumber,
+        u128::from_le_bytes(identity.FileId.Identifier),
+    ))
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Request {
@@ -299,7 +364,39 @@ struct Request {
     target: PathBuf,
     #[serde(default)]
     max_bytes: Option<usize>,
+    #[serde(default)]
+    dev: String,
+    #[serde(default)]
+    ino: String,
 }
+fn get_granted_bytes(request: &Request) -> io::Result<Vec<u8>> {
+    let maximum = request.max_bytes.ok_or_else(denied)?;
+    if maximum == 0 || maximum > crate::file_grants::MAX_ATTACHMENT_BYTES as usize {
+        return Err(denied());
+    }
+    let expected = (
+        request.dev.parse::<u64>().map_err(|_| denied())?,
+        request.ino.parse::<u128>().map_err(|_| denied())?,
+    );
+    let mut pins = Pinned::root(&request.root, false)?;
+    let target = pins.target(&request.path, false)?;
+    let file = pins.file(&target)?.ok_or_else(denied)?;
+    if get_file_identity(&file)? != expected {
+        return Err(denied());
+    }
+    let size = file.metadata()?.len();
+    if size > maximum as u64 {
+        return Err(denied());
+    }
+
+    let mut bytes = Vec::with_capacity(size as usize + 1);
+    file.take(maximum as u64 + 1).read_to_end(&mut bytes)?;
+    if bytes.len() != size as usize {
+        return Err(denied());
+    }
+    Ok(bytes)
+}
+
 fn atomic(pins: &Pinned, target: &Path, bytes: &[u8]) -> io::Result<()> {
     drop(pins.file(target)?);
     let mut random = [0u8; 16];
@@ -572,6 +669,7 @@ pub fn entry(args: &[std::ffi::OsString]) -> Option<i32> {
     let mode = args.first()?.to_str()?;
     if ![
         "--native-fs",
+        "--read-granted-file",
         "--native-lock",
         "--watch-parent",
         "--process-identity",
@@ -662,12 +760,29 @@ pub fn entry(args: &[std::ffi::OsString]) -> Option<i32> {
             io::copy(&mut input, &mut io::sink())?;
             return Ok(());
         }
+        let input_limit = if mode == "--read-granted-file" {
+            512 * 1024
+        } else {
+            LIMIT
+        };
         let mut bytes = Vec::new();
-        io::stdin().take(LIMIT as u64 + 1).read_to_end(&mut bytes)?;
-        if bytes.len() > LIMIT {
+        io::stdin()
+            .take(input_limit as u64 + 1)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() > input_limit {
             return Err(denied());
         }
-        let request = serde_json::from_slice(&bytes).map_err(|_| denied())?;
+        let request: Request = serde_json::from_slice(&bytes).map_err(|_| denied())?;
+        if mode == "--read-granted-file" {
+            if request.op != "read_granted" {
+                return Err(denied());
+            }
+            // This one-shot helper owns blocking file I/O; the sidecar reads a bounded binary pipe.
+            io::stdout()
+                .lock()
+                .write_all(&get_granted_bytes(&request)?)?;
+            return Ok(());
+        }
         println!("{}", json!({ "ok": true, "value": operation(request)? }));
         Ok(())
     })();
@@ -725,6 +840,8 @@ mod tests {
             to: PathBuf::new(),
             target: PathBuf::new(),
             max_bytes: None,
+            dev: String::new(),
+            ino: String::new(),
         };
         let path = root.join("nested/file.txt");
         operation(request("write", path.clone(), &STANDARD.encode(b"fixture"))).unwrap();
@@ -739,5 +856,32 @@ mod tests {
         assert!(operation(request("write", path.clone(), &STANDARD.encode(b"changed"))).is_err());
         assert_eq!(fs::read(path).unwrap(), b"fixture");
         fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn granted_reads_validate_the_full_identity_and_bound_bytes() {
+        let root =
+            std::env::temp_dir().join(format!("touri-native-granted-{}", std::process::id()));
+        fs::create_dir_all(&root).expect("fixture root");
+        let file = root.join("fixture.txt");
+        fs::write(&file, b"fixture").expect("fixture file");
+        let (dev, ino) = get_file_identity_for_path(&file).expect("native identity");
+        let request = |expected: u128, maximum: usize| Request {
+            op: "read_granted".into(),
+            root: root.clone(),
+            path: file.clone(),
+            content: String::new(),
+            to: PathBuf::new(),
+            target: PathBuf::new(),
+            max_bytes: Some(maximum),
+            dev: dev.to_string(),
+            ino: expected.to_string(),
+        };
+
+        let bytes = get_granted_bytes(&request(ino, 1024)).expect("authorized bytes");
+
+        assert_eq!(bytes, b"fixture");
+        assert!(get_granted_bytes(&request(ino ^ (1u128 << 96), 1024)).is_err());
+        assert!(get_granted_bytes(&request(ino, 3)).is_err());
+        fs::remove_dir_all(root).expect("remove fixture");
     }
 }

@@ -13,7 +13,13 @@ import {
   type ProviderEvent,
 } from "@touri/contracts"
 import { getApiError } from "../../src/api-models/client"
-import { getApiBaseUrl, getApiModelAccount, getApiModels } from "../../src/api-models/config"
+import {
+  getApiBaseUrl,
+  getApiModelAccount,
+  getApiModels,
+  getBrowserDecisionModel,
+  saveApiModel,
+} from "../../src/api-models/config"
 import { createApiModels } from "../../src/api-models/index"
 import { getApiModelEnv, getApiOpenCodeConfig, getApiRequiredHosts, getApiRunError } from "../../src/api-models/runtime"
 import { createHeadlessHost } from "../../src/cli/host/headlessHost"
@@ -41,6 +47,10 @@ const makeApiFixture = async (
   kernel.callHost = createHeadlessHost({ secrets })({ publish: kernel.publish, log: kernel.log })
   const logs = new Set<string>()
   const events = new Set<string>()
+  const decisionModels: Array<ApiModel | null> = []
+  kernel.services.provide("browser.updateDecisionModel", (model) => {
+    decisionModels.push(model)
+  })
   kernel.log = (entry) => {
     logs.add(JSON.stringify(entry))
   }
@@ -79,8 +89,42 @@ const makeApiFixture = async (
     expect(response.status).toBe(201)
     return ((await response.json()) as { model: ApiModel }).model
   }
-  return { api, add, root, kernel, secrets, logs, events, requests }
+  return { api, add, root, kernel, secrets, logs, events, requests, decisionModels, port: runtime.handshake.port }
 }
+
+test("saved keys require explicit browser consent and disabling stops decision use", async () => {
+  const f = await makeApiFixture()
+  const response = await f.api("/api-models", {
+    preset: "openrouter",
+    apiKey: key,
+    modelId: "typesafe/jev-1.13",
+    name: "Decisão do navegador",
+  })
+  expect(response.status).toBe(201)
+  const model = ((await response.json()) as { model: ApiModel }).model
+  expect(f.decisionModels).toEqual([])
+
+  const unauthorized = await fetch(`http://127.0.0.1:${f.port}/api/v1/api-models/${model.id}/browser-decisions`, {
+    method: "PATCH",
+  })
+  expect(unauthorized.status).toBe(401)
+  expect(getBrowserDecisionModel(f.kernel)).toBeNull()
+  Array.from({ length: 40 }, (_, index) => `a-${index}`).forEach((id) => {
+    saveApiModel(f.kernel, { ...model, id })
+  })
+
+  const enabled = await f.api(`/api-models/${model.id}/browser-decisions`, { enabled: true }, "PATCH")
+
+  expect(enabled.status).toBe(200)
+  expect(f.decisionModels).toEqual([{ ...model, browserDecisions: true }])
+  expect(getBrowserDecisionModel(f.kernel)?.id).toBe(model.id)
+  expect((await f.api(`/api-models/${model.id}/browser-decisions`, { enabled: false }, "PATCH")).status).toBe(200)
+  expect(f.decisionModels.at(-1)).toBeNull()
+  expect(getBrowserDecisionModel(f.kernel)).toBeNull()
+
+  expect((await f.api(`/api-models/${model.id}`, {}, "DELETE")).status).toBe(200)
+  expect(f.decisionModels.at(-1)).toBeNull()
+})
 
 test("API model keys only enter the encrypted server secret store; metadata and events never contain them", async () => {
   const f = await makeApiFixture()

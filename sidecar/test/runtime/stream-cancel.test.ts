@@ -3,7 +3,7 @@ import { afterEach, expect, spyOn, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { Kernel, Message, Run, StartTurnArgs, UiEventEnvelope } from "@touri/contracts"
+import type { Kernel, Message, ProviderAdapter, Run, StartTurnArgs, UiEventEnvelope } from "@touri/contracts"
 import { applyDelta, applyParts, updateMessage } from "../../../ui/src/useWorkspace"
 import { createKernel } from "../../src/kernel"
 import { createEventBus } from "../../src/kernel/event-bus"
@@ -129,6 +129,49 @@ test("startup recovery resolves engine readiness after a stream drain failure", 
   expect(fixture.engine.listRuns("thread")[0]).toMatchObject({ status: "interrupted", errorClass: "app_restart" })
 })
 
+test("a late approval response does not recreate completed run state", async () => {
+  const answer = Promise.withResolvers<void>()
+  const answering = Promise.withResolvers<void>()
+  const fixture = await getFixture(async () => {
+    answering.resolve()
+    await answer.promise
+    return { success: true }
+  })
+  cleanups.add(answer.resolve)
+  const turn = await fixture.ready
+  turn.onEvent({
+    type: "approval_request",
+    approvalId: "provider-approval",
+    part: {
+      type: "approval",
+      approvalId: "provider-approval",
+      botId: "bot",
+      request: "permission",
+      detail: "Ação sintética",
+      decision: "pending",
+      createdAt: 1,
+    },
+  })
+  const approval = fixture.store
+    .activePath({ threadId: "thread" })
+    .flatMap((message) => message.parts)
+    .find((part) => part.type === "approval")
+  if (approval?.type !== "approval") throw new Error("Approval missing")
+
+  const response = fixture.engine.answerApproval({ approvalId: approval.approvalId, decision: "approved" })
+  await answering.promise
+  fixture.finish()
+  await getReady(() => fixture.engine.getRetainedRunStateCount() === 0)
+  const completed = fixture.store.activePath({ threadId: "thread" })
+  answer.resolve()
+  const result = await response
+
+  expect(result.success).toBe(true)
+  expect(fixture.engine.getRetainedRunStateCount()).toBe(0)
+  expect(fixture.engine.listRuns("thread")[0]?.status).toBe("canceled")
+  expect(fixture.store.activePath({ threadId: "thread" })).toEqual(completed)
+})
+
 const getMessages = (frames: UiEventEnvelope[], initial: Message[] = []): Message[] =>
   frames.reduce((messages, { event }) => {
     if (event.type === "message.created" || event.type === "message.updated")
@@ -167,7 +210,7 @@ const getSocket = () => {
   }
 }
 
-const getFixture = async () => {
+const getFixture = async (answerApproval: ProviderAdapter["answerApproval"] = async () => ({ success: true })) => {
   const root = await mkdtemp(join(tmpdir(), "touri-stream-cancel-"))
   const runtime = getOfflineRuntime(root)
   cleanups.add(async () => {
@@ -220,7 +263,7 @@ const getFixture = async () => {
           await finish.promise
           return { success: false, errorCode: "canceled", error: "Canceled" }
         },
-        answerApproval: async () => ({ success: true }),
+        answerApproval,
         shutdown: async () => {
           finish.resolve()
         },

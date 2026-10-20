@@ -27,6 +27,17 @@ import { createKernel } from "../../src/kernel"
 
 const fixtureRoot = join(import.meta.dir, "..", "fixtures", "legacy")
 
+const withImmediateDatabaseLock = async <Value>(filename: string, operation: () => Promise<Value>): Promise<Value> => {
+  const database = new Database(filename)
+  database.exec("BEGIN IMMEDIATE")
+  try {
+    return await operation()
+  } finally {
+    database.exec("ROLLBACK")
+    database.close()
+  }
+}
+
 test("A04 hostile SSH dump cannot write a host database, including dry-run", async () => {
   await withImport(async ({ root, kernel }) => {
     const target = join(root, "victim.db")
@@ -148,6 +159,19 @@ test("A18 scheduled expiry runs while idle and resumes the persisted cursor", as
     } finally {
       stop()
     }
+  })
+})
+
+test("expiry cursor writes do not wait on a busy database", async () => {
+  await withImport(async ({ database, kernel }) => {
+    const started = performance.now()
+    const removed = await withImmediateDatabaseLock(kernel.paths.db, () => cleanupExpiredLegacyStaging({ kernel }))
+    const durationMs = performance.now() - started
+
+    expect(removed).toBe(0)
+    expect(durationMs).toBeLessThan(250)
+    expect((database.query("PRAGMA busy_timeout").get() as { timeout: number }).timeout).toBe(5000)
+    expect(database.query("SELECT 1 FROM settings WHERE key = 'imports.legacy.expiry.cursor'").get()).toBeNull()
   })
 })
 

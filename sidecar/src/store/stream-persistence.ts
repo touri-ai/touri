@@ -1,5 +1,7 @@
 import type { Database } from "bun:sqlite"
 import type { UiEvent } from "@touri/contracts"
+import { privateFileExistsAsync, writePrivateFileAsync } from "../kernel/async-files"
+import type { OutputBlobAttachment, OutputBlobWrite } from "../kernel/output-blobs"
 import { streamPersistenceWorkerSource } from "./stream-persistence-worker"
 
 type StreamEvent = Extract<UiEvent, { type: "message.delta" | "message.parts" }>
@@ -30,12 +32,14 @@ type WorkerMessage =
   | { type: "ready" | "stopped" }
   | { type: "startup-error"; busy: boolean; code?: string }
   | { type: "batch-error"; id: string; busy: boolean }
-type Batch = { id: string; events: StreamWriteEvent[]; quarantine?: boolean }
+type Batch = { id: string; events: StreamWriteEvent[]; attachments: OutputBlobAttachment[]; quarantine?: boolean }
 type PendingBatch = {
   batch: Batch
+  files: OutputBlobWrite[]
   bytes: number
   attempts: number
   failures: number
+  filesWritten: boolean
   promise: Promise<CommittedBatch>
   resolve: (result: CommittedBatch) => void
   reject: (error: Error) => void
@@ -50,6 +54,7 @@ const READY_WAIT_LIMIT_MS = 10_000
 
 export const createStreamPersistence = ({
   database,
+  appData,
   publish,
   onError,
   onReadyWaitExceeded,
@@ -57,6 +62,7 @@ export const createStreamPersistence = ({
   createWorker = (url) => new Worker(url, { smol: true, ref: false }),
 }: {
   database: Database
+  appData: string
   publish: (event: UiEvent) => void
   onError: () => void
   onReadyWaitExceeded?: () => void
@@ -199,11 +205,31 @@ export const createStreamPersistence = ({
     const head = queue[0]
     if (!head || !worker) return
     running = true
-    try {
-      worker.postMessage({ type: "batch", batch: head.batch })
-    } catch {
-      recoverWorker(workerNumber)
-    }
+    const currentWorker = worker
+    const number = workerNumber
+    void (async () => {
+      if (!head.batch.quarantine && !head.filesWritten) {
+        for (const file of head.files) {
+          // A failed directory fsync can leave the renamed file visible; retries must persist it again.
+          if (head.attempts === 0 && (await privateFileExistsAsync({ root: appData, path: file.path }))) continue
+
+          await writePrivateFileAsync({ root: appData, path: file.path, content: file.content })
+        }
+        head.filesWritten = true
+      }
+      if (number !== workerNumber || disposed || currentWorker !== worker) return
+
+      try {
+        currentWorker.postMessage({ type: "batch", batch: head.batch })
+      } catch {
+        recoverWorker(number)
+      }
+    })().catch(() => {
+      if (number !== workerNumber || disposed) return
+
+      reportError()
+      retryHead()
+    })
   }
   const startWorker = (): void => {
     if (disposed || unavailable || worker) return
@@ -263,10 +289,17 @@ export const createStreamPersistence = ({
       failStartup()
     }
   }
-  const submit = (events: StreamWriteEvent[]): Promise<CommittedBatch> => {
+  const submit = (
+    events: StreamWriteEvent[],
+    { files = [], attachments = [] }: { files?: OutputBlobWrite[]; attachments?: OutputBlobAttachment[] } = {},
+  ): Promise<CommittedBatch> => {
     if (disposed || stopping) return Promise.reject(new Error("Stream persistence is closed"))
     if (unavailable) return Promise.reject(unavailable)
-    const bytes = Buffer.byteLength(JSON.stringify(events))
+    const uniqueFiles = Array.from(new Map(files.map((file) => [file.id, file])).values())
+    const uniqueAttachments = Array.from(new Map(attachments.map((attachment) => [attachment.id, attachment])).values())
+    const bytes =
+      Buffer.byteLength(JSON.stringify({ events, attachments: uniqueAttachments })) +
+      uniqueFiles.reduce((total, file) => total + file.bytes, 0)
     if (
       queuedBytes + bytes > STREAM_PERSISTENCE_LIMITS.bytes ||
       queuedEvents + events.length > STREAM_PERSISTENCE_LIMITS.events
@@ -274,7 +307,11 @@ export const createStreamPersistence = ({
       reportError()
       return Promise.reject(new Error("Stream persistence buffer limit exceeded"))
     }
-    const batch = { id: crypto.randomUUID(), events: structuredClone(events) }
+    const batch = {
+      id: crypto.randomUUID(),
+      events: structuredClone(events),
+      attachments: structuredClone(uniqueAttachments),
+    }
     let resolveBatch: PendingBatch["resolve"] = () => {}
     let rejectBatch: PendingBatch["reject"] = () => {}
     const promise = new Promise<CommittedBatch>((resolve, reject) => {
@@ -283,9 +320,11 @@ export const createStreamPersistence = ({
     })
     queue = queue.concat({
       batch,
+      files: structuredClone(uniqueFiles),
       bytes,
       attempts: 0,
       failures: 0,
+      filesWritten: false,
       promise,
       resolve: resolveBatch,
       reject: rejectBatch,

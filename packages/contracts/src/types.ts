@@ -621,6 +621,8 @@ export type BrowserElement = {
   states: Array<'checked' | 'disabled' | 'expanded' | 'focused' | 'selected' | 'required' | 'readonly'>
   frame: string
   inViewport: boolean
+  formAssociated?: boolean
+  formSubmit?: boolean
 }
 
 export type BrowserActionRecord = {
@@ -674,6 +676,7 @@ export type BrowserErrorCode =
   | 'TAB_HELD_BY_USER'
   | 'TAB_LIMIT'
   | 'REPEATED_FAILURE'
+  | 'USER_TAKEOVER_REQUIRED'
   | 'SECRET_ENTRY_ACTIVE'
   | 'ENGINE_UNAVAILABLE'
   | 'LOCAL_BROWSER_UNAVAILABLE'
@@ -928,6 +931,7 @@ export type ApiRoutes = {
   'POST /api-models/models': { req: ApiModelConnection; res: { models: Array<string>; reason?: ApiModelError } }
   'POST /api-models/test': { req: ApiModelInput; res: ApiModelTest }
   'POST /api-models/:id/test': { req: {}; res: ApiModelTest }
+  'PATCH /api-models/:id/browser-decisions': { req: { enabled: boolean }; res: { model: ApiModel } }
   'DELETE /api-models/:id': { req: {}; res: {} }
   'GET /provider-profiles': { req: {}; res: { profiles: Array<ProviderProfile> } }
   'GET /bots/:id/provider-login': { req: {}; res: {
@@ -1446,6 +1450,7 @@ export type ServiceMap = {
   'runtime.shutdown': (options?: { appRestart?: boolean }) => Promise<void>
   'projects.info': (args: { projectId: Id; botId?: Id }) => Promise<ProjectInfo | null>
   'browser.tabsForBot': (args: { botId: Id }) => Array<BrowserTabInfo>
+  'browser.updateDecisionModel': (model: ApiModel | null) => void
   'computer.input': ComputerInput
   'computer.isActive': () => { active: boolean; botId: Id | null }
   'notify.emit': (input: NotifyInput) => NotificationRecord

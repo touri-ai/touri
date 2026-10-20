@@ -17,7 +17,7 @@ it("lists every executing and queued turn, origins and engine positions, and ope
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para Planejamento" })
 
-  const badge = screen.getByRole("button", { name: "Ver trabalho: 3 em execução, 2 na fila", exact: true })
+  const badge = screen.getByRole("button", { name: "Trabalhando: 3, 2 na fila. Ver trabalho", exact: true })
   expect(badge).toBeVisible()
   expect(badge).toHaveTextContent("Trabalhando 3")
   expect(badge).toHaveTextContent("2 na fila")

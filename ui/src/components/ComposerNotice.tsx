@@ -14,7 +14,6 @@ export const ComposerNotice = ({
   api,
   onOpenPermissions,
   onOpenProviderLogin,
-  onRetry,
 }: {
   bot: Bot | null
   latestReply: Message | undefined
@@ -24,7 +23,6 @@ export const ComposerNotice = ({
   api: UiApi
   onOpenPermissions?: (() => void) | undefined
   onOpenProviderLogin?: (() => void) | undefined
-  onRetry: (runId: string) => Promise<void>
 }) => {
   if (active) return null
   const notice =
@@ -41,6 +39,7 @@ export const ComposerNotice = ({
   const machineFailed = bot?.machine === "vm" && machine?.status === "error"
   if (!authNeeded && !serviceDown && !machineFailed) return null
   const provider = bot?.provider === "opencode" ? "OpenCode" : bot?.provider === "claude" ? "Claude Code" : "Codex"
+  const hasFailedReply = latestReply?.status === "failed" && Boolean(latestReply.runId)
   const error = latestReply ? runErrorFor(latestReply) : null
   return (
     <aside className="composer-notice" aria-label={authNeeded ? t("Authentication required") : t("Computer notice")}>
@@ -72,11 +71,7 @@ export const ComposerNotice = ({
         </button>
       ) : serviceDown || /TOURI-E800[12]/.test(machine?.errorCode ?? "") ? (
         <MachineServiceButton api={api} {...(bot ? { botId: bot.id } : {})} />
-      ) : latestReply?.runId ? (
-        <button type="button" className="button button-quiet" onClick={() => void onRetry(latestReply.runId ?? "")}>
-          {t("Tentar novamente")}
-        </button>
-      ) : (
+      ) : hasFailedReply ? null : (
         <button type="button" className="button button-quiet" onClick={onOpenPermissions}>
           {t("View bot settings")}
         </button>

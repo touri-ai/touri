@@ -1,8 +1,17 @@
 import { closeSync, fstatSync, readSync } from "node:fs"
 import { basename, dirname, isAbsolute, normalize } from "node:path"
+import { readWindowsGrantedFile } from "../platform/read-windows-granted-file"
 import { openWorkspaceDirectory, openWorkspaceEntry } from "./files"
 
 export type GrantedFileTarget = { path: string; dev: string; ino: string; maxBytes: number }
+
+export const readGrantedFileAsync = async (target: GrantedFileTarget, signal: AbortSignal): Promise<Buffer> => {
+  if (!isAbsolute(target.path) || target.path.includes("\0") || normalize(target.path) !== target.path)
+    throw new Error("Caminho de arquivo inválido")
+  if (process.platform === "win32") return readWindowsGrantedFile({ target, signal })
+
+  return readGrantedFile(target)
+}
 
 const readAll = (fd: number, size: number): Buffer => {
   const bytes = Buffer.alloc(size + 1)

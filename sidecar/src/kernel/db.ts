@@ -38,11 +38,13 @@ import teamBuilderSql from "./migrations/0032.sql" with { type: "text" }
 import workIdentitySql from "./migrations/0033.sql" with { type: "text" }
 import automaticConversationSql from "./migrations/0034.sql" with { type: "text" }
 import botDeletionSql from "./migrations/0035.sql" with { type: "text" }
+import workspaceAttentionBackfillSql from "./migrations/0036.sql" with { type: "text" }
+import type { PerformanceStageRunner } from "./performance"
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 35
+export const SCHEMA_VERSION = 36
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -55,9 +57,11 @@ const reclaimRebuiltPages = (database: Database): void => {
 export const openDatabase = ({
   filename,
   slowStatements,
+  runStage,
 }: {
   filename: string
   slowStatements?: SlowStatementTracker
+  runStage?: PerformanceStageRunner
 }): Database => {
   const databasePath = prepareDatabaseFile({ root: dirname(filename), path: filename })
   const rawDatabase = new Database(
@@ -106,10 +110,23 @@ export const openDatabase = ({
         "INSERT INTO transcript_entries(thread_id, seq, generation, event_json, at)",
       )
       const triggersStart = transcriptSql.indexOf("CREATE TRIGGER messages_transcript_insert")
-      database.exec(transcriptSql.slice(0, dataStart))
-      database.exec(transcriptSql.slice(viewStart, entriesStart))
-      database.exec(transcriptSql.slice(triggersStart))
-      prepareHistoryBackfill(database)
+      const checkConstraintsIgnored = database.query("PRAGMA ignore_check_constraints").get() as {
+        ignore_check_constraints: number
+      }
+      const applyTranscriptSchema = () => {
+        database.exec("PRAGMA ignore_check_constraints = ON")
+        try {
+          database.exec(transcriptSql.slice(0, dataStart))
+        } finally {
+          const setting = checkConstraintsIgnored.ignore_check_constraints ? "ON" : "OFF"
+          database.exec(`PRAGMA ignore_check_constraints = ${setting}`)
+        }
+        database.exec(transcriptSql.slice(viewStart, entriesStart))
+        database.exec(transcriptSql.slice(triggersStart))
+        prepareHistoryBackfill(database)
+      }
+      if (runStage) runStage("schema_migration", applyTranscriptSchema)
+      else applyTranscriptSchema()
     }
     database.exec("UPDATE schema_meta SET value = '7' WHERE key = 'schema_version'")
   })()
@@ -199,15 +216,18 @@ export const openDatabase = ({
     database.exec("UPDATE schema_meta SET value = '20' WHERE key = 'schema_version'")
   })()
   applyUpgradeBaselines({ database })
-  database.transaction(() => {
-    if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'workspace_activity_version'").get())
-      database.exec(workspaceActivitySql)
-    if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'transcript_projection_references_version'").get())
-      database.exec(transcriptReferencesSql)
-    if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'stream_writer_version' AND value = '2'").get())
-      database.exec(streamWriterSql)
-    database.exec("UPDATE schema_meta SET value = '23' WHERE key = 'schema_version'")
-  })()
+  const applyWorkspaceActivitySchema = () =>
+    database.transaction(() => {
+      if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'workspace_activity_version'").get())
+        database.exec(workspaceActivitySql)
+      if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'transcript_projection_references_version'").get())
+        database.exec(transcriptReferencesSql)
+      if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'stream_writer_version' AND value = '2'").get())
+        database.exec(streamWriterSql)
+      database.exec("UPDATE schema_meta SET value = '23' WHERE key = 'schema_version'")
+    })()
+  if (runStage) runStage("schema_migration", applyWorkspaceActivitySchema)
+  else applyWorkspaceActivitySchema()
   database.transaction(() => {
     const columns = database.query("PRAGMA table_info(routines)").all() as Array<{ name: string }>
     if (!columns.some((column) => column.name === "group_id")) database.exec(groupRoutinesSql)
@@ -257,5 +277,6 @@ export const openDatabase = ({
       database.exec(botDeletionSql)
     database.exec("UPDATE schema_meta SET value = '35' WHERE key = 'schema_version'")
   })()
+  database.transaction(() => database.exec(workspaceAttentionBackfillSql))()
   return database
 }

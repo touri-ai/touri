@@ -814,3 +814,29 @@ test("takeover keeps pointer and keyboard input off until its own first frame", 
   expect(screen.getByLabelText("Digitar na VM")).toBeEnabled()
   expect(screen.getByText("Você está no controle")).toBeInTheDocument()
 })
+
+test("the empty screen localizes assisted-decision fallback without internal markers", async () => {
+  const f = fixture()
+  f.request.mockImplementation(async (route: string, body: { control?: boolean }) => {
+    if (route === "POST /bots/:id/desktop")
+      return { sessionId: "session", path: "/api/v1/desktop/session/socket", control: body.control ?? false }
+    if (route === "GET /browser/tabs")
+      return {
+        tabs: [],
+        lastFailure: {
+          tool: "browser_type",
+          errorCode: "AMBIGUOUS_TARGET",
+          error: "Two targets match.\nTOURI_BROWSER_DECISION_HINT|no_credit",
+          at: 1,
+        },
+      }
+    return {}
+  })
+
+  render(<DesktopPanel bot={bot} api={f.api} />)
+  await connected()
+
+  await waitFor(() => expect(screen.getByText(/A decisão assistida do navegador está sem crédito/)).toBeInTheDocument())
+  expect(document.body.textContent).not.toContain("TOURI_BROWSER_DECISION_HINT")
+  expect(document.body.textContent).not.toContain("Two targets match.")
+})

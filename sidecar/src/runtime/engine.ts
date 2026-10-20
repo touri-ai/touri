@@ -221,6 +221,7 @@ type RuntimeEngine = {
   }) => Result<{ run: Run }, "THREAD_NOT_FOUND" | "BOT_PAUSED" | "RUNTIME_DRAINING">
   getRunSnapshot: (run: Run) => Run
   getWorkRuns: () => Array<Run>
+  getRetainedRunStateCount: () => number
   settingsChanged: () => void
   listRuns: (threadId: Id, options?: { all?: boolean }) => Array<Run>
   activeRun: (args: { threadId: Id }) => Run | null
@@ -418,7 +419,10 @@ export const createRuntimeEngine = ({
   const notices = createRuntimeNotices({ kernel })
   const work: WorkState = createWorkState({ database: kernel.db as Database })
   const continuations = createRunContinuations({ database: kernel.db })
-  const pendingContinuations = new Map<Id, { timer: ReturnType<typeof setTimeout>; run: Run; plan: ContinuationPlan }>()
+  const pendingContinuations = new Map<
+    Id,
+    { timer: ReturnType<typeof setTimeout>; run: Run; plan: ContinuationPlan; summary: string }
+  >()
   const goalDeadlines = new Map<Id, ReturnType<typeof startGoalDeadline>>()
   const getGoalNow = goalDeadlineClock?.now ?? Date.now
   const goals = createGoalRuntime(
@@ -611,6 +615,14 @@ export const createRuntimeEngine = ({
     }
     states.set(runId, created)
     return created
+  }
+
+  const deleteRunState = (runId: Id): void => {
+    const state = states.get(runId)
+    if (!state) return
+    if (state.outputTimer) clearTimeout(state.outputTimer)
+    if (state.partPublishImmediate) clearImmediate(state.partPublishImmediate)
+    states.delete(runId)
   }
 
   const ensureReply = ({
@@ -1130,14 +1142,12 @@ export const createRuntimeEngine = ({
 
   const finishRoutineRun = ({
     run,
-    state,
     status,
     summary,
   }: {
     run: Run
-    state: RunState
     status: RoutineRun["status"]
-    summary?: string
+    summary: string
   }): void => {
     if (!run.routineRunId) return
     const routineRun = persistence.getRoutineRun(run.routineRunId)
@@ -1145,7 +1155,7 @@ export const createRuntimeEngine = ({
     const finished: RoutineRun = {
       ...routineRun,
       status,
-      summary: bounded({ value: summary ?? state.text, max: 500 }),
+      summary: bounded({ value: summary, max: 500 }),
       finishedAt: Date.now(),
     }
     persistence.updateRoutineRun(finished)
@@ -1702,7 +1712,7 @@ export const createRuntimeEngine = ({
                       userText: request.text,
                       assistantText: state.text,
                     })
-                  finishRoutineRun({ run, state, status: "succeeded" })
+                  finishRoutineRun({ run, status: "succeeded", summary: state.text })
                   if (goals.getForRun(run.id)?.status !== "active")
                     notices.done({
                       botId: run.botId,
@@ -1823,7 +1833,6 @@ export const createRuntimeEngine = ({
         if (continuing) return
         finishRoutineRun({
           run,
-          state,
           status: errorClass === "canceled" || errorClass === "app_restart" ? "canceled" : "failed",
           summary: state.text || `${errorClass}: ${safeError}`,
         })
@@ -2019,23 +2028,32 @@ export const createRuntimeEngine = ({
   }
 
   // A routine run kept open for a continuation that did not start still needs its final state.
-  const abandonContinuation = ({ run, status }: { run: Run; status: RoutineRun["status"] }): void => {
+  const abandonContinuation = ({
+    run,
+    status,
+    summary,
+  }: {
+    run: Run
+    status: RoutineRun["status"]
+    summary: string
+  }): void => {
     const goal = goals.getForRun(run.id)
     if (!shuttingDown && goal?.status === "active") goals.saveGoal({ ...goal, status: "paused" })
-    finishRoutineRun({ run, state: getState(run.id), status, summary: getState(run.id).text || "Turno interrompido" })
+    finishRoutineRun({ run, status, summary: summary || "Turno interrompido" })
   }
 
   const scheduleContinuation = ({ run, plan }: { run: Run; plan: ContinuationPlan }): void => {
+    const summary = bounded({ value: getState(run.id).text, max: 500 })
     const timer = setTimeout(
       () => {
         pendingContinuations.delete(run.id)
         signalDrainChange()
         const ready = !shuttingDown && canStartContinuation(run, plan)
-        if (!ready || !startContinuation({ run, plan })) abandonContinuation({ run, status: "failed" })
+        if (!ready || !startContinuation({ run, plan })) abandonContinuation({ run, status: "failed", summary })
       },
       plan.reason === "permission_granted" ? 0 : resumeBackoffMs,
     )
-    pendingContinuations.set(run.id, { timer, run, plan })
+    pendingContinuations.set(run.id, { timer, run, plan, summary })
   }
 
   const canStartContinuation = (run: Run, plan: ContinuationPlan): boolean =>
@@ -2093,6 +2111,14 @@ export const createRuntimeEngine = ({
     }
   }
 
+  const executeWithStateCleanup = async (run: Run): Promise<void> => {
+    try {
+      await executeGoalTurn(run)
+    } finally {
+      deleteRunState(run.id)
+    }
+  }
+
   const drain = async (): Promise<void> => {
     // A recovered turn must not run alongside the previous provider process.
     await ready
@@ -2109,7 +2135,7 @@ export const createRuntimeEngine = ({
       if (run?.status !== "queued") continue
       active.set(run.threadId, run)
       updateRun(run, { status: "starting", startedAt: Date.now() })
-      const execution = executeGoalTurn(run)
+      const execution = executeWithStateCleanup(run)
       executions.set(run.id, execution)
       void execution
         .finally(() => {
@@ -2182,7 +2208,7 @@ export const createRuntimeEngine = ({
           return
         }
         active.set(threadId, run)
-        const execution = executeGoalTurn(run)
+        const execution = executeWithStateCleanup(run)
         executions.set(run.id, execution)
         void execution.finally(() => executions.delete(run.id)).catch(() => {})
       })
@@ -2227,18 +2253,20 @@ export const createRuntimeEngine = ({
           thread,
           errorClass: "canceled",
           errorMessage: "Turno cancelado antes de iniciar",
-        }).catch(() => {
-          try {
-            kernel.log({
-              level: "error",
-              module: "runtime",
-              msg: "Could not finalize canceled run",
-              data: { threadId: run.threadId, runId: run.id },
-            })
-          } catch {
-            // A storage failure can also prevent writing its diagnostic.
-          }
         })
+          .catch(() => {
+            try {
+              kernel.log({
+                level: "error",
+                module: "runtime",
+                msg: "Could not finalize canceled run",
+                data: { threadId: run.threadId, runId: run.id },
+              })
+            } catch {
+              // A storage failure can also prevent writing its diagnostic.
+            }
+          })
+          .finally(() => deleteRunState(id))
         return { success: true, run }
       }
       updateRun(run, {
@@ -2247,7 +2275,8 @@ export const createRuntimeEngine = ({
         errorMessage: "Canceled before start",
         finishedAt: Date.now(),
       })
-      finishRoutineRun({ run, state: getState(id), status: "canceled", summary: "Turno cancelado" })
+      finishRoutineRun({ run, status: "canceled", summary: "Turno cancelado" })
+      deleteRunState(id)
       return { success: true, run }
     }
     const state = getState(id)
@@ -2352,8 +2381,12 @@ export const createRuntimeEngine = ({
     pendingApprovals.delete(approvalId)
     const result = await pending.provider.answerApproval({ approvalId: pending.providerApprovalId, decision })
     if (!result.success) return result
+
+    const run = persistence.getRun(pending.runId)
+    const state = states.get(pending.runId)
+    if (!run || !state || !["starting", "running"].includes(run.status)) return { success: true }
+
     notices.resolve({ requestId: approvalId, resolution })
-    const state = getState(pending.runId)
     const approval = state.parts.find(
       (part): part is ApprovalPart => part.type === "approval" && part.approvalId === approvalId,
     )
@@ -2362,9 +2395,8 @@ export const createRuntimeEngine = ({
       approval.resolvedAt = Date.now()
       state.dirtyParts.add(state.parts.indexOf(approval))
     }
-    const run = persistence.getRun(pending.runId)
-    const store = run ? kernel.services.use("store.api") : null
-    if (run && store) publishMessage({ store, state, run, status: "streaming" })
+    const store = kernel.services.use("store.api")
+    if (store) publishMessage({ store, state, run, status: "streaming" })
     return { success: true }
   }
 
@@ -2818,7 +2850,7 @@ export const createRuntimeEngine = ({
       pendingContinuations.delete(id)
       // Save the next run before stopping so a backoff or approval cannot disappear.
       if (!canStartContinuation(pending.run, pending.plan) || !startContinuation(pending))
-        abandonContinuation({ run: pending.run, status: "failed" })
+        abandonContinuation({ run: pending.run, status: "failed", summary: pending.summary })
     }
     shuttingDown = true
     signalDrainChange()
@@ -2882,9 +2914,12 @@ export const createRuntimeEngine = ({
         errorClass: "app_restart",
         errorMessage: "touri restarted",
         continuing: plan !== null,
-      }).then(() => {
-        if (plan && !startContinuation({ run, plan })) abandonContinuation({ run, status: "canceled" })
       })
+        .then(() => {
+          if (plan && !startContinuation({ run, plan }))
+            abandonContinuation({ run, status: "canceled", summary: state.text })
+        })
+        .finally(() => deleteRunState(run.id))
       startupRecoveries.push(recovery)
       continue
     }
@@ -2950,6 +2985,7 @@ export const createRuntimeEngine = ({
     ready,
     goals,
     enqueue,
+    getRetainedRunStateCount: () => states.size,
     activeRun,
     continueAfterApproval,
     getRunSnapshot,

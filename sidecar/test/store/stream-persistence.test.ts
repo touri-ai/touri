@@ -1,10 +1,11 @@
 import { Database as SqliteDatabase } from "bun:sqlite"
 import { afterEach, expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import type { UiEvent } from "@touri/contracts"
 import { openDatabase } from "../../src/kernel/db"
+import { planStreamMessageParts } from "../../src/kernel/output-blobs"
 import { createStreamPersistence, STREAM_PERSISTENCE_LIMITS } from "../../src/store/stream-persistence"
 import { streamPersistenceWorkerSource } from "../../src/store/stream-persistence-worker"
 
@@ -41,6 +42,7 @@ const getFixture = async (
   const errors: number[] = []
   const persistence = createStreamPersistence({
     database,
+    appData: root,
     publish: (event) => published.push(event),
     onError: () => errors.push(Date.now()),
     ...(createWorker ? { createWorker } : {}),
@@ -48,7 +50,7 @@ const getFixture = async (
     ...(onReadyWaitExceeded ? { onReadyWaitExceeded } : {}),
   })
   cleanups.add(() => persistence.close())
-  return { database, persistence, published, errors }
+  return { root, database, persistence, published, errors }
 }
 
 const getDelta = (threadId = "thread", delta = "durable") => ({
@@ -76,6 +78,135 @@ const createSourceWorker = (source: string): Worker => {
   })
   return worker
 }
+
+const getOutputBatch = (fixture: Awaited<ReturnType<typeof getFixture>>, output = "synthetic".repeat(2048)) => {
+  const plan = planStreamMessageParts({
+    database: fixture.database,
+    appData: fixture.root,
+    parts: [
+      { type: "command", callId: "output", command: "echo synthetic", cwd: ".", exitCode: 0, outputTail: output },
+    ],
+  })
+  const events = [
+    {
+      type: "message.parts" as const,
+      threadId: "thread",
+      messageId: "reply",
+      generation: 1,
+      updatedAt: 2,
+      parts: plan.parts.map((part) => ({ partIndex: 1, part })),
+    },
+  ]
+
+  return { events, files: plan.files, attachments: plan.attachments }
+}
+
+test.each(["commit", "acknowledgement"] as const)(
+  "output files, metadata and publication survive a worker lost before %s",
+  async (boundary) => {
+    // These counters observe worker lifecycle transitions within this fixture only.
+    let starts = 0
+    let observedRows = -1
+    let observedPublished = -1
+    const fixture = await getFixture(() => {
+      starts += 1
+      if (starts !== 1) return createSourceWorker(streamPersistenceWorkerSource)
+      const pause = `self.postMessage({ type: "test-output-boundary" });
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10000);`
+      const source =
+        boundary === "commit"
+          ? streamPersistenceWorkerSource.replace(
+              "database.transaction(() => writeBatch(data.batch)).immediate()",
+              `database.transaction(() => { const result = writeBatch(data.batch); ${pause} return result; }).immediate()`,
+            )
+          : streamPersistenceWorkerSource.replace("self.postMessage(result);", pause)
+      const worker = createSourceWorker(source)
+      worker.addEventListener("message", ({ data }) => {
+        if (data.type !== "test-output-boundary") return
+        const rows = fixture.database.query("SELECT COUNT(*) AS count FROM attachments").get() as { count: number }
+        observedRows = rows.count
+        observedPublished = fixture.published.length
+        worker.terminate()
+      })
+      return worker
+    })
+    const batch = getOutputBatch(fixture)
+
+    await Promise.all([
+      fixture.persistence.submit(batch.events, batch),
+      fixture.persistence.submit([getDelta("thread", "after")]),
+    ])
+
+    expect(starts).toBe(2)
+    expect(observedRows).toBe(boundary === "commit" ? 0 : 1)
+    expect(observedPublished).toBe(0)
+    expect(fixture.errors).toHaveLength(1)
+    expect(fixture.published.map((event) => event.type)).toEqual(["message.parts", "message.delta"])
+    expect(JSON.stringify(fixture.published)).not.toContain("_outputBlob")
+    expect(JSON.stringify(fixture.published)).not.toContain("synthetic".repeat(2048))
+    const reopened = openDatabase({ filename: fixture.database.filename })
+    cleanups.add(() => reopened.close())
+    expect(reopened.query("SELECT COUNT(*) AS count FROM attachments").get()).toEqual({ count: 1 })
+    const saved = reopened.query("SELECT parts_json, text FROM messages WHERE thread_id = 'thread'").get() as {
+      parts_json: string
+      text: string
+    }
+    expect(saved.text).toBe("after")
+    expect(JSON.parse(saved.parts_json)[1]).toEqual(batch.events[0]?.parts[0]?.part)
+    const file = batch.files[0]
+    if (!file) throw new Error("Missing synthetic output file")
+    expect(await readFile(file.path, "utf8")).toBe("synthetic".repeat(2048))
+    if (process.platform !== "win32") expect((await stat(file.path)).mode & 0o777).toBe(0o600)
+    const entries = reopened
+      .query(`SELECT event_json FROM transcript_entries
+      WHERE json_extract(event_json, '$.type') IN ('message.parts', 'message.delta') ORDER BY id`)
+      .all()
+    expect(entries).toHaveLength(2)
+    expect(JSON.stringify(entries)).not.toContain("_outputBlob")
+  },
+)
+
+test.skipIf(process.platform === "win32")(
+  "a refused blob write surfaces failure without publishing a dangling reference",
+  async () => {
+    const fixture = await getFixture()
+    const batch = getOutputBatch(fixture)
+    const file = batch.files[0]
+    if (!file) throw new Error("Missing synthetic output file")
+    const protectedPath = join(fixture.root, "untouched")
+    await writeFile(protectedPath, "synthetic original")
+    await mkdir(dirname(file.path), { recursive: true })
+    await symlink(protectedPath, file.path)
+
+    const [rejected, healthy] = await Promise.all([
+      fixture.persistence.submit(batch.events, batch),
+      fixture.persistence.submit([getDelta("other")]),
+    ])
+
+    expect(rejected.quarantined).toBe(true)
+    expect(rejected.events).toHaveLength(0)
+    expect(healthy.events).toHaveLength(1)
+    expect(fixture.errors).toHaveLength(1)
+    expect(fixture.published.map((event) => event.type)).toEqual(["transcript.rejected", "message.delta"])
+    expect(fixture.database.query("SELECT COUNT(*) AS count FROM attachments").get()).toEqual({ count: 0 })
+    expect(await readFile(protectedPath, "utf8")).toBe("synthetic original")
+  },
+)
+
+test("blob payloads consume admission capacity before their files can be written", async () => {
+  const fixture = await getFixture(() => {
+    throw new Error("Synthetic worker failure")
+  })
+  const batch = getOutputBatch(fixture, "x".repeat(5 * 1024 * 1024))
+  const accepted = fixture.persistence.submit(batch.events, batch).catch((error: Error) => error.message)
+
+  await expect(fixture.persistence.submit(batch.events, batch)).rejects.toThrow("buffer limit")
+  expect(await accepted).toContain("could not start")
+
+  expect(fixture.published).toEqual([{ type: "transcript.resync" }])
+  expect(fixture.errors).toHaveLength(1)
+  expect(fixture.database.query("SELECT COUNT(*) AS count FROM attachments").get()).toEqual({ count: 0 })
+})
 
 test("the controller retries a worker lost after commit and publishes exactly once from journal references", async () => {
   let starts = 0

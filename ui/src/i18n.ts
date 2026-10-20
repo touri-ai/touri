@@ -4,6 +4,11 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "Assisted browser choices are off or have no saved key. You can enable them in API model settings. The browser will keep working.":
+    "A ajuda nas escolhas está desativada ou sem chave salva. Você pode ativá-la em Modelos por API. O navegador continuará funcionando.",
+  "Use this key for assisted browser choices": "Usar esta chave para ajudar nas escolhas do navegador",
+  "Assisted choices are off by default. Enabling sends short page labels to the remote JEV model (typesafe/jev-1.13) using this key and may spend credit. Your bot model stays the same. Turn this off anytime; the browser keeps working without it.":
+    "A ajuda nas escolhas vem desativada. Ao ativar, pequenos rótulos da página são enviados ao modelo remoto JEV (typesafe/jev-1.13) com esta chave e podem consumir créditos. O modelo do bot continua o mesmo. Desative quando quiser; o navegador funciona sem essa ajuda.",
   "O bot foi excluído, mas a limpeza dos anexos privados está pendente. O touri tentará concluir a limpeza automaticamente.":
     "O bot foi excluído, mas a limpeza dos anexos privados está pendente. O touri tentará concluir a limpeza automaticamente.",
   "O bot foi removido. A limpeza do histórico e dos anexos continua em segundo plano.":
@@ -567,6 +572,20 @@ export const ptBR = {
   "O navegador não abriu a página": "O navegador não abriu a página",
   "Navegador ainda não aberto": "Navegador ainda não aberto",
   "Navegador desativado": "Navegador desativado",
+  "The browser decision service has no saved API key. Add one in API model settings. touri will keep using its current browser behavior.":
+    "A decisão assistida do navegador está sem chave salva. Adicione uma em Modelos de API. O touri continuará usando o comportamento atual do navegador.",
+  "The browser decision service has no credit. touri kept using its current browser behavior. Check the page before continuing.":
+    "A decisão assistida do navegador está sem crédito. O touri continuou usando o comportamento atual do navegador. Confira a página antes de continuar.",
+  "The browser decision service could not connect. touri kept using its current browser behavior.":
+    "Não foi possível conectar à decisão assistida do navegador. O touri continuou usando o comportamento atual do navegador.",
+  "The browser decision service returned an invalid answer. touri kept using its current browser behavior.":
+    "A decisão assistida do navegador retornou uma resposta inválida. O touri continuou usando o comportamento atual do navegador.",
+  "I couldn't choose safely. Which option should I use? {choices}":
+    "Não consegui escolher com segurança. Qual opção devo usar? {choices}",
+  "The browser could not choose a target safely. Choose an option in chat before continuing.":
+    "O navegador não conseguiu escolher um alvo com segurança. Escolha uma opção na conversa antes de continuar.",
+  "This browser action needs your confirmation. Take over the tab to complete it.":
+    "Esta ação do navegador precisa da sua confirmação. Assuma a aba para concluí-la.",
   "Peça ao bot para abrir uma página. Ela aparecerá aqui na tela da VM.":
     "Peça ao bot para abrir uma página. Ela aparecerá aqui na tela da VM.",
   "Não foi possível receber a imagem": "Não foi possível receber a imagem",
@@ -2677,7 +2696,7 @@ export const ptBR = {
   "Work queued": "Na fila",
   "Work queued count": "{count} na fila",
   "View work": "Ver trabalho",
-  "View work summary": "Ver trabalho: {running} em execução, {queued} na fila",
+  "View work summary": "Trabalhando: {running}, {queued} na fila. Ver trabalho",
   "Work queue position": "Na fila · {position}º de {total}",
   "Work waiting for slot": "Na fila · aguardando uma vaga",
   "Work preparing": "Preparando",
@@ -4795,7 +4814,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Work queued": "Queued",
   "Work queued count": "{count} queued",
   "View work": "View work",
-  "View work summary": "View work: {running} running, {queued} queued",
+  "View work summary": "Working: {running}, {queued} queued. View work",
   "Work queue position": "Queued · {position} of {total}",
   "Work waiting for slot": "Queued · waiting for a slot",
   "Work preparing": "Preparing",

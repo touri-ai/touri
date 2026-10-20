@@ -1,5 +1,6 @@
 import type { ToolCallPart } from "@touri/contracts"
 import { redactToolText } from "@touri/contracts/redaction"
+import { t } from "../i18n"
 import { asToolRecord, parseToolValue, prettyToolValue, toolIdentity, toolLeaf } from "./toolPresentation"
 
 const names: Record<string, string> = {
@@ -91,11 +92,67 @@ export const browserActionDetail = ({
 
 const ERROR_LINE = /ERROR\s+([A-Z_]+):\s*([^\n]+)/
 
+const decisionHintKeys = {
+  missing_key:
+    "Assisted browser choices are off or have no saved key. You can enable them in API model settings. The browser will keep working.",
+  no_credit:
+    "The browser decision service has no credit. touri kept using its current browser behavior. Check the page before continuing.",
+  unavailable: "The browser decision service could not connect. touri kept using its current browser behavior.",
+  invalid_response:
+    "The browser decision service returned an invalid answer. touri kept using its current browser behavior.",
+} as const
+
+const getDecisionMessage = (raw: string): string | null => {
+  if (/TOURI_BROWSER_TAKEOVER_REQUIRED\|[a-z_]+/.test(raw))
+    return t("This browser action needs your confirmation. Take over the tab to complete it.")
+
+  const fallback = /TOURI_BROWSER_DECISION_HINT\|(missing_key|no_credit|unavailable|invalid_response)/.exec(raw)
+  if (fallback?.[1] && Object.hasOwn(decisionHintKeys, fallback[1]))
+    return t(decisionHintKeys[fallback[1] as keyof typeof decisionHintKeys])
+
+  const question = /TOURI_BROWSER_DECISION_QUESTION\|([^\n]+)/.exec(raw)
+  if (!question?.[1]) return null
+  try {
+    const value = asToolRecord(JSON.parse(question[1]))
+    const choices = typeof value?.choices === "string" ? value.choices.slice(0, 600) : ""
+    if (!choices) return t("The browser could not choose a target safely. Choose an option in chat before continuing.")
+
+    return t("I couldn't choose safely. Which option should I use? {choices}", { choices })
+  } catch {
+    return t("The browser could not choose a target safely. Choose an option in chat before continuing.")
+  }
+}
+
+const getBrowserOutputText = (raw: string): string => {
+  if (raw.length > 64 * 1024) return raw.slice(0, 64 * 1024)
+
+  // A local visit budget bounds malformed, deeply nested tool envelopes during rendering.
+  let remaining = 64
+  const getTexts = (value: unknown, depth = 0): string[] => {
+    if (remaining-- <= 0 || depth > 6 || value == null) return []
+    if (Array.isArray(value)) return value.slice(0, 64).flatMap((item) => getTexts(item, depth + 1))
+    const record = asToolRecord(value)
+    if (!record) return []
+    if (record.type === "text" && typeof record.text === "string") return [record.text]
+
+    return Array.isArray(record.content) ? getTexts(record.content, depth + 1) : []
+  }
+  try {
+    const texts = getTexts(JSON.parse(raw))
+    return texts.length ? texts.join("\n") : raw
+  } catch {
+    return raw
+  }
+}
+
 /** Failure cause from an MCP browser result, in the words the engine used. */
 export const browserFailureCause = (raw: string | null): string | null => {
   if (!raw) return null
-  const text = redactToolText(raw)
-  const direct = ERROR_LINE.exec(text.replace(/\\n/g, "\n"))
+  const text = redactToolText(getBrowserOutputText(raw)).replace(/\\n/g, "\n")
+  const direct = ERROR_LINE.exec(text)
+  const decisionMessage = getDecisionMessage(text)
+  if (/TOURI_BROWSER_TAKEOVER_REQUIRED\|[a-z_]+/.test(text)) return decisionMessage
+  if (decisionMessage) return clip(decisionMessage, 200)
   if (direct?.[2]) return clip(direct[2].replace(/\\"|"\}.*$/g, "").trim(), 160)
   const parsed = asToolRecord(parseToolValue(text))
   return typeof parsed?.error === "string" ? clip(parsed.error, 160) : null
@@ -164,6 +221,11 @@ export const browserToolResult = (raw: string | null): { title: string; url: str
       return
     }
     if (record.type === "text" && typeof record.text === "string") {
+      const decisionMessage = getDecisionMessage(redactToolText(record.text).replace(/\\n/g, "\n"))
+      if (decisionMessage) {
+        texts.push({ type: "text", text: decisionMessage })
+        return
+      }
       visit(parseToolValue(record.text), depth + 1)
       return
     }

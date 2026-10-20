@@ -384,8 +384,17 @@ fn handle_drag_drop(window: &tauri::Window, drag: &tauri::DragDropEvent) {
         }
         tauri::DragDropEvent::Drop { paths, .. } => {
             let _ = window.emit(FILE_DRAG_EVENT, json!({ "active": false }));
-            let outcome = window.state::<AppState>().file_grants.issue(paths);
-            let _ = window.emit(FILE_DROP_EVENT, outcome);
+            let window = window.clone();
+            // Keep metadata/identity I/O off the UI callback, including one overflow rejection.
+            let paths: Vec<_> = paths
+                .iter()
+                .take(file_grants::MAX_FILES_PER_DROP + 1)
+                .cloned()
+                .collect();
+            tauri::async_runtime::spawn_blocking(move || {
+                let outcome = window.state::<AppState>().file_grants.issue(&paths);
+                let _ = window.emit(FILE_DROP_EVENT, outcome);
+            });
         }
         _ => {}
     }
