@@ -615,9 +615,9 @@ export const init = async (
     for (let offset = 0; offset < attachmentIds.length; offset += 32) {
       signal.throwIfAborted()
       await writeDatabaseAsync(database, () =>
-        attachmentIds
-          .slice(offset, offset + 32)
-          .forEach((attachmentId) => insert.run(message.threadId, message.id, attachmentId)),
+        attachmentIds.slice(offset, offset + 32).forEach((attachmentId) => {
+          insert.run(message.threadId, message.id, attachmentId)
+        }),
       )
       if (offset + 32 < attachmentIds.length) await new Promise<void>((resolve) => setImmediate(resolve))
     }

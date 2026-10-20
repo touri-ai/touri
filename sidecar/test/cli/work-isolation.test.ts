@@ -90,7 +90,7 @@ test("uploading identical bytes grants each uploader access without exposing ano
 test("tool output files follow the visibility of their message", async () => {
   const fixture = await getFixture()
   const uploaded = await fixture.ownerRequest("/attachments", "POST", {
-    name: "output.txt",
+    name: "private-owner-output.txt",
     dataBase64: Buffer.from("Synthetic tool output").toString("base64"),
   })
   const { attachment } = (await uploaded.json()) as { attachment: Attachment }
@@ -106,6 +106,16 @@ test("tool output files follow the visibility of their message", async () => {
 
   expect(visible.status).toBe(200)
   expect(await visible.text()).toBe("Synthetic tool output")
+  await fixture.request("/threads/member-chat/messages", "POST", {
+    text: "Forward this output",
+    parentId: null,
+    attachmentIds: [attachment.id],
+    clientNonce: "forwarded-output",
+  })
+  const history = (await (await fixture.request("/threads/member-chat/messages")).json()) as { messages: Message[] }
+  expect(history.messages[0]?.parts).toContainEqual(
+    expect.objectContaining({ type: "file", name: `${attachment.id}.txt` }),
+  )
 })
 
 const getFixture = async () => {

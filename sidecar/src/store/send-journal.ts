@@ -153,7 +153,15 @@ export const createSendJournal = ({
               .query("SELECT name FROM attachment_people WHERE attachment_id = ? AND person_id = ?")
               .get(attachmentId, input.sender.id) as { name: string } | null)
           : null
-      const name = (uploaded?.name ?? attachment.origin_path ?? attachment.path).split(/[\\/]/).at(-1) || attachmentId
+      const originalName = attachment.origin_path ?? attachment.path
+      const extension =
+        /\.(csv|tsv|txt|md|json|pdf|png|jpe?g|gif|webp|svg|log|xlsx?|docx?|pptx?|zip)$/iu
+          .exec(originalName)?.[0]
+          .toLowerCase() ?? ".bin"
+      // The migrated owner's files predate per-person names; other people must not inherit private metadata.
+      const canUseLegacyName = input.sender?.kind !== "person" || input.sender.id === "owner"
+      const fallbackName = canUseLegacyName ? originalName : `${attachmentId}${extension}`
+      const name = (uploaded?.name ?? fallbackName).split(/[\\/]/).at(-1) || attachmentId
       parts.push(
         attachment.mime.startsWith("image/")
           ? { type: "image", attachmentId, mime: attachment.mime, name }
