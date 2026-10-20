@@ -90,6 +90,8 @@ export const createSetupTools = ({
 }): Array<ToolRegistration & { group: "project" }> => {
   const api = () => kernel.services.use("store.api")
   const self = (ctx: ToolContext): Bot | null => {
+    const isAdminRun = kernel.services.use("work.isAdminRun")
+    if (isAdminRun && (!ctx.runId || !isAdminRun(ctx.runId))) return null
     const bot = api()?.getBot({ botId: ctx.botId })
     // A peer's delegated request cannot persist changes outside its ceiling.
     if (ctx.signal.aborted || getDelegation(kernel, ctx.threadId)) return null

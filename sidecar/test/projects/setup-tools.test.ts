@@ -1240,6 +1240,26 @@ test("bot_rename denies foreign threads, delegated requests and cancellation", a
   expect(f.cards).toEqual([])
 })
 
+test("Work member tools cannot rename a shared bot or inspect its project configuration", async () => {
+  const f = await fixture()
+  f.runtime.kernel.services.provide("work.isAdminRun", (runId) => runId === "admin-run")
+  const tools = createSetupTools({ kernel: f.runtime.kernel, store: f.store })
+  const rename = tools.find((tool) => tool.name === "bot_rename")
+  const discover = tools.find((tool) => tool.name === "project_discover")
+  if (!rename || !discover) throw new Error("Setup tools unavailable")
+  const memberContext = { ...f.caller, runId: "member-run", signal: new AbortController().signal }
+
+  const renamed = await rename.handler({ ctx: memberContext, args: { name: "Changed by member" } })
+  const discovered = await discover.handler({ ctx: memberContext, args: {} })
+
+  expect(renamed).toMatchObject({ success: false, errorCode: "DENIED" })
+  expect(discovered).toMatchObject({ success: false, errorCode: "DENIED" })
+  expect(f.currentBot()?.name).toBe(f.bot.name)
+  expect(
+    await rename.handler({ ctx: { ...memberContext, runId: "admin-run" }, args: { name: "Admin choice" } }),
+  ).toMatchObject({ success: true })
+})
+
 test("read-only grants override the implicit writable cwd for restricted bots", async () => {
   const f = await fixture()
   f.db.query("UPDATE bots SET cwd = ? WHERE id = ?").run(f.path, f.bot.id)
