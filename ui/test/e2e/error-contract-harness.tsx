@@ -13,7 +13,6 @@ bot.machine = "vm"
 bot.name = "Planejamento"
 thread.title = "Organizar as notas"
 const scenario = new URLSearchParams(window.location.search).get("scenario")
-const modelIsAtCapacity = scenario === "capacity"
 const diagnostic = getDiagnostic(scenario)
 const run: Run = {
   id: "interrupted",
@@ -25,7 +24,7 @@ const run: Run = {
   replyMessageId: "failure",
   externalTurnId: null,
   status: "failed",
-  errorClass: scenario === "boot" ? "timeout" : modelIsAtCapacity ? "rate_limit" : "cli_crash",
+  errorClass: getErrorClass(scenario),
   errorMessage: diagnostic,
   usage: null,
   routineRunId: null,
@@ -82,4 +81,11 @@ function getDiagnostic(scenario: string | null): string {
   if (scenario === "capacity") return "Selected model is at capacity. Please try a different model."
 
   return 'network error: ECONNRESET {"status":503} at provider.connect (transport.ts:42)'
+}
+
+function getErrorClass(scenario: string | null): string {
+  if (scenario === "boot") return "timeout"
+  if (scenario === "capacity") return "rate_limit"
+
+  return "cli_crash"
 }
