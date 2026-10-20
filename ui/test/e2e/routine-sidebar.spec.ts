@@ -138,7 +138,7 @@ for (const [name, width, height] of [
     await expect(history).toHaveAttribute("data-open", "true")
     const routineFilter = history.getByRole("combobox", { name: "Filtrar histórico por rotina" })
     const dailyRoutine = routineFilter.locator("option").filter({ hasText: "Resumo diário" })
-    await routineFilter.selectOption(await dailyRoutine.getAttribute("value") ?? "")
+    await routineFilter.selectOption((await dailyRoutine.getAttribute("value")) ?? "")
     await expect(routineFilter).not.toHaveValue("all")
     await expect(history.getByRole("status")).toHaveText("Execuções 1–50 de 128")
     await expect(history.getByRole("listitem")).toHaveCount(50)
