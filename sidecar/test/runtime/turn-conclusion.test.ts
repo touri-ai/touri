@@ -154,6 +154,59 @@ test.each(["runtime_part_finalization", "runtime_output_preparation"] as const)(
   },
 )
 
+test.each(["runtime_part_finalization", "runtime_output_preparation"] as const)(
+  "cancellation during failed-turn %s externalizes output before the terminal write",
+  async (stage) => {
+    const output = "synthetic output\n".repeat(768)
+    const f = await fixture(
+      async ({ onEvent }) => {
+        onEvent({
+          type: "item",
+          part: {
+            type: "command",
+            callId: "shell",
+            command: "sample",
+            cwd: "/workspace",
+            exitCode: null,
+            outputTail: output,
+          },
+        })
+        onEvent({ type: "turn_completed", status: "failed", errorClass: "tool_error", errorMessage: "Fixture failure" })
+      },
+      "Conclua a tarefa.",
+      stage,
+    )
+    cleanups.add(f.close)
+    // The terminal preparation must not depend on a streaming store externalizing its patches.
+    const append = spyOn(f.store, "appendParts").mockImplementation(() => {})
+    const update = spyOn(f.store, "updateMessage")
+    cleanups.add(async () => {
+      append.mockRestore()
+      update.mockRestore()
+    })
+
+    const reply = await f.finish()
+
+    const terminal = update.mock.calls.find(([input]) => input.patch.status !== "streaming")?.[0]
+    const command = terminal?.patch.parts?.find((part) => part.type === "command")
+    expect(command).toMatchObject({
+      outputTail: "",
+      outputBytes: Buffer.byteLength(output),
+    })
+    if (command?.type !== "command" || !command.outputAttachmentId) throw new Error("Output reference missing")
+    const attachment = f.db.query("SELECT path FROM attachments WHERE id = ?").get(command.outputAttachmentId) as {
+      path: string
+    } | null
+    if (!attachment) throw new Error("Output attachment missing")
+    expect(await Bun.file(attachment.path).text()).toBe(output)
+    expect(reply.parts).toContainEqual(command)
+    const stored = f.db.query("SELECT part_json FROM tool_resolutions WHERE call_id = 'shell'").get() as {
+      part_json: string
+    } | null
+    expect(stored ? JSON.parse(stored.part_json) : null).toEqual(command)
+  },
+)
+
 test.each([
   ["Crie notas.md com três ideias.", "Concluído. Arquivos alterados: notas.md."],
   ["Please create notas.md with three ideas.", "Done. Files changed: notas.md."],

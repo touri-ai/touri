@@ -557,7 +557,7 @@ export const createRuntimeEngine = ({
 
   const finishLiveRun = async (
     run: Run,
-    prepare: () => Promise<void>,
+    prepare: () => Promise<() => boolean>,
     finish: () => boolean,
     messageId?: Id,
   ): Promise<void> => {
@@ -572,22 +572,27 @@ export const createRuntimeEngine = ({
     } catch {
       // A failed stream drain must not leave its run active or prevent terminal state.
     }
-    await prepare()
-    // Preparation can finish a large batch; give timers and cancellation a turn before the terminal transaction.
-    await new Promise<void>((resolve) => setImmediate(resolve))
-    const write = (): void => {
-      if (!isLive(run)) {
-        tools.clearPendingMemory(run.id)
-        return
-      }
+    for (;;) {
+      const isPrepared = await prepare()
+      // Preparation can finish a large batch; give timers and cancellation a turn before the terminal transaction.
+      await new Promise<void>((resolve) => setImmediate(resolve))
+      const write = (): boolean => {
+        if (!isLive(run)) {
+          tools.clearPendingMemory(run.id)
+          return true
+        }
+        // Cancellation or a writer-lock retry can invalidate the externalized snapshot.
+        if (!isPrepared()) return false
 
-      // A canceled success path keeps its pending disposition for the canceled transition.
-      if (!finish()) return
-      tools.clearPending(run.id)
+        // A canceled success path keeps its pending disposition for the canceled transition.
+        if (!finish()) return true
+        tools.clearPending(run.id)
+        return true
+      }
+      // The terminal reply, run and tool resolutions have one winning writer.
+      const finished = kernel.db instanceof Database ? await writeDatabaseAsync(kernel.db, write) : write()
+      if (finished) return
     }
-    // The terminal reply, run and tool resolutions have one winning writer.
-    if (kernel.db instanceof Database) await writeDatabaseAsync(kernel.db, write)
-    else write()
   }
 
   const getState = (runId: Id): RunState => {
@@ -770,27 +775,28 @@ export const createRuntimeEngine = ({
     state: RunState
     store: StoreApi
     reason: "cancelled_by_user" | "failed" | "interrupted_by_restart" | "unknown"
-  }): Promise<void> => {
+  }): Promise<() => boolean> => {
     const database = kernel.db
     if (!(database instanceof Database) || !store.updateMessageAsync) {
       finishParts({ run, state, reason, persist: false })
-      return
+      return () => true
     }
 
     const initial = state.parts
     const parts = await measureStage("runtime_part_finalization", () =>
       tools.finishAsync(run, initial, reason, false, runStage),
     )
-    if (state.parts !== initial) return
+    if (state.parts !== initial) return () => false
     const externalized = await measureStage("runtime_output_preparation", () =>
       externalizeMessagePartsAsync({ database, appData: kernel.paths.appData, parts }),
     )
-    if (state.parts !== initial) return
+    if (state.parts !== initial) return () => false
 
     state.parts = externalized
     state.preparedFinish = measureStage("runtime_part_finalization", () =>
       tools.prepareFinish(run, state.parts, reason),
     )
+    return () => state.parts === externalized
   }
 
   const publishMessage = (args: { store: StoreApi; state: RunState; run: Run; status: Message["status"] }): void => {
