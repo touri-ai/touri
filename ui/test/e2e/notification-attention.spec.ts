@@ -15,6 +15,7 @@ for (const theme of ["dark", "light"] as const) {
       await page.addInitScript((appearance) => localStorage.setItem("touri.appearance.v1", appearance), theme)
       await page.goto("/test/e2e/notification-attention-harness.html")
       await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
 
       if (viewport.name === "phone") await page.getByRole("button", { name: "Abrir menu" }).click()
       const bar = page.getByRole("button", { name: "Abrir pendência de onb" }).first()

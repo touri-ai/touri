@@ -2,7 +2,10 @@ import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import App from "../../src/App"
 import { createMockApi } from "../../src/api/mock"
+import { initializeTheme } from "../../src/design/theme"
 import "../../src/styles.css"
+
+initializeTheme()
 
 const api = createMockApi()
 api.notify({
