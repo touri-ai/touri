@@ -3,7 +3,16 @@ import { afterEach, expect, spyOn, test } from "bun:test"
 import { mkdtempSync, realpathSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { Message, MessagePart, ProviderAdapter, ProviderEvent, StartTurnArgs, UiEvent } from "@touri/contracts"
+import type {
+  Message,
+  MessagePart,
+  ProviderAdapter,
+  ProviderEvent,
+  StartTurnArgs,
+  StartTurnResult,
+  StoreApi,
+  UiEvent,
+} from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
 import {
   createPerformanceStageTracker,
@@ -26,7 +35,7 @@ afterEach(async () => {
 })
 
 const fixture = async (
-  script: (args: StartTurnArgs) => Promise<void>,
+  script: (args: StartTurnArgs) => Promise<StartTurnResult> | Promise<void>,
   requestText = "Crie notas.md com três ideias.",
   options: {
     cancelAt?: PerformanceStage
@@ -56,8 +65,8 @@ const fixture = async (
     detect: async () => ({ success: true, path: "/fixtures/provider", version: "1", loggedIn: true }),
     startTurn: async (args) => {
       args.onEvent({ type: "turn_started", externalTurnId: "turn" })
-      await script(args)
-      return { success: true, externalSessionId: "session", rolloutPath: null, status: "succeeded" }
+      const result = await script(args)
+      return result ?? { success: true, externalSessionId: "session", rolloutPath: null, status: "succeeded" }
     },
     answerApproval: async () => ({ success: true }),
     shutdown: async () => {},
@@ -79,6 +88,7 @@ const fixture = async (
   const engine = createRuntimeEngine({
     kernel: runtime.kernel,
     providerAdapters: { codex: adapter },
+    resumeBackoffMs: 0,
     ...(options.cancelAt || options.beforeFinalization || options.afterStage ? { runStage } : {}),
   })
   const store = runtime.kernel.services.use("store.api")
@@ -107,6 +117,8 @@ const fixture = async (
     events,
     store,
     db,
+    engine,
+    run: queued.run,
     finish: async () => {
       // A fresh kernel loads the login shell environment on its first turn; that takes seconds on macOS.
       const deadline = Date.now() + 15_000
@@ -125,6 +137,20 @@ const fixture = async (
       rmSync(root, { recursive: true, force: true })
     },
   }
+}
+
+const holdFinalization = (store: StoreApi) => {
+  const started = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const flushWritesAsync = store.flushWritesAsync
+  if (!flushWritesAsync) throw new Error("Stream writer missing")
+
+  const flush = spyOn(store, "flushWritesAsync").mockImplementationOnce(async (options) => {
+    started.resolve()
+    await release.promise
+    await flushWritesAsync(options)
+  })
+  return { started: started.promise, release: release.resolve, restore: () => flush.mockRestore() }
 }
 
 test.each(["runtime_part_finalization", "runtime_output_preparation"] as const)(
@@ -301,6 +327,49 @@ const getWriterBlocker = () => {
     },
   }
 }
+
+test("cancellation during crash finalization never continues the canceled turn", async () => {
+  const streamedText = "A resposta parcial antes da falha."
+  const providerStarted = Promise.withResolvers<void>()
+  const releaseProvider = Promise.withResolvers<void>()
+  const f = await fixture(async ({ onEvent }) => {
+    onEvent({ type: "session", externalSessionId: "session", rolloutPath: null })
+    onEvent({ type: "text_delta", itemId: "answer", delta: streamedText })
+    providerStarted.resolve()
+    await releaseProvider.promise
+    return { success: false, errorCode: "cli_crash", error: "Fixture provider crashed" }
+  })
+  const finalization = holdFinalization(f.store)
+  cleanups.add(async () => {
+    releaseProvider.resolve()
+    finalization.release()
+    finalization.restore()
+    await f.close()
+  })
+  await providerStarted.promise
+  f.db.exec("INSERT OR REPLACE INTO settings(key,value_json,updated_at) VALUES ('resumeInterruptedTurns','true',1)")
+
+  releaseProvider.resolve()
+  await finalization.started
+  const canceled = f.engine.cancelRuns([f.run.id])
+  finalization.release()
+  await canceled
+  await f.engine.waitForDrain()
+
+  const runs = f.engine.listRuns("t")
+  const path = f.store.activePath({ threadId: "t" })
+  const reply = path.find((message) => message.role === "assistant")
+  const resumed = path.some((message) =>
+    message.parts.some((part) => part.type === "notice" && part.code === "run_resumed"),
+  )
+  expect(runs).toHaveLength(1)
+  expect(runs).toMatchObject([{ id: f.run.id, status: "canceled", errorClass: "canceled" }])
+  expect(reply?.status).toBe("canceled")
+  expect(reply?.text).toBe(streamedText)
+  expect(reply?.parts).toContainEqual({ type: "text", text: streamedText })
+  expect(resumed).toBe(false)
+  expect(f.engine.activeRun({ threadId: "t" })).toBeNull()
+})
 
 test.each([
   ["Crie notas.md com três ideias.", "Concluído. Arquivos alterados: notas.md."],

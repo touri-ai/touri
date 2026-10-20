@@ -1854,7 +1854,7 @@ export const createRuntimeEngine = ({
     errorClass: RunErrorClass
     errorMessage: string
     continuing?: boolean
-  }): Promise<void> => {
+  }): Promise<boolean> => {
     const errorClass = refineErrorClass(reportedErrorClass, errorMessage)
     const reason =
       errorClass === "canceled"
@@ -1931,6 +1931,7 @@ export const createRuntimeEngine = ({
     )
     if (!committed && state.cancelRequested && errorClass !== "canceled" && isLive(run))
       await finalizeFailure({ run, state, store, thread, errorClass: "canceled", errorMessage: "Cancelado por você" })
+    return committed
   }
 
   const resumeEnabled = (): boolean => {
@@ -2166,8 +2167,16 @@ export const createRuntimeEngine = ({
     const crashed =
       CRASH_ERROR_CLASSES.includes(errorClass) && state.turnStarted && !state.cancelRequested && isLive(run)
     const plan = crashed ? planContinuation({ run, reason: "provider_crash", lastActivityAt: Date.now() }) : null
-    await finalizeFailure({ run, state, store, thread, errorClass, errorMessage, continuing: plan !== null })
-    if (plan) scheduleContinuation({ run, plan })
+    const committed = await finalizeFailure({
+      run,
+      state,
+      store,
+      thread,
+      errorClass,
+      errorMessage,
+      continuing: plan !== null,
+    })
+    if (committed && plan) scheduleContinuation({ run, plan })
   }
 
   const executeGoalTurn = async (run: Run): Promise<void> => {
@@ -3002,8 +3011,8 @@ export const createRuntimeEngine = ({
         errorMessage: "touri restarted",
         continuing: plan !== null,
       })
-        .then(() => {
-          if (plan && !startContinuation({ run, plan }))
+        .then((committed) => {
+          if (committed && plan && !startContinuation({ run, plan }))
             abandonContinuation({ run, status: "canceled", summary: state.text })
         })
         .finally(() => deleteRunState(run.id))
