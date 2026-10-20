@@ -1,0 +1,172 @@
+.work-access-settings {
+  display: grid;
+  gap: var(--space-24);
+}
+
+.work-access-settings .settings-group-card {
+  padding: var(--space-16);
+}
+
+.work-access-form,
+.work-access-test-email,
+.work-access-fields {
+  display: grid;
+  gap: var(--space-12);
+}
+
+.work-access-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.work-access-form label,
+.work-access-test-email label {
+  display: grid;
+  gap: var(--space-4);
+  color: var(--text);
+  font-size: var(--fs-caption);
+  font-weight: var(--weight-medium);
+}
+
+.work-access-form input,
+.work-access-form select,
+.work-access-test-email input,
+.work-access-invite > input {
+  width: 100%;
+}
+
+.work-access-form > p,
+.work-access-test-email > p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-caption);
+  line-height: var(--leading-body);
+}
+
+.work-access-form .work-access-note,
+.work-access-form .work-access-warning {
+  padding: var(--space-8) var(--space-12);
+  border-radius: var(--radius-sm);
+  background: var(--surface-settings-hover);
+}
+
+.work-access-form .work-access-warning {
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+}
+
+.work-access-test-email {
+  margin-top: var(--space-16);
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.work-access-settings .button + .button {
+  margin-left: var(--space-8);
+}
+
+.work-access-status,
+.work-access-error {
+  margin: 0;
+  padding: var(--space-8) var(--space-12);
+  border-radius: var(--radius-sm);
+  background: var(--surface-settings-hover);
+  color: var(--text);
+  font-size: var(--fs-caption);
+}
+
+.work-access-error {
+  border: 1px solid var(--color-danger, #b91c1c);
+}
+
+.work-access-people,
+.work-access-invites {
+  display: grid;
+  gap: var(--space-12);
+}
+
+.work-access-code {
+  margin: 0;
+  padding: var(--space-12);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-settings-input);
+  color: var(--text);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--fs-meta);
+  font-weight: var(--weight-semibold);
+}
+
+.work-access-person,
+.work-access-invite {
+  display: grid;
+  gap: var(--space-8);
+  padding: var(--space-12);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.work-access-person-heading,
+.work-access-person-heading > div,
+.work-access-invite > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+}
+
+.work-access-person-heading > div,
+.work-access-invite > div:first-child {
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+.work-access-person-heading span,
+.work-access-invite span,
+.work-access-person li time,
+.work-access-invite time {
+  color: var(--text-2);
+  font-size: var(--fs-caption);
+}
+
+.work-access-person ul {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.work-access-person li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-12);
+  padding: var(--space-8) 0;
+  border-top: 1px solid var(--border);
+}
+
+.work-access-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+}
+
+.work-access-actions .button + .button {
+  margin-left: 0;
+}
+
+.work-access-invite > input {
+  min-width: 0;
+}
+
+@media (max-width: 620px) {
+  .work-access-fields,
+  .work-access-test-email {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .work-access-person-heading,
+  .work-access-person li {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

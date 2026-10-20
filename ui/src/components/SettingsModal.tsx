@@ -8,6 +8,7 @@ import {
   type AppSettingsSectionId,
   SERVER_SETTINGS_SECTION,
   SETTINGS,
+  WORK_SETTINGS_SECTION,
 } from "../features/commandPalette/settingsRegistry"
 import { paletteShortcutLabel } from "../features/commandPalette/shortcut"
 import { useSettingFocus } from "../features/commandPalette/useSettingFocus"
@@ -44,6 +45,9 @@ const CloudPreferences = lazy(() =>
 )
 const ServerModeSettings = lazy(() =>
   import("../features/server/ServerModeSettings").then((module) => ({ default: module.ServerModeSettings })),
+)
+const WorkAccessSettings = lazy(() =>
+  import("../features/work/WorkAccessSettings").then((module) => ({ default: module.WorkAccessSettings })),
 )
 
 type SettingsModalProps = {
@@ -143,7 +147,11 @@ export const SettingsModal = ({
       setSaving(false)
     }
   }
-  const sections = [...APP_SETTINGS_SECTIONS, ...(isNativeDesktop() ? [SERVER_SETTINGS_SECTION] : [])]
+  const sections = [
+    ...APP_SETTINGS_SECTIONS,
+    ...(serverMode ? [WORK_SETTINGS_SECTION] : []),
+    ...(isNativeDesktop() ? [SERVER_SETTINGS_SECTION] : []),
+  ]
   const pane = (id: AppSettingsSectionId) => {
     const entry = sections.find((candidate) => candidate.id === id)
     return { active: section, id, title: entry?.label ?? id, description: entry?.description ?? "" }
@@ -159,6 +167,11 @@ export const SettingsModal = ({
         >
           <Suspense fallback={<SettingsPaneLoading />}>
             <ApiModelsSettings api={api} />
+          </Suspense>
+        </SettingsPane>
+        <SettingsPane {...pane("work")}>
+          <Suspense fallback={<SettingsPaneLoading />}>
+            <WorkAccessSettings api={api} />
           </Suspense>
         </SettingsPane>
         <SettingsPane {...pane("appearance")}>

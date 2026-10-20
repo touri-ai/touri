@@ -5,7 +5,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createActionLimiter } from "../../src/cli/auth/rateLimit"
-import { type AuthStore, openAuthStore } from "../../src/cli/auth/store"
+import { type AuthStore, magicLinkTtlMs, openAuthStore } from "../../src/cli/auth/store"
 
 const directories = new Set<string>()
 const stores = new Set<AuthStore>()
@@ -197,6 +197,83 @@ test("rotated person tokens remain rejected by device-only servers while owner p
   expect(Number.isSafeInteger(Number(rotated?.token.split(".")[1]))).toBe(false)
   expect(store.verifyDeviceToken(rotated?.token ?? "")?.personId).toBe(member.person.id)
   expect(store.verifyDeviceToken(member.token)).toBeNull()
+})
+
+test("email sign-in links are hashed, expire after 15 minutes, pair the right person, and work once", async () => {
+  const directory = await makeDirectory()
+  const store = await openAuthStore({ filename: join(directory, "auth.db"), now: () => 1_800_000_000_000 })
+  stores.add(store)
+  const invitation = await store.createInvite({
+    actorPersonId: "owner",
+    name: "Ana",
+    email: "ana@example.test",
+    role: "member",
+    channelIds: [],
+  })
+  if (!invitation.success) throw new Error("Invite creation failed")
+  const accepted = await store.claimInvite({
+    token: invitation.token,
+    email: "ana@example.test",
+    deviceName: "Primeiro dispositivo",
+  })
+  if (!accepted.success) throw new Error("Invite redemption failed")
+
+  const signIn = await store.createEmailSignIn({ email: " ANA@example.test " })
+  if (!signIn.success) throw new Error("Email sign-in creation failed")
+  expect(signIn.expiresAt - 1_800_000_000_000).toBe(magicLinkTtlMs)
+  const database = new Database(join(directory, "auth.db"))
+  const saved = database.query("SELECT token_hash FROM email_signins").get() as { token_hash: string }
+  database.close()
+  expect(saved.token_hash).not.toBe(signIn.token)
+
+  const claimed = await store.claimEmailSignIn({ token: signIn.token, deviceName: "Novo dispositivo" })
+  if (!claimed.success) throw new Error("Email sign-in failed")
+  expect(claimed.person.id).toBe(accepted.person.id)
+  expect(claimed.device.personId).toBe(accepted.person.id)
+  expect(store.verifyDeviceToken(claimed.token)?.personId).toBe(accepted.person.id)
+  expect(await store.claimEmailSignIn({ token: signIn.token, deviceName: "Replay" })).toMatchObject({ success: false })
+})
+
+test("email sign-in links for unknown, expired, and malformed addresses cannot create a person", async () => {
+  const directory = await makeDirectory()
+  const clock = { now: 1_800_000_000_000 }
+  const store = await openAuthStore({ filename: join(directory, "auth.db"), now: () => clock.now })
+  stores.add(store)
+  const unknown = await store.createEmailSignIn({ email: "missing@example.test" })
+  if (!unknown.success) throw new Error("Email sign-in creation failed")
+  expect(await store.claimEmailSignIn({ token: unknown.token, deviceName: "Browser" })).toMatchObject({
+    success: false,
+  })
+  const expired = await store.createEmailSignIn({ email: "missing@example.test" })
+  if (!expired.success) throw new Error("Email sign-in creation failed")
+  clock.now += magicLinkTtlMs
+  expect(await store.claimEmailSignIn({ token: expired.token, deviceName: "Browser" })).toMatchObject({
+    success: false,
+  })
+  expect(await store.createEmailSignIn({ email: "not-an-address" })).toMatchObject({ success: false })
+  expect(store.listPeople()).toHaveLength(1)
+})
+
+test("a paired member can create a new-device code for their own person", async () => {
+  const directory = await makeDirectory()
+  const store = await openAuthStore({ filename: join(directory, "auth.db") })
+  stores.add(store)
+  const invite = await store.createInvite({
+    actorPersonId: "owner",
+    name: "Bia",
+    email: "bia@example.test",
+    role: "member",
+    channelIds: [],
+  })
+  if (!invite.success) throw new Error("Invite creation failed")
+  const member = await store.claimInvite({ token: invite.token, email: invite.invite.email, deviceName: "Phone" })
+  if (!member.success) throw new Error("Invite redemption failed")
+
+  const pairing = await store.createPersonPairingCode(member.person.id)
+  if (!pairing.success) throw new Error("Member pairing failed")
+  const claimed = await store.claimPairingCode({ code: pairing.code, deviceName: "Laptop" })
+
+  expect(claimed).toMatchObject({ success: true, device: { personId: member.person.id } })
 })
 
 test("removing an admin revokes the unused invitations they issued", async () => {
