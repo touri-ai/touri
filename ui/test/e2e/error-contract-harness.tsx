@@ -12,7 +12,9 @@ if (!bot || !thread) throw new Error("Missing error fixture")
 bot.machine = "vm"
 bot.name = "Planejamento"
 thread.title = "Organizar as notas"
-const scenario = new URLSearchParams(window.location.search).get("scenario")
+const params = new URLSearchParams(window.location.search)
+const scenario = params.get("scenario")
+const hasHealthyComputer = params.get("fixtureComputer") === "healthy"
 const diagnostic = getDiagnostic(scenario)
 const run: Run = {
   id: "interrupted",
@@ -60,9 +62,9 @@ api.request = ((route, input, path) => {
       machines: [
         {
           botId: bot.id,
-          status: "error",
+          status: hasHealthyComputer ? "running" : "error",
           progress: null,
-          error: diagnostic,
+          error: hasHealthyComputer ? null : diagnostic,
           memoryMb: 2048,
           createdMs: null,
           startMs: null,

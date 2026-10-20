@@ -313,7 +313,7 @@ jobs:
           retention-days: 7
       - name: Check failed-run recovery on desktop and phone
         working-directory: ui
-        run: bunx playwright test test/e2e/error-contract.spec.ts --workers=1 --output test-results/error-contract
+        run: bunx playwright test test/e2e/error-contract.spec.ts test/e2e/recovery-layout.spec.ts test/e2e/model-capacity.spec.ts --workers=1 --output test-results/error-contract
       - name: Keep synthetic recovery evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
