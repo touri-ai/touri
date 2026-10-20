@@ -1,13 +1,13 @@
 .sidebar-needs-you {
   display: flex;
   align-items: center;
-  width: calc(100% - 24px);
-  min-height: 56px;
-  gap: var(--space-10);
-  padding: var(--space-8) var(--space-10);
+  width: calc(100% - var(--space-24));
+  min-height: var(--space-56);
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-12);
   margin: var(--space-4) var(--space-12) var(--space-8);
   border: 1px solid var(--border-warning);
-  border-radius: var(--radius-10);
+  border-radius: var(--radius-sm);
   background: var(--surface-warning);
   color: var(--text-primary);
   text-align: left;
@@ -41,14 +41,14 @@
 }
 
 .sidebar-needs-you-copy strong {
-  font-size: var(--type-12);
+  font-size: var(--fs-caption);
   font-weight: var(--weight-semibold);
 }
 
 .sidebar-needs-you-copy small {
   overflow: hidden;
   color: var(--text-secondary);
-  font-size: var(--type-11);
+  font-size: var(--fs-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -59,17 +59,17 @@
   place-items: center;
   min-width: 20px;
   height: 20px;
-  padding-inline: var(--space-5);
+  padding-inline: var(--space-4);
   border-radius: var(--radius-pill);
   background: var(--surface-warning-raised, var(--surface-warning));
   color: var(--text-warning);
-  font-size: var(--type-10);
+  font-size: var(--fs-caption);
   font-weight: var(--weight-semibold);
   font-variant-numeric: tabular-nums;
 }
 
 .sidebar-needs-you-arrow {
   color: var(--text-warning);
-  font-size: var(--type-16);
+  font-size: var(--fs-emphasis);
   line-height: 1;
 }
