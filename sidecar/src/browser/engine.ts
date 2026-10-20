@@ -403,7 +403,7 @@ const fingerprintForNode = async ({
   }
 }
 
-const isFormSubmitControl = async ({
+const getBrowserClickControl = async ({
   client,
   sessionId,
   backendNodeId,
@@ -411,7 +411,7 @@ const isFormSubmitControl = async ({
   client: CdpClient
   sessionId: string
   backendNodeId: number
-}): Promise<boolean | null> => {
+}): Promise<{ formSubmit: boolean; role: string; name: string } | null> => {
   try {
     const resolved = cdpResult(await cdpCall<unknown>(client, "DOM.resolveNode", { backendNodeId }, sessionId))
     const objectId = asString(asRecord(resolved.object)?.objectId)
@@ -424,18 +424,22 @@ const isFormSubmitControl = async ({
         {
           objectId,
           functionDeclaration: `function () {
-          const element = this;
-          if (!element.form) return false;
-          if (element.tagName === 'BUTTON') return element.type === 'submit';
-          return element.tagName === 'INPUT' && ['submit', 'image'].includes(element.type);
+          const element = this.closest('button,input,select,a,[role="button"],[role="checkbox"],[role="radio"],[role="switch"]') || this;
+          const formSubmit = Boolean(element.form) && ((element.tagName === 'BUTTON' && element.type === 'submit') || (element.tagName === 'INPUT' && ['submit', 'image'].includes(element.type)));
+          const role = element.getAttribute('role') || ({ BUTTON: 'button', INPUT: 'textbox', SELECT: 'combobox', A: 'link' }[element.tagName] || 'generic');
+          const name = (element.getAttribute('aria-label') || element.labels?.[0]?.innerText || element.innerText || element.getAttribute('name') || '').slice(0, 500);
+          return { formSubmit, role, name };
         }`,
           returnByValue: true,
         },
         sessionId,
       ),
     )
-    const value = asRecord(result.result)?.value
-    return typeof value === "boolean" ? value : null
+    const value = asRecord(asRecord(result.result)?.value)
+    if (typeof value?.formSubmit !== "boolean" || typeof value.role !== "string" || typeof value.name !== "string")
+      return null
+
+    return { formSubmit: value.formSubmit, role: value.role, name: value.name }
   } catch {
     return null
   }
@@ -3296,19 +3300,25 @@ export const createBrowserEngine = ({
               })
             )
               return failure("USER_TAKEOVER_REQUIRED", "TOURI_BROWSER_TAKEOVER_REQUIRED|sensitive_action")
-            if (button === "left" && clicked && ["button", "input"].includes(clicked.fingerprint.tag)) {
-              const formSubmit =
-                clicked.fingerprint.formSubmit === true ||
-                (await isFormSubmitControl({
-                  client: client as CdpClient,
-                  sessionId: clicked.sessionId,
-                  backendNodeId: clicked.backendNodeId,
-                }))
-              if (formSubmit !== false)
+            if (button === "left" && clicked) {
+              const control = await getBrowserClickControl({
+                client: client as CdpClient,
+                sessionId: clicked.sessionId,
+                backendNodeId: clicked.backendNodeId,
+              })
+              if (!control || control.formSubmit)
                 return failure(
                   "USER_TAKEOVER_REQUIRED",
                   "TOURI_BROWSER_TAKEOVER_REQUIRED|form_submit\nAsk the user to take over this browser tab and submit the form directly.",
                 )
+              if (
+                requiresBrowserTakeover({
+                  action: "click",
+                  intent: `${control.role} ${control.name}`,
+                  pageUrl: tab.info.url,
+                })
+              )
+                return failure("USER_TAKEOVER_REQUIRED", "TOURI_BROWSER_TAKEOVER_REQUIRED|sensitive_action")
             }
             hit = await hitPoint(tab, resolved)
             if (!hit.success && hit.failure.errorCode === "TARGET_CHANGED" && resolved.node) {
@@ -3539,8 +3549,9 @@ export const createBrowserEngine = ({
             await runtimeValue<unknown>(
               client,
               `(() => {
-            const element = document.activeElement;
-            if (!element) return null;
+            const active = document.activeElement;
+            if (!active) return null;
+            const element = active.closest('button,input,select,a,[role="button"],[role="checkbox"],[role="radio"],[role="switch"]') || active;
             const role = element.getAttribute('role') || ({ BUTTON: 'button', INPUT: 'textbox', TEXTAREA: 'textbox', SELECT: 'combobox' }[element.tagName] || 'generic');
             const name = ((element.type === 'password' ? 'password ' : '') + (element.getAttribute('aria-label') || element.labels?.[0]?.innerText || element.innerText || element.getAttribute('name') || '')).slice(0, 500);
             const formAssociated = Boolean(element.form);
