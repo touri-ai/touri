@@ -5,10 +5,13 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createActionLimiter } from "../../src/cli/auth/rateLimit"
-import { openAuthStore } from "../../src/cli/auth/store"
+import { type AuthStore, openAuthStore } from "../../src/cli/auth/store"
 
 const directories = new Set<string>()
+const stores = new Set<AuthStore>()
 afterEach(async () => {
+  await Promise.all(Array.from(stores, (store) => store.close()))
+  stores.clear()
   await Promise.all(Array.from(directories, (directory) => rm(directory, { recursive: true, force: true })))
   directories.clear()
 })
@@ -86,6 +89,9 @@ test("invite tokens are hashed, email-bound, single-use, reschedulable and revok
     if (!claimed.success) throw new Error("Invite redemption failed")
     expect(claimed.person).toMatchObject({ name: "Ana", email: "ana@example.com", role: "member" })
     expect(claimed.device.personId).toBe(claimed.person.id)
+    // The previous device-only verifier reads the second segment as the issue time.
+    expect(Number.isSafeInteger(Number(claimed.token.split(".")[1]))).toBe(false)
+    expect(store.verifyDeviceToken(claimed.token)?.personId).toBe(claimed.person.id)
     expect(store.getPersonChannelIds(claimed.person.id)).toEqual(["channel-a"])
     expect(
       await store.claimInvite({ token: created.token, email: "ana@example.com", deviceName: "Second browser" }),
@@ -165,6 +171,32 @@ test("invite tokens are hashed, email-bound, single-use, reschedulable and revok
   } finally {
     await store.close()
   }
+})
+
+test("rotated person tokens remain rejected by device-only servers while owner pairing stays compatible", async () => {
+  const directory = await makeDirectory()
+  const store = await openAuthStore({ filename: join(directory, "auth.db") })
+  stores.add(store)
+  const pairing = await store.claimPairingCode({ code: (await store.createPairingCode()).code, deviceName: "Owner" })
+  const invite = await store.createInvite({
+    actorPersonId: "owner",
+    name: "Test member",
+    email: "member@example.test",
+    role: "member",
+    channelIds: [],
+  })
+  if (!pairing.success || !invite.success) throw new Error("Device setup failed")
+  const member = await store.claimInvite({ token: invite.token, email: invite.invite.email, deviceName: "Member" })
+  if (!member.success) throw new Error("Member setup failed")
+
+  const rotated = await store.rotateDeviceToken(member.token)
+
+  expect(Number.isSafeInteger(Number(pairing.token.split(".")[1]))).toBe(true)
+  expect(store.verifyDeviceToken(pairing.token)?.personId).toBe("owner")
+  expect(rotated).not.toBeNull()
+  expect(Number.isSafeInteger(Number(rotated?.token.split(".")[1]))).toBe(false)
+  expect(store.verifyDeviceToken(rotated?.token ?? "")?.personId).toBe(member.person.id)
+  expect(store.verifyDeviceToken(member.token)).toBeNull()
 })
 
 test("expired invites and admin-only writes are rejected", async () => {

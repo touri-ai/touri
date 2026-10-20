@@ -119,7 +119,20 @@ type InviteRow = {
 }
 
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex")
-const newToken = (at: number): string => `${randomBytes(32).toString("base64url")}.${at}`
+const newToken = (at: number, personId = ownerPersonId): string => {
+  const random = randomBytes(32).toString("base64url")
+  if (personId === ownerPersonId) return `${random}.${at}`
+  // Older servers have no person authorization and must reject these devices on rollback.
+  return `person.v1.${random}.${at}`
+}
+
+const getTokenIssuedAt = (token: string, createdAt: number): number => {
+  if (token.startsWith("person.")) {
+    const versioned = /^person\.v1\.[A-Za-z0-9_-]{43}\.(\d+)$/u.exec(token)
+    return versioned ? Number(versioned[1]) : Number.NaN
+  }
+  return token.includes(".") ? Number(token.split(".")[1]) : createdAt
+}
 
 /** Uppercases and strips separators so `abcd-efgh-jkmn` and `ABCDEFGHJKMN` are the same code. */
 export const normalizeCode = (raw: string): string => raw.toUpperCase().replace(/[^A-Z0-9]/g, "")
@@ -263,7 +276,7 @@ export const openAuthStore = async ({
       .get(sha256(token)) as DeviceRow | null
     if (!row || row.revoked_at !== null) return null
     const at = now()
-    const issuedAt = token.includes(".") ? Number(token.split(".")[1]) : row.created_at
+    const issuedAt = getTokenIssuedAt(token, row.created_at)
     const lastActiveAt = Math.max(issuedAt, row.last_seen_at ?? 0, lastSeenScheduled.get(row.id) ?? 0)
     if (!Number.isSafeInteger(issuedAt) || issuedAt > at || at >= lastActiveAt + deviceTokenTtlMs) return null
     if (row.last_seen_at === null || at - row.last_seen_at > lastSeenGranularityMs) scheduleLastSeen(row.id, at)
@@ -273,7 +286,7 @@ export const openAuthStore = async ({
   const rotateDeviceToken = async (previous: string): Promise<{ token: string; device: Device } | null> => {
     const device = verifyDeviceToken(previous)
     if (!device) return null
-    const token = newToken(now())
+    const token = newToken(now(), device.personId)
     const changed = await writer.write({
       type: "rotate-token",
       id: device.id,
@@ -442,7 +455,7 @@ export const openAuthStore = async ({
       name: deviceName.trim().slice(0, 80) || "Browser",
       tokenHash: "",
     }
-    const authToken = newToken(at)
+    const authToken = newToken(at, person.id)
     const claimed = await writer.write({
       type: "claim-invite",
       tokenHash: sha256(token),
