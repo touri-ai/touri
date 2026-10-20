@@ -45,7 +45,7 @@
   padding: var(--space-4);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-12);
-  background: var(--surface-backdrop);
+  background: var(--surface-control);
 }
 .sidebar-mode-tabs [role="tab"] {
   display: inline-flex;
@@ -63,7 +63,7 @@
   font-weight: var(--weight-medium);
 }
 .sidebar-mode-tabs [role="tab"][aria-selected="true"] {
-  background: var(--surface-selected);
+  background: var(--surface-panel);
   color: var(--text-primary);
   font-weight: var(--weight-semibold);
 }

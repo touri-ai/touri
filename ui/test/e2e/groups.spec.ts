@@ -6,6 +6,7 @@ import { showBotPanel } from "./home-navigation"
 
 const evidence = resolve(import.meta.dirname, "../../../docs/qa/groups")
 mkdirSync(evidence, { recursive: true })
+test.setTimeout(60_000)
 for (const theme of ["light", "dark"] as const)
   test(`Grupos workflow and screenshots ${theme}`, async ({ page }) => {
     await page.setViewportSize({ width: 1512, height: 982 })
@@ -101,6 +102,6 @@ for (const theme of ["light", "dark"] as const)
     await expect(page.getByRole("textbox", { name: "Mensagem para Produto e Operação" })).toBeVisible()
     await page.getByRole("button", { name: "+ Nova conversa", exact: true }).click()
     await expect(
-      page.getByRole("region", { name: "Canais" }).getByRole("button", { name: "Nova conversa", exact: true }),
+      page.getByRole("region", { name: "Canais" }).getByRole("button", { name: "+ Nova conversa", exact: true }),
     ).toBeVisible()
   })

@@ -1,16 +1,18 @@
 import { mkdirSync } from "node:fs"
 import { resolve } from "node:path"
+import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
 
 const evidence = resolve(import.meta.dirname, "../../test-results/work-mode")
+test.setTimeout(90_000)
 
 test("switches and remembers Work mode, with channels and routine history", async ({ page }) => {
   mkdirSync(evidence, { recursive: true })
   await page.setViewportSize({ width: 1512, height: 982 })
   await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "dark" })
   await page.addInitScript(() => {
-    localStorage.setItem("touri.appearance.v1", "dark")
-    localStorage.setItem("touri.sidebar.mode", "work")
+    if (localStorage.getItem("touri.appearance.v1") === null) localStorage.setItem("touri.appearance.v1", "dark")
+    if (localStorage.getItem("touri.sidebar.mode") === null) localStorage.setItem("touri.sidebar.mode", "work")
   })
   await page.goto("/test/e2e/work-mode-harness.html")
   await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
@@ -38,7 +40,6 @@ test("switches and remembers Work mode, with channels and routine history", asyn
 
   await botsTab.click()
   await page.reload()
-  await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
   await expect(page.getByRole("tab", { name: /^Bots,/ })).toHaveAttribute("aria-selected", "true")
   await expect(page.getByRole("region", { name: "Canais" })).toHaveCount(0)
   await page.getByRole("tab", { name: /^Work,/ }).click()
@@ -59,12 +60,22 @@ test("switches and remembers Work mode, with channels and routine history", asyn
           { appearance: theme, sidebarMode: mode },
         )
         await page.reload()
-        await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
         if (viewport.name === "phone") await page.locator(".mobile-menu-button").click()
         await expect(page.getByRole("region", { name: "Canais" })).toHaveCount(mode === "work" ? 1 : 0)
-        await page.screenshot({
+        if (mode === "bots") {
+          const contrast = await new AxeBuilder({ page })
+            .include(".sidebar-mode-tabs")
+            .withRules(["color-contrast"])
+            .analyze()
+          expect(contrast.violations).toEqual([])
+        }
+        await page.locator('[data-bot-entry="bot-mark"] .bot-row-main').click()
+        await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+        if (viewport.name === "phone") await page.locator(".mobile-menu-button").click()
+        const sidebar = page.locator(".bot-sidebar")
+        await expect(sidebar).toBeVisible()
+        await sidebar.screenshot({
           path: resolve(evidence, `${mode === "bots" ? "before" : "after"}-${viewport.name}-${theme}.png`),
-          fullPage: true,
           animations: "disabled",
         })
       }

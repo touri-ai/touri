@@ -154,7 +154,8 @@ export const Sidebar = (props: SidebarProps) => {
   // Switching bots inside Preview keeps that view; global pages return to the bot conversation.
   const select = (id: Id): void => {
     props.onNavigate?.()
-    if (id !== props.selectedBotId) props.onSelect(id)
+    const selectedThreadIsGroup = props.threads.some((thread) => thread.id === props.selectedThreadId && thread.groupId)
+    if (id !== props.selectedBotId || selectedThreadIsGroup) props.onSelect(id)
     if (props.section !== "bots") props.onChat()
   }
   const selectThread = (id: Id): void => {
