@@ -74,7 +74,7 @@
   align-items: center;
   padding: var(--space-2) var(--space-8);
   border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--badge-role) 14%, transparent);
+  background: color-mix(in srgb, var(--badge-role) var(--tint), transparent);
   color: var(--badge-role);
   font-size: var(--fs-caption);
   font-weight: var(--weight-semibold);

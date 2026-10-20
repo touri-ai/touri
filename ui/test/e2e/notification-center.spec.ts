@@ -72,7 +72,12 @@ for (const width of [1440, 390]) {
       await expect(trigger).toHaveAttribute("aria-expanded", "true")
       await trigger.click()
 
-      if (capture) await center.screenshot({ path: `${capture}/after-notifications-${width}-${theme}.png` })
+      if (capture) {
+        await center.evaluate((element) => {
+          element.scrollTop = element.scrollHeight
+        })
+        await center.screenshot({ path: `${capture}/after-notifications-${width}-${theme}.png` })
+      }
     })
   }
 }
