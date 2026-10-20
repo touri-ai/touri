@@ -192,7 +192,7 @@ test("a newly opened output tab takes precedence over an older input tab", () =>
 test.each([
   [
     "TOURI_BROWSER_DECISION_HINT|missing_key",
-    "O assistente do navegador está sem chave. Continuando com os controles padrão.",
+    "A ajuda nas escolhas está desativada ou sem chave salva. Você pode ativá-la em Modelos por API. O navegador continuará funcionando.",
   ],
   [
     "TOURI_BROWSER_DECISION_HINT|no_credit",

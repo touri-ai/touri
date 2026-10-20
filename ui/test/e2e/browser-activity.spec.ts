@@ -96,11 +96,13 @@ for (const fallback of ["missing_key", "no_credit"] as const) {
       await page.getByRole("textbox", { name: isEnglish ? "Destination" : "Destino" }).fill("Lisboa")
       await page.getByRole("option", { name: "Lisboa, Portugal" }).click()
       const englishNotice = {
-        missing_key: "The browser helper has no key. Continuing with standard controls.",
+        missing_key:
+          "Assisted browser choices are off or have no saved key. You can enable them in API model settings. The browser will keep working.",
         no_credit: "The browser helper has no credit. Continuing with standard controls.",
       }[fallback]
       const portugueseNotice = {
-        missing_key: "O assistente do navegador está sem chave. Continuando com os controles padrão.",
+        missing_key:
+          "A ajuda nas escolhas está desativada ou sem chave salva. Você pode ativá-la em Modelos por API. O navegador continuará funcionando.",
         no_credit: "O assistente do navegador está sem crédito. Continuando com os controles padrão.",
       }[fallback]
       const notice = isEnglish ? englishNotice : portugueseNotice

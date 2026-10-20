@@ -115,7 +115,8 @@ export const getBrowserActivityNotice = (part: ToolCallPart, locale: Locale): st
     return t("Could not choose safely. Take over the tab to choose.", {}, locale)
 
   const notices = {
-    missing_key: "The browser helper has no key. Continuing with standard controls.",
+    missing_key:
+      "Assisted browser choices are off or have no saved key. You can enable them in API model settings. The browser will keep working.",
     no_credit: "The browser helper has no credit. Continuing with standard controls.",
     unavailable: "The browser helper is unavailable. Continuing with standard controls.",
     invalid_response: "The browser helper is unavailable. Continuing with standard controls.",
