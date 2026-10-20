@@ -599,10 +599,15 @@ export const init = async (
     return thread
   }
 
+  const getMessageAttachmentIds = (message: Message): Array<string> =>
+    message.parts.flatMap((part) => {
+      if (part.type === "image" || part.type === "file") return [part.attachmentId]
+      if ("outputAttachmentId" in part && typeof part.outputAttachmentId === "string") return [part.outputAttachmentId]
+      return []
+    })
+
   const indexMessageAttachments = (message: Message): void => {
-    const attachmentIds = new Set(
-      message.parts.flatMap((part) => (part.type === "image" || part.type === "file" ? [part.attachmentId] : [])),
-    )
+    const attachmentIds = new Set(getMessageAttachmentIds(message))
     if (attachmentIds.size === 0) return
     const insert = database.query(
       "INSERT OR IGNORE INTO attachment_message_refs(thread_id, message_id, attachment_id) VALUES (?, ?, ?)",
@@ -615,9 +620,7 @@ export const init = async (
   const indexHistoryAttachments = async (messages: Array<Message>, signal: AbortSignal): Promise<void> => {
     for (let offset = 0; offset < messages.length; offset += 32) {
       signal.throwIfAborted()
-      const batch = messages
-        .slice(offset, offset + 32)
-        .filter((message) => message.parts.some((part) => part.type === "image" || part.type === "file"))
+      const batch = messages.slice(offset, offset + 32).filter((message) => getMessageAttachmentIds(message).length > 0)
       if (batch.length > 0) await writeDatabaseAsync(database, () => batch.forEach(indexMessageAttachments))
       if (offset + 32 < messages.length) await new Promise<void>((resolve) => setImmediate(resolve))
     }

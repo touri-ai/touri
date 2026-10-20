@@ -67,8 +67,20 @@ test("attachment references follow message insert, edit, and deletion", async ()
     expect(
       database.query("SELECT attachment_id FROM attachment_message_refs WHERE thread_id = ?").all("thread-a"),
     ).toEqual([{ attachment_id: "file-b" }])
+    database
+      .query("UPDATE messages SET parts_json = ? WHERE thread_id = ? AND id = ?")
+      .run('[{"type":"command","outputAttachmentId":"output-c"}]', "thread-a", "message-a")
+    expect(
+      database.query("SELECT attachment_id FROM attachment_message_refs WHERE thread_id = ?").all("thread-a"),
+    ).toEqual([{ attachment_id: "output-c" }])
     database.query("DELETE FROM messages WHERE thread_id = ? AND id = ?").run("thread-a", "message-a")
     expect(database.query("SELECT 1 FROM attachment_message_refs").get()).toBeNull()
+    database
+      .query("INSERT INTO messages(thread_id,id,parts_json) VALUES(?,?,?)")
+      .run("thread-a", "message-b", '[{"type":"tool_call","outputAttachmentId":"output-d"}]')
+    expect(
+      database.query("SELECT attachment_id FROM attachment_message_refs WHERE thread_id = ?").all("thread-a"),
+    ).toEqual([{ attachment_id: "output-d" }])
   } finally {
     database.close()
   }

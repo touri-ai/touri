@@ -87,6 +87,27 @@ test("uploading identical bytes grants each uploader access without exposing ano
   expect(history.messages[0]?.parts).toContainEqual(expect.objectContaining({ type: "file", name: "my-file.txt" }))
 })
 
+test("tool output files follow the visibility of their message", async () => {
+  const fixture = await getFixture()
+  const uploaded = await fixture.ownerRequest("/attachments", "POST", {
+    name: "output.txt",
+    dataBase64: Buffer.from("Synthetic tool output").toString("base64"),
+  })
+  const { attachment } = (await uploaded.json()) as { attachment: Attachment }
+  const insert =
+    fixture.database.query(`INSERT INTO messages(id,thread_id,role,kind,status,text,parts_json,created_at,updated_at)
+    VALUES (?,?,'assistant','text','complete','Synthetic output',?,1,1)`)
+  const parts = JSON.stringify([{ type: "command", outputAttachmentId: attachment.id }])
+  insert.run("private-output", "owner-chat", parts)
+  expect((await fixture.request(`/attachments/${attachment.id}`)).status).toBe(404)
+
+  insert.run("visible-output", "member-chat", parts)
+  const visible = await fixture.request(`/attachments/${attachment.id}`)
+
+  expect(visible.status).toBe(200)
+  expect(await visible.text()).toBe("Synthetic tool output")
+})
+
 const getFixture = async () => {
   const root = await mkdtemp(join(tmpdir(), "touri-work-isolation-"))
   const authStore = await openAuthStore({ filename: join(root, "auth.db") })
@@ -166,6 +187,7 @@ const getFixture = async () => {
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
   return {
+    database,
     request: (path: string, method = "GET", body?: unknown) => requestAs(claimed.token, path, method, body),
     ownerRequest: (path: string, method = "GET", body?: unknown) => requestAs(owner.token, path, method, body),
     personId: claimed.person.id,

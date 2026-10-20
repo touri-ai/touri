@@ -18,14 +18,22 @@ CREATE TRIGGER IF NOT EXISTS messages_attachment_refs_insert AFTER INSERT ON mes
   INSERT OR IGNORE INTO attachment_message_refs(thread_id, message_id, attachment_id)
     SELECT NEW.thread_id, NEW.id, json_extract(part.value, '$.attachmentId')
     FROM json_each(NEW.parts_json) part
-    WHERE json_type(part.value, '$.attachmentId') = 'text';
+    WHERE json_type(part.value, '$.attachmentId') = 'text'
+    UNION
+    SELECT NEW.thread_id, NEW.id, json_extract(part.value, '$.outputAttachmentId')
+    FROM json_each(NEW.parts_json) part
+    WHERE json_type(part.value, '$.outputAttachmentId') = 'text';
 END;
 CREATE TRIGGER IF NOT EXISTS messages_attachment_refs_update AFTER UPDATE OF parts_json ON messages BEGIN
   DELETE FROM attachment_message_refs WHERE thread_id = OLD.thread_id AND message_id = OLD.id;
   INSERT OR IGNORE INTO attachment_message_refs(thread_id, message_id, attachment_id)
     SELECT NEW.thread_id, NEW.id, json_extract(part.value, '$.attachmentId')
     FROM json_each(NEW.parts_json) part
-    WHERE json_type(part.value, '$.attachmentId') = 'text';
+    WHERE json_type(part.value, '$.attachmentId') = 'text'
+    UNION
+    SELECT NEW.thread_id, NEW.id, json_extract(part.value, '$.outputAttachmentId')
+    FROM json_each(NEW.parts_json) part
+    WHERE json_type(part.value, '$.outputAttachmentId') = 'text';
 END;
 CREATE TRIGGER IF NOT EXISTS messages_attachment_refs_delete AFTER DELETE ON messages BEGIN
   DELETE FROM attachment_message_refs WHERE thread_id = OLD.thread_id AND message_id = OLD.id;
