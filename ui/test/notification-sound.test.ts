@@ -3,6 +3,8 @@ import { createNotificationSoundController, type NotificationSoundEvent } from "
 
 const getSoundEvent = (patch: Partial<Omit<NotificationSoundEvent, "now">> = {}) => ({
   kind: "attention" as const,
+  botId: "bot-other",
+  notificationKind: "question" as const,
   threadId: "thread-other",
   preferences: undefined,
   activeThreadId: "thread-current",
@@ -10,6 +12,30 @@ const getSoundEvent = (patch: Partial<Omit<NotificationSoundEvent, "now">> = {})
   focused: true,
   systemQuiet: false,
   ...patch,
+})
+
+it("respects disabled global, bot and notification-type delivery preferences", () => {
+  const sink = vi.fn()
+  const controller = createNotificationSoundController({ sink })
+
+  expect(controller.play(getSoundEvent({ preferences: { enabled: false } }))).toBe(false)
+  expect(controller.play(getSoundEvent({ preferences: { bots: { "bot-other": { enabled: false } } } }))).toBe(false)
+  expect(
+    controller.play(
+      getSoundEvent({ notificationKind: "turn-failed", preferences: { types: { "turn-failed": false } } }),
+    ),
+  ).toBe(false)
+  expect(sink).not.toHaveBeenCalled()
+})
+
+it("stays silent when the window is hidden or unfocused and when attention sound is off", () => {
+  const sink = vi.fn()
+  const controller = createNotificationSoundController({ sink })
+
+  expect(controller.play(getSoundEvent({ visible: false }))).toBe(false)
+  expect(controller.play(getSoundEvent({ focused: false }))).toBe(false)
+  expect(controller.play(getSoundEvent({ preferences: { sound: { attention: false } } }))).toBe(false)
+  expect(sink).not.toHaveBeenCalled()
 })
 
 it("gates sound during quiet hours, system quiet mode, and the active conversation", () => {

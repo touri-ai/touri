@@ -216,7 +216,11 @@ export const Sidebar = (props: SidebarProps) => {
       </div>
       <NotificationAttentionBar
         notifications={needsYou}
-        onSelect={(item) => (props.onNeedsYou ?? props.notificationActions.open)(item)}
+        onSelect={(item) => {
+          const select = props.onNeedsYou ?? props.notificationActions.open
+          if (item.kind === "approval" && item.threadId && item.requestId) props.onNavigate?.()
+          select(item)
+        }}
       />
       {hasWork && (
         <button

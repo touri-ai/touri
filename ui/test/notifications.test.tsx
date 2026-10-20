@@ -8,6 +8,8 @@ import { t } from "../src/i18n"
 import type { DeepLinkRequest } from "../src/nativeDeepLinks"
 
 const nativeLinks = vi.hoisted(() => ({ handler: null as ((event: { payload: DeepLinkRequest }) => void) | null }))
+const sound = vi.hoisted(() => ({ play: vi.fn(), unlock: vi.fn() }))
+vi.mock("../src/notificationAudio", () => ({ createBellAudioSink: () => sound }))
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn((name: string, handler: (event: { payload: DeepLink }) => void) => {
     if (name !== "deep-link") return Promise.resolve(() => undefined)
@@ -19,9 +21,35 @@ vi.mock("@tauri-apps/api/event", () => ({
 }))
 
 afterEach(() => {
+  sound.play.mockClear()
   vi.restoreAllMocks()
   window.history.replaceState(null, "", "/")
   Reflect.deleteProperty(window, "__TAURI_INTERNALS__")
+})
+
+const setFocusedWindow = () => vi.spyOn(document, "hasFocus").mockReturnValue(true)
+
+it("sounds for the selected conversation while the user is viewing another page", async () => {
+  setFocusedWindow()
+  const api = createMockApi()
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
+  fireEvent.click(screen.getByRole("button", { name: "Integrações", exact: true }))
+  await waitFor(() => expect(screen.queryByRole("textbox", { name: "Mensagem para mark" })).not.toBeInTheDocument())
+
+  act(() => {
+    api.notify({
+      kind: "question",
+      title: "Escolher ambiente",
+      body: "Qual ambiente usar?",
+      botId: "bot-mark",
+      threadId: "thread-mark",
+      requestId: "question-another-page",
+    })
+  })
+
+  await waitFor(() => expect(sound.play).toHaveBeenCalledOnce())
 })
 
 it("keeps the capped notification badge in the bell's accessible name", async () => {
@@ -224,6 +252,36 @@ it("opens and focuses the exact card from a native notification click", async ()
   const row = await screen.findByTestId("notification-row")
   expect(row).toHaveTextContent("Qual ambiente usar?")
   expect(row).toHaveFocus()
+})
+
+it("keeps the clicked conversation when another workspace reuses the notification id", async () => {
+  Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, configurable: true })
+  const api = createMockApi()
+  const notification = api.notify({
+    kind: "question",
+    title: "Outra pendência",
+    body: "Qual ambiente usar?",
+    botId: "bot-mark",
+    threadId: "thread-mark",
+    requestId: "other-workspace-question",
+  })
+  const invoke = (async (command: string) => {
+    if (command === "server_mode_status") return { mode: "local", url: null }
+    if (command === "deep_link_pending") return null
+    return {}
+  }) as TauriInvoke
+  render(<App kernel={{ services: { api, invoke } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  await waitFor(() => expect(nativeLinks.handler).not.toBeNull())
+
+  act(() => {
+    nativeLinks.handler?.({
+      payload: { bot: "bot-onb", thread: "thread-onb", notificationId: notification.id, requestId: 1 },
+    })
+  })
+
+  await screen.findByRole("textbox", { name: "Mensagem para onb" })
+  expect(screen.queryByRole("region", { name: "Central de notificações" })).not.toBeInTheDocument()
 })
 
 it("clears ordinary notifications while guiding uncertain work to the recovery center", async () => {

@@ -510,7 +510,12 @@ const AppContent = ({ kernel }: AppProps) => {
   useEffect(() => {
     if (!pendingLink || !data.loaded || data.bots.length === 0) return
     const notification = pendingLink.notificationId
-      ? data.notifications.find((item) => item.id === pendingLink.notificationId)
+      ? data.notifications.find(
+          (item) =>
+            item.id === pendingLink.notificationId &&
+            (!pendingLink.bot || item.botId === pendingLink.bot) &&
+            (!pendingLink.thread || item.threadId === pendingLink.thread),
+        )
       : undefined
     if (notification) openNeedsYou(notification)
     else {
@@ -579,8 +584,10 @@ const AppContent = ({ kernel }: AppProps) => {
       ready: data.loaded,
       notifications: data.notifications,
       messages: data.activityMessages,
+      bots: data.bots,
+      threads: data.threads,
       preferences: data.settings?.notificationPreferences,
-      activeThreadId: selectedThread?.id ?? null,
+      activeThreadId: section === "bots" && screen === "chat" && !modal ? (selectedThread?.id ?? null) : null,
     },
     invokeCommand,
   )
