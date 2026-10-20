@@ -3,6 +3,7 @@ import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 
 import type { UiApi } from "../api/client"
 import { userFacingError } from "../errors"
 import { t } from "../i18n"
+import { PanelIcon } from "./PanelIcon"
 import { getBotModelName, getBotProviderName, PROVIDER_MODELS, providerName } from "./ProviderMark"
 import "./ModelPicker.css"
 
@@ -352,7 +353,7 @@ export const ModelPicker = ({
         <span className={`model-picker-trigger-label ${className === "composer-model" ? "composer-model-name" : ""}`}>
           {selection}
         </span>
-        <span aria-hidden="true">⌄</span>
+        <PanelIcon name="chevron-down" />
       </button>
       {open && (
         <div className="model-picker-popover" data-escape-boundary>
@@ -394,7 +395,7 @@ export const ModelPicker = ({
                     onKeyDown={(event) => handleListKeyDown(event, index)}
                   >
                     <span>{item.label}</span>
-                    <span aria-hidden="true">›</span>
+                    <PanelIcon name="chevron-right" />
                   </button>
                 )
 

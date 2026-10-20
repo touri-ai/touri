@@ -191,21 +191,25 @@
 }
 
 @media (max-width: 620px) {
-  .composer-island .model-picker-anchor {
-    grid-column: 2;
-    width: 100%;
-    max-width: none;
+  .composer.composer-island .model-picker-anchor {
+    grid-column: auto;
+    width: auto;
+    max-width: 20vw;
+    flex: 0 1 20vw;
   }
 
-  .composer-island .model-picker-trigger.composer-model {
-    width: 100%;
-    min-height: 34px;
+  .composer.composer-island .model-picker-trigger.composer-model {
+    width: auto;
+    max-width: 20vw;
+    min-height: var(--icon-button-size);
     text-align: left;
   }
 
-  .composer-island .model-picker-trigger.composer-model .model-picker-trigger-label {
-    white-space: normal;
-    overflow-wrap: anywhere;
+  .composer.composer-island .model-picker-trigger.composer-model .model-picker-trigger-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .composer-island .model-picker-popover {

@@ -1,4 +1,5 @@
 import { type ComponentProps, useEffect, useRef, useState, useSyncExternalStore } from "react"
+import { createPortal } from "react-dom"
 import { isNewBotShortcut, isPaletteShortcut } from "../features/commandPalette/shortcut"
 import { t } from "../i18n"
 import { Sidebar } from "./BotSidebar"
@@ -11,11 +12,12 @@ const subscribe = (changed: () => void) => {
 }
 const isNarrow = () => window.matchMedia(query).matches
 
-type SidebarDrawerProps = ComponentProps<typeof Sidebar> & { panelOpen?: boolean }
+type SidebarDrawerProps = ComponentProps<typeof Sidebar> & { panelOpen?: boolean; workspaceHeaderKey?: string }
 
-export const SidebarDrawer = ({ panelOpen = false, ...props }: SidebarDrawerProps) => {
+export const SidebarDrawer = ({ panelOpen = false, workspaceHeaderKey = "", ...props }: SidebarDrawerProps) => {
   const narrow = useSyncExternalStore(subscribe, isNarrow)
   const [open, setOpen] = useState(false)
+  const [workspaceHeader, setWorkspaceHeader] = useState<HTMLElement | null>(null)
   const dialog = useRef<HTMLDialogElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   const close = () => {
@@ -34,33 +36,45 @@ export const SidebarDrawer = ({ panelOpen = false, ...props }: SidebarDrawerProp
     element?.querySelector<HTMLButtonElement>(".sidebar-close")?.focus()
     return () => element?.close()
   }, [narrow, open])
+  useEffect(() => {
+    if (!narrow) {
+      setWorkspaceHeader(null)
+      return
+    }
+
+    setWorkspaceHeader(document.querySelector<HTMLElement>(".workspace-page .screen-header"))
+  }, [narrow, workspaceHeaderKey])
 
   if (!narrow) return <Sidebar {...props} />
+  const menuButton = (
+    <button
+      ref={trigger}
+      type="button"
+      className="toolbar-icon mobile-menu-button"
+      hidden={panelOpen && narrow}
+      aria-label={t("Open menu")}
+      aria-expanded={open}
+      aria-controls="workspace-sidebar-drawer"
+      aria-haspopup="dialog"
+      onClick={() => setOpen(true)}
+    >
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        aria-hidden="true"
+      >
+        <path d="M4 6h16M4 12h16M4 18h16" />
+      </svg>
+    </button>
+  )
+
   return (
     <>
-      <button
-        ref={trigger}
-        type="button"
-        className="toolbar-icon mobile-menu-button"
-        hidden={panelOpen && narrow}
-        aria-label={t("Open menu")}
-        aria-expanded={open}
-        aria-controls="workspace-sidebar-drawer"
-        aria-haspopup="dialog"
-        onClick={() => setOpen(true)}
-      >
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          aria-hidden="true"
-        >
-          <path d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
-      </button>
+      {workspaceHeader ? createPortal(menuButton, workspaceHeader) : menuButton}
       <dialog
         ref={dialog}
         id="workspace-sidebar-drawer"

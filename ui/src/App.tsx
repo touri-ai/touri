@@ -47,6 +47,7 @@ import {
   SettingsModal,
 } from "./components/Modals"
 import { MotionPresence, MotionSkeleton } from "./components/Motion"
+import { PanelIcon } from "./components/PanelIcon"
 import { PageTransition } from "./components/PageTransition"
 import { RoutineEditor } from "./components/RoutineEditor"
 import { SidebarDrawer } from "./components/SidebarDrawer"
@@ -1037,14 +1038,20 @@ const AppContent = ({ kernel }: AppProps) => {
           <div className="notice-bar approval-notice" role="status">
             {t("Você tem {n} solicitações pendentes.", { n: pendingReturnCount })}
             <button type="button" onClick={actions.dismissNotice} aria-label={t("Dismiss notice")}>
-              ×
+              <PanelIcon name="close" />
             </button>
           </div>
         )}
-        <ApprovalNotice notifications={data.notifications} messages={data.activityMessages} onReview={reviewApproval} />
+        <ApprovalNotice
+          notifications={data.notifications}
+          messages={data.activityMessages}
+          onReview={reviewApproval}
+          activeThreadId={section === "bots" && screen === "chat" && !modal ? selectedThread?.id : null}
+        />
         <div className="app-grid">
           <SidebarDrawer
             panelOpen={section === "bots" && screen === "chat" && panelOpen}
+            workspaceHeaderKey={`${section}:${screen}:${advancedPage ?? ""}`}
             serverMode={serverMode}
             serverUrl={serverState.status?.url ?? null}
             host={data.routineHost}
@@ -1457,7 +1464,7 @@ const LoadingScreen = ({
   onSettings?: (() => void) | undefined
 }) => (
   <main className="loading-screen">
-    <BotAvatar bot={{ id: "touri", color: "#e5322d" }} size={64} mood="connecting" />
+    <BotAvatar bot={{ id: "touri", color: null }} size={64} mood="connecting" />
     <p>{t(serverMode ? "Conectando ao servidor…" : "Warming the local workspace…")}</p>
     {onSettings && (
       <button type="button" className="button button-quiet" onClick={onSettings}>
@@ -1500,7 +1507,7 @@ const SidecarErrorScreen = ({
       </div>
       <button type="button" className="button button-brand" onClick={onRetry} disabled={retrying} aria-busy={retrying}>
         {t("Retry connection")}
-        <span>→</span>
+        <PanelIcon name="arrow-right" />
       </button>
       {onSettings && (
         <button type="button" className="button button-quiet" onClick={onSettings}>
@@ -1536,7 +1543,7 @@ const OnboardingLanding = ({
       <div className="onboarding-actions">
         <button type="button" className="button button-brand" onClick={onCreateBot}>
           {t("Create my first bot")}
-          <span aria-hidden="true">→</span>
+          <PanelIcon name="arrow-right" />
         </button>
       </div>
       <div className="onboarding-secondary">

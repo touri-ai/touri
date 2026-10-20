@@ -22,8 +22,8 @@
 .settings-modal .modal-close {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
   border-radius: var(--radius-sm);
 }
 .settings-modal .modal-close:hover {
@@ -55,6 +55,10 @@
   padding: var(--space-20) var(--space-12);
   border-right: 1px solid var(--border);
   background: var(--surface-settings-nav);
+}
+.settings-nav svg {
+  width: var(--icon-md);
+  height: var(--icon-md);
 }
 .settings-nav button {
   display: flex;
@@ -175,10 +179,23 @@
   max-width: 100%;
 }
 .bot-conversation-mode-options label {
-  display: flex;
-  align-items: center;
-  gap: var(--space-8);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  column-gap: var(--space-8);
   font-size: var(--fs-caption);
+  line-height: var(--leading-body);
+}
+.bot-conversation-mode-options label > input {
+  width: 13px;
+  height: 13px;
+  min-height: 13px;
+  flex: none;
+  margin: calc((1lh - 13px) / 2) 0 0;
+  padding: 0;
+}
+.bot-conversation-mode-options label > input[type="radio"] {
+  accent-color: var(--accent-info);
 }
 .settings-model-control {
   display: flex;
@@ -695,6 +712,16 @@
   font-size: var(--fs-caption);
   font-weight: var(--weight-medium);
 }
+.bot-create-fields label,
+.job-picker > legend {
+  margin-bottom: var(--space-8);
+  padding: 0;
+  font: var(--weight-medium) var(--fs-caption) / var(--leading-body) var(--font-body);
+}
+.job-options,
+.job-group-title {
+  margin-inline: 0;
+}
 .bot-create-fields > p {
   margin: var(--space-8) 0;
   color: var(--text-2);
@@ -901,9 +928,10 @@
   }
   .settings-nav {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     flex: none;
-    overflow-x: visible;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
     padding: var(--space-8);
     border-right: 0;
     border-bottom: 1px solid var(--border);
@@ -912,6 +940,8 @@
     width: auto;
     margin: 0;
     flex: none;
+    scroll-snap-align: start;
+    white-space: nowrap;
   }
   .settings-nav svg {
     display: none;
@@ -935,6 +965,12 @@
   .settings-modal .settings-grid > label {
     flex-wrap: wrap;
   }
+}
+.bot-create-modal .button-brand:disabled {
+  opacity: 1;
+  border-color: var(--border);
+  background: var(--surface-control);
+  color: var(--text-2);
 }
 @media (prefers-reduced-motion: reduce) {
   .modal-card.settings-modal input.settings-switch::before {
@@ -1076,7 +1112,7 @@
 .bot-settings-overview .avatar-picker > legend {
   margin: 0 0 var(--space-12);
   font-size: var(--fs-meta);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-semibold);
 }
 .settings-advanced-bar {
   display: flex;
@@ -1114,6 +1150,9 @@
   border-radius: var(--radius-md);
   color: var(--text);
   font-weight: inherit;
+}
+.settings-disclosure > .ds-disclosure-trigger > .ds-disclosure-chevron {
+  margin-top: calc((1lh - var(--icon-sm)) / 2);
 }
 .settings-disclosure > .ds-disclosure-trigger:hover {
   background: var(--surface-settings-hover);

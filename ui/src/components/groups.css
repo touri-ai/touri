@@ -138,9 +138,9 @@
   inset: 0;
   display: grid;
   place-items: center;
-  background: #0006;
+  background: var(--surface-backdrop);
   z-index: 100;
-  padding: 20px;
+  padding: var(--space-20);
 }
 .modal-card.group-modal {
   width: min(560px, 100%);
@@ -150,8 +150,8 @@
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 26px;
-  box-shadow: 0 24px 80px #0003;
+  padding: var(--space-24);
+  box-shadow: var(--elevation-modal);
 }
 .group-modal-heading {
   display: flex;

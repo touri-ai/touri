@@ -5,6 +5,7 @@ import { createMockApi } from "../../src/api/mock"
 import { ApprovalCard } from "../../src/components/ApprovalCard"
 import { VirtualMessageList } from "../../src/components/ChatPanel"
 import { ToolCallCard } from "../../src/components/ToolCallCard"
+import { t } from "../../src/i18n"
 import "../../src/styles.css"
 
 const api = createMockApi()
@@ -38,6 +39,7 @@ const read: ToolCallPart = {
   inputJson: '{"file_path":"/workspace/demo/README.md"}',
 }
 const scenario = new URLSearchParams(location.search).get("scene") ?? "bash"
+const conversation = new URLSearchParams(location.search).get("conversation") ?? "dm"
 const message: Message = {
   id: "approval-scene",
   threadId: "approval-thread",
@@ -60,7 +62,7 @@ const message: Message = {
             },
           ]
         : [approved, approval("approved", approved, "approved"), pending, approval("pending", pending, "pending")],
-  sender: null,
+  sender: conversation === "channel" ? { name: t("QA channel bot"), id: "qa-channel-bot" } : null,
   source: "local",
   createdAt: timestamp,
   updatedAt: timestamp,
@@ -129,11 +131,16 @@ if (root)
     new URLSearchParams(location.search).has("states") ? (
       <States />
     ) : (
-      <main style={{ maxWidth: 800, margin: "40px auto", padding: 24 }}>
+      <main
+        className={conversation === "channel" ? "group-conversation" : undefined}
+        data-conversation={conversation}
+        style={{ maxWidth: 800, margin: "40px auto", padding: 24 }}
+      >
         <h1 className="visually-hidden">Ferramentas e aprovações</h1>
         <VirtualMessageList
           messages={[message]}
           api={api}
+          mainThread={conversation === "dm"}
           onSwitchBranch={() => undefined}
           onRetry={async () => undefined}
         />

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import { PanelIcon } from "./PanelIcon"
 
 export const ScreenHeader = ({
   id,
@@ -52,7 +53,7 @@ export const ScreenState = ({
   return (
     <div className={`screen-state screen-${kind}`} role={kind === "error" ? "alert" : undefined}>
       <span className="screen-state-mark" aria-hidden="true">
-        {kind === "error" ? "!" : "◇"}
+        {kind === "error" ? <PanelIcon name="warning" /> : "◇"}
       </span>
       <strong>{kind === "error" ? "Não foi possível carregar" : title}</strong>
       {description && <p>{description}</p>}

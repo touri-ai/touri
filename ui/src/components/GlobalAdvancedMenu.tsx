@@ -1,6 +1,7 @@
 import type { HostKind } from "@touri/contracts"
 import { useEffect, useRef, useState } from "react"
 import { getHostLabel, t } from "../i18n"
+import { PanelIcon } from "./PanelIcon"
 
 type GlobalAdvancedMenuProps = {
   host?: HostKind | undefined
@@ -56,9 +57,9 @@ export const GlobalAdvancedMenu = ({
         aria-controls="sidebar-advanced-pages"
         onClick={() => setOpen((value) => !value)}
       >
-        <span aria-hidden="true">⚙</span>
+        <PanelIcon name="settings" />
         <span>{t("Advanced")}</span>
-        <span aria-hidden="true">{open ? "⌄" : "›"}</span>
+        <PanelIcon name={open ? "chevron-down" : "chevron-right"} />
       </button>
       {open && (
         <nav id="sidebar-advanced-pages" className="sidebar-advanced-pages" aria-label={t("Advanced pages")}>

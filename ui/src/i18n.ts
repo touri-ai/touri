@@ -2080,9 +2080,9 @@ export const ptBR = {
     "O touri usa programas locais ou máquinas Linux isoladas. Usar o login do host na VM exige autorização por bot.",
   "No navegador, digite o caminho. No app Tauri, use o seletor nativo.":
     "No navegador, digite o caminho da pasta. No aplicativo, use o seletor de pastas.",
-  "＋ Adicionar processo": "＋ Adicionar processo",
   CWD: "Pasta de trabalho",
-  "＋ adicionar": "＋ adicionar",
+  "Adicionar variável": "Adicionar variável",
+  "QA channel bot": "Bot de teste do canal",
   estado: "estado",
   "Nenhuma integração externa foi conectada ainda. Quando houver uma API disponível, ela aparecerá aqui com seu estado local.":
     "Nenhuma integração externa conectada. As integrações disponíveis aparecerão aqui.",
@@ -2780,7 +2780,7 @@ export const ptBR = {
   "Não foi possível consultar o armazenamento.": "Não foi possível consultar o armazenamento.",
   "Não foi possível iniciar a compactação. Aguarde a migração ou compactação em andamento e tente novamente.":
     "Não foi possível iniciar a compactação. Aguarde a migração ou compactação em andamento e tente novamente.",
-  "O provedor não detalhou o pedido": "O provedor não detalhou o pedido",
+  "Nenhum detalhe adicional foi informado": "Nenhum detalhe adicional foi informado",
   "Abrir e revisar": "Abrir e revisar",
   "Solicitação dispensada": "Solicitação dispensada",
   "Não foi possível limpar as notificações. Tente novamente.":
@@ -2818,7 +2818,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Bots pausados não respondem mensagens. Retome o bot para começar a conversa.":
     "Paused bots don't answer messages. Resume it to start the conversation.",
   "Retomar bot": "Resume bot",
-  "O provedor não detalhou o pedido": "The provider gave no details for this request",
+  "Nenhum detalhe adicional foi informado": "No additional details were provided",
   "sobre você": "about you",
   "sobre o ambiente": "about the environment",
   "Ferramentas do touri": "touri tools",
@@ -4536,9 +4536,9 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Cancelado por você": "Canceled by you",
   "No navegador, digite o caminho. No app Tauri, use o seletor nativo.":
     "In the browser, enter the folder path. In the app, use the folder picker.",
-  "＋ Adicionar processo": "＋ Add process",
   CWD: "Working directory",
-  "＋ adicionar": "＋ add",
+  "Adicionar variável": "Add variable",
+  "QA channel bot": "QA channel bot",
   estado: "status",
   "Nenhuma integração externa foi conectada ainda. Quando houver uma API disponível, ela aparecerá aqui com seu estado local.":
     "No external integrations connected. Available integrations will appear here.",
