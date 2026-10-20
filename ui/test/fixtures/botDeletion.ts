@@ -1,7 +1,10 @@
 import { type ApiRequest, createApiClient } from "../../src/api/client"
 import { createMockApi } from "../../src/api/mock"
 
-export const getBotDeletionFixture = (outcome: "pending" | "blocked" = "pending", mock = createMockApi()) => {
+export const getBotDeletionFixture = (
+  outcome: "pending" | "blocked" | "accepted" = "pending",
+  mock = createMockApi(),
+) => {
   const response = Promise.withResolvers<void>()
   const errors = createApiClient({
     endpoint: { baseUrl: "http://127.0.0.1:1", wsUrl: "ws://127.0.0.1:1", token: "test" },
@@ -17,6 +20,7 @@ export const getBotDeletionFixture = (outcome: "pending" | "blocked" = "pending"
 
     // The real route publishes bot.deleted before waiting for attachment collection.
     await mock.request(route, input, pathValues)
+    if (outcome === "accepted") return { botId: String(pathValues.id), phase: "stopping" }
     await response.promise
 
     return errors.request(route, input, pathValues)

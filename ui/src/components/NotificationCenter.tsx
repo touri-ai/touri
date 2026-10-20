@@ -150,9 +150,11 @@ const NotificationRow = ({
   return (
     <li
       className={`notification-row ${resolved ? "resolved" : ""} ${inserted ? "motion-insert" : ""}`}
+      data-notification-id={item.id}
       data-kind={item.kind}
       data-testid="notification-row"
       data-avatar-hover
+      tabIndex={-1}
     >
       <BotAvatar
         bot={
@@ -294,6 +296,7 @@ export const NotificationBell = ({
   runs = [],
   actions,
   now = Date.now(),
+  focusNotification = null,
   onOpenChange,
   onReviewApproval,
 }: {
@@ -302,6 +305,7 @@ export const NotificationBell = ({
   runs?: Array<Run>
   actions: NotificationActions
   now?: number
+  focusNotification?: { id: number; request: number } | null
   onOpenChange?: (open: boolean) => void
   onReviewApproval?: ((target: ApprovalTarget) => void) | undefined
 }) => {
@@ -317,6 +321,9 @@ export const NotificationBell = ({
     onOpenChange?.(open)
     return () => onOpenChange?.(false)
   }, [open, onOpenChange])
+  useEffect(() => {
+    if (focusNotification) setOpen(true)
+  }, [focusNotification])
   const navigationActions = {
     ...actions,
     recover: async (item: NotificationRecord, action: RecoveryAction) => {
@@ -409,6 +416,12 @@ export const NotificationBell = ({
       window.removeEventListener("resize", reposition)
     }
   }, [open])
+  useEffect(() => {
+    if (!open || !focusNotification) return
+    const row = document.querySelector<HTMLElement>(`[data-notification-id="${focusNotification.id}"]`)
+    row?.scrollIntoView?.({ block: "center", behavior: "instant" })
+    row?.focus({ preventScroll: true })
+  }, [focusNotification, open])
   return (
     <div className="notification-center" ref={container}>
       <button

@@ -1,8 +1,8 @@
 .turn-activity {
   min-width: 0;
   margin: var(--space-8) 0 var(--space-16);
-  color: var(--text-secondary);
-  font-size: var(--type-12);
+  color: var(--text-2);
+  font-size: var(--fs-caption);
 }
 .turn-activity > .activity-mark {
   margin-top: 0;
@@ -11,9 +11,9 @@
 .turn-activity-toggle {
   display: flex;
   align-items: center;
-  gap: var(--space-6);
+  gap: var(--space-8);
   max-width: 100%;
-  padding: var(--space-6) 0;
+  padding: var(--space-8) 0;
   border: 0;
   background: transparent;
   color: inherit;
@@ -23,12 +23,12 @@
   cursor: pointer;
 }
 .turn-activity-toggle:hover {
-  color: var(--text-primary);
+  color: var(--text);
 }
 .turn-activity-toggle:focus-visible {
-  outline: 2px solid var(--accent-brand);
+  outline: 2px solid var(--brand);
   outline-offset: 2px;
-  border-radius: var(--radius-4);
+  border-radius: var(--radius-xs);
 }
 .turn-activity-chevron {
   display: inline-block;
@@ -47,7 +47,7 @@
 }
 .turn-activity-details {
   padding-inline-start: var(--space-16);
-  border-inline-start: 1px solid var(--border-subtle);
+  border-inline-start: 1px solid var(--border);
   margin-top: var(--space-8);
 }
 .turn-activity-group {
@@ -57,7 +57,7 @@
 }
 .turn-activity-group h4 {
   margin: var(--space-8) 0;
-  font-size: var(--type-12);
+  font-size: var(--fs-caption);
   font-weight: var(--weight-medium);
 }
 .turn-activity .activity-reasoning-button {

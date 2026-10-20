@@ -71,3 +71,32 @@ test("workspace activity keeps previews, old approvals and active runs without h
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test("workspace activity scopes private conversations to their person and channels to membership", () => {
+  const root = mkdtempSync(join(tmpdir(), "touri-workspace-scope-"))
+  const db = openDatabase({ filename: join(root, "test.db") })
+  try {
+    db.exec(`
+      INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('bot','Bot','codex','/tmp/bot',1,1);
+      INSERT INTO bot_groups(id,name,color,avatar_shape,avatar_seed,created_at,updated_at)
+        VALUES ('team-a','Team A','#888888','circle','a',1,1), ('team-b','Team B','#888888','circle','b',1,1);
+      INSERT INTO threads(id,bot_id,title,created_at,updated_at,owner_person_id,group_id)
+        VALUES ('member-dm','bot','Own chat',1,1,'member',NULL),
+          ('other-dm','bot','Other chat',1,1,'owner',NULL),
+          ('member-channel','bot','Member channel',1,1,NULL,'team-a'),
+          ('other-channel','bot','Other channel',1,1,NULL,'team-b');
+    `)
+    const insert = db.query(
+      "INSERT INTO messages(id,thread_id,role,kind,status,text,parts_json,created_at,updated_at) VALUES (?,?,'user','text','complete',?,'[]',1,1)",
+    )
+    insert.run("own-message", "member-dm", "Own")
+    insert.run("other-message", "other-dm", "Private")
+    insert.run("member-channel-message", "member-channel", "Team")
+    insert.run("other-channel-message", "other-channel", "Secret")
+    const activity = readWorkspaceActivity(db, { personId: "member", channelIds: ["team-a"] })
+    expect(activity.messages.map((message) => message.id).sort()).toEqual(["member-channel-message", "own-message"])
+  } finally {
+    db.close()
+    rmSync(root, { recursive: true, force: true })
+  }
+})

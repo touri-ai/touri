@@ -4,12 +4,12 @@
   gap: var(--space-8);
   margin: var(--space-8) auto var(--space-20);
   padding: var(--space-12);
-  border-color: var(--border-default);
-  border-radius: var(--radius-22);
+  border-color: var(--border-strong);
+  border-radius: var(--radius-lg);
   box-shadow: var(--elevation-card);
 }
 .composer.composer-island:focus-within {
-  border-color: var(--border-focus);
+  border-color: var(--border-strong);
   box-shadow:
     0 0 0 2px var(--focus-soft),
     var(--elevation-card);
@@ -19,9 +19,9 @@
   width: 100%;
   min-height: 38px;
   max-height: 190px;
-  padding: var(--space-6) var(--space-4);
+  padding: var(--space-8) var(--space-4);
   font-family: var(--font-body);
-  font-size: var(--type-15);
+  font-size: var(--fs-body);
   line-height: var(--leading-body);
   transition: height var(--duration-standard) var(--ease-standard);
   scrollbar-width: thin;
@@ -52,7 +52,7 @@
   padding: 0;
 }
 .composer-island .composer-icon {
-  border-radius: var(--radius-10);
+  border-radius: var(--radius-sm);
 }
 .composer-island .composer-icon:focus-visible,
 .composer-island .composer-send:focus-visible,
@@ -60,7 +60,7 @@
 .composer-island .composer-model:focus-visible,
 .composer-island .attachment-chip button:focus-visible,
 .composer-notice button:focus-visible {
-  outline: 2px solid var(--accent-info);
+  outline: 2px solid var(--info);
   outline-offset: 2px;
 }
 .composer-project {
@@ -71,15 +71,15 @@
 .composer-island .composer-model {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-6);
+  gap: var(--space-8);
   min-width: 0;
   height: 32px;
-  padding: var(--space-6) var(--space-10);
-  border: 1px solid var(--border-default);
+  padding: var(--space-8) var(--space-8);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-pill);
-  color: var(--text-secondary);
+  color: var(--text-2);
   background: transparent;
-  font-size: var(--type-12);
+  font-size: var(--fs-caption);
 }
 .composer-island .composer-model:hover:not(:disabled) {
   background: var(--surface-control);
@@ -113,7 +113,7 @@
   gap: var(--space-8);
 }
 .composer-project-picker button:focus-visible {
-  outline: 2px solid var(--accent-info);
+  outline: 2px solid var(--info);
   outline-offset: -2px;
   background: var(--surface-control);
 }
@@ -126,10 +126,10 @@
 }
 .composer-project-note {
   margin: var(--space-4) 0 0;
-  padding: var(--space-8) var(--space-10);
-  border-top: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
-  font-size: var(--type-11);
+  padding: var(--space-8) var(--space-8);
+  border-top: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: var(--fs-caption);
   line-height: var(--leading-body);
 }
 .composer-model-name {
@@ -144,18 +144,18 @@
 .composer-island .composer-stop {
   display: flex;
   align-items: center;
-  gap: var(--space-6);
+  gap: var(--space-8);
   height: 34px;
-  padding: 0 var(--space-10);
-  border: 1px solid var(--border-default);
+  padding: 0 var(--space-8);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-pill);
   background: var(--surface-control);
-  color: var(--text-primary);
-  font-size: var(--type-12);
+  color: var(--text);
+  font-size: var(--fs-caption);
   font-weight: var(--weight-medium);
 }
 .composer-island .composer-stop:hover {
-  border-color: var(--border-hover);
+  border-color: var(--border-strong);
   background: var(--surface-active);
 }
 .composer-island .attachment-strip {
@@ -169,14 +169,14 @@
 .composer-island .attachment-chip {
   display: flex;
   align-items: center;
-  gap: var(--space-6);
+  gap: var(--space-8);
   max-width: 100%;
-  padding: var(--space-4) var(--space-6) var(--space-4) var(--space-8);
-  border-color: var(--border-subtle);
-  border-radius: var(--radius-8);
+  padding: var(--space-4) var(--space-8) var(--space-4) var(--space-8);
+  border-color: var(--border);
+  border-radius: var(--radius-sm);
   background: var(--surface-tool);
-  color: var(--text-secondary);
-  font-size: var(--type-12);
+  color: var(--text-2);
+  font-size: var(--fs-caption);
 }
 .attachment-chip > svg {
   flex-shrink: 0;
@@ -191,10 +191,10 @@
 }
 .attachment-state {
   flex-shrink: 0;
-  font-size: var(--type-11);
+  font-size: var(--fs-caption);
 }
 .attachment-chip[data-status="failed"] {
-  color: var(--text-danger);
+  color: var(--danger);
   border-color: var(--border-error);
 }
 .composer-island .attachment-chip button {
@@ -203,19 +203,19 @@
   height: 24px;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-6);
+  border-radius: var(--radius-xs);
   background: transparent;
-  color: var(--text-secondary);
-  font-size: var(--type-16);
+  color: var(--text-2);
+  font-size: var(--fs-body);
 }
 .composer-island .attachment-chip button:hover {
   background: var(--surface-control);
-  color: var(--text-primary);
+  color: var(--text);
 }
 .composer-status {
   padding: 0 var(--space-4);
-  color: var(--text-secondary);
-  font-size: var(--type-11);
+  color: var(--text-2);
+  font-size: var(--fs-caption);
 }
 .composer-status:empty {
   display: none;
@@ -224,11 +224,11 @@
   display: flex;
   align-items: start;
   gap: var(--space-8);
-  padding: var(--space-8) var(--space-10);
-  border-radius: var(--radius-8);
+  padding: var(--space-8) var(--space-8);
+  border-radius: var(--radius-sm);
   background: var(--surface-notice);
   color: var(--text-notice);
-  font-size: var(--type-12);
+  font-size: var(--fs-caption);
   line-height: var(--leading-body);
   overflow-wrap: anywhere;
 }
@@ -237,7 +237,7 @@
   border: 0;
   background: transparent;
   color: inherit;
-  font-size: var(--type-16);
+  font-size: var(--fs-body);
 }
 .composer-notice {
   display: flex;
@@ -247,23 +247,23 @@
   flex: 0 0 auto;
   margin: var(--space-12) auto 0;
   padding: var(--space-16);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-16);
-  background: var(--surface-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
 }
 .composer-notice-copy {
   flex: 1;
   min-width: 0;
-  font-size: var(--type-13);
+  font-size: var(--fs-meta);
   line-height: var(--leading-body);
 }
 .composer-notice-copy strong {
-  color: var(--text-primary);
+  color: var(--text);
   font-weight: var(--weight-medium);
 }
 .composer-notice-copy p {
   margin: var(--space-4) 0 0;
-  color: var(--text-secondary);
+  color: var(--text-2);
   overflow-wrap: anywhere;
 }
 .composer-notice > button,
@@ -357,7 +357,7 @@
   border: 2px dashed var(--accent, currentColor);
   border-radius: inherit;
   background: color-mix(in srgb, var(--surface, canvas) 88%, transparent);
-  font-size: var(--type-15);
+  font-size: var(--fs-body);
   font-weight: 600;
   pointer-events: none;
 }
@@ -366,12 +366,35 @@
   display: grid;
   gap: var(--space-8);
   padding: var(--space-12);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-12);
-  background: var(--surface-panel);
-  font-size: var(--type-13);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  font-size: var(--fs-meta);
 }
 .composer-login-card > p {
   margin: 0;
-  color: var(--text-secondary);
+  color: var(--text-2);
+}
+.composer-paused {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding: 0 var(--space-8) var(--space-12);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-8);
+}
+.composer-paused p {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-meta);
+  line-height: var(--leading-body);
+}
+.composer-paused strong {
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+.composer-paused button {
+  flex: 0 0 auto;
 }

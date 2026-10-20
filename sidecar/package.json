@@ -7,6 +7,10 @@
     "start": "bun run src/main.ts serve"
   },
   "dependencies": {
-    "@touri/contracts": "workspace:*"
+    "@touri/contracts": "workspace:*",
+    "nodemailer": "^10.1.7"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "^8.0.2"
   }
 }

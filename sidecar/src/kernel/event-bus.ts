@@ -7,6 +7,7 @@ import { captureTranscript as captureEntries, type TranscriptRef } from "./trans
 import { compactTranscript, materializeTranscript } from "./transcript-storage"
 
 export type EventSocketData = { channel: "events"; since?: number }
+export type EventFilter = (event: UiEvent) => boolean
 
 /** A reconnect replays at most this much; a larger gap is cheaper to reload over REST. */
 export const REPLAY_LIMITS = { events: 2_000, bytes: 2 * 1024 * 1024 }
@@ -41,7 +42,7 @@ export const createEventBus = (
     runStage ? runStage(stage, action, input) : action(input)
   let sequence = 0
   const listeners = new Set<(envelope: UiEventEnvelope) => void>()
-  let sockets: Array<{ socket: EventSocket; since: number }> = []
+  let sockets: Array<{ socket: EventSocket; since: number; filter?: EventFilter }> = []
   let delivered = Number(
     (database?.query("SELECT seq FROM sqlite_sequence WHERE name = 'ui_event_log'").get() as { seq: number } | null)
       ?.seq ?? 0,
@@ -63,9 +64,10 @@ export const createEventBus = (
     sockets = sockets.filter((entry) => entry.socket !== socket)
   }
 
-  const broadcast = ({ payload, seq }: { payload: string; seq: number }): void => {
-    sockets.forEach(({ socket, since }) => {
+  const broadcast = ({ payload, seq, event }: { payload: string; seq: number; event: UiEvent }): void => {
+    sockets.forEach(({ socket, since, filter }) => {
       if (seq <= since) return
+      if (filter && !filter(event)) return
 
       try {
         if (socket.readyState !== 1 || socket.sendText(payload) === 0) {
@@ -90,17 +92,18 @@ export const createEventBus = (
     if (!sockets.some(({ since }) => envelope.seq > since)) return
 
     const payload = payloadFor(envelope)
-    measureStage("workspace_websocket_broadcast", broadcast, { payload, seq: envelope.seq })
+    measureStage("workspace_websocket_broadcast", broadcast, { payload, seq: envelope.seq, event: envelope.event })
   }
   const deliver = (envelope: UiEventEnvelope): void => measureStage("workspace_event_delivery", deliverNow, envelope)
 
-  const scheduleCaptureRetry = (): void => {
+  const scheduleCaptureRetry = (backlog = false): void => {
     if (stopped || captureRetryTimer) return
-    const delayMs = Math.min(1_000, 50 * 2 ** Math.min(captureRetryAttempt, 4))
-    captureRetryAttempt += 1
+    const delayMs = backlog ? 0 : Math.min(1_000, 50 * 2 ** Math.min(captureRetryAttempt, 4))
+    if (!backlog) captureRetryAttempt += 1
     captureRetryTimer = setTimeout(() => {
       captureRetryTimer = undefined
       captureTranscript()
+      if (!scheduled) flush()
     }, delayMs)
     captureRetryTimer.unref()
   }
@@ -111,8 +114,9 @@ export const createEventBus = (
     const busyTimeout = (database.query("PRAGMA busy_timeout").get() as { timeout: number }).timeout
     database.exec("PRAGMA busy_timeout = 0")
     try {
-      measureStage("transcript_journal_capture", captureEntries, database)
+      const more = measureStage("transcript_journal_capture", captureEntries, database)
       captureRetryAttempt = 0
+      if (more) scheduleCaptureRetry(true)
     } catch (error) {
       if (!isSqliteBusy(error)) throw error
       scheduleCaptureRetry()
@@ -365,12 +369,13 @@ export const createEventBus = (
       listeners.add(listener)
       return () => listeners.delete(listener)
     },
-    add: (socket: EventSocket, since = 0): void => {
+    add: (socket: EventSocket, since = 0, filter?: EventFilter): void => {
       captureTranscript()
       if (!scheduled) flush()
       if (database) {
         runRetentionMaintenance(true)
         for (const envelope of catchUp(since)) {
+          if (filter && !filter(envelope.event)) continue
           if (socket.sendText(payloadFor(envelope)) === 0) {
             socket.close?.(1013, "Tente reconectar")
             return
@@ -378,7 +383,7 @@ export const createEventBus = (
         }
       }
       const sinceHead = database ? head() : sequence
-      sockets = sockets.concat({ socket, since: sinceHead })
+      sockets = sockets.concat({ socket, since: sinceHead, ...(filter ? { filter } : {}) })
     },
     remove: (socket: EventSocket): void => {
       removeSocket(socket)

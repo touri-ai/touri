@@ -1,5 +1,6 @@
 import type { Database, Statement } from "bun:sqlite"
 import type { Kernel } from "@touri/contracts"
+import type { PerformanceStage, PerformanceStageRunner } from "./performance"
 
 export type SlowStatement = {
   stage: string
@@ -16,6 +17,7 @@ export type SqliteStatementTotals = {
 
 export type SlowStatementTracker = {
   now: () => number
+  runWithStage: <Value>(sql: string, action: () => Value) => Value
   recordDuration: (sql: string, durationMs: number) => void
   snapshot: () => Array<SlowStatement>
   snapshotTotals: () => SqliteStatementTotals
@@ -26,17 +28,21 @@ const DEFAULT_THRESHOLD_MS = 250
 const MAX_NORMALIZED_SQL_LENGTH = 512
 const TIMED_STATEMENT_METHODS = new Set<PropertyKey>(["run", "get", "all", "values", "raw"])
 const TRANSACTION_MODES = ["default", "deferred", "immediate", "exclusive"] as const
+const SQL_WRITE_TARGET =
+  /^\s*(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|REPLACE\s+INTO|UPDATE(?:\s+OR\s+\w+)?|DELETE\s+FROM)\s+(?:"|`|\[)?([a-z_][a-z0-9_]*)/i
 const SQL_REDACTION_TOKENS =
   /--[^\n]*|\/\*[\s\S]*?(?:\*\/|$)|'(?:''|[^'])*'|'(?:''|[^'])*$|"(?:""|[^"])*"|"(?:""|[^"])*$|`(?:``|[^`])*`|`(?:``|[^`])*$|\[(?:\]\]|[^\]])*\]|\[(?:\]\]|[^\]])*$/g
 
 export const createSlowStatementTracker = ({
   log,
   getStage,
+  runStage,
   now = performance.now.bind(performance),
   thresholdMs = DEFAULT_THRESHOLD_MS,
 }: {
   log: Kernel["log"]
-  getStage: () => string
+  getStage: () => string | undefined
+  runStage?: PerformanceStageRunner
   now?: () => number
   thresholdMs?: number
 }): SlowStatementTracker => {
@@ -44,13 +50,22 @@ export const createSlowStatementTracker = ({
   let totalCalls = 0
   let totalMs = 0
 
+  const runWithStage = <Value>(sql: string, action: () => Value): Value => {
+    const current = getStage()
+    // A transaction includes implicit BEGIN/COMMIT work. Its statements still
+    // need their own labels; explicit caller stages keep their existing context.
+    if (!runStage || (current && current !== "sqlite_transaction")) return action()
+
+    return runStage(getSqliteStage(sql), action)
+  }
+
   const recordDuration = (sql: string, durationMs: number): void => {
     totalCalls += 1
     totalMs += durationMs
     if (durationMs < thresholdMs) return
 
     const statement = normalizeSql(sql)
-    const stage = getStage()
+    const stage = getStage() ?? getSqliteStage(sql)
     const timing = { stage, sql: statement, durationMs }
     logSlowStatement({ log, timing })
     timings = recordSlowStatement(timings, timing)
@@ -58,6 +73,7 @@ export const createSlowStatementTracker = ({
 
   return {
     now,
+    runWithStage,
     recordDuration,
     snapshot: () => timings.map((timing) => ({ ...timing })),
     snapshotTotals: () => ({ calls: totalCalls, totalMs: getMilliseconds(totalMs) }),
@@ -99,6 +115,31 @@ export const instrumentMainConnection = <Connection extends Database>(
 
   return connection
 }
+
+const getSqliteStage = (sql: string): PerformanceStage => {
+  if (sql === "TRANSACTION") return "sqlite_transaction"
+
+  // Only inspect a bounded prefix and emit fixed labels, never table names or
+  // values supplied by a caller. CTEs, comments and other SQL use the safe fallback.
+  const table = sql.slice(0, MAX_NORMALIZED_SQL_LENGTH).match(SQL_WRITE_TARGET)?.[1]?.toLowerCase()
+  if (table === "settings") return "sqlite_settings_write"
+  if (table === "runs" || table === "routine_runs" || table === "provider_sessions") return "sqlite_run_write"
+  if (table === "messages" || table === "messages_fts") return "sqlite_message_write"
+  if (table === "notifications" || table === "notification_log") return "sqlite_notification_write"
+  if (table === "recovery_tasks" || table === "work_journal" || table === "work_roots") return "sqlite_recovery_write"
+
+  return "sqlite_main"
+}
+
+const measureStatement = <Value>(sql: string, tracker: SlowStatementTracker, action: () => Value): Value =>
+  tracker.runWithStage(sql, () => {
+    const startedAt = tracker.now()
+    try {
+      return action()
+    } finally {
+      tracker.recordDuration(sql, tracker.now() - startedAt)
+    }
+  })
 
 const getDatabaseMembers = (database: Database): Array<{ property: PropertyKey; descriptor: PropertyDescriptor }> => {
   const ownMembers = getOwnMembers(database)
@@ -144,23 +185,15 @@ const instrumentDatabaseMethod = ({
   if (property === "query" || property === "prepare")
     return (...args: Array<unknown>) => {
       const sql = args[0] as string
-      const startedAt = tracker.now()
-      try {
+      return measureStatement(sql, tracker, () => {
         const statement = Reflect.apply(method, database, args) as Statement
         return instrumentStatement(statement, sql, tracker, statementProxies)
-      } finally {
-        tracker.recordDuration(sql, tracker.now() - startedAt)
-      }
+      })
     }
   if (property === "run" || property === "exec")
     return (...args: Array<unknown>) => {
       const sql = args[0] as string
-      const startedAt = tracker.now()
-      try {
-        return Reflect.apply(method, database, args)
-      } finally {
-        tracker.recordDuration(sql, tracker.now() - startedAt)
-      }
+      return measureStatement(sql, tracker, () => Reflect.apply(method, database, args))
     }
   if (property === "transaction")
     return (action: (...args: Array<unknown>) => unknown) => {
@@ -222,14 +255,7 @@ const createTimedStatementMethod = (
   const method = Reflect.get(statement, property, statement) as unknown
   if (typeof method !== "function") return undefined
 
-  return (...args: Array<unknown>) => {
-    const startedAt = tracker.now()
-    try {
-      return Reflect.apply(method, statement, args)
-    } finally {
-      tracker.recordDuration(sql, tracker.now() - startedAt)
-    }
-  }
+  return (...args: Array<unknown>) => measureStatement(sql, tracker, () => Reflect.apply(method, statement, args))
 }
 
 const createIteratorMethod = (
@@ -242,7 +268,9 @@ const createIteratorMethod = (
   if (typeof method !== "function") return undefined
 
   return (...args: Array<unknown>) =>
-    instrumentIterator(Reflect.apply(method, statement, args) as IterableIterator<unknown>, sql, tracker)
+    measureStatement(sql, tracker, () =>
+      instrumentIterator(Reflect.apply(method, statement, args) as IterableIterator<unknown>, sql, tracker),
+    )
 }
 
 const createAsMethod = (
@@ -266,14 +294,8 @@ const instrumentTransaction = (transaction: unknown, connection: Database, track
     if (typeof method !== "function") return []
     const descriptor = Object.getOwnPropertyDescriptor(transaction, property)
 
-    const wrappedMethod = (...args: Array<unknown>) => {
-      const startedAt = tracker.now()
-      try {
-        return Reflect.apply(method, transaction, args)
-      } finally {
-        tracker.recordDuration("TRANSACTION", tracker.now() - startedAt)
-      }
-    }
+    const wrappedMethod = (...args: Array<unknown>) =>
+      measureStatement("TRANSACTION", tracker, () => Reflect.apply(method, transaction, args))
     const wrappedDescriptor = {
       configurable: descriptor?.configurable ?? true,
       enumerable: descriptor?.enumerable ?? true,
@@ -284,14 +306,8 @@ const instrumentTransaction = (transaction: unknown, connection: Database, track
     return [[property, wrappedDescriptor] as const]
   })
 
-  const wrappedTransaction = (...args: Array<unknown>) => {
-    const startedAt = tracker.now()
-    try {
-      return Reflect.apply(transaction, transaction, args)
-    } finally {
-      tracker.recordDuration("TRANSACTION", tracker.now() - startedAt)
-    }
-  }
+  const wrappedTransaction = (...args: Array<unknown>) =>
+    measureStatement("TRANSACTION", tracker, () => Reflect.apply(transaction, transaction, args))
 
   // Bun's transaction functions also expose the connection they run on.
   Object.defineProperties(wrappedTransaction, {
@@ -316,46 +332,49 @@ const instrumentIterator = (
     tracker.recordDuration(sql, totalMs)
   }
 
-  const next = (...args: Array<unknown>): IteratorResult<unknown> => {
-    const callStartedAt = tracker.now()
-    try {
-      const result = Reflect.apply(iterator.next, iterator, args) as IteratorResult<unknown>
-      totalMs += tracker.now() - callStartedAt
-      if (result.done) finish()
-      return result
-    } catch (error) {
-      totalMs += tracker.now() - callStartedAt
-      finish()
-      throw error
-    }
-  }
+  const next = (...args: Array<unknown>): IteratorResult<unknown> =>
+    tracker.runWithStage(sql, () => {
+      const callStartedAt = tracker.now()
+      try {
+        const result = Reflect.apply(iterator.next, iterator, args) as IteratorResult<unknown>
+        totalMs += tracker.now() - callStartedAt
+        if (result.done) finish()
+        return result
+      } catch (error) {
+        totalMs += tracker.now() - callStartedAt
+        finish()
+        throw error
+      }
+    })
 
   const iteratorThrow = iterator.throw
   const wrappedThrow =
     typeof iteratorThrow === "function"
       ? {
-          throw: (error?: unknown) => {
-            const callStartedAt = tracker.now()
-            try {
-              const result = Reflect.apply(iteratorThrow, iterator, [error]) as IteratorResult<unknown>
-              totalMs += tracker.now() - callStartedAt
-              if (result.done) finish()
-              return result
-            } catch (caught) {
-              totalMs += tracker.now() - callStartedAt
-              finish()
-              throw caught
-            }
-          },
+          throw: (error?: unknown) =>
+            tracker.runWithStage(sql, () => {
+              const callStartedAt = tracker.now()
+              try {
+                const result = Reflect.apply(iteratorThrow, iterator, [error]) as IteratorResult<unknown>
+                totalMs += tracker.now() - callStartedAt
+                if (result.done) finish()
+                return result
+              } catch (caught) {
+                totalMs += tracker.now() - callStartedAt
+                finish()
+                throw caught
+              }
+            }),
         }
       : {}
 
   const wrappedIterator = {
     next,
-    return: (value?: unknown) => {
-      finish()
-      return iterator.return ? Reflect.apply(iterator.return, iterator, [value]) : { done: true, value }
-    },
+    return: (value?: unknown) =>
+      tracker.runWithStage(sql, () => {
+        finish()
+        return iterator.return ? Reflect.apply(iterator.return, iterator, [value]) : { done: true, value }
+      }),
     ...wrappedThrow,
     [Symbol.iterator]() {
       return this
@@ -370,15 +389,16 @@ const instrumentIterator = (
 
   return {
     ...wrappedIterator,
-    [disposeSymbol]() {
-      const callStartedAt = tracker.now()
-      try {
-        return Reflect.apply(dispose, iterator, [])
-      } finally {
-        totalMs += tracker.now() - callStartedAt
-        finish()
-      }
-    },
+    [disposeSymbol]: () =>
+      tracker.runWithStage(sql, () => {
+        const callStartedAt = tracker.now()
+        try {
+          return Reflect.apply(dispose, iterator, [])
+        } finally {
+          totalMs += tracker.now() - callStartedAt
+          finish()
+        }
+      }),
   }
 }
 

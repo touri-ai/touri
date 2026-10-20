@@ -6,7 +6,8 @@ import { getSidebarThreadTitle } from "../sidebarThreadTitle"
 
 const PAGE_SIZE = 50
 
-export const DeletedRoutineHistory = ({
+export const ThreadGroupHistory = ({
+  label,
   threads,
   routineRuns,
   routineIds,
@@ -14,6 +15,7 @@ export const DeletedRoutineHistory = ({
   selectedThreadId,
   onSelectThread,
 }: {
+  label: string
   threads: readonly Thread[]
   routineRuns: readonly RoutineRun[]
   routineIds: ReadonlySet<string> | undefined
@@ -51,10 +53,10 @@ export const DeletedRoutineHistory = ({
           setPage(0)
         }}
       >
-        {t("Deleted routine conversations")}
+        {label}
       </button>
       {open && (
-        <section className="deleted-routine-history" aria-label={t("Deleted routine conversations")}>
+        <section className="thread-group-history" aria-label={label}>
           <p role="status" ref={status} tabIndex={-1}>
             {t("Routine history range", {
               from: historyThreads.length ? offset + 1 : 0,

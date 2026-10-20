@@ -19,7 +19,7 @@ export const canDeliverNotification = ({
   const bot = notification.botId ? preferences?.bots?.[notification.botId] : undefined
   if (bot?.enabled === false) return false
   if (isBlockingNotificationKind(notification.kind)) return true
-  if (isQuietHour(preferences?.quietHours, now)) return false
+  if (isWithinNotificationQuietHours(preferences?.quietHours, now)) return false
 
   const typeEnabled = bot?.types?.[notification.kind] ?? preferences?.types?.[notification.kind]
   if (typeEnabled !== undefined) return typeEnabled
@@ -33,22 +33,15 @@ export const canDeliverNotification = ({
 
 export const isNotificationPreferences = (value: unknown): value is NotificationPreferences => {
   const preferences = getRecord(value)
-  if (!preferences || !isScopePreferences(preferences, ["bots", "quietHours"])) return false
+  if (!preferences || !isScopePreferences(preferences, ["bots", "quietHours", "sound"])) return false
 
   const bots = getRecord(preferences.bots)
   if (preferences.bots !== undefined && (!bots || !Object.values(bots).every((bot) => isScopePreferences(bot))))
     return false
-  if (preferences.quietHours === undefined) return true
+  if (preferences.quietHours !== undefined && !isQuietHoursPreferences(preferences.quietHours)) return false
+  if (preferences.sound !== undefined && !isSoundPreferences(preferences.sound)) return false
 
-  const quiet = getRecord(preferences.quietHours)
-  return (
-    !!quiet &&
-    Object.keys(quiet).every((key) => ["enabled", "start", "end", "timeZone"].includes(key)) &&
-    typeof quiet.enabled === "boolean" &&
-    isClockTime(quiet.start) &&
-    isClockTime(quiet.end) &&
-    (quiet.timeZone === undefined || isTimeZone(quiet.timeZone))
-  )
+  return true
 }
 
 export const NOTIFICATION_KINDS: readonly NotifyKind[] = [
@@ -68,7 +61,7 @@ const RESULT_KINDS: readonly NotifyKind[] = ["done", "delegation-settled"]
 export const isBlockingNotificationKind = (kind: NotifyKind): boolean =>
   kind === "approval" || kind === "question" || kind === "takeover"
 
-const isQuietHour = (quiet: NotificationPreferences["quietHours"], now: Date): boolean => {
+export const isWithinNotificationQuietHours = (quiet: NotificationPreferences["quietHours"], now: Date): boolean => {
   if (!quiet?.enabled) return false
 
   const minutes = quiet.timeZone
@@ -87,6 +80,29 @@ const isQuietHour = (quiet: NotificationPreferences["quietHours"], now: Date): b
   if (start < end) return minutes >= start && minutes < end
 
   return minutes >= start || minutes < end
+}
+
+const isQuietHoursPreferences = (value: unknown): boolean => {
+  const quiet = getRecord(value)
+  return (
+    !!quiet &&
+    Object.keys(quiet).every((key) => ["enabled", "start", "end", "timeZone"].includes(key)) &&
+    typeof quiet.enabled === "boolean" &&
+    isClockTime(quiet.start) &&
+    isClockTime(quiet.end) &&
+    (quiet.timeZone === undefined || isTimeZone(quiet.timeZone))
+  )
+}
+
+const isSoundPreferences = (value: unknown): boolean => {
+  const sound = getRecord(value)
+  return (
+    !!sound &&
+    Object.keys(sound).every((key) => ["attention", "replies", "volume"].includes(key)) &&
+    (sound.attention === undefined || typeof sound.attention === "boolean") &&
+    (sound.replies === undefined || typeof sound.replies === "boolean") &&
+    (sound.volume === undefined || (typeof sound.volume === "number" && sound.volume >= 0 && sound.volume <= 100))
+  )
 }
 
 const getClockMinutes = (time: string): number => {

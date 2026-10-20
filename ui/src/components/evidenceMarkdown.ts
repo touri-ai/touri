@@ -1,4 +1,4 @@
-export type EvidenceImage = { path: string; caption: string; filename: string; src?: string }
+export type EvidenceImage = { path: string; caption: string; filename: string; src?: string; imageSyntax?: boolean }
 export type EvidenceNode = {
   type: string
   value?: string
@@ -25,31 +25,39 @@ export const decodedEvidencePath = (path: string, imageSyntax = false): string |
 
 /** Operate on parsed nodes: fenced code, raw HTML and remote URLs never become evidence. */
 export const evidenceImages = (tree: EvidenceNode): EvidenceImage[] => {
-  const images: EvidenceImage[] = []
-  const add = (path: string, caption?: string, imageSyntax = false) => {
-    const decoded = decodedEvidencePath(path, imageSyntax)
-    if (!decoded || images.some((image) => image.path === decoded)) return
-    const filename = decoded.split("/").at(-1) ?? "Imagem"
-    images.push({ path: decoded, caption: caption || filename, filename })
+  const references = (node: EvidenceNode): Array<{ path: string; caption: string; imageSyntax: boolean }> => {
+    if (node.type === "image") return [{ path: node.url ?? "", caption: node.alt ?? "", imageSyntax: true }]
+    if (node.type === "link")
+      return [
+        {
+          path: node.url ?? "",
+          caption: node.children?.map((child) => child.value ?? "").join("") ?? "",
+          imageSyntax: false,
+        },
+      ]
+    const barePaths =
+      node.type === "text" || node.type === "inlineCode"
+        ? [
+            ...(node.value ?? "").matchAll(
+              /(?:^|[\s(`])(\/?(?:[\w.@-]+\/)*[^\s<>`"'()[\]]+?\.(?:png|jpe?g|gif|webp))(?=$|[\s.,;:!?)])/gi,
+            ),
+          ].map((match) => ({ path: match[1] ?? "", caption: "", imageSyntax: false }))
+        : []
+    const children = node.type === "code" || node.type === "html" ? [] : (node.children?.flatMap(references) ?? [])
+    return [...barePaths, ...children]
   }
-  const visit = (node: EvidenceNode) => {
-    if (node.type === "image") {
-      add(node.url ?? "", node.alt, true)
-      return
-    }
-    if (node.type === "link") {
-      add(node.url ?? "", node.children?.map((child) => child.value ?? "").join(""))
-      return
-    }
-    if (node.type === "text" || node.type === "inlineCode") {
-      // Markdown destinations already handle spaces; bare paths end at prose delimiters.
-      for (const match of (node.value ?? "").matchAll(
-        /(?:^|[\s(`])(\/?(?:[\w.@-]+\/)*[^\s<>`"'()[\]]+?\.(?:png|jpe?g|gif|webp))(?=$|[\s.,;:!?)])/gi,
-      ))
-        add(match[1] ?? "")
-    }
-    if (node.type !== "code" && node.type !== "html") node.children?.forEach(visit)
-  }
-  visit(tree)
-  return images
+  const allReferences = references(tree)
+  const validReferences = allReferences.flatMap((reference) => {
+    const path = decodedEvidencePath(reference.path, reference.imageSyntax)
+    return path ? [{ ...reference, path }] : []
+  })
+  const firstReferences = validReferences.filter(
+    (reference, index) => validReferences.findIndex((candidate) => candidate.path === reference.path) === index,
+  )
+  return firstReferences.map((reference) => {
+    const image = validReferences.find((candidate) => candidate.path === reference.path && candidate.imageSyntax)
+    const filename = reference.path.split("/").at(-1) ?? "Imagem"
+    const caption = image?.caption || reference.caption || filename
+    return { path: reference.path, caption, filename, imageSyntax: Boolean(image) }
+  })
 }

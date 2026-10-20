@@ -351,3 +351,32 @@ it("opens the Trabalho page, the Desempenho page and the projects dialog from th
 
   expect(await screen.findByRole("dialog", { name: /Conectar projeto/ })).toBeVisible()
 })
+
+it.each(["doctor", "diagnostico", "verificar"])("indexes one localized diagnostics destination for %s", (query) => {
+  const settings = settingsIndex({ hasBot: true })
+  const index = buildPaletteIndex({ bots: [], threads: [], settings, hasBot: true })
+
+  const groups = searchPalette({ index, query, messages: [], recentIds: [] })
+  const items = groups.flatMap((group) => group.items)
+  const diagnostics = items.filter(
+    (item) => item.command.kind === "setting" && item.command.destination.kind === "doctor",
+  )
+
+  expect(settings.filter((entry) => entry.destination.kind === "doctor")).toHaveLength(1)
+  expect(index.items.some((item) => item.label.includes("Doctor"))).toBe(false)
+  expect(diagnostics).toHaveLength(1)
+  expect(diagnostics[0]?.label).toBe("Diagnóstico")
+})
+
+it("opens the localized diagnostics dialog from the palette", async () => {
+  await start()
+
+  const input = await search("verifique o ambiente")
+
+  expect(activeOption(input)).toHaveTextContent("Diagnóstico")
+  expect(activeOption(input)).not.toHaveTextContent("Doctor")
+
+  fireEvent.keyDown(input, { key: "Enter" })
+
+  expect(await screen.findByRole("dialog", { name: "Diagnóstico" })).toBeVisible()
+})

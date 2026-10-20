@@ -77,7 +77,7 @@ test("existing history is backed up before resumable pruning; unpublished output
     if (process.platform !== "win32") expect(statSync(backupPath).mode & 0o777).toBe(0o600)
     const backupModified = statSync(backupPath).mtimeMs
     const bus = createEventBus(database)
-    bus.stop()
+    await waitForTranscriptCapture(database).finally(bus.stop)
     expect(await upgrade.step()).toBe(true)
     const cursor = upgrade.snapshot()?.processed ?? 0
     expect(cursor).toBeGreaterThan(0)
@@ -108,6 +108,20 @@ test("existing history is backed up before resumable pruning; unpublished output
     rmSync(f.root, { recursive: true, force: true })
   }
 })
+
+const waitForTranscriptCapture = async (database: Database) => {
+  const deadline = Date.now() + 2000
+  while (Date.now() < deadline) {
+    const row = database
+      .query(`SELECT 1 FROM transcript_entries WHERE id > (
+      SELECT cast(value AS INTEGER) FROM schema_meta WHERE key = 'transcript_event_checkpoint'
+    ) LIMIT 1`)
+      .get()
+    if (!row) return
+    await Bun.sleep(0)
+  }
+  throw new Error("Transcript capture did not finish before stopping the publisher")
+}
 
 test.skipIf(process.platform === "win32")(
   "online backup canonicalizes external directory aliases and preserves committed WAL data",

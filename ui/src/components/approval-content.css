@@ -2,11 +2,11 @@
   display: grid;
   gap: var(--space-8);
   margin: var(--space-12) 0;
-  font-size: var(--type-12);
+  font-size: var(--fs-caption);
   overflow-wrap: anywhere;
 }
 .tool-approval-context dt {
-  color: var(--text-secondary);
+  color: var(--text-2);
 }
 .tool-approval-context dd {
   margin: 0;
@@ -18,8 +18,8 @@
 }
 .tool-approval-diff {
   margin: var(--space-8) 0;
-  border: 1px solid var(--border-code);
-  border-radius: var(--radius-8);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 .tool-call-card.approval-card .tool-code-region pre,
@@ -32,6 +32,6 @@
 }
 .tool-approval-unknown {
   margin: var(--space-8) 0;
-  font-size: var(--type-12);
-  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  color: var(--text-2);
 }

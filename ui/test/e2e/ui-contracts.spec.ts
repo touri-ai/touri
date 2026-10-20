@@ -21,8 +21,12 @@ for (const theme of ["light", "dark"]) {
       await page
         .locator(".modal-card")
         .evaluate((node) => getComputedStyle(node).boxShadow.split(/, (?![^()]*\))/).length),
-    ).toBe(3)
-    await page.screenshot({ path: info.outputPath(`surfaces-${theme}.png`), fullPage: true })
+    ).toBe(2)
+    await page.screenshot({
+      path: info.outputPath(`surfaces-${theme}.png`),
+      fullPage: true,
+      mask: [page.locator("[data-approval-id] .tool-summary")],
+    })
   })
 }
 
@@ -37,7 +41,7 @@ for (const coarse of [false, true]) {
     await page.goto(`${baseURL}${url}`)
     expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(coarse)
     const icon = page.locator(".sidebar-icon-button")
-    await expect(icon).toHaveCSS("height", coarse ? "44px" : "32px")
+    await expect(icon).toHaveCSS("height", coarse ? "44px" : "40px")
     const tab = page.locator(".bot-panel-tabs button")
     expect((await tab.boundingBox())?.height).toBeGreaterThanOrEqual(coarse ? 44 : 32)
     for (const selector of [".bot-context-menu button", ".tool-action", ".tool-details > summary"]) {
@@ -53,7 +57,11 @@ for (const coarse of [false, true]) {
         }
       }
     }
-    await page.screenshot({ path: info.outputPath(`pointer-${coarse ? "coarse" : "fine"}.png`), fullPage: true })
+    await page.screenshot({
+      path: info.outputPath(`pointer-${coarse ? "coarse" : "fine"}.png`),
+      fullPage: true,
+      mask: [page.locator("[data-approval-id] .tool-summary")],
+    })
     await context.close()
   })
 }
@@ -69,7 +77,11 @@ test("S08: forced colors preserve focus, status text and deliberate keyboard app
   await expect(card.locator(".tool-status-chip")).toContainText("Aguardando aprovação")
   await expect(card.locator(".tool-decision-chip")).toHaveCount(0)
   await expect(page.locator(".tool-status-chip").first()).toContainText("Concluído")
-  await page.screenshot({ path: info.outputPath("forced-colors-focus-status.png"), fullPage: true })
+  await page.screenshot({
+    path: info.outputPath("forced-colors-focus-status.png"),
+    fullPage: true,
+    mask: [page.locator("[data-approval-id] .tool-summary")],
+  })
 })
 
 test("A13b: state ink interpolates and reduced motion retains its static destination", async ({ page }) => {

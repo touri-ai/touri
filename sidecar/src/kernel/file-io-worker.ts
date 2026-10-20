@@ -55,6 +55,7 @@ const execute = (task: FileIoTask): unknown => {
     return undefined
   }
   if (task.operation === "exists") return readPrivateFile({ ...task.args, maxBytes: 1 }) !== null
+  if (task.operation === "read-private") return readPrivateFile(task.args)?.toString("base64") ?? null
   if (task.operation === "prepare-database") return prepareDatabaseFile(task.args)
   if (task.operation === "create-workspace-directory") {
     createWorkspaceDirectory(task.args)

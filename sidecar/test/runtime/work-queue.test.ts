@@ -6,10 +6,12 @@ import { join } from "node:path"
 import type { ProviderAdapter, Run, StartTurnArgs, StartTurnResult } from "@touri/contracts"
 import { createGroupStore } from "../../src/groups/store"
 import { createKernel } from "../../src/kernel"
+import { authenticatedSender, bindDeviceSession } from "../../src/kernel/device-session"
 import { createLearningReviewer } from "../../src/learning/review"
 import { readLearningState, writeLearning } from "../../src/learning/settings"
 import { init as initRuntime } from "../../src/runtime"
 import { createRuntimeEngine } from "../../src/runtime/engine"
+import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { init as initStore } from "../../src/store"
 
 const cleanups = new Set<() => Promise<void>>()
@@ -207,6 +209,42 @@ test("work snapshots identify routine, delegated and resumed turns and restore q
   expect(restored.map((run) => run.queuePosition)).toEqual([1, 2, 3, 4, 5])
   expect(restored.every((run) => run.queueTotal === 5)).toBe(true)
   expect(restored.slice(2).map((run) => run.origin)).toEqual(["resume", "resume", "resume"])
+})
+
+test("authenticated people keep message origin in live and persisted work snapshots", async () => {
+  const fixture = await getFixture()
+  const signal = new AbortController().signal
+  bindDeviceSession(signal, {
+    deviceId: "admin-device",
+    person: { id: "owner", name: "Admin", email: null, avatarSeed: "admin", role: "admin" },
+    active: () => true,
+  })
+  const store = fixture.runtime.kernel.services.use("store.api")
+  if (!store) throw new Error("Store unavailable")
+  const request = store.insertMessage({
+    message: {
+      id: "human-request",
+      threadId: "thread-0",
+      parentId: null,
+      role: "user",
+      kind: "text",
+      status: "complete",
+      runId: null,
+      text: "Crie um time de demonstração.",
+      parts: [],
+      sender: authenticatedSender(signal),
+      source: "local",
+    },
+  })
+  if (!request.success) throw new Error(request.error)
+
+  const result = fixture.engine.enqueue({ threadId: "thread-0", requestMessageId: request.message.id, trigger: "user" })
+  if (!result.success) throw new Error(result.error)
+  const persisted = createRuntimePersistence({ database: fixture.runtime.kernel.db })
+
+  expect(fixture.engine.getRunSnapshot(result.run).origin).toBe("message")
+  expect(fixture.engine.getWorkRuns().find((run) => run.id === result.run.id)?.origin).toBe("message")
+  expect(persisted.getRunSnapshots([result.run.id])[0]?.origin).toBe("message")
 })
 
 test("group work preserves execution thread IDs in every event and keeps learning scoped to private chats", async () => {

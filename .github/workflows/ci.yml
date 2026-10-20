@@ -206,7 +206,7 @@ jobs:
 
   api-models:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun
@@ -244,6 +244,19 @@ jobs:
           path: |
             ui/test-results/**/trace.zip
             ui/test-results/**/error-context.md
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Check chat image layout on desktop and phone in both themes
+        working-directory: ui
+        env:
+          CHAT_IMAGE_CAPTURE: "1"
+        run: bunx playwright test test/e2e/chat-image-layout.spec.ts --workers=1
+      - name: Keep synthetic chat image evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: chat-image-layout
+          path: ui/test-results/**/after-*.png
           if-no-files-found: ignore
           retention-days: 7
       - name: Check API model setup and bot selection
@@ -287,6 +300,32 @@ jobs:
           path: ui/test-results/message-edit-target/**/*.png
           if-no-files-found: ignore
           retention-days: 7
+      - name: Check empty bot conversation and paused notice
+        working-directory: ui
+        run: bunx playwright test test/e2e/select-empty-bot.spec.ts --workers=1 --output test-results/empty-bot
+      - name: Keep synthetic empty bot evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: empty-bot
+          path: ui/test-results/empty-bot/**/*.png
+          if-no-files-found: error
+          retention-days: 7
+      - name: Check sidebar targets and UI contracts
+        working-directory: ui
+        env:
+          SIDEBAR_CAPTURE: test-results/sidebar-targets
+        run: bunx playwright test test/e2e/sidebar-targets.spec.ts test/e2e/ui-contracts.spec.ts --workers=1 --output test-results/sidebar-contracts
+      - name: Keep synthetic sidebar evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sidebar-targets
+          path: |
+            ui/test-results/sidebar-targets/*.png
+            ui/test-results/sidebar-contracts/**/*.png
+          if-no-files-found: error
+          retention-days: 7
       - name: Check group coordination on desktop and phone
         working-directory: ui
         run: bunx playwright test test/e2e/group-coordination.spec.ts --workers=1
@@ -304,6 +343,21 @@ jobs:
       - name: Check routine history on desktop and phone
         working-directory: ui
         run: bunx playwright test test/e2e/routine-sidebar.spec.ts --workers=1
+      - name: Check automatic conversation mode and task grouping
+        working-directory: ui
+        env:
+          TOURI_SCREENSHOT_DIR: ${{ runner.temp }}/automatic-conversations-evidence
+        run: |
+          mkdir -p "$TOURI_SCREENSHOT_DIR"
+          bunx playwright test test/e2e/automatic-conversations.spec.ts --workers=1
+      - name: Keep synthetic automatic conversation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: automatic-conversations
+          path: ${{ runner.temp }}/automatic-conversations-evidence/*.png
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Check notification preferences on desktop and phone
         working-directory: ui
         run: bunx playwright test test/e2e/notification-preferences.spec.ts --workers=1 --output test-results/notification-preferences

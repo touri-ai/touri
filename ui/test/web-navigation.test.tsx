@@ -226,3 +226,30 @@ it("replaces an unavailable selected bot in place rather than pushing its fallba
   expect(push).not.toHaveBeenCalled()
   expect(replace).toHaveBeenCalledTimes(1)
 })
+
+it("restores browser navigation and typed text around a paused bot draft", async () => {
+  const api = createMockApi()
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  await locationIs("bot-mark", "thread-mark")
+  selectBot("bot-onb")
+  await locationIs("bot-onb", "thread-onb")
+
+  selectBot("bot-panko")
+  const composer = await screen.findByRole("textbox", { name: "Mensagem para Panko" })
+  fireEvent.change(composer, { target: { value: "Rascunho fictício de navegação" } })
+
+  await waitFor(() => expect(parseDeepLink(window.location.href)).toEqual({ bot: "bot-panko", thread: null }))
+
+  act(() => window.history.back())
+
+  await screen.findByRole("textbox", { name: "Mensagem para onb" })
+  await locationIs("bot-onb", "thread-onb")
+
+  act(() => window.history.forward())
+
+  expect(await screen.findByRole("textbox", { name: "Mensagem para Panko" })).toHaveValue(
+    "Rascunho fictício de navegação",
+  )
+  expect(api.calls.filter((call) => call.route === "POST /threads")).toHaveLength(0)
+})

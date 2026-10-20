@@ -599,6 +599,7 @@ pub fn run() {
             preview_hide,
             permissions_status,
             notifications::notification_permission,
+            notifications::notification_system_quiet,
             notifications::notification_test,
             notifications::notification_open_settings,
             computer_kill_switch,

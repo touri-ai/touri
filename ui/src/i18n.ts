@@ -1,4 +1,4 @@
-import { type Bot, getHostNoun, type HostKind } from "@touri/contracts"
+import { type Bot, getHostNoun, type HostKind, type Routine, type RoutineRun } from "@touri/contracts"
 import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
@@ -6,6 +6,12 @@ export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
   "O bot foi excluído, mas a limpeza dos anexos privados está pendente. O touri tentará concluir a limpeza automaticamente.":
     "O bot foi excluído, mas a limpeza dos anexos privados está pendente. O touri tentará concluir a limpeza automaticamente.",
+  "O bot foi removido. A limpeza do histórico e dos anexos continua em segundo plano.":
+    "O bot foi removido. A limpeza do histórico e dos anexos continua em segundo plano.",
+  "No modo servidor, somente administradores podem excluir bots.":
+    "No modo servidor, somente administradores podem excluir bots.",
+  "Se o touri estiver em modo servidor, apenas administradores podem excluir bots.":
+    "Se o touri estiver em modo servidor, apenas administradores podem excluir bots.",
   "Propose 1 to 8 bots and an optional group for explicit user approval. Only the Team builder job in a direct user turn can use this tool. Never creates anything without the Create team click, even with approvals disabled. Bot drafts cannot request access: all start local, ask before file changes, with no project or extra folders, browser or computer control. Group members and optional coordinator are names from this proposal. Missing provider installation/login does not prevent creation; setup follows in each bot's settings.":
     "Propor de um a oito bots e um grupo opcional para aprovação explícita. Disponível só no Criador de times em conversa direta. Cada bot começa local, pedindo permissão para mudar arquivos, sem projeto, pastas extras, navegador ou controle do computador. Instalação e login pendentes podem ser resolvidos depois nas configurações.",
   "jobs.team-builder.name": "Criador de times",
@@ -88,6 +94,12 @@ export const ptBR = {
   "Sempre avisar": "Sempre avisar",
   "Aprovações, perguntas e pedidos para você assumir continuam alertando durante o horário silencioso.":
     "Aprovações, perguntas e pedidos para você assumir continuam alertando durante o horário silencioso.",
+  Som: "Som",
+  "Som para o que precisa de você": "Som para o que precisa de você",
+  "Som para cada resposta": "Som para cada resposta",
+  "Volume do som": "Volume do som",
+  "O som respeita o horário silencioso e os períodos de silêncio do sistema detectáveis.":
+    "O som respeita o horário silencioso e os períodos de silêncio do sistema detectáveis.",
   "Routine finished with no news.": "Rotina concluída sem novidades.",
   "Escolher avisos e horário silencioso": "Escolher avisos e horário silencioso",
   "Filtre por bot e tipo, incluindo resultados concluídos.": "Filtre por bot e tipo, incluindo resultados concluídos.",
@@ -1250,6 +1262,23 @@ export const ptBR = {
   "Bot access settings": "Ajustar permissões",
   "Project preview": "Preview do projeto",
   "Bot groups": "Grupos",
+  "Onde o bot responde": "Onde o bot responde",
+  "Na conversa principal": "Na conversa principal",
+  "Uma conversa nova por tarefa": "Uma conversa nova por tarefa",
+  "Seguir configuração do bot": "Seguir configuração do bot",
+  "Segue o bot: conversa principal": "Segue o bot: conversa principal",
+  "Segue o bot: uma conversa nova por tarefa": "Segue o bot: uma conversa nova por tarefa",
+  "Automatic conversation mode help":
+    "No modo principal, as rotinas ficam na conversa do bot. Cada execução mostra o gatilho e o horário; no outro modo, cada execução ganha uma conversa própria.",
+  "Routine row title": "Rotina {name}",
+  "Task row title": "Tarefas {name}",
+  "Task conversation history for {name}": "Histórico de tarefas de {name}",
+  "Today count suffix": " · {count} hoje",
+  "Routine run header": "{name} · {trigger} · {time}",
+  "Routine trigger scheduled": "Programada",
+  "Routine trigger manual": "Manual",
+  "Routine trigger catch-up": "Recuperada",
+  "Routine trigger imported": "Importada",
   "Group coordinator suffix": " · coordenador",
   "This bot has no groups yet.": "Este bot ainda não pertence a um grupo.",
   "Bot routines": "Rotinas deste bot",
@@ -2267,6 +2296,13 @@ export const ptBR = {
   "Notification center": "Central de notificações",
   "Clear all": "Dispensar todas",
   "Nothing needs you right now.": "Nenhuma notificação no momento.",
+  "Precisa de você": "Precisa de você",
+  "Open pending item for {name}": "Abrir pendência de {name}",
+  "{name} wants your approval": "{name} quer sua aprovação",
+  "{name} needs your answer": "{name} precisa da sua resposta",
+  "{name} needs your help": "{name} precisa da sua ajuda",
+  "{name} has a task to review": "{name} tem uma tarefa para revisar",
+  "{name} is waiting for you": "{name} está esperando você",
   "Message branches": "Ramificações da mensagem",
   "Previous branch": "Ramificação anterior",
   "Next branch": "Próxima ramificação",
@@ -2638,9 +2674,19 @@ export const ptBR = {
   "Não foi possível iniciar a compactação. Aguarde a migração ou compactação em andamento e tente novamente.":
     "Não foi possível iniciar a compactação. Aguarde a migração ou compactação em andamento e tente novamente.",
   "O provedor não detalhou o pedido": "O provedor não detalhou o pedido",
+  "Aviso de bot pausado": "Aviso de bot pausado",
+  "{name} está pausado": "{name} está pausado",
+  "Bots pausados não respondem mensagens. Retome o bot para começar a conversa.":
+    "Bots pausados não respondem mensagens. Retome o bot para começar a conversa.",
+  "Retomar bot": "Retomar bot",
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Aviso de bot pausado": "Paused bot notice",
+  "{name} está pausado": "{name} is paused",
+  "Bots pausados não respondem mensagens. Retome o bot para começar a conversa.":
+    "Paused bots don't answer messages. Resume it to start the conversation.",
+  "Retomar bot": "Resume bot",
   "O provedor não detalhou o pedido": "The provider gave no details for this request",
   "sobre você": "about you",
   "sobre o ambiente": "about the environment",
@@ -2724,6 +2770,19 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Digite o nome do grupo: {name}": "Type the group name: {name}",
   "Aviso do bot": "Bot notice",
   "Sempre avisar": "Always alert",
+  Som: "Sound",
+  "Som para o que precisa de você": "Sound for items that need you",
+  "Som para cada resposta": "Sound for every reply",
+  "Volume do som": "Sound volume",
+  "O som respeita o horário silencioso e os períodos de silêncio do sistema detectáveis.":
+    "Sound follows quiet hours and detectable system quiet modes.",
+  "Precisa de você": "Needs you",
+  "Open pending item for {name}": "Open pending item for {name}",
+  "{name} wants your approval": "{name} wants your approval",
+  "{name} needs your answer": "{name} needs your answer",
+  "{name} needs your help": "{name} needs your help",
+  "{name} has a task to review": "{name} has a task to review",
+  "{name} is waiting for you": "{name} is waiting for you",
   "Aprovações, perguntas e pedidos para você assumir continuam alertando durante o horário silencioso.":
     "Approvals, questions and requests for you to take over still alert during quiet hours.",
   "Routine finished with no news.": "Routine finished with no news.",
@@ -3215,6 +3274,12 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "Could not remove the bot's history and links. Try deleting again; if the problem persists, send a problem report.",
   "O bot foi excluído, mas a limpeza dos anexos privados está pendente. O touri tentará concluir a limpeza automaticamente.":
     "The bot was deleted, but private attachment cleanup is pending. touri will automatically try to finish the cleanup.",
+  "O bot foi removido. A limpeza do histórico e dos anexos continua em segundo plano.":
+    "The bot was removed. History and attachment cleanup continues in the background.",
+  "No modo servidor, somente administradores podem excluir bots.":
+    "Only administrators can delete bots in server mode.",
+  "Se o touri estiver em modo servidor, apenas administradores podem excluir bots.":
+    "If touri is running in server mode, only administrators can delete bots.",
   "Não foi possível excluir a rotina. Tente novamente.": "Could not delete the routine. Try again.",
   "Excluindo…": "Deleting…",
   Excluir: "Delete",
@@ -3858,6 +3923,23 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Bot access settings": "Adjust permissions",
   "Project preview": "Project preview",
   "Bot groups": "Groups",
+  "Onde o bot responde": "Where the bot replies",
+  "Na conversa principal": "In the main conversation",
+  "Uma conversa nova por tarefa": "A new conversation for each task",
+  "Seguir configuração do bot": "Follow bot setting",
+  "Segue o bot: conversa principal": "Follows bot: main conversation",
+  "Segue o bot: uma conversa nova por tarefa": "Follows bot: a new conversation per task",
+  "Automatic conversation mode help":
+    "In main mode, routines stay in the bot's conversation. Each run shows its trigger and time; task mode gives every run its own conversation.",
+  "Routine row title": "Routine {name}",
+  "Task row title": "Tasks {name}",
+  "Task conversation history for {name}": "Task history for {name}",
+  "Today count suffix": " · {count} today",
+  "Routine run header": "{name} · {trigger} · {time}",
+  "Routine trigger scheduled": "Scheduled",
+  "Routine trigger manual": "Manual",
+  "Routine trigger catch-up": "Catch-up",
+  "Routine trigger imported": "Imported",
   "Group coordinator suffix": " · coordinator",
   "This bot has no groups yet.": "This bot has no groups yet.",
   "Bot routines": "This bot’s routines",
@@ -4715,6 +4797,25 @@ export const getRoutineRunDateLabel = (timestamp: number, locale: Locale = "pt-B
 
 export const getRoutineRunTimeLabel = (timestamp: number, locale: Locale = "pt-BR", timeZone?: string): string =>
   new Intl.DateTimeFormat(locale, { timeStyle: "short", ...(timeZone ? { timeZone } : {}) }).format(timestamp)
+
+export const getRoutineRunCountsToday = (
+  routineRuns: readonly RoutineRun[],
+  routines: ReadonlyMap<string, Routine>,
+  now = Date.now(),
+): ReadonlyMap<string, number> => {
+  const today = new Date(now).toDateString()
+  const counts = new Map<string, number>()
+  routineRuns.forEach((run) => {
+    const routine = routines.get(run.routineId)
+    if (!routine) return
+
+    if (new Date(run.scheduledFor).toDateString() !== today) return
+
+    counts.set(run.routineId, (counts.get(run.routineId) ?? 0) + 1)
+  })
+
+  return counts
+}
 
 export const getRoutineRunSidebarDateLabel = (
   timestamp: number,

@@ -44,6 +44,30 @@ const fixture = () => {
 }
 
 describe("repeating work", () => {
+  it("keeps new routine drafts connected to the bot's conversation setting", () => {
+    const f = fixture()
+
+    expect(newRoutineDraft(f.bot.id).continuity).toBe("new-thread")
+  })
+
+  for (const [mode, destination] of [
+    ["main", "Segue o bot: conversa principal"],
+    ["task", "Segue o bot: uma conversa nova por tarefa"],
+  ] as const) {
+    it(`shows the effective ${mode} bot destination for a deferred routine`, () => {
+      const f = fixture()
+      const bot = { ...f.bot, automaticConversationMode: mode }
+      render(<RoutineEditor initial={f.draft} bots={[bot]} actions={f.actions} host="server" onClose={vi.fn()} />)
+
+      const destinationOption = screen.getByRole("combobox", { name: "Destino dos resultados" })
+      expect(destinationOption).toHaveValue("new-thread")
+      expect(within(destinationOption).getByRole("option", { name: "Seguir configuração do bot" })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole("button", { name: "Revisar rotina" }))
+
+      expect(screen.getByText(destination)).toBeVisible()
+    })
+  }
+
   it("shows readable Portuguese labels for every routine timezone option", () => {
     const f = fixture()
     const draft = { ...f.draft, timezone: "America/Manaus" }

@@ -223,6 +223,159 @@ test("the stage tracker exposes the active stage through async nesting", async (
   expect(stageTracker.getCurrentStage()).toBeUndefined()
 })
 
+test.each([
+  ["settings", "sqlite_settings_write"],
+  ["runs", "sqlite_run_write"],
+  ["messages", "sqlite_message_write"],
+  ["notifications", "sqlite_notification_write"],
+  ["notification_log", "sqlite_notification_write"],
+  ["recovery_tasks", "sqlite_recovery_write"],
+  ["work_journal", "sqlite_recovery_write"],
+  ["work_roots", "sqlite_recovery_write"],
+] as const)("an unmarked %s write survives in the delayed lag report as %s", (table, stage) => {
+  const fixture = getWriteStageFixture(table)
+  let sample = () => {}
+  const diagnostics = createPerformanceDiagnostics({
+    log: fixture.log,
+    getContext: () => ({ activeRuns: 0, sseClients: 0, websocketClients: 0 }),
+    now: fixture.now,
+    stageTracker: fixture.stages,
+    slowStatements: fixture.tracker,
+    sampleMs: 10,
+    lagThresholdMs: 5,
+    startSampling: (callback) => {
+      sample = callback
+      return () => {}
+    },
+  })
+  cleanups.add(diagnostics.stop)
+
+  fixture.database.query(`INSERT INTO ${table}(label, ticks) VALUES (?, ?)`).run("synthetic-bound", 1)
+  sample()
+
+  const report = fixture.log.mock.calls.map(([entry]) => entry).find((entry) => entry.msg === "Atraso no event loop")
+  expect(report?.data?.stages).toEqual([{ stage, calls: 2, totalMs: 600, maxMs: 300 }])
+  expect(report?.data?.slowStatements).toEqual([
+    {
+      stage,
+      sql: `INSERT INTO ${table}(label, ticks) VALUES (?, ?)`,
+      calls: 2,
+      totalMs: 600,
+      maxMs: 300,
+    },
+  ])
+  expect(fixture.stages.getCurrentStage()).toBeUndefined()
+  expect(JSON.stringify(fixture.log.mock.calls)).not.toContain("synthetic-bound")
+})
+
+test.each(["default", "deferred", "immediate", "exclusive"] as const)(
+  "a %s transaction keeps its commit boundary and nested write attribution",
+  (mode) => {
+    const fixture = getWriteStageFixture("settings")
+    const transaction = fixture.database.transaction(() => {
+      fixture.database.query("INSERT INTO settings(label, ticks) VALUES (?, ?)").run("synthetic", 1)
+      return "committed"
+    })
+
+    const method = mode === "default" ? transaction : transaction[mode]
+    const result = method()
+
+    expect(result).toBe("committed")
+    expect(fixture.stages.snapshot().map(({ stage, calls }) => ({ stage, calls }))).toEqual([
+      { stage: "sqlite_transaction", calls: 1 },
+      { stage: "sqlite_settings_write", calls: 2 },
+    ])
+    expect(fixture.tracker.snapshot().map(({ stage, sql }) => ({ stage, sql }))).toContainEqual({
+      stage: "sqlite_transaction",
+      sql: "TRANSACTION",
+    })
+    expect(fixture.database.query("SELECT label FROM settings").get()).toEqual({ label: "synthetic" })
+    expect(fixture.stages.getCurrentStage()).toBeUndefined()
+  },
+)
+
+test("cached writes use the caller's current stage and restore it after errors", () => {
+  const fixture = getWriteStageFixture("settings")
+  const statement = fixture.database.query("INSERT INTO settings(label, ticks) VALUES (?, ?)")
+  fixture.stages.reset()
+  fixture.tracker.reset()
+
+  fixture.stages.run("notification_recovery_reconcile", () => {
+    statement.run("synthetic", 1)
+    expect(() => statement.run("synthetic", 1)).toThrow()
+    expect(fixture.stages.getCurrentStage()).toBe("notification_recovery_reconcile")
+  })
+
+  expect(fixture.tracker.snapshot().every(({ stage }) => stage === "notification_recovery_reconcile")).toBe(true)
+  expect(fixture.stages.snapshot()).toEqual([
+    { stage: "notification_recovery_reconcile", calls: 1, totalMs: 600, maxMs: 600 },
+  ])
+  expect(fixture.stages.getCurrentStage()).toBeUndefined()
+})
+
+test("an unmarked failing transaction rolls back and preserves the original error", () => {
+  const fixture = getWriteStageFixture("settings")
+  const failure = new Error("Synthetic transaction failure")
+  const transaction = fixture.database.transaction(() => {
+    fixture.database.query("INSERT INTO settings(label, ticks) VALUES (?, ?)").run("synthetic", 1)
+    throw failure
+  })
+  let thrown: unknown
+
+  try {
+    transaction.immediate()
+  } catch (error) {
+    thrown = error
+  }
+
+  expect(thrown).toBe(failure)
+  expect(fixture.stages.getCurrentStage()).toBeUndefined()
+  expect(fixture.stages.snapshot().some(({ stage }) => stage === "sqlite_transaction")).toBe(true)
+  expect(fixture.database.query("SELECT COUNT(*) AS count FROM settings").get()).toEqual({ count: 0 })
+})
+
+test("direct exec, run, RETURNING iterators and opaque SQL have bounded fallback stages", () => {
+  const fixture = getWriteStageFixture("settings")
+
+  fixture.database.run("INSERT INTO settings(label, ticks) VALUES (?, ?)", ["first", 1])
+  fixture.database.exec("UPDATE settings SET ticks = 1 WHERE label = 'first'")
+  const rows = Array.from(fixture.database.query("DELETE FROM settings WHERE ticks = 1 RETURNING label").iterate())
+  fixture.database.exec("/* synthetic prefix */ INSERT INTO settings(label, ticks) VALUES ('second', 1)")
+
+  expect(rows).toEqual([{ label: "first" }])
+  expect(fixture.tracker.snapshot().map(({ stage }) => stage)).toEqual([
+    "sqlite_settings_write",
+    "sqlite_settings_write",
+    "sqlite_settings_write",
+    "sqlite_main",
+  ])
+  expect(fixture.stages.snapshot().map(({ stage }) => stage)).toEqual(["sqlite_settings_write", "sqlite_main"])
+  expect(fixture.stages.getCurrentStage()).toBeUndefined()
+})
+
+const getWriteStageFixture = (table: string) => {
+  let at = 0
+  let timingCalls = 0
+  const now = () => at
+  const stages = createPerformanceStageTracker(now)
+  const log = mock<Kernel["log"]>()
+  const tracker = createSlowStatementTracker({
+    log,
+    getStage: stages.getCurrentStage,
+    runStage: stages.run,
+    now: () => {
+      // Advance a fixture-owned clock instead of sleeping on the event loop.
+      timingCalls += 1
+      if (timingCalls % 2 === 0) at += 300
+      return at
+    },
+  })
+  const rawDatabase = new Database(":memory:")
+  databases.add(rawDatabase)
+  rawDatabase.exec(`CREATE TABLE ${table}(label TEXT UNIQUE, ticks INTEGER)`)
+  return { database: instrumentMainConnection(rawDatabase, tracker), stages, tracker, log, now }
+}
+
 const getDatabase = ({ log, now }: { log: Kernel["log"]; now: () => number }): Database => {
   const rawDatabase = new Database(":memory:")
   databases.add(rawDatabase)

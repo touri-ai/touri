@@ -9,8 +9,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   padding: 8px 12px;
 }
 .message-attachments li > span {
@@ -28,17 +28,17 @@
   min-width: min(300px, 100%);
 }
 .user-message-editor p {
-  font-size: 12px;
-  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  color: var(--text-2);
 }
 .user-message-editor textarea {
   width: 100%;
   resize: vertical;
   padding: 10px;
-  color: var(--text-primary);
-  background: var(--surface-panel);
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   font: inherit;
 }
 .user-message-editor > div {
@@ -46,4 +46,10 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+}
+@media (max-width: 800px), (pointer: coarse) {
+  .user-message-actions > button {
+    min-width: var(--touch-target-size);
+    min-height: var(--touch-target-size);
+  }
 }

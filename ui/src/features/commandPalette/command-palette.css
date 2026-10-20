@@ -15,22 +15,22 @@
   width: min(640px, 100%);
   max-height: min(560px, calc(100vh - 140px));
   overflow: hidden;
-  border: 1px solid var(--border-dialog);
-  border-radius: var(--radius-14);
-  background: var(--surface-panel);
-  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
   box-shadow: var(--elevation-modal);
 }
 .command-palette-input {
   display: flex;
   align-items: center;
   gap: var(--space-12);
-  padding: var(--space-14) var(--space-16);
-  border-bottom: 1px solid var(--border-default);
-  color: var(--text-tertiary);
+  padding: var(--space-12) var(--space-16);
+  border-bottom: 1px solid var(--border-strong);
+  color: var(--text-2);
 }
 .command-palette-input:focus-within {
-  box-shadow: inset 0 -1px var(--text-primary);
+  box-shadow: inset 0 -1px var(--text);
 }
 .command-palette-input input {
   flex: 1;
@@ -41,32 +41,32 @@
   padding: revert;
   border-radius: revert;
   background: transparent;
-  color: var(--text-primary);
-  font-size: var(--type-14);
+  color: var(--text);
+  font-size: var(--fs-body);
 }
 .command-palette-input input:focus-visible {
   outline: none;
 }
 .command-palette kbd {
   padding: 0 var(--space-4);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-4);
-  color: var(--text-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  color: var(--text-2);
   font-family: var(--font-mono-brand);
-  font-size: var(--type-11);
+  font-size: var(--fs-caption);
 }
 .command-palette-list {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--space-6) var(--space-8) var(--space-8);
+  padding: var(--space-8) var(--space-8) var(--space-8);
   overscroll-behavior: contain;
 }
 .command-palette-group {
-  padding: var(--space-10) var(--space-10) var(--space-4);
-  color: var(--text-tertiary);
+  padding: var(--space-8) var(--space-8) var(--space-4);
+  color: var(--text-2);
   font-family: var(--font-mono-brand);
-  font-size: var(--type-11);
+  font-size: var(--fs-caption);
   letter-spacing: 0.02em;
 }
 .command-palette-option {
@@ -74,13 +74,13 @@
   align-items: center;
   gap: var(--space-12);
   min-height: 40px;
-  padding: var(--space-8) var(--space-10);
-  border-radius: var(--radius-8);
+  padding: var(--space-8) var(--space-8);
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
 .command-palette-option[data-active] {
   background: var(--surface-selected);
-  box-shadow: inset 2px 0 var(--text-primary);
+  box-shadow: inset 2px 0 var(--text);
 }
 .command-palette-option-copy {
   display: grid;
@@ -95,16 +95,16 @@
   text-overflow: ellipsis;
 }
 .command-palette-option-copy strong {
-  font-size: var(--type-13);
+  font-size: var(--fs-meta);
   font-weight: var(--weight-semibold);
 }
 .command-palette-option-copy small {
-  color: var(--text-secondary);
-  font-size: var(--type-12);
+  color: var(--text-2);
+  font-size: var(--fs-caption);
 }
 .command-palette-option-hint {
-  color: var(--text-tertiary);
-  font-size: var(--type-12);
+  color: var(--text-2);
+  font-size: var(--fs-caption);
   opacity: 0;
 }
 .command-palette-option[data-active] .command-palette-option-hint {
@@ -112,17 +112,17 @@
 }
 .command-palette-empty {
   margin: 0;
-  padding: var(--space-20) var(--space-10);
-  color: var(--text-secondary);
-  font-size: var(--type-13);
+  padding: var(--space-20) var(--space-8);
+  color: var(--text-2);
+  font-size: var(--fs-meta);
 }
 .command-palette-footer {
   display: flex;
   gap: var(--space-16);
   padding: var(--space-8) var(--space-16);
-  border-top: 1px solid var(--border-subtle);
-  color: var(--text-tertiary);
-  font-size: var(--type-11);
+  border-top: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: var(--fs-caption);
 }
 .command-palette-footer span {
   display: inline-flex;
@@ -131,10 +131,10 @@
 }
 /* Palette destinations: the focused setting row is outlined briefly, then settles. */
 [data-setting-highlight="true"] {
-  border-radius: var(--radius-8);
+  border-radius: var(--radius-sm);
   box-shadow:
     0 0 0 2px var(--focus-ring),
-    inset 0 0 0 1px var(--text-primary);
+    inset 0 0 0 1px var(--text);
   transition: box-shadow var(--duration-surface) var(--ease-surface);
 }
 @media (prefers-reduced-motion: reduce) {

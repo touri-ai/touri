@@ -20,7 +20,13 @@ import { protectDiffFences } from "./codeFence"
 import { observeCodeVisibility } from "./codeVisibility"
 import { DiffOutput } from "./DiffOutput"
 import { EvidenceContext, type EvidenceContextValue, EvidenceGallery, readImage } from "./EvidenceGallery"
-import { decodedEvidencePath, type EvidenceNode, evidenceImages, evidencePath } from "./evidenceMarkdown"
+import {
+  decodedEvidencePath,
+  type EvidenceImage,
+  type EvidenceNode,
+  evidenceImages,
+  evidencePath,
+} from "./evidenceMarkdown"
 import { LocalFileLink } from "./LocalFileLink"
 import { MermaidDiagram } from "./MermaidDiagram"
 import { getMarkdownCodeHtml } from "./markdownHighlight"
@@ -143,9 +149,23 @@ const LazyMarkdown = lazy(async () => {
     { unified },
     { default: remarkParse },
   ] = await Promise.all([import("react-markdown"), import("remark-gfm"), import("unified"), import("remark-parse")])
-  const buildComponents = (preview: boolean): Components => ({
-    img: ({ alt }) => <span>{alt}</span>,
+  const buildComponents = (preview: boolean, images: EvidenceImage[]): Components => ({
+    img: ({ alt, src }) => {
+      const path = src ? decodedEvidencePath(src, true) : null
+      if (path && images.some((image) => image.path === path)) return null
+      return <span>{alt}</span>
+    },
     a: ({ href, children }) => <MarkdownLink href={href}>{children}</MarkdownLink>,
+    p: ({ node, children }) => {
+      const content = node?.children.filter((child) => child.type !== "text" || child.value.trim()) ?? []
+      const link = content.length === 1 ? content[0] : undefined
+      const href = link?.type === "element" && link.tagName === "a" ? link.properties.href : undefined
+      const path = typeof href === "string" ? decodedEvidencePath(localFilePath(href) ?? href, true) : null
+      const isDownload = /\b(baixar|download|save)\b/i.test(linkText(children))
+      if (isDownload && path && images.some((image) => image.path === path && image.imageSyntax)) return null
+
+      return <p>{children}</p>
+    },
     pre: ({ children }) => <MarkdownCodeBlock preview={preview}>{children}</MarkdownCodeBlock>,
     table: ({ children }) => (
       // biome-ignore lint/a11y/noNoninteractiveTabindex: horizontal tables must be keyboard-scrollable.
@@ -154,25 +174,25 @@ const LazyMarkdown = lazy(async () => {
       </section>
     ),
   })
-  const fullComponents = buildComponents(false)
-  const previewComponents = buildComponents(true)
   const fullPlugins = [remarkGfm, localFileLinks]
   const previewPlugins = [remarkGfm, chatPreview, localFileLinks]
   const Markdown = ({ content, preview }: MarkdownRendererProps) => {
     const evidence = useContext(EvidenceContext)
+    const isPreview = preview ?? false
     const images = useMemo(() => {
       if (!evidence) return []
       const tree = unified().use(remarkParse).use(remarkGfm).parse(protectDiffFences(content)) as EvidenceNode
-      if (preview) chatPreview()(tree)
+      if (isPreview) chatPreview()(tree)
       return evidenceImages(tree)
-    }, [content, preview, evidence])
+    }, [content, isPreview, evidence])
+    const components = useMemo(() => buildComponents(isPreview, images), [isPreview, images])
     return (
       <>
         <ReactMarkdown
           skipHtml
           urlTransform={(url, key) => (key === "href" && localFilePath(url) ? url : defaultUrlTransform(url))}
-          remarkPlugins={preview ? previewPlugins : fullPlugins}
-          components={preview ? previewComponents : fullComponents}
+          remarkPlugins={isPreview ? previewPlugins : fullPlugins}
+          components={components}
         >
           {protectDiffFences(content)}
         </ReactMarkdown>

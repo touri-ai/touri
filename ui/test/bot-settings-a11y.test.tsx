@@ -217,6 +217,16 @@ it("keeps VM environment, host access and browser controls named and exposed", a
   await expectNoViolations(screen.getByRole("dialog"))
 }, 30_000)
 
+it("updates where the bot sends automatic work from settings", async () => {
+  const { bot, actions } = await botSettings()
+  const setting = screen.getByRole("radiogroup", { name: "Onde o bot responde" })
+
+  expect(within(setting).getByRole("radio", { name: "Na conversa principal" })).toBeChecked()
+  fireEvent.click(within(setting).getByRole("radio", { name: "Uma conversa nova por tarefa" }))
+
+  await waitFor(() => expect(actions.updateBot).toHaveBeenCalledWith(bot.id, { automaticConversationMode: "task" }))
+})
+
 it("keeps Cancel and Save in the dialog's accessible tree after expanding and collapsing Advanced", async () => {
   const user = userEvent.setup()
   const { bot, actions, onClose } = await botSettings()

@@ -4,7 +4,7 @@ import { markdownSummary } from "../../markdownSummary"
 import { matchScore, normalizeSearch, queryTokens } from "./fuzzy"
 import type { PaletteDestination, SettingsIndexEntry } from "./settingsRegistry"
 
-export type PaletteActionId = "new-bot" | "new-group" | "new-thread" | "connect-project" | "open-doctor"
+export type PaletteActionId = "new-bot" | "new-group" | "new-thread" | "connect-project"
 
 /** Palette commands only navigate or open creation dialogs. Approvals are never commands. */
 export type PaletteCommand =
@@ -54,7 +54,6 @@ const ACTIONS: ReadonlyArray<{ action: PaletteActionId; label: string; detail: s
     detail: "Pasta ou repositório para o bot",
     keywords: "projetos projeto pasta repositorio git",
   },
-  { action: "open-doctor", label: "Abrir Doctor", detail: "Diagnóstico do ambiente", keywords: "diagnostico" },
 ]
 
 const indexed = (item: PaletteItem, extra: string): IndexedItem => ({

@@ -1,14 +1,14 @@
 .job-picker {
   display: grid;
-  gap: var(--space-10);
+  gap: var(--space-8);
   min-width: 0;
   margin: 0;
   padding: 0;
   border: 0;
 }
 .job-picker legend {
-  margin-bottom: var(--space-10);
-  font-size: var(--type-13);
+  margin-bottom: var(--space-8);
+  font-size: var(--fs-meta);
   font-weight: var(--weight-medium);
 }
 .job-options {
@@ -21,8 +21,8 @@
 }
 .job-group h3 {
   margin: 0 0 var(--space-8);
-  color: var(--text-secondary);
-  font-size: var(--type-11);
+  color: var(--text-2);
+  font-size: var(--fs-caption);
   font-weight: var(--weight-medium);
 }
 .job-grid {
@@ -35,17 +35,17 @@
   align-items: flex-start;
   gap: var(--space-8);
   padding: var(--space-12);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-8);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
   background: var(--surface-settings-card);
   cursor: pointer;
 }
 .job-option:has(:checked) {
-  border-color: var(--accent-brand);
+  border-color: var(--brand);
   background: var(--surface-selected);
 }
 .job-option:has(:focus-visible) {
-  outline: 2px solid var(--accent-brand);
+  outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
 .job-option input[type="radio"] {
@@ -53,7 +53,7 @@
   width: 14px;
   height: 14px;
   margin: 2px 0 0;
-  accent-color: var(--accent-brand);
+  accent-color: var(--brand);
 }
 .job-option strong,
 .job-option small {
@@ -61,14 +61,14 @@
   line-height: var(--leading-body);
 }
 .job-option strong {
-  font-size: var(--type-12);
+  font-size: var(--fs-caption);
   font-weight: var(--weight-medium);
 }
 .job-option small,
 .job-options > p {
   margin-top: var(--space-4);
-  color: var(--text-secondary);
-  font-size: var(--type-11);
+  color: var(--text-2);
+  font-size: var(--fs-caption);
 }
 .workspace-page > .team-next-step {
   flex: none;
@@ -79,18 +79,18 @@
   justify-content: space-between;
   gap: var(--space-12);
   padding: var(--space-12) var(--space-16);
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border);
   background: var(--surface-settings-card);
 }
 .team-next-step h2 {
   margin: 0;
-  font-size: var(--type-13);
+  font-size: var(--fs-meta);
   font-weight: var(--weight-medium);
 }
 .team-next-step p {
   margin: var(--space-4) 0;
-  color: var(--text-secondary);
-  font-size: var(--type-12);
+  color: var(--text-2);
+  font-size: var(--fs-caption);
 }
 .team-job-suggestions,
 .team-followup-actions {

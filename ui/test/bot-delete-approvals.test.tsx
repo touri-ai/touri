@@ -26,7 +26,15 @@ it("A11 deletion dialog describes replay, attachments, memory, skills, login and
   if (!bot) throw new Error("Missing fixture bot")
   render(<DeleteBotDialog bot={bot} onDelete={vi.fn()} onClose={vi.fn()} />)
   const dialog = screen.getByRole("dialog", { name: "Excluir bot" })
-  for (const scope of [/reconexão/, /anexos/i, /MEMORY/, /skills/, /cofre/, /projetos.*preservados/i])
+  for (const scope of [
+    /reconexão/,
+    /anexos/i,
+    /MEMORY/,
+    /skills/,
+    /cofre/,
+    /projetos.*preservados/i,
+    /modo servidor.*administradores.*excluir bots/i,
+  ])
     expect(dialog).toHaveTextContent(scope)
 })
 const approval: ApprovalPart = {

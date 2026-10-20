@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite"
 import type { Kernel, NotifyKind } from "@touri/contracts"
+import { deviceSession } from "../kernel/device-session"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import { createNotifier } from "./notifier"
 import { createRecoverySync } from "./recovery"
@@ -19,7 +20,22 @@ export const init = async (
   yieldHistoryBatch: () => Promise<void> = () => Bun.sleep(0),
 ): Promise<void> => {
   const store = createNotificationStore({ db: kernel.db as Database })
-  const hub = createSseHub({ store })
+  const hub = createSseHub({
+    store,
+    canRead: (notification, signal) => {
+      const person = deviceSession(signal)?.person
+      if (!person || person.role === "admin") return true
+      return Boolean(
+        kernel.services.use("work.canAccessNotification")?.({
+          personId: person.id,
+          role: person.role,
+          threadId: notification.threadId,
+          kind: notification.kind,
+          requestId: notification.requestId,
+        }),
+      )
+    },
+  })
   const notifier = createNotifier({ kernel, store, hub })
 
   kernel.services.provide("notify.emit", notifier.emit)

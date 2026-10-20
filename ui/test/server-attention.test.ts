@@ -65,7 +65,7 @@ it("notifies once for a fresh approval with a validated remote deep link", () =>
   expect(invoke).toHaveBeenCalledWith("server_attention", {
     title: "Preciso de aprovação",
     body: "Um bot precisa da sua atenção.",
-    deepLink: "touri://open?bot=bot-remote&thread=thread-remote",
+    deepLink: "touri://open?bot=bot-remote&thread=thread-remote&notification=1",
   })
 })
 
@@ -90,6 +90,7 @@ it("respects disabled notifications and never forwards malformed destination ide
   expect(invoke).toHaveBeenCalledWith("server_attention", {
     title: "Preciso de aprovação",
     body: "Um bot precisa da sua atenção.",
+    deepLink: "touri://open?notification=2",
   })
 })
 

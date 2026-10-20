@@ -17,11 +17,11 @@
 :root {
   --inline-sign: 1;
   --page-step: 1;
-  --duration-standard: 350ms;
+  --duration-standard: var(--motion-calm);
   --duration-slow: 650ms;
   --duration-bounce: 650ms;
-  --duration-quick: 140ms;
-  --duration-surface: 240ms;
+  --duration-quick: var(--motion-fast);
+  --duration-surface: var(--motion-base);
   /* Safe fallbacks until the original spring compiler installs its samples. */
   --ease-standard: ease-out;
   --ease-slow: ease-in-out;
@@ -102,12 +102,12 @@
   align-items: center;
   gap: var(--space-4);
   width: 100%;
-  padding: var(--space-9) var(--space-11);
+  padding: var(--space-8) var(--space-12);
   border: 0;
   border-radius: inherit;
   background: transparent;
-  color: var(--text-body);
-  font-size: var(--type-12);
+  color: var(--text);
+  font-size: var(--fs-caption);
   text-align: start;
 }
 .disclosure-chevron {
@@ -129,10 +129,10 @@
   display: flow-root;
 }
 .disclosure-content > p {
-  padding: 0 var(--space-11) var(--space-9);
+  padding: 0 var(--space-12) var(--space-8);
 }
 .disclosure-content .tool-disclosure {
-  padding-inline: var(--space-11);
+  padding-inline: var(--space-12);
 }
 button,
 input,
@@ -244,7 +244,7 @@ select {
   height: var(--segment-height, 0px);
   transform: translateX(var(--segment-x, 0px));
   border: 1px solid var(--segment-border, transparent);
-  border-radius: var(--segment-radius, var(--radius-8));
+  border-radius: var(--segment-radius, var(--radius-sm));
   background: var(--segment-fill, var(--surface-active));
   pointer-events: none;
 }
@@ -268,9 +268,9 @@ select {
   box-shadow: var(--elevation-badge);
 }
 .bot-panel-tabs.motion-segments {
-  --segment-radius: var(--radius-8);
-  --segment-fill: var(--surface-panel);
-  --segment-border: var(--border-default);
+  --segment-radius: var(--radius-sm);
+  --segment-fill: var(--surface);
+  --segment-border: var(--border-strong);
 }
 .motion-press,
 :is(.bot-sidebar, .chat-toolbar, .modal-header, .modal-actions, .bot-panel-top, .bot-panel-tabs) button {
@@ -314,7 +314,7 @@ select {
 .motion-skeleton > span {
   display: block;
   height: 10px;
-  border-radius: var(--radius-8);
+  border-radius: var(--radius-sm);
   background: linear-gradient(
     100deg,
     var(--surface-control) 25%,

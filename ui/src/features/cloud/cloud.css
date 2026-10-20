@@ -7,43 +7,43 @@
   justify-items: start;
   gap: 12px;
   padding: 22px;
-  border: 1px solid var(--border-default);
-  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
   background: var(--surface-settings-card);
 }
 .cloud-pairing > strong {
   font-family: var(--font-mono);
-  font-size: 30px;
+  font-size: var(--fs-display);
   letter-spacing: 0.12em;
 }
 .cloud-pairing small,
 .cloud-usage span,
 .cloud-usage small {
-  color: var(--text-secondary);
+  color: var(--text-2);
 }
 .cloud-usage {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 20px;
   padding: 20px;
-  border-block: 1px solid var(--border-default);
+  border-block: 1px solid var(--border-strong);
 }
 .cloud-usage > div {
   display: grid;
   gap: 8px;
 }
 .cloud-usage strong {
-  font-size: 22px;
+  font-size: var(--fs-title);
 }
 .cloud-usage strong small {
-  font-size: 13px;
+  font-size: var(--fs-meta);
   font-weight: 400;
 }
 .cloud-preferences progress,
 .cloud-usage progress {
   width: 100%;
   height: 7px;
-  accent-color: var(--accent-brand);
+  accent-color: var(--brand);
 }
 .cloud-computer .computer-terminal {
   display: grid;

@@ -28,6 +28,7 @@ const contractRouteKeys: Array<keyof ApiRoutes> = [
   "GET /doctor",
   "GET /doctor/storage",
   "POST /doctor/storage/compact",
+  "GET /storage/bot-deletions",
   "GET /bots",
   "POST /bots",
   "PATCH /bots/:id",

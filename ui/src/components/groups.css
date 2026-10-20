@@ -7,10 +7,10 @@
 .group-mascots > * {
   margin-left: -4px;
   border-radius: 50%;
-  box-shadow: 0 0 0 2px var(--surface-panel);
+  box-shadow: 0 0 0 2px var(--surface);
 }
 .group-sidebar {
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--border);
   padding: 14px 10px;
 }
 .modal-card.delete-group-dialog {
@@ -19,7 +19,7 @@
 }
 .delete-group-dialog .modal-form {
   gap: var(--space-12);
-  font-size: var(--type-14);
+  font-size: var(--fs-body);
 }
 .delete-group-dialog .modal-form p {
   margin: 0;
@@ -31,10 +31,10 @@
   align-items: center;
   font-weight: 600;
   padding: 0 6px 8px;
-  font-size: 12px;
+  font-size: var(--fs-caption);
 }
 .group-sidebar-heading small {
-  color: var(--text-secondary);
+  color: var(--text-2);
   margin-left: 4px;
 }
 .group-sidebar button {
@@ -42,12 +42,12 @@
   border: 0;
   cursor: pointer;
   color: inherit;
-  border-radius: 7px;
+  border-radius: var(--radius-xs);
 }
 .group-sidebar-heading button {
   width: 28px;
   height: 28px;
-  font-size: 20px;
+  font-size: var(--fs-subtitle);
 }
 .group-empty-create {
   display: flex;
@@ -56,14 +56,14 @@
   width: 100%;
   padding: 7px 6px;
   text-align: left;
-  font-size: 12px;
+  font-size: var(--fs-caption);
 }
 .group-empty-create > span {
   width: 18px;
   height: 18px;
   display: grid;
   place-items: center;
-  font-size: 18px;
+  font-size: var(--fs-emphasis);
 }
 .group-sidebar-row {
   display: flex;
@@ -80,7 +80,7 @@
   text-align: left;
   padding: 9px 6px;
   min-width: 0;
-  font-size: 13px;
+  font-size: var(--fs-meta);
 }
 .group-select > span:last-child {
   overflow: hidden;
@@ -99,10 +99,10 @@
 .group-thread-list button {
   text-align: left;
   padding: 7px;
-  font-size: 12px;
+  font-size: var(--fs-caption);
 }
 .group-thread-list button[aria-current] {
-  color: var(--accent-brand);
+  color: var(--danger);
   font-weight: 600;
 }
 .group-header {
@@ -121,8 +121,8 @@
 }
 .group-member-count {
   flex-shrink: 0;
-  color: var(--text-secondary);
-  font-size: 12px;
+  color: var(--text-2);
+  font-size: var(--fs-caption);
   white-space: nowrap;
 }
 .group-header-members {
@@ -130,8 +130,8 @@
   gap: 9px;
   align-items: center;
   flex: 1;
-  color: var(--text-secondary);
-  font-size: 12px;
+  color: var(--text-2);
+  font-size: var(--fs-caption);
 }
 .group-modal-backdrop {
   position: fixed;
@@ -146,10 +146,10 @@
   width: min(560px, 100%);
   max-height: 90vh;
   overflow: auto;
-  background: var(--surface-panel);
-  color: var(--text-primary);
-  border: 1px solid var(--border-subtle);
-  border-radius: 18px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   padding: 26px;
   box-shadow: 0 24px 80px #0003;
 }
@@ -160,17 +160,17 @@
 }
 .group-modal-heading h2 {
   margin: 4px 0;
-  font-size: 25px;
+  font-size: var(--fs-title);
 }
 .group-modal-heading button {
   background: transparent;
   color: inherit;
   border: 0;
-  font-size: 24px;
+  font-size: var(--fs-title);
   cursor: pointer;
 }
 .group-modal .muted-copy {
-  font-size: 13px;
+  font-size: var(--fs-meta);
   line-height: 1.6;
 }
 .group-field {
@@ -178,7 +178,7 @@
   flex-wrap: wrap;
   gap: 8px;
   margin: 18px 0;
-  font-size: 13px;
+  font-size: var(--fs-meta);
   font-weight: 600;
 }
 .group-field input,
@@ -186,10 +186,10 @@
   flex-basis: 100%;
   width: 100%;
   padding: 11px;
-  border: 1px solid var(--border-subtle);
-  background: var(--surface-panel);
+  border: 1px solid var(--border);
+  background: var(--surface);
   color: inherit;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 .group-modal fieldset {
   border: 0;
@@ -198,13 +198,13 @@
   min-width: 0;
 }
 .group-modal legend {
-  font-size: 13px;
+  font-size: var(--fs-meta);
   font-weight: 600;
   margin-bottom: 10px;
 }
 .group-modal legend small {
   font-weight: 400;
-  color: var(--text-secondary);
+  color: var(--text-2);
 }
 .group-member-picker {
   display: grid;
@@ -217,20 +217,20 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border);
   padding: 10px;
-  border-radius: 9px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--fs-meta);
 }
 .group-member-picker label small {
   margin-left: auto;
-  color: var(--text-secondary);
+  color: var(--text-2);
 }
 .group-routing-note {
-  font-size: 12px;
+  font-size: var(--fs-caption);
   line-height: 1.6;
-  color: var(--text-secondary);
+  color: var(--text-2);
 }
 .group-modal-actions {
   display: flex;
@@ -249,9 +249,9 @@
   gap: 6px;
   align-items: center;
   background: var(--surface-control);
-  color: var(--text-primary);
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   padding: 7px 10px;
   cursor: pointer;
 }
@@ -270,7 +270,7 @@
   width: 16px;
   height: 16px;
   flex: none;
-  accent-color: var(--accent-brand);
+  accent-color: var(--brand);
 }
 .group-modal .avatar-color-auto {
   display: none;
@@ -329,7 +329,7 @@
 }
 .group-context-members small {
   display: block;
-  color: var(--text-secondary);
+  color: var(--text-2);
   font-weight: 400;
 }
 .conversation-start .group-context-members {
@@ -337,7 +337,7 @@
   margin: 20px auto;
 }
 .group-panel .muted-copy {
-  font-size: 12px;
+  font-size: var(--fs-caption);
   line-height: 1.6;
 }
 
@@ -353,7 +353,7 @@
 }
 .group-actions .button {
   padding: 6px 9px;
-  font-size: 12px;
+  font-size: var(--fs-caption);
 }
 .group-status-members li {
   align-items: flex-start;
@@ -365,18 +365,18 @@
 .group-member-state {
   display: inline-block;
   margin-top: 5px;
-  font-size: 11px;
-  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  color: var(--text-2);
 }
 .group-member-state-waiting {
-  color: var(--text-warning);
+  color: var(--warning);
 }
 .group-member-state-failed {
-  color: var(--text-danger);
+  color: var(--danger);
 }
 .group-member-result {
   margin: 5px 0 0;
-  font-size: 12px;
+  font-size: var(--fs-caption);
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -385,12 +385,12 @@
 }
 .group-board {
   margin-top: 20px;
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--border);
 }
 .group-board article {
   padding: 10px 0;
-  border-bottom: 1px solid var(--border-subtle);
-  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-caption);
 }
 .group-board article p {
   white-space: pre-wrap;

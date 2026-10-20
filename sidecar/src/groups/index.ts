@@ -1,4 +1,5 @@
 import type { Kernel } from "@touri/contracts"
+import { deviceSession } from "../kernel/device-session"
 import { deleteGroupRoute } from "./delete-group"
 import { createGroupStore } from "./store"
 export const name = "groups"
@@ -16,7 +17,20 @@ export const init = async (kernel: Kernel): Promise<void> => {
     name,
     routes: [
       deleteGroupRoute(kernel),
-      { method: "GET", path: "/groups", handler: async () => ({ status: 200, json: { groups: groups.list() } }) },
+      {
+        method: "GET",
+        path: "/groups",
+        handler: async ({ signal }) => {
+          const person = deviceSession(signal)?.person
+          const all = groups.list()
+          const visibleChannelIds =
+            person && person.role !== "admin"
+              ? new Set(kernel.services.use("work.personChannelIds")?.(person.id) ?? [])
+              : null
+          const visible = visibleChannelIds ? all.filter((group) => visibleChannelIds.has(group.id)) : all
+          return { status: 200, json: { groups: visible } }
+        },
+      },
       {
         method: "POST",
         path: "/groups",

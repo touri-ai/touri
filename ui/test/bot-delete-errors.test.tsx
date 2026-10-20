@@ -41,6 +41,32 @@ test("deletion failures explain the blocked step and keep the dialog available f
   )
 })
 
+test.each(["pt-BR", "en"] as const)(
+  "server authorization failures explain who can delete bots in %s",
+  async (locale) => {
+    const bot = createMockApi().getState().bots[0]
+    if (!bot) throw new Error("Missing fixture bot")
+    setDocumentLanguage(locale, document.documentElement)
+    render(
+      <DeleteBotDialog
+        bot={bot}
+        onDelete={async () => {
+          throw new ApiError(403, "private authorization diagnostic", undefined, "TOURI-E1004")
+        }}
+        onClose={() => {}}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText(`Digite o nome do bot: ${bot.name}`), { target: { value: bot.name } })
+    fireEvent.click(screen.getByRole("button", { name: "Excluir bot" }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      t("No modo servidor, somente administradores podem excluir bots.", {}, locale),
+    )
+    expect(screen.getByRole("alert")).not.toHaveTextContent("private authorization diagnostic")
+  },
+)
+
 test.each([
   { entry: "settings", locale: "pt-BR" },
   { entry: "sidebar", locale: "pt-BR" },

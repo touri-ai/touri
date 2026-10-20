@@ -1,4 +1,4 @@
-import type { Database } from "bun:sqlite"
+import { Database } from "bun:sqlite"
 import { afterEach, expect, mock, test } from "bun:test"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -18,7 +18,7 @@ import { createEventBus } from "../../src/kernel/event-bus"
 import { createRuntimeEngine } from "../../src/runtime/engine"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { init as initStore } from "../../src/store"
-import { deleteBotRoute } from "../../src/vm/delete-bot"
+import { createBotDeletionManager, deleteBotRoutes } from "../../src/vm/delete-bot"
 import { createVmRuntime } from "../../src/vm/runtime"
 import { fakeVmProvider } from "./fake-provider"
 
@@ -26,6 +26,46 @@ const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup()
 })
+
+const waitForDeletionOutcome = async (database: Database, botId: string) => {
+  for (let attempt = 0; attempt < 12_000; attempt++) {
+    const job = database.query("SELECT error_code FROM bot_deletions WHERE bot_id = ?").get(botId) as {
+      error_code: string | null
+    } | null
+    if (!job || job.error_code) return
+    await Bun.sleep(5)
+  }
+  throw new Error("Bot deletion did not reach a stable state")
+}
+
+const waitForDeletionComplete = async (database: Database, botId: string) => {
+  const deadline = Date.now() + 110_000
+  while (Date.now() < deadline) {
+    if (!database.query("SELECT 1 FROM bot_deletions WHERE bot_id = ?").get(botId)) return
+    await Bun.sleep(5)
+  }
+  throw new Error("Bot deletion did not complete")
+}
+
+const seedSearchableMessages = (database: Database, threadId: string, count: number) => {
+  const insertMessage = database.query(`INSERT INTO messages(
+    id,thread_id,role,kind,text,parts_json,created_at,updated_at
+  ) VALUES (?,?,'user','text',?,'[]',1,1)`)
+  const insertFts = database.query("INSERT INTO messages_fts(text,thread_id,message_id) VALUES (?,?,?)")
+  const insertSearchRow = database.query(
+    "INSERT INTO message_search_rows(thread_id,message_id,fts_rowid) VALUES (?,?,?)",
+  )
+  database.transaction(() => {
+    for (let index = 0; index < count; index++) {
+      const messageId = `synthetic-${String(index).padStart(6, "0")}`
+      const messageText = `Synthetic searchable message ${index}`
+      insertMessage.run(messageId, threadId, messageText)
+      const { lastInsertRowid } = insertFts.run(messageText, threadId, messageId)
+      insertSearchRow.run(threadId, messageId, Number(lastInsertRowid))
+    }
+  })()
+}
+
 const fixture = async ({
   callHost,
   collectBlobs,
@@ -70,9 +110,9 @@ const fixture = async ({
   runtime.kernel.services.provide("vm.runtime", vm.service)
   runtime.kernel.registerRoutes({
     name: "delete-test",
-    routes: [deleteBotRoute(runtime.kernel, vm.service, collectBlobs)],
+    routes: deleteBotRoutes(runtime.kernel, vm.service, collectBlobs),
   })
-  const request = (path: string, body: unknown, method = "POST") =>
+  const rawRequest = (path: string, body: unknown, method = "POST") =>
     fetch(`http://127.0.0.1:${runtime.handshake.port}/api/v1${path}`, {
       method,
       headers: {
@@ -80,10 +120,16 @@ const fixture = async ({
         "x-touri-client": "delete-test",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(body),
+      ...(method === "GET" ? {} : { body: JSON.stringify(body) }),
     })
-  const create = async (name: string, machine = "vm") => {
-    const response = await request("/bots", { name, provider: "codex", machine, vmProviderLogin: machine === "vm" })
+  const request = async (path: string, body: unknown, method = "POST") => {
+    const response = await rawRequest(path, body, method)
+    if (method === "DELETE" && response.status === 202)
+      await waitForDeletionOutcome(runtime.kernel.db as Database, path.slice("/bots/".length))
+    return response
+  }
+  const create = async (name: string, machine = "vm", provider = "codex") => {
+    const response = await request("/bots", { name, provider, machine, vmProviderLogin: machine === "vm" })
     expect(response.status).toBe(201)
     return ((await response.json()) as { bot: Bot }).bot
   }
@@ -91,10 +137,10 @@ const fixture = async ({
     runtime.kernel.services.use("groups.runtime")?.shutdown()
     await runtime.kernel.services.use("runtime.shutdown")?.()
     await vm.dispose()
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
-  return { root, runtime, db: runtime.kernel.db as Database, fake, vm, request, create, sessionDeletions }
+  return { root, runtime, db: runtime.kernel.db as Database, fake, vm, rawRequest, request, create, sessionDeletions }
 }
 
 const makeCleanupFixture = async (collectBlobs = collectUnusedOutputBlobs) => {
@@ -132,14 +178,19 @@ const makeCleanupFixture = async (collectBlobs = collectUnusedOutputBlobs) => {
 const expectPendingCleanup = async (cleanup: Awaited<ReturnType<typeof makeCleanupFixture>>, response: Response) => {
   const { workspace, bot, path, start, published } = cleanup
 
-  expect(response.status).toBe(409)
-  expect(await response.json()).toMatchObject({ code: "TOURI-E2015", origin: "bot-cleanup", retryable: false })
+  expect(response.status).toBe(202)
+  expect(await response.json()).toMatchObject({ botId: bot.id, phase: "stopping" })
+  expect(workspace.db.query("SELECT error_code FROM bot_deletions WHERE bot_id = ?").get(bot.id)).toEqual({
+    error_code: "TOURI-E2015",
+  })
   expect(workspace.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toBeNull()
   expect(published).toHaveBeenCalledTimes(1)
   expect(existsSync(path)).toBe(true)
-  expect(
-    workspace.db.query("SELECT value_json FROM settings WHERE key = ?").get(`storage.deleted-attachments:${bot.id}`),
-  ).toEqual({ value_json: JSON.stringify(["cleanup-private"]) })
+  const marker = `storage.deleted-attachments:${bot.id}`
+  const markers = workspace.db
+    .query("SELECT value_json FROM settings WHERE key >= ? AND key < ? ORDER BY key")
+    .all(marker, `${marker};`) as Array<{ value_json: string }>
+  expect(markers.flatMap(({ value_json }) => JSON.parse(value_json) as string[])).toEqual(["cleanup-private"])
   expect(start).toHaveBeenCalledTimes(1)
 }
 
@@ -192,6 +243,16 @@ const makeGroupHistory = async (f: Awaited<ReturnType<typeof fixture>>) => {
   f.db.query("INSERT INTO group_message_links VALUES ('reply',?,'visible-reply')").run(child.id)
 
   return { owner, participant, group, thread, child, groups }
+}
+
+const addThreads = (f: Awaited<ReturnType<typeof fixture>>, botId: string, count: number) => {
+  f.db
+    .query(`WITH RECURSIVE thread_numbers(value) AS (
+      SELECT 1 UNION ALL SELECT value + 1 FROM thread_numbers WHERE value < ?
+    )
+    INSERT INTO threads (id, bot_id, title, created_at, updated_at)
+    SELECT 'bulk-thread-' || value, ?, 'Bulk thread ' || value, 1, 1 FROM thread_numbers`)
+    .run(count, botId)
 }
 
 const makeDeferredGroupEngine = (kernel: Kernel, runningBotId: string) => {
@@ -338,7 +399,7 @@ groupMembers.forEach((member) => {
 
     const response = await f.request(`/bots/${bot.id}`, { name: bot.name, deleteVolumes: true }, "DELETE")
 
-    expect(response.status).toBe(200)
+    expect(response.status).toBe(202)
     expect(f.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toBeNull()
     expect(f.db.query("SELECT id FROM bots WHERE id = ?").get(remaining.id)).not.toBeNull()
     expect(f.db.query("SELECT id FROM threads WHERE id = ?").get(bot.mainThreadId ?? "")).toBeNull()
@@ -367,7 +428,7 @@ test("deleting the last group member clears runs owned by a former member on its
 
   const response = await f.request(`/bots/${history.owner.id}`, { name: history.owner.name }, "DELETE")
 
-  expect(response.status).toBe(200)
+  expect(response.status).toBe(202)
   expect(f.db.query("SELECT id FROM threads WHERE id = ?").get(history.thread.id)).toBeNull()
   expect(f.db.query("SELECT id FROM bots WHERE id = ?").get(history.participant.id)).not.toBeNull()
   expect(f.db.query("SELECT group_thread_id FROM threads WHERE id = ?").get(history.child.id)).toEqual({
@@ -411,7 +472,7 @@ test("deleting an idle group member waits for another member's child and the agg
   engine.release()
   const response = await deletion
 
-  expect(response.status).toBe(200)
+  expect(response.status).toBe(202)
   expect((await engine.completed).status).toBe("canceled")
   expect((await settled.promise).status).toBe("canceled")
   expect(f.db.query("SELECT id FROM runs WHERE id = ?").get(turn.run.id)).toBeNull()
@@ -436,6 +497,7 @@ test("deleting an idle member preserves another member's live turn and queued tu
   expect(signal?.aborted).toBe(false)
   expect(live.persistence.getRun(turn.id)?.status).toBe("running")
   expect(live.persistence.getRun(queued.id)?.status).toBe("queued")
+  expect(f.db.query("SELECT error_code FROM bot_deletions WHERE bot_id = ?").get(history.owner.id)).toBeNull()
   expect(live.persistence.getRun(removed.id)).toBeNull()
   live.complete(history.participant.id)
   await until(() => live.persistence.getRun(turn.id)?.status === "succeeded")
@@ -443,7 +505,7 @@ test("deleting an idle member preserves another member's live turn and queued tu
   live.complete(history.participant.id)
   await until(() => live.persistence.getRun(queued.id)?.status === "succeeded")
 
-  expect(response.status).toBe(200)
+  expect(response.status).toBe(202)
   expect(live.groups.listRuns(history.thread.id).filter((run) => run.status === "succeeded")).toHaveLength(6)
   expect(f.db.query("PRAGMA foreign_key_check").all()).toEqual([])
 })
@@ -485,7 +547,7 @@ test.each(groupMembers)(
     const response = await workspace.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
     unsubscribe()
 
-    expect(response.status).toBe(200)
+    expect(response.status).toBe(202)
     expect(canceled.has(removed.id)).toBe(true)
     expect(remaining.every((run) => !live.signals.get(run.botId)?.aborted)).toBe(true)
     expect(live.persistence.getRun(turn.id)?.status).toBe("running")
@@ -524,9 +586,10 @@ test("deleting the shared thread's last member stops its live child while preser
 
   const response = await workspace.request(`/bots/${history.owner.id}`, { name: history.owner.name }, "DELETE")
 
-  expect(response.status).toBe(200)
+  expect(response.status).toBe(202)
   expect(groupSignal?.aborted).toBe(true)
   expect(privateSignal?.aborted).toBe(false)
+  expect(workspace.db.query("SELECT error_code FROM bot_deletions WHERE bot_id = ?").get(history.owner.id)).toBeNull()
   expect(live.persistence.getRun(turn.id)).toBeNull()
   expect(live.persistence.getRun(privateTurn.id)?.status).toBe("running")
   live.complete(history.participant.id)
@@ -545,7 +608,7 @@ test("deleting a queued ask-all recipient records removal before the surviving m
 
   const response = await workspace.request(`/bots/${history.owner.id}`, { name: history.owner.name }, "DELETE")
 
-  expect(response.status).toBe(200)
+  expect(response.status).toBe(202)
   expect(live.persistence.getRun(queued.id)?.status).toBe("queued")
   expect(activeSignal?.aborted).toBe(false)
   live.complete(history.participant.id)
@@ -569,7 +632,7 @@ test("deleting a completed ask-all owner preserves the other member's confirmed 
 
   const response = await workspace.request(`/bots/${history.owner.id}`, { name: history.owner.name }, "DELETE")
 
-  expect(response.status).toBe(200)
+  expect(response.status).toBe(202)
   expect(live.persistence.getRun(turn.id)).toMatchObject({ status: "succeeded", botId: history.participant.id })
   expect(live.groups.listRuns(history.thread.id).filter((run) => run.groupTurnId === turn.id)).toEqual([
     expect.objectContaining({ botId: history.participant.id, status: "succeeded" }),
@@ -590,7 +653,7 @@ test("saved browser session cleanup runs after commit while a peer's live turn c
   live.complete(history.participant.id)
   await until(() => live.persistence.getRun(turn.id)?.status === "succeeded")
 
-  expect(response.status).toBe(200)
+  expect(response.status).toBe(202)
   expect(workspace.sessionDeletions.get(history.owner.id)).toEqual({ botExists: false, inTransaction: false })
   expect(existsSync(botSessionPath(workspace.runtime.kernel, history.owner.id))).toBe(false)
 })
@@ -637,7 +700,7 @@ test("a failed browser session key deletion keeps the bot deletion successful an
   const response = await workspace.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
   unsubscribe()
 
-  expect(response.status).toBe(200)
+  expect(response.status).toBe(202)
   expect(workspace.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toBeNull()
   expect(events).toEqual(new Set(["bot.deleted", "transcript.resync"]))
   expect(existsSync(file)).toBe(false)
@@ -672,7 +735,7 @@ test("a malformed unrelated blob marker does not block bot deletion or shared gr
 
   const response = await f.request(`/bots/${history.owner.id}`, { name: history.owner.name }, "DELETE")
 
-  expect(response.status).toBe(200)
+  expect(response.status).toBe(202)
   expect(f.db.query("SELECT id FROM bots WHERE id = ?").get(history.owner.id)).toBeNull()
   expect(
     f.db.query("SELECT key FROM settings WHERE key = ?").get(`storage.deleted-attachments:${history.owner.id}`),
@@ -696,7 +759,7 @@ test("deleting a bot switched from a virtual machine to local removes its retain
 
   const response = await f.request(`/bots/${bot.id}`, { name: bot.name, deleteVolumes: true }, "DELETE")
 
-  expect(response.status).toBe(200)
+  expect(response.status).toBe(202)
   expect(f.db.query("SELECT bot_id FROM bot_machines WHERE bot_id = ?").get(bot.id)).toBeNull()
   expect(f.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toBeNull()
   expect(f.fake.machines.size).toBe(0)
@@ -712,7 +775,7 @@ test("deletion cancels bot tasks before stopping and removing its machine and vo
 
   const response = await f.request(`/bots/${bot.id}`, { name: bot.name, deleteVolumes: true }, "DELETE")
 
-  expect(response.status).toBe(200)
+  expect(response.status).toBe(202)
   expect(
     f.fake.calls.filter((call) => ["stop", "destroy", "deleteVolume"].includes(call.action)).map((call) => call.action),
   ).toEqual(["stop", "destroy", "deleteVolume", "deleteVolume"])
@@ -720,7 +783,7 @@ test("deletion cancels bot tasks before stopping and removing its machine and vo
   expect(f.fake.volumes.size).toBe(0)
 })
 
-test("an active machine lease explains the blocker and permits retry after release", async () => {
+test("an active machine lease defers deletion and the worker resumes after release", async () => {
   const f = await fixture()
   const bot = await f.create("Machine in use")
   const release = await f.vm.service.acquire({ botId: bot.id })
@@ -729,12 +792,12 @@ test("an active machine lease explains the blocker and permits retry after relea
   await release()
   const retry = await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
 
-  expect(response.status).toBe(409)
-  expect(await response.json()).toMatchObject({
-    code: "TOURI-E8004",
-    error: "O computador do bot ainda está em uso. Pare as tarefas e tente excluir novamente.",
+  expect(response.status).toBe(202)
+  expect(f.db.query("SELECT error_code FROM bot_deletions WHERE bot_id = ?").get(bot.id)).toEqual({
+    error_code: "TOURI-E8004",
   })
-  expect(retry.status).toBe(200)
+  expect(retry.status).toBe(409)
+  await waitForDeletionComplete(f.db, bot.id)
 })
 
 test("failed task cancellation identifies the blocker without exposing diagnostics", async () => {
@@ -745,12 +808,12 @@ test("failed task cancellation identifies the blocker without exposing diagnosti
   })
 
   const response = await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
-  const body = await response.json()
-
-  expect(response.status).toBe(409)
-  expect(body).toMatchObject({ code: "TOURI-E1015", origin: "bot-stop" })
-  expect(JSON.stringify(body)).not.toContain("private task diagnostic")
-  expect(f.runtime.kernel.services.use("store.api")?.getBot({ botId: bot.id })?.paused).toBe(false)
+  expect(response.status).toBe(202)
+  expect(f.db.query("SELECT error_code FROM bot_deletions WHERE bot_id = ?").get(bot.id)).toEqual({
+    error_code: "TOURI-E1015",
+  })
+  expect(JSON.stringify(await response.json())).not.toContain("private task diagnostic")
+  expect(f.db.query("SELECT paused FROM bots WHERE id = ?").get(bot.id)).toEqual({ paused: 1 })
   expect(existsSync(bot.homeDir)).toBe(true)
 })
 
@@ -761,11 +824,11 @@ test("a locked credential vault identifies the blocker and preserves bot history
   const bot = await f.create("Vault failure", "local")
 
   const response = await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
-  const body = await response.json()
-
-  expect(response.status).toBe(409)
-  expect(body).toMatchObject({ code: "TOURI-E1016", origin: "bot-credentials" })
-  expect(JSON.stringify(body)).not.toContain("private vault diagnostic")
+  expect(response.status).toBe(202)
+  expect(f.db.query("SELECT error_code FROM bot_deletions WHERE bot_id = ?").get(bot.id)).toEqual({
+    error_code: "TOURI-E1016",
+  })
+  expect(JSON.stringify(await response.json())).not.toContain("private vault diagnostic")
   expect(f.db.query("SELECT id FROM threads WHERE bot_id = ?").all(bot.id)).toHaveLength(1)
   expect(existsSync(bot.homeDir)).toBe(true)
 })
@@ -788,7 +851,7 @@ test("concurrent deletion explains that deletion is already in progress", async 
 
   expect(duplicate.status).toBe(409)
   expect(await duplicate.json()).toMatchObject({ code: "TOURI-E1014", origin: "bot-deletion" })
-  expect(completed.status).toBe(200)
+  expect(completed.status).toBe(202)
 })
 
 test("A10 deletion purges replay copies, advances its floor and forces resync", async () => {
@@ -803,7 +866,7 @@ test("A10 deletion purges replay copies, advances its floor and forces resync", 
     delta: "deleted-private-text",
   })
   const seq = (f.db.query("SELECT MAX(seq) AS seq FROM ui_event_log").get() as { seq: number }).seq
-  expect((await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")).status).toBe(200)
+  expect((await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")).status).toBe(202)
   expect(f.db.query("SELECT seq FROM ui_event_log WHERE event_json LIKE '%deleted-private-text%'").all()).toHaveLength(
     0,
   )
@@ -829,7 +892,7 @@ test("A10 deletion purges bot-owned VM process logs from replay", async () => {
     )
     .run(bot.id)
   f.runtime.kernel.publish({ type: "process.log", processId: "process", lines: ["deleted-process-private-text"] })
-  expect((await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")).status).toBe(200)
+  expect((await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")).status).toBe(202)
   expect(
     f.db.query("SELECT seq FROM ui_event_log WHERE event_json LIKE '%deleted-process-private-text%'").all(),
   ).toHaveLength(0)
@@ -850,7 +913,7 @@ test("A10 deletion purges browser request origins associated through owned tabs"
     origin: "https://private-origin.invalid",
     fieldKinds: ["password"],
   })
-  expect((await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")).status).toBe(200)
+  expect((await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")).status).toBe(202)
   expect(
     f.db.query("SELECT seq FROM ui_event_log WHERE event_json LIKE '%private-origin.invalid%'").all(),
   ).toHaveLength(0)
@@ -858,7 +921,7 @@ test("A10 deletion purges browser request origins associated through owned tabs"
 
 test("A11 deletion removes host artifacts and login vault entries but retains shared attachments and projects", async () => {
   const f = await fixture()
-  const bot = await f.create("Artifacts", "local")
+  const bot = await f.create("Artifacts", "local", "claude")
   const other = await f.create("Other", "local")
   const deletedAccounts: string[] = []
   f.runtime.kernel.callHost = (async (method, params) => {
@@ -892,7 +955,7 @@ test("A11 deletion removes host artifacts and login vault entries but retains sh
         current.mainThreadId ?? "",
         JSON.stringify(ids.map((attachmentId) => ({ type: "image", attachmentId, mime: "image/png" }))),
       )
-  expect((await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")).status).toBe(200)
+  expect((await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")).status).toBe(202)
   expect(existsSync(privateAttachment)).toBe(false)
   expect(f.db.query("SELECT id FROM attachments WHERE id='private'").get()).toBeNull()
   expect(existsSync(sharedAttachment)).toBe(true)
@@ -906,40 +969,28 @@ test("A11 deletion removes host artifacts and login vault entries but retains sh
   ])
 })
 
-test("bot deletion waits for a deferred attachment cleanup under slow IO", async () => {
+test("bot deletion returns while attachment cleanup is blocked on slow IO", async () => {
   const entered = Promise.withResolvers<void>()
   const resume = Promise.withResolvers<void>()
   let calls = 0
   const collectBlobs: typeof collectUnusedOutputBlobs = async (
-    database,
-    appData,
-    now,
-    yieldBatch,
-    deletedBotAttachments,
-    runStage,
+    _database,
+    _appData,
+    _now,
+    _yieldBatch,
+    _deletedBotAttachments,
+    _runStage,
     onDeferred,
-    signal,
-    attachmentReferenceTimeoutMs,
+    _signal,
+    _attachmentReferenceTimeoutMs,
   ) => {
     calls += 1
     if (calls === 1) {
       entered.resolve()
       await resume.promise
-      onDeferred?.("changed")
-      return 0
     }
-
-    return collectUnusedOutputBlobs(
-      database,
-      appData,
-      now,
-      yieldBatch,
-      deletedBotAttachments,
-      runStage,
-      onDeferred,
-      signal,
-      attachmentReferenceTimeoutMs,
-    )
+    onDeferred?.("changed")
+    return 0
   }
   const f = await fixture({ collectBlobs })
   const bot = await f.create("Slow cleanup", "local")
@@ -969,23 +1020,23 @@ test("bot deletion waits for a deferred attachment cleanup under slow IO", async
       )
   }
 
-  let responseReceived = false
-  const deletion = f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE").then((response) => {
-    responseReceived = true
-    return response
-  })
-  await entered.promise
-  const responseArrivedDuringSlowIo = responseReceived
-  resume.resolve()
+  const deletion = f.rawRequest(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
   const response = await deletion
+  await entered.promise
 
-  expect(responseArrivedDuringSlowIo).toBe(false)
-  expect(response.status).toBe(200)
-  expect(calls).toBe(2)
-  expect(existsSync(privateAttachment)).toBe(false)
-  expect(f.db.query("SELECT id FROM attachments WHERE id='slow-private'").get()).toBeNull()
-  expect(existsSync(sharedAttachment)).toBe(true)
-  expect(f.db.query("SELECT id FROM attachments WHERE id='slow-shared'").get()).toEqual({ id: "slow-shared" })
+  const privateExistsWhileBlocked = existsSync(privateAttachment)
+  const privateRecordWhileBlocked = f.db.query("SELECT id FROM attachments WHERE id='slow-private'").get()
+  const sharedExistsWhileBlocked = existsSync(sharedAttachment)
+  const sharedRecordWhileBlocked = f.db.query("SELECT id FROM attachments WHERE id='slow-shared'").get()
+  resume.resolve()
+  await waitForDeletionOutcome(f.db, bot.id)
+
+  expect(response.status).toBe(202)
+  expect(calls).toBeGreaterThan(0)
+  expect(privateExistsWhileBlocked).toBe(true)
+  expect(privateRecordWhileBlocked).not.toBeNull()
+  expect(sharedExistsWhileBlocked).toBe(true)
+  expect(sharedRecordWhileBlocked).toEqual({ id: "slow-shared" })
 })
 
 test("sustained attachment deferrals stop after three passes with exponential backoff", async () => {
@@ -1062,7 +1113,7 @@ test("a completed deletion intentionally retains private attachments pinned by a
 
   const response = await workspace.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
 
-  expect(response.status).toBe(200)
+  expect(response.status).toBe(202)
   expect(workspace.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toBeNull()
   expect(existsSync(path)).toBe(true)
   expect(workspace.db.query("SELECT id FROM attachments WHERE id = 'cleanup-private'").get()).not.toBeNull()
@@ -1080,9 +1131,258 @@ test("A11 deleting a symlinked bot home preserves the shared project target", as
   writeFileSync(join(shared, "keep.txt"), "shared")
   rmSync(bot.homeDir, { recursive: true })
   symlinkSync(shared, bot.homeDir)
-  expect((await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")).status).toBe(200)
+  expect((await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")).status).toBe(202)
   expect(existsSync(join(shared, "keep.txt"))).toBe(true)
   expect(existsSync(bot.homeDir)).toBe(false)
+})
+
+test("purge pauses behind a retained WAL reader and resumes after it releases its snapshot", async () => {
+  const f = await fixture()
+  const bot = await f.create("Retained reader", "local")
+  seedSearchableMessages(f.db, bot.mainThreadId ?? "", 2000)
+  const reader = new Database(f.db.filename)
+  cleanups.push(async () => reader.close())
+  reader.exec("BEGIN")
+  reader.query("SELECT count(*) FROM messages").get()
+
+  const response = await f.rawRequest(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+  const getProgress = () => f.db.query("SELECT processed, error_code FROM bot_deletions WHERE bot_id = ?").get(bot.id)
+  await Bun.sleep(150)
+  const retainedProgress = getProgress()
+  await Bun.sleep(100)
+  const laterProgress = getProgress()
+  reader.exec("COMMIT")
+  await waitForDeletionComplete(f.db, bot.id)
+
+  expect(response.status).toBe(202)
+  expect(retainedProgress).toEqual({ processed: 0, error_code: null })
+  expect(laterProgress).toEqual(retainedProgress)
+  expect(f.db.query("SELECT count(*) AS count FROM messages").get()).toEqual({ count: 0 })
+}, 30_000)
+
+test("50k message deletion returns quickly, keeps the event loop responsive and purges FTS", async () => {
+  const f = await fixture()
+  const bot = await f.create("Large history", "local")
+  const threadId = bot.mainThreadId ?? ""
+  seedSearchableMessages(f.db, threadId, 50_000)
+
+  let previous = performance.now()
+  let ticks: number[] = []
+  const probe = setInterval(() => {
+    const current = performance.now()
+    // Keep only this measurement window; each sample is one complete timer interval.
+    ticks = ticks.concat(current - previous)
+    previous = current
+  }, 10)
+  cleanups.push(async () => clearInterval(probe))
+  const started = performance.now()
+  const response = await f.rawRequest(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+  const requestMs = performance.now() - started
+  await waitForDeletionComplete(f.db, bot.id)
+  clearInterval(probe)
+  // Sort only a fresh measurement copy; the project's type library predates toSorted.
+  const sortedTicks = Array.from(ticks).sort((first, second) => first - second)
+  const maxTickMs = sortedTicks.at(-1) ?? 0
+  const p99TickMs = sortedTicks[Math.ceil(sortedTicks.length * 0.99) - 1] ?? 0
+  console.info(`bot-deletion-performance ${JSON.stringify({ messages: 50_000, requestMs, p99TickMs, maxTickMs })}`)
+
+  expect(response.status).toBe(202)
+  expect(requestMs).toBeLessThan(1000)
+  expect(maxTickMs).toBeLessThan(50)
+  expect(f.db.query("SELECT id FROM messages WHERE thread_id = ?").all(threadId)).toHaveLength(0)
+  expect(f.db.query("SELECT rowid FROM messages_fts WHERE thread_id = ?").all(threadId)).toHaveLength(0)
+  expect(f.db.query("SELECT fts_rowid FROM message_search_rows WHERE thread_id = ?").all(threadId)).toHaveLength(0)
+  expect(f.db.query("SELECT id FROM transcript_entries WHERE thread_id = ?").all(threadId)).toHaveLength(0)
+}, 120_000)
+
+test("finalizing a bot with a large completed run history keeps timer ticks below 50 ms", async () => {
+  const f = await fixture()
+  const bot = await f.create("Large run history", "local")
+  const threadId = bot.mainThreadId ?? ""
+  f.db
+    .query(`WITH RECURSIVE entries(value) AS (
+    SELECT 1 UNION ALL SELECT value + 1 FROM entries WHERE value < 5000
+  ) INSERT INTO runs(id, thread_id, bot_id, provider, trigger, status, queued_at, finished_at)
+    SELECT 'synthetic-run-' || value, ?, ?, ?, 'user', 'succeeded', 1, 2 FROM entries`)
+    .run(threadId, bot.id, bot.provider)
+  let previous = performance.now()
+  let maxTickMs = 0
+  const probe = setInterval(() => {
+    const current = performance.now()
+    maxTickMs = Math.max(maxTickMs, current - previous)
+    previous = current
+  }, 10)
+  cleanups.push(async () => clearInterval(probe))
+
+  const response = await f.rawRequest(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+  await waitForDeletionComplete(f.db, bot.id)
+  clearInterval(probe)
+  console.info(`bot-deletion-run-performance ${JSON.stringify({ runs: 5000, maxTickMs })}`)
+
+  expect(response.status).toBe(202)
+  expect(maxTickMs).toBeLessThan(50)
+  expect(f.db.query("SELECT id FROM runs WHERE bot_id = ?").all(bot.id)).toEqual([])
+}, 120_000)
+
+test("concurrent bot deletions serialize their worker batches", async () => {
+  const f = await fixture()
+  const first = await f.create("First purge", "local")
+  const second = await f.create("Second purge", "local")
+  seedSearchableMessages(f.db, first.mainThreadId ?? "", 32)
+  seedSearchableMessages(f.db, second.mainThreadId ?? "", 32)
+
+  const responses = await Promise.all(
+    [first, second].map((bot) => f.rawRequest(`/bots/${bot.id}`, { name: bot.name }, "DELETE")),
+  )
+  await Promise.all([first, second].map((bot) => waitForDeletionComplete(f.db, bot.id)))
+
+  expect(responses.map((response) => response.status)).toEqual([202, 202])
+  expect(f.db.query("SELECT rowid FROM messages_fts").all()).toHaveLength(0)
+})
+
+test("a worker restart resumes a bot purge from its committed batch", async () => {
+  const f = await fixture()
+  const bot = await f.create("Restart purge", "local")
+  const threadId = bot.mainThreadId ?? ""
+  seedSearchableMessages(f.db, threadId, 5_000)
+
+  const response = await f.rawRequest(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+  expect(response.status).toBe(202)
+  for (let attempt = 0; attempt < 12_000; attempt++) {
+    const job = f.db.query("SELECT phase, processed FROM bot_deletions WHERE bot_id = ?").get(bot.id) as {
+      phase: string
+      processed: number
+    } | null
+    if (job?.phase === "messages" && job.processed >= 16) break
+    await Bun.sleep(1)
+  }
+  const checkpoint = f.db.query("SELECT phase, processed FROM bot_deletions WHERE bot_id = ?").get(bot.id) as {
+    phase: string
+    processed: number
+  } | null
+  if (!checkpoint) throw new Error("Bot deletion checkpoint missing")
+  expect(checkpoint.phase).toBe("messages")
+  expect(checkpoint.processed).toBeGreaterThanOrEqual(16)
+  const progressResponse = await f.rawRequest("/storage/bot-deletions", {}, "GET")
+  expect(progressResponse.status).toBe(200)
+  const progress = (await progressResponse.json()) as {
+    deletions: Array<{ botId: string; phase: string; processed: number }>
+  }
+  const visibleProgress = progress.deletions.find(({ botId: currentBotId }) => currentBotId === bot.id)
+  expect(visibleProgress).toMatchObject({ botId: bot.id, phase: "messages" })
+  expect(visibleProgress?.processed).toBeGreaterThanOrEqual(checkpoint.processed)
+
+  f.runtime.kernel.services.use("storage.botDeletion")?.dispose()
+  const resumed = createBotDeletionManager(f.runtime.kernel, f.vm.service, collectUnusedOutputBlobs)
+  f.runtime.kernel.services.provide("storage.botDeletion", { dispose: resumed.dispose })
+  resumed.resume()
+  await waitForDeletionComplete(f.db, bot.id)
+
+  expect(f.db.query("SELECT id FROM messages WHERE thread_id = ?").all(threadId)).toHaveLength(0)
+  expect(f.db.query("SELECT rowid FROM messages_fts WHERE thread_id = ?").all(threadId)).toHaveLength(0)
+  expect(f.db.query("SELECT id FROM transcript_entries WHERE thread_id = ?").all(threadId)).toHaveLength(0)
+}, 120_000)
+
+test("A11 deletion unlinks a shared authentication link and preserves its target", async () => {
+  const f = await fixture()
+  const bot = await f.create("Shared login", "local")
+  const home = join(f.runtime.kernel.paths.appData, "provider-homes/codex", bot.id)
+  const target = join(f.root, ".codex/auth.json")
+  const auth = join(home, "auth.json")
+  const original = readFileSync(target)
+  mkdirSync(home, { recursive: true })
+  symlinkSync(target, auth)
+
+  const response = await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+
+  expect(response.status).toBe(202)
+  expect(f.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toBeNull()
+  expect(existsSync(auth)).toBe(false)
+  expect(readFileSync(target)).toEqual(original)
+})
+
+test("A11 deletion skips unrelated config cleanup for a bot with 500 threads", async () => {
+  const f = await fixture()
+  const bot = await f.create("Many conversations", "local")
+  addThreads(f, bot.id, 499)
+
+  expect(f.db.query("SELECT COUNT(*) AS count FROM threads WHERE bot_id = ?").get(bot.id)).toEqual({ count: 500 })
+  expect((await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")).status).toBe(202)
+  expect(f.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toBeNull()
+})
+
+test("A11 deletion removes provider config files in bounded batches for 500 threads", async () => {
+  const f = await fixture()
+  const bot = await f.create("Many conversations", "local", "claude")
+  addThreads(f, bot.id, 499)
+  const threads = f.db.query("SELECT id FROM threads WHERE bot_id = ?").all(bot.id) as { id: string }[]
+  const directory = join(f.runtime.kernel.paths.runDir, "claude")
+  const configs = threads.flatMap((thread) =>
+    ["mcp.json", "settings.json", "system.md"].map((suffix) => join(directory, `${thread.id}.${suffix}`)),
+  )
+  mkdirSync(directory, { recursive: true })
+  configs.forEach((path) => {
+    writeFileSync(path, "private provider config")
+  })
+
+  expect(f.db.query("SELECT COUNT(*) AS count FROM threads WHERE bot_id = ?").get(bot.id)).toEqual({ count: 500 })
+  expect((await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")).status).toBe(202)
+  expect(f.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toBeNull()
+  expect(configs.some((path) => existsSync(path))).toBe(false)
+})
+
+test("A11 deletion removes previous provider files while preserving shared and unrelated files", async () => {
+  const f = await fixture()
+  const bot = await f.create("Changed provider", "local", "claude")
+  const other = await f.create("Keep files", "local")
+  const directory = join(f.runtime.kernel.paths.runDir, "claude")
+  const config = join(directory, `${bot.mainThreadId}.settings.json`)
+  const otherConfig = join(directory, `${other.mainThreadId}.settings.json`)
+  const session = join(f.runtime.kernel.paths.sessionsDir, "previous-provider.jsonl")
+  const sharedSession = join(f.runtime.kernel.paths.sessionsDir, "shared-provider.jsonl")
+  const nativeSession = join(f.root, "native-session.jsonl")
+  const files = [config, otherConfig, session, sharedSession, nativeSession]
+  mkdirSync(directory, { recursive: true })
+  files.forEach((path) => {
+    writeFileSync(path, "synthetic private data")
+  })
+  const saveSession = f.db.query(
+    "INSERT INTO provider_sessions(id, thread_id, provider, external_session_id, rollout_path, fingerprint, state, created_at, last_used_at) VALUES (?, ?, 'claude', ?, ?, 'fake-fingerprint', 'replaced', 1, 1)",
+  )
+  saveSession.run("previous", bot.mainThreadId, "previous", session)
+  saveSession.run("shared-deleted", bot.mainThreadId, "shared", sharedSession)
+  saveSession.run("shared-kept", other.mainThreadId, "shared", sharedSession)
+  saveSession.run("native", bot.mainThreadId, "native", nativeSession)
+  const switched = await f.request(`/bots/${bot.id}`, { provider: "codex" }, "PATCH")
+  expect(switched.status).toBe(200)
+
+  const response = await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+
+  expect(response.status).toBe(202)
+  expect(f.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toBeNull()
+  expect([existsSync(config), existsSync(session)]).toEqual([false, false])
+  expect(readFileSync(otherConfig, "utf8")).toBe("synthetic private data")
+  expect(readFileSync(sharedSession, "utf8")).toBe("synthetic private data")
+  expect(readFileSync(nativeSession, "utf8")).toBe("synthetic private data")
+})
+
+test("A11 deletion removes retained login homes after changing provider", async () => {
+  const f = await fixture()
+  const bot = await f.create("Changed login", "local")
+  const homes = ["provider-homes/codex", "provider-homes/codex-vault"].map((path) =>
+    join(f.runtime.kernel.paths.appData, path, bot.id),
+  )
+  homes.forEach((home) => {
+    mkdirSync(home, { recursive: true })
+    writeFileSync(join(home, "config.toml"), "synthetic provider configuration")
+  })
+  const switched = await f.request(`/bots/${bot.id}`, { provider: "claude" }, "PATCH")
+  expect(switched.status).toBe(200)
+
+  const response = await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+
+  expect(response.status).toBe(202)
+  expect(homes.map((home) => existsSync(home))).toEqual([false, false])
 })
 
 test("A11 vault failure keeps bot metadata and files available for a deletion retry", async () => {
@@ -1094,7 +1394,11 @@ test("A11 vault failure keeps bot metadata and files available for a deletion re
     errorCode: "HOST_UNAVAILABLE",
     error: "test vault unavailable",
   })
-  expect((await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")).status).toBe(409)
+  const response = await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
+  expect(response.status).toBe(202)
+  expect(f.db.query("SELECT error_code FROM bot_deletions WHERE bot_id = ?").get(bot.id)).toEqual({
+    error_code: "TOURI-E1016",
+  })
   expect(existsSync(bot.homeDir)).toBe(true)
   expect(f.db.query("SELECT id FROM bots WHERE id=?").get(bot.id)).not.toBeNull()
   expect(f.fake.calls.filter((call) => call.action === "destroy")).toHaveLength(0)
@@ -1146,7 +1450,7 @@ for (const deleteVolumes of [false, true])
       canceled = botId
     })
     const response = await f.request(`/bots/${bot.id}`, { name: bot.name, deleteVolumes }, "DELETE")
-    expect(response.status).toBe(200)
+    expect(response.status).toBe(202)
     expect(canceled).toBe(bot.id)
     expect(f.fake.machines.has(machines[0] ?? "")).toBe(false)
     expect(f.fake.machines.has(machines[1] ?? "")).toBe(true)
@@ -1183,19 +1487,19 @@ test("provider failure keeps the bot and its conversations available for retry",
   f.fake.provider.destroy = async () => ({ success: false, errorCode: "COMMAND_FAILED", error: "fake failure" })
 
   const response = await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
-  const body = await response.json()
-
-  expect(response.status).toBe(409)
-  expect(body).toMatchObject({ code: "TOURI-E8003", origin: "bot-deletion" })
-  expect(JSON.stringify(body)).not.toContain("fake failure")
-  expect(f.runtime.kernel.services.use("store.api")?.getBot({ botId: bot.id })?.paused).toBe(false)
+  expect(response.status).toBe(202)
+  expect(f.db.query("SELECT error_code FROM bot_deletions WHERE bot_id = ?").get(bot.id)).toEqual({
+    error_code: "TOURI-E8003",
+  })
+  expect(JSON.stringify(await response.json())).not.toContain("fake failure")
+  expect(f.db.query("SELECT paused FROM bots WHERE id = ?").get(bot.id)).toEqual({ paused: 1 })
   expect(f.db.query("SELECT id FROM threads WHERE bot_id = ?").all(bot.id)).toHaveLength(1)
 })
 
 test("local deletion never calls the machine provider", async () => {
   const f = await fixture()
   const bot = await f.create("Local", "local")
-  expect((await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")).status).toBe(200)
+  expect((await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")).status).toBe(202)
   expect(f.fake.calls).toHaveLength(0)
 })
 
@@ -1207,7 +1511,7 @@ test("a volume mounted by another bot is never removed", async () => {
   await (await f.vm.service.acquire({ botId: other.id }))()
   const meta = f.db.query("SELECT volume FROM bot_machines WHERE bot_id = ?").get(bot.id) as { volume: string }
   f.db.query("UPDATE bot_machines SET volume = ? WHERE bot_id = ?").run(meta.volume, other.id)
-  expect((await f.request(`/bots/${bot.id}`, { name: bot.name, deleteVolumes: true }, "DELETE")).status).toBe(200)
+  expect((await f.request(`/bots/${bot.id}`, { name: bot.name, deleteVolumes: true }, "DELETE")).status).toBe(202)
   expect(f.fake.calls.filter((call) => call.action === "deleteVolume")).toHaveLength(0)
 })
 
@@ -1230,7 +1534,7 @@ test.each(["machine", "history"] as const)(
     const response = await workspace.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
     await releaseLease()
 
-    expect(response.status).toBe(409)
+    expect(response.status).toBe(202)
     expect(workspace.db.query("SELECT id FROM bots WHERE id = ?").get(bot.id)).toEqual({ id: bot.id })
     expect(readFileSync(sessionFile, "utf8")).toBe(encryptedSession)
     expect(await loadBotSession(workspace.runtime.kernel, bot.id)).toEqual(session)
@@ -1248,6 +1552,6 @@ test("R13-B03 deleting a bot removes its private browser session file", async ()
   const file = botSessionPath(f.runtime.kernel, bot.id)
   expect(existsSync(file)).toBe(true)
   expect(JSON.parse(readFileSync(file, "utf8")).enc).toBe("aes-256-gcm")
-  expect((await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")).status).toBe(200)
+  expect((await f.request(`/bots/${bot.id}`, { name: bot.name }, "DELETE")).status).toBe(202)
   expect(existsSync(file)).toBe(false)
 })

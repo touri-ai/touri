@@ -179,7 +179,8 @@ export const createKernel = ({
   const log = createLogger({ paths, redact: redactor.redact })
   const slowStatements = createSlowStatementTracker({
     log,
-    getStage: () => stageTracker.getCurrentStage() ?? "unattributed",
+    getStage: () => stageTracker.getCurrentStage(),
+    runStage: stageTracker.run,
   })
   const database = openDatabase({ filename: paths.db, slowStatements })
   const services = createServices()
@@ -368,12 +369,24 @@ export const createKernel = ({
         const path = body && typeof body === "object" && "path" in body ? body.path : null
         if (typeof path !== "string" || !socketEndpoint(path))
           return jsonResponse(400, { errorCode: "INVALID_ARGS" }, origin)
+        const person = session?.person
+        if (
+          person?.role === "member" &&
+          !services.use("work.authorizeSocket")?.({ personId: person.id, role: person.role, path })
+        )
+          return jsonResponse(403, { errorCode: "FORBIDDEN" }, origin)
         const value = tickets.mint(path, session)
         return value
           ? jsonResponse(201, { ticket: value }, origin)
           : jsonResponse(429, { errorCode: "RATE_LIMITED" }, origin)
       }
       if (isWebSocket) {
+        const person = session?.person
+        if (
+          person?.role === "member" &&
+          !services.use("work.authorizeSocket")?.({ personId: person.id, role: person.role, path: url.pathname })
+        )
+          return jsonResponse(404, { errorCode: "NOT_FOUND" })
         const since = desktopId || presenceBotId ? 0 : Number(url.searchParams.get("since") ?? 0)
         if (!desktopId && (!Number.isSafeInteger(since) || since < 0))
           return jsonResponse(400, { errorCode: "INVALID_CURSOR", error: "Sequência inválida" })
@@ -527,7 +540,12 @@ export const createKernel = ({
             close: (code?: number, reason?: string) => socket.close(code, reason),
           }
           eventSockets.set(socket, guarded)
-          bus.add(guarded, socket.data.since)
+          const person = socket.data.session?.person
+          const filter = person
+            ? (event: UiEvent) =>
+                services.use("work.visibleEvent")?.({ personId: person.id, role: person.role, event }) ?? false
+            : undefined
+          bus.add(guarded, socket.data.since, filter)
         }
       },
       message: (socket, data) => {
@@ -620,6 +638,7 @@ export const createKernel = ({
       server.stop(true)
       const store = services.use("store.api")
       if (store && !store.closeStreamWriterIfIdle?.()) await store.flushWritesAsync?.({ stopping: true })
+      services.use("storage.botDeletion")?.dispose()
       stopHistoryBackfill()
       storageMaintenance.dispose({ closing: true })
       services.use("vm.desktop")?.dispose()

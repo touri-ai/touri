@@ -1,6 +1,8 @@
 import type { Bot } from "@touri/contracts"
 import { useState } from "react"
-import { userFacingError } from "../errors"
+import { getDocumentLocale } from "../documentLanguage"
+import { ApiError, userFacingError } from "../errors"
+import { t } from "../i18n"
 import { Modal } from "./Modals"
 
 export const DeleteBotDialog = ({
@@ -24,7 +26,15 @@ export const DeleteBotDialog = ({
       await onDelete(bot.id, name, deleteVolumes)
       onClose()
     } catch (error) {
-      setError(userFacingError(error))
+      setError(
+        error instanceof ApiError && error.code === "TOURI-E1004"
+          ? t(
+              "No modo servidor, somente administradores podem excluir bots.",
+              {},
+              getDocumentLocale(document.documentElement),
+            )
+          : userFacingError(error),
+      )
       setBusy(false)
     }
   }
@@ -48,6 +58,13 @@ export const DeleteBotDialog = ({
       </ul>
       <p className="field-help">
         Projetos e suas pastas compartilhadas, segredos de projetos e logins pessoais dos CLIs ficam preservados.
+      </p>
+      <p className="field-help">
+        {t(
+          "Se o touri estiver em modo servidor, apenas administradores podem excluir bots.",
+          {},
+          getDocumentLocale(document.documentElement),
+        )}
       </p>
       <label htmlFor="delete-bot-name">Digite o nome do bot: {bot.name}</label>
       <input

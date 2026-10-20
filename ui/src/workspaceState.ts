@@ -1,5 +1,8 @@
 import { scopedStorageKey } from "./storageScope"
 
+/** Lifecycle of a thread being created: draft (not requested yet), pending (request in flight), failed. */
+export type ThreadCreationStatus = "draft" | "pending" | "failed"
+
 export type RoutineHistoryTarget = { routineId?: string }
 
 export type AppRoute =

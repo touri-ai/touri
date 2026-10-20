@@ -461,7 +461,7 @@ export const createRuntimeEngine = ({
       kernel.db instanceof Database
         ? (kernel.db
             .query(`
-      SELECT sender_json IS NOT NULL AS delegated,
+      SELECT sender_json IS NOT NULL AND coalesce(json_extract(sender_json, '$.kind'), '') <> 'person' AS delegated,
         EXISTS(SELECT 1 FROM json_each(parts_json)
           WHERE json_extract(value, '$.type') = 'notice'
             AND json_extract(value, '$.code') = 'run_resumed') AS resumed
@@ -480,7 +480,7 @@ export const createRuntimeEngine = ({
       })
       .find((message) => message.id === run.requestMessageId)
     if (request?.parts.some((part) => part.type === "notice" && part.code === "run_resumed")) return "resume"
-    if (request?.sender) return "delegation"
+    if (request?.sender && request.sender.kind !== "person") return "delegation"
     if (run.trigger === "routine") return "routine"
     return "message"
   }
@@ -2657,6 +2657,8 @@ export const createRuntimeEngine = ({
     let threadId: Id | null = null
     if (routine.continuity === "main-thread") threadId = bot.mainThreadId
     else if (routine.continuity === "results-thread") threadId = routine.resultsThreadId
+    else if ((bot.automaticConversationMode ?? "main") === "main" && !group) threadId = bot.mainThreadId
+    else if ((bot.automaticConversationMode ?? "main") === "main" && group) threadId = routine.resultsThreadId
     if (!threadId && group) {
       const created = store.createThread({
         botId: group.memberIds[0] ?? bot.id,
@@ -2667,7 +2669,7 @@ export const createRuntimeEngine = ({
       if (!created.success)
         return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Unable to create routine thread" }
       threadId = created.thread.id
-      if (routine.continuity === "results-thread")
+      if (routine.continuity === "results-thread" || (bot.automaticConversationMode ?? "main") === "main")
         persistence.updateRoutine({ ...routine, resultsThreadId: threadId, updatedAt: Date.now() })
     }
     if (!threadId) {

@@ -8,10 +8,12 @@ export const createTestStore = ({
   bot,
   thread,
   publish,
+  onCreateThread,
 }: {
   bot: Bot
   thread: Thread
   publish?: Kernel["publish"]
+  onCreateThread?: (thread: Thread) => void
 }): TestStore => {
   const bots = new Map<Id, Bot>([[bot.id, bot]])
   const threads = new Map<Id, Thread>([[thread.id, thread]])
@@ -89,6 +91,7 @@ export const createTestStore = ({
       archivedAt: null,
     }
     threads.set(created.id, created)
+    onCreateThread?.(created)
     return { success: true, thread: created }
   }
 

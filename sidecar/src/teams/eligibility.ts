@@ -31,9 +31,11 @@ export const getTeamBuilder = (kernel: Kernel, caller: Caller) => {
     !run.requestMessageId
   )
     return null
+  const request = store?.getPathMessage?.({ threadId: thread.id, messageId: run.requestMessageId })
+  if (request?.role !== "user" || request.parts.some((part) => part.type === "notice")) return null
+  const isAdminRun = kernel.services.use("work.isAdminRun")
+  if (isAdminRun ? !isAdminRun(run.id) : request.sender !== null) return null
   const db = kernel.db as Database
   if (db.query("SELECT 1 FROM run_continuations WHERE run_id = ?").get(run.id)) return null
-  const request = store?.getPathMessage?.({ threadId: thread.id, messageId: run.requestMessageId })
-  if (request?.role !== "user" || request.sender || request.parts.some((part) => part.type === "notice")) return null
   return { bot, run }
 }
