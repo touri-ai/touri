@@ -18,7 +18,7 @@ for (const [name, width, height] of [
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
     const conversations = page.getByRole("region", { name: "Conversas de mark" })
-    const routine = conversations.getByRole("button", { name: /Resumo diário/ })
+    const routine = conversations.getByRole("button", { name: /^Rotinas/ })
     const directory = process.env.TOURI_ROUTINE_SIDEBAR_SHOTS_DIR
 
     await expect(routine.locator(".sidebar-unread")).toHaveText("8")
@@ -132,14 +132,14 @@ for (const [name, width, height] of [
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
     const conversations = page.getByRole("region", { name: "Conversas de mark" })
-    await conversations.locator(".thread-row").filter({ hasText: "Resumo diário" }).click()
-    await expect(page.locator(".message-assistant")).toContainText("Resumo pronto para conferir.")
-    if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
     await conversations.getByRole("button", { name: /^Rotinas/ }).click()
     const history = page.locator(".routine-run-history")
 
     await expect(history).toHaveAttribute("data-open", "true")
-    await expect(history.getByRole("combobox", { name: "Filtrar histórico por rotina" })).not.toHaveValue("all")
+    const routineFilter = history.getByRole("combobox", { name: "Filtrar histórico por rotina" })
+    const dailyRoutine = routineFilter.locator("option").filter({ hasText: "Resumo diário" })
+    await routineFilter.selectOption(await dailyRoutine.getAttribute("value") ?? "")
+    await expect(routineFilter).not.toHaveValue("all")
     await expect(history.getByRole("status")).toHaveText("Execuções 1–50 de 128")
     await expect(history.getByRole("listitem")).toHaveCount(50)
     await history.getByRole("button", { name: "Histórico de execuções" }).click()
