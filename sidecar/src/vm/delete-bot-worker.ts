@@ -210,7 +210,8 @@ export const deleteBotWorkerSource = [
   '  if (data.type === "start") {',
   "    try {",
   "      database = new Database(data.filename, constants.SQLITE_OPEN_READWRITE | constants.SQLITE_OPEN_NOFOLLOW);",
-  '      database.exec("PRAGMA busy_timeout = 0; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON");',
+  // The existing maintenance worker owns checkpoints; committing a purge must not run one while holding up writers.
+  '      database.exec("PRAGMA busy_timeout = 0; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON; PRAGMA wal_autocheckpoint = 0; PRAGMA cache_size = -65536");',
   '      self.postMessage({ type: "ready" });',
   "    } catch (error) {",
   '      self.postMessage({ type: "startup-error", busy: isBusy(error) });',

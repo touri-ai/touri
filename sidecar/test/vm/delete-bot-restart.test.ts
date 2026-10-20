@@ -27,6 +27,7 @@ test("a fresh kernel resumes a committed record-purge checkpoint from the databa
     provider: profileProviders[0],
     machine: "local",
   })
+  expect(created.status).toBe(201)
   const { bot } = (await created.json()) as { bot: Bot }
   first.database
     .query(`WITH RECURSIVE entries(value) AS (
@@ -83,7 +84,11 @@ const startFixture = async (root: string) => {
   const request = (path: string, method: string, body: unknown) =>
     fetch(`http://127.0.0.1:${runtime.handshake.port}/api/v1${path}`, {
       method,
-      headers: { Authorization: "Bearer dev-ui-token", "Content-Type": "application/json" },
+      headers: {
+        Authorization: "Bearer dev-ui-token",
+        "Content-Type": "application/json",
+        "x-touri-client": "restart-test",
+      },
       body: JSON.stringify(body),
     })
 
