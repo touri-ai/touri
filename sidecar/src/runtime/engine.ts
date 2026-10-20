@@ -558,7 +558,7 @@ export const createRuntimeEngine = ({
   const finishLiveRun = async (
     run: Run,
     prepare: () => Promise<void>,
-    finish: () => void,
+    finish: () => boolean,
     messageId?: Id,
   ): Promise<void> => {
     // Accepted streaming work survives even if the final transaction rolls back.
@@ -581,7 +581,8 @@ export const createRuntimeEngine = ({
         return
       }
 
-      finish()
+      // A canceled success path keeps its pending disposition for the canceled transition.
+      if (!finish()) return
       tools.clearPending(run.id)
     }
     // The terminal reply, run and tool resolutions have one winning writer.
@@ -775,15 +776,19 @@ export const createRuntimeEngine = ({
       return
     }
 
+    const initial = state.parts
     const parts = await measureStage("runtime_part_finalization", () =>
-      tools.finishAsync(run, state.parts, reason, false),
+      tools.finishAsync(run, initial, reason, false, runStage),
     )
+    if (state.parts !== initial) return
     state.parts = await externalizeMessagePartsAsync({
       database: kernel.db,
       appData: kernel.paths.appData,
       parts,
     })
-    state.preparedFinish = tools.prepareFinish(run, state.parts, reason)
+    state.preparedFinish = measureStage("runtime_part_finalization", () =>
+      tools.prepareFinish(run, state.parts, reason),
+    )
   }
 
   const publishMessage = (args: { store: StoreApi; state: RunState; run: Run; status: Message["status"] }): void => {
@@ -1698,6 +1703,8 @@ export const createRuntimeEngine = ({
               run,
               () => prepareFinalParts({ run, state, store, reason: "unknown" }),
               () => {
+                if (state.cancelRequested) return false
+
                 ensureReply({ run, state, store, parentId: run.requestMessageId ?? thread.activeLeafId ?? run.id })
                 finishParts({ run, state, reason: "unknown" })
                 const conclusion = turnConclusion({
@@ -1738,9 +1745,12 @@ export const createRuntimeEngine = ({
                       routine: run.trigger === "routine" || run.routineRunId !== null,
                     })
                 }
+                return true
               },
               state.replyMessageId ?? undefined,
             )
+            if (state.cancelRequested && isLive(run))
+              await failTurn({ run, state, store, thread, errorClass: "canceled", errorMessage: "Cancelado por você" })
           } else {
             await failTurn({
               run,
@@ -1847,19 +1857,20 @@ export const createRuntimeEngine = ({
           usage: state.usage,
           finishedAt: Date.now(),
         })
-        if (continuing) return
+        if (continuing) return true
         finishRoutineRun({
           run,
           status: errorClass === "canceled" || errorClass === "app_restart" ? "canceled" : "failed",
           summary: state.text || `${errorClass}: ${safeError}`,
         })
-        if (errorClass === "canceled" || errorClass === "app_restart") return
+        if (errorClass === "canceled" || errorClass === "app_restart") return true
         notices.failure({
           botId: run.botId,
           threadId: run.threadId,
           routine: run.routineRunId !== null,
           reason: friendlyMessage,
         })
+        return true
       },
       state.replyMessageId ?? undefined,
     )

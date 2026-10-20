@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from "node:util"
 import type { Kernel, Message, MessagePart, Run, StoreApi, ToolResolution } from "@touri/contracts"
 import { writeDatabaseAsync } from "../kernel/database-write"
 import { externalizeMessagePartsAsync } from "../kernel/output-blobs"
+import type { PerformanceStageRunner } from "../kernel/performance"
 import { summarizeToolResolutions } from "./tool-resolution-summary"
 
 type ToolPart = Extract<MessagePart, { callId: string }>
@@ -113,22 +114,36 @@ export const createToolResolutions = (kernel: Kernel) => {
     }
     return next
   }
-  const recordAsync = async (run: Run, part: ToolPart, recovering = false, persist = true): Promise<ToolPart> => {
-    const resolved = record(run, part, recovering, false)
+  const recordAsync = async (
+    run: Run,
+    part: ToolPart,
+    recovering = false,
+    persist = true,
+    runStage?: PerformanceStageRunner,
+  ): Promise<ToolPart> => {
+    const measure = <Value>(action: () => Value): Value =>
+      runStage ? runStage("runtime_part_finalization", action) : action()
+    const resolved = measure(() => record(run, part, recovering, false))
     const next = database
       ? ((
-          await externalizeMessagePartsAsync({ database, appData: kernel.paths.appData, parts: [resolved] })
+          await measure(() =>
+            externalizeMessagePartsAsync({ database, appData: kernel.paths.appData, parts: [resolved] }),
+          )
         )[0] as ToolPart)
       : resolved
+
+    return measure(() => saveAsyncResult(run, part.callId, next, persist))
+  }
+  const saveAsyncResult = (run: Run, callId: string, next: ToolPart, persist: boolean): ToolPart => {
     const resolution = outcome(next)
     if (persist) {
-      saveResolution?.run(run.id, part.callId, run.threadId, JSON.stringify(next), resolution, next.resolvedAt ?? null)
+      saveResolution?.run(run.id, callId, run.threadId, JSON.stringify(next), resolution, next.resolvedAt ?? null)
       const parts = pendingInterruptions.get(run.id)
-      parts?.delete(part.callId)
+      parts?.delete(callId)
       if (!parts?.size) pendingInterruptions.delete(run.id)
-    } else if (pendingInterruptions.get(run.id)?.has(part.callId) || interrupted(resolution)) {
+    } else if (pendingInterruptions.get(run.id)?.has(callId) || interrupted(resolution)) {
       const parts = pendingInterruptions.get(run.id) ?? new Map<string, ToolPart>()
-      parts.set(part.callId, next)
+      parts.set(callId, next)
       pendingInterruptions.set(run.id, parts)
     }
     return next
@@ -262,6 +277,7 @@ export const createToolResolutions = (kernel: Kernel) => {
     parts: MessagePart[],
     reason: Exclude<ToolResolution, "running">,
     persist = true,
+    runStage?: PerformanceStageRunner,
   ): Promise<MessagePart[]> => {
     const result: MessagePart[] = []
     for (const [index, part] of parts.entries()) {
@@ -271,10 +287,10 @@ export const createToolResolutions = (kernel: Kernel) => {
         result.push(part)
         continue
       }
-      const current = await recordAsync(run, part, true, persist)
+      const current = await recordAsync(run, part, true, persist, runStage)
       result.push(
         outcome(current) === "running"
-          ? await recordAsync(run, { ...current, resolution: reason, resolvedAt: Date.now() }, false, persist)
+          ? await recordAsync(run, { ...current, resolution: reason, resolvedAt: Date.now() }, false, persist, runStage)
           : current,
       )
     }
@@ -300,6 +316,7 @@ export const createToolResolutions = (kernel: Kernel) => {
           },
           false,
           persist,
+          runStage,
         ),
       )
     }
