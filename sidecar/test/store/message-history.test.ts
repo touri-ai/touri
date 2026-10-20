@@ -382,7 +382,7 @@ const getFixture = async () => {
     restore,
     close: async () => {
       for (const callback of restore) await callback()
-      runtime.stop()
+      await runtime.stop()
       rmSync(root, { recursive: true, force: true })
     },
   }

@@ -87,7 +87,7 @@ const fixture = async (
     close: async () => {
       unsubscribe()
       await engine.shutdown()
-      runtime.stop()
+      await runtime.stop()
       rmSync(root, { recursive: true, force: true })
     },
   }
