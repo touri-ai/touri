@@ -60,7 +60,10 @@ themes.forEach((theme) => {
       test(`one recovery action: ${scenario}, ${theme}, ${width}px`, async ({ page }, info) => {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
         await page.emulateMedia({ reducedMotion: "reduce" })
-        await page.addInitScript((value) => localStorage.setItem("touri.appearance.v1", value), theme)
+        await page.addInitScript((value) => {
+          localStorage.setItem("touri.appearance.v1", value)
+          document.documentElement.dataset.theme = value
+        }, theme)
 
         await page.goto(`/test/e2e/error-contract-harness.html?scenario=${scenario}`)
 
