@@ -868,7 +868,7 @@ test("A10 deletion purges browser request origins associated through owned tabs"
 
 test("A11 deletion removes host artifacts and login vault entries but retains shared attachments and projects", async () => {
   const f = await fixture()
-  const bot = await f.create("Artifacts", "local")
+  const bot = await f.create("Artifacts", "local", "claude")
   const other = await f.create("Other", "local")
   const deletedAccounts: string[] = []
   f.runtime.kernel.callHost = (async (method, params) => {
