@@ -51,6 +51,12 @@ themes.forEach((theme) => {
       await capture(page, `desktop-${theme}`)
 
       const preview = page.locator('[data-bot-entry="bot-mark"] .bot-preview')
+      await preview.evaluate((element) => {
+        element.classList.remove("visually-hidden")
+        element.classList.add("paused")
+        element.textContent =
+          "Descrição sintética longa para verificar que a prévia quebra dentro da barra lateral sem cortar o texto."
+      })
       expect(await preview.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
       expect(await getSmallTargets(page, 28)).toEqual([])
       expect(await getTargetRules(page)).toEqual([])

@@ -270,7 +270,6 @@
 .r8-sidebar {
   --sidebar-gutter: var(--space-16);
   --sidebar-row-height: 32px;
-  --sidebar-target-size: var(--sidebar-row-height);
 }
 @media (max-width: 800px), (pointer: coarse) {
   .r8-sidebar {
@@ -286,11 +285,11 @@
     .sidebar-recovery,
     .sidebar-advanced > button
   ) {
-  min-height: var(--sidebar-row-height);
+  min-height: var(--sidebar-target-size);
 }
 .r8-sidebar .sidebar-icon-button,
 .r8-sidebar .notification-bell {
-  min-width: var(--sidebar-row-height);
+  min-width: var(--sidebar-target-size);
 }
 
 /* Segmented control: one track, one raised thumb, and the shared neutral count pill. */
@@ -433,8 +432,9 @@
   color: var(--text-2);
   font-size: var(--fs-caption);
 }
-.r8-sidebar .bot-preview.visually-hidden {
-  white-space: nowrap;
+.r8-sidebar .bot-preview {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* One count style (its accessible label describes the total); one state style (a dot). */
