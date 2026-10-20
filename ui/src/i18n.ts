@@ -1265,12 +1265,74 @@ export const ptBR = {
   "Sidebar mode": "Modo da barra lateral",
   "Work mode tab": "Work",
   "Tab waiting count": "{count} aguardando",
+  "Tab attention count": "{count} itens precisam da sua atenção",
+  "Tab unread count": "{count} mensagens não lidas",
   Channels: "Canais",
   "New channel": "Novo canal",
   "Direct messages": "Mensagens diretas",
-  "Routine summary row": "Rotina {name} · {count} hoje",
+  "Routine row title": "Rotina “{name}”",
+  "Routine today count": " · {count} hoje",
+  "Routine last run date": " · {date}",
   "Open routine history for {name}": "Abrir histórico da rotina {name}",
-  "Channel attention count": "{count} precisa de você",
+  "Channel attention count": "{count} itens precisam de você",
+  "Search channels and messages": "Buscar canais e mensagens",
+  "No channels yet, create one to work with bots and people.":
+    "Nenhum canal ainda. Crie um canal para trabalhar com bots e pessoas.",
+  "Channel actions for {name}": "Ações do canal {name}",
+  "Edit channel": "Editar canal",
+  "Delete channel": "Apagar canal",
+  "Delete channel dialog title": "Apagar canal",
+  "Channel panel for {name}": "Painel do canal {name}",
+  "Channel panel": "Painel do canal",
+  "Close channel panel": "Fechar painel do canal",
+  "Channel members": "Membros do canal",
+  "Channel member count": "{count} membros do canal",
+  "Your channel": "Seu canal",
+  "Channels / {name}": "Canais / {name}",
+  "Start a conversation with {name}": "Comece uma conversa com {name}",
+  "Tell the channel what to do to get started.": "Conte o que o canal deve fazer para começar.",
+  "Channel name": "Nome do canal",
+  "Channel mascot": "Mascote do canal",
+  "Customize your channel": "Personalize seu canal",
+  "Create channel": "Criar canal",
+  "Save channel": "Salvar canal",
+  "Close channel": "Fechar canal",
+  "Bots together": "Bots juntos",
+  "Group name": "Nome do grupo",
+  "Group mascot": "Mascote do grupo",
+  "Customize your group": "Personalize seu grupo",
+  "Group members · response order": "Membros · ordem das respostas",
+  "Group coordinator": "Coordenador",
+  "Salvar grupo": "Salvar grupo",
+  "Close group": "Fechar grupo",
+  "A shared group conversation. Each bot keeps its own computer and permissions.":
+    "Uma conversa compartilhada. Cada bot mantém seu computador e suas permissões.",
+  "A shared channel. Each bot keeps its own computer and permissions.":
+    "Um canal compartilhado. Cada bot mantém seu computador e suas permissões.",
+  "Example: Product": "Ex.: Produto",
+  "Channel members · response order": "Membros do canal · ordem das respostas",
+  "Channel coordinator": "Coordenador do canal",
+  "No channel coordinator": "Sem coordenador",
+  "Channel coordinator routing note": "{name} coordena este canal e pode encaminhar pedidos aos membros.",
+  "Channel member routing note":
+    "Mencione @nome para escolher quem responde. Sem menções, todos os membros respondem na ordem acima.",
+  "Group member routing note":
+    "Mencione @nome para escolher quem responde. Sem menções, todos respondem na ordem acima.",
+  "Deleting channel…": "Apagando canal…",
+  "Apagar {name} remove todas as conversas, mensagens e rotinas do canal. Esta ação não pode ser desfeita.":
+    "Apagar {name} remove todas as conversas, mensagens e rotinas do canal. Esta ação não pode ser desfeita.",
+  "Type channel name: {name}": "Digite o nome do canal: {name}",
+  "Aguarde as respostas do canal terminarem ou cancele os turnos antes de apagar o canal.":
+    "Aguarde as respostas do canal terminarem ou cancele os turnos antes de apagar o canal.",
+  "The channel coordinator receives the request and may delegate to members.":
+    "O coordenador do canal recebe o pedido e pode delegar aos membros.",
+  "The group coordinator receives the request and may delegate to members.":
+    "O coordenador recebe o pedido e pode delegar aos membros.",
+  "Mention @name to choose who replies. Without a mention, all members reply in order.":
+    "Mencione @nome para escolher quem responde. Sem menções, todos respondem na ordem acima.",
+  "The member was removed from the channel.": "O membro foi removido do canal.",
+  "Each bot keeps its own computer and permissions.": "Cada bot mantém seu computador e suas permissões.",
+  optional: "opcional",
   "Onde o bot responde": "Onde o bot responde",
   "Na conversa principal": "Na conversa principal",
   "Uma conversa nova por tarefa": "Uma conversa nova por tarefa",
@@ -1279,7 +1341,6 @@ export const ptBR = {
   "Segue o bot: uma conversa nova por tarefa": "Segue o bot: uma conversa nova por tarefa",
   "Automatic conversation mode help":
     "No modo principal, as rotinas ficam na conversa do bot. Cada execução mostra o gatilho e o horário; no outro modo, cada execução ganha uma conversa própria.",
-  "Routine row title": "Rotina {name}",
   "Task row title": "Tarefas {name}",
   "Task conversation history for {name}": "Histórico de tarefas de {name}",
   "Today count suffix": " · {count} hoje",
@@ -3945,12 +4006,73 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Sidebar mode": "Sidebar mode",
   "Work mode tab": "Work",
   "Tab waiting count": "{count} waiting",
+  "Tab attention count": "{count} items need your attention",
+  "Tab unread count": "{count} unread messages",
   Channels: "Channels",
   "New channel": "New channel",
   "Direct messages": "Direct messages",
-  "Routine summary row": "Routine {name} · {count} today",
+  "Routine row title": "Routine “{name}”",
+  "Routine today count": " · {count} today",
+  "Routine last run date": " · {date}",
   "Open routine history for {name}": "Open history for routine {name}",
-  "Channel attention count": "{count} needs your attention",
+  "Channel attention count": "{count} items need your attention",
+  "Search channels and messages": "Search channels and messages",
+  "No channels yet, create one to work with bots and people.":
+    "No channels yet. Create a channel to work with bots and people.",
+  "Channel actions for {name}": "Channel actions for {name}",
+  "Edit channel": "Edit channel",
+  "Delete channel": "Delete channel",
+  "Delete channel dialog title": "Delete channel",
+  "Channel panel for {name}": "Channel panel for {name}",
+  "Channel panel": "Channel panel",
+  "Close channel panel": "Close channel panel",
+  "Channel members": "Channel members",
+  "Channel member count": "{count} channel members",
+  "Your channel": "Your channel",
+  "Channels / {name}": "Channels / {name}",
+  "Start a conversation with {name}": "Start a conversation with {name}",
+  "Tell the channel what to do to get started.": "Tell the channel what to do to get started.",
+  "Channel name": "Channel name",
+  "Channel mascot": "Channel mascot",
+  "Customize your channel": "Customize your channel",
+  "Create channel": "Create channel",
+  "Save channel": "Save channel",
+  "Close channel": "Close channel",
+  "Bots together": "Bots together",
+  "Group name": "Group name",
+  "Group mascot": "Group mascot",
+  "Customize your group": "Customize your group",
+  "Group members · response order": "Members · reply order",
+  "Group coordinator": "Coordinator",
+  "Salvar grupo": "Save group",
+  "Close group": "Close group",
+  "A shared group conversation. Each bot keeps its own computer and permissions.":
+    "A shared group conversation. Each bot keeps its own computer and permissions.",
+  "A shared channel. Each bot keeps its own computer and permissions.":
+    "A shared channel. Each bot keeps its own computer and permissions.",
+  "Example: Product": "e.g. Product",
+  "Channel members · response order": "Channel members · reply order",
+  "Channel coordinator": "Channel coordinator",
+  "No channel coordinator": "No coordinator",
+  "Channel coordinator routing note": "{name} coordinates this channel and can route requests to its members.",
+  "Channel member routing note": "Mention @name to choose who replies. Without a mention, all members reply in order.",
+  "Group member routing note": "Mention @name to choose who replies. Without a mention, all members reply in order.",
+  "Deleting channel…": "Deleting channel…",
+  "Apagar {name} remove todas as conversas, mensagens e rotinas do canal. Esta ação não pode ser desfeita.":
+    "Deleting {name} removes all conversations, messages, and routines from the channel. This cannot be undone.",
+  "Type channel name: {name}": "Type the channel name: {name}",
+  "Aguarde as respostas do canal terminarem ou cancele os turnos antes de apagar o canal.":
+    "Wait for channel replies to finish or cancel the turns before deleting the channel.",
+  "The channel coordinator receives the request and may delegate to members.":
+    "The channel coordinator receives the request and may delegate to members.",
+  "The group coordinator receives the request and may delegate to members.":
+    "The group coordinator receives the request and may delegate to members.",
+  "Mention @name to choose who replies. Without a mention, all members reply in order.":
+    "Mention @name to choose who replies. Without a mention, all members reply in order.",
+  "The member was removed from the channel.": "The member was removed from the channel.",
+  "Each bot keeps its own computer and permissions.": "Each bot keeps its own computer and permissions.",
+  optional: "optional",
+  "Saving…": "Saving…",
   "Onde o bot responde": "Where the bot replies",
   "Na conversa principal": "In the main conversation",
   "Uma conversa nova por tarefa": "A new conversation for each task",
@@ -3959,7 +4081,6 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Segue o bot: uma conversa nova por tarefa": "Follows bot: a new conversation per task",
   "Automatic conversation mode help":
     "In main mode, routines stay in the bot's conversation. Each run shows its trigger and time; task mode gives every run its own conversation.",
-  "Routine row title": "Routine {name}",
   "Task row title": "Tasks {name}",
   "Task conversation history for {name}": "Task history for {name}",
   "Today count suffix": " · {count} today",
@@ -4759,6 +4880,10 @@ export const plural = (count: number, one: string, other: string, locale: Locale
 const singular: Partial<Record<TranslationKey, [string, string]>> = {
   "Group member count": ["{count} membro", "{count} member"],
   "Group members label": ["{count} membro: {names}", "{count} member: {names}"],
+  "Tab attention count": ["1 item precisa da sua atenção", "1 item needs your attention"],
+  "Tab unread count": ["1 mensagem não lida", "1 unread message"],
+  "Channel attention count": ["1 item precisa de você", "1 item needs your attention"],
+  "Channel member count": ["{count} membro do canal", "{count} channel member"],
   "Conexão pronta: {count} ferramentas disponíveis. Salve para usá-las neste bot.": [
     "Conexão pronta: {count} ferramenta disponível. Salve para usá-la neste bot.",
     "Connection ready: {count} tool available. Save to use it with this bot.",
@@ -4832,69 +4957,99 @@ export const getRoutineRunDateLabel = (timestamp: number, locale: Locale = "pt-B
     ...(timeZone ? { timeZone } : {}),
   }).format(timestamp)
 
+export type RoutineRunDayBounds = { start: number; end: number }
+export type RoutineRunDayBoundsReader = (now: number, timeZone?: string) => RoutineRunDayBounds
+
 export const getRoutineRunCountsToday = (
   routineRuns: readonly RoutineRun[],
   routines: ReadonlyMap<string, Routine>,
   now = Date.now(),
+  readDayBounds: RoutineRunDayBoundsReader = getRoutineRunDayBounds,
 ): ReadonlyMap<string, number> => {
-  const formatters = new Map<string, Intl.DateTimeFormat>()
-  const todayByTimeZone = new Map<string, string>()
   const counts = new Map<string, number>()
-  const getDayKey = (timestamp: number, timeZone: string): string => {
-    const parts = getFormatter(timeZone)
-      .formatToParts(timestamp)
-      .filter((part) => ["year", "month", "day"].includes(part.type))
-      .map((part) => part.value)
+  if (!routineRuns.length || !routines.size) return counts
 
-    return parts.join("-")
-  }
-  const getFormatter = (timeZone: string): Intl.DateTimeFormat => {
-    const existing = formatters.get(timeZone)
-    if (existing) return existing
+  const bounds = readDayBounds(now)
 
-    const formatter = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "numeric", day: "numeric" })
-    formatters.set(timeZone, formatter)
-
-    return formatter
-  }
-  // Per-bot indexes avoid recreating date formatters for each run in the sidebar.
+  // The local count map keeps this scan linear; viewer-local "today" needs one shared day boundary.
   routineRuns.forEach((run) => {
     if (!run.threadId) return
-    const routine = routines.get(run.routineId)
-    if (!routine) return
-
-    const timeZone = routine.timezone
-    const today = todayByTimeZone.get(timeZone) ?? getDayKey(now, timeZone)
-    todayByTimeZone.set(timeZone, today)
-    if (getDayKey(run.scheduledFor, timeZone) !== today) return
+    if (!routines.has(run.routineId)) return
+    if (run.scheduledFor < bounds.start || run.scheduledFor >= bounds.end) return
 
     counts.set(run.routineId, (counts.get(run.routineId) ?? 0) + 1)
   })
 
   return counts
+}
+
+export const getNextRoutineRunDayBoundary = (
+  routines: ReadonlyMap<string, Routine>,
+  now = Date.now(),
+  readDayBounds: RoutineRunDayBoundsReader = getRoutineRunDayBounds,
+): number | undefined => {
+  if (!routines.size) return undefined
+
+  return readDayBounds(now).end
+}
+
+const getRoutineRunDayBounds: RoutineRunDayBoundsReader = (now, timeZone) => {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    ...(timeZone ? { timeZone } : {}),
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    second: "numeric",
+    hourCycle: "h23",
+  })
+  const readParts = (timestamp: number) => {
+    const parts = formatter.formatToParts(timestamp)
+    const readNumber = (type: "year" | "month" | "day" | "hour" | "minute" | "second"): number =>
+      Number(parts.find((part) => part.type === type)?.value ?? "0")
+
+    return {
+      year: readNumber("year"),
+      month: readNumber("month"),
+      day: readNumber("day"),
+      hour: readNumber("hour"),
+      minute: readNumber("minute"),
+      second: readNumber("second"),
+    }
+  }
+  const localToday = readParts(now)
+  const today = Date.UTC(localToday.year, localToday.month - 1, localToday.day)
+  const tomorrowDate = new Date(today + 86_400_000)
+  const nextDay = Date.UTC(tomorrowDate.getUTCFullYear(), tomorrowDate.getUTCMonth(), tomorrowDate.getUTCDate())
+  const getBoundary = (date: number): number => {
+    const dateParts = new Date(date)
+    const year = dateParts.getUTCFullYear()
+    const month = dateParts.getUTCMonth() + 1
+    const day = dateParts.getUTCDate()
+    let timestamp = date
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const local = readParts(timestamp)
+      const represented = Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute, local.second)
+      const epochSecond = Math.floor(timestamp / 1000) * 1000
+      const offset = represented - epochSecond
+      const nextTimestamp = date - offset
+      if (nextTimestamp === timestamp) return timestamp
+      timestamp = nextTimestamp
+      const adjusted = readParts(timestamp)
+      if (adjusted.year === year && adjusted.month === month && adjusted.day === day && adjusted.hour > 0)
+        return timestamp
+    }
+
+    return timestamp
+  }
+
+  return { start: getBoundary(today), end: getBoundary(nextDay) }
 }
 
 export const getRoutineRunTimeLabel = (timestamp: number, locale: Locale = "pt-BR", timeZone?: string): string =>
   new Intl.DateTimeFormat(locale, { timeStyle: "short", ...(timeZone ? { timeZone } : {}) }).format(timestamp)
-
-export const getRoutineRunCountsToday = (
-  routineRuns: readonly RoutineRun[],
-  routines: ReadonlyMap<string, Routine>,
-  now = Date.now(),
-): ReadonlyMap<string, number> => {
-  const today = new Date(now).toDateString()
-  const counts = new Map<string, number>()
-  routineRuns.forEach((run) => {
-    const routine = routines.get(run.routineId)
-    if (!routine) return
-
-    if (new Date(run.scheduledFor).toDateString() !== today) return
-
-    counts.set(run.routineId, (counts.get(run.routineId) ?? 0) + 1)
-  })
-
-  return counts
-}
 
 export const getRoutineRunSidebarDateLabel = (
   timestamp: number,

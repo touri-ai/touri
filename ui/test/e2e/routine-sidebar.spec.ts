@@ -86,9 +86,10 @@ for (const [name, width, height] of [
     await expect(conversations.locator(".thread-row")).toHaveCount(2)
     await expect(conversations.locator(".thread-row").first()).toContainText("Planejamento da semana")
     await expect(conversations.locator(".thread-row").last()).toContainText("hoje · 14:45")
+    await expect(conversations.locator(".thread-row").last()).not.toContainText("0 hoje")
     await expect(conversations.locator(".thread-row strong").last()).toHaveAttribute(
       "title",
-      "Rotina Resumo diário · 18/10/2026, 14:45",
+      "Rotina “Resumo diário” · 18/10/2026, 14:45",
     )
 
     await conversations.getByRole("button", { name: "Histórico de rotinas" }).click()

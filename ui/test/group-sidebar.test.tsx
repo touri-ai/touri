@@ -8,14 +8,15 @@ afterEach(cleanup)
 
 it("shows channel avatars, unread totals and an attention badge", () => {
   const state = createMockApi().getState()
-  const bot = state.bots[0]
+  const bots = state.bots.slice(0, 3)
+  const bot = bots[0]
   const baseThread = state.threads[0]
-  if (!bot || !baseThread) throw new Error("Missing channel fixture")
+  if (!bot || !baseThread || bots.length !== 3) throw new Error("Missing channel fixture")
 
   const group: BotGroup = {
     id: "channel-qa",
     name: "Equipe QA",
-    memberIds: [bot.id],
+    memberIds: bots.map(({ id }) => id),
     coordinatorBotId: bot.id,
     color: "#dc2626",
     avatarShape: "classic-none",
@@ -26,7 +27,7 @@ it("shows channel avatars, unread totals and an attention badge", () => {
   const thread: Thread = { ...baseThread, id: "channel-thread", groupId: group.id, unread: 3 }
   const props = {
     groups: [group],
-    bots: [bot],
+    bots,
     threads: [thread],
     selectedThreadId: null,
     onSelect: () => {},
@@ -35,13 +36,16 @@ it("shows channel avatars, unread totals and an attention badge", () => {
     onNewThread: () => {},
   }
   const view = render(<GroupSidebar {...props} attentionThreadIds={new Set()} />)
-  const channel = screen.getByRole("button", { name: "Equipe QA" })
+  const channel = screen.getByRole("button", { name: "Equipe QA, 3 mensagens não lidas" })
 
-  expect(within(channel).getByRole("img", { name: /mark/ })).toBeVisible()
+  expect(within(channel).getByRole("img", { name: /3 membros/ })).toBeVisible()
+  expect(within(channel).getByText("+1")).toBeVisible()
   expect(within(channel).getByRole("img", { name: "3 mensagens não lidas" })).toBeVisible()
+  expect(channel).toHaveAccessibleName("Equipe QA, 3 mensagens não lidas")
 
   view.rerender(<GroupSidebar {...props} attentionThreadIds={new Set([thread.id])} />)
 
-  expect(within(channel).getByRole("img", { name: "1 precisa de você" })).toBeVisible()
+  expect(within(channel).getByRole("img", { name: "1 item precisa de você" })).toBeVisible()
   expect(within(channel).queryByRole("img", { name: /mensagens não lidas/ })).toBeNull()
+  expect(channel).toHaveAccessibleName("Equipe QA, 1 item precisa de você")
 })

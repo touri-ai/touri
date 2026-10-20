@@ -20,8 +20,8 @@ test("switches and remembers Work mode, with channels and routine history", asyn
   const workTab = page.getByRole("tab", { name: /^Work,/ })
   const botsTab = page.getByRole("tab", { name: /^Bots,/ })
   const channels = page.getByRole("region", { name: "Canais" })
-  await expect(channels.getByRole("button", { name: "Planejamento", exact: true })).toBeVisible()
-  await expect(page.getByText("Rotina Resumo diário · 30 hoje", { exact: true })).toBeVisible()
+  await expect(channels.getByRole("button", { name: /^Planejamento/ })).toBeVisible()
+  await expect(page.getByText("Rotina “Resumo diário” · 30 hoje", { exact: true })).toBeVisible()
   await expect(page.locator('[data-bot-entry="bot-mark"] .thread-row')).toHaveCount(2)
 
   await workTab.focus()
@@ -69,8 +69,13 @@ test("switches and remembers Work mode, with channels and routine history", asyn
             .analyze()
           expect(contrast.violations).toEqual([])
         }
-        await page.locator('[data-bot-entry="bot-mark"] .bot-row-main').click()
+        const botRow =
+          mode === "work"
+            ? page.locator('[data-work-bot-entry="bot-mark"] .bot-row-main')
+            : page.locator('[data-bot-entry="bot-mark"] .bot-row-main')
+        await botRow.click()
         await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+        await expect(page.locator(".chat-header-crumb")).toHaveText(mode === "work" ? "Mensagens diretas" : "Bots")
         if (viewport.name === "phone") await page.locator(".mobile-menu-button").click()
         const sidebar = page.locator(".bot-sidebar")
         await expect(sidebar).toBeVisible()
@@ -81,4 +86,86 @@ test("switches and remembers Work mode, with channels and routine history", asyn
       }
     }
   }
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.evaluate(() => localStorage.setItem("touri.sidebar.mode", "work"))
+  await page.reload()
+  await page.locator(".mobile-menu-button").click()
+  await expect(page.getByRole("tab", { name: /^Work,/ })).toHaveAttribute("aria-selected", "true")
+  const touchTargetHeights = await page
+    .locator(".sidebar-mode-tabs [role=tab], .group-select, .channel-create, .work-sidebar-search")
+    .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height))
+  expect(touchTargetHeights.length).toBeGreaterThanOrEqual(5)
+  expect(touchTargetHeights.every((height) => height >= 44)).toBe(true)
+})
+
+test("preserves each mode's independent scroll position when switching", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.addInitScript(() => localStorage.setItem("touri.sidebar.mode", "work"))
+  await page.goto("/test/e2e/work-mode-harness.html")
+  await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+
+  const botsTab = page.getByRole("tab", { name: /^Bots,/ })
+  const workTab = page.getByRole("tab", { name: /^Work,/ })
+  const botsPanel = page.locator("#sidebar-mode-panel-bots")
+  const workPanel = page.locator("#sidebar-mode-panel-work")
+  const makeScrollable = async (panel: typeof botsPanel) => {
+    await panel.evaluate((element) => {
+      element.style.flex = "0 0 160px"
+      element.style.height = "160px"
+      element.style.paddingBottom = "200px"
+      element.scrollTop = 100
+    })
+    await expect.poll(() => panel.evaluate((element) => element.scrollTop)).toBe(100)
+  }
+
+  await botsTab.click()
+  await makeScrollable(botsPanel)
+  await workTab.click()
+  await makeScrollable(workPanel)
+  await botsTab.click()
+  await expect.poll(() => botsPanel.evaluate((element) => element.scrollTop)).toBe(100)
+  await workTab.click()
+  await expect.poll(() => workPanel.evaluate((element) => element.scrollTop)).toBe(100)
+})
+
+test("keeps the channel row mounted through rapid mode switches", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.addInitScript(() => localStorage.setItem("touri.sidebar.mode", "work"))
+  await page.goto("/test/e2e/work-mode-harness.html?large")
+  await expect(page.getByRole("region", { name: "Canais" })).toBeVisible()
+  await expect(page.locator(".group-select")).toHaveCount(101)
+
+  const workPanelNodes = await page
+    .locator("#sidebar-mode-panel-work")
+    .evaluate((panel) => panel.querySelectorAll("*").length)
+  expect(workPanelNodes).toBeLessThan(4_000)
+
+  const switchMetrics = await page.evaluate(async () => {
+    const channelRow = document.querySelector(".group-select")
+    const botsTab = document.querySelector<HTMLButtonElement>('[data-sidebar-mode="bots"]')
+    const workTab = document.querySelector<HTMLButtonElement>('[data-sidebar-mode="work"]')
+    if (!channelRow || !botsTab || !workTab) return { stayedMounted: false, maxFrameMs: Number.POSITIVE_INFINITY }
+
+    const frame = (): Promise<number> => new Promise((resolve) => requestAnimationFrame(resolve))
+    let maxFrameMs = 0
+
+    for (let iteration = 0; iteration < 20; iteration += 1) {
+      const started = performance.now()
+      botsTab.click()
+      maxFrameMs = Math.max(maxFrameMs, (await frame()) - started)
+      const workStarted = performance.now()
+      workTab.click()
+      maxFrameMs = Math.max(maxFrameMs, (await frame()) - workStarted)
+    }
+
+    return {
+      stayedMounted: channelRow === document.querySelector(".group-select"),
+      maxFrameMs,
+    }
+  })
+
+  expect(switchMetrics.stayedMounted).toBe(true)
+  expect(switchMetrics.maxFrameMs).toBeLessThan(250)
+  await expect(page.getByRole("tab", { name: /^Work,/ })).toHaveAttribute("aria-selected", "true")
 })

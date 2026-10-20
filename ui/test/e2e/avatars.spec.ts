@@ -125,8 +125,8 @@ test("group colour returns to its seeded automatic value and survives saving", a
   await showBotPanel(page)
   await page.getByRole("tab", { name: /^Work,/ }).click()
   await page.getByRole("button", { name: "Novo canal", exact: true }).click()
-  const dialog = page.getByRole("dialog", { name: "Criar grupo", exact: true })
-  await dialog.getByLabel("Nome do grupo").fill("Equipe QA")
+  const dialog = page.getByRole("dialog", { name: "Criar canal", exact: true })
+  await dialog.getByLabel("Nome do canal").fill("Equipe QA")
   await dialog.getByRole("checkbox", { name: "mark", exact: true }).check()
   const preview = dialog.locator(".avatar-picker-stage [data-avatar-body]")
   const automatic = await preview.getAttribute("fill")
@@ -141,13 +141,13 @@ test("group colour returns to its seeded automatic value and survives saving", a
   await expect(preview).toHaveAttribute("fill", automatic ?? "")
   await dialog.screenshot({ path: testInfo.outputPath("group-automatic-colour.png") })
 
-  await dialog.getByRole("button", { name: "Criar grupo", exact: true }).click()
+  await dialog.getByRole("button", { name: "Criar canal", exact: true }).click()
 
   await expect(page.getByRole("textbox", { name: "Mensagem para Equipe QA" })).toBeVisible()
   await expect(page.locator(".group-heading-name [data-avatar-body]")).toHaveAttribute("fill", automatic ?? "")
 
-  await page.locator(".group-header").getByRole("button", { name: "Editar grupo", exact: true }).click()
+  await page.locator(".group-header").getByRole("button", { name: "Editar canal", exact: true }).click()
 
-  const settings = page.getByRole("dialog", { name: "Editar grupo", exact: true })
+  const settings = page.getByRole("dialog", { name: "Editar canal", exact: true })
   await expect(settings.locator(".avatar-picker-stage [data-avatar-body]")).toHaveAttribute("fill", automatic ?? "")
 })

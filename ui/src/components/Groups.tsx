@@ -1,6 +1,6 @@
 import type { AvatarShape, Bot, BotGroup, GroupInput, Message, Run, Thread } from "@touri/contracts"
 import { avatarColorFor, avatarShapeFor } from "@touri/contracts/avatar"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { memo, useEffect, useMemo, useRef, useState } from "react"
 import { userFacingError } from "../errors"
 import { type Locale, t } from "../i18n"
 import { AvatarPicker } from "./AvatarPicker"
@@ -23,75 +23,98 @@ export const MemberMascots = ({ bots, locale = "pt-BR" }: { bots: Bot[]; locale?
       locale,
     )}
   >
-    {bots.slice(0, 4).map((bot) => (
-      <BotAvatar key={bot.id} bot={bot} size={24} />
+    {bots.slice(0, 2).map((bot) => (
+      <span
+        key={bot.id}
+        className="group-member-avatar"
+        style={{ backgroundColor: bot.color ?? avatarColorFor(bot) }}
+        aria-hidden="true"
+      >
+        {bot.name.trim().slice(0, 1).toLocaleUpperCase(locale) || "?"}
+      </span>
     ))}
+    {bots.length > 2 && <span className="group-member-avatar group-member-avatar-more">+{bots.length - 2}</span>}
   </span>
 )
-export const GroupSidebar = ({
-  groups,
-  bots,
-  threads,
-  attentionThreadIds = new Set(),
-  selectedThreadId,
-  onSelect,
-  onCreate,
-  onEdit,
-  onNewThread,
-  onDelete,
-  locale = "pt-BR",
-}: {
-  groups: BotGroup[]
-  bots: Bot[]
-  threads: Thread[]
-  attentionThreadIds?: ReadonlySet<string>
-  selectedThreadId: string | null
-  onSelect: (id: string) => void
-  onCreate: () => void
-  onEdit: (group: BotGroup) => void
-  onNewThread: (group: BotGroup) => void
-  onDelete?: ((groupId: string) => Promise<void>) | undefined
-  locale?: Locale
-}) => {
-  const threadSummaries = useMemo(
-    () => getGroupThreadSummaries(threads, attentionThreadIds),
-    [threads, attentionThreadIds],
-  )
+export const GroupSidebar = memo(
+  ({
+    groups,
+    bots,
+    threads,
+    attentionThreadIds = new Set(),
+    selectedThreadId,
+    onSelect,
+    onCreate,
+    onEdit,
+    onNewThread,
+    onDelete,
+    locale = "pt-BR",
+  }: {
+    groups: BotGroup[]
+    bots: Bot[]
+    threads: Thread[]
+    attentionThreadIds?: ReadonlySet<string>
+    selectedThreadId: string | null
+    onSelect: (id: string) => void
+    onCreate: () => void
+    onEdit: (group: BotGroup) => void
+    onNewThread: (group: BotGroup) => void
+    onDelete?: ((groupId: string) => Promise<void>) | undefined
+    locale?: Locale
+  }) => {
+    const threadSummaries = useMemo(
+      () => getGroupThreadSummaries(threads, attentionThreadIds),
+      [threads, attentionThreadIds],
+    )
 
-  return (
-    <section className="group-sidebar" aria-label={t("Channels", {}, locale)}>
-      <div className="group-sidebar-heading">
-        <span>
-          {t("Channels", {}, locale)} <small>{groups.length}</small>
-        </span>
-        <button type="button" className="channel-create" onClick={onCreate}>
-          <span aria-hidden="true">+</span>
-          {t("New channel", {}, locale)}
-        </button>
-      </div>
-      {groups.map((group) => {
-        const summary = threadSummaries.get(group.id)
+    return (
+      <section className="group-sidebar" aria-label={t("Channels", {}, locale)}>
+        <div className="group-sidebar-heading">
+          <span>
+            {t("Channels", {}, locale)} <small>{groups.length}</small>
+          </span>
+          <button
+            type="button"
+            className="channel-create"
+            aria-label={t("New channel", {}, locale)}
+            title={t("New channel", {}, locale)}
+            onClick={onCreate}
+          >
+            <span aria-hidden="true">+</span>
+          </button>
+        </div>
+        {groups.length === 0 && (
+          <p className="group-sidebar-empty">
+            {t("No channels yet, create one to work with bots and people.", {}, locale)}
+          </p>
+        )}
+        {groups.map((group) => {
+          const summary = threadSummaries.get(group.id)
 
-        return (
-          <GroupSidebarEntry
-            key={group.id}
-            group={group}
-            bots={bots}
-            threads={summary?.threads ?? []}
-            unread={summary?.unread ?? 0}
-            needsAttention={summary?.needsAttention ?? false}
-            selectedThreadId={selectedThreadId}
-            onSelect={onSelect}
-            onEdit={() => onEdit(group)}
-            onNewThread={() => onNewThread(group)}
-            onDelete={onDelete}
-            locale={locale}
-          />
-        )
-      })}
-    </section>
-  )
-}
+          return (
+            <GroupSidebarEntry
+              key={group.id}
+              group={group}
+              bots={bots}
+              threads={summary?.threads ?? []}
+              unread={summary?.unread ?? 0}
+              needsAttention={summary?.needsAttention ?? false}
+              selected={summary?.threads.some((thread) => thread.id === selectedThreadId) ?? false}
+              selectedThreadId={
+                summary?.threads.some((thread) => thread.id === selectedThreadId) ? selectedThreadId : null
+              }
+              onSelect={onSelect}
+              onEdit={onEdit}
+              onNewThread={onNewThread}
+              onDelete={onDelete}
+              locale={locale}
+            />
+          )
+        })}
+      </section>
+    )
+  },
+)
 
 type GroupThreadSummary = {
   threads: Thread[]
@@ -113,128 +136,167 @@ const getGroupThreadSummaries = (threads: Thread[], attentionThreadIds: Readonly
     return summaries
   }, new Map<string, GroupThreadSummary>())
 
-const GroupSidebarEntry = ({
+const GroupSidebarEntry = memo(
+  ({
+    group,
+    bots,
+    threads,
+    unread,
+    needsAttention,
+    selected,
+    selectedThreadId,
+    onSelect,
+    onEdit,
+    onNewThread,
+    onDelete,
+    locale,
+  }: {
+    group: BotGroup
+    bots: Bot[]
+    threads: Thread[]
+    unread: number
+    needsAttention: boolean
+    selected: boolean
+    selectedThreadId: string | null
+    onSelect: (id: string) => void
+    onEdit: (group: BotGroup) => void
+    onNewThread: (group: BotGroup) => void
+    onDelete?: ((groupId: string) => Promise<void>) | undefined
+    locale: Locale
+  }) => {
+    const [menuOpen, setMenuOpen] = useState(false)
+    const [deleting, setDeleting] = useState(false)
+    const navigationKey = selected ? selectedThreadId : null
+    // biome-ignore lint/correctness/useExhaustiveDependencies: navigating away dismisses the group's actions
+    useEffect(() => setMenuOpen(false), [navigationKey])
+
+    return (
+      <div className={`group-sidebar-item ${selected ? "selected" : ""}`}>
+        <div className="group-sidebar-row">
+          <button
+            type="button"
+            className="group-select"
+            aria-label={[
+              group.name,
+              needsAttention
+                ? t("Channel attention count", { count: 1 }, locale)
+                : unread > 0
+                  ? t("Unread messages", { count: unread }, locale)
+                  : null,
+            ]
+              .filter(Boolean)
+              .join(", ")}
+            onClick={() => {
+              const thread = threads[0]
+              if (!thread) return onNewThread(group)
+
+              onSelect(thread.id)
+            }}
+            aria-current={selected ? "page" : undefined}
+          >
+            <span className="channel-hash" aria-hidden="true">
+              #
+            </span>
+            <span className="channel-name">{group.name}</span>
+            <MemberMascots
+              bots={group.memberIds.flatMap((id) => {
+                const bot = bots.find((bot) => bot.id === id)
+                return bot ? [bot] : []
+              })}
+              locale={locale}
+            />
+            {needsAttention ? (
+              <span
+                className="channel-attention-badge"
+                role="img"
+                aria-label={t("Channel attention count", { count: 1 }, locale)}
+              >
+                !
+              </span>
+            ) : unread > 0 ? (
+              <span className="sidebar-unread" role="img" aria-label={t("Unread messages", { count: unread }, locale)}>
+                {unread > 99 ? "99+" : unread}
+              </span>
+            ) : null}
+          </button>
+          <SidebarActionsMenu
+            label={t("Channel actions for {name}", { name: group.name }, locale)}
+            open={menuOpen}
+            onOpenChange={setMenuOpen}
+            actions={[
+              { label: t("Edit channel", {}, locale), onSelect: () => onEdit(group) },
+              ...(onDelete
+                ? [{ label: t("Delete channel", {}, locale), onSelect: () => setDeleting(true), destructive: true }]
+                : []),
+            ]}
+          />
+        </div>
+        {deleting && onDelete && (
+          <DeleteGroupDialog
+            group={group}
+            onDelete={onDelete}
+            onClose={() => setDeleting(false)}
+            locale={locale}
+            channelMode
+          />
+        )}
+        {selected && (
+          <div className="group-thread-list">
+            {threads.map((thread) => (
+              <button
+                type="button"
+                key={thread.id}
+                aria-current={thread.id === selectedThreadId ? "page" : undefined}
+                onClick={() => onSelect(thread.id)}
+              >
+                {thread.title}
+              </button>
+            ))}
+            <button type="button" onClick={() => onNewThread(group)}>
+              + {t("New conversation", {}, locale)}
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  },
+)
+
+export const GroupRoutingNote = ({
   group,
   bots,
-  threads,
-  unread,
-  needsAttention,
-  selectedThreadId,
-  onSelect,
-  onEdit,
-  onNewThread,
-  onDelete,
-  locale,
+  channelMode = false,
 }: {
   group: BotGroup
   bots: Bot[]
-  threads: Thread[]
-  unread: number
-  needsAttention: boolean
-  selectedThreadId: string | null
-  onSelect: (id: string) => void
-  onEdit: () => void
-  onNewThread: () => void
-  onDelete?: ((groupId: string) => Promise<void>) | undefined
-  locale: Locale
+  channelMode?: boolean
 }) => {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const selected = threads.some((thread) => thread.id === selectedThreadId)
-  // biome-ignore lint/correctness/useExhaustiveDependencies: navigating away dismisses the group's actions
-  useEffect(() => setMenuOpen(false), [selectedThreadId])
-
-  return (
-    <div className={`group-sidebar-item ${selected ? "selected" : ""}`}>
-      <div className="group-sidebar-row">
-        <button
-          type="button"
-          className="group-select"
-          aria-label={group.name}
-          onClick={() => {
-            const thread = threads[0]
-            if (!thread) return onNewThread()
-
-            onSelect(thread.id)
-          }}
-          aria-current={selected ? "page" : undefined}
-        >
-          <span className="channel-hash" aria-hidden="true">
-            #
-          </span>
-          <span className="channel-name">{group.name}</span>
-          <MemberMascots
-            bots={group.memberIds.flatMap((id) => {
-              const bot = bots.find((bot) => bot.id === id)
-              return bot ? [bot] : []
-            })}
-            locale={locale}
-          />
-          {needsAttention ? (
-            <span
-              className="channel-attention-badge"
-              role="img"
-              aria-label={t("Channel attention count", { count: 1 }, locale)}
-            >
-              !
-            </span>
-          ) : unread > 0 ? (
-            <span className="sidebar-unread" role="img" aria-label={t("Unread messages", { count: unread }, locale)}>
-              {unread > 99 ? "99+" : unread}
-            </span>
-          ) : null}
-        </button>
-        <SidebarActionsMenu
-          label={t("Ações do grupo {name}", { name: group.name }, locale)}
-          open={menuOpen}
-          onOpenChange={setMenuOpen}
-          actions={[
-            { label: t("Editar grupo", {}, locale), onSelect: onEdit },
-            ...(onDelete
-              ? [{ label: t("Apagar grupo", {}, locale), onSelect: () => setDeleting(true), destructive: true }]
-              : []),
-          ]}
-        />
-      </div>
-      {deleting && onDelete && (
-        <DeleteGroupDialog group={group} onDelete={onDelete} onClose={() => setDeleting(false)} locale={locale} />
-      )}
-      {selected && (
-        <div className="group-thread-list">
-          {threads.map((thread) => (
-            <button
-              type="button"
-              key={thread.id}
-              aria-current={thread.id === selectedThreadId ? "page" : undefined}
-              onClick={() => onSelect(thread.id)}
-            >
-              {thread.title}
-            </button>
-          ))}
-          <button type="button" onClick={onNewThread}>
-            + {t("New conversation", {}, locale)}
-          </button>
-        </div>
-      )}
-    </div>
-  )
-}
-
-export const GroupRoutingNote = ({ group, bots }: { group: BotGroup; bots: Bot[] }) => {
   const coordinator = bots.find((bot) => bot.id === group.coordinatorBotId)
   return (
     <p className="group-routing-note">
-      {coordinator
-        ? t("{name} coordena as respostas e pode delegar aos membros. Use @nome para falar com um membro.", {
-            name: coordinator.name,
-          })
-        : t("Sem menções, todos os membros respondem na ordem da lista. Use @nome para escolher quem responde.")}
+      {channelMode
+        ? coordinator
+          ? t("Channel coordinator routing note", { name: coordinator.name })
+          : t("Channel member routing note")
+        : coordinator
+          ? t("{name} coordena as respostas e pode delegar aos membros. Use @nome para falar com um membro.", {
+              name: coordinator.name,
+            })
+          : t("Sem menções, todos os membros respondem na ordem da lista. Use @nome para escolher quem responde.")}
     </p>
   )
 }
 
-const GroupMembers = ({ group, bots }: { group: BotGroup; bots: Bot[] }) => (
-  <ol className="group-context-members" aria-label={t("Membros do grupo")}>
+const GroupMembers = ({
+  group,
+  bots,
+  channelMode = false,
+}: {
+  group: BotGroup
+  bots: Bot[]
+  channelMode?: boolean
+}) => (
+  <ol className="group-context-members" aria-label={t(channelMode ? "Channel members" : "Membros do grupo")}>
     {bots.map((bot) => (
       <li key={bot.id}>
         <BotAvatar bot={bot} size={28} />
@@ -248,16 +310,33 @@ const GroupMembers = ({ group, bots }: { group: BotGroup; bots: Bot[] }) => (
   </ol>
 )
 
-export const GroupConversationStart = ({ group, bots }: { group: BotGroup; bots: Bot[] }) => (
-  <section className="conversation-start" aria-label={t("Comece uma conversa com {name}", { name: group.name })}>
+export const GroupConversationStart = ({
+  group,
+  bots,
+  channelMode = false,
+}: {
+  group: BotGroup
+  bots: Bot[]
+  channelMode?: boolean
+}) => (
+  <section
+    className="conversation-start"
+    aria-label={t(channelMode ? "Start a conversation with {name}" : "Comece uma conversa com {name}", {
+      name: group.name,
+    })}
+  >
     <BotAvatar
       bot={{ id: group.id, color: group.color, avatarShape: group.avatarShape, avatarSeed: group.avatarSeed }}
       size={36}
     />
-    <h2>{t("Comece uma conversa com {name}", { name: group.name })}</h2>
-    <p>{t("Conte o que o grupo deve fazer para começar.")}</p>
-    <GroupMembers group={group} bots={bots} />
-    <GroupRoutingNote group={group} bots={bots} />
+    <h2>
+      {t(channelMode ? "Start a conversation with {name}" : "Comece uma conversa com {name}", { name: group.name })}
+    </h2>
+    <p>
+      {t(channelMode ? "Tell the channel what to do to get started." : "Conte o que o grupo deve fazer para começar.")}
+    </p>
+    <GroupMembers group={group} bots={bots} channelMode={channelMode} />
+    <GroupRoutingNote group={group} bots={bots} channelMode={channelMode} />
   </section>
 )
 
@@ -269,6 +348,7 @@ export const GroupPanel = ({
   runs = [],
   onClose,
   onEdit,
+  channelMode = false,
 }: {
   group: BotGroup
   bots: Bot[]
@@ -277,6 +357,7 @@ export const GroupPanel = ({
   runs?: Run[]
   onClose: () => void
   onEdit: () => void
+  channelMode?: boolean
 }) => {
   const { board, members, removed } = useMemo(
     () => getGroupProjection(threadId, messages, runs),
@@ -287,11 +368,16 @@ export const GroupPanel = ({
     <aside
       className="bot-panel group-panel"
       id="bot-panel"
-      aria-label={t("Painel do grupo {name}", { name: group.name })}
+      aria-label={t(channelMode ? "Channel panel for {name}" : "Painel do grupo {name}", { name: group.name })}
     >
       <div className="bot-panel-top">
-        <span>{t("Seu grupo")}</span>
-        <button type="button" className="toolbar-icon" aria-label={t("Fechar painel do grupo")} onClick={onClose}>
+        <span>{t(channelMode ? "Your channel" : "Seu grupo")}</span>
+        <button
+          type="button"
+          className="toolbar-icon"
+          aria-label={t(channelMode ? "Close channel panel" : "Fechar painel do grupo")}
+          onClick={onClose}
+        >
           ×
         </button>
       </div>
@@ -303,8 +389,11 @@ export const GroupPanel = ({
         <h2>{group.name}</h2>
       </header>
       <div className="bot-panel-body">
-        <h3>{t("Membros do grupo")}</h3>
-        <ol className="group-context-members group-status-members" aria-label={t("Membros do grupo")}>
+        <h3>{t(channelMode ? "Channel members" : "Membros do grupo")}</h3>
+        <ol
+          className="group-context-members group-status-members"
+          aria-label={t(channelMode ? "Channel members" : "Membros do grupo")}
+        >
           {bots.map((bot) => {
             const member = members.get(bot.id) ?? getIdleMemberState()
             return (
@@ -333,17 +422,23 @@ export const GroupPanel = ({
           {removed.map((message) => (
             <article key={message.id}>
               <strong>{message.sender?.name}</strong>
-              <p>{t("O membro foi removido do grupo.")}</p>
+              <p>{t(channelMode ? "The member was removed from the channel." : "O membro foi removido do grupo.")}</p>
             </article>
           ))}
           {board.length === 0 && removed.length === 0 && (
             <p className="muted-copy">{t("Sem resultados confirmados neste turno.")}</p>
           )}
         </section>
-        <GroupRoutingNote group={group} bots={bots} />
-        <p className="muted-copy">{t("Cada bot mantém seu computador e suas permissões.")}</p>
+        <GroupRoutingNote group={group} bots={bots} channelMode={channelMode} />
+        <p className="muted-copy">
+          {t(
+            channelMode
+              ? "Each bot keeps its own computer and permissions."
+              : "Cada bot mantém seu computador e suas permissões.",
+          )}
+        </p>
         <button type="button" className="button button-quiet" onClick={onEdit}>
-          {t("Editar membros")}
+          {t(channelMode ? "Edit channel" : "Editar membros")}
         </button>
       </div>
     </aside>
@@ -357,6 +452,7 @@ export const GroupHeader = ({
   panelOpen,
   onTogglePanel,
   locale = "pt-BR",
+  channelMode = false,
 }: {
   group: BotGroup
   bots: Bot[]
@@ -364,17 +460,22 @@ export const GroupHeader = ({
   panelOpen?: boolean
   onTogglePanel?: (() => void) | undefined
   locale?: Locale
+  channelMode?: boolean
 }) => (
   <header className="chat-header group-header" data-tauri-drag-region="deep">
     <div>
-      <span className="chat-header-crumb">{t("Grupos / {name}", { name: group.name }, locale)}</span>
+      <span className="chat-header-crumb">
+        {t(channelMode ? "Channels / {name}" : "Grupos / {name}", { name: group.name }, locale)}
+      </span>
       <div className="group-heading-name">
         <BotAvatar
           bot={{ id: group.id, color: group.color, avatarShape: group.avatarShape, avatarSeed: group.avatarSeed }}
           size={30}
         />
         <strong>{group.name}</strong>
-        <span className="group-member-count">{t("Group member count", { count: bots.length }, locale)}</span>
+        <span className="group-member-count">
+          {t(channelMode ? "Channel member count" : "Group member count", { count: bots.length }, locale)}
+        </span>
       </div>
     </div>
     <div className="group-header-members">
@@ -389,7 +490,7 @@ export const GroupHeader = ({
       <button
         type="button"
         className="toolbar-icon bot-panel-toggle"
-        aria-label={t("Painel do grupo", {}, locale)}
+        aria-label={t(channelMode ? "Channel panel" : "Painel do grupo", {}, locale)}
         aria-expanded={panelOpen}
         aria-controls="bot-panel"
         onClick={onTogglePanel}
@@ -398,7 +499,7 @@ export const GroupHeader = ({
       </button>
     )}
     <button type="button" className="button button-quiet" onClick={onEdit}>
-      {t("Editar grupo", {}, locale)}
+      {t(channelMode ? "Edit channel" : "Editar grupo", {}, locale)}
     </button>
   </header>
 )
@@ -409,12 +510,14 @@ export const GroupModal = ({
   bots,
   onClose,
   onSave,
+  channelMode = false,
 }: {
   group: BotGroup | null
   initial?: Pick<GroupInput, "name" | "memberIds"> | null
   bots: Bot[]
   onClose: () => void
   onSave: (input: GroupInput) => Promise<void>
+  channelMode?: boolean
 }) => {
   const [name, setName] = useState(group?.name ?? initial?.name ?? "")
   const [memberIds, setMembers] = useState(group?.memberIds ?? initial?.memberIds ?? [])
@@ -483,29 +586,42 @@ export const GroupModal = ({
         >
           <div className="group-modal-heading">
             <div>
-              <p className="eyebrow">Bots juntos</p>
-              <h2 id="group-modal-title">{group ? "Editar grupo" : "Criar grupo"}</h2>
+              <p className="eyebrow">{t("Bots together")}</p>
+              <h2 id="group-modal-title">
+                {channelMode ? t(group ? "Edit channel" : "Create channel") : t(group ? "Editar grupo" : "Criar grupo")}
+              </h2>
             </div>
-            <button type="button" onClick={onClose} disabled={saving} aria-label="Fechar grupo">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              aria-label={t(channelMode ? "Close channel" : "Close group")}
+            >
               ×
             </button>
           </div>
-          <p className="muted-copy">Uma conversa compartilhada. Cada bot mantém seu computador e suas permissões.</p>
+          <p className="muted-copy">
+            {t(
+              channelMode
+                ? "A shared channel. Each bot keeps its own computer and permissions."
+                : "A shared group conversation. Each bot keeps its own computer and permissions.",
+            )}
+          </p>
           <label className="group-field">
-            Nome do grupo
+            {t(channelMode ? "Channel name" : "Group name")}
             <input
-              aria-label="Nome do grupo"
+              aria-label={t(channelMode ? "Channel name" : "Group name")}
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={80}
               required
-              placeholder="Ex.: Produto"
+              placeholder={t("Example: Product")}
               disabled={saving}
             />
           </label>
           <AvatarPicker
-            label="Mascote do grupo"
-            description="Personalize seu grupo"
+            label={t(channelMode ? "Channel mascot" : "Group mascot")}
+            description={t(channelMode ? "Customize your channel" : "Customize your group")}
             name={name}
             bot={{ id: group?.id ?? avatarSeed, avatarShape: shape, color, avatarSeed }}
             onChange={(v) => {
@@ -514,9 +630,7 @@ export const GroupModal = ({
             }}
           />
           <fieldset disabled={saving}>
-            <legend>
-              Membros <small>· ordem das respostas</small>
-            </legend>
+            <legend>{t(channelMode ? "Channel members · response order" : "Group members · response order")}</legend>
             <div className="group-member-picker">
               {bots
                 .filter((b) => !b.archivedAt)
@@ -539,14 +653,15 @@ export const GroupModal = ({
             </div>
           </fieldset>
           <label className="group-field">
-            Coordenador <span className="muted-copy">opcional</span>
+            {t(channelMode ? "Channel coordinator" : "Group coordinator")}{" "}
+            <span className="muted-copy">{t("optional")}</span>
             <select
-              aria-label="Coordenador"
+              aria-label={t(channelMode ? "Channel coordinator" : "Group coordinator")}
               value={coordinatorBotId ?? ""}
               disabled={saving}
               onChange={(e) => setCoordinator(e.target.value || null)}
             >
-              <option value="">Sem coordenador</option>
+              <option value="">{t(channelMode ? "No channel coordinator" : "Sem coordenador")}</option>
               {memberIds.map((id) => (
                 <option key={id} value={id}>
                   {bots.find((b) => b.id === id)?.name}
@@ -556,20 +671,32 @@ export const GroupModal = ({
           </label>
           <p className="group-routing-note">
             {coordinatorBotId
-              ? "O coordenador recebe o pedido e pode delegar aos membros."
-              : "Mencione @nome para escolher quem responde. Sem menções, todos respondem na ordem acima."}
+              ? t(
+                  channelMode
+                    ? "The channel coordinator receives the request and may delegate to members."
+                    : "The group coordinator receives the request and may delegate to members.",
+                )
+              : t(
+                  channelMode
+                    ? "Mention @name to choose who replies. Without a mention, all members reply in order."
+                    : "Group member routing note",
+                )}
           </p>
           {error && <p role="alert">{error}</p>}
           <div className="group-modal-actions">
             <button type="button" className="button button-quiet" onClick={onClose} disabled={saving}>
-              Cancelar
+              {t("Cancelar")}
             </button>
             <button
               type="submit"
               className="button button-brand"
               disabled={saving || !name.trim() || !memberIds.length}
             >
-              {saving ? "Salvando…" : group ? "Salvar grupo" : "Criar grupo"}
+              {saving
+                ? t("Saving…")
+                : channelMode
+                  ? t(group ? "Save channel" : "Create channel")
+                  : t(group ? "Salvar grupo" : "Criar grupo")}
             </button>
           </div>
         </form>

@@ -26,9 +26,9 @@ for (const theme of ["dark", "light"] as const) {
     await openMock(page, theme)
     await page.getByRole("tab", { name: /^Work,/ }).click()
     await page.getByRole("button", { name: "Novo canal", exact: true }).click()
-    const dialog = page.getByRole("dialog", { name: "Criar grupo", exact: true })
-    const field = dialog.getByLabel("Nome do grupo", { exact: true })
-    await dialog.getByRole("button", { name: "Fechar grupo", exact: true }).focus()
+    const dialog = page.getByRole("dialog", { name: "Criar canal", exact: true })
+    const field = dialog.getByLabel("Nome do canal", { exact: true })
+    await dialog.getByRole("button", { name: "Fechar canal", exact: true }).focus()
     const unfocused = await getFieldStyle(field)
 
     await page.keyboard.press("Tab")
