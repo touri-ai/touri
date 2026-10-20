@@ -2,7 +2,7 @@ import type { MouseEvent, ReactNode } from "react"
 
 export type SidebarRowTone = "waiting" | "failed" | "running" | "new"
 
-/** The one unread-count style: a number always means unread messages. */
+/** Shared neutral count pill; its accessible label explains what the count includes. */
 export const SidebarCount = ({ count, label }: { count: number; label: string }) => (
   <span className="sidebar-unread" role="img" aria-label={label}>
     {count > 99 ? "99+" : count}
