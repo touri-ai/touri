@@ -12,6 +12,7 @@ import { type Locale, t } from "../i18n"
 import { useComposerMachineIntent } from "../machineIntents"
 import { getDraftWithTranscript } from "../speechRecognition"
 import { useProviderLogin } from "../useProviderLogin"
+import type { ThreadCreationStatus } from "../workspaceState"
 import { useMascotComposer } from "./AvatarRuntime"
 import { BotAvatar } from "./BotAvatar"
 import { ComposerNotice } from "./ComposerNotice"
@@ -26,8 +27,10 @@ import "./Composer.css"
 type AttachedFile = { key: string; name: string; id: Id | null; status: "loading" | "ready" | "failed" }
 type ComposerProps = {
   locale?: Locale
-  threadCreation?: "pending" | "failed" | undefined
+  threadCreation?: ThreadCreationStatus | undefined
   onRetryCreateThread?: (() => void) | undefined
+  onResumeBot?: (() => Promise<void>) | undefined
+  autoFocus?: boolean | undefined
   mentionBots?: Bot[]
   groupName?: string | undefined
   bot: Bot | null
@@ -87,6 +90,8 @@ export const Composer = ({
   locale = "pt-BR",
   threadCreation,
   onRetryCreateThread,
+  onResumeBot,
+  autoFocus = false,
   mentionBots = [],
   groupName,
   bot,
@@ -270,7 +275,27 @@ export const Composer = ({
   }
   const chooseFiles = () => fileInput.current?.click()
   const uploading = files.some((file) => file.status === "loading")
+  const paused = Boolean(bot?.paused) && !groupName
+  const [resuming, setResuming] = useState(false)
+  const resume = async () => {
+    if (!onResumeBot || resuming) return
+    setError(null)
+    setResuming(true)
+    try {
+      await onResumeBot()
+      if (alive.current) inputRef.current?.focus()
+    } catch (failure) {
+      if (alive.current) setError(userFacingError(failure))
+    } finally {
+      if (alive.current) setResuming(false)
+    }
+  }
+  useEffect(() => {
+    if (autoFocus) inputRef.current?.focus()
+  }, [autoFocus, inputRef])
+  const isCreatingThread = threadCreation === "pending" || (threadCreation === "draft" && !paused)
   const blocked =
+    paused ||
     dictating ||
     Boolean(threadCreation) ||
     cloudUnavailable ||
@@ -415,7 +440,20 @@ export const Composer = ({
           ))}
         </ul>
       )}
-      {threadCreation === "pending" && <p role="status">{t("Criando conversa…")}</p>}
+      {paused && (
+        <aside className="composer-paused" aria-label={t("Aviso de bot pausado", {}, locale)}>
+          <p>
+            <strong>{t("{name} está pausado", { name: bot?.name ?? "touri" }, locale)}</strong>{" "}
+            {t("Bots pausados não respondem mensagens. Retome o bot para começar a conversa.", {}, locale)}
+          </p>
+          {onResumeBot && (
+            <button type="button" className="button button-quiet" disabled={resuming} onClick={() => void resume()}>
+              {t("Retomar bot", {}, locale)}
+            </button>
+          )}
+        </aside>
+      )}
+      {isCreatingThread && <p role="status">{t("Criando conversa…")}</p>}
       {threadCreation === "failed" && (
         <div role="alert">
           <p>{t("Não foi possível criar a conversa. Seu rascunho foi mantido.")}</p>

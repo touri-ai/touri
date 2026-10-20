@@ -221,7 +221,7 @@ const AppContent = ({ kernel }: AppProps) => {
   )
   const activeApi = api ?? unavailableApi
   useEffect(() => installComputerKillSwitch(activeApi, invokeCommand, setLocalNotice), [activeApi, invokeCommand])
-  const workspace = useWorkspace(activeApi, api !== null)
+  const workspace = useWorkspace(activeApi, api !== null, route.section === "bots" && route.screen === "chat")
   const { data, actions } = workspace
   const interruptedWork = useRecoveryTasks(api)
   const [recoveryOpen, setRecoveryOpen] = useState(false)
@@ -474,9 +474,9 @@ const AppContent = ({ kernel }: AppProps) => {
   )
   useWebNavigation({
     enabled: !isTauriRuntime() && !requestedComputer,
-    ready: api !== null && data.loaded && !data.threadCreation,
+    ready: api !== null && data.loaded && data.threadCreation?.status !== "pending",
     bot: data.selectedBotId,
-    thread: data.selectedThreadId,
+    thread: data.threadCreation ? null : data.selectedThreadId,
     route,
     restore: restoreWebLocation,
     exists: webLocationExists,
@@ -1127,9 +1127,7 @@ const AppContent = ({ kernel }: AppProps) => {
               )}
               {screen === "preview" ? (
                 <PreviewScreen
-                  threadCreation={
-                    data.threadCreation ? (data.threadCreation.pending ? "pending" : "failed") : undefined
-                  }
+                  threadCreation={data.threadCreation?.status}
                   onRetryCreateThread={() => void actions.createThread()}
                   project={selectedProject}
                   processes={data.processes.filter((entry) => entry.spec.projectId === selectedProject?.id)}
@@ -1232,10 +1230,12 @@ const AppContent = ({ kernel }: AppProps) => {
                             goalRefreshRequest={goalRefreshRequest}
                             onGoalChange={notifyGoalChange}
                             composerKey={data.composerKey ?? undefined}
-                            threadCreation={
-                              data.threadCreation ? (data.threadCreation.pending ? "pending" : "failed") : undefined
-                            }
+                            threadCreation={data.threadCreation?.status}
                             onRetryCreateThread={() => void actions.createThread()}
+                            autoFocusComposer={Boolean(data.threadCreation)}
+                            onResumeBot={
+                              selectedBot ? () => actions.updateBot(selectedBot.id, { paused: false }) : undefined
+                            }
                             bot={selectedBot}
                             messages={selectedMessages}
                             runs={data.runs}

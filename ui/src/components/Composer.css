@@ -375,3 +375,26 @@
   margin: 0;
   color: var(--text-2);
 }
+.composer-paused {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding: 0 var(--space-8) var(--space-12);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-8);
+}
+.composer-paused p {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-meta);
+  line-height: var(--leading-body);
+}
+.composer-paused strong {
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+.composer-paused button {
+  flex: 0 0 auto;
+}
