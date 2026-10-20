@@ -542,9 +542,10 @@ const runBestLargeReplyReplay = async (): Promise<BenchmarkResult> => {
     // Guard the ordering stage in every sample so aggregate CPU limits cannot hide a regression.
     expect(replay.stages.find(({ name }) => name === "stream_part_preparation")?.maxMs ?? Infinity).toBeLessThan(10)
     expect(replay.replyDigest).toBe("d6725c839f90a1042317c0d969d16bc444e30c20a4bf55b41ef425c1207ee071")
+    expect(replay.maxTimerLagMs).toBeLessThan(50)
     expect(replay.p99TimerLagMs).toBeLessThan(50)
-    expect(replay.maxBlockMs).toBeLessThan(150)
-    expect(replay.maxBlockCpuMs).toBeLessThan(75)
+    expect(replay.maxBlockMs).toBeLessThan(50)
+    expect(replay.maxBlockCpuMs).toBeLessThan(50)
     expect(replay.retainedRunStates).toBe(0)
   })
 

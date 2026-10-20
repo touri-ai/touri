@@ -1,4 +1,4 @@
-import type { Database } from "bun:sqlite"
+import { Database } from "bun:sqlite"
 import { afterEach, expect, spyOn, test } from "bun:test"
 import { mkdtempSync, realpathSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -28,7 +28,7 @@ afterEach(async () => {
 const fixture = async (
   script: (args: StartTurnArgs) => Promise<void>,
   requestText = "Crie notas.md com três ideias.",
-  cancelAt?: PerformanceStage,
+  options: { cancelAt?: PerformanceStage; beforeFinalization?: (database: Database) => void } = {},
 ) => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "touri-conclusion-")))
   const serve = spyOn(Bun, "serve").mockReturnValue({
@@ -61,8 +61,9 @@ const fixture = async (
   let didCancel = false
   const stages = createPerformanceStageTracker()
   const runStage: PerformanceStageRunner = (stage, action, input) => {
+    if (stage === "runtime_turn_finalization") options.beforeFinalization?.(db)
     const result = stages.run(stage, action, input)
-    if (stage === cancelAt && !didCancel) {
+    if (stage === options.cancelAt && !didCancel) {
       didCancel = true
       queueMicrotask(() => {
         if (queued.success) engine.cancel(queued.run.id)
@@ -73,7 +74,7 @@ const fixture = async (
   const engine = createRuntimeEngine({
     kernel: runtime.kernel,
     providerAdapters: { codex: adapter },
-    ...(cancelAt ? { runStage } : {}),
+    ...(options.cancelAt || options.beforeFinalization ? { runStage } : {}),
   })
   const store = runtime.kernel.services.use("store.api")
   if (!store) throw new Error("Store missing")
@@ -139,7 +140,7 @@ test.each(["runtime_part_finalization", "runtime_output_preparation"] as const)(
         })
       },
       "Conclua a tarefa.",
-      stage,
+      { cancelAt: stage },
     )
     cleanups.add(f.close)
 
@@ -174,7 +175,7 @@ test.each(["runtime_part_finalization", "runtime_output_preparation"] as const)(
         onEvent({ type: "turn_completed", status: "failed", errorClass: "tool_error", errorMessage: "Fixture failure" })
       },
       "Conclua a tarefa.",
-      stage,
+      { cancelAt: stage },
     )
     cleanups.add(f.close)
     // The terminal preparation must not depend on a streaming store externalizing its patches.
@@ -206,6 +207,47 @@ test.each(["runtime_part_finalization", "runtime_output_preparation"] as const)(
     expect(stored ? JSON.parse(stored.part_json) : null).toEqual(command)
   },
 )
+
+test("finalization yields while another connection holds the writer instead of blocking timers", async () => {
+  const blocker = getWriterBlocker()
+  cleanups.add(blocker.close)
+  const f = await fixture(async () => {}, "Conclua a tarefa.", { beforeFinalization: blocker.hold })
+  cleanups.add(f.close)
+
+  const reply = await f.finish()
+
+  console.info(
+    `finalization-writer-contention ${JSON.stringify({ timerDelayMs: blocker.getReleaseDelayMs(), status: reply.status })}`,
+  )
+  expect(blocker.getReleaseDelayMs()).toBeLessThan(50)
+  expect(reply.status).toBe("complete")
+})
+
+const getWriterBlocker = () => {
+  let writer: Database | null = null
+  let timer: ReturnType<typeof setTimeout> | null = null
+  let releaseDelayMs = Infinity
+
+  return {
+    hold: (database: Database): void => {
+      if (writer) return
+      writer = new Database(database.filename)
+      database.exec("PRAGMA busy_timeout = 120")
+      writer.exec("BEGIN IMMEDIATE")
+      const startedAt = performance.now()
+      timer = setTimeout(() => {
+        releaseDelayMs = performance.now() - startedAt
+        writer?.exec("ROLLBACK")
+      }, 15)
+    },
+    getReleaseDelayMs: () => releaseDelayMs,
+    close: async (): Promise<void> => {
+      if (timer) clearTimeout(timer)
+      if (writer?.inTransaction) writer.exec("ROLLBACK")
+      writer?.close()
+    },
+  }
+}
 
 test.each([
   ["Crie notas.md com três ideias.", "Concluído. Arquivos alterados: notas.md."],

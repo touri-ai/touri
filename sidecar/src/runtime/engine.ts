@@ -1674,14 +1674,15 @@ export const createRuntimeEngine = ({
         const elapsed = Date.now() - (run.startedAt ?? Date.now())
         state.usage.durationMs = elapsed
         if (result.success) {
-          state.externalSessionId = state.externalSessionId ?? result.externalSessionId
+          const externalSessionId = state.externalSessionId ?? result.externalSessionId
+          state.externalSessionId = externalSessionId
           state.rolloutPath = state.rolloutPath ?? result.rolloutPath
           const sessionRow = persistence.getActiveSession({ threadId: thread.id, provider: bot.provider }) ??
             session ?? {
               id: kernel.newId(),
               threadId: thread.id,
               provider: bot.provider,
-              externalSessionId: state.externalSessionId,
+              externalSessionId,
               rolloutPath: state.rolloutPath,
               fingerprint: mcpFingerprint.hash,
               state: "active",
@@ -1689,18 +1690,27 @@ export const createRuntimeEngine = ({
               createdAt: Date.now(),
               lastUsedAt: Date.now(),
             }
-          persistence.saveSession({
-            ...sessionRow,
-            externalSessionId: state.externalSessionId,
-            rolloutPath: state.rolloutPath,
-            fingerprint: mcpFingerprint.hash,
-            state: "active",
-            lastUsedAt: Date.now(),
-          })
+          const saveSessionAndRoot = () => {
+            if (!isLive(run)) return null
+            persistence.saveSession({
+              ...sessionRow,
+              externalSessionId,
+              rolloutPath: state.rolloutPath,
+              fingerprint: mcpFingerprint.hash,
+              state: "active",
+              lastUsedAt: Date.now(),
+            })
+            if (state.cancelRequested || state.completionError || result.status !== "succeeded") return null
+
+            return work.publishRoot({ turnId: run.id })
+          }
+          const database = kernel.db
+          const write = () => measureStage("runtime_turn_finalization", saveSessionAndRoot)
+          // Pending stream writes must yield on contention instead of entering SQLite's synchronous busy wait.
+          const workRoot = database instanceof Database ? await writeDatabaseAsync(database, write) : write()
           const providerErrorClass = state.cancelRequested
             ? "canceled"
             : (state.completionError?.errorClass ?? (result.status === "succeeded" ? null : "cli_crash"))
-          const workRoot = providerErrorClass ? null : work.publishRoot({ turnId: run.id })
           const errorClass = workRoot && !workRoot.success ? "tool_error" : providerErrorClass
           if (!errorClass) {
             const plan = state.continueAfterApproval
