@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS devices (
   last_seen_at INTEGER,
   revoked_at INTEGER
 );
+CREATE INDEX IF NOT EXISTS devices_active_id ON devices(id) WHERE revoked_at IS NULL;
 CREATE TABLE IF NOT EXISTS people (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -92,7 +93,13 @@ const migrateAuthDatabase = (database: Database): void => {
     (database.query("PRAGMA table_info(pairing_codes)").all() as Array<{ name: string }>).some(
       ({ name }) => name === "person_id",
     )
-  if (hasDevicePersonColumn() && hasPairingPersonColumn()) return
+  if (hasDevicePersonColumn() && hasPairingPersonColumn()) {
+    database.exec(`
+      CREATE INDEX IF NOT EXISTS devices_active_id ON devices(id) WHERE revoked_at IS NULL;
+      CREATE INDEX IF NOT EXISTS devices_active_person_id ON devices(person_id,id) WHERE revoked_at IS NULL;
+    `)
+    return
+  }
   database
     .transaction(() => {
       if (!hasDevicePersonColumn()) {
@@ -106,6 +113,8 @@ const migrateAuthDatabase = (database: Database): void => {
         database.exec("ALTER TABLE pairing_codes ADD COLUMN person_id TEXT NOT NULL DEFAULT 'owner'")
       database.exec(`
       CREATE INDEX IF NOT EXISTS devices_person_id ON devices(person_id, revoked_at);
+      CREATE INDEX IF NOT EXISTS devices_active_id ON devices(id) WHERE revoked_at IS NULL;
+      CREATE INDEX IF NOT EXISTS devices_active_person_id ON devices(person_id,id) WHERE revoked_at IS NULL;
       CREATE INDEX IF NOT EXISTS people_active_created ON people(removed_at, created_at, id);
       CREATE UNIQUE INDEX IF NOT EXISTS people_email_active ON people(email) WHERE email IS NOT NULL AND removed_at IS NULL;
       CREATE INDEX IF NOT EXISTS person_channels_channel_id ON person_channels(channel_id, person_id);

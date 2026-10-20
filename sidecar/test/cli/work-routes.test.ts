@@ -102,6 +102,35 @@ test("an admin can create an invite with a copy-link fallback when email is not 
   expect((result.json as { link: string }).link).toMatch(/^https:\/\/public\.example\.test\/join#invite=/u)
   const peopleRoute = workRoutes.routes.find((item) => item.method === "GET" && item.path === "/people")
   if (!peopleRoute) throw new Error("People route was not registered")
+  const authDatabase = new Database(join(directory, "auth.db"))
+  const insertDevice = authDatabase.query(
+    "INSERT INTO devices(id,name,token_hash,created_at,last_seen_at,person_id) VALUES(?,?,?,?,?,?)",
+  )
+  authDatabase.transaction(() =>
+    Array.from({ length: 501 }, (_, index) => index).forEach((index) => {
+      insertDevice.run(
+        `synthetic-${index.toString().padStart(4, "0")}`,
+        "Synthetic device",
+        `hash-${index}`,
+        index,
+        index,
+        "owner",
+      )
+    }),
+  )()
+  const devicePlan = authDatabase
+    .query(
+      "EXPLAIN QUERY PLAN SELECT id,name,person_id,created_at,last_seen_at,revoked_at FROM devices INDEXED BY devices_active_id WHERE revoked_at IS NULL ORDER BY id LIMIT 500",
+    )
+    .all() as Array<{ detail: string }>
+  const personDevicePlan = authDatabase
+    .query(
+      "EXPLAIN QUERY PLAN SELECT id,name,person_id,created_at,last_seen_at,revoked_at FROM devices INDEXED BY devices_active_person_id WHERE person_id = 'owner' AND revoked_at IS NULL ORDER BY id LIMIT 500",
+    )
+    .all() as Array<{ detail: string }>
+  authDatabase.close()
+  expect(devicePlan.map(({ detail }) => detail).join(" ")).toContain("devices_active_id")
+  expect(personDevicePlan.map(({ detail }) => detail).join(" ")).toContain("devices_active_person_id")
   const anonymous = await peopleRoute.handler({
     params: {},
     query: {},
@@ -109,6 +138,11 @@ test("an admin can create an invite with a copy-link fallback when email is not 
     body: null,
   })
   expect(anonymous.status).toBe(403)
+  const people = await peopleRoute.handler({ params: {}, query: {}, signal, body: null })
+  expect(people.status).toBe(200)
+  if (!("json" in people)) throw new Error("People response was not JSON")
+  const listedPeople = (people.json as { people: Array<{ devices: Array<unknown> }> }).people
+  expect(listedPeople[0]?.devices).toHaveLength(500)
 
   const emailConfiguration = {
     transport: "smtp" as const,

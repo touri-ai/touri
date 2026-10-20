@@ -67,6 +67,7 @@ export type AuthStore = {
   verifyDeviceToken: (token: string) => Device | null
   rotateDeviceToken: (token: string) => Promise<{ token: string; device: Device } | null>
   listDevices: () => Array<Device>
+  listActiveDevices: (personId?: string) => Array<Device>
   revokeDevice: (idOrPrefix: string) => Promise<RevokeDeviceResult>
   getPerson: (id: string) => Person | null
   getPersonForDevice: (deviceId: string) => Person | null
@@ -331,6 +332,25 @@ export const openAuthStore = async ({
         .query("SELECT id, name, person_id, created_at, last_seen_at, revoked_at FROM devices ORDER BY created_at ASC")
         .all() as Array<DeviceRow>
     ).map(toDevice)
+
+  const listActiveDevices = (personId?: string): Array<Device> => {
+    if (personId) {
+      return (
+        database
+          .query(
+            "SELECT id,name,person_id,created_at,last_seen_at,revoked_at FROM devices INDEXED BY devices_active_person_id WHERE person_id = ? AND revoked_at IS NULL ORDER BY id LIMIT 500",
+          )
+          .all(personId) as Array<DeviceRow>
+      ).map(toDevice)
+    }
+    return (
+      database
+        .query(
+          "SELECT id,name,person_id,created_at,last_seen_at,revoked_at FROM devices INDEXED BY devices_active_id WHERE revoked_at IS NULL ORDER BY id LIMIT 500",
+        )
+        .all() as Array<DeviceRow>
+    ).map(toDevice)
+  }
 
   const revokeDevice = async (idOrPrefix: string): Promise<RevokeDeviceResult> => {
     const matches = listDevices().filter((device) => device.id.startsWith(idOrPrefix) && device.revokedAt === null)
@@ -624,6 +644,7 @@ export const openAuthStore = async ({
     verifyDeviceToken,
     rotateDeviceToken,
     listDevices,
+    listActiveDevices,
     revokeDevice,
     getPerson,
     getPersonForDevice,

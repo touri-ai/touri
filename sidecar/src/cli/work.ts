@@ -177,7 +177,7 @@ export const initWorkMode = ({
           const actor = getActor({ authStore, signal })
           if (!actor) return fail(403, "FORBIDDEN", "Pair this device first")
           const people = authStore.listPeople().filter((person) => actor.role === "admin" || person.id === actor.id)
-          const devices = authStore.listDevices().filter((device) => device.revokedAt === null)
+          const devices = authStore.listActiveDevices(actor.role === "admin" ? undefined : actor.id)
           return {
             status: 200,
             json: {
