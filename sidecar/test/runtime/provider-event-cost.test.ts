@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite"
 import { afterEach, expect, setDefaultTimeout, test } from "bun:test"
+import { createHash } from "node:crypto"
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { createKernel } from "../../src/kernel"
@@ -40,6 +41,7 @@ type BenchmarkResult = {
   historyMessages: number
   historyPartBytes: number
   parts: number
+  replyDigest: string
   providerCpuMs: number
   providerDispatchMs: number
   providerAdapterMs: number
@@ -468,6 +470,7 @@ const runReplay = async (count: number, historyMessages = 0, switchBranch = fals
     })}`,
   )
   store.flushWrites?.()
+  await store.flushWritesAsync?.()
   await Bun.sleep(5)
   const reply = store.activePath({ threadId }).find((message) => message.runId === queued.run.id)
   if (!reply) throw new Error("Synthetic provider reply missing")
@@ -478,6 +481,15 @@ const runReplay = async (count: number, historyMessages = 0, switchBranch = fals
     historyMessages,
     historyPartBytes: history.partBytes,
     parts: reply.parts.length,
+    replyDigest: createHash("sha256")
+      .update(
+        JSON.stringify(
+          reply.parts.map((part) =>
+            Object.fromEntries(Object.entries(part).filter(([key]) => key !== "startedAt" && key !== "resolvedAt")),
+          ),
+        ),
+      )
+      .digest("hex"),
     busEvents: events.length,
     busPartsEvents: events.filter((type) => type === "message.parts").length,
     duplicateSharesRun: duplicate.run.id === queued.run.id && duplicate.run === queued.run,
@@ -491,6 +503,9 @@ const runReplay = async (count: number, historyMessages = 0, switchBranch = fals
       performanceResult.stages.find(({ name }) => name === "runtime_provider_event")?.dispatchCalls ?? 0,
   }
   console.log(`provider-event-benchmark ${JSON.stringify(result)}`)
+  const completedCleanups = replayCleanups
+  replayCleanups = []
+  await runReplayCleanups(completedCleanups)
   return result
 }
 
@@ -526,10 +541,12 @@ const runBestLargeReplyReplay = async (): Promise<BenchmarkResult> => {
     expect(replay.parts).toBe(836)
     // Guard the ordering stage in every sample so aggregate CPU limits cannot hide a regression.
     expect(replay.stages.find(({ name }) => name === "stream_part_preparation")?.maxMs ?? Infinity).toBeLessThan(10)
-    // Timer percentiles tolerate isolated scheduling delays; block maxima retain the CI headroom.
+    expect(replay.replyDigest).toBe("d6725c839f90a1042317c0d969d16bc444e30c20a4bf55b41ef425c1207ee071")
+    expect(replay.maxTimerLagMs).toBeLessThan(50)
     expect(replay.p99TimerLagMs).toBeLessThan(50)
-    expect(replay.maxBlockCpuMs).toBeLessThan(75)
-    expect(replay.maxBlockMs).toBeLessThan(150)
+    expect(replay.maxBlockMs).toBeLessThan(50)
+    expect(replay.maxBlockCpuMs).toBeLessThan(50)
+    expect(replay.retainedRunStates).toBe(0)
   })
 
   // Process CPU includes persistence workers; compare scaling with the least noisy CPU sample.

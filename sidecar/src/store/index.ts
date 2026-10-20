@@ -683,8 +683,12 @@ export const init = async (
 
   const updateMessage: StoreApi["updateMessage"] = ({ threadId, messageId, patch }) => {
     const storedCurrent = getMessage({ threadId, messageId })
+    const hasCompleteContent = patch.parts !== undefined && patch.text !== undefined
+    // A full content patch replaces both fields; cloning the live projection would only duplicate that data.
     const projected =
-      storedCurrent?.status === "streaming" ? streamWriter.getProjectedMessage(threadId, messageId) : null
+      storedCurrent?.status === "streaming" && !hasCompleteContent
+        ? streamWriter.getProjectedMessage(threadId, messageId)
+        : null
     const current = projected ?? storedCurrent
     if (!current) return { success: false, errorCode: "NOT_FOUND", error: `Message ${messageId} was not found` }
     // A terminal run reply can still settle its tools, but its text and outcome are final.

@@ -76,7 +76,7 @@ import { createRuntimePersistence, type RuntimePersistence } from "./persistence
 import { reapProviderProcesses } from "./provider-processes"
 import { formatRoutineTitle, nextCronSlot, parseCron, previousCronSlot, validTimezone } from "./routines/cron"
 import { sessionFingerprint, workingDirectory } from "./session"
-import { createToolResolutions } from "./tool-resolutions"
+import { createToolResolutions, type PreparedToolFinish } from "./tool-resolutions"
 import { retryTransient } from "./transient-retry"
 import { turnConclusion } from "./turn-conclusion"
 import { bounded, randomHexToken } from "./utils"
@@ -93,6 +93,7 @@ type RunState = {
   parts: Array<MessagePart>
   partIndices: Map<string, number>
   dirtyParts: Set<number>
+  preparedFinish: PreparedToolFinish | null
   replyMessageId: Id | null
   turnStarted: boolean
   externalSessionId: string | null
@@ -143,6 +144,8 @@ const getPartKey = (part: MessagePart): string | null => ("callId" in part ? `${
 
 // Shallow field identity: nested values compare by reference, so an unsure match still publishes.
 const isSamePart = (previous: MessagePart, next: MessagePart): boolean => {
+  if (previous === next) return true
+
   const entries = Object.entries(next)
   return (
     entries.length === Object.keys(previous).length &&
@@ -570,6 +573,8 @@ export const createRuntimeEngine = ({
       // A failed stream drain must not leave its run active or prevent terminal state.
     }
     await prepare()
+    // Preparation can finish a large batch; give timers and cancellation a turn before the terminal transaction.
+    await new Promise<void>((resolve) => setImmediate(resolve))
     const write = (): void => {
       if (!isLive(run)) {
         tools.clearPendingMemory(run.id)
@@ -595,6 +600,7 @@ export const createRuntimeEngine = ({
       parts: [],
       partIndices: new Map(),
       dirtyParts: new Set(),
+      preparedFinish: null,
       replyMessageId: null,
       requestMessage: null,
       turnStarted: false,
@@ -722,7 +728,8 @@ export const createRuntimeEngine = ({
       }),
     )
     if (updated.success) {
-      state.parts = structuredClone(updated.message.parts)
+      // Terminal state retains the store's fresh snapshot only until the run is released.
+      state.parts = updated.message.parts
       state.dirtyParts.clear()
     }
   }
@@ -739,11 +746,15 @@ export const createRuntimeEngine = ({
     persist?: boolean
   }): void => {
     measureStage("runtime_part_finalization", () => {
-      const parts = tools.finish(run, state.parts, reason, persist)
-      parts.forEach((part, index) => {
-        const previous = state.parts[index]
-        if (!previous || !isSamePart(previous, part)) state.dirtyParts.add(index)
-      })
+      const prepared = persist ? state.preparedFinish : null
+      state.preparedFinish = null
+      const parts = prepared ? prepared(state.parts, reason) : tools.finish(run, state.parts, reason, persist)
+      // Cancellation still publishes patches; a terminal write replaces the complete snapshot.
+      if (!persist)
+        parts.forEach((part, index) => {
+          const previous = state.parts[index]
+          if (!previous || !isSamePart(previous, part)) state.dirtyParts.add(index)
+        })
       state.parts = parts
     })
   }
@@ -759,14 +770,20 @@ export const createRuntimeEngine = ({
     store: StoreApi
     reason: "cancelled_by_user" | "failed" | "interrupted_by_restart" | "unknown"
   }): Promise<void> => {
-    finishParts({ run, state, reason, persist: false })
-    if (!(kernel.db instanceof Database) || !store.updateMessageAsync) return
+    if (!(kernel.db instanceof Database) || !store.updateMessageAsync) {
+      finishParts({ run, state, reason, persist: false })
+      return
+    }
 
+    const parts = await measureStage("runtime_part_finalization", () =>
+      tools.finishAsync(run, state.parts, reason, false),
+    )
     state.parts = await externalizeMessagePartsAsync({
       database: kernel.db,
       appData: kernel.paths.appData,
-      parts: state.parts,
+      parts,
     })
+    state.preparedFinish = tools.prepareFinish(run, state.parts, reason)
   }
 
   const publishMessage = (args: { store: StoreApi; state: RunState; run: Run; status: Message["status"] }): void => {
