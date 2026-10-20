@@ -5,6 +5,7 @@ import type { UiApi } from "../api/client"
 import { attachmentAccept, maxAttachmentBytes } from "../attachmentFiles"
 import { composerKeyAction } from "../composerKeys"
 import { userFacingError } from "../errors"
+import { ChannelComposerChip } from "../features/channelBrowser/ChannelBrowser"
 import { useCloudAccount } from "../features/cloud/useCloudAccount"
 import { useIsServerMode } from "../features/server/serverMode"
 import { dropRejectionMessage, type FileDrop, listenForFileDrops } from "../fileDrops"
@@ -700,11 +701,7 @@ export const Composer = ({
   return (
     <>
       {notice && <ComposerNotice {...notice} api={api} active={Boolean(activeRun)} loginFlowShown={login.blocked} />}
-      {browserWorking && (
-        <div className="composer-browser-status" role="status">
-          {t("{name} is working · In the browser", { name: browserBotName ?? bot?.name ?? "touri" }, locale)}
-        </div>
-      )}
+      {browserWorking && <ChannelComposerChip botName={browserBotName ?? bot?.name ?? "touri"} locale={locale} />}
       {composer}
     </>
   )

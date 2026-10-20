@@ -26,6 +26,7 @@ import {
 import type { UiApi } from "../api/client"
 import type { ApprovalFocus } from "../approvalNavigation"
 import { userFacingRunError } from "../errors"
+import { ChannelBrowserContext, type ChannelBrowserValue } from "../features/channelBrowser/ChannelBrowser"
 import { ComputerGrantCard } from "../features/computer"
 import { InlineLivePreview, InlinePreviewContext, screenTool } from "../features/desktop/InlineLivePreview"
 import { useIsServerMode } from "../features/server/serverMode"
@@ -89,6 +90,7 @@ type ChatPanelProps = {
   group?: BotGroup | null
   groupMembers?: Bot[]
   onEditGroup?: () => void
+  channelBrowser?: ChannelBrowserValue | null
   focusApproval?: ApprovalFocus | undefined
   panelOpen?: boolean
   onTogglePanel?: () => void
@@ -1096,6 +1098,7 @@ export const ChatPanel = ({
   group = null,
   groupMembers = [],
   onEditGroup = () => {},
+  channelBrowser = null,
   focusApproval,
   thread,
   activePath,
@@ -1166,38 +1169,40 @@ export const ChatPanel = ({
 
   if (!thread)
     return (
-      <section className="chat-panel" inert={chatIsCovered || undefined} aria-hidden={chatIsCovered || undefined}>
-        <header className="chat-header" data-tauri-drag-region="deep">
-          <span className="chat-header-crumb">{t("Bots")}</span>
-          <div className="chat-bot-chip">
-            {bot && <BotAvatar bot={bot} size={18} />}
-            <h1 className="chat-page-heading">{bot?.name ?? "touri"}</h1>
-            {bot?.anyFolderAccess && (
-              <span className="any-folder-badge">{t("Any folder on this {host}", { host: getHostLabel(host) })}</span>
-            )}
+      <ChannelBrowserContext.Provider value={channelBrowser}>
+        <section className="chat-panel" inert={chatIsCovered || undefined} aria-hidden={chatIsCovered || undefined}>
+          <header className="chat-header" data-tauri-drag-region="deep">
+            <span className="chat-header-crumb">{t("Bots")}</span>
+            <div className="chat-bot-chip">
+              {bot && <BotAvatar bot={bot} size={18} />}
+              <h1 className="chat-page-heading">{bot?.name ?? "touri"}</h1>
+              {bot?.anyFolderAccess && (
+                <span className="any-folder-badge">{t("Any folder on this {host}", { host: getHostLabel(host) })}</span>
+              )}
+            </div>
+            <div className="chat-toolbar">
+              {onTogglePanel && (
+                <button
+                  type="button"
+                  className="toolbar-icon bot-panel-toggle"
+                  aria-label={t("Bot panel")}
+                  title={t("Bot advanced")}
+                  aria-expanded={panelOpen}
+                  aria-controls="bot-panel"
+                  onClick={onTogglePanel}
+                >
+                  ◧
+                </button>
+              )}
+            </div>
+          </header>
+          <div className="empty-state">
+            <img className="empty-bull" src="/touri-bull.png" alt="" />
+            <h2>{t("Escolha uma conversa")}</h2>
+            <p>{t("Selecione um bot ou crie uma nova thread.")}</p>
           </div>
-          <div className="chat-toolbar">
-            {onTogglePanel && (
-              <button
-                type="button"
-                className="toolbar-icon bot-panel-toggle"
-                aria-label={t("Bot panel")}
-                title={t("Bot advanced")}
-                aria-expanded={panelOpen}
-                aria-controls="bot-panel"
-                onClick={onTogglePanel}
-              >
-                ◧
-              </button>
-            )}
-          </div>
-        </header>
-        <div className="empty-state">
-          <img className="empty-bull" src="/touri-bull.png" alt="" />
-          <h2>{t("Escolha uma conversa")}</h2>
-          <p>{t("Selecione um bot ou crie uma nova thread.")}</p>
-        </div>
-      </section>
+        </section>
+      </ChannelBrowserContext.Provider>
     )
 
   const messagePath = group

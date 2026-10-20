@@ -1,5 +1,12 @@
 import type { BrowserTabInfo, Id, MessagePart } from "@touri/contracts"
 import { useContext, useEffect, useRef, useState } from "react"
+import {
+  ChannelCardFooter,
+  ChannelControlNote,
+  ChannelHiddenPreview,
+  ChannelVisibilityLabel,
+  useChannelBrowserView,
+} from "../features/channelBrowser/ChannelBrowser"
 import { InlinePreviewContext } from "../features/desktop/InlineLivePreview"
 import { type PreviewFrame, startInlineFrameSource } from "../features/desktop/inlineFrameSource"
 import { useInlinePreviewPreference } from "../features/desktop/inlinePreviewPreference"
@@ -35,6 +42,7 @@ export const BrowserActivityCard = ({
 }) => {
   const context = useContext(InlinePreviewContext)
   const previewEnabled = useInlinePreviewPreference()
+  const channel = useChannelBrowserView()
   const browserTools = getBrowserActivityTools(parts)
   const tabId = getBrowserActivityTabId(browserTools)
   const resolutionCallId = tabId ? "" : (browserTools.at(-1)?.callId ?? "")
@@ -167,7 +175,7 @@ export const BrowserActivityCard = ({
   )
   const url = finished ? "" : getBrowserActivityUrl(preview?.url ?? "")
 
-  return (
+  const card = (
     <article
       className="browser-activity-card"
       ref={section}
@@ -209,8 +217,15 @@ export const BrowserActivityCard = ({
             <strong>{title}</strong>
             {url && <span title={url}>{url}</span>}
           </div>
+          <ChannelVisibilityLabel locale={locale} />
+          <ChannelControlNote locale={locale} />
           {activeTabId && (
-            <button type="button" className="button button-quiet" disabled={busy} onClick={() => void toggleTakeover()}>
+            <button
+              type="button"
+              className="button button-quiet"
+              disabled={busy || channel?.canControl === false}
+              onClick={() => void toggleTakeover()}
+            >
               {busy
                 ? t("Updating browser control…", {}, locale)
                 : held
@@ -226,7 +241,9 @@ export const BrowserActivityCard = ({
         >
           {!finished && previewEnabled && (
             <div className={`browser-activity-preview${fullView ? " browser-activity-preview-full" : ""}`}>
-              {preview?.src ? (
+              {channel?.previewHidden ? (
+                <ChannelHiddenPreview locale={locale} />
+              ) : preview?.src ? (
                 <img src={preview.src} alt={t("Current browser page", {}, locale)} />
               ) : (
                 <p className="browser-activity-placeholder">
@@ -289,5 +306,14 @@ export const BrowserActivityCard = ({
         </div>
       )}
     </article>
+  )
+
+  if (!channel) return card
+
+  return (
+    <div className="channel-browser-card">
+      {card}
+      <ChannelCardFooter locale={locale} />
+    </div>
   )
 }

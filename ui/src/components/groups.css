@@ -82,7 +82,9 @@
   min-width: 0;
   font-size: var(--fs-meta);
 }
-.group-select > span:last-child {
+.group-select > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
