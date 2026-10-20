@@ -157,6 +157,7 @@ const AppContent = ({ kernel }: AppProps) => {
   const serverState = useServerMode()
   const serverMode = serverState.status?.mode === "server" || Boolean(serverState.error)
   const [api, setApi] = useState<UiApi | null>(() => kernel?.services?.api ?? null)
+  const [currentPersonId, setCurrentPersonId] = useState("owner")
   const host = useHost(api)
   const attachmentButtonRef = useRef<HTMLButtonElement>(null)
   const apiRef = useRef(api)
@@ -220,6 +221,22 @@ const AppContent = ({ kernel }: AppProps) => {
     [],
   )
   const activeApi = api ?? unavailableApi
+  useEffect(() => {
+    if (!api || api.isMock) return
+
+    let active = true
+    setCurrentPersonId("owner")
+    void api
+      .request("GET /session", {})
+      .then(({ person }) => {
+        if (active) setCurrentPersonId(person.id)
+      })
+      .catch(() => undefined)
+
+    return () => {
+      active = false
+    }
+  }, [api])
   useEffect(() => installComputerKillSwitch(activeApi, invokeCommand, setLocalNotice), [activeApi, invokeCommand])
   const workspace = useWorkspace(activeApi, api !== null, route.section === "bots" && route.screen === "chat")
   const { data, actions } = workspace
@@ -1212,6 +1229,7 @@ const AppContent = ({ kernel }: AppProps) => {
                         <RecoveryTasksContext.Provider value={interruptedWork.tasks}>
                           <ChatPanel
                             onRepeatTask={setRoutineDraft}
+                            currentPersonId={currentPersonId}
                             group={selectedGroup}
                             groupMembers={groupMembers}
                             onEditGroup={() => {

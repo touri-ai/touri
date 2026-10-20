@@ -848,6 +848,11 @@ a {
   border-radius: var(--radius-lg);
   background: var(--surface-control);
 }
+.message-other-person {
+  margin-right: auto;
+  margin-left: max(0px, calc((100% - 680px) / 2));
+  background: var(--surface-control);
+}
 .message-assistant {
   padding: 0 var(--space-4);
 }
@@ -861,6 +866,9 @@ a {
 }
 .message-user .message-meta {
   justify-content: flex-end;
+}
+.message-other-person .message-meta {
+  justify-content: flex-start;
 }
 .message-role {
   color: var(--text);
@@ -4413,6 +4421,11 @@ a {
   border-radius: var(--bubble-radius);
   background: var(--surface-chat-user);
   font-size: var(--fs-body);
+}
+.chat-message-list .message-other-person {
+  margin-right: auto;
+  margin-left: max(0px, calc((100% - var(--chat-column-width)) / 2));
+  background: var(--surface-control);
 }
 .chat-message-list .message-assistant {
   padding: 0;

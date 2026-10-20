@@ -94,6 +94,7 @@ type ChatPanelProps = {
   onTogglePanel?: () => void
   routines?: Array<Routine>
   routineRuns?: Array<RoutineRun>
+  currentPersonId?: string
   attachmentButtonRef?: React.RefObject<HTMLButtonElement | null> | undefined
   onOpenPermissions?: () => void
   onOpenToolCatalog?: () => void
@@ -124,6 +125,7 @@ type ChatPanelProps = {
 
 type VirtualMessageListProps = {
   vmBotId?: string | undefined
+  currentPersonId?: string | undefined
   machine?: MachineState | undefined
   focusApproval?: ApprovalFocus | undefined
   messages: Array<Message>
@@ -203,6 +205,7 @@ const scrollToEnd = (list: HTMLElement, programmaticTop: { current: number | nul
 
 export const VirtualMessageList = ({
   vmBotId,
+  currentPersonId = "owner",
   machine,
   focusApproval,
   messages,
@@ -535,6 +538,7 @@ export const VirtualMessageList = ({
                   <MessageBubble
                     inserted={insertedMessages.has(message.id)}
                     vmBotId={vmBotId}
+                    currentPersonId={currentPersonId}
                     machine={machine}
                     message={message}
                     run={run}
@@ -650,6 +654,7 @@ const formatDaySeparator = (timestamp: number): string => {
 const MessageBubble = ({
   inserted,
   vmBotId,
+  currentPersonId,
   machine,
   recovered,
   message,
@@ -669,6 +674,7 @@ const MessageBubble = ({
 }: {
   inserted: boolean
   vmBotId?: string | undefined
+  currentPersonId: string
   machine?: MachineState | undefined
   recovered: boolean
   message: Message
@@ -689,6 +695,8 @@ const MessageBubble = ({
   const runtimeState = useMessageMascotState(message, run)
   const threadBot = useThreadBot(message.threadId)
   const senderBot = useAvatarBot(message.sender?.id ?? null)
+  const personSender = message.role === "user" && message.sender?.kind === "person" ? message.sender : null
+  const messageFromOtherPerson = Boolean(personSender && personSender.id !== currentPersonId)
   const parentEvidence = useContext(EvidenceContext)
   const bot = senderBot ?? threadBot
   const evidence = useMemo(
@@ -724,6 +732,16 @@ const MessageBubble = ({
   const text = message.role === "assistant" ? markdown.replace(connectDataMarker, "") : markdown
   const segments = message.role === "assistant" ? assistantSegments({ ...message, parts }) : []
   const finalText = segments.filter((segment) => segment.type === "text").at(-1)
+  const getMessageRoleLabel = (): string => {
+    if (message.role === "user") {
+      if (messageFromOtherPerson) return personSender?.name ?? t("Você")
+      return t("Você")
+    }
+    if (message.role === "assistant") return message.sender?.name ?? bot?.name ?? "touri"
+
+    return t(message.role)
+  }
+  const messageRoleLabel = getMessageRoleLabel()
   const technicalNotice =
     message.role === "system" &&
     message.parts.some((part) => part.type === "notice" && part.code === "session_replaced")
@@ -880,13 +898,23 @@ const MessageBubble = ({
   return (
     <article
       ref={root}
-      className={`message-bubble ${message.role === "user" ? "message-user" : "message-assistant"}${routinePrompt ? " message-routine-prompt" : ""}`}
+      className={`message-bubble ${message.role === "user" ? `message-user${messageFromOtherPerson ? " message-other-person" : ""}` : "message-assistant"}${routinePrompt ? " message-routine-prompt" : ""}`}
       data-message-id={message.id}
       data-motion-insert={inserted}
     >
       {routineHeader && <small className="routine-run-header">{routineHeader}</small>}
       {!routinePrompt && (
         <div className="message-meta">
+          {personSender && (
+            <span className="message-sender-avatar" aria-hidden="true">
+              <BotAvatar
+                bot={{ id: personSender.id, color: null, avatarSeed: personSender.avatarSeed ?? personSender.id }}
+                size={22}
+                state="idle"
+                still
+              />
+            </span>
+          )}
           {message.role === "assistant" &&
             message.sender &&
             (senderBot ? (
@@ -901,13 +929,7 @@ const MessageBubble = ({
                 />
               </span>
             ))}
-          <span className="message-role">
-            {message.role === "user"
-              ? t("Você")
-              : message.role === "assistant"
-                ? (message.sender?.name ?? bot?.name ?? "touri")
-                : t(message.role)}
-          </span>
+          <span className="message-role">{messageRoleLabel}</span>
           <time dateTime={new Date(message.createdAt).toISOString()}>
             {new Date(message.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
           </time>
@@ -1062,6 +1084,7 @@ const MessageBubble = ({
 }
 
 export const ChatPanel = ({
+  currentPersonId = "owner",
   composerKey,
   threadCreation,
   onRetryCreateThread,
@@ -1327,6 +1350,7 @@ export const ChatPanel = ({
       >
         <VirtualMessageList
           vmBotId={bot?.machine === "vm" ? bot.id : undefined}
+          currentPersonId={currentPersonId}
           machine={machine}
           focusApproval={focusApproval}
           key={composerKey ?? thread.id}
