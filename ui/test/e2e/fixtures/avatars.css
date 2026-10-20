@@ -1,0 +1,56 @@
+.avatar-evidence {
+  width: 1060px;
+  padding: 24px;
+  background: #242426;
+  color: #eee;
+  font-family: sans-serif;
+}
+.avatar-evidence[data-theme="light"] {
+  background: #f8f8fa;
+  color: #202024;
+}
+.avatar-evidence-controls,
+.avatar-evidence-sizes {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.avatar-evidence-controls {
+  margin-bottom: 24px;
+}
+.avatar-evidence h1 {
+  margin: 0 0 24px;
+  font-size: 22px;
+}
+.avatar-evidence h2 {
+  margin: 28px 0 20px;
+  font-size: 16px;
+}
+.avatar-evidence-sample {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+}
+.avatar-evidence-heads,
+.avatar-evidence-seeds,
+.avatar-evidence-looks {
+  display: grid;
+  gap: 24px 16px;
+}
+.avatar-evidence-heads {
+  grid-template-columns: repeat(4, 1fr);
+}
+.avatar-evidence-seeds,
+.avatar-evidence-looks {
+  grid-template-columns: repeat(7, 1fr);
+}
+.avatar-evidence figure {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  margin: 0;
+}
+.avatar-evidence figcaption,
+.avatar-evidence small {
+  font-size: 11px;
+}

@@ -154,5 +154,5 @@ it("names the server diagnostics consistently after onboarding and opens it", as
   const action = within(menu).getByRole("button", { name: "Verificar este servidor", exact: true })
   expect(within(menu).queryByRole("button", { name: "Verificar este Mac" })).toBeNull()
   fireEvent.click(action)
-  expect(await screen.findByRole("dialog", { name: "Diagnóstico" })).toBeVisible()
+  expect(await screen.findByRole("dialog", { name: "Verificar suas ferramentas" })).toBeVisible()
 })

@@ -557,6 +557,7 @@
                   "maxLength": 7
                 },
                 "avatarShape": {
+                  "description": "Bull look (short-flower), legacy head (nuage), or explicit head and look (nuage:short-glasses).",
                   "type": [
                     "string",
                     "null"

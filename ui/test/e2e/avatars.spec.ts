@@ -117,7 +117,7 @@ test("active avatars animate without touching the DOM", async ({ page }) => {
   expect(await page.evaluate(() => (window as AvatarMutationWindow).avatarMutations)).toBe(0)
 })
 
-test("group colour returns to its seeded automatic value and survives saving", async ({ page }, testInfo) => {
+test("group automatic colour and previewed head survive restoring and saving", async ({ page }, testInfo) => {
   test.setTimeout(60000)
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto("/test/e2e/groups-harness.html")
@@ -127,8 +127,10 @@ test("group colour returns to its seeded automatic value and survives saving", a
   const dialog = page.getByRole("dialog", { name: "Criar grupo", exact: true })
   await dialog.getByLabel("Nome do grupo").fill("Equipe QA")
   await dialog.getByRole("checkbox", { name: "mark", exact: true }).check()
+  await dialog.getByRole("button", { name: "Restaurar automático", exact: true }).click()
   const preview = dialog.locator(".avatar-picker-stage [data-avatar-body]")
   const automatic = await preview.getAttribute("fill")
+  const head = await preview.getAttribute("d")
   const custom = automatic === "#3b93f0" ? "Cor Vermelho" : "Cor Azul"
   await dialog.getByRole("radio", { name: custom, exact: true }).check()
   await expect(preview).not.toHaveAttribute("fill", automatic ?? "")
@@ -144,9 +146,11 @@ test("group colour returns to its seeded automatic value and survives saving", a
 
   await expect(page.getByRole("textbox", { name: "Mensagem para Equipe QA" })).toBeVisible()
   await expect(page.locator(".group-heading-name [data-avatar-body]")).toHaveAttribute("fill", automatic ?? "")
+  await expect(page.locator(".group-heading-name [data-avatar-body]")).toHaveAttribute("d", head ?? "")
 
   await page.locator(".group-header").getByRole("button", { name: "Editar grupo", exact: true }).click()
 
   const settings = page.getByRole("dialog", { name: "Editar grupo", exact: true })
   await expect(settings.locator(".avatar-picker-stage [data-avatar-body]")).toHaveAttribute("fill", automatic ?? "")
+  await expect(settings.locator(".avatar-picker-stage [data-avatar-body]")).toHaveAttribute("d", head ?? "")
 })

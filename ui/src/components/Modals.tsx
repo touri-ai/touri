@@ -72,7 +72,6 @@ type DoctorModalProps = {
   doctorError: string | null
   onRefresh: () => Promise<void>
   onClose: () => void
-  onImport: () => void
   launchAtLogin: boolean
   onLaunchAtLogin: (value: boolean) => Promise<void>
   focusSetting?: string | null
@@ -84,18 +83,20 @@ export const DoctorModal = ({
   doctorError,
   onRefresh,
   onClose,
-  onImport,
   launchAtLogin,
   onLaunchAtLogin,
   focusSetting,
 }: DoctorModalProps) => {
   useSettingFocus(focusSetting)
   return (
-    <Modal onClose={onClose} title={t("Doctor")} eyebrow="ambiente do touri" className="settings-modal doctor-modal">
+    <Modal
+      onClose={onClose}
+      title={t("Check your tools")}
+      eyebrow="ambiente do touri"
+      className="settings-modal doctor-modal"
+    >
       <div className="doctor-modal-content">
-        <p className="modal-intro">
-          {t("touri uses local CLIs or isolated Linux machines. Host login in a VM requires per-bot opt-in.")}
-        </p>
+        <p className="modal-intro">{t("See what is ready to use and what needs your attention.")}</p>
         <DoctorChecks api={api} doctor={doctor} error={doctorError} onRefresh={onRefresh} />
         <div className="onboarding-options">
           <label
@@ -118,9 +119,6 @@ export const DoctorModal = ({
       <div className="modal-actions">
         <button type="button" className="button button-quiet" onClick={onClose}>
           {t("Done")}
-        </button>
-        <button type="button" className="button button-dark" onClick={onImport}>
-          {t("Import legacy app bots")}
         </button>
       </div>
     </Modal>

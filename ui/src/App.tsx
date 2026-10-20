@@ -847,7 +847,6 @@ const AppContent = ({ kernel }: AppProps) => {
         doctorError={data.doctorError}
         onRefresh={actions.refreshDoctor}
         onClose={closeModal}
-        onImport={() => setModal("import")}
         focusSetting={settingFocus}
         launchAtLogin={data.settings?.launchAtLogin ?? false}
         onLaunchAtLogin={(value) => actions.updateSettings({ launchAtLogin: value })}

@@ -1,5 +1,5 @@
 import type { AvatarShape, Bot, BotGroup, GroupInput, Message, Run, Thread } from "@touri/contracts"
-import { avatarColorFor, avatarShapeFor } from "@touri/contracts/avatar"
+import { avatarColorFor, avatarProfileFor } from "@touri/contracts/avatar"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { userFacingError } from "../errors"
 import { type Locale, t } from "../i18n"
@@ -376,7 +376,7 @@ export const GroupModal = ({
   const [avatarSeed] = useState(() => group?.avatarSeed ?? crypto.randomUUID())
   const [color, setColor] = useState<string | null>(group?.color ?? null)
   // The stored shape is sent back untouched (even an older silhouette id) until the user picks a look.
-  const [shape, setShape] = useState<AvatarShape>(() => group?.avatarShape ?? avatarShapeFor(avatarSeed))
+  const [shape, setShape] = useState<AvatarShape>(() => group?.avatarShape ?? getNewGroupAvatarShape(avatarSeed))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const dialog = useRef<HTMLDivElement>(null)
@@ -422,7 +422,7 @@ export const GroupModal = ({
               await onSave({
                 name,
                 color: color ?? avatarColorFor({ id: avatarSeed, color: null }),
-                avatarShape: shape,
+                avatarShape: group ? shape : getNewGroupAvatarShape(avatarSeed, shape),
                 memberIds,
                 coordinatorBotId,
               })
@@ -529,4 +529,11 @@ export const GroupModal = ({
       </div>
     </div>
   )
+}
+
+// The server assigns a permanent seed on creation; keep the head and look the user previewed, including after reset.
+const getNewGroupAvatarShape = (avatarSeed: string, avatarShape?: AvatarShape): AvatarShape => {
+  const profile = avatarProfileFor({ id: avatarSeed, color: null, avatarShape: avatarShape ?? null })
+
+  return `${profile.headShape}:${profile.shape}`
 }

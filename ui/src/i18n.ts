@@ -2219,6 +2219,22 @@ export const ptBR = {
   "Saving…": "Salvando…",
   "Save settings": "Salvar configurações",
   "Close dialog": "Fechar diálogo",
+  "Check your tools": "Verificar suas ferramentas",
+  "See what is ready to use and what needs your attention.":
+    "Veja o que está pronto para usar e o que precisa de atenção.",
+  "{tool} is installed": "{tool} está instalado",
+  "{tool} needs attention": "{tool} precisa de atenção",
+  "Your {tool} sign-in is configured": "Login do {tool} configurado",
+  "Local credentials were found; access to the provider was not tested.":
+    "Credenciais locais encontradas; o acesso ao provedor não foi testado.",
+  "Your {tool} sign-in needs attention": "O login do {tool} precisa de atenção",
+  "Check your {tool} sign-in, then check again.": "Confira seu login do {tool} e verifique novamente.",
+  "Check the installation of {tool}, then check again.": "Confira a instalação do {tool} e verifique novamente.",
+  "No action is needed for this check.": "Nenhuma ação é necessária nesta verificação.",
+  "touri can find your installed tools": "O touri consegue encontrar suas ferramentas",
+  "touri needs help finding your tools": "O touri precisa de ajuda para encontrar suas ferramentas",
+  "Check your shell startup settings, then reopen touri.":
+    "Revise as configurações de inicialização do seu shell e reabra o touri.",
   Doctor: "Diagnóstico",
   "onboarding / environment": "primeiros passos / ambiente",
   "touri runs on the CLIs already logged in on this computer. Nothing here reads their credential files.":
@@ -2783,6 +2799,20 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Check your tools": "Check your tools",
+  "See what is ready to use and what needs your attention.": "See what is ready to use and what needs your attention.",
+  "{tool} is installed": "{tool} is installed",
+  "{tool} needs attention": "{tool} needs attention",
+  "Your {tool} sign-in is configured": "Your {tool} sign-in is configured",
+  "Local credentials were found; access to the provider was not tested.":
+    "Local credentials were found; access to the provider was not tested.",
+  "Your {tool} sign-in needs attention": "Your {tool} sign-in needs attention",
+  "Check your {tool} sign-in, then check again.": "Check your {tool} sign-in, then check again.",
+  "Check the installation of {tool}, then check again.": "Check the installation of {tool}, then check again.",
+  "No action is needed for this check.": "No action is needed for this check.",
+  "touri can find your installed tools": "touri can find your installed tools",
+  "touri needs help finding your tools": "touri needs help finding your tools",
+  "Check your shell startup settings, then reopen touri.": "Check your shell startup settings, then reopen touri.",
   "Aviso de bot pausado": "Paused bot notice",
   "{name} está pausado": "{name} is paused",
   "Bots pausados não respondem mensagens. Retome o bot para começar a conversa.":
