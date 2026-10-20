@@ -1,82 +1,117 @@
 import "../../../src/styles.css"
-import type { Bot, NotificationRecord, Run, Thread } from "@touri/contracts"
-import { AVATAR_SHAPES, type AvatarMood } from "@touri/contracts/avatar"
+import "./avatars.css"
+import type { AvatarLegacyShape, AvatarShape } from "@touri/contracts"
+import { AVATAR_SHAPES, type AvatarIdentity, type AvatarMood } from "@touri/contracts/avatar"
 import { useState } from "react"
 import { createRoot } from "react-dom/client"
-import { AvatarRuntimeProvider } from "../../../src/components/AvatarRuntime"
 import { BotAvatar } from "../../../src/components/BotAvatar"
 
-const MOODS: AvatarMood[] = ["idle", "working", "waiting", "failed", "responded", "asleep", "connecting"]
+const MOODS: readonly AvatarMood[] = ["idle", "working", "waiting", "failed", "responded", "asleep", "connecting"]
+const HEADS: readonly { shape: AvatarLegacyShape; label: string }[] = [
+  { shape: "cercle", label: "Circle · cercle" },
+  { shape: "galet", label: "Pebble · galet" },
+  { shape: "squircle", label: "Squircle" },
+  { shape: "capsule", label: "Pill / pilule · capsule" },
+  { shape: "triangle", label: "Shield · triangle" },
+  { shape: "hexagone", label: "Hexagon · hexagone" },
+  { shape: "nuage", label: "Cloud · nuage" },
+]
+const SEEDS = Array.from({ length: 14 }, (_, index) => `shape-seed-${index}`)
+
 const Fixture = () => {
   const [mood, setMood] = useState<AvatarMood>("idle")
-  const bot = {
-    id: "evidence",
-    name: "touri",
-    color: null,
-    avatarSeed: "touri-evidence",
-    paused: mood === "asleep",
-  } as Bot
-  const run: Run = {
-    id: "run",
-    botId: bot.id,
-    threadId: "thread",
-    provider: "codex",
-    trigger: "user",
-    requestMessageId: null,
-    replyMessageId: "reply",
-    externalTurnId: null,
-    status: mood === "failed" ? "failed" : mood === "working" ? "running" : "succeeded",
-    errorClass: null,
-    errorMessage: null,
-    usage: null,
-    routineRunId: null,
-    queuedAt: Date.now(),
-    startedAt: Date.now(),
-    finishedAt: Date.now(),
-  }
-  const notification = { id: 1, botId: bot.id, kind: "question", resolvedAt: null } as NotificationRecord
+  const [theme, setTheme] = useState(() => getFixtureTheme())
+  const still = new URLSearchParams(window.location.search).has("still")
+  const bot = getBot("classic-none")
+
   return (
-    <>
-      <label>
-        Mood{" "}
-        <select aria-label="Mood" value={mood} onChange={(event) => setMood(event.target.value as AvatarMood)}>
-          {MOODS.map((item) => (
-            <option key={item}>{item}</option>
+    <main className="avatar-evidence" data-theme={theme}>
+      <div className="avatar-evidence-controls">
+        <label>
+          Mood{" "}
+          <select aria-label="Mood" value={mood} onChange={(event) => setMood(event.target.value as AvatarMood)}>
+            {MOODS.map((item) => (
+              <option key={item}>{item}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Theme{" "}
+          <select aria-label="Theme" value={theme} onChange={(event) => setTheme(event.target.value)}>
+            <option value="dark">dark</option>
+            <option value="light">light</option>
+          </select>
+        </label>
+      </div>
+      <article id="gallery">
+        <h1>
+          touri bull avatars · {mood} · {theme}
+        </h1>
+        <div className="avatar-evidence-sizes">
+          {[24, 32, 40, 64].map((size) => (
+            <div key={size} className="avatar-evidence-sample">
+              <BotAvatar bot={bot} size={size} mood={mood} still={still} unread={size === 40} />
+              <small>{size}px</small>
+            </div>
           ))}
-        </select>
-      </label>
-      <AvatarRuntimeProvider
-        value={{
-          bots: [bot],
-          runs: ["working", "failed", "responded"].includes(mood) ? [run] : [],
-          threads: [{ id: "thread", botId: bot.id } as Thread],
-          messages: [],
-          notifications: mood === "waiting" ? [notification] : [],
-          loading: mood === "connecting",
-        }}
-      >
-        <article
-          id="gallery"
-          style={{ width: 600, padding: 24, background: "#242426", color: "#eee", fontFamily: "sans-serif" }}
-        >
-          <h1 style={{ margin: "0 0 20px", fontSize: 20 }}>touri · {mood}</h1>
-          <div style={{ display: "flex", gap: 24, alignItems: "center", marginBottom: 28 }}>
-            {[24, 32, 40, 64].map((size) => (
-              <div key={size} style={{ display: "grid", gap: 8, justifyItems: "center" }}>
-                <BotAvatar bot={bot} size={size} mood={mood} unread={size === 40} />
-                <small>{size}px</small>
-              </div>
+        </div>
+        <section id="shape-gallery" aria-labelledby="shape-gallery-heading">
+          <h2 id="shape-gallery-heading">Head shapes · same colour, horns and accessory</h2>
+          <div className="avatar-evidence-heads">
+            {HEADS.map(({ shape, label }) => (
+              <figure key={shape} data-head={shape}>
+                <div className="avatar-evidence-sizes">
+                  {[24, 40, 64].map((size) => (
+                    <div key={size} className="avatar-evidence-sample">
+                      <BotAvatar bot={getBot(`${shape}:classic-none`)} size={size} mood={mood} still={still} />
+                      <small>{size}px</small>
+                    </div>
+                  ))}
+                </div>
+                <figcaption>{label}</figcaption>
+              </figure>
             ))}
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+        </section>
+        <section aria-labelledby="seed-gallery-heading">
+          <h2 id="seed-gallery-heading">Seeded heads · automatic silhouette</h2>
+          <div className="avatar-evidence-seeds">
+            {SEEDS.map((seed) => (
+              <figure key={seed} data-seed={seed}>
+                <BotAvatar bot={getBot("classic-none", seed)} size={40} mood={mood} still={still} />
+                <figcaption>{seed}</figcaption>
+              </figure>
+            ))}
+          </div>
+        </section>
+        <section aria-labelledby="look-gallery-heading">
+          <h2 id="look-gallery-heading">Horns × accessories · same seeded head</h2>
+          <div className="avatar-evidence-looks">
             {AVATAR_SHAPES.map((shape) => (
-              <BotAvatar key={shape} bot={{ ...bot, avatarShape: shape }} size={64} mood={mood} />
+              <figure key={shape}>
+                <BotAvatar bot={getBot(shape)} size={48} mood={mood} still={still} />
+                <figcaption>{shape}</figcaption>
+              </figure>
             ))}
           </div>
-        </article>
-      </AvatarRuntimeProvider>
-    </>
+        </section>
+      </article>
+    </main>
   )
 }
+
+const getBot = (avatarShape: AvatarShape, seed = "shape-gallery"): AvatarIdentity => ({
+  id: seed,
+  avatarSeed: seed,
+  avatarShape,
+  color: "#e8483f",
+})
+
+const getFixtureTheme = (): string => {
+  if (new URLSearchParams(window.location.search).get("theme") === "light") return "light"
+
+  return "dark"
+}
+
 const root = document.getElementById("root")
 if (root) createRoot(root).render(<Fixture />)

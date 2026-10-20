@@ -12,7 +12,7 @@ import {
   avatarPhaseForMood,
   avatarProfileFor,
 } from "@touri/contracts/avatar"
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react"
+import { type CSSProperties, memo, useEffect, useMemo, useRef, useState } from "react"
 import { t } from "../i18n"
 import { useAvatarMood, useMascotSnapshot } from "./AvatarRuntime"
 import { type MascotState, mascotLabelFor, mascotMoodFor, mascotPhaseFor } from "./mascotState"
@@ -123,6 +123,7 @@ export const BotAvatar = ({
       }
       data-avatar={photo ? "image" : "generated"}
       data-avatar-shape={profile.shape}
+      data-avatar-head={profile.headShape}
       data-avatar-mood={mood}
       data-avatar-phase={phase}
       data-mascot-state={state}
@@ -138,6 +139,7 @@ export const BotAvatar = ({
           color={profile.color}
           horns={profile.horns}
           accessory={profile.accessory}
+          headShape={profile.headShape}
           phase={phase}
           effects={size >= EFFECTS_MIN_SIZE}
         />
@@ -156,17 +158,21 @@ export const BotAvatar = ({
   )
 }
 
-const Bull = ({
+const BullArtwork = ({
   color,
   horns,
   accessory,
+  headShape,
   phase,
   effects,
-}: Pick<ReturnType<typeof avatarProfileFor>, "color" | "horns" | "accessory"> & {
+}: Pick<ReturnType<typeof avatarProfileFor>, "color" | "horns" | "accessory" | "headShape"> & {
   phase: AvatarPhase
   effects: boolean
 }) => {
-  const bull = useMemo(() => avatarBullFor({ color, horns, accessory }, phase), [color, horns, accessory, phase])
+  const bull = useMemo(
+    () => avatarBullFor({ color, horns, accessory, headShape }, phase),
+    [color, horns, accessory, headShape, phase],
+  )
   return (
     <svg
       className="tb-avatar-body"
@@ -202,6 +208,7 @@ const Bull = ({
     </svg>
   )
 }
+const Bull = memo(BullArtwork)
 
 // Outlines reuse the fill geometry; width keeps those layers distinct across colour changes.
 const BullPaths = ({ paths, head }: { paths: AvatarPath[]; head?: string }) =>
@@ -212,6 +219,7 @@ const BullPaths = ({ paths, head }: { paths: AvatarPath[]; head?: string }) =>
       fill={path.fill}
       stroke={path.stroke}
       strokeWidth={path.width}
+      transform={path.transform}
       data-avatar-body={path.d === head && !path.stroke ? "" : undefined}
     />
   ))

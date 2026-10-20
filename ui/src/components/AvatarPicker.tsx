@@ -7,9 +7,10 @@ import {
   type AvatarMood,
   avatarProfileFor,
   avatarShapeFor,
-  avatarShapeOf,
+  getAvatarShapeForLook,
+  LEGACY_AVATAR_SHAPES,
 } from "@touri/contracts/avatar"
-import { useId, useState } from "react"
+import { memo, useId, useMemo, useState } from "react"
 import { type TranslationKey, t } from "../i18n"
 import { BotAvatar } from "./BotAvatar"
 
@@ -53,6 +54,14 @@ export const AvatarPicker = ({
   onChange: (choice: Partial<AvatarChoice>) => void
 }) => {
   const profile = avatarProfileFor(bot)
+  const hornPreviews = useMemo(
+    () => AVATAR_HORNS.map((horns) => ({ horns, bot: getPreviewBot(bot, horns, "none") })),
+    [bot],
+  )
+  const accessoryPreviews = useMemo(
+    () => AVATAR_ACCESSORIES.map((accessory) => ({ accessory, bot: getPreviewBot(bot, profile.horns, accessory) })),
+    [bot, profile.horns],
+  )
   const group = useId()
   const [mood, setMood] = useState<AvatarMood>("idle")
   // Each new look remounts the preview so it plays its one-pixel hop again.
@@ -65,12 +74,12 @@ export const AvatarPicker = ({
   const shuffle = (): void =>
     onChange({
       color: getRandomItem(AVATAR_COLOR_CHOICES).hex,
-      avatarShape: avatarShapeOf(getRandomItem(AVATAR_HORNS), getRandomItem(AVATAR_ACCESSORIES)),
+      avatarShape: getAvatarShapeForLook(bot, getRandomItem(AVATAR_HORNS), getRandomItem(AVATAR_ACCESSORIES)),
     })
   const reset = (): void =>
     onChange({
       color: null,
-      avatarShape: avatarShapeFor({ id: bot.id, avatarSeed: bot.avatarSeed ?? null, color: null }),
+      avatarShape: getAutomaticShape(bot),
     })
 
   return (
@@ -165,7 +174,7 @@ export const AvatarPicker = ({
           <fieldset className="avatar-options avatar-horns">
             <legend>{t("avatar.horns")}</legend>
             <div>
-              {AVATAR_HORNS.map((horns) => (
+              {hornPreviews.map(({ horns, bot: preview }) => (
                 <label key={horns} title={t(HORN_LABEL[horns])}>
                   <input
                     type="radio"
@@ -173,9 +182,9 @@ export const AvatarPicker = ({
                     name={`${group}-horns`}
                     aria-label={t("avatar.horns.choice", { horns: t(HORN_LABEL[horns]) })}
                     checked={profile.horns === horns}
-                    onChange={() => onChange({ avatarShape: avatarShapeOf(horns, profile.accessory) })}
+                    onChange={() => onChange({ avatarShape: getAvatarShapeForLook(bot, horns, profile.accessory) })}
                   />
-                  <BotAvatar bot={{ ...bot, avatarShape: avatarShapeOf(horns, "none") }} size={48} mood="idle" still />
+                  <AvatarThumbnail bot={preview} size={48} mood="idle" still />
                   <span aria-hidden="true">{t(HORN_LABEL[horns])}</span>
                 </label>
               ))}
@@ -184,7 +193,7 @@ export const AvatarPicker = ({
           <fieldset className="avatar-options avatar-accessories">
             <legend>{t("avatar.accessory")}</legend>
             <div>
-              {AVATAR_ACCESSORIES.map((accessory) => (
+              {accessoryPreviews.map(({ accessory, bot: preview }) => (
                 <label key={accessory} title={t(ACCESSORY_LABEL[accessory])}>
                   <input
                     type="radio"
@@ -192,14 +201,9 @@ export const AvatarPicker = ({
                     name={`${group}-accessory`}
                     aria-label={t("avatar.accessory.choice", { accessory: t(ACCESSORY_LABEL[accessory]) })}
                     checked={profile.accessory === accessory}
-                    onChange={() => onChange({ avatarShape: avatarShapeOf(profile.horns, accessory) })}
+                    onChange={() => onChange({ avatarShape: getAvatarShapeForLook(bot, profile.horns, accessory) })}
                   />
-                  <BotAvatar
-                    bot={{ ...bot, avatarShape: avatarShapeOf(profile.horns, accessory) }}
-                    size={40}
-                    mood="idle"
-                    still
-                  />
+                  <AvatarThumbnail bot={preview} size={40} mood="idle" still />
                   <span aria-hidden="true">{t(ACCESSORY_LABEL[accessory])}</span>
                 </label>
               ))}
@@ -212,6 +216,26 @@ export const AvatarPicker = ({
       </div>
     </fieldset>
   )
+}
+
+const AvatarThumbnail = memo(BotAvatar)
+
+const getPreviewBot = (bot: AvatarIdentity, horns: AvatarHorns, accessory: AvatarAccessory): AvatarIdentity => ({
+  id: bot.id,
+  color: bot.color,
+  avatarSeed: bot.avatarSeed ?? null,
+  avatarPath: bot.avatarPath ?? null,
+  avatarHue: bot.avatarHue ?? null,
+  avatarShape: getAvatarShapeForLook(bot, horns, accessory),
+})
+
+const getAutomaticShape = (bot: AvatarIdentity): AvatarShape => {
+  const head = LEGACY_AVATAR_SHAPES.find(
+    (shape) => bot.avatarShape === shape || bot.avatarShape?.startsWith(`${shape}:`),
+  )
+  if (head) return head
+
+  return avatarShapeFor({ id: bot.id, avatarSeed: bot.avatarSeed ?? null, color: null })
 }
 
 const getRandomItem = <Item,>(items: readonly Item[]): Item => {
