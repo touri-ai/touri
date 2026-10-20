@@ -36,7 +36,7 @@ themes.forEach((theme) => {
 
       expect(fixed.violations).toEqual([])
       expect(fixed.incomplete).toEqual([])
-      expect(fixed.passes.map((rule) => rule.id)).toEqual(["label-content-name-mismatch"])
+      expect(fixed.passes).toEqual([])
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
       await badge.screenshot({ path: info.outputPath(`work-summary-${theme}-${width}.png`) })
 
