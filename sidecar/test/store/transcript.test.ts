@@ -106,16 +106,42 @@ const insertReply = (f: Awaited<ReturnType<typeof fixture>>, id = "reply", parts
   })
 }
 
-const waitForStorageUpgrade = async (database: Database): Promise<void> => {
-  const deadline = Date.now() + 2_000
-  while (Date.now() < deadline) {
-    const upgrade = database.query("SELECT value FROM schema_meta WHERE key = 'storage_upgrade_22'").get() as {
+const waitForStorageUpgrade = async (f: Awaited<ReturnType<typeof fixture>>): Promise<void> => {
+  const isDone = (): boolean => {
+    const upgrade = f.db.query("SELECT value FROM schema_meta WHERE key = 'storage_upgrade_22'").get() as {
       value: string
     } | null
-    if (!upgrade || upgrade.value === "done") return
-    await Bun.sleep(10)
+
+    return !upgrade || upgrade.value === "done"
   }
-  throw new Error("Storage upgrade did not finish")
+  if (isDone()) return
+
+  await new Promise<void>((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let unsubscribe = () => {}
+    const finish = (error?: Error) => {
+      unsubscribe()
+      if (timer) clearTimeout(timer)
+      if (error) reject(error)
+      else resolve()
+    }
+    const check = () => {
+      if (isDone()) finish()
+    }
+    unsubscribe = f.runtime.kernel.subscribe(({ event }) => {
+      if (event.type === "transcript.resync") check()
+    })
+    timer = setTimeout(() => finish(new Error("Storage upgrade did not finish")), 4_000)
+    check()
+  })
+}
+
+const compactUntilIdle = async (options: Parameters<typeof compactTranscript>[0]): Promise<void> => {
+  const deadline = performance.now() + 2_000
+  while (compactTranscript(options)) {
+    if (performance.now() >= deadline) throw new Error("Transcript compaction did not finish")
+    await new Promise<void>((resolve) => setImmediate(resolve))
+  }
 }
 
 test("rejected appends persist safe metadata and replay once with contiguous revisions", async () => {
@@ -445,54 +471,59 @@ test("a rolled-back delta cannot poison the next stream even if another write re
 
 test("retention preserves snapshots, rejects expired cursors, and only compaction may delete immutable entries", async () => {
   const f = await fixture()
-  try {
-    await waitForStorageUpgrade(f.db)
-    insertReply(f)
-    for (let index = 0; index < 12; index++) {
-      f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: `${index}|` })
-      await f.store.flushWritesAsync?.()
-    }
-    compactTranscript({ database: f.db, entriesPerThread: 3, events: 4, maxAgeMs: Number.MAX_SAFE_INTEGER })
-    const bus = createEventBus(f.db)
-    expect(f.db.query("SELECT COUNT(*) AS n FROM transcript_entries").get()).toEqual({ n: 3 })
-    expect(f.db.query("SELECT COUNT(*) AS n FROM ui_event_log").get()).toEqual({ n: 4 })
-    expect(f.store.activePath({ threadId: "t" })[0]?.text).toBe(Array.from({ length: 12 }, (_, i) => `${i}|`).join(""))
-    expect(bus.replay(0)).toMatchObject([{ event: { type: "transcript.resync" } }])
-    const floor = Number(
-      (f.db.query("SELECT value FROM schema_meta WHERE key = 'ui_event_floor_seq'").get() as { value: string }).value,
-    )
-    expect(bus.replay(floor).map((row) => row.seq)).toEqual([floor + 1, floor + 2, floor + 3, floor + 4])
-    expect(() => f.db.exec("DELETE FROM transcript_entries")).toThrow("immutable")
-    expect(() => f.db.exec("DELETE FROM ui_event_log")).toThrow("immutable")
-    expect(() => f.db.exec("UPDATE ui_event_log SET at = 0")).toThrow("immutable")
-    const base = `http://127.0.0.1:${f.runtime.handshake.port}/api/v1/threads/t/transcript`
-    const headers = { Authorization: "Bearer dev-ui-token", Origin: "tauri://localhost" }
-    expect(await (await fetch(`${base}?since=0`, { headers })).json()).toMatchObject({
-      entries: [],
-      resync: true,
-      lastSeq: 13,
-    })
-    expect(await (await fetch(`${base}?since=10`, { headers })).json()).toMatchObject({
-      entries: [{ seq: 11 }, { seq: 12 }, { seq: 13 }],
-      resync: false,
-    })
-    compactTranscript({ database: f.db, maxAgeMs: 0, now: Date.now() + 1 })
-    expect(f.db.query("SELECT COUNT(*) AS n FROM transcript_entries").get()).toEqual({ n: 0 })
-    expect(f.db.query("SELECT COUNT(*) AS n FROM ui_event_log").get()).toEqual({ n: 0 })
-    expect(bus.replay(0)).toMatchObject([{ seq: floor + 4, event: { type: "transcript.resync" } }])
-    f.runtime.kernel.publish({ type: "import.progress", importId: "new", phase: "done", done: 1, total: 1 })
-    expect(bus.replay(floor + 4)).toMatchObject([{ seq: floor + 5 }])
-    expect(f.db.query("SELECT * FROM transcript_maintenance").get()).toEqual({
-      id: 1,
-      delete_before_id: 0,
-      ui_delete_before_seq: 0,
-      projection_write: 0,
-    })
-    bus.stop()
-  } finally {
-    await f.close()
+  regressionCleanups.add(f.close)
+
+  await waitForStorageUpgrade(f)
+  const maintenance = f.runtime.kernel.services.use("storage.maintenance")
+  if (!maintenance) throw new Error("Storage maintenance missing")
+  maintenance.dispose()
+  // The connection's retention cursor may already be partway through a background pass.
+  await compactUntilIdle({ database: f.db })
+
+  insertReply(f)
+  for (let index = 0; index < 12; index++) {
+    f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 0, delta: `${index}|` })
+    await f.store.flushWritesAsync?.()
   }
-})
+  await compactUntilIdle({ database: f.db, entriesPerThread: 3, events: 4, maxAgeMs: Number.MAX_SAFE_INTEGER })
+  const bus = createEventBus(f.db)
+
+  expect(f.db.query("SELECT COUNT(*) AS n FROM transcript_entries").get()).toEqual({ n: 3 })
+  expect(f.db.query("SELECT COUNT(*) AS n FROM ui_event_log").get()).toEqual({ n: 4 })
+  expect(f.store.activePath({ threadId: "t" })[0]?.text).toBe(Array.from({ length: 12 }, (_, i) => `${i}|`).join(""))
+  expect(bus.replay(0)).toMatchObject([{ event: { type: "transcript.resync" } }])
+  const floor = Number(
+    (f.db.query("SELECT value FROM schema_meta WHERE key = 'ui_event_floor_seq'").get() as { value: string }).value,
+  )
+  expect(bus.replay(floor).map((row) => row.seq)).toEqual([floor + 1, floor + 2, floor + 3, floor + 4])
+  expect(() => f.db.exec("DELETE FROM transcript_entries")).toThrow("immutable")
+  expect(() => f.db.exec("DELETE FROM ui_event_log")).toThrow("immutable")
+  expect(() => f.db.exec("UPDATE ui_event_log SET at = 0")).toThrow("immutable")
+  const base = `http://127.0.0.1:${f.runtime.handshake.port}/api/v1/threads/t/transcript`
+  const headers = { Authorization: "Bearer dev-ui-token", Origin: "tauri://localhost" }
+  expect(await (await fetch(`${base}?since=0`, { headers })).json()).toMatchObject({
+    entries: [],
+    resync: true,
+    lastSeq: 13,
+  })
+  expect(await (await fetch(`${base}?since=10`, { headers })).json()).toMatchObject({
+    entries: [{ seq: 11 }, { seq: 12 }, { seq: 13 }],
+    resync: false,
+  })
+  await compactUntilIdle({ database: f.db, maxAgeMs: 0, now: Date.now() + 1 })
+  expect(f.db.query("SELECT COUNT(*) AS n FROM transcript_entries").get()).toEqual({ n: 0 })
+  expect(f.db.query("SELECT COUNT(*) AS n FROM ui_event_log").get()).toEqual({ n: 0 })
+  expect(bus.replay(0)).toMatchObject([{ seq: floor + 4, event: { type: "transcript.resync" } }])
+  f.runtime.kernel.publish({ type: "import.progress", importId: "new", phase: "done", done: 1, total: 1 })
+  expect(bus.replay(floor + 4)).toMatchObject([{ seq: floor + 5 }])
+  expect(f.db.query("SELECT * FROM transcript_maintenance").get()).toEqual({
+    id: 1,
+    delete_before_id: 0,
+    ui_delete_before_seq: 0,
+    projection_write: 0,
+  })
+  bus.stop()
+}, 15_000)
 
 test("v6 migration preserves a 2.5 MB history, branches, FTS and is repeatable", () => {
   const root = mkdtempSync(join(tmpdir(), "touri-migrate-transcript-"))

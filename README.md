@@ -110,6 +110,12 @@ interface enabled. Credentials use that service; a missing or locked keyring is 
 by doctor and never causes plaintext credential storage. AppImages also need FUSE, or
 `APPIMAGE_EXTRACT_AND_RUN=1` on hosts without FUSE.
 
+On Linux systems with the proprietary graphics driver detected, Touri sets
+`WEBKIT_DISABLE_DMABUF_RENDERER=1` before opening its window unless that variable is already
+set. This avoids a known WebView graphics compatibility issue and may reduce rendering
+performance. To try the fallback manually with an installed package, run
+`WEBKIT_DISABLE_DMABUF_RENDERER=1 touri`.
+
 Desktop data lives in `$XDG_DATA_HOME/touri` (default `~/.local/share/touri`).
 The standalone headless server retains `~/.touri`; `TOURI_APP_DATA` overrides either location.
 Podman or Docker is optional for VM bots. If no working container engine is available,

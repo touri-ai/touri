@@ -1,10 +1,12 @@
-import type { Database } from "bun:sqlite"
+import { Database } from "bun:sqlite"
 import { afterEach, expect, spyOn, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import type { ToolCallPart } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
 import { createRuntimeEngine } from "../../src/runtime/engine"
+import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { summarizeToolResolutions } from "../../src/runtime/tool-resolution-summary"
 import { createToolResolutions, PENDING_TOOL_RECOVERY_SQL } from "../../src/runtime/tool-resolutions"
 import { init as initStore } from "../../src/store"
@@ -14,6 +16,122 @@ const fixtures = new Set<Awaited<ReturnType<typeof getFixture>>>()
 afterEach(async () => {
   for (const fixture of fixtures) await fixture.close()
   fixtures.clear()
+})
+
+test("prepared tool resolutions remain unwritten until the terminal transaction", async () => {
+  const fixture = await getFixture()
+  fixtures.add(fixture)
+  const run = getRun(fixture.database)
+  const tools = createToolResolutions(fixture.kernel)
+  const part = getPendingTool()
+  tools.record(run, part)
+
+  const prepared = tools.prepareFinish(run, [part], "unknown")
+
+  expect(fixture.database.query("SELECT resolution FROM tool_resolutions").all()).toEqual([{ resolution: "running" }])
+
+  const parts = fixture.database.transaction(() => prepared([part], "unknown"))()
+
+  expect(parts[0]).toMatchObject({ callId: "prepared-tool", resolution: "unknown" })
+  expect(fixture.database.query("SELECT resolution FROM tool_resolutions").all()).toEqual([{ resolution: "unknown" }])
+})
+
+test.each(["local", "remote"])("prepared rows preserve a late result from the %s connection", async (connection) => {
+  const fixture = await getFixture()
+  fixtures.add(fixture)
+  const run = getRun(fixture.database)
+  const tools = createToolResolutions(fixture.kernel)
+  const part = getPendingTool()
+  tools.record(run, part)
+  const prepared = tools.prepareFinish(run, [part], "unknown")
+  const writer = connection === "local" ? fixture.database : new Database(fixture.database.filename)
+  if (connection === "remote")
+    fixture.restore.add(() => {
+      writer.close()
+    })
+  const completed = Object.assign({}, part, {
+    ok: true,
+    outputJson: "preserved",
+    resolution: "succeeded",
+    resolvedAt: 2,
+  })
+  writer
+    .query(
+      "UPDATE tool_resolutions SET part_json = ?, resolution = 'succeeded', resolved_at = 2 WHERE call_id = 'prepared-tool'",
+    )
+    .run(JSON.stringify(completed))
+
+  const parts = fixture.database.transaction(() => prepared([part], "unknown"))()
+
+  expect(parts[0]).toMatchObject({ outputJson: "preserved", resolution: "completed_unobserved" })
+  expect(fixture.database.query("SELECT resolution FROM tool_resolutions").all()).toEqual([
+    { resolution: "completed_unobserved" },
+  ])
+})
+
+test("prepared rows honor a late cancellation before it reaches SQLite", async () => {
+  const fixture = await getFixture()
+  fixtures.add(fixture)
+  const run = getRun(fixture.database)
+  const tools = createToolResolutions(fixture.kernel)
+  const part = getPendingTool()
+  tools.record(run, part)
+  const prepared = tools.prepareFinish(run, [part], "unknown")
+  const cancellation: ToolCallPart = Object.assign({}, part, { resolution: "cancelled_by_user", resolvedAt: 2 })
+
+  tools.record(run, cancellation, false, false)
+  const parts = fixture.database.transaction(() => prepared([part], "unknown"))()
+
+  expect(parts[0]).toMatchObject({ resolution: "cancelled_by_user", resolvedAt: 2 })
+  expect(fixture.database.query("SELECT resolution FROM tool_resolutions").all()).toEqual([
+    { resolution: "cancelled_by_user" },
+  ])
+})
+
+test("prepared rows do not rewrite settled results when stored JSON orders its keys differently", async () => {
+  const fixture = await getFixture()
+  fixtures.add(fixture)
+  const run = getRun(fixture.database)
+  const tools = createToolResolutions(fixture.kernel)
+  const part: ToolCallPart = Object.assign({}, getPendingTool(), {
+    ok: true,
+    outputJson: "preserved",
+    resolution: "succeeded",
+    resolvedAt: 2,
+  })
+  tools.record(run, part)
+  fixture.database
+    .query("UPDATE tool_resolutions SET part_json = ? WHERE call_id = 'prepared-tool'")
+    .run(JSON.stringify(Object.assign({ resolvedAt: part.resolvedAt }, part)))
+  const changes = fixture.database.query("SELECT total_changes() AS n").get()
+
+  const prepared = tools.prepareFinish(run, [part], "unknown")
+  const parts = fixture.database.transaction(() => prepared([part], "unknown"))()
+
+  expect(parts).toEqual([part])
+  expect(fixture.database.query("SELECT total_changes() AS n").get()).toEqual(changes)
+})
+
+test("prepared snapshots own their content across the finalization yield", async () => {
+  const fixture = await getFixture()
+  fixtures.add(fixture)
+  const run = getRun(fixture.database)
+  const tools = createToolResolutions(fixture.kernel)
+  const part = getPendingTool()
+  tools.record(run, part)
+  let text = "initial"
+  const prose = {
+    type: "text" as const,
+    get text() {
+      return text
+    },
+  }
+  const prepared = tools.prepareFinish(run, [prose, part], "unknown")
+
+  text = "changed outside the runtime"
+  const parts = fixture.database.transaction(() => prepared([{ type: "text", text: "initial" }, part], "unknown"))()
+
+  expect(parts[0]).toEqual({ type: "text", text: "initial" })
 })
 
 test("bounded paths preserve order, branch membership and an explicit leaf", async () => {
@@ -264,8 +382,27 @@ const getFixture = async () => {
     restore,
     close: async () => {
       for (const callback of restore) await callback()
-      runtime.stop()
+      await runtime.stop()
       rmSync(root, { recursive: true, force: true })
     },
   }
 }
+
+const getRun = (database: Database) => {
+  const run = createRuntimePersistence({ database }).getRun("run-a")
+  if (!run) throw new Error("Synthetic run missing")
+
+  return run
+}
+
+const getPendingTool = (): ToolCallPart => ({
+  type: "tool_call",
+  callId: "prepared-tool",
+  tool: "synthetic",
+  summary: "Synthetic result",
+  inputJson: "{}",
+  outputJson: null,
+  ok: null,
+  resolution: "running",
+  resolvedAt: null,
+})

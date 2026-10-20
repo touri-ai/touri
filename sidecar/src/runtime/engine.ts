@@ -76,7 +76,7 @@ import { createRuntimePersistence, type RuntimePersistence } from "./persistence
 import { reapProviderProcesses } from "./provider-processes"
 import { formatRoutineTitle, nextCronSlot, parseCron, previousCronSlot, validTimezone } from "./routines/cron"
 import { sessionFingerprint, workingDirectory } from "./session"
-import { createToolResolutions } from "./tool-resolutions"
+import { createToolResolutions, type PreparedToolFinish } from "./tool-resolutions"
 import { retryTransient } from "./transient-retry"
 import { turnConclusion } from "./turn-conclusion"
 import { bounded, randomHexToken } from "./utils"
@@ -93,6 +93,7 @@ type RunState = {
   parts: Array<MessagePart>
   partIndices: Map<string, number>
   dirtyParts: Set<number>
+  preparedFinish: PreparedToolFinish | null
   replyMessageId: Id | null
   turnStarted: boolean
   externalSessionId: string | null
@@ -143,11 +144,27 @@ const getPartKey = (part: MessagePart): string | null => ("callId" in part ? `${
 
 // Shallow field identity: nested values compare by reference, so an unsure match still publishes.
 const isSamePart = (previous: MessagePart, next: MessagePart): boolean => {
+  if (previous === next) return true
+
   const entries = Object.entries(next)
   return (
     entries.length === Object.keys(previous).length &&
     entries.every(([key, value]) => Reflect.get(previous, key) === value)
   )
+}
+
+const getPartsSnapshotGuard = (state: RunState): (() => boolean) => {
+  const parts = state.parts
+  // Live callbacks mutate the array and part fields; snapshot shallow fields while sharing output strings.
+  const snapshot = parts.map((part) => ({ ...part }))
+
+  return () =>
+    state.parts === parts &&
+    parts.length === snapshot.length &&
+    snapshot.every((previous, index) => {
+      const next = parts[index]
+      return next !== undefined && isSamePart(previous, next)
+    })
 }
 
 const materializePartText = (state: RunState, partIndex: number, runStage?: PerformanceStageRunner): void => {
@@ -375,6 +392,7 @@ export const createRuntimeEngine = ({
   const active = new Map<Id, Run>()
   const controllers = new Map<Id, AbortController>()
   const executions = new Map<Id, Promise<void>>()
+  const finalizations = new Map<Id, Promise<boolean>>()
   const providers = new Map<Id, ProviderAdapter>()
   const states = new Map<Id, RunState>()
   const pendingApprovals = new Map<Id, PendingApproval>()
@@ -554,34 +572,61 @@ export const createRuntimeEngine = ({
 
   const finishLiveRun = async (
     run: Run,
-    prepare: () => Promise<void>,
-    finish: () => void,
+    prepare: () => Promise<() => boolean>,
+    finish: () => boolean,
     messageId?: Id,
-  ): Promise<void> => {
-    // Accepted streaming work survives even if the final transaction rolls back.
-    try {
-      await measureStage("runtime_stream_flush", () =>
-        kernel.services.use("store.api")?.flushWritesAsync?.({
-          threadId: run.threadId,
-          ...(messageId ? { messageId } : {}),
-        }),
-      )
-    } catch {
-      // A failed stream drain must not leave its run active or prevent terminal state.
-    }
-    await prepare()
-    const write = (): void => {
-      if (!isLive(run)) {
-        tools.clearPendingMemory(run.id)
-        return
-      }
+  ): Promise<boolean> => {
+    const pending = finalizations.get(run.id)
+    if (pending) return pending
 
-      finish()
-      tools.clearPending(run.id)
+    // Abort and provider completion can converge; only one preparation may replace a run's snapshot at a time.
+    const operation = finishLiveRunNow(run, prepare, finish, messageId)
+    finalizations.set(run.id, operation)
+    try {
+      return await operation
+    } finally {
+      finalizations.delete(run.id)
     }
-    // The terminal reply, run and tool resolutions have one winning writer.
-    if (kernel.db instanceof Database) await writeDatabaseAsync(kernel.db, write)
-    else write()
+  }
+
+  const finishLiveRunNow = async (
+    run: Run,
+    prepare: () => Promise<() => boolean>,
+    finish: () => boolean,
+    messageId?: Id,
+  ): Promise<boolean> => {
+    for (;;) {
+      // Drain again on retries: a late accepted part may already reference its pending output file.
+      try {
+        await measureStage("runtime_stream_flush", () =>
+          kernel.services.use("store.api")?.flushWritesAsync?.({
+            threadId: run.threadId,
+            ...(messageId ? { messageId } : {}),
+          }),
+        )
+      } catch {
+        // A failed stream drain must not leave its run active or prevent terminal state.
+      }
+      const isPrepared = await prepare()
+      // Preparation can finish a large batch; give timers and cancellation a turn before the terminal transaction.
+      await new Promise<void>((resolve) => setImmediate(resolve))
+      const write = (): boolean | null => {
+        if (!isLive(run)) {
+          tools.clearPendingMemory(run.id)
+          return false
+        }
+        // Cancellation or a writer-lock retry can invalidate the externalized snapshot.
+        if (!isPrepared()) return null
+
+        // A canceled success path keeps its pending disposition for the canceled transition.
+        if (!finish()) return false
+        tools.clearPending(run.id)
+        return true
+      }
+      // The terminal reply, run and tool resolutions have one winning writer.
+      const committed = kernel.db instanceof Database ? await writeDatabaseAsync(kernel.db, write) : write()
+      if (committed !== null) return committed
+    }
   }
 
   const getState = (runId: Id): RunState => {
@@ -595,6 +640,7 @@ export const createRuntimeEngine = ({
       parts: [],
       partIndices: new Map(),
       dirtyParts: new Set(),
+      preparedFinish: null,
       replyMessageId: null,
       requestMessage: null,
       turnStarted: false,
@@ -722,7 +768,8 @@ export const createRuntimeEngine = ({
       }),
     )
     if (updated.success) {
-      state.parts = structuredClone(updated.message.parts)
+      // Terminal state retains the store's fresh snapshot only until the run is released.
+      state.parts = updated.message.parts
       state.dirtyParts.clear()
     }
   }
@@ -739,11 +786,15 @@ export const createRuntimeEngine = ({
     persist?: boolean
   }): void => {
     measureStage("runtime_part_finalization", () => {
-      const parts = tools.finish(run, state.parts, reason, persist)
-      parts.forEach((part, index) => {
-        const previous = state.parts[index]
-        if (!previous || !isSamePart(previous, part)) state.dirtyParts.add(index)
-      })
+      const prepared = persist ? state.preparedFinish : null
+      state.preparedFinish = null
+      const parts = prepared ? prepared(state.parts, reason) : tools.finish(run, state.parts, reason, persist)
+      // Cancellation still publishes patches; a terminal write replaces the complete snapshot.
+      if (!persist)
+        parts.forEach((part, index) => {
+          const previous = state.parts[index]
+          if (!previous || !isSamePart(previous, part)) state.dirtyParts.add(index)
+        })
       state.parts = parts
     })
   }
@@ -758,15 +809,29 @@ export const createRuntimeEngine = ({
     state: RunState
     store: StoreApi
     reason: "cancelled_by_user" | "failed" | "interrupted_by_restart" | "unknown"
-  }): Promise<void> => {
-    finishParts({ run, state, reason, persist: false })
-    if (!(kernel.db instanceof Database) || !store.updateMessageAsync) return
+  }): Promise<() => boolean> => {
+    const database = kernel.db
+    if (!(database instanceof Database) || !store.updateMessageAsync) {
+      finishParts({ run, state, reason, persist: false })
+      return () => true
+    }
 
-    state.parts = await externalizeMessagePartsAsync({
-      database: kernel.db,
-      appData: kernel.paths.appData,
-      parts: state.parts,
-    })
+    const initial = state.parts
+    const isCurrent = measureStage("runtime_part_finalization", () => getPartsSnapshotGuard(state))
+    const parts = await measureStage("runtime_part_finalization", () =>
+      tools.finishAsync(run, initial, reason, false, runStage),
+    )
+    if (!isCurrent()) return () => false
+    const externalized = await measureStage("runtime_output_preparation", () =>
+      externalizeMessagePartsAsync({ database, appData: kernel.paths.appData, parts }),
+    )
+    if (!isCurrent()) return () => false
+
+    state.parts = externalized
+    state.preparedFinish = measureStage("runtime_part_finalization", () =>
+      tools.prepareFinish(run, state.parts, reason),
+    )
+    return measureStage("runtime_part_finalization", () => getPartsSnapshotGuard(state))
   }
 
   const publishMessage = (args: { store: StoreApi; state: RunState; run: Run; status: Message["status"] }): void => {
@@ -1644,14 +1709,15 @@ export const createRuntimeEngine = ({
         const elapsed = Date.now() - (run.startedAt ?? Date.now())
         state.usage.durationMs = elapsed
         if (result.success) {
-          state.externalSessionId = state.externalSessionId ?? result.externalSessionId
+          const externalSessionId = state.externalSessionId ?? result.externalSessionId
+          state.externalSessionId = externalSessionId
           state.rolloutPath = state.rolloutPath ?? result.rolloutPath
           const sessionRow = persistence.getActiveSession({ threadId: thread.id, provider: bot.provider }) ??
             session ?? {
               id: kernel.newId(),
               threadId: thread.id,
               provider: bot.provider,
-              externalSessionId: state.externalSessionId,
+              externalSessionId,
               rolloutPath: state.rolloutPath,
               fingerprint: mcpFingerprint.hash,
               state: "active",
@@ -1659,28 +1725,39 @@ export const createRuntimeEngine = ({
               createdAt: Date.now(),
               lastUsedAt: Date.now(),
             }
-          persistence.saveSession({
-            ...sessionRow,
-            externalSessionId: state.externalSessionId,
-            rolloutPath: state.rolloutPath,
-            fingerprint: mcpFingerprint.hash,
-            state: "active",
-            lastUsedAt: Date.now(),
-          })
+          const saveSessionAndRoot = () => {
+            if (!isLive(run)) return null
+            persistence.saveSession({
+              ...sessionRow,
+              externalSessionId,
+              rolloutPath: state.rolloutPath,
+              fingerprint: mcpFingerprint.hash,
+              state: "active",
+              lastUsedAt: Date.now(),
+            })
+            if (state.cancelRequested || state.completionError || result.status !== "succeeded") return null
+
+            return work.publishRoot({ turnId: run.id })
+          }
+          const database = kernel.db
+          const write = () => measureStage("runtime_turn_finalization", saveSessionAndRoot)
+          // Pending stream writes must yield on contention instead of entering SQLite's synchronous busy wait.
+          const workRoot = database instanceof Database ? await writeDatabaseAsync(database, write) : write()
           const providerErrorClass = state.cancelRequested
             ? "canceled"
             : (state.completionError?.errorClass ?? (result.status === "succeeded" ? null : "cli_crash"))
-          const workRoot = providerErrorClass ? null : work.publishRoot({ turnId: run.id })
           const errorClass = workRoot && !workRoot.success ? "tool_error" : providerErrorClass
           if (!errorClass) {
             const plan = state.continueAfterApproval
               ? planContinuation({ run, reason: "permission_granted", lastActivityAt: Date.now() })
               : null
             state.continueAfterApproval = false
-            await finishLiveRun(
+            const committed = await finishLiveRun(
               run,
               () => prepareFinalParts({ run, state, store, reason: "unknown" }),
               () => {
+                if (state.cancelRequested) return false
+
                 ensureReply({ run, state, store, parentId: run.requestMessageId ?? thread.activeLeafId ?? run.id })
                 finishParts({ run, state, reason: "unknown" })
                 const conclusion = turnConclusion({
@@ -1721,9 +1798,12 @@ export const createRuntimeEngine = ({
                       routine: run.trigger === "routine" || run.routineRunId !== null,
                     })
                 }
+                return true
               },
               state.replyMessageId ?? undefined,
             )
+            if (!committed && state.cancelRequested && isLive(run))
+              await failTurn({ run, state, store, thread, errorClass: "canceled", errorMessage: "Cancelado por você" })
           } else {
             await failTurn({
               run,
@@ -1758,7 +1838,7 @@ export const createRuntimeEngine = ({
     else await finalizeProviderTurn()
   }
 
-  const finalizeFailure = ({
+  const finalizeFailure = async ({
     run,
     state,
     store,
@@ -1774,7 +1854,7 @@ export const createRuntimeEngine = ({
     errorClass: RunErrorClass
     errorMessage: string
     continuing?: boolean
-  }): Promise<void> => {
+  }): Promise<boolean> => {
     const errorClass = refineErrorClass(reportedErrorClass, errorMessage)
     const reason =
       errorClass === "canceled"
@@ -1782,10 +1862,12 @@ export const createRuntimeEngine = ({
         : errorClass === "app_restart"
           ? "interrupted_by_restart"
           : "failed"
-    return finishLiveRun(
+    const committed = await finishLiveRun(
       run,
       () => prepareFinalParts({ run, state, store, reason }),
       () => {
+        if (state.cancelRequested && errorClass !== "canceled") return false
+
         finishParts({ run, state, reason })
         state.parts = state.parts.map((part, index) => {
           if (part.type !== "approval" || part.decision !== "pending") return part
@@ -1830,22 +1912,26 @@ export const createRuntimeEngine = ({
           usage: state.usage,
           finishedAt: Date.now(),
         })
-        if (continuing) return
+        if (continuing) return true
         finishRoutineRun({
           run,
           status: errorClass === "canceled" || errorClass === "app_restart" ? "canceled" : "failed",
           summary: state.text || `${errorClass}: ${safeError}`,
         })
-        if (errorClass === "canceled" || errorClass === "app_restart") return
+        if (errorClass === "canceled" || errorClass === "app_restart") return true
         notices.failure({
           botId: run.botId,
           threadId: run.threadId,
           routine: run.routineRunId !== null,
           reason: friendlyMessage,
         })
+        return true
       },
       state.replyMessageId ?? undefined,
     )
+    if (!committed && state.cancelRequested && errorClass !== "canceled" && isLive(run))
+      await finalizeFailure({ run, state, store, thread, errorClass: "canceled", errorMessage: "Cancelado por você" })
+    return committed
   }
 
   const resumeEnabled = (): boolean => {
@@ -2081,8 +2167,16 @@ export const createRuntimeEngine = ({
     const crashed =
       CRASH_ERROR_CLASSES.includes(errorClass) && state.turnStarted && !state.cancelRequested && isLive(run)
     const plan = crashed ? planContinuation({ run, reason: "provider_crash", lastActivityAt: Date.now() }) : null
-    await finalizeFailure({ run, state, store, thread, errorClass, errorMessage, continuing: plan !== null })
-    if (plan) scheduleContinuation({ run, plan })
+    const committed = await finalizeFailure({
+      run,
+      state,
+      store,
+      thread,
+      errorClass,
+      errorMessage,
+      continuing: plan !== null,
+    })
+    if (committed && plan) scheduleContinuation({ run, plan })
   }
 
   const executeGoalTurn = async (run: Run): Promise<void> => {
@@ -2864,6 +2958,8 @@ export const createRuntimeEngine = ({
       await ready
       await Promise.all(Object.values(adapters).map((adapter) => adapter.shutdown()))
       await Promise.all(executions.values())
+      // Queued cancellations can have a terminal write without an execution promise.
+      await Promise.all(finalizations.values())
     })()
     return shutdownPromise
   }
@@ -2915,8 +3011,8 @@ export const createRuntimeEngine = ({
         errorMessage: "touri restarted",
         continuing: plan !== null,
       })
-        .then(() => {
-          if (plan && !startContinuation({ run, plan }))
+        .then((committed) => {
+          if (committed && plan && !startContinuation({ run, plan }))
             abandonContinuation({ run, status: "canceled", summary: state.text })
         })
         .finally(() => deleteRunState(run.id))

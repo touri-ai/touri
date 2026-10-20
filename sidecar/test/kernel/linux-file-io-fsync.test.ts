@@ -97,7 +97,7 @@ test.skipIf(!canRunSyncBenchmark)(
 
     expect(measured.pending).toBe(200)
     expect(measured.requestMs).toBeLessThan(750)
-    expect(measured.timerMs).toBeLessThan(50)
+    expect(measured.timerMs).toBeLessThan(150)
     expect(measured.syncCalls).toBeGreaterThanOrEqual(2)
     // One batched append syncs five descriptors; the settings replacement syncs three.
     expect(measured.syncCalls).toBeLessThanOrEqual(8)

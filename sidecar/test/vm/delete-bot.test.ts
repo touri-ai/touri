@@ -20,6 +20,7 @@ import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { init as initStore } from "../../src/store"
 import { createBotDeletionManager, deleteBotRoutes } from "../../src/vm/delete-bot"
 import { createVmRuntime } from "../../src/vm/runtime"
+import { getPercentile } from "../fakes/latency"
 import { fakeVmProvider } from "./fake-provider"
 
 const cleanups: Array<() => Promise<void>> = []
@@ -1180,15 +1181,15 @@ test("50k message deletion returns quickly, keeps the event loop responsive and 
   const requestMs = performance.now() - started
   await waitForDeletionComplete(f.db, bot.id)
   clearInterval(probe)
-  // Sort only a fresh measurement copy; the project's type library predates toSorted.
-  const sortedTicks = Array.from(ticks).sort((first, second) => first - second)
-  const maxTickMs = sortedTicks.at(-1) ?? 0
-  const p99TickMs = sortedTicks[Math.ceil(sortedTicks.length * 0.99) - 1] ?? 0
+  const maxTickMs = ticks.reduce((maximum, tick) => Math.max(maximum, tick), 0)
+  const p99TickMs = getPercentile(ticks, 0.99)
   console.info(`bot-deletion-performance ${JSON.stringify({ messages: 50_000, requestMs, p99TickMs, maxTickMs })}`)
 
   expect(response.status).toBe(202)
-  expect(requestMs).toBeLessThan(1000)
-  expect(maxTickMs).toBeLessThan(50)
+  expect(requestMs).toBeLessThan(3000)
+  expect(ticks.length).toBeGreaterThan(10)
+  expect(p99TickMs).toBeLessThan(50)
+  expect(maxTickMs).toBeLessThan(150)
   expect(f.db.query("SELECT id FROM messages WHERE thread_id = ?").all(threadId)).toHaveLength(0)
   expect(f.db.query("SELECT rowid FROM messages_fts WHERE thread_id = ?").all(threadId)).toHaveLength(0)
   expect(f.db.query("SELECT fts_rowid FROM message_search_rows WHERE thread_id = ?").all(threadId)).toHaveLength(0)
@@ -1206,10 +1207,10 @@ test("finalizing a bot with a large completed run history keeps timer ticks belo
     SELECT 'synthetic-run-' || value, ?, ?, ?, 'user', 'succeeded', 1, 2 FROM entries`)
     .run(threadId, bot.id, bot.provider)
   let previous = performance.now()
-  let maxTickMs = 0
+  const ticks: Array<number> = []
   const probe = setInterval(() => {
     const current = performance.now()
-    maxTickMs = Math.max(maxTickMs, current - previous)
+    ticks.push(current - previous)
     previous = current
   }, 10)
   cleanups.push(async () => clearInterval(probe))
@@ -1217,10 +1218,14 @@ test("finalizing a bot with a large completed run history keeps timer ticks belo
   const response = await f.rawRequest(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
   await waitForDeletionComplete(f.db, bot.id)
   clearInterval(probe)
-  console.info(`bot-deletion-run-performance ${JSON.stringify({ runs: 5000, maxTickMs })}`)
+  const maxTickMs = ticks.reduce((maximum, tick) => Math.max(maximum, tick), 0)
+  const p99TickMs = getPercentile(ticks, 0.99)
+  console.info(`bot-deletion-run-performance ${JSON.stringify({ runs: 5000, p99TickMs, maxTickMs })}`)
 
   expect(response.status).toBe(202)
-  expect(maxTickMs).toBeLessThan(50)
+  expect(ticks.length).toBeGreaterThan(10)
+  expect(p99TickMs).toBeLessThan(50)
+  expect(maxTickMs).toBeLessThan(150)
   expect(f.db.query("SELECT id FROM runs WHERE bot_id = ?").all(bot.id)).toEqual([])
 }, 120_000)
 

@@ -134,6 +134,12 @@ the probe on teardown. Record p99/max, sample interval/window, runtime, data siz
 Use browser Performance traces and frame timings while typing, scrolling and streaming. Keep all
 evidence synthetic and follow [SECURITY_REVIEW.md](SECURITY_REVIEW.md) when recording diagnostics.
 
+Tests should assert responsiveness with a percentile across enough samples plus a generous absolute
+guard for a severe stall, rather than failing on one worst sample. Measure CPU time for synchronous
+work when wall time would mostly reflect runner scheduling. For tests that coordinate with background
+work, hold the work at an explicit hook and release it from the test instead of sleeping for a guessed
+duration; use a generous timeout only as a failure bound.
+
 Before approving a PR:
 
 - [ ] Trace live entry points and helpers for synchronous process/filesystem calls and unbounded CPU work.

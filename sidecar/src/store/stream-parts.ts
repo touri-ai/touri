@@ -41,7 +41,7 @@ export const createStreamPartWriter = (database: Database, appData: string, init
 
       return total - getOutputBytes(part)
     }, reservedInlineBytes)
-    const window = incoming.reduce(getOrderedWindow, previous)
+    const window = getOrderedWindow(previous.concat(incoming))
     const externalized = planStreamMessageParts({
       database,
       appData,
@@ -90,11 +90,18 @@ export const createStreamPartWriter = (database: Database, appData: string, init
   }
 }
 
-const getOrderedWindow = (window: PartPatch[], patch: PartPatch): PartPatch[] => {
-  const index = window.findIndex(({ partIndex }) => partIndex > patch.partIndex)
-  if (index < 0) return window.concat(patch)
+const getOrderedWindow = (parts: PartPatch[]): PartPatch[] => {
+  if (parts.every((part, index) => index === 0 || (parts[index - 1]?.partIndex ?? 0) <= part.partIndex)) return parts
 
-  return window.slice(0, index).concat(patch, window.slice(index))
+  // Array indices are unsigned 32-bit integers. Four local radix passes keep arbitrary batches linear.
+  return [0, 8, 16, 24].reduce((ordered, shift) => {
+    const buckets = Array.from({ length: 256 }, (): PartPatch[] => [])
+    ordered.forEach((patch) => {
+      buckets[(patch.partIndex >>> shift) & 255]?.push(patch)
+    })
+
+    return buckets.flat()
+  }, parts)
 }
 
 const hasOutput = (part: MessagePart): boolean => {
