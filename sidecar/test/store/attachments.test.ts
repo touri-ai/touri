@@ -160,13 +160,31 @@ test("indexing legacy attachment references yields while conversation history lo
     database.exec("DELETE FROM attachment_message_refs")
   })()
   let interleaved = false
+  const startedAt = performance.now()
+  let previousSample = startedAt
+  let samples: Array<number> = []
   const timer = setInterval(() => {
+    const sampledAt = performance.now()
+    samples = [...samples.slice(-511), Math.max(0, sampledAt - previousSample - 1)]
+    previousSample = sampledAt
     const row = database.query("SELECT count(*) AS count FROM attachment_message_refs").get() as { count: number }
     if (row.count > 0 && row.count < total) interleaved = true
   }, 1)
   cleanup.push(() => clearInterval(timer))
 
   const response = await f.request("/threads/t/messages?all=true")
+  const sorted = samples.toSorted((left, right) => left - right)
+  console.info(
+    JSON.stringify({
+      probe: "legacy-attachment-index",
+      messages: total,
+      intervalMs: 1,
+      windowMs: performance.now() - startedAt,
+      samples: sorted.length,
+      p99Ms: sorted[Math.max(0, Math.ceil(sorted.length * 0.99) - 1)] ?? 0,
+      maxMs: sorted.at(-1) ?? 0,
+    }),
+  )
 
   expect(response.status).toBe(200)
   expect(interleaved).toBe(true)

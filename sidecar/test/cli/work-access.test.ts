@@ -23,6 +23,8 @@ database.exec(`
     PRIMARY KEY(thread_id,id)
   );
   CREATE TABLE attachments (id TEXT PRIMARY KEY, owner_person_id TEXT);
+  CREATE TABLE attachment_people (attachment_id TEXT NOT NULL, person_id TEXT NOT NULL, name TEXT NOT NULL,
+    PRIMARY KEY(attachment_id,person_id));
   CREATE TABLE attachment_message_refs (
     thread_id TEXT NOT NULL, message_id TEXT NOT NULL, attachment_id TEXT NOT NULL,
     PRIMARY KEY(thread_id,message_id,attachment_id)

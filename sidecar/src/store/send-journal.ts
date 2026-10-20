@@ -147,7 +147,13 @@ export const createSendJournal = ({
       } | null
       if (!attachment)
         return { status: 400, json: { errorCode: "ATTACHMENT_NOT_FOUND", error: "Anexo não encontrado." } }
-      const name = (attachment.origin_path ?? attachment.path).split(/[\\/]/).at(-1) || attachmentId
+      const uploaded =
+        input.sender?.kind === "person"
+          ? (database
+              .query("SELECT name FROM attachment_people WHERE attachment_id = ? AND person_id = ?")
+              .get(attachmentId, input.sender.id) as { name: string } | null)
+          : null
+      const name = (uploaded?.name ?? attachment.origin_path ?? attachment.path).split(/[\\/]/).at(-1) || attachmentId
       parts.push(
         attachment.mime.startsWith("image/")
           ? { type: "image", attachmentId, mime: attachment.mime, name }

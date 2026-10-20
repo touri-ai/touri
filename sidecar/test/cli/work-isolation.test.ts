@@ -3,7 +3,7 @@ import { afterEach, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { Message, Thread } from "@touri/contracts"
+import type { Attachment, Message, Thread } from "@touri/contracts"
 import { createRateLimiter } from "../../src/cli/auth/rateLimit"
 import { openAuthStore } from "../../src/cli/auth/store"
 import { createSecretStore } from "../../src/cli/host/secretStore"
@@ -62,6 +62,31 @@ test("private session creation checks the requested bot even when the member own
   expect(denied.status).toBe(404)
 })
 
+test("uploading identical bytes grants each uploader access without exposing another person's filename", async () => {
+  const fixture = await getFixture()
+  const dataBase64 = Buffer.from("Synthetic shared file").toString("base64")
+  const original = await fixture.ownerRequest("/attachments", "POST", { name: "private-admin-name.txt", dataBase64 })
+  const originalFile = (await original.json()) as { attachment: Attachment }
+  expect((await fixture.request(`/attachments/${originalFile.attachment.id}`)).status).toBe(404)
+
+  const uploaded = await fixture.request("/attachments", "POST", { name: "my-file.txt", dataBase64 })
+  const ownFile = (await uploaded.json()) as { attachment: Attachment }
+  const downloaded = await fixture.request(`/attachments/${ownFile.attachment.id}`)
+  await fixture.request("/threads/member-chat/messages", "POST", {
+    text: "Confira meu arquivo",
+    parentId: null,
+    attachmentIds: [ownFile.attachment.id],
+    clientNonce: "same-file",
+  })
+  const history = (await (await fixture.request("/threads/member-chat/messages")).json()) as { messages: Message[] }
+
+  expect(uploaded.status).toBe(201)
+  expect(downloaded.status).toBe(200)
+  expect(await downloaded.text()).toBe("Synthetic shared file")
+  expect(ownFile.attachment).toMatchObject({ path: "my-file.txt", originPath: "my-file.txt" })
+  expect(history.messages[0]?.parts).toContainEqual(expect.objectContaining({ type: "file", name: "my-file.txt" }))
+})
+
 const getFixture = async () => {
   const root = await mkdtemp(join(tmpdir(), "touri-work-isolation-"))
   const authStore = await openAuthStore({ filename: join(root, "auth.db") })
@@ -100,6 +125,11 @@ const getFixture = async () => {
   if (!invite.success) throw new Error("Invite setup failed")
   const claimed = await authStore.claimInvite({ token: invite.token, email: "member@example.test", deviceName: "Test" })
   if (!claimed.success) throw new Error("Member setup failed")
+  const owner = await authStore.claimPairingCode({
+    code: (await authStore.createPairingCode()).code,
+    deviceName: "Admin test",
+  })
+  if (!owner.success) throw new Error("Admin setup failed")
   const database = runtime.kernel.db as Database
   database.exec(`
     INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at,responsible_person_id)
@@ -125,15 +155,19 @@ const getFixture = async () => {
     ],
   })
 
-  const request = (path: string, method = "GET", body?: unknown) =>
+  const requestAs = (token: string, path: string, method = "GET", body?: unknown) =>
     fetch(`http://127.0.0.1:${runtime.handshake.port}/api/v1${path}`, {
       method,
       headers: {
-        Authorization: `Bearer ${claimed.token}`,
+        Authorization: `Bearer ${token}`,
         "X-Touri-Client": "test",
         "Content-Type": "application/json",
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
-  return { request, personId: claimed.person.id }
+  return {
+    request: (path: string, method = "GET", body?: unknown) => requestAs(claimed.token, path, method, body),
+    ownerRequest: (path: string, method = "GET", body?: unknown) => requestAs(owner.token, path, method, body),
+    personId: claimed.person.id,
+  }
 }

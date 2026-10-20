@@ -1374,6 +1374,14 @@ export const init = async (
       : { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
   })
 
+  const saveAttachmentPerson = (attachmentId: string, personId: string | undefined, name: string): void => {
+    if (!personId) return
+    database
+      .query(`INSERT INTO attachment_people(attachment_id,person_id,name) VALUES(?,?,?)
+      ON CONFLICT(attachment_id,person_id) DO UPDATE SET name=excluded.name`)
+      .run(attachmentId, personId, name)
+  }
+
   const insertAttachment = async ({
     path,
     originPath,
@@ -1390,17 +1398,16 @@ export const init = async (
     const id = sha256(bytes)
     const existing = database.query("SELECT * FROM attachments WHERE id = ?").get(id) as RawAttachment | null
     if (existing) {
-      if (ownerPersonId && existing.owner_person_id == null)
-        database
-          .query("UPDATE attachments SET owner_person_id = ? WHERE id = ? AND owner_person_id IS NULL")
-          .run(ownerPersonId, id)
+      saveAttachmentPerson(id, ownerPersonId, path)
       // A user upload can share a hash with a managed tool result. Promote its
       // ownership so retention will keep the uploaded file after tools expire.
       if (existing.origin_path === OUTPUT_BLOB_ORIGIN && originPath !== null) {
         database.query("UPDATE attachments SET origin_path = ? WHERE id = ?").run(originPath, id)
-        existing.origin_path = originPath
       }
-      return asAttachment(existing)
+      return asAttachment({
+        ...existing,
+        ...(existing.origin_path === OUTPUT_BLOB_ORIGIN && originPath !== null ? { origin_path: originPath } : {}),
+      })
     }
     const extension =
       extname(path)
@@ -1415,6 +1422,7 @@ export const init = async (
         "INSERT INTO attachments (id, path, mime, bytes, origin_path, created_at, owner_person_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
       )
       .run(id, destination, attachmentMime(bytes), bytes.byteLength, originPath, timestamp, ownerPersonId ?? null)
+    saveAttachmentPerson(id, ownerPersonId, path)
     const attachment = database.query("SELECT * FROM attachments WHERE id = ?").get(id) as RawAttachment | null
     return attachment ? asAttachment(attachment) : null
   }
@@ -1930,7 +1938,9 @@ export const init = async (
               ...(person ? { ownerPersonId: person.id } : {}),
             })
             return attachment
-              ? jsonResponse(201, { attachment })
+              ? jsonResponse(201, {
+                  attachment: person ? { ...attachment, path: granted.name, originPath: granted.name } : attachment,
+                })
               : errorResponse(404, "NOT_FOUND", "Attachment source file not found")
           }
           if (
@@ -1958,7 +1968,9 @@ export const init = async (
               ...(person ? { ownerPersonId: person.id } : {}),
             })
             return attachment
-              ? jsonResponse(201, { attachment })
+              ? jsonResponse(201, {
+                  attachment: person ? { ...attachment, path: record.name, originPath: record.name } : attachment,
+                })
               : errorResponse(404, "NOT_FOUND", "Attachment source file not found")
           } catch (error) {
             return errorResponse(

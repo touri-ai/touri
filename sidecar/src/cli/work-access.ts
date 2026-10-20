@@ -128,7 +128,8 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
     const channelScope = channelIds.length ? `t.group_id IN (${channelIds.map(() => "?").join(",")}) OR ` : ""
     const placeholders = attachmentIds.map(() => "?").join(",")
     const accessible = database
-      .query(`SELECT a.id FROM attachments a WHERE a.id IN (${placeholders}) AND a.owner_person_id = ?
+      .query(`SELECT a.id FROM attachments a WHERE a.id IN (${placeholders}) AND (a.owner_person_id = ?
+        OR EXISTS (SELECT 1 FROM attachment_people p WHERE p.attachment_id = a.id AND p.person_id = ?))
         UNION
         SELECT refs.attachment_id AS id FROM attachment_message_refs refs
         JOIN threads t ON t.id = refs.thread_id JOIN bots b ON b.id = t.bot_id
@@ -136,7 +137,9 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
           AND refs.attachment_id IN (${placeholders})
           AND (${channelScope}(t.group_id IS NULL AND
             (t.owner_person_id = ? OR (t.owner_person_id IS NULL AND ? = 'owner'))))`)
-      .all(...attachmentIds, personId, ...attachmentIds, ...channelIds, personId, personId) as Array<{ id: string }>
+      .all(...attachmentIds, personId, personId, ...attachmentIds, ...channelIds, personId, personId) as Array<{
+      id: string
+    }>
     return accessible.length === attachmentIds.length
   }
 

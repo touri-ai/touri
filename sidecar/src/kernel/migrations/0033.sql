@@ -1,6 +1,12 @@
 -- Column additions are guarded by table_info in db.ts so a partial startup can resume safely.
 CREATE INDEX IF NOT EXISTS threads_owner_person_active ON threads(owner_person_id, group_id, archived_at, updated_at);
 CREATE INDEX IF NOT EXISTS bots_responsible_person_active ON bots(responsible_person_id, archived_at);
+CREATE TABLE IF NOT EXISTS attachment_people (
+  attachment_id TEXT NOT NULL REFERENCES attachments(id) ON DELETE CASCADE,
+  person_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  PRIMARY KEY (attachment_id, person_id)
+);
 CREATE TABLE IF NOT EXISTS attachment_message_refs (
   thread_id TEXT NOT NULL,
   message_id TEXT NOT NULL,
