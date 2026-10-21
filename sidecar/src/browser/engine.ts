@@ -43,7 +43,12 @@ import {
   saveBotSession,
 } from "./sessionVault"
 import { createBrowserStore, publicTabInfo } from "./store"
-import { sanitizeHumanTakeoverSnapshot, sanitizeHumanTakeoverUrl } from "./takeover-privacy"
+import {
+  captureSafeBrowserPreview,
+  sanitizeHumanTakeoverPreviewMetadata,
+  sanitizeHumanTakeoverSnapshot,
+  sanitizeHumanTakeoverUrl,
+} from "./takeover-privacy"
 import type {
   BrowserEngine,
   BrowserFailure,
@@ -4480,16 +4485,29 @@ export const createBrowserEngine = ({
     preview: async ({ botId, tabId, signal }) => {
       // Use only an already attached tab. Never launch Chrome, reload a tab,
       // change focus, refresh refs or enqueue behind the bot's running action.
-      if (!client || signal.aborted) return null
+      const previewClient = client
+      if (!previewClient || signal.aborted) return null
       const tab = tabs
         .filter((tab) => tab.info.ownerBotId === botId && (!tabId || tab.info.tabId === tabId))
         .sort((a, b) => b.info.lastUsedAt - a.info.lastUsedAt)[0]
       if (tab?.info.state !== "live" || !tab.sessionId || tab.secretMode) return null
-      const data = await imageData({ client, tab, fullPage: false, quality: 30 })
-      if (signal.aborted || tab.secretMode || tab.info.state !== "live" || data.length > 1_500_000) return null
+      const data = await captureSafeBrowserPreview({
+        getPage: () => ({
+          heldByUser: tab.info.heldByUser,
+          privateAfterTakeover: tab.privateAfterTakeover,
+          secretMode: tab.secretMode,
+          url: tab.info.url,
+          title: tab.info.title,
+        }),
+        capture: () => imageData({ client: previewClient, tab, fullPage: false, quality: 30 }),
+      })
+      if (!data || signal.aborted || tab.secretMode || tab.info.state !== "live" || data.length > 1_500_000) return null
+      const privateAfterTakeover = tab.privateAfterTakeover
+      const metadata = privateAfterTakeover
+        ? sanitizeHumanTakeoverPreviewMetadata(tab.info)
+        : { title: kernel.redact(tab.info.title), url: kernel.redact(tab.info.url) }
       return {
-        title: kernel.redact(tab.info.title),
-        url: kernel.redact(tab.info.url),
+        ...metadata,
         image: `data:image/jpeg;base64,${data}`,
       }
     },
