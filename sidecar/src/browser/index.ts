@@ -25,6 +25,7 @@ import {
   requiresBrowserKeyInspection,
   requiresBrowserTakeover,
 } from "./decision"
+import { createBrowserPreviewScopes } from "./preview-scopes"
 import type { BrowserEngine } from "./types"
 import { asArray, asBoolean, asNumber, asRecord, asString } from "./utils"
 import { createRoutedBrowserEngine } from "./vm-router"
@@ -398,6 +399,7 @@ export const init = async (
       clickCount,
     })
   const failures = new Map<string, BrowserFailureInfo>()
+  const previewScopes = createBrowserPreviewScopes()
   // The screen viewers show the real cause when a page never reached the display.
   const tool = (name: string, handler: ToolHandler): ToolRegistration => ({
     name,
@@ -414,6 +416,7 @@ export const init = async (
       const vmInput = bot?.machine === "vm" && bot.browser === "machine" && writes
       const gate = vmInput ? kernel.services.use("computer.input") : null
       if (vmInput && !gate) return { success: false, errorCode: "COMPUTER_DISABLED", error: "Controle indisponível" }
+      previewScopes.set(input.ctx.botId, input.ctx.threadId)
       const result = gate
         ? await gate.run(input.ctx, (signal) => handler({ ...input, ctx: { ...input.ctx, signal } }))
         : await handler(input)
@@ -785,7 +788,12 @@ export const init = async (
           const scoped = person?.role === "member" || (!person && Boolean(kernel.services.use("work.defaultPersonId")))
           if (scoped && !tab) return { status: 404, json: { error: "Bot não encontrado" } }
           const tabId = scoped ? tab?.tabId : query.tabId
-          const frame = await engine.preview({ botId, ...(tabId ? { tabId } : {}), signal })
+          const capture = () => engine.preview({ botId, ...(tabId ? { tabId } : {}), signal })
+          const frame = person?.role === "member" ? await previewScopes.capture({
+            botId,
+            canReadThread: (threadId) => kernel.services.use("work.canAccessThread")?.({ personId: person.id, role: person.role, threadId }) === true,
+            capture,
+          }) : await capture()
           return frame
             ? { status: 200, json: frame }
             : { status: 409, json: { error: "Nenhuma página disponível para prévia" } }
