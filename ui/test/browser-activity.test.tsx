@@ -333,7 +333,7 @@ test("hides the live browser preview while a person controls the tab", async () 
 
   act(() => api.emit({ type: "browser.tab", tab: Object.assign({}, tab, { heldByUser: true }) }))
 
-  expect(await screen.findByText("O bot está pausado até você devolver o controle.")).toBeVisible()
+  expect(await screen.findByText("Uma pessoa está controlando esta aba; o bot está pausado.")).toBeVisible()
   expect(screen.queryByRole("img", { name: "Página atual do navegador" })).toBeNull()
   expect(stopPreview).toHaveBeenCalledOnce()
 })

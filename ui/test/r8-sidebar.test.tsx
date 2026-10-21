@@ -195,7 +195,7 @@ it("opening a question from the bot row focuses its response and keeps it pendin
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
-  fireEvent.click(screen.getByRole("button", { name: "Abrir pendência de onb" }))
+  fireEvent.click(within(getBotEntry("bot-onb")).getByRole("button", { name: "Abrir pendência de onb" }))
 
   const row = (await screen.findByText("Qual pasta devo revisar?")).closest("[data-notification-id]")
   await waitFor(() => expect(row).toHaveFocus())

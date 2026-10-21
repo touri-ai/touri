@@ -1760,14 +1760,18 @@ const FullBotEntry = ({
                         ? t("Task row title", { name: taskGroupName })
                         : getSidebarThreadTitle(thread)
                   const countLabel =
-                    routineRun || taskGroupName ? t("Today count suffix", { count: countToday }) : undefined
+                    (routineRun || taskGroupName) && countToday > 0
+                      ? t("Today count suffix", { count: countToday })
+                      : undefined
                   const dateLabel =
                     thread.kind === "routine"
                       ? getRoutineRunSidebarDateLabel(timestamp, "pt-BR", timeZone)
                       : relativeThreadDate(thread.updatedAt)
                   const dateTitle =
                     thread.kind === "routine" ? getRoutineRunDateLabel(timestamp, "pt-BR", timeZone) : undefined
-                  const secondaryLabel = routineRun ? `${countLabel ?? ""} · ${dateLabel}` : (countLabel ?? dateLabel)
+                  const secondaryLabel = routineRun
+                    ? [countLabel, dateLabel].filter(Boolean).join(" · ")
+                    : (countLabel ?? dateLabel)
 
                   return (
                     <Fragment key={thread.id}>

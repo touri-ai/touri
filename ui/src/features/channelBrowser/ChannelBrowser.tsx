@@ -69,7 +69,7 @@ export const ChannelVisibilityLabel = ({ locale = "pt-BR" }: { locale?: Locale }
 
 export const ChannelControlNote = ({ locale = "pt-BR" }: { locale?: Locale }) => {
   const channel = useChannelBrowserView()
-  if (!channel || !channel.state.controllerId) return null
+  if (!channel?.state.controllerId) return null
 
   return (
     <span className="channel-visibility" role="status">
