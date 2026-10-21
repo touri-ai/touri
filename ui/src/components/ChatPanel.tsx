@@ -107,6 +107,7 @@ type ChatPanelProps = {
   onEditGroup?: () => void
   channelBrowser?: ChannelBrowserValue | null
   browserRuns?: BrowserChannelRun[]
+  onInviteToGroup?: (() => void) | undefined
   focusApproval?: ApprovalFocus | undefined
   panelOpen?: boolean
   onTogglePanel?: () => void
@@ -1185,6 +1186,7 @@ export const ChatPanel = ({
   onEditGroup = () => {},
   channelBrowser = null,
   browserRuns = [],
+  onInviteToGroup,
   focusApproval,
   thread,
   activePath,
@@ -1385,6 +1387,7 @@ export const ChatPanel = ({
                 people={channelPeople}
                 channelMode={channelMode}
                 onEdit={onEditGroup}
+                onInvite={onInviteToGroup}
                 panelOpen={panelOpen}
                 onTogglePanel={onTogglePanel}
               />

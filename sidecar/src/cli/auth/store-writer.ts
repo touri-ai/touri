@@ -48,17 +48,20 @@ const execute = (command: WriteCommand): unknown => {
   if (command.type === "create-invite") {
     if (!isActiveAdmin(db, command.invite.createdByPersonId)) return false
     const claim = db.transaction(() => {
-      if (db.query("SELECT 1 FROM people WHERE email = ? AND removed_at IS NULL LIMIT 1").get(command.invite.email))
-        return false
-      db.query("UPDATE invites SET revoked_at = ? WHERE email = ? AND used_at IS NULL AND revoked_at IS NULL").run(
-        command.at,
-        command.invite.email,
+      if (
+        command.invite.email &&
+        db.query("SELECT 1 FROM people WHERE email = ? AND removed_at IS NULL LIMIT 1").get(command.invite.email)
       )
+        return false
       db.query(
-        "INSERT INTO invites(id,token_hash,name,email,role,channel_ids_json,created_by_person_id,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?,?)",
+        "UPDATE invites SET revoked_at = ? WHERE email = ? AND email != '' AND used_at IS NULL AND revoked_at IS NULL",
+      ).run(command.at, command.invite.email)
+      db.query(
+        "INSERT INTO invites(id,token_hash,code_hash,name,email,role,channel_ids_json,created_by_person_id,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
       ).run(
         command.invite.id,
         command.invite.tokenHash,
+        command.invite.codeHash,
         command.invite.name,
         command.invite.email,
         command.invite.role,
@@ -75,9 +78,9 @@ const execute = (command: WriteCommand): unknown => {
     if (!isActiveAdmin(db, command.actorPersonId)) return false
     const result = db
       .query(
-        "UPDATE invites SET token_hash = ?, created_at = ?, expires_at = ?, created_by_person_id = ?, revoked_at = NULL WHERE id = ? AND used_at IS NULL AND revoked_at IS NULL",
+        "UPDATE invites SET token_hash = ?, code_hash = ?, created_at = ?, expires_at = ?, created_by_person_id = ?, revoked_at = NULL WHERE id = ? AND used_at IS NULL AND revoked_at IS NULL",
       )
-      .run(command.tokenHash, command.at, command.expiresAt, command.actorPersonId, command.id)
+      .run(command.tokenHash, command.codeHash, command.at, command.expiresAt, command.actorPersonId, command.id)
     return result.changes === 1
   }
   if (command.type === "revoke-invite") {
@@ -91,16 +94,18 @@ const execute = (command: WriteCommand): unknown => {
     const claim = db.transaction(() => {
       const invite = db
         .query(
-          "SELECT * FROM invites WHERE token_hash = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ?",
+          "SELECT * FROM invites WHERE (token_hash = ? OR code_hash = ?) AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ?",
         )
-        .get(command.tokenHash, command.at) as {
+        .get(command.tokenHash, command.tokenHash, command.at) as {
         token_hash: string
+        code_hash: string | null
         name: string
         email: string
         role: "member" | "admin"
         channel_ids_json: string
       } | null
-      const savedHash = invite?.token_hash ?? "0".repeat(64)
+      const savedHash =
+        (invite?.code_hash === command.tokenHash ? invite.code_hash : invite?.token_hash) ?? "0".repeat(64)
       const providedHash = command.tokenHash.length === 64 ? command.tokenHash : "0".repeat(64)
       const matches = timingSafeEqual(Buffer.from(savedHash), Buffer.from(providedHash))
       if (!invite || !matches || invite.email !== command.email) return false
@@ -108,12 +113,12 @@ const execute = (command: WriteCommand): unknown => {
         .query(
           "UPDATE invites SET used_at = ? WHERE token_hash = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ?",
         )
-        .run(command.at, command.tokenHash, command.at)
+        .run(command.at, invite.token_hash, command.at)
       if (used.changes !== 1) return false
       db.query("INSERT INTO people(id,name,email,avatar_seed,role,created_at) VALUES(?,?,?,?,?,?)").run(
         command.person.id,
-        invite.name,
-        invite.email,
+        command.name || invite.name,
+        invite.email || null,
         command.person.avatarSeed,
         invite.role,
         command.at,

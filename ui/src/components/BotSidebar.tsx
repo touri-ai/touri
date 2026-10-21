@@ -72,6 +72,7 @@ type SidebarProps = {
   onNavigate?: () => void
   onSidebarModeChange?: (mode: SidebarMode) => void
   groups?: BotGroup[]
+  onInvitePerson?: (() => void) | undefined
   onNewGroup?: () => void
   onEditGroup?: (group: BotGroup) => void
   onDeleteGroup?: (groupId: string) => Promise<void>
@@ -259,10 +260,12 @@ export const Sidebar = (props: SidebarProps) => {
   const openNotification = useCallback(
     (item: NotificationRecord): void => {
       const currentProps = propsRef.current
-      const open = isFailureNotice(item)
-        ? currentProps.notificationActions.open
-        : (currentProps.onNeedsYou ?? currentProps.notificationActions.open)
-      navigate(() => open(item))
+      if (!isFailureNotice(item) && currentProps.onNeedsYou) {
+        if (item.kind === "approval" && item.threadId && item.requestId) currentProps.onNavigate?.()
+        currentProps.onNeedsYou(item)
+        return
+      }
+      navigate(() => currentProps.notificationActions.open(item))
     },
     [navigate],
   )
@@ -635,6 +638,15 @@ export const Sidebar = (props: SidebarProps) => {
           <div className="bot-groups work-mode-dms">{renderBotEntries("work")}</div>
         </div>
       </div>
+      {props.onInvitePerson && (
+        <button
+          type="button"
+          className="button button-quiet sidebar-invite"
+          onClick={() => navigate(() => props.onInvitePerson?.())}
+        >
+          {t("Convidar pessoa")}
+        </button>
+      )}
       {props.onRecovery && (props.recoveryCount ?? 0) > 0 && (
         <button type="button" className="sidebar-recovery" onClick={() => navigate(() => props.onRecovery?.())}>
           <SidebarIcon>

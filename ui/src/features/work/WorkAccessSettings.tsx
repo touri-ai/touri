@@ -1,9 +1,10 @@
-import type { ApiRoutes } from "@touri/contracts"
+import type { ApiRoutes, BotGroup } from "@touri/contracts"
 import { useEffect, useState } from "react"
 import type { UiApi } from "../../api/client"
 import { SettingsGroup } from "../../components/SettingsLayout"
 import { userFacingError } from "../../errors"
 import { t } from "../../i18n"
+import { InvitePersonDialog } from "../people/InvitePersonDialog"
 import "./work-access-settings.css"
 
 type Session = ApiRoutes["GET /session"]["res"]
@@ -61,6 +62,8 @@ const getReachabilityHint = (reachability: Reachability): string => {
 const getRoleLabel = (role: Person["role"]): string => t(role === "admin" ? "Role admin" : "Role member")
 
 export const WorkAccessSettings = ({ api }: { api: UiApi | undefined }) => {
+  const [inviting, setInviting] = useState(false)
+  const [channels, setChannels] = useState<BotGroup[]>([])
   const [session, setSession] = useState<Session | null>(null)
   const [people, setPeople] = useState<Array<Person>>([])
   const [invites, setInvites] = useState<Array<Invite>>([])
@@ -99,6 +102,7 @@ export const WorkAccessSettings = ({ api }: { api: UiApi | undefined }) => {
           api.request("GET /public-address", {}),
         ])
         if (!active) return
+        setChannels((await api.request("GET /groups", {}).catch(() => ({ groups: [] }))).groups ?? [])
         setPeople(peopleResult.people)
         setInvites(inviteResult.invites)
         setEmailDraft(getEmailDraft(emailResult.configuration))
@@ -502,6 +506,23 @@ export const WorkAccessSettings = ({ api }: { api: UiApi | undefined }) => {
         </>
       )}
 
+      {session.person.role === "admin" && api && (
+        <>
+          <button type="button" className="brand-button" onClick={() => setInviting(true)}>
+            {t("Convidar pessoa")}
+          </button>
+          {inviting && (
+            <InvitePersonDialog
+              channels={channels}
+              request={api.request}
+              onClose={() => {
+                setInviting(false)
+                void refreshPeople()
+              }}
+            />
+          )}
+        </>
+      )}
       <SettingsGroup title={t("People and devices")}>
         <div className="work-access-people">
           <button

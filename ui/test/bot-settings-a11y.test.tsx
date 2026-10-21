@@ -149,12 +149,18 @@ const expectNoViolations = async (dialog: HTMLElement) => {
   expect(violations.map(({ id, nodes }) => ({ id, targets: nodes.map((node) => node.target) }))).toEqual([])
 }
 
-// Full audits include every state, horn and accessory choice in the customizer.
+// Audit the collapsed picker and the revealed color, horn and accessory controls.
 it("keeps every identity control named and exposed, with no axe violations", async () => {
   await botSettings({ provider: "claude" })
   const dialog = screen.getByRole("dialog")
   expect(screen.getByRole("textbox", { name: "Nome" })).toHaveFocus()
   expect(screen.getByRole("textbox", { name: "O que ele faz" })).toBeVisible()
+  expect(screen.getByRole("button", { name: "Personalizar" })).toHaveAttribute("aria-expanded", "false")
+  expectNamedControls(dialog)
+  await expectNoViolations(dialog)
+
+  fireEvent.click(screen.getByRole("button", { name: "Personalizar" }))
+
   expect(screen.getByRole("radio", { name: "Chifres Curtos" })).toBeInTheDocument()
   expect(screen.getByRole("radio", { name: "Cor Automática" })).toBeInTheDocument()
   expectNamedControls(dialog)

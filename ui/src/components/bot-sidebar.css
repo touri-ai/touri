@@ -640,6 +640,7 @@
 .r8-sidebar
   :is(
     .sidebar-icon-button,
+    .sidebar-invite,
     .notification-bell,
     .user-chip,
     .bot-settings,

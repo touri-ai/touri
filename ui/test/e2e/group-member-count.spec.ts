@@ -2,7 +2,8 @@ import { mkdirSync } from "node:fs"
 import { resolve } from "node:path"
 import { expect, test } from "@playwright/test"
 
-const evidence = resolve(import.meta.dirname, "../../../docs/qa/group-member-count")
+const evidence =
+  process.env.TOURI_GROUP_EVIDENCE_DIR ?? resolve(import.meta.dirname, "../../test-results/group-member-count")
 
 test("group header updates its visible and accessible member count", async ({ page }) => {
   mkdirSync(evidence, { recursive: true })
@@ -36,9 +37,9 @@ test("group header updates its visible and accessible member count", async ({ pa
     .click()
   const header = page.locator(".group-header")
   await expect(header.getByText("2 bots", { exact: true })).toBeVisible()
-  await expect(header.getByRole("img", { name: "2 membros: Bia, Lia", exact: true })).toBeVisible()
+  await expect(header.locator(".group-header-members")).toHaveCount(0)
   await expect(header.getByRole("button")).toHaveCount(3)
-  await expect(header.getByRole("button", { name: "Convidar para o canal", exact: true })).toBeVisible()
+  await expect(header.getByRole("button", { name: "Convidar pessoa", exact: true })).toBeVisible()
   await page.evaluate(() => document.fonts.ready)
   await header.screenshot({ path: `${evidence}/after-two.png`, animations: "disabled" })
   await header.getByRole("button", { name: "Editar canal", exact: true }).click()
@@ -46,7 +47,7 @@ test("group header updates its visible and accessible member count", async ({ pa
   await dialog.getByRole("checkbox", { name: "Lia", exact: true }).uncheck()
   await dialog.getByRole("button", { name: "Salvar canal", exact: true }).click()
   await expect(header.getByText("1 bot", { exact: true })).toBeVisible()
-  await expect(header.getByRole("img", { name: "1 membro: Bia", exact: true })).toBeVisible()
+  await expect(header.locator(".group-header-members")).toHaveCount(0)
   await expect(header.getByRole("button")).toHaveCount(3)
   await header.screenshot({ path: `${evidence}/after-one.png`, animations: "disabled" })
 

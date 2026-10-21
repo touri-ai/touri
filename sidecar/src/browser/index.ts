@@ -30,6 +30,7 @@ import {
   requiresBrowserKeyInspection,
   requiresBrowserTakeover,
 } from "./decision"
+import { createBrowserPreviewScopes } from "./preview-scopes"
 import { createSharedBrowserPreview } from "./shared-preview"
 import type { BrowserEngine } from "./types"
 import { asArray, asBoolean, asNumber, asRecord, asString } from "./utils"
@@ -642,6 +643,7 @@ export const init = async (
     if (method !== "app.willQuit") return
     for (const tabId of takeoverSessions.keys()) removeTakeoverSession(tabId)
   })
+  const previewScopes = createBrowserPreviewScopes()
   // The screen viewers show the real cause when a page never reached the display.
   const tool = (name: string, handler: ToolHandler): ToolRegistration => ({
     name,
@@ -661,6 +663,7 @@ export const init = async (
       const vmInput = bot?.machine === "vm" && bot.browser === "machine" && writes
       const gate = vmInput ? kernel.services.use("computer.input") : null
       if (vmInput && !gate) return { success: false, errorCode: "COMPUTER_DISABLED", error: "Controle indisponível" }
+      previewScopes.set(input.ctx.botId, input.ctx.threadId)
       const result = gate
         ? await gate.run(input.ctx, (signal) => handler({ ...input, ctx: { ...input.ctx, signal } }))
         : await handler(input)
@@ -1064,7 +1067,20 @@ export const init = async (
               },
             }
           if (!selectedTabId) return { status: 409, json: { error: "Nenhuma página disponível para prévia" } }
-          const frame = await sharedPreview.get({ botId, tabId: selectedTabId, signal })
+          const capture = () => sharedPreview.get({ botId, tabId: selectedTabId, signal })
+          const frame =
+            person?.role === "member"
+              ? await previewScopes.capture({
+                  botId,
+                  canReadThread: (threadId) =>
+                    kernel.services.use("work.canAccessThread")?.({
+                      personId: person.id,
+                      role: person.role,
+                      threadId,
+                    }) === true,
+                  capture,
+                })
+              : await capture()
           const session = deviceSession(signal)
           if (session && !session.active()) return { status: 401, json: { error: "Conecte o dispositivo novamente." } }
           if (person && !visibleTabsFor(botId, person).some((tab) => tab.tabId === selectedTabId))

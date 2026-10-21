@@ -1777,11 +1777,36 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
         { id: threadId },
       )
     }
+    if (key === "GET /session")
+      return {
+        ok: true,
+        kind: "device",
+        person: { id: "owner", name: "Pessoa", email: null, avatarSeed: "owner", role: "admin" },
+      } as ApiRoutes[typeof route]["res"]
     if (key === "GET /settings") return { settings } as ApiRoutes[typeof route]["res"]
     if (key === "PATCH /settings") {
       settings = { ...settings, ...(input as Partial<typeof settings>) }
       return { settings } as ApiRoutes[typeof route]["res"]
     }
+    if (key === "POST /invites") {
+      const body = input as ApiRoutes["POST /invites"]["req"]
+      const now = Date.now()
+      const invite = {
+        ...body,
+        id: crypto.randomUUID(),
+        createdAt: now,
+        expiresAt: now + 24 * 60 * 60_000,
+        usedAt: null,
+        revokedAt: null,
+      }
+      return {
+        invite,
+        emailConfigured: false,
+        emailSent: false,
+        link: "http://localhost/join#invite=mock",
+      } as ApiRoutes[typeof route]["res"]
+    }
+    if (key === "DELETE /invites/:id") return {} as ApiRoutes[typeof route]["res"]
     throw new Error(`Mock route not implemented: ${key}`)
   }
 

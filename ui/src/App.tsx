@@ -86,7 +86,7 @@ import { requestTaskResume, requestTaskReview } from "./recoveryEvents"
 import { isRoutineConversation } from "./routineConversation"
 import { getTeamRoutineDraft, type RoutineDraft } from "./routineDraft"
 import { isFailureNotice } from "./sidebarAttention"
-import { useCurrentPersonId } from "./useCurrentPersonId"
+import { useCurrentPerson } from "./useCurrentPersonId"
 import { useHost } from "./useHost"
 import { useNotificationSounds } from "./useNotificationSounds"
 import { RecoveryTasksContext, useRecoveryTasks } from "./useRecoveryTasks"
@@ -109,12 +109,16 @@ const McpScreen = lazy(() => import("./components/WorkspaceScreens").then((modul
 const PreviewScreen = lazy(() =>
   import("./components/WorkspaceScreens").then((module) => ({ default: module.PreviewScreen })),
 )
+const InvitePersonDialog = lazy(() =>
+  import("./features/people/InvitePersonDialog").then((module) => ({ default: module.InvitePersonDialog })),
+)
 
 export type UiKernel = { services?: { api?: UiApi | null; invoke?: TauriInvoke | null } }
 
 type AppProps = { kernel?: UiKernel }
 type ModalKind =
   | "group"
+  | "invite"
   | "doctor"
   | "import"
   | "bot"
@@ -159,7 +163,10 @@ const AppContent = ({ kernel }: AppProps) => {
   const serverState = useServerMode()
   const serverMode = serverState.status?.mode === "server" || Boolean(serverState.error)
   const [api, setApi] = useState<UiApi | null>(() => kernel?.services?.api ?? null)
-  const currentPersonId = useCurrentPersonId(api, isNativeDesktop() && !serverMode)
+  const currentPerson = useCurrentPerson(api, isNativeDesktop() && !serverMode)
+  const currentPersonId = currentPerson?.id ?? null
+  const canInvitePeople =
+    currentPerson?.role === "admin" && (!isNativeDesktop() || serverState.status?.mode === "server")
   const host = useHost(api)
   const attachmentButtonRef = useRef<HTMLButtonElement>(null)
   const apiRef = useRef(api)
@@ -233,7 +240,12 @@ const AppContent = ({ kernel }: AppProps) => {
   )
   const activeApi = api ?? unavailableApi
   useEffect(() => installComputerKillSwitch(activeApi, invokeCommand, setLocalNotice), [activeApi, invokeCommand])
-  const workspace = useWorkspace(activeApi, api !== null, route.section === "bots" && route.screen === "chat")
+  const workspace = useWorkspace(
+    activeApi,
+    api !== null,
+    route.section === "bots" && route.screen === "chat",
+    currentPerson?.role ?? null,
+  )
   const { data, actions } = workspace
   const interruptedWork = useRecoveryTasks(api)
   const [recoveryOpen, setRecoveryOpen] = useState(false)
@@ -580,7 +592,9 @@ const AppContent = ({ kernel }: AppProps) => {
   }
 
   const selectedBot =
-    data.bots.find((bot) => bot.id === (requestedComputer ?? data.selectedBotId)) ?? data.bots[0] ?? null
+    data.bots.find((bot) => bot.id === (requestedComputer ?? data.selectedBotId)) ??
+    (data.isMember ? null : data.bots[0]) ??
+    null
   const selectedThread =
     data.threadCreation?.thread ?? data.threads.find((thread) => thread.id === data.selectedThreadId) ?? null
   const selectedGroup = data.groups.find((g) => g.id === selectedThread?.groupId) ?? null
@@ -1079,6 +1093,7 @@ const AppContent = ({ kernel }: AppProps) => {
             serverUrl={serverState.status?.url ?? null}
             host={data.routineHost}
             groups={data.groups}
+            onInvitePerson={canInvitePeople ? () => openModal("invite") : undefined}
             onNewGroup={() => {
               setEditingGroup(null)
               setGroupModalChannelMode(true)
@@ -1264,6 +1279,7 @@ const AppContent = ({ kernel }: AppProps) => {
                               setGroupModalChannelMode(Boolean(selectedGroup))
                               openModal("group")
                             }}
+                            onInviteToGroup={canInvitePeople ? () => openModal("invite") : undefined}
                             focusApproval={
                               approvalFocus?.threadId === selectedThread?.id ? (approvalFocus ?? undefined) : undefined
                             }
@@ -1447,6 +1463,16 @@ const AppContent = ({ kernel }: AppProps) => {
                   setRoute({ section: "bots", screen: "chat" })
                 }}
               />
+            )}
+            {modal === "invite" && (
+              <Suspense fallback={<PageLoading />}>
+                <InvitePersonDialog
+                  channels={data.groups}
+                  request={api.request}
+                  {...(selectedGroup ? { initialChannelId: selectedGroup.id } : {})}
+                  onClose={closeModal}
+                />
+              </Suspense>
             )}
             {setupModal}
             {modal === "project" && (

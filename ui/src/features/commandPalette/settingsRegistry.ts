@@ -80,7 +80,7 @@ export const SERVER_SETTINGS_SECTION: SectionDefinition<AppSettingsSectionId> = 
 
 export const WORK_SETTINGS_SECTION: SectionDefinition<AppSettingsSectionId> = {
   id: "work",
-  label: t("Work"),
+  label: t("People"),
   description: t("Work access settings"),
   icon: "computer",
   keywords: ["e-mail", "smtp", "pessoas", "convites", "dispositivos", "endereço público"],

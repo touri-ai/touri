@@ -370,19 +370,14 @@
 }
 .settings-modal .avatar-picker {
   margin: var(--space-8) 0 0;
-  padding: var(--space-16);
-  border-color: var(--border);
 }
 .settings-avatar-field {
   padding: 0 var(--space-20) var(--space-20);
 }
 .settings-avatar-field .avatar-picker {
   margin: 0;
-  padding: var(--space-12);
+  padding: 0;
   border: 0;
-}
-.settings-avatar-field .avatar-picker-preview {
-  margin-bottom: var(--space-8);
 }
 .settings-row-control input:not([type="checkbox"], [type="radio"]) {
   width: 230px;

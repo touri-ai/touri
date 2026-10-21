@@ -525,6 +525,7 @@ export const GroupHeader = ({
   bots,
   people = [],
   onEdit,
+  onInvite,
   panelOpen,
   onTogglePanel,
   locale = "pt-BR",
@@ -534,6 +535,7 @@ export const GroupHeader = ({
   bots: Bot[]
   people?: ChannelPerson[]
   onEdit: () => void
+  onInvite?: (() => void) | undefined
   panelOpen?: boolean
   onTogglePanel?: (() => void) | undefined
   locale?: Locale
@@ -595,13 +597,13 @@ export const GroupHeader = ({
             <PanelIcon name="panel" />
           </button>
         )}
-        {channelMode && (
+        {onInvite && (
           <button
             type="button"
             className="toolbar-icon channel-invite"
-            aria-label={t("Invite to channel", {}, locale)}
-            title={t("Invite to channel", {}, locale)}
-            onClick={onEdit}
+            aria-label={t("Convidar pessoa", {}, locale)}
+            title={t("Convidar pessoa", {}, locale)}
+            onClick={onInvite}
           >
             <span aria-hidden="true">+</span>
           </button>
@@ -730,9 +732,7 @@ export const GroupModal = ({
             />
           </label>
           <AvatarPicker
-            label={t(channelMode ? "Channel mascot" : "Group mascot")}
-            description={t(channelMode ? "Customize your channel" : "Customize your group")}
-            name={name}
+            label={t(channelMode ? "Channel mascot" : "avatar.group")}
             bot={{ id: group?.id ?? avatarSeed, avatarShape: shape, color, avatarSeed }}
             onChange={(v) => {
               if (v.avatarShape) setShape(v.avatarShape)

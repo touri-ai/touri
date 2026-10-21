@@ -253,7 +253,7 @@ jobs:
         working-directory: ui
         env:
           TOURI_SIGNIN_EVIDENCE_DIR: ${{ runner.temp }}/touri-email-signin
-        run: bunx playwright test test/e2e/email-signin.spec.ts --workers=1 --output test-results/email-signin
+        run: bunx playwright test test/e2e/email-signin.spec.ts test/e2e/people-invite.spec.ts --workers=1 --output test-results/email-signin
       - name: Keep synthetic email sign-in evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -261,6 +261,7 @@ jobs:
           name: email-signin
           path: |
             ${{ runner.temp }}/touri-email-signin/*.png
+            ui/test-results/email-signin/**/*.png
             ui/test-results/email-signin/**/trace.zip
             ui/test-results/email-signin/**/error-context.md
           if-no-files-found: ignore

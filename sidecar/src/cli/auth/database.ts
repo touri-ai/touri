@@ -88,6 +88,19 @@ const hasAuthSchema = (database: Database): boolean =>
 const migrateAuthDatabase = (database: Database): void => {
   const hasColumn = (table: string, column: string): boolean =>
     (database.query(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some(({ name }) => name === column)
+  const hasCodeIndex = Boolean(
+    database.query("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'invites_code_hash'").get(),
+  )
+  if (!hasColumn("invites", "code_hash") || !hasCodeIndex) {
+    database
+      .transaction(() => {
+        if (!hasColumn("invites", "code_hash")) database.exec("ALTER TABLE invites ADD COLUMN code_hash TEXT")
+        database.exec(
+          "CREATE UNIQUE INDEX IF NOT EXISTS invites_code_hash ON invites(code_hash) WHERE code_hash IS NOT NULL",
+        )
+      })
+      .immediate()
+  }
   const hasDevicePersonColumn = (): boolean => hasColumn("devices", "person_id")
   const hasPairingPersonColumn = (): boolean =>
     (database.query("PRAGMA table_info(pairing_codes)").all() as Array<{ name: string }>).some(

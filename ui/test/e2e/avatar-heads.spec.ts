@@ -57,14 +57,15 @@ test("a legacy cloud head survives preview changes, saving settings and reopenin
   if (!head) throw new Error("Missing cloud head")
   expect(head.startsWith("M50 32")).toBe(true)
 
-  await dialog.getByRole("radio", { name: "Trabalhando", exact: true }).check()
+  await expect(dialog.getByRole("group", { name: "Pré-visualizar estado", exact: true })).toHaveCount(0)
+  await dialog.getByRole("button", { name: "Personalizar", exact: true }).click()
   await dialog.getByRole("radio", { name: "Chifres Curtos", exact: true }).check()
   await dialog.getByRole("radio", { name: "Acessório Óculos", exact: true }).check()
   await dialog.getByRole("radio", { name: "Cor Azul", exact: true }).check()
 
   await expect(preview).toHaveAttribute("d", head)
   await expect(preview).toHaveAttribute("fill", "#3b93f0")
-  await expect(dialog.locator(".avatar-picker-stage .tb-avatar")).toHaveAttribute("data-avatar-phase", "working")
+  await expect(dialog.locator(".avatar-picker-stage .tb-avatar")).toHaveAttribute("data-avatar-phase", "idle")
   const thumbnails = await dialog
     .locator(".avatar-options [data-avatar-body]")
     .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("d")))
@@ -84,6 +85,7 @@ test("a legacy cloud head survives preview changes, saving settings and reopenin
   await showBotAdvanced(page)
 
   await expect(preview).toHaveAttribute("d", head)
+  await dialog.getByRole("button", { name: "Personalizar", exact: true }).click()
   await expect(dialog.getByRole("radio", { name: "Chifres Curtos", exact: true })).toBeChecked()
   await expect(dialog.getByRole("radio", { name: "Acessório Óculos", exact: true })).toBeChecked()
   await dialog.getByRole("button", { name: "Restaurar automático", exact: true }).click()

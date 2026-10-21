@@ -11,6 +11,7 @@ export type WriteCommand =
       invite: {
         id: string
         tokenHash: string
+        codeHash: string
         name: string
         email: string
         role: "member" | "admin"
@@ -22,6 +23,7 @@ export type WriteCommand =
     }
   | {
       type: "resend-invite"
+      codeHash: string
       id: string
       actorPersonId: string
       tokenHash: string
@@ -31,6 +33,7 @@ export type WriteCommand =
   | { type: "revoke-invite"; id: string; actorPersonId: string; at: number }
   | {
       type: "claim-invite"
+      name?: string
       tokenHash: string
       email: string
       at: number

@@ -187,14 +187,14 @@ describe("React and portable SVG parity", () => {
 })
 
 describe("picker head preservation", () => {
-  it.each(LEGACY_AVATAR_SHAPES)("keeps %s through mood, colour, horns, accessories, reset and reopening", (shape) => {
+  it.each(LEGACY_AVATAR_SHAPES)("keeps %s through colour, horns, accessories, reset and reopening", (shape) => {
     const { container, unmount } = render(<Picker bot={getBot(shape)} />)
     const head = container.querySelector(".avatar-picker-stage [data-avatar-body]")?.getAttribute("d")
 
+    fireEvent.click(screen.getByRole("button", { name: "Personalizar", exact: true }))
     fireEvent.click(screen.getByRole("radio", { name: "Chifres Longos", exact: true }))
     fireEvent.click(screen.getByRole("radio", { name: "Acessório Óculos", exact: true }))
     fireEvent.click(screen.getByRole("radio", { name: "Cor Azul", exact: true }))
-    fireEvent.click(screen.getByRole("radio", { name: "Trabalhando", exact: true }))
     const saved = getBot(`${shape}:long-glasses`, "#3b93f0")
 
     expect(container.querySelector(".avatar-picker-stage [data-avatar-body]")).toHaveAttribute("d", head)
@@ -212,6 +212,7 @@ describe("picker head preservation", () => {
     expect(reopened.container.querySelector(".avatar-picker-stage [data-avatar-body]")).toHaveAttribute("d", head)
     fireEvent.click(screen.getByRole("button", { name: "Sortear", exact: true }))
     expect(reopened.container.querySelector(".avatar-picker-stage [data-avatar-body]")).toHaveAttribute("d", head)
+    fireEvent.click(screen.getByRole("button", { name: "Personalizar", exact: true }))
     fireEvent.click(screen.getByRole("button", { name: "Restaurar automático", exact: true }))
     expect(reopened.container.querySelector("output")?.textContent).toBe(shape)
     expect(reopened.container.querySelector(".avatar-picker-stage [data-avatar-body]")).toHaveAttribute("d", head)
@@ -222,6 +223,7 @@ describe("picker head preservation", () => {
     const { container } = render(<Picker bot={getBot("long-crown")} />)
     const head = container.querySelector(".avatar-picker-stage [data-avatar-body]")?.getAttribute("d")
 
+    fireEvent.click(screen.getByRole("button", { name: "Personalizar", exact: true }))
     fireEvent.click(screen.getByRole("radio", { name: "Chifres Curtos", exact: true }))
     fireEvent.click(screen.getByRole("radio", { name: "Acessório Óculos", exact: true }))
 

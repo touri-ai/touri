@@ -149,7 +149,7 @@ export const SettingsModal = ({
   }
   const sections = [
     ...APP_SETTINGS_SECTIONS,
-    ...(serverMode ? [WORK_SETTINGS_SECTION] : []),
+    ...(serverMode || (api && !api.isMock && !isNativeDesktop()) ? [WORK_SETTINGS_SECTION] : []),
     ...(isNativeDesktop() ? [SERVER_SETTINGS_SECTION] : []),
   ]
   const pane = (id: AppSettingsSectionId) => {

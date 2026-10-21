@@ -9,7 +9,9 @@ for (const theme of ["dark", "light"] as const) {
     { name: "desktop", width: 1440, height: 900 },
     { name: "phone", width: 390, height: 844 },
   ]) {
-    test(`keeps one bot request action on ${viewport.name} in ${theme}`, async ({ page }, testInfo) => {
+    test(`opens the pending question from the attention bar on ${viewport.name} in ${theme}`, async ({
+      page,
+    }, testInfo) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height })
       await page.emulateMedia({ reducedMotion: "reduce" })
       await page.addInitScript((appearance) => localStorage.setItem("touri.appearance.v1", appearance), theme)
@@ -18,9 +20,9 @@ for (const theme of ["dark", "light"] as const) {
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
 
       if (viewport.name === "phone") await page.getByRole("button", { name: "Abrir menu" }).click()
-      const bar = page.getByRole("button", { name: "Abrir pendência de onb" }).first()
+      const bar = page.locator(".sidebar-needs-you")
       await expect(bar).toBeVisible()
-      await expect(page.locator(".sidebar-needs-you")).toHaveCount(0)
+      await expect(bar).toHaveCount(1)
 
       const output = process.env.NOTIFICATION_ATTENTION_CAPTURE ?? testInfo.outputDir
       mkdirSync(output, { recursive: true })
@@ -44,7 +46,7 @@ test("closes phone navigation and focuses the pending approval", async ({ page }
   await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
   await page.getByRole("button", { name: "Abrir menu" }).click()
 
-  await page.locator(".sidebar-approval-badge").click()
+  await page.getByRole("button", { name: "Revisar aprovação de onb", exact: true }).click()
 
   await expect(page.getByRole("dialog", { name: "Barra lateral", exact: true })).not.toBeVisible()
   await expect(page.locator('[data-approval-id="preview-approval"]')).toBeFocused()
@@ -53,4 +55,22 @@ test("closes phone navigation and focuses the pending approval", async ({ page }
   const screenshot = join(output, "approval-phone.png")
   await page.locator('[data-approval-id="preview-approval"]').screenshot({ path: screenshot })
   await testInfo.attach("focused phone approval", { path: screenshot, contentType: "image/png" })
+})
+
+test("a phone bot-row question keeps its response reachable inside the drawer", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto("/test/e2e/notification-attention-harness.html")
+  await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+  await page.getByRole("button", { name: "Abrir menu" }).click()
+
+  await page.locator('[data-bot-entry="bot-onb"]').getByRole("button", { name: "Abrir pendência de onb" }).click()
+
+  await expect(page.getByRole("dialog", { name: "Barra lateral", exact: true })).toBeVisible()
+  const row = page.getByTestId("notification-row").filter({ hasText: "Qual canal deve receber a campanha?" })
+  await expect(row).toBeFocused()
+  const output = process.env.NOTIFICATION_ATTENTION_CAPTURE ?? testInfo.outputDir
+  mkdirSync(output, { recursive: true })
+  const path = join(output, "bot-row-question-phone.png")
+  await page.getByRole("region", { name: "Central de notificações" }).screenshot({ path })
+  await testInfo.attach("phone question response", { path, contentType: "image/png" })
 })

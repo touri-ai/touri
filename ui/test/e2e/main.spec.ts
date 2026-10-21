@@ -183,6 +183,7 @@ test("avatar choices survive settings reopening and appear on other surfaces", a
   await page.goto("/")
   await page.getByRole("button", { name: "Criar bot" }).click()
   await page.getByLabel("Nome", { exact: true }).fill("Morpheus")
+  await page.getByRole("button", { name: "Personalizar", exact: true }).click()
   await page.getByRole("radio", { name: "Chifres Curtos" }).check()
   await page.getByRole("radio", { name: "Acessório Flor" }).check()
   await expect(page.getByRole("radio", { name: "Chifres Curtos" })).toBeChecked()
@@ -191,6 +192,7 @@ test("avatar choices survive settings reopening and appear on other surfaces", a
   const row = page.locator("#sidebar-mode-panel-bots .bot-entry").filter({ hasText: "Morpheus" })
   await expect(row.locator(".tb-avatar")).toHaveAttribute("data-avatar-shape", "short-flower")
   await showBotAdvanced(page, "Morpheus")
+  await page.getByRole("button", { name: "Personalizar", exact: true }).click()
   await expect(page.getByRole("radio", { name: "Acessório Flor" })).toBeChecked()
   await expect(page.getByRole("radio", { name: "Cor Azul" })).toBeChecked()
   await page.getByRole("radio", { name: "Chifres Longos" }).check()
@@ -198,6 +200,7 @@ test("avatar choices survive settings reopening and appear on other surfaces", a
   await expect(row.locator(".tb-avatar")).toHaveAttribute("data-avatar-shape", "long-flower")
   await expect(page.locator(".chat-bot-chip .tb-avatar")).toHaveAttribute("data-avatar-shape", "long-flower")
   await showBotAdvanced(page, "Morpheus")
+  await page.getByRole("button", { name: "Personalizar", exact: true }).click()
   await expect(page.getByRole("radio", { name: "Chifres Longos" })).toBeChecked()
 })
 

@@ -1,0 +1,122 @@
+.modal-card.invite-dialog {
+  width: min(520px, 100%);
+  overflow-wrap: anywhere;
+}
+.invite-form,
+.invite-sent {
+  gap: var(--space-12);
+}
+.invite-label {
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--text-2);
+}
+.invite-roles,
+.invite-channels {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.invite-role {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--border);
+  background: var(--surface);
+  color: inherit;
+  cursor: pointer;
+}
+.invite-role[aria-checked="true"] {
+  border-color: var(--text);
+}
+.invite-role span {
+  font-size: var(--fs-caption);
+  line-height: 1.45;
+  color: var(--text-2);
+}
+.invite-chips,
+.invite-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.invite-chip {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.invite-chip[aria-pressed="true"] {
+  border-color: var(--accent, #5aa9ff);
+  background: color-mix(in srgb, var(--accent, #5aa9ff) 14%, transparent);
+}
+.invite-sent-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+.invite-badge {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  background: var(--surface-2, rgba(128, 128, 128, 0.16));
+}
+.invite-badge-ok {
+  background: var(--surface-success);
+  color: var(--text-success-strong);
+}
+.invite-link {
+  width: 100%;
+  font-family: var(--font-mono, monospace);
+}
+.invite-abilities {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  font-size: var(--fs-caption);
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.invite-abilities strong {
+  color: var(--text);
+}
+.invite-footer {
+  justify-content: space-between;
+}
+.join-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+  color: var(--text);
+}
+.join-card {
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+  padding: 24px;
+  border-radius: var(--radius-md, 16px);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.join-card h1 {
+  margin: 0;
+  font-size: var(--fs-title, 22px);
+}
+.join-card p {
+  margin: 0;
+  line-height: 1.5;
+}

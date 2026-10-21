@@ -86,6 +86,7 @@ test.describe("phone bot settings overview", () => {
     await expect(advanced).toBeVisible()
     await expect(dialog.getByText("Ajustes deste bot", { exact: true })).toBeVisible()
 
+    await dialog.getByRole("button", { name: "Personalizar", exact: true }).click()
     const overview = dialog.locator(".bot-settings-overview")
     await overview.evaluate((element) => {
       element.scrollTop = element.scrollHeight

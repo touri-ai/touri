@@ -279,7 +279,8 @@ const handleInviteRedeem = async ({
   const token = typeof body?.token === "string" ? body.token : ""
   const email = typeof body?.email === "string" ? body.email : ""
   const deviceName = typeof body?.deviceName === "string" ? body.deviceName : "Browser"
-  const claimed = await options.store.claimInvite({ token, email, deviceName })
+  const name = typeof body?.name === "string" ? body.name : undefined
+  const claimed = await options.store.claimInvite({ token, email, deviceName, ...(name ? { name } : {}) })
   if (!claimed.success) {
     options.limiter.recordFailure(source)
     return json(401, { errorCode: "INVALID_INVITE", error: "Convite inválido, expirado, usado ou e-mail diferente" })
@@ -495,7 +496,10 @@ export const createWebGate = (options: GateOptions): ((args: WebInterceptArgs) =
       if (request.method === "GET" && url.pathname === "/join")
         return serveStatic({ pathname: "/join", request, ui: options.ui })
       if (request.method === "GET" && url.pathname === "/login") return pairingPage()
-      if (["GET", "HEAD"].includes(request.method) && isJoinAssetRequest({ request, url }))
+      if (
+        ["GET", "HEAD"].includes(request.method) &&
+        (url.pathname.startsWith("/assets/") || isJoinAssetRequest({ request, url }))
+      )
         return serveStatic({ pathname: url.pathname, request, ui: options.ui })
       const wantsPage = request.method === "GET" && !/\.[A-Za-z0-9]+$/.test(url.pathname)
       return wantsPage

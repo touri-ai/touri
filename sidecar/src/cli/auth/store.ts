@@ -55,7 +55,7 @@ export type AuthError = { success: false; errorCode: "INVALID_CODE" | "NOT_FOUND
 export type CreatePairingCodeResult = CreatePairingCodeSuccess | AuthError
 export type ClaimPairingCodeResult = ClaimPairingCodeSuccess | AuthError
 export type RevokeDeviceResult = { success: true; device: Device } | AuthError
-export type CreateInviteResult = { success: true; invite: Invite; token: string } | AuthError
+export type CreateInviteResult = { success: true; invite: Invite; token: string; code: string } | AuthError
 export type ClaimInviteResult = { success: true; device: Device; person: Person; token: string } | AuthError
 export type CreateEmailSignInResult = { success: true; token: string; expiresAt: number } | AuthError
 export type ClaimEmailSignInResult = { success: true; device: Device; person: Person; token: string } | AuthError
@@ -83,7 +83,7 @@ export type AuthStore = {
   listInvites: () => Array<Invite>
   resendInvite: (args: { id: string; actorPersonId: string }) => Promise<CreateInviteResult>
   revokeInvite: (args: { id: string; actorPersonId: string }) => Promise<AuthError | { success: true }>
-  claimInvite: (args: { token: string; email: string; deviceName: string }) => Promise<ClaimInviteResult>
+  claimInvite: (args: { token: string; email: string; deviceName: string; name?: string }) => Promise<ClaimInviteResult>
   createEmailSignIn: (args: { email: string }) => Promise<CreateEmailSignInResult>
   claimEmailSignIn: (args: { token: string; deviceName: string }) => Promise<ClaimEmailSignInResult>
   removePerson: (args: { id: string; actorPersonId: string }) => Promise<AuthError | { success: true }>
@@ -417,7 +417,7 @@ export const openAuthStore = async ({
     if (
       normalizedName.length === 0 ||
       normalizedName.length > 80 ||
-      !isValidEmail(normalizedEmail) ||
+      (normalizedEmail !== "" && !isValidEmail(normalizedEmail)) ||
       (role !== "member" && role !== "admin") ||
       channelIds.length > 50 ||
       new Set(channelIds).size !== channelIds.length ||
@@ -426,6 +426,7 @@ export const openAuthStore = async ({
       return { success: false, errorCode: "INVALID_CODE", error: "Invalid invitation details" }
     const id = randomBytes(12).toString("hex")
     const token = randomBytes(32).toString("base64url")
+    const code = generateCode()
     const at = now()
     const expiresAt = expiryAt({ now: at, ttlMs: inviteTtlMs })
     const created = await writer.write({
@@ -433,6 +434,7 @@ export const openAuthStore = async ({
       invite: {
         id,
         tokenHash: sha256(token),
+        codeHash: sha256(code),
         name: normalizedName,
         email: normalizedEmail,
         role,
@@ -445,7 +447,7 @@ export const openAuthStore = async ({
     if (!created) return { success: false, errorCode: "NOT_FOUND", error: "Only an active admin can invite people" }
     const invite = database.query("SELECT * FROM invites WHERE id = ?").get(id) as InviteRow | null
     if (!invite) return { success: false, errorCode: "NOT_FOUND", error: "Invitation could not be saved" }
-    return { success: true, invite: toInvite(invite), token }
+    return { success: true, invite: toInvite(invite), token, code }
   }
 
   const listInvites = (): Array<Invite> =>
@@ -459,10 +461,12 @@ export const openAuthStore = async ({
     actorPersonId: string
   }): Promise<CreateInviteResult> => {
     const token = randomBytes(32).toString("base64url")
+    const code = generateCode()
     const at = now()
     const expiresAt = expiryAt({ now: at, ttlMs: inviteTtlMs })
     const changed = await writer.write({
       type: "resend-invite",
+      codeHash: sha256(code),
       id,
       actorPersonId,
       tokenHash: sha256(token),
@@ -472,7 +476,7 @@ export const openAuthStore = async ({
     if (!changed) return { success: false, errorCode: "NOT_FOUND", error: "Invitation not found or no longer active" }
     const invite = database.query("SELECT * FROM invites WHERE id = ?").get(id) as InviteRow | null
     if (!invite) return { success: false, errorCode: "NOT_FOUND", error: "Invitation not found" }
-    return { success: true, invite: toInvite(invite), token }
+    return { success: true, invite: toInvite(invite), token, code }
   }
 
   const revokeInvite = async ({
@@ -490,13 +494,19 @@ export const openAuthStore = async ({
     token,
     email,
     deviceName,
+    name,
   }: {
     token: string
     email: string
     deviceName: string
+    name?: string
   }): Promise<ClaimInviteResult> => {
     const normalizedEmail = normalizeEmail(email)
-    if (!tokenMatches(token) || !isValidEmail(normalizedEmail)) return invalidCode()
+    const compactCode = normalizeCode(token)
+    const isCode = /^[A-Z2-9-]{12,14}$/iu.test(token) && compactCode.length === 12
+    if ((!tokenMatches(token) && !isCode) || (normalizedEmail !== "" && !isValidEmail(normalizedEmail)))
+      return invalidCode()
+    if (name !== undefined && (!name.trim() || name.trim().length > 80)) return invalidCode()
     const at = now()
     const person = { id: randomBytes(12).toString("hex"), avatarSeed: randomBytes(8).toString("hex") }
     const device = {
@@ -507,7 +517,8 @@ export const openAuthStore = async ({
     const authToken = newToken(at, person.id)
     const claimed = await writer.write({
       type: "claim-invite",
-      tokenHash: sha256(token),
+      tokenHash: sha256(isCode ? formatCode(compactCode) : token),
+      ...(name ? { name: name.trim() } : {}),
       email: normalizedEmail,
       at,
       person,
