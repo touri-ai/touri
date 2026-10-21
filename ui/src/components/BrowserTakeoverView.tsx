@@ -467,34 +467,36 @@ export const BrowserTakeoverView = ({
       aria-label={t("Remote browser control", {}, locale)}
       data-full-view={fullView}
     >
-      <header className="browser-takeover-toolbar">
-        <div>
-          <strong>{t("Browser for {name}", { name: botName }, locale)}</strong>
-          <span title={safeUrl}>
-            {t("You are in control · {name} is paused", { name: botName }, locale)}
-            {safeUrl ? ` · ${safeUrl}` : ` · ${t("Connecting to the browser…", {}, locale)}`}
-          </span>
-        </div>
-        <button
-          type="button"
-          className="browser-activity-icon-button"
-          aria-label={t(fullView ? "Collapse browser full screen" : "Expand browser to full screen", {}, locale)}
-          aria-pressed={fullView}
-          onClick={() => setFullView((value) => !value)}
+      <div className="browser-takeover-controls">
+        <header className="browser-takeover-toolbar">
+          <div>
+            <strong>{t("Browser for {name}", { name: botName }, locale)}</strong>
+            <span title={safeUrl}>
+              {t("You are in control · {name} is paused", { name: botName }, locale)}
+              {safeUrl ? ` · ${safeUrl}` : ` · ${t("Connecting to the browser…", {}, locale)}`}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="browser-activity-icon-button"
+            aria-label={t(fullView ? "Collapse browser full screen" : "Expand browser to full screen", {}, locale)}
+            aria-pressed={fullView}
+            onClick={() => setFullView((value) => !value)}
+          >
+            <span aria-hidden="true">{fullView ? "↙" : "↗"}</span>
+          </button>
+          <button type="button" className="button button-quiet" disabled={returning} onClick={() => void handback()}>
+            {returning ? t("Returning control…", {}, locale) : t("Hand back to {name}", { name: botName }, locale)}
+          </button>
+        </header>
+        <p
+          className="browser-takeover-privacy browser-takeover-privacy-sticky"
+          role="status"
+          aria-label={t("Browser privacy", {}, locale)}
         >
-          <span aria-hidden="true">{fullView ? "↙" : "↗"}</span>
-        </button>
-        <button type="button" className="button button-quiet" disabled={returning} onClick={() => void handback()}>
-          {returning ? t("Returning control…", {}, locale) : t("Hand back to {name}", { name: botName }, locale)}
-        </button>
-      </header>
-      <p
-        className="browser-takeover-privacy browser-takeover-privacy-sticky"
-        role="status"
-        aria-label={t("Browser privacy", {}, locale)}
-      >
-        {t("What you type here stays out of chat, the bot, and history.", {}, locale)}
-      </p>
+          {t("What you type here stays out of chat, the bot, and history.", {}, locale)}
+        </p>
+      </div>
       <div className={`browser-takeover-layout${fullView ? " browser-takeover-layout-full" : ""}`}>
         <div
           ref={screen}

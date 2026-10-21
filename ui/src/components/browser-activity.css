@@ -280,6 +280,14 @@
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+.browser-takeover-controls {
+  position: sticky;
+  z-index: 3;
+  top: 0;
+  display: grid;
+  gap: 12px;
+  background: var(--surface-control);
+}
 .browser-takeover-toolbar,
 .browser-takeover-footer {
   display: flex;

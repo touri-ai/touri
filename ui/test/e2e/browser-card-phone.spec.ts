@@ -36,3 +36,25 @@ test("phone browser controls have usable touch targets and actions keep a stable
   await expect(log).toHaveCSS("height", "156px")
   await page.screenshot({ path: getScreenshotPath("phone-card-updated.png"), fullPage: true })
 })
+
+test("phone handback stays reachable after typing and scrolling the private page", async ({ page }, info) => {
+  test.setTimeout(120_000)
+  await page.goto("/test/e2e/browser-activity-harness.html?remote=true&theme=light")
+  await page.getByRole("button", { name: "Iniciar busca de viagem" }).click()
+  await page.locator(".browser-activity-card").getByRole("button", { name: "Assumir", exact: true }).click()
+  const control = page.getByRole("region", { name: "Controle remoto do navegador" })
+  await control.getByRole("button", { name: "Expandir navegador em tela cheia" }).click()
+  await expect(control.getByRole("button", { name: "Digitar no navegador" })).toBeEnabled()
+  await control.scrollIntoViewIfNeeded()
+
+  await control.getByRole("button", { name: "Digitar no navegador" }).click()
+  await page.keyboard.insertText("valor privado fictício")
+  await control.evaluate((element) => element.scrollTo(0, element.scrollHeight))
+  const output = process.env.TOURI_E2E_EVIDENCE_DIR
+  await page.screenshot({
+    path: output ? join(output, "phone-control-scrolled.png") : info.outputPath("phone-control-scrolled.png"),
+    fullPage: true,
+  })
+
+  await expect(control.getByRole("button", { name: /Devolver para/ })).toBeInViewport()
+})
