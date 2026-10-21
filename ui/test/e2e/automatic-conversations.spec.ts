@@ -101,7 +101,7 @@ for (const view of [
     if (view.width === 390) await menu.click()
     const actions = sidebar.getByRole("button", { name: "Ações de mark", exact: true })
     await expect(actions).toBeVisible()
-    await sidebar.locator(".sidebar-row").filter({ has: actions }).hover()
+    await sidebar.locator('[data-bot-entry="bot-mark"] .bot-row').hover()
     await actions.click()
     const advanced = page.getByRole("menuitem", { name: "Avançado", exact: true })
     await expect(advanced).toBeVisible()
