@@ -689,6 +689,85 @@ realSuite("WP6 real Chrome browser acceptance", () => {
     expect(after.notes).toContain("User handed back the tab; the page may have changed.")
   })
 
+  test("remote browser input reaches the page while a takeover request is waiting", async () => {
+    const page = await open("/basic")
+    let unsubscribe = (): void => {}
+    const held = new Promise<void>((resolve) => {
+      unsubscribe = runtime.kernel.subscribe(({ event }) => {
+        if (event.type !== "browser.tab" || event.tab.tabId !== page.tabId || !event.tab.heldByUser) return
+        unsubscribe()
+        resolve()
+      })
+    })
+    const takeover = callBrowserTool("browser_request_takeover", {
+      tabId: page.tabId,
+      reason: "Sign in to continue",
+      timeoutMs: 20_000,
+    })
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    try {
+      await held
+      const input = engine.takeoverInput({
+        tabId: page.tabId,
+        botId: botA,
+        input: { kind: "text", text: "private sign-in value" },
+        signal: ctx().signal,
+      })
+      const inputResult = await Promise.race([
+        input,
+        new Promise<boolean>((resolve) => {
+          timer = setTimeout(() => resolve(false), 5_000)
+        }),
+      ])
+
+      expect(inputResult).toBe(true)
+    } finally {
+      if (timer) clearTimeout(timer)
+      unsubscribe()
+      await engine.releaseTakeover(page.tabId)
+      await takeover
+    }
+  })
+
+  test("remote takeover forwards private input and keeps it out of browser snapshots", async () => {
+    const page = await open("/basic")
+    const signal = ctx().signal
+    const privateText = "private-takeover-entry-73"
+
+    expect(await engine.holdTakeover({ tabId: page.tabId, reason: "fixture" })).toBe(true)
+    const frame = await engine.takeoverFrame({ tabId: page.tabId, botId: botA, signal })
+    expect(frame).toMatchObject({ title: "touri fixture", url: `${base}/basic` })
+    expect(frame?.width).toBeGreaterThan(0)
+    expect(frame?.height).toBeGreaterThan(0)
+    expect(frame?.image).toStartWith("data:image/jpeg;base64,")
+
+    await engine.takeoverInput({
+      tabId: page.tabId,
+      botId: botA,
+      signal,
+      input: { kind: "click", x: 50 / (frame?.width ?? 1), y: 60 / (frame?.height ?? 1) },
+    })
+    await engine.takeoverInput({ tabId: page.tabId, botId: botA, signal, input: { kind: "text", text: privateText } })
+    expect(await engine.releaseTakeover(page.tabId)).toBe(true)
+
+    const snapshot = await engine.snapshot({ tabId: page.tabId, botId: botA, image: "never", signal })
+    expect(snapshot.success).toBe(true)
+    if (!snapshot.success) return
+    const result = snapshotOf(snapshot)
+    expect(result.elements.find((element) => element.name === "Name")?.value).toBeUndefined()
+    expect(JSON.stringify(result.recentActions)).not.toContain(privateText)
+    expect(JSON.stringify(result)).not.toContain(privateText)
+    const evaluated = await engine.evaluate({
+      tabId: page.tabId,
+      botId: botA,
+      expression: "document.querySelector('input[aria-label=Name]').value",
+      signal,
+    })
+    expect(evaluated).toMatchObject({ success: false, errorCode: "PRIVATE_TAKEOVER_ACTIVE" })
+    expect(JSON.stringify(evaluated)).not.toContain(privateText)
+  })
+
   test("R9 secure secret entry never exposes the value", async () => {
     const snapshot = await open("/secret")
     const result = await engine.submitSecret({

@@ -4,7 +4,9 @@ import { InlinePreviewContext } from "../features/desktop/InlineLivePreview"
 import { type PreviewFrame, startInlineFrameSource } from "../features/desktop/inlineFrameSource"
 import { useInlinePreviewPreference } from "../features/desktop/inlinePreviewPreference"
 import { type Locale, t } from "../i18n"
+import { BrowserTakeoverView } from "./BrowserTakeoverView"
 import {
+  getBrowserActivityIcon,
   getBrowserActivityLabel,
   getBrowserActivityNotice,
   getBrowserActivityScreenshot,
@@ -12,7 +14,9 @@ import {
   getBrowserActivityTime,
   getBrowserActivityTools,
   getBrowserActivityUrl,
+  getBrowserTakeoverReason,
 } from "./browserActivityPresentation"
+import { PanelIcon } from "./PanelIcon"
 import { StoredToolOutput } from "./ToolOutput"
 import "./browser-activity.css"
 
@@ -44,6 +48,8 @@ export const BrowserActivityCard = ({
   const preview = previewFrame?.tabId === activeTabId ? previewFrame?.frame : undefined
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [heldTab, setHeldTab] = useState<{ tabId: string; held: boolean }>()
+  const [takeoverSession, setTakeoverSession] = useState<string | null>(null)
+  const takeoverTabId = useRef(activeTabId)
   const held = heldTab?.tabId === activeTabId && heldTab?.held === true
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -57,6 +63,12 @@ export const BrowserActivityCard = ({
   const botId = bot?.id
   const machine = bot?.machine
   const canPreview = !!api && !!bot && (bot.machine === "local" || context?.machine?.status === "running")
+
+  useEffect(() => {
+    if (takeoverTabId.current === activeTabId) return
+    takeoverTabId.current = activeTabId
+    setTakeoverSession(null)
+  }, [activeTabId])
 
   useEffect(() => {
     const updateVisibility = () => setHidden(document.hidden)
@@ -125,7 +137,18 @@ export const BrowserActivityCard = ({
 
   useEffect(() => {
     setPreviewError(null)
-    if (!api || !botId || !machine || !activeTabId || !canPreview || !previewEnabled || !visible || hidden || finished)
+    if (
+      !api ||
+      !botId ||
+      !machine ||
+      !activeTabId ||
+      !canPreview ||
+      !previewEnabled ||
+      !visible ||
+      hidden ||
+      finished ||
+      takeoverSession
+    )
       return
 
     return startInlineFrameSource(
@@ -138,16 +161,16 @@ export const BrowserActivityCard = ({
         setPreviewError(reason ? t("Browser preview unavailable. Open the browser to reconnect.", {}, locale) : null),
       { intervalMs: 3_000 },
     )
-  }, [activeTabId, api, botId, machine, canPreview, finished, hidden, locale, previewEnabled, visible])
+  }, [activeTabId, api, botId, machine, canPreview, finished, hidden, locale, previewEnabled, takeoverSession, visible])
 
   const toggleTakeover = async (): Promise<void> => {
     if (!api || !activeTabId || busy) return
     setBusy(true)
     setError(null)
     try {
-      await api.request("POST /browser/tabs/:id/takeover", { hold: !held }, { id: activeTabId })
-      setHeldTab({ tabId: activeTabId, held: !held })
-      if (!held) context?.onOpenComputer()
+      const { sessionId } = await api.request("POST /browser/tabs/:id/takeover/session", {}, { id: activeTabId })
+      setTakeoverSession(sessionId)
+      setHeldTab({ tabId: activeTabId, held: true })
     } catch {
       setError(t("The browser tab could not be updated.", {}, locale))
     } finally {
@@ -165,7 +188,7 @@ export const BrowserActivityCard = ({
     { count: browserTools.length },
     locale,
   )
-  const url = finished ? "" : getBrowserActivityUrl(preview?.url ?? "")
+  const url = finished || takeoverSession ? "" : getBrowserActivityUrl(preview?.url ?? "")
 
   return (
     <article
@@ -203,89 +226,127 @@ export const BrowserActivityCard = ({
           ) : null}
           <span aria-hidden="true">{expanded ? "−" : "+"}</span>
         </button>
-      ) : (
+      ) : !takeoverSession ? (
         <header className="browser-activity-header">
           <div>
             <strong>{title}</strong>
             {url && <span title={url}>{url}</span>}
           </div>
-          {activeTabId && (
-            <button type="button" className="button button-quiet" disabled={busy} onClick={() => void toggleTakeover()}>
-              {busy
-                ? t("Updating browser control…", {}, locale)
-                : held
-                  ? t("Hand back to {name}", { name: botName }, locale)
-                  : t("Take over", {}, locale)}
+          {activeTabId && !takeoverSession && (
+            <button
+              type="button"
+              className="button button-quiet"
+              disabled={busy || held}
+              onClick={() => void toggleTakeover()}
+            >
+              <PanelIcon name="computer" />
+              {busy && t("Updating browser control…", {}, locale)}
+              {!busy && held && t("Browser is being controlled", {}, locale)}
+              {!busy && !held && t("Take over browser", {}, locale)}
             </button>
           )}
         </header>
-      )}
+      ) : null}
       {expanded && (
         <div
-          className={`browser-activity-content${fullView || finished || !previewEnabled ? " browser-activity-content-full" : ""}`}
+          className={`browser-activity-content${fullView || finished || !previewEnabled || takeoverSession ? " browser-activity-content-full" : ""}`}
         >
-          {!finished && previewEnabled && (
-            <div className={`browser-activity-preview${fullView ? " browser-activity-preview-full" : ""}`}>
-              {preview?.src ? (
-                <img src={preview.src} alt={t("Current browser page", {}, locale)} />
-              ) : (
-                <p className="browser-activity-placeholder">
-                  {previewError ?? t("Waiting for the browser page…", {}, locale)}
-                </p>
+          {!finished && takeoverSession && activeTabId && api ? (
+            <BrowserTakeoverView
+              key={takeoverSession}
+              api={api}
+              tabId={activeTabId}
+              sessionId={takeoverSession}
+              botName={botName}
+              locale={locale}
+              reason={getBrowserTakeoverReason(browserTools)}
+              actions={actions.map((part) => ({
+                id: part.callId,
+                icon: getBrowserActivityIcon(part),
+                label: getBrowserActivityLabel(part, locale),
+                time: getBrowserActivityTime(part, createdAt, locale),
+                active: !finished && part.callId === browserTools.at(-1)?.callId,
+              }))}
+              onHandback={() => {
+                setTakeoverSession(null)
+                setHeldTab({ tabId: activeTabId, held: false })
+              }}
+            />
+          ) : (
+            <>
+              {!finished && previewEnabled && (
+                <div className={`browser-activity-preview${fullView ? " browser-activity-preview-full" : ""}`}>
+                  {preview?.src ? (
+                    <img src={preview.src} alt={t("Current browser page", {}, locale)} />
+                  ) : (
+                    <p className="browser-activity-placeholder">
+                      {previewError ?? t("Waiting for the browser page…", {}, locale)}
+                    </p>
+                  )}
+                  {preview?.src && previewError && <small role="status">{previewError}</small>}
+                  <div className="browser-activity-preview-actions">
+                    <button type="button" disabled={!preview} onClick={() => setFullView((value) => !value)}>
+                      {fullView ? t("Collapse browser view", {}, locale) : t("Expand browser view", {}, locale)}
+                    </button>
+                    <button type="button" onClick={() => context?.onOpenComputer()} disabled={!context}>
+                      {t("Open browser", {}, locale)}
+                    </button>
+                  </div>
+                </div>
               )}
-              {preview?.src && previewError && <small role="status">{previewError}</small>}
-              {url && <span title={url}>{url}</span>}
-              <div className="browser-activity-preview-actions">
-                <button type="button" disabled={!preview} onClick={() => setFullView((value) => !value)}>
-                  {fullView ? t("Collapse browser view", {}, locale) : t("Expand browser view", {}, locale)}
-                </button>
-                <button type="button" onClick={() => context?.onOpenComputer()} disabled={!context}>
-                  {t("Open browser", {}, locale)}
-                </button>
+              <div
+                className="browser-activity-log"
+                role="log"
+                aria-label={t("Browser activity", {}, locale)}
+                aria-live={finished ? "off" : "polite"}
+              >
+                <strong>{t("Browser activity", {}, locale)}</strong>
+                <ol>
+                  {actions.map((part) => (
+                    <li key={part.callId} data-active={!finished && part.callId === browserTools.at(-1)?.callId}>
+                      <span className="browser-activity-icon" aria-hidden="true">
+                        {getBrowserActivityIcon(part)}
+                      </span>
+                      <span>
+                        {getBrowserActivityLabel(part, locale)}
+                        {getBrowserActivityNotice(part, locale) && (
+                          <small>{getBrowserActivityNotice(part, locale)}</small>
+                        )}
+                      </span>
+                      <time dateTime={new Date(part.startedAt ?? part.resolvedAt ?? createdAt).toISOString()}>
+                        {getBrowserActivityTime(part, createdAt, locale)}
+                      </time>
+                    </li>
+                  ))}
+                </ol>
+                {browserTools.length > MAX_VISIBLE_ACTIONS && (
+                  <small>
+                    {t("Showing the latest {count} browser actions", { count: MAX_VISIBLE_ACTIONS }, locale)}
+                  </small>
+                )}
+                {held && <p role="status">{t("You have control of this browser tab.", {}, locale)}</p>}
+                {error && <p role="alert">{error}</p>}
+                {finished && screenshot?.outputAttachmentId && (
+                  <section
+                    className="browser-activity-final-shot"
+                    aria-label={t("Final browser screenshot", {}, locale)}
+                  >
+                    <strong>{t("Final browser screenshot", {}, locale)}</strong>
+                    <StoredToolOutput
+                      key={screenshot.outputAttachmentId}
+                      api={api}
+                      attachmentId={screenshot.outputAttachmentId}
+                      preview={screenshot.outputPreview}
+                      callId={screenshot.callId}
+                      browser
+                      locale={locale}
+                      autoOpen
+                    />
+                  </section>
+                )}
               </div>
-            </div>
+            </>
           )}
-          <div
-            className="browser-activity-log"
-            role="log"
-            aria-label={t("Browser activity", {}, locale)}
-            aria-live={finished ? "off" : "polite"}
-          >
-            <strong>{t("Browser activity", {}, locale)}</strong>
-            <ol>
-              {actions.map((part) => (
-                <li key={part.callId}>
-                  <time dateTime={new Date(part.startedAt ?? part.resolvedAt ?? createdAt).toISOString()}>
-                    {getBrowserActivityTime(part, createdAt, locale)}
-                  </time>
-                  <span>
-                    {getBrowserActivityLabel(part, locale)}
-                    {getBrowserActivityNotice(part, locale) && <small>{getBrowserActivityNotice(part, locale)}</small>}
-                  </span>
-                </li>
-              ))}
-            </ol>
-            {browserTools.length > MAX_VISIBLE_ACTIONS && (
-              <small>{t("Showing the latest {count} browser actions", { count: MAX_VISIBLE_ACTIONS }, locale)}</small>
-            )}
-            {held && <p role="status">{t("You have control of this browser tab.", {}, locale)}</p>}
-            {error && <p role="alert">{error}</p>}
-            {finished && screenshot?.outputAttachmentId && (
-              <section className="browser-activity-final-shot" aria-label={t("Final browser screenshot", {}, locale)}>
-                <strong>{t("Final browser screenshot", {}, locale)}</strong>
-                <StoredToolOutput
-                  key={screenshot.outputAttachmentId}
-                  api={api}
-                  attachmentId={screenshot.outputAttachmentId}
-                  preview={screenshot.outputPreview}
-                  callId={screenshot.callId}
-                  browser
-                  locale={locale}
-                  autoOpen
-                />
-              </section>
-            )}
-          </div>
         </div>
       )}
     </article>

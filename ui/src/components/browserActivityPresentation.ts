@@ -9,6 +9,29 @@ const MAX_LABEL_LENGTH = 72
 
 const getBrowserAction = (part: ToolCallPart): string => toolLeaf(part.tool).replace(/^(browser|computer)_/, "")
 
+export const getBrowserActivityIcon = (part: ToolCallPart): string => {
+  const icons: Record<string, string> = {
+    open: "↗",
+    navigate: "↗",
+    snapshot: "◉",
+    click: "⌖",
+    type: "T",
+    fill_form: "T",
+    select_option: "⌄",
+    set_checked: "✓",
+    screenshot: "▧",
+    take_screenshot: "▧",
+    scroll: "↕",
+    hover: "⌖",
+    wait_for: "◷",
+    request_takeover: "◷",
+    submit_secret: "▤",
+    fill_secret: "▤",
+    press: "⌨",
+  }
+  return icons[getBrowserAction(part)] ?? "•"
+}
+
 const getArgs = (part: ToolCallPart): Record<string, unknown> | null => {
   if (part.inputJson.length > MAX_INPUT_LENGTH) return null
 
@@ -75,6 +98,14 @@ export const getBrowserActivityScreenshot = (parts: readonly ToolCallPart[]): To
 
     return hasImage ? part : undefined
   }, undefined)
+
+export const getBrowserTakeoverReason = (parts: readonly ToolCallPart[]): string | null => {
+  const takeover = parts.reduceRight<ToolCallPart | undefined>((latest, part) => {
+    if (latest || getBrowserAction(part) !== "request_takeover") return latest
+    return part
+  }, undefined)
+  return takeover ? getSafeLabel(getArgs(takeover)?.reason) : null
+}
 
 export const getBrowserActivityLabel = (part: ToolCallPart, locale: Locale): string => {
   if (part.ok === false) return t("Browser action failed. Take over to continue.", {}, locale)

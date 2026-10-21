@@ -1,0 +1,426 @@
+import type { BrowserTakeoverFrame, BrowserTakeoverInput } from "@touri/contracts"
+import type { KeyboardEvent, PointerEvent, WheelEvent } from "react"
+import { useEffect, useRef, useState } from "react"
+import type { UiApi } from "../api/client"
+import { type Locale, t } from "../i18n"
+import { getBrowserActivityUrl } from "./browserActivityPresentation"
+
+type FrameMeta = Pick<BrowserTakeoverFrame, "title" | "url" | "width" | "height">
+type TouchGesture = {
+  pointerId: number
+  startX: number
+  startY: number
+  lastX: number
+  lastY: number
+  deltaX: number
+  deltaY: number
+  moved: boolean
+  lastSentAt: number
+}
+
+const ACTIVE_FRAME_INTERVAL_MS = 300
+const IDLE_FRAME_INTERVAL_MS = 1_000
+const ACTIVE_FRAME_WINDOW_MS = 8_000
+const MAX_PENDING_INPUTS = 32
+const TOUCH_SCROLL_INTERVAL_MS = 40
+
+export const BrowserTakeoverView = ({
+  api,
+  tabId,
+  sessionId,
+  botName,
+  locale,
+  reason,
+  actions,
+  onHandback,
+}: {
+  api: UiApi
+  tabId: string
+  sessionId: string
+  botName: string
+  locale: Locale
+  reason: string | null
+  actions: Array<{ id: string; icon: string; label: string; time: string; active: boolean }>
+  onHandback: () => void
+}) => {
+  const canvas = useRef<HTMLCanvasElement>(null)
+  const keyboard = useRef<HTMLTextAreaElement>(null)
+  const pendingInputs = useRef(0)
+  const inputQueue = useRef(Promise.resolve())
+  const lastInputAt = useRef(0)
+  const localeRef = useRef(locale)
+  const touch = useRef<TouchGesture | null>(null)
+  const composing = useRef(false)
+  const released = useRef(false)
+  const releasing = useRef(false)
+  const [frame, setFrame] = useState<FrameMeta | null>(null)
+  const [fallbackImage, setFallbackImage] = useState("")
+  const [workerReady, setWorkerReady] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [returning, setReturning] = useState(false)
+  localeRef.current = locale
+
+  useEffect(() => {
+    let active = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let latestImage = ""
+    let worker: Worker | null = null
+    const screen = canvas.current
+    if (screen && typeof screen.transferControlToOffscreen === "function") {
+      try {
+        worker = new Worker(new URL("./browserTakeover.worker.ts", import.meta.url), { type: "module" })
+        const offscreen = screen.transferControlToOffscreen()
+        worker.postMessage({ type: "canvas", canvas: offscreen }, [offscreen])
+        const stopWorker = () => {
+          worker?.terminate()
+          worker = null
+          setFallbackImage(latestImage)
+          setWorkerReady(false)
+        }
+        worker.onmessage = (event: MessageEvent<{ type?: string }>) => {
+          if (active && event.data.type === "error") stopWorker()
+        }
+        worker.onerror = () => {
+          if (active) stopWorker()
+        }
+        setWorkerReady(true)
+      } catch {
+        worker?.terminate()
+        worker = null
+      }
+    }
+
+    const poll = async (): Promise<void> => {
+      if (!active) return
+      if (document.hidden) {
+        timer = setTimeout(() => void poll(), 1_000)
+        return
+      }
+      try {
+        const next = await api.request("POST /browser/tabs/:id/takeover/frame", { sessionId }, { id: tabId })
+        if (!active) return
+        latestImage = next.image
+        const nextFrame = { title: next.title, url: next.url, width: next.width, height: next.height }
+        setFrame((current) => {
+          if (!current) return nextFrame
+          if (
+            current.title === nextFrame.title &&
+            current.url === nextFrame.url &&
+            current.width === nextFrame.width &&
+            current.height === nextFrame.height
+          )
+            return current
+          return nextFrame
+        })
+        setError(null)
+        if (worker) worker.postMessage({ type: "frame", image: next.image })
+        else setFallbackImage(next.image)
+      } catch {
+        if (active) setError(t("The browser control connection was interrupted.", {}, localeRef.current))
+      }
+      const recentInput = Date.now() - lastInputAt.current < ACTIVE_FRAME_WINDOW_MS
+      const interval = recentInput ? ACTIVE_FRAME_INTERVAL_MS : IDLE_FRAME_INTERVAL_MS
+      if (active) timer = setTimeout(() => void poll(), interval)
+    }
+
+    void poll()
+    return () => {
+      active = false
+      clearTimeout(timer)
+      worker?.terminate()
+      if (!released.current)
+        void inputQueue.current
+          .then(() => api.request("DELETE /browser/tabs/:id/takeover/session", { sessionId }, { id: tabId }))
+          .catch(() => {})
+    }
+  }, [api, sessionId, tabId])
+
+  const sendInput = (input: BrowserTakeoverInput): void => {
+    if (released.current || releasing.current) return
+    lastInputAt.current = Date.now()
+    if (pendingInputs.current >= MAX_PENDING_INPUTS) {
+      setError(t("The browser is catching up. Try again in a moment.", {}, locale))
+      return
+    }
+    pendingInputs.current += 1
+    inputQueue.current = inputQueue.current
+      .then(() => api.request("POST /browser/tabs/:id/takeover/input", { sessionId, input }, { id: tabId }))
+      .then(
+        () => setError(null),
+        () => setError(t("The browser did not receive that action.", {}, locale)),
+      )
+      .then(() => {
+        pendingInputs.current -= 1
+      })
+  }
+
+  const sendText = (value: string): void => {
+    if (!value) return
+    if (value.length > 16_384) {
+      setError(t("That text is too long to send to the browser.", {}, locale))
+      return
+    }
+    if (new TextEncoder().encode(value).byteLength > 16_384) {
+      setError(t("That text is too long to send to the browser.", {}, locale))
+      return
+    }
+    sendInput({ kind: "text", text: value })
+  }
+
+  const handback = async (): Promise<void> => {
+    if (releasing.current || released.current) return
+    releasing.current = true
+    setReturning(true)
+    try {
+      await inputQueue.current
+      await api.request("DELETE /browser/tabs/:id/takeover/session", { sessionId }, { id: tabId })
+      released.current = true
+      onHandback()
+    } catch {
+      setError(t("Could not return control to the bot. Try again.", {}, locale))
+      releasing.current = false
+    } finally {
+      setReturning(false)
+    }
+  }
+
+  const mousePoint = (event: { clientX: number; clientY: number; currentTarget: HTMLElement }) => {
+    const bounds = event.currentTarget.getBoundingClientRect()
+    if (!bounds.width || !bounds.height) return null
+    return {
+      x: Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width)),
+      y: Math.min(1, Math.max(0, (event.clientY - bounds.top) / bounds.height)),
+    }
+  }
+  const clickPage = (event: PointerEvent<HTMLElement>) => {
+    event.preventDefault()
+    if (event.pointerType !== "touch") keyboard.current?.focus({ preventScroll: true })
+    const point = mousePoint(event)
+    if (!point) return
+    const button = event.button === 2 ? "right" : event.button === 1 ? "middle" : "left"
+    sendInput({ kind: "click", ...point, button })
+  }
+  const flushTouchScroll = (event: PointerEvent<HTMLElement>, gesture: TouchGesture): TouchGesture => {
+    const point = mousePoint(event)
+    const bounds = event.currentTarget.getBoundingClientRect()
+    if (!point || !bounds.width || !bounds.height || (!gesture.deltaX && !gesture.deltaY)) return gesture
+    const scaleX = (frame?.width ?? bounds.width) / bounds.width
+    const scaleY = (frame?.height ?? bounds.height) / bounds.height
+    const clamp = (value: number) => Math.max(-1200, Math.min(1200, value))
+    sendInput({
+      kind: "wheel",
+      ...point,
+      deltaX: clamp(gesture.deltaX * scaleX),
+      deltaY: clamp(gesture.deltaY * scaleY),
+    })
+    return {
+      pointerId: gesture.pointerId,
+      startX: gesture.startX,
+      startY: gesture.startY,
+      lastX: gesture.lastX,
+      lastY: gesture.lastY,
+      deltaX: 0,
+      deltaY: 0,
+      moved: gesture.moved,
+      lastSentAt: Date.now(),
+    }
+  }
+  const pointerDown = (event: PointerEvent<HTMLElement>): void => {
+    if (event.pointerType !== "touch") {
+      clickPage(event)
+      return
+    }
+    event.preventDefault()
+    if (touch.current) return
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    touch.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      deltaX: 0,
+      deltaY: 0,
+      moved: false,
+      lastSentAt: Date.now(),
+    }
+  }
+  const pointerMove = (event: PointerEvent<HTMLElement>): void => {
+    const gesture = touch.current
+    if (!gesture || gesture.pointerId !== event.pointerId) return
+    event.preventDefault()
+    const distanceX = event.clientX - gesture.startX
+    const distanceY = event.clientY - gesture.startY
+    const nextGesture: TouchGesture = {
+      pointerId: gesture.pointerId,
+      startX: gesture.startX,
+      startY: gesture.startY,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      deltaX: gesture.deltaX + gesture.lastX - event.clientX,
+      deltaY: gesture.deltaY + gesture.lastY - event.clientY,
+      moved: gesture.moved || distanceX * distanceX + distanceY * distanceY >= 64,
+      lastSentAt: gesture.lastSentAt,
+    }
+    touch.current =
+      nextGesture.moved && Date.now() - nextGesture.lastSentAt >= TOUCH_SCROLL_INTERVAL_MS
+        ? flushTouchScroll(event, nextGesture)
+        : nextGesture
+  }
+  const pointerUp = (event: PointerEvent<HTMLElement>): void => {
+    const gesture = touch.current
+    if (!gesture || gesture.pointerId !== event.pointerId) return
+    event.preventDefault()
+    if (gesture.moved) flushTouchScroll(event, gesture)
+    else {
+      const point = mousePoint(event)
+      if (point) sendInput({ kind: "click", x: point.x, y: point.y, button: "left" })
+    }
+    touch.current = null
+  }
+  const pointerCancel = (event: PointerEvent<HTMLElement>): void => {
+    const gesture = touch.current
+    if (!gesture || gesture.pointerId !== event.pointerId) return
+    event.preventDefault()
+    if (gesture.moved) flushTouchScroll(event, gesture)
+    touch.current = null
+  }
+  const scrollPage = (event: WheelEvent<HTMLElement>) => {
+    event.preventDefault()
+    const point = mousePoint(event)
+    if (!point) return
+    const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? (frame?.height ?? 720) : 1
+    const clamp = (value: number) => Math.max(-1200, Math.min(1200, value * scale))
+    sendInput({ kind: "wheel", ...point, deltaX: clamp(event.deltaX), deltaY: clamp(event.deltaY) })
+  }
+  const keyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.nativeEvent.isComposing) return
+    if (event.key.toLowerCase() === "v" && (event.ctrlKey || event.metaKey)) return
+    event.preventDefault()
+    const modifiers =
+      Number(event.altKey) | (Number(event.ctrlKey) << 1) | (Number(event.metaKey) << 2) | (Number(event.shiftKey) << 3)
+    sendInput({ kind: "key", phase: "down", key: event.key, code: event.code, modifiers })
+  }
+  const keyUp = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.nativeEvent.isComposing) return
+    if (event.key.toLowerCase() === "v" && (event.ctrlKey || event.metaKey)) return
+    event.preventDefault()
+    const modifiers =
+      Number(event.altKey) | (Number(event.ctrlKey) << 1) | (Number(event.metaKey) << 2) | (Number(event.shiftKey) << 3)
+    sendInput({ kind: "key", phase: "up", key: event.key, code: event.code, modifiers })
+  }
+
+  const safeUrl = frame ? getBrowserActivityUrl(frame.url) : ""
+
+  return (
+    <section className="browser-takeover-view" aria-label={t("Remote browser control", {}, locale)}>
+      <header className="browser-takeover-toolbar">
+        <div>
+          <strong>{t("Browser for {name}", { name: botName }, locale)}</strong>
+          <span title={safeUrl}>
+            {t("You are in control · {name} is paused", { name: botName }, locale)}
+            {safeUrl ? ` · ${safeUrl}` : ` · ${t("Connecting to the browser…", {}, locale)}`}
+          </span>
+        </div>
+        <button type="button" className="button button-quiet" disabled={returning} onClick={() => void handback()}>
+          {returning ? t("Returning control…", {}, locale) : t("Hand back to {name}", { name: botName }, locale)}
+        </button>
+      </header>
+      <div className="browser-takeover-layout">
+        <div
+          className="browser-takeover-screen"
+          role="application"
+          aria-label={t("Live browser page", {}, locale)}
+          style={{ aspectRatio: frame ? `${frame.width} / ${frame.height}` : "16 / 10" }}
+          onPointerDown={pointerDown}
+          onPointerMove={pointerMove}
+          onPointerUp={pointerUp}
+          onPointerCancel={pointerCancel}
+          onContextMenu={(event) => event.preventDefault()}
+          onWheel={scrollPage}
+        >
+          <canvas
+            ref={canvas}
+            className="browser-takeover-canvas"
+            aria-label={t("Live browser page", {}, locale)}
+            hidden={!workerReady}
+          />
+          {!workerReady && fallbackImage && (
+            <img className="browser-takeover-image" src={fallbackImage} alt={t("Live browser page", {}, locale)} />
+          )}
+          {!frame && !error && (
+            <p className="browser-takeover-placeholder">{t("Connecting to the browser…", {}, locale)}</p>
+          )}
+        </div>
+        <aside className="browser-takeover-aside">
+          <section className="browser-takeover-reason">
+            <strong>{t("Why {name} paused", { name: botName }, locale)}</strong>
+            <p>{reason ?? t("This page needs your help before {name} can continue.", { name: botName }, locale)}</p>
+            <p>
+              {t("Finish the step here. When you hand back control, {name} can continue.", { name: botName }, locale)}
+            </p>
+          </section>
+          <section className="browser-takeover-actions" aria-label={t("Latest browser actions", {}, locale)}>
+            <strong>{t("Latest actions", {}, locale)}</strong>
+            <ol>
+              {actions.slice(-5).map((action) => (
+                <li key={action.id} data-active={action.active}>
+                  <span className="browser-activity-icon" aria-hidden="true">
+                    {action.icon}
+                  </span>
+                  <span>{action.label}</span>
+                  <time>{action.active ? t("Now", {}, locale) : action.time}</time>
+                </li>
+              ))}
+            </ol>
+          </section>
+          <div className="browser-takeover-footer">
+            <p>{t("What you type here stays out of chat, the bot, and history.", {}, locale)}</p>
+            <button type="button" className="button button-quiet" onClick={() => keyboard.current?.focus()}>
+              {t("Type in the browser", {}, locale)}
+            </button>
+          </div>
+        </aside>
+      </div>
+      <textarea
+        ref={keyboard}
+        className="browser-takeover-keyboard"
+        aria-label={t("Keyboard input for the browser", {}, locale)}
+        autoComplete="off"
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
+        onKeyDown={keyDown}
+        onKeyUp={keyUp}
+        onCompositionStart={() => {
+          composing.current = true
+        }}
+        onInput={(event) => {
+          if (composing.current) return
+          sendText(event.currentTarget.value)
+          event.currentTarget.value = ""
+        }}
+        onPaste={(event) => {
+          event.preventDefault()
+          sendText(event.clipboardData.getData("text/plain"))
+          event.currentTarget.value = ""
+        }}
+        onCompositionEnd={(event) => {
+          composing.current = false
+          sendText(event.currentTarget.value || event.data)
+          event.currentTarget.value = ""
+        }}
+      />
+      {error && (
+        <p className="browser-takeover-error" role="alert">
+          {error}
+        </p>
+      )}
+      {!workerReady && !fallbackImage && !frame && (
+        <span className="browser-takeover-status" role="status">
+          {t("Waiting for the browser page…", {}, locale)}
+        </span>
+      )}
+    </section>
+  )
+}
