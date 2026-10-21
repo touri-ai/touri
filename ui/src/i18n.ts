@@ -583,8 +583,8 @@ export const ptBR = {
   "O portal de demonstração pediu login para continuar.": "O portal de demonstração pediu login para continuar.",
   "O portal de demonstração está pronto para continuar.": "O portal de demonstração está pronto para continuar.",
   "Retomado após a devolução do navegador": "Retomado após a devolução do navegador",
-  "Só quem fez o pedido ou a pessoa responsável pelo bot pode devolver o controle.":
-    "Só quem fez o pedido ou a pessoa responsável pelo bot pode devolver o controle.",
+  "Só quem fez o pedido ou a pessoa responsável pelo bot pode controlar esta aba.":
+    "Só quem fez o pedido ou a pessoa responsável pelo bot pode controlar esta aba.",
   "{name} is working again": "{name} voltou a trabalhar",
   "Could not choose safely. Take over the tab to choose.":
     "Não foi possível escolher com segurança. Assuma o controle da aba para escolher.",
@@ -4132,8 +4132,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Retomado após a devolução do navegador": "Resumed after the browser hand-back",
   "O portal de demonstração pediu login para continuar.": "The demo portal asked you to sign in before continuing.",
   "O portal de demonstração está pronto para continuar.": "The demo portal is ready to continue.",
-  "Só quem fez o pedido ou a pessoa responsável pelo bot pode devolver o controle.":
-    "Only the requester or the bot owner can return control.",
+  "Só quem fez o pedido ou a pessoa responsável pelo bot pode controlar esta aba.":
+    "Only the requester or the bot owner can control this tab.",
   "{name} is working again": "{name} is working again",
   "Baixar imagem": "Download image",
   "Unread messages": "{count} unread messages",

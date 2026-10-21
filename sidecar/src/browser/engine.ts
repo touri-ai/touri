@@ -4305,7 +4305,8 @@ export const createBrowserEngine = ({
 
     const emitNotice = kernel.services.use("notify.emit")
     const safeReason = kernel.redact(reason).slice(0, 300)
-    const notificationThreadId = takeover.threadId || tab.info.ownerThreadId
+    const sourceThread = kernel.services.use("store.api")?.getThread({ threadId: takeover.threadId })
+    const notificationThreadId = sourceThread?.groupThreadId ?? (takeover.threadId || tab.info.ownerThreadId)
     if (emitNotice)
       emitNotice({
         kind: "takeover",
@@ -4390,20 +4391,34 @@ export const createBrowserEngine = ({
     return releaseTakeoverState(tab)
   }
 
+  const canControlTakeover = (tab: TabState, personId: Id): boolean => {
+    const takeover = tab.takeover
+    return (
+      kernel.services.use("runtime.canReturnBrowserTakeover")?.({
+        botId: takeover?.botId ?? tab.info.ownerBotId ?? "",
+        threadId: takeover?.threadId ?? tab.info.ownerThreadId ?? "",
+        runId: takeover?.runId ?? null,
+        personId,
+      }) ?? false
+    )
+  }
+
   const releaseTakeoverForPerson: BrowserEngine["releaseTakeoverForPerson"] = async ({ tabId, personId }) => {
     const tab = store.find(tabId)
     if (!tab) return "not_found"
     if (!tab.info.heldByUser && !tab.takeover) return "released"
-    const takeover = tab.takeover
-    const allowed = kernel.services.use("runtime.canReturnBrowserTakeover")?.({
-      botId: takeover?.botId ?? tab.info.ownerBotId ?? "",
-      threadId: takeover?.threadId ?? tab.info.ownerThreadId ?? "",
-      runId: takeover?.runId ?? null,
-      personId,
-    })
-    if (!allowed) return "forbidden"
+    if (!canControlTakeover(tab, personId)) return "forbidden"
 
     return releaseTakeoverState(tab) ? "released" : "not_found"
+  }
+
+  const holdTakeoverForPerson: BrowserEngine["holdTakeoverForPerson"] = async ({ tabId, personId }) => {
+    const tab = store.find(tabId)
+    if (!tab || tab.info.state === "closed") return "not_found"
+    if (!canControlTakeover(tab, personId)) return "forbidden"
+
+    const held = await holdTakeover({ tabId, reason: "The user requested browser takeover" })
+    return held ? "held" : "not_found"
   }
 
   const holdTakeover = async ({ tabId, reason }: { tabId: Id; reason: string }): Promise<boolean> => {
@@ -4534,6 +4549,7 @@ export const createBrowserEngine = ({
     releaseTakeover,
     releaseTakeoverForPerson,
     holdTakeover,
+    holdTakeoverForPerson,
     getWindowBounds,
     tabsForBot,
     shutdown,

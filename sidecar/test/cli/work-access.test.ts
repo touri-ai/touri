@@ -15,6 +15,7 @@ database.exec(`
   CREATE TABLE threads (
     id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, group_id TEXT, owner_person_id TEXT, archived_at INTEGER
   );
+  CREATE TABLE browser_tabs (id TEXT PRIMARY KEY, owner_bot_id TEXT, owner_thread_id TEXT);
   CREATE TABLE workspace_message_attention (
     approval_id TEXT, thread_id TEXT NOT NULL, type TEXT NOT NULL, decision TEXT
   );
@@ -41,6 +42,9 @@ database.exec(`
   INSERT INTO threads VALUES ('member-dm', 'member-bot', NULL, 'member', NULL),
     ('other-dm', 'other-bot', NULL, 'owner', NULL), ('team-chat', 'team-bot', 'team-a', NULL, NULL),
     ('other-chat', 'other-bot', 'team-b', NULL, NULL);
+  INSERT INTO threads VALUES ('team-private', 'team-bot', NULL, 'owner', NULL);
+  INSERT INTO browser_tabs VALUES ('channel-tab', 'team-bot', 'team-chat'),
+    ('private-tab', 'team-bot', 'team-private'), ('member-tab', 'member-bot', 'member-dm');
   INSERT INTO workspace_message_attention VALUES ('member-approval', 'member-dm', 'approval', 'pending'),
     ('other-approval', 'other-dm', 'approval', 'pending'), ('team-approval', 'team-chat', 'approval', 'pending');
   INSERT INTO runs VALUES ('member-run', 'member-dm', 'member-request'), ('other-run', 'other-dm', 'owner-request');
@@ -316,7 +320,7 @@ test("members can fetch files from their own chats and channels only", () => {
   ).toBe(false)
 })
 
-test("browser handback reaches requester authorization without allowing other browser actions", () => {
+test("browser control reaches requester authorization and rejects malformed requests", () => {
   const request = {
     personId: "member",
     role: "member" as const,
@@ -330,6 +334,43 @@ test("browser handback reaches requester authorization without allowing other br
   const malformed = access.authorizeHttp({ ...request, body: {} })
 
   expect(handback).toBeNull()
-  expect(takeover?.status).toBe(403)
+  expect(takeover).toBeNull()
   expect(malformed?.status).toBe(403)
+})
+
+test("channel browser visibility includes shared tabs and excludes the same bot's private tabs", () => {
+  const viewer = { personId: "member", role: "member" as const }
+
+  const channel = access.canAccessBrowserTab({ ...viewer, tabId: "channel-tab" })
+  const privateTab = access.canAccessBrowserTab({ ...viewer, tabId: "private-tab" })
+  const own = access.canAccessBrowserTab({ ...viewer, tabId: "member-tab" })
+
+  expect(channel).toBe(true)
+  expect(privateTab).toBe(false)
+  expect(own).toBe(true)
+  expect(access.canAccessBrowserTab({ personId: "owner", role: "member", tabId: "private-tab" })).toBe(true)
+  expect(access.canAccessBrowserTab({ ...viewer, tabId: "missing" })).toBe(false)
+})
+
+test("channel browser events use tab scope rather than shared bot membership", () => {
+  const viewer = { personId: "member", role: "member" as const }
+  const tab = {
+    tabId: "channel-tab",
+    ownerBotId: "team-bot",
+    url: "https://portal.example.test/login",
+    title: "Portal",
+    state: "live" as const,
+    openerTabId: null,
+    heldByUser: false,
+    lastUsedAt: 1,
+  }
+
+  const shared = access.visibleEvent({ ...viewer, event: { type: "browser.tab", tab } })
+  const privateEvent = access.visibleEvent({
+    ...viewer,
+    event: { type: "browser.tab", tab: { ...tab, tabId: "private-tab" } },
+  })
+
+  expect(shared).toBe(true)
+  expect(privateEvent).toBe(false)
 })

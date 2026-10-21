@@ -1,8 +1,10 @@
-import { expect, spyOn, test } from "bun:test"
-import type { Bot, ToolContext } from "@touri/contracts"
+import { afterEach, expect, spyOn, test } from "bun:test"
+import type { Bot, BotGroup, Thread, ToolContext } from "@touri/contracts"
 import { attachLocalChrome } from "../../src/browser/launcher"
 import type { CdpClient, CdpEvent, JsonObject } from "../../src/browser/types"
 import { createRoutedBrowserEngine } from "../../src/browser/vm-router"
+import { init as initGroups } from "../../src/groups"
+import { createGroupStore } from "../../src/groups/store"
 import { init as initStore } from "../../src/store"
 import { testKernel } from "../kernel/test-kernel"
 
@@ -91,6 +93,15 @@ const fixture = async (unavailable = false) => {
   return { ...f, engine, bot, ctx, targets, calls, client }
 }
 
+const takeoverFixtures = new Set<Awaited<ReturnType<typeof fixture>>>()
+afterEach(async () => {
+  for (const resource of takeoverFixtures) {
+    await resource.engine.shutdown()
+    resource.close()
+  }
+  takeoverFixtures.clear()
+})
+
 test("routed local engine opens a default-context window, reads only owned pages and shuts down without closing Chrome", async () => {
   const f = await fixture()
   try {
@@ -166,4 +177,71 @@ test("local attachment failures reach the tool with setup steps and never spawn 
     await f.engine.shutdown()
     f.close()
   }
+})
+
+test("channel takeover notifies the channel and checks both control changes before one resume", async () => {
+  const f = await fixture()
+  takeoverFixtures.add(f)
+  await initGroups(f.kernel)
+  const response = await f.request("POST /groups", {
+    name: "Equipe de viagens",
+    color: "#2563eb",
+    avatarShape: "classic-none",
+    memberIds: [f.bot.id],
+    coordinatorBotId: null,
+  })
+  const { group, thread } = response.json as { group: BotGroup; thread: Thread }
+  const participant = createGroupStore(f.kernel).participant(group, thread.id, f.bot.id)
+  const ctx = { ...f.ctx, threadId: participant.id, runId: "handoff-run" }
+  const notifications: Array<string | null> = []
+  const resumed: Array<{ botId: string; threadId: string; runId: string }> = []
+  f.kernel.services.provide(
+    "runtime.canReturnBrowserTakeover",
+    (input) =>
+      input.botId === f.bot.id &&
+      input.threadId === participant.id &&
+      input.runId === ctx.runId &&
+      ["requester", "owner"].includes(input.personId),
+  )
+  f.kernel.services.provide("runtime.resumeAfterBrowserTakeover", (input) => {
+    resumed.push(input)
+    return true
+  })
+  f.kernel.services.provide("notify.emit", (input) => {
+    notifications.push(input.threadId)
+    return {
+      ...input,
+      id: 1,
+      level: "info",
+      botName: "Local",
+      botColor: "#2563eb",
+      avatarShape: "classic-none",
+      requestId: input.requestId ?? null,
+      createdAt: 1,
+      resolvedAt: null,
+      resolution: null,
+    }
+  })
+
+  expect((await f.engine.open({ url: "about:blank", ctx, timeoutMs: 1500 })).success).toBe(true)
+  const tabId = f.engine.tabsForBot(f.bot.id)[0]?.tabId
+  if (!tabId) throw new Error("Missing browser tab")
+  await f.engine.requestTakeover({
+    tabId,
+    botId: f.bot.id,
+    threadId: participant.id,
+    runId: ctx.runId,
+    reason: "Login",
+    timeoutMs: 120_000,
+    signal: ctx.signal,
+  })
+  expect(await f.engine.holdTakeoverForPerson({ tabId, personId: "other-member" })).toBe("forbidden")
+  expect(await f.engine.holdTakeoverForPerson({ tabId, personId: "requester" })).toBe("held")
+  expect(await f.engine.releaseTakeoverForPerson({ tabId, personId: "other-member" })).toBe("forbidden")
+  expect(f.engine.tabsForBot(f.bot.id)[0]?.heldByUser).toBe(true)
+  expect(await f.engine.releaseTakeoverForPerson({ tabId, personId: "owner" })).toBe("released")
+  expect(await f.engine.releaseTakeoverForPerson({ tabId, personId: "requester" })).toBe("released")
+
+  expect(notifications).toEqual([thread.id])
+  expect(resumed).toEqual([{ botId: f.bot.id, threadId: participant.id, runId: ctx.runId }])
 })

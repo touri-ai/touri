@@ -333,6 +333,16 @@ export const init = async (
 ): Promise<void> => {
   const mode = process.env.TOURI_BROWSER_EXECUTABLE === "chrome-for-testing" ? "chrome-for-testing" : "system-chrome"
   const engine = dependencies.engine ?? createRoutedBrowserEngine(kernel, mode, runStage ? { runStage } : {})
+  const getVisibleTabs = (botId: string | null, signal: AbortSignal) => {
+    const tabs = engine.tabsForBot(botId)
+    const person = deviceSession(signal)?.person
+    if (!person) return kernel.services.use("work.defaultPersonId") ? [] : tabs
+    const canRead = kernel.services.use("work.canAccessBrowserTab")
+
+    return tabs.filter(
+      (tab) => canRead?.({ personId: person.id, role: person.role, tabId: tab.tabId }) ?? person.role === "admin",
+    )
+  }
   let decisionModel: ApiModel | null = getBrowserDecisionModel(kernel)
   kernel.services.provide("browser.updateDecisionModel", (model) => {
     decisionModel = model?.browserDecisions === true ? model : null
@@ -768,7 +778,13 @@ export const init = async (
           const bot = kernel.services.use("store.api")?.getBot({ botId })
           if (!bot) return { status: 404, json: { error: "Bot não encontrado" } }
           if (bot.machine !== "local") return { status: 409, json: { error: "Use a tela da máquina virtual" } }
-          const frame = await engine.preview({ botId, ...(query.tabId ? { tabId: query.tabId } : {}), signal })
+          const tabs = getVisibleTabs(botId, signal)
+          const tab = query.tabId ? tabs.find((tab) => tab.tabId === query.tabId) : tabs[0]
+          const person = deviceSession(signal)?.person
+          const scoped = person?.role === "member" || (!person && Boolean(kernel.services.use("work.defaultPersonId")))
+          if (scoped && !tab) return { status: 404, json: { error: "Bot não encontrado" } }
+          const tabId = scoped ? tab?.tabId : query.tabId
+          const frame = await engine.preview({ botId, ...(tabId ? { tabId } : {}), signal })
           return frame
             ? { status: 200, json: frame }
             : { status: 409, json: { error: "Nenhuma página disponível para prévia" } }
@@ -779,6 +795,9 @@ export const init = async (
         path: "/browser/tabs",
         handler: async (request) => {
           const botId = request.query.botId ?? null
+          const person = deviceSession(request.signal)?.person
+          const unrestricted = person?.role === "admin" || (!person && !kernel.services.use("work.defaultPersonId"))
+          const visibleBotIds = new Set(getVisibleTabs(botId, request.signal).map((tab) => tab.ownerBotId))
           const running =
             kernel.services
               .use("vm.runtime")
@@ -786,7 +805,9 @@ export const init = async (
               .filter((machine) => machine.status === "running") ?? []
           await Promise.all(
             running
-              .filter((machine) => !botId || machine.botId === botId)
+              .filter(
+                (machine) => (!botId || machine.botId === botId) && (unrestricted || visibleBotIds.has(machine.botId)),
+              )
               .map(async (machine) => {
                 try {
                   // Same guest listing as browser_list_tabs; never starts a stopped machine.
@@ -796,9 +817,15 @@ export const init = async (
                 }
               }),
           )
+          const canReadFailure =
+            unrestricted ||
+            Boolean(botId && person && kernel.services.use("work.ownsBot")?.({ personId: person.id, botId }))
           return {
             status: 200,
-            json: { tabs: engine.tabsForBot(botId), ...(botId ? { lastFailure: failures.get(botId) ?? null } : {}) },
+            json: {
+              tabs: getVisibleTabs(botId, request.signal),
+              ...(botId && canReadFailure ? { lastFailure: failures.get(botId) ?? null } : {}),
+            },
           }
         },
       },
@@ -811,18 +838,18 @@ export const init = async (
           const tabId = request.params.id ?? ""
           const person = deviceSession(request.signal)?.person
           const personId = person?.id ?? (kernel.services.use("work.defaultPersonId") ? "" : "owner")
-          const release = hold ? "released" : await engine.releaseTakeoverForPerson({ tabId, personId })
-          if (!hold && release === "forbidden")
+          const control = hold
+            ? await engine.holdTakeoverForPerson({ tabId, personId })
+            : await engine.releaseTakeoverForPerson({ tabId, personId })
+          if (control === "forbidden")
             return {
               status: 403,
               json: {
                 errorCode: "DENIED",
-                error: "Só quem fez o pedido ou a pessoa responsável pelo bot pode devolver o controle.",
+                error: "Só quem fez o pedido ou a pessoa responsável pelo bot pode controlar esta aba.",
               },
             }
-          const ok = hold
-            ? await engine.holdTakeover({ tabId, reason: "The user requested browser takeover" })
-            : release === "released"
+          const ok = control === "held" || control === "released"
           return ok
             ? { status: 200, json: {} }
             : {

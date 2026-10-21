@@ -1453,6 +1453,7 @@ export type ServiceMap = {
   'work.visibleEvent': (input: { personId: Id; role: 'member' | 'admin'; event: UiEvent }) => boolean
   'work.canAccessThread': (input: { personId: Id; role: 'member' | 'admin'; threadId: Id }) => boolean
   'work.canAccessGroup': (input: { personId: Id; role: 'member' | 'admin'; groupId: Id }) => boolean
+  'work.canAccessBrowserTab': (input: { personId: Id; role: 'member' | 'admin'; tabId: Id }) => boolean
   'work.canAccessBot': (input: { personId: Id; role: 'member' | 'admin'; botId: Id }) => boolean
   'work.ownsBot': (input: { personId: Id; botId: Id }) => boolean
   'work.accessibleBotIds': (input: { personId: Id; channelIds: Array<Id> }) => Array<Id>
