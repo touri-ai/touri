@@ -1,5 +1,6 @@
 import { createContext, useContext } from "react"
 import { type Locale, t } from "../../i18n"
+import { useBrowserHold } from "../desktop/browserHold"
 import {
   type ChannelBrowserState,
   type ChannelBrowserView,
@@ -110,31 +111,44 @@ export const ChannelCardFooter = ({ locale = "pt-BR" }: { locale?: Locale }) => 
 
 export const ChannelComposerChip = ({
   botName,
+  botId,
   onStop,
   stopping = false,
   locale = "pt-BR",
 }: {
   botName: string
+  botId?: string | undefined
   onStop?: (() => void) | undefined
   stopping?: boolean | undefined
   locale?: Locale
 }) => {
   const channel = useChannelBrowserView()
+  const hold = useBrowserHold(botId)
+  const canReturnControl = Boolean(hold && (!channel || channel.canControl))
   const base = t("{name} is working · In the browser", { name: botName }, locale)
-  const text = channel ? `${base} · ${t("for {person}", { person: channel.state.requesterName }, locale)}` : base
+  const text =
+    channel?.state.controllerId && !channel.canControl
+      ? t("{person} is in control", { person: channel.controlName }, locale)
+      : channel
+        ? `${base} · ${t("for {person}", { person: channel.state.requesterName }, locale)}`
+        : base
 
   return (
-    <div className="composer-browser-status">
+    <div className="composer-browser-status" data-held={canReturnControl}>
       <span className="composer-browser-status-copy" role="status">
-        <span className="channel-dot" aria-hidden="true" />
+        <span className="composer-browser-status-dot" aria-hidden="true" />
         <span className="composer-browser-status-text">{text}</span>
       </span>
-      {onStop && (!channel || channel.canControl) && (
+      {canReturnControl && hold ? (
+        <button type="button" onClick={hold.release}>
+          {t("Hand back", {}, locale)}
+        </button>
+      ) : onStop && (!channel || channel.canControl) && !channel?.state.controllerId ? (
         <button
           type="button"
           className="composer-browser-stop"
-          aria-label={stopping ? t("Stopping reply…", {}, locale) : t("Stop reply button", {}, locale)}
-          title={t("Stop reply", {}, locale)}
+          aria-label={stopping ? t("Stopping reply…", {}, locale) : t("Stop {name}", { name: botName }, locale)}
+          title={t("Stop {name}", { name: botName }, locale)}
           disabled={stopping}
           onClick={onStop}
         >

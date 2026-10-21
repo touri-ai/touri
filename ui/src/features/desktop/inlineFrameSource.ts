@@ -17,6 +17,7 @@ type FrameRequest = { id: number; title: string; url: string } & (
 )
 type FrameResponse = { id: number; title: string; url: string; src?: string; error?: string }
 const MAX_SOURCE_PIXELS = 8_000_000
+const MIN_REFRESH_MS = 800
 
 /** Decodes a data: URL without fetch(), which the desktop CSP (connect-src) refuses for data: URLs. */
 export const dataUrlBlob = (value: string): Blob => {
@@ -38,7 +39,7 @@ export const startInlineFrameSource = (
   unavailable: (reason?: string) => void,
   status?: (message: string | null) => void,
   options: { intervalMs?: number } = {},
-): (() => void) => {
+): (() => void) & { refresh: () => void } => {
   const intervalMs = options.intervalMs ?? 1_000
   let active = true
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -46,6 +47,8 @@ export const startInlineFrameSource = (
   let socket: WebSocket | undefined
   let sessionId: string | undefined
   let frameId = 0
+  let sampling = false
+  let lastSampleAt = 0
   let processor: Worker | undefined
   let page: Pick<BrowserTabInfo, "title" | "url"> = { title: "Tela do computador", url: "" }
   const pendingFrames = new Map<number, { resolve: (frame: PreviewFrame) => void; reject: (error: Error) => void }>()
@@ -111,6 +114,8 @@ export const startInlineFrameSource = (
   }
   const slot = document.createElement("div")
   const sample = async () => {
+    sampling = true
+    lastSampleAt = Date.now()
     try {
       if (!active) return
       if (bot.machine === "local") {
@@ -146,7 +151,16 @@ export const startInlineFrameSource = (
         status?.(userFacingError(error))
         timer = setTimeout(() => void sample(), intervalMs)
       } else fail("A prévia perdeu a conexão com a VM.")
+    } finally {
+      sampling = false
     }
+  }
+  /** Grabs a frame right after an action, still one at a time and never faster than MIN_REFRESH_MS. */
+  const refresh = () => {
+    if (!active || sampling || !(bot.machine === "local" || viewer)) return
+    if (Date.now() - lastSampleAt < MIN_REFRESH_MS) return
+    clearTimeout(timer)
+    void sample()
   }
   const start = async () => {
     if (bot.machine === "local") return sample()
@@ -195,8 +209,11 @@ export const startInlineFrameSource = (
     })
     .catch(() => {})
   void start().catch((error: unknown) => fail(userFacingError(error)))
-  return () => {
-    stop()
-    unsubscribe()
-  }
+  return Object.assign(
+    () => {
+      stop()
+      unsubscribe()
+    },
+    { refresh },
+  )
 }

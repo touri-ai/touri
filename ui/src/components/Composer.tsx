@@ -704,6 +704,7 @@ export const Composer = ({
       {browserWorking && (
         <ChannelComposerChip
           botName={browserBotName ?? bot?.name ?? "touri"}
+          botId={bot?.id}
           onStop={() => void stop()}
           stopping={stopping}
           locale={locale}

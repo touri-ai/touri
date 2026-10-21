@@ -1,7 +1,7 @@
 import type { ApprovalPart, Message, MessagePart, Run } from "@touri/contracts"
 import { type Locale, type TranslationKey, t } from "../i18n"
 import { messageMarkdown } from "../messageMarkdown"
-import { approvalMatchesTool, type ToolPart, toolLeaf } from "./toolPresentation"
+import { approvalMatchesTool, type ToolPart, toolIdentity, toolLeaf } from "./toolPresentation"
 
 export const isActivityTool = (part: MessagePart): part is ToolPart =>
   part.type === "tool_call" || part.type === "command" || part.type === "file_change"
@@ -76,6 +76,7 @@ export const activitySummary = (
 export type AssistantSegment =
   | { type: "activity"; key: string }
   | { type: "text"; key: string; text: string }
+  | { type: "browser-steps"; key: string; count: number }
   | { type: "approval"; key: string; part: ApprovalPart }
   | { type: "attachments"; key: string; parts: Extract<MessagePart, { type: "image" | "file" }>[] }
 
@@ -85,9 +86,16 @@ export const assistantSegments = (message: Message): AssistantSegment[] => {
   let activity = false
   let textParts: MessagePart[] = []
   let textStart = 0
+  let browserCalls = new Set<string>()
+  let stepCount = 0
   const hasText = message.parts.some((part) => part.type === "text" && part.text.trim())
+  const flushSteps = (key: number) => {
+    if (stepCount) segments.push({ type: "browser-steps", key: `steps-${key}`, count: stepCount })
+    stepCount = 0
+  }
   const flushText = () => {
     if (!textParts.length) return
+    flushSteps(textStart)
     const text = messageMarkdown({ role: "assistant", text: "", parts: textParts })
     if (text.trim()) segments.push({ type: "text", key: `text-${textStart}`, text })
     textParts = []
@@ -100,6 +108,10 @@ export const assistantSegments = (message: Message): AssistantSegment[] => {
     }
     // Reasoning and tool boundaries must not flatten separate answer paragraphs.
     flushText()
+    if (part.type === "tool_call" && toolIdentity(part.tool).kind === "browser" && !browserCalls.has(part.callId)) {
+      browserCalls = new Set([...browserCalls, part.callId])
+      stepCount += 1
+    }
     if (part.type === "approval") segments.push({ type: "approval", key: part.approvalId, part })
     else if (part.type === "image" || part.type === "file")
       segments.push({ type: "attachments", key: `attachment-${index}`, parts: [part] })
@@ -109,6 +121,7 @@ export const assistantSegments = (message: Message): AssistantSegment[] => {
     }
   }
   flushText()
+  flushSteps(message.parts.length)
   if (message.parts.filter((part) => part.type === "text").length === 1 && hasText && message.text.trim()) {
     const saved = segments.find((segment) => segment.type === "text")
     if (saved?.type === "text") saved.text = messageMarkdown(message)

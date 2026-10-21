@@ -422,11 +422,7 @@ const Fixture = () => {
           />
         )}
         <footer className="browser-activity-composer">
-          {running && (
-            <div className="composer-browser-status" role="status">
-              {t("{name} is working · In the browser", { name: bot.name }, locale)}
-            </div>
-          )}
+          {running && <BrowserWorkingStatus name={bot.name} botId={bot.id} locale={locale} />}
           <textarea aria-label={t("Message", {}, locale)} placeholder={t("Write a message…", {}, locale)} />
         </footer>
       </main>
