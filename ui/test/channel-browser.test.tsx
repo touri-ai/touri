@@ -230,12 +230,13 @@ describe("browser card in a channel", () => {
     expect(screen.getByRole("button", { name: /Assumir/ })).toBeEnabled()
   })
 
-  test("hides the preview for the channel while someone has control", () => {
+  test("hides the preview for the channel while someone has control", async () => {
     renderCard(getState({ controllerId: "user-ana", controllerName: "Ana" }), "user-hugo")
 
     expect(screen.queryByRole("img", { name: "Página atual do navegador" })).toBeNull()
     expect(screen.getByText("Prévia oculta para o canal enquanto Ana digita")).toBeVisible()
     expect(screen.queryByText("Este navegador está sob seu controle.")).toBeNull()
+    expect(await screen.findAllByText("Uma pessoa está controlando esta aba; o bot está pausado.")).toHaveLength(1)
   })
 
   test("shows the queued request below the card", () => {

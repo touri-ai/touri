@@ -467,6 +467,13 @@ export const BrowserActivityCard = ({
   const takeoverActive = held && !finished
   const takeoverReason = heldTab?.reason ?? "requested"
   const reasonCopy = getTakeoverReasonCopy(takeoverReason, locale)
+  const controlStatusCopy = t(
+    channel?.state.controllerId
+      ? "A person is controlling this browser tab; the bot is paused."
+      : "The browser needs your help.",
+    {},
+    locale,
+  )
   if (takeoverSession && controlEpoch && activeTabId && api && !finished) {
     const takeoverCard = (
       <div className="browser-activity-stack">
@@ -668,16 +675,8 @@ export const BrowserActivityCard = ({
               {takeoverActive && (
                 <section className="browser-takeover-reason">
                   <strong>{t("Why {name} paused", { name: botName }, locale)}</strong>
-                  <p>{reasonCopy}</p>
-                  <p>
-                    {t(
-                      channel?.state.controllerId
-                        ? "A person is controlling this browser tab; the bot is paused."
-                        : "The browser needs your help.",
-                      {},
-                      locale,
-                    )}
-                  </p>
+                  {reasonCopy !== controlStatusCopy && <p>{reasonCopy}</p>}
+                  <p>{controlStatusCopy}</p>
                 </section>
               )}
               <strong>{t(takeoverActive ? "Recent actions" : "Browser activity", {}, locale)}</strong>
