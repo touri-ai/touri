@@ -5,6 +5,7 @@ import { asToolRecord, parseToolValue, toolIdentity, toolLeaf } from "./toolPres
 
 const MAX_INPUT_LENGTH = 12_000
 const MAX_OUTPUT_LENGTH = 16_000
+const MAX_LABEL_LENGTH = 72
 
 const getBrowserAction = (part: ToolCallPart): string =>
   toolLeaf(part.tool)
@@ -39,6 +40,19 @@ const getArgs = (part: ToolCallPart): Record<string, unknown> | null => {
   if (part.inputJson.length > MAX_INPUT_LENGTH) return null
 
   return asToolRecord(parseToolValue(redactToolText(part.inputJson)))
+}
+
+const getSafeLabel = (value: unknown): string | null => {
+  if (typeof value !== "string") return null
+
+  const label = redactToolText(value)
+    .replace(/\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b/gi, "[email]")
+    .replace(/\b(?:\+?\d[\d\s().-]{7,}\d)\b/g, "[number]")
+    .replace(/[\r\n\t]+/g, " ")
+    .trim()
+    .slice(0, MAX_LABEL_LENGTH)
+
+  return label || null
 }
 
 const getOutputTabId = (part: ToolCallPart): string | undefined => {

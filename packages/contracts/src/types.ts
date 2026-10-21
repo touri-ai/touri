@@ -1148,13 +1148,6 @@ export type ApiRoutes = {
     res: {}
   }
   'DELETE /browser/tabs/:id/takeover/session': { req: { sessionId: string }; res: {} }
-  'POST /browser/tabs/:id/takeover/session': { req: {}; res: { sessionId: string } }
-  'POST /browser/tabs/:id/takeover/frame': { req: { sessionId: string }; res: BrowserTakeoverFrame }
-  'POST /browser/tabs/:id/takeover/input': {
-    req: { sessionId: string; input: BrowserTakeoverInput }
-    res: {}
-  }
-  'DELETE /browser/tabs/:id/takeover/session': { req: { sessionId: string }; res: {} }
   'POST /browser/secret-entry/:id': { req: { secretName: string } | { cancel: true }; res: {} }
   'POST /computer/grants': { req: { botId: Id; threadId: Id; minutes: number }; res: { grantId: Id; expiresAt: EpochMs } }
   'POST /computer/kill': { req: {}; res: { revoked: number } }

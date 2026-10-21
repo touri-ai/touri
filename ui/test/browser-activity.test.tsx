@@ -9,6 +9,7 @@ import {
   getBrowserActivityNotice,
   getBrowserActivityTabId,
   getBrowserActivityUrl,
+  getBrowserTakeoverReason,
 } from "../src/components/browserActivityPresentation"
 import { InlinePreviewContext } from "../src/features/desktop/InlineLivePreview"
 import { startInlineFrameSource } from "../src/features/desktop/inlineFrameSource"
@@ -148,6 +149,16 @@ test("shows live browser steps and keeps typed values and URL credentials and qu
   expect(document.body.textContent).not.toContain("person@example.test")
   expect(document.body.textContent).not.toContain("private-password")
   expect(screen.getAllByText("https://travel.example.test/results")).toHaveLength(1)
+})
+
+test("sanitizes a takeover reason before showing it", () => {
+  const part = getPart({
+    callId: "takeover",
+    tool: "mcp__touri__browser_request_takeover",
+    inputJson: JSON.stringify({ reason: "Confirm with fixture@example.test at 2025550142" }),
+  })
+
+  expect(getBrowserTakeoverReason([part])).toBe("Confirm with [email] at [number]")
 })
 
 test("take-over holds the browser, opens its view, and the finished card collapses with the final image", async () => {
