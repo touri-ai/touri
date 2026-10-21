@@ -173,7 +173,7 @@ test("DELETE /threads/:id removes transcript, messages, search rows and unused a
   })
 })
 
-test("deletion refuses the main conversation and a thread with an active run", async () => {
+test("deletion refuses the main conversation and archiving refuses an active run", async () => {
   const fixture = await startFixture()
   const main = await fixture.request(`/threads/${fixture.bot.mainThreadId}`, "DELETE")
   expect(main.status).toBe(409)
@@ -184,11 +184,6 @@ test("deletion refuses the main conversation and a thread with an active run", a
     .query(`INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at)
       VALUES('active-delete-run',?,?, 'codex','user','running',?)`)
     .run(active.id, fixture.bot.id, Date.now())
-  const response = await fixture.request(`/threads/${active.id}`, "DELETE")
-  expect(response.status).toBe(409)
-  expect(await response.json()).toMatchObject({ errorCode: "THREAD_ACTIVE" })
-  expect(fixture.db.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(active.id)).toBeNull()
-
   const archive = await fixture.request(`/threads/${active.id}`, "PATCH", { archived: true })
   expect(archive.status).toBe(409)
   expect(await archive.json()).toMatchObject({ errorCode: "THREAD_ACTIVE" })
@@ -217,7 +212,7 @@ test("bulk deletion accepts 200 ids and rejects more than 200", async () => {
   const threads = Array.from({ length: 200 }, (_, index) => fixture.createThread(`Old event ${index}`))
   const response = await fixture.request("/threads/delete", "POST", { ids: threads.map((thread) => thread.id) })
   expect(response.status).toBe(202)
-  expect(await response.json()).toMatchObject({ threadIds: threads.map((thread) => thread.id), phase: "files" })
+  expect(await response.json()).toMatchObject({ threadIds: threads.map((thread) => thread.id), phase: "stopping" })
   await waitFor(
     () =>
       threads.every((thread) => !fixture.db.query("SELECT 1 FROM threads WHERE id = ?").get(thread.id)) &&
@@ -290,6 +285,73 @@ test("5,000-message deletion returns before cleanup and lets the event loop run"
   probe.stop()
   const timerLags = probe.getSamples()
   expect(timerLags.length).toBeGreaterThan(10)
+  console.log(
+    `Synthetic deletion: 5000 messages; interval=5ms; samples=${timerLags.length}; p99=${getPercentile(timerLags, 0.99).toFixed(2)}ms; max=${Math.max(...timerLags).toFixed(2)}ms`,
+  )
   expect(getPercentile(timerLags, 0.99)).toBeLessThan(50)
   expect(Math.max(...timerLags)).toBeLessThan(150)
+})
+
+test("deletion waits for cancellation before removing sessions or history", async () => {
+  const fixture = await startFixture()
+  const thread = fixture.createThread("Running conversation")
+  const cancelStarted = Promise.withResolvers<void>()
+  const finish = Promise.withResolvers<void>()
+  cleanups.add(async () => finish.resolve())
+  fixture.db
+    .query(
+      "INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at) VALUES('held-run',?,?, 'codex','user','running',1)",
+    )
+    .run(thread.id, fixture.bot.id)
+  fixture.runtime.kernel.services.provide("runtime.cancelThreadTurns", async ({ threadId }) => {
+    expect(threadId).toBe(thread.id)
+    cancelStarted.resolve()
+    await finish.promise
+    fixture.db.query("UPDATE runs SET status = 'canceled' WHERE id = 'held-run'").run()
+  })
+
+  const preview = await fixture.request(`/threads/${thread.id}/delete-preview`)
+  const response = await fixture.request(`/threads/${thread.id}`, "DELETE")
+  await cancelStarted.promise
+
+  expect(preview.status).toBe(200)
+  expect(response.status).toBe(202)
+  expect(fixture.db.query("SELECT phase FROM thread_deletions WHERE thread_id = ?").get(thread.id)).toEqual({
+    phase: "stopping",
+  })
+  expect(fixture.db.query("SELECT archived_at FROM threads WHERE id = ?").get(thread.id)).toEqual({ archived_at: null })
+  const send = await fixture.request(`/threads/${thread.id}/messages`, "POST", { text: "A late message" })
+  expect(send.status).toBe(409)
+  finish.resolve()
+  await waitFor(() => !fixture.db.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(thread.id))
+  expect(fixture.db.query("SELECT 1 FROM threads WHERE id = ?").get(thread.id)).toBeNull()
+})
+
+test("archived pages are bounded, seek by id and keep messages searchable", async () => {
+  const fixture = await startFixture()
+  const threads = Array.from({ length: 105 }, (_, index) => fixture.createThread(`Archive ${index}`))
+  fixture.db.query("UPDATE threads SET archived_at = 1 WHERE kind = 'chat'").run()
+  const target = threads[0]
+  if (!target) throw new Error("Missing archive fixture")
+  fixture.db
+    .query("INSERT INTO messages_fts(text,thread_id,message_id) VALUES('syntheticarchive',?,'archived-message')")
+    .run(target.id)
+
+  const first = await fixture.request(`/bots/${fixture.bot.id}/threads?archived=true`)
+  const page = ((await first.json()) as { threads: Array<Thread> }).threads
+  const cursor = page.at(-1)?.id
+  const second = await fixture.request(`/bots/${fixture.bot.id}/threads?archived=true&before=${cursor}`)
+  const next = ((await second.json()) as { threads: Array<Thread> }).threads
+  const search = await fixture.request("/search?q=syntheticarchive")
+
+  expect(page).toHaveLength(100)
+  expect(next).toHaveLength(5)
+  expect(new Set([...page, ...next].map(({ id }) => id)).size).toBe(105)
+  expect(await search.json()).toMatchObject({ hits: [{ thread: { id: target.id, archivedAt: 1 } }] })
+  const plan = fixture.db
+    .query(
+      "EXPLAIN QUERY PLAN SELECT id FROM threads WHERE bot_id = ? AND group_id IS NULL AND archived_at IS NOT NULL AND id < ? ORDER BY id DESC LIMIT 100",
+    )
+    .all(fixture.bot.id, cursor) as Array<{ detail: string }>
+  expect(plan.some(({ detail }) => detail.includes("threads_archived_page") && detail.includes("id<?"))).toBe(true)
 })

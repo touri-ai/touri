@@ -68,7 +68,7 @@ export const CommandPalette = ({
     const local = groups.find((group) => group.id === "messages")?.items ?? []
     const items = new Map(local.map((item) => [item.id, item]))
     for (const hit of search.hits) {
-      const thread = threads.find((thread) => thread.id === hit.threadId)
+      const thread = hit.thread ?? threads.find((thread) => thread.id === hit.threadId)
       const id = `message:${hit.messageId}`
       if (thread && !items.has(id))
         items.set(id, {
@@ -76,7 +76,7 @@ export const CommandPalette = ({
           group: "messages",
           label: markdownSummary(hit.snippet),
           detail: markdownSummary(threadTitle(thread.title, thread.createdAt)),
-          command: { kind: "thread", threadId: thread.id },
+          command: { kind: "thread", threadId: thread.id, archived: thread.archivedAt !== null },
         })
     }
     return items.size

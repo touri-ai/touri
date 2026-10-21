@@ -703,6 +703,16 @@ const AppContent = ({ kernel }: AppProps) => {
       return
     }
     if (command.kind === "thread") {
+      if (command.archived) {
+        void actions
+          .archiveThread(command.threadId, false)
+          .then(() => {
+            actions.selectThread(command.threadId)
+            setRoute({ section: "bots", screen: "chat" })
+          })
+          .catch(() => showNotice(t("Could not update this conversation. Try again.")))
+        return
+      }
       actions.selectThread(command.threadId)
       setRoute({ section: "bots", screen: "chat" })
       return

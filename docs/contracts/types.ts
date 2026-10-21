@@ -782,7 +782,7 @@ export type ApiRoutes = {
   'POST /bots/:id/desktop/return': { req: {}; res: {} }
   'POST /desktop/:id/text': { req: { text: string }; res: {} }
   'DELETE /desktop/:id': { req: {}; res: {} }
-  'GET /bots/:id/threads': { req: { archived?: boolean }; res: { threads: Array<Thread> } }
+  'GET /bots/:id/threads': { req: { archived?: boolean; before?: Id }; res: { threads: Array<Thread> } }
   'POST /threads': { req: { botId: Id; title?: string }; res: { thread: Thread } }
   'PATCH /threads/:id': { req: { title?: string; activeLeafId?: Id; archived?: boolean }; res: { thread: Thread } }
   'GET /threads/:id/delete-preview': { req: {}; res: { thread: Pick<Thread, 'id' | 'title'>; messageCount: number } }
@@ -798,7 +798,7 @@ export type ApiRoutes = {
   'POST /runs/:id/cancel': { req: {}; res: { run: Run } }
   'POST /runs/:id/retry': { req: {}; res: { run: Run } }
   'POST /approvals/:id': { req: { decision: 'approved' | 'denied'; standing?: boolean }; res: {} }
-  'GET /search': { req: { q: string; botId?: Id }; res: { hits: Array<{ threadId: Id; messageId: Id; snippet: string }> } }
+  'GET /search': { req: { q: string; botId?: Id }; res: { hits: Array<{ threadId: Id; messageId: Id; snippet: string; thread?: Thread | null }> } }
   'POST /attachments': { req: { grantId: string } | { path: AbsolutePath }; res: { attachment: Attachment } }
   'GET /attachments/:id': { req: {}; res: Blob }
   'GET /routines': { req: { botId?: Id }; res: { routines: Array<Routine>; host?: 'mac' | 'server' } }
@@ -1165,6 +1165,7 @@ export type ServiceMap = {
   'runtime.settingsChanged': () => void
   'runtime.activeRun': (args: { threadId: Id }) => Run | null
   'runtime.continueAfterApproval': (ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId' | 'signal'>) => boolean
+  'runtime.cancelThreadTurns': (args: { threadId: Id }) => Promise<void>
   'runtime.cancelBotTurns': (args: { botId: Id }) => Promise<void>
   'runtime.shutdown': () => Promise<void>
   'projects.info': (args: { projectId: Id; botId?: Id }) => Promise<ProjectInfo | null>

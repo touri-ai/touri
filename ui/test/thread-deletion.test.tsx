@@ -172,3 +172,37 @@ it("provides English labels for archive, deletion confirmation and undo", () => 
   )
   expect(t("Undo", {}, "en")).toBe("Undo")
 })
+
+it("finds and restores archived message results after reopening the app", async () => {
+  const { api, thread } = getThreadFixture()
+  await api.request("PATCH /threads/:id", { archived: true }, { id: thread.id })
+  render(<App kernel={{ services: { api } }} />)
+  await getConversationRegion()
+
+  fireEvent.keyDown(window, { key: "k", metaKey: true })
+  const input = await screen.findByRole("combobox", { name: "Buscar bots, conversas e configurações" })
+  fireEvent.change(input, { target: { value: "atualização automática" } })
+  const result = await screen.findByRole("option", { name: /Uma atualização automática de exemplo/ })
+  fireEvent.click(result)
+
+  await waitFor(() => expect(api.getState().threads.find(({ id }) => id === thread.id)?.archivedAt).toBeNull())
+  await waitFor(() => expect(screen.getByRole("button", { name: /Eventos de leads/ })).toHaveClass("selected"))
+})
+
+it("refreshes an already loaded archive after archiving a selection", async () => {
+  const { api, thread } = getThreadFixture()
+  render(<App kernel={{ services: { api } }} />)
+  const conversations = await getConversationRegion()
+  const toggle = within(conversations).getByRole("button", { name: /Arquivadas/ })
+  fireEvent.click(toggle)
+  await screen.findByText("Não há conversas arquivadas.")
+  fireEvent.click(toggle)
+
+  fireEvent.click(within(conversations).getByRole("button", { name: "Selecionar", exact: true }))
+  fireEvent.click(within(conversations).getByRole("checkbox", { name: `Selecionar conversa ${thread.title}` }))
+  fireEvent.click(within(conversations).getByRole("button", { name: "Arquivar selecionadas" }))
+  await waitFor(() => expect(within(conversations).queryByRole("button", { name: /Eventos de leads/ })).toBeNull())
+  fireEvent.click(toggle)
+
+  await screen.findByRole("button", { name: "Abrir conversa arquivada Eventos de leads" })
+})

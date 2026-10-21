@@ -21,7 +21,7 @@ const thread: Thread = {
   createdAt: timestamp,
   updatedAt: timestamp,
   unread: 0,
-  archivedAt: null,
+  archivedAt: new URLSearchParams(location.search).has("archived") ? timestamp : null,
 }
 const message: Message = {
   ...baseMessage,
@@ -34,6 +34,7 @@ const message: Message = {
   createdAt: timestamp,
   updatedAt: timestamp,
 }
+// The mock exposes mutable fixture collections for seeding before React mounts.
 state.threads.push(thread)
 state.messages.push(message)
 localStorage.setItem(

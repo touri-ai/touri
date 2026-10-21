@@ -10,6 +10,7 @@ import { createEventBus } from "../../src/kernel/event-bus"
 import { createRuntimeEngine } from "../../src/runtime/engine"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { init as initStore } from "../../src/store"
+import { threadDeletionRoutes } from "../../src/store/thread-deletion"
 
 const cleanups = new Set<() => void | Promise<void>>()
 
@@ -72,6 +73,44 @@ test("mid-stream cancellation preserves buffered text in live sockets, reconnect
   expect(reconnected.frames.map(({ seq }) => seq)).toEqual(
     Array.from({ length: reconnected.frames.length }, (_, index) => cursor + index + 1),
   )
+})
+
+test("deleting a streaming conversation aborts and waits for its provider before purging", async () => {
+  const fixture = await getFixture()
+  const turn = await fixture.ready
+  const canceled = Promise.withResolvers<void>()
+  const settled = Promise.withResolvers<void>()
+  turn.signal.addEventListener("abort", () => canceled.resolve(), { once: true })
+  fixture.kernel.services.provide("runtime.cancelThreadTurns", async () => {
+    await fixture.engine.cancelRuns([fixture.runId])
+    settled.resolve()
+  })
+  fixture.kernel.services.provide("runtime.activeRun", fixture.engine.activeRun)
+  fixture.kernel.services.use("storage.threadDeletion")?.dispose()
+  const route = threadDeletionRoutes(
+    fixture.kernel,
+    undefined,
+    (threadId) => fixture.store.flushWritesAsync?.({ threadId }) ?? Promise.resolve(),
+  ).find(({ method }) => method === "DELETE")
+  if (!route) throw new Error("Missing deletion route")
+  cleanups.add(() => fixture.kernel.services.use("storage.threadDeletion")?.dispose())
+
+  const response = await route.handler({
+    params: { id: "thread" },
+    query: {},
+    body: {},
+    signal: new AbortController().signal,
+  })
+  await canceled.promise
+
+  expect(response.status).toBe(202)
+  expect(turn.signal.aborted).toBe(true)
+  expect(fixture.database.query("SELECT 1 FROM threads WHERE id = 'thread'").get()).not.toBeNull()
+  fixture.finish()
+  await settled.promise
+  await getReady(() => !fixture.database.query("SELECT 1 FROM thread_deletions WHERE thread_id = 'thread'").get())
+  expect(fixture.database.query("SELECT 1 FROM threads WHERE id = 'thread'").get()).toBeNull()
+  expect(fixture.engine.activeRun({ threadId: "thread" })).toBeNull()
 })
 
 test("a failed stream drain still finalizes the run and releases its thread", async () => {

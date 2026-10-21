@@ -128,6 +128,13 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
   kernel.services.provide("runtime.activeRun", ({ threadId }) => engine.activeRun({ threadId }))
   kernel.services.provide("runtime.continueAfterApproval", engine.continueAfterApproval)
   kernel.services.provide("runtime.cancelBotTurns", groups.cancelBotTurns)
+  kernel.services.provide("runtime.cancelThreadTurns", async ({ threadId }) => {
+    await groups.cancelThreadTurns({ threadId })
+    const runs = (kernel.db as Database)
+      .query("SELECT id FROM runs WHERE thread_id = ? AND status IN ('queued','starting','running') LIMIT 32")
+      .all(threadId) as Array<{ id: string }>
+    await engine.cancelRuns(runs.map((run) => run.id))
+  })
   kernel.services.provide("runtime.cancelRun", ({ runId }) => {
     const grouped = groups.cancel(runId)
     return engine.cancel(runId).success || grouped

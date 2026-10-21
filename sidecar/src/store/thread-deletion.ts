@@ -178,39 +178,39 @@ export const createThreadDeletionManager = (
   const removeThreadAttachments = async (threadId: string): Promise<boolean> => {
     if (isStorageUpgradePending(database)) return false
 
-    const attachments = new Set<string>()
-    let cursor = ""
     while (!disposed) {
       const rows = database
         .query(`SELECT attachment_id FROM thread_deletion_attachments
-          WHERE thread_id = ? AND attachment_id > ? ORDER BY attachment_id LIMIT ?`)
-        .all(threadId, cursor, ATTACHMENT_BATCH_SIZE) as Array<{ attachment_id: string }>
-      if (!rows.length) break
-      rows.forEach(({ attachment_id }) => {
-        attachments.add(attachment_id)
-      })
-      cursor = rows.at(-1)?.attachment_id ?? cursor
+          WHERE thread_id = ? ORDER BY attachment_id LIMIT ?`)
+        .all(threadId, ATTACHMENT_BATCH_SIZE) as Array<{ attachment_id: string }>
+      if (!rows.length) return true
+
+      const attachments = new Set(rows.map(({ attachment_id }) => attachment_id))
+      let deferred = false
+      await collectBlobs(
+        database,
+        kernel.paths.appData,
+        Date.now(),
+        () => new Promise<void>((resolve) => setImmediate(resolve)),
+        attachments,
+        undefined,
+        () => {
+          deferred = true
+        },
+        AbortSignal.timeout(10_000),
+        10_000,
+      )
+      if (disposed || deferred) return false
+      database.transaction(() => {
+        rows.forEach(({ attachment_id }) => {
+          database
+            .query("DELETE FROM thread_deletion_attachments WHERE thread_id = ? AND attachment_id = ?")
+            .run(threadId, attachment_id)
+        })
+      })()
       await new Promise<void>((resolve) => setImmediate(resolve))
     }
-    if (disposed) return false
-    if (!attachments.size) return true
-
-    let deferred = false
-    const signal = AbortSignal.timeout(10_000)
-    await collectBlobs(
-      database,
-      kernel.paths.appData,
-      Date.now(),
-      () => new Promise<void>((resolve) => setImmediate(resolve)),
-      attachments,
-      undefined,
-      () => {
-        deferred = true
-      },
-      signal,
-      10_000,
-    )
-    return !deferred
+    return false
   }
 
   const finishJob = async (job: DeletionJob): Promise<void> => {
@@ -243,6 +243,28 @@ export const createThreadDeletionManager = (
           .query("SELECT * FROM thread_deletions ORDER BY created_at, thread_id LIMIT 1")
           .get() as DeletionJob | null
         if (!job) return
+        if (job.phase === "stopping") {
+          await kernel.services.use("runtime.cancelThreadTurns")?.({ threadId: job.thread_id })
+          if (disposed) return
+          const active = database
+            .query("SELECT 1 FROM runs WHERE thread_id = ? AND status IN ('queued','starting','running') LIMIT 1")
+            .get(job.thread_id)
+          if (active || kernel.services.use("runtime.activeRun")?.({ threadId: job.thread_id }))
+            throw new Error("Thread still has active work")
+          await drainThread(job.thread_id)
+          database.transaction(() => {
+            database
+              .query("UPDATE threads SET archived_at = coalesce(archived_at, ?), updated_at = ? WHERE id = ?")
+              .run(Date.now(), Date.now(), job.thread_id)
+            database
+              .query(
+                "UPDATE thread_deletions SET phase = 'files', error_code = NULL, updated_at = ? WHERE thread_id = ?",
+              )
+              .run(Date.now(), job.thread_id)
+          })()
+          await new Promise<void>((resolve) => setImmediate(resolve))
+          continue
+        }
         if (job.phase === "cleanup") {
           await finishJob(job)
           await new Promise<void>((resolve) => setImmediate(resolve))
@@ -260,11 +282,7 @@ export const createThreadDeletionManager = (
           continue
         }
         if (job.phase === "drain") {
-          try {
-            await drainThread(job.thread_id)
-          } catch {
-            kernel.log({ level: "warn", module: "store", msg: "Thread deletion continued after stream writes failed" })
-          }
+          await drainThread(job.thread_id)
           database
             .query(
               "UPDATE thread_deletions SET phase = 'events', error_code = NULL, updated_at = ? WHERE thread_id = ?",
@@ -327,27 +345,30 @@ const getThreadRow = (database: Database, threadId: string): ThreadRow | null =>
       FROM threads t JOIN bots b ON b.id = t.bot_id WHERE t.id = ?`)
     .get(threadId) as ThreadRow | null) ?? null
 
-const getPermissionError = (thread: ThreadRow, signal: AbortSignal): ReturnType<typeof errorResponse> | null => {
+const getPermissionError = (
+  kernel: Kernel,
+  thread: ThreadRow,
+  signal: AbortSignal,
+): ReturnType<typeof errorResponse> | null => {
   const person = deviceSession(signal)?.person
-  if (!person || person.role === "admin" || thread.owner_person_id === person.id) return null
+  if (!person || person.role === "admin") return null
+  if (
+    thread.group_id &&
+    !kernel.services.use("work.canAccessThread")?.({ personId: person.id, role: person.role, threadId: thread.id })
+  )
+    return errorResponse(403, "THREAD_DELETE_FORBIDDEN", "Você não tem permissão para excluir esta conversa.")
+  if (thread.owner_person_id === person.id) return null
   const ownsBot = thread.responsible_person_id === person.id && thread.group_id === null
   if (ownsBot) return null
 
   return errorResponse(403, "THREAD_DELETE_FORBIDDEN", "Você não tem permissão para excluir esta conversa.")
 }
 
-const getDeleteError = (kernel: Kernel, thread: ThreadRow): ReturnType<typeof errorResponse> | null => {
+const getDeleteError = (thread: ThreadRow): ReturnType<typeof errorResponse> | null => {
   if (thread.kind === "main" || thread.main_thread_id === thread.id)
     return errorResponse(409, "THREAD_MAIN", "A conversa principal do bot não pode ser excluída.")
   if (thread.machine === "cloud")
     return errorResponse(409, "THREAD_REMOTE", "Esta conversa remota não pode ser excluída por este servidor.")
-
-  const activeDatabaseRun = (kernel.db as Database)
-    .query("SELECT 1 FROM runs WHERE thread_id = ? AND status IN ('queued','starting','running') LIMIT 1")
-    .get(thread.id)
-  const activeRun = kernel.services.use("runtime.activeRun")?.({ threadId: thread.id })
-  if (activeDatabaseRun || activeRun)
-    return errorResponse(409, "THREAD_ACTIVE", "Encerre a execução antes de excluir esta conversa.")
 
   return null
 }
@@ -367,10 +388,7 @@ export const threadDeletionRoutes = (
       .transaction(() => {
         const insert = database.query(`INSERT INTO thread_deletions(
         thread_id, bot_id, group_id, owner_person_id, responsible_person_id, phase, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, 'files', ?, ?)`)
-        const hide = database.query(
-          "UPDATE threads SET archived_at = coalesce(archived_at, ?), updated_at = ? WHERE id = ?",
-        )
+      ) VALUES (?, ?, ?, ?, ?, 'stopping', ?, ?)`)
         threads.forEach((thread) => {
           insert.run(
             thread.id,
@@ -381,7 +399,6 @@ export const threadDeletionRoutes = (
             at,
             at,
           )
-          hide.run(at, at, thread.id)
         })
         database
           .query(`UPDATE schema_meta SET value = cast(max(cast(value AS INTEGER),
@@ -393,9 +410,9 @@ export const threadDeletionRoutes = (
   }
 
   const validateDeletion = (thread: ThreadRow, signal: AbortSignal): ReturnType<typeof errorResponse> | null => {
-    const permissionError = getPermissionError(thread, signal)
+    const permissionError = getPermissionError(kernel, thread, signal)
     if (permissionError) return permissionError
-    const deletionError = getDeleteError(kernel, thread)
+    const deletionError = getDeleteError(thread)
     if (deletionError) return deletionError
     if (database.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(thread.id))
       return errorResponse(409, "THREAD_DELETING", "Esta conversa já está sendo excluída.")
@@ -409,9 +426,9 @@ export const threadDeletionRoutes = (
       handler: async ({ params, signal }) => {
         const thread = getThreadRow(database, params.id ?? "")
         if (!thread) return errorResponse(404, "NOT_FOUND", "Conversa não encontrada.")
-        const permissionError = getPermissionError(thread, signal)
+        const permissionError = getPermissionError(kernel, thread, signal)
         if (permissionError) return permissionError
-        const deletionError = getDeleteError(kernel, thread)
+        const deletionError = getDeleteError(thread)
         if (deletionError) return deletionError
         if (database.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(thread.id))
           return errorResponse(409, "THREAD_DELETING", "Esta conversa já está sendo excluída.")
@@ -434,7 +451,7 @@ export const threadDeletionRoutes = (
         const error = validateDeletion(thread, signal)
         if (error) return error
         queueDeletion([thread])
-        return { status: 202, json: { threadId: thread.id, phase: "files" } }
+        return { status: 202, json: { threadId: thread.id, phase: "stopping" } }
       },
     },
     {
@@ -466,7 +483,7 @@ export const threadDeletionRoutes = (
         }
 
         queueDeletion(threads)
-        return { status: 202, json: { threadIds: ids, phase: "files" } }
+        return { status: 202, json: { threadIds: ids, phase: "stopping" } }
       },
     },
   ]

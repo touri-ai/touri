@@ -88,7 +88,7 @@ type SidebarProps = {
   onDeleteThread?: (threadId: string, botId: string) => Promise<void>
   onDeleteThreads?: (threadIds: Array<string>, botId: string) => Promise<void>
   onGetThreadDeletePreview?: (threadId: string) => Promise<ApiRoutes["GET /threads/:id/delete-preview"]["res"]>
-  onLoadArchivedThreads?: (botId: string) => Promise<Array<Thread>>
+  onLoadArchivedThreads?: (botId: string, before?: string) => Promise<Array<Thread>>
   onSettings: () => void
   onDoctor: () => void
   onRecovery?: () => void
@@ -446,13 +446,23 @@ const BotEntry = ({
   onGetThreadDeletePreview?:
     | ((threadId: string) => Promise<ApiRoutes["GET /threads/:id/delete-preview"]["res"]>)
     | undefined
-  onLoadArchivedThreads?: ((botId: string) => Promise<Array<Thread>>) | undefined
+  onLoadArchivedThreads?: ((botId: string, before?: string) => Promise<Array<Thread>>) | undefined
 }) => {
   const [menuOpen, setMenuOpen] = useState(false)
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedThreadIds, setSelectedThreadIds] = useState<Set<string>>(new Set())
   const [archivedThreads, setArchivedThreads] = useState<Array<Thread>>([])
   const [archivedLoaded, setArchivedLoaded] = useState(false)
+  const [archivePage, setArchivePage] = useState(0)
+  const [archiveCursor, setArchiveCursor] = useState<string | undefined>()
+  const archiveEntries = useMemo(
+    () =>
+      [...new Map([...archivedThreads, ...threads].map((thread) => [thread.id, thread])).values()].filter(
+        (thread) => thread.archivedAt !== null && !thread.groupId,
+      ),
+    [archivedThreads, threads],
+  )
+  const visibleArchivePage = Math.min(archivePage, Math.max(0, Math.ceil(archiveEntries.length / 100) - 1))
   const [archivedOpen, setArchivedOpen] = useState(false)
   const [archivedLoading, setArchivedLoading] = useState(false)
   const [deleteTargets, setDeleteTargets] = useState<Array<ThreadDeleteTarget> | null>(null)
@@ -620,8 +630,16 @@ const BotEntry = ({
     const targets = selectableThreads.filter((thread) => selectedThreadIds.has(thread.id))
     setActionError(null)
     try {
-      const previews = await Promise.all(targets.map((thread) => onGetThreadDeletePreview(thread.id)))
-      setDeleteTargets(previews.map((preview) => ({ ...preview.thread, messageCount: preview.messageCount })))
+      const batches = Array.from({ length: Math.ceil(targets.length / 8) }, (_, index) =>
+        targets.slice(index * 8, (index + 1) * 8),
+      )
+      const previews: Array<ThreadDeleteTarget> = []
+      for (const batch of batches) {
+        const results = await Promise.all(batch.map((thread) => onGetThreadDeletePreview(thread.id)))
+        // This local accumulator is limited to the 200 selected conversations.
+        previews.push(...results.map((preview) => ({ ...preview.thread, messageCount: preview.messageCount })))
+      }
+      setDeleteTargets(previews)
     } catch (error) {
       setActionError(getDeleteError(error))
     }
@@ -705,8 +723,25 @@ const BotEntry = ({
     setArchivedLoading(true)
     setActionError(null)
     try {
-      setArchivedThreads(await onLoadArchivedThreads(bot.id))
+      const page = await onLoadArchivedThreads(bot.id)
+      setArchivedThreads(page)
+      setArchivePage(0)
+      setArchiveCursor(page.length === 100 ? page.at(-1)?.id : undefined)
       setArchivedLoaded(true)
+    } catch {
+      setActionError(t("Could not load archived conversations."))
+    } finally {
+      setArchivedLoading(false)
+    }
+  }
+  const loadMoreArchives = async (): Promise<void> => {
+    if (!onLoadArchivedThreads || !archiveCursor || archivedLoading) return
+    setArchivedLoading(true)
+    try {
+      const page = await onLoadArchivedThreads(bot.id, archiveCursor)
+      setArchivedThreads((current) => [...current, ...page])
+      if (page.length) setArchivePage(visibleArchivePage + 1)
+      setArchiveCursor(page.length === 100 ? page.at(-1)?.id : undefined)
     } catch {
       setActionError(t("Could not load archived conversations."))
     } finally {
@@ -1009,14 +1044,15 @@ const BotEntry = ({
                 onClick={() => void toggleArchives()}
               >
                 {t("Archived")}
-                <span>{archivedThreads.length}</span>
+                <span>{archiveEntries.length}</span>
               </button>
               {archivedOpen && (
                 <section className="archived-thread-list" aria-label={t("Archived")}>
                   {archivedLoading ? (
                     <p className="field-help">{t("Loading archived conversations…")}</p>
-                  ) : archivedThreads.filter((thread) => !hiddenThreadIds.has(thread.id)).length ? (
-                    archivedThreads
+                  ) : archiveEntries.filter((thread) => !hiddenThreadIds.has(thread.id)).length ? (
+                    archiveEntries
+                      .slice(archivePage * 100, (visibleArchivePage + 1) * 100)
                       .filter((thread) => !hiddenThreadIds.has(thread.id))
                       .map((thread) => (
                         <ThreadRow
@@ -1039,6 +1075,31 @@ const BotEntry = ({
                       ))
                   ) : (
                     <p className="field-help">{t("No archived conversations.")}</p>
+                  )}
+                  {visibleArchivePage > 0 && (
+                    <button
+                      type="button"
+                      className="new-thread-row"
+                      onClick={() => setArchivePage(visibleArchivePage - 1)}
+                    >
+                      {t("Previous archived conversations")}
+                    </button>
+                  )}
+                  {(archiveCursor || (visibleArchivePage + 1) * 100 < archiveEntries.length) && (
+                    <button
+                      type="button"
+                      className="new-thread-row"
+                      disabled={archivedLoading}
+                      onClick={() => {
+                        if ((visibleArchivePage + 1) * 100 < archiveEntries.length) {
+                          setArchivePage(visibleArchivePage + 1)
+                          return
+                        }
+                        void loadMoreArchives()
+                      }}
+                    >
+                      {t("Load more archived conversations")}
+                    </button>
                   )}
                 </section>
               )}

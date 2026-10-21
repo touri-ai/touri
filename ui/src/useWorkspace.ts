@@ -111,7 +111,7 @@ export type WorkspaceActions = {
   deleteThread: (threadId: Id, botId: Id) => Promise<void>
   deleteThreads: (threadIds: Array<Id>, botId: Id) => Promise<void>
   getThreadDeletePreview: (threadId: Id) => Promise<ApiRoutes["GET /threads/:id/delete-preview"]["res"]>
-  loadArchivedThreads: (botId: Id) => Promise<Array<Thread>>
+  loadArchivedThreads: (botId: Id, before?: Id) => Promise<Array<Thread>>
   machineAction: (botId: Id, reset: boolean, projectId?: Id | null, stopTurns?: boolean) => Promise<void>
   createBot: (
     input: ApiRoutes["POST /bots"]["req"],
@@ -1831,8 +1831,12 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
         }
       },
       getThreadDeletePreview: (threadId) => api.request("GET /threads/:id/delete-preview", {}, { id: threadId }),
-      loadArchivedThreads: async (botId) => {
-        const response = await api.request("GET /bots/:id/threads", { archived: true }, { id: botId })
+      loadArchivedThreads: async (botId, before) => {
+        const response = await api.request(
+          "GET /bots/:id/threads",
+          { archived: true, ...(before ? { before } : {}) },
+          { id: botId },
+        )
         return response.threads
       },
       createBot,

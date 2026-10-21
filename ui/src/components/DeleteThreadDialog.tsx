@@ -55,6 +55,7 @@ export const DeleteThreadDialog = ({
           </>
         )}
       </div>
+      <p>{t("Deleting stops any active work in these conversations.")}</p>
       <p className="field-help">{t("You can undo for 5 seconds.")}</p>
       <div className="modal-actions">
         <button type="button" data-initial-focus className="button-quiet" onClick={onClose}>

@@ -379,3 +379,17 @@ test("members can fetch files from their own chats and channels only", () => {
     }),
   ).toBe(false)
 })
+
+test("former channel members cannot delete a conversation even when they created it", () => {
+  database.query("INSERT INTO threads VALUES ('member-channel-thread','other-bot','team-b','member',NULL)").run()
+
+  const response = access.authorizeHttp({
+    personId: "member",
+    role: "member",
+    method: "DELETE",
+    pathname: "/threads/member-channel-thread",
+    body: null,
+  })
+
+  expect(response).toMatchObject({ status: 403 })
+})

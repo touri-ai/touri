@@ -572,6 +572,8 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
   }
   const enqueue: ServiceMap["groups.runtime"]["enqueue"] = (args) => {
     if (draining) return { success: false, errorCode: "RUNTIME_DRAINING", error: "O servidor está encerrando." }
+    if (db.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(args.threadId))
+      return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Conversa não encontrada" }
 
     const thread = store.getThread({ threadId: args.threadId })
     if (!thread?.groupId || thread.groupThreadId) return engine.enqueue(args)
@@ -664,6 +666,14 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       save(turn, { status: "canceled", errorClass: "canceled", finishedAt: Date.now() })
     })
     await engine.cancelRuns?.(affected.flatMap((turn) => [...turn.children]))
+  }
+  const cancelThreadTurns = async ({ threadId }: { threadId: string }): Promise<void> => {
+    const affected = [...turns.values()].filter(
+      (turn) => turn.run.threadId === threadId || [...turn.children].some((id) => readRun(id)?.threadId === threadId),
+    )
+    affected.forEach(cancelTurn)
+    await engine.cancelRuns?.(affected.flatMap((turn) => [...turn.children]))
+    await Promise.all(affected.map((turn) => turn.completion.promise))
   }
   const listRuns = (threadId: string, options?: { all?: boolean }): Run[] => {
     const roots = persistence.listRuns(threadId, options)
@@ -913,6 +923,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     enqueue,
     cancel,
     cancelBotTurns,
+    cancelThreadTurns,
     cancelGroupTurns,
     retry,
     listRuns,

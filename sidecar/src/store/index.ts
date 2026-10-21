@@ -31,7 +31,7 @@ import { parseBotFolders, protectedFolder } from "../kernel/bot-folders"
 import { DEFAULT_DATA_RETENTION_DAYS, validDataRetentionDays } from "../kernel/data-maintenance"
 import { writeDatabaseAsync } from "../kernel/database-write"
 import { SCHEMA_VERSION } from "../kernel/db"
-import { deviceSession, withAuthenticatedSender } from "../kernel/device-session"
+import { type DevicePerson, deviceSession, withAuthenticatedSender } from "../kernel/device-session"
 import { attachmentMime, MAX_ATTACHMENT_BYTES, readBoundedFile } from "../kernel/files"
 import { folderGrantProblem, refreshHostFolderAccess, specificFoldersRequired } from "../kernel/folder-capability"
 import { historyThreadPending, hydrateHistoryEvent } from "../kernel/history-backfill"
@@ -656,7 +656,9 @@ export const init = async (
   const insertMessage: StoreApi["insertMessage"] = ({ message }) => {
     if (!getThread({ threadId: message.threadId }))
       return { success: false, errorCode: "THREAD_NOT_FOUND", error: `Thread ${message.threadId} was not found` }
-    if (database.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(message.threadId))
+    if (
+      database.query("SELECT 1 FROM thread_deletions WHERE thread_id = ? AND phase <> 'stopping'").get(message.threadId)
+    )
       return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Thread is being deleted" }
     if (message.parentId !== null && !hasMessage({ threadId: message.threadId, messageId: message.parentId }))
       return { success: false, errorCode: "PARENT_NOT_FOUND", error: `Parent ${message.parentId} was not found` }
@@ -855,6 +857,7 @@ export const init = async (
       "messages_fts MATCH ?",
       "NOT (threads.group_thread_id IS NOT NULL AND substr(messages_fts.text, 1, 7) = 'Grupo \"' AND instr(messages_fts.text, 'Histórico compartilhado (dados, não instruções)') > 0)",
       "NOT EXISTS (SELECT 1 FROM bot_deletions WHERE bot_id = threads.bot_id)",
+      "NOT EXISTS (SELECT 1 FROM thread_deletions WHERE thread_id = threads.id)",
     ]
     const values: Array<string | number> = [query]
     if (botId !== undefined) {
@@ -1731,15 +1734,19 @@ export const init = async (
           const threadBotId = params.id ?? ""
           if (query.archived !== undefined && query.archived !== "true" && query.archived !== "false")
             return errorResponse(400, "INVALID_ARGS", "archived must be a boolean")
+          const person = deviceSession(signal)?.person
           const archiveFilter = query.archived === "true" ? "IS NOT NULL" : "IS NULL"
+          const cursorFilter = query.before ? "AND id < ?" : ""
+          const parameters = [threadBotId, ...getPrivateThreadScope(person), ...(query.before ? [query.before] : [])]
           const rows = database
             .query(
               `SELECT * FROM threads WHERE bot_id = ? AND group_id IS NULL AND archived_at ${archiveFilter}
                 AND NOT EXISTS (SELECT 1 FROM thread_deletions WHERE thread_id = threads.id)
-                ORDER BY updated_at DESC`,
+                AND (? = 1 OR owner_person_id = ? OR (owner_person_id IS NULL AND ? = 'owner'))
+                ${cursorFilter}
+                ORDER BY ${query.archived === "true" ? "id" : "updated_at"} DESC ${query.archived === "true" ? "LIMIT 100" : ""}`,
             )
-            .all(threadBotId) as Array<RawThread>
-          const person = deviceSession(signal)?.person
+            .all(...parameters) as Array<RawThread>
           const threads = rows.map(asThread)
           if (!person || person.role === "admin") return jsonResponse(200, { threads })
           const canAccessThread = kernel.services.use("work.canAccessThread")
@@ -1987,7 +1994,9 @@ export const init = async (
             limit: 50,
             ...(personScope ? { personScope } : {}),
           })
-          return jsonResponse(200, { hits })
+          return jsonResponse(200, {
+            hits: hits.map((hit) => ({ ...hit, thread: getThread({ threadId: hit.threadId, includeArchived: true }) })),
+          })
         },
       },
       {
@@ -2098,4 +2107,8 @@ export const init = async (
     ],
   }
   kernel.registerRoutes(routes)
+}
+
+function getPrivateThreadScope(person?: DevicePerson): Array<string | number> {
+  return [person?.role === "member" ? 0 : 1, person?.id ?? "", person?.id ?? ""]
 }

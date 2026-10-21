@@ -124,6 +124,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
       responsible_person_id: string | null
     } | null
     if (!thread) return false
+    if (thread.group_id && !canAccessGroup({ personId, role, groupId: thread.group_id })) return false
     if (thread.owner_person_id === personId) return true
     return thread.group_id === null && thread.responsible_person_id === personId
   }

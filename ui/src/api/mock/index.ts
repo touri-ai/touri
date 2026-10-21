@@ -1168,6 +1168,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
             threadId: message.threadId,
             messageId: message.id,
             snippet: message.text.slice(0, 512),
+            thread: findThread(message.threadId),
           })),
       } as ApiRoutes[typeof route]["res"]
     }
@@ -1205,11 +1206,18 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       return { bot } as ApiRoutes[typeof route]["res"]
     }
     if (key === "GET /bots/:id/threads") {
-      const archived = (input as { archived?: boolean }).archived === true
+      const { archived = false, before } = input as { archived?: boolean; before?: string }
       return {
-        threads: threads.filter(
-          (thread) => thread.botId === pathValues.id && !thread.groupId && Boolean(thread.archivedAt) === archived,
-        ),
+        threads: threads
+          .filter(
+            (thread) =>
+              thread.botId === pathValues.id &&
+              !thread.groupId &&
+              Boolean(thread.archivedAt) === archived &&
+              (!before || thread.id < before),
+          )
+          .toSorted((left, right) => (archived ? right.id.localeCompare(left.id) : right.updatedAt - left.updatedAt))
+          .slice(0, archived ? 100 : undefined),
       } as ApiRoutes[typeof route]["res"]
     }
     if (key === "POST /threads") {
@@ -1238,12 +1246,6 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       const thread = findThread(pathValues.id ?? "")
       if (!thread) throw new ApiError(404, "Conversa não encontrada", "NOT_FOUND")
       if (thread.kind === "main") throw new ApiError(409, "A conversa principal não pode ser apagada.", "THREAD_MAIN")
-      if (
-        [...runs.values()].some(
-          (run) => run.threadId === thread.id && ["queued", "starting", "running"].includes(run.status),
-        )
-      )
-        throw new ApiError(409, "Encerre a execução antes de apagar esta conversa.", "THREAD_ACTIVE")
       return {
         thread: { id: thread.id, title: thread.title },
         messageCount: messages.filter((message) => message.threadId === thread.id).length,
@@ -1260,14 +1262,6 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       const deleting = selected.filter((thread): thread is Thread => Boolean(thread))
       if (deleting.some((thread) => thread.kind === "main"))
         throw new ApiError(409, "A conversa principal não pode ser excluída.", "THREAD_MAIN")
-      if (
-        deleting.some((thread) =>
-          [...runs.values()].some(
-            (run) => run.threadId === thread.id && ["queued", "starting", "running"].includes(run.status),
-          ),
-        )
-      )
-        throw new ApiError(409, "Encerre a execução antes de excluir esta conversa.", "THREAD_ACTIVE")
       const threadIds = new Set(ids)
       threads = threads.filter((thread) => !threadIds.has(thread.id))
       messages = messages.filter((message) => !threadIds.has(message.threadId))
