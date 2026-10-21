@@ -312,7 +312,6 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
         "/recovery",
         "/notifications",
         "/notifications/pending",
-        "/people",
       ].includes(pathname)
     )
       return null

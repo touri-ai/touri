@@ -3,13 +3,19 @@ import { describe, expect, it, vi } from "vitest"
 import type { UiApi } from "../src/api/client"
 import { WorkAccessSettings } from "../src/features/work/WorkAccessSettings"
 
-const makeApi = () => {
+const makeApi = (role: "admin" | "member" = "admin") => {
   const request = vi.fn(async (route: string, input: unknown) => {
     if (route === "GET /session")
       return {
         ok: true,
         kind: "device",
-        person: { id: "owner", name: "Dani", email: null, avatarSeed: "owner", role: "admin" },
+        person: {
+          id: role === "admin" ? "owner" : "person-1",
+          name: "Dani",
+          email: null,
+          avatarSeed: "owner",
+          role,
+        },
       }
     if (route === "GET /people")
       return {
@@ -86,5 +92,16 @@ describe("work access settings", () => {
 
     expect(await screen.findByText(/ABCD-EFGH-JKLM/u)).toBeDefined()
     expect(request).toHaveBeenCalledWith("POST /pairing-codes", {})
+  })
+
+  it("lets a member pair a device without requesting admin-only people settings", async () => {
+    const { request, api } = makeApi("member")
+    render(<WorkAccessSettings api={api} />)
+
+    fireEvent.click(await screen.findByRole("button", { name: "Parear novo dispositivo" }))
+
+    expect(await screen.findByText(/ABCD-EFGH-JKLM/u)).toBeDefined()
+    expect(request).not.toHaveBeenCalledWith("GET /people", {})
+    expect(request).not.toHaveBeenCalledWith("GET /invites", {})
   })
 })

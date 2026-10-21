@@ -91,11 +91,7 @@ export const WorkAccessSettings = ({ api }: { api: UiApi | undefined }) => {
         if (!active) return
         setSession(signedIn)
         const isAdmin = signedIn.person.role === "admin"
-        if (!isAdmin) {
-          const result = await api.request("GET /people", {})
-          if (active) setPeople(result.people)
-          return
-        }
+        if (!isAdmin) return
         const [peopleResult, inviteResult, emailResult, addressResult] = await Promise.all([
           api.request("GET /people", {}),
           api.request("GET /invites", {}),
@@ -521,40 +517,46 @@ export const WorkAccessSettings = ({ api }: { api: UiApi | undefined }) => {
               {pairingCode}
             </p>
           )}
-          {people.length === 0 && <p>{t("No people yet")}</p>}
-          {people.map((person) => (
-            <article className="work-access-person" key={person.id}>
-              <div className="work-access-person-heading">
-                <div>
-                  <strong>{person.name}</strong>
-                  {person.email && <span>{person.email}</span>}
-                </div>
-                <span>{getRoleLabel(person.role)}</span>
-              </div>
-              <ul aria-label={t("Devices for {name}", { name: person.name })}>
-                {person.devices.map((device) => (
-                  <li key={device.id}>
-                    <span>{device.name}</span>
-                    <time dateTime={device.lastSeenAt === null ? undefined : new Date(device.lastSeenAt).toISOString()}>
-                      {device.lastSeenAt === null
-                        ? t("Device not seen yet")
-                        : t("Last seen {time}", { time: new Date(device.lastSeenAt).toLocaleString() })}
-                    </time>
-                  </li>
-                ))}
-              </ul>
-              {isAdmin && person.id !== session.person.id && (
-                <button
-                  className="button button-quiet"
-                  type="button"
-                  onClick={() => void removePerson(person)}
-                  disabled={busy !== null}
-                >
-                  {t("Remove person")}
-                </button>
-              )}
-            </article>
-          ))}
+          {isAdmin && (
+            <>
+              {people.length === 0 && <p>{t("No people yet")}</p>}
+              {people.map((person) => (
+                <article className="work-access-person" key={person.id}>
+                  <div className="work-access-person-heading">
+                    <div>
+                      <strong>{person.name}</strong>
+                      {person.email && <span>{person.email}</span>}
+                    </div>
+                    <span>{getRoleLabel(person.role)}</span>
+                  </div>
+                  <ul aria-label={t("Devices for {name}", { name: person.name })}>
+                    {person.devices.map((device) => (
+                      <li key={device.id}>
+                        <span>{device.name}</span>
+                        <time
+                          dateTime={device.lastSeenAt === null ? undefined : new Date(device.lastSeenAt).toISOString()}
+                        >
+                          {device.lastSeenAt === null
+                            ? t("Device not seen yet")
+                            : t("Last seen {time}", { time: new Date(device.lastSeenAt).toLocaleString() })}
+                        </time>
+                      </li>
+                    ))}
+                  </ul>
+                  {person.id !== session.person.id && (
+                    <button
+                      className="button button-quiet"
+                      type="button"
+                      onClick={() => void removePerson(person)}
+                      disabled={busy !== null}
+                    >
+                      {t("Remove person")}
+                    </button>
+                  )}
+                </article>
+              ))}
+            </>
+          )}
         </div>
       </SettingsGroup>
 
