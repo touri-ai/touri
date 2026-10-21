@@ -2,6 +2,7 @@ import type { BrowserTakeoverFrame, BrowserTakeoverInput } from "@touri/contract
 import type { KeyboardEvent, PointerEvent, WheelEvent } from "react"
 import { useEffect, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
+import { ApiError } from "../errors"
 import { type Locale, t } from "../i18n"
 import { useBrowserActivityControls } from "./BrowserActivityControls"
 import { getBrowserActivityUrl } from "./browserActivityPresentation"
@@ -36,6 +37,7 @@ export const BrowserTakeoverView = ({
   reason,
   actions,
   onHandback,
+  onSessionEnded,
 }: {
   api: UiApi
   tabId: string
@@ -47,6 +49,7 @@ export const BrowserTakeoverView = ({
   reason: string | null
   actions: Array<{ id: string; icon: string; label: string; time: string; active: boolean }>
   onHandback: () => void
+  onSessionEnded?: (() => void) | undefined
 }) => {
   const canvas = useRef<HTMLCanvasElement>(null)
   const screen = useRef<HTMLDivElement>(null)
@@ -59,6 +62,8 @@ export const BrowserTakeoverView = ({
   const pendingInputs = useRef(0)
   const inputQueue = useRef(Promise.resolve())
   const lastInputAt = useRef(0)
+  const sessionEndedRef = useRef(onSessionEnded)
+  sessionEndedRef.current = onSessionEnded
   const localeRef = useRef(locale)
   const touch = useRef<TouchGesture | null>(null)
   const composing = useRef(false)
@@ -196,7 +201,17 @@ export const BrowserTakeoverView = ({
           latestFrameId += 1
           worker.postMessage({ type: "frame", frameId: latestFrameId, image: next.image })
         }
-      } catch {
+      } catch (failure) {
+        if (
+          active &&
+          !releasing.current &&
+          failure instanceof ApiError &&
+          failure.status === 403 &&
+          sessionEndedRef.current
+        ) {
+          sessionEndedRef.current()
+          return
+        }
         if (active) setError(t("The browser control connection was interrupted.", {}, localeRef.current))
       }
       const recentInput = Date.now() - lastInputAt.current < ACTIVE_FRAME_WINDOW_MS

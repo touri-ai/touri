@@ -16,6 +16,7 @@ import {
   getBrowserTakeoverReason,
   isBrowserRequestQueued,
 } from "../src/components/browserActivityPresentation"
+import { ApiError } from "../src/errors"
 import { ChannelComposerChip } from "../src/features/channelBrowser/ChannelBrowser"
 import { clearBrowserHold, setBrowserHold } from "../src/features/desktop/browserHold"
 import { InlinePreviewContext } from "../src/features/desktop/InlineLivePreview"
@@ -927,3 +928,27 @@ test("a finished browser task without a screenshot keeps a compact disclosure an
 
   expect(screen.getByRole("button", { name: /Used the browser/ })).toHaveTextContent("See what the bot did")
 })
+
+test.each(["live", "unloaded", "closed"] as const)(
+  "an engine release dismisses remote control for a %s tab without returning canceled work",
+  async (state) => {
+    const parts = [getPart({ callId: "read", tool: "browser_snapshot", inputJson: '{"tabId":"browser-tab"}' })]
+    const { api, request } = renderCard(parts, false)
+    fireEvent.click(await screen.findByRole("button", { name: "Assumir" }))
+    expect(await screen.findByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
+
+    request.mockImplementation(async (route: string) => {
+      if (route === "POST /browser/tabs/:id/takeover/frame")
+        throw new ApiError(403, "Esta sessão de controle não está ativa.")
+      if (route === "GET /browser/tabs") return { tabs: [Object.assign({}, tab, { state })] }
+      return {}
+    })
+    act(() => api.emit({ type: "browser.tab", tab: Object.assign({}, tab, { state }) }))
+
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Controle remoto do navegador" })).toBeNull())
+    expect(screen.getByRole("button", { name: "Assumir" })).toBeVisible()
+    expect(request).not.toHaveBeenCalledWith("DELETE /browser/tabs/:id/takeover/session", expect.anything(), {
+      id: "browser-tab",
+    })
+  },
+)

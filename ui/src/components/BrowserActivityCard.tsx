@@ -481,6 +481,13 @@ export const BrowserActivityCard = ({
               time: getBrowserActivityTime(takeoverTimes[index] ?? createdAt, locale),
               active: part.ok === null,
             }))}
+            onSessionEnded={() => {
+              setTakeoverSession(null)
+              setControlEpoch(null)
+              setTakeoverViewEpoch(0)
+              setResuming(false)
+              setHeldTab({ tabId: activeTabId, held: false, reason: null })
+            }}
             onHandback={() => {
               handbackRunId.current = runId
               setResuming(sourceFinished && held)
