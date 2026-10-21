@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page, test } from "@playwright/test"
 import type { createMockApi } from "../../src/api/mock"
-import { showBotAdvanced, showBotPanel } from "./home-navigation"
+import { showBotAdvanced } from "./home-navigation"
 
 type MascotEditorWindow = Window & { groupsQa: { api: ReturnType<typeof createMockApi> } }
 
@@ -69,7 +69,6 @@ viewports.forEach((viewport) => {
 
     test("group creation and editing preserve a randomized mascot with customization closed", async ({ page }) => {
       await page.goto("/test/e2e/groups-harness.html")
-      await showBotPanel(page)
       await showNavigation(page)
       await page.getByRole("button", { name: "Criar grupo", exact: true }).click()
       const creation = page.getByRole("dialog", { name: "Criar grupo", exact: true })

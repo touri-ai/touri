@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises"
 import AxeBuilder from "@axe-core/playwright"
 import { expect, type Page, test } from "@playwright/test"
-import { showBotAdvanced, showBotPanel } from "./home-navigation"
+import { showBotAdvanced } from "./home-navigation"
 
 const output = process.env.TOURI_QA_SCREENSHOT_DIR
 const cases = [390, 1440].flatMap((width) => ["dark", "light"].map((theme) => ({ width, theme })))
@@ -19,7 +19,6 @@ cases.forEach(({ width, theme }) => {
       await captureSurface(page, "bot-create", width, theme)
       await page.getByRole("dialog").getByRole("button", { name: "Cancelar", exact: true }).click()
 
-      await showBotPanel(page)
       await openNavigation(page)
       await page.getByRole("button", { name: "Criar grupo", exact: true }).click()
       await captureSurface(page, "group-create", width, theme)
