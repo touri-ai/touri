@@ -265,23 +265,28 @@ test("5,000-message deletion returns before cleanup and lets the event loop run"
       insert.run(`large-${index.toString().padStart(5, "0")}`, thread.id, index + 1, index + 1)
   })()
 
-  let timerRan = false
-  setTimeout(() => {
-    timerRan = true
-  }, 0)
+  const deletionStarted = Promise.withResolvers<void>()
+  const allowCleanup = Promise.withResolvers<void>()
+  cleanups.add(async () => allowCleanup.resolve())
+  fixture.runtime.kernel.services.provide("runtime.cancelThreadTurns", async () => {
+    deletionStarted.resolve()
+    await allowCleanup.promise
+  })
   const probe = getEventLoopProbe()
   cleanups.add(async () => probe.stop())
   const response = await fixture.request(`/threads/${thread.id}`, "DELETE")
 
   expect(response.status).toBe(202)
-  expect(timerRan).toBe(true)
+  await deletionStarted.promise
   expect(fixture.db.query("SELECT count(*) AS count FROM messages WHERE thread_id = ?").get(thread.id)).toEqual({
     count: 5000,
   })
+  allowCleanup.resolve()
   await waitFor(
     () =>
       !fixture.db.query("SELECT 1 FROM threads WHERE id = ?").get(thread.id) &&
-      !fixture.db.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(thread.id),
+      !fixture.db.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(thread.id) &&
+      probe.getSamples().length >= 20,
   )
   probe.stop()
   const timerLags = probe.getSamples()
