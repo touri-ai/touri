@@ -58,6 +58,7 @@ import browserBotArbitrationSql from "../../src/kernel/migrations/0042.sql" with
 import browserPendingHandoffsSql from "../../src/kernel/migrations/0043.sql" with { type: "text" }
 import browserRequestResumeSql from "../../src/kernel/migrations/0044.sql" with { type: "text" }
 import threadDeletionSql from "../../src/kernel/migrations/0045.sql" with { type: "text" }
+import browserDocumentPrivacySql from "../../src/kernel/migrations/0046.sql" with { type: "text" }
 import { captureTranscript } from "../../src/kernel/transcript-events"
 import { TRANSCRIPT_RETENTION } from "../../src/kernel/transcript-storage"
 import { init as initStore } from "../../src/store"
@@ -322,6 +323,7 @@ test("interrupted batches resume idempotently and match the shipped synchronous 
     synchronous.exec(browserPendingHandoffsSql)
     synchronous.exec(browserRequestResumeSql)
     synchronous.exec(threadDeletionSql)
+    synchronous.exec(browserDocumentPrivacySql)
     synchronous.exec(browserTakeoverContinuationsSql)
     database = openDatabase({ filename })
     expect(database.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all()).toEqual(

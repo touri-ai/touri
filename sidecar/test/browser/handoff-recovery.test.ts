@@ -104,7 +104,7 @@ test("legacy held tabs without a handoff deadline release safely on startup", as
 
   expect(restored?.heldByUser).toBe(false)
   expect(restored?.takeoverRequested).toBe(false)
-  expect(restored?.url).toBe("https://travel.example.test")
+  expect(restored?.url).toBe("")
   expect(
     database
       .query("SELECT held_by_user, private_after_takeover, private_input FROM browser_tabs WHERE id = 'orphan'")

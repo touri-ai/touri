@@ -161,3 +161,30 @@ test("a document reached through native human navigation stays private after han
   expect(JSON.stringify(page)).not.toContain("private-input-fixture")
   expect(await fixture.engine.preview({ tabId: "tab", botId: "leo", signal })).toBeNull()
 })
+
+test("waiting cannot probe text or URLs from a private document", async () => {
+  const fixture = await getFixture()
+  const signal = new AbortController().signal
+  await fixture.engine.list({ botId: "leo" })
+  await fixture.engine.holdTakeover({ tabId: "tab", reason: "Synthetic private input" })
+  await fixture.engine.releaseTakeover("tab")
+
+  const text = await fixture.engine.waitFor({
+    tabId: "tab",
+    botId: "leo",
+    condition: { text: "private-input-fixture" },
+    timeoutMs: 1000,
+    signal,
+  })
+  const url = await fixture.engine.waitFor({
+    tabId: "tab",
+    botId: "leo",
+    condition: { url: "example.test" },
+    timeoutMs: 1000,
+    signal,
+  })
+
+  expect(text).toMatchObject({ success: false, errorCode: "PRIVATE_TAKEOVER_ACTIVE" })
+  expect(url).toMatchObject({ success: false, errorCode: "PRIVATE_TAKEOVER_ACTIVE" })
+  expect(JSON.stringify([text, url])).not.toContain("private-input-fixture")
+})

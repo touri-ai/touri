@@ -168,6 +168,15 @@ const failure = (errorCode: BrowserErrorCode, error: string, covering?: Covering
 
 const success = <T>(value: T): OperationResult<T> => ({ success: true, value })
 
+const getPrivateDocumentFailure = (tab: TabState): BrowserFailure | null => {
+  if (!tab.privateInput || !tab.privateAfterTakeover) return null
+
+  return {
+    errorCode: "PRIVATE_TAKEOVER_ACTIVE",
+    error: "Este documento contém entrada privada. Continue a tarefa em uma nova aba.",
+  }
+}
+
 const toToolError = (item: BrowserFailure): ToolResult => ({
   success: false,
   errorCode: item.errorCode,
@@ -4082,7 +4091,12 @@ export const createBrowserEngine = ({
         while (Date.now() - started < timeoutMs) {
           if (operationSignal.aborted)
             return toToolError({ errorCode: "DEADLINE_EXCEEDED", error: "A espera passou do prazo." })
+          await refreshTakeoverPrivacy(tab)
+          const privateFailure = getPrivateDocumentFailure(tab)
+          if (privateFailure) return toToolError(privateFailure)
           const page = await pageState(client as CdpClient, tab)
+          const changedFailure = getPrivateDocumentFailure(tab)
+          if (changedFailure) return toToolError(changedFailure)
           let matched = false
           const targetCondition = asRecord(conditionRecord?.target)
           const wantedUrl = asString(conditionRecord?.url)

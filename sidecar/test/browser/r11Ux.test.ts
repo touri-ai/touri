@@ -305,7 +305,7 @@ realSuite("R11 browser UX against real Chrome", () => {
     expect(await engine.releaseTakeover(first.tabId)).toBe(true)
 
     const loginScreenshot = await engine.screenshot({ tabId: first.tabId, botId, fullPage: false, signal: signal() })
-    expect(loginScreenshot).toMatchObject({ success: false, errorCode: "SECRET_ENTRY_ACTIVE" })
+    expect(loginScreenshot).toMatchObject({ success: false, errorCode: "PRIVATE_TAKEOVER_ACTIVE" })
 
     const navigated = await engine.navigate({
       tabId: first.tabId,
@@ -317,7 +317,7 @@ realSuite("R11 browser UX against real Chrome", () => {
     })
     expect(navigated.success).toBe(true)
     const safeScreenshot = await engine.screenshot({ tabId: first.tabId, botId, fullPage: false, signal: signal() })
-    expect(safeScreenshot.success).toBe(true)
+    expect(safeScreenshot).toMatchObject({ success: false, errorCode: "PRIVATE_TAKEOVER_ACTIVE" })
   })
 
   test("takeover returns a waiting result immediately and cancellation releases the tab", async () => {
