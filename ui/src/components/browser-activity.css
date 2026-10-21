@@ -50,7 +50,7 @@
   flex: 0 0 auto;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  background: #101014;
+  background: var(--surface-code);
   object-fit: contain;
 }
 .browser-activity-thumbnail > img {
@@ -85,7 +85,7 @@
   aspect-ratio: 16 / 10;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  background: #101014;
+  background: var(--surface-code);
   object-fit: contain;
 }
 .browser-activity-preview-full > img {

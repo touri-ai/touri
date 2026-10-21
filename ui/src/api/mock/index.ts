@@ -1055,6 +1055,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       threads = threads.filter((thread) => !threadIds.has(thread.id))
       messages = messages.filter((message) => !threadIds.has(message.threadId))
       runs = new Map([...runs].filter(([, run]) => !threadIds.has(run.threadId)))
+      routineRuns = routineRuns.map((run) => (threadIds.has(run.threadId ?? "") ? { ...run, threadId: null } : run))
       notifications = notifications.filter((item) => !threadIds.has(item.threadId ?? ""))
       emit({ type: "group.deleted", groupId: group.id })
       return {} as ApiRoutes[typeof route]["res"]
@@ -1150,7 +1151,25 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     if (key === "GET /search") {
       const query = input as ApiRoutes["GET /search"]["req"]
       const tokens = query.q.toLocaleLowerCase().trim().split(/\s+/u)
+      const getNormalizedTitle = (title: string) =>
+        title.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase("pt-BR")
       return {
+        threads: threads
+          .filter(
+            (thread) =>
+              thread.archivedAt !== null &&
+              !thread.groupId &&
+              (!query.botId || thread.botId === query.botId) &&
+              tokens.every((token) => getNormalizedTitle(thread.title).includes(getNormalizedTitle(token))),
+          )
+          .slice(0, 50)
+          .map((thread) => ({
+            id: thread.id,
+            botId: thread.botId,
+            title: thread.title,
+            createdAt: thread.createdAt,
+            archivedAt: thread.archivedAt,
+          })),
         hits: messages
           .filter((message) => {
             const thread = threads.find((thread) => thread.id === message.threadId)
@@ -1167,6 +1186,16 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
             threadId: message.threadId,
             messageId: message.id,
             snippet: message.text.slice(0, 512),
+            thread:
+              threads
+                .filter((thread) => thread.id === message.threadId)
+                .map((thread) => ({
+                  id: thread.id,
+                  botId: thread.botId,
+                  title: thread.title,
+                  createdAt: thread.createdAt,
+                  archivedAt: thread.archivedAt,
+                }))[0] ?? null,
           })),
       } as ApiRoutes[typeof route]["res"]
     }
@@ -1203,10 +1232,22 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       emit({ type: "bot.updated", bot })
       return { bot } as ApiRoutes[typeof route]["res"]
     }
-    if (key === "GET /bots/:id/threads")
+    if (key === "GET /bots/:id/threads") {
+      const { archived = false, before } = input as { archived?: boolean; before?: string }
       return {
-        threads: threads.filter((thread) => thread.botId === pathValues.id && !thread.groupId),
+        // This response owns the filtered array; copying sort is outside the ES2022 target.
+        threads: threads
+          .filter(
+            (thread) =>
+              thread.botId === pathValues.id &&
+              !thread.groupId &&
+              Boolean(thread.archivedAt) === archived &&
+              (!before || thread.id < before),
+          )
+          .sort((left, right) => (archived ? right.id.localeCompare(left.id) : right.updatedAt - left.updatedAt))
+          .slice(0, archived ? 100 : undefined),
       } as ApiRoutes[typeof route]["res"]
+    }
     if (key === "POST /threads") {
       const threadInput = input as ApiRoutes["POST /threads"]["req"]
       const thread = createThread({
@@ -1222,9 +1263,53 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     if (key === "PATCH /threads/:id") {
       const thread = findThread(pathValues.id ?? "")
       if (!thread) throw new Error("thread not found")
-      Object.assign(thread, input as Partial<Thread>, { updatedAt: now() })
+      const { archived, ...patch } = input as Partial<Thread> & { archived?: boolean }
+      Object.assign(thread, patch, archived === undefined ? {} : { archivedAt: archived ? now() : null }, {
+        updatedAt: now(),
+      })
       emit({ type: "thread.updated", thread })
       return { thread } as ApiRoutes[typeof route]["res"]
+    }
+    if (key === "GET /threads/:id/delete-preview") {
+      const thread = findThread(pathValues.id ?? "")
+      if (!thread) throw new ApiError(404, "Conversa não encontrada", "NOT_FOUND")
+      if (thread.kind === "main") throw new ApiError(409, "A conversa principal não pode ser apagada.", "THREAD_MAIN")
+      return {
+        thread: { id: thread.id, title: thread.title },
+        messageCount: messages.filter((message) => message.threadId === thread.id).length,
+      } as ApiRoutes[typeof route]["res"]
+    }
+    if (key === "DELETE /threads/:id" || key === "POST /threads/delete") {
+      const ids =
+        key === "DELETE /threads/:id"
+          ? [pathValues.id ?? ""]
+          : ((input as ApiRoutes["POST /threads/delete"]["req"]).ids ?? [])
+      if (ids.length < 1 || ids.length > 200) throw new ApiError(400, "Lista inválida", "INVALID_ARGS")
+      const selected = ids.map((id) => findThread(id))
+      if (selected.some((thread) => !thread)) throw new ApiError(404, "Conversa não encontrada", "NOT_FOUND")
+      const deleting = selected.filter((thread): thread is Thread => Boolean(thread))
+      if (deleting.some((thread) => thread.kind === "main"))
+        throw new ApiError(409, "A conversa principal não pode ser excluída.", "THREAD_MAIN")
+      const threadIds = new Set(ids)
+      threads = threads.filter((thread) => !threadIds.has(thread.id))
+      messages = messages.filter((message) => !threadIds.has(message.threadId))
+      runs = new Map([...runs].filter(([, run]) => !threadIds.has(run.threadId)))
+      notifications = notifications.filter((item) => !threadIds.has(item.threadId ?? ""))
+      ids.forEach((threadId) => {
+        const thread = deleting.find((candidate) => candidate.id === threadId)
+        if (thread)
+          emit({
+            type: "thread.deleted",
+            threadId,
+            botId: thread.botId,
+            groupId: thread.groupId ?? null,
+            ownerPersonId: thread.ownerPersonId ?? null,
+            responsiblePersonId: bots.find((bot) => bot.id === thread.botId)?.responsiblePersonId ?? null,
+          })
+      })
+      return (
+        key === "DELETE /threads/:id" ? { threadId: ids[0], phase: "done" } : { threadIds: ids, phase: "done" }
+      ) as ApiRoutes[typeof route]["res"]
     }
     if (key === "GET /threads/:id/messages") {
       const threadMessages = messages.filter((message) => message.threadId === pathValues.id)

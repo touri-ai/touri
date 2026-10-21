@@ -183,7 +183,7 @@ it("shows the needs-you bar and focuses the selected pending card", async () => 
 
   const bar = screen.getAllByRole("button", { name: "Abrir pendência de onb" })[0]
   expect(bar).toBeDefined()
-  expect(bar).toHaveTextContent("Precisa de você")
+  expect(screen.getByRole("heading", { name: "Precisa de você" })).toBeVisible()
   fireEvent.click(bar)
 
   await screen.findByRole("textbox", { name: "Mensagem para onb" })

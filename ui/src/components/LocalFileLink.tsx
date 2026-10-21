@@ -77,16 +77,7 @@ export const LocalFileLink = ({ path, children }: { path: string; children: Reac
       const content = await context.api.request("GET /bots/:id/files/content", { path }, { id: context.bot.id })
       if (current === generation.current) setFile(content)
     } catch (reason) {
-      if (current === generation.current)
-        setError(
-          reason instanceof ApiError && reason.errorCode === "IMAGE_MACHINE_STOPPED"
-            ? t("Arquivos disponíveis quando a máquina estiver ligada.")
-            : reason instanceof ApiError && reason.status === 403
-              ? t("Este arquivo está fora das pastas permitidas para este bot.")
-              : t(
-                  "Não foi possível abrir este arquivo. Ele pode ter sido removido, ser um atalho ou ter mais de 512 KB.",
-                ),
-        )
+      if (current === generation.current) setError(getFileReadError(reason))
     } finally {
       if (current === generation.current) setBusy(false)
     }
@@ -105,4 +96,14 @@ export const LocalFileLink = ({ path, children }: { path: string; children: Reac
       {file && <FilePreview file={file} close={() => setFile(null)} />}
     </span>
   )
+}
+
+const getFileReadError = (reason: unknown): string => {
+  if (reason instanceof ApiError && reason.errorCode === "IMAGE_MACHINE_STOPPED")
+    return t("Arquivos disponíveis quando a máquina estiver ligada.")
+  if (reason instanceof ApiError && reason.status === 403)
+    return t("Este arquivo está fora das pastas permitidas para este bot.")
+  if (reason instanceof ApiError && reason.status === 404 && reason.diagnostic === "Arquivo ou pasta não encontrado")
+    return t("Arquivo não encontrado.")
+  return t("Não foi possível abrir este arquivo. Ele pode ter sido removido, ser um atalho ou ter mais de 512 KB.")
 }

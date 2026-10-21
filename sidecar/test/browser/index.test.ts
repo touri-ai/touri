@@ -5,6 +5,7 @@ import { join } from "node:path"
 import type { Bot, ToolRegistration } from "@touri/contracts"
 import { init, withToolDeadline } from "../../src/browser"
 import { createBrowserEngine } from "../../src/browser/engine"
+import type { BrowserEngine } from "../../src/browser/types"
 import { init as initComputer } from "../../src/computer"
 import { createKernel } from "../../src/kernel"
 import { init as initStore } from "../../src/store"
@@ -35,6 +36,37 @@ test("browser init registers its routes and optional tab service", async () => {
       body: JSON.stringify({ hold: false }),
     })
     expect(takeoverResponse.status).toBe(404)
+  } finally {
+    runtime.stop()
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test("a local owner can return browser control without a paired work identity", async () => {
+  const root = mkdtempSync(join(tmpdir(), "touri-browser-takeover-owner-"))
+  const runtime = createKernel({ appData: root })
+  const people: string[] = []
+  const engine: BrowserEngine = {
+    ...createBrowserEngine({ kernel: runtime.kernel }),
+    tabsForBot: () => [],
+    releaseTakeoverForPerson: async ({ personId }: { personId: string }) => {
+      people.push(personId)
+      return "released"
+    },
+  }
+  try {
+    await init(runtime.kernel, undefined, { engine })
+    const response = await fetch(`http://127.0.0.1:${runtime.handshake.port}/api/v1/browser/tabs/tab-1/takeover`, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer dev-ui-token",
+        Origin: "tauri://localhost",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ hold: false }),
+    })
+    expect(response.status).toBe(200)
+    expect(people).toEqual(["owner"])
   } finally {
     runtime.stop()
     rmSync(root, { recursive: true, force: true })
@@ -116,6 +148,44 @@ test("the engine budget leaves room for its own cause before the tool deadline",
       },
     })
   expect(budgets).toEqual([1, 750, 17500, 27500])
+})
+
+test("browser takeover enforces a two-minute minimum and a thirty-minute maximum", async () => {
+  const root = mkdtempSync(join(tmpdir(), "touri-browser-takeover-timeout-"))
+  const runtime = createKernel({ appData: root })
+  const handlers = new Map<string, ToolRegistration>()
+  const durations: number[] = []
+  runtime.kernel.registerTools = ({ tools }) => {
+    for (const item of tools) handlers.set(item.name, item)
+    return { success: true, count: tools.length }
+  }
+  const engine: BrowserEngine = {
+    ...createBrowserEngine({ kernel: runtime.kernel }),
+    requestTakeover: async ({ timeoutMs }: { timeoutMs: number }) => {
+      durations.push(timeoutMs)
+      return { success: true, content: [] }
+    },
+    tabsForBot: () => [],
+  }
+  try {
+    await init(runtime.kernel, undefined, { engine })
+    const handler = handlers.get("browser_request_takeover")?.handler
+    if (!handler) throw new Error("Missing browser takeover tool")
+    const ctx = {
+      botId: "bot-1",
+      threadId: "thread-1",
+      runId: "run-1",
+      projectId: null,
+      cwd: root,
+      signal: new AbortController().signal,
+    }
+    await handler({ ctx, args: { tabId: "tab-1", timeoutMs: 5000 } })
+    await handler({ ctx, args: { tabId: "tab-1", timeoutMs: 3600000 } })
+    expect(durations).toEqual([120000, 1800000])
+  } finally {
+    runtime.stop()
+    rmSync(root, { recursive: true, force: true })
+  }
 })
 
 test("the last failed browser tool of a bot is exposed to the screen viewers", async () => {

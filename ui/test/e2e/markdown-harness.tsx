@@ -29,16 +29,19 @@ const message: Message = {
   updatedAt: 1_792_009_800_000,
 }
 const root = document.getElementById("root")
-if (root && params.get("view") === "files") {
+if (root && ["files", "brace-files"].includes(params.get("view") ?? "")) {
   const bot = createMockApi().getState().bots[0]
   if (!bot) throw new Error("Missing bot")
   const evidence = { api: createApiClient({ endpoint: webEndpoint(location) }), bot }
   createRoot(root).render(
     <main style={{ maxWidth: 900, margin: "24px auto", padding: 24 }}>
+      <h1>Local file previews</h1>
       <MarkdownContent
         evidence={evidence}
         content={
-          "Salvo em [notas.md](/workspace/notas.md).\n\n[Arquivo removido](/workspace/missing.md) · [Sem acesso](/outside/private.txt)\n\n[Baixar PNG](/output/post.png) · Vou criar `planned.png`."
+          params.get("view") === "brace-files"
+            ? "Relatórios: `/workspace/report-{analysis,draft}.txt` e /workspace/report-{1..3}.md.\n\nAninhados: `/workspace/report-{analysis,{draft}}.txt` e [Relatórios aninhados](/workspace/report-{{analysis},draft}.txt).\n\n[Baixar relatórios](/workspace/report-{analysis,draft}.png) · [Referência](https://example.test/report.md)\n\n[report.md](/workspace/report.md) · [report.txt](/workspace/report.txt)\n\n[Arquivo ausente](/workspace/missing.txt) · [Bot removido](/workspace/removed-bot.txt)"
+            : "Salvo em [notas.md](/workspace/notas.md).\n\n[Arquivo removido](/workspace/missing.md) · [Sem acesso](/outside/private.txt)\n\n[Baixar PNG](/output/post.png) · Vou criar `planned.png`."
         }
       />
     </main>,

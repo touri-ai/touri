@@ -25,6 +25,7 @@ import {
 } from "react"
 import type { UiApi } from "../api/client"
 import type { ApprovalFocus } from "../approvalNavigation"
+import { getDocumentLocale } from "../documentLanguage"
 import { userFacingRunError } from "../errors"
 import { ComputerGrantCard } from "../features/computer"
 import { InlineLivePreview, InlinePreviewContext, screenTool } from "../features/desktop/InlineLivePreview"
@@ -34,6 +35,7 @@ import {
   getHostLabel,
   getRoutineRunDateLabel,
   getRoutineRunTimeLabel,
+  type Locale,
   localizeNotice,
   type TranslationKey,
   t,
@@ -54,6 +56,7 @@ import { useAvatarBot, useMascotSnapshot, useMessageMascotState, useThreadBot } 
 import { withApprovalAnswers } from "./activityStatus"
 import { BotAvatar } from "./BotAvatar"
 import { getBrowserActivityTools } from "./browserActivityPresentation"
+import { type BrowserContinuationActivity, getBrowserContinuationActivities } from "./browserContinuationActivity"
 import { ChatDisclosure } from "./ChatDisclosure"
 import { ConnectDataCard, connectDataMarker } from "./ConnectDataCard"
 import { ConversationStart } from "./ConversationStart"
@@ -71,6 +74,7 @@ import { MarkdownContent } from "./MarkdownContent"
 import { MessageAttachments } from "./MessageAttachments"
 import { useInsertedIds } from "./Motion"
 import { mascotSignalFor } from "./mascotState"
+import { PanelIcon } from "./PanelIcon"
 import { ToolCallList } from "./ToolCallList"
 import { ToolText } from "./ToolOutput"
 import { TurnActivity } from "./TurnActivity"
@@ -223,6 +227,8 @@ export const VirtualMessageList = ({
   header,
   timelineCards = emptyTimelineCards,
 }: VirtualMessageListProps) => {
+  const locale = getDocumentLocale(document.documentElement)
+  const browserContinuations = useMemo(() => getBrowserContinuationActivities(messages, runs), [messages, runs])
   // r8 motion: immutable IDs drive text entry, never streaming tokens or status/cards.
   const insertedMessages = useInsertedIds(
     messages.map((message) => message.id),
@@ -489,11 +495,7 @@ export const VirtualMessageList = ({
                 return (
                   <div key={saved.id} className="message-row" data-message-row={saved.id}>
                     <p className="run-resumed-marker" role="note" data-message-id={saved.id}>
-                      <span>
-                        {saved.text === "Retomado após aprovação de acesso"
-                          ? t("Retomado após aprovação de acesso")
-                          : saved.text}
-                      </span>
+                      <span>{getResumeMarkerText(saved, locale)}</span>
                     </p>
                   </div>
                 )
@@ -542,6 +544,8 @@ export const VirtualMessageList = ({
                     machine={machine}
                     message={message}
                     run={run}
+                    browserActivity={browserContinuations.activities.get(message.id)}
+                    hideBrowserActivity={browserContinuations.hidden.has(message.id)}
                     routineReply={getRoutineReplyRun(message, runs, allMessages) !== undefined}
                     routinePrompt={
                       !mainThread &&
@@ -622,6 +626,13 @@ export const VirtualMessageList = ({
 const isResumeMarker = (message: Message): boolean =>
   message.role === "system" && message.parts.some((part) => part.type === "notice" && part.code === "run_resumed")
 
+const getResumeMarkerText = (message: Message, locale: Locale): string => {
+  if (message.text === "Retomado após aprovação de acesso") return t(message.text, {}, locale)
+  if (message.text === "Retomado após a devolução do navegador") return t(message.text, {}, locale)
+
+  return message.text
+}
+
 const isGroupCoordinationPrompt = (message: Message): boolean => {
   const marker = message.parts[0]
   return message.role === "system" && marker?.type === "notice" && marker.code === "group_coordination_prompt"
@@ -659,6 +670,8 @@ const MessageBubble = ({
   recovered,
   message,
   run,
+  browserActivity,
+  hideBrowserActivity,
   routineReply,
   routinePrompt,
   routineHeader,
@@ -679,6 +692,8 @@ const MessageBubble = ({
   recovered: boolean
   message: Message
   run?: Run | undefined
+  browserActivity?: BrowserContinuationActivity | undefined
+  hideBrowserActivity: boolean
   routineReply: boolean
   routinePrompt: boolean
   routineHeader?: string | undefined
@@ -924,7 +939,7 @@ const MessageBubble = ({
             ) : (
               <span role="img" aria-label={t("Membro excluído: {name}", { name: message.sender.name })}>
                 <BotAvatar
-                  bot={{ id: message.sender.id, color: "#6b7280", avatarShape: "none-none" }}
+                  bot={{ id: message.sender.id, color: null, avatarShape: "none-none" }}
                   size={22}
                   state="idle"
                   still
@@ -973,6 +988,9 @@ const MessageBubble = ({
               message={{ ...message, parts }}
               state={mascotState}
               run={run}
+              browserActivity={browserActivity}
+              hideBrowserActivity={hideBrowserActivity}
+              botName={messageRoleLabel}
               api={api}
               bot={bot}
               onCancel={onCancel}
@@ -1047,7 +1065,7 @@ const MessageBubble = ({
             disabled={branchIndex === siblings.length - 1}
             aria-label={t("Next branch")}
           >
-            ›
+            <PanelIcon name="chevron-right" />
           </button>
         </fieldset>
       )}
@@ -1170,7 +1188,7 @@ export const ChatPanel = ({
         <header className="chat-header" data-tauri-drag-region="deep">
           <span className="chat-header-crumb">{t("Bots")}</span>
           <div className="chat-bot-chip">
-            {bot && <BotAvatar bot={bot} size={18} />}
+            {bot && <BotAvatar bot={bot} size={20} />}
             <h1 className="chat-page-heading">{bot?.name ?? "touri"}</h1>
             {bot?.anyFolderAccess && (
               <span className="any-folder-badge">{t("Any folder on this {host}", { host: getHostLabel(host) })}</span>
@@ -1187,7 +1205,7 @@ export const ChatPanel = ({
                 aria-controls="bot-panel"
                 onClick={onTogglePanel}
               >
-                ◧
+                <PanelIcon name="panel" />
               </button>
             )}
           </div>
@@ -1301,7 +1319,7 @@ export const ChatPanel = ({
                 aria-controls="bot-panel"
                 onClick={onTogglePanel}
               >
-                ◧
+                <PanelIcon name="panel" />
               </button>
             )}
           </div>

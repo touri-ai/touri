@@ -157,8 +157,13 @@ export const createBrowserStore = ({
   }
 
   const save = (tab: TabState): void => {
-    const row = toRow(tab.info, tab.targetId, Date.now())
-    tab.info.lastUsedAt = row.last_used_at
+    // Channel deletion clears the persisted owner but cannot refresh a live tab's cached reference.
+    const thread = tab.info.ownerThreadId
+      ? database.query<{ id: Id }, [Id]>("SELECT id FROM threads WHERE id = ?").get(tab.info.ownerThreadId)
+      : null
+    const info = { ...tab.info, ownerThreadId: thread?.id ?? null }
+    const row = toRow(info, tab.targetId, Date.now())
+    tab.info = { ...info, lastUsedAt: row.last_used_at }
     database
       .query(
         "UPDATE browser_tabs SET owner_bot_id = ?, owner_thread_id = ?, opener_tab_id = ?, cdp_target_id = ?, url = ?, title = ?, state = ?, held_by_user = ?, last_used_at = ? WHERE id = ?",
@@ -226,6 +231,8 @@ export const publicTabInfo = ({ tab }: { tab: TabState }): BrowserTabInfo & { ow
   state: tab.info.state,
   openerTabId: tab.info.openerTabId,
   heldByUser: tab.info.heldByUser,
+  takeoverRequested: tab.takeover !== null,
+  takeoverRunId: tab.takeover?.runId ?? null,
   lastUsedAt: tab.info.lastUsedAt,
   ownerBotId: tab.info.ownerBotId,
 })

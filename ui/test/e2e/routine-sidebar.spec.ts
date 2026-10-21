@@ -17,7 +17,7 @@ for (const [name, width, height] of [
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
     const conversations = page.getByRole("region", { name: "Conversas de mark" })
-    const routine = conversations.getByRole("button", { name: /Resumo diário/ })
+    const routine = conversations.locator(".thread-row").filter({ hasText: "Resumo diário" })
     const directory = process.env.TOURI_ROUTINE_SIDEBAR_SHOTS_DIR
 
     await expect(routine.locator(".sidebar-unread")).toHaveText("8")
@@ -40,7 +40,7 @@ for (const [name, width, height] of [
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
     const conversations = page.getByRole("region", { name: "Conversas de mark" })
-    const routine = conversations.getByRole("button", { name: /Rotina excluída/ })
+    const routine = conversations.locator(".thread-row").filter({ hasText: "Rotina excluída" })
 
     await expect(conversations.locator(".thread-row")).toHaveCount(2)
     await expect(conversations.getByRole("button", { name: "Histórico de rotinas" })).toHaveCount(0)

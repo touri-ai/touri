@@ -39,7 +39,7 @@ thread.activeLeafId = reply.id
 api.notify({
   kind: "approval",
   botId: bot.id,
-  threadId: thread.id,
+  threadId: `${thread.id}-background`,
   requestId: approval.approvalId,
   title: "Approve action",
   body: approval.detail,

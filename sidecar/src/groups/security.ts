@@ -1,4 +1,4 @@
-import type { Bot, Kernel, McpTool } from "@touri/contracts"
+import type { Bot, GroupDelegation, Kernel, McpTool } from "@touri/contracts"
 
 const ranks = { "read-only": 0, "workspace-write": 1, full: 2 }
 type Access = Bot["access"]
@@ -72,12 +72,7 @@ export const crossesBoundary = (caller: Bot, target: Bot): boolean =>
   (!caller.hostComputerUse && target.hostComputerUse) ||
   caller.projectId !== target.projectId
 
-export type Delegation = {
-  ceiling: Bot
-  caller: { id: string; name: string }
-  groupThreadId: string
-  secrets: boolean
-}
+export type Delegation = GroupDelegation
 const delegations = new WeakMap<Kernel, Map<string, Delegation>>()
 
 export const setDelegation = (kernel: Kernel, threadId: string, delegation: Delegation | null): void => {

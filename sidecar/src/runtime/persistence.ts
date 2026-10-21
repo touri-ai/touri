@@ -100,6 +100,9 @@ export const toRun = (value: unknown): Run | null => {
     ...(row.provider_started_at == null ? {} : { providerStartedAt: integer(row, "provider_started_at") }),
     finishedAt: nullableInteger(row, "finished_at"),
     ...("group_thread_id" in row ? { groupThreadId: nullableText(row, "group_thread_id") } : {}),
+    ...("browser_takeover_from_run_id" in row
+      ? { browserTakeoverFromRunId: nullableText(row, "browser_takeover_from_run_id") }
+      : {}),
     ...("origin" in row ? { origin: text(row, "origin") as NonNullable<Run["origin"]> } : {}),
   }
 }
@@ -200,8 +203,9 @@ const canUseDatabase = (value: unknown): value is Database => {
 }
 
 const RUN_SNAPSHOT_SELECT = `SELECT r.*, COALESCE(root.thread_id, t.group_thread_id) AS group_thread_id,
+  browser_continuation.previous_run_id AS browser_takeover_from_run_id,
   CASE
-    WHEN continuation.run_id IS NOT NULL THEN 'resume'
+    WHEN continuation.run_id IS NOT NULL OR browser_continuation.run_id IS NOT NULL THEN 'resume'
     WHEN EXISTS(SELECT 1 FROM json_each(request.parts_json)
       WHERE json_extract(value, '$.type') = 'notice' AND json_extract(value, '$.code') = 'run_resumed') THEN 'resume'
     WHEN request.sender_json IS NOT NULL AND coalesce(json_extract(request.sender_json, '$.kind'), '') <> 'person' THEN 'delegation'
@@ -213,6 +217,7 @@ const RUN_SNAPSHOT_SELECT = `SELECT r.*, COALESCE(root.thread_id, t.group_thread
   LEFT JOIN group_run_links link ON link.run_id = r.id
   LEFT JOIN runs root ON root.id = link.turn_id
   LEFT JOIN run_continuations continuation ON continuation.run_id = r.id
+  LEFT JOIN browser_takeover_continuations browser_continuation ON browser_continuation.run_id = r.id
   LEFT JOIN messages request ON request.id = r.request_message_id AND request.thread_id = r.thread_id`
 
 export const createRuntimePersistence = ({ database }: { database: unknown }): RuntimePersistence => {

@@ -227,9 +227,11 @@ const chromeExecutable = async ({
 export const createChromeLauncher = ({
   kernel,
   mode = "system-chrome",
+  createClient = createCdpClient,
 }: {
   kernel: Kernel
   mode?: "system-chrome" | "chrome-for-testing"
+  createClient?: typeof createCdpClient
 }): ChromeLauncher => {
   let active: { client: CdpClient; process: SpawnedChrome } | null = null
 
@@ -306,7 +308,7 @@ export const createChromeLauncher = ({
       const parsed = new URL(websocketUrl)
       if (parsed.hostname !== "127.0.0.1" || parsed.port !== String(activePort.port))
         throw new Error("Chrome DevTools endpoint was not loopback-only")
-      client = await connectCdpWebSocket({ url: parsed.toString(), timeoutMs: 5000 })
+      client = await connectCdpWebSocket({ url: parsed.toString() })
       return await activate(spawned, client)
     } catch {
       await client?.close()
@@ -350,7 +352,7 @@ export const createChromeLauncher = ({
     }
     let client: CdpClient | null = null
     try {
-      client = createCdpClient({ pipe: { read: output, write: input }, timeoutMs: 5000 })
+      client = createClient({ pipe: { read: output, write: input } })
       return await activate(spawned, client)
     } catch {
       await client?.close()

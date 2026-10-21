@@ -3,7 +3,7 @@ import { expect, spyOn, test } from "bun:test"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { ApprovalPart, ProviderAdapter, StartTurnArgs, ToolRegistration } from "@touri/contracts"
+import type { ApprovalPart, Message, ProviderAdapter, StartTurnArgs, ToolRegistration } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
 import * as folderCapability from "../../src/kernel/folder-capability"
 import { createToolRouter } from "../../src/mcp/router"
@@ -139,7 +139,10 @@ const fixture = async ({ missingOutput = false, browserTask = false } = {}) => {
       })
       .map((tool) => tool.name),
   )
-  const send = (text = taskText) => {
+  const send = (
+    text = taskText,
+    sender: Message["sender"] = { id: "requester", name: "Requester", kind: "person" },
+  ) => {
     const message = store.insertMessage({
       message: {
         id: runtime.kernel.newId(),
@@ -151,7 +154,7 @@ const fixture = async ({ missingOutput = false, browserTask = false } = {}) => {
         runId: null,
         text,
         parts: [{ type: "text", text }],
-        sender: null,
+        sender,
         source: "local",
       },
     })
@@ -196,10 +199,120 @@ const fixture = async ({ missingOutput = false, browserTask = false } = {}) => {
     runtime.stop()
     rmSync(root, { recursive: true, force: true })
   }
-  send()
+  const initialRun = send()
   await waitFor(() => turns.length === 1)
-  return { folder, reference, turns, db, store, engine, call, cards, answer, finish, close, send, opened }
+  return { folder, reference, turns, db, store, engine, call, cards, answer, finish, close, send, opened, initialRun }
 }
+
+test("only the requester or bot owner can return a browser takeover from a channel", async () => {
+  const f = await fixture()
+  try {
+    if (!f.initialRun.success) throw new Error("Could not start the requester turn")
+    f.db
+      .query(
+        "INSERT INTO bot_groups (id, name, color, avatar_shape, avatar_seed, created_at, updated_at) VALUES ('group-1', 'Grupo', '#2563eb', 'classic-none', 'seed', 1, 1)",
+      )
+      .run()
+    f.db
+      .query("INSERT INTO group_turns (run_id, group_id, recipients_json) VALUES (?, 'group-1', ?)")
+      .run(f.initialRun.run.id, JSON.stringify(["b"]))
+    const marker = f.store.insertMessage({
+      message: {
+        id: "channel-member-request",
+        threadId: "t",
+        parentId: f.initialRun.run.requestMessageId,
+        role: "system",
+        kind: "notice",
+        status: "complete",
+        runId: null,
+        text: "Pedido do canal",
+        parts: [{ type: "notice", level: "info", code: "group_coordination_prompt", text: "Pedido do canal" }],
+        sender: null,
+        source: "local",
+      },
+    })
+    if (!marker.success) throw new Error(marker.error)
+    const channelRun = f.engine.enqueue({ threadId: "t", requestMessageId: marker.message.id, trigger: "retry" })
+    if (!channelRun.success) throw new Error("Could not create the channel member run")
+    f.db
+      .query("INSERT INTO group_run_links (run_id, turn_id, depth) VALUES (?, ?, 0)")
+      .run(channelRun.run.id, f.initialRun.run.id)
+
+    expect(
+      f.engine.canReturnBrowserTakeover({
+        botId: "b",
+        threadId: "t",
+        runId: channelRun.run.id,
+        personId: "requester",
+      }),
+    ).toBe(true)
+    expect(
+      f.engine.canReturnBrowserTakeover({
+        botId: "b",
+        threadId: "t",
+        runId: channelRun.run.id,
+        personId: "channel-member",
+      }),
+    ).toBe(false)
+    expect(
+      f.engine.canReturnBrowserTakeover({
+        botId: "b",
+        threadId: "t",
+        runId: channelRun.run.id,
+        personId: "owner",
+      }),
+    ).toBe(true)
+  } finally {
+    await f.close()
+  }
+})
+
+test("a browser handback continues an active run exactly once with resume disabled", async () => {
+  const f = await fixture()
+  try {
+    if (!f.initialRun.success) throw new Error("Could not start the requester turn")
+    f.db.exec("INSERT OR REPLACE INTO settings(key,value_json,updated_at) VALUES ('resumeInterruptedTurns','false',1)")
+    const runId = f.initialRun.run.id
+    const handback = { botId: "b", threadId: "t", runId }
+
+    expect(f.engine.resumeAfterBrowserTakeover(handback)).toBe(true)
+    expect(f.engine.resumeAfterBrowserTakeover(handback)).toBe(true)
+    await f.finish(0)
+    await waitFor(() => f.turns.length === 2)
+    expect(f.turns[1]?.input).toContainEqual({
+      type: "text",
+      text: expect.stringContaining(requestText),
+    })
+    expect(f.db.query("SELECT previous_run_id FROM browser_takeover_continuations").all()).toEqual([
+      { previous_run_id: runId },
+    ])
+    await f.finish(1)
+    expect(f.turns).toHaveLength(2)
+  } finally {
+    await f.close()
+  }
+})
+
+test("a repeated browser handback does not duplicate a completed run continuation", async () => {
+  const f = await fixture()
+  try {
+    if (!f.initialRun.success) throw new Error("Could not start the requester turn")
+    await f.finish(0)
+    const handback = { botId: "b", threadId: "t", runId: f.initialRun.run.id }
+
+    expect(f.engine.resumeAfterBrowserTakeover(handback)).toBe(true)
+    expect(f.engine.resumeAfterBrowserTakeover(handback)).toBe(true)
+    await waitFor(() => f.turns.length === 2)
+
+    expect(f.db.query("SELECT previous_run_id FROM browser_takeover_continuations").all()).toEqual([
+      { previous_run_id: f.initialRun.run.id },
+    ])
+    await f.finish(1)
+    expect(f.turns).toHaveLength(2)
+  } finally {
+    await f.close()
+  }
+})
 
 test("saved incompatible grants allow later greetings in conversation-only mode without losing stored permissions", async () => {
   const f = await fixture()

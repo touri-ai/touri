@@ -46,6 +46,7 @@ const tab = {
   state: "live",
   openerTabId: null,
   heldByUser: false,
+  takeoverRequested: false,
   lastUsedAt: 10,
 } satisfies BrowserTabInfo & { ownerBotId: string | null }
 
@@ -79,7 +80,14 @@ const renderCard = (parts: ToolCallPart[], finished: boolean, getTabs = async ()
   const onOpenComputer = vi.fn()
   const view = render(
     <InlinePreviewContext.Provider value={{ api, bot, machine: undefined, activeCallId: undefined, onOpenComputer }}>
-      <BrowserActivityCard parts={parts} finished={finished} createdAt={1} botName="Lia" />
+      <BrowserActivityCard
+        parts={parts}
+        finished={finished}
+        createdAt={1}
+        threadId="thread-mark"
+        runId="run-mark"
+        botName="Lia"
+      />
     </InlinePreviewContext.Provider>,
   )
 
@@ -152,13 +160,15 @@ test("take-over holds the browser, opens its view, and the finished card collaps
         onOpenComputer,
       }}
     >
-      <BrowserActivityCard parts={parts} finished createdAt={1} botName="Lia" />
+      <BrowserActivityCard parts={parts} finished createdAt={1} threadId="thread-mark" runId="run-mark" botName="Lia" />
     </InlinePreviewContext.Provider>,
   )
 
+  expect(await screen.findByRole("button", { name: "Devolver para Lia" })).toBeVisible()
+  fireEvent.click(screen.getByRole("button", { name: "Devolver para Lia" }))
   expect(await screen.findByText("Usou o navegador · 3 ações")).toBeVisible()
-  expect(screen.getByRole("img", { name: "Captura final do navegador" })).toBeVisible()
-  expect(screen.queryByText("Atividade do navegador")).toBeNull()
+  await waitFor(() => expect(screen.queryByText("Atividade do navegador")).toBeNull())
+  expect(await screen.findByRole("img", { name: "Captura final do navegador" })).toBeVisible()
   fireEvent.click(screen.getByRole("button", { name: /Usou o navegador/ }))
   expect(await screen.findByText("Atividade do navegador")).toBeVisible()
   await waitFor(() =>
@@ -179,6 +189,45 @@ test("historical browser cards never sample or take over the current browser pag
   expect(screen.queryByRole("button", { name: "Assumir controle" })).toBeNull()
   expect(request).not.toHaveBeenCalledWith("GET /browser/tabs", expect.anything())
 })
+
+test("a finished browser takeover request keeps its page URL and handback control", async () => {
+  const requestedTab = { ...tab, takeoverRequested: true }
+  const parts = [
+    getPart({
+      callId: "takeover",
+      tool: "mcp__touri__browser_request_takeover",
+      inputJson: '{"tabId":"browser-tab","reason":"login"}',
+    }),
+  ]
+
+  renderCard(parts, true, async () => ({ tabs: [requestedTab] }))
+
+  expect(await screen.findByRole("button", { name: "Assumir controle" })).toBeVisible()
+  expect(screen.getByText("https://travel.example.test/results")).toBeVisible()
+  fireEvent.click(screen.getByRole("button", { name: "Assumir controle" }))
+  expect(await screen.findByRole("button", { name: "Devolver para Lia" })).toBeVisible()
+})
+
+test.each(["later-run", null])(
+  "a historical takeover card cannot control a later handoff: %s",
+  async (takeoverRunId) => {
+    const parts = [
+      getPart({
+        callId: "past-takeover",
+        tool: "mcp__touri__browser_request_takeover",
+        inputJson: '{"tabId":"browser-tab","reason":"login"}',
+      }),
+    ]
+    const laterTab = { ...tab, takeoverRequested: true, heldByUser: true, takeoverRunId }
+
+    await act(async () => {
+      renderCard(parts, true, async () => ({ tabs: [laterTab] }))
+    })
+
+    expect(screen.getByRole("button", { name: /Usou o navegador/ })).toBeVisible()
+    expect(screen.queryByRole("button", { name: "Devolver para Lia" })).toBeNull()
+  },
+)
 
 test("a newly opened output tab takes precedence over an older input tab", () => {
   const parts = [
@@ -327,7 +376,13 @@ test("an attached new page never borrows the previous tab while its metadata is 
 
   view.rerender(
     <InlinePreviewContext.Provider value={{ api, bot, machine: undefined, activeCallId: undefined, onOpenComputer }}>
-      <BrowserActivityCard parts={[oldPage, newPage]} finished={false} createdAt={1} botName="Lia" />
+      <BrowserActivityCard
+        parts={[oldPage, newPage]}
+        finished={false}
+        createdAt={1}
+        threadId="thread-mark"
+        botName="Lia"
+      />
     </InlinePreviewContext.Provider>,
   )
 

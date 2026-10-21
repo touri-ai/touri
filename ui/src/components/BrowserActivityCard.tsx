@@ -12,6 +12,7 @@ import {
   getBrowserActivityTime,
   getBrowserActivityTools,
   getBrowserActivityUrl,
+  hasBrowserTakeoverRequest,
 } from "./browserActivityPresentation"
 import { StoredToolOutput } from "./ToolOutput"
 import "./browser-activity.css"
@@ -24,18 +25,23 @@ export const BrowserActivityCard = ({
   parts,
   finished,
   createdAt,
+  threadId,
+  runId,
   botName,
   locale = "pt-BR",
 }: {
   parts: readonly MessagePart[]
   finished: boolean
   createdAt: number
+  threadId: Id
+  runId?: Id | null
   botName: string
   locale?: Locale
 }) => {
   const context = useContext(InlinePreviewContext)
   const previewEnabled = useInlinePreviewPreference()
   const browserTools = getBrowserActivityTools(parts)
+  const hasTakeoverRequest = hasBrowserTakeoverRequest(browserTools)
   const tabId = getBrowserActivityTabId(browserTools)
   const resolutionCallId = tabId ? "" : (browserTools.at(-1)?.callId ?? "")
   const [resolvedTab, setResolvedTab] = useState<{ callId: string; tabId: string }>()
@@ -43,11 +49,24 @@ export const BrowserActivityCard = ({
   const [previewFrame, setPreviewFrame] = useState<{ tabId: string; frame: PreviewFrame }>()
   const preview = previewFrame?.tabId === activeTabId ? previewFrame?.frame : undefined
   const [previewError, setPreviewError] = useState<string | null>(null)
-  const [heldTab, setHeldTab] = useState<{ tabId: string; held: boolean }>()
-  const held = heldTab?.tabId === activeTabId && heldTab?.held === true
+  const [heldTab, setHeldTab] = useState<{
+    tabId: string
+    held: boolean
+    takeoverRequested: boolean
+    url: string
+  }>()
+  const activeHeldTab = heldTab?.tabId === activeTabId ? heldTab : undefined
+  const [resuming, setResuming] = useState(false)
+  const held = activeHeldTab?.held === true
+  const takeoverRequested = activeHeldTab?.takeoverRequested === true
+  const takeoverVisible = held || takeoverRequested || resuming
+  const controlsVisible = !finished || takeoverVisible
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(!finished)
+  const resumingRef = useRef(false)
+  const resumingRunId = useRef<string | null>(null)
+  const tabEventVersion = useRef(0)
   const [fullView, setFullView] = useState(false)
   const section = useRef<HTMLElement>(null)
   const [visible, setVisible] = useState(false)
@@ -66,8 +85,9 @@ export const BrowserActivityCard = ({
   }, [])
 
   useEffect(() => {
-    if (finished) setExpanded(false)
-  }, [finished])
+    if (takeoverVisible) setExpanded(true)
+    else if (finished) setExpanded(false)
+  }, [finished, takeoverVisible])
 
   useEffect(() => {
     const element = section.current
@@ -83,7 +103,7 @@ export const BrowserActivityCard = ({
   }, [])
 
   useEffect(() => {
-    if (!api || !botId || finished) return
+    if (!api || !botId || (finished && !hasTakeoverRequest)) return
     let active = true
     // Events may arrive after the initial snapshot was taken.
     let hasTabEvent = false
@@ -96,7 +116,16 @@ export const BrowserActivityCard = ({
         )
       if (!candidate || !active) return
       if (!tabId) setResolvedTab({ callId: resolutionCallId, tabId: candidate.tabId })
-      setHeldTab({ tabId: candidate.tabId, held: candidate.heldByUser })
+      const matchesRun =
+        candidate.takeoverRunId === undefined ||
+        candidate.takeoverRunId === runId ||
+        (!finished && candidate.takeoverRunId === null)
+      setHeldTab({
+        tabId: candidate.tabId,
+        held: matchesRun && candidate.heldByUser,
+        takeoverRequested: matchesRun && candidate.takeoverRequested === true,
+        url: candidate.url,
+      })
     }
     const unsubscribe = api.subscribe(({ event }) => {
       if (
@@ -106,9 +135,27 @@ export const BrowserActivityCard = ({
         (!tabId || event.tab.tabId === tabId)
       ) {
         hasTabEvent = true
+        tabEventVersion.current += 1
         if (!tabId) setResolvedTab({ callId: resolutionCallId, tabId: event.tab.tabId })
-        setHeldTab({ tabId: event.tab.tabId, held: event.tab.heldByUser })
+        const matchesRun =
+          event.tab.takeoverRunId === undefined ||
+          event.tab.takeoverRunId === runId ||
+          (!finished && event.tab.takeoverRunId === null)
+        setHeldTab({
+          tabId: event.tab.tabId,
+          held: matchesRun && event.tab.heldByUser,
+          takeoverRequested: matchesRun && event.tab.takeoverRequested === true,
+          url: event.tab.url,
+        })
       }
+      if (event.type !== "run.updated" || event.run.threadId !== threadId || event.run.botId !== botId) return
+      if (!resumingRef.current) return
+      const activeRun = ["queued", "starting", "running"].includes(event.run.status)
+      if (!resumingRunId.current && event.run.trigger === "retry" && activeRun) resumingRunId.current = event.run.id
+      if (resumingRunId.current !== event.run.id || activeRun) return
+      resumingRef.current = false
+      resumingRunId.current = null
+      setResuming(false)
     })
     void api
       .request("GET /browser/tabs", { botId })
@@ -121,11 +168,23 @@ export const BrowserActivityCard = ({
       active = false
       unsubscribe()
     }
-  }, [api, botId, finished, resolutionCallId, tabId])
+  }, [api, botId, finished, hasTakeoverRequest, resolutionCallId, runId, tabId, threadId])
 
   useEffect(() => {
     setPreviewError(null)
-    if (!api || !botId || !machine || !activeTabId || !canPreview || !previewEnabled || !visible || hidden || finished)
+    if (
+      !api ||
+      !botId ||
+      !machine ||
+      !activeTabId ||
+      !canPreview ||
+      !previewEnabled ||
+      !visible ||
+      hidden ||
+      finished ||
+      held ||
+      takeoverRequested
+    )
       return
 
     return startInlineFrameSource(
@@ -138,17 +197,48 @@ export const BrowserActivityCard = ({
         setPreviewError(reason ? t("Browser preview unavailable. Open the browser to reconnect.", {}, locale) : null),
       { intervalMs: 3_000 },
     )
-  }, [activeTabId, api, botId, machine, canPreview, finished, hidden, locale, previewEnabled, visible])
+  }, [
+    activeTabId,
+    api,
+    botId,
+    machine,
+    canPreview,
+    finished,
+    held,
+    hidden,
+    locale,
+    previewEnabled,
+    takeoverRequested,
+    visible,
+  ])
 
   const toggleTakeover = async (): Promise<void> => {
     if (!api || !activeTabId || busy) return
+    const returning = held && takeoverRequested
+    const eventVersion = tabEventVersion.current
     setBusy(true)
     setError(null)
+    if (returning) {
+      resumingRef.current = true
+      resumingRunId.current = null
+      setResuming(true)
+    }
     try {
       await api.request("POST /browser/tabs/:id/takeover", { hold: !held }, { id: activeTabId })
-      setHeldTab({ tabId: activeTabId, held: !held })
+      if (tabEventVersion.current === eventVersion)
+        setHeldTab({
+          tabId: activeTabId,
+          held: !held,
+          takeoverRequested: !held && takeoverRequested,
+          url: activeHeldTab?.url ?? "",
+        })
       if (!held) context?.onOpenComputer()
     } catch {
+      if (returning) {
+        resumingRef.current = false
+        resumingRunId.current = null
+        setResuming(false)
+      }
       setError(t("The browser tab could not be updated.", {}, locale))
     } finally {
       setBusy(false)
@@ -165,7 +255,8 @@ export const BrowserActivityCard = ({
     { count: browserTools.length },
     locale,
   )
-  const url = finished ? "" : getBrowserActivityUrl(preview?.url ?? "")
+  const browserUrl = finished ? activeHeldTab?.url : preview?.url || activeHeldTab?.url
+  const url = finished && !takeoverVisible ? "" : getBrowserActivityUrl(browserUrl ?? "")
 
   return (
     <article
@@ -175,7 +266,7 @@ export const BrowserActivityCard = ({
       data-finished={finished}
       data-held={held}
     >
-      {finished ? (
+      {!controlsVisible ? (
         <button
           type="button"
           className="browser-activity-summary"
@@ -209,7 +300,9 @@ export const BrowserActivityCard = ({
             <strong>{title}</strong>
             {url && <span title={url}>{url}</span>}
           </div>
-          {activeTabId && (
+          {resuming ? (
+            <span role="status">{t("{name} is working again", { name: botName }, locale)}</span>
+          ) : activeTabId ? (
             <button type="button" className="button button-quiet" disabled={busy} onClick={() => void toggleTakeover()}>
               {busy
                 ? t("Updating browser control…", {}, locale)
@@ -217,7 +310,7 @@ export const BrowserActivityCard = ({
                   ? t("Hand back to {name}", { name: botName }, locale)
                   : t("Take over", {}, locale)}
             </button>
-          )}
+          ) : null}
         </header>
       )}
       {expanded && (

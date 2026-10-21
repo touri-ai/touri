@@ -21,6 +21,7 @@ import { LearningCard } from "./LearningCard"
 import { MarkdownContent } from "./MarkdownContent"
 import { mcpPresets } from "./McpCatalog"
 import { Mem0Card } from "./Mem0Card"
+import { PanelIcon } from "./PanelIcon"
 import { ScreenServerPolicies, useScreenConnections } from "./ScreenConnections"
 import { ScreenHeader, ScreenState } from "./ScreenPrimitives"
 import { TelegramIntegrationCard } from "./TelegramIntegrationCard"
@@ -725,7 +726,7 @@ export const PreviewScreen = ({
                 else onBack()
               }}
             >
-              Aprovação pendente — abrir no chat <span aria-hidden="true">→</span>
+              Aprovação pendente — abrir no chat <PanelIcon name="arrow-right" />
             </button>
           )}
           <div className="preview-chat-feed">

@@ -652,6 +652,8 @@ export const createKernel = ({
       const store = services.use("store.api")
       if (store && !store.closeStreamWriterIfIdle?.()) await store.flushWritesAsync?.({ stopping: true })
       services.use("storage.botDeletion")?.dispose()
+      services.use("storage.threadDeletion")?.dispose()
+      services.use("storage.threadTitles")?.dispose()
       stopHistoryBackfill()
       const attentionStopped = stopWorkspaceAttentionBackfill()
       storageMaintenance.dispose({ closing: true })

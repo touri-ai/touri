@@ -16,7 +16,7 @@ test("desktop composer shows the complete long model name", async ({ page }) => 
 })
 
 for (const theme of ["light", "dark"]) {
-  test(`phone composer shows complete selected values in ${theme}`, async ({ page }) => {
+  test(`phone composer keeps long selections accessible and truncates labels in ${theme}`, async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.addInitScript((theme) => localStorage.setItem("touri.appearance.v1", theme), theme)
     await page.goto("/test/e2e/home-harness.html?scenario=long-composer")
@@ -29,8 +29,9 @@ for (const theme of ["light", "dark"]) {
     for (const control of [model, project]) {
       await expect(control).toBeVisible()
       const text = control.locator(".composer-model-name")
-      expect(await text.evaluate((element) => getComputedStyle(element).whiteSpace)).toBe("normal")
-      expect(await text.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
+      expect(await text.evaluate((element) => getComputedStyle(element).whiteSpace)).toBe("nowrap")
+      expect(await text.evaluate((element) => getComputedStyle(element).textOverflow)).toBe("ellipsis")
+      expect(await text.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeGreaterThan(1)
       const labelBounds = await control.boundingBox()
       const sendBounds = await send.boundingBox()
       expect(labelBounds && sendBounds && labelBounds.x + labelBounds.width <= sendBounds.x).toBe(true)

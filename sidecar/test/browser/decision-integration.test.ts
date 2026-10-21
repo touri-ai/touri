@@ -87,7 +87,9 @@ const makeEngine = ({
     submitSecret: async () => result(true),
     secretEntry: async () => false,
     releaseTakeover: async () => false,
+    releaseTakeoverForPerson: async () => "not_found",
     holdTakeover: async () => false,
+    holdTakeoverForPerson: async () => "not_found",
     getWindowBounds: async () => null,
     tabsForBot: () => [
       {

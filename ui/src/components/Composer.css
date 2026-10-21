@@ -1,6 +1,6 @@
 /* r8 composer: island, attachments, controls and actionable notices. */
 .composer.composer-island {
-  width: min(900px, calc(100% - 48px));
+  width: min(var(--chat-column-width), calc(100% - 48px));
   gap: var(--space-8);
   margin: var(--space-8) auto var(--space-20);
   padding: var(--space-12);
@@ -14,7 +14,7 @@
     0 0 0 2px var(--focus-soft),
     var(--elevation-card);
 }
-.composer-island textarea {
+.composer.composer-island textarea {
   field-sizing: content;
   width: 100%;
   min-height: 38px;
@@ -27,8 +27,11 @@
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-chat) transparent;
 }
+.composer.composer-island textarea:focus-visible {
+  box-shadow: none;
+}
 @supports (field-sizing: content) {
-  .composer-island textarea {
+  .composer.composer-island textarea {
     height: auto;
     overflow-y: auto;
     transition: none;
@@ -47,9 +50,15 @@
 .composer-island .composer-icon,
 .composer-island .composer-send {
   flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
   padding: 0;
+}
+.composer-island .composer-icon svg,
+.composer-island .composer-dictation svg,
+.composer-island .composer-send svg {
+  width: var(--icon-md);
+  height: var(--icon-md);
 }
 .composer-island .composer-icon {
   border-radius: var(--radius-sm);
@@ -291,37 +300,44 @@
 @media (max-width: 900px) {
   .composer.composer-island,
   .composer-notice {
-    width: calc(100% - 24px);
+    width: min(var(--chat-column-width), calc(100% - 24px));
   }
   .composer-notice {
     flex-wrap: wrap;
   }
 }
 @media (max-width: 620px) {
+  .composer.composer-island textarea {
+    min-height: var(--touch-target-size);
+  }
   .composer-island .composer-footer {
-    align-items: flex-end;
+    align-items: center;
+    flex-wrap: nowrap;
   }
   .composer-island .composer-tools-left {
-    display: grid;
-    grid-template-columns: 34px minmax(0, 1fr);
-    align-items: start;
+    display: flex;
+    align-items: center;
   }
   .composer-island .composer-model,
   .composer-island .composer-project {
-    grid-column: 2;
-    width: 100%;
-    max-width: none;
+    min-width: 0;
+    width: auto;
+    max-width: 34vw;
+    flex: 0 1 34vw;
   }
   .composer-island .composer-model {
-    height: auto;
-    min-height: 34px;
+    height: var(--icon-button-size);
     text-align: left;
   }
+  .composer-island .composer-project-chip {
+    width: 100%;
+    max-width: 100%;
+  }
   .composer-island .composer-model-name {
-    overflow: visible;
-    overflow-wrap: anywhere;
-    text-overflow: clip;
-    white-space: normal;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .composer-island .composer-model > [aria-hidden="true"] {
     flex-shrink: 0;
@@ -338,7 +354,7 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .composer-island textarea {
+  .composer.composer-island textarea {
     transition: none;
   }
 }

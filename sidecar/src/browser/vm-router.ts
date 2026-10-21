@@ -280,6 +280,7 @@ export const createRoutedBrowserEngine = (
               if (key === "list" && message === "A máquina não está em execução") return emptyBrowser()
               if (key === "getWindowBounds") return null
               if (key === "releaseTakeover" || key === "holdTakeover") return false
+              if (key === "releaseTakeoverForPerson" || key === "holdTakeoverForPerson") return "not_found"
               return {
                 success: false,
                 errorCode: controller.signal.aborted ? "DEADLINE_EXCEEDED" : "ENGINE_UNAVAILABLE",

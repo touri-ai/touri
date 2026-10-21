@@ -109,8 +109,8 @@ export const ActivityMark = ({
         >
           <svg
             className="turn-activity-chevron"
-            width="14"
-            height="14"
+            width="16"
+            height="16"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -133,7 +133,6 @@ export const ActivityMark = ({
               }}
             >
               {label}
-              <span aria-hidden="true"> ↗</span>
             </a>
           ) : onExpandReasoning ? (
             <button

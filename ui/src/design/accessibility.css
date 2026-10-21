@@ -1,7 +1,7 @@
 /* Alternate input and system palettes share the same controls and readable status copy. */
 @media (pointer: coarse) {
   :is(.bot-sidebar, .chat-toolbar, .bot-panel, .bot-panel-tabs, .bot-context-menu, .tool-card, .composer) button,
-  .activity-approval-link {
+  .activity-mark .activity-approval-link {
     min-width: var(--touch-target-size) !important;
     min-height: var(--touch-target-size) !important;
   }
@@ -12,9 +12,28 @@
     :is(.sidebar-icon-button, .bot-settings, .bot-row-menu, .thread-row-menu, .sidebar-brand, .sidebar-bots-link) {
     flex-shrink: 0;
   }
-  .activity-approval-link {
-    display: inline-flex;
-    align-items: center;
+  :root body .activity-mark {
+    --activity-line: var(--touch-target-size);
+  }
+  :is(
+      .settings-nav,
+      .cron-filters,
+      .screen-header-actions,
+      .modal-actions,
+      .modal-header,
+      .notice-bar,
+      .message-row,
+      .chat-message-list,
+      .app-grid
+    )
+    button {
+    min-height: var(--touch-target-size) !important;
+  }
+  .notice-bar button,
+  .modal-header .icon-button,
+  .calendar-heading button,
+  .mobile-menu-button {
+    min-width: var(--touch-target-size) !important;
   }
   .tool-details > .ds-disclosure-trigger {
     align-content: center;
@@ -23,6 +42,7 @@
     height: auto;
     min-height: var(--touch-target-size);
     flex-basis: auto;
+    padding-top: max(var(--space-12), env(safe-area-inset-top));
   }
 }
 
