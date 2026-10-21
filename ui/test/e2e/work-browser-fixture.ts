@@ -156,8 +156,10 @@ export const installWorkBrowserFixture = async (api: ReturnType<typeof createMoc
         offset: 0,
         nextOffset: null,
       }
-    if (route === "GET /runs") return { runs: finished ? [] : [run] }
-    if (route === "GET /threads/:id/runs" && params?.id === thread.id) return { runs: [run] }
+    if (route === "GET /runs")
+      return { runs: finished ? [run, Object.assign({}, run, { id: "resumed-run", browserRequestId: run.id })] : [run] }
+    if (route === "GET /threads/:id/runs" && params?.id === thread.id)
+      return { runs: finished ? [run, Object.assign({}, run, { id: "resumed-run", browserRequestId: run.id })] : [run] }
     const response = await request(route, body, params, transport)
     if (route === "GET /workspace/activity") return Object.assign({}, response, { browserRuns: [browserRun] })
 

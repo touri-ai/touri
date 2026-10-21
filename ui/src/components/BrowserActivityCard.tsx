@@ -1,4 +1,4 @@
-import type { BrowserTabInfo, BrowserTakeoverReason, Id, MessagePart } from "@touri/contracts"
+import type { BrowserTabInfo, BrowserTakeoverReason, Id, MessagePart, ToolCallPart } from "@touri/contracts"
 import { type ReactNode, useContext, useEffect, useId, useRef, useState } from "react"
 import {
   ChannelCardFooter,
@@ -146,7 +146,7 @@ export const BrowserActivityCard = ({
   const bot = context?.bot
   const botId = bot?.id
   const machine = bot?.machine
-  const canPreview = !queued && !!api && !!bot && (bot.machine === "local" || context?.machine?.status === "running")
+  const canPreview = !queued && !!api && !!bot
   const completedCount = browserTools.filter((part) => !isBrowserActivityRunning(part)).length
   const needsTabRef = useRef(!activeTabId)
   needsTabRef.current = !activeTabId
@@ -322,7 +322,7 @@ export const BrowserActivityCard = ({
       () => setPreviewError(t("Browser preview unavailable. Open the browser to reconnect.", {}, locale)),
       (reason) =>
         setPreviewError(reason ? t("Browser preview unavailable. Open the browser to reconnect.", {}, locale) : null),
-      { intervalMs: 700 },
+      { intervalMs: 700, onReset: () => setPreviewFrame(undefined) },
     )
     frameSource.current = source
 
@@ -452,7 +452,7 @@ export const BrowserActivityCard = ({
     locale,
   )
   const url =
-    finished || channel?.previewHidden
+    finished || held || channel?.previewHidden
       ? ""
       : getBrowserActivityShortUrl(preview?.url ?? "") || getBrowserActivityOpenUrl(browserTools)
   const subtitle = [
@@ -526,7 +526,7 @@ export const BrowserActivityCard = ({
         data-expanded={expanded}
         data-show-all-actions={finished || showAllActions}
       >
-        {!finished && (
+        {!finished && !held && (
           <span
             className="browser-activity-progress"
             role="progressbar"
@@ -669,7 +669,15 @@ export const BrowserActivityCard = ({
                 <section className="browser-takeover-reason">
                   <strong>{t("Why {name} paused", { name: botName }, locale)}</strong>
                   <p>{reasonCopy}</p>
-                  <p>{t("The bot is paused until you hand control back.", {}, locale)}</p>
+                  <p>
+                    {t(
+                      channel?.state.controllerId
+                        ? "A person is controlling this browser tab; the bot is paused."
+                        : "The browser needs your help.",
+                      {},
+                      locale,
+                    )}
+                  </p>
                 </section>
               )}
               <strong>{t(takeoverActive ? "Recent actions" : "Browser activity", {}, locale)}</strong>
@@ -677,17 +685,15 @@ export const BrowserActivityCard = ({
                 {actions.map((part, index) => (
                   <li
                     key={part.callId}
-                    data-current={part.callId === currentAction?.callId && !finished}
-                    data-running={!finished && isBrowserActivityRunning(part)}
-                    data-status={part.ok === null ? "in-progress" : part.ok === false ? "failed" : "complete"}
+                    data-current={part.callId === currentAction?.callId && !finished && !held}
+                    data-running={!finished && !held && isBrowserActivityRunning(part)}
+                    data-status={getBrowserActionState(part, held)}
                   >
                     <span className="browser-activity-action-icon" aria-hidden="true">
                       <BrowserIcon name={getBrowserIconName(getBrowserActivityKind(part))} />
                     </span>
                     <span className="browser-activity-action-label">
-                      {!finished && isBrowserActivityRunning(part)
-                        ? getBrowserActivityCurrentLabel(part, locale)
-                        : getBrowserActivityLabel(part, locale)}
+                      {getBrowserActionLabel(part, held, finished, locale)}
                       {getBrowserActivityNotice(part, locale) && (
                         <small>{getBrowserActivityNotice(part, locale)}</small>
                       )}
@@ -695,18 +701,10 @@ export const BrowserActivityCard = ({
                     <span
                       className="browser-activity-action-state"
                       role="img"
-                      aria-label={t(
-                        part.ok === null
-                          ? "Action in progress"
-                          : part.ok === false
-                            ? "Action failed"
-                            : "Action complete",
-                        {},
-                        locale,
-                      )}
-                      data-status={part.ok === null ? "in-progress" : part.ok === false ? "failed" : "complete"}
+                      aria-label={getBrowserActionStatusLabel(part, held, locale)}
+                      data-status={getBrowserActionState(part, held)}
                     >
-                      {part.ok === null ? (
+                      {part.ok === null && !held ? (
                         <span className="browser-activity-action-spinner" aria-hidden="true" />
                       ) : null}
                       {part.ok === false ? "!" : part.ok === true ? "✓" : null}
@@ -777,4 +775,29 @@ const getTakeoverReasonCopy = (reason: BrowserTakeoverReason, locale: Locale): s
   if (reason === "requested") return t("This browser is under your control now.", {}, locale)
 
   return t("The site needs your confirmation before continuing.", {}, locale)
+}
+
+const getBrowserActionState = (part: ToolCallPart, held: boolean): "failed" | "complete" | "paused" | "in-progress" => {
+  if (part.ok === false) return "failed"
+  if (part.ok === true) return "complete"
+
+  return held ? "paused" : "in-progress"
+}
+
+const getBrowserActionLabel = (part: ToolCallPart, held: boolean, finished: boolean, locale: Locale): string => {
+  if (held && isBrowserActivityRunning(part)) return t("Pausado", {}, locale)
+  if (!finished && isBrowserActivityRunning(part)) return getBrowserActivityCurrentLabel(part, locale)
+
+  return getBrowserActivityLabel(part, locale)
+}
+
+const getBrowserActionStatusLabel = (part: ToolCallPart, held: boolean, locale: Locale): string => {
+  const labels = {
+    failed: "Action failed",
+    complete: "Action complete",
+    paused: "Pausado",
+    "in-progress": "Action in progress",
+  } as const
+
+  return t(labels[getBrowserActionState(part, held)], {}, locale)
 }

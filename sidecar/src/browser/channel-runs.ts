@@ -312,7 +312,6 @@ export const createChannelBrowserRuns = ({
         const next = getNextChannelBrowserRun({
           queued: queued.map((row) => ({
             runId: row.run_id,
-            activeRunId: row.current_run_id,
             channelId: current.thread_id,
             botId: row.bot_id,
             queuedAt: row.queued_at,

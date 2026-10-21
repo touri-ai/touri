@@ -1018,7 +1018,6 @@ export const init = async (
             return { status: 404, json: { error: "Bot não encontrado" } }
           if (Array.from(takeoverSessions.values()).some((session) => session.botId === botId))
             return { status: 409, json: { error: "A prévia fica oculta enquanto alguém controla o navegador." } }
-          if (bot.machine !== "local") return { status: 409, json: { error: "Use a tela da máquina virtual" } }
           const visibleTabs = visibleTabsFor(botId, person)
           if (person && query.tabId && !visibleTabs.some((tab) => tab.tabId === query.tabId))
             return { status: 404, json: { error: "Página não encontrada" } }

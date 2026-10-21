@@ -564,7 +564,6 @@ export const BrowserTakeoverView = ({
             </ol>
           </section>
           <div className="browser-takeover-footer">
-            <p>{t("What you type here stays out of chat, the bot, and history.", {}, locale)}</p>
             <button
               type="button"
               className="button button-quiet"
