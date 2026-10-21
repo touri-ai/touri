@@ -14,7 +14,7 @@ import type {
 } from "@touri/contracts"
 import { getApiModelKey } from "../api-models"
 import { getBrowserDecisionModel } from "../api-models/config"
-import { deviceSession } from "../kernel/device-session"
+import { type DeviceSession, deviceSession } from "../kernel/device-session"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import {
   type BrowserDecisionAction,
@@ -39,14 +39,30 @@ const MAX_TAKEOVER_SESSIONS = 16
 
 type BrowserTakeoverSession = {
   id: string
+  controlEpoch: string
   botId: string
   deviceId: string
+  personId: string
   expiresAt: number
   lastFrameAt: number
   frameInFlight: boolean
+  targetEpoch: number | null
+  viewEpoch: number
+  frameWidth: number | null
+  frameHeight: number | null
   pendingInputs: number
   timer: ReturnType<typeof setTimeout> | null
   releaseVm: (() => Promise<void>) | null
+}
+
+const getTakeoverController = (device: DeviceSession | undefined) => ({
+  deviceId: device?.deviceId ?? "native",
+  personId: device?.person?.id ?? "native",
+})
+
+const isTakeoverController = (device: DeviceSession | undefined, session: BrowserTakeoverSession): boolean => {
+  const controller = getTakeoverController(device)
+  return session.deviceId === controller.deviceId && session.personId === controller.personId
 }
 
 const browserTakeoverInput = (value: unknown): BrowserTakeoverInput | null => {
@@ -477,11 +493,12 @@ export const init = async (
     const device = deviceSession(request.signal)
     const body = argsRecord(request.body)
     const sessionId = asString(body.sessionId)
+    const controlEpoch = asString(body.controlEpoch)
     const tabId = request.params.id ?? ""
     const session = takeoverSessions.get(tabId)
-    const controllerId = device?.deviceId ?? "native"
     if ((device && !device.active()) || !session || sessionId !== session.id) return null
-    if (session.deviceId !== controllerId) return null
+    if (session.controlEpoch !== controlEpoch) return null
+    if (!isTakeoverController(device, session)) return null
     if (session.expiresAt <= Date.now()) {
       removeTakeoverSession(tabId)
       return null
@@ -870,6 +887,8 @@ export const init = async (
           const botId = params.id ?? ""
           const bot = kernel.services.use("store.api")?.getBot({ botId })
           if (!bot) return { status: 404, json: { error: "Bot não encontrado" } }
+          if (Array.from(takeoverSessions.values()).some((session) => session.botId === botId))
+            return { status: 409, json: { error: "A prévia fica oculta enquanto alguém controla o navegador." } }
           if (bot.machine !== "local") return { status: 409, json: { error: "Use a tela da máquina virtual" } }
           const frame = await engine.preview({ botId, ...(query.tabId ? { tabId: query.tabId } : {}), signal })
           return frame
@@ -882,7 +901,7 @@ export const init = async (
         path: "/browser/tabs/:id/takeover/session",
         handler: async ({ params, signal }) => {
           const device = deviceSession(signal)
-          const controllerId = device?.deviceId ?? "native"
+          const controller = getTakeoverController(device)
           if (device && !device.active())
             return { status: 401, json: { error: "Conecte o dispositivo para assumir o navegador." } }
           const tabId = params.id ?? ""
@@ -894,10 +913,13 @@ export const init = async (
 
           const existing = takeoverSessions.get(tabId)
           if (existing && existing.expiresAt > Date.now()) {
-            if (existing.deviceId !== controllerId)
+            if (!isTakeoverController(device, existing))
               return { status: 409, json: { error: "Outra pessoa está controlando esta página." } }
             const renewed = renewTakeoverSession(tabId, existing)
-            return { status: 200, json: { sessionId: renewed.id } }
+            return {
+              status: 200,
+              json: { sessionId: renewed.id, controlEpoch: renewed.controlEpoch, viewEpoch: renewed.viewEpoch },
+            }
           }
           if (existing) removeTakeoverSession(tabId)
           let starting = takeoverStarts.get(tabId)
@@ -928,11 +950,17 @@ export const init = async (
               }
               return renewTakeoverSession(tabId, {
                 id: randomBytes(32).toString("hex"),
+                controlEpoch: randomBytes(16).toString("hex"),
                 botId: tab.ownerBotId ?? "",
-                deviceId: controllerId,
+                deviceId: controller.deviceId,
+                personId: controller.personId,
                 expiresAt: 0,
                 lastFrameAt: 0,
                 frameInFlight: false,
+                targetEpoch: null,
+                viewEpoch: 0,
+                frameWidth: null,
+                frameHeight: null,
                 pendingInputs: 0,
                 timer: null,
                 releaseVm,
@@ -944,9 +972,12 @@ export const init = async (
           const session = await starting
           if (takeoverStarts.get(tabId) === starting) takeoverStarts.delete(tabId)
           if (!session) return { status: 409, json: { error: "Não foi possível pausar o navegador. Tente novamente." } }
-          if (session.deviceId !== controllerId)
+          if (!isTakeoverController(device, session))
             return { status: 409, json: { error: "Outra pessoa está controlando esta página." } }
-          return { status: 200, json: { sessionId: session.id } }
+          return {
+            status: 200,
+            json: { sessionId: session.id, controlEpoch: session.controlEpoch, viewEpoch: session.viewEpoch },
+          }
         },
       },
       {
@@ -956,13 +987,27 @@ export const init = async (
           const tabId = request.params.id ?? ""
           const authorized = authorizeTakeoverSession(request)
           if (!authorized) return { status: 403, json: { error: "Esta sessão de controle não está ativa." } }
+          const requestedViewEpoch = asNumber(argsRecord(request.body).viewEpoch)
+          if (
+            requestedViewEpoch === null ||
+            !Number.isSafeInteger(requestedViewEpoch) ||
+            requestedViewEpoch < authorized.session.viewEpoch
+          )
+            return { status: 409, json: { error: "A visualização mudou. Atualize a página do navegador." } }
           const now = Date.now()
-          if (authorized.session.frameInFlight || now - authorized.session.lastFrameAt < TAKEOVER_FRAME_INTERVAL_MS)
+          if (
+            authorized.session.frameInFlight ||
+            (requestedViewEpoch === authorized.session.viewEpoch &&
+              now - authorized.session.lastFrameAt < TAKEOVER_FRAME_INTERVAL_MS)
+          )
             return { status: 429, json: { error: "Aguarde a próxima imagem do navegador." } }
+          const viewChanged = requestedViewEpoch > authorized.session.viewEpoch
           const active = renewTakeoverSession(tabId, {
             ...authorized.session,
+            viewEpoch: requestedViewEpoch,
             frameInFlight: true,
             lastFrameAt: now,
+            ...(viewChanged ? { targetEpoch: null, frameWidth: null, frameHeight: null } : {}),
           })
           const frame = await engine
             .takeoverFrame({
@@ -972,11 +1017,18 @@ export const init = async (
             })
             .catch(() => null)
           const current = takeoverSessions.get(tabId)
-          if (current?.id !== active.id)
+          if (current?.id !== active.id || current.viewEpoch !== active.viewEpoch)
             return { status: 403, json: { error: "Esta sessão de controle não está ativa." } }
-          renewTakeoverSession(tabId, { ...current, frameInFlight: false })
+          const completed = renewTakeoverSession(tabId, {
+            ...current,
+            frameInFlight: false,
+            ...(frame ? { targetEpoch: frame.targetEpoch, frameWidth: frame.width, frameHeight: frame.height } : {}),
+          })
           return frame
-            ? { status: 200, json: frame }
+            ? {
+                status: 200,
+                json: { ...frame, controlEpoch: completed.controlEpoch, viewEpoch: completed.viewEpoch },
+              }
             : { status: 409, json: { error: "A imagem do navegador está indisponível." } }
         },
       },
@@ -987,6 +1039,21 @@ export const init = async (
           const tabId = request.params.id ?? ""
           const authorized = authorizeTakeoverSession(request)
           if (!authorized) return { status: 403, json: { error: "Esta sessão de controle não está ativa." } }
+          const body = argsRecord(request.body)
+          const targetEpoch = asNumber(body.targetEpoch)
+          const viewEpoch = asNumber(body.viewEpoch)
+          const width = asNumber(body.width)
+          const height = asNumber(body.height)
+          if (
+            targetEpoch === null ||
+            targetEpoch !== authorized.session.targetEpoch ||
+            viewEpoch !== authorized.session.viewEpoch ||
+            width === null ||
+            width !== authorized.session.frameWidth ||
+            height === null ||
+            height !== authorized.session.frameHeight
+          )
+            return { status: 409, json: { error: "A visualização mudou. Atualize a página do navegador." } }
           const input = browserTakeoverInput(argsRecord(request.body).input)
           if (!input) return { status: 400, json: { error: "Ação de navegador inválida." } }
           if (authorized.session.pendingInputs >= 32)
@@ -1001,6 +1068,9 @@ export const init = async (
               .takeoverInput({
                 tabId,
                 botId: authorized.session.botId,
+                targetEpoch,
+                width,
+                height,
                 input,
                 signal: request.signal,
               })
@@ -1051,9 +1121,14 @@ export const init = async (
                 }
               }),
           )
+          const tabs = engine.tabsForBot(botId).map((tab) => {
+            const session = takeoverSessions.get(tab.tabId)
+            if (!session) return tab
+            return { ...tab, title: "", url: "" }
+          })
           return {
             status: 200,
-            json: { tabs: engine.tabsForBot(botId), ...(botId ? { lastFailure: failures.get(botId) ?? null } : {}) },
+            json: { tabs, ...(botId ? { lastFailure: failures.get(botId) ?? null } : {}) },
           }
         },
       },

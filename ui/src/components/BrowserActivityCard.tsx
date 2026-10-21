@@ -45,12 +45,14 @@ export const BrowserActivityCard = ({
   const [resolvedTab, setResolvedTab] = useState<{ callId: string; tabId: string }>()
   const activeTabId = tabId ?? (resolvedTab?.callId === resolutionCallId ? resolvedTab.tabId : undefined)
   const [previewFrame, setPreviewFrame] = useState<{ tabId: string; frame: PreviewFrame }>()
-  const preview = previewFrame?.tabId === activeTabId ? previewFrame?.frame : undefined
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [heldTab, setHeldTab] = useState<{ tabId: string; held: boolean }>()
   const [takeoverSession, setTakeoverSession] = useState<string | null>(null)
+  const [controlEpoch, setControlEpoch] = useState<string | null>(null)
+  const [takeoverViewEpoch, setTakeoverViewEpoch] = useState(0)
   const takeoverTabId = useRef(activeTabId)
   const held = heldTab?.tabId === activeTabId && heldTab?.held === true
+  const preview = !held && previewFrame?.tabId === activeTabId ? previewFrame?.frame : undefined
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(!finished)
@@ -68,6 +70,8 @@ export const BrowserActivityCard = ({
     if (takeoverTabId.current === activeTabId) return
     takeoverTabId.current = activeTabId
     setTakeoverSession(null)
+    setControlEpoch(null)
+    setTakeoverViewEpoch(0)
   }, [activeTabId])
 
   useEffect(() => {
@@ -119,6 +123,7 @@ export const BrowserActivityCard = ({
       ) {
         hasTabEvent = true
         if (!tabId) setResolvedTab({ callId: resolutionCallId, tabId: event.tab.tabId })
+        if (event.tab.heldByUser) setPreviewFrame(undefined)
         setHeldTab({ tabId: event.tab.tabId, held: event.tab.heldByUser })
       }
     })
@@ -146,6 +151,7 @@ export const BrowserActivityCard = ({
       !previewEnabled ||
       !visible ||
       hidden ||
+      held ||
       finished ||
       takeoverSession
     )
@@ -161,15 +167,34 @@ export const BrowserActivityCard = ({
         setPreviewError(reason ? t("Browser preview unavailable. Open the browser to reconnect.", {}, locale) : null),
       { intervalMs: 3_000 },
     )
-  }, [activeTabId, api, botId, machine, canPreview, finished, hidden, locale, previewEnabled, takeoverSession, visible])
+  }, [
+    activeTabId,
+    api,
+    botId,
+    machine,
+    canPreview,
+    finished,
+    held,
+    hidden,
+    locale,
+    previewEnabled,
+    takeoverSession,
+    visible,
+  ])
 
   const toggleTakeover = async (): Promise<void> => {
     if (!api || !activeTabId || busy) return
     setBusy(true)
     setError(null)
     try {
-      const { sessionId } = await api.request("POST /browser/tabs/:id/takeover/session", {}, { id: activeTabId })
+      const {
+        sessionId,
+        controlEpoch: nextControlEpoch,
+        viewEpoch: nextViewEpoch,
+      } = await api.request("POST /browser/tabs/:id/takeover/session", {}, { id: activeTabId })
       setTakeoverSession(sessionId)
+      setControlEpoch(nextControlEpoch)
+      setTakeoverViewEpoch(nextViewEpoch)
       setHeldTab({ tabId: activeTabId, held: true })
     } catch {
       setError(t("The browser tab could not be updated.", {}, locale))
@@ -233,15 +258,10 @@ export const BrowserActivityCard = ({
             {url && <span title={url}>{url}</span>}
           </div>
           {activeTabId && !takeoverSession && (
-            <button
-              type="button"
-              className="button button-quiet"
-              disabled={busy || held}
-              onClick={() => void toggleTakeover()}
-            >
+            <button type="button" className="button button-quiet" disabled={busy} onClick={() => void toggleTakeover()}>
               <PanelIcon name="computer" />
               {busy && t("Updating browser control…", {}, locale)}
-              {!busy && held && t("Browser is being controlled", {}, locale)}
+              {!busy && held && t("Continue browser control", {}, locale)}
               {!busy && !held && t("Take over browser", {}, locale)}
             </button>
           )}
@@ -251,12 +271,14 @@ export const BrowserActivityCard = ({
         <div
           className={`browser-activity-content${fullView || finished || !previewEnabled || takeoverSession ? " browser-activity-content-full" : ""}`}
         >
-          {!finished && takeoverSession && activeTabId && api ? (
+          {!finished && takeoverSession && controlEpoch && activeTabId && api ? (
             <BrowserTakeoverView
               key={takeoverSession}
               api={api}
               tabId={activeTabId}
               sessionId={takeoverSession}
+              controlEpoch={controlEpoch}
+              initialViewEpoch={takeoverViewEpoch}
               botName={botName}
               locale={locale}
               reason={getBrowserTakeoverReason(browserTools)}
@@ -269,6 +291,8 @@ export const BrowserActivityCard = ({
               }))}
               onHandback={() => {
                 setTakeoverSession(null)
+                setControlEpoch(null)
+                setTakeoverViewEpoch(0)
                 setHeldTab({ tabId: activeTabId, held: false })
               }}
             />

@@ -5,7 +5,7 @@ import type {
   BrowserElement,
   BrowserErrorCode,
   BrowserSnapshot,
-  BrowserTakeoverFrame,
+  BrowserTakeoverCapture,
   BrowserTarget,
   Id,
   Kernel,
@@ -1389,6 +1389,7 @@ export const createBrowserEngine = ({
 
   const safePublicTabInfo = (tab: TabState): ReturnType<typeof publicTabInfo> => {
     const info = publicTabInfo({ tab })
+    if (info.heldByUser) return { ...info, url: "", title: "" }
     return { ...info, url: kernel.redact(info.url), title: kernel.redact(info.title) }
   }
 
@@ -4423,18 +4424,27 @@ export const createBrowserEngine = ({
       if (signal.aborted || !tab.info.heldByUser || tab.secretMode || tab.info.state !== "live") return null
 
       return {
+        targetEpoch: tab.generation,
         title: kernel.redact(tab.info.title),
         url: kernel.redact(tab.info.url),
         image: `data:image/jpeg;base64,${data}`,
         width: viewport.width,
         height: viewport.height,
-      } satisfies BrowserTakeoverFrame
+      } satisfies BrowserTakeoverCapture
     }
 
     return null
   }
 
-  const takeoverInput: BrowserEngine["takeoverInput"] = async ({ tabId, botId, input, signal }) => {
+  const takeoverInput: BrowserEngine["takeoverInput"] = async ({
+    tabId,
+    botId,
+    targetEpoch,
+    width,
+    height,
+    input,
+    signal,
+  }) => {
     const owned = getTab({ tabId, botId, allowHeld: true })
     if (!owned.success || !owned.value.info.heldByUser || owned.value.secretMode || !client || !owned.value.sessionId)
       return false
@@ -4459,6 +4469,9 @@ export const createBrowserEngine = ({
           operationSignal.throwIfAborted()
           if (!tab.info.heldByUser || tab.secretMode) return false
           if (operationSignal.aborted) return false
+          if (tab.generation !== targetEpoch) return false
+          const viewport = await layoutClip({ client: cdp, sessionId, fullPage: false, scale: 1 }).catch(() => null)
+          if (!viewport || viewport.width !== width || viewport.height !== height) return false
 
           if (input.kind === "text") {
             await cdp.call("Input.insertText", { text: input.text }, sessionId)
@@ -4482,8 +4495,6 @@ export const createBrowserEngine = ({
             return true
           }
 
-          const viewport = await layoutClip({ client: cdp, sessionId, fullPage: false, scale: 1 }).catch(() => null)
-          if (!viewport) return false
           const x = Math.min(viewport.width - 1, Math.round(input.x * viewport.width))
           const y = Math.min(viewport.height - 1, Math.round(input.y * viewport.height))
           if (input.kind === "wheel") {
@@ -4524,7 +4535,7 @@ export const createBrowserEngine = ({
 
   const tabsForBot: BrowserEngine["tabsForBot"] = (botId) => {
     unloadIdleTabs()
-    return store.list(botId).map((tab) => publicTabInfo({ tab }))
+    return store.list(botId).map((tab) => safePublicTabInfo(tab))
   }
 
   const shutdown = async (): Promise<void> => {

@@ -1592,9 +1592,16 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     if (key === "GET /browser/tabs") return { tabs: [createBrowserTab()] } as ApiRoutes[typeof route]["res"]
     if (key === "POST /browser/tabs/:id/takeover") return {} as ApiRoutes[typeof route]["res"]
     if (key === "POST /browser/tabs/:id/takeover/session")
-      return { sessionId: "mock-browser-takeover-session" } as ApiRoutes[typeof route]["res"]
+      return {
+        sessionId: "mock-browser-takeover-session",
+        controlEpoch: "mock-browser-control-epoch",
+        viewEpoch: 0,
+      } as ApiRoutes[typeof route]["res"]
     if (key === "POST /browser/tabs/:id/takeover/frame")
       return {
+        controlEpoch: "mock-browser-control-epoch",
+        targetEpoch: 1,
+        viewEpoch: 0,
         title: "Página de teste",
         url: "https://exemplo.test/entrar",
         image:

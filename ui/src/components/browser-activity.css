@@ -361,6 +361,19 @@
   .browser-takeover-footer .button {
     align-self: flex-start;
   }
+  .browser-takeover-footer {
+    position: sticky;
+    z-index: 1;
+    bottom: 0;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-control);
+  }
+  .browser-takeover-footer p {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
   .browser-activity-thumbnail {
     width: 96px;
     height: 60px;

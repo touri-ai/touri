@@ -66,9 +66,13 @@ const renderCard = (
   const api = createMockApi()
   const request = vi.fn(async (route: string) => {
     if (route === "GET /browser/tabs") return getTabs()
-    if (route === "POST /browser/tabs/:id/takeover/session") return { sessionId: "synthetic-session" }
+    if (route === "POST /browser/tabs/:id/takeover/session")
+      return { sessionId: "synthetic-session", controlEpoch: "synthetic-control-epoch", viewEpoch: 0 }
     if (route === "POST /browser/tabs/:id/takeover/frame")
       return {
+        controlEpoch: "synthetic-control-epoch",
+        targetEpoch: 1,
+        viewEpoch: 0,
         title: "Página de teste",
         url: "https://exemplo.test/pesquisa",
         image: "data:image/png;base64,ZmFrZQ==",
@@ -324,7 +328,7 @@ test("a delayed tab snapshot cannot undo a newer takeover event", async () => {
     await tabs
   })
 
-  expect(screen.getByRole("button", { name: "O navegador está sob controle" })).toBeDisabled()
+  expect(screen.getByRole("button", { name: "Continuar no navegador" })).toBeEnabled()
   expect(screen.queryByRole("button", { name: "Assumir" })).toBeNull()
 })
 
