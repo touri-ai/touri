@@ -315,3 +315,21 @@ test("members can fetch files from their own chats and channels only", () => {
     }),
   ).toBe(false)
 })
+
+test("browser handback reaches requester authorization without allowing other browser actions", () => {
+  const request = {
+    personId: "member",
+    role: "member" as const,
+    method: "POST",
+    pathname: "/browser/tabs/channel-tab/takeover",
+    body: { hold: false },
+  }
+
+  const handback = access.authorizeHttp(request)
+  const takeover = access.authorizeHttp({ ...request, body: { hold: true } })
+  const malformed = access.authorizeHttp({ ...request, body: {} })
+
+  expect(handback).toBeNull()
+  expect(takeover?.status).toBe(403)
+  expect(malformed?.status).toBe(403)
+})

@@ -5,6 +5,7 @@ import { join } from "node:path"
 import type { Bot, ToolRegistration } from "@touri/contracts"
 import { init, withToolDeadline } from "../../src/browser"
 import { createBrowserEngine } from "../../src/browser/engine"
+import type { BrowserEngine } from "../../src/browser/types"
 import { init as initComputer } from "../../src/computer"
 import { createKernel } from "../../src/kernel"
 import { init as initStore } from "../../src/store"
@@ -45,7 +46,7 @@ test("a local owner can return browser control without a paired work identity", 
   const root = mkdtempSync(join(tmpdir(), "touri-browser-takeover-owner-"))
   const runtime = createKernel({ appData: root })
   const people: string[] = []
-  const engine = {
+  const engine: BrowserEngine = {
     ...createBrowserEngine({ kernel: runtime.kernel }),
     tabsForBot: () => [],
     releaseTakeoverForPerson: async ({ personId }: { personId: string }) => {
@@ -158,7 +159,7 @@ test("browser takeover enforces a two-minute minimum and a thirty-minute maximum
     for (const item of tools) handlers.set(item.name, item)
     return { success: true, count: tools.length }
   }
-  const engine = {
+  const engine: BrowserEngine = {
     ...createBrowserEngine({ kernel: runtime.kernel }),
     requestTakeover: async ({ timeoutMs }: { timeoutMs: number }) => {
       durations.push(timeoutMs)
