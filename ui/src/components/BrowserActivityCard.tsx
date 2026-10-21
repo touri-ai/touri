@@ -11,7 +11,9 @@ import { InlinePreviewContext } from "../features/desktop/InlineLivePreview"
 import { type PreviewFrame, startInlineFrameSource } from "../features/desktop/inlineFrameSource"
 import { useInlinePreviewPreference } from "../features/desktop/inlinePreviewPreference"
 import { type Locale, t } from "../i18n"
+import { BrowserTakeoverView } from "./BrowserTakeoverView"
 import {
+  getBrowserActivityIcon,
   getBrowserActivityCurrentLabel,
   getBrowserActivityKind,
   getBrowserActivityLabel,
@@ -22,6 +24,7 @@ import {
   getBrowserActivityTime,
   getBrowserActivityTools,
   getBrowserActivityUrl,
+  getBrowserTakeoverReason,
 } from "./browserActivityPresentation"
 import { StoredToolOutput } from "./ToolOutput"
 import "./browser-activity.css"
@@ -97,6 +100,8 @@ export const BrowserActivityCard = ({
     held: boolean
     reason?: BrowserTakeoverReason | null
   }>()
+  const [takeoverSession, setTakeoverSession] = useState<string | null>(null)
+  const takeoverTabId = useRef(activeTabId)
   const held = heldTab?.tabId === activeTabId && heldTab?.held === true
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -111,6 +116,12 @@ export const BrowserActivityCard = ({
   const botId = bot?.id
   const machine = bot?.machine
   const canPreview = !!api && !!bot && (bot.machine === "local" || context?.machine?.status === "running")
+
+  useEffect(() => {
+    if (takeoverTabId.current === activeTabId) return
+    takeoverTabId.current = activeTabId
+    setTakeoverSession(null)
+  }, [activeTabId])
 
   useEffect(() => {
     const updateVisibility = () => setHidden(document.hidden)
@@ -193,7 +204,8 @@ export const BrowserActivityCard = ({
       !visible ||
       hidden ||
       finished ||
-      channel?.previewHidden
+      channel?.previewHidden ||
+      takeoverSession
     )
       return
 
@@ -207,16 +219,22 @@ export const BrowserActivityCard = ({
         setPreviewError(reason ? t("Browser preview unavailable. Open the browser to reconnect.", {}, locale) : null),
       { intervalMs: 700 },
     )
-  }, [activeTabId, api, botId, machine, canPreview, channel?.previewHidden, finished, hidden, locale, previewEnabled, visible])
+  }, [activeTabId, api, botId, machine, canPreview, channel?.previewHidden, finished, hidden, locale, previewEnabled, takeoverSession, visible])
 
   const toggleTakeover = async (): Promise<void> => {
     if (!api || !activeTabId || busy) return
     setBusy(true)
     setError(null)
     try {
-      await api.request("POST /browser/tabs/:id/takeover", { hold: !held }, { id: activeTabId })
-      setHeldTab({ tabId: activeTabId, held: !held, reason: !held ? "requested" : null })
-      if (!held) context?.onOpenComputer()
+      if (takeoverSession) {
+        await api.request("DELETE /browser/tabs/:id/takeover/session", { sessionId: takeoverSession }, { id: activeTabId })
+        setTakeoverSession(null)
+        setHeldTab({ tabId: activeTabId, held: false, reason: null })
+      } else {
+        const session = await api.request("POST /browser/tabs/:id/takeover/session", {}, { id: activeTabId })
+        setTakeoverSession(session.sessionId)
+        setHeldTab({ tabId: activeTabId, held: true, reason: heldTab?.reason ?? "requested" })
+      }
     } catch {
       setError(t("The browser tab could not be updated.", {}, locale))
     } finally {
@@ -240,6 +258,40 @@ export const BrowserActivityCard = ({
   const takeoverActive = held && !finished
   const takeoverReason = heldTab?.reason ?? "requested"
   const reasonCopy = getTakeoverReasonCopy(takeoverReason, locale)
+  if (takeoverSession && activeTabId && api && !finished) {
+    const takeoverCard = (
+      <div className="browser-activity-stack">
+        <article className="browser-activity-card" ref={section} aria-label={title} data-held="true">
+          <BrowserTakeoverView
+            api={api}
+            tabId={activeTabId}
+            sessionId={takeoverSession}
+            botName={botName}
+            locale={locale}
+            reason={getBrowserTakeoverReason(browserTools) ?? reasonCopy}
+            actions={browserTools.slice(-5).map((part) => ({
+              id: part.callId,
+              icon: getBrowserActivityIcon(part),
+              label: getBrowserActivityLabel(part, locale),
+              time: getBrowserActivityTime(part, createdAt, locale),
+              active: part.ok === null,
+            }))}
+            onHandback={() => {
+              setTakeoverSession(null)
+              setHeldTab({ tabId: activeTabId, held: false, reason: null })
+            }}
+          />
+        </article>
+      </div>
+    )
+    if (!channel) return takeoverCard
+    return (
+      <div className="channel-browser-card">
+        {takeoverCard}
+        <ChannelCardFooter locale={locale} />
+      </div>
+    )
+  }
 
   const card = (
     <div className="browser-activity-stack">
@@ -331,7 +383,7 @@ export const BrowserActivityCard = ({
                   ) : (
                     <>
                       <span aria-hidden="true">{held ? "↩" : "↗"}</span>
-                      {held
+                      {takeoverSession
                         ? t("Hand back to {name}", { name: botName }, locale)
                         : t("Take over browser", {}, locale)}
                     </>
@@ -432,7 +484,7 @@ export const BrowserActivityCard = ({
                   {t("What you type in the browser stays out of chat and the bot's context.", {}, locale)}
                 </p>
               )}
-              {held && <p role="status">{t("You have control of this browser tab.", {}, locale)}</p>}
+              {takeoverSession && held && <p role="status">{t("You have control of this browser tab.", {}, locale)}</p>}
               {error && <p role="alert">{error}</p>}
               {finished && screenshot?.outputAttachmentId && (
                 <section className="browser-activity-final-shot" aria-label={t("Final browser screenshot", {}, locale)}>

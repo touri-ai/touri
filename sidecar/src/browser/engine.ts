@@ -6,6 +6,7 @@ import type {
   BrowserErrorCode,
   BrowserSnapshot,
   BrowserTakeoverReason,
+  BrowserTakeoverFrame,
   BrowserTarget,
   Id,
   Kernel,
@@ -978,12 +979,14 @@ const nodeRefFromAx = async ({
   generation,
   node,
   index,
+  hideValue,
 }: {
   client: CdpClient
   sessionId: string
   generation: number
   node: AxNode
   index: number
+  hideValue: boolean
 }): Promise<NodeRef | null> => {
   const role = nodeName(node)
   const name = nodeNameText(node)
@@ -1008,7 +1011,7 @@ const nodeRefFromAx = async ({
     frame: sessionId,
     role,
     name,
-    ...(descriptor.password || descriptor.oneTimeCode || axValue.length === 0 ? {} : { value: axValue }),
+    ...(hideValue || descriptor.password || descriptor.oneTimeCode || axValue.length === 0 ? {} : { value: axValue }),
     states: nodeStates(node),
     bounds,
   }
@@ -1020,12 +1023,14 @@ const getAxNodeRefs = async ({
   generation,
   nodes,
   index,
+  hideValues,
 }: {
   client: CdpClient
   sessionId: string
   generation: number
   nodes: Array<AxNode>
   index: number
+  hideValues: boolean
 }): Promise<Array<NodeRef>> => {
   const batches = Array.from({ length: Math.ceil(nodes.length / AX_NODE_INSPECTION_BATCH_SIZE) }, (_, batchIndex) =>
     nodes.slice(batchIndex * AX_NODE_INSPECTION_BATCH_SIZE, (batchIndex + 1) * AX_NODE_INSPECTION_BATCH_SIZE),
@@ -1041,6 +1046,7 @@ const getAxNodeRefs = async ({
           generation,
           node,
           index: index + nodeRefs.length + nodeIndex,
+          hideValue: hideValues,
         }),
       ),
     )
@@ -1079,6 +1085,7 @@ const collectElements = async ({
       generation: tab.generation,
       nodes: batch,
       index: candidates.length,
+      hideValues: tab.privateInput,
     })
     candidates = candidates.concat(nodeRefs)
     inspected += batch.length
@@ -1399,6 +1406,7 @@ export const createBrowserEngine = ({
   const pendingPopups = new WeakMap<TabState, number>()
   const targetToTab = new Map<string, TabState>()
   const targetSessions = new Map<string, string>()
+  const takeoverInputQueues = new Map<Id, Promise<void>>()
   const attaching = new Set<string>()
   const browserContexts = new Map<string, Promise<string | null>>()
   const contextOwners = new Map<string, string>()
@@ -1407,6 +1415,19 @@ export const createBrowserEngine = ({
   let sessionTimer: ReturnType<typeof setInterval> | null = null
   let legacyMigration: Promise<void> | null = null
   const windowConfig = deriveChromeWindowConfig({ env: process.env })
+
+  const queueTakeoverInput = <T>(tabId: Id, operation: () => Promise<T>): Promise<T> => {
+    const previous = takeoverInputQueues.get(tabId) ?? Promise.resolve()
+    const current = previous.then(operation)
+    const settled = current.then(
+      () => undefined,
+      () => undefined,
+    )
+    takeoverInputQueues.set(tabId, settled)
+    return current.finally(() => {
+      if (takeoverInputQueues.get(tabId) === settled) takeoverInputQueues.delete(tabId)
+    })
+  }
 
   const safePublicTabInfo = (tab: TabState): ReturnType<typeof publicTabInfo> => {
     const info = publicTabInfo({ tab })
@@ -2958,6 +2979,11 @@ export const createBrowserEngine = ({
     const owned = getTab({ tabId, botId })
     if (!owned.success) return toToolError(owned.failure)
     const tab = owned.value
+    if (tab.privateInput)
+      return toToolError({
+        errorCode: "PRIVATE_TAKEOVER_ACTIVE",
+        error: "A avaliação da página foi desativada após o controle privado do navegador.",
+      })
     return withTabQueue({
       tab,
       timeoutMs,
@@ -4398,6 +4424,7 @@ export const createBrowserEngine = ({
     tab.info.heldByUser = true
     tab.privateAfterTakeover = true
     tab.takeoverReason = safeReasonCode
+    tab.privateInput = true
     tab.info.lastUsedAt = Date.now()
     const notification = getTakeoverNotificationCopy(safeReasonCode)
     const requestId = notify ? `browser-takeover:${tabId}:${kernel.newId()}` : null
@@ -4486,6 +4513,7 @@ export const createBrowserEngine = ({
     tab.info.heldByUser = true
     tab.privateAfterTakeover = true
     tab.takeoverReason = "requested"
+    tab.privateInput = true
     tab.info.lastUsedAt = Date.now()
     const activeRun = tab.info.ownerThreadId
       ? (kernel.services.use("runtime.activeRun")?.({ threadId: tab.info.ownerThreadId }) ?? null)
@@ -4528,6 +4556,136 @@ export const createBrowserEngine = ({
     const windowState = asString(bounds?.windowState)
     if (left === null || top === null || width === null || height === null || windowState === null) return null
     return { left, top, width, height, windowState }
+  }
+
+  const takeoverFrame: BrowserEngine["takeoverFrame"] = async ({ tabId, botId, signal }) => {
+    const owned = getTab({ tabId, botId, allowHeld: true })
+    if (!owned.success || !owned.value.info.heldByUser || owned.value.secretMode || !client || !owned.value.sessionId)
+      return null
+    if (signal.aborted) return null
+
+    const tab = owned.value
+    const cdp = client
+    const sessionId = tab.sessionId
+    if (!cdp || !sessionId) return null
+    const viewport = await layoutClip({ client: cdp, sessionId, fullPage: false, scale: 1 }).catch(() => null)
+    if (!viewport || signal.aborted) return null
+
+    for (const scale of [0.65, 0.5, 0.35]) {
+      const result = await cdpCall<unknown>(
+        cdp,
+        "Page.captureScreenshot",
+        {
+          format: "jpeg",
+          quality: 50,
+          captureBeyondViewport: false,
+          fromSurface: true,
+          clip: { x: viewport.x, y: viewport.y, width: viewport.width, height: viewport.height, scale },
+        },
+        sessionId,
+      ).catch(() => null)
+      const data = asString(asRecord(result)?.data)
+      if (!data || data.length > 450_000) continue
+      if (signal.aborted || !tab.info.heldByUser || tab.secretMode || tab.info.state !== "live") return null
+
+      return {
+        title: kernel.redact(tab.privateAfterTakeover ? "" : tab.info.title),
+        url: kernel.redact(tab.privateAfterTakeover ? sanitizeHumanTakeoverUrl(tab.info.url) : tab.info.url),
+        image: `data:image/jpeg;base64,${data}`,
+        width: viewport.width,
+        height: viewport.height,
+      } satisfies BrowserTakeoverFrame
+    }
+
+    return null
+  }
+
+  const takeoverInput: BrowserEngine["takeoverInput"] = async ({ tabId, botId, input, signal }) => {
+    const owned = getTab({ tabId, botId, allowHeld: true })
+    if (!owned.success || !owned.value.info.heldByUser || owned.value.secretMode || !client || !owned.value.sessionId)
+      return false
+    if (signal.aborted) return false
+
+    const tab = owned.value
+    const cdp = client
+    const sessionId = tab.sessionId
+    if (!cdp || !sessionId) return false
+    const withinUnit = (value: number): boolean => Number.isFinite(value) && value >= 0 && value <= 1
+    if ((input.kind === "click" || input.kind === "wheel") && (!withinUnit(input.x) || !withinUnit(input.y)))
+      return false
+    if (input.kind === "text" && (Buffer.byteLength(input.text) > 16_384 || input.text.includes("\0"))) return false
+    if (input.kind === "key" && (!input.key || input.key.length > 40 || !input.code || input.code.length > 40))
+      return false
+
+    // The bot's takeover tool keeps tab.queue while it waits for the person to hand back control.
+    // Remote input uses its own ordered queue so it can reach the page during that wait.
+    return queueTakeoverInput(tab.info.tabId, async () =>
+      withDeadline({
+        operation: async (operationSignal) => {
+          operationSignal.throwIfAborted()
+          if (!tab.info.heldByUser || tab.secretMode) return false
+          if (operationSignal.aborted) return false
+
+          if (input.kind === "text") {
+            await cdp.call("Input.insertText", { text: input.text }, sessionId)
+            return true
+          }
+
+          if (input.kind === "key") {
+            const text =
+              input.phase === "down" && input.key.length === 1 && input.modifiers === 0 ? input.key : undefined
+            await cdp.call(
+              "Input.dispatchKeyEvent",
+              {
+                type: input.phase === "down" ? "keyDown" : "keyUp",
+                key: input.key,
+                code: input.code,
+                modifiers: input.modifiers,
+                ...(text === undefined ? {} : { text }),
+              },
+              sessionId,
+            )
+            return true
+          }
+
+          const viewport = await layoutClip({ client: cdp, sessionId, fullPage: false, scale: 1 }).catch(() => null)
+          if (!viewport) return false
+          const x = Math.min(viewport.width - 1, Math.round(input.x * viewport.width))
+          const y = Math.min(viewport.height - 1, Math.round(input.y * viewport.height))
+          if (input.kind === "wheel") {
+            if (Math.abs(input.deltaX) > 1200 || Math.abs(input.deltaY) > 1200) return false
+            await cdp.call(
+              "Input.dispatchMouseEvent",
+              { type: "mouseWheel", x, y, deltaX: input.deltaX, deltaY: input.deltaY },
+              sessionId,
+            )
+            return true
+          }
+
+          const button = input.button ?? "left"
+          await cdp.call("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button, clickCount: 1 }, sessionId)
+          try {
+            operationSignal.throwIfAborted()
+            await cdp.call(
+              "Input.dispatchMouseEvent",
+              { type: "mouseReleased", x, y, button, clickCount: 1 },
+              sessionId,
+            )
+            return true
+          } catch {
+            await cdp
+              .call("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button, clickCount: 1 }, sessionId)
+              .catch(() => undefined)
+            return false
+          }
+        },
+        timeoutMs: 5_000,
+        signal,
+        onTimeout: async () => {},
+      }),
+    )
+      .then((result) => result === true)
+      .catch(() => false)
   }
 
   const tabsForBot: BrowserEngine["tabsForBot"] = (botId) => {
@@ -4616,6 +4774,8 @@ export const createBrowserEngine = ({
         image: `data:image/jpeg;base64,${data}`,
       }
     },
+    takeoverFrame,
+    takeoverInput,
     open,
     list,
     close,

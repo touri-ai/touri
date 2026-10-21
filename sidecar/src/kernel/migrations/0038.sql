@@ -21,3 +21,4 @@ CREATE UNIQUE INDEX IF NOT EXISTS browser_channel_runs_active_slot
   ON browser_channel_runs(thread_id, bot_id)
   WHERE status IN ('running','needs_you','taken_over');
 INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('browser_channel_runs_version', '1');
+UPDATE schema_meta SET value = '38' WHERE key = 'schema_version';

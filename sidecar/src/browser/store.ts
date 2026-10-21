@@ -39,6 +39,7 @@ const toRow = (tab: TabState, createdAt: number): BrowserTabRow => ({
   held_by_user: tab.info.heldByUser ? 1 : 0,
   private_after_takeover: tab.privateAfterTakeover ? 1 : 0,
   takeover_reason: tab.takeoverReason,
+  private_input: tab.privateInput ? 1 : 0,
   created_at: createdAt,
   last_used_at: tab.info.lastUsedAt,
 })
@@ -91,6 +92,7 @@ export const createBrowserStore = ({
         secretMode: false,
         privateAfterTakeover: row.private_after_takeover === 1,
         takeoverReason: row.takeover_reason,
+        privateInput: row.private_input === 1,
         dialog: null,
         lastFailureKey: null,
         failureCount: 0,
@@ -146,6 +148,7 @@ export const createBrowserStore = ({
       secretMode: false,
       privateAfterTakeover: false,
       takeoverReason: null,
+      privateInput: false,
       dialog: null,
       lastFailureKey: null,
       failureCount: 0,
@@ -157,7 +160,7 @@ export const createBrowserStore = ({
     }
     database
       .query(
-        "INSERT INTO browser_tabs (id, profile, owner_bot_id, owner_thread_id, opener_tab_id, cdp_target_id, url, title, state, held_by_user, created_at, last_used_at) VALUES (?, ?, ?, ?, ?, ?, ?, '', ?, 0, ?, ?)",
+        "INSERT INTO browser_tabs (id, profile, owner_bot_id, owner_thread_id, opener_tab_id, cdp_target_id, url, title, state, held_by_user, private_input, created_at, last_used_at) VALUES (?, ?, ?, ?, ?, ?, ?, '', ?, 0, 0, ?, ?)",
       )
       .run(tabId, profile, botId, threadId, openerTabId, targetId, url, info.state, now, now)
     tabs.set(tabId, tab)
@@ -169,7 +172,7 @@ export const createBrowserStore = ({
     tab.info.lastUsedAt = row.last_used_at
     database
       .query(
-        "UPDATE browser_tabs SET owner_bot_id = ?, owner_thread_id = ?, opener_tab_id = ?, cdp_target_id = ?, url = ?, title = ?, state = ?, held_by_user = ?, private_after_takeover = ?, takeover_reason = ?, last_used_at = ? WHERE id = ?",
+        "UPDATE browser_tabs SET owner_bot_id = ?, owner_thread_id = ?, opener_tab_id = ?, cdp_target_id = ?, url = ?, title = ?, state = ?, held_by_user = ?, private_after_takeover = ?, takeover_reason = ?, private_input = ?, last_used_at = ? WHERE id = ?",
       )
       .run(
         row.owner_bot_id,
@@ -182,6 +185,7 @@ export const createBrowserStore = ({
         row.held_by_user,
         row.private_after_takeover,
         row.takeover_reason,
+        row.private_input,
         row.last_used_at,
         row.id,
       )

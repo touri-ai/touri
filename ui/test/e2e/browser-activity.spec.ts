@@ -109,6 +109,17 @@ test.describe("full browser activity flow", () => {
       expect(columns).toBe(1)
       await page.screenshot({ path: info.outputPath(`browser-live-${variant.name}.png`), fullPage: true })
       await card.getByRole("button", { name: "Recolher navegador" }).click()
+      const takeOver = page.getByRole("button", { name: "Assumir", exact: true })
+      await expect(takeOver).toBeVisible()
+      await takeOver.click()
+      await expect(page.getByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
+      await expect(page.getByRole("button", { name: "Digitar no navegador" })).toBeVisible()
+      const search = page.getByRole("button", { name: "Buscar viagens" })
+      await expect(search).toBeDisabled()
+      await expect(page.getByText("Resultados da busca")).toHaveCount(0)
+      await page.getByRole("button", { name: /Devolver para/ }).click()
+      await expect(search).toBeEnabled()
+      await search.click()
 
       const results = page.getByText("Encontrei duas opções fictícias para", { exact: false })
       await expect(results).toBeVisible({ timeout: 90_000 })
@@ -163,6 +174,47 @@ test.describe("full browser activity flow", () => {
     })
   }
 })
+
+for (const viewport of [
+  { name: "compact-desktop", width: 1024, height: 700 },
+  { name: "phone", width: 390, height: 844 },
+]) {
+  test(`server browser takeover stays interactive and private: ${viewport.name}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height })
+    await page.goto("/test/e2e/browser-activity-harness.html?remote=true")
+    await page.getByRole("button", { name: "Iniciar busca de viagem" }).click()
+    await expect(page.getByRole("button", { name: "Assumir", exact: true })).toBeVisible()
+    await page.screenshot({ path: testInfo.outputPath(`browser-takeover-before-${viewport.name}.png`), fullPage: true })
+
+    await page.getByRole("button", { name: "Assumir", exact: true }).click()
+    await expect(page.getByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
+    await expect(page.getByText(/Você está no controle · .* está pausado/)).toBeVisible()
+    await expect(page.locator(".browser-takeover-canvas")).toBeVisible()
+    await page.screenshot({ path: testInfo.outputPath(`browser-takeover-after-${viewport.name}.png`), fullPage: true })
+
+    const keyboard = page.getByRole("textbox", { name: "Entrada de teclado para o navegador" })
+    await keyboard.evaluate((element) => {
+      const textarea = element as HTMLTextAreaElement
+      textarea.value = "valor privado de teste"
+      textarea.dispatchEvent(new Event("input", { bubbles: true }))
+    })
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const browserActivityWindow = window as Window & {
+            browserActivity?: { snapshot: () => { takeoverInputCount: number } }
+          }
+          return browserActivityWindow.browserActivity?.snapshot().takeoverInputCount
+        }),
+      )
+      .toBe(1)
+    await expect(keyboard).toHaveValue("")
+    await expect(page.locator("body")).not.toContainText("valor privado de teste")
+
+    await page.getByRole("button", { name: "Devolver para Mark" }).click()
+    await expect(page.getByRole("button", { name: "Assumir", exact: true })).toBeVisible()
+  })
+}
 
 for (const fallback of ["missing_key", "no_credit"] as const) {
   for (const locale of ["pt-BR", "en"] as const) {

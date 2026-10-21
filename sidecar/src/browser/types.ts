@@ -7,6 +7,8 @@ import type {
   BrowserSnapshot,
   BrowserTabInfo,
   BrowserTakeoverReason,
+  BrowserTakeoverFrame,
+  BrowserTakeoverInput,
   BrowserTarget,
   EpochMs,
   Id,
@@ -99,6 +101,7 @@ export type BrowserTabRow = {
   held_by_user: number
   private_after_takeover: number
   takeover_reason: BrowserTakeoverReason | null
+  private_input: number
   created_at: EpochMs
   last_used_at: EpochMs
 }
@@ -116,6 +119,7 @@ export type TabState = {
   secretMode: boolean
   privateAfterTakeover: boolean
   takeoverReason: BrowserTakeoverReason | null
+  privateInput: boolean
   dialog: { type: "alert" | "confirm" | "prompt" | "beforeunload"; message: string } | null
   lastFailureKey: string | null
   failureCount: number
@@ -141,6 +145,8 @@ export type BrowserEngine = {
     tabId?: Id
     signal: AbortSignal
   }) => Promise<{ title: string; url: string; image: string } | null>
+  takeoverFrame: (args: { tabId: Id; botId: Id; signal: AbortSignal }) => Promise<BrowserTakeoverFrame | null>
+  takeoverInput: (args: { tabId: Id; botId: Id; input: BrowserTakeoverInput; signal: AbortSignal }) => Promise<boolean>
   open: (args: { url: string; ctx: ToolContext; timeoutMs: number }) => Promise<ToolResult>
   list: (args: { botId: Id | null; signal?: AbortSignal; timeoutMs?: number }) => Promise<ToolResult>
   close: (args: { tabId: Id; botId: Id; signal: AbortSignal; timeoutMs?: number }) => Promise<ToolResult>

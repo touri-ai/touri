@@ -1592,6 +1592,19 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     }
     if (key === "GET /browser/tabs") return { tabs: [createBrowserTab()] } as ApiRoutes[typeof route]["res"]
     if (key === "POST /browser/tabs/:id/takeover") return {} as ApiRoutes[typeof route]["res"]
+    if (key === "POST /browser/tabs/:id/takeover/session")
+      return { sessionId: "mock-browser-takeover-session" } as ApiRoutes[typeof route]["res"]
+    if (key === "POST /browser/tabs/:id/takeover/frame")
+      return {
+        title: "Página de teste",
+        url: "https://exemplo.test/entrar",
+        image:
+          "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1280' height='720'%3E%3Crect width='100%25' height='100%25' fill='%23f4f4f5'/%3E%3Ctext x='80' y='120' font-size='36'%3EPágina de teste%3C/text%3E%3C/svg%3E",
+        width: 1280,
+        height: 720,
+      } as ApiRoutes[typeof route]["res"]
+    if (key === "POST /browser/tabs/:id/takeover/input") return {} as ApiRoutes[typeof route]["res"]
+    if (key === "DELETE /browser/tabs/:id/takeover/session") return {} as ApiRoutes[typeof route]["res"]
     if (key === "POST /browser/secret-entry/:id") return {} as ApiRoutes[typeof route]["res"]
     if (key === "POST /imports/legacy") {
       importStatus = "running"

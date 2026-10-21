@@ -1,38 +1,218 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import type { BrowserTabInfo } from "@touri/contracts"
 import { afterEach, expect, test, vi } from "vitest"
 import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
-import { BrowserPanel } from "../src/components/RightPanels"
-import { ApiError } from "../src/errors"
+import { BrowserTakeoverView } from "../src/components/BrowserTakeoverView"
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
+})
 
-const tab = {
-  tabId: "guest-page",
-  ownerBotId: "vm-bot",
-  title: "Página na VM",
-  url: "https://example.test/",
-  state: "live",
-  heldByUser: false,
-  openerTabId: null,
-  lastUsedAt: 1,
-} satisfies BrowserTabInfo & { ownerBotId: string }
+const getBrowserFrame = (url = "https://exemplo.test/entrar") => ({
+  title: "Página de teste",
+  url,
+  image: "data:image/png;base64,ZmFrZQ==",
+  width: 1_000,
+  height: 500,
+})
 
-test("a failed takeover shows the real cause and the button becomes usable again", async () => {
+test("sends private browser typing only to the remote input route and returns control", async () => {
   const api = createMockApi()
   const request = vi.fn(async (route: string) => {
-    if (route === "POST /browser/tabs/:id/takeover")
-      throw new ApiError(404, "Não foi possível assumir a aba: o navegador da máquina não respondeu.")
-    return { tabs: [tab] }
+    if (route === "POST /browser/tabs/:id/takeover/frame")
+      return getBrowserFrame("https://user:senha@exemplo.test/entrar?token=segredo#parte")
+    return {}
+  }) as ApiRequest
+  api.request = request
+
+  render(
+    <BrowserTakeoverView
+      api={api}
+      tabId="synthetic-tab"
+      sessionId="synthetic-session"
+      botName="Lia"
+      locale="pt-BR"
+      reason="O site pediu login para mostrar o preço final."
+      actions={[{ id: "read", icon: "◉", label: "Leu a página", time: "21:12", active: true }]}
+      onHandback={vi.fn()}
+    />,
+  )
+
+  await waitFor(() => expect(document.body.textContent).toContain("https://exemplo.test/entrar"))
+  const keyboard = await screen.findByRole("textbox", { name: "Entrada de teclado para o navegador" })
+  const browserUrl = document.querySelector(".browser-takeover-toolbar span")
+  expect(browserUrl).toHaveAttribute("title", "https://exemplo.test/entrar")
+  expect(document.body.textContent).not.toContain("senha")
+  expect(document.body.textContent).not.toContain("segredo")
+  fireEvent.input(keyboard, { target: { value: "valor privado de teste" } })
+
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith(
+      "POST /browser/tabs/:id/takeover/input",
+      { sessionId: "synthetic-session", input: { kind: "text", text: "valor privado de teste" } },
+      { id: "synthetic-tab" },
+    ),
+  )
+  expect(keyboard).toHaveValue("")
+  expect(document.body.textContent).not.toContain("valor privado de teste")
+
+  fireEvent.click(screen.getByRole("button", { name: "Devolver para Lia" }))
+
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith(
+      "DELETE /browser/tabs/:id/takeover/session",
+      { sessionId: "synthetic-session" },
+      { id: "synthetic-tab" },
+    ),
+  )
+})
+
+test("turns phone drags into remote scrolling and phone taps into browser clicks", async () => {
+  const api = createMockApi()
+  const request = vi.fn(async (route: string) => {
+    if (route === "POST /browser/tabs/:id/takeover/frame") return getBrowserFrame()
+    return {}
+  }) as ApiRequest
+  api.request = request
+
+  render(
+    <BrowserTakeoverView
+      api={api}
+      tabId="synthetic-tab"
+      sessionId="synthetic-session"
+      botName="Lia"
+      locale="pt-BR"
+      reason={null}
+      actions={[]}
+      onHandback={vi.fn()}
+    />,
+  )
+
+  await screen.findByRole("img")
+  const page = document.querySelector(".browser-takeover-screen")
+  if (!page) throw new Error("The remote browser frame should be rendered")
+  page.getBoundingClientRect = vi.fn(
+    () =>
+      ({
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        width: 1_000,
+        height: 500,
+        right: 1_000,
+        bottom: 500,
+        toJSON: vi.fn(),
+      }) as DOMRect,
+  )
+
+  const dispatchTouch = (type: string, x: number, y: number): void => {
+    const event = new Event(type, { bubbles: true, cancelable: true })
+    Object.defineProperty(event, "pointerId", { value: 1 })
+    Object.defineProperty(event, "pointerType", { value: "touch" })
+    Object.defineProperty(event, "clientX", { value: x })
+    Object.defineProperty(event, "clientY", { value: y })
+    page.dispatchEvent(event)
+  }
+
+  dispatchTouch("pointerdown", 120, 140)
+  dispatchTouch("pointermove", 120, 220)
+  dispatchTouch("pointerup", 120, 220)
+
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith(
+      "POST /browser/tabs/:id/takeover/input",
+      expect.objectContaining({
+        sessionId: "synthetic-session",
+        input: expect.objectContaining({ kind: "wheel", deltaY: -80 }),
+      }),
+      { id: "synthetic-tab" },
+    ),
+  )
+  expect(request).not.toHaveBeenCalledWith(
+    "POST /browser/tabs/:id/takeover/input",
+    expect.objectContaining({ input: expect.objectContaining({ kind: "click" }) }),
+    { id: "synthetic-tab" },
+  )
+
+  dispatchTouch("pointerdown", 250, 160)
+  dispatchTouch("pointerup", 250, 160)
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith(
+      "POST /browser/tabs/:id/takeover/input",
+      expect.objectContaining({
+        sessionId: "synthetic-session",
+        input: expect.objectContaining({ kind: "click", x: 0.25, y: 0.32, button: "left" }),
+      }),
+      { id: "synthetic-tab" },
+    ),
+  )
+})
+
+test("intercepts paste text without forwarding the paste shortcut to the page", async () => {
+  const api = createMockApi()
+  const request = vi.fn(async (route: string) =>
+    route === "POST /browser/tabs/:id/takeover/frame" ? getBrowserFrame() : {},
+  ) as ApiRequest
+  api.request = request
+  render(
+    <BrowserTakeoverView
+      api={api}
+      tabId="synthetic-tab"
+      sessionId="synthetic-session"
+      botName="Lia"
+      locale="pt-BR"
+      reason={null}
+      actions={[]}
+      onHandback={vi.fn()}
+    />,
+  )
+
+  const keyboard = await screen.findByRole("textbox", { name: "Entrada de teclado para o navegador" })
+  fireEvent.keyDown(keyboard, { key: "v", code: "KeyV", ctrlKey: true })
+  fireEvent.paste(keyboard, {
+    clipboardData: { getData: () => "texto colado privado" },
   })
-  api.request = request as ApiRequest
-  const notices: string[] = []
-  render(<BrowserPanel api={api} botId="vm-bot" tabs={[]} onNotice={(message) => notices.push(message)} />)
-  await waitFor(() => expect(screen.getByText(tab.url)).toBeInTheDocument())
-  const button = screen.getByRole("button", { name: /Assumir|Take over/ })
-  fireEvent.click(button)
-  await waitFor(() => expect(notices).toHaveLength(1))
-  expect(notices[0]).toContain("o navegador da máquina não respondeu")
-  await waitFor(() => expect(screen.getByRole("button", { name: /Assumir|Take over/ })).toBeEnabled())
+
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith(
+      "POST /browser/tabs/:id/takeover/input",
+      { sessionId: "synthetic-session", input: { kind: "text", text: "texto colado privado" } },
+      { id: "synthetic-tab" },
+    ),
+  )
+  expect(request).not.toHaveBeenCalledWith(
+    "POST /browser/tabs/:id/takeover/input",
+    expect.objectContaining({ input: expect.objectContaining({ kind: "key", key: "v" }) }),
+    { id: "synthetic-tab" },
+  )
+})
+
+test("rejects oversized text before encoding or sending it to the browser", async () => {
+  const api = createMockApi()
+  const request = vi.fn(async (route: string) =>
+    route === "POST /browser/tabs/:id/takeover/frame" ? getBrowserFrame() : {},
+  ) as ApiRequest
+  api.request = request
+  render(
+    <BrowserTakeoverView
+      api={api}
+      tabId="synthetic-tab"
+      sessionId="synthetic-session"
+      botName="Lia"
+      locale="pt-BR"
+      reason={null}
+      actions={[]}
+      onHandback={vi.fn()}
+    />,
+  )
+
+  const keyboard = await screen.findByRole("textbox", { name: "Entrada de teclado para o navegador" })
+  fireEvent.input(keyboard, { target: { value: "x".repeat(16_385) } })
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("Esse texto é longo demais para enviar ao navegador.")
+  expect(request).not.toHaveBeenCalledWith("POST /browser/tabs/:id/takeover/input", expect.anything(), {
+    id: "synthetic-tab",
+  })
 })

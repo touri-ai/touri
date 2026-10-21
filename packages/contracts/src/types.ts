@@ -680,6 +680,7 @@ export type BrowserErrorCode =
   | 'REPEATED_FAILURE'
   | 'USER_TAKEOVER_REQUIRED'
   | 'SECRET_ENTRY_ACTIVE'
+  | 'PRIVATE_TAKEOVER_ACTIVE'
   | 'ENGINE_UNAVAILABLE'
   | 'LOCAL_BROWSER_UNAVAILABLE'
   | 'NAVIGATION_FAILED'
@@ -731,6 +732,20 @@ export type BrowserChannelRun = {
   escalatedAt: EpochMs | null
   finishedAt: EpochMs | null
 }
+
+export type BrowserTakeoverFrame = {
+  title: string
+  url: string
+  image: string
+  width: number
+  height: number
+}
+
+export type BrowserTakeoverInput =
+  | { kind: 'click'; x: number; y: number; button?: 'left' | 'right' | 'middle' }
+  | { kind: 'wheel'; x: number; y: number; deltaX: number; deltaY: number }
+  | { kind: 'key'; phase: 'down' | 'up'; key: string; code: string; modifiers: number }
+  | { kind: 'text'; text: string }
 
 /* ------------------------------------------------------------------------------------------ */
 /* MCP tool router (WP4) and handlers (WP5, WP6, WP7, WP3)                                     */
@@ -1054,6 +1069,20 @@ export type ApiRoutes = {
   }
   'GET /bots/:id/browser-preview': { req: { tabId?: Id }; res: { title: string; url: string; image: string } }
   'POST /browser/tabs/:id/takeover': { req: { hold: boolean }; res: {} }
+  'POST /browser/tabs/:id/takeover/session': { req: {}; res: { sessionId: string } }
+  'POST /browser/tabs/:id/takeover/frame': { req: { sessionId: string }; res: BrowserTakeoverFrame }
+  'POST /browser/tabs/:id/takeover/input': {
+    req: { sessionId: string; input: BrowserTakeoverInput }
+    res: {}
+  }
+  'DELETE /browser/tabs/:id/takeover/session': { req: { sessionId: string }; res: {} }
+  'POST /browser/tabs/:id/takeover/session': { req: {}; res: { sessionId: string } }
+  'POST /browser/tabs/:id/takeover/frame': { req: { sessionId: string }; res: BrowserTakeoverFrame }
+  'POST /browser/tabs/:id/takeover/input': {
+    req: { sessionId: string; input: BrowserTakeoverInput }
+    res: {}
+  }
+  'DELETE /browser/tabs/:id/takeover/session': { req: { sessionId: string }; res: {} }
   'POST /browser/secret-entry/:id': { req: { secretName: string } | { cancel: true }; res: {} }
   'POST /computer/grants': { req: { botId: Id; threadId: Id; minutes: number }; res: { grantId: Id; expiresAt: EpochMs } }
   'POST /computer/kill': { req: {}; res: { revoked: number } }

@@ -110,6 +110,8 @@ const makeEngine = ({
       secretSubmissions += 1
       return result(true)
     },
+    takeoverFrame: async () => null,
+    takeoverInput: async () => false,
     secretEntry: async () => false,
     releaseTakeover: async () => false,
     holdTakeover: async () => false,

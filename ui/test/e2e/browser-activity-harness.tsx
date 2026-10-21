@@ -72,6 +72,7 @@ type BrowserActivitySnapshot = {
   previewRequests: number
   maxUiLongTaskMs: number
   longTaskObserverAvailable: boolean
+  takeoverInputCount: number
 }
 type BrowserActivityWindow = Window & {
   browserActivity?: { resetPreviewMetrics: () => void; snapshot: () => BrowserActivitySnapshot }
@@ -99,12 +100,14 @@ const getFixtureApi = ({
   onHeldChange,
   onAttachmentRead,
   onPreviewRequested,
+  onTakeoverInput,
 }: {
   currentPage: { current: FixturePage }
   heldByUser: { current: boolean }
   onHeldChange: (held: boolean) => void
   onAttachmentRead: () => void
   onPreviewRequested: () => void
+  onTakeoverInput: () => void
 }) => {
   const api = createMockApi()
   const bot = api.getState().bots.find((item) => item.id === "bot-mark")
@@ -126,6 +129,28 @@ const getFixtureApi = ({
     if (route === "GET /bots/:id/browser-preview") {
       onPreviewRequested()
       return { image, title: currentPage.current.title, url: currentPage.current.url }
+    }
+    if (route === "POST /browser/tabs/:id/takeover/session") {
+      heldByUser.current = true
+      onHeldChange(true)
+      return { sessionId: "synthetic-browser-session" }
+    }
+    if (route === "POST /browser/tabs/:id/takeover/frame")
+      return {
+        title: currentPage.current.title,
+        url: currentPage.current.url,
+        image,
+        width: 800,
+        height: 500,
+      }
+    if (route === "POST /browser/tabs/:id/takeover/input") {
+      onTakeoverInput()
+      return {}
+    }
+    if (route === "DELETE /browser/tabs/:id/takeover/session") {
+      heldByUser.current = false
+      onHeldChange(false)
+      return {}
     }
     if (route === "GET /attachments/:id/content") {
       onAttachmentRead()
@@ -172,10 +197,12 @@ const Fixture = () => {
   const [results, setResults] = useState(false)
   const [held, setHeld] = useState(false)
   const [attachmentRead, setAttachmentRead] = useState(false)
+  const [takeoverInputCount, setTakeoverInputCount] = useState(0)
   const [confidence, setConfidence] = useState<number | null>(null)
   const [browserView, setBrowserView] = useState(false)
   const currentPage = useRef(initialPage)
   const heldByUser = useRef(false)
+  const remote = params.get("remote") === "true"
   const [fixture] = useState(() =>
     getFixtureApi({
       currentPage,
@@ -185,9 +212,11 @@ const Fixture = () => {
       onPreviewRequested: () => {
         previewMetrics.requests += 1
       },
+      onTakeoverInput: () => setTakeoverInputCount((count) => count + 1),
     }),
   )
   const { api, bot } = fixture
+  const activityBot = remote ? { ...bot, machine: "vm" as const } : bot
   const browserActivitySnapshot = useRef<BrowserActivitySnapshot>({
     parts,
     running,
@@ -197,6 +226,7 @@ const Fixture = () => {
     previewRequests: previewMetrics.requests,
     maxUiLongTaskMs: previewMetrics.maxLongTaskMs,
     longTaskObserverAvailable: previewMetrics.observerAvailable,
+    takeoverInputCount,
   })
   browserActivitySnapshot.current = {
     parts,
@@ -207,6 +237,7 @@ const Fixture = () => {
     previewRequests: previewMetrics.requests,
     maxUiLongTaskMs: previewMetrics.maxLongTaskMs,
     longTaskObserverAvailable: previewMetrics.observerAvailable,
+    takeoverInputCount,
   }
   useEffect(() => {
     const browserWindow = window as BrowserActivityWindow
@@ -296,7 +327,9 @@ const Fixture = () => {
   }
 
   return (
-    <InlinePreviewContext.Provider value={{ api, bot, machine: undefined, activeCallId: undefined, onOpenComputer }}>
+    <InlinePreviewContext.Provider
+      value={{ api, bot: activityBot, machine: undefined, activeCallId: undefined, onOpenComputer }}
+    >
       <main className="browser-activity-demo">
         <header>
           <div>

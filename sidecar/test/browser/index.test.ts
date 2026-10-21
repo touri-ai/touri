@@ -3,9 +3,10 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { monitorEventLoopDelay } from "node:perf_hooks"
-import type { Bot, ToolRegistration } from "@touri/contracts"
+import type { Bot, BrowserTabInfo, ToolRegistration, ToolResult, VmRuntime } from "@touri/contracts"
 import { init, withToolDeadline } from "../../src/browser"
 import { createBrowserEngine } from "../../src/browser/engine"
+import type { BrowserEngine } from "../../src/browser/types"
 import { init as initComputer } from "../../src/computer"
 import { createKernel } from "../../src/kernel"
 import { init as initStore } from "../../src/store"
@@ -17,6 +18,39 @@ afterEach(async () => {
   cleanups.clear()
   for (const cleanup of pending) await cleanup()
 })
+
+const getTakeoverVmRuntime = (acquire: VmRuntime["acquire"]): VmRuntime => {
+  const state = {
+    botId: "test-bot",
+    status: "running" as const,
+    progress: null,
+    error: null,
+    memoryMb: 512,
+    createdMs: null,
+    startMs: null,
+  }
+  return {
+    capability: { available: true, reason: null, provider: "test" },
+    states: () => [],
+    intent: async () => state,
+    acquire,
+    spawn: () => ({ success: false, errorCode: "SPAWN_FAILED", error: "Fixture runtime" }),
+    exec: async () => ({ success: false, errorCode: "EXEC_FAILED", error: "Fixture runtime" }),
+    writeFile: async () => {},
+    prepareTurn: async () => {
+      throw new Error("Fixture runtime")
+    },
+    forwardPort: async () => ({ hostPort: 0, url: "http://example.test" }),
+    desktopConnection: async () => ({ hostPort: 0, url: "http://example.test", password: "fixture" }),
+    browserEndpoint: async () => null,
+    computer: async () => ({ success: false, errorCode: "COMPUTER_DISABLED", error: "Fixture runtime" }),
+    restart: async () => state,
+    startService: async () => null,
+    stop: async () => {},
+    destroy: async () => {},
+    doctor: async () => [],
+  }
+}
 
 test("browser init registers its routes and optional tab service", async () => {
   const root = mkdtempSync(join(tmpdir(), "touri-wp6-index-"))
@@ -43,6 +77,141 @@ test("browser init registers its routes and optional tab service", async () => {
       body: JSON.stringify({ hold: false }),
     })
     expect(takeoverResponse.status).toBe(404)
+  } finally {
+    runtime.stop()
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test("remote browser takeover gives one device an interactive session and rejects other session tokens", async () => {
+  const root = mkdtempSync(join(tmpdir(), "touri-browser-remote-takeover-"))
+  const runtime = createKernel({ appData: root })
+  let botId = ""
+  let receivedInput: unknown = null
+  let leaseAcquired = 0
+  let leaseReleased = 0
+  const getResult = (): ToolResult => ({ success: true, content: [] })
+  const tab: BrowserTabInfo & { ownerBotId: string | null; ownerThreadId: string | null } = {
+    tabId: "t_remote",
+    title: "Example page",
+    url: "https://example.test/login",
+    state: "live",
+    openerTabId: null,
+    heldByUser: false,
+    lastUsedAt: Date.now(),
+    ownerBotId: botId,
+    ownerThreadId: null,
+  }
+  const engine: BrowserEngine = {
+    preview: async () => null,
+    open: async () => getResult(),
+    list: async () => getResult(),
+    close: async () => getResult(),
+    snapshot: async () => getResult(),
+    screenshot: async () => getResult(),
+    navigate: async () => getResult(),
+    click: async () => getResult(),
+    type: async () => getResult(),
+    press: async () => getResult(),
+    hover: async () => getResult(),
+    scroll: async () => getResult(),
+    selectOption: async () => getResult(),
+    setChecked: async () => getResult(),
+    waitFor: async () => getResult(),
+    evaluate: async () => getResult(),
+    requestTakeover: async () => getResult(),
+    submitSecret: async () => getResult(),
+    secretEntry: async () => false,
+    releaseTakeover: async () => true,
+    holdTakeover: async () => true,
+    getWindowBounds: async () => null,
+    tabsForBot: () => [{ ...tab, ownerBotId: botId }],
+    takeoverFrame: async () => ({
+      title: "Example page",
+      url: "https://example.test/login",
+      image: "data:image/jpeg;base64,ZmFrZQ==",
+      width: 1280,
+      height: 720,
+    }),
+    takeoverInput: async ({ input }: { input: unknown }) => {
+      receivedInput = input
+      return true
+    },
+    shutdown: async () => {},
+  }
+  try {
+    await initStore(runtime.kernel)
+    await init(runtime.kernel, undefined, { engine })
+    const baseUrl = `http://127.0.0.1:${runtime.handshake.port}/api/v1`
+    const request = (path: string, body: unknown, method = "POST") =>
+      fetch(`${baseUrl}${path}`, {
+        method,
+        headers: {
+          Authorization: "Bearer dev-ui-token",
+          "x-touri-client": "browser-takeover-test",
+          "Content-Type": "application/json",
+        },
+        ...(method === "POST" ? { body: JSON.stringify(body) } : {}),
+      })
+    const botResponse = await request("/bots", { name: "Léo", machine: "local", provider: "codex" })
+    expect(botResponse.status).toBe(201)
+    botId = ((await botResponse.json()) as { bot: Bot }).bot.id
+    ;(runtime.kernel.db as import("bun:sqlite").Database)
+      .query("UPDATE bots SET machine = 'vm', browser = 'machine' WHERE id = ?")
+      .run(botId)
+    runtime.kernel.services.provide(
+      "vm.runtime",
+      getTakeoverVmRuntime(async () => {
+        leaseAcquired += 1
+        return async () => {
+          leaseReleased += 1
+        }
+      }),
+    )
+
+    const started = await request("/browser/tabs/t_remote/takeover/session", {})
+    expect(started.status).toBe(200)
+    expect(leaseAcquired).toBe(1)
+    expect(leaseReleased).toBe(0)
+    const { sessionId } = (await started.json()) as { sessionId: string }
+    expect(sessionId).toHaveLength(64)
+
+    const denied = await request("/browser/tabs/t_remote/takeover/input", {
+      sessionId: "another-device-session",
+      input: { kind: "text", text: "private-login-value" },
+    })
+    expect(denied.status).toBe(403)
+    expect(receivedInput).toBeNull()
+
+    const frame = await request("/browser/tabs/t_remote/takeover/frame", { sessionId })
+    expect(frame.status).toBe(200)
+    expect(await frame.json()).toMatchObject({ width: 1280, height: 720 })
+
+    const typed = await request("/browser/tabs/t_remote/takeover/input", {
+      sessionId,
+      input: { kind: "text", text: "private-login-value" },
+    })
+    expect(typed.status).toBe(200)
+    expect(receivedInput).toEqual({ kind: "text", text: "private-login-value" })
+    expect(await typed.text()).not.toContain("private-login-value")
+
+    const keyed = await request("/browser/tabs/t_remote/takeover/input", {
+      sessionId,
+      input: { kind: "key", phase: "down", key: "Enter", code: "Enter", modifiers: 0 },
+    })
+    expect(keyed.status).toBe(200)
+    expect(receivedInput).toEqual({ kind: "key", phase: "down", key: "Enter", code: "Enter", modifiers: 0 })
+
+    const oversizedInput = await request("/browser/tabs/t_remote/takeover/input", {
+      sessionId,
+      input: { kind: "text", text: "x".repeat(70_000) },
+    })
+    expect(oversizedInput.status).toBe(400)
+    expect(receivedInput).toEqual({ kind: "text", text: "private-login-value" })
+
+    const ended = await request("/browser/tabs/t_remote/takeover/session", { sessionId }, "DELETE")
+    expect(ended.status).toBe(200)
+    expect(leaseReleased).toBe(1)
   } finally {
     runtime.stop()
     rmSync(root, { recursive: true, force: true })

@@ -42,12 +42,13 @@ import workspaceAttentionBackfillSql from "./migrations/0036.sql" with { type: "
 import browserTakeoverPrivacySql from "./migrations/0037.sql" with { type: "text" }
 import browserChannelRunsSql from "./migrations/0038.sql" with { type: "text" }
 import browserTakeoverContinuationsSql from "./migrations/0039.sql" with { type: "text" }
+import browserPrivateInputSql from "./migrations/0040.sql" with { type: "text" }
 import type { PerformanceStageRunner } from "./performance"
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 39
+export const SCHEMA_VERSION = 40
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -298,6 +299,14 @@ export const openDatabase = ({
     if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'browser_takeover_continuations_version'").get())
       database.exec(browserTakeoverContinuationsSql)
     database.exec("UPDATE schema_meta SET value = '39' WHERE key = 'schema_version'")
+  })()
+  database.transaction(() => {
+    const columns = database.query("PRAGMA table_info(browser_tabs)").all() as Array<{ name: string }>
+    if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'browser_private_input_version'").get()) {
+      if (!columns.some((column) => column.name === "private_input")) database.exec(browserPrivateInputSql)
+      else database.exec("INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('browser_private_input_version', '1')")
+    }
+    database.exec("UPDATE schema_meta SET value = '40' WHERE key = 'schema_version'")
   })()
   return database
 }

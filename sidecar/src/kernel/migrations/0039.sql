@@ -10,3 +10,4 @@ DROP TABLE run_continuations;
 ALTER TABLE run_continuations_next RENAME TO run_continuations;
 CREATE INDEX run_continuations_original ON run_continuations(original_run_id);
 INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('browser_takeover_continuations_version', '1');
+UPDATE schema_meta SET value = '39' WHERE key = 'schema_version';

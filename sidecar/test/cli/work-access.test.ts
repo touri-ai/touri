@@ -42,6 +42,8 @@ database.exec(`
   CREATE TABLE browser_tabs (id TEXT PRIMARY KEY, owner_bot_id TEXT, owner_thread_id TEXT);
   INSERT INTO bots(id, archived_at, responsible_person_id) VALUES ('legacy-bot', NULL, NULL), ('member-bot', NULL, 'member'),
     ('other-bot', NULL, 'owner'), ('team-bot', NULL, 'owner'), ('deleted-channel-bot', NULL, 'owner');
+  INSERT INTO browser_tabs(id, owner_bot_id) VALUES
+    ('member-tab', 'member-bot'), ('team-tab', 'team-bot'), ('other-tab', 'other-bot');
   INSERT INTO bot_groups VALUES ('team-a'), ('team-b');
   INSERT INTO group_members VALUES ('team-bot', 'team-a'), ('other-bot', 'team-b'),
     ('deleted-channel-bot', 'deleted-channel');
@@ -162,6 +164,45 @@ test("channel membership cannot open a private session with another person's bot
 
   expect(access.authorizeHttp({ ...request, body: { botId: "team-bot" } })).toMatchObject({ status: 403 })
   expect(access.authorizeHttp({ ...request, body: { botId: "member-bot" } })).toBeNull()
+})
+
+test("browser preview follows bot visibility and remote takeover follows control permissions", () => {
+  expect(
+    access.authorizeHttp({
+      personId: "member",
+      role: "member",
+      method: "GET",
+      pathname: "/bots/team-bot/browser-preview",
+      body: null,
+    }),
+  ).toBeNull()
+  expect(
+    access.authorizeHttp({
+      personId: "member",
+      role: "member",
+      method: "POST",
+      pathname: "/browser/tabs/team-tab/takeover/session",
+      body: null,
+    }),
+  ).toMatchObject({ status: 404 })
+  expect(
+    access.authorizeHttp({
+      personId: "member",
+      role: "member",
+      method: "POST",
+      pathname: "/browser/tabs/member-tab/takeover/session",
+      body: null,
+    }),
+  ).toBeNull()
+  expect(
+    access.authorizeHttp({
+      personId: "member",
+      role: "member",
+      method: "POST",
+      pathname: "/browser/tabs/other-tab/takeover/input",
+      body: null,
+    }),
+  ).toMatchObject({ status: 404 })
 })
 
 test("members get event sockets and presence only for bots in their channels", () => {
@@ -312,6 +353,43 @@ test("only the requester and the responsible person can stop or take over a chan
   const deniedTakeover = access.authorizeHttp({ ...takeover, personId: "second-member", role: "member" })
   expect(deniedTakeover).toMatchObject({ status: 403, json: { errorCode: "BROWSER_CONTROL_FORBIDDEN" } })
   expect(deniedTakeover?.json.error).toContain("Thiago está no controle")
+
+  expect(
+    access.authorizeHttp({
+      role: "member",
+      method: "POST",
+      pathname: "/browser/tabs/channel-tab/takeover/session",
+      personId: "member",
+      body: null,
+    }),
+  ).toBeNull()
+  expect(
+    access.authorizeHttp({
+      role: "admin",
+      method: "POST",
+      pathname: "/browser/tabs/channel-tab/takeover/session",
+      personId: "owner",
+      body: null,
+    }),
+  ).toBeNull()
+  expect(
+    access.authorizeHttp({
+      role: "member",
+      method: "POST",
+      pathname: "/browser/tabs/channel-tab/takeover/session",
+      personId: "second-member",
+      body: { sessionId: "untrusted" },
+    }),
+  ).toMatchObject({ status: 403, json: { errorCode: "BROWSER_CONTROL_FORBIDDEN" } })
+  expect(
+    access.authorizeHttp({
+      role: "member",
+      method: "POST",
+      pathname: "/browser/tabs/channel-tab/takeover/frame",
+      personId: "member",
+      body: { sessionId: "session-secret" },
+    }),
+  ).toBeNull()
 })
 
 test("targeted needs-you events and notifications are private to their recipient", () => {

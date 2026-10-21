@@ -359,7 +359,6 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
       }
     }
     const runAction = /^\/runs\/([^/]+)\/(cancel|retry)$/u.exec(pathname)
-    const takeover = /^\/browser\/tabs\/([^/]+)\/takeover$/u.exec(pathname)
     if (verb === "POST" && runAction?.[2] === "cancel") {
       const runId = runAction[1] ?? ""
       const run = browserRunForRun(runId)
@@ -367,15 +366,32 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
       const decision = browserControlDecision(run)
       if (decision) return decision
     }
-    if (verb === "POST" && takeover) {
-      const tabId = takeover[1] ?? ""
-      const tabThread = database.query("SELECT owner_thread_id FROM browser_tabs WHERE id = ?").get(tabId) as {
-        owner_thread_id: string | null
-      } | null
-      if (tabThread?.owner_thread_id && !canAccessThread({ personId, role, threadId: tabThread.owner_thread_id }))
-        return notFound
-      const decision = browserControlDecision(browserRunForTab(tabId))
+    const browserTakeover = /^\/browser\/tabs\/([^/]+)\/takeover(?:\/(session|frame|input))?$/u.exec(pathname)
+    if (browserTakeover && ["POST", "DELETE"].includes(verb)) {
+      const tabId = browserTakeover[1] ?? ""
+      const tab = database
+        .query("SELECT owner_bot_id, owner_thread_id FROM browser_tabs WHERE id = ?")
+        .get(tabId) as { owner_bot_id: string | null; owner_thread_id: string | null } | null
+      if (!tab?.owner_bot_id) return notFound
+      const hasTabAccess =
+        ownsBot({ personId, botId: tab.owner_bot_id }) ||
+        (tab.owner_thread_id
+          ? canAccessThread({ personId, role, threadId: tab.owner_thread_id })
+          : canAccessBot({ personId, role, botId: tab.owner_bot_id }))
+      if (!hasTabAccess) return notFound
+
+      const run = browserRunForTab(tabId)
+      const sessionBoundAction =
+        browserTakeover[2] !== undefined &&
+        browserTakeover[2] !== "session" &&
+        isRecord(body) &&
+        typeof body.sessionId === "string"
+      if (sessionBoundAction) return null
+      const decision = browserControlDecision(run)
       if (decision) return decision
+
+      if (browserTakeover[2] !== undefined) return ownsBot({ personId, botId: tab.owner_bot_id }) ? null : notFound
+      return canAccessBot({ personId, role, botId: tab.owner_bot_id }) ? null : notFound
     }
     if (role === "admin") return null
     if (verb === "POST" && pathname === "/ws-ticket") return null
@@ -405,6 +421,9 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
     const presenceRoute = /^\/bots\/([^/]+)\/machine\/presence\/socket$/u.exec(pathname)
     if (presenceRoute && verb === "GET")
       return canAccessBot({ personId, role, botId: presenceRoute[1] ?? "" }) ? null : notFound
+    const browserPreview = /^\/bots\/([^/]+)\/browser-preview$/u.exec(pathname)
+    if (browserPreview && verb === "GET")
+      return canAccessBot({ personId, role, botId: browserPreview[1] ?? "" }) ? null : notFound
     if (verb === "POST" && pathname === "/threads") {
       const botId = stringValue(isRecord(body) ? body.botId : null)
       if (botId) return ownsBot({ personId, botId }) ? null : denied
@@ -439,20 +458,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
       return canApprove({ personId, approvalId: approvalRoute[1] ?? "" }) ? null : denied
     if (runAction && verb === "POST")
       return canAccessRun({ personId, role, runId: runAction[1] ?? "" }) ? null : notFound
-    if (takeover && verb === "POST") {
-      const tabId = takeover[1] ?? ""
-      const tab = database.query("SELECT owner_bot_id, owner_thread_id FROM browser_tabs WHERE id = ?").get(tabId) as {
-        owner_bot_id: string | null
-        owner_thread_id: string | null
-      } | null
-      if (tab?.owner_thread_id)
-        return canAccessThread({ personId, role, threadId: tab.owner_thread_id }) ? null : notFound
-      return tab?.owner_bot_id && canAccessBot({ personId, role, botId: tab.owner_bot_id }) ? null : notFound
-    }
     if (verb === "GET" && pathname === "/browser/tabs") return null
-    const browserPreview = /^\/bots\/([^/]+)\/browser-preview$/u.exec(pathname)
-    if (browserPreview && verb === "GET")
-      return canAccessBot({ personId, role, botId: browserPreview[1] ?? "" }) ? null : notFound
     return denied
   }
 

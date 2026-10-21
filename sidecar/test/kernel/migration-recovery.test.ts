@@ -148,7 +148,7 @@ for (const version of [9, 10]) {
       const resolutions = database.query("SELECT * FROM tool_resolutions").all()
       database.close()
       database = openDatabase({ filename })
-      expect(SCHEMA_VERSION).toBe(39)
+      expect(SCHEMA_VERSION).toBe(40)
       expect(database.query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get()).toEqual({
         value: String(SCHEMA_VERSION),
       })
@@ -156,6 +156,16 @@ for (const version of [9, 10]) {
         value: "1",
       })
       expect(database.query("SELECT * FROM tool_resolutions").all()).toEqual(resolutions)
+      expect(
+        (database.query("PRAGMA table_info(browser_tabs)").all() as Array<{ name: string }>).map(
+          (column) => column.name,
+        ),
+      ).toContain("private_input")
+      expect(
+        (database.query("PRAGMA table_info(browser_tabs)").all() as Array<{ name: string }>).map(
+          (column) => column.name,
+        ),
+      ).toContain("private_after_takeover")
       expect(database.query("SELECT COUNT(*) AS n FROM rejections").get()).toEqual({ n: version === 10 ? 1 : 0 })
       database.exec("INSERT INTO problem_reports VALUES ('report',42,'Relato','zip')")
       database.exec("INSERT INTO tool_resolutions VALUES ('r','restart','t','{}','interrupted_by_restart',43)")
