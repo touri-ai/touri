@@ -57,7 +57,10 @@ for (const viewport of [
     await expect(keyboard).toHaveValue("")
     await expect(page.locator("body")).not.toContainText("valor privado de teste")
 
-    await page.getByRole("button", { name: /Devolver para mark/i }).click()
+    await page
+      .getByRole("region", { name: "Controle remoto do navegador" })
+      .getByRole("button", { name: /Devolver para mark/i })
+      .click()
     await expect(
       page.locator(".browser-activity-card").getByRole("button", { name: "Assumir", exact: true }),
     ).toBeVisible()

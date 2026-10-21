@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { createApiClient, createTauriInvoke, resolveSidecarEndpoint, type UiApi, webEndpoint } from "../../api/client"
-import { Modal } from "../../components/Modals"
+import { Modal } from "../../components/Modal"
 import { t } from "../../i18n"
 import { ReportProblem } from "./ReportProblem"
 

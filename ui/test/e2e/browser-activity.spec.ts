@@ -148,7 +148,10 @@ test.describe("full browser activity flow", () => {
           }),
         )
         .toBe(1)
-      await page.getByRole("button", { name: /Devolver para/ }).click()
+      await page
+        .getByRole("region", { name: "Controle remoto do navegador" })
+        .getByRole("button", { name: /Devolver para/ })
+        .click()
       await page.evaluate(() => {
         const browserWindow = window as Window & { browserActivity?: { continueAfterOpen: () => void } }
         browserWindow.browserActivity?.continueAfterOpen()
@@ -366,7 +369,9 @@ for (const fallback of ["missing_key", "no_credit"] as const) {
         .getByRole("button", { name: isEnglish ? "Take over" : "Assumir", exact: true })
       await takeOver.focus()
       await page.keyboard.press("Enter")
-      const handBack = page.getByRole("button", { name: /Hand back to|Devolver para/ })
+      const handBack = page
+        .locator(".browser-activity-card")
+        .getByRole("button", { name: /Hand back to|Devolver para/ })
       await expect(handBack).toBeVisible()
       await page.screenshot({ path: testInfo.outputPath(`browser-${fallback}-${locale}.png`), fullPage: true })
       await handBack.click()

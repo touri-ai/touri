@@ -127,14 +127,17 @@ for (const variant of variants) {
       await expect(ui.getByText(/O site pediu login/u)).toBeVisible({ timeout: 60_000 })
       await shoot(ui, variant.name, "login-wall")
       await ui.locator(".composer-browser-status").getByRole("button", { name: "Assumir" }).click()
-      await expect(ui.getByRole("button", { name: /Devolver para/ })).toBeVisible()
+      await expect(ui.locator(".browser-activity-card").getByRole("button", { name: /Devolver para/ })).toBeVisible()
       await bot.page.getByLabel("E-mail").fill("voce@exemplo.com")
       await bot.page.getByLabel("Senha").fill(FIXTURE_LOGIN_VALUE)
       await expect(ui.locator("body")).not.toContainText(FIXTURE_LOGIN_VALUE)
       expect(await ui.evaluate(() => (window as FlowWindow).cuFlow?.sent())).toEqual([])
       await bot.page.getByRole("button", { name: "Continuar" }).click()
       await shoot(ui, variant.name, "taken-over")
-      await ui.getByRole("button", { name: /Devolver para/ }).click()
+      await ui
+        .locator(".browser-activity-card")
+        .getByRole("button", { name: /Devolver para/ })
+        .click()
       await bot.run
 
       expect(snapshots).toHaveLength(12)
@@ -191,7 +194,10 @@ for (const variant of variants) {
 
         await expect(ui.getByText(/O site pediu login/u)).toBeVisible({ timeout: 60_000 })
         await ui.locator(".composer-browser-status").getByRole("button", { name: "Assumir" }).click()
-        await ui.getByRole("button", { name: /Devolver para/ }).click()
+        await ui
+          .locator(".browser-activity-card")
+          .getByRole("button", { name: /Devolver para/ })
+          .click()
         await bot.run
 
         await expect(ui.getByRole("button", { name: /Usou o navegador · \d+ ações/ })).toBeVisible()

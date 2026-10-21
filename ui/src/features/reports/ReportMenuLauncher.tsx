@@ -1,7 +1,7 @@
 import { listen } from "@tauri-apps/api/event"
 import { useEffect, useState } from "react"
 import { createApiClient, createTauriInvoke, resolveSidecarEndpoint, type UiApi } from "../../api/client"
-import { Modal } from "../../components/Modals"
+import { Modal } from "../../components/Modal"
 import { ReportProblem } from "./ReportProblem"
 
 /** Lives outside the app boundary so Help remains useful after a fatal render or startup failure. */
