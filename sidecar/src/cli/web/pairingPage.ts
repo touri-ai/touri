@@ -6,8 +6,8 @@ export const pairingPageHtml = `<!doctype html>
 <meta name="robots" content="noindex">
 <title>Entrar no touri</title>
 <style>
-:root{color-scheme:light dark;--bg:#fafaf9;--fg:#1c1917;--muted:#78716c;--card:#fff;--line:#e7e5e4;--red:#dc2626}
-@media (prefers-color-scheme:dark){:root{--bg:#0c0a09;--fg:#fafaf9;--muted:#a8a29e;--card:#1c1917;--line:#292524}}
+:root{color-scheme:light dark;--bg:#fafaf9;--fg:#1c1917;--muted:#78716c;--card:#fff;--line:#e7e5e4;--red:#dc2626;--error:#b91c1c;--success:#15803d}
+@media (prefers-color-scheme:dark){:root{--bg:#0c0a09;--fg:#fafaf9;--muted:#a8a29e;--card:#1c1917;--line:#292524;--error:#f87171;--success:#4ade80}}
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
 main{width:min(28rem,calc(100vw - 2rem));background:var(--card);border:1px solid var(--line);border-radius:14px;padding:2rem}
@@ -22,8 +22,8 @@ input:focus-visible,button:focus-visible{outline:2px solid var(--red);outline-of
 button{margin-top:.75rem;width:100%;padding:.75rem;border:0;border-radius:8px;background:var(--red);color:#fff;font:600 1rem system-ui,sans-serif;cursor:pointer}
 button:disabled{opacity:.6;cursor:wait}
 .status{margin-top:.65rem;font-size:.9rem;min-height:1.3rem}
-.error{color:var(--red)}
-.success{color:#15803d}
+.error{color:var(--error)}
+.success{color:var(--success)}
 hr{border:0;border-top:1px solid var(--line);margin:1.4rem 0}
 code{font:.85rem ui-monospace,Menlo,monospace;background:var(--bg);padding:.1rem .35rem;border-radius:4px}
 [hidden]{display:none!important}
@@ -33,6 +33,7 @@ code{font:.85rem ui-monospace,Menlo,monospace;background:var(--bg);padding:.1rem
 <main>
 <h1>touri<span>.</span></h1>
 <p id="intro">Entre com seu e-mail ou use um código de pareamento.</p>
+<div class="status" id="email-status" role="status" aria-live="polite"></div>
 <form id="email-form" autocomplete="on">
 <h2 id="email-heading">Entrar com e-mail</h2>
 <p id="email-help">Enviaremos um link de uso único se este endereço fizer parte da equipe.</p>
@@ -40,7 +41,6 @@ code{font:.85rem ui-monospace,Menlo,monospace;background:var(--bg);padding:.1rem
 <input id="email" name="email" type="email" autocomplete="email" maxlength="254" required>
 <button id="email-button" type="submit">Enviar link de acesso</button>
 </form>
-<div class="status" id="email-status" role="status" aria-live="polite"></div>
 <hr id="separator">
 <form id="pair-form" autocomplete="off">
 <h2 id="pair-heading">Usar código de pareamento</h2>
@@ -84,7 +84,24 @@ document.getElementById("code-label").textContent=copy.codeLabel;
 document.getElementById("pair-button").textContent=copy.pairButton;
 var emailForm=document.getElementById("email-form"),emailInput=document.getElementById("email"),emailButton=document.getElementById("email-button"),emailStatus=document.getElementById("email-status");
 var pairForm=document.getElementById("pair-form"),codeInput=document.getElementById("code"),pairButton=document.getElementById("pair-button"),pairStatus=document.getElementById("pair-status");
-var requestJson=function(path,body){return fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify(body)}).then(function(response){return response.json().then(function(json){return{ok:response.ok,json:json}})})};
+const requestJson = async (path, body) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+
+  try {
+    const response = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+    const json = await response.json();
+    return { ok: response.ok, json };
+  } finally {
+    clearTimeout(timeout);
+  }
+};
 emailForm.addEventListener("submit",function(event){
 event.preventDefault();emailButton.disabled=true;emailStatus.className="status";emailStatus.textContent="";
 requestJson("/api/v1/auth/email",{email:emailInput.value}).then(function(result){if(result.ok){emailStatus.textContent=copy.emailSent;emailStatus.className="status success";return}emailStatus.textContent=copy.emailFailed}).catch(function(){emailStatus.textContent=copy.emailFailed}).finally(function(){emailButton.disabled=false});
@@ -94,7 +111,8 @@ event.preventDefault();pairButton.disabled=true;pairStatus.textContent="";
 requestJson("/pair",{code:codeInput.value,name:navigator.userAgent.slice(0,80)}).then(function(result){if(result.ok){location.replace("/");return}pairStatus.textContent=copy.pairFailed}).catch(function(){pairStatus.textContent=copy.connectionFailed}).finally(function(){pairButton.disabled=false});
 });
 var fragment=new URLSearchParams(location.hash.slice(1));var signInToken=fragment.get("signin");
-const showSignInError = (message) => {
+const restoreSignIn = (message) => {
+  // Restore keyboard access to requesting a fresh link after redemption fails.
   emailStatus.textContent = message;
   emailStatus.className = "status error";
   emailForm.hidden = false;
@@ -102,8 +120,23 @@ const showSignInError = (message) => {
   document.getElementById("separator").hidden = false;
   emailInput.focus();
 };
-if(signInToken){history.replaceState(null,"",location.pathname+location.search);emailForm.hidden=true;pairForm.hidden=true;document.getElementById("separator").hidden=true;emailStatus.textContent=copy.redeeming;
-requestJson("/api/v1/auth/email/redeem",{token:signInToken,deviceName:navigator.userAgent.slice(0,80)}).then(function(result){if(result.ok){location.replace("/");return}showSignInError(copy.invalidLink)}).catch(function(){showSignInError(copy.connectionFailed)});
+if (signInToken) {
+  history.replaceState(null, "", location.pathname + location.search);
+  emailForm.hidden = true;
+  pairForm.hidden = true;
+  document.getElementById("separator").hidden = true;
+  emailStatus.textContent = copy.redeeming;
+
+  requestJson("/api/v1/auth/email/redeem", { token: signInToken, deviceName: navigator.userAgent.slice(0, 80) })
+    .then((result) => {
+      if (result.ok) {
+        location.replace("/");
+        return;
+      }
+
+      restoreSignIn(copy.invalidLink);
+    })
+    .catch(() => restoreSignIn(copy.connectionFailed));
 }
 </script>
 </body>

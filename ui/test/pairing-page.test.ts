@@ -9,6 +9,7 @@ afterEach(() => {
     page.window.close()
   })
   pages.clear()
+  vi.useRealTimers()
 })
 
 const makePage = (language: string, fetch: typeof globalThis.fetch): JSDOM => {
@@ -70,6 +71,25 @@ describe("email sign-in recovery", () => {
 
     await vi.waitFor(() => expect(status?.textContent).toContain("Não foi possível falar com o servidor"))
     expect(status?.closest("[hidden]")).toBeNull()
+    expect(document.getElementById("email-form")?.hasAttribute("hidden")).toBe(false)
+    expect(document.getElementById("pair-form")?.hasAttribute("hidden")).toBe(false)
+  })
+
+  it("cancels a stalled redemption and restores the sign-in controls after 15 seconds", async () => {
+    vi.useFakeTimers()
+    const fetch = vi.fn<typeof globalThis.fetch>(
+      async (_resource, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("Synthetic request cancellation")))
+        }),
+    )
+    const page = makePage("pt-BR", fetch)
+    const document = page.window.document
+
+    await vi.advanceTimersByTimeAsync(15_001)
+
+    expect(fetch.mock.calls[0]?.[1]?.signal?.aborted).toBe(true)
+    expect(document.getElementById("email-status")?.textContent).toContain("Não foi possível falar com o servidor")
     expect(document.getElementById("email-form")?.hasAttribute("hidden")).toBe(false)
     expect(document.getElementById("pair-form")?.hasAttribute("hidden")).toBe(false)
   })
