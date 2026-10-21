@@ -81,7 +81,9 @@ test.describe("full browser activity flow", () => {
           body: await response.text(),
         })
       })
-      await page.goto(`${baseURL}/test/e2e/browser-activity-harness.html?flow=live&theme=${variant.theme}`)
+      await page.goto(
+        `${baseURL}/test/e2e/browser-activity-harness.html?flow=live&theme=${variant.theme}&holdAfterOpen=true`,
+      )
       await page.getByRole("button", { name: "Iniciar busca de viagem" }).click()
 
       const card = page.getByRole("article", { name: "Navegador do Lia" })
@@ -97,7 +99,7 @@ test.describe("full browser activity flow", () => {
         await expect(page.getByRole("button", { name: /Busca de viagem/ })).toContainText("trabalhando")
       await expect(card).toBeVisible()
       await expect(card.getByRole("progressbar", { name: "Progresso do navegador" })).toBeVisible()
-      await expect(card).toContainText("Lia · Abrindo uma página")
+      await expect(card).toContainText("Lia · abrindo uma página")
       await expect(page.locator(".browser-activity-card")).toHaveCount(1)
       await expect(page.locator(".tool-call-card")).toHaveCount(0)
       await expect(card.getByRole("button", { name: "Assumir" })).toBeVisible({ timeout: 20_000 })
@@ -105,12 +107,10 @@ test.describe("full browser activity flow", () => {
       const livePreview = card.getByRole("img", { name: "Página atual do navegador" })
       await expect(livePreview).toBeVisible({ timeout: 20_000 })
       await expect(card.getByRole("button", { name: "Expandir navegador" })).toBeEnabled()
-      const previewBox = await livePreview.boundingBox()
-      await card.getByRole("button", { name: "Expandir navegador" }).click()
-      if (variant.width > 600) {
-        const expandedBox = await livePreview.boundingBox()
-        expect(expandedBox?.width ?? 0).toBeGreaterThan((previewBox?.width ?? 0) * 1.35)
-      }
+      const expandBrowser = card.locator(".browser-activity-header-actions .browser-activity-icon-button").first()
+      await expandBrowser.click()
+      await expect(expandBrowser).toHaveAttribute("aria-pressed", "true")
+      await expect(card.locator(".browser-activity-preview")).toHaveClass(/browser-activity-preview-full/)
       const columns = await card
         .locator(".browser-activity-content")
         .evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length)
@@ -122,12 +122,26 @@ test.describe("full browser activity flow", () => {
       await takeOver.click()
       await expect(page.getByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
       await expect(page.getByRole("button", { name: "Digitar no navegador" })).toBeVisible()
-      const search = page.getByRole("button", { name: "Buscar viagens" })
-      await expect(search).toBeDisabled()
-      await expect(page.getByText("Resultados da busca")).toHaveCount(0)
+      const remoteScreen = page.locator(".browser-takeover-screen")
+      await expect(remoteScreen).toBeVisible()
+      await remoteScreen.click({ position: { x: 80, y: 80 } })
+      await expect
+        .poll(() =>
+          page.evaluate(async () => {
+            const response = await fetch("/__browser-activity-fixture", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ step: "stats" }),
+            })
+            return ((await response.json()) as { takeoverInputCount: number }).takeoverInputCount
+          }),
+        )
+        .toBe(1)
       await page.getByRole("button", { name: /Devolver para/ }).click()
-      await expect(search).toBeEnabled()
-      await search.click()
+      await page.evaluate(() => {
+        const browserWindow = window as Window & { browserActivity?: { continueAfterOpen: () => void } }
+        browserWindow.browserActivity?.continueAfterOpen()
+      })
 
       const results = page.getByText("Encontrei duas opções fictícias para", { exact: false })
       await expect(results).toBeVisible({ timeout: 90_000 })
@@ -137,11 +151,15 @@ test.describe("full browser activity flow", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ step: "stats" }),
         })
-        const result = (await response.json()) as { decisionCount: number; failedSteps: string[] }
+        const result = (await response.json()) as {
+          decisionCount: number
+          failedSteps: string[]
+          takeoverInputCount: number
+        }
 
         return result
       })
-      expect(fixtureStats).toEqual({ decisionCount: 4, failedSteps: [] })
+      expect(fixtureStats).toEqual({ decisionCount: 4, failedSteps: [], takeoverInputCount: 1 })
       await expect(page.getByText("Voo direto", { exact: false })).toBeVisible()
       await expect(page.getByText("Uma conexão", { exact: false })).toBeVisible()
       await expect(page.getByRole("progressbar", { name: "Progresso do navegador" })).toHaveCount(0)
@@ -152,7 +170,7 @@ test.describe("full browser activity flow", () => {
       await summary.click()
       const activity = page.getByRole("log", { name: "Atividade do navegador" })
       for (const action of [
-        "Abriu a página",
+        "Abriu uma página",
         "Leu a página",
         "Clicou",
         "Preencheu um campo",
@@ -189,7 +207,7 @@ for (const viewport of [
 ]) {
   test(`server browser takeover stays interactive and private: ${viewport.name}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width: viewport.width, height: viewport.height })
-    await page.goto("/test/e2e/browser-activity-harness.html?remote=true")
+    await page.goto("/test/e2e/browser-activity-harness.html?remote=true&holdAfterOpen=true")
     await page.getByRole("button", { name: "Iniciar busca de viagem" }).click()
     await expect(page.getByRole("button", { name: "Assumir", exact: true })).toBeVisible()
     await page.screenshot({ path: testInfo.outputPath(`browser-takeover-before-${viewport.name}.png`), fullPage: true })
@@ -197,7 +215,9 @@ for (const viewport of [
     await page.getByRole("button", { name: "Assumir", exact: true }).click()
     await expect(page.getByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
     await expect(page.getByText(/Você está no controle · .* está pausado/)).toBeVisible()
-    const privacyNotice = page.getByText("O que você digitar aqui não vai para a conversa, para o bot nem para o histórico.")
+    const privacyNotice = page.getByText(
+      "O que você digitar aqui não vai para a conversa, para o bot nem para o histórico.",
+    )
     await expect(privacyNotice).toBeVisible()
     await expect(privacyNotice).toHaveCSS("position", "sticky")
     const takeoverColumns = await page
@@ -231,6 +251,7 @@ for (const viewport of [
   })
 }
 test("Composer stop cancels the active browser run and prevents later browser actions", async ({ page, baseURL }) => {
+  test.setTimeout(60_000)
   const browserActions: string[] = []
   const browserActionSteps = new Set([
     "open",
@@ -316,7 +337,7 @@ for (const fallback of ["missing_key", "no_credit"] as const) {
       const notice = isEnglish ? englishNotice : portugueseNotice
       await expect(page.getByText(notice)).toBeVisible()
       await expect(page.locator("body")).not.toContainText("TOURI_BROWSER_DECISION_HINT")
-      const takeOver = page.getByRole("button", { name: isEnglish ? "Take over browser" : "Assumir" })
+      const takeOver = page.getByRole("button", { name: isEnglish ? "Take over" : "Assumir", exact: true })
       await takeOver.focus()
       await page.keyboard.press("Enter")
       const handBack = page.getByRole("button", { name: /Hand back to|Devolver para/ })

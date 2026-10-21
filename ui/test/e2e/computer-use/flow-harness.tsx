@@ -56,6 +56,23 @@ const Flow = () => {
         setHeld((input as { hold: boolean }).hold)
         return {}
       }
+      if (route === "POST /browser/tabs/:id/takeover/session") {
+        setHeld(true)
+        return { sessionId: "computer-use-flow-session" }
+      }
+      if (route === "POST /browser/tabs/:id/takeover/frame")
+        return {
+          title: preview?.title ?? "Página de teste",
+          url: preview?.url ?? "https://estadias.exemplo/entrar",
+          image: preview?.preview ?? "",
+          width: 1280,
+          height: 720,
+        }
+      if (route === "POST /browser/tabs/:id/takeover/input") return {}
+      if (route === "DELETE /browser/tabs/:id/takeover/session") {
+        setHeld(false)
+        return {}
+      }
       if (route === "GET /bots/:id/browser-preview") return preview ?? {}
       if (route === "GET /attachments/:id/content") return { text: "", offset: 0, nextOffset: null, bytes: 0 }
 

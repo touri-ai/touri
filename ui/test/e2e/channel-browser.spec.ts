@@ -23,7 +23,9 @@ test.describe("browser card in a channel", () => {
         await expect(page.getByText("Todos no canal veem")).toBeVisible()
         await expect(page.getByRole("status", { name: "Léo no navegador · pedido de Ana" })).toBeVisible()
         await expect(page.getByTitle("Léo trabalhando aqui")).toBeVisible()
-        await expect(page.locator(".composer-browser-status")).toContainText("para Ana")
+        if (scenario.name === "takeover-hidden-preview")
+          await expect(page.locator(".composer-browser-status")).toContainText("Ana está no controle")
+        else await expect(page.locator(".composer-browser-status")).toContainText("para Ana")
         await expect(
           page.locator(".channel-demo-reply").getByRole("article", { name: "Navegador do Léo" }),
         ).toBeVisible()
@@ -31,7 +33,10 @@ test.describe("browser card in a channel", () => {
         const replyHeader = await page.locator(".channel-demo-reply .message-meta").boundingBox()
         expect(editGroup).not.toBeNull()
         expect(replyHeader?.y).toBeGreaterThanOrEqual((editGroup?.y ?? 0) + (editGroup?.height ?? 0))
-        await expect(page.getByText("https://estadias.example.test/busca", { exact: true })).toHaveCount(1)
+        const visibleUrl = scenario.name === "takeover-hidden-preview" ? 0 : 1
+        await expect(
+          page.locator(".browser-activity-subtitle").filter({ hasText: "estadias.example.test/busca" }),
+        ).toHaveCount(visibleUrl)
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
         expect(overflow).toBeLessThanOrEqual(0)
 
@@ -45,8 +50,8 @@ test.describe("browser card in a channel", () => {
 
         if (scenario.name === "requester") await expect(page.getByRole("button", { name: /Assumir/ })).toBeEnabled()
         if (scenario.name !== "requester") {
-          await expect(page.getByRole("button", { name: /Assumir/ })).toBeDisabled()
-          await expect(page.getByText("Ana está no controle")).toBeVisible()
+          await expect(page.getByRole("button", { name: /Assumir/ })).toHaveCount(0)
+          await expect(page.getByText("Ana está no controle").first()).toBeVisible()
         }
         if (scenario.name === "takeover-hidden-preview")
           await expect(page.getByText("Prévia oculta para o canal enquanto Ana digita")).toBeVisible()

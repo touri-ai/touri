@@ -7,8 +7,8 @@ import {
   ChannelVisibilityLabel,
   useChannelBrowserView,
 } from "../features/channelBrowser/ChannelBrowser"
-import { InlinePreviewContext } from "../features/desktop/InlineLivePreview"
 import { clearBrowserHold, setBrowserHold } from "../features/desktop/browserHold"
+import { InlinePreviewContext } from "../features/desktop/InlineLivePreview"
 import { type PreviewFrame, startInlineFrameSource } from "../features/desktop/inlineFrameSource"
 import { useInlinePreviewPreference } from "../features/desktop/inlinePreviewPreference"
 import { type Locale, t } from "../i18n"
@@ -191,10 +191,10 @@ export const BrowserActivityCard = ({
     const loadTabs = () =>
       api
         .request("GET /browser/tabs", { botId })
-      .then(({ tabs }) => {
-        if (!hasTabEvent) selectTab(tabs)
-      })
-      .catch(() => {})
+        .then(({ tabs }) => {
+          if (!hasTabEvent) selectTab(tabs)
+        })
+        .catch(() => {})
     void loadTabs()
     const poll = window.setInterval(() => {
       if (needsTabRef.current) void loadTabs()
@@ -242,7 +242,22 @@ export const BrowserActivityCard = ({
       frameSource.current = undefined
       source()
     }
-  }, [activeTabId, api, botId, machine, canPreview, channel?.previewHidden, expanded, finished, held, hidden, locale, previewEnabled, takeoverSession, visible])
+  }, [
+    activeTabId,
+    api,
+    botId,
+    machine,
+    canPreview,
+    channel?.previewHidden,
+    expanded,
+    finished,
+    held,
+    hidden,
+    locale,
+    previewEnabled,
+    takeoverSession,
+    visible,
+  ])
 
   useEffect(() => {
     if (held || channel?.previewHidden) setPreviewFrame(undefined)
@@ -318,9 +333,10 @@ export const BrowserActivityCard = ({
     { count: browserTools.length },
     locale,
   )
-  const url = finished || channel?.previewHidden
-    ? ""
-    : getBrowserActivityShortUrl(preview?.url ?? "") || getBrowserActivityOpenUrl(browserTools)
+  const url =
+    finished || channel?.previewHidden
+      ? ""
+      : getBrowserActivityShortUrl(preview?.url ?? "") || getBrowserActivityOpenUrl(browserTools)
   const subtitle = [botName, currentAction && getBrowserActivitySubtitleAction(currentAction, locale), url]
     .filter(Boolean)
     .join(" · ")
@@ -421,22 +437,18 @@ export const BrowserActivityCard = ({
                 <button
                   type="button"
                   className="button button-quiet"
-                  disabled={busy || !activeTabId || (held && !takeoverSession)}
+                  disabled={busy || !activeTabId}
                   title={activeTabId ? undefined : t("Preparing the browser…", {}, locale)}
                   onClick={() => void toggleTakeover()}
                 >
                   {busy ? (
                     t("Updating browser control…", {}, locale)
-                  ) : held && !takeoverSession ? (
-                    t("Browser is being controlled", {}, locale)
                   ) : (
                     <>
                       <BrowserIcon name="person" />
                       {takeoverSession
                         ? t("Hand back to {name}", { name: botName }, locale)
-                        : held
-                          ? t("Browser is being controlled", {}, locale)
-                          : t("Take over tab", {}, locale)}
+                        : t("Take over tab", {}, locale)}
                     </>
                   )}
                 </button>

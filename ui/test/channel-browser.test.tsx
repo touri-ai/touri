@@ -205,12 +205,10 @@ describe("browser card in a channel", () => {
     expect(screen.getByText(/Léo pausa e chama Ana, quem pediu/)).toBeVisible()
   })
 
-  test("disables Assumir for people who are not in control", () => {
+  test("hides Assumir from people who are not allowed to take control", () => {
     renderCard(getState(), "user-hugo")
 
-    const take = screen.getByRole("button", { name: /Assumir/ })
-
-    expect(take).toBeDisabled()
+    expect(screen.queryByRole("button", { name: /Assumir/ })).toBeNull()
     expect(screen.getByText("Ana está no controle")).toBeVisible()
   })
 
@@ -312,7 +310,7 @@ describe("channel chrome", () => {
     const onStop = vi.fn()
     render(<ChannelComposerChip botName="Léo" onStop={onStop} />)
 
-    fireEvent.click(screen.getByRole("button", { name: "Parar" }))
+    fireEvent.click(screen.getByRole("button", { name: "Parar Léo" }))
 
     expect(onStop).toHaveBeenCalledOnce()
   })

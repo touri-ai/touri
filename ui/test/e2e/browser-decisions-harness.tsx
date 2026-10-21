@@ -1,7 +1,7 @@
 import type { ToolCallPart } from "@touri/contracts"
 import { useState } from "react"
 import { createRoot } from "react-dom/client"
-import { ToolCallCard } from "../../src/components/ToolCallCard"
+import { BrowserActivityCard } from "../../src/components/BrowserActivityCard"
 import { initializeTheme } from "../../src/design/theme"
 import { t } from "../../src/i18n"
 import "../../src/styles.css"
@@ -32,7 +32,7 @@ const Harness = () => {
         ))}
       </nav>
       {busy && <p role="status">{t("Connecting to the provider…")}</p>}
-      {part && <ToolCallCard part={part} />}
+      {part && <BrowserActivityCard parts={[part]} finished={false} createdAt={Date.now()} botName="Lia" />}
       {image && (
         <img
           alt="Página fictícia de pesquisa de viagem"

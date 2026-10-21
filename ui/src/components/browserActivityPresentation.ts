@@ -196,6 +196,10 @@ export const getBrowserActivityKind = (part: ToolCallPart): string => {
 
 export const getBrowserActivityNotice = (part: ToolCallPart, locale: Locale): string | null => {
   const output = part.outputJson?.slice(0, MAX_OUTPUT_LENGTH) ?? ""
+  const outputValue = asToolRecord(parseToolValue(redactToolText(output)))
+  const structured = asToolRecord(outputValue?.structured ?? outputValue?.structuredContent)
+  if (structured?.status === "waiting_for_person")
+    return t("This action needs you. Take over the tab to continue.", {}, locale)
   if (output.includes("TOURI_BROWSER_TAKEOVER_REQUIRED|"))
     return t("This action needs you. Take over the tab to continue.", {}, locale)
   if (output.includes("TOURI_BROWSER_DECISION_QUESTION|"))
@@ -218,7 +222,9 @@ export const getBrowserActivityNotice = (part: ToolCallPart, locale: Locale): st
 export const getBrowserActivityTimestamps = (parts: readonly ToolCallPart[], fallback: number): number[] => {
   const times = parts.map((part) => part.startedAt ?? part.resolvedAt ?? fallback)
 
-  return times.map((_, index) => times.slice(index).reduce((earliest, time) => Math.min(earliest, time), Number.MAX_SAFE_INTEGER))
+  return times.map((_, index) =>
+    times.slice(index).reduce((earliest, time) => Math.min(earliest, time), Number.MAX_SAFE_INTEGER),
+  )
 }
 
 export const getBrowserActivityTime = (timestamp: number, locale: Locale): string => {
@@ -247,9 +253,7 @@ export const getBrowserActivityShortUrl = (value: string): string => {
     const safePath = redactToolText(url.pathname)
       .split("/")
       .map((segment) =>
-        /@/.test(segment) ||
-        /(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z0-9_-]{8,}/.test(segment) ||
-        /\d{5,}/.test(segment)
+        /@/.test(segment) || /(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z0-9_-]{8,}/.test(segment) || /\d{5,}/.test(segment)
           ? "…"
           : segment,
       )
@@ -270,5 +274,5 @@ export const getBrowserActivityOpenUrl = (parts: readonly ToolCallPart[]): strin
   )
   const args = open ? getArgs(open) : null
 
-  return typeof args?.url === "string" ? getBrowserActivityUrl(args.url) : ""
+  return typeof args?.url === "string" ? getBrowserActivityShortUrl(args.url) : ""
 }

@@ -42,6 +42,7 @@ afterEach(() => {
   cleanup()
   clearBrowserHold("bot-mark", "browser-tab")
   setInlinePreviewPreference(true)
+  vi.unstubAllGlobals()
   vi.clearAllMocks()
 })
 
@@ -371,6 +372,19 @@ test.each([
   expect(document.body.textContent).not.toContain("TOURI_BROWSER_")
 })
 
+test("shows the needs-you notice for a waiting browser action", () => {
+  const part = getPart({
+    callId: "waiting",
+    tool: "browser_click",
+    inputJson: '{"tabId":"browser-tab"}',
+    outputJson: JSON.stringify({ structured: { status: "waiting_for_person" } }),
+  })
+
+  renderCard([part], false)
+
+  expect(screen.getByText("Esta ação precisa de você. Assuma o controle da aba para continuar.")).toBeVisible()
+})
+
 test("failed actions never appear as successful clicks", () => {
   const parts = [
     getPart({
@@ -440,8 +454,8 @@ test("a delayed tab snapshot cannot undo a newer takeover event", async () => {
     await tabs
   })
 
-  expect(screen.getByRole("button", { name: "O navegador está sob controle" })).toBeDisabled()
-  expect(screen.queryByRole("button", { name: "Assumir" })).toBeNull()
+  expect(screen.getByRole("button", { name: "Assumir" })).toBeEnabled()
+  expect(screen.queryByRole("button", { name: "O navegador está sob controle" })).toBeNull()
 })
 
 test("disabling live chat previews prevents capture and leaves browser control available", () => {
@@ -537,8 +551,9 @@ test("take-over purges the inline frame, stops sampling and explains why the bot
 
   expect(screen.queryByRole("img", { name: "Página atual do navegador" })).toBeNull()
   expect(screen.getByText("Por que Lia parou")).toBeVisible()
-  expect(screen.getByText("O que você digitar no navegador não vai para o chat nem para o contexto do bot."))
-    .toBeVisible()
+  expect(
+    screen.getByText("O que você digitar no navegador não vai para o chat nem para o contexto do bot."),
+  ).toBeVisible()
   expect(startInlineFrameSource).toHaveBeenCalledOnce()
   expect(stop).toHaveBeenCalledOnce()
 })
@@ -558,7 +573,9 @@ test("the composer chip switches to take-over and returns control", () => {
 test("take-over waits for the browser tab and reports a stalled connection", async () => {
   vi.useFakeTimers()
   try {
-    const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"url":"https://travel.example.test/"}' })]
+    const parts = [
+      getPart({ callId: "open", tool: "browser_open", inputJson: '{"url":"https://travel.example.test/"}' }),
+    ]
     renderCard(parts, false, async () => ({ tabs: [] }))
 
     const takeOver = screen.getByRole("button", { name: "Assumir" })
@@ -575,7 +592,10 @@ test("take-over waits for the browser tab and reports a stalled connection", asy
 })
 
 test("keeps polling until the browser tab resolves", async () => {
-  const getTabs = vi.fn().mockResolvedValueOnce({ tabs: [] }).mockResolvedValue({ tabs: [tab] })
+  const getTabs = vi
+    .fn()
+    .mockResolvedValueOnce({ tabs: [] })
+    .mockResolvedValue({ tabs: [tab] })
   const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: "{}" })]
   renderCard(parts, false, getTabs)
 
@@ -599,7 +619,8 @@ test("highlights the running step and shows one sanitized URL in the live subtit
   expect(screen.getByText("Preenchendo um campo")).toBeVisible()
   expect(screen.getByText(/^Lia · preenchendo um campo/)).toBeVisible()
   expect(document.querySelector(".browser-activity-url")).toBeNull()
-  expect(document.body.textContent?.match(/travel\.example\.test\/results/g)).toHaveLength(1)
+  expect(document.body.textContent?.match(/travel\.example\.test/g)).toHaveLength(1)
+  expect(document.body.textContent).not.toContain("invite-Q7z8k2fR")
 })
 
 test("browser action times stay ordered when tool completions arrive late", () => {

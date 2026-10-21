@@ -132,6 +132,27 @@ export const ChannelComposerChip = ({
       : channel
         ? `${base} · ${t("for {person}", { person: channel.state.requesterName }, locale)}`
         : base
+  const stopButton =
+    onStop && (!channel || channel.canControl) && !channel?.state.controllerId ? (
+      <button
+        type="button"
+        className="composer-browser-stop"
+        aria-label={stopping ? t("Stopping reply…", {}, locale) : t("Stop {name}", { name: botName }, locale)}
+        title={t("Stop {name}", { name: botName }, locale)}
+        disabled={stopping}
+        onClick={onStop}
+      >
+        <span aria-hidden="true">{stopping ? "…" : "×"}</span>
+      </button>
+    ) : null
+  const controlButton =
+    canReturnControl && hold ? (
+      <button type="button" onClick={hold.release}>
+        {t("Hand back", {}, locale)}
+      </button>
+    ) : (
+      stopButton
+    )
 
   return (
     <div className="composer-browser-status" data-held={canReturnControl}>
@@ -139,22 +160,7 @@ export const ChannelComposerChip = ({
         <span className="composer-browser-status-dot" aria-hidden="true" />
         <span className="composer-browser-status-text">{text}</span>
       </span>
-      {canReturnControl && hold ? (
-        <button type="button" onClick={hold.release}>
-          {t("Hand back", {}, locale)}
-        </button>
-      ) : onStop && (!channel || channel.canControl) && !channel?.state.controllerId ? (
-        <button
-          type="button"
-          className="composer-browser-stop"
-          aria-label={stopping ? t("Stopping reply…", {}, locale) : t("Stop {name}", { name: botName }, locale)}
-          title={t("Stop {name}", { name: botName }, locale)}
-          disabled={stopping}
-          onClick={onStop}
-        >
-          <span aria-hidden="true">{stopping ? "…" : "×"}</span>
-        </button>
-      )}
+      {controlButton}
     </div>
   )
 }

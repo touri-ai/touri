@@ -1310,7 +1310,7 @@ export const ChatPanel = ({
     .flatMap((message) => [...message.parts].reverse())
     .find((part) => screenTool(part) && part.type === "tool_call" && toolStatus(part) === "running")
   const browserWorking = Boolean(
-    latestReply?.status === "streaming" && getBrowserActivityTools(latestReply.parts).some((part) => part.ok == null),
+    latestReply?.status === "streaming" && getBrowserActivityTools(latestReply.parts).length > 0,
   )
   return (
     <ChannelBrowserContext.Provider value={channelBrowser}>

@@ -39,10 +39,11 @@ test("sends private browser typing only to the remote input route and returns co
     />,
   )
 
-  await waitFor(() => expect(document.body.textContent).toContain("https://exemplo.test/entrar"))
+  await waitFor(() => expect(document.body.textContent).toContain("https://exemplo.test"))
   const keyboard = await screen.findByRole("textbox", { name: "Entrada de teclado para o navegador" })
   const browserUrl = document.querySelector(".browser-takeover-toolbar span")
-  expect(browserUrl).toHaveAttribute("title", "https://exemplo.test/entrar")
+  expect(browserUrl).toHaveAttribute("title", "https://exemplo.test")
+  expect(document.body.textContent).not.toContain("/entrar")
   expect(document.body.textContent).not.toContain("senha")
   expect(document.body.textContent).not.toContain("segredo")
   fireEvent.input(keyboard, { target: { value: "valor privado de teste" } })

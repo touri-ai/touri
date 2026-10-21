@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { BrowserSnapshot, BrowserTabInfo, ToolRegistration } from "@touri/contracts"
+import type { BrowserSnapshot, BrowserTabInfo, BrowserTakeoverInput, ToolRegistration } from "@touri/contracts"
 import { init } from "../../../sidecar/src/browser"
 import { createBrowserEngine } from "../../../sidecar/src/browser/engine"
 import { createHeadlessHost } from "../../../sidecar/src/cli/host/headlessHost"
@@ -54,6 +54,7 @@ const ctx = {
   signal: new AbortController().signal,
 }
 let decisionCount = 0
+let takeoverInputCount = 0
 await init(kernel, undefined, {
   engine,
   getDecisionApiKey: async () => "synthetic-decision-key",
@@ -152,12 +153,21 @@ const server = Bun.serve({
   fetch: async (request) => {
     if (request.headers.get("Authorization") !== `Bearer ${process.env.TOURI_BROWSER_FLOW_TOKEN}`)
       return new Response("Unauthorized", { status: 401 })
-    const { step } = (await request.json()) as { step: string }
+    const {
+      step,
+      tabId: requestedTabId,
+      input,
+    } = (await request.json()) as {
+      step: string
+      tabId?: string
+      input?: BrowserTakeoverInput
+    }
+    const takeoverTabId = requestedTabId ?? tabId
     if (step === "metadata") {
       const tab = await getTab()
       return Response.json({ tabs: tab ? [tab] : [] })
     }
-    if (step === "stats") return Response.json({ decisionCount, failedSteps })
+    if (step === "stats") return Response.json({ decisionCount, failedSteps, takeoverInputCount })
     if (step === "preview" || step === "attachment") {
       const snapshot = await getSnapshot()
       return Response.json({
@@ -166,11 +176,34 @@ const server = Bun.serve({
         url: snapshot?.url ?? "",
       })
     }
+    if (step === "takeover-session") {
+      const held = await engine.holdTakeover({ tabId: takeoverTabId, reason: "The user requested browser takeover" })
+      return held
+        ? Response.json({ sessionId: "browser-flow-session" })
+        : Response.json({ error: "The browser could not be paused." }, { status: 409 })
+    }
+    if (step === "takeover-frame") {
+      const frame = await engine.takeoverFrame({ tabId: takeoverTabId, botId: ctx.botId, signal: ctx.signal })
+      return frame
+        ? Response.json(frame)
+        : Response.json({ error: "The browser frame is unavailable." }, { status: 409 })
+    }
+    if (step === "takeover-input") {
+      if (!input) return Response.json({ error: "The browser input is missing." }, { status: 400 })
+      const sent = await engine.takeoverInput({ tabId: takeoverTabId, botId: ctx.botId, input, signal: ctx.signal })
+      if (!sent) return Response.json({ error: "The browser did not receive the input." }, { status: 409 })
+      takeoverInputCount += 1
+      return Response.json({})
+    }
+    if (step === "takeover-release") {
+      await engine.releaseTakeover(takeoverTabId)
+      return Response.json({})
+    }
     if (step === "open") {
       if (tabId) await engine.close({ tabId, botId: ctx.botId, signal: ctx.signal })
       decisionCount = 0
       failedSteps.length = 0
-      const result = await engine.open({ url: fixtureUrl, ctx, timeoutMs: 12_000 })
+      const result = await engine.open({ url: fixtureUrl, ctx, timeoutMs: 30_000 })
       if (!result.success) return Response.json({ error: result.error }, { status: 500 })
       tabId = (result.structured as BrowserSnapshot).tabId
       return Response.json({

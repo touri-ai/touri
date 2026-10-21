@@ -1,9 +1,10 @@
-import type { Bot, BrowserTabInfo, Message, Run, Thread, ToolCallPart } from "@touri/contracts"
+import type { Bot, BrowserTabInfo, BrowserTakeoverInput, Message, Run, Thread, ToolCallPart } from "@touri/contracts"
 import { useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 import type { ApiRequest } from "../../src/api/client"
 import { createMockApi } from "../../src/api/mock"
 import { AvatarRuntimeProvider } from "../../src/components/AvatarRuntime"
+import { BrowserWorkingStatus } from "../../src/components/BrowserWorkingStatus"
 import { VirtualMessageList } from "../../src/components/ChatPanel"
 import { Composer } from "../../src/components/Composer"
 import { TurnActivity } from "../../src/components/TurnActivity"
@@ -432,11 +433,11 @@ const Fixture = () => {
 
 const wait = (duration: number): Promise<void> => new Promise((resolve) => window.setTimeout(resolve, duration))
 
-const requestBrowserFixture = async (step: string) => {
+const requestBrowserFixture = async (step: string, payload?: { tabId?: string; input?: unknown }) => {
   const response = await fetch("/__browser-activity-fixture", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ step }),
+    body: JSON.stringify(payload ? { step, tabId: payload.tabId, input: payload.input } : { step }),
   })
   if (!response.ok) throw new Error(`The browser fixture could not run ${step}.`)
 
@@ -488,7 +489,8 @@ const LiveFixture = () => {
     if (!mockBot || !mockThread) throw new Error("The mocked bot is missing.")
     const fixtureBot = { ...mockBot, id: "browser-demo", name: "Lia", machine: "local" as const }
     const fixtureThread = { ...mockThread, id: "browser-thread", botId: fixtureBot.id }
-    const request = (async (route: string) => {
+    const request = (async (route: string, input?: unknown, pathValues?: Record<string, string>) => {
+      const tabId = pathValues?.id ?? ""
       if (route === "GET /browser/tabs") {
         const result = await requestBrowserFixture("metadata")
         return result as never
@@ -506,6 +508,18 @@ const LiveFixture = () => {
           nextOffset: null,
           bytes: Math.floor((imageData.length * 3) / 4),
         } as never
+      }
+      if (route === "POST /browser/tabs/:id/takeover/session")
+        return (await requestBrowserFixture("takeover-session", { tabId })) as never
+      if (route === "POST /browser/tabs/:id/takeover/frame")
+        return (await requestBrowserFixture("takeover-frame", { tabId })) as never
+      if (route === "POST /browser/tabs/:id/takeover/input") {
+        const browserInput = (input as { input: BrowserTakeoverInput }).input
+        return (await requestBrowserFixture("takeover-input", { tabId, input: browserInput })) as never
+      }
+      if (route === "DELETE /browser/tabs/:id/takeover/session") {
+        await requestBrowserFixture("takeover-release", { tabId })
+        return {} as never
       }
       return {} as never
     }) as ApiRequest
