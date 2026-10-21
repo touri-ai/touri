@@ -146,6 +146,8 @@ for (const [name, width, height] of [
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
     await conversations.getByRole("button", { name: /^Rotinas/ }).click()
     await expect(history).toHaveAttribute("data-open", "true")
+    await routineFilter.selectOption((await dailyRoutine.getAttribute("value")) ?? "")
+    await expect(routineFilter).not.toHaveValue("all")
     await expect(history.getByRole("status")).toHaveText("Execuções 1–50 de 128")
     const directory = process.env.TOURI_ROUTINE_SIDEBAR_SHOTS_DIR
     if (directory) {
