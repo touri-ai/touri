@@ -250,7 +250,7 @@ type RuntimeEngine = {
   continueAfterApproval: ServiceMap["runtime.continueAfterApproval"]
   resumeAfterBrowserTakeover: ServiceMap["runtime.resumeAfterBrowserTakeover"]
   canReturnBrowserTakeover: ServiceMap["runtime.canReturnBrowserTakeover"]
-  cancel: (id: Id) => Result<{ run: Run }, "NOT_FOUND">
+  cancel: (id: Id, reason?: { errorClass: "timeout"; errorMessage: string }) => Result<{ run: Run }, "NOT_FOUND">
   cancelRuns: (runIds: Id[]) => Promise<void>
   cancelBotTurns: (args: { botId: Id }) => Promise<void>
   retry: (
@@ -1829,11 +1829,11 @@ export const createRuntimeEngine = ({
               },
               state.replyMessageId ?? undefined,
             )
-            if (committed && !continuation && state.continueAfterBrowserTakeover) {
-              const lateTakeover = state.continueAfterBrowserTakeover
+            if (committed && !plan && state.continueAfterBrowserTakeover) {
+              const browserTakeover = state.continueAfterBrowserTakeover
               state.continueAfterBrowserTakeover = null
-              const latePlan = planContinuation({ run, reason: "browser_takeover", lastActivityAt: Date.now() })
-              if (latePlan) schedulePlannedContinuation({ run, plan: latePlan, browserTakeover: lateTakeover })
+              const browserPlan = planContinuation({ run, reason: "browser_takeover", lastActivityAt: Date.now() })
+              if (browserPlan) schedulePlannedContinuation({ run, plan: browserPlan, browserTakeover })
             }
             if (!committed && state.cancelRequested && isLive(run))
               await failTurn({ run, state, store, thread, errorClass: "canceled", errorMessage: "Cancelado por você" })
@@ -1857,7 +1857,7 @@ export const createRuntimeEngine = ({
             store,
             thread,
             errorClass: state.cancelRequested ? "canceled" : (state.completionError?.errorClass ?? result.errorCode),
-            errorMessage: result.error,
+            errorMessage: state.completionError?.errorMessage ?? result.error,
           })
         }
       } finally {
@@ -2081,13 +2081,6 @@ export const createRuntimeEngine = ({
   }
 
   const startContinuation = ({ run, plan }: { run: Run; plan: ContinuationPlan }): boolean => {
-    const database = kernel.db
-    if (
-      plan.reason === "browser_takeover" &&
-      database instanceof Database &&
-      database.query("SELECT 1 FROM browser_resume_requests WHERE previous_run_id = ?").get(run.id)
-    )
-      return true
     if (!routineAllowsContinuation(run)) return false
     const goal = goals.getForRun(run.id)
     if (goal && !goals.prepareContinuation(goal)) return false
@@ -2122,6 +2115,7 @@ export const createRuntimeEngine = ({
       requestMessageId: marker.message.id,
       trigger: run.routineRunId ? "routine" : "retry",
       continuing: true,
+      ...(plan.reason === "browser_takeover" ? { continuationFromRunId: run.id } : {}),
       ...(run.routineRunId ? { routineRunId: run.routineRunId } : {}),
     })
     if (!next.success) return false
@@ -2129,10 +2123,6 @@ export const createRuntimeEngine = ({
       cancel(next.run.id)
       return false
     }
-    if (plan.reason === "browser_takeover" && database instanceof Database)
-      database
-        .query("INSERT INTO browser_resume_requests(previous_run_id,next_turn_id) VALUES (?,?)")
-        .run(run.id, next.run.id)
     continuations.record({
       runId: next.run.id,
       originalRunId: plan.originalRunId,
@@ -2365,12 +2355,18 @@ export const createRuntimeEngine = ({
         error: bot.machine === "cloud" ? "Este bot usa o runtime remoto." : "Bot is paused",
       }
     if (trigger === "user") goals.pauseForUser(threadId)
-    const request = store
-      .activePath({ threadId, leafId: requestMessageId, limit: 1 })
-      .find((message) => message.id === requestMessageId)
+    const request = store.getPathMessage
+      ? store.getPathMessage({ threadId, messageId: requestMessageId })
+      : store
+          .activePath({ threadId, leafId: requestMessageId, limit: 1 })
+          .find((message) => message.id === requestMessageId)
     const requester = requesterPersonId ?? getRequesterPersonId(request?.sender) ?? undefined
+    const browserRequestId = continuationFromRunId
+      ? (continuations.link(continuationFromRunId)?.originalRunId ?? continuationFromRunId)
+      : undefined
     const run: Run = {
       id: kernel.newId(),
+      ...(browserRequestId ? { browserRequestId } : {}),
       ...(requester ? { requesterPersonId: requester } : {}),
       threadId,
       botId: bot.id,
@@ -2454,7 +2450,7 @@ export const createRuntimeEngine = ({
       state.continueAfterBrowserTakeover = input
       return true
     }
-    if (run.status !== "succeeded") return false
+    if (run.status !== "succeeded" && !(run.status === "interrupted" && run.errorClass === "app_restart")) return false
 
     const plan = planContinuation({ run, reason: "browser_takeover", lastActivityAt: Date.now() })
     if (!plan) return false
@@ -2502,10 +2498,32 @@ export const createRuntimeEngine = ({
     }
   }
 
-  const cancel = (id: Id): Result<{ run: Run }, "NOT_FOUND"> => {
+  const cancel: RuntimeEngine["cancel"] = (id, reason) => {
+    const browserRunId = kernel.services.use("browser.cancelRequest")?.({
+      runId: id,
+      ...(reason ? { reason: "timeout" as const } : {}),
+    })
+    if (browserRunId && browserRunId !== id) return cancel(browserRunId, reason)
     const run = persistence.getRun(id)
     if (!run) return { success: false, errorCode: "NOT_FOUND", error: "Run not found" }
     if (!["queued", "starting", "running"].includes(run.status)) return { success: true, run }
+    if (reason) {
+      const state = getState(id)
+      state.completionError = reason
+      controllers.get(id)?.abort()
+      approvalBridge.cancelRun(id)
+      const store = kernel.services.use("store.api")
+      const thread = store?.getThread({ threadId: run.threadId })
+      if (store && thread)
+        void failTurn({ run, state, store, thread, ...reason }).catch(() => {
+          kernel.log({
+            level: "error",
+            module: "runtime",
+            msg: "Não foi possível encerrar o pedido que excedeu o prazo",
+          })
+        })
+      return { success: true, run }
+    }
     if (run.status === "queued" || (run.status === "starting" && run.providerStartedAt == null)) {
       controllers.get(id)?.abort()
       const store = kernel.services.use("store.api")

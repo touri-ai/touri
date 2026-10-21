@@ -9,7 +9,7 @@ test("workspace activity keeps previews, old approvals and active runs without h
   const root = mkdtempSync(join(tmpdir(), "touri-workspace-"))
   const db = openDatabase({ filename: join(root, "test.db") })
   try {
-    db.exec(`INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('bot','Bot','codex','/tmp/bot',1,1), ('other-bot','Other','codex','/tmp/other-bot',1,1);
+    db.exec(`INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('bot','Bot','codex','/tmp/bot',1,1);
       INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES ('public','bot','Chat',1,1), ('private','bot','Private',1,1), ('archived','bot','Archive',1,1);
       UPDATE threads SET group_thread_id = 'public' WHERE id = 'private';
       UPDATE threads SET archived_at = 1 WHERE id = 'archived';`)
@@ -77,7 +77,7 @@ test("workspace activity scopes private conversations to their person and channe
   const db = openDatabase({ filename: join(root, "test.db") })
   try {
     db.exec(`
-      INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('bot','Bot','codex','/tmp/bot',1,1), ('other-bot','Other','codex','/tmp/other-bot',1,1);
+      INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('bot','Bot','codex','/tmp/bot',1,1);
       INSERT INTO bot_groups(id,name,color,avatar_shape,avatar_seed,created_at,updated_at)
         VALUES ('team-a','Team A','#888888','circle','a',1,1), ('team-b','Team B','#888888','circle','b',1,1);
       INSERT INTO threads(id,bot_id,title,created_at,updated_at,owner_person_id,group_id)
@@ -87,10 +87,10 @@ test("workspace activity scopes private conversations to their person and channe
           ('other-channel','bot','Other channel',1,1,NULL,'team-b');
       INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at,started_at,requester_person_id) VALUES
         ('member-browser-run','member-channel','bot','codex','user','running',2,3,'member'),
-        ('other-browser-run','other-channel','other-bot','codex','user','running',2,3,'other');
-      INSERT INTO browser_channel_runs(run_id,group_id,thread_id,bot_id,requester_person_id,status,queued_at,started_at)
-        VALUES ('member-browser-run','team-a','member-channel','bot','member','running',2,3),
-          ('other-browser-run','team-b','other-channel','other-bot','other','running',2,3);
+        ('other-browser-run','other-channel','bot','codex','user','running',2,3,'other');
+      INSERT INTO browser_channel_runs(run_id,current_run_id,group_id,thread_id,bot_id,requester_person_id,status,queued_at,started_at)
+        VALUES ('member-browser-run','member-browser-run','team-a','member-channel','bot','member','running',2,3),
+          ('other-browser-run','other-browser-run','team-b','other-channel','bot','other','queued',2,3);
     `)
     const insert = db.query(
       "INSERT INTO messages(id,thread_id,role,kind,status,text,parts_json,created_at,updated_at) VALUES (?,?,'user','text','complete',?,'[]',1,1)",

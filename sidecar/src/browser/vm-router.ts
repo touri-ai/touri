@@ -44,6 +44,7 @@ export const createRoutedBrowserEngine = (
     alive: () => Promise<boolean>
   }
   const guests = new Map<string, Guest>()
+  const retiring = new Set<Promise<void>>()
   const machines = new Map<string, MachineState>()
   const emptyBrowser = (): ToolResult => ({
     success: true,
@@ -55,7 +56,11 @@ export const createRoutedBrowserEngine = (
     if (guests.get(botId) === guest) guests.delete(botId)
     guest.lifetime.abort(reason)
     // Closing a stale transport must never hold up a new engine or a tool response.
-    void guest.engine.shutdown().catch(() => undefined)
+    const stopped = guest.engine.shutdown().catch(() => undefined)
+    retiring.add(stopped)
+    void stopped.finally(() => {
+      retiring.delete(stopped)
+    })
   }
   const botIdForTab = (tabId: string): string | null =>
     (
@@ -167,7 +172,7 @@ export const createRoutedBrowserEngine = (
         return async () => {
           unsubscribe()
           for (const [botId, guest] of guests) retire(botId, guest, new Error("Navegador encerrado."))
-          await Promise.all([local.shutdown(), attached.shutdown()])
+          await Promise.all([local.shutdown(), attached.shutdown(), ...retiring])
         }
       if (key === "tabsForBot")
         return (botId: string | null) => {

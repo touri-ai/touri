@@ -32,7 +32,6 @@ const browserTab: BrowserTabInfo & { ownerBotId: string | null } = {
   openerTabId: null,
   heldByUser: false,
   takeoverRequested: false,
-  takeoverRunId: null,
   lastUsedAt: Date.now(),
 }
 
@@ -40,6 +39,21 @@ localStorage.setItem(
   "touri.workspace.v1",
   JSON.stringify({ botId: bot.id, threadId: channel.id, route: { section: "bots", screen: "chat" } }),
 )
+
+const previewCanvas = document.createElement("canvas")
+previewCanvas.width = 800
+previewCanvas.height = 500
+const previewDrawing = previewCanvas.getContext("2d")
+if (previewDrawing) {
+  previewDrawing.fillStyle = "#f4f4f5"
+  previewDrawing.fillRect(0, 0, 800, 500)
+  previewDrawing.fillStyle = "#242429"
+  previewDrawing.font = "28px sans-serif"
+  previewDrawing.fillText("Portal de demonstração", 48, 100)
+  previewDrawing.font = "20px sans-serif"
+  previewDrawing.fillText("Página fictícia para conferir a devolução", 48, 150)
+}
+const previewImage = previewCanvas.toDataURL("image/jpeg")
 
 const channelMessages: Message[] = []
 const channelRuns: Run[] = []
@@ -79,12 +93,16 @@ const getMessage = ({
   updatedAt: getTimestamp(),
 })
 
-const getBrowserAction = (callId: string, action: "request_takeover" | "snapshot"): ToolCallPart => ({
+const getBrowserAction = (callId: string, action: "open" | "request_takeover" | "snapshot"): ToolCallPart => ({
   type: "tool_call",
   callId,
   tool: `mcp__touri__browser_${action}`,
   summary: action,
-  inputJson: JSON.stringify({ tabId: browserTab.tabId, ...(action === "request_takeover" ? { reason: "login" } : {}) }),
+  inputJson: JSON.stringify({
+    tabId: browserTab.tabId,
+    ...(action === "open" ? { url: browserTab.url } : {}),
+    ...(action === "request_takeover" ? { reason: "login" } : {}),
+  }),
   outputJson: JSON.stringify({ structured: { status: action === "request_takeover" ? "waiting_for_person" : "ok" } }),
   startedAt: getTimestamp(),
   resolvedAt: getTimestamp(),
@@ -102,13 +120,12 @@ const emitRun = (run: Run): void => {
 const updateTakeover = (heldByUser: boolean, takeoverRequested: boolean): void => {
   browserTab.heldByUser = heldByUser
   browserTab.takeoverRequested = takeoverRequested
-  browserTab.takeoverRunId = takeoverRequested ? "run-channel-login" : null
   browserTab.lastUsedAt = getTimestamp()
   base.emit({ type: "browser.tab", tab: browserTab })
 }
 
 const resumeInChannel = (): void => {
-  if (!takeoverNotice || channelRuns.length < 1) return
+  if (!takeoverNotice || takeoverNotice.resolvedAt !== null || channelRuns.length < 1) return
   const previous = channelRuns[0]
   const previousReply = channelMessages.find((entry) => entry.id === previous?.replyMessageId)
   if (!previous || !previousReply) return
@@ -117,6 +134,7 @@ const resumeInChannel = (): void => {
   takeoverNotice.resolution = "replied"
   base.emit({ type: "notification.resolved", notification: takeoverNotice })
   updateTakeover(false, false)
+  previous.browserWaitingForPerson = false
   previous.status = "succeeded"
   previous.finishedAt = getTimestamp()
   previousReply.status = "complete"
@@ -136,12 +154,12 @@ const resumeInChannel = (): void => {
 
   const run: Run = {
     id: "run-channel-resume",
+    browserRequestId: previous.browserRequestId ?? previous.id,
     threadId: channel.id,
     botId: bot.id,
     provider: bot.provider,
     trigger: "retry",
     origin: "resume",
-    browserTakeoverFromRunId: previous.id,
     requestMessageId: marker.id,
     replyMessageId: null,
     externalTurnId: "turn-channel-resume",
@@ -185,21 +203,6 @@ const resumeInChannel = (): void => {
 const harnessWindow: Window & { completeChannelResume?: () => void } = window
 harnessWindow.completeChannelResume = () => finishResumedAnswer?.()
 
-const previewCanvas = document.createElement("canvas")
-previewCanvas.width = 800
-previewCanvas.height = 500
-const previewContext = previewCanvas.getContext("2d")
-if (previewContext) {
-  previewContext.fillStyle = "#f8fafc"
-  previewContext.fillRect(0, 0, 800, 500)
-  previewContext.fillStyle = "#18181b"
-  previewContext.font = "28px sans-serif"
-  previewContext.fillText("Portal de demonstração", 40, 80)
-  previewContext.font = "20px sans-serif"
-  previewContext.fillText("Faça login para continuar · dados fictícios", 40, 140)
-}
-const previewImage = previewCanvas.toDataURL("image/png")
-
 const request: ApiRequest = async <K extends keyof ApiRoutes>(
   route: K,
   input: ApiRoutes[K]["req"],
@@ -236,6 +239,8 @@ const request: ApiRequest = async <K extends keyof ApiRoutes>(
     })
     const run: Run = {
       id: "run-channel-login",
+      browserRequestId: "run-channel-login",
+      browserWaitingForPerson: true,
       threadId: channel.id,
       botId: bot.id,
       provider: bot.provider,
@@ -262,6 +267,7 @@ const request: ApiRequest = async <K extends keyof ApiRoutes>(
       parentId: userMessage.id,
       parts: [
         { type: "text", text: t("O portal de demonstração pediu login para continuar.", {}, "pt-BR") },
+        getBrowserAction("portal-open", "open"),
         getBrowserAction("login-takeover", "request_takeover"),
       ],
     })
@@ -293,22 +299,20 @@ const request: ApiRequest = async <K extends keyof ApiRoutes>(
   }
   if (key === "POST /browser/tabs/:id/takeover/session") {
     updateTakeover(true, true)
-    return { sessionId: "synthetic-session", controlEpoch: "synthetic-epoch", viewEpoch: 0 } as ApiRoutes[K]["res"]
+    return { sessionId: "channel-session", controlEpoch: "channel-control", viewEpoch: 0 } as ApiRoutes[K]["res"]
   }
   if (key === "POST /browser/tabs/:id/takeover/frame")
     return {
-      image: previewImage,
+      controlEpoch: "channel-control",
+      targetEpoch: 1,
+      viewEpoch: (input as { viewEpoch: number }).viewEpoch,
       title: browserTab.title,
       url: browserTab.url,
+      image: previewImage,
       width: 800,
       height: 500,
-      targetEpoch: 1,
-      viewEpoch: 0,
-      controlEpoch: "synthetic-epoch",
     } as ApiRoutes[K]["res"]
-  if (key === "POST /browser/tabs/:id/takeover/input") return {} as ApiRoutes[K]["res"]
   if (key === "DELETE /browser/tabs/:id/takeover/session") {
-    updateTakeover(false, false)
     resumeInChannel()
     return {} as ApiRoutes[K]["res"]
   }

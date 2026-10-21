@@ -17,7 +17,7 @@ import {
   requestNeedsYou,
 } from "./channel-state"
 import { type FixtureSite, startFixtureSite } from "./fixture-server"
-import { PRIVATE_INPUT_SENTINEL, runScriptedBot } from "./scripted-bot"
+import { FIXTURE_LOGIN_VALUE, runScriptedBot } from "./scripted-bot"
 
 // Two-person channel scenario (Work channels, concept/Canal): Carla owns Léo, Ana asks, Hugo watches and queues a request.
 const pace = Number(process.env.CU_PACE ?? 250)
@@ -214,8 +214,8 @@ for (const variant of variants) {
 
       // What Ana types into the site never reaches the chat, the bot or the history.
       await sitePage.getByLabel("E-mail").fill("ana@exemplo.com")
-      await sitePage.getByLabel("Senha").fill(PRIVATE_INPUT_SENTINEL)
-      await Promise.all(everyone.map((ui) => expect(ui.locator("body")).not.toContainText(PRIVATE_INPUT_SENTINEL)))
+      await sitePage.getByLabel("Senha").fill(FIXTURE_LOGIN_VALUE)
+      await Promise.all(everyone.map((ui) => expect(ui.locator("body")).not.toContainText(FIXTURE_LOGIN_VALUE)))
       expect(hub.getSent()).toEqual(["@Léo depois pesquisa Paris, por favor"])
       await sitePage.getByRole("button", { name: "Continuar" }).click()
 
@@ -227,7 +227,7 @@ for (const variant of variants) {
         everyone.map((ui) => expect(ui.getByRole("button", { name: /Usou o navegador/ })).toBeVisible()),
       )
       await Promise.all(everyone.map((ui) => expect(ui.getByText("Loft no West Loop")).toBeVisible()))
-      await Promise.all(everyone.map((ui) => expect(ui.locator("body")).not.toContainText(PRIVATE_INPUT_SENTINEL)))
+      await Promise.all(everyone.map((ui) => expect(ui.locator("body")).not.toContainText(FIXTURE_LOGIN_VALUE)))
       await expect(hugoUi.getByText(/Na fila do Léo: pedido do Hugo/)).toBeVisible()
       await shoot(carlaUi, variant.name, "carla-final")
       await shoot(anaUi, variant.name, "ana-final")

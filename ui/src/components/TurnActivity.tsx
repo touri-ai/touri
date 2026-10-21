@@ -17,12 +17,14 @@ import "./turn-activity.css"
 /** The single browser card of a turn, with the bot's own preview context. */
 export const BrowserTurnCard = ({
   message,
+  run,
   bot,
   activity,
   locale = "pt-BR",
   children,
 }: {
   message: Message
+  run?: Run | undefined
   bot?: Bot | undefined
   activity?: BrowserContinuationActivity | undefined
   locale?: Locale
@@ -36,9 +38,10 @@ export const BrowserTurnCard = ({
   }
   const card = (
     <BrowserActivityCard
-      showSteps={false}
       parts={activity?.parts ?? message.parts}
+      threadId={message.threadId}
       runId={activity?.runId ?? message.runId}
+      waitingForPerson={run?.browserWaitingForPerson}
       finished={activity?.finished ?? message.status !== "streaming"}
       createdAt={message.createdAt}
       botName={message.sender?.name ?? "touri"}
@@ -102,7 +105,7 @@ export const TurnActivity = ({
   const reasoning = message.parts.flatMap((part) => (part.type === "reasoning" && part.text.trim() ? [part.text] : []))
   const browserOnly = browserTools.length > 0 && groups.length === 0 && approvals.size === 0 && reasoning.length === 0
   const browserCard = browserTools.length > 0 && !hideBrowserCard && !hideBrowserActivity && (
-    <BrowserTurnCard message={message} bot={bot} activity={browserActivity} locale={locale}>
+    <BrowserTurnCard message={message} run={run} bot={bot} activity={browserActivity} locale={locale}>
       {browserFlow}
     </BrowserTurnCard>
   )

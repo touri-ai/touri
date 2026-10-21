@@ -81,10 +81,9 @@ export const WORKSPACE_RUNS_SQL = `
 `
 
 type RawBrowserChannelRun = {
+  current_run_id: string
   run_id: string
-  request_id: string | null
-  active_run_id: string | null
-  group_id: string | null
+  group_id: string
   thread_id: string
   bot_id: string
   requester_person_id: string | null
@@ -123,8 +122,7 @@ const asBrowserChannelRun = (
   personName: (personId: string) => string | null,
 ): BrowserChannelRun => ({
   runId: row.run_id,
-  requestId: row.request_id ?? row.run_id,
-  activeRunId: row.active_run_id ?? row.run_id,
+  activeRunId: row.current_run_id,
   groupId: row.group_id,
   threadId: row.thread_id,
   botId: row.bot_id,
@@ -174,12 +172,6 @@ export const readWorkspaceActivity = (
   const browserRuns = database
     .query(WORKSPACE_BROWSER_RUNS_SQL.replace("/* scope */ 1 = 1", browserScope))
     .all(...(scope?.channelIds ?? []))
-    .map((row) => {
-      const run = asBrowserChannelRun(row as RawBrowserChannelRun, personName)
-      const links = database
-        .query("SELECT run_id FROM browser_request_runs WHERE request_run_id = ? LIMIT 100")
-        .all(run.runId) as Array<{ run_id: string }>
-      return Object.assign({}, run, { runIds: links.map((link) => link.run_id) })
-    })
+    .map((row) => asBrowserChannelRun(row as RawBrowserChannelRun, personName))
   return { messages, runs, browserRuns }
 }

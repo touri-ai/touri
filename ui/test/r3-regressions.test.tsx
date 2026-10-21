@@ -179,7 +179,7 @@ describe("r3 P2 chat and navigation", () => {
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
     fireEvent.click(screen.getByRole("button", { name: "Ajustar permissões" }))
-    const panel = screen.getByRole("dialog", { name: "Permissões do bot" })
+    const panel = await screen.findByRole("dialog", { name: "Permissões do bot" })
     expect(within(panel).queryByRole("option", { name: "Acesso total com aprovação" })).toBeNull()
     fireEvent.change(within(panel).getByLabelText("Acesso", { selector: "select" }), { target: { value: "full" } })
     fireEvent.click(within(panel).getByRole("tab", { name: "Modelo" }))

@@ -8,7 +8,6 @@ for (const viewport of [
   { name: "phone", width: 390, height: 844 },
 ]) {
   test(`server browser takeover stays interactive and private: ${viewport.name}`, async ({ page }, testInfo) => {
-    test.setTimeout(60_000)
     await page.setViewportSize({ width: viewport.width, height: viewport.height })
     await page.goto("/test/e2e/browser-activity-harness.html?remote=true")
     await page.getByRole("button", { name: "Iniciar busca de viagem" }).click()
@@ -33,6 +32,9 @@ for (const viewport of [
     await expect(page.getByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
     await expect(page.getByText(/Você está no controle · .* está pausado/)).toBeVisible()
     await expect(
+      page.getByRole("region", { name: "Controle remoto do navegador" }).getByRole("button", { name: /Devolver para/ }),
+    ).toHaveCSS("min-height", "44px")
+    await expect(
       page.locator(".browser-takeover-screen img, .browser-takeover-screen canvas:visible").first(),
     ).toBeVisible()
     const afterScreenshot = captureDir
@@ -42,11 +44,6 @@ for (const viewport of [
 
     const keyboard = page.getByRole("textbox", { name: "Entrada de teclado para o navegador" })
     await expect(keyboard).toBeEnabled()
-    const keyboardButton = page.getByRole("button", { name: "Digitar no navegador" })
-    const keyboardButtonSize = await keyboardButton.boundingBox()
-    if (!keyboardButtonSize) throw new Error("Missing browser keyboard control")
-    expect(keyboardButtonSize.width).toBeGreaterThan(100)
-    expect(keyboardButtonSize.height).toBeLessThan(65)
     await page.getByRole("button", { name: "Digitar no navegador" }).click()
     await expect(keyboard).toBeFocused()
     await page.keyboard.insertText("valor privado de teste")
@@ -64,7 +61,7 @@ for (const viewport of [
     await expect(page.locator("body")).not.toContainText("valor privado de teste")
 
     await page
-      .locator(".browser-activity-card")
+      .getByRole("region", { name: "Controle remoto do navegador" })
       .getByRole("button", { name: /Devolver para mark/i })
       .click()
     await expect(

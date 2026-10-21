@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { afterEach, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -17,6 +17,7 @@ const createFixture = () => {
   const database = openDatabase({ filename: join(root, "test.db") })
   const subscribers = new Set<(envelope: UiEventEnvelope) => void>()
   const notifications: Array<Record<string, unknown>> = []
+  const resumptions: Array<{ runId: string }> = []
   const kernel = {
     db: database,
     services: {
@@ -28,6 +29,11 @@ const createFixture = () => {
           return (input: Record<string, unknown>) => {
             notifications.push(input)
             return {}
+          }
+        if (name === "runtime.resumeAfterBrowserTakeover")
+          return (input: { runId: string }) => {
+            resumptions.push(input)
+            return true
           }
         if (name === "notify.resolve") return () => undefined
         return null
@@ -74,7 +80,7 @@ const createFixture = () => {
     rmSync(root, { recursive: true, force: true })
   }
 
-  return { database, kernel, notifications, addRun, publishRunStatus, context, cleanup }
+  return { database, kernel, notifications, resumptions, addRun, publishRunStatus, context, cleanup }
 }
 
 test("a channel run keeps the person who sent its triggering message", () => {
@@ -133,8 +139,16 @@ test("channel browser runs persist one active slot per bot and promote queued wo
       ["leo-other-channel", "queued", 4],
     ])
 
+    expect(await second).toEqual({ success: true, queued: true })
+    publishRunStatus("leo-2", "succeeded")
+    expect(channelRuns.get("leo-2")?.status).toBe("queued")
     publishRunStatus("leo-1", "succeeded")
-    expect(await second).toEqual({ success: true })
+    expect(fixture.resumptions.map((run) => run.runId)).toEqual(["leo-2"])
+    publishRunStatus("leo-1", "succeeded")
+    expect(fixture.resumptions).toHaveLength(1)
+    publishRunStatus("leo-2", "succeeded")
+    expect(channelRuns.get("leo-2")?.status).toBe("running")
+    expect(await second).toEqual({ success: true, queued: true })
     expect(channelRuns.get("leo-2")?.status).toBe("running")
     database
       .query(`INSERT INTO browser_tabs
@@ -149,15 +163,24 @@ test("channel browser runs persist one active slot per bot and promote queued wo
     expect(channelRuns.isPreviewHidden("leo-tab")).toBe(false)
 
     publishRunStatus("leo-3", "canceled")
-    await expect(third).resolves.toMatchObject({ success: false, errorCode: "BROWSER_RUN_CANCELED" })
+    await expect(third).resolves.toMatchObject({ success: true, queued: true })
+    expect(channelRuns.get("leo-3")?.status).toBe("canceled")
     expect(channelRuns.get("leo-4")).toMatchObject({ status: "queued", queuePosition: 1 })
-    publishRunStatus("leo-2", "succeeded")
-    expect(await fourth).toEqual({ success: true })
+    addRun({ runId: "leo-2-resumed", botId: "leo", threadId: "channel-leo" })
+    database.exec("INSERT INTO browser_takeover_continuations VALUES ('leo-2-resumed','leo-2','leo-2',2)")
+    publishRunStatus("leo-2-resumed", "succeeded")
+    expect(await fourth).toEqual({ success: true, queued: true })
     expect(channelRuns.get("leo-4")?.status).toBe("running")
-    publishRunStatus("leo-4", "succeeded")
+    addRun({ runId: "leo-4-resumed", botId: "leo", threadId: "channel-leo" })
+    database.exec("INSERT INTO browser_takeover_continuations VALUES ('leo-4-resumed','leo-4','leo-4',3)")
+    publishRunStatus("leo-4-resumed", "succeeded")
     publishRunStatus("bia-1", "succeeded")
-    await expect(otherChannel).resolves.toEqual({ success: true })
-    publishRunStatus("leo-other-channel", "succeeded")
+    expect(await otherChannel).toEqual({ success: true, queued: true })
+    addRun({ runId: "leo-other-resumed", botId: "leo", threadId: "channel-2-leo" })
+    database.exec(
+      "INSERT INTO browser_takeover_continuations VALUES ('leo-other-resumed','leo-other-channel','leo-other-channel',4)",
+    )
+    publishRunStatus("leo-other-resumed", "succeeded")
     expect(channelRuns.list(["travel"])).toEqual([])
   } finally {
     channelRuns.dispose()
@@ -237,4 +260,114 @@ test("the browser queue serializes one bot in a channel while another bot stays 
 
   expect(getNextChannelBrowserRun({ queued: [first, second, otherBot], active })).toEqual(otherBot)
   expect(getNextChannelBrowserRun({ queued: [first, second], active: new Set() })).toEqual(first)
+})
+
+const additionalCleanups = new Set<() => void>()
+afterEach(() => {
+  additionalCleanups.forEach((cleanup) => {
+    cleanup()
+  })
+  additionalCleanups.clear()
+})
+
+test("one browser request spans a continuation while channels and a DM wait for the same bot", async () => {
+  const fixture = createFixture()
+  const { database, kernel, addRun, publishRunStatus, context } = fixture
+  const channelRuns = createChannelBrowserRuns({ kernel, database })
+  additionalCleanups.add(() => {
+    channelRuns.dispose()
+    fixture.cleanup()
+  })
+  database.exec("INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES ('dm','leo','Private task',1,1)")
+  addRun({ runId: "first", botId: "leo", threadId: "channel-leo" })
+  addRun({ runId: "other-channel", botId: "leo", threadId: "channel-2-leo" })
+  addRun({ runId: "direct", botId: "leo", threadId: "dm" })
+  addRun({ runId: "independent", botId: "bia-bot", threadId: "channel-bia" })
+
+  expect(await channelRuns.enter(context("first", "leo", "channel-leo"))).toEqual({ success: true })
+  const otherChannel = channelRuns.enter(context("other-channel", "leo", "channel-2-leo"))
+  const direct = channelRuns.enter(context("direct", "leo", "dm"))
+  expect(await channelRuns.enter(context("independent", "bia-bot", "channel-bia"))).toEqual({ success: true })
+  expect(channelRuns.needsYou("first", "login")).toBe(true)
+  publishRunStatus("first", "succeeded")
+  expect(channelRuns.get("first")?.status).toBe("needs_you")
+  expect(channelRuns.get("other-channel")).toMatchObject({ status: "queued", queuePosition: 1 })
+  expect(channelRuns.get("direct")).toMatchObject({ status: "queued", queuePosition: 2 })
+  channelRuns.takeControl({ runId: "first", actorPersonId: "ana" })
+  channelRuns.returnControl({ runId: "first", actorPersonId: "ana" })
+  addRun({ runId: "resumed", botId: "leo", threadId: "channel-leo" })
+  database.exec("INSERT INTO browser_takeover_continuations VALUES ('resumed','first','first',2)")
+  expect(await channelRuns.enter(context("resumed", "leo", "channel-leo"))).toEqual({ success: true })
+  expect(channelRuns.list().filter((run) => run.runId === "first")).toHaveLength(1)
+  publishRunStatus("resumed", "succeeded")
+  expect(await otherChannel).toEqual({ success: true, queued: true })
+  publishRunStatus("other-channel", "canceled")
+  expect(await direct).toEqual({ success: true, queued: true })
+  expect(channelRuns.get("independent")?.status).toBe("running")
+})
+
+test("canceling a waiting request preserves the active human controller", async () => {
+  const fixture = createFixture()
+  const { database, kernel, addRun, publishRunStatus, context } = fixture
+  const channelRuns = createChannelBrowserRuns({ kernel, database })
+  additionalCleanups.add(() => {
+    channelRuns.dispose()
+    fixture.cleanup()
+  })
+  addRun({ runId: "held", botId: "leo", threadId: "channel-leo" })
+  addRun({ runId: "waiting", botId: "leo", threadId: "channel-2-leo" })
+  await channelRuns.enter(context("held", "leo", "channel-leo"))
+  channelRuns.takeControl({ runId: "held", actorPersonId: "ana" })
+  await channelRuns.enter(context("waiting", "leo", "channel-2-leo"))
+
+  expect(channelRuns.cancelRequest("waiting")).toMatchObject({ runId: "waiting", ownsControl: false })
+  publishRunStatus("waiting", "canceled")
+
+  expect(channelRuns.get("held")).toMatchObject({ status: "taken_over", controllerPersonId: "ana" })
+  expect(fixture.resumptions).toHaveLength(0)
+})
+
+test("promotion survives restart and old completion cannot finish the continuation", async () => {
+  const fixture = createFixture()
+  const { database, kernel, addRun, publishRunStatus, context } = fixture
+  const first = createChannelBrowserRuns({ kernel, database })
+  addRun({ runId: "active", botId: "leo", threadId: "channel-leo" })
+  addRun({ runId: "next", botId: "leo", threadId: "channel-2-leo" })
+  await first.enter(context("active", "leo", "channel-leo"))
+  await first.enter(context("next", "leo", "channel-2-leo"))
+  publishRunStatus("next", "succeeded")
+  publishRunStatus("active", "succeeded")
+  first.dispose()
+  const restored = createChannelBrowserRuns({ kernel, database })
+  additionalCleanups.add(() => {
+    restored.dispose()
+    fixture.cleanup()
+  })
+
+  expect(fixture.resumptions.map((run) => run.runId)).toEqual(["next", "next"])
+  publishRunStatus("next", "succeeded")
+  expect(restored.get("next")?.status).toBe("running")
+  addRun({ runId: "continued", botId: "leo", threadId: "channel-2-leo" })
+  database.exec("INSERT INTO browser_takeover_continuations VALUES ('continued','next','next',2)")
+  publishRunStatus("continued", "succeeded")
+
+  expect(restored.get("next")?.status).toBe("succeeded")
+})
+
+test("failed control startup restores the human wait without starting a continuation", async () => {
+  const fixture = createFixture()
+  const channelRuns = createChannelBrowserRuns({ kernel: fixture.kernel, database: fixture.database })
+  additionalCleanups.add(() => {
+    channelRuns.dispose()
+    fixture.cleanup()
+  })
+  fixture.addRun({ runId: "login", botId: "leo", threadId: "channel-leo" })
+  await channelRuns.enter(fixture.context("login", "leo", "channel-leo"))
+  channelRuns.needsYou("login", "login")
+  channelRuns.takeControl({ runId: "login", actorPersonId: "ana" })
+
+  channelRuns.restoreControl({ runId: "login", actorPersonId: "ana", status: "needs_you" })
+
+  expect(channelRuns.get("login")).toMatchObject({ status: "needs_you", controllerPersonId: null })
+  expect(fixture.resumptions).toHaveLength(0)
 })

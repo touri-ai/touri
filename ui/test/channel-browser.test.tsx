@@ -137,12 +137,12 @@ describe("getChannelBrowserView", () => {
     expect(view.previewHidden).toBe(false)
   })
 
-  test("hides the shared preview for everyone during a take-over", () => {
+  test("hides the preview for everyone but the controller during a take-over", () => {
     const state = getState({ controllerId: "user-ana", controllerName: "Ana" })
 
     expect(getChannelBrowserView(state, "user-hugo").previewHidden).toBe(true)
     expect(getChannelBrowserView(state, "user-owner").previewHidden).toBe(true)
-    expect(getChannelBrowserView(state, "user-ana").previewHidden).toBe(true)
+    expect(getChannelBrowserView(state, "user-ana").previewHidden).toBe(false)
   })
 
   test("names the controller when someone took over", () => {
@@ -221,7 +221,7 @@ describe("browser card in a channel", () => {
     renderCard(getState(), "user-hugo")
 
     expect(screen.queryByRole("button", { name: /Assumir/ })).toBeNull()
-    expect(screen.queryByText("Ana está no controle")).toBeNull()
+    expect(screen.getByText("Ana está no controle")).toBeVisible()
   })
 
   test("keeps Assumir enabled for the requester", () => {
@@ -303,7 +303,7 @@ describe("channel chrome", () => {
       />,
     )
 
-    const row = screen.getByRole("button", { name: "viagens" }).closest(".sidebar-row") as HTMLElement
+    const row = screen.getByRole("button", { name: "viagens" }).closest(".group-sidebar-row") as HTMLElement
 
     expect(within(row).getByTitle("Léo trabalhando aqui")).toBeVisible()
   })
@@ -315,7 +315,7 @@ describe("channel chrome", () => {
       </ChannelBrowserContext.Provider>,
     )
 
-    expect(screen.getByRole("status")).toHaveTextContent("para Ana")
+    expect(screen.getByRole("status")).toHaveTextContent("Ana está no controle")
   })
 
   test("composer chip stops the active browser run", () => {
@@ -352,7 +352,7 @@ describe("channel chrome", () => {
     )
 
     expect(screen.queryByRole("button", { name: "Assumir" })).toBeNull()
-    expect(screen.getByRole("status")).toHaveTextContent("para Ana")
+    expect(screen.getByRole("status")).toHaveTextContent("Ana está no controle")
   })
 })
 
@@ -388,17 +388,7 @@ test("ChatPanel shares channel browser state with the group header, reply card, 
       channelBrowser={{ state: getState({ botId: bot.id, botName: "Léo" }), viewerId: "user-ana" }}
       thread={{ ...thread, activeLeafId: reply.id }}
       bot={bot}
-      messages={[
-        prompt,
-        getMessage({
-          id: "context-restored",
-          threadId: thread.id,
-          role: "system",
-          text: "O contexto da conversa foi recuperado do histórico salvo.",
-          parts: [{ type: "notice", code: "context_restored", level: "info", text: "Internal recovery marker" }],
-        }),
-        reply,
-      ]}
+      messages={[prompt, reply]}
       runs={[getRun(thread.id, bot)]}
       onSend={vi.fn(async () => {})}
       onRetry={vi.fn(async () => {})}
@@ -412,24 +402,9 @@ test("ChatPanel shares channel browser state with the group header, reply card, 
   )
 
   expect(screen.getByRole("status", { name: "Léo no navegador · pedido de Ana" })).toBeVisible()
-  expect(screen.getByText("Todos no canal veem")).toBeVisible()
+  expect(await screen.findByText("Todos no canal veem")).toBeVisible()
   expect(screen.getByText("Léo está trabalhando · No navegador · para Ana")).toBeVisible()
-  expect(screen.queryByText("O contexto da conversa foi recuperado do histórico salvo.")).toBeNull()
-  expect(screen.queryByText("Internal recovery marker")).toBeNull()
   expect(screen.getByText("Todos no canal veem").closest(".message-assistant")).toContainElement(
     screen.getByText("Estou na página de estadias."),
   )
-})
-
-test("the owner sees the actual controller while another person is typing", () => {
-  render(
-    <ChannelBrowserContext.Provider
-      value={{ state: getState({ controllerId: "user-ana", controllerName: "Ana" }), viewerId: "user-owner" }}
-    >
-      <ChannelComposerChip botName="Léo" />
-    </ChannelBrowserContext.Provider>,
-  )
-
-  expect(screen.getByRole("status")).toHaveTextContent("Ana está no controle")
-  expect(screen.getByRole("status")).not.toHaveTextContent("está trabalhando")
 })

@@ -23,7 +23,7 @@ test.describe("browser card in a channel", () => {
         await expect(page.getByText("Todos no canal veem")).toBeVisible()
         await expect(page.getByRole("status", { name: "Léo no navegador · pedido de Ana" })).toBeVisible()
         await expect(page.getByTitle("Léo trabalhando aqui")).toBeVisible()
-        if (scenario.name === "takeover-hidden-preview")
+        if (scenario.name !== "requester")
           await expect(page.locator(".composer-browser-status")).toContainText("Ana está no controle")
         else await expect(page.locator(".composer-browser-status")).toContainText("para Ana")
         await expect(
@@ -51,8 +51,7 @@ test.describe("browser card in a channel", () => {
         if (scenario.name === "requester") await expect(page.getByRole("button", { name: /Assumir/ })).toBeEnabled()
         if (scenario.name !== "requester") {
           await expect(page.getByRole("button", { name: /Assumir/ })).toHaveCount(0)
-          if (scenario.name === "takeover-hidden-preview")
-            await expect(page.getByText("Ana está no controle").first()).toBeVisible()
+          await expect(page.getByText("Ana está no controle").first()).toBeVisible()
         }
         if (scenario.name === "takeover-hidden-preview")
           await expect(page.getByText("Prévia oculta para o canal enquanto Ana digita")).toBeVisible()

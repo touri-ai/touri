@@ -12,7 +12,7 @@ it("saves the bot name from General and updates navigation and chat", async () =
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   showBotSettings()
-  const name = screen.getByRole("textbox", { name: "Nome" })
+  const name = await screen.findByRole("textbox", { name: "Nome" })
   expect(name).toHaveValue("mark")
   fireEvent.change(name, { target: { value: " Bia QA Renomeada " } })
   fireEvent.click(screen.getByRole("button", { name: "Salvar configurações" }))

@@ -43,17 +43,18 @@ import browserTakeoverPrivacySql from "./migrations/0037.sql" with { type: "text
 import browserChannelRunsSql from "./migrations/0038.sql" with { type: "text" }
 import browserTakeoverContinuationsSql from "./migrations/0039.sql" with { type: "text" }
 import browserPrivateInputSql from "./migrations/0040.sql" with { type: "text" }
-import browserBotQueueSql from "./migrations/0041.sql" with { type: "text" }
-import browserResumeIndexSql from "./migrations/0042.sql" with { type: "text" }
-import browserDocumentPrivacySql from "./migrations/0043.sql" with { type: "text" }
-import threadDeletionSql from "./migrations/0044.sql" with { type: "text" }
-import browserTakeoverStateSql from "./migrations/0045.sql" with { type: "text" }
+import browserHandbackLedgerSql from "./migrations/0041.sql" with { type: "text" }
+import browserBotArbitrationSql from "./migrations/0042.sql" with { type: "text" }
+import browserPendingHandoffsSql from "./migrations/0043.sql" with { type: "text" }
+import browserRequestResumeSql from "./migrations/0044.sql" with { type: "text" }
+import threadDeletionSql from "./migrations/0045.sql" with { type: "text" }
+import browserDocumentPrivacySql from "./migrations/0046.sql" with { type: "text" }
 import type { PerformanceStageRunner } from "./performance"
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 45
+export const SCHEMA_VERSION = 46
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -301,10 +302,8 @@ export const openDatabase = ({
     database.exec("UPDATE schema_meta SET value = '38' WHERE key = 'schema_version'")
   })()
   database.transaction(() => {
-    const continuationSchema = database
-      .query("SELECT sql FROM sqlite_master WHERE type='table' AND name='run_continuations'")
-      .get() as { sql: string } | null
-    if (!continuationSchema?.sql.includes("browser_takeover")) database.exec(browserTakeoverContinuationsSql)
+    if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'browser_takeover_continuations_version'").get())
+      database.exec(browserTakeoverContinuationsSql)
     database.exec("UPDATE schema_meta SET value = '39' WHERE key = 'schema_version'")
   })()
   database.transaction(() => {
@@ -316,24 +315,34 @@ export const openDatabase = ({
     database.exec("UPDATE schema_meta SET value = '40' WHERE key = 'schema_version'")
   })()
   database.transaction(() => {
-    if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'browser_bot_queue_version'").get())
-      database.exec(browserBotQueueSql)
+    if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'browser_handback_ledger_version'").get())
+      database.exec(browserHandbackLedgerSql)
     database.exec("UPDATE schema_meta SET value = '41' WHERE key = 'schema_version'")
   })()
-  database.exec(browserResumeIndexSql)
   database.transaction(() => {
-    const columns = database.query("PRAGMA table_info(browser_tabs)").all() as Array<{ name: string }>
-    if (!columns.some((column) => column.name === "private_document_ids_json")) database.exec(browserDocumentPrivacySql)
+    if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'browser_bot_arbitration_version'").get())
+      database.exec(browserBotArbitrationSql)
+    database.exec("UPDATE schema_meta SET value = '42' WHERE key = 'schema_version'")
+  })()
+  database.transaction(() => {
+    if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'browser_pending_handoffs_version'").get())
+      database.exec(browserPendingHandoffsSql)
     database.exec("UPDATE schema_meta SET value = '43' WHERE key = 'schema_version'")
+  })()
+  database.transaction(() => {
+    if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'browser_request_resume_version'").get())
+      database.exec(browserRequestResumeSql)
+    database.exec("UPDATE schema_meta SET value = '44' WHERE key = 'schema_version'")
   })()
   database.transaction(() => {
     if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'thread_deletion_version'").get())
       database.exec(threadDeletionSql)
-    if (
-      !database.query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='browser_takeover_continuations'").get()
-    )
-      database.exec(browserTakeoverStateSql)
     database.exec("UPDATE schema_meta SET value = '45' WHERE key = 'schema_version'")
+  })()
+  database.transaction(() => {
+    const columns = database.query("PRAGMA table_info(browser_tabs)").all() as Array<{ name: string }>
+    if (!columns.some((column) => column.name === "private_document_ids_json")) database.exec(browserDocumentPrivacySql)
+    database.exec("UPDATE schema_meta SET value = '46' WHERE key = 'schema_version'")
   })()
   return database
 }

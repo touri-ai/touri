@@ -249,7 +249,7 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
       {
         method: "POST",
         path: "/runs/:id/cancel",
-        handler: async ({ params, signal }) => {
+        handler: async ({ params }) => {
           const remote = (kernel.db as Database)
             .query("SELECT bot_id FROM cloud_runs WHERE run_id = ?")
             .get(params.id ?? "")
@@ -261,7 +261,6 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
               json: await cloud.request("POST", `/v1/runs/${encodeURIComponent(params.id ?? "")}/cancel`, {}),
             }
           }
-          await kernel.services.use("browser.cancelRun")?.({ runId: params.id ?? "", signal })
           groups.cancel(params.id ?? "")
           const result = engine.cancel(params.id ?? "")
           return result.success

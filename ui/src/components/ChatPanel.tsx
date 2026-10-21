@@ -28,7 +28,6 @@ import type { UiApi } from "../api/client"
 import type { ApprovalFocus } from "../approvalNavigation"
 import { getDocumentLocale } from "../documentLanguage"
 import { userFacingRunError } from "../errors"
-import { getBrowserRequestMessages } from "../features/channelBrowser/browserRequestMessages"
 import {
   ChannelBrowserContext,
   ChannelBrowserRunsContext,
@@ -67,6 +66,7 @@ import { BotAvatar } from "./BotAvatar"
 import { BrowserActivityControlsProvider } from "./BrowserActivityControls"
 import { getBrowserActivityTools } from "./browserActivityPresentation"
 import { type BrowserContinuationActivity, getBrowserContinuationActivities } from "./browserContinuationActivity"
+import { getBrowserRequestMessages } from "./browserRequestMessages"
 import { ChatDisclosure } from "./ChatDisclosure"
 import { ConnectDataCard, connectDataMarker } from "./ConnectDataCard"
 import { ConversationStart } from "./ConversationStart"
@@ -728,6 +728,7 @@ const MessageBubble = ({
   editDisabled: boolean
   onImageLoad: (messageId: string) => void
 }) => {
+  const locale = getDocumentLocale(document.documentElement)
   const runtimeState = useMessageMascotState(message, run)
   const threadBot = useThreadBot(message.threadId)
   const senderBot = useAvatarBot(message.sender?.id ?? null)
@@ -1087,7 +1088,13 @@ const MessageBubble = ({
         )
       ) : null}
       {quietBrowserNarration && !hideBrowserActivity && (
-        <BrowserTurnCard message={{ ...message, parts }} bot={bot} activity={browserActivity} />
+        <BrowserTurnCard
+          message={{ ...message, parts }}
+          run={run}
+          bot={bot}
+          activity={browserActivity}
+          locale={locale}
+        />
       )}
       {message.role !== "assistant" && !routinePrompt && (
         <MessageAttachments parts={parts.filter((part) => part.type === "image" || part.type === "file")} api={api} />
@@ -1325,7 +1332,7 @@ export const ChatPanel = ({
         message.parts.some((part) => part.type === "approval" && part.decision === "pending")) &&
       !visibleMessageIds.has(message.id),
   )
-  const visibleMessages = getBrowserRequestMessages(messagePath.concat(pendingMessages), group ? undefined : bot?.id)
+  const visibleMessages = getBrowserRequestMessages(messagePath.concat(pendingMessages), runs)
   const routineConversation = isRoutineConversation({ thread, runs, routineRuns, routines })
   const repeatDraft =
     bot && !activeRun && !routineConversation

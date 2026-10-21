@@ -51,12 +51,14 @@ test("browser handback continuation reason survives database reopen", () => {
       INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at) VALUES
         ('original','t','b','codex','user','succeeded',1),
         ('resumed','t','b','codex','retry','succeeded',2);
-      INSERT INTO run_continuations VALUES ('resumed','original','original','browser_takeover',3);
+      INSERT INTO browser_takeover_continuations VALUES ('resumed','original','original',3);
     `)
     db.close()
     db = openDatabase({ filename })
 
-    expect(db.query("SELECT reason FROM run_continuations").all()).toEqual([{ reason: "browser_takeover" }])
+    expect(
+      db.query("SELECT run_id, original_run_id, previous_run_id FROM browser_takeover_continuations").all(),
+    ).toEqual([{ run_id: "resumed", original_run_id: "original", previous_run_id: "original" }])
     expect(db.query("PRAGMA foreign_key_check").all()).toEqual([])
   } finally {
     db.close()

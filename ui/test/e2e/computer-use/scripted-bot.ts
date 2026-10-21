@@ -5,7 +5,7 @@ import { decideOption } from "./mock-jev"
 export const BOT_NAME = "Léo"
 export const TAB_ID = "cu-fixture-tab"
 export const FINAL_SCREENSHOT_ID = "cu-final-screenshot"
-export const PRIVATE_INPUT_SENTINEL = "senha-ficticia-123"
+export const FIXTURE_LOGIN_VALUE = "senha-ficticia-123"
 
 export type FlowSnapshot = {
   parts: MessagePart[]

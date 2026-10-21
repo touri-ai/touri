@@ -1,19 +1,20 @@
 import type { Bot, BotGroup, Id, MachineState, Message, Routine } from "@touri/contracts"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import { userFacingError } from "../errors"
 import { t } from "../i18n"
 import { machineStateForDisplay } from "../machineState"
 import { useHost } from "../useHost"
 import { BotAvatar } from "./BotAvatar"
-import { BotComputer } from "./BotComputer"
 import { BotDetails } from "./BotDetails"
 import { BotLibrary } from "./BotLibrary"
 import { ErrorText } from "./ErrorDetails"
 import { GoalPanel } from "./GoalPanel"
-import { useSegmentedControl } from "./Motion"
+import { MotionSkeleton, useSegmentedControl } from "./Motion"
 import { PanelIcon } from "./PanelIcon"
 import "./bot-panel.css"
+
+const BotComputer = lazy(() => import("./BotComputer").then((module) => ({ default: module.BotComputer })))
 
 const tabs = ["details", "library", "computer"] as const
 const tabLabels = { details: "Bot details", library: "Bot library", computer: "Bot computer" } as const
@@ -282,20 +283,22 @@ export const BotPanel = ({
           <BotLibrary key={bot.id} api={api} bot={bot} request={libraryRequest} onComputer={openComputer} />
         )}
         {tab === "computer" && (
-          <BotComputer
-            key={bot.id}
-            api={api}
-            bot={bot}
-            machine={machine}
-            paused={paused}
-            activeTurns={activeTurns}
-            expanded={expanded}
-            onExpand={onExpand}
-            onWindow={onWindow}
-            onPermissions={onPermissions}
-            onChat={onClose}
-            onFiles={() => setTab("library")}
-          />
+          <Suspense fallback={<MotionSkeleton />}>
+            <BotComputer
+              key={bot.id}
+              api={api}
+              bot={bot}
+              machine={machine}
+              paused={paused}
+              activeTurns={activeTurns}
+              expanded={expanded}
+              onExpand={onExpand}
+              onWindow={onWindow}
+              onPermissions={onPermissions}
+              onChat={onClose}
+              onFiles={() => setTab("library")}
+            />
+          </Suspense>
         )}
       </div>
     </aside>

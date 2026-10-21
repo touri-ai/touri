@@ -55,26 +55,14 @@ const makeEngine = ({
 } = {}): {
   engine: BrowserEngine
   clicks: () => Array<BrowserTarget>
-  takeovers: () => Array<{
-    tabId: string
-    botId: string
-    reason: string
-    reasonCode?: BrowserTakeoverReason
-    timeoutMs: number
-  }>
+  takeovers: () => Array<{ tabId: string; botId: string; reason: string; reasonCode?: BrowserTakeoverReason }>
   presses: () => number
   secretSubmissions: () => number
   types: () => number
   evaluations: () => Array<string>
 } => {
   let clicks: Array<BrowserTarget> = []
-  let takeovers: Array<{
-    tabId: string
-    botId: string
-    reason: string
-    reasonCode?: BrowserTakeoverReason
-    timeoutMs: number
-  }> = []
+  let takeovers: Array<{ tabId: string; botId: string; reason: string; reasonCode?: BrowserTakeoverReason }> = []
   let presses = 0
   let secretSubmissions = 0
   let types = 0
@@ -126,6 +114,7 @@ const makeEngine = ({
     takeoverInput: async () => false,
     secretEntry: async () => false,
     releaseTakeover: async () => false,
+    cancelTakeover: () => false,
     releaseTakeoverForPerson: async () => "not_found",
     holdTakeover: async () => false,
     holdTakeoverForPerson: async () => "not_found",
@@ -201,7 +190,6 @@ const makeFixture = async ({
     context,
     handler: handlers.get("browser_click")?.handler,
     typeHandler: handlers.get("browser_type")?.handler,
-    takeoverHandler: handlers.get("browser_request_takeover")?.handler,
     pressHandler: handlers.get("browser_press")?.handler,
     secretHandler: handlers.get("browser_submit_secret")?.handler,
     evaluateHandler: handlers.get("browser_evaluate")?.handler,
@@ -478,38 +466,4 @@ test.each(["Enter", "NumpadEnter", " "])("keyboard %s pauses before activating a
   expect(result?.success).toBe(true)
   expect(fixture.presses()).toBe(0)
   expect(fixture.takeovers()).toMatchObject([{ reasonCode: "sensitive_action" }])
-})
-
-test("a current ordinary search field accepts typing without a human handoff", async () => {
-  const fixture = await makeFixture({
-    getApiKey: async () => null,
-    fetchDecision: async () => Response.json({}),
-    pageSnapshot: Object.assign({}, snapshot, {
-      elements: [{ ref: "1.1", role: "textbox", name: "Destination", states: [], frame: "main", inViewport: true }],
-    }),
-  })
-
-  const response = await fixture.typeHandler?.({
-    ctx: fixture.context,
-    args: { tabId: snapshot.tabId, target: "1.1", text: "Chicago", submit: false },
-  })
-
-  expect(response?.success).toBe(true)
-  expect(fixture.types()).toBe(1)
-  expect(fixture.takeovers()).toEqual([])
-})
-
-test("a requested thirty-second handoff still gives a person at least two minutes", async () => {
-  const fixture = await makeFixture({
-    getApiKey: async () => null,
-    fetchDecision: async () => Response.json({}),
-  })
-
-  const response = await fixture.takeoverHandler?.({
-    ctx: fixture.context,
-    args: { tabId: snapshot.tabId, reason: "The site asked for sign in", timeoutMs: 30_000 },
-  })
-
-  expect(response?.success).toBe(true)
-  expect(fixture.takeovers()).toMatchObject([{ timeoutMs: 120_000 }])
 })

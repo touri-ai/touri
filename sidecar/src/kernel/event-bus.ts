@@ -67,10 +67,12 @@ export const createEventBus = (
   const broadcast = ({ payload, seq, event }: { payload: string; seq: number; event: UiEvent }): void => {
     sockets.forEach(({ socket, since, filter }) => {
       if (seq <= since) return
-      if (filter && !filter(event)) return
+      // Keep the cursor contiguous without exposing an event denied to this viewer.
+      const visiblePayload =
+        filter && !filter(event) ? payloadFor({ seq, at: 0, event: { type: "transcript.superseded" } }) : payload
 
       try {
-        if (socket.readyState !== 1 || socket.sendText(payload) === 0) {
+        if (socket.readyState !== 1 || socket.sendText(visiblePayload) === 0) {
           removeSocket(socket)
           socket.close?.(1013, "Tente reconectar")
         }
@@ -375,8 +377,11 @@ export const createEventBus = (
       if (database) {
         runRetentionMaintenance(true)
         for (const envelope of catchUp(since)) {
-          if (filter && !filter(envelope.event)) continue
-          if (socket.sendText(payloadFor(envelope)) === 0) {
+          const visible =
+            filter && envelope.event.type !== "transcript.resync" && !filter(envelope.event)
+              ? { seq: envelope.seq, at: 0, event: { type: "transcript.superseded" as const } }
+              : envelope
+          if (socket.sendText(payloadFor(visible)) === 0) {
             socket.close?.(1013, "Tente reconectar")
             return
           }

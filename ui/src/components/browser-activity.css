@@ -1,14 +1,14 @@
 .browser-activity-stack {
   display: grid;
   gap: var(--space-4);
-  width: min(660px, 100%);
+  width: 100%;
   margin: var(--space-12) 0;
 }
 .browser-activity-card {
   position: relative;
   width: 100%;
   container-type: inline-size;
-  overflow: hidden;
+  overflow: clip;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
   background: var(--surface);
@@ -96,7 +96,7 @@
 }
 .browser-activity-icon-button:hover:not(:disabled) {
   border-color: var(--border);
-  background: var(--surface-control);
+  background: var(--surface-code);
   color: var(--text);
 }
 .browser-activity-icon-button:focus-visible,
@@ -110,7 +110,7 @@
 }
 .browser-activity-summary {
   width: 100%;
-  min-height: 140px;
+  min-height: 64px;
   border: 0;
   background: transparent;
   color: inherit;
@@ -128,7 +128,7 @@
   column-gap: 12px;
 }
 .browser-activity-summary:hover {
-  background: var(--surface-control);
+  background: var(--surface-code);
 }
 .browser-activity-summary-copy strong {
   font-weight: var(--weight-semibold);
@@ -141,8 +141,7 @@
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  background: var(--surface-code);
-  object-fit: contain;
+  background: var(--surface-control);
 }
 .browser-activity-summary-copy {
   margin-right: auto;
@@ -195,8 +194,7 @@
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  background: var(--surface-code);
-  object-fit: contain;
+  background: var(--surface-control);
 }
 .browser-activity-window {
   display: grid;
@@ -277,9 +275,18 @@
   display: grid;
   max-height: calc(100vh - 160px);
   min-width: 0;
+  padding: var(--space-12);
   gap: 12px;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+.browser-takeover-controls {
+  position: sticky;
+  z-index: 3;
+  top: 0;
+  display: grid;
+  gap: 12px;
+  background: var(--surface-control);
 }
 .browser-takeover-toolbar,
 .browser-takeover-footer {
@@ -602,7 +609,7 @@
   object-fit: contain;
 }
 .chat-message-list .message-browser-narration .message-meta {
-  display: none;
+  display: flex;
 }
 .chat-message-list .browser-narration {
   display: flex;
@@ -664,7 +671,7 @@
     transform: translateY(0);
   }
 }
-@container (max-width: 560px) {
+@container (max-width: 600px) {
   .browser-activity-content {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--space-8);
@@ -768,14 +775,66 @@
   }
 }
 
-.browser-activity-checklist {
-  list-style: none;
-  margin: var(--space-4) 0;
-  padding: 0;
-  color: var(--text-2);
-  font-size: var(--fs-caption);
+.browser-activity-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
 }
-.browser-activity-checklist > li {
-  display: flex;
-  gap: var(--space-8);
+.browser-activity-card[data-finished="false"] .browser-activity-preview-frames {
+  height: min(30vh, 300px);
+  max-height: min(30vh, 300px);
+  aspect-ratio: auto;
+}
+
+.browser-activity-chrome {
+  height: 24px;
+  box-sizing: border-box;
+}
+.browser-activity-card[data-finished="false"] .browser-activity-placeholder {
+  height: calc(min(30vh, 300px) + 24px);
+  aspect-ratio: auto;
+}
+
+.browser-activity-thumbnail > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+@media (max-width: 600px) {
+  .browser-activity-card[data-finished="false"] .browser-activity-log {
+    height: 156px;
+  }
+  .browser-activity-card[data-finished="false"] .browser-activity-preview-frames {
+    height: min(26vh, 220px);
+    max-height: min(26vh, 220px);
+  }
+  .browser-activity-card[data-finished="false"] .browser-activity-placeholder {
+    height: calc(min(26vh, 220px) + 24px);
+  }
+}
+
+.browser-takeover-toolbar strong {
+  font-size: var(--fs-body);
+}
+.browser-takeover-toolbar .button,
+.browser-takeover-toolbar .browser-activity-icon-button,
+.browser-takeover-footer .button {
+  min-width: 44px;
+  min-height: 44px;
+}
+@media (max-width: 600px) {
+  .browser-takeover-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 44px;
+  }
+  .browser-takeover-toolbar .browser-activity-icon-button {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .browser-takeover-toolbar .button {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
 }

@@ -164,11 +164,11 @@ const fixture = async (
       })
       return { success: true as const, run }
     },
-    cancel: (id: string) => {
+    cancel: (id: string, reason?: { errorClass: "timeout"; errorMessage: string }) => {
       const run = persistence.getRun(id)
       if (!run) return { success: false as const, errorCode: "NOT_FOUND" as const, error: "missing" }
       if (["running", "queued"].includes(run.status)) {
-        Object.assign(run, { status: "canceled", finishedAt: Date.now() })
+        Object.assign(run, { status: reason ? "failed" : "canceled", ...(reason ?? {}), finishedAt: Date.now() })
         persistence.saveRun(run)
         controllers.get(id)?.abort()
         host.kernel.publish({ type: "run.updated", run })
@@ -545,7 +545,7 @@ test("R11: a read-only coordinator's ask_bot gets a consent card and the target 
     const target = f.store.getBot({ botId: ctx.botId })
     targetAccess = target ? delegatedBot(f.host.kernel, ctx.threadId, target).access : undefined
     complete("Lido")
-  })
+  }, 30_000)
   f.db.query("UPDATE bots SET access = 'read-only', approvals = 'never' WHERE id = ?").run(f.bots[0]?.id ?? "")
   f.db.query("UPDATE bots SET access = 'full', approvals = 'never' WHERE id = ?").run(f.bots[1]?.id ?? "")
   const cards: string[] = []
@@ -555,13 +555,13 @@ test("R11: a read-only coordinator's ask_bot gets a consent card and the target 
   })
   f.group = f.data.save({ ...f.input, coordinatorBotId: f.bots[0]?.id ?? null }, f.group)
   const run = f.send("@qa planeje")
-  await until(() => f.persistence.getRun(run.id)?.status === "succeeded")
+  await until(() => f.persistence.getRun(run.id)?.status === "succeeded", 3000)
   expect(cards).toContain("ask_bot")
   expect(answer).toMatchObject({ success: true, structured: { answer: "Lido" } })
   expect(targetAccess).toBe("read-only")
-})
+}, 30_000)
 
-test("queue serializes turns across group conversations; Parar cancels only the chosen turn", async () => {
+test("queue serializes turns across group conversations; Parar cancels active and queued turns", async () => {
   const f = await fixture(async () => {})
   const first = f.send("primeiro")
   const other = f.data.createThread(f.group, "Outra conversa")
@@ -570,9 +570,8 @@ test("queue serializes turns across group conversations; Parar cancels only the 
   expect((await f.request(`/groups/${f.group.id}`, f.input, "PATCH")).status).toBe(409)
   expect(f.runtime.cancel(first.id)).toBe(true)
   await until(() => f.persistence.getRun(first.id)?.status === "canceled")
-  expect(f.persistence.getRun(second.id)?.status).not.toBe("canceled")
-  await until(() => f.order.length === 2)
-  expect(f.runtime.cancel(second.id)).toBe(true)
+  expect(f.persistence.getRun(second.id)?.status).toBe("canceled")
+  expect(f.order).toHaveLength(1)
 })
 
 test("draining finishes the active group turn and replays waiting turns in order after restart", async () => {
@@ -847,6 +846,15 @@ test("target approval stays pending until user decision; timeout cancels a stall
       .some((m) => m.parts.some((p) => p.type === "approval" && p.decision === "pending")),
   ).toBe(true)
   await until(() => f.persistence.getRun(run.id)?.status === "failed")
+  const getChild = () =>
+    f.db
+      .query<{ error_class: string | null; status: string }, [string]>(
+        "SELECT r.error_class, r.status FROM runs r JOIN group_run_links link ON link.run_id = r.id WHERE link.turn_id = ? LIMIT 1",
+      )
+      .get(run.id)
+  await until(() => getChild()?.status === "failed")
+
+  expect(getChild()).toEqual({ error_class: "timeout", status: "failed" })
   finish?.("late answer")
   expect(f.store.activePath({ threadId: f.thread.id }).some((m) => m.text === "late answer")).toBe(false)
 })
@@ -1691,7 +1699,7 @@ test("a waiting group routine keeps its original timeout after restart", async (
   expect(f.persistence.getRun(runId)?.errorClass).not.toBe("app_restart")
   const members = restarted.listRuns(f.thread.id).filter((run) => run.groupTurnId === runId)
   expect(members).toHaveLength(1)
-  expect(members[0]?.status).toBe("canceled")
+  expect(members[0]).toMatchObject({ status: "failed", errorClass: "timeout" })
 })
 
 test("a group routine posts its prompt into the group conversation and finishes with every member's reply", async () => {
@@ -2069,7 +2077,7 @@ test("ask_all gives every peer the remaining turn deadline and cancels the entir
 
   const children = scenario.runtime.listRuns(scenario.thread.id).filter((run) => run.groupTurnId === turn.id)
   expect(children).toHaveLength(3)
-  expect(children.every((run) => run.status === "canceled")).toBe(true)
+  expect(children.every((run) => run.status === "failed" && run.errorClass === "timeout")).toBe(true)
   finish.resolve()
 })
 
@@ -2446,51 +2454,4 @@ test("ask-all records a rejected enqueue as one failed member and keeps the othe
   expect(members).toHaveLength(3)
   expect(members.filter((run) => run.status === "succeeded")).toHaveLength(2)
   expect(members.find((run) => run.botId === scenario.bots[1]?.id)).toMatchObject({ status: "failed" })
-})
-
-test("returning channel browser control resumes only its bot and only once", async () => {
-  const fixture = await fixtureForBrowserResume()
-  const source = fixture.db
-    .query("SELECT run_id FROM group_run_links WHERE turn_id = ? LIMIT 1")
-    .get(fixture.original.id) as { run_id: string } | null
-  if (!source) throw new Error("Missing browser member run")
-
-  expect(fixture.runtime.resumeBrowser({ runId: source.run_id })).toBe(true)
-  expect(fixture.runtime.resumeBrowser({ runId: source.run_id })).toBe(true)
-  await until(() => fixture.order.length === 2)
-
-  expect(fixture.order).toEqual([fixture.bots[0]?.id ?? "", fixture.bots[0]?.id ?? ""])
-  expect(
-    fixture.db
-      .query("SELECT COUNT(*) AS count FROM browser_resume_requests WHERE previous_run_id = ?")
-      .get(source.run_id),
-  ).toEqual({ count: 1 })
-})
-
-const fixtureForBrowserResume = async () => {
-  const value = await fixture()
-  const first = value.bots[0]
-  if (!first) throw new Error("Missing fixture bot")
-  const original = value.send(`@${first.name} pesquise estadias`)
-  await until(() => value.persistence.getRun(original.id)?.status === "succeeded")
-
-  return Object.assign({}, value, { original })
-}
-
-test("stopping one channel request preserves a waiting sibling request", async () => {
-  const pending = Promise.withResolvers<void>()
-  const scenario = await fixture(async (_ctx, complete) => {
-    await pending.promise
-    complete("Resposta sintética")
-  })
-  const first = scenario.send("Primeiro pedido")
-  await until(() => scenario.order.length > 0)
-  const second = scenario.send("Segundo pedido")
-
-  scenario.runtime.cancel(first.id)
-  const siblingStatus = scenario.persistence.getRun(second.id)?.status
-  pending.resolve()
-
-  expect(siblingStatus).not.toBe("canceled")
-  await until(() => scenario.persistence.getRun(second.id)?.status === "succeeded")
 })

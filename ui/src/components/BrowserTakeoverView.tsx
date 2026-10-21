@@ -2,6 +2,7 @@ import type { BrowserTakeoverFrame, BrowserTakeoverInput } from "@touri/contract
 import type { KeyboardEvent, PointerEvent, WheelEvent } from "react"
 import { useEffect, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
+import { ApiError } from "../errors"
 import { type Locale, t } from "../i18n"
 import { useBrowserActivityControls } from "./BrowserActivityControls"
 import { getBrowserActivityUrl } from "./browserActivityPresentation"
@@ -36,6 +37,7 @@ export const BrowserTakeoverView = ({
   reason,
   actions,
   onHandback,
+  onSessionEnded,
 }: {
   api: UiApi
   tabId: string
@@ -47,6 +49,7 @@ export const BrowserTakeoverView = ({
   reason: string | null
   actions: Array<{ id: string; icon: string; label: string; time: string; active: boolean }>
   onHandback: () => void
+  onSessionEnded?: (() => void) | undefined
 }) => {
   const canvas = useRef<HTMLCanvasElement>(null)
   const screen = useRef<HTMLDivElement>(null)
@@ -59,6 +62,8 @@ export const BrowserTakeoverView = ({
   const pendingInputs = useRef(0)
   const inputQueue = useRef(Promise.resolve())
   const lastInputAt = useRef(0)
+  const sessionEndedRef = useRef(onSessionEnded)
+  sessionEndedRef.current = onSessionEnded
   const localeRef = useRef(locale)
   const touch = useRef<TouchGesture | null>(null)
   const composing = useRef(false)
@@ -196,7 +201,17 @@ export const BrowserTakeoverView = ({
           latestFrameId += 1
           worker.postMessage({ type: "frame", frameId: latestFrameId, image: next.image })
         }
-      } catch {
+      } catch (failure) {
+        if (
+          active &&
+          !releasing.current &&
+          failure instanceof ApiError &&
+          failure.status === 403 &&
+          sessionEndedRef.current
+        ) {
+          sessionEndedRef.current()
+          return
+        }
         if (active) setError(t("The browser control connection was interrupted.", {}, localeRef.current))
       }
       const recentInput = Date.now() - lastInputAt.current < ACTIVE_FRAME_WINDOW_MS
@@ -301,25 +316,42 @@ export const BrowserTakeoverView = ({
     [botName, browserControls.registerTakeover, locale],
   )
 
-  const mousePoint = (event: { clientX: number; clientY: number; currentTarget: HTMLElement }) => {
-    const bounds = event.currentTarget.getBoundingClientRect()
-    if (!bounds.width || !bounds.height) return null
+  const getPageBounds = (element: HTMLElement) => {
+    const bounds = element.getBoundingClientRect()
+    const image = element.querySelector("canvas:not([hidden]), img")
+    if (!frame || !image || getComputedStyle(image).objectFit !== "contain") return bounds
+
+    const scale = Math.min(bounds.width / frame.width, bounds.height / frame.height)
+    const width = frame.width * scale
+    const height = frame.height * scale
+
     return {
-      x: Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width)),
-      y: Math.min(1, Math.max(0, (event.clientY - bounds.top) / bounds.height)),
+      left: bounds.left + (bounds.width - width) / 2,
+      top: bounds.top + (bounds.height - height) / 2,
+      width,
+      height,
     }
+  }
+  const getMousePoint = (event: { clientX: number; clientY: number; currentTarget: HTMLElement }) => {
+    const bounds = getPageBounds(event.currentTarget)
+    if (!bounds.width || !bounds.height) return null
+    const x = (event.clientX - bounds.left) / bounds.width
+    const y = (event.clientY - bounds.top) / bounds.height
+    if (x < 0 || x > 1 || y < 0 || y > 1) return null
+
+    return { x, y }
   }
   const clickPage = (event: PointerEvent<HTMLElement>) => {
     event.preventDefault()
     if (event.pointerType !== "touch") keyboard.current?.focus({ preventScroll: true })
-    const point = mousePoint(event)
+    const point = getMousePoint(event)
     if (!point) return
     const button = event.button === 2 ? "right" : event.button === 1 ? "middle" : "left"
     sendInput({ kind: "click", ...point, button })
   }
   const flushTouchScroll = (event: PointerEvent<HTMLElement>, gesture: TouchGesture): TouchGesture => {
-    const point = mousePoint(event)
-    const bounds = event.currentTarget.getBoundingClientRect()
+    const point = getMousePoint(event)
+    const bounds = getPageBounds(event.currentTarget)
     if (!point || !bounds.width || !bounds.height || (!gesture.deltaX && !gesture.deltaY)) return gesture
     const scaleX = (frame?.width ?? bounds.width) / bounds.width
     const scaleY = (frame?.height ?? bounds.height) / bounds.height
@@ -390,7 +422,7 @@ export const BrowserTakeoverView = ({
     event.preventDefault()
     if (gesture.moved) flushTouchScroll(event, gesture)
     else {
-      const point = mousePoint(event)
+      const point = getMousePoint(event)
       if (point) sendInput({ kind: "click", x: point.x, y: point.y, button: "left" })
     }
     touch.current = null
@@ -404,7 +436,7 @@ export const BrowserTakeoverView = ({
   }
   const scrollPage = (event: WheelEvent<HTMLElement>) => {
     event.preventDefault()
-    const point = mousePoint(event)
+    const point = getMousePoint(event)
     if (!point) return
     const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? (frame?.height ?? 720) : 1
     const clamp = (value: number) => Math.max(-1200, Math.min(1200, value * scale))
@@ -428,7 +460,6 @@ export const BrowserTakeoverView = ({
   }
 
   const safeUrl = frame ? getBrowserActivityUrl(frame.url) : ""
-  const connectionNotice = frame ? "" : ` · ${t("Connecting to the browser…", {}, locale)}`
 
   return (
     <section
@@ -436,34 +467,36 @@ export const BrowserTakeoverView = ({
       aria-label={t("Remote browser control", {}, locale)}
       data-full-view={fullView}
     >
-      <header className="browser-takeover-toolbar">
-        <div>
-          <strong>{t("Browser for {name}", { name: botName }, locale)}</strong>
-          <span title={safeUrl}>
-            {t("You are in control · {name} is paused", { name: botName }, locale)}
-            {safeUrl ? ` · ${safeUrl}` : connectionNotice}
-          </span>
-        </div>
-        <button
-          type="button"
-          className="browser-activity-icon-button"
-          aria-label={t(fullView ? "Collapse browser full screen" : "Expand browser to full screen", {}, locale)}
-          aria-pressed={fullView}
-          onClick={() => setFullView((value) => !value)}
+      <div className="browser-takeover-controls">
+        <header className="browser-takeover-toolbar">
+          <div>
+            <strong>{t("Browser for {name}", { name: botName }, locale)}</strong>
+            <span title={safeUrl}>
+              {t("You are in control · {name} is paused", { name: botName }, locale)}
+              {safeUrl ? ` · ${safeUrl}` : ` · ${t("Connecting to the browser…", {}, locale)}`}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="browser-activity-icon-button"
+            aria-label={t(fullView ? "Collapse browser full screen" : "Expand browser to full screen", {}, locale)}
+            aria-pressed={fullView}
+            onClick={() => setFullView((value) => !value)}
+          >
+            <span aria-hidden="true">{fullView ? "↙" : "↗"}</span>
+          </button>
+          <button type="button" className="button button-quiet" disabled={returning} onClick={() => void handback()}>
+            {returning ? t("Returning control…", {}, locale) : t("Hand back to {name}", { name: botName }, locale)}
+          </button>
+        </header>
+        <p
+          className="browser-takeover-privacy browser-takeover-privacy-sticky"
+          role="status"
+          aria-label={t("Browser privacy", {}, locale)}
         >
-          <span aria-hidden="true">{fullView ? "↙" : "↗"}</span>
-        </button>
-        <button type="button" className="button button-quiet" disabled={returning} onClick={() => void handback()}>
-          {returning ? t("Returning control…", {}, locale) : t("Hand back to {name}", { name: botName }, locale)}
-        </button>
-      </header>
-      <p
-        className="browser-takeover-privacy browser-takeover-privacy-sticky"
-        role="status"
-        aria-label={t("Browser privacy", {}, locale)}
-      >
-        {t("What you type here stays out of chat, the bot, and history.", {}, locale)}
-      </p>
+          {t("What you type here stays out of chat, the bot, and history.", {}, locale)}
+        </p>
+      </div>
       <div className={`browser-takeover-layout${fullView ? " browser-takeover-layout-full" : ""}`}>
         <div
           ref={screen}
@@ -531,6 +564,7 @@ export const BrowserTakeoverView = ({
             </ol>
           </section>
           <div className="browser-takeover-footer">
+            <p>{t("What you type here stays out of chat, the bot, and history.", {}, locale)}</p>
             <button
               type="button"
               className="button button-quiet"

@@ -3,7 +3,7 @@ import { join } from "node:path"
 import { type Browser, expect, type Page, test } from "@playwright/test"
 import { type FixtureSite, startFixtureSite } from "./fixture-server"
 import { decideOption } from "./mock-jev"
-import { FINAL_ANSWER, type FlowSnapshot, PRIVATE_INPUT_SENTINEL, runScriptedBot } from "./scripted-bot"
+import { FINAL_ANSWER, FIXTURE_LOGIN_VALUE, type FlowSnapshot, runScriptedBot } from "./scripted-bot"
 
 // Strict assertions for the owner-approved flow (live subtitle, quiet narration, thumbnail/log split, "Ver o que ele fez").
 // They describe the finished card, so they run with TOURI_CU_CONCEPT=1 once the card branch is merged.
@@ -60,7 +60,7 @@ test.describe("fixture travel site", () => {
     await page.getByRole("button", { name: "Reservar" }).first().click()
     await expect(page.getByRole("heading", { name: "Entre para ver o preço final" })).toBeVisible()
     await page.getByLabel("E-mail").fill("voce@exemplo.com")
-    await page.getByLabel("Senha").fill(PRIVATE_INPUT_SENTINEL)
+    await page.getByLabel("Senha").fill(FIXTURE_LOGIN_VALUE)
     await page.getByRole("button", { name: "Continuar" }).click()
     await expect(page.getByText("Total R$ 4.430")).toBeVisible()
     await close()
@@ -126,15 +126,18 @@ for (const variant of variants) {
 
       await expect(ui.getByText(/O site pediu login/u)).toBeVisible({ timeout: 60_000 })
       await shoot(ui, variant.name, "login-wall")
-      await ui.getByRole("button", { name: "Assumir" }).click()
-      await expect(ui.getByRole("button", { name: /Devolver para/ })).toBeVisible()
+      await ui.locator(".composer-browser-status").getByRole("button", { name: "Assumir" }).click()
+      await expect(ui.locator(".browser-activity-card").getByRole("button", { name: /Devolver para/ })).toBeVisible()
       await bot.page.getByLabel("E-mail").fill("voce@exemplo.com")
-      await bot.page.getByLabel("Senha").fill(PRIVATE_INPUT_SENTINEL)
-      await expect(ui.locator("body")).not.toContainText(PRIVATE_INPUT_SENTINEL)
+      await bot.page.getByLabel("Senha").fill(FIXTURE_LOGIN_VALUE)
+      await expect(ui.locator("body")).not.toContainText(FIXTURE_LOGIN_VALUE)
       expect(await ui.evaluate(() => (window as FlowWindow).cuFlow?.sent())).toEqual([])
       await bot.page.getByRole("button", { name: "Continuar" }).click()
       await shoot(ui, variant.name, "taken-over")
-      await ui.getByRole("button", { name: /Devolver para/ }).click()
+      await ui
+        .locator(".browser-activity-card")
+        .getByRole("button", { name: /Devolver para/ })
+        .click()
       await bot.run
 
       expect(snapshots).toHaveLength(12)
@@ -142,7 +145,7 @@ for (const variant of variants) {
       await expect(ui.getByRole("button", { name: /Usou o navegador/ })).toBeVisible()
       await expect(ui.getByRole("listitem")).toHaveCount(4)
       await expect(ui.getByText("Loft no West Loop")).toBeVisible()
-      await expect(ui.locator("body")).not.toContainText(PRIVATE_INPUT_SENTINEL)
+      await expect(ui.locator("body")).not.toContainText(FIXTURE_LOGIN_VALUE)
       expect(FINAL_ANSWER).toContain("1. **Loft no West Loop**")
       await shoot(ui, variant.name, "final")
       const horizontalOverflow = await ui.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
@@ -190,8 +193,11 @@ for (const variant of variants) {
         })
 
         await expect(ui.getByText(/O site pediu login/u)).toBeVisible({ timeout: 60_000 })
-        await ui.getByRole("button", { name: "Assumir" }).click()
-        await ui.getByRole("button", { name: /Devolver para/ }).click()
+        await ui.locator(".composer-browser-status").getByRole("button", { name: "Assumir" }).click()
+        await ui
+          .locator(".browser-activity-card")
+          .getByRole("button", { name: /Devolver para/ })
+          .click()
         await bot.run
 
         await expect(ui.getByRole("button", { name: /Usou o navegador · \d+ ações/ })).toBeVisible()

@@ -678,6 +678,8 @@ export const createKernel = ({
       for (const socket of liveSockets) socket.close(1001, "Servidor encerrado")
       liveSockets.clear()
       server.stop(true)
+      const shutdownBrowser = services.use("browser.shutdown")
+      if (shutdownBrowser) await shutdownBrowser()
       const store = services.use("store.api")
       if (store && !store.closeStreamWriterIfIdle?.()) await store.flushWritesAsync?.({ stopping: true })
       services.use("storage.botDeletion")?.dispose()

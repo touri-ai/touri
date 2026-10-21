@@ -1,7 +1,6 @@
 import type { BrowserSnapshot } from "@touri/contracts"
 
 type BrowserPreviewPage = {
-  generation?: number
   heldByUser: boolean
   privateAfterTakeover: boolean
   secretMode: boolean
@@ -21,22 +20,37 @@ export const captureSafeBrowserPreview = async <T>({
   getPage: () => BrowserPreviewPage
   capture: () => Promise<T>
 }): Promise<T | null> => {
-  const before = getPage()
-  if (getBrowserPreviewBlockReason(before)) return null
+  if (getBrowserPreviewBlockReason(getPage())) return null
 
   const frame = await capture()
   // Take-over can begin during CDP capture, so only return a frame if control is still safe.
-  const after = getPage()
-  if (before.generation !== after.generation || getBrowserPreviewBlockReason(after)) return null
+  if (getBrowserPreviewBlockReason(getPage())) return null
 
   return frame
 }
 
+export const captureCurrentBrowserControlFrame = async <T extends object>({
+  getEpoch,
+  canRead,
+  capture,
+}: {
+  getEpoch: () => number
+  canRead: () => boolean
+  capture: () => Promise<T | null>
+}): Promise<(T & { targetEpoch: number }) | null> => {
+  const targetEpoch = getEpoch()
+  if (!canRead()) return null
+  const frame = await capture()
+  if (!frame || !canRead() || getEpoch() !== targetEpoch) return null
+
+  return { ...frame, targetEpoch }
+}
+
 const getBrowserPreviewBlockReason = (page: BrowserPreviewPage): BrowserPreviewBlockReason | null => {
-  if (page.privateAfterTakeover) return "sensitive_page"
   if (page.heldByUser || page.secretMode) return "human_control"
   if (page.url.length > MAX_PREVIEW_URL_LENGTH || page.title.length > MAX_PREVIEW_TITLE_LENGTH) return "sensitive_page"
   if (isSensitiveTakeoverPage(page.url, page.title)) return "sensitive_page"
+  if (page.privateAfterTakeover && !sanitizeHumanTakeoverUrl(page.url)) return "sensitive_page"
 
   return null
 }
@@ -54,7 +68,7 @@ export const sanitizeHumanTakeoverSnapshot = (snapshot: BrowserSnapshot): Browse
   url: sanitizeHumanTakeoverUrl(snapshot.url),
   title: "",
   focus: { ...snapshot.focus, name: null },
-  elements: snapshot.elements.map(({ value: _value, ...element }) => Object.assign({}, element, { name: "" })),
+  elements: snapshot.elements.map(({ value: _value, ...element }) => ({ ...element, name: "" })),
   text: "",
   recentActions: [],
   diagnostics: [],
@@ -63,7 +77,6 @@ export const sanitizeHumanTakeoverSnapshot = (snapshot: BrowserSnapshot): Browse
   recommendImage: null,
 })
 
-// A hostname can reflect private input too; no part of a human-controlled URL is public.
 export const sanitizeHumanTakeoverUrl = (_value: string): string => ""
 
 export const canResumeAfterHumanTakeover = ({

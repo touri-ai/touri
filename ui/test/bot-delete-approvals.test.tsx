@@ -104,7 +104,9 @@ for (const entry of ["settings", "context"] as const)
     if (entry === "settings") {
       showBotSettings()
       fireEvent.click(
-        within(screen.getByRole("dialog")).getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }),
+        within(await screen.findByRole("dialog", { name: "Configurações de mark" })).getByRole("button", {
+          name: /^Avançado(?: Ajustes deste bot)?$/,
+        }),
       )
       fireEvent.click(screen.getByRole("button", { name: "Excluir bot" }))
     } else {

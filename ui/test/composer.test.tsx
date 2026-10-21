@@ -119,7 +119,7 @@ describe("composer island", () => {
 
   it("uses the browser status chip as the single stop control while browser work is active", async () => {
     const { cancel } = setup({ activeRun: run, browserWorking: true })
-    const status = screen.getByText("mark está trabalhando · No navegador").closest(".composer-browser-status")
+    const status = screen.getByText(/mark está trabalhando/).closest(".composer-browser-status")
 
     expect(status).toBeInTheDocument()
     expect(status).toHaveTextContent("No navegador")

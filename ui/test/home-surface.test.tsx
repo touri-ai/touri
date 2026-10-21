@@ -29,11 +29,11 @@ it("keeps Home, create, chat and collapsed advanced settings free of technical j
   await waitFor(() => expect(input).toHaveValue(""))
   expectPlainSurface()
   showBotSettings()
-  expect(screen.getByRole("dialog").querySelector(".bot-settings-overview")).toBeVisible()
+  await waitFor(() => expect(screen.getByRole("dialog").querySelector(".bot-settings-overview")).toBeVisible())
   expectPlainSurface()
   fireEvent.click(screen.getByRole("button", { name: "Fechar diálogo" }))
   fireEvent.click(screen.getByRole("button", { name: /Você Local/ }))
-  const settings = screen.getByRole("dialog")
+  const settings = await screen.findByRole("dialog", { name: "Configurações" })
   for (const section of ["Aparência", "Privacidade", "Atualizações", "Notificações", "Diagnóstico"]) {
     fireEvent.click(within(settings).getByRole("tab", { name: section }))
     expectPlainSurface()

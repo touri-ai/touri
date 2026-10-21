@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import type { BrowserSnapshot } from "@touri/contracts"
 import {
   canResumeAfterHumanTakeover,
+  captureCurrentBrowserControlFrame,
   captureSafeBrowserPreview,
   sanitizeHumanTakeoverPreviewMetadata,
   sanitizeHumanTakeoverSnapshot,
@@ -11,7 +12,7 @@ test("human takeover snapshots omit typed field values, page images, and URL sec
   const snapshot: BrowserSnapshot = {
     tabId: "browser-tab",
     generation: 4,
-    url: "https://fixture-secret.travel.example.test/login/fixture-secret?token=fixture-secret#fixture-secret",
+    url: "https://travel.example.test/login/fixture-secret?token=fixture-secret#fixture-secret",
     title: "fixture-secret",
     loading: false,
     viewport: { width: 1280, height: 720, scrollY: 0, scrollHeight: 720 },
@@ -42,7 +43,7 @@ test("human takeover snapshots omit typed field values, page images, and URL sec
   const safeSnapshot = sanitizeHumanTakeoverSnapshot(snapshot)
 
   expect(JSON.stringify(safeSnapshot)).not.toContain("fixture-secret")
-  expect(safeSnapshot.url).toBe("")
+  expect(safeSnapshot.url).toBe("https://travel.example.test")
   expect(safeSnapshot.title).toBe("")
   expect(safeSnapshot.text).toBe("")
   expect(safeSnapshot.recentActions).toEqual([])
@@ -158,7 +159,7 @@ test("takeover privacy can lift only after bounded metadata identifies a safe pa
   ).toBe(false)
 })
 
-test("a private document stays hidden after handback until its provenance is approved", async () => {
+test("safe pages can resume previews after handback", async () => {
   const page = {
     heldByUser: false,
     privateAfterTakeover: true,
@@ -172,35 +173,51 @@ test("a private document stays hidden after handback until its provenance is app
     capture: async () => "fixture-image",
   })
 
-  expect(preview).toBeNull()
-
-  const publicPreview = await captureSafeBrowserPreview({
-    getPage: () => Object.assign({}, page, { privateAfterTakeover: false }),
-    capture: async () => "fixture-image",
-  })
-  expect(publicPreview).toBe("fixture-image")
+  expect(preview).toBe("fixture-image")
 })
 
 test("post-takeover preview metadata omits page titles and URL values", () => {
   const metadata = sanitizeHumanTakeoverPreviewMetadata({
-    url: "https://fixture-secret.travel.example.test/results?query=fixture-secret#fixture-secret",
+    url: "https://travel.example.test/results?query=fixture-secret#fixture-secret",
     title: "fixture-secret",
   })
 
   expect(JSON.stringify(metadata)).not.toContain("fixture-secret")
-  expect(metadata).toEqual({ title: "", url: "" })
+  expect(metadata).toEqual({ title: "", url: "https://travel.example.test" })
 })
 
-test("the original document and a restored history document stay private even when login fields disappear", () => {
-  const page = {
-    url: "https://example.test/results",
-    title: "Results",
-    hasSensitiveEntry: false,
-    privateDocumentIds: [100],
-  }
+test("a private frame captured before navigation cannot advertise the new target epoch", async () => {
+  let epoch = 4
+  let complete: (frame: { image: string }) => void = () => {}
+  const capture = captureCurrentBrowserControlFrame({
+    getEpoch: () => epoch,
+    canRead: () => true,
+    capture: () =>
+      new Promise<{ image: string }>((resolve) => {
+        complete = resolve
+      }),
+  })
 
-  expect(canResumeAfterHumanTakeover(Object.assign({}, page, { documentId: 100 }))).toBe(false)
-  expect(canResumeAfterHumanTakeover(Object.assign({}, page, { documentId: 200 }))).toBe(true)
-  expect(canResumeAfterHumanTakeover(Object.assign({}, page, { documentId: 100 }))).toBe(false)
-  expect(canResumeAfterHumanTakeover(Object.assign({}, page, { documentId: 200, privateDocumentIds: [0] }))).toBe(false)
+  epoch = 5
+  complete({ image: "old-page" })
+
+  expect(await capture).toBeNull()
+})
+
+test("revoking control discards an already running private capture", async () => {
+  let held = true
+  let complete: (frame: { image: string }) => void = () => {}
+  const capture = captureCurrentBrowserControlFrame({
+    getEpoch: () => 4,
+    canRead: () => held,
+    capture: () =>
+      new Promise<{ image: string }>((resolve) => {
+        complete = resolve
+      }),
+  })
+
+  held = false
+  complete({ image: "private-page" })
+
+  expect(await capture).toBeNull()
 })

@@ -78,7 +78,7 @@ test.each([
   setDocumentLanguage(locale, document.documentElement)
   render(<App kernel={{ services: { api: fixture.api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
-  openDeletion(entry)
+  await openDeletion(entry)
 
   const dialog = screen.getByRole("dialog", { name: "Excluir bot" })
   fireEvent.change(within(dialog).getByLabelText("Digite o nome do bot: mark"), { target: { value: "mark" } })
@@ -119,7 +119,7 @@ test.each(["pt-BR", "en"] as const)("the last bot's %s cleanup notice survives o
   setDocumentLanguage(locale, document.documentElement)
   render(<App kernel={{ services: { api: fixture.api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
-  openDeletion("settings")
+  await openDeletion("settings")
   const dialog = screen.getByRole("dialog", { name: "Excluir bot" })
 
   fireEvent.change(within(dialog).getByLabelText("Digite o nome do bot: mark"), { target: { value: "mark" } })
@@ -151,7 +151,7 @@ test("pending cleanup completes deletion even when the live event has not arrive
   }
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
-  openDeletion("settings")
+  await openDeletion("settings")
   const dialog = screen.getByRole("dialog", { name: "Excluir bot" })
 
   fireEvent.change(within(dialog).getByLabelText("Digite o nome do bot: mark"), { target: { value: "mark" } })
@@ -163,7 +163,7 @@ test("pending cleanup completes deletion even when the live event has not arrive
   expect(screen.getByText(/^O bot foi excluído, mas a limpeza/)).toBeVisible()
 })
 
-const openDeletion = (entry: "settings" | "sidebar"): void => {
+const openDeletion = async (entry: "settings" | "sidebar"): Promise<void> => {
   if (entry === "sidebar") {
     fireEvent.click(screen.getByRole("button", { name: "Ações de mark" }))
     fireEvent.click(screen.getByRole("menuitem", { name: "Excluir bot" }))
@@ -171,6 +171,10 @@ const openDeletion = (entry: "settings" | "sidebar"): void => {
   }
 
   showBotSettings()
-  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Avançado/ }))
+  fireEvent.click(
+    within(await screen.findByRole("dialog", { name: "Configurações de mark" })).getByRole("button", {
+      name: /^Avançado/,
+    }),
+  )
   fireEvent.click(screen.getByRole("button", { name: "Excluir bot" }))
 }

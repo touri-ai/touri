@@ -28,7 +28,6 @@ import { isResolvedNotification } from "./approvalState"
 import { ApprovalNotice } from "./components/ApprovalNotice"
 import { AvatarRuntimeProvider } from "./components/AvatarRuntime"
 import { BotAvatar } from "./components/BotAvatar"
-import { BotComputer } from "./components/BotComputer"
 import { BotPanel } from "./components/BotPanel"
 import { activeMessagePath, ChatPanel } from "./components/ChatPanel"
 import { ErrorBoundary } from "./components/ErrorBoundary"
@@ -45,7 +44,7 @@ import {
   Modal,
   ProjectModal,
   SettingsModal,
-} from "./components/Modals"
+} from "./components/LazyModals"
 import { MotionPresence, MotionSkeleton } from "./components/Motion"
 import { PageTransition } from "./components/PageTransition"
 import { PanelIcon } from "./components/PanelIcon"
@@ -94,6 +93,7 @@ import { useWebNavigation } from "./useWebNavigation"
 import { useWorkspace } from "./useWorkspace"
 import { type AppRoute, type RoutineHistoryTarget, readWorkspaceState, saveWorkspaceState } from "./workspaceState"
 
+const BotComputer = lazy(() => import("./components/BotComputer").then((module) => ({ default: module.BotComputer })))
 const CommandPalette = lazy(() =>
   import("./features/commandPalette/CommandPalette").then((module) => ({ default: module.CommandPalette })),
 )
@@ -1023,16 +1023,18 @@ const AppContent = ({ kernel }: AppProps) => {
             </header>
             {selectedBot?.id === requestedComputer ? (
               <ErrorBoundary key={selectedBot.id} area="o computador" api={api}>
-                <BotComputer
-                  autoOpen
-                  key={selectedBot.id}
-                  api={api}
-                  bot={selectedBot}
-                  machine={data.machines.find((state) => state.botId === selectedBot.id)}
-                  activeTurns={data.runs.some(
-                    (run) => run.botId === selectedBot.id && ["queued", "starting", "running"].includes(run.status),
-                  )}
-                />
+                <Suspense fallback={<PageLoading />}>
+                  <BotComputer
+                    autoOpen
+                    key={selectedBot.id}
+                    api={api}
+                    bot={selectedBot}
+                    machine={data.machines.find((state) => state.botId === selectedBot.id)}
+                    activeTurns={data.runs.some(
+                      (run) => run.botId === selectedBot.id && ["queued", "starting", "running"].includes(run.status),
+                    )}
+                  />
+                </Suspense>
               </ErrorBoundary>
             ) : (
               <p role="alert">Bot não encontrado.</p>

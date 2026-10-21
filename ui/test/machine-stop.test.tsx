@@ -56,7 +56,7 @@ it.each(["panel", "window"])(
       fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
       fireEvent.click(screen.getByRole("tab", { name: "Computador" }))
     }
-    expect(screen.getAllByRole("button", { name: "Parar máquina" })).toHaveLength(1)
+    expect(await screen.findAllByRole("button", { name: "Parar máquina" })).toHaveLength(1)
     for (const button of screen.getAllByRole("button", { name: "Parar máquina" })) expect(button).toBeDisabled()
     await act(async () => api.emit({ type: "run.updated", run: { ...run, status: "succeeded", finishedAt: 2 } }))
     for (const button of screen.getAllByRole("button", { name: "Parar máquina" })) expect(button).toBeEnabled()

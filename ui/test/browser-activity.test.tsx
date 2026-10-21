@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import type { Bot, BrowserTabInfo, ToolCallPart } from "@touri/contracts"
+import type { Bot, BrowserTabInfo, Run, ToolCallPart } from "@touri/contracts"
 import { afterEach, expect, test, vi } from "vitest"
 import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
@@ -14,12 +14,15 @@ import {
   getBrowserActivityTimestamps,
   getBrowserActivityUrl,
   getBrowserTakeoverReason,
+  isBrowserRequestQueued,
 } from "../src/components/browserActivityPresentation"
+import { ApiError } from "../src/errors"
 import { ChannelComposerChip } from "../src/features/channelBrowser/ChannelBrowser"
 import { clearBrowserHold, setBrowserHold } from "../src/features/desktop/browserHold"
 import { InlinePreviewContext } from "../src/features/desktop/InlineLivePreview"
 import { startInlineFrameSource } from "../src/features/desktop/inlineFrameSource"
 import { setInlinePreviewPreference } from "../src/features/desktop/inlinePreviewPreference"
+import { t } from "../src/i18n"
 
 vi.mock("../src/features/desktop/inlineFrameSource", () => ({
   startInlineFrameSource: vi.fn(
@@ -65,6 +68,7 @@ const tab = {
   state: "live",
   openerTabId: null,
   heldByUser: false,
+  takeoverRequested: false,
   lastUsedAt: 10,
 } satisfies BrowserTabInfo & { ownerBotId: string | null }
 
@@ -81,12 +85,25 @@ const renderCard = (
   finished: boolean,
   getTabs = async () => ({ tabs: [tab] }),
   machine: Bot["machine"] = "local",
+  waitingForPerson = false,
 ) => {
   const api = createMockApi()
+  let sessionHeld: boolean | undefined
   const request = vi.fn(async (route: string) => {
-    if (route === "GET /browser/tabs") return getTabs()
-    if (route === "POST /browser/tabs/:id/takeover/session")
+    if (route === "GET /browser/tabs") {
+      const result = await getTabs()
+      return sessionHeld === undefined
+        ? result
+        : { tabs: result.tabs.map((tab) => ({ ...tab, heldByUser: sessionHeld })) }
+    }
+    if (route === "DELETE /browser/tabs/:id/takeover/session") {
+      sessionHeld = false
+      return {}
+    }
+    if (route === "POST /browser/tabs/:id/takeover/session") {
+      sessionHeld = true
       return { sessionId: "synthetic-session", controlEpoch: "synthetic-control-epoch", viewEpoch: 0 }
+    }
     if (route === "POST /browser/tabs/:id/takeover/frame")
       return {
         controlEpoch: "synthetic-control-epoch",
@@ -118,7 +135,14 @@ const renderCard = (
   const onOpenComputer = vi.fn()
   const view = render(
     <InlinePreviewContext.Provider value={{ api, bot, machine: undefined, activeCallId: undefined, onOpenComputer }}>
-      <BrowserActivityCard parts={parts} finished={finished} createdAt={1} botName="Lia" />
+      <BrowserActivityCard
+        parts={parts}
+        finished={finished}
+        waitingForPerson={waitingForPerson}
+        createdAt={1}
+        threadId="thread-mark"
+        botName="Lia"
+      />
     </InlinePreviewContext.Provider>,
   )
 
@@ -156,11 +180,7 @@ test("shows live browser steps and keeps typed values and URL credentials and qu
   expect(screen.getByRole("progressbar", { name: "Progresso do navegador" })).toBeVisible()
   expect(screen.getByRole("button", { name: "Expandir navegador" })).toBeVisible()
   expect(screen.getByRole("button", { name: "Recolher cartão do navegador" })).toBeVisible()
-  expect(screen.getByRole("list", { name: "Etapas do navegador" }).children).toHaveLength(1)
-  expect(screen.getByRole("list", { name: "Etapas do navegador" }).firstElementChild).toHaveAttribute(
-    "data-actions",
-    "3",
-  )
+  expect(document.querySelector(".browser-activity-checklist")).toBeNull()
   await waitFor(() => expect(screen.getByRole("img", { name: "Página atual do navegador" })).toBeVisible())
   expect(document.body.textContent).not.toContain("private search value")
   expect(document.body.textContent).not.toContain("person@example.test")
@@ -293,8 +313,10 @@ test("the composer takeover action opens the active browser session", async () =
   const api = createMockApi()
   const request = vi.fn(async (route: string) => {
     if (route === "GET /browser/tabs") return { tabs: [tab] }
-    if (route === "POST /browser/tabs/:id/takeover/session")
+    if (route === "POST /browser/tabs/:id/takeover/session") {
+      sessionHeld = true
       return { sessionId: "synthetic-session", controlEpoch: "synthetic-control-epoch", viewEpoch: 0 }
+    }
     return {}
   }) as ApiRequest
   api.request = request
@@ -324,26 +346,6 @@ test("the composer takeover action opens the active browser session", async () =
   )
 })
 
-test("hides the live browser preview while a person controls the tab", async () => {
-  const parts = [
-    getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' }),
-    getPart({ callId: "read", tool: "browser_snapshot", inputJson: '{"tabId":"browser-tab"}', ok: null }),
-  ]
-  const stopPreview = vi.fn()
-  vi.mocked(startInlineFrameSource).mockReturnValueOnce(stopPreview)
-  const { api } = renderCard(parts, false)
-  await waitFor(() => expect(startInlineFrameSource).toHaveBeenCalledOnce())
-
-  act(() => api.emit({ type: "browser.tab", tab: Object.assign({}, tab, { heldByUser: true }) }))
-
-  expect(await screen.findByText("Uma pessoa está controlando esta aba; o bot está pausado.")).toBeVisible()
-  expect(screen.queryByRole("img", { name: "Página atual do navegador" })).toBeNull()
-  expect(stopPreview).toHaveBeenCalledOnce()
-  expect(screen.queryByRole("progressbar")).toBeNull()
-  expect(document.querySelectorAll('[data-running="true"], .browser-activity-action-spinner')).toHaveLength(0)
-  expect(screen.getByText("Lia está pausado")).toBeVisible()
-})
-
 test("take-over holds the browser, opens its view, and the finished card collapses with the final image", async () => {
   const parts = [
     getPart({ callId: "open", tool: "mcp__touri__browser_open", inputJson: '{"tabId":"browser-tab"}' }),
@@ -367,9 +369,6 @@ test("take-over holds the browser, opens its view, and the finished card collaps
   expect(await screen.findByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
   expect(onOpenComputer).not.toHaveBeenCalled()
 
-  fireEvent.click(screen.getByRole("button", { name: "Devolver para Lia" }))
-  await waitFor(() => expect(screen.queryByRole("region", { name: "Controle remoto do navegador" })).toBeNull())
-
   view.rerender(
     <InlinePreviewContext.Provider
       value={{
@@ -380,15 +379,27 @@ test("take-over holds the browser, opens its view, and the finished card collaps
         onOpenComputer,
       }}
     >
-      <BrowserActivityCard parts={parts} finished createdAt={1} botName="Lia" />
+      <BrowserActivityCard parts={parts} finished createdAt={1} threadId="thread-mark" botName="Lia" />
     </InlinePreviewContext.Provider>,
   )
 
+  expect(await screen.findByRole("button", { name: "Devolver para Lia" })).toBeVisible()
+  fireEvent.click(screen.getByRole("button", { name: "Devolver para Lia" }))
+  expect(screen.queryByText("Usou o navegador · 3 ações")).toBeNull()
+  await waitFor(() => expect(screen.queryByRole("region", { name: "Controle remoto do navegador" })).toBeNull())
+  const resumedRun = {
+    id: "resumed",
+    botId: bot?.id,
+    threadId: "thread-mark",
+    trigger: "retry",
+    status: "running",
+  } as Run
+  act(() => api.emit({ type: "run.updated", run: resumedRun }))
+  act(() => api.emit({ type: "run.updated", run: { ...resumedRun, status: "succeeded" } }))
   expect(await screen.findByText("Usou o navegador · 3 ações")).toBeVisible()
   expect(screen.getByText("Ver o que ele fez")).toBeVisible()
   expect(screen.getByRole("img", { name: "Captura final do navegador" })).toBeVisible()
-  expect(await screen.findByText("Resultados de Lisboa", { exact: false })).toBeVisible()
-  expect(screen.queryByText("Atividade do navegador")).toBeNull()
+  await waitFor(() => expect(screen.queryByText("Atividade do navegador")).toBeNull())
   fireEvent.click(screen.getByRole("button", { name: /Usou o navegador/ }))
   expect(await screen.findByText("Atividade do navegador")).toBeVisible()
   await waitFor(() =>
@@ -452,6 +463,37 @@ test("historical browser cards never sample or take over the current browser pag
   expect(screen.queryByRole("img", { name: "Página atual do navegador" })).toBeNull()
   expect(screen.queryByRole("button", { name: "Assumir" })).toBeNull()
   expect(request).not.toHaveBeenCalledWith("GET /browser/tabs", expect.anything())
+})
+
+test("a persisted human pause keeps controls available before the held-tab event arrives", async () => {
+  renderCard(
+    [getPart({ callId: "pending-open", tool: "mcp__touri__browser_open", inputJson: '{"tabId":"browser-tab"}' })],
+    true,
+    undefined,
+    "local",
+    true,
+  )
+
+  expect(await screen.findByRole("button", { name: "Assumir" })).toBeVisible()
+  expect(screen.queryByRole("button", { name: /Usou o navegador/ })).toBeNull()
+})
+
+test("a completed provider turn keeps a pending human handoff available", async () => {
+  const requestedTab = { ...tab, heldByUser: true, takeoverRequested: true }
+  const parts = [
+    getPart({
+      callId: "takeover",
+      tool: "mcp__touri__browser_request_takeover",
+      inputJson: '{"tabId":"browser-tab","reason":"login"}',
+    }),
+  ]
+
+  renderCard(parts, true, async () => ({ tabs: [requestedTab] }))
+
+  expect(await screen.findByRole("button", { name: "Assumir" })).toBeVisible()
+  expect(screen.queryByText("https://travel.example.test/results")).toBeNull()
+  fireEvent.click(screen.getByRole("button", { name: "Assumir" }))
+  expect(await screen.findByRole("button", { name: "Devolver para Lia" })).toBeVisible()
 })
 
 test("a newly opened output tab takes precedence over an older input tab", () => {
@@ -528,7 +570,7 @@ test("failed actions never appear as successful clicks", () => {
 
   renderCard(parts, false)
 
-  expect(screen.getByText("A ação no navegador falhou. Assuma o controle para continuar.")).toBeVisible()
+  expect(screen.getByText("A ação no navegador não terminou. Conferindo a página.")).toBeVisible()
   expect(screen.queryByText("Clicou em um elemento")).toBeNull()
   expect(document.body.textContent).not.toContain("private-provider-detail")
 })
@@ -621,10 +663,7 @@ test("live browser thumbnails sample every 700 ms and pause while the card is of
   act(() => visibilityUpdates[0]?.(true))
   await waitFor(() => expect(startInlineFrameSource).toHaveBeenCalledOnce())
 
-  expect(vi.mocked(startInlineFrameSource).mock.calls[0]?.[6]).toEqual({
-    intervalMs: 700,
-    onReset: expect.any(Function),
-  })
+  expect(vi.mocked(startInlineFrameSource).mock.calls[0]?.[6]).toEqual({ intervalMs: 700 })
 
   act(() => visibilityUpdates[0]?.(false))
   await waitFor(() => expect(stop).toHaveBeenCalledOnce())
@@ -651,7 +690,13 @@ test("an attached new page never borrows the previous tab while its metadata is 
 
   view.rerender(
     <InlinePreviewContext.Provider value={{ api, bot, machine: undefined, activeCallId: undefined, onOpenComputer }}>
-      <BrowserActivityCard parts={[oldPage, newPage]} finished={false} createdAt={1} botName="Lia" />
+      <BrowserActivityCard
+        parts={[oldPage, newPage]}
+        finished={false}
+        createdAt={1}
+        threadId="thread-mark"
+        botName="Lia"
+      />
     </InlinePreviewContext.Provider>,
   )
 
@@ -736,6 +781,23 @@ test("keeps polling until the browser tab resolves", async () => {
   await waitFor(() => expect(screen.getByRole("button", { name: "Assumir" })).toBeEnabled(), { timeout: 5_000 })
 })
 
+test("does not offer an older bot tab while a new browser opening is pending", async () => {
+  const parts = [
+    getPart({
+      callId: "pending-open",
+      tool: "browser_open",
+      inputJson: '{"url":"https://travel.example.test/new-search"}',
+      ok: null,
+    }),
+  ]
+  renderCard(parts, false)
+
+  await act(async () => {})
+
+  expect(screen.getByRole("button", { name: "Assumir" })).toBeDisabled()
+  expect(startInlineFrameSource).not.toHaveBeenCalled()
+})
+
 test("highlights the running step and shows one sanitized URL in the live subtitle", () => {
   const parts = [
     getPart({ callId: "open", tool: "browser_open", startedAt: 9_999_999_999_000, inputJson: "{}" }),
@@ -787,36 +849,80 @@ test("short browser URLs drop scheme, port and query, and target labels omit pri
   expect(getBrowserActivityLabel(email, "pt-BR")).toBe("Clicou")
 })
 
-test("a finished direct-message request keeps control available only on its original browser handoff", async () => {
-  const api = createMockApi()
-  const bot = api.getState().bots[0]
-  if (!bot) throw new Error("Missing synthetic bot")
-  const request: ApiRequest = (async () => ({
-    tabs: [Object.assign({}, tab, { takeoverRequested: true, takeoverRunId: "original-run" })],
-  })) as ApiRequest
-  const fixtureApi = Object.assign({}, api, { request })
-  const parts = [
-    getPart({ callId: "takeover", tool: "browser_request_takeover", inputJson: '{"tabId":"browser-tab"}' }),
-  ]
-  const view = render(
-    <InlinePreviewContext.Provider
-      value={{ api: fixtureApi, bot, machine: undefined, activeCallId: undefined, onOpenComputer: () => {} }}
-    >
-      <BrowserActivityCard parts={parts} finished runId="original-run" createdAt={1} botName="Lia" />
-    </InlinePreviewContext.Provider>,
+test.each(["TARGET_CHANGED", "ENGINE_UNAVAILABLE", "DEADLINE_EXCEEDED"])(
+  "technical browser failures never request human takeover: %s",
+  (errorCode) => {
+    const part = getPart({
+      callId: "retry",
+      tool: "browser_type",
+      inputJson: "{}",
+      outputJson: JSON.stringify({ errorCode }),
+      ok: false,
+    })
+
+    const label = getBrowserActivityLabel(part, "pt-BR")
+
+    expect(label).not.toContain("Assuma")
+    expect(label).not.toContain(errorCode)
+  },
+)
+
+test("a detached browser request stays waiting without previewing or controlling another request", async () => {
+  const part = getPart({
+    callId: "queued",
+    tool: "browser_open",
+    inputJson: "{}",
+    outputJson: JSON.stringify({ structured: { status: "waiting_for_browser", requestRunId: "queued-run" } }),
+  })
+  const { request } = renderCard([part], true)
+
+  expect(screen.getAllByText(/Aguardando o outro pedido/).length).toBeGreaterThan(0)
+  expect(screen.getByRole("button", { name: "Assumir" })).toBeDisabled()
+  expect(request).not.toHaveBeenCalledWith("GET /browser/tabs", expect.anything())
+  expect(isBrowserRequestQueued([part], "queued-run")).toBe(true)
+  expect(isBrowserRequestQueued([part], "continuation")).toBe(false)
+})
+
+test("browser login notifications use the interface language", () => {
+  const body = "The site asked you to sign in. Return control to let the bot continue."
+
+  expect(t(body, {}, "pt-BR")).toBe("O site pediu login. Devolva o controle para o bot continuar.")
+  expect(t(body, {}, "en")).toBe(body)
+})
+
+test("reopening a completed manual handoff restores its controls", async () => {
+  const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
+
+  renderCard(
+    parts,
+    true,
+    async () => ({ tabs: [{ ...tab, heldByUser: true, takeoverRequested: true }] }),
+    "local",
+    true,
   )
 
-  expect(await screen.findByRole("button", { name: "Assumir", exact: true })).toBeVisible()
-  view.rerender(
-    <InlinePreviewContext.Provider
-      value={{ api: fixtureApi, bot, machine: undefined, activeCallId: undefined, onOpenComputer: () => {} }}
-    >
-      <BrowserActivityCard parts={parts} finished runId="historical-run" createdAt={1} botName="Lia" />
-    </InlinePreviewContext.Provider>,
-  )
+  expect(await screen.findByRole("button", { name: "Assumir" })).toBeVisible()
+  expect(await screen.findByText("Por que Lia parou")).toBeVisible()
+  expect(screen.queryByText("Ver o que ele fez")).toBeNull()
+})
 
-  expect(screen.queryByRole("button", { name: "Assumir", exact: true })).toBeNull()
-  expect(screen.getByRole("button", { name: /Usou o navegador/ })).toBeVisible()
+test("an already completed continuation settles the handback without a live event", async () => {
+  const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
+  const { api, bot, view, onOpenComputer } = renderCard(parts, false)
+  fireEvent.click(await screen.findByRole("button", { name: "Assumir" }))
+  expect(await screen.findByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
+  const getCard = (runId: string) => (
+    <InlinePreviewContext.Provider value={{ api, bot, machine: undefined, activeCallId: undefined, onOpenComputer }}>
+      <BrowserActivityCard parts={parts} finished createdAt={1} runId={runId} threadId="thread-mark" botName="Lia" />
+    </InlinePreviewContext.Provider>
+  )
+  view.rerender(getCard("original"))
+  fireEvent.click(await screen.findByRole("button", { name: "Devolver para Lia" }))
+  await waitFor(() => expect(screen.queryByRole("region", { name: "Controle remoto do navegador" })).toBeNull())
+
+  view.rerender(getCard("continued"))
+
+  expect(await screen.findByText("Usou o navegador · 1 ação")).toBeVisible()
 })
 
 test("a finished browser task without a screenshot keeps a compact disclosure and its action log", () => {
@@ -839,3 +945,27 @@ test("a finished browser task without a screenshot keeps a compact disclosure an
 
   expect(screen.getByRole("button", { name: /Used the browser/ })).toHaveTextContent("See what the bot did")
 })
+
+test.each(["live", "unloaded", "closed"] as const)(
+  "an engine release dismisses remote control for a %s tab without returning canceled work",
+  async (state) => {
+    const parts = [getPart({ callId: "read", tool: "browser_snapshot", inputJson: '{"tabId":"browser-tab"}' })]
+    const { api, request } = renderCard(parts, false)
+    fireEvent.click(await screen.findByRole("button", { name: "Assumir" }))
+    expect(await screen.findByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
+
+    request.mockImplementation(async (route: string) => {
+      if (route === "POST /browser/tabs/:id/takeover/frame")
+        throw new ApiError(403, "Esta sessão de controle não está ativa.")
+      if (route === "GET /browser/tabs") return { tabs: [Object.assign({}, tab, { state })] }
+      return {}
+    })
+    act(() => api.emit({ type: "browser.tab", tab: Object.assign({}, tab, { state }) }))
+
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Controle remoto do navegador" })).toBeNull())
+    expect(screen.getByRole("button", { name: "Assumir" })).toBeVisible()
+    expect(request).not.toHaveBeenCalledWith("DELETE /browser/tabs/:id/takeover/session", expect.anything(), {
+      id: "browser-tab",
+    })
+  },
+)

@@ -228,12 +228,12 @@
   padding: 7px 10px;
   cursor: pointer;
 }
-@media (max-width: 800px) {
+@media (max-width: 1100px) {
   .chat-header.group-header {
-    height: auto;
-    flex-basis: auto;
-    padding-block: 12px;
+    padding-block: var(--space-12);
     flex-wrap: wrap;
+    height: auto;
+    flex: 0 0 auto;
     gap: 8px;
   }
   .group-header-members {
@@ -261,6 +261,43 @@
 @media (max-width: 620px) {
   .channel-conversation-start {
     min-height: 320px;
+  }
+}
+
+@media (max-width: 620px) {
+  .chat-header.group-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "title toggle"
+      "chip chip"
+      "edit edit"
+      "members members";
+    align-items: center;
+    gap: 8px;
+    min-height: 0;
+    padding-block: var(--space-12);
+  }
+  .group-header > div:first-child {
+    grid-area: title;
+  }
+  .group-header > .channel-chip {
+    grid-area: chip;
+    justify-self: start;
+    max-width: 100%;
+  }
+  .group-header > .bot-panel-toggle {
+    grid-area: toggle;
+    justify-self: end;
+  }
+  .group-header > .button {
+    grid-area: edit;
+    justify-self: end;
+  }
+  .group-header-members {
+    grid-area: members;
+    flex-basis: auto;
+    order: initial;
   }
 }
 

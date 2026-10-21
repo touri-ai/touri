@@ -1,4 +1,4 @@
-import type { BrowserTabInfo, BrowserTakeoverReason, Id, MessagePart, ToolCallPart } from "@touri/contracts"
+import type { BrowserTabInfo, BrowserTakeoverReason, Id, MessagePart } from "@touri/contracts"
 import { type ReactNode, useContext, useEffect, useId, useRef, useState } from "react"
 import {
   ChannelCardFooter,
@@ -31,7 +31,9 @@ import {
   getBrowserActivityTools,
   getBrowserTakeoverReason,
   hasBrowserTakeoverRequest,
+  isBrowserActivityOpening,
   isBrowserActivityRunning,
+  isBrowserRequestQueued,
 } from "./browserActivityPresentation"
 import { StoredToolOutput } from "./ToolOutput"
 import "./browser-activity.css"
@@ -73,20 +75,21 @@ export const hasBrowserActivity = (parts: readonly MessagePart[]): boolean => ge
 
 export const BrowserActivityCard = ({
   parts,
-  runId,
-  finished: turnFinished,
+  finished: sourceFinished,
   createdAt,
+  threadId,
+  runId,
+  waitingForPerson = false,
   botName,
   locale = "pt-BR",
   children,
-  showSteps = true,
 }: {
-  showSteps?: boolean
   parts: readonly MessagePart[]
-  runId?: string | null | undefined
-  threadId?: string | undefined
   finished: boolean
   createdAt: number
+  threadId?: Id
+  runId?: Id | null
+  waitingForPerson?: boolean | undefined
   botName: string
   locale?: Locale
   children?: ReactNode
@@ -95,36 +98,35 @@ export const BrowserActivityCard = ({
   const browserControls = useBrowserActivityControls()
   const previewEnabled = useInlinePreviewPreference()
   const channel = useChannelBrowserView()
-  const waitingForPerson = channel?.state.status === "needs_you" || channel?.state.status === "taken_over"
   const browserTools = getBrowserActivityTools(parts)
-  const hasHumanRequest = hasBrowserTakeoverRequest(browserTools)
+  const hasTakeoverRequest = hasBrowserTakeoverRequest(browserTools)
+  const queued = isBrowserRequestQueued(browserTools, runId)
   const tabId = getBrowserActivityTabId(browserTools)
+  const opening = isBrowserActivityOpening(browserTools)
   const resolutionCallId = tabId ? "" : (browserTools.at(-1)?.callId ?? "")
   const [resolvedTab, setResolvedTab] = useState<{ callId: string; tabId: string }>()
-  const activeTabId = tabId ?? (resolvedTab?.callId === resolutionCallId ? resolvedTab.tabId : undefined)
+  const activeTabId = opening
+    ? undefined
+    : (tabId ?? (resolvedTab?.callId === resolutionCallId ? resolvedTab.tabId : undefined))
   const [previewFrame, setPreviewFrame] = useState<{ tabId: string; frame: PreviewFrame }>()
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [heldTab, setHeldTab] = useState<{
     tabId: string
     held: boolean
     reason?: BrowserTakeoverReason | null
-    url?: string
-    requested?: boolean
-    runId?: string | null | undefined
   }>()
   const [takeoverSession, setTakeoverSession] = useState<string | null>(null)
   const [controlEpoch, setControlEpoch] = useState<string | null>(null)
   const [takeoverViewEpoch, setTakeoverViewEpoch] = useState(0)
-  const ownsHumanWait = Boolean(
-    runId &&
-      heldTab &&
-      heldTab.tabId === activeTabId &&
-      heldTab.requested &&
-      (heldTab.runId === undefined || heldTab.runId === runId),
-  )
-  const finished = turnFinished && !waitingForPerson && !ownsHumanWait && !takeoverSession
   const takeoverTabId = useRef(activeTabId)
+  const [resuming, setResuming] = useState(false)
+  const resumedRunId = useRef<string | null>(null)
+  const handbackRunId = useRef<Id | null | undefined>(undefined)
+  const [privacyPending, setPrivacyPending] = useState(false)
   const held = heldTab?.tabId === activeTabId && heldTab?.held === true
+  const heldRef = useRef(held)
+  heldRef.current = held
+  const finished = sourceFinished && !waitingForPerson && !held && !takeoverSession && !resuming && !queued
   const preview =
     !held && !channel?.previewHidden && previewFrame?.tabId === activeTabId ? previewFrame?.frame : undefined
   const [busy, setBusy] = useState(false)
@@ -144,7 +146,7 @@ export const BrowserActivityCard = ({
   const bot = context?.bot
   const botId = bot?.id
   const machine = bot?.machine
-  const canPreview = !!api && !!bot
+  const canPreview = !queued && !!api && !!bot && (bot.machine === "local" || context?.machine?.status === "running")
   const completedCount = browserTools.filter((part) => !isBrowserActivityRunning(part)).length
   const needsTabRef = useRef(!activeTabId)
   needsTabRef.current = !activeTabId
@@ -155,6 +157,23 @@ export const BrowserActivityCard = ({
     setControlEpoch(null)
     setTakeoverViewEpoch(0)
   }, [activeTabId])
+
+  useEffect(() => {
+    if (!sourceFinished || (resuming && runId !== handbackRunId.current)) setResuming(false)
+  }, [sourceFinished, resuming, runId])
+
+  useEffect(() => {
+    if (!api || !resuming) return
+    return api.subscribe(({ event }) => {
+      if (event.type !== "run.updated" || event.run.botId !== botId) return
+      if (threadId && event.run.threadId !== threadId && event.run.groupThreadId !== threadId) return
+      const active = ["queued", "starting", "running"].includes(event.run.status)
+      if (!resumedRunId.current && event.run.trigger === "retry" && active) resumedRunId.current = event.run.id
+      if (event.run.id !== resumedRunId.current || active) return
+      resumedRunId.current = null
+      setResuming(false)
+    })
+  }, [api, botId, resuming, threadId])
 
   useEffect(() => {
     const updateVisibility = () => setHidden(document.hidden)
@@ -185,13 +204,25 @@ export const BrowserActivityCard = ({
   }, [])
 
   useEffect(() => {
-    if (!api || !botId || (turnFinished && !waitingForPerson && !hasHumanRequest)) return
+    if (
+      !api ||
+      !botId ||
+      opening ||
+      queued ||
+      (sourceFinished && !hasTakeoverRequest && !waitingForPerson && !heldRef.current && !takeoverSession && !resuming)
+    )
+      return
     let active = true
     // Events may arrive after the initial snapshot was taken.
     let hasTabEvent = false
     const selectTab = (tabs: Array<BrowserTabInfo & { ownerBotId: Id | null }>) => {
       const candidate = tabs
-        .filter((tab) => tab.ownerBotId === botId && tab.state === "live" && (!tabId || tab.tabId === tabId))
+        .filter(
+          (tab) =>
+            tab.ownerBotId === botId &&
+            (tab.state === "live" || (tab.state === "unloaded" && tab.heldByUser)) &&
+            (!tabId || tab.tabId === tabId),
+        )
         .reduce<(typeof tabs)[number] | undefined>(
           (latest, current) => (!latest || current.lastUsedAt > latest.lastUsedAt ? current : latest),
           undefined,
@@ -200,11 +231,12 @@ export const BrowserActivityCard = ({
       if (!tabId) setResolvedTab({ callId: resolutionCallId, tabId: candidate.tabId })
       setHeldTab({
         tabId: candidate.tabId,
-        held: candidate.heldByUser,
+        held:
+          candidate.heldByUser &&
+          (candidate.takeoverRunId === undefined ||
+            candidate.takeoverRunId === runId ||
+            (!sourceFinished && candidate.takeoverRunId === null)),
         reason: candidate.takeoverReason ?? null,
-        url: candidate.url,
-        requested: candidate.takeoverRequested === true,
-        runId: candidate.takeoverRunId,
       })
     }
     const unsubscribe = api.subscribe(({ event }) => {
@@ -219,11 +251,12 @@ export const BrowserActivityCard = ({
         if (event.tab.heldByUser) setPreviewFrame(undefined)
         setHeldTab({
           tabId: event.tab.tabId,
-          held: event.tab.heldByUser,
+          held:
+            event.tab.heldByUser &&
+            (event.tab.takeoverRunId === undefined ||
+              event.tab.takeoverRunId === runId ||
+              (!sourceFinished && event.tab.takeoverRunId === null)),
           reason: event.tab.takeoverReason ?? null,
-          url: event.tab.url,
-          requested: event.tab.takeoverRequested === true,
-          runId: event.tab.takeoverRunId,
         })
       }
     })
@@ -244,7 +277,20 @@ export const BrowserActivityCard = ({
       window.clearInterval(poll)
       unsubscribe()
     }
-  }, [api, botId, turnFinished, waitingForPerson, hasHumanRequest, resolutionCallId, tabId])
+  }, [
+    api,
+    botId,
+    opening,
+    sourceFinished,
+    hasTakeoverRequest,
+    resolutionCallId,
+    runId,
+    tabId,
+    queued,
+    waitingForPerson,
+    takeoverSession,
+    resuming,
+  ])
 
   useEffect(() => {
     setPreviewError(null)
@@ -269,11 +315,14 @@ export const BrowserActivityCard = ({
       api,
       { id: botId, machine },
       activeTabId,
-      (frame) => setPreviewFrame({ tabId: activeTabId, frame }),
+      (frame) => {
+        setPrivacyPending(false)
+        setPreviewFrame({ tabId: activeTabId, frame })
+      },
       () => setPreviewError(t("Browser preview unavailable. Open the browser to reconnect.", {}, locale)),
       (reason) =>
         setPreviewError(reason ? t("Browser preview unavailable. Open the browser to reconnect.", {}, locale) : null),
-      { intervalMs: 700, onReset: () => setPreviewFrame(undefined) },
+      { intervalMs: 700 },
     )
     frameSource.current = source
 
@@ -299,7 +348,10 @@ export const BrowserActivityCard = ({
   ])
 
   useEffect(() => {
-    if (held || channel?.previewHidden) setPreviewFrame(undefined)
+    if (held || channel?.previewHidden) {
+      setPrivacyPending(true)
+      setPreviewFrame(undefined)
+    }
   }, [channel?.previewHidden, held])
 
   // Refresh after each completed browser action; the source keeps sampling serial and throttled.
@@ -326,7 +378,7 @@ export const BrowserActivityCard = ({
   }, [browserTools.length, finished])
 
   const toggleTakeover = async (): Promise<void> => {
-    if (!api || !activeTabId || busy) return
+    if (!api || !activeTabId || busy || queued) return
     setBusy(true)
     setError(null)
     try {
@@ -337,6 +389,8 @@ export const BrowserActivityCard = ({
           { sessionId: takeoverSession, controlEpoch },
           { id: activeTabId },
         )
+        handbackRunId.current = runId
+        setResuming(sourceFinished && held)
         setTakeoverSession(null)
         setControlEpoch(null)
         setTakeoverViewEpoch(0)
@@ -382,12 +436,15 @@ export const BrowserActivityCard = ({
   if (!browserTools.length) return null
 
   const screenshot = getBrowserActivityScreenshot(browserTools)
+  const finalPreview = !held && !channel?.previewHidden ? preview : undefined
   const actions = browserTools.slice(-MAX_VISIBLE_ACTIONS)
-  const completedActions = browserTools.filter((part) => part.ok === true).slice(-MAX_VISIBLE_ACTIONS)
   const times = getBrowserActivityTimestamps(actions, createdAt)
   const takeoverActions = browserTools.slice(-5)
   const takeoverTimes = getBrowserActivityTimestamps(takeoverActions, createdAt)
   const currentAction = browserTools.at(-1)
+  const previewNotice = privacyPending
+    ? t("Your last page stays private until a new safe page is ready.", {}, locale)
+    : previewError
   const title = t("Browser for {name}", { name: botName }, locale)
   const summary = t(
     browserTools.length === 1 ? "Used the browser · 1 action" : "Used the browser · {count} actions",
@@ -395,14 +452,18 @@ export const BrowserActivityCard = ({
     locale,
   )
   const url =
-    finished || held || channel?.previewHidden
+    finished || channel?.previewHidden
       ? ""
-      : getBrowserActivityShortUrl(preview?.url ?? heldTab?.url ?? "") || getBrowserActivityOpenUrl(browserTools)
-  const subtitle = held
-    ? t("{name} está pausado", { name: botName }, locale)
-    : [botName, currentAction && getBrowserActivitySubtitleAction(currentAction, locale), url]
-        .filter(Boolean)
-        .join(" · ")
+      : getBrowserActivityShortUrl(preview?.url ?? "") || getBrowserActivityOpenUrl(browserTools)
+  const subtitle = [
+    botName,
+    queued
+      ? t("Waiting for the other browser request to finish.", {}, locale)
+      : currentAction && getBrowserActivitySubtitleAction(currentAction, locale),
+    url,
+  ]
+    .filter(Boolean)
+    .join(" · ")
   const takeoverActive = held && !finished
   const takeoverReason = heldTab?.reason ?? "requested"
   const reasonCopy = getTakeoverReasonCopy(takeoverReason, locale)
@@ -426,7 +487,16 @@ export const BrowserActivityCard = ({
               time: getBrowserActivityTime(takeoverTimes[index] ?? createdAt, locale),
               active: part.ok === null,
             }))}
+            onSessionEnded={() => {
+              setTakeoverSession(null)
+              setControlEpoch(null)
+              setTakeoverViewEpoch(0)
+              setResuming(false)
+              setHeldTab({ tabId: activeTabId, held: false, reason: null })
+            }}
             onHandback={() => {
+              handbackRunId.current = runId
+              setResuming(sourceFinished && held)
               setTakeoverSession(null)
               setControlEpoch(null)
               setTakeoverViewEpoch(0)
@@ -447,14 +517,6 @@ export const BrowserActivityCard = ({
 
   const card = (
     <div className="browser-activity-stack">
-      {showSteps && !finished && completedActions.length > 0 && (
-        <ol className="browser-activity-checklist" aria-label={t("Browser steps", {}, locale)}>
-          <li data-actions={completedActions.length}>
-            <span aria-hidden="true">✓</span>
-            <span>{t("Used the browser", {}, locale)}</span>
-          </li>
-        </ol>
-      )}
       <article
         className="browser-activity-card"
         ref={section}
@@ -464,7 +526,7 @@ export const BrowserActivityCard = ({
         data-expanded={expanded}
         data-show-all-actions={finished || showAllActions}
       >
-        {!finished && !held && (
+        {!finished && (
           <span
             className="browser-activity-progress"
             role="progressbar"
@@ -497,6 +559,10 @@ export const BrowserActivityCard = ({
                   thumbnail
                 />
               </span>
+            ) : finalPreview ? (
+              <span className="browser-activity-thumbnail">
+                <img src={finalPreview.src} alt={t("Final browser screenshot", {}, locale)} />
+              </span>
             ) : null}
             <span aria-hidden="true">{expanded ? "−" : "+"}</span>
           </button>
@@ -513,7 +579,7 @@ export const BrowserActivityCard = ({
                 <button
                   type="button"
                   className="button button-quiet"
-                  disabled={busy || !activeTabId}
+                  disabled={busy || !activeTabId || queued}
                   title={activeTabId ? undefined : t("Preparing the browser…", {}, locale)}
                   onClick={() => void toggleTakeover()}
                 >
@@ -575,7 +641,7 @@ export const BrowserActivityCard = ({
                   </div>
                 ) : previewEnabled ? (
                   <p className="browser-activity-placeholder">
-                    {previewError ??
+                    {previewNotice ??
                       t(
                         waitedTooLong
                           ? "The browser is taking longer than expected. Trying to reconnect…"
@@ -602,12 +668,8 @@ export const BrowserActivityCard = ({
               {takeoverActive && (
                 <section className="browser-takeover-reason">
                   <strong>{t("Why {name} paused", { name: botName }, locale)}</strong>
-                  <p>
-                    {channel?.state.controllerId
-                      ? t("{person} is in control", { person: channel.controlName }, locale)
-                      : reasonCopy}
-                  </p>
-                  <p>{t("A person is controlling this browser tab; the bot is paused.", {}, locale)}</p>
+                  <p>{reasonCopy}</p>
+                  <p>{t("The bot is paused until you hand control back.", {}, locale)}</p>
                 </section>
               )}
               <strong>{t(takeoverActive ? "Recent actions" : "Browser activity", {}, locale)}</strong>
@@ -615,15 +677,17 @@ export const BrowserActivityCard = ({
                 {actions.map((part, index) => (
                   <li
                     key={part.callId}
-                    data-current={part.callId === currentAction?.callId && !finished && !held}
-                    data-running={!finished && !held && isBrowserActivityRunning(part)}
-                    data-status={getBrowserActionState(part, held)}
+                    data-current={part.callId === currentAction?.callId && !finished}
+                    data-running={!finished && isBrowserActivityRunning(part)}
+                    data-status={part.ok === null ? "in-progress" : part.ok === false ? "failed" : "complete"}
                   >
                     <span className="browser-activity-action-icon" aria-hidden="true">
                       <BrowserIcon name={getBrowserIconName(getBrowserActivityKind(part))} />
                     </span>
                     <span className="browser-activity-action-label">
-                      {getBrowserActionLabel(part, held, finished, locale)}
+                      {!finished && isBrowserActivityRunning(part)
+                        ? getBrowserActivityCurrentLabel(part, locale)
+                        : getBrowserActivityLabel(part, locale)}
                       {getBrowserActivityNotice(part, locale) && (
                         <small>{getBrowserActivityNotice(part, locale)}</small>
                       )}
@@ -631,10 +695,18 @@ export const BrowserActivityCard = ({
                     <span
                       className="browser-activity-action-state"
                       role="img"
-                      aria-label={getBrowserActionStatusLabel(part, held, locale)}
-                      data-status={getBrowserActionState(part, held)}
+                      aria-label={t(
+                        part.ok === null
+                          ? "Action in progress"
+                          : part.ok === false
+                            ? "Action failed"
+                            : "Action complete",
+                        {},
+                        locale,
+                      )}
+                      data-status={part.ok === null ? "in-progress" : part.ok === false ? "failed" : "complete"}
                     >
-                      {part.ok === null && !held ? (
+                      {part.ok === null ? (
                         <span className="browser-activity-action-spinner" aria-hidden="true" />
                       ) : null}
                       {part.ok === false ? "!" : part.ok === true ? "✓" : null}
@@ -705,29 +777,4 @@ const getTakeoverReasonCopy = (reason: BrowserTakeoverReason, locale: Locale): s
   if (reason === "requested") return t("This browser is under your control now.", {}, locale)
 
   return t("The site needs your confirmation before continuing.", {}, locale)
-}
-
-const getBrowserActionState = (part: ToolCallPart, held: boolean): "failed" | "complete" | "paused" | "in-progress" => {
-  if (part.ok === false) return "failed"
-  if (part.ok === true) return "complete"
-
-  return held ? "paused" : "in-progress"
-}
-
-const getBrowserActionLabel = (part: ToolCallPart, held: boolean, finished: boolean, locale: Locale): string => {
-  if (held && isBrowserActivityRunning(part)) return t("Pausado", {}, locale)
-  if (!finished && isBrowserActivityRunning(part)) return getBrowserActivityCurrentLabel(part, locale)
-
-  return getBrowserActivityLabel(part, locale)
-}
-
-const getBrowserActionStatusLabel = (part: ToolCallPart, held: boolean, locale: Locale): string => {
-  const labels = {
-    failed: "Action failed",
-    complete: "Action complete",
-    paused: "Pausado",
-    "in-progress": "Action in progress",
-  } as const
-
-  return t(labels[getBrowserActionState(part, held)], {}, locale)
 }

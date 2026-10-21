@@ -1,15 +1,15 @@
-import "react-markdown"
-import "remark-gfm"
-import "remark-parse"
-import "unified"
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import type { ApprovalPart, Message, MessagePart, Run, ToolCallPart } from "@touri/contracts"
 import { afterEach, expect, it } from "vitest"
 import { VirtualMessageList } from "../src/components/ChatPanel"
 import { TurnActivity } from "../src/components/TurnActivity"
 import { assistantSegments } from "../src/components/turnActivityModel"
+import { setDocumentLanguage } from "../src/documentLanguage"
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  setDocumentLanguage("pt-BR", document.documentElement)
+})
 const tool = (index: number, name = "Read"): ToolCallPart => ({
   type: "tool_call",
   callId: `call-${index}`,
@@ -87,7 +87,7 @@ it("preserves interleaved prose, final text and attachment order without duplica
 })
 
 it("shows live browser narration as quiet transcript text", async () => {
-  const view = render(
+  render(
     <VirtualMessageList
       {...props}
       messages={[
@@ -108,7 +108,7 @@ it("shows live browser narration as quiet transcript text", async () => {
 
   const narration = await screen.findByText("Estou na página inicial. Agora vou escolher a data.")
   expect(narration.closest(".browser-narration")).not.toBeNull()
-  expect(view.container.querySelector(".browser-activity-card")).toBeVisible()
+  expect(await screen.findByRole("article", { name: "Navegador do Lia" })).toBeVisible()
 })
 
 it.each(["pending", "approved", "denied", "expired"] as const)(
@@ -245,7 +245,7 @@ it("folds narration and step rows into the finished card and shows only the fina
   )
 
   expect(await screen.findByText("Voo por R$ 900")).toBeVisible()
-  expect(screen.getByText("Ver o que ele fez")).toBeVisible()
+  expect(screen.getByText("concluído")).toBeVisible()
   expect(screen.queryByText("Vou abrir a busca.")).toBeNull()
   expect(screen.queryByText("Agora vou escolher a data.")).toBeNull()
   expect(view.container.querySelectorAll(".browser-steps")).toHaveLength(0)
@@ -266,4 +266,22 @@ it("splits browser steps between narrations in the segment model", () => {
     "browser-steps",
   ])
   expect(segments.filter((segment) => segment.type === "browser-steps").map((segment) => segment.count)).toEqual([2, 1])
+})
+
+it.each(["streaming", "complete"] as const)("keeps a %s browser card in the document language", async (status) => {
+  setDocumentLanguage("en", document.documentElement)
+  const reply = message([tool(1, "mcp__touri__browser_snapshot")], {
+    status,
+    sender: { id: "bot-lia", name: "Lia" },
+  })
+
+  render(<VirtualMessageList {...props} messages={[reply]} />)
+
+  const card = await screen.findByRole("article", { name: "Browser for Lia" })
+  expect(card).toBeVisible()
+  if (status === "streaming") {
+    expect(within(card).getByRole("button", { name: "Take over" })).toBeVisible()
+    return
+  }
+  expect(within(card).getByRole("button", { name: /Used the browser/ })).toBeVisible()
 })

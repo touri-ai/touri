@@ -26,6 +26,20 @@ export const ptBR = {
   "Filling a saved credential": "Preenchendo uma credencial salva",
   "Pressing a key": "Pressionando uma tecla",
   "Working in the browser": "Trabalhando no navegador",
+  "Your last page stays private until a new safe page is ready.":
+    "A página que você usou continua privada até uma nova página segura ficar pronta.",
+  "Waiting for the other browser request to finish.": "Aguardando o outro pedido no navegador terminar.",
+  "Stop browser work": "Parar",
+  "The page changed. Trying again.": "A página mudou. Tentando de novo.",
+  "The browser could not connect. Reconnect and try again.":
+    "Não foi possível conectar o navegador. Reconecte e tente de novo.",
+  "The browser action did not finish. Checking the page.": "A ação no navegador não terminou. Conferindo a página.",
+  "Navegador do bot": "Navegador do bot",
+  "Navegador instalado. A conexão e a página serão verificadas ao abrir o navegador.":
+    "Navegador instalado. A conexão e a página serão verificadas ao abrir o navegador.",
+  "Nenhum navegador executável foi encontrado. Instale um navegador compatível no computador do bot e verifique novamente.":
+    "Nenhum navegador executável foi encontrado. Instale um navegador compatível no computador do bot e verifique novamente.",
+
   Navegador: "Navegador",
   "Código do convite": "Código do convite",
   "Opcional. Sem e-mail, compartilhe o link ou código.": "Opcional. Sem e-mail, compartilhe o link ou código.",
@@ -675,9 +689,12 @@ export const ptBR = {
   "O portal de demonstração pediu login para continuar.": "O portal de demonstração pediu login para continuar.",
   "O portal de demonstração está pronto para continuar.": "O portal de demonstração está pronto para continuar.",
   "Retomado após a devolução do navegador": "Retomado após a devolução do navegador",
+  "Só quem fez o pedido ou a pessoa responsável pelo bot pode devolver o controle.":
+    "Só quem fez o pedido ou a pessoa responsável pelo bot pode devolver o controle.",
+  "{name} is working again": "{name} voltou a trabalhar",
   "Só quem fez o pedido ou a pessoa responsável pelo bot pode controlar esta aba.":
     "Só quem fez o pedido ou a pessoa responsável pelo bot pode controlar esta aba.",
-  "{name} is working again": "{name} voltou a trabalhar",
+  "O pedido excedeu o prazo de execução. Tente novamente.": "O pedido excedeu o prazo de execução. Tente novamente.",
   "O bot que delegou a tarefa não está disponível para a retomada.":
     "O bot que delegou a tarefa não está disponível para a retomada.",
   "Could not choose safely. Take over the tab to choose.":
@@ -735,6 +752,17 @@ export const ptBR = {
     "A prévia fica oculta enquanto alguém está no controle.",
   "The browser needs your attention": "O navegador precisa de atenção",
   "The browser needs you": "O navegador precisa de você",
+  "The site asked you to sign in. Return control to let the bot continue.":
+    "O site pediu login. Devolva o controle para o bot continuar.",
+  "The site asked you to review a purchase or payment. Return control to let the bot continue.":
+    "O site pediu uma ação de compra ou pagamento. Devolva o controle para o bot continuar.",
+  "The site asked you to submit a form. Return control to let the bot continue.":
+    "O site pediu o envio de um formulário. Devolva o controle para o bot continuar.",
+  "The site needs your confirmation to continue. Return control to let the bot continue.":
+    "O site pediu sua confirmação para continuar. Devolva o controle para o bot continuar.",
+  "The bot asked for your help in the browser. Return control to let the bot continue.":
+    "O bot pediu sua ajuda no navegador. Devolva o controle para o bot continuar.",
+
   "The requester has not taken control. As the person responsible for the bot, you can help now.":
     "A pessoa que pediu ainda não assumiu o navegador. Você, responsável pelo bot, pode ajudar agora.",
   "The bot paused the browser and needs you to take control to continue.":
@@ -3258,7 +3286,21 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Capturas de tela ficam bloqueadas depois do controle privado do navegador.":
     "Screenshots are blocked after private browser control.",
   "Informe um endereço HTTPS válido, sem caminho.": "Enter a valid HTTPS address without a path.",
+  "Your last page stays private until a new safe page is ready.":
+    "Your last page stays private until a new safe page is ready.",
+  "Waiting for the other browser request to finish.": "Waiting for the other browser request to finish.",
+  "Stop browser work": "Stop",
+  "The page changed. Trying again.": "The page changed. Trying again.",
+  "The browser could not connect. Reconnect and try again.": "The browser could not connect. Reconnect and try again.",
+  "The browser action did not finish. Checking the page.": "The browser action did not finish. Checking the page.",
+  "Navegador do bot": "Bot browser",
+  "Navegador instalado. A conexão e a página serão verificadas ao abrir o navegador.":
+    "Browser installed. The connection and page will be checked when the browser opens.",
+  "Nenhum navegador executável foi encontrado. Instale um navegador compatível no computador do bot e verifique novamente.":
+    "No executable browser was found. Install a compatible browser on the bot's computer and check again.",
+
   "Take over tab": "Take over",
+  "Take over browser": "Take over",
   "See what the bot did": "See what the bot did",
   "Check your tools": "Check your tools",
   "See what is ready to use and what needs your attention.": "See what is ready to use and what needs your attention.",
@@ -4647,9 +4689,12 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Retomado após a devolução do navegador": "Resumed after the browser hand-back",
   "O portal de demonstração pediu login para continuar.": "The demo portal asked you to sign in before continuing.",
   "O portal de demonstração está pronto para continuar.": "The demo portal is ready to continue.",
+  "Só quem fez o pedido ou a pessoa responsável pelo bot pode devolver o controle.":
+    "Only the requester or the bot owner can return control.",
+  "{name} is working again": "{name} is working again",
   "Só quem fez o pedido ou a pessoa responsável pelo bot pode controlar esta aba.":
     "Only the requester or the bot owner can control this tab.",
-  "{name} is working again": "{name} is working again",
+  "O pedido excedeu o prazo de execução. Tente novamente.": "The request exceeded its time limit. Try again.",
   "O bot que delegou a tarefa não está disponível para a retomada.":
     "The bot that delegated the task is unavailable to resume it.",
   "Baixar imagem": "Download image",

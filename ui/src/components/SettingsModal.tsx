@@ -30,6 +30,7 @@ import {
   SettingsRow,
   SettingsSwitch,
 } from "./SettingsLayout"
+import "./settings.css"
 
 const NotificationPreferencesSettings = lazy(() =>
   import("./NotificationPreferencesSettings").then((module) => ({ default: module.NotificationPreferencesSettings })),

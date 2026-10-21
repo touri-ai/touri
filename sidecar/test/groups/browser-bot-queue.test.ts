@@ -7,7 +7,6 @@ import type { ToolContext } from "@touri/contracts"
 import { createChannelBrowserRuns, getNextChannelBrowserRun } from "../../src/browser/channel-runs"
 import { createKernel } from "../../src/kernel"
 import { toRun } from "../../src/runtime/persistence"
-import { createToolResolutions } from "../../src/runtime/tool-resolutions"
 
 const cleanups = new Set<() => void>()
 
@@ -89,11 +88,11 @@ test("one bot waits across channels and direct messages while another bot works"
   expect(fixture.runs.get("independent")?.status).toBe("running")
 
   fixture.finish("first")
-  await expect(second).resolves.toEqual({ success: true })
+  await expect(second).resolves.toEqual({ success: true, queued: true })
   expect(fixture.runs.get("third")?.status).toBe("queued")
 
   fixture.finish("second")
-  await expect(third).resolves.toEqual({ success: true })
+  await expect(third).resolves.toEqual({ success: true, queued: true })
   expect(fixture.runs.get("third")?.status).toBe("running")
 })
 
@@ -125,71 +124,10 @@ test("the human wait keeps its owner and bot slot after the provider finishes", 
   expect(fixture.runs.takeControl({ runId: "first", actorPersonId: "ana" }).success).toBe(true)
   expect(fixture.runs.isPreviewHidden("tab")).toBe(true)
 
-  fixture.runs.cancel("first")
+  fixture.runs.cancelRequest("first")
 
-  expect(fixture.runs.getForTab("tab")?.status).toBe("canceled")
+  expect(fixture.runs.get("first")?.status).toBe("canceled")
   expect(fixture.runs.takeControl({ runId: "first", actorPersonId: "other" }).success).toBe(false)
-})
-
-test("durable browser receipts use server request identity instead of provider metadata", async () => {
-  const fixture = getFixture()
-  await fixture.enter("first", "leo", "session-a", "source")
-  fixture.runs.needsYou("first", "Synthetic hold")
-  fixture.runs.returnControl({ runId: "first", actorPersonId: "ana" })
-  fixture.database
-    .query(`INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at,requester_person_id)
-    VALUES ('resume','session-a','leo','codex','user','running',2,'ana')`)
-    .run()
-  fixture.database
-    .query(
-      `INSERT INTO run_continuations(run_id,original_run_id,previous_run_id,reason,created_at) VALUES ('resume','first','first','browser_takeover',2)`,
-    )
-    .run()
-  await fixture.runs.enter({
-    runId: "resume",
-    botId: "leo",
-    threadId: "session-a",
-    projectId: null,
-    cwd: "/tmp",
-    signal: new AbortController().signal,
-  })
-  const resolutions = createToolResolutions(fixture.kernel)
-  const getRun = (id: string) => {
-    const run = toRun(fixture.database.query("SELECT * FROM runs WHERE id = ?").get(id))
-    if (!run) throw new Error("Missing synthetic run")
-
-    return run
-  }
-  const part = {
-    type: "tool_call" as const,
-    callId: "open",
-    tool: "mcp__touri__browser_open",
-    inputJson: "{}",
-    summary: "Open",
-    outputJson: null,
-    outputAttachmentId: "synthetic-attachment",
-    ok: true,
-    browserRequestId: "forged",
-  }
-
-  resolutions.record(getRun("first"), part)
-  resolutions.record(getRun("resume"), Object.assign({}, part, { callId: "read" }))
-  const otherTool = resolutions.record(
-    getRun("resume"),
-    Object.assign({}, part, { callId: "other", tool: "mcp__touri__history_read" }),
-  )
-  const rows = fixture.database
-    .query("SELECT part_json FROM tool_resolutions WHERE call_id IN ('open','read') ORDER BY call_id")
-    .all() as Array<{ part_json: string }>
-
-  expect(rows).toHaveLength(2)
-  rows.forEach((row) => {
-    expect(JSON.parse(row.part_json)).toMatchObject({
-      browserRequestId: "source",
-      outputAttachmentId: "synthetic-attachment",
-    })
-  })
-  expect(otherTool).not.toHaveProperty("browserRequestId")
 })
 
 test("a continuation that answers without another browser tool releases its original bot slot", async () => {
@@ -202,10 +140,9 @@ test("a continuation that answers without another browser tool releases its orig
     INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at)
       VALUES ('resumed-turn','channel-a','leo','codex','retry','queued',2),
         ('resumed-child','session-a','leo','codex','retry','running',3);
-    INSERT INTO browser_resume_requests(previous_run_id,next_turn_id) VALUES ('first','resumed-turn');
     INSERT INTO browser_takeover_continuations(run_id,original_run_id,previous_run_id,created_at)
       VALUES ('resumed-child','first','first',3);
-    UPDATE browser_channel_runs SET active_run_id='resumed-turn' WHERE run_id='first';
+    UPDATE browser_channel_runs SET current_run_id='resumed-turn' WHERE run_id='first';
   `)
 
   fixture.finish("resumed-child")

@@ -35,7 +35,8 @@ const Flow = () => {
   const { api, bot, thread } = fixture
 
   useEffect(() => {
-    api.request = (async (route: string, input?: unknown) => {
+    const baseRequest = api.request
+    api.request = (async (route: string, input?: unknown, pathValues: Record<string, string> = {}) => {
       const preview = latest.current.snapshot.preview
       if (route === "GET /browser/tabs")
         return {
@@ -58,10 +59,13 @@ const Flow = () => {
       }
       if (route === "POST /browser/tabs/:id/takeover/session") {
         setHeld(true)
-        return { sessionId: "computer-use-flow-session" }
+        return { sessionId: "computer-use-flow-session", controlEpoch: "computer-use-control", viewEpoch: 0 }
       }
       if (route === "POST /browser/tabs/:id/takeover/frame")
         return {
+          controlEpoch: "computer-use-control",
+          targetEpoch: 1,
+          viewEpoch: (input as { viewEpoch: number }).viewEpoch,
           title: preview?.title ?? "Página de teste",
           url: preview?.url ?? "https://estadias.exemplo/entrar",
           image: preview?.preview ?? "",
@@ -76,7 +80,7 @@ const Flow = () => {
       if (route === "GET /bots/:id/browser-preview") return preview ?? {}
       if (route === "GET /attachments/:id/content") return { text: "", offset: 0, nextOffset: null, bytes: 0 }
 
-      return {}
+      return baseRequest(route as Parameters<ApiRequest>[0], input as never, pathValues)
     }) as ApiRequest
     const flowWindow = window as FlowWindow
     flowWindow.cuFlow = {

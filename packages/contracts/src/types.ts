@@ -295,6 +295,9 @@ export type RunUsage = {
 }
 
 export type Run = {
+  /** Stable browser request across private handback continuations. Derived from the continuation ledger. */
+  browserRequestId?: Id | null
+  browserWaitingForPerson?: boolean
   /** Group projection only: persisted association lives in group_run_links. */
   groupTurnId?: Id
   /** The person whose message started this shared-channel run, if it came from Work. */
@@ -725,7 +728,7 @@ export type BrowserChannelRun = {
   requestId?: Id
   activeRunId?: Id
   runIds?: Array<Id>
-  groupId: Id | null
+  groupId: Id
   threadId: Id
   botId: Id
   requesterPersonId: Id | null
@@ -1595,7 +1598,6 @@ export type ServiceMap = {
   'bots.configureAccess': (input: { botId: Id; patch: Partial<Pick<Bot, 'projectId' | 'folders' | 'browserEnabled' | 'browser' | 'computerUse'>>; runId?: Id }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE' | 'DENIED'> | Promise<Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE' | 'DENIED'>>
   'diagnostics.errors': () => Array<{ code: string; at: number }>
   'groups.runtime': {
-    resumeBrowser: (args: { runId: Id }) => boolean
     enqueue: (args: { threadId: Id; requestMessageId: Id; trigger: RunTrigger; routineRunId?: Id; requesterPersonId?: Id }) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED' | 'DELEGATION_LIMIT' | 'RUNTIME_DRAINING'>
     cancel: (id: Id) => boolean
     cancelGroupTurns: (args: { groupId: Id }) => Promise<void>
@@ -1654,6 +1656,8 @@ export type ServiceMap = {
   'projects.info': (args: { projectId: Id; botId?: Id }) => Promise<ProjectInfo | null>
   'browser.takeoverResolved': (args: { tabId: Id; resolution: 'replied' | 'expired' | 'canceled' }) => void
   'browser.cancelRun': (args: { runId: Id; signal: AbortSignal }) => Promise<boolean>
+  'browser.cancelRequest': (args: { runId: Id; reason?: 'timeout' }) => Id | null
+  'browser.shutdown': () => Promise<void>
   'browser.tabsForBot': (args: { botId: Id }) => Array<BrowserTabInfo>
   'browser.updateDecisionModel': (model: ApiModel | null) => void
   'computer.input': ComputerInput

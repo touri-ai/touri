@@ -193,7 +193,7 @@ describe("R6: novo turno visível", () => {
       await waitFor(() => expect(api.calls.some((call) => call.route === "PATCH /threads/:id")).toBe(true))
     } else {
       showBotSettings()
-      fireEvent.click(screen.getByRole("button", { name: "Salvar configurações" }))
+      fireEvent.click(await screen.findByRole("button", { name: "Salvar configurações" }))
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
     }
     const list = screen.getByTestId("virtual-message-list")
@@ -363,7 +363,9 @@ describe("R6: cancelamento e confirmação", () => {
     expect(header).toBeNull()
     showBotSettings()
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }),
+      within(await screen.findByRole("dialog", { name: "Configurações de mark" })).getByRole("button", {
+        name: /^Avançado(?: Ajustes deste bot)?$/,
+      }),
     )
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("tab", { name: "Computador" }))
     const settings = screen.getByRole("region", { name: "Computador" })

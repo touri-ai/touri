@@ -53,11 +53,11 @@ import browserTakeoverPrivacySql from "../../src/kernel/migrations/0037.sql" wit
 import browserChannelRunsSql from "../../src/kernel/migrations/0038.sql" with { type: "text" }
 import browserTakeoverContinuationsSql from "../../src/kernel/migrations/0039.sql" with { type: "text" }
 import browserPrivateInputSql from "../../src/kernel/migrations/0040.sql" with { type: "text" }
-import browserBotQueueSql from "../../src/kernel/migrations/0041.sql" with { type: "text" }
-import browserResumeIndexSql from "../../src/kernel/migrations/0042.sql" with { type: "text" }
-import browserDocumentPrivacySql from "../../src/kernel/migrations/0043.sql" with { type: "text" }
-import threadDeletionSql from "../../src/kernel/migrations/0044.sql" with { type: "text" }
-import browserTakeoverStateSql from "../../src/kernel/migrations/0045.sql" with { type: "text" }
+import browserHandbackLedgerSql from "../../src/kernel/migrations/0041.sql" with { type: "text" }
+import browserBotArbitrationSql from "../../src/kernel/migrations/0042.sql" with { type: "text" }
+import browserPendingHandoffsSql from "../../src/kernel/migrations/0043.sql" with { type: "text" }
+import browserRequestResumeSql from "../../src/kernel/migrations/0044.sql" with { type: "text" }
+import threadDeletionSql from "../../src/kernel/migrations/0045.sql" with { type: "text" }
 import { captureTranscript } from "../../src/kernel/transcript-events"
 import { TRANSCRIPT_RETENTION } from "../../src/kernel/transcript-storage"
 import { init as initStore } from "../../src/store"
@@ -311,16 +311,18 @@ test("interrupted batches resume idempotently and match the shipped synchronous 
     synchronous.exec(botDeletionSql)
     synchronous.exec(workspaceAttentionBackfillSql)
     synchronous.exec(browserTakeoverPrivacySql)
-    synchronous.exec("ALTER TABLE runs ADD COLUMN requester_person_id TEXT")
-    synchronous.exec("ALTER TABLE notifications ADD COLUMN target_person_id TEXT")
+    synchronous.exec(
+      "ALTER TABLE runs ADD COLUMN requester_person_id TEXT; ALTER TABLE notifications ADD COLUMN target_person_id TEXT;",
+    )
     synchronous.exec(browserChannelRunsSql)
     synchronous.exec(browserTakeoverContinuationsSql)
     synchronous.exec(browserPrivateInputSql)
-    synchronous.exec(browserBotQueueSql)
-    synchronous.exec(browserResumeIndexSql)
-    synchronous.exec(browserDocumentPrivacySql)
+    synchronous.exec(browserHandbackLedgerSql)
+    synchronous.exec(browserBotArbitrationSql)
+    synchronous.exec(browserPendingHandoffsSql)
+    synchronous.exec(browserRequestResumeSql)
     synchronous.exec(threadDeletionSql)
-    synchronous.exec(browserTakeoverStateSql)
+    synchronous.exec(browserTakeoverContinuationsSql)
     database = openDatabase({ filename })
     expect(database.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all()).toEqual(
       synchronous.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all(),

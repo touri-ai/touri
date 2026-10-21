@@ -47,6 +47,7 @@ const toRow = (tab: TabState, createdAt: number): BrowserTabRow => ({
 })
 
 export type BrowserStore = {
+  dispose: () => void
   load: () => Array<TabState>
   create: (args: { botId: Id; threadId: Id; url: string; openerTabId: Id | null; targetId: string | null }) => TabState
   save: (tab: TabState) => void
@@ -68,8 +69,17 @@ export const createBrowserStore = ({
 }): BrowserStore => {
   const database = kernel.db as Database
   const tabs = new Map<Id, TabState>()
+  let disposed = false
 
   const load = (): Array<TabState> => {
+    // Older releases saved holds without a deadline; release them without exposing the private page or resuming work.
+    database
+      .query(`UPDATE browser_tabs
+        SET held_by_user = 0, takeover_reason = NULL, private_after_takeover = 1, private_input = 1
+        WHERE profile = ? AND held_by_user = 1 AND NOT EXISTS (
+          SELECT 1 FROM browser_pending_handoffs handoff WHERE handoff.tab_id = browser_tabs.id AND handoff.state = 'waiting'
+        )`)
+      .run(profile)
     database
       .query(
         `UPDATE browser_tabs SET state = 'unloaded'${retainTargets ? "" : ", cdp_target_id = NULL"} WHERE state = 'live' AND profile = ?`,
@@ -172,8 +182,12 @@ export const createBrowserStore = ({
   }
 
   const save = (tab: TabState): void => {
-    // Channel deletion can leave a stale owner in a live tab’s cached reference.
-    tab.info = Object.assign({}, tab.info, { ownerThreadId: getExistingThreadId(database, tab.info.ownerThreadId) })
+    if (disposed) return
+    // A deleted conversation can leave a stale owner in a live browser tab.
+    const thread = tab.info.ownerThreadId
+      ? database.query<{ id: Id }, [Id]>("SELECT id FROM threads WHERE id = ?").get(tab.info.ownerThreadId)
+      : null
+    tab.info = { ...tab.info, ownerThreadId: thread?.id ?? null }
     const row = toRow(tab, Date.now())
     tab.info.lastUsedAt = row.last_used_at
     database
@@ -237,12 +251,24 @@ export const createBrowserStore = ({
   }
 
   const secretAccount: BrowserStore["secretAccount"] = (args) => secretReference(args)?.account ?? null
-  return { load, create, save, update, find, list, secretAccount, secretReference }
+  return {
+    load,
+    create,
+    save,
+    update,
+    find,
+    list,
+    secretAccount,
+    secretReference,
+    dispose: () => {
+      disposed = true
+    },
+  }
 }
 
 export const publicTabInfo = ({ tab }: { tab: TabState }): BrowserTabInfo & { ownerBotId: Id | null } => ({
   tabId: tab.info.tabId,
-  url: tab.privateInput || tab.secretMode ? sanitizeHumanTakeoverUrl(tab.info.url) : tab.info.url,
+  url: tab.privateInput || tab.secretMode ? "" : tab.info.url,
   title: tab.privateInput || tab.secretMode ? "" : tab.info.title,
   state: tab.info.state,
   openerTabId: tab.info.openerTabId,
@@ -253,6 +279,12 @@ export const publicTabInfo = ({ tab }: { tab: TabState }): BrowserTabInfo & { ow
   lastUsedAt: tab.info.lastUsedAt,
   ownerBotId: tab.info.ownerBotId,
 })
+
+const getExistingThreadId = (database: Database, threadId: Id | null): Id | null => {
+  if (!threadId) return null
+
+  return database.query<{ id: Id }, [Id]>("SELECT id FROM threads WHERE id = ?").get(threadId)?.id ?? null
+}
 
 const getPrivateDocumentIds = (row: BrowserTabRow): ReadonlyArray<number> => {
   try {
@@ -269,10 +301,4 @@ const getPrivateDocumentIds = (row: BrowserTabRow): ReadonlyArray<number> => {
   } catch {
     return [0]
   }
-}
-
-const getExistingThreadId = (database: Database, threadId: Id | null): Id | null => {
-  if (!threadId) return null
-
-  return database.query<{ id: Id }, [Id]>("SELECT id FROM threads WHERE id = ?").get(threadId)?.id ?? null
 }

@@ -6,7 +6,7 @@ import { t } from "../src/i18n"
 
 afterEach(cleanup)
 
-it("shows history restoration in the conversation and provides both locales", () => {
+it("keeps internal context restoration quiet while retaining localized diagnostics", () => {
   const text = "O contexto da conversa foi recuperado do histórico salvo."
   const message: Message = {
     id: "restored",
@@ -24,7 +24,7 @@ it("shows history restoration in the conversation and provides both locales", ()
     updatedAt: 1,
   }
   render(<VirtualMessageList messages={[message]} onSwitchBranch={async () => {}} onRetry={async () => {}} />)
-  expect(screen.getByText(text)).toBeVisible()
+  expect(screen.queryByText(text)).toBeNull()
   expect(screen.queryByRole("button", { name: "Detalhes técnicos" })).toBeNull()
   expect(t(text, {}, "en")).toBe("The conversation context was restored from saved history.")
 })

@@ -55,9 +55,6 @@ export const createToolResolutions = (kernel: Kernel) => {
       WHERE tool_resolutions.part_json IS NOT excluded.part_json
         OR tool_resolutions.resolution IS NOT excluded.resolution
         OR tool_resolutions.resolved_at IS NOT excluded.resolved_at`)
-  const getBrowserRequest = database?.query(`SELECT request.request_id FROM browser_request_runs alias
-    JOIN browser_channel_runs request ON request.run_id = alias.request_run_id
-    WHERE alias.run_id = ? LIMIT 1`)
   const getRunParts = database?.query(
     "SELECT call_id, part_json, resolution, resolved_at FROM tool_resolutions WHERE run_id = ? ORDER BY rowid",
   )
@@ -97,7 +94,7 @@ export const createToolResolutions = (kernel: Kernel) => {
       ...(hasCompletedOutcome ? { completedOutcome } : {}),
       resolvedAt,
     }
-    const next = getCanonicalBrowserPart(resolved, run.id, getBrowserRequest)
+    const next = resolved
     if (persist) {
       const partJson = JSON.stringify(next)
       const row = { part_json: partJson, resolution, resolved_at: next.resolvedAt ?? null }
@@ -441,18 +438,4 @@ const hasSameStoredResolution = (
 
   // Worker JSON can order keys differently; identical resolved values do not need another write.
   return isDeepStrictEqual(JSON.parse(stored.part_json), part)
-}
-
-const getCanonicalBrowserPart = (
-  part: ToolPart,
-  runId: string,
-  statement: ReturnType<Database["query"]> | undefined,
-): ToolPart => {
-  if (part.type !== "tool_call") return part
-  const { browserRequestId: _untrustedRequestId, ...safePart } = part
-  if (!/(?:^|__)browser_/u.test(part.tool)) return safePart
-  const request = statement?.get(runId) as { request_id: string | null } | null
-  if (!request?.request_id) return safePart
-
-  return Object.assign({}, safePart, { browserRequestId: request.request_id })
 }

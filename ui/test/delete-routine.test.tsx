@@ -73,7 +73,7 @@ it("does not offer deletion for an unsaved draft", async () => {
 it("deletes from the routines list reached directly through Advanced → Routines", async () => {
   const { api, routine } = await fixture()
   showBotSettings()
-  const settings = screen.getByRole("dialog")
+  const settings = await screen.findByRole("dialog", { name: "Configurações de mark" })
   fireEvent.click(within(settings).getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(within(settings).getByRole("tab", { name: "Rotinas" }))
   await waitFor(() => expect(settings).not.toBeInTheDocument())

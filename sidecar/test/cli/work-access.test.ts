@@ -37,7 +37,7 @@ database.exec(`
   CREATE TABLE browser_channel_runs (
     run_id TEXT PRIMARY KEY, group_id TEXT NOT NULL, thread_id TEXT NOT NULL, bot_id TEXT NOT NULL,
     requester_person_id TEXT, responsible_person_id TEXT, controller_person_id TEXT, status TEXT NOT NULL,
-    queued_at INTEGER DEFAULT 1, active_run_id TEXT
+    queued_at INTEGER DEFAULT 1
   );
   CREATE TABLE browser_tabs (id TEXT PRIMARY KEY, owner_bot_id TEXT, owner_thread_id TEXT);
   INSERT INTO bots(id, archived_at, responsible_person_id) VALUES ('legacy-bot', NULL, NULL), ('member-bot', NULL, 'member'),
@@ -51,8 +51,9 @@ database.exec(`
     ('other-dm', 'other-bot', NULL, 'owner', NULL, NULL), ('team-chat', 'team-bot', 'team-a', NULL, NULL, NULL),
     ('other-chat', 'other-bot', 'team-b', NULL, NULL, NULL),
     ('team-bot-session', 'team-bot', 'team-a', NULL, NULL, 'team-chat');
-  INSERT INTO threads VALUES ('team-private','team-bot',NULL,'owner',NULL,NULL);
-  INSERT INTO browser_tabs VALUES ('channel-tab','team-bot','team-chat'), ('private-tab','team-bot','team-private');
+  INSERT INTO threads VALUES ('team-private', 'team-bot', NULL, 'owner', NULL, NULL);
+  INSERT OR REPLACE INTO browser_tabs VALUES ('channel-tab', 'team-bot', 'team-chat'),
+    ('private-tab', 'team-bot', 'team-private'), ('member-tab', 'member-bot', 'member-dm');
   INSERT INTO workspace_message_attention VALUES ('member-approval', 'member-dm', 'approval', 'pending'),
     ('other-approval', 'other-dm', 'approval', 'pending'), ('team-approval', 'team-chat', 'approval', 'pending');
   INSERT INTO runs VALUES ('member-run', 'member-dm', 'member-request'), ('other-run', 'other-dm', 'owner-request');
@@ -77,7 +78,7 @@ const access = createWorkAccess({
       personId === "member" || personId === "second-member" ? ["team-a", "deleted-channel"] : [],
     getPerson: (personId) => {
       if (personId === "owner")
-        return { id: "owner", name: "Carla", role: "admin" } as ReturnType<AuthStore["getPerson"]>
+        return { id: "owner", name: "Thiago", role: "admin" } as ReturnType<AuthStore["getPerson"]>
       if (personId === "member" || personId === "second-member")
         return { id: personId, name: "Ana", role: "member" } as ReturnType<AuthStore["getPerson"]>
       return null
@@ -164,11 +165,7 @@ test("members cannot create channels or bots, delete bots, invite people, or ope
 })
 
 test("thread deletion routes allow admins and thread owners but deny other channel members", () => {
-  database
-    .query(
-      "INSERT INTO threads(id,bot_id,group_id,owner_person_id,archived_at) VALUES ('member-channel-thread','team-bot','team-a','member',NULL)",
-    )
-    .run()
+  database.query("INSERT INTO threads VALUES ('member-channel-thread','team-bot','team-a','member',NULL,NULL)").run()
   const authorize = (method: string, pathname: string, body: unknown = null) =>
     access.authorizeHttp({ personId: "member", role: "member", method, pathname, body })
 
@@ -236,7 +233,7 @@ test("channel membership cannot open a private session with another person's bot
   expect(access.authorizeHttp({ ...request, body: { botId: "member-bot" } })).toBeNull()
 })
 
-test("browser visibility filters requests before the handler checks legacy control permissions", () => {
+test("browser preview follows bot visibility and remote takeover follows control permissions", () => {
   expect(
     access.authorizeHttp({
       personId: "member",
@@ -254,7 +251,7 @@ test("browser visibility filters requests before the handler checks legacy contr
       pathname: "/browser/tabs/team-tab/takeover/session",
       body: null,
     }),
-  ).toBeNull()
+  ).toMatchObject({ status: 404 })
   expect(
     access.authorizeHttp({
       personId: "member",
@@ -393,7 +390,7 @@ test("members cannot inspect or stop another person's runs", () => {
 test("only the requester and the responsible person can stop or take over a channel browser run", () => {
   database.query(`INSERT INTO runs VALUES ('channel-browser-run', 'team-bot-session', 'request')`).run()
   database
-    .query(`INSERT INTO browser_channel_runs(run_id,group_id,thread_id,bot_id,requester_person_id,responsible_person_id,controller_person_id,status,queued_at) VALUES
+    .query(`INSERT INTO browser_channel_runs VALUES
       ('channel-browser-run', 'team-a', 'team-chat', 'team-bot', 'member', 'owner', 'owner', 'taken_over', 1)`)
     .run()
   database.query("INSERT OR REPLACE INTO browser_tabs VALUES ('channel-tab', 'team-bot', 'team-bot-session')").run()
@@ -409,7 +406,7 @@ test("only the requester and the responsible person can stop or take over a chan
   expect(access.authorizeHttp({ ...cancel, personId: "other", role: "member" })).toMatchObject({ status: 404 })
   const deniedCancel = access.authorizeHttp({ ...cancel, personId: "second-member", role: "member" })
   expect(deniedCancel).toMatchObject({ status: 403, json: { errorCode: "BROWSER_CONTROL_FORBIDDEN" } })
-  expect(deniedCancel?.json.error).toContain("Carla está no controle")
+  expect(deniedCancel?.json.error).toContain("Thiago está no controle")
 
   const takeover = {
     role: "member" as const,
@@ -422,7 +419,7 @@ test("only the requester and the responsible person can stop or take over a chan
   expect(access.authorizeHttp({ ...takeover, personId: "other", role: "member" })).toMatchObject({ status: 404 })
   const deniedTakeover = access.authorizeHttp({ ...takeover, personId: "second-member", role: "member" })
   expect(deniedTakeover).toMatchObject({ status: 403, json: { errorCode: "BROWSER_CONTROL_FORBIDDEN" } })
-  expect(deniedTakeover?.json.error).toContain("Carla está no controle")
+  expect(deniedTakeover?.json.error).toContain("Thiago está no controle")
 
   expect(
     access.authorizeHttp({
@@ -602,11 +599,7 @@ test("channel browser events use tab scope rather than shared bot membership", (
 })
 
 test("former channel members cannot delete a conversation even when they created it", () => {
-  database
-    .query(
-      "INSERT INTO threads(id,bot_id,group_id,owner_person_id,archived_at) VALUES ('member-channel-thread','other-bot','team-b','member',NULL)",
-    )
-    .run()
+  database.query("INSERT INTO threads VALUES ('member-channel-thread','other-bot','team-b','member',NULL,NULL)").run()
 
   const response = access.authorizeHttp({
     personId: "member",

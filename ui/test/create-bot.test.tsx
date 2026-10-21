@@ -35,7 +35,7 @@ const openCreation = async (api: ReturnType<typeof createMockApi>, first: boolea
   }
   render(<App kernel={{ services: { api } }} />)
   fireEvent.click(await screen.findByRole("button", { name: first ? "Criar meu primeiro bot" : "Criar bot" }))
-  fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Café Ideias" } })
+  fireEvent.change(await screen.findByLabelText("Nome"), { target: { value: "Café Ideias" } })
   await screen.findByText(/Usa o Codex/)
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Criar bot", exact: true }))
 }
@@ -170,7 +170,7 @@ it("creates from the landing with only a name in two clicks and no technical fie
   expect(dialog.textContent).not.toMatch(/SOUL\.md|provider|provedor|model|MCP|sandbox|\bVM\b/i)
   expect(screen.queryByRole("button", { name: "Continuar" })).toBeNull()
   expect(screen.queryByLabelText("Provedor")).toBeNull()
-  fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Clara" } })
+  fireEvent.change(await screen.findByLabelText("Nome"), { target: { value: "Clara" } })
   await screen.findByText(/Usa o Codex/)
   fireEvent.click(within(dialog).getByRole("button", { name: "Criar bot" }))
   clicks++
@@ -282,7 +282,7 @@ it.each([
   render(<BotCreateModal api={api} onClose={vi.fn()} onCreate={create} />)
   await screen.findByText(`Usa o ${name}, conectado neste servidor.`)
   expect(screen.queryByRole("region", { name: "Escolha uma conta" })).toBeNull()
-  fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Clara" } })
+  fireEvent.change(await screen.findByLabelText("Nome"), { target: { value: "Clara" } })
   fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
   await waitFor(() =>
     expect(create).toHaveBeenCalledWith(
@@ -306,7 +306,7 @@ it("shows sign-in inline immediately and gives a visible error on create until s
   const choices = await screen.findByRole("region", { name: "Escolha uma conta" })
   for (const name of ["Codex", "Claude Code", "OpenCode"])
     expect(within(choices).getByRole("button", { name, exact: true })).toBeVisible()
-  fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Clara" } })
+  fireEvent.change(await screen.findByLabelText("Nome"), { target: { value: "Clara" } })
   fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
   expect(screen.getByRole("alert")).toHaveTextContent("Entre em uma conta acima")
   expect(choices).toHaveFocus()
@@ -323,7 +323,7 @@ it("opens inline sign-in when an advanced account choice has no login", async ()
   fireEvent.change(screen.getByLabelText("Provedor"), { target: { value: "claude" } })
   const choices = await screen.findByRole("region", { name: "Escolha uma conta" })
   expect(within(choices).getByRole("button", { name: "Claude Code" })).toHaveAttribute("aria-pressed", "true")
-  fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Clara" } })
+  fireEvent.change(await screen.findByLabelText("Nome"), { target: { value: "Clara" } })
   fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
   expect(create).not.toHaveBeenCalled()
   expect(screen.getByRole("alert")).toHaveTextContent("Entre em uma conta acima")
@@ -360,7 +360,7 @@ it("keeps a ready account available when switching away and back, and resets mod
 it("sets only role and instructions from a job and can clear the choice", async () => {
   const create = vi.fn(async () => undefined)
   render(<BotCreateModal onClose={vi.fn()} onCreate={create} />)
-  fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Clara" } })
+  fireEvent.change(await screen.findByLabelText("Nome"), { target: { value: "Clara" } })
   const job = getJobTemplates()[0]
   if (!job) throw new Error("Missing job")
   fireEvent.click(screen.getByRole("radio", { name: job.name }))
@@ -392,7 +392,7 @@ it("opens QA Café with the selected notes job and fills the source-free example
   api.getState().threads.splice(0)
   render(<App kernel={{ services: { api } }} />)
   fireEvent.click(await screen.findByRole("button", { name: "Criar meu primeiro bot" }))
-  fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "QA Café" } })
+  fireEvent.change(await screen.findByLabelText("Nome"), { target: { value: "QA Café" } })
   fireEvent.click(screen.getByRole("radio", { name: "Caderno em ordem" }))
   await screen.findByText(/Usa o Codex/)
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Criar bot", exact: true }))
@@ -440,7 +440,7 @@ it("switches to another signed-in account with the first sign-in chooser", async
   expect(within(chooser).getByRole("button", { name: "Claude Code" })).toHaveAttribute("aria-pressed", "true")
   expect(screen.queryByRole("button", { name: "Colar token manualmente" })).toBeNull()
   expect(screen.queryByLabelText("Provedor")).toBeNull()
-  fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Clara" } })
+  fireEvent.change(await screen.findByLabelText("Nome"), { target: { value: "Clara" } })
   fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
   await waitFor(() =>
     expect(create).toHaveBeenCalledWith(

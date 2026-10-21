@@ -135,6 +135,8 @@ export const startInlineFrameSource = (
     unsubscribe()
     unsubscribe = () => {}
     clearTimeout(timer)
+    unsubscribe()
+    unsubscribe = () => {}
     viewer?.disconnect()
     viewer = undefined
     socket?.close()

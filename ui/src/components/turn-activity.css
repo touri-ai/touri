@@ -64,3 +64,9 @@
   gap: var(--space-8);
   padding: 0;
 }
+
+.browser-card-loading {
+  min-height: 64px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}

@@ -20,7 +20,8 @@ test.describe("mermaid production and desktop CSP", () => {
   test.skip(process.env.CHAT_TRANSCRIPT_PHASE === "before", "Capture the existing renderer before integration")
 
   test.beforeAll(async () => {
-    test.setTimeout(150_000)
+    // Compilation has its own allowance; the payload and interaction budgets below stay unchanged.
+    test.setTimeout(300_000)
     const { build } = await import("vite")
     await build({
       root: uiRoot,
@@ -49,6 +50,9 @@ test.describe("mermaid production and desktop CSP", () => {
     }
     visit("index.html")
     const optionalModules = [
+      "src/components/BrowserActivityCard.tsx",
+      "src/components/BotComputer.tsx",
+      "src/components/Modals.tsx",
       "src/components/ApiModelsSettings.tsx",
       "src/components/NotificationDeliverySettings.tsx",
       "src/features/cloud/CloudPreferences.tsx",
@@ -63,6 +67,8 @@ test.describe("mermaid production and desktop CSP", () => {
       "src/components/WorkspaceScreens.tsx",
     ].map((key) => manifest[key])
     expect(optionalModules.every((chunk) => chunk?.isDynamicEntry && !initialFiles.has(chunk.file))).toBe(true)
+    const settings = Object.values(manifest).find((chunk) => chunk.name === "SettingsModal")
+    expect(settings && !initialFiles.has(settings.file)).toBe(true)
     // Rollup may merge the renderer and its vendor modules into a named shared chunk.
     const adapter = Object.values(manifest).find((chunk) => chunk.name === "mermaidRenderer")
     expect(adapter?.isDynamicEntry).toBe(true)

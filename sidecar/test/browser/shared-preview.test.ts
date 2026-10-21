@@ -1,117 +1,77 @@
 import { expect, test } from "bun:test"
-import { createSharedBrowserPreview } from "../../src/browser/shared-preview"
+import { createSharedPreviewSource } from "../../src/browser/shared-preview"
 
-const getDeferred = <T>() => {
-  let resolve: (value: T) => void = () => {}
-  const promise = new Promise<T>((done) => {
+test("ten readers share one capture and reuse only a recent frame", async () => {
+  let now = 0
+  let captures = 0
+  const source = createSharedPreviewSource<string>({ now: () => now })
+  const input = {
+    target: "tab",
+    generation: 1,
+    isCurrent: () => true,
+    read: async () => {
+      captures += 1
+      return "synthetic-frame"
+    },
+  }
+
+  const frames = await Promise.all(Array.from({ length: 10 }, () => source.capture(input)))
+
+  expect(frames).toEqual(Array.from({ length: 10 }, () => "synthetic-frame"))
+  expect(captures).toBe(1)
+  now = 801
+  await source.capture(input)
+  expect(captures).toBe(2)
+})
+
+test("takeover discards an in-flight public frame even after handback", async () => {
+  let generation = 1
+  let resolve: (value: string) => void = () => {}
+  const pending = new Promise<string>((done) => {
     resolve = done
   })
-
-  return { promise, resolve }
-}
-const getFrame = () => ({
-  image: "data:image/jpeg;base64,ZmFrZQ==",
-  title: "Synthetic results",
-  url: "https://example.test",
-})
-const getRequest = (signal = new AbortController().signal) => ({ botId: "leo", tabId: "tab", signal })
-
-test("ten channel viewers share one capture and the bounded fresh frame", async () => {
-  const deferred = getDeferred<ReturnType<typeof getFrame>>()
-  let captures = 0
-  const source = createSharedBrowserPreview({
-    capture: async () => {
-      captures += 1
-      return deferred.promise
-    },
-    now: () => 1_000,
+  const source = createSharedPreviewSource<string>()
+  const capture = source.capture({
+    target: "tab",
+    generation,
+    isCurrent: () => generation === 1,
+    read: () => pending,
   })
 
-  const viewers = Array.from({ length: 10 }, () => source.get(getRequest()))
-  deferred.resolve(getFrame())
-  const frames = await Promise.all(viewers)
-  const next = await source.get(getRequest())
+  generation = 3
+  resolve("private-frame")
 
-  expect(captures).toBe(1)
-  expect(frames).toEqual(Array.from({ length: 10 }, getFrame))
-  expect(next).toEqual(getFrame())
-  if (!next) throw new Error("Missing shared frame")
-  expect(source.getEncoded(next)).toBe(source.getEncoded(next))
-  expect(JSON.parse(new TextDecoder().decode(source.getEncoded(next)))).toEqual(getFrame())
-  source.dispose()
+  expect(await capture).toBeNull()
 })
 
-test("takeover purges the cached frame and rejects a late shared capture", async () => {
-  const deferred = getDeferred<ReturnType<typeof getFrame>>()
-  let signal: AbortSignal | undefined
-  const source = createSharedBrowserPreview({
-    capture: async (request) => {
-      signal = request.signal
-      return deferred.promise
+test("a changed target never starts a second capture while the first is pending", async () => {
+  const source = createSharedPreviewSource<string>()
+  let resolve: (value: string) => void = () => {}
+  const first = source.capture({
+    target: "tab",
+    generation: 1,
+    isCurrent: () => true,
+    read: () =>
+      new Promise<string>((done) => {
+        resolve = done
+      }),
+  })
+  await Promise.resolve()
+  let extraCaptures = 0
+
+  const second = await source.capture({
+    target: "tab",
+    generation: 2,
+    isCurrent: () => true,
+    read: async () => {
+      extraCaptures += 1
+      return "unexpected"
     },
   })
+  source.clear()
+  resolve("old-frame")
 
-  const viewers = Array.from({ length: 10 }, () => source.get(getRequest()))
-  source.invalidate("tab")
-  deferred.resolve(getFrame())
-
-  expect(signal?.aborted).toBe(true)
-  expect(await Promise.all(viewers)).toEqual(Array.from({ length: 10 }, () => null))
-  source.dispose()
-})
-
-test("one departing viewer cannot cancel the capture for the remaining viewer", async () => {
-  const deferred = getDeferred<ReturnType<typeof getFrame>>()
-  const source = createSharedBrowserPreview({ capture: async () => deferred.promise })
-  const departing = new AbortController()
-
-  const first = source.get(getRequest(departing.signal))
-  const second = source.get(getRequest())
-  departing.abort()
+  expect(second).toBeNull()
+  expect(extraCaptures).toBe(0)
   expect(await first).toBeNull()
-  deferred.resolve(getFrame())
-
-  expect(await second).toEqual(getFrame())
-  source.dispose()
-})
-
-test("an invalidated capture must settle before another capture can start for its tab", async () => {
-  const deferred = getDeferred<ReturnType<typeof getFrame>>()
-  let captures = 0
-  const source = createSharedBrowserPreview({
-    capture: async () => {
-      captures += 1
-      return deferred.promise
-    },
-  })
-
-  const first = source.get(getRequest())
-  source.invalidateBot("leo")
-  const second = source.get(getRequest())
-  deferred.resolve(getFrame())
-
-  expect(await first).toBeNull()
-  expect(await second).toBeNull()
-  expect(captures).toBe(1)
-  source.dispose()
-})
-
-test("the last departing viewer cancels the shared capture", async () => {
-  const deferred = getDeferred<ReturnType<typeof getFrame>>()
-  let captureSignal: AbortSignal | undefined
-  const source = createSharedBrowserPreview({
-    capture: async ({ signal }) => {
-      captureSignal = signal
-      return deferred.promise
-    },
-  })
-  const viewer = new AbortController()
-
-  const pending = source.get(getRequest(viewer.signal))
-  viewer.abort()
-
-  expect(await pending).toBeNull()
-  expect(captureSignal?.aborted).toBe(true)
-  deferred.resolve(getFrame())
-  source.dispose()
 })

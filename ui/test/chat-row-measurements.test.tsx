@@ -1,6 +1,7 @@
-import { act, cleanup, render, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react"
 import { StrictMode } from "react"
 import { afterEach, expect, it, vi } from "vitest"
+import * as browserRequestMessages from "../src/components/browserRequestMessages"
 import { VirtualMessageList } from "../src/components/ChatPanel"
 
 const getCards = (height: number) =>
@@ -36,6 +37,18 @@ afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+})
+
+it("scrolling does not rebuild an unchanged transcript when runs are omitted", () => {
+  const getMessages = vi.spyOn(browserRequestMessages, "getBrowserRequestMessages")
+  const view = render(
+    <VirtualMessageList messages={[]} onSwitchBranch={() => undefined} onRetry={async () => undefined} />,
+  )
+  const initialCalls = getMessages.mock.calls.length
+
+  fireEvent.scroll(view.getByTestId("virtual-message-list"), { target: { scrollTop: 100 } })
+
+  expect(getMessages).toHaveBeenCalledTimes(initialCalls)
 })
 
 it.each([false, true])("updates virtual offsets when a row grows and collapses (strict: %s)", async (strict) => {

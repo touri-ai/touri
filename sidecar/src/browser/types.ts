@@ -102,8 +102,8 @@ export type BrowserTabRow = {
   held_by_user: number
   private_after_takeover: number
   takeover_reason: BrowserTakeoverReason | null
-  private_input: number
   private_document_ids_json: string
+  private_input: number
   created_at: EpochMs
   last_used_at: EpochMs
 }
@@ -121,21 +121,21 @@ export type TabState = {
   secretMode: boolean
   privateAfterTakeover: boolean
   takeoverReason: BrowserTakeoverReason | null
-  privateInput: boolean
   privateDocumentIds: ReadonlyArray<number>
+  privateInput: boolean
   dialog: { type: "alert" | "confirm" | "prompt" | "beforeunload"; message: string } | null
   lastFailureKey: string | null
   failureCount: number
   queue: Promise<void>
   takeover: {
     requestId: string | null
-    delegation?: GroupDelegation | null
     botId: Id | null
     threadId: Id | null
     runId: Id | null
     timer: ReturnType<typeof setTimeout> | null
     signal?: AbortSignal
     onAbort?: () => void
+    delegation?: GroupDelegation | null
   } | null
   handbackNote: string | null
   lastSnapshot: BrowserSnapshot | null
@@ -158,7 +158,6 @@ export type BrowserEngine = {
     height: number
     input: BrowserTakeoverInput
     signal: AbortSignal
-    isAuthorized?: () => boolean
   }) => Promise<boolean>
   open: (args: { url: string; ctx: ToolContext; timeoutMs: number }) => Promise<ToolResult>
   list: (args: { botId: Id | null; signal?: AbortSignal; timeoutMs?: number }) => Promise<ToolResult>
@@ -277,9 +276,10 @@ export type BrowserEngine = {
   releaseTakeover: (tabId: Id) => Promise<boolean>
   releaseTakeoverForPerson: (args: { tabId: Id; personId: Id }) => Promise<"released" | "forbidden" | "not_found">
   holdTakeoverForPerson: (args: { tabId: Id; personId: Id }) => Promise<"held" | "forbidden" | "not_found">
-  holdTakeover: (args: { tabId: Id; reason: string }) => Promise<boolean>
+  holdTakeover: (args: { tabId: Id; reason: string; runId?: Id }) => Promise<boolean>
   getWindowBounds: (args: { tabId: Id; botId: Id }) => Promise<WindowBounds | null>
   tabsForBot: (botId: Id | null) => Array<BrowserTabInfo & { ownerBotId: Id | null }>
+  cancelTakeover: (args: { tabId: Id }) => boolean
   shutdown: () => Promise<void>
 }
 

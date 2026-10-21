@@ -1,63 +1,108 @@
-import type { Message, ToolCallPart } from "@touri/contracts"
+import type { Message, Run } from "@touri/contracts"
 import { expect, test } from "vitest"
-import { getBrowserRequestMessages } from "../src/features/channelBrowser/browserRequestMessages"
+import { getBrowserRequestMessages } from "../src/components/browserRequestMessages"
 
-const getMessage = (id: string, requestId = "request", botId = "leo"): Message => {
-  const tool: ToolCallPart = {
-    type: "tool_call",
-    callId: id,
-    tool: "mcp__touri__browser_snapshot",
-    inputJson: "{}",
-    summary: "Read",
-    outputJson: null,
-    ok: true,
-    browserRequestId: requestId,
-  }
+const getMessage = (id: string, runId: string, text: string): Message => ({
+  id,
+  runId,
+  threadId: "channel",
+  parentId: "request",
+  role: "assistant",
+  kind: "text",
+  status: "complete",
+  text,
+  parts: [{ type: "text", text }],
+  sender: null,
+  source: "local",
+  createdAt: 1,
+  updatedAt: 2,
+})
+const getRun = (id: string, browserRequestId: string): Run => ({
+  id,
+  browserRequestId,
+  threadId: "channel",
+  botId: "bot",
+  provider: "codex",
+  trigger: "retry",
+  requestMessageId: "request",
+  replyMessageId: null,
+  externalTurnId: null,
+  status: "succeeded",
+  errorClass: null,
+  errorMessage: null,
+  usage: null,
+  routineRunId: null,
+  queuedAt: 1,
+  startedAt: 1,
+  finishedAt: 2,
+})
+const getBrowserMessage = (id: string, runId: string): Message =>
+  Object.assign({}, getMessage(id, runId, "Vou conferir a página."), {
+    parts: [
+      {
+        type: "tool_call" as const,
+        callId: id,
+        tool: "browser_snapshot",
+        summary: "Read",
+        inputJson: "{}",
+        outputJson: "{}",
+        ok: true,
+      },
+    ],
+  })
 
-  return {
-    id,
-    threadId: "channel",
-    parentId: "prompt",
-    role: "assistant",
-    kind: "text",
-    status: "complete",
-    runId: id,
-    text: id,
-    parts: [tool, { type: "text", text: id }],
-    sender: { id: botId, name: botId },
-    source: "local",
-    createdAt: 1,
-    updatedAt: 1,
-  }
-}
+test("a handback keeps one card and its original row identity with the final answer", () => {
+  const first = getBrowserMessage("first", "old")
+  const final = getMessage("final", "resumed", "1. Estadia de teste · nota 4,8 · R$ 900")
 
-test("cold history restores one browser receipt with the continuation and final answer", () => {
-  const messages = [getMessage("original"), getMessage("resumed")]
-  const history = JSON.parse(JSON.stringify(messages)) as Message[]
-
-  const visible = getBrowserRequestMessages(history)
+  const visible = getBrowserRequestMessages([first, final], [getRun("old", "old"), getRun("resumed", "old")])
 
   expect(visible).toHaveLength(1)
-  expect(visible[0]).toMatchObject({ id: "original", runId: "resumed", text: "original\n\nresumed" })
-  expect(visible[0]?.parts.filter((part) => part.type === "tool_call")).toHaveLength(2)
-  expect(history).toEqual(messages)
+  expect(visible[0]).toMatchObject({ id: "first", runId: "resumed", text: final.text })
+  expect(visible[0]?.parts).toEqual(first.parts.concat(final.parts))
+  expect(first.parts).toHaveLength(1)
 })
 
-test("different requests, bot identities and user messages remain separate", () => {
-  const user = Object.assign({}, getMessage("user"), {
-    role: "user" as const,
-    parts: [{ type: "text" as const, text: "Follow-up" }],
+test("independent requests and non-browser continuations retain their own messages", () => {
+  const first = getBrowserMessage("first", "a")
+  const other = getBrowserMessage("other", "b")
+  const text = getMessage("text", "c", "Resposta separada")
+
+  const visible = getBrowserRequestMessages(
+    [first, other, text],
+    [getRun("a", "a"), getRun("b", "b"), getRun("c", "c")],
+  )
+
+  expect(visible).toEqual([first, other, text])
+})
+
+test("a continuing browser request stays live without changing stored history", () => {
+  const first = getBrowserMessage("first", "old")
+  const live = Object.assign({}, getBrowserMessage("second", "new"), { status: "streaming" as const })
+
+  const visible = getBrowserRequestMessages([first, live], [getRun("new", "old")])
+
+  expect(visible[0]).toMatchObject({ id: "first", status: "streaming", runId: "new" })
+  expect(first.status).toBe("complete")
+})
+
+test("browser handback plumbing stays out of the visible conversation", () => {
+  const restored = Object.assign({}, getMessage("restored", "old", "Context"), {
+    role: "system" as const,
+    parts: [{ type: "notice" as const, level: "info" as const, code: "context_restored", text: "Context" }],
   })
-  const messages = [
-    getMessage("first"),
-    getMessage("other-request", "different"),
-    getMessage("other-bot", "request", "bia"),
-    user,
-    getMessage("last"),
-  ]
+  const marker = Object.assign({}, restored, {
+    id: "marker",
+    parts: [
+      {
+        type: "notice" as const,
+        level: "info" as const,
+        code: "run_resumed",
+        text: "Retomado após a devolução do navegador",
+      },
+    ],
+  })
+  const answer = getMessage("answer", "new", "Resposta final")
 
-  const visible = getBrowserRequestMessages(messages)
-
-  expect(visible.map((message) => message.id)).toEqual(["first", "other-request", "other-bot", "user"])
-  expect(visible[0]?.text).toBe("first\n\nlast")
+  expect(getBrowserRequestMessages([restored, marker, answer], [])).toEqual([answer])
 })

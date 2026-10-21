@@ -299,7 +299,7 @@ const createBot = async (name: string, first = false) => {
 }
 
 const submitBot = async (name: string) => {
-  fireEvent.change(screen.getByLabelText("Nome", { exact: true }), { target: { value: name } })
+  fireEvent.change(await screen.findByLabelText("Nome", { exact: true }), { target: { value: name } })
   await screen.findByText(/conectado neste/)
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Criar bot", exact: true }))
   await screen.findByRole("textbox", { name: `Mensagem para ${name}` })

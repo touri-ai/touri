@@ -74,8 +74,28 @@ export const getBrowserActivityTools = (parts: readonly MessagePart[]): ToolCall
   ).values(),
 ]
 
+export const isBrowserRequestQueued = (parts: readonly ToolCallPart[], runId?: string | null): boolean => {
+  const output = parts.at(-1)?.outputJson
+  const parsed = asToolRecord(parseToolValue(output?.slice(0, MAX_OUTPUT_LENGTH) ?? ""))
+  const structured = asToolRecord(parsed?.structured ?? parsed?.structuredContent ?? parsed)
+  if (structured?.status !== "waiting_for_browser") return false
+
+  return !runId || structured.requestRunId === runId
+}
+
 export const hasBrowserTakeoverRequest = (parts: readonly ToolCallPart[]): boolean =>
-  parts.some((part) => getBrowserAction(part) === "request_takeover")
+  parts.some(
+    (part) =>
+      getBrowserAction(part) === "request_takeover" || part.outputJson?.includes('"waiting_for_person"') === true,
+  )
+
+export const isBrowserActivityOpening = (parts: readonly ToolCallPart[]): boolean =>
+  parts.some(
+    (part) =>
+      getBrowserAction(part) === "open" &&
+      isBrowserActivityRunning(part) &&
+      typeof (getOutputTabId(part) ?? getArgs(part)?.tabId) !== "string",
+  )
 
 export const getBrowserActivityTabId = (parts: readonly ToolCallPart[]): string | undefined => {
   const latest = parts.reduceRight<ToolCallPart | undefined>((latest, part) => {
@@ -120,7 +140,17 @@ export const getBrowserActivityTarget = (part: ToolCallPart): string => {
 }
 
 export const getBrowserActivityLabel = (part: ToolCallPart, locale: Locale): string => {
-  if (part.ok === false) return t("Browser action failed. Take over to continue.", {}, locale)
+  if (isBrowserRequestQueued([part])) return t("Waiting for the other browser request to finish.", {}, locale)
+  if (part.ok === false) {
+    const output = asToolRecord(parseToolValue(part.outputJson?.slice(0, MAX_OUTPUT_LENGTH) ?? ""))
+    const code = output?.errorCode ?? asToolRecord(output?.structured)?.errorCode
+    if (["TARGET_CHANGED", "STALE_REF", "NAVIGATED_DURING_SNAPSHOT"].includes(String(code)))
+      return t("The page changed. Trying again.", {}, locale)
+    if (["ENGINE_UNAVAILABLE", "DEADLINE_EXCEEDED", "CLIENT_DISCONNECTED"].includes(String(code)))
+      return t("The browser could not connect. Reconnect and try again.", {}, locale)
+
+    return t("The browser action did not finish. Checking the page.", {}, locale)
+  }
 
   const action = getBrowserAction(part)
   const target = getBrowserActivityTarget(part)
@@ -194,31 +224,6 @@ export const getBrowserActivityKind = (part: ToolCallPart): string => {
   if (["screenshot", "take_screenshot"].includes(action)) return "screenshot"
   if (["list_tabs", "switch_tab"].includes(action)) return "tabs"
   return "other"
-}
-
-export const getBrowserActivityProgressLabel = (part: ToolCallPart, locale: Locale): string => {
-  const labels: Record<string, keyof typeof ptBR> = {
-    open: "Opening a page",
-    navigate: "Opening a page",
-    snapshot: "Reading the page",
-    click: "Clicking",
-    type: "Filling a field",
-    fill_form: "Filling a form",
-    select_option: "Selecting an option",
-    set_checked: "Updating a choice",
-    screenshot: "Taking a screenshot",
-    take_screenshot: "Taking a screenshot",
-    scroll: "Scrolling the page",
-    hover: "Inspecting an element",
-    wait_for: "Waiting for the page",
-    request_takeover: "Asking for your help",
-    submit_secret: "Filling a saved credential",
-    fill_secret: "Filling a saved credential",
-    press: "Pressing a key",
-  } satisfies Record<string, keyof typeof ptBR>
-  const label = labels[getBrowserAction(part)] ?? "Working in the browser"
-
-  return t(label, {}, locale)
 }
 
 export const getBrowserActivityNotice = (part: ToolCallPart, locale: Locale): string | null => {

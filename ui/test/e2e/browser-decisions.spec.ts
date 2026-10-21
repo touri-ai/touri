@@ -16,9 +16,9 @@ const post = async (step: string, mode?: string) => {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ step, mode }),
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(40_000),
   })
-  expect(response.ok).toBe(true)
+  expect(response.ok, response.ok ? "" : await response.text()).toBe(true)
   return response.json()
 }
 
@@ -155,7 +155,9 @@ test("browser decisions: consent is off until explicitly selected", async ({ pag
   const phase = process.env.TOURI_DECISION_PHASE ?? "after"
   if (process.env.TOURI_DECISION_SHOTS) {
     await mkdir(process.env.TOURI_DECISION_SHOTS, { recursive: true })
-    await page.screenshot({ path: resolve(process.env.TOURI_DECISION_SHOTS, `${phase}-browser-consent.png`) })
+    await consent
+      .locator("..")
+      .screenshot({ path: resolve(process.env.TOURI_DECISION_SHOTS, `${phase}-browser-consent.png`) })
   }
   await expect(consent).not.toBeChecked()
   await consent.check()
@@ -163,5 +165,5 @@ test("browser decisions: consent is off until explicitly selected", async ({ pag
   await consent.uncheck()
   await expect(consent).not.toBeChecked()
   await expect(page.locator("body")).not.toContainText("fixture-private-key")
-  await info.attach("browser-consent", { body: await page.screenshot(), contentType: "image/png" })
+  await info.attach("browser-consent", { body: await consent.locator("..").screenshot(), contentType: "image/png" })
 })

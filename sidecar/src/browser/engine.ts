@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite"
 import { AsyncLocalStorage } from "node:async_hooks"
 import type {
   BrowserActionRecord,
@@ -5,9 +6,9 @@ import type {
   BrowserElement,
   BrowserErrorCode,
   BrowserSnapshot,
-  BrowserTakeoverCapture,
   BrowserTakeoverReason,
   BrowserTarget,
+  GroupDelegation,
   Id,
   Kernel,
   ToolContent,
@@ -27,6 +28,7 @@ import {
   requiresBrowserKeyInspection,
   requiresBrowserTakeover,
 } from "./decision"
+import { createBrowserHandoffs } from "./handoffs"
 import {
   type ChromeLauncher,
   createChromeLauncher,
@@ -44,12 +46,13 @@ import {
   SessionVaultError,
   saveBotSession,
 } from "./sessionVault"
+import { createSharedPreviewSource } from "./shared-preview"
 import { createBrowserStore, publicTabInfo } from "./store"
 import {
   canResumeAfterHumanTakeover,
+  captureCurrentBrowserControlFrame,
   captureSafeBrowserPreview,
   HAS_SENSITIVE_ENTRY_EXPRESSION,
-  sanitizeHumanTakeoverPreviewMetadata,
   sanitizeHumanTakeoverSnapshot,
   sanitizeHumanTakeoverUrl,
 } from "./takeover-privacy"
@@ -1410,6 +1413,9 @@ export const createBrowserEngine = ({
   const launcher: ChromeLauncher =
     suppliedLauncher ?? createChromeLauncher({ kernel, ...(mode === undefined ? {} : { mode }) })
   const tabs = store.load()
+  const handoffs = createBrowserHandoffs(kernel.db as Database)
+  const handbackRetries = new Map<string, ReturnType<typeof setTimeout>>()
+  let shutdownPromise: Promise<void> | undefined
   let client: CdpClient | null = null
   let unsubscribe: (() => void) | null = null
   let retired = false
@@ -1421,6 +1427,7 @@ export const createBrowserEngine = ({
   const browserContexts = new Map<string, Promise<string | null>>()
   const contextOwners = new Map<string, string>()
   const savedSessions = new Map<string, SavedSession>()
+  const sharedPreview = createSharedPreviewSource<{ title: string; url: string; image: string }>()
   const pendingStorage = new Map<string, Record<string, Record<string, string>>>()
   let sessionTimer: ReturnType<typeof setInterval> | null = null
   let legacyMigration: Promise<void> | null = null
@@ -3065,7 +3072,7 @@ export const createBrowserEngine = ({
     signal: AbortSignal
     timeoutMs?: number
   }): Promise<ToolResult> => {
-    const owned = getTab({ tabId, botId, allowHeld: true })
+    const owned = getTab({ tabId, botId })
     if (!owned.success) return toToolError(owned.failure)
     const tab = owned.value
     return withTabQueue({
@@ -3073,15 +3080,9 @@ export const createBrowserEngine = ({
       timeoutMs,
       signal,
       operation: async () => {
-        clearTakeover({
-          tab,
-          resolution: "canceled",
-          handbackNote: "The browser task was stopped.",
-        })
         if (client && tab.targetId)
           await client.call("Target.closeTarget", { targetId: tab.targetId }).catch(() => undefined)
         tab.info.state = "closed"
-        protectedDocumentVersions.delete(tabId)
         tab.targetId = null
         tab.sessionId = null
         tab.frameSessions.clear()
@@ -3168,10 +3169,16 @@ export const createBrowserEngine = ({
           })
         if (await pageUrlBlocked(tab))
           return toToolError({ errorCode: "URL_NOT_ALLOWED", error: BROWSER_URL_NOT_ALLOWED_MESSAGE })
+        const captureGeneration = tab.generation
         const data = await boundedImage({ client: client as CdpClient, tab, fullPage }).catch((error: unknown) => {
           if (errorMessage(error) === SCREENSHOT_TOO_LARGE) return null
           throw error
         })
+        if (tab.info.heldByUser || tab.privateAfterTakeover || tab.generation !== captureGeneration)
+          return toToolError({
+            errorCode: "SECRET_ENTRY_ACTIVE",
+            error: "A captura foi descartada porque o controle do navegador mudou.",
+          })
         if (data === null)
           return toToolError({
             errorCode: "ENGINE_UNAVAILABLE",
@@ -4460,30 +4467,52 @@ export const createBrowserEngine = ({
     if (!takeover) return null
     if (takeover.timer) clearTimeout(takeover.timer)
     if (takeover.signal && takeover.onAbort) takeover.signal.removeEventListener("abort", takeover.onAbort)
+    handoffs.resolve(tab.info.tabId, resolution)
+    kernel.services.use("browser.takeoverResolved")?.({ tabId: tab.info.tabId, resolution })
     tab.takeover = null
     tab.info.heldByUser = false
     tab.takeoverReason = null
     tab.generation += 1
     tab.refs.clear()
     tab.handbackNote = handbackNote
+    if (resolution === "expired" && takeover.runId)
+      kernel.services.use("browser.cancelRequest")?.({ runId: takeover.runId, reason: "timeout" })
     if (takeover.requestId) kernel.services.use("notify.resolve")?.({ requestId: takeover.requestId, resolution })
-    kernel.services.use("browser.takeoverResolved")?.({ tabId: tab.info.tabId, resolution })
     return takeover
   }
 
   const publishTakeoverRelease = (tab: TabState): void => {
+    if (retired) return
     store.save(tab)
     kernel.publish({ type: "browser.tab", tab: safePublicTabInfo(tab) })
   }
 
-  const resumeAfterTakeover = (takeover: NonNullable<TabState["takeover"]>): void => {
-    if (!takeover.botId || !takeover.threadId || !takeover.runId) return
+  const resumeSavedHandoff = (tabId: Id, attempt = 0, delegation?: GroupDelegation | null): void => {
+    if (retired) return
+    const saved = handoffs.get(tabId)
+    if (saved?.state !== "returned" || !saved.botId || !saved.threadId || !saved.runId) return
+    if (handoffs.hasReceipt(saved.runId)) {
+      handoffs.forget(tabId)
+      return
+    }
     kernel.services.use("runtime.resumeAfterBrowserTakeover")?.({
-      botId: takeover.botId,
-      threadId: takeover.threadId,
-      runId: takeover.runId,
-      ...(takeover.delegation ? { delegation: takeover.delegation } : {}),
+      botId: saved.botId,
+      threadId: saved.threadId,
+      runId: saved.runId,
+      ...(delegation ? { delegation } : {}),
     })
+    if (attempt >= 30) return
+    const timer = setTimeout(() => {
+      handbackRetries.delete(tabId)
+      resumeSavedHandoff(tabId, attempt + 1, delegation)
+    }, 1_000)
+    timer.unref()
+    handbackRetries.set(tabId, timer)
+  }
+
+  const resumeAfterTakeover = (takeover: NonNullable<TabState["takeover"]>, tabId: Id): void => {
+    if (!takeover.botId || !takeover.threadId || !takeover.runId) return
+    resumeSavedHandoff(tabId, 0, takeover.delegation)
   }
 
   const requestTakeover = async ({
@@ -4524,21 +4553,17 @@ export const createBrowserEngine = ({
       }
 
     tab.info.heldByUser = true
-    tab.generation += 1
     tab.privateAfterTakeover = true
     tab.takeoverReason = safeReasonCode
     tab.privateInput = true
+    await protectTakeoverDocument(tab, true)
+    tab.generation += 1
+    tab.refs.clear()
+    tab.lastSnapshot = null
     tab.actions = []
     tab.diagnostics = []
-    tab.lastSnapshot = null
-    store.save(tab)
-    await protectTakeoverDocument(tab)
     tab.info.lastUsedAt = Date.now()
     const notification = getTakeoverNotificationCopy(safeReasonCode)
-    const sourceThread = kernel.services
-      .use("store.api")
-      ?.getThread({ threadId: threadId ?? tab.info.ownerThreadId ?? "" })
-    const notificationThreadId = sourceThread?.groupThreadId ?? threadId ?? tab.info.ownerThreadId
     const requestId = notify ? `browser-takeover:${tabId}:${kernel.newId()}` : null
     const takeover: NonNullable<TabState["takeover"]> = {
       requestId,
@@ -4551,6 +4576,7 @@ export const createBrowserEngine = ({
       onAbort: () => {},
     }
     takeover.onAbort = () => {
+      if (retired || tab.takeover !== takeover) return
       const current = clearTakeover({
         tab,
         resolution: "canceled",
@@ -4560,6 +4586,7 @@ export const createBrowserEngine = ({
       publishTakeoverRelease(tab)
     }
     takeover.timer = setTimeout(() => {
+      if (retired || tab.takeover !== takeover) return
       const current = clearTakeover({
         tab,
         resolution: "expired",
@@ -4569,10 +4596,21 @@ export const createBrowserEngine = ({
       publishTakeoverRelease(tab)
     }, timeoutMs)
     tab.takeover = takeover
+    handoffs.save({
+      tabId,
+      botId,
+      threadId: takeover.threadId,
+      runId: takeover.runId,
+      requestId,
+      expiresAt: Date.now() + timeoutMs,
+      state: "waiting",
+    })
     if (signal.aborted) takeover.onAbort()
     else signal.addEventListener("abort", takeover.onAbort, { once: true })
 
     if (notify) {
+      const sourceThread = kernel.services.use("store.api")?.getThread({ threadId: takeover.threadId ?? "" })
+      const notificationThreadId = sourceThread?.groupThreadId ?? takeover.threadId
       const emitNotice = kernel.services.use("notify.emit")
       if (emitNotice)
         emitNotice({
@@ -4600,6 +4638,19 @@ export const createBrowserEngine = ({
     })
   }
 
+  const cancelTakeover: BrowserEngine["cancelTakeover"] = ({ tabId }) => {
+    const tab = store.find(tabId)
+    if (!tab) return false
+    const takeover = clearTakeover({
+      tab,
+      resolution: "canceled",
+      handbackNote: "The person stopped this browser request.",
+    })
+    if (!takeover) return false
+    publishTakeoverRelease(tab)
+    return true
+  }
+
   const releaseTakeover = async (tabId: Id): Promise<boolean> => {
     const tab = store.find(tabId)
     if (!tab) return false
@@ -4616,70 +4667,92 @@ export const createBrowserEngine = ({
     }
     await refreshTakeoverPrivacy(tab)
     publishTakeoverRelease(tab)
-    if (takeover) resumeAfterTakeover(takeover)
+    if (takeover) resumeAfterTakeover(takeover, tabId)
     return true
-  }
-
-  const canControlTakeover = (tab: TabState, personId: Id): boolean => {
-    const takeover = tab.takeover
-    return (
-      kernel.services.use("runtime.canReturnBrowserTakeover")?.({
-        botId: takeover?.botId ?? tab.info.ownerBotId ?? "",
-        threadId: takeover?.threadId ?? tab.info.ownerThreadId ?? "",
-        runId: takeover?.runId ?? null,
-        personId,
-      }) ?? false
-    )
   }
 
   const releaseTakeoverForPerson: BrowserEngine["releaseTakeoverForPerson"] = async ({ tabId, personId }) => {
     const tab = store.find(tabId)
     if (!tab) return "not_found"
     if (!tab.info.heldByUser && !tab.takeover) return "released"
-    if (!canControlTakeover(tab, personId)) return "forbidden"
+    const takeover = tab.takeover
+    const allowed = kernel.services.use("runtime.canReturnBrowserTakeover")?.({
+      botId: takeover?.botId ?? tab.info.ownerBotId ?? "",
+      threadId: takeover?.threadId ?? tab.info.ownerThreadId ?? "",
+      runId: takeover?.runId ?? null,
+      personId,
+    })
+    if (!allowed) return "forbidden"
 
     return (await releaseTakeover(tabId)) ? "released" : "not_found"
   }
 
-  const holdTakeoverForPerson: BrowserEngine["holdTakeoverForPerson"] = async ({ tabId, personId }) => {
-    const tab = store.find(tabId)
-    if (!tab || tab.info.state === "closed") return "not_found"
-    if (!canControlTakeover(tab, personId)) return "forbidden"
-
-    const held = await holdTakeover({ tabId, reason: "The user requested browser takeover" })
-    return held ? "held" : "not_found"
-  }
-
-  const holdTakeover = async ({ tabId }: { tabId: Id; reason: string }): Promise<boolean> => {
+  const holdTakeover = async ({ tabId, runId }: { tabId: Id; reason: string; runId?: Id }): Promise<boolean> => {
     const tab = store.find(tabId)
     if (!tab || tab.info.state === "closed") return false
     if (tab.info.heldByUser) return true
     tab.info.heldByUser = true
-    tab.generation += 1
     tab.privateAfterTakeover = true
     tab.takeoverReason = "requested"
     tab.privateInput = true
+    await protectTakeoverDocument(tab, true)
+    tab.generation += 1
+    tab.refs.clear()
+    tab.lastSnapshot = null
     tab.actions = []
     tab.diagnostics = []
-    tab.lastSnapshot = null
-    store.save(tab)
-    await protectTakeoverDocument(tab)
     tab.info.lastUsedAt = Date.now()
     const activeRun = tab.info.ownerThreadId
       ? (kernel.services.use("runtime.activeRun")?.({ threadId: tab.info.ownerThreadId }) ?? null)
       : null
     tab.takeover = {
-      requestId: null,
       delegation: getDelegation(kernel, tab.info.ownerThreadId ?? ""),
+      requestId: null,
       botId: tab.info.ownerBotId,
       threadId: tab.info.ownerThreadId,
-      runId: activeRun?.id ?? null,
+      runId: runId ?? activeRun?.id ?? null,
       timer: null,
     }
+    const takeover = tab.takeover
+    takeover.timer = setTimeout(() => {
+      if (retired || tab.takeover !== takeover) return
+      clearTakeover({
+        tab,
+        resolution: "expired",
+        handbackNote: "The browser handoff expired; the current page may have changed.",
+      })
+      publishTakeoverRelease(tab)
+    }, 600_000)
+    takeover.timer.unref()
+    handoffs.save({
+      tabId,
+      botId: tab.info.ownerBotId,
+      threadId: tab.info.ownerThreadId,
+      runId: runId ?? activeRun?.id ?? null,
+      requestId: null,
+      expiresAt: Date.now() + 600_000,
+      state: "waiting",
+    })
     store.save(tab)
     kernel.publish({ type: "browser.tab", tab: safePublicTabInfo(tab) })
     await raceBudget({ work: focusManagedChrome(), ms: SIDE_EFFECT_BUDGET_MS }).catch(() => undefined)
     return true
+  }
+
+  const holdTakeoverForPerson: BrowserEngine["holdTakeoverForPerson"] = async ({ tabId, personId }) => {
+    const tab = store.find(tabId)
+    if (!tab || tab.info.state === "closed") return "not_found"
+    const takeover = tab.takeover
+    const allowed = kernel.services.use("runtime.canReturnBrowserTakeover")?.({
+      botId: takeover?.botId ?? tab.info.ownerBotId ?? "",
+      threadId: takeover?.threadId ?? tab.info.ownerThreadId ?? "",
+      runId: takeover?.runId ?? null,
+      personId,
+    })
+    if (!allowed) return "forbidden"
+
+    const held = await holdTakeover({ tabId, reason: "The user requested browser takeover" })
+    return held ? "held" : "not_found"
   }
 
   const getWindowBounds = async ({ tabId, botId }: { tabId: Id; botId: Id }): Promise<WindowBounds | null> => {
@@ -4714,37 +4787,48 @@ export const createBrowserEngine = ({
     const cdp = client
     const sessionId = tab.sessionId
     if (!cdp || !sessionId) return null
-    const viewport = await layoutClip({ client: cdp, sessionId, fullPage: false, scale: 1 }).catch(() => null)
-    if (!viewport || signal.aborted) return null
+    return captureCurrentBrowserControlFrame({
+      getEpoch: () => tab.generation,
+      canRead: () =>
+        !retired &&
+        !signal.aborted &&
+        tab.info.heldByUser &&
+        !tab.secretMode &&
+        tab.info.state === "live" &&
+        tab.sessionId === sessionId,
+      capture: async () => {
+        const viewport = await layoutClip({ client: cdp, sessionId, fullPage: false, scale: 1 }).catch(() => null)
+        if (!viewport || signal.aborted) return null
 
-    for (const scale of [0.65, 0.5, 0.35]) {
-      const result = await cdpCall<unknown>(
-        cdp,
-        "Page.captureScreenshot",
-        {
-          format: "jpeg",
-          quality: 50,
-          captureBeyondViewport: false,
-          fromSurface: true,
-          clip: { x: viewport.x, y: viewport.y, width: viewport.width, height: viewport.height, scale },
-        },
-        sessionId,
-      ).catch(() => null)
-      const data = asString(asRecord(result)?.data)
-      if (!data || data.length > 450_000) continue
-      if (signal.aborted || !tab.info.heldByUser || tab.secretMode || tab.info.state !== "live") return null
+        for (const scale of [0.65, 0.5, 0.35]) {
+          const result = await cdpCall<unknown>(
+            cdp,
+            "Page.captureScreenshot",
+            {
+              format: "jpeg",
+              quality: 50,
+              captureBeyondViewport: false,
+              fromSurface: true,
+              clip: { x: viewport.x, y: viewport.y, width: viewport.width, height: viewport.height, scale },
+            },
+            sessionId,
+          ).catch(() => null)
+          const data = asString(asRecord(result)?.data)
+          if (!data || data.length > 450_000) continue
+          if (signal.aborted || !tab.info.heldByUser || tab.secretMode || tab.info.state !== "live") return null
 
-      return {
-        targetEpoch: tab.generation,
-        title: kernel.redact(tab.privateAfterTakeover ? "" : tab.info.title),
-        url: kernel.redact(tab.privateAfterTakeover ? sanitizeHumanTakeoverUrl(tab.info.url) : tab.info.url),
-        image: `data:image/jpeg;base64,${data}`,
-        width: viewport.width,
-        height: viewport.height,
-      } satisfies BrowserTakeoverCapture
-    }
+          return {
+            title: kernel.redact(tab.privateAfterTakeover ? "" : tab.info.title),
+            url: kernel.redact(tab.privateAfterTakeover ? sanitizeHumanTakeoverUrl(tab.info.url) : tab.info.url),
+            image: `data:image/jpeg;base64,${data}`,
+            width: viewport.width,
+            height: viewport.height,
+          }
+        }
 
-    return null
+        return null
+      },
+    })
   }
 
   const takeoverInput: BrowserEngine["takeoverInput"] = async ({
@@ -4755,7 +4839,6 @@ export const createBrowserEngine = ({
     height,
     input,
     signal,
-    isAuthorized = () => true,
   }) => {
     const owned = getTab({ tabId, botId, allowHeld: true })
     if (!owned.success || !owned.value.info.heldByUser || owned.value.secretMode || !client || !owned.value.sessionId)
@@ -4784,20 +4867,20 @@ export const createBrowserEngine = ({
           if (tab.generation !== targetEpoch) return false
           const viewport = await layoutClip({ client: cdp, sessionId, fullPage: false, scale: 1 }).catch(() => null)
           if (!viewport || viewport.width !== width || viewport.height !== height) return false
-
-          if (input.kind === "text" || input.kind === "key") await protectTakeoverDocument(tab)
           operationSignal.throwIfAborted()
-          if (!isAuthorized() || tab.generation !== targetEpoch || !tab.info.heldByUser || tab.secretMode) return false
+          if (!tab.info.heldByUser) return false
+
           if (input.kind === "text") {
-            await cdpCall(cdp, "Input.insertText", { text: input.text }, sessionId)
+            await protectTakeoverDocument(tab, true)
+            kernel.addRedactionValue(input.text)
+            await cdp.call("Input.insertText", { text: input.text }, sessionId)
             return true
           }
 
           if (input.kind === "key") {
             const text =
               input.phase === "down" && input.key.length === 1 && input.modifiers === 0 ? input.key : undefined
-            await cdpCall(
-              cdp,
+            await cdp.call(
               "Input.dispatchKeyEvent",
               {
                 type: input.phase === "down" ? "keyDown" : "keyUp",
@@ -4815,8 +4898,7 @@ export const createBrowserEngine = ({
           const y = Math.min(viewport.height - 1, Math.round(input.y * viewport.height))
           if (input.kind === "wheel") {
             if (Math.abs(input.deltaX) > 1200 || Math.abs(input.deltaY) > 1200) return false
-            await cdpCall(
-              cdp,
+            await cdp.call(
               "Input.dispatchMouseEvent",
               { type: "mouseWheel", x, y, deltaX: input.deltaX, deltaY: input.deltaY },
               sessionId,
@@ -4825,16 +4907,10 @@ export const createBrowserEngine = ({
           }
 
           const button = input.button ?? "left"
-          await cdpCall(
-            cdp,
-            "Input.dispatchMouseEvent",
-            { type: "mousePressed", x, y, button, clickCount: 1 },
-            sessionId,
-          )
+          await cdp.call("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button, clickCount: 1 }, sessionId)
           try {
             operationSignal.throwIfAborted()
-            await cdpCall(
-              cdp,
+            await cdp.call(
               "Input.dispatchMouseEvent",
               { type: "mouseReleased", x, y, button, clickCount: 1 },
               sessionId,
@@ -4861,20 +4937,23 @@ export const createBrowserEngine = ({
     return store.list(botId).map(safePublicTabInfo)
   }
 
-  const shutdown = async (): Promise<void> => {
+  const shutdown = (): Promise<void> => {
+    shutdownPromise ??= performShutdown()
+    return shutdownPromise
+  }
+
+  const performShutdown = async (): Promise<void> => {
     if (retired) return
     retired = true
+    sharedPreview.clear()
     unhost()
+    handbackRetries.forEach(clearTimeout)
+    handbackRetries.clear()
     for (const tab of tabs) {
       const takeover = tab.takeover
-      if (takeover) {
-        clearTakeover({
-          tab,
-          resolution: "canceled",
-          handbackNote: "The browser handoff ended when touri stopped.",
-        })
-        publishTakeoverRelease(tab)
-      }
+      if (!takeover) continue
+      if (takeover.timer) clearTimeout(takeover.timer)
+      if (takeover.signal && takeover.onAbort) takeover.signal.removeEventListener("abort", takeover.onAbort)
     }
     unsubscribeBotDeleted()
     if (sessionTimer) clearInterval(sessionTimer)
@@ -4900,6 +4979,7 @@ export const createBrowserEngine = ({
     }
     markEngineUnavailable()
     await launcher.stop()
+    store.dispose()
   }
 
   const unsubscribeBotDeleted = kernel.subscribe(({ event }) => {
@@ -4912,6 +4992,35 @@ export const createBrowserEngine = ({
     if (notification.method === "app.willQuit") void shutdown()
   })
 
+  tabs.forEach((tab) => {
+    const saved = handoffs.get(tab.info.tabId)
+    if (!saved) return
+    if (saved.state === "returned") {
+      resumeSavedHandoff(saved.tabId)
+      return
+    }
+    tab.info.heldByUser = true
+    const takeover: NonNullable<TabState["takeover"]> = {
+      requestId: saved.requestId,
+      botId: saved.botId,
+      threadId: saved.threadId,
+      runId: saved.runId,
+      timer: null,
+    }
+    tab.takeover = takeover
+    const remaining = Math.max(0, saved.expiresAt - Date.now())
+    takeover.timer = setTimeout(() => {
+      if (retired || tab.takeover !== takeover) return
+      clearTakeover({
+        tab,
+        resolution: "expired",
+        handbackNote: "The browser handoff expired; the current page may have changed.",
+      })
+      publishTakeoverRelease(tab)
+    }, remaining)
+    takeover.timer.unref()
+  })
+
   return {
     preview: async ({ botId, tabId, signal }) => {
       // Use only an already attached tab. Never launch Chrome, reload a tab,
@@ -4921,27 +5030,42 @@ export const createBrowserEngine = ({
       const tab = tabs
         .filter((tab) => tab.info.ownerBotId === botId && (!tabId || tab.info.tabId === tabId))
         .sort((a, b) => b.info.lastUsedAt - a.info.lastUsedAt)[0]
-      if (tab?.info.state !== "live" || !tab.sessionId || tab.secretMode) return null
-      const data = await captureSafeBrowserPreview({
-        getPage: () => ({
-          generation: tab.generation,
-          heldByUser: tab.info.heldByUser,
-          privateAfterTakeover: tab.privateAfterTakeover,
-          secretMode: tab.secretMode,
-          url: tab.info.url,
-          title: tab.info.title,
-        }),
-        capture: () => imageData({ client: previewClient, tab, fullPage: false, quality: 30 }),
+      if (tab?.info.state !== "live" || !tab.sessionId || tab.secretMode || tab.takeover) return null
+      const generation = tab.generation
+      const isCurrent = () =>
+        !retired &&
+        !tab.info.heldByUser &&
+        !tab.secretMode &&
+        !tab.privateAfterTakeover &&
+        !tab.takeover &&
+        tab.info.state === "live" &&
+        tab.generation === generation
+      const frame = await sharedPreview.capture({
+        target: tab.info.tabId,
+        generation,
+        isCurrent,
+        read: async () => {
+          const data = await captureSafeBrowserPreview({
+            getPage: () => ({
+              heldByUser: tab.info.heldByUser,
+              privateAfterTakeover: tab.privateAfterTakeover,
+              secretMode: tab.secretMode,
+              url: tab.info.url,
+              title: tab.info.title,
+            }),
+            capture: () => imageData({ client: previewClient, tab, fullPage: false, quality: 30, scale: 0.5 }),
+          })
+          if (!data || data.length > 450_000 || !isCurrent()) return null
+
+          return {
+            title: tab.privateInput ? "" : kernel.redact(tab.info.title),
+            url: tab.privateInput ? sanitizeHumanTakeoverUrl(tab.info.url) : kernel.redact(tab.info.url),
+            image: `data:image/jpeg;base64,${data}`,
+          }
+        },
       })
-      if (!data || signal.aborted || tab.secretMode || tab.info.state !== "live" || data.length > 1_500_000) return null
-      const privateInput = tab.privateInput
-      const metadata = privateInput
-        ? sanitizeHumanTakeoverPreviewMetadata(tab.info)
-        : { title: kernel.redact(tab.info.title), url: kernel.redact(tab.info.url) }
-      return {
-        ...metadata,
-        image: `data:image/jpeg;base64,${data}`,
-      }
+
+      return signal.aborted || !isCurrent() ? null : frame
     },
     takeoverFrame,
     takeoverInput,
@@ -4964,6 +5088,7 @@ export const createBrowserEngine = ({
     submitSecret,
     secretEntry,
     releaseTakeover,
+    cancelTakeover,
     releaseTakeoverForPerson,
     holdTakeoverForPerson,
     holdTakeover,

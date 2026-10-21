@@ -20,20 +20,16 @@ test("computer-use channel migration stores requester, controller and queue stat
     ).toEqual({ name: "target_person_id" })
     expect(db.query("PRAGMA index_list('browser_channel_runs')").all()).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: "browser_channel_runs_queue" }),
+        expect.objectContaining({ name: "browser_channel_runs_bot_queue" }),
         expect.objectContaining({ name: "browser_channel_runs_thread_queue" }),
         expect.objectContaining({ name: "browser_channel_runs_active_slot", unique: 1 }),
       ]),
     )
     const queuePlan = db
       .query(`EXPLAIN QUERY PLAN SELECT run_id FROM browser_channel_runs
-        WHERE bot_id = ? AND status = 'queued' ORDER BY queued_at, run_id LIMIT 20`)
-      .all("bot")
-    expect(JSON.stringify(queuePlan)).toContain("browser_channel_runs_bot_queue")
-    const resumePlan = db
-      .query("EXPLAIN QUERY PLAN SELECT previous_run_id FROM browser_resume_requests WHERE next_turn_id = ?")
-      .all("next-turn")
-    expect(JSON.stringify(resumePlan)).toContain("browser_resume_requests_next_turn")
+        WHERE thread_id = ? AND bot_id = ? AND status = 'queued' ORDER BY queued_at, run_id LIMIT 20`)
+      .all("channel", "bot")
+    expect(JSON.stringify(queuePlan)).toContain("browser_channel_runs_thread_queue")
   } finally {
     db.close()
     rmSync(root, { recursive: true, force: true })

@@ -18,10 +18,7 @@ const schemaObjects = (db: Database) =>
         "SELECT type, name, sql FROM sqlite_schema WHERE type IN ('index','trigger','view') AND sql IS NOT NULL ORDER BY name",
       )
       .all() as Array<{ type: string; name: string; sql: string }>
-  ).map((object) => ({
-    ...object,
-    sql: object.sql.replaceAll('"browser_channel_runs"', "browser_channel_runs").replace(/\s+/g, " "),
-  }))
+  ).map((object) => ({ ...object, sql: object.sql.replace(/\s+/g, " ") }))
 
 for (let version = 1; version < SCHEMA_VERSION; version++) {
   test(`legacy source upgrade from populated schema ${version} preserves historical rows and working schema dependencies`, async () => {
@@ -44,6 +41,10 @@ for (let version = 1; version < SCHEMA_VERSION; version++) {
             ALTER TABLE threads ADD COLUMN owner_person_id TEXT;
             ALTER TABLE attachments ADD COLUMN owner_person_id TEXT;
           `)
+        if (migration === 38)
+          db.exec(
+            "ALTER TABLE runs ADD COLUMN requester_person_id TEXT; ALTER TABLE notifications ADD COLUMN target_person_id TEXT;",
+          )
         db.exec(sql)
         if (migration === 12) db.exec("PRAGMA foreign_keys = ON")
       }
@@ -119,11 +120,9 @@ for (let version = 1; version < SCHEMA_VERSION; version++) {
           // 0022 intentionally replaces the two native message capture triggers.
           // Their reference/hydration behavior is exercised below; custom schema
           // dependencies must retain their complete original definitions.
-          if (object.name === "browser_channel_runs_active_slot") {
-            expect(db.query("PRAGMA index_info('browser_channel_runs_active_slot')").all()).toEqual([
-              expect.objectContaining({ name: "bot_id" }),
-            ])
-            expect(after).toContainEqual(expect.objectContaining({ name: object.name, type: "index" }))
+          if (version < 42 && object.name.startsWith("browser_channel_runs_")) {
+            const name = object.name === "browser_channel_runs_queue" ? "browser_channel_runs_bot_queue" : object.name
+            expect(after.some((current) => current.name === name && current.type === "index")).toBe(true)
           } else if (REPLACED_TRANSCRIPT_TRIGGERS.has(object.name))
             expect(after.some((current) => current.name === object.name && current.type === "trigger")).toBe(true)
           else expect(after).toContainEqual(object)

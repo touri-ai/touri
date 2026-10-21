@@ -34,66 +34,49 @@ const getFixture = async () => {
   return { database, reopen }
 }
 
-test("a published Work database gains deletion and handback tables despite the old marker", async () => {
+test("a main database upgrades without replacing its handback and deletion tables", async () => {
   const fixture = await getFixture()
   fixture.database.exec(`
-    DROP TABLE thread_deletion_attachments;
-    DROP TABLE thread_deletions;
-    DROP INDEX threads_archived_page;
-    DROP INDEX threads_group_thread;
-    DROP TABLE browser_takeover_continuations;
-    DELETE FROM schema_meta WHERE key = 'thread_deletion_version';
-    UPDATE schema_meta SET value = '43' WHERE key = 'schema_version';
+    INSERT INTO browser_tabs(id,url,state,created_at,last_used_at,private_input,private_after_takeover)
+      VALUES ('private-tab','','unloaded',1,1,1,1);
+    ALTER TABLE browser_tabs DROP COLUMN private_document_ids_json;
+    UPDATE schema_meta SET value = '45' WHERE key = 'schema_version';
   `)
+  const handbackSchema = fixture.database
+    .query("SELECT sql FROM sqlite_master WHERE name='browser_takeover_continuations'")
+    .get()
+  const deletionSchema = fixture.database.query("SELECT sql FROM sqlite_master WHERE name='thread_deletions'").get()
 
   const database = fixture.reopen()
 
   expect(database.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({
     value: String(SCHEMA_VERSION),
   })
-  expect(
-    database
-      .query(
-        "SELECT name FROM sqlite_master WHERE name IN ('thread_deletions','browser_takeover_continuations') ORDER BY name",
-      )
-      .all(),
-  ).toHaveLength(2)
+  expect(database.query("SELECT sql FROM sqlite_master WHERE name='browser_takeover_continuations'").get()).toEqual(
+    handbackSchema,
+  )
+  expect(database.query("SELECT sql FROM sqlite_master WHERE name='thread_deletions'").get()).toEqual(deletionSchema)
+  expect(database.query("SELECT private_document_ids_json FROM browser_tabs WHERE id='private-tab'").get()).toEqual({
+    private_document_ids_json: "[0]",
+  })
   expect(database.query("PRAGMA foreign_key_check").all()).toEqual([])
 })
 
-test("a main database with a separate handback table also receives the Work continuation contract", async () => {
+test("reopening Work preserves private document provenance and main's handback ledger", async () => {
   const fixture = await getFixture()
   fixture.database.exec(`
-    DELETE FROM schema_meta WHERE key IN ('browser_channel_runs_version','browser_private_input_version','browser_bot_queue_version');
-    DROP TABLE browser_request_runs;
-    DROP TABLE browser_resume_requests;
-    DROP TABLE browser_channel_runs;
-    ALTER TABLE browser_tabs DROP COLUMN private_after_takeover;
-    ALTER TABLE browser_tabs DROP COLUMN takeover_reason;
-    ALTER TABLE browser_tabs DROP COLUMN private_input;
-    ALTER TABLE browser_tabs DROP COLUMN private_document_ids_json;
-    DROP TABLE run_continuations;
-    CREATE TABLE run_continuations (
-      run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
-      original_run_id TEXT NOT NULL, previous_run_id TEXT NOT NULL,
-      reason TEXT NOT NULL CHECK(reason IN ('app_restart','provider_crash','permission_granted')),
-      created_at INTEGER NOT NULL
-    );
-    CREATE INDEX run_continuations_original ON run_continuations(original_run_id);
-    UPDATE schema_meta SET value = '38' WHERE key = 'schema_version';
+    INSERT INTO browser_tabs(id,url,state,created_at,last_used_at,private_input,private_after_takeover,private_document_ids_json)
+      VALUES ('private-tab','','unloaded',1,1,1,1,'[12,34]');
   `)
 
   const database = fixture.reopen()
-  const continuation = database.query("SELECT sql FROM sqlite_master WHERE name='run_continuations'").get() as {
-    sql: string
-  }
 
-  expect(continuation.sql).toContain("browser_takeover")
+  expect(database.query("SELECT private_document_ids_json FROM browser_tabs WHERE id='private-tab'").get()).toEqual({
+    private_document_ids_json: "[12,34]",
+  })
+  expect(database.query("SELECT name FROM sqlite_master WHERE name='browser_pending_handoffs'").get()).toBeTruthy()
   expect(
-    database.query("SELECT name FROM sqlite_master WHERE name='browser_takeover_continuations'").get(),
-  ).toBeTruthy()
-  expect(
-    database.query("SELECT name FROM pragma_table_info('browser_tabs') WHERE name='private_document_ids_json'").get(),
+    database.query("SELECT name FROM pragma_table_info('browser_channel_runs') WHERE name='current_run_id'").get(),
   ).toBeTruthy()
   expect(database.query("PRAGMA foreign_key_check").all()).toEqual([])
 })

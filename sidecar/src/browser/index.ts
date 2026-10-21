@@ -31,7 +31,6 @@ import {
   requiresBrowserTakeover,
 } from "./decision"
 import { createBrowserPreviewScopes } from "./preview-scopes"
-import { createSharedBrowserPreview } from "./shared-preview"
 import type { BrowserEngine } from "./types"
 import { asArray, asBoolean, asNumber, asRecord, asString } from "./utils"
 import { createRoutedBrowserEngine } from "./vm-router"
@@ -40,7 +39,7 @@ export const name = "browser"
 
 const OPEN_DEFAULT_TIMEOUT_MS = 20000
 const TAKEOVER_TIMEOUT_MS = 600000
-const MIN_TAKEOVER_TIMEOUT_MS = 120_000
+const TAKEOVER_MINIMUM_TIMEOUT_MS = 120_000
 const TAKEOVER_SESSION_TTL_MS = 30 * 60_000
 const TAKEOVER_FRAME_INTERVAL_MS = 250
 const MAX_TAKEOVER_SESSIONS = 16
@@ -48,12 +47,11 @@ const MAX_TAKEOVER_SESSIONS = 16
 type BrowserTakeoverSession = {
   id: string
   controlEpoch: string
+  lifetime: AbortController
   botId: string
   deviceId: string
   personId: string | null
   channelRunId: string | null
-  sourceThreadId: string | null
-  sourceRunId: string | null
   expiresAt: number
   lastFrameAt: number
   frameInFlight: boolean
@@ -62,19 +60,8 @@ type BrowserTakeoverSession = {
   frameWidth: number | null
   frameHeight: number | null
   pendingInputs: number
-  lifetime: AbortController
   timer: ReturnType<typeof setTimeout> | null
   releaseVm: (() => Promise<void>) | null
-}
-
-const getTakeoverController = (device: DeviceSession | undefined) => ({
-  deviceId: device?.deviceId ?? "native",
-  personId: device?.person?.id ?? null,
-})
-
-const isTakeoverController = (device: DeviceSession | undefined, session: BrowserTakeoverSession): boolean => {
-  const controller = getTakeoverController(device)
-  return session.deviceId === controller.deviceId && session.personId === controller.personId
 }
 
 const browserTakeoverInput = (value: unknown): BrowserTakeoverInput | null => {
@@ -128,8 +115,8 @@ const requestedTimeout = (value: unknown): number | null => {
   return asNumber(value)
 }
 
-const timeout = (value: unknown, fallback = 10000, maximum = 30000): number =>
-  Math.min(maximum, Math.max(1, requestedTimeout(value) ?? fallback))
+const timeout = (value: unknown, fallback = 10000, maximum = 30000, minimum = 1): number =>
+  Math.min(maximum, Math.max(minimum, requestedTimeout(value) ?? fallback))
 
 // The engine (and the VM router) may add transport slack to a budget; reserve it so the
 // tool itself still answers within the caller's timeoutMs with the engine's own cause.
@@ -417,18 +404,9 @@ export const init = async (
 ): Promise<void> => {
   const mode = process.env.TOURI_BROWSER_EXECUTABLE === "chrome-for-testing" ? "chrome-for-testing" : "system-chrome"
   const engine = dependencies.engine ?? createRoutedBrowserEngine(kernel, mode, runStage ? { runStage } : {})
-  const sharedPreview = createSharedBrowserPreview({ capture: (input) => engine.preview(input) })
-  const unsubscribePreview = kernel.subscribe(({ event }) => {
-    if (event.type === "browser.tab") sharedPreview.invalidate(event.tab.tabId)
-    if (event.type === "browser.channel_run" && ["taken_over", "canceled"].includes(event.run.status))
-      sharedPreview.invalidateBot(event.run.botId)
-  })
   const channelRuns = createChannelBrowserRuns({ kernel, database: kernel.db as Database })
   kernel.onHostNotification((notification) => {
-    if (notification.method !== "app.willQuit") return
-    channelRuns.dispose()
-    unsubscribePreview()
-    sharedPreview.dispose()
+    if (notification.method === "app.willQuit") channelRuns.dispose()
   })
   let decisionModel: ApiModel | null = getBrowserDecisionModel(kernel)
   kernel.services.provide("browser.updateDecisionModel", (model) => {
@@ -489,7 +467,10 @@ export const init = async (
     person: NonNullable<ReturnType<typeof deviceSession>>["person"] | undefined,
   ) =>
     engine.tabsForBot(botId).filter((tab) => {
-      if (!person) return true
+      if (!person || kernel.services.use("work.ownsBot")?.({ personId: person.id, botId: tab.ownerBotId ?? "" }))
+        return true
+      const canRead = kernel.services.use("work.canAccessBrowserTab")
+      if (canRead) return canRead({ personId: person.id, role: person.role, tabId: tab.tabId })
       const row = (kernel.db as Database)
         .query("SELECT owner_thread_id FROM browser_tabs WHERE id = ?")
         .get(tab.tabId) as { owner_thread_id: string | null } | null
@@ -509,6 +490,15 @@ export const init = async (
         }),
       )
     })
+  const getTakeoverController = (device: DeviceSession | undefined) => ({
+    deviceId: device?.deviceId ?? "native",
+    personId: device ? (device.person?.id ?? null) : (kernel.services.use("work.defaultPersonId")?.() ?? "owner"),
+  })
+  const isTakeoverController = (device: DeviceSession | undefined, session: BrowserTakeoverSession): boolean => {
+    const controller = getTakeoverController(device)
+
+    return session.deviceId === controller.deviceId && session.personId === controller.personId
+  }
   const takeoverSessions = new Map<string, BrowserTakeoverSession>()
   const takeoverStarts = new Map<string, Promise<BrowserTakeoverSession | null>>()
   const renewTakeoverSession = (tabId: string, session: BrowserTakeoverSession): BrowserTakeoverSession => {
@@ -517,90 +507,39 @@ export const init = async (
     const timer = setTimeout(() => {
       const current = takeoverSessions.get(tabId)
       if (current?.id !== session.id || current.expiresAt > Date.now()) return
-      void endTakeoverSession(tabId, session.id)
+      void revokeTakeoverSession(tabId, session.id)
     }, TAKEOVER_SESSION_TTL_MS)
     timer.unref()
     const renewed = { ...session, expiresAt, timer }
     takeoverSessions.set(tabId, renewed)
     return renewed
   }
-  const setBrowserControl = async ({
-    tabId,
-    hold,
-    personId,
-  }: {
-    tabId: string
-    hold: boolean
-    personId?: string | undefined
-  }): Promise<boolean> => {
-    if (!personId)
-      return hold
-        ? engine.holdTakeover({ tabId, reason: "The user requested browser takeover" })
-        : engine.releaseTakeover(tabId)
-    if (hold) return (await engine.holdTakeoverForPerson({ tabId, personId })) === "held"
-
-    return (await engine.releaseTakeoverForPerson({ tabId, personId })) === "released"
-  }
-  const endTakeoverSession = async (tabId: string, sessionId?: string, handback = false): Promise<boolean> => {
+  const endTakeoverSession = async (tabId: string, sessionId?: string): Promise<boolean> => {
     const session = takeoverSessions.get(tabId)
     if (!session || (sessionId && session.id !== sessionId)) return false
-    const actorPersonId =
-      session.personId ?? (session.deviceId === "native" ? kernel.services.use("work.defaultPersonId")?.() : null)
-    const run = session.channelRunId ? channelRuns.get(session.channelRunId) : null
-    const sourceId = run?.activeRunId ?? run?.runId
-    const source = sourceId
-      ? ((kernel.db as Database).query("SELECT thread_id FROM runs WHERE id = ?").get(sourceId) as {
-          thread_id: string
-        } | null)
-      : null
-    if (handback && run && actorPersonId && !channelRuns.returnControl({ runId: run.runId, actorPersonId }).success)
-      return false
     if (session.timer) clearTimeout(session.timer)
     session.lifetime.abort()
     takeoverSessions.delete(tabId)
-    const released = handback ? await engine.releaseTakeover(tabId).catch(() => false) : true
-    if (!handback) {
-      if (run) channelRuns.cancel(run.runId)
-      await engine.close({ tabId, botId: session.botId, signal: new AbortController().signal }).catch(() => undefined)
-    }
-    if (!released && run && actorPersonId) channelRuns.takeControl({ runId: run.runId, actorPersonId })
+    if (session.channelRunId && session.personId)
+      channelRuns.returnControl({ runId: session.channelRunId, actorPersonId: session.personId })
+    const released = await engine.releaseTakeover(tabId).catch(() => false)
     if (session.releaseVm) await session.releaseVm().catch(() => undefined)
-    if (handback && released && run && source && sourceId)
-      kernel.services.use("runtime.resumeAfterBrowserTakeover")?.({
-        botId: run.botId,
-        threadId: source.thread_id,
-        runId: sourceId,
-      })
-
     return released
   }
-  kernel.services.provide("browser.takeoverResolved", ({ tabId, resolution }) => {
-    if (resolution === "replied") return
-
-    const run = channelRuns.getForTab(tabId)
-    if (run) {
-      if (resolution === "expired") channelRuns.expire(run.runId)
-      if (resolution === "canceled") channelRuns.cancel(run.runId)
-    }
-    void endTakeoverSession(tabId)
-  })
-  kernel.services.provide("browser.cancelRun", async ({ runId, signal }) => {
-    const run = channelRuns.getForRun(runId)
-    if (!run) return false
-    const tabs = engine.tabsForBot(run.botId).filter((tab) => channelRuns.getForTab(tab.tabId)?.runId === run.runId)
-    await Promise.all(
-      tabs.map(async (tab) => {
-        await endTakeoverSession(tab.tabId)
-        await engine.close({ tabId: tab.tabId, botId: run.botId, signal, timeoutMs: 5000 })
-      }),
-    )
-    channelRuns.cancel(run.runId)
-    kernel.services.use("runtime.cancelRun")?.({ runId: run.activeRunId ?? run.runId })
-    return true
-  })
-  const removeTakeoverSession = (tabId: string): void => {
-    void endTakeoverSession(tabId)
+  const revokeTakeoverSession = async (tabId: string, sessionId?: string): Promise<void> => {
+    const session = takeoverSessions.get(tabId)
+    if (!session || (sessionId && session.id !== sessionId)) return
+    if (session.timer) clearTimeout(session.timer)
+    session.lifetime.abort()
+    takeoverSessions.delete(tabId)
+    if (session.releaseVm) await session.releaseVm().catch(() => undefined)
   }
+  const removeTakeoverSession = (tabId: string): void => {
+    void revokeTakeoverSession(tabId)
+  }
+  const unsubscribeTakeoverRelease = kernel.subscribe(({ event }) => {
+    if (event.type === "browser.tab" && !event.tab.heldByUser) removeTakeoverSession(event.tab.tabId)
+  })
   const authorizeTakeoverSession = (request: {
     signal: AbortSignal
     params: Record<string, string>
@@ -612,36 +551,53 @@ export const init = async (
     const controlEpoch = asString(body.controlEpoch)
     const tabId = request.params.id ?? ""
     const session = takeoverSessions.get(tabId)
-    if ((device && !device.active()) || !session || sessionId !== session.id) return null
+    if (!session || sessionId !== session.id) return null
     if (session.controlEpoch !== controlEpoch) return null
     if (!isTakeoverController(device, session)) return null
-    if (device?.person && !visibleTabsFor(session.botId, device.person).some((tab) => tab.tabId === tabId)) return null
-    if (session.personId && !session.channelRunId) {
-      const ownsBot = kernel.services.use("work.ownsBot")?.({ personId: session.personId, botId: session.botId })
-      const canReturn =
-        session.sourceThreadId &&
-        kernel.services.use("runtime.canReturnBrowserTakeover")?.({
-          botId: session.botId,
-          threadId: session.sourceThreadId,
-          runId: session.sourceRunId,
-          personId: session.personId,
-        })
-      if (!ownsBot && !canReturn) return null
-    }
-    if (session.channelRunId) {
-      const run = channelRuns.get(session.channelRunId)
-      const actorId = session.personId ?? kernel.services.use("work.defaultPersonId")?.()
-      if (run?.status !== "taken_over" || run.controllerPersonId !== actorId) return null
-    }
-    if (session.expiresAt <= Date.now()) {
+    const canView = !device?.person || visibleTabsFor(null, device.person).some((tab) => tab.tabId === tabId)
+    if ((device && !device.active()) || !canView || session.expiresAt <= Date.now()) {
       removeTakeoverSession(tabId)
       return null
     }
     return { device, session }
   }
-  kernel.onHostNotification(({ method }) => {
-    if (method !== "app.willQuit") return
-    for (const tabId of takeoverSessions.keys()) removeTakeoverSession(tabId)
+  let shutdownPromise: Promise<void> | undefined
+  const shutdown = (): Promise<void> => {
+    shutdownPromise ??= (async () => {
+      unhostSessions()
+      unsubscribeTakeoverRelease()
+      channelRuns.dispose()
+      const sessions = Array.from(takeoverSessions.values())
+      takeoverSessions.clear()
+      sessions.forEach((session) => {
+        session.lifetime.abort()
+        if (session.timer) clearTimeout(session.timer)
+      })
+      await engine.shutdown()
+      await Promise.all(sessions.map((session) => session.releaseVm?.().catch(() => undefined)))
+    })()
+    return shutdownPromise
+  }
+  const unhostSessions = kernel.onHostNotification(({ method }) => {
+    if (method === "app.willQuit") void shutdown()
+  })
+  kernel.services.provide("browser.shutdown", shutdown)
+  kernel.services.provide("browser.cancelRequest", ({ runId, reason }) => {
+    const request = channelRuns.cancelRequest(runId, reason === "timeout" ? "failed" : "canceled")
+    if (!request) return null
+    engine
+      .tabsForBot(request.botId)
+      .filter(
+        (tab) =>
+          request.ownsControl &&
+          tab.heldByUser &&
+          (tab.takeoverRunId === request.requestId || tab.takeoverRunId === request.runId),
+      )
+      .forEach((tab) => {
+        void revokeTakeoverSession(tab.tabId)
+        void engine.cancelTakeover({ tabId: tab.tabId })
+      })
+    return request.runId
   })
   const previewScopes = createBrowserPreviewScopes()
   // The screen viewers show the real cause when a page never reached the display.
@@ -652,6 +608,17 @@ export const init = async (
       const channelAccess = await channelRuns.enter(input.ctx)
       if (!channelAccess.success)
         return { success: false, errorCode: channelAccess.errorCode, error: channelAccess.error }
+      if (channelAccess.queued)
+        return {
+          success: true,
+          content: [
+            {
+              type: "text",
+              text: "Waiting for this bot's current browser request to finish. End this turn; touri will continue this request automatically.",
+            },
+          ],
+          structured: { status: "waiting_for_browser", requestRunId: input.ctx.runId },
+        }
       const bot = kernel.services.use("store.api")?.getBot({ botId: input.ctx.botId })
       const writes = ![
         "browser_list_tabs",
@@ -675,13 +642,11 @@ export const init = async (
         const intent =
           args.target === undefined ? (asString(args.expression) ?? "") : getTargetIntent(target(args.target))
         const reasonCode = getBrowserTakeoverReasonCode({ error: result.error, intent, pageUrl })
-        const managedNeedsYou = channelRuns.needsYou(input.ctx.runId, reasonCode)
         return engine.requestTakeover({
           tabId,
           botId: input.ctx.botId,
           reason: reasonCode,
           reasonCode,
-          notify: !managedNeedsYou,
           timeoutMs: TAKEOVER_TIMEOUT_MS,
           signal: input.ctx.signal,
           threadId: input.ctx.threadId,
@@ -1020,7 +985,7 @@ export const init = async (
         botId: ctx.botId,
         reason,
         reasonCode,
-        timeoutMs: Math.max(MIN_TAKEOVER_TIMEOUT_MS, timeout(input.timeoutMs, TAKEOVER_TIMEOUT_MS, 1800000)),
+        timeoutMs: timeout(input.timeoutMs, 600000, 1800000, TAKEOVER_MINIMUM_TIMEOUT_MS),
         signal: ctx.signal,
         notify: !managedNeedsYou,
         threadId: ctx.threadId,
@@ -1053,6 +1018,7 @@ export const init = async (
             return { status: 404, json: { error: "Bot não encontrado" } }
           if (Array.from(takeoverSessions.values()).some((session) => session.botId === botId))
             return { status: 409, json: { error: "A prévia fica oculta enquanto alguém controla o navegador." } }
+          if (bot.machine !== "local") return { status: 409, json: { error: "Use a tela da máquina virtual" } }
           const visibleTabs = visibleTabsFor(botId, person)
           if (person && query.tabId && !visibleTabs.some((tab) => tab.tabId === query.tabId))
             return { status: 404, json: { error: "Página não encontrada" } }
@@ -1066,8 +1032,10 @@ export const init = async (
                 error: "A prévia fica oculta enquanto alguém está no controle.",
               },
             }
-          if (!selectedTabId) return { status: 409, json: { error: "Nenhuma página disponível para prévia" } }
-          const capture = () => sharedPreview.get({ botId, tabId: selectedTabId, signal })
+          const capture = () =>
+            selectedTabId
+              ? engine.preview({ botId, tabId: selectedTabId, signal })
+              : engine.preview({ botId, ...(query.tabId ? { tabId: query.tabId } : {}), signal })
           const frame =
             person?.role === "member"
               ? await previewScopes.capture({
@@ -1081,34 +1049,15 @@ export const init = async (
                   capture,
                 })
               : await capture()
-          const session = deviceSession(signal)
-          if (session && !session.active()) return { status: 401, json: { error: "Conecte o dispositivo novamente." } }
-          if (person && !visibleTabsFor(botId, person).some((tab) => tab.tabId === selectedTabId))
-            return { status: 404, json: { error: "Página não encontrada" } }
+          const device = deviceSession(signal)
           if (
-            takeoverSessions.has(selectedTabId) ||
-            takeoverStarts.has(selectedTabId) ||
-            channelRuns.isPreviewHidden(selectedTabId)
+            device &&
+            (!device.active() || !visibleTabsFor(botId, device.person).some((tab) => tab.tabId === selectedTabId))
           )
-            return {
-              status: 409,
-              json: {
-                errorCode: "BROWSER_PREVIEW_HIDDEN",
-                error: "A prévia fica oculta enquanto alguém está no controle.",
-              },
-            }
-          if (!frame) return { status: 409, json: { error: "Nenhuma página disponível para prévia" } }
-          const bytes = sharedPreview.getEncoded(frame)
-          return {
-            status: 200,
-            mime: "application/json",
-            stream: new ReadableStream<Uint8Array>({
-              start(controller) {
-                controller.enqueue(bytes)
-                controller.close()
-              },
-            }),
-          }
+            return { status: 404, json: { error: "Página não encontrada" } }
+          return frame
+            ? { status: 200, json: frame }
+            : { status: 409, json: { error: "Nenhuma página disponível para prévia" } }
         },
       },
       {
@@ -1121,7 +1070,7 @@ export const init = async (
             return { status: 401, json: { error: "Conecte o dispositivo para assumir o navegador." } }
           const tabId = params.id ?? ""
           const tab = visibleTabsFor(null, device?.person).find((candidate) => candidate.tabId === tabId)
-          if (!tab?.ownerBotId || tab.state !== "live")
+          if (!tab?.ownerBotId || tab.state === "closed")
             return { status: 404, json: { error: "A página do navegador não está disponível." } }
           const bot = kernel.services.use("store.api")?.getBot({ botId: tab.ownerBotId })
           if (!bot) return { status: 404, json: { error: "O bot desta página não está disponível." } }
@@ -1146,15 +1095,15 @@ export const init = async (
           if (!starting) {
             starting = (async () => {
               const channelRun = channelRuns.getForTab(tabId)
-              const actorPersonId =
-                device?.person?.id ?? (!device ? kernel.services.use("work.defaultPersonId")?.() : null)
+              const actorPersonId = controller.personId
               if (channelRun && !actorPersonId) return null
               if (channelRun && actorPersonId) {
                 const control = channelRuns.takeControl({ runId: channelRun.runId, actorPersonId })
                 if (!control.success) return null
               }
               const undoChannelControl = (): void => {
-                if (channelRun && actorPersonId) channelRuns.returnControl({ runId: channelRun.runId, actorPersonId })
+                if (channelRun && actorPersonId)
+                  channelRuns.restoreControl({ runId: channelRun.runId, actorPersonId, status: channelRun.status })
               }
               let releaseVm: (() => Promise<void>) | null = null
               if (bot.browser === "machine") {
@@ -1171,21 +1120,18 @@ export const init = async (
                 }
               }
 
-              sharedPreview.invalidateBot(bot.id)
-              if (
-                device &&
-                (!device.active() ||
-                  !visibleTabsFor(bot.id, device.person).some((candidate) => candidate.tabId === tabId))
-              ) {
-                await releaseVm?.().catch(() => undefined)
-                undoChannelControl()
-                return null
+              const hold = async (): Promise<boolean> => {
+                if (!channelRun && kernel.services.use("work.defaultPersonId")) {
+                  const status = await engine.holdTakeoverForPerson({ tabId, personId: actorPersonId ?? "" })
+                  return status === "held"
+                }
+                return engine.holdTakeover({
+                  tabId,
+                  reason: "The user requested browser takeover",
+                  ...(channelRun ? { runId: channelRuns.getCurrentRunId(channelRun.runId) ?? channelRun.runId } : {}),
+                })
               }
-              const held = await setBrowserControl({
-                tabId,
-                hold: true,
-                personId: channelRun ? undefined : (actorPersonId ?? undefined),
-              }).catch(() => false)
+              const held = await hold().catch(() => false)
               if (!held) {
                 await releaseVm?.().catch(() => undefined)
                 undoChannelControl()
@@ -1194,17 +1140,11 @@ export const init = async (
               return renewTakeoverSession(tabId, {
                 id: randomBytes(32).toString("hex"),
                 controlEpoch: randomBytes(16).toString("hex"),
+                lifetime: new AbortController(),
                 botId: tab.ownerBotId ?? "",
                 deviceId: controller.deviceId,
                 personId: controller.personId,
                 channelRunId: channelRun?.runId ?? null,
-                sourceRunId: tab.takeoverRunId ?? null,
-                sourceThreadId:
-                  (
-                    (kernel.db as Database)
-                      .query("SELECT owner_thread_id FROM browser_tabs WHERE id = ?")
-                      .get(tabId) as { owner_thread_id: string | null } | null
-                  )?.owner_thread_id ?? null,
                 expiresAt: 0,
                 lastFrameAt: 0,
                 frameInFlight: false,
@@ -1213,7 +1153,6 @@ export const init = async (
                 frameWidth: null,
                 frameHeight: null,
                 pendingInputs: 0,
-                lifetime: new AbortController(),
                 timer: null,
                 releaseVm,
               })
@@ -1268,11 +1207,7 @@ export const init = async (
               signal: AbortSignal.any([request.signal, active.lifetime.signal]),
             })
             .catch(() => null)
-          const current = takeoverSessions.get(tabId)
-          if (!authorizeTakeoverSession(request)) {
-            removeTakeoverSession(tabId)
-            return { status: 403, json: { error: "Esta sessão de controle não está ativa." } }
-          }
+          const current = authorizeTakeoverSession(request)?.session
           if (current?.id !== active.id || current.viewEpoch !== active.viewEpoch)
             return { status: 403, json: { error: "Esta sessão de controle não está ativa." } }
           const completed = renewTakeoverSession(tabId, {
@@ -1329,14 +1264,6 @@ export const init = async (
                 height,
                 input,
                 signal: AbortSignal.any([request.signal, authorized.session.lifetime.signal]),
-                isAuthorized: () => {
-                  const current = authorizeTakeoverSession(request)?.session
-                  return (
-                    current?.id === authorized.session.id &&
-                    current.viewEpoch === viewEpoch &&
-                    current.targetEpoch === targetEpoch
-                  )
-                },
               })
               .catch(() => false)
           } finally {
@@ -1359,7 +1286,7 @@ export const init = async (
           const tabId = request.params.id ?? ""
           const authorized = authorizeTakeoverSession(request)
           if (!authorized) return { status: 403, json: { error: "Esta sessão de controle não está ativa." } }
-          const released = await endTakeoverSession(tabId, authorized.session.id, true)
+          const released = await endTakeoverSession(tabId, authorized.session.id)
           return released
             ? { status: 200, json: {} }
             : { status: 404, json: { error: "A página do navegador não está mais disponível." } }
@@ -1405,8 +1332,7 @@ export const init = async (
             status: 200,
             json: {
               tabs,
-              ...(botId &&
-              (tabs.length || !person || kernel.services.use("work.ownsBot")?.({ personId: person.id, botId }))
+              ...(botId && (!person || kernel.services.use("work.ownsBot")?.({ personId: person.id, botId }))
                 ? { lastFailure: failures.get(botId) ?? null }
                 : {}),
             },
@@ -1418,11 +1344,10 @@ export const init = async (
         path: "/browser/tabs/:id/takeover",
         handler: async (request) => {
           const body = argsRecord(request.body)
-          if (typeof body.hold !== "boolean") return { status: 400, json: { errorCode: "INVALID_ARGS" } }
-          const hold = body.hold
+          const hold = asBoolean(body.hold) === true
           const tabId = request.params.id ?? ""
           const device = deviceSession(request.signal)
-          const actorPersonId = device?.person?.id ?? (!device ? kernel.services.use("work.defaultPersonId")?.() : null)
+          const actorPersonId = getTakeoverController(device).personId
           const controller = takeoverSessions.get(tabId)
           if (controller && ((device && !device.active()) || !isTakeoverController(device, controller)))
             return { status: 403, json: { error: "Somente quem assumiu o navegador pode devolver o controle." } }
@@ -1436,18 +1361,34 @@ export const init = async (
             if (!control.success)
               return { status: 403, json: { errorCode: "BROWSER_CONTROL_FORBIDDEN", error: control.error } }
           }
-          const ok =
-            controller && !hold
-              ? await endTakeoverSession(tabId, controller.id, true)
-              : await setBrowserControl({
-                  tabId,
-                  hold,
-                  personId: channelRun ? undefined : (actorPersonId ?? undefined),
-                })
-          if (!ok && actorPersonId && channelRun && !controller) {
-            if (hold) channelRuns.returnControl({ runId: channelRun.runId, actorPersonId })
-            else channelRuns.takeControl({ runId: channelRun.runId, actorPersonId })
+          const applyUnmanagedControl = async () => {
+            if (controller || channelRun) return null
+            const personId = actorPersonId ?? ""
+            if (hold) return engine.holdTakeoverForPerson({ tabId, personId })
+            return engine.releaseTakeoverForPerson({ tabId, personId })
           }
+          const release = await applyUnmanagedControl()
+          if (release === "forbidden")
+            return {
+              status: 403,
+              json: {
+                errorCode: "BROWSER_CONTROL_FORBIDDEN",
+                error: "Só quem pediu ou a pessoa responsável pelo bot pode devolver o controle.",
+              },
+            }
+          const applyControl = async (): Promise<boolean> => {
+            if (controller && !hold) return endTakeoverSession(tabId, controller.id)
+            if (release !== null) return release === "held" || release === "released"
+            if (!hold) return engine.releaseTakeover(tabId)
+            return engine.holdTakeover({
+              tabId,
+              reason: "The user requested browser takeover",
+              ...(channelRun ? { runId: channelRuns.getCurrentRunId(channelRun.runId) ?? channelRun.runId } : {}),
+            })
+          }
+          const ok = await applyControl()
+          if (!ok && actorPersonId && channelRun && !controller)
+            channelRuns.restoreControl({ runId: channelRun.runId, actorPersonId, status: channelRun.status })
           return ok
             ? { status: 200, json: {} }
             : {

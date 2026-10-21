@@ -11,8 +11,8 @@ const VISIBLE_STATUSES: Array<BrowserChannelRunStatus> = ["queued", ...LIVE_STAT
 type QueueItem = { runId: string; channelId: string; botId: string; queuedAt: number }
 type BrowserChannelRunRow = {
   run_id: string
-  request_id: string | null
-  active_run_id: string | null
+  current_run_id: string
+  resume_pending: number
   group_id: string | null
   thread_id: string
   bot_id: string
@@ -86,7 +86,7 @@ export const getNextChannelBrowserRun = ({
 }): QueueItem | undefined =>
   queued
     .filter((item) => !active.has(item.botId))
-    // Sorting this fresh filtered array cannot mutate the caller's queue.
+    .slice()
     .sort((first, second) => first.queuedAt - second.queuedAt || first.runId.localeCompare(second.runId))[0]
 
 const selectRunSql = `SELECT c.*,
@@ -96,26 +96,6 @@ const selectRunSql = `SELECT c.*,
       AND (queued.queued_at < c.queued_at OR (queued.queued_at = c.queued_at AND queued.run_id < c.run_id))
   ) ELSE NULL END AS queue_position
   FROM browser_channel_runs c`
-
-export const getBrowserTabRunId = (database: Database, tabId: string): string | null => {
-  const tab = database
-    .query(`SELECT tab.owner_bot_id AS bot_id,
-    COALESCE(thread.group_thread_id, thread.id) AS thread_id
-    FROM browser_tabs tab JOIN threads thread ON thread.id = tab.owner_thread_id WHERE tab.id = ?`)
-    .get(tabId) as { bot_id: string | null; thread_id: string } | null
-  if (!tab?.bot_id) return null
-  const active = database
-    .query(`SELECT run_id FROM browser_channel_runs WHERE bot_id = ? AND thread_id = ?
-    AND status IN ('running','needs_you','taken_over') LIMIT 1`)
-    .get(tab.bot_id, tab.thread_id) as { run_id: string } | null
-  if (active) return active.run_id
-  const previous = database
-    .query(`SELECT run_id FROM browser_channel_runs WHERE thread_id = ? AND bot_id = ?
-    AND status != 'queued' ORDER BY queued_at DESC, run_id DESC LIMIT 1`)
-    .get(tab.thread_id, tab.bot_id) as { run_id: string } | null
-
-  return previous?.run_id ?? null
-}
 
 export const createChannelBrowserRuns = ({
   kernel,
@@ -128,21 +108,21 @@ export const createChannelBrowserRuns = ({
   escalationMs?: number
   now?: () => number
 }) => {
+  let restoreTimer: ReturnType<typeof setTimeout> | undefined
+  const resumeTimers = new Map<Id, ReturnType<typeof setTimeout>>()
   const escalationTimers = new Map<Id, ReturnType<typeof setTimeout>>()
   const personName = (personId: string | null): string | null =>
     personId ? (kernel.services.use("work.personName")?.(personId) ?? null) : null
   const getRaw = (runId: string): BrowserChannelRunRow | null =>
-    (database.query(`${selectRunSql} WHERE c.run_id = ?`).get(runId) as BrowserChannelRunRow | null) ?? null
+    (database
+      .query(
+        `${selectRunSql} WHERE c.run_id = ? OR c.current_run_id = ? OR c.run_id = (SELECT original_run_id FROM browser_takeover_continuations WHERE run_id = ?)`,
+      )
+      .get(runId, runId, runId) as BrowserChannelRunRow | null) ?? null
   const toPublic = (row: BrowserChannelRunRow): BrowserChannelRun => ({
     runId: row.run_id,
-    requestId: row.request_id ?? row.run_id,
-    activeRunId: row.active_run_id ?? row.run_id,
-    runIds: (
-      database
-        .query("SELECT run_id FROM browser_request_runs WHERE request_run_id = ? LIMIT 100")
-        .all(row.run_id) as Array<{ run_id: string }>
-    ).map((link) => link.run_id),
-    groupId: row.group_id,
+    activeRunId: row.current_run_id,
+    groupId: row.group_id ?? "",
     threadId: row.thread_id,
     botId: row.bot_id,
     requesterPersonId: row.requester_person_id,
@@ -164,11 +144,11 @@ export const createChannelBrowserRuns = ({
   }
   const publish = (runId: string): void => {
     const run = get(runId)
-    if (run) kernel.publish({ type: "browser.channel_run", run })
+    if (run?.groupId) kernel.publish({ type: "browser.channel_run", run })
   }
-  const publishQueue = (botId: string): void => {
+  const publishQueue = (_channelId: string, botId: string): void => {
     const rows = database
-      .query(`${selectRunSql} WHERE c.bot_id = ? AND c.status = 'queued'
+      .query(`${selectRunSql} WHERE c.bot_id = ? AND c.status = 'queued' AND c.group_id IS NOT NULL
         ORDER BY c.queued_at, c.run_id LIMIT ${MAX_QUEUED_BROWSER_RUNS}`)
       .all(botId) as BrowserChannelRunRow[]
     rows.forEach((row) => {
@@ -179,41 +159,40 @@ export const createChannelBrowserRuns = ({
     if (groupIds && groupIds.length === 0) return []
     const scope = groupIds ? `AND c.group_id IN (${groupIds.map(() => "?").join(",")})` : ""
     const rows = database
-      .query(`${selectRunSql} WHERE c.status IN ('queued','running','needs_you','taken_over') ${scope}
+      .query(`${selectRunSql} WHERE c.group_id IS NOT NULL AND c.status IN ('queued','running','needs_you','taken_over') ${scope}
         ORDER BY c.group_id, c.thread_id, c.bot_id, c.queued_at, c.run_id LIMIT 100`)
       .all(...(groupIds ?? [])) as BrowserChannelRunRow[]
     return rows.map(toPublic)
   }
   const getForTab = (tabId: string): BrowserChannelRun | null => {
-    const runId = getBrowserTabRunId(database, tabId)
-    return runId ? get(runId) : null
+    const row = database
+      .query(`${selectRunSql}
+        JOIN browser_tabs tab ON tab.owner_bot_id = c.bot_id
+        JOIN threads owner_thread ON owner_thread.id = tab.owner_thread_id
+        WHERE tab.id = ? AND COALESCE(owner_thread.group_thread_id, owner_thread.id) = c.thread_id
+          AND c.status IN ('running','needs_you','taken_over') LIMIT 1`)
+      .get(tabId) as BrowserChannelRunRow | null
+
+    return row ? toPublic(row) : null
   }
   const getForRun = (runId: string): BrowserChannelRun | null => {
     const row = database
       .query(`${selectRunSql}
-        LEFT JOIN group_run_links link ON link.run_id = c.active_run_id
-        WHERE (c.run_id = ? OR c.active_run_id = ? OR link.turn_id = ?) AND c.status IN ('running','needs_you','taken_over')
+        LEFT JOIN group_run_links link ON link.run_id = c.run_id
+        WHERE (c.run_id = ? OR link.turn_id = ?) AND c.status IN ('running','needs_you','taken_over')
         ORDER BY c.queued_at DESC LIMIT 1`)
-      .get(runId, runId, runId) as BrowserChannelRunRow | null
+      .get(runId, runId) as BrowserChannelRunRow | null
     return row ? toPublic(row) : null
   }
-  const getContext = (ctx: Pick<ToolContext, "runId" | "botId">) => {
+  const getContext = (ctx: ToolContext) => {
     if (!ctx.runId) return null
     return database
-      .query(`SELECT t.group_id, COALESCE(t.group_thread_id, t.id) AS group_thread_id,
-          COALESCE(parent.request_message_id, original.request_message_id, r.request_message_id, r.id) AS request_id,
-          COALESCE(r.requester_person_id, original.requester_person_id) AS requester_person_id, b.responsible_person_id
+      .query(`SELECT t.group_id, t.group_thread_id, r.requester_person_id, b.responsible_person_id
         FROM runs r JOIN threads t ON t.id = r.thread_id JOIN bots b ON b.id = r.bot_id
-        LEFT JOIN run_continuations continuation ON continuation.run_id = r.id
-        LEFT JOIN browser_takeover_continuations browser_continuation ON browser_continuation.run_id = r.id
-        LEFT JOIN runs original ON original.id = COALESCE(continuation.original_run_id, browser_continuation.original_run_id)
-        LEFT JOIN group_run_links link ON link.run_id = COALESCE(original.id, r.id)
-        LEFT JOIN runs parent ON parent.id = link.turn_id
         WHERE r.id = ? AND r.bot_id = ? LIMIT 1`)
       .get(ctx.runId, ctx.botId) as {
       group_id: string | null
       group_thread_id: string | null
-      request_id: string
       requester_person_id: string | null
       responsible_person_id: string | null
     } | null
@@ -282,6 +261,33 @@ export const createChannelBrowserRuns = ({
     )
     escalationTimers.set(runId, timer)
   }
+  const resumeRequest = (runId: string, attempt = 0): void => {
+    const row = getRaw(runId)
+    if (!row?.resume_pending || !LIVE_STATUSES.includes(row.status)) return
+    const run = database.query("SELECT thread_id FROM runs WHERE id = ?").get(row.current_run_id) as {
+      thread_id: string
+    } | null
+    if (!run) return
+    const waiting = database
+      .query("SELECT 1 FROM browser_pending_handoffs WHERE run_id IN (?,?) AND state = 'waiting' LIMIT 1")
+      .get(row.current_run_id, row.run_id)
+    if (!waiting)
+      kernel.services.use("runtime.resumeAfterBrowserTakeover")?.({
+        botId: row.bot_id,
+        threadId: run.thread_id,
+        runId: row.current_run_id,
+      })
+    if (attempt >= 30) return
+    const previous = resumeTimers.get(runId)
+    if (previous) clearTimeout(previous)
+    const timer = setTimeout(() => {
+      resumeTimers.delete(runId)
+      resumeRequest(runId, attempt + 1)
+    }, 1000)
+    timer.unref()
+    resumeTimers.set(runId, timer)
+  }
+
   const updateTerminal = (runId: string, status: "succeeded" | "failed" | "canceled"): void => {
     const changed = database
       .transaction(() => {
@@ -306,6 +312,7 @@ export const createChannelBrowserRuns = ({
         const next = getNextChannelBrowserRun({
           queued: queued.map((row) => ({
             runId: row.run_id,
+            activeRunId: row.current_run_id,
             channelId: current.thread_id,
             botId: row.bot_id,
             queuedAt: row.queued_at,
@@ -315,7 +322,7 @@ export const createChannelBrowserRuns = ({
         if (!next) return [runId]
         database
           .query(
-            "UPDATE browser_channel_runs SET status = 'running', started_at = ? WHERE run_id = ? AND status = 'queued'",
+            "UPDATE browser_channel_runs SET status = 'running', resume_pending = 1, started_at = ? WHERE run_id = ? AND status = 'queued'",
           )
           .run(now(), next.runId)
         return [runId, next.runId]
@@ -325,68 +332,58 @@ export const createChannelBrowserRuns = ({
     clearEscalation(runId)
     resolveNeedsYou(runId)
     changed.forEach(publish)
+    if (changed[1]) resumeRequest(changed[1])
     const scope = database.query("SELECT thread_id, bot_id FROM browser_channel_runs WHERE run_id = ?").get(runId) as {
       thread_id: string
       bot_id: string
     } | null
-    if (scope) publishQueue(scope.bot_id)
+    if (scope) publishQueue(scope.thread_id, scope.bot_id)
   }
-  const cancelQueued = (runId: string): void => {
-    const scope = database.query("SELECT thread_id, bot_id FROM browser_channel_runs WHERE run_id = ?").get(runId) as {
-      thread_id: string
-      bot_id: string
-    } | null
-    const changed = database
-      .query(
-        "UPDATE browser_channel_runs SET status = 'canceled', finished_at = ? WHERE run_id = ? AND status = 'queued'",
-      )
-      .run(now(), runId).changes
-    if (changed > 0) {
-      publish(runId)
-      if (scope) publishQueue(scope.bot_id)
+  const cancelRequest = (
+    runId: string,
+    status: "failed" | "canceled" = "canceled",
+  ): { runId: string; requestId: string; botId: string; ownsControl: boolean } | null => {
+    const row =
+      getRaw(runId) ??
+      (database
+        .query(`${selectRunSql}
+      WHERE c.current_run_id IN (SELECT run_id FROM group_run_links WHERE turn_id = ?)
+        AND c.status IN ('queued','running','needs_you','taken_over') LIMIT 1`)
+        .get(runId) as BrowserChannelRunRow | null)
+    if (!row || !VISIBLE_STATUSES.includes(row.status)) return null
+    updateTerminal(row.run_id, status)
+    return {
+      runId: row.current_run_id,
+      requestId: row.run_id,
+      botId: row.bot_id,
+      ownsControl: LIVE_STATUSES.includes(row.status),
     }
   }
-  const waitForActivation = ({ runId, signal }: { runId: string; signal: AbortSignal }): Promise<boolean> =>
-    new Promise((resolve) => {
-      let dispose = () => {}
-      const finish = (active: boolean): void => {
-        dispose()
-        signal.removeEventListener("abort", onAbort)
-        resolve(active)
-      }
-      const check = (): void => {
-        const row = getRaw(runId)
-        if (row?.status === "running") finish(true)
-        else if (!row || !["queued", "needs_you", "taken_over"].includes(row.status)) finish(false)
-      }
-      const onAbort = (): void => {
-        cancelQueued(runId)
-        finish(false)
-      }
-      dispose = kernel.subscribe(({ event }) => {
-        if (event.type === "browser.channel_run" && event.run.runId === runId) check()
-      })
-      signal.addEventListener("abort", onAbort, { once: true })
-      if (signal.aborted) onAbort()
-      else check()
-    })
+
   const enter = async (
     ctx: ToolContext,
-  ): Promise<{ success: true } | { success: false; errorCode: string; error: string }> => {
+  ): Promise<{ success: true; queued?: boolean } | { success: false; errorCode: string; error: string }> => {
     if (!ctx.runId || ctx.signal.aborted) return { success: true }
     if (!kernel.services.use("work.personChannelIds")) return { success: true }
     const context = getContext(ctx)
-    if (!context?.group_thread_id) return { success: true }
-    const previous = database
-      .query("SELECT run_id FROM browser_channel_runs WHERE bot_id = ? AND request_id = ?")
-      .get(ctx.botId, context.request_id) as { run_id: string } | null
-    const runId = previous?.run_id ?? ctx.runId
+    if (!context) return { success: true }
+    const continuation = database
+      .query("SELECT original_run_id FROM browser_takeover_continuations WHERE run_id = ?")
+      .get(ctx.runId) as { original_run_id: string } | null
+    const runId = continuation?.original_run_id ?? ctx.runId
     const outcome = database
       .transaction(() => {
         const existing = database.query("SELECT status FROM browser_channel_runs WHERE run_id = ?").get(runId) as {
           status: BrowserChannelRunStatus
         } | null
-        if (existing) return { status: existing.status, inserted: false }
+        if (existing) {
+          database
+            .query(
+              "UPDATE browser_channel_runs SET current_run_id = ?, resume_pending = CASE WHEN current_run_id != ? THEN 0 ELSE resume_pending END WHERE run_id = ?",
+            )
+            .run(ctx.runId, ctx.runId, runId)
+          return { status: existing.status, inserted: false }
+        }
         const active = database
           .query(`SELECT run_id FROM browser_channel_runs WHERE bot_id = ?
             AND status IN ('running','needs_you','taken_over') LIMIT 1`)
@@ -410,14 +407,13 @@ export const createChannelBrowserRuns = ({
         const queuedAt = Math.max(now(), lastQueuedAt + 1)
         database
           .query(`INSERT INTO browser_channel_runs
-            (run_id,request_id,active_run_id,group_id,thread_id,bot_id,requester_person_id,responsible_person_id,status,queued_at,started_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+            (run_id,current_run_id,group_id,thread_id,bot_id,requester_person_id,responsible_person_id,status,queued_at,started_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?)`)
           .run(
             runId,
-            context.request_id,
             ctx.runId,
             context.group_id,
-            context.group_thread_id,
+            context.group_thread_id ?? ctx.threadId,
             ctx.botId,
             context.requester_person_id,
             context.responsible_person_id ?? kernel.services.use("work.defaultPersonId")?.() ?? null,
@@ -434,33 +430,18 @@ export const createChannelBrowserRuns = ({
         errorCode: "BROWSER_QUEUE_FULL",
         error: "A fila deste navegador está cheia. Tente de novo em instantes.",
       }
-    database
-      .query("INSERT OR IGNORE INTO browser_request_runs(run_id,request_run_id) VALUES (?,?)")
-      .run(ctx.runId, runId)
-    if (outcome.status === "running") {
-      database.query("UPDATE browser_channel_runs SET active_run_id = ? WHERE run_id = ?").run(ctx.runId, runId)
-      database
-        .query("INSERT OR IGNORE INTO browser_request_runs(run_id,request_run_id) VALUES (?,?)")
-        .run(ctx.runId, runId)
-      publish(runId)
-      return { success: true }
-    }
     if (outcome.inserted) publish(runId)
+    if (outcome.status === "running") return { success: true }
     if (outcome.status !== "queued" && outcome.status !== "needs_you" && outcome.status !== "taken_over")
       return { success: false, errorCode: "BROWSER_RUN_FINISHED", error: "Este turno do navegador já foi encerrado." }
-    const active = await waitForActivation({ runId, signal: ctx.signal })
-    return active
-      ? { success: true }
-      : {
-          success: false,
-          errorCode: "BROWSER_RUN_CANCELED",
-          error: "O turno do navegador foi cancelado antes de começar.",
-        }
+    return { success: true, queued: true }
   }
-  const needsYou = (runId: string | null, _reason: string): boolean => {
-    if (!runId) return false
-    const row = getRaw(runId)
+
+  const needsYou = (currentRunId: string | null, reason: string): boolean => {
+    if (!currentRunId) return false
+    const row = getRaw(currentRunId)
     if (!row || !["running", "needs_you"].includes(row.status)) return false
+    const runId = row.run_id
     if (row.status === "running")
       database
         .query("UPDATE browser_channel_runs SET status = 'needs_you', needs_you_at = ? WHERE run_id = ?")
@@ -483,7 +464,7 @@ export const createChannelBrowserRuns = ({
         requestId: `browser-needs-you:${runId}`,
         targetPersonId: firstRecipient,
         title: "O navegador precisa de você",
-        body: "O bot pausou o navegador e precisa que você assuma o controle para continuar.",
+        body: `O bot pausou o navegador e precisa de ajuda: ${kernel.redact(reason).slice(0, 300)}`,
       })
     }
     scheduleEscalation(runId)
@@ -518,6 +499,24 @@ export const createChannelBrowserRuns = ({
     publish(runId)
     return { success: true }
   }
+  const restoreControl = ({
+    runId,
+    actorPersonId,
+    status,
+  }: {
+    runId: string
+    actorPersonId: string
+    status: BrowserChannelRunStatus
+  }): void => {
+    const restoredStatus = status === "needs_you" ? "needs_you" : "running"
+    database
+      .query(
+        "UPDATE browser_channel_runs SET status = ?, controller_person_id = NULL WHERE run_id = ? AND controller_person_id = ?",
+      )
+      .run(restoredStatus, runId, actorPersonId)
+    publish(runId)
+    if (restoredStatus === "needs_you") scheduleEscalation(runId)
+  }
   const returnControl = ({
     runId,
     actorPersonId,
@@ -538,62 +537,68 @@ export const createChannelBrowserRuns = ({
       return { success: false, error: getBrowserRunControlError(personName(row.controller_person_id)) }
     database
       .query(`UPDATE browser_channel_runs SET status = 'running', controller_person_id = NULL,
-        needs_you_at = NULL, escalated_at = NULL WHERE run_id = ?`)
+        needs_you_at = NULL, escalated_at = NULL, resume_pending = 1 WHERE run_id = ?`)
       .run(runId)
     clearEscalation(runId)
     resolveNeedsYou(runId)
     publish(runId)
+    resumeRequest(row.run_id)
     return { success: true }
   }
   const isPreviewHidden = (tabId: string): boolean =>
     Boolean(
       database
         .query(`SELECT 1 FROM browser_tabs tab JOIN threads owner_thread ON owner_thread.id = tab.owner_thread_id
-          JOIN browser_channel_runs run ON run.group_id IS owner_thread.group_id
-            AND run.thread_id = COALESCE(owner_thread.group_thread_id, owner_thread.id) AND run.bot_id = tab.owner_bot_id
+          JOIN browser_channel_runs run ON run.group_id = owner_thread.group_id
+            AND run.thread_id = owner_thread.group_thread_id AND run.bot_id = tab.owner_bot_id
           WHERE tab.id = ? AND run.controller_person_id IS NOT NULL
             AND run.status = 'taken_over' LIMIT 1`)
         .get(tabId),
     )
   const onRunUpdated = kernel.subscribe(({ event }) => {
-    if (event.type !== "run.updated" || event.run.groupTurnId) return
-    const context = event.run.botId ? getContext({ runId: event.run.id, botId: event.run.botId }) : null
-    const row = context
-      ? (database
-          .query("SELECT run_id,active_run_id,status FROM browser_channel_runs WHERE bot_id = ? AND request_id = ?")
-          .get(event.run.botId, context.request_id) as {
-          run_id: string
-          active_run_id: string | null
-          status: BrowserChannelRunStatus
-        } | null)
-      : getRaw(event.run.id)
+    if (event.type !== "run.updated") return
+    const row = getRaw(event.run.id)
     if (!row) return
-    if (row.active_run_id && row.active_run_id !== event.run.id) {
+    if (row.current_run_id !== event.run.id) {
       const continuation = database
-        .query(`SELECT continuation.previous_run_id, request.next_turn_id
-        FROM browser_takeover_continuations continuation
-        LEFT JOIN browser_resume_requests request ON request.previous_run_id = continuation.previous_run_id
-        JOIN browser_request_runs alias ON alias.run_id = continuation.previous_run_id
-        WHERE continuation.run_id = ? AND alias.request_run_id = ? LIMIT 1`)
-        .get(event.run.id, row.run_id) as { previous_run_id: string; next_turn_id: string | null } | null
-      if (!continuation || ![continuation.previous_run_id, continuation.next_turn_id].includes(row.active_run_id))
-        return
+        .query("SELECT original_run_id FROM browser_takeover_continuations WHERE run_id = ?")
+        .get(event.run.id) as { original_run_id: string } | null
+      if (continuation?.original_run_id !== row.run_id) return
       database
-        .transaction(() => {
-          database
-            .query("UPDATE browser_channel_runs SET active_run_id = ? WHERE run_id = ?")
-            .run(event.run.id, row.run_id)
-          database
-            .query("INSERT OR IGNORE INTO browser_request_runs(run_id,request_run_id) VALUES (?,?)")
-            .run(event.run.id, row.run_id)
-        })
-        .immediate()
+        .query("UPDATE browser_channel_runs SET current_run_id = ?, resume_pending = 0 WHERE run_id = ?")
+        .run(event.run.id, row.run_id)
     }
-    if (event.run.status === "succeeded" && ["needs_you", "taken_over"].includes(row.status)) return
+    const awaitingContinuation = row.current_run_id === event.run.id && row.resume_pending === 1
+    if (
+      event.run.status === "succeeded" &&
+      (awaitingContinuation || ["queued", "needs_you", "taken_over"].includes(row.status))
+    )
+      return
+    if (
+      event.run.status === "interrupted" &&
+      event.run.errorClass === "app_restart" &&
+      ["queued", "needs_you", "taken_over"].includes(row.status)
+    )
+      return
     if (event.run.status === "succeeded") updateTerminal(row.run_id, "succeeded")
     if (event.run.status === "failed" || event.run.status === "interrupted") updateTerminal(row.run_id, "failed")
     if (event.run.status === "canceled") updateTerminal(row.run_id, "canceled")
   })
+  const restoreResumptions = (after = ""): void => {
+    const resumable = database
+      .query(
+        "SELECT run_id FROM browser_channel_runs WHERE resume_pending = 1 AND status = 'running' AND run_id > ? ORDER BY run_id LIMIT 20",
+      )
+      .all(after) as Array<{ run_id: string }>
+    resumable.forEach(({ run_id }) => {
+      resumeRequest(run_id)
+    })
+    const last = resumable.at(-1)?.run_id
+    if (resumable.length !== 20 || !last) return
+    restoreTimer = setTimeout(() => restoreResumptions(last), 0)
+    restoreTimer.unref()
+  }
+  restoreResumptions()
   const pending = database
     .query("SELECT run_id FROM browser_channel_runs WHERE status = 'needs_you' AND escalated_at IS NULL LIMIT 100")
     .all() as Array<{ run_id: string }>
@@ -603,18 +608,22 @@ export const createChannelBrowserRuns = ({
 
   return {
     enter,
+    cancelRequest,
     get,
     getForRun,
     getForTab,
+    getCurrentRunId: (runId: string) => getRaw(runId)?.current_run_id ?? null,
     list,
     needsYou,
     takeControl,
     returnControl,
+    restoreControl,
     isPreviewHidden,
-    cancel: (runId: string) => updateTerminal(runId, "canceled"),
-    expire: (runId: string) => updateTerminal(runId, "failed"),
     dispose: () => {
       onRunUpdated()
+      if (restoreTimer) clearTimeout(restoreTimer)
+      resumeTimers.forEach(clearTimeout)
+      resumeTimers.clear()
       escalationTimers.forEach(clearTimeout)
       escalationTimers.clear()
     },

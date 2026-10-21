@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite"
 import type { UiEvent } from "@touri/contracts"
-import { canControlChannelBrowserRun, getBrowserRunControlError, getBrowserTabRunId } from "../browser/channel-runs"
+import { canControlChannelBrowserRun, getBrowserRunControlError } from "../browser/channel-runs"
 import type { AuthStore } from "./auth/store"
 
 type PersonRole = "member" | "admin"
@@ -331,7 +331,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
         threadId: event.type === "transcript.rejected" ? event.rejection.threadId : event.threadId,
       })
     if (event.type === "run.updated") return canAccessThread({ personId, role, threadId: event.run.threadId })
-    if (event.type === "browser.channel_run") return canAccessThread({ personId, role, threadId: event.run.threadId })
+    if (event.type === "browser.channel_run") return canAccessGroup({ personId, role, groupId: event.run.groupId })
     return false
   }
 
@@ -358,30 +358,30 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
     const browserRunForRun = (runId: string) =>
       database
         .query(`SELECT requester_person_id, responsible_person_id, controller_person_id
-          FROM browser_channel_runs WHERE (run_id = ? OR active_run_id = ?) AND status IN ('queued','running','needs_you','taken_over')
+          FROM browser_channel_runs WHERE run_id = ? AND status IN ('queued','running','needs_you','taken_over')
           UNION ALL
           SELECT browser.requester_person_id, browser.responsible_person_id, browser.controller_person_id
-          FROM group_run_links link JOIN browser_channel_runs browser ON (browser.run_id = link.run_id OR browser.active_run_id = link.run_id)
+          FROM group_run_links link JOIN browser_channel_runs browser ON browser.run_id = link.run_id
           WHERE link.turn_id = ? AND browser.status IN ('queued','running','needs_you','taken_over')
           LIMIT 1`)
-        .get(runId, runId, runId) as {
+        .get(runId, runId) as {
         requester_person_id: string | null
         responsible_person_id: string | null
         controller_person_id: string | null
       } | null
-    const browserRunForTab = (tabId: string) => {
-      const runId = getBrowserTabRunId(database, tabId)
-      if (!runId) return null
-      return database
-        .query(
-          "SELECT requester_person_id, responsible_person_id, controller_person_id FROM browser_channel_runs WHERE run_id = ?",
-        )
-        .get(runId) as {
+    const browserRunForTab = (tabId: string) =>
+      database
+        .query(`SELECT run.requester_person_id, run.responsible_person_id, run.controller_person_id
+          FROM browser_tabs tab JOIN threads owner_thread ON owner_thread.id = tab.owner_thread_id
+          JOIN browser_channel_runs run ON run.thread_id = COALESCE(owner_thread.group_thread_id, owner_thread.id)
+            AND run.bot_id = tab.owner_bot_id
+          WHERE tab.id = ? AND run.status IN ('running','needs_you','taken_over')
+          ORDER BY run.queued_at DESC LIMIT 1`)
+        .get(tabId) as {
         requester_person_id: string | null
         responsible_person_id: string | null
         controller_person_id: string | null
       } | null
-    }
     const browserControlDecision = (
       run: {
         requester_person_id: string | null
@@ -442,7 +442,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
       if (decision) return decision
 
       if (run) return null
-      if (browserTakeover[2] !== undefined) return null
+      if (browserTakeover[2] !== undefined) return ownsBot({ personId, botId: tab.owner_bot_id }) ? null : notFound
       return canAccessBot({ personId, role, botId: tab.owner_bot_id }) ? null : notFound
     }
     if (role === "admin") return null

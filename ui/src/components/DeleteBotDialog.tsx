@@ -3,7 +3,7 @@ import { useState } from "react"
 import { getDocumentLocale } from "../documentLanguage"
 import { ApiError, userFacingError } from "../errors"
 import { t } from "../i18n"
-import { Modal } from "./Modals"
+import { Modal } from "./Modal"
 
 export const DeleteBotDialog = ({
   bot,
