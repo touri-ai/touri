@@ -704,6 +704,7 @@ export type BrowserTabInfo = {
   heldByUser: boolean
   takeoverReason?: BrowserTakeoverReason | null
   takeoverRequested?: boolean
+  takeoverRunId?: Id | null
   lastUsedAt: EpochMs
 }
 

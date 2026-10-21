@@ -258,6 +258,7 @@ export const publicTabInfo = ({ tab }: { tab: TabState }): BrowserTabInfo & { ow
   heldByUser: tab.info.heldByUser,
   takeoverReason: tab.takeoverReason,
   takeoverRequested: tab.takeover !== null,
+  takeoverRunId: tab.takeover?.runId ?? null,
   lastUsedAt: tab.info.lastUsedAt,
   ownerBotId: tab.info.ownerBotId,
 })

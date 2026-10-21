@@ -36,6 +36,7 @@ export const BrowserTurnCard = ({
       finished={message.status !== "streaming"}
       createdAt={message.createdAt}
       threadId={message.threadId}
+      runId={message.runId}
       botName={message.sender?.name ?? bot?.name ?? inlinePreview?.bot?.name ?? "touri"}
       locale={locale}
     >

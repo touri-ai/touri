@@ -76,6 +76,7 @@ export const BrowserActivityCard = ({
   finished: sourceFinished,
   createdAt,
   threadId,
+  runId,
   botName,
   locale = "pt-BR",
   children,
@@ -84,6 +85,7 @@ export const BrowserActivityCard = ({
   finished: boolean
   createdAt: number
   threadId?: Id
+  runId?: Id | null
   botName: string
   locale?: Locale
   children?: ReactNode
@@ -204,7 +206,15 @@ export const BrowserActivityCard = ({
         )
       if (!candidate || !active) return
       if (!tabId) setResolvedTab({ callId: resolutionCallId, tabId: candidate.tabId })
-      setHeldTab({ tabId: candidate.tabId, held: candidate.heldByUser, reason: candidate.takeoverReason ?? null })
+      setHeldTab({
+        tabId: candidate.tabId,
+        held:
+          candidate.heldByUser &&
+          (candidate.takeoverRunId === undefined ||
+            candidate.takeoverRunId === runId ||
+            (!sourceFinished && candidate.takeoverRunId === null)),
+        reason: candidate.takeoverReason ?? null,
+      })
     }
     const unsubscribe = api.subscribe(({ event }) => {
       if (
@@ -216,7 +226,15 @@ export const BrowserActivityCard = ({
         hasTabEvent = true
         if (!tabId) setResolvedTab({ callId: resolutionCallId, tabId: event.tab.tabId })
         if (event.tab.heldByUser) setPreviewFrame(undefined)
-        setHeldTab({ tabId: event.tab.tabId, held: event.tab.heldByUser, reason: event.tab.takeoverReason ?? null })
+        setHeldTab({
+          tabId: event.tab.tabId,
+          held:
+            event.tab.heldByUser &&
+            (event.tab.takeoverRunId === undefined ||
+              event.tab.takeoverRunId === runId ||
+              (!sourceFinished && event.tab.takeoverRunId === null)),
+          reason: event.tab.takeoverReason ?? null,
+        })
       }
     })
     const loadTabs = () =>
@@ -236,7 +254,7 @@ export const BrowserActivityCard = ({
       window.clearInterval(poll)
       unsubscribe()
     }
-  }, [api, botId, sourceFinished, hasTakeoverRequest, resolutionCallId, tabId])
+  }, [api, botId, sourceFinished, hasTakeoverRequest, resolutionCallId, runId, tabId])
 
   useEffect(() => {
     setPreviewError(null)

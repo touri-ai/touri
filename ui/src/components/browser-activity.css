@@ -763,5 +763,16 @@
   background: var(--surface);
 }
 .browser-activity-card[data-finished="false"] .browser-activity-preview-frames {
+  height: min(30vh, 300px);
   max-height: min(30vh, 300px);
+  aspect-ratio: auto;
+}
+
+.browser-activity-chrome {
+  height: 24px;
+  box-sizing: border-box;
+}
+.browser-activity-card[data-finished="false"] .browser-activity-placeholder {
+  height: calc(min(30vh, 300px) + 24px);
+  aspect-ratio: auto;
 }

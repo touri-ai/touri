@@ -15,6 +15,7 @@ import {
   downloadChromeForTesting,
   parseDevToolsActivePort,
 } from "../../src/browser/launcher"
+import type { CdpClient } from "../../src/browser/types"
 import { createKernel } from "../../src/kernel"
 import { createFakeHost } from "../fakes/fakeHost"
 import { startBrowserFixtureServer } from "./fixture-server"
@@ -124,6 +125,7 @@ realSuite("WP6 real Chrome browser acceptance", () => {
   let originalWindowPosition: string | undefined
   let originalWindowSize: string | undefined
   let chromeLaunchArgs: Array<string> = []
+  let browserClient: CdpClient | null = null
   let failHitTest = false
   let nodeInspectionCalls = 0
   const browserTools = new Map<string, ToolRegistration>()
@@ -161,6 +163,7 @@ realSuite("WP6 real Chrome browser acceptance", () => {
         start: async (options) => {
           const started = await launcher.start(options)
           if (!started) return null
+          browserClient = started.client
           return {
             ...started,
             client: {
@@ -333,13 +336,28 @@ realSuite("WP6 real Chrome browser acceptance", () => {
       target: { kind: "role", role: "button", name: "Search trips" },
     })
     expect(submit).toMatchObject({ success: true, structured: { status: "waiting_for_person" } })
+    const chrome = browserClient
+    if (!chrome) throw new Error("Browser fixture did not start")
+    const targets = await chrome.call<{ targetInfos: Array<{ targetId: string; url: string }> }>("Target.getTargets")
+    const target = targets.targetInfos.find((item) => item.url === `${base}/travel-search`)
+    if (!target) throw new Error("Travel fixture tab was not found")
+    const attached = await chrome.call<{ sessionId: string }>("Target.attachToTarget", {
+      targetId: target.targetId,
+      flatten: true,
+    })
+    // The fixture person submits the private form; bot-side evaluation remains forbidden.
+    await chrome.call(
+      "Runtime.evaluate",
+      { expression: "document.querySelector('#travel-search').requestSubmit()" },
+      attached.sessionId,
+    )
     expect(await engine.releaseTakeover(page.tabId)).toBe(true)
     expect(
-      await engine.evaluate({
+      await engine.waitFor({
         tabId: page.tabId,
         botId: botA,
-        expression: "document.querySelector('#travel-search').requestSubmit()",
-        timeoutMs: 10000,
+        condition: { text: "viagem fictícia" },
+        timeoutMs: 10_000,
         signal: ctx().signal,
       }),
     ).toMatchObject({ success: true })

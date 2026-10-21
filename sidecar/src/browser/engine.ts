@@ -2483,11 +2483,18 @@ export const createBrowserEngine = ({
     const privateVersion = privateDocuments.get(tab) ?? tab.navigationVersion
     if (tab.navigationVersion <= privateVersion) return false
 
-    let page: { url?: unknown; title?: unknown; hasSensitiveEntry?: unknown; text?: unknown } | null = null
+    let page: { url?: unknown; title?: unknown; hasSensitiveEntry?: unknown; text?: unknown; ready?: unknown } | null =
+      null
     try {
-      page = await runtimeValue<{ url?: unknown; title?: unknown; hasSensitiveEntry?: unknown; text?: unknown }>(
+      page = await runtimeValue<{
+        url?: unknown
+        title?: unknown
+        hasSensitiveEntry?: unknown
+        text?: unknown
+        ready?: unknown
+      }>(
         client,
-        `({ url: location.href, title: document.title, text: (document.body?.innerText || "").slice(0, 20001), hasSensitiveEntry: ${HAS_SENSITIVE_ENTRY_EXPRESSION} })`,
+        `({ url: location.href, title: document.title, text: (document.body?.innerText || "").slice(0, 20001), ready: document.readyState, hasSensitiveEntry: ${HAS_SENSITIVE_ENTRY_EXPRESSION} })`,
         tab.sessionId,
       )
     } catch {
@@ -2495,7 +2502,7 @@ export const createBrowserEngine = ({
     }
     if (typeof page?.url !== "string" || typeof page.title !== "string" || typeof page.hasSensitiveEntry !== "boolean")
       return false
-    if (typeof page.text !== "string" || page.text.length > 20_000) return false
+    if (page.ready !== "complete" || typeof page.text !== "string" || page.text.length > 20_000) return false
     if (
       kernel.redact(page.text) !== page.text ||
       kernel.redact(page.title) !== page.title ||
