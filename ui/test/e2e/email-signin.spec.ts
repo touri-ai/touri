@@ -33,7 +33,7 @@ languages.forEach((language) => {
         await page.emulateMedia({ colorScheme: theme })
         await openSignInPage(page)
         const redemption = page.waitForRequest("**/api/v1/auth/email/redeem")
-        const release = Promise.withResolvers<void>()
+        const release = getReleaseSignal()
         await page.route("**/api/v1/auth/email/redeem", async (route) => {
           await release.promise
           await route.fulfill({ status: 401, json: { errorCode: "INVALID_SIGN_IN" } })
@@ -113,6 +113,16 @@ languages.forEach((language) => {
 
 const openSignInPage = (page: Page) =>
   page.route("**/login", (route) => route.fulfill({ contentType: "text/html", body: pairingPageHtml }))
+
+const getReleaseSignal = () => {
+  // The Promise constructor provides the completion callback synchronously.
+  let release = () => {}
+  const promise = new Promise<void>((resolve) => {
+    release = resolve
+  })
+
+  return { promise, resolve: release }
+}
 
 const saveEvidence = async (page: Page, name: string): Promise<void> => {
   const directory = process.env.TOURI_SIGNIN_EVIDENCE_DIR
