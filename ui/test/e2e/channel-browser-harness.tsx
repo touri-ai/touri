@@ -5,7 +5,7 @@ import { createMockApi } from "../../src/api/mock"
 import { GroupHeader, GroupSidebar } from "../../src/components/Groups"
 import { TurnActivity } from "../../src/components/TurnActivity"
 import { ChannelBrowserContext, ChannelComposerChip } from "../../src/features/channelBrowser/ChannelBrowser"
-import type { ChannelBrowserState } from "../../src/features/channelBrowser/channelBrowser"
+import type { ChannelBrowserState } from "../../src/features/channelBrowser/channelBrowserModel"
 import { InlinePreviewContext } from "../../src/features/desktop/InlineLivePreview"
 import "../../src/styles.css"
 

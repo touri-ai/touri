@@ -52,6 +52,7 @@ test.afterAll(async () => {
 
 const liveVariants = [
   { name: "desktop-dark", width: 1440, height: 900, theme: "dark", colorScheme: "dark" as const },
+  { name: "compact-desktop", width: 1024, height: 700, theme: "dark", colorScheme: "dark" as const },
   { name: "phone-light", width: 390, height: 844, theme: "light", colorScheme: "light" as const },
 ]
 
@@ -63,6 +64,8 @@ test.describe("full browser activity flow", () => {
       const context = await browser.newContext({
         viewport: { width: variant.width, height: variant.height },
         colorScheme: variant.colorScheme,
+        hasTouch: variant.width <= 600,
+        isMobile: variant.width <= 600,
         reducedMotion: "no-preference",
         recordVideo: { dir: info.outputDir, size: { width: variant.width, height: variant.height } },
       })
@@ -84,10 +87,21 @@ test.describe("full browser activity flow", () => {
 
       const card = page.getByRole("article", { name: "Navegador do Lia" })
       await expect(page.getByRole("status").filter({ hasText: "Lia está trabalhando · No navegador" })).toBeVisible()
-      await expect(page.getByRole("button", { name: "Parar tarefa no navegador" })).toBeVisible()
+      await expect(page.locator(".composer-browser-status").getByRole("button", { name: "Parar" })).toBeVisible()
+      if (variant.width <= 600) {
+        const touchTarget = await page
+          .locator(".composer-browser-status")
+          .getByRole("button", { name: "Parar" })
+          .boundingBox()
+        expect(touchTarget?.width ?? 0).toBeGreaterThanOrEqual(44)
+        expect(touchTarget?.height ?? 0).toBeGreaterThanOrEqual(44)
+      }
       if (variant.width > 600)
         await expect(page.getByRole("button", { name: /Busca de viagem/ })).toContainText("trabalhando")
       await expect(card).toBeVisible()
+      await expect(card.getByRole("group", { name: "Endereço do navegador" })).toContainText("travel.example.test")
+      await expect(card.getByRole("group", { name: "Endereço do navegador" })).toContainText("Ao vivo")
+      await expect(card.getByLabel("Conexão segura")).toBeVisible()
       await expect(card.getByRole("progressbar", { name: "Progresso do navegador" })).toBeVisible()
       await expect(card).toContainText("Lia · Abrindo uma página")
       await expect(page.locator(".browser-activity-card")).toHaveCount(1)
@@ -106,18 +120,23 @@ test.describe("full browser activity flow", () => {
       const columns = await card
         .locator(".browser-activity-content")
         .evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length)
-      expect(columns).toBe(1)
+      expect(columns).toBe(variant.width <= 1100 ? 1 : 2)
+      if (variant.width <= 600) await expect(card.getByRole("button", { name: "Ver tudo" })).toBeVisible()
       await page.screenshot({ path: info.outputPath(`browser-live-${variant.name}.png`), fullPage: true })
       await card.getByRole("button", { name: "Recolher navegador" }).click()
-      const takeOver = page.getByRole("button", { name: "Assumir", exact: true })
+      const takeOver = page.locator(".composer-browser-status").getByRole("button", { name: "Assumir" })
       await expect(takeOver).toBeVisible()
       await takeOver.click()
       await expect(page.getByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
       await expect(page.getByRole("button", { name: "Digitar no navegador" })).toBeVisible()
+      const takeoverView = page.getByRole("region", { name: "Controle remoto do navegador" })
+      const privacy = takeoverView.getByRole("status", { name: "Privacidade do navegador" })
+      await expect(privacy).toBeVisible()
+      await expect(privacy).toHaveCSS("position", "sticky")
       const search = page.getByRole("button", { name: "Buscar viagens" })
       await expect(search).toBeDisabled()
       await expect(page.getByText("Resultados da busca")).toHaveCount(0)
-      await page.getByRole("button", { name: /Devolver para/ }).click()
+      await page.locator(".composer-browser-status").getByRole("button", { name: /Devolver para/ }).click()
       await expect(search).toBeEnabled()
       await search.click()
 
@@ -136,6 +155,7 @@ test.describe("full browser activity flow", () => {
       expect(fixtureStats).toEqual({ decisionCount: 4, failedSteps: [] })
       await expect(page.getByText("Voo direto", { exact: false })).toBeVisible()
       await expect(page.getByText("Uma conexão", { exact: false })).toBeVisible()
+      await expect(page.getByText("Resultados da busca", { exact: true })).toBeVisible()
       await expect(page.getByRole("progressbar", { name: "Progresso do navegador" })).toHaveCount(0)
       await expect(page.locator(".browser-activity-card")).toHaveAttribute("data-finished", "true")
       const summary = page.getByRole("button", { name: /Usou o navegador/ })
@@ -189,8 +209,24 @@ for (const viewport of [
     await page.getByRole("button", { name: "Assumir", exact: true }).click()
     await expect(page.getByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
     await expect(page.getByText(/Você está no controle · .* está pausado/)).toBeVisible()
-    await expect(page.locator(".browser-takeover-canvas")).toBeVisible()
+    const takeoverView = page.getByRole("region", { name: "Controle remoto do navegador" })
+    const browserScreen = takeoverView.locator(".browser-takeover-screen")
+    const privacy = takeoverView.getByRole("status", { name: "Privacidade do navegador" })
+    await expect(browserScreen).toBeVisible()
+    await expect(privacy).toBeVisible()
+    await expect(privacy).toHaveCSS("position", "sticky")
+    const screenWidth = await browserScreen.evaluate((element) => element.getBoundingClientRect().width)
+    const layoutWidth = await takeoverView
+      .locator(".browser-takeover-layout")
+      .evaluate((element) => element.getBoundingClientRect().width)
+    expect(screenWidth).toBeGreaterThan(layoutWidth * 0.95)
     await page.screenshot({ path: testInfo.outputPath(`browser-takeover-after-${viewport.name}.png`), fullPage: true })
+
+    const expand = takeoverView.getByRole("button", { name: "Expandir navegador em tela cheia" })
+    await expand.click()
+    await expect(takeoverView).toHaveAttribute("data-full-view", "true")
+    const fullScreenHeight = await browserScreen.evaluate((element) => element.getBoundingClientRect().height)
+    expect(fullScreenHeight).toBeGreaterThan(viewport.height * 0.6)
 
     const keyboard = page.getByRole("textbox", { name: "Entrada de teclado para o navegador" })
     await keyboard.evaluate((element) => {
@@ -211,10 +247,58 @@ for (const viewport of [
     await expect(keyboard).toHaveValue("")
     await expect(page.locator("body")).not.toContainText("valor privado de teste")
 
-    await page.getByRole("button", { name: "Devolver para Mark" }).click()
+    await page.locator(".composer-browser-status").getByRole("button", { name: "Devolver para Mark" }).click()
     await expect(page.getByRole("button", { name: "Assumir", exact: true })).toBeVisible()
   })
 }
+
+test("Composer stop cancels the active browser run and prevents later browser actions", async ({ page, baseURL }) => {
+  const browserActions: string[] = []
+  const cancelledRunIds: string[] = []
+  const browserActionSteps = new Set([
+    "open",
+    "read",
+    "destination",
+    "option",
+    "cabin",
+    "calendar",
+    "date",
+    "search",
+    "wait",
+    "tabs",
+    "screenshot",
+  ])
+  await page.route("**/__browser-activity-fixture", async (route) => {
+    const body = JSON.parse(route.request().postData() ?? "{}") as { step?: string; runId?: string }
+    if (body.step && browserActionSteps.has(body.step)) browserActions.push(body.step)
+    if (body.step === "cancel") cancelledRunIds.push(body.runId ?? "")
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    await route.fulfill({ status: response.status, contentType: "application/json", body: await response.text() })
+  })
+  await page.goto(`${baseURL}/test/e2e/browser-activity-harness.html?flow=live&holdAfterOpen=1`)
+
+  await page.getByRole("button", { name: "Iniciar busca de viagem" }).click()
+  await expect(page.getByRole("article", { name: "Navegador do Lia" })).toBeVisible()
+  await expect.poll(() => browserActions).toEqual(["open"])
+  await page.locator(".composer-browser-status").getByRole("button", { name: "Parar" }).click()
+  await expect.poll(() => cancelledRunIds).toEqual(["browser-flow-run"])
+  await page.evaluate(() => {
+    const browserActivity = (window as Window & { browserActivity?: { continueAfterOpen?: () => void } }).browserActivity
+    browserActivity?.continueAfterOpen?.()
+  })
+  await page.waitForFunction(() => {
+    const browserActivity = (window as Window & { browserActivity?: { snapshot: () => { settled?: boolean } } })
+      .browserActivity
+
+    return browserActivity?.snapshot().settled === true
+  })
+
+  expect(browserActions).toEqual(["open"])
+})
 
 for (const fallback of ["missing_key", "no_credit"] as const) {
   for (const locale of ["pt-BR", "en"] as const) {

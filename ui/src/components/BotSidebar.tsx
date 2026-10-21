@@ -15,7 +15,7 @@ import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigati
 import { reconcileApprovalMessages } from "../approvalState"
 import { BOT_ACTIVITY_LABELS, type BotActivity } from "../botActivity"
 import { latestPreview } from "../botPreview"
-import { getChannelWorking } from "../features/channelBrowser/channelBrowser"
+import { getChannelWorking } from "../features/channelBrowser/channelBrowserModel"
 import { paletteShortcutLabel } from "../features/commandPalette/shortcut"
 import { getRoutineRunCountsToday, getRoutineRunDateLabel, getRoutineRunSidebarDateLabel, t } from "../i18n"
 import {

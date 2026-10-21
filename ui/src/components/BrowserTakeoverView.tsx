@@ -2,6 +2,7 @@ import type { BrowserTakeoverFrame, BrowserTakeoverInput } from "@touri/contract
 import type { KeyboardEvent, PointerEvent, WheelEvent } from "react"
 import { useEffect, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
+import { useBrowserActivityControls } from "./BrowserActivityControls"
 import { type Locale, t } from "../i18n"
 import { getBrowserActivityUrl } from "./browserActivityPresentation"
 
@@ -61,11 +62,14 @@ export const BrowserTakeoverView = ({
   const composing = useRef(false)
   const released = useRef(false)
   const releasing = useRef(false)
+  const handbackRef = useRef<() => Promise<void>>(async () => {})
+  const browserControls = useBrowserActivityControls()
   const [frame, setFrame] = useState<FrameMeta | null>(null)
   const [fallbackImage, setFallbackImage] = useState("")
   const [workerReady, setWorkerReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [returning, setReturning] = useState(false)
+  const [fullView, setFullView] = useState(false)
   localeRef.current = locale
 
   useEffect(() => {
@@ -254,6 +258,17 @@ export const BrowserTakeoverView = ({
     }
   }
 
+  handbackRef.current = handback
+
+  useEffect(
+    () =>
+      browserControls.registerTakeover({
+        label: t("Hand back to {name}", { name: botName }, locale),
+        run: () => void handbackRef.current(),
+      }),
+    [botName, browserControls.registerTakeover, locale],
+  )
+
   const mousePoint = (event: { clientX: number; clientY: number; currentTarget: HTMLElement }) => {
     const bounds = event.currentTarget.getBoundingClientRect()
     if (!bounds.width || !bounds.height) return null
@@ -383,7 +398,11 @@ export const BrowserTakeoverView = ({
   const safeUrl = frame ? getBrowserActivityUrl(frame.url) : ""
 
   return (
-    <section className="browser-takeover-view" aria-label={t("Remote browser control", {}, locale)}>
+    <section
+      className="browser-takeover-view"
+      aria-label={t("Remote browser control", {}, locale)}
+      data-full-view={fullView}
+    >
       <header className="browser-takeover-toolbar">
         <div>
           <strong>{t("Browser for {name}", { name: botName }, locale)}</strong>
@@ -392,17 +411,34 @@ export const BrowserTakeoverView = ({
             {safeUrl ? ` · ${safeUrl}` : ` · ${t("Connecting to the browser…", {}, locale)}`}
           </span>
         </div>
+        <button
+          type="button"
+          className="browser-activity-icon-button"
+          aria-label={t(fullView ? "Collapse browser full screen" : "Expand browser to full screen", {}, locale)}
+          aria-pressed={fullView}
+          onClick={() => setFullView((value) => !value)}
+        >
+          <span aria-hidden="true">{fullView ? "↙" : "↗"}</span>
+        </button>
         <button type="button" className="button button-quiet" disabled={returning} onClick={() => void handback()}>
           {returning ? t("Returning control…", {}, locale) : t("Hand back to {name}", { name: botName }, locale)}
         </button>
       </header>
-      <div className="browser-takeover-layout">
+      <p className="browser-takeover-privacy" role="status" aria-label={t("Browser privacy", {}, locale)}>
+        {t("What you type here stays out of chat, the bot, and history.", {}, locale)}
+      </p>
+      <div className={`browser-takeover-layout${fullView ? " browser-takeover-layout-full" : ""}`}>
         <div
           ref={screen}
           className="browser-takeover-screen"
           role="application"
           aria-label={t("Live browser page", {}, locale)}
-          style={{ aspectRatio: frame ? `${frame.width} / ${frame.height}` : "16 / 10" }}
+          data-full-view={fullView}
+          style={
+            fullView
+              ? { aspectRatio: "auto", height: "min(72vh, 720px)" }
+              : { aspectRatio: frame ? `${frame.width} / ${frame.height}` : "16 / 10" }
+          }
           onPointerDown={pointerDown}
           onPointerMove={pointerMove}
           onPointerUp={pointerUp}
@@ -446,7 +482,6 @@ export const BrowserTakeoverView = ({
             </ol>
           </section>
           <div className="browser-takeover-footer">
-            <p>{t("What you type here stays out of chat, the bot, and history.", {}, locale)}</p>
             <button type="button" className="button button-quiet" onClick={() => keyboard.current?.focus()}>
               {t("Type in the browser", {}, locale)}
             </button>

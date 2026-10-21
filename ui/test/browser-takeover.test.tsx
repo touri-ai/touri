@@ -80,6 +80,39 @@ test("sends private browser typing only to the remote input route and returns co
   )
 })
 
+test("keeps the privacy notice visible and lets a person expand the browser view", async () => {
+  const api = createMockApi()
+  const request = vi.fn(async (route: string) => {
+    if (route === "POST /browser/tabs/:id/takeover/frame") return getBrowserFrame()
+    return {}
+  }) as ApiRequest
+  api.request = request
+
+  render(
+    <BrowserTakeoverView
+      api={api}
+      tabId="synthetic-tab"
+      sessionId="synthetic-session"
+      controlEpoch="control-epoch"
+      botName="Lia"
+      locale="pt-BR"
+      reason="O site pediu login para mostrar o preço final."
+      actions={[]}
+      onHandback={vi.fn()}
+    />,
+  )
+
+  const privacy = screen.getByRole("status", { name: "Privacidade do navegador" })
+  expect(privacy).toHaveTextContent("O que você digitar aqui não vai para o chat, o bot nem o histórico.")
+  const expand = screen.getByRole("button", { name: "Expandir navegador em tela cheia" })
+  fireEvent.click(expand)
+
+  expect(screen.getByRole("region", { name: "Controle remoto do navegador" })).toHaveAttribute(
+    "data-full-view",
+    "true",
+  )
+})
+
 test("a reconnected browser view requests frames at its retained viewport epoch", async () => {
   const api = createMockApi()
   const request = vi.fn(async (route: string, body?: unknown) => {
@@ -144,7 +177,7 @@ test("disconnecting the takeover view leaves the browser paused for reconnection
   })
   expect(request).not.toHaveBeenCalledWith(
     "DELETE /browser/tabs/:id/takeover/session",
-    { sessionId: "synthetic-session" },
+    expect.anything(),
     { id: "synthetic-tab" },
   )
 })

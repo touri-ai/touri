@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client"
 import type { ApiRequest } from "../../src/api/client"
 import { createMockApi } from "../../src/api/mock"
 import { AvatarRuntimeProvider } from "../../src/components/AvatarRuntime"
+import { BrowserActivityControlsProvider } from "../../src/components/BrowserActivityControls"
 import { BrowserWorkingStatus } from "../../src/components/BrowserWorkingStatus"
 import { VirtualMessageList } from "../../src/components/ChatPanel"
 import { TurnActivity } from "../../src/components/TurnActivity"
@@ -160,7 +161,11 @@ const getFixtureApi = ({
     if (route === "GET /attachments/:id/content") {
       onAttachmentRead()
       return {
-        text: JSON.stringify({ content: [{ type: "image", mimeType: "image/png", data: attachmentImage }] }),
+        text: JSON.stringify({
+          title: currentPage.current.title,
+          url: currentPage.current.url,
+          content: [{ type: "image", mimeType: "image/png", data: attachmentImage }],
+        }),
         offset: 0,
         nextOffset: null,
         bytes: attachmentBytes,
@@ -335,7 +340,8 @@ const Fixture = () => {
     <InlinePreviewContext.Provider
       value={{ api, bot: activityBot, machine: undefined, activeCallId: undefined, onOpenComputer }}
     >
-      <main className="browser-activity-demo">
+      <BrowserActivityControlsProvider>
+        <main className="browser-activity-demo">
         <header>
           <div>
             <p className="eyebrow">touri · {t("Local browser fixture", {}, locale)}</p>
@@ -434,7 +440,8 @@ const Fixture = () => {
           )}
           <textarea aria-label={t("Message", {}, locale)} placeholder={t("Write a message…", {}, locale)} />
         </footer>
-      </main>
+        </main>
+      </BrowserActivityControlsProvider>
     </InlinePreviewContext.Provider>
   )
 }

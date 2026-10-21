@@ -4467,7 +4467,7 @@ export const createBrowserEngine = ({
           kind: "takeover",
           botId,
           threadId: tab.info.ownerThreadId,
-          requestId: requestId ?? undefined,
+          requestId: requestId ?? null,
           title: notification.title,
           body: notification.body,
         })

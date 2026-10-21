@@ -51,6 +51,7 @@ import { RecoveryTasksContext } from "../useRecoveryTasks"
 import type { ThreadCreationStatus } from "../workspaceState"
 import { ActivityMark } from "./ActivityMark"
 import { ApprovalCard } from "./ApprovalCard"
+import { BrowserActivityControlsProvider } from "./BrowserActivityControls"
 import { useAvatarBot, useMascotSnapshot, useMessageMascotState, useThreadBot } from "./AvatarRuntime"
 import { withApprovalAnswers } from "./activityStatus"
 import { BotAvatar } from "./BotAvatar"
@@ -1281,7 +1282,8 @@ export const ChatPanel = ({
   )
   return (
     <ChannelBrowserContext.Provider value={channelBrowser}>
-      <section className="chat-panel" inert={chatIsCovered || undefined} aria-hidden={chatIsCovered || undefined}>
+      <BrowserActivityControlsProvider>
+        <section className="chat-panel" inert={chatIsCovered || undefined} aria-hidden={chatIsCovered || undefined}>
         {group ? (
           <GroupHeader
             group={group}
@@ -1530,7 +1532,8 @@ export const ChatPanel = ({
           onOpenProviderLogin={group ? undefined : onOpenProviderLogin}
         />
         {/* End r8 composer. */}
-      </section>
+        </section>
+      </BrowserActivityControlsProvider>
     </ChannelBrowserContext.Provider>
   )
 }

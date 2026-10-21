@@ -1,8 +1,9 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { Bot, BrowserTabInfo, ToolCallPart } from "@touri/contracts"
 import { afterEach, expect, test, vi } from "vitest"
 import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
+import { BrowserActivityControlsProvider } from "../src/components/BrowserActivityControls"
 import { BrowserActivityCard } from "../src/components/BrowserActivityCard"
 import { BrowserWorkingStatus } from "../src/components/BrowserWorkingStatus"
 import {
@@ -12,6 +13,7 @@ import {
   getBrowserTakeoverReason,
 } from "../src/components/browserActivityPresentation"
 import { InlinePreviewContext } from "../src/features/desktop/InlineLivePreview"
+import { ChannelComposerChip } from "../src/features/channelBrowser/ChannelBrowser"
 import { startInlineFrameSource } from "../src/features/desktop/inlineFrameSource"
 import { setInlinePreviewPreference } from "../src/features/desktop/inlinePreviewPreference"
 
@@ -26,7 +28,7 @@ vi.mock("../src/features/desktop/inlineFrameSource", () => ({
       frame({
         src: "data:image/jpeg;base64,ZmFrZQ==",
         title: "Resultados de Lisboa",
-        url: "https://person@example.test:private-password@travel.example.test/results?email=person@example.test",
+        url: "https://travel.example.test/reset/invite-Q7z8k2fR?token=fixture-token",
       })
 
       return () => {}
@@ -45,7 +47,7 @@ test("the browser working chip exposes a stop control", () => {
   render(<BrowserWorkingStatus name="Lia" onStop={onStop} />)
 
   expect(screen.getByRole("status")).toHaveTextContent("Lia está trabalhando · No navegador")
-  fireEvent.click(screen.getByRole("button", { name: "Parar tarefa no navegador" }))
+  fireEvent.click(screen.getByRole("button", { name: "Parar" }))
   expect(onStop).toHaveBeenCalledOnce()
 })
 
@@ -93,6 +95,7 @@ const renderCard = (
     if (route === "GET /attachments/:id/content")
       return {
         text: JSON.stringify({
+          title: "Resultados de Lisboa",
           url: "https://person:fixture-password@travel.example.test/results?token=fixture-token",
           content: [{ type: "image", mimeType: "image/png", data: "ZmFrZQ==" }],
         }),
@@ -152,7 +155,43 @@ test("shows live browser steps and keeps typed values and URL credentials and qu
   expect(document.body.textContent).not.toContain("private search value")
   expect(document.body.textContent).not.toContain("person@example.test")
   expect(document.body.textContent).not.toContain("private-password")
-  expect(screen.getAllByText("https://travel.example.test/results")).toHaveLength(1)
+  const displayedUrl = screen.getByText("https://travel.example.test")
+  expect(displayedUrl).toHaveAttribute("title", "https://travel.example.test")
+  expect(screen.getAllByText("https://travel.example.test")).toHaveLength(1)
+  expect(document.body.textContent).not.toContain("invite-Q7z8k2fR")
+  expect(document.body.textContent).not.toContain("fixture-token")
+})
+
+test("collapsing a live card stops its preview source until the card is expanded", async () => {
+  const stopPreview = vi.fn()
+  vi.mocked(startInlineFrameSource).mockReturnValueOnce(stopPreview)
+  const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
+
+  renderCard(parts, false)
+
+  await waitFor(() => expect(startInlineFrameSource).toHaveBeenCalledOnce())
+  fireEvent.click(screen.getByRole("button", { name: "Recolher cartão do navegador" }))
+
+  await waitFor(() => expect(stopPreview).toHaveBeenCalledOnce())
+  fireEvent.click(screen.getByRole("button", { name: "Expandir cartão do navegador" }))
+
+  await waitFor(() => expect(startInlineFrameSource).toHaveBeenCalledTimes(2))
+})
+
+test("the activity log is keyboard-accessible and disclosure controls reference mounted content", () => {
+  const parts = [getPart({ callId: "read", tool: "browser_snapshot", inputJson: "{}" })]
+
+  renderCard(parts, false)
+
+  const disclosure = screen.getByRole("button", { name: "Recolher cartão do navegador" })
+  const log = screen.getByRole("log", { name: "Atividade do navegador" })
+  expect(log).toHaveAttribute("tabindex", "0")
+  expect(disclosure).toHaveAttribute("aria-controls", log.parentElement?.id)
+
+  fireEvent.click(disclosure)
+
+  expect(disclosure).not.toHaveAttribute("aria-controls")
+  expect(screen.queryByRole("log", { name: "Atividade do navegador" })).toBeNull()
 })
 
 test("sanitizes a takeover reason before showing it", () => {
@@ -163,6 +202,101 @@ test("sanitizes a takeover reason before showing it", () => {
   })
 
   expect(getBrowserTakeoverReason([part])).toBe("Confirm with [email] at [number]")
+})
+
+test("shows one secure browser address and a live marker above the preview", async () => {
+  const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
+
+  renderCard(parts, false)
+
+  const address = await screen.findByRole("group", { name: "Endereço do navegador" })
+  expect(address).toBeVisible()
+  expect(screen.getByLabelText("Conexão segura")).toBeVisible()
+  expect(within(address).getByText("Ao vivo")).toBeVisible()
+  expect(screen.getAllByText("https://travel.example.test/results")).toHaveLength(1)
+})
+
+test("marks completed and current browser actions with their progress state", () => {
+  const parts = [
+    getPart({ callId: "open", tool: "browser_open", inputJson: "{}", ok: true }),
+    getPart({ callId: "click", tool: "browser_click", inputJson: "{}", ok: null }),
+  ]
+
+  renderCard(parts, false)
+
+  const rows = screen.getByRole("log", { name: "Atividade do navegador" }).querySelectorAll("li")
+  expect(rows[0]).toHaveAttribute("data-status", "complete")
+  expect(rows[1]).toHaveAttribute("data-status", "in-progress")
+  expect(within(rows[1] as HTMLElement).getByLabelText("Em andamento")).toBeVisible()
+})
+
+test("lets a phone reader expand the compact browser action list", () => {
+  const parts = [
+    getPart({ callId: "open", tool: "browser_open", inputJson: "{}" }),
+    getPart({ callId: "read", tool: "browser_snapshot", inputJson: "{}" }),
+    getPart({ callId: "click", tool: "browser_click", inputJson: "{}" }),
+    getPart({ callId: "fill", tool: "browser_type", inputJson: "{}" }),
+    getPart({ callId: "shot", tool: "browser_screenshot", inputJson: "{}" }),
+  ]
+
+  renderCard(parts, false)
+
+  const showAll = screen.getByRole("button", { name: "Ver tudo", hidden: true })
+  expect(showAll).toHaveAttribute("aria-expanded", "false")
+  fireEvent.click(showAll)
+  expect(showAll).toHaveAttribute("aria-expanded", "true")
+})
+
+test("the finished browser summary shows its page title with the screenshot", async () => {
+  const parts = [
+    getPart({
+      callId: "screenshot",
+      tool: "browser_screenshot",
+      inputJson: "{}",
+      outputAttachmentId: "final-shot",
+      outputBytes: 64,
+      outputPreview: "",
+    }),
+  ]
+
+  renderCard(parts, true)
+
+  expect(await screen.findByText("Resultados de Lisboa")).toBeVisible()
+  expect(screen.getByRole("img", { name: "Captura final do navegador" })).toBeVisible()
+})
+
+test("the composer takeover action opens the active browser session", async () => {
+  const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
+  const api = createMockApi()
+  const request = vi.fn(async (route: string) => {
+    if (route === "GET /browser/tabs") return { tabs: [tab] }
+    if (route === "POST /browser/tabs/:id/takeover/session")
+      return { sessionId: "synthetic-session", controlEpoch: "synthetic-control-epoch", viewEpoch: 0 }
+    return {}
+  }) as ApiRequest
+  api.request = request
+  const storedBot = api.getState().bots[0] ?? null
+  const bot = storedBot ? { ...storedBot, machine: "local" as const } : null
+
+  render(
+    <BrowserActivityControlsProvider>
+      <ChannelComposerChip botName="Lia" />
+      <InlinePreviewContext.Provider value={{ api, bot, machine: undefined, activeCallId: undefined, onOpenComputer: vi.fn() }}>
+        <BrowserActivityCard parts={parts} finished={false} createdAt={1} botName="Lia" />
+      </InlinePreviewContext.Provider>
+    </BrowserActivityControlsProvider>,
+  )
+
+  const takeOver = await waitFor(() => {
+    const status = document.querySelector(".composer-browser-status")
+    if (!status) throw new Error("Browser status chip is missing")
+    return within(status).getByRole("button", { name: "Assumir" })
+  })
+  fireEvent.click(takeOver)
+
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith("POST /browser/tabs/:id/takeover/session", {}, { id: "browser-tab" }),
+  )
 })
 
 test("take-over holds the browser, opens its view, and the finished card collapses with the final image", async () => {
@@ -365,6 +499,14 @@ test.each(["file:///workspace/private.txt", "javascript:alert(1)", "data:text/pl
     expect(getBrowserActivityUrl(url)).toBe("")
   },
 )
+
+test.each([
+  "https://travel.example.test/reset/invite-Q7z8k2fR",
+  "https://travel.example.test/auth/9b0d9f4a5e7c",
+  "https://travel.example.test/confirm/opaque-token?next=%2Faccount",
+])("only displays the origin when a browser URL contains a private path: %s", (url) => {
+  expect(getBrowserActivityUrl(url)).toBe("https://travel.example.test")
+})
 
 test("a delayed tab snapshot cannot undo a newer takeover event", async () => {
   let resolveTabs: (value: { tabs: (typeof tab)[] }) => void = () => {}

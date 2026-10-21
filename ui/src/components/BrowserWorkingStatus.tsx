@@ -1,4 +1,5 @@
-import { type Locale, t } from "../i18n"
+import { type Locale } from "../i18n"
+import { ChannelComposerChip } from "../features/channelBrowser/ChannelBrowser"
 
 export const BrowserWorkingStatus = ({
   name,
@@ -8,11 +9,4 @@ export const BrowserWorkingStatus = ({
   name: string
   onStop?: (() => void) | undefined
   locale?: Locale
-}) => (
-  <div className="composer-browser-status" role="status">
-    <span>{t("{name} is working · In the browser", { name }, locale)}</span>
-    <button type="button" aria-label={t("Stop browser task", {}, locale)} disabled={!onStop} onClick={onStop}>
-      ×
-    </button>
-  </div>
-)
+}) => <ChannelComposerChip botName={name} onStop={onStop} locale={locale} />

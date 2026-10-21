@@ -12,6 +12,7 @@ import { type PreviewFrame, startInlineFrameSource } from "../features/desktop/i
 import { useInlinePreviewPreference } from "../features/desktop/inlinePreviewPreference"
 import { type Locale, t } from "../i18n"
 import { BrowserTakeoverView } from "./BrowserTakeoverView"
+import { useBrowserActivityControls } from "./BrowserActivityControls"
 import {
   getBrowserActivityIcon,
   getBrowserActivityCurrentLabel,
@@ -85,6 +86,7 @@ export const BrowserActivityCard = ({
   locale?: Locale
 }) => {
   const context = useContext(InlinePreviewContext)
+  const browserControls = useBrowserActivityControls()
   const previewEnabled = useInlinePreviewPreference()
   const channel = useChannelBrowserView()
   const browserTools = getBrowserActivityTools(parts)
@@ -108,11 +110,13 @@ export const BrowserActivityCard = ({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(!finished)
+  const [showAllActions, setShowAllActions] = useState(false)
   const [fullView, setFullView] = useState(false)
   const contentId = useId()
   const section = useRef<HTMLElement>(null)
   const [visible, setVisible] = useState(false)
   const [hidden, setHidden] = useState(document.hidden)
+  const toggleTakeoverRef = useRef<() => Promise<void>>(async () => {})
   const api = context?.api
   const bot = context?.bot
   const botId = bot?.id
@@ -276,6 +280,17 @@ export const BrowserActivityCard = ({
     }
   }
 
+  toggleTakeoverRef.current = toggleTakeover
+
+  useEffect(() => {
+    if (finished || takeoverSession || !activeTabId || channel?.canControl === false) return
+
+    return browserControls.registerTakeover({
+      label: t("Take over browser", {}, locale),
+      run: () => void toggleTakeoverRef.current(),
+    })
+  }, [activeTabId, browserControls.registerTakeover, channel?.canControl, finished, locale, takeoverSession])
+
   if (!browserTools.length) return null
 
   const screenshot = getBrowserActivityScreenshot(browserTools)
@@ -350,6 +365,7 @@ export const BrowserActivityCard = ({
         data-finished={finished}
         data-held={held}
         data-expanded={expanded}
+        data-show-all-actions={showAllActions}
       >
         {!finished && (
           <span
@@ -401,8 +417,26 @@ export const BrowserActivityCard = ({
                 </span>
               )}
               {url && (
-                <span className="browser-activity-url" title={url}>
-                  {url}
+                <span className="browser-activity-address" role="group" aria-label={t("Browser address", {}, locale)}>
+                  <span className="browser-activity-lock" role="img" aria-label={t("Secure connection", {}, locale)}>
+                    <svg
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.4"
+                      aria-hidden="true"
+                    >
+                      <rect x="3" y="7" width="10" height="7" rx="1.5" />
+                      <path d="M5 7V5a3 3 0 0 1 6 0v2" />
+                    </svg>
+                  </span>
+                  <span className="browser-activity-url" title={url}>
+                    {url}
+                  </span>
+                  <span className="browser-activity-live">
+                    <span className="channel-dot" aria-hidden="true" />
+                    {t("Live preview", {}, locale)}
+                  </span>
                 </span>
               )}
             </div>
@@ -488,7 +522,11 @@ export const BrowserActivityCard = ({
               <strong>{t(takeoverActive ? "Recent actions" : "Browser activity", {}, locale)}</strong>
               <ol>
                 {actions.map((part) => (
-                  <li key={part.callId} data-current={part.callId === currentAction?.callId && !finished}>
+                  <li
+                    key={part.callId}
+                    data-current={part.callId === currentAction?.callId && !finished}
+                    data-status={part.ok === null ? "in-progress" : part.ok === false ? "failed" : "complete"}
+                  >
                     <span className="browser-activity-action-icon" aria-hidden="true">
                       <svg
                         viewBox="0 0 24 24"
@@ -508,12 +546,34 @@ export const BrowserActivityCard = ({
                         <small>{getBrowserActivityNotice(part, locale)}</small>
                       )}
                     </span>
+                    <span
+                      className="browser-activity-action-state"
+                      aria-label={t(
+                        part.ok === null ? "Action in progress" : part.ok === false ? "Action failed" : "Action complete",
+                        {},
+                        locale,
+                      )}
+                      data-status={part.ok === null ? "in-progress" : part.ok === false ? "failed" : "complete"}
+                    >
+                      {part.ok === null ? <span className="browser-activity-action-spinner" aria-hidden="true" /> : null}
+                      {part.ok === false ? "!" : part.ok === true ? "✓" : null}
+                    </span>
                     <time dateTime={new Date(part.startedAt ?? part.resolvedAt ?? createdAt).toISOString()}>
                       {getBrowserActivityTime(part, createdAt, locale)}
                     </time>
                   </li>
                 ))}
               </ol>
+              {actions.length > 3 && (
+                <button
+                  type="button"
+                  className="browser-activity-more-actions"
+                  aria-expanded={showAllActions}
+                  onClick={() => setShowAllActions((value) => !value)}
+                >
+                  {t(showAllActions ? "Show fewer browser steps" : "Show all browser steps", {}, locale)}
+                </button>
+              )}
               {browserTools.length > MAX_VISIBLE_ACTIONS && (
                 <small>{t("Showing the latest {count} browser actions", { count: MAX_VISIBLE_ACTIONS }, locale)}</small>
               )}

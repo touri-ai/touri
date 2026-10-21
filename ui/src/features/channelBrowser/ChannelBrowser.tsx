@@ -1,4 +1,5 @@
 import { createContext, useContext } from "react"
+import { useBrowserActivityControls } from "../../components/BrowserActivityControls"
 import { type Locale, t } from "../../i18n"
 import {
   type ChannelBrowserState,
@@ -6,7 +7,7 @@ import {
   getChannelBrowserView,
   getChannelQueueLabel,
   getChannelWorkingTitle,
-} from "./channelBrowser"
+} from "./channelBrowserModel"
 import "./channel-browser.css"
 
 export type ChannelBrowserValue = {
@@ -120,8 +121,9 @@ export const ChannelComposerChip = ({
   locale?: Locale
 }) => {
   const channel = useChannelBrowserView()
+  const browserControls = useBrowserActivityControls()
   const base = t("{name} is working · In the browser", { name: botName }, locale)
-  const text = channel ? `${base} · ${t("for {person}", { person: channel.state.requesterName }, locale)}` : base
+  const text = getChannelComposerText(channel, base, locale)
 
   return (
     <div className="composer-browser-status">
@@ -129,6 +131,16 @@ export const ChannelComposerChip = ({
         <span className="channel-dot" aria-hidden="true" />
         <span className="composer-browser-status-text">{text}</span>
       </span>
+      {browserControls.canTakeOver && (!channel || channel.canControl) && (
+        <button
+          type="button"
+          className="composer-browser-takeover"
+          aria-label={browserControls.label}
+          onClick={browserControls.requestTakeover}
+        >
+          {browserControls.label}
+        </button>
+      )}
       {onStop && (!channel || channel.canControl) && (
         <button
           type="button"
@@ -143,6 +155,17 @@ export const ChannelComposerChip = ({
       )}
     </div>
   )
+}
+
+const getChannelComposerText = (
+  channel: (ChannelBrowserView & { state: ChannelBrowserState }) | null,
+  base: string,
+  locale: Locale,
+): string => {
+  if (!channel) return base
+  if (!channel.canControl) return t("{person} is in control", { person: channel.controlName }, locale)
+
+  return `${base} · ${t("for {person}", { person: channel.state.requesterName }, locale)}`
 }
 
 export const ChannelWorkingMarker = ({ names, locale = "pt-BR" }: { names: readonly string[]; locale?: Locale }) => {
