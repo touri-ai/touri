@@ -11,7 +11,7 @@ test("human takeover snapshots omit typed field values, page images, and URL sec
   const snapshot: BrowserSnapshot = {
     tabId: "browser-tab",
     generation: 4,
-    url: "https://travel.example.test/login/fixture-secret?token=fixture-secret#fixture-secret",
+    url: "https://fixture-secret.travel.example.test/login/fixture-secret?token=fixture-secret#fixture-secret",
     title: "fixture-secret",
     loading: false,
     viewport: { width: 1280, height: 720, scrollY: 0, scrollHeight: 720 },
@@ -42,7 +42,7 @@ test("human takeover snapshots omit typed field values, page images, and URL sec
   const safeSnapshot = sanitizeHumanTakeoverSnapshot(snapshot)
 
   expect(JSON.stringify(safeSnapshot)).not.toContain("fixture-secret")
-  expect(safeSnapshot.url).toBe("https://travel.example.test")
+  expect(safeSnapshot.url).toBe("")
   expect(safeSnapshot.title).toBe("")
   expect(safeSnapshot.text).toBe("")
   expect(safeSnapshot.recentActions).toEqual([])
@@ -183,12 +183,12 @@ test("a private document stays hidden after handback until its provenance is app
 
 test("post-takeover preview metadata omits page titles and URL values", () => {
   const metadata = sanitizeHumanTakeoverPreviewMetadata({
-    url: "https://travel.example.test/results?query=fixture-secret#fixture-secret",
+    url: "https://fixture-secret.travel.example.test/results?query=fixture-secret#fixture-secret",
     title: "fixture-secret",
   })
 
   expect(JSON.stringify(metadata)).not.toContain("fixture-secret")
-  expect(metadata).toEqual({ title: "", url: "https://travel.example.test" })
+  expect(metadata).toEqual({ title: "", url: "" })
 })
 
 test("the original document and a restored history document stay private even when login fields disappear", () => {

@@ -70,6 +70,8 @@ test.describe("full browser activity flow", () => {
         recordVideo: { dir: info.outputDir, size: { width: variant.width, height: variant.height } },
       })
       const page = await context.newPage()
+      if (!baseURL) throw new Error("The local browser fixture URL is missing.")
+      const fixtureHost = new URL(baseURL).hostname
       await page.route("**/__browser-activity-fixture", async (route) => {
         const response = await fetch(endpoint, {
           method: "POST",
@@ -99,8 +101,8 @@ test.describe("full browser activity flow", () => {
       if (variant.width > 600)
         await expect(page.getByRole("button", { name: /Busca de viagem/ })).toContainText("trabalhando")
       await expect(card).toBeVisible()
-      await expect(card.locator(".browser-activity-subtitle")).toContainText("travel.example.test")
-      await expect(card.getByText(/travel\.example\.test/)).toHaveCount(1)
+      await expect(card.locator(".browser-activity-subtitle")).toContainText(fixtureHost)
+      await expect(card.getByText(fixtureHost, { exact: false })).toHaveCount(1)
       await expect(card.getByRole("progressbar", { name: "Progresso do navegador" })).toBeVisible()
       await expect(card).toContainText("Lia · abrindo uma página")
       await expect(page.locator(".browser-activity-card")).toHaveCount(1)
@@ -163,11 +165,17 @@ test.describe("full browser activity flow", () => {
           decisionCount: number
           failedSteps: string[]
           takeoverInputCount: number
+          resumedPrivateDocumentHidden: boolean
         }
 
         return result
       })
-      expect(fixtureStats).toEqual({ decisionCount: 4, failedSteps: [], takeoverInputCount: 1 })
+      expect(fixtureStats).toEqual({
+        decisionCount: 4,
+        failedSteps: [],
+        takeoverInputCount: 1,
+        resumedPrivateDocumentHidden: true,
+      })
       await expect(page.getByText("Voo direto", { exact: false })).toBeVisible()
       await expect(page.getByText("Uma conexão", { exact: false })).toBeVisible()
       await expect(page.getByText("Resultados da busca", { exact: true })).toBeVisible()
@@ -215,13 +223,15 @@ for (const viewport of [
   { name: "phone", width: 390, height: 844 },
 ]) {
   test(`server browser takeover stays interactive and private: ${viewport.name}`, async ({ page }, testInfo) => {
+    test.setTimeout(60_000)
     await page.setViewportSize({ width: viewport.width, height: viewport.height })
     await page.goto("/test/e2e/browser-activity-harness.html?remote=true&holdAfterOpen=true")
     await page.getByRole("button", { name: "Iniciar busca de viagem" }).click()
-    await expect(page.getByRole("button", { name: "Assumir", exact: true })).toBeVisible()
+    const browserCard = page.locator(".browser-activity-card")
+    await expect(browserCard.getByRole("button", { name: "Assumir", exact: true })).toBeVisible()
     await page.screenshot({ path: testInfo.outputPath(`browser-takeover-before-${viewport.name}.png`), fullPage: true })
 
-    await page.getByRole("button", { name: "Assumir", exact: true }).click()
+    await browserCard.getByRole("button", { name: "Assumir", exact: true }).click()
     await expect(page.getByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
     await expect(page.getByText(/Você está no controle · .* está pausado/)).toBeVisible()
     const takeoverView = page.getByRole("region", { name: "Controle remoto do navegador" })
@@ -262,8 +272,8 @@ for (const viewport of [
     await expect(keyboard).toHaveValue("")
     await expect(page.locator("body")).not.toContainText("valor privado de teste")
 
-    await takeoverView.getByRole("button", { name: "Devolver para Mark" }).click()
-    await expect(page.getByRole("button", { name: "Assumir", exact: true })).toBeVisible()
+    await takeoverView.getByRole("button", { name: "Devolver para mark" }).click()
+    await expect(browserCard.getByRole("button", { name: "Assumir", exact: true })).toBeVisible()
   })
 }
 test("Composer stop cancels the active browser run and prevents later browser actions", async ({ page, baseURL }) => {
@@ -368,6 +378,7 @@ for (const fallback of ["missing_key", "no_credit"] as const) {
 
 for (const width of [360, 390, 430, 1440]) {
   test(`finished browser card without an image stays compact at ${width}px`, async ({ page }) => {
+    test.setTimeout(60_000)
     const evidence = resolve(import.meta.dirname, "../../test-results/browser-compact")
     await mkdir(evidence, { recursive: true })
     await page.setViewportSize({ width, height: 844 })

@@ -63,16 +63,8 @@ export const sanitizeHumanTakeoverSnapshot = (snapshot: BrowserSnapshot): Browse
   recommendImage: null,
 })
 
-export const sanitizeHumanTakeoverUrl = (value: string): string => {
-  try {
-    const url = new URL(value)
-    if (url.protocol !== "http:" && url.protocol !== "https:") return ""
-
-    return url.origin
-  } catch {
-    return ""
-  }
-}
+// A hostname can reflect private input too; no part of a human-controlled URL is public.
+export const sanitizeHumanTakeoverUrl = (_value: string): string => ""
 
 export const canResumeAfterHumanTakeover = ({
   url,

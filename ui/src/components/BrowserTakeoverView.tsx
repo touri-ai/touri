@@ -428,6 +428,7 @@ export const BrowserTakeoverView = ({
   }
 
   const safeUrl = frame ? getBrowserActivityUrl(frame.url) : ""
+  const connectionNotice = frame ? "" : ` · ${t("Connecting to the browser…", {}, locale)}`
 
   return (
     <section
@@ -440,7 +441,7 @@ export const BrowserTakeoverView = ({
           <strong>{t("Browser for {name}", { name: botName }, locale)}</strong>
           <span title={safeUrl}>
             {t("You are in control · {name} is paused", { name: botName }, locale)}
-            {safeUrl ? ` · ${safeUrl}` : ` · ${t("Connecting to the browser…", {}, locale)}`}
+            {safeUrl ? ` · ${safeUrl}` : connectionNotice}
           </span>
         </div>
         <button

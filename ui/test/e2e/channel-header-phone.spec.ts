@@ -35,7 +35,7 @@ for (const width of [360, 390, 430]) {
       .getByRole("region", { name: "Canais", exact: true })
       .getByRole("button", { name: /^Viagens/ })
       .click()
-    const composer = page.getByRole("textbox", { name: "Mensagem em #Viagens" })
+    const composer = page.getByRole("textbox", { name: "Mensagem para Viagens" })
     await expect(composer).toBeVisible()
     await composer.fill("Vamos organizar a viagem de demonstração.")
     await composer.press("Enter")

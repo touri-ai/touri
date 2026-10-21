@@ -34,7 +34,7 @@ test("private document provenance survives reopening without storing typed URL o
   })
   Object.assign(tab, { privateInput: true, privateAfterTakeover: true, privateDocumentIds: [100] })
   Object.assign(tab.info, {
-    url: "https://example.test/private-fixture-value?token=private-fixture-value",
+    url: "https://private-fixture-value.example.test/private-fixture-value?token=private-fixture-value",
     title: "private-fixture-value",
   })
 
@@ -43,7 +43,7 @@ test("private document provenance survives reopening without storing typed URL o
   const reopened = createBrowserStore({ kernel: runtime.kernel }).load()[0]
 
   expect(JSON.stringify(persisted)).not.toContain("private-fixture-value")
-  expect(persisted).toMatchObject({ url: "https://example.test", title: "", private_document_ids_json: "[100]" })
+  expect(persisted).toMatchObject({ url: "", title: "", private_document_ids_json: "[100]" })
   expect(reopened?.privateDocumentIds).toEqual([100])
   expect(reopened?.privateAfterTakeover).toBe(true)
 })

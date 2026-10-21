@@ -55,6 +55,7 @@ const ctx = {
 }
 let decisionCount = 0
 let takeoverInputCount = 0
+let resumedPrivateDocumentHidden = false
 await init(kernel, undefined, {
   engine,
   getDecisionApiKey: async () => "synthetic-decision-key",
@@ -94,6 +95,7 @@ let finalImage = ""
 const failedSteps: string[] = []
 const commands: Record<string, { tool: string; args: Record<string, unknown> }> = {
   open: { tool: "browser_open", args: { url: fixtureUrl } },
+  resume: { tool: "browser_open", args: { url: fixtureUrl } },
   read: { tool: "browser_snapshot", args: {} },
   destination: {
     tool: "browser_type",
@@ -157,17 +159,20 @@ const server = Bun.serve({
       step,
       tabId: requestedTabId,
       input,
+      viewEpoch,
     } = (await request.json()) as {
       step: string
       tabId?: string
       input?: BrowserTakeoverInput
+      viewEpoch?: number
     }
     const takeoverTabId = requestedTabId ?? tabId
     if (step === "metadata") {
       const tab = await getTab()
       return Response.json({ tabs: tab ? [tab] : [] })
     }
-    if (step === "stats") return Response.json({ decisionCount, failedSteps, takeoverInputCount })
+    if (step === "stats")
+      return Response.json({ decisionCount, failedSteps, takeoverInputCount, resumedPrivateDocumentHidden })
     if (step === "preview" || step === "attachment") {
       const snapshot = await getSnapshot()
       return Response.json({
@@ -179,13 +184,13 @@ const server = Bun.serve({
     if (step === "takeover-session") {
       const held = await engine.holdTakeover({ tabId: takeoverTabId, reason: "The user requested browser takeover" })
       return held
-        ? Response.json({ sessionId: "browser-flow-session" })
+        ? Response.json({ sessionId: "browser-flow-session", controlEpoch: "browser-flow-control", viewEpoch: 0 })
         : Response.json({ error: "The browser could not be paused." }, { status: 409 })
     }
     if (step === "takeover-frame") {
       const frame = await engine.takeoverFrame({ tabId: takeoverTabId, botId: ctx.botId, signal: ctx.signal })
       return frame
-        ? Response.json(frame)
+        ? Response.json(Object.assign({}, frame, { controlEpoch: "browser-flow-control", viewEpoch: viewEpoch ?? 0 }))
         : Response.json({ error: "The browser frame is unavailable." }, { status: 409 })
     }
     if (step === "takeover-input") {
@@ -202,6 +207,8 @@ const server = Bun.serve({
     if (step === "open") {
       if (tabId) await engine.close({ tabId, botId: ctx.botId, signal: ctx.signal })
       decisionCount = 0
+      takeoverInputCount = 0
+      resumedPrivateDocumentHidden = false
       failedSteps.length = 0
       const result = await engine.open({ url: fixtureUrl, ctx, timeoutMs: 30_000 })
       if (!result.success) return Response.json({ error: result.error }, { status: 500 })
@@ -221,11 +228,26 @@ const server = Bun.serve({
     const command = commands[step]
     if (!command) return new Response("Unknown browser step", { status: 400 })
 
+    if (step === "resume") {
+      const privateSnapshot = await getSnapshot()
+      resumedPrivateDocumentHidden = Boolean(
+        privateSnapshot &&
+          privateSnapshot.url === "" &&
+          privateSnapshot.title === "" &&
+          privateSnapshot.text === "" &&
+          privateSnapshot.image === null &&
+          privateSnapshot.elements.every((element) => element.name === "" && element.value === undefined),
+      )
+      if (!resumedPrivateDocumentHidden)
+        return Response.json({ error: "The human-controlled document was not protected." }, { status: 500 })
+    }
+
     const startedAt = Date.now()
     const result = await handlers.get(command.tool)?.handler({ ctx, args: { tabId, ...command.args } })
     const resolvedAt = Date.now()
     if (!result) return new Response("Browser tool is unavailable", { status: 500 })
     if (!result.success) failedSteps.push(`${step}:${result.errorCode}`)
+    if (result.success && command.tool === "browser_open") tabId = (result.structured as BrowserSnapshot).tabId
     const snapshot = await getSnapshot()
     if (step === "screenshot") finalImage = snapshot?.image?.dataUrl ?? ""
     const content = result.success ? [] : (result.content ?? [])
@@ -234,10 +256,10 @@ const server = Bun.serve({
       callId: `browser-flow-${step}`,
       tool: `mcp__touri__${command.tool}`,
       summary: command.tool,
-      inputJson: JSON.stringify(command.args),
+      inputJson: JSON.stringify(Object.assign({}, command.args, { tabId })),
       outputJson: JSON.stringify({
         content,
-        ...(step === "open" ? { structured: { tabId } } : {}),
+        ...(command.tool === "browser_open" ? { structured: { tabId } } : {}),
       }),
       ...(step === "screenshot" && finalImage
         ? { outputAttachmentId: "browser-flow-final-screenshot", outputBytes: Math.floor((finalImage.length * 3) / 4) }

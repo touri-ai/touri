@@ -90,7 +90,7 @@ test("sends private browser typing only to the remote input route and returns co
 test("keeps the privacy notice visible and lets a person expand the browser view", async () => {
   const api = createMockApi()
   const request = vi.fn(async (route: string) => {
-    if (route === "POST /browser/tabs/:id/takeover/frame") return getBrowserFrame()
+    if (route === "POST /browser/tabs/:id/takeover/frame") return Object.assign({}, getBrowserFrame(), { url: "" })
     return {}
   }) as ApiRequest
   api.request = request
@@ -112,6 +112,7 @@ test("keeps the privacy notice visible and lets a person expand the browser view
   const privacy = screen.getByRole("status", { name: "Privacidade do navegador" })
   expect(privacy).toHaveTextContent("O que você digitar aqui não vai para o chat, o bot nem o histórico.")
   expect(screen.getAllByText("O que você digitar aqui não vai para o chat, o bot nem o histórico.")).toHaveLength(1)
+  await screen.findByText("Você está no controle · Lia está pausado", { exact: true })
   const expand = screen.getByRole("button", { name: "Expandir navegador em tela cheia" })
   fireEvent.click(expand)
 
