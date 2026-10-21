@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>touri · canal com o navegador</title>
+    <style>
+      html, body, #root { height: 100%; margin: 0; }
+      .cu-channel { display: flex; flex-direction: column; height: 100%; }
+      .cu-channel-chat { flex: 1; min-height: 0; }
+      .cu-channel-header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; flex-wrap: wrap; border-bottom: 1px solid var(--border, #8884); }
+      .cu-channel-header > div { display: flex; flex-direction: column; margin-right: auto; }
+      .cu-channel-chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border, #8884); }
+      .cu-channel-controls { display: flex; gap: 6px; }
+      .cu-channel-banner { margin: 0; padding: 6px 12px; font-size: 13px; border-bottom: 1px solid var(--border, #8884); }
+      /* In a channel the controls live in the channel header, scoped to who may steer the bot. */
+      .cu-channel .browser-activity-header > button { display: none; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./channel-harness.tsx"></script>
+  </body>
+</html>
