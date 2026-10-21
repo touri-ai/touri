@@ -119,7 +119,7 @@ describe("sidebar work mode", () => {
     expect(conversations.querySelectorAll(".thread-row")).toHaveLength(2)
 
     fireEvent.click(routineRow)
-    await screen.findByRole("heading", { name: "Rotinas", exact: true })
+    await screen.findByRole("button", { name: "Histórico de execuções" })
     const history = document.querySelector(".routine-run-history")
     if (!(history instanceof HTMLElement)) throw new Error("Missing routine history")
 
@@ -180,8 +180,9 @@ describe("sidebar design", () => {
     })
     const botsTab = screen.getByRole("tab", { name: "Bots, 1 item precisa da sua atenção" })
 
-    expect(workTab.querySelector(".sidebar-unread")).toHaveTextContent("6")
-    expect(botsTab.querySelector(".sidebar-unread")).toHaveTextContent("1")
+    expect(workTab.querySelector('.sidebar-unread[data-tone="attention"]')).toHaveTextContent("1")
+    expect(workTab.querySelector('.sidebar-unread[data-tone="unread"]')).toHaveTextContent("5")
+    expect(botsTab.querySelector('.sidebar-unread[data-tone="attention"]')).toHaveTextContent("1")
     expect(workTab).toHaveAccessibleName("Work, 1 item precisa da sua atenção, 5 mensagens não lidas")
   })
 

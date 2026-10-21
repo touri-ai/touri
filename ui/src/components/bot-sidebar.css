@@ -453,6 +453,12 @@
   font-weight: var(--weight-semibold);
   line-height: 1;
 }
+.sidebar-unread[data-tone="unread"] {
+  color: var(--link);
+}
+.sidebar-unread[data-tone="attention"] {
+  color: var(--warning);
+}
 .sidebar-status-dot {
   display: block;
   width: 8px;

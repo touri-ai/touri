@@ -519,7 +519,8 @@ export const Sidebar = (props: SidebarProps) => {
               onKeyDown={handleModeKeyDown}
             >
               <span>{mode.label}</span>
-              {mode.count > 0 && <SidebarCount count={mode.count} label={label} />}
+              {mode.needsYouCount > 0 && <SidebarCount count={mode.needsYouCount} label={label} tone="attention" />}
+              {mode.unreadCount > 0 && <SidebarCount count={mode.unreadCount} label={label} tone="unread" />}
             </button>
           )
         })}
