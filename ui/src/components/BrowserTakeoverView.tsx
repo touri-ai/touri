@@ -77,6 +77,7 @@ export const BrowserTakeoverView = ({
     let timer: ReturnType<typeof setTimeout> | undefined
     let latestImage = ""
     let latestFrameId = 0
+    let hasFrame = false
     let workerFrameDrawn = false
     let worker: Worker | null = null
     connected.current = true
@@ -139,7 +140,7 @@ export const BrowserTakeoverView = ({
 
     const poll = async (): Promise<void> => {
       if (!active) return
-      if (document.hidden) {
+      if (document.hidden && hasFrame) {
         timer = setTimeout(() => void poll(), 1_000)
         return
       }
@@ -154,6 +155,7 @@ export const BrowserTakeoverView = ({
           timer = setTimeout(() => void poll(), 0)
           return
         }
+        hasFrame = true
         latestImage = next.image
         const nextFrame = {
           title: next.title,
