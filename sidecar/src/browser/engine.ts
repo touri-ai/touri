@@ -2557,7 +2557,7 @@ export const createBrowserEngine = ({
       dataUrl: string
       reason: "canvas-or-video" | "iframe" | "low-semantic-coverage" | "requested"
     } | null = null
-    const effectiveImage = tab.secretMode ? "never" : image
+    const effectiveImage = tab.secretMode || tab.privateInput ? "never" : image
     if (effectiveImage !== "never" && (effectiveImage === "always" || recommendImage !== null)) {
       try {
         const data = await boundedImage({ client, tab, fullPage: false, maxBytes: 80 * 1024 })
@@ -2977,6 +2977,11 @@ export const createBrowserEngine = ({
     const owned = getTab({ tabId, botId })
     if (!owned.success) return toToolError(owned.failure)
     const tab = owned.value
+    if (tab.privateInput)
+      return toToolError({
+        errorCode: "PRIVATE_TAKEOVER_ACTIVE",
+        error: "Capturas de tela ficam bloqueadas depois do controle privado do navegador.",
+      })
     return withTabQueue({
       tab,
       timeoutMs,
@@ -3946,6 +3951,11 @@ export const createBrowserEngine = ({
     const owned = getTab({ tabId, botId })
     if (!owned.success) return toToolError(owned.failure)
     const tab = owned.value
+    if (tab.privateInput)
+      return toToolError({
+        errorCode: "PRIVATE_TAKEOVER_ACTIVE",
+        error: "A avaliação de scripts fica bloqueada depois do controle privado do navegador.",
+      })
     return withTabQueue({
       tab,
       timeoutMs,

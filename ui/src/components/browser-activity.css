@@ -110,6 +110,11 @@
 .browser-activity-header-actions .button {
   white-space: nowrap;
 }
+.browser-activity-header-actions .button .panel-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
 .browser-activity-icon-button {
   display: grid;
   width: 34px;

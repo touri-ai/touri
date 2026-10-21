@@ -1,3 +1,4 @@
+import { join } from "node:path"
 import { expect, test } from "@playwright/test"
 
 test.use({ video: { mode: "on", size: { width: 1440, height: 900 } }, reducedMotion: "reduce" })
@@ -10,8 +11,22 @@ for (const viewport of [
     await page.setViewportSize({ width: viewport.width, height: viewport.height })
     await page.goto("/test/e2e/browser-activity-harness.html?remote=true")
     await page.getByRole("button", { name: "Iniciar busca de viagem" }).click()
-    await expect(page.getByRole("button", { name: "Assumir", exact: true })).toBeVisible()
-    await page.screenshot({ path: testInfo.outputPath(`browser-takeover-before-${viewport.name}.png`), fullPage: true })
+    const takeOverButton = page.getByRole("button", { name: "Assumir", exact: true })
+    await expect(takeOverButton).toBeVisible()
+    expect(
+      await takeOverButton.evaluate((button) => {
+        const card = button.closest(".browser-activity-card")
+        if (!card) return false
+        const buttonBounds = button.getBoundingClientRect()
+        const cardBounds = card.getBoundingClientRect()
+        return buttonBounds.left >= cardBounds.left && buttonBounds.right <= cardBounds.right
+      }),
+    ).toBe(true)
+    const captureDir = process.env.TOURI_BROWSER_CAPTURE_DIR
+    const beforeScreenshot = captureDir
+      ? join(captureDir, `browser-takeover-before-${viewport.name}.png`)
+      : testInfo.outputPath(`browser-takeover-before-${viewport.name}.png`)
+    await page.screenshot({ path: beforeScreenshot, fullPage: true })
 
     await page.getByRole("button", { name: "Assumir", exact: true }).click()
     await expect(page.getByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
@@ -19,7 +34,10 @@ for (const viewport of [
     await expect(
       page.locator(".browser-takeover-screen img, .browser-takeover-screen canvas:visible").first(),
     ).toBeVisible()
-    await page.screenshot({ path: testInfo.outputPath(`browser-takeover-after-${viewport.name}.png`), fullPage: true })
+    const afterScreenshot = captureDir
+      ? join(captureDir, `browser-takeover-after-${viewport.name}.png`)
+      : testInfo.outputPath(`browser-takeover-after-${viewport.name}.png`)
+    await page.screenshot({ path: afterScreenshot, fullPage: true })
 
     const keyboard = page.getByRole("textbox", { name: "Entrada de teclado para o navegador" })
     await expect(keyboard).toBeEnabled()
