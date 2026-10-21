@@ -47,6 +47,7 @@ export const startInlineFrameSource = (
   let sessionId: string | undefined
   let frameId = 0
   let processor: Worker | undefined
+  let unsubscribe = () => {}
   let page: Pick<BrowserTabInfo, "title" | "url"> = { title: "Tela do computador", url: "" }
   const pendingFrames = new Map<number, { resolve: (frame: PreviewFrame) => void; reject: (error: Error) => void }>()
   try {
@@ -94,7 +95,10 @@ export const startInlineFrameSource = (
     stop()
   }
   const stop = () => {
+    if (!active) return
     active = false
+    unsubscribe()
+    unsubscribe = () => {}
     clearTimeout(timer)
     viewer?.disconnect()
     viewer = undefined
@@ -110,6 +114,10 @@ export const startInlineFrameSource = (
     slot.replaceChildren()
   }
   const slot = document.createElement("div")
+  if (!processor) {
+    fail("A prévia do navegador não está disponível neste computador.")
+    return stop
+  }
   const sample = async () => {
     try {
       if (!active) return
@@ -118,8 +126,9 @@ export const startInlineFrameSource = (
         if (!active) return
         const processed = await processFrame({ image: result.image, title: result.title, url: result.url })
         if (!active) return
+        if (!processed) return fail("A prévia do navegador não está disponível neste computador.")
         status?.(null)
-        frame(processed ?? { src: result.image, title: result.title, url: result.url })
+        frame(processed)
       } else if (viewer) {
         const canvas = slot.querySelector("canvas")
         if (!canvas?.width || !canvas.height) {
@@ -143,6 +152,7 @@ export const startInlineFrameSource = (
       if (active) timer = setTimeout(() => void sample(), intervalMs)
     } catch (error) {
       if (active && bot.machine === "local") {
+        if (!processor) return fail("A prévia do navegador não está disponível neste computador.")
         status?.(userFacingError(error))
         timer = setTimeout(() => void sample(), intervalMs)
       } else fail("A prévia perdeu a conexão com a VM.")
@@ -181,7 +191,7 @@ export const startInlineFrameSource = (
     timer = setTimeout(() => fail(HANDSHAKE_TIMEOUT_MESSAGE), HANDSHAKE_TIMEOUT_MS)
   }
   // Metadata events share the viewer's existing browser tab pipeline.
-  const unsubscribe = api.subscribe(({ event }) => {
+  unsubscribe = api.subscribe(({ event }) => {
     if (event.type === "browser.tab" && event.tab.ownerBotId === bot.id && (!tabId || event.tab.tabId === tabId))
       page = event.tab
   })
@@ -195,8 +205,5 @@ export const startInlineFrameSource = (
     })
     .catch(() => {})
   void start().catch((error: unknown) => fail(userFacingError(error)))
-  return () => {
-    stop()
-    unsubscribe()
-  }
+  return stop
 }

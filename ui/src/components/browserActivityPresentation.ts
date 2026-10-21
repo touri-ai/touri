@@ -205,7 +205,7 @@ export const getBrowserActivityUrl = (value: string): string => {
     const url = new URL(value)
     if (!["https:", "http:"].includes(url.protocol)) return ""
 
-    return redactToolText(`${url.origin}${url.pathname}`).slice(0, 180)
+    return url.origin
   } catch {
     return ""
   }

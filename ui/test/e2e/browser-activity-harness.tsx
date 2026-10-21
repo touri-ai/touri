@@ -1,11 +1,11 @@
-import type { BrowserTabInfo, Message, ToolCallPart } from "@touri/contracts"
+import type { BrowserTabInfo, Message, Run, ToolCallPart } from "@touri/contracts"
 import { useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 import type { ApiRequest } from "../../src/api/client"
 import { createMockApi } from "../../src/api/mock"
 import { AvatarRuntimeProvider } from "../../src/components/AvatarRuntime"
 import { BrowserActivityControlsProvider } from "../../src/components/BrowserActivityControls"
-import { BrowserWorkingStatus } from "../../src/components/BrowserWorkingStatus"
+import { Composer } from "../../src/components/Composer"
 import { VirtualMessageList } from "../../src/components/ChatPanel"
 import { TurnActivity } from "../../src/components/TurnActivity"
 import { InlinePreviewContext } from "../../src/features/desktop/InlineLivePreview"
@@ -471,7 +471,12 @@ const LiveFixture = () => {
     if (!mockBot || !mockThread) throw new Error("The mocked bot is missing.")
     const fixtureBot = { ...mockBot, id: "browser-demo", name: "Lia", machine: "local" as const }
     const fixtureThread = { ...mockThread, id: "browser-thread", botId: fixtureBot.id }
-    const request = (async (route: string) => {
+    const mockRequest = fixtureApi.request
+    const request = (async (route: string, input?: unknown, pathValues?: Record<string, string>) => {
+      if (route === "POST /threads/:id/messages")
+        return (await mockRequest(route, input as never, pathValues)) as never
+      if (route === "POST /runs/:id/cancel")
+        return (await mockRequest(route, input as never, pathValues)) as never
       if (route === "GET /browser/tabs") {
         const result = await requestBrowserFixture("metadata")
         return result as never
@@ -501,7 +506,13 @@ const LiveFixture = () => {
   const [narrations, setNarrations] = useState<string[]>([])
   const [running, setRunning] = useState(false)
   const [started, setStarted] = useState(false)
+  const [activeRun, setActiveRun] = useState<Run | null>(null)
+  const [draft, setDraft] = useState("")
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   const stopped = useRef(false)
+  const cancelledRunIds = useRef<string[]>([])
+  const continueAfterOpen = useRef<(() => void) | null>(null)
+  const settled = useRef(true)
   const ids = useRef(0)
   const now = Date.now()
   const userMessage: Message = {
@@ -535,6 +546,27 @@ const LiveFixture = () => {
     createdAt: now - 1_000,
     updatedAt: now,
   }
+  useEffect(() => {
+    const browserWindow = window as Window & {
+      browserActivity?: {
+        continueAfterOpen: () => void
+        snapshot: () => { cancelledRunIds: string[]; parts: ToolCallPart[]; runId: string | null; settled: boolean }
+      }
+    }
+    browserWindow.browserActivity = {
+      continueAfterOpen: () => continueAfterOpen.current?.(),
+      snapshot: () => ({
+        cancelledRunIds: cancelledRunIds.current,
+        parts,
+        runId: activeRun?.id ?? null,
+        settled: settled.current,
+      }),
+    }
+
+    return () => {
+      delete browserWindow.browserActivity
+    }
+  }, [activeRun, parts])
 
   const playStep = async (step: string, narration: string, inputJson: string): Promise<void> => {
     if (stopped.current) return
@@ -571,16 +603,38 @@ const LiveFixture = () => {
     const completedPart = result.part
     if (!completedPart) throw new Error(`The browser fixture returned no action for ${step}.`)
     setParts((previous) => previous.map((part) => (part.callId === callId ? { ...completedPart, callId } : part)))
-    if (step === "open") await wait(3_000)
+    if (step !== "open") return
+    if (params.get("holdAfterOpen") === "1") {
+      await new Promise<void>((resolve) => {
+        continueAfterOpen.current = resolve
+      })
+      continueAfterOpen.current = null
+      return
+    }
+    await wait(3_000)
   }
 
   const start = async () => {
     stopped.current = false
+    settled.current = false
+    cancelledRunIds.current = []
     ids.current = 0
     setStarted(true)
     setRunning(true)
     setNarrations([])
     setParts([])
+    const { run } = await api.request(
+      "POST /threads/:id/messages",
+      {
+        clientNonce: "browser-flow-request",
+        threadId: thread.id,
+        parentId: userMessage.id,
+        text: userMessage.text,
+        attachmentIds: [],
+      },
+      { id: thread.id },
+    )
+    setActiveRun(run)
     const script = [
       ["open", "Vou abrir a busca de viagens.", JSON.stringify({ url: "https://travel.example.test/search" })],
       ["read", "A página inicial carregou. Vou procurar Lisboa.", "{}"],
@@ -597,7 +651,10 @@ const LiveFixture = () => {
     ] as const
     for (const [step, narration, inputJson] of script) {
       await playStep(step, narration, inputJson)
-      if (stopped.current) return
+      if (stopped.current) {
+        settled.current = true
+        return
+      }
     }
     setParts((previous) => [
       ...previous,
@@ -607,9 +664,13 @@ const LiveFixture = () => {
       },
     ])
     setRunning(false)
+    settled.current = true
   }
 
-  const stop = () => {
+  const cancel = async (runId: string) => {
+    const { run } = await api.request("POST /runs/:id/cancel", {}, { id: runId })
+    cancelledRunIds.current = [...cancelledRunIds.current, run.id]
+    setActiveRun(run)
     stopped.current = true
     setRunning(false)
   }
@@ -661,8 +722,21 @@ const LiveFixture = () => {
               />
             </div>
             <footer className="browser-flow-composer">
-              {running && <BrowserWorkingStatus name={bot.name} onStop={stop} />}
-              <textarea aria-label="Mensagem" placeholder="Escreva uma mensagem…" />
+              <Composer
+                bot={bot}
+                threadId={thread.id}
+                parentId={userMessage.id}
+                api={api}
+                draft={draft}
+                onDraft={setDraft}
+                inputRef={inputRef}
+                activeRun={activeRun}
+                browserWorking={running}
+                browserBotName={bot.name}
+                queuedCount={0}
+                onSend={async () => undefined}
+                onCancel={cancel}
+              />
             </footer>
           </section>
         </main>

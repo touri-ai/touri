@@ -164,7 +164,8 @@ test.describe("full browser activity flow", () => {
       const summary = page.getByRole("button", { name: /Usou o navegador/ })
       await expect(summary).toContainText("Ver o que ele fez")
       await expect(summary.getByRole("img", { name: "Captura final do navegador" })).toBeVisible()
-      await summary.click()
+      await summary.focus()
+      await summary.press("Enter")
       const activity = page.getByRole("log", { name: "Atividade do navegador" })
       for (const action of [
         "Abriu a página",
@@ -176,6 +177,12 @@ test.describe("full browser activity flow", () => {
         "Moveu nas abas",
       ])
         await expect(activity).toContainText(action)
+      await activity.focus()
+      const focusOutline = await activity.evaluate((element) => {
+        const style = getComputedStyle(element)
+        return { style: style.outlineStyle, width: style.outlineWidth }
+      })
+      expect(focusOutline).toEqual({ style: "solid", width: "2px" })
       await expect(page.locator(".browser-activity-card")).toHaveCount(1)
       await expect(page.locator(".tool-call-card")).toHaveCount(0)
       const accessibility = await new AxeBuilder({ page }).include(".browser-activity-card").analyze()
@@ -257,7 +264,6 @@ for (const viewport of [
 
 test("Composer stop cancels the active browser run and prevents later browser actions", async ({ page, baseURL }) => {
   const browserActions: string[] = []
-  const cancelledRunIds: string[] = []
   const browserActionSteps = new Set([
     "open",
     "read",
@@ -272,9 +278,8 @@ test("Composer stop cancels the active browser run and prevents later browser ac
     "screenshot",
   ])
   await page.route("**/__browser-activity-fixture", async (route) => {
-    const body = JSON.parse(route.request().postData() ?? "{}") as { step?: string; runId?: string }
+    const body = JSON.parse(route.request().postData() ?? "{}") as { step?: string }
     if (body.step && browserActionSteps.has(body.step)) browserActions.push(body.step)
-    if (body.step === "cancel") cancelledRunIds.push(body.runId ?? "")
     const response = await fetch(endpoint, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -288,7 +293,17 @@ test("Composer stop cancels the active browser run and prevents later browser ac
   await expect(page.getByRole("article", { name: "Navegador do Lia" })).toBeVisible()
   await expect.poll(() => browserActions).toEqual(["open"])
   await page.locator(".composer-browser-status").getByRole("button", { name: "Parar" }).click()
-  await expect.poll(() => cancelledRunIds).toEqual(["browser-flow-run"])
+  const cancelledRun = await page.waitForFunction(() => {
+    const browserActivity = (
+      window as Window & {
+        browserActivity?: { snapshot: () => { cancelledRunIds: string[]; runId: string | null } }
+      }
+    ).browserActivity
+    const snapshot = browserActivity?.snapshot()
+
+    return snapshot?.runId && snapshot.cancelledRunIds.includes(snapshot.runId) ? snapshot.runId : false
+  })
+  expect(await cancelledRun.jsonValue()).toBeTruthy()
   await page.evaluate(() => {
     const browserActivity = (window as Window & { browserActivity?: { continueAfterOpen?: () => void } })
       .browserActivity

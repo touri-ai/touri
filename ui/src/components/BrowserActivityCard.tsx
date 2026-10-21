@@ -212,6 +212,7 @@ export const BrowserActivityCard = ({
       !previewEnabled ||
       !visible ||
       hidden ||
+      !expanded ||
       held ||
       finished ||
       channel?.previewHidden ||
@@ -237,6 +238,7 @@ export const BrowserActivityCard = ({
     canPreview,
     channel?.previewHidden,
     finished,
+    expanded,
     held,
     hidden,
     locale,
@@ -382,7 +384,7 @@ export const BrowserActivityCard = ({
             type="button"
             className="browser-activity-summary"
             aria-expanded={expanded}
-            aria-controls={contentId}
+            aria-controls={expanded ? contentId : undefined}
             onClick={() => setExpanded((value) => !value)}
           >
             <span className="browser-activity-summary-copy">
@@ -477,7 +479,7 @@ export const BrowserActivityCard = ({
                 className="browser-activity-icon-button"
                 aria-label={expanded ? t("Collapse browser card", {}, locale) : t("Expand browser card", {}, locale)}
                 aria-expanded={expanded}
-                aria-controls={contentId}
+                aria-controls={expanded ? contentId : undefined}
                 onClick={() => setExpanded((value) => !value)}
               >
                 <span aria-hidden="true">{expanded ? "⌃" : "⌄"}</span>
@@ -507,6 +509,8 @@ export const BrowserActivityCard = ({
             <div
               className="browser-activity-log"
               role="log"
+              // biome-ignore lint/a11y/noNoninteractiveTabindex: The bounded action history needs keyboard scrolling.
+              tabIndex={0}
               aria-label={t(takeoverActive ? "Recent actions" : "Browser activity", {}, locale)}
               aria-live={finished ? "off" : "polite"}
             >

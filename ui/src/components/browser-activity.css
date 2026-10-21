@@ -406,6 +406,10 @@
   padding: var(--space-4) var(--space-4) var(--space-4) 0;
   overscroll-behavior: contain;
 }
+.browser-activity-log:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
 .browser-activity-card[data-finished="false"] .browser-activity-log {
   height: 220px;
 }

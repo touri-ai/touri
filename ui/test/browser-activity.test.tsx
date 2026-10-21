@@ -213,7 +213,8 @@ test("shows one secure browser address and a live marker above the preview", asy
   expect(address).toBeVisible()
   expect(screen.getByLabelText("Conexão segura")).toBeVisible()
   expect(within(address).getByText("Ao vivo")).toBeVisible()
-  expect(screen.getAllByText("https://travel.example.test/results")).toHaveLength(1)
+  expect(screen.getAllByText("https://travel.example.test")).toHaveLength(1)
+  expect(document.body.textContent).not.toContain("/results")
 })
 
 test("marks completed and current browser actions with their progress state", () => {

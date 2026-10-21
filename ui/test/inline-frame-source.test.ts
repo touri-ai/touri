@@ -248,11 +248,12 @@ test("a local preview fails closed when the worker is unavailable for an oversiz
   )
   const image = `data:image/png;base64,${"A".repeat(24_000_001)}`
   const api = createMockApi()
-  api.request = vi.fn(async (route: string) =>
+  const request = vi.fn(async (route: string) =>
     route === "GET /bots/:id/browser-preview"
       ? { image, title: "Synthetic page", url: "https://example.test" }
       : { tabs: [] },
   ) as ApiRequest
+  api.request = request
   const frame = vi.fn()
   const unavailable = vi.fn()
 
@@ -260,6 +261,11 @@ test("a local preview fails closed when the worker is unavailable for an oversiz
 
   await vi.waitFor(() => expect(unavailable).toHaveBeenCalledOnce())
   expect(frame).not.toHaveBeenCalled()
+  expect(request).not.toHaveBeenCalledWith(
+    "GET /bots/:id/browser-preview",
+    expect.anything(),
+    expect.anything(),
+  )
   stop()
 })
 
