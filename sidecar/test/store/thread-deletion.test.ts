@@ -9,6 +9,7 @@ import { createKernel } from "../../src/kernel"
 import { bindDeviceSession } from "../../src/kernel/device-session"
 import { init } from "../../src/store"
 import { threadDeletionRoutes } from "../../src/store/thread-deletion"
+import { createThreadTitleSearch } from "../../src/store/thread-title-search"
 
 const cleanups = new Set<() => Promise<void>>()
 afterEach(async () => {
@@ -344,7 +345,9 @@ test("archived pages are bounded, seek by id and keep messages searchable", asyn
   const second = await fixture.request(`/bots/${fixture.bot.id}/threads?archived=true&before=${cursor}`)
   const next = ((await second.json()) as { threads: Array<Thread> }).threads
   const search = await fixture.request("/search?q=syntheticarchive")
+  const titleSearch = await fixture.request("/search?q=archive")
 
+  expect(((await titleSearch.json()) as { threads: Array<Thread> }).threads).toHaveLength(50)
   expect(page).toHaveLength(100)
   expect(next).toHaveLength(5)
   expect(new Set([...page, ...next].map(({ id }) => id)).size).toBe(105)
@@ -355,4 +358,23 @@ test("archived pages are bounded, seek by id and keep messages searchable", asyn
     )
     .all(fixture.bot.id, cursor) as Array<{ detail: string }>
   expect(plan.some(({ detail }) => detail.includes("threads_archived_page") && detail.includes("id<?"))).toBe(true)
+})
+
+test("archived title search ignores accents and stays scoped without any messages", async () => {
+  const fixture = await startFixture()
+  const own = fixture.createThread("RELATÓRIO da rotina mensal", { ownerPersonId: "member-a" })
+  const other = fixture.createThread("Relatório da rotina mensal", { ownerPersonId: "member-b" })
+  fixture.db.query("UPDATE threads SET archived_at = 1 WHERE id IN (?, ?)").run(own.id, other.id)
+  const search = createThreadTitleSearch(fixture.db.filename)
+  cleanups.add(async () => search.dispose())
+
+  const matches = await search.search({
+    query: "relatorio ROTINA",
+    personId: "member-a",
+    signal: new AbortController().signal,
+  })
+
+  expect(matches.map(({ id }) => id)).toEqual([own.id])
+  expect(matches[0]).not.toHaveProperty("carryoverNote")
+  expect(matches[0]).not.toHaveProperty("cwdOverride")
 })

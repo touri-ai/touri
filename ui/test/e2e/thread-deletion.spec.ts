@@ -109,3 +109,19 @@ test("archived messages remain searchable and restore when opened", async ({ pag
     .locator('[data-message-id="message-lead-event"]')
     .screenshot({ path: join(evidenceDirectory, "archive-restored.png") })
 })
+
+test("archived conversation titles remain searchable after reopening", async ({ page }) => {
+  await page.goto("/test/e2e/thread-deletion-harness.html?archived=1")
+  await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+  await page.getByRole("button", { name: "Buscar conversas", exact: true }).click()
+  await page.getByRole("combobox", { name: "Buscar bots, conversas e configurações" }).fill("EVENTOS leads")
+  const result = page.getByRole("option", { name: /Eventos de leads/ })
+  await expect(result).toContainText("Arquivadas")
+  await mkdir(evidenceDirectory, { recursive: true })
+  await page
+    .getByRole("dialog", { name: "Paleta de comandos" })
+    .screenshot({ path: join(evidenceDirectory, "archive-title-search.png") })
+  await result.click()
+
+  await expect(page.locator(".thread-row.selected")).toContainText("Eventos de leads")
+})

@@ -209,6 +209,8 @@ it("refreshes an already loaded archive after archiving a selection", async () =
 
 it("returns to the main conversation when archiving the conversation in use", async () => {
   const { api, thread } = getThreadFixture()
+  const mainTitle = api.getState().threads.find(({ id }) => id === "thread-mark")?.title
+  if (!mainTitle) throw new Error("Missing main conversation")
   render(<App kernel={{ services: { api } }} />)
   const conversations = await getConversationRegion()
   fireEvent.click(within(conversations).getByRole("button", { name: /Eventos de leads/ }))
@@ -220,7 +222,7 @@ it("returns to the main conversation when archiving the conversation in use", as
   fireEvent.click(screen.getByRole("menuitem", { name: "Arquivar conversa" }))
 
   await waitFor(() => expect(within(conversations).queryByRole("button", { name: /Eventos de leads/ })).toBeNull())
-  expect(document.querySelector(".thread-row.selected")).toHaveTextContent("Welcome")
+  expect(document.querySelector(".thread-row.selected strong")).toHaveTextContent(mainTitle)
   expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toBeEnabled()
 })
 
@@ -278,4 +280,19 @@ it("removes externally deleted conversations from an already open archive", asyn
   await waitFor(() =>
     expect(screen.queryByRole("button", { name: "Abrir conversa arquivada Eventos de leads" })).toBeNull(),
   )
+})
+
+it("finds an archived conversation by its title after reopening the app", async () => {
+  const { api, thread } = getThreadFixture()
+  await api.request("PATCH /threads/:id", { archived: true }, { id: thread.id })
+  render(<App kernel={{ services: { api } }} />)
+  await getConversationRegion()
+
+  fireEvent.keyDown(window, { key: "k", metaKey: true })
+  const input = await screen.findByRole("combobox", { name: "Buscar bots, conversas e configurações" })
+  fireEvent.change(input, { target: { value: "EVENTOS leads" } })
+  fireEvent.click(await screen.findByRole("option", { name: /Eventos de leads/ }))
+
+  await waitFor(() => expect(api.getState().threads.find(({ id }) => id === thread.id)?.archivedAt).toBeNull())
+  expect(screen.getByRole("button", { name: /Eventos de leads/ })).toHaveClass("selected")
 })

@@ -58,6 +58,7 @@ import { redeemFileGrant } from "./redeemFileGrant"
 import { createSendJournal } from "./send-journal"
 import { createStreamWriter } from "./stream-writer"
 import { threadDeletionRoutes } from "./thread-deletion"
+import { createThreadTitleSearch } from "./thread-title-search"
 import { type RawMessage, readWorkspaceActivity } from "./workspace-activity"
 
 export const name = "store"
@@ -505,6 +506,8 @@ export const init = async (
   else await reconcileHomes()
   installDoctor(kernel)
   const database = kernel.db as Database
+  const threadTitleSearch = createThreadTitleSearch(database.filename)
+  kernel.services.provide("storage.threadTitles", threadTitleSearch)
   const recoverTranscript = () => materializeTranscriptBatch(database)
   while (runStage ? runStage("store_transcript_startup_recovery", recoverTranscript) : recoverTranscript()) {
     await new Promise<void>((resolve) => setImmediate(resolve))
@@ -1994,8 +1997,15 @@ export const init = async (
             limit: 50,
             ...(personScope ? { personScope } : {}),
           })
+          const threads = await threadTitleSearch.search({
+            query: query.q ?? "",
+            signal,
+            ...(query.botId ? { botId: query.botId } : {}),
+            ...(person?.role === "member" ? { personId: person.id } : {}),
+          })
           return jsonResponse(200, {
             hits: hits.map((hit) => ({ ...hit, thread: getSearchThread(database, hit.threadId) })),
+            threads,
           })
         },
       },

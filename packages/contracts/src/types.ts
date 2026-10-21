@@ -981,7 +981,7 @@ export type ApiRoutes = {
   'POST /runs/:id/cancel': { req: {}; res: { run: Run } }
   'POST /runs/:id/retry': { req: {}; res: { run: Run } }
   'POST /approvals/:id': { req: { decision: 'approved' | 'denied'; standing?: boolean }; res: {} }
-  'GET /search': { req: { q: string; botId?: Id }; res: { hits: Array<{ threadId: Id; messageId: Id; snippet: string; thread?: Pick<Thread, 'id' | 'botId' | 'title' | 'createdAt' | 'archivedAt'> | null }> } }
+  'GET /search': { req: { q: string; botId?: Id }; res: { hits: Array<{ threadId: Id; messageId: Id; snippet: string; thread?: Pick<Thread, 'id' | 'botId' | 'title' | 'createdAt' | 'archivedAt'> | null }>; threads?: Array<Pick<Thread, 'id' | 'botId' | 'title' | 'createdAt' | 'archivedAt'>> } }
   'POST /attachments': { req: { grantId: string } | { path: AbsolutePath }; res: { attachment: Attachment } }
   'GET /attachments/:id': { req: {}; res: Blob }
   'GET /attachments/:id/content': { req: { offset?: number; limit?: number }; res: { text: string; offset: number; nextOffset: number | null; bytes: number } }
@@ -1437,6 +1437,7 @@ export type ServiceMap = {
   'doctor': { start: () => void; dispose: () => void; snapshot: (refresh?: boolean) => DoctorReport; settled: () => Promise<void> }
   'storage.maintenance': { scheduleSessionKeyRetry: () => void; start: (vacuum?: boolean) => boolean; snapshot: () => StorageMaintenanceStatus; dispose: (options?: { closing?: boolean }) => void }
   'storage.botDeletion': { dispose: () => void }
+  'storage.threadTitles': { dispose: () => void }
   'storage.threadDeletion': { dispose: () => void }
   'mcp.botTools': (bot: Bot) => Array<string>
 

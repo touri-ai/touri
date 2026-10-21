@@ -1151,7 +1151,25 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     if (key === "GET /search") {
       const query = input as ApiRoutes["GET /search"]["req"]
       const tokens = query.q.toLocaleLowerCase().trim().split(/\s+/u)
+      const getNormalizedTitle = (title: string) =>
+        title.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase("pt-BR")
       return {
+        threads: threads
+          .filter(
+            (thread) =>
+              thread.archivedAt !== null &&
+              !thread.groupId &&
+              (!query.botId || thread.botId === query.botId) &&
+              tokens.every((token) => getNormalizedTitle(thread.title).includes(getNormalizedTitle(token))),
+          )
+          .slice(0, 50)
+          .map((thread) => ({
+            id: thread.id,
+            botId: thread.botId,
+            title: thread.title,
+            createdAt: thread.createdAt,
+            archivedAt: thread.archivedAt,
+          })),
         hits: messages
           .filter((message) => {
             const thread = threads.find((thread) => thread.id === message.threadId)
