@@ -19,8 +19,9 @@ test("a channel browser handback resumes the bot and posts its answer in the sam
   await composer.press("Enter")
 
   await expect(page.getByText("O portal de demonstração pediu login para continuar.")).toBeVisible()
-  await expect(page.locator(".sidebar-needs-you")).toContainText("Precisa de você")
-  await page.locator(".sidebar-needs-you").click()
+  const pendingRequest = page.getByRole("button", { name: "Abrir pendência de Planejamento", exact: true })
+  await expect(pendingRequest).toBeVisible()
+  await pendingRequest.click()
   const browserCard = page.locator(".browser-activity-card").first()
   await expect(browserCard).toBeVisible()
   await expect(browserCard.getByRole("button", { name: "Assumir" })).toBeVisible()

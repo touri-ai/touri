@@ -2361,11 +2361,12 @@ export const createRuntimeEngine = ({
           .activePath({ threadId, leafId: requestMessageId, limit: 1 })
           .find((message) => message.id === requestMessageId)
     const requester = requesterPersonId ?? getRequesterPersonId(request?.sender) ?? undefined
+    const browserRequestId = continuationFromRunId
+      ? (continuations.link(continuationFromRunId)?.originalRunId ?? continuationFromRunId)
+      : undefined
     const run: Run = {
       id: kernel.newId(),
-      browserRequestId: continuationFromRunId
-        ? (continuations.link(continuationFromRunId)?.originalRunId ?? continuationFromRunId)
-        : null,
+      ...(browserRequestId ? { browserRequestId } : {}),
       ...(requester ? { requesterPersonId: requester } : {}),
       threadId,
       botId: bot.id,

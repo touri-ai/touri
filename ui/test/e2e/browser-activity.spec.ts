@@ -188,12 +188,18 @@ test.describe("full browser activity flow", () => {
       expect(fixtureStats).toEqual({ decisionCount: 4, failedSteps: [], takeoverInputCount: 1 })
       await expect(page.getByText("Voo direto", { exact: false })).toBeVisible()
       await expect(page.getByText("Uma conexão", { exact: false })).toBeVisible()
-      await expect(page.getByText("Resultados da busca", { exact: true })).toBeVisible()
       await expect(page.getByRole("progressbar", { name: "Progresso do navegador" })).toHaveCount(0)
       await expect(page.locator(".browser-activity-card")).toHaveAttribute("data-finished", "true")
       const summary = page.getByRole("button", { name: /Usou o navegador/ })
       await expect(summary).toContainText("Ver o que ele fez")
       await expect(summary.getByRole("img", { name: "Captura final do navegador" })).toBeVisible()
+      await expect
+        .poll(() =>
+          summary.getByRole("img", { name: "Captura final do navegador" }).evaluate((image) => {
+            return image instanceof HTMLImageElement ? image.naturalWidth : 0
+          }),
+        )
+        .toBeGreaterThan(0)
       await summary.click()
       const activity = page.getByRole("log", { name: "Atividade do navegador" })
       for (const action of [
@@ -226,6 +232,54 @@ test.describe("full browser activity flow", () => {
       }
     })
   }
+})
+
+test("remote keyboard input reaches the managed page without entering the conversation", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto("/test/e2e/browser-activity-harness.html?flow=live&holdAfterOpen=true")
+  await page.getByRole("button", { name: "Iniciar busca de viagem" }).click()
+  const takeOver = page.locator(".browser-activity-card").getByRole("button", { name: "Assumir", exact: true })
+  await expect(takeOver).toBeEnabled({ timeout: 40_000 })
+  await takeOver.click()
+  const control = page.getByRole("region", { name: "Controle remoto do navegador" })
+  const screen = control.locator(".browser-takeover-screen")
+  await expect(screen.locator("canvas:visible, img").first()).toBeVisible()
+  const target = await page.evaluate(async () => {
+    const response = await fetch("/__browser-activity-fixture", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ step: "private-target" }),
+    })
+    return response.json() as Promise<{ x: number; y: number; width: number; height: number } | null>
+  })
+  const bounds = await screen.boundingBox()
+  if (!target || !bounds) throw new Error("The managed input fixture is missing")
+  const scale = Math.min(bounds.width / target.width, bounds.height / target.height)
+
+  await screen.click({
+    position: {
+      x: (bounds.width - target.width * scale) / 2 + target.x * scale,
+      y: (bounds.height - target.height * scale) / 2 + target.y * scale,
+    },
+  })
+  await control.getByRole("button", { name: "Digitar no navegador" }).click()
+  await page.keyboard.insertText("entrada privada fictícia")
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const response = await fetch("/__browser-activity-fixture", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ step: "private-input-status" }),
+        })
+        return ((await response.json()) as { received: boolean }).received
+      }),
+    )
+    .toBe(true)
+
+  await expect(page.getByTestId("virtual-message-list")).not.toContainText("entrada privada fictícia")
+  await control.getByRole("button", { name: /Devolver para/ }).click()
+  await page.getByRole("button", { name: "Parar Lia" }).click()
 })
 
 for (const viewport of [

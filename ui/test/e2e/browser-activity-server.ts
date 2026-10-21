@@ -32,7 +32,8 @@ const kernel = {
   },
 }
 await initStore(kernel)
-const engine = createBrowserEngine({ kernel, launcher: createFixtureBrowserLauncher() })
+const launcher = createFixtureBrowserLauncher()
+const engine = createBrowserEngine({ kernel, launcher })
 const fixtureUrl = process.env.TOURI_BROWSER_FLOW_FIXTURE_URL
 if (!fixtureUrl) throw new Error("The local travel fixture URL is missing.")
 
@@ -140,6 +141,32 @@ const getSnapshot = async (): Promise<BrowserSnapshot | null> => {
   return result.success ? (result.structured as BrowserSnapshot) : null
 }
 
+const getFixturePageValue = async <T>(expression: string): Promise<T | null> => {
+  const running = await launcher.start({ runningOnly: true })
+  if (!running) return null
+  const { client } = running
+  const { targetInfos } = await client.call<{ targetInfos: Array<{ targetId: string; url: string }> }>(
+    "Target.getTargets",
+  )
+  const target = targetInfos.find((item) => item.url.startsWith(fixtureUrl))
+  if (!target) return null
+  const { sessionId } = await client.call<{ sessionId: string }>("Target.attachToTarget", {
+    targetId: target.targetId,
+    flatten: true,
+  })
+
+  try {
+    const { result } = await client.call<{ result: { value?: T } }>(
+      "Runtime.evaluate",
+      { expression, returnByValue: true },
+      sessionId,
+    )
+    return result.value ?? null
+  } finally {
+    await client.call("Target.detachFromTarget", { sessionId }).catch(() => undefined)
+  }
+}
+
 const getTab = (): (BrowserTabInfo & { ownerBotId: string | null }) | null => {
   const tab = engine.tabsForBot(ctx.botId).find((candidate) => candidate.tabId === tabId)
 
@@ -178,6 +205,19 @@ const server = Bun.serve({
       return Response.json({ tabs: tab ? [tab] : [] })
     }
     if (step === "stats") return Response.json({ decisionCount, failedSteps, takeoverInputCount })
+    if (step === "private-target")
+      return Response.json(
+        await getFixturePageValue(`(() => {
+          const bounds = document.querySelector('[aria-label="Destination primary"]')?.getBoundingClientRect()
+          return bounds ? { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2, width: innerWidth, height: innerHeight } : null
+        })()`),
+      )
+    if (step === "private-input-status")
+      return Response.json({
+        received: await getFixturePageValue<boolean>(
+          `document.querySelector('[aria-label="Destination primary"]')?.value === "entrada privada fictícia"`,
+        ),
+      })
     if (step === "preview") {
       const preview = await engine.preview({ botId: ctx.botId, tabId, signal: ctx.signal })
       return Response.json(preview ? { ...preview, url: "https://travel.example.test" } : { image: "" })

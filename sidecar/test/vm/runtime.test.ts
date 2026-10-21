@@ -1117,6 +1117,7 @@ test.each([false, true])("service timeout reaches the turn as E8001 with prewarm
     await waitForTerminal(run)
     expect(startRequests).toBe(1)
     expect(run).toMatchObject({ status: "failed", errorClass: "machine_service_unavailable" })
+    expect(run).not.toHaveProperty("browserRequestId")
     const reader = createRuntimePersistence({ database: f.runtime.kernel.db })
     expect(reader.getRun(run.id)).toEqual(run)
     expect(engine.listRuns(run.threadId)).toEqual([run])

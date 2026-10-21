@@ -150,6 +150,25 @@ jobs:
           bun-version: 1.4.3
       - run: bash scripts/test-ui-affected.sh ${{ github.event.pull_request.base.sha }}
 
+  browser-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: 1.4.3
+      - name: Install test browser
+        working-directory: ui
+        run: bunx playwright install --with-deps chromium
+      - name: Check the complete browser suite
+        working-directory: ui
+        run: bunx playwright test --workers=1 --shard=${{ matrix.shard }}/3
+
   channel-takeover:
     runs-on: ubuntu-latest
     timeout-minutes: 10

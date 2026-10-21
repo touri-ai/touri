@@ -20,7 +20,8 @@ test.describe("mermaid production and desktop CSP", () => {
   test.skip(process.env.CHAT_TRANSCRIPT_PHASE === "before", "Capture the existing renderer before integration")
 
   test.beforeAll(async () => {
-    test.setTimeout(150_000)
+    // Compilation has its own allowance; the payload and interaction budgets below stay unchanged.
+    test.setTimeout(300_000)
     const { build } = await import("vite")
     await build({
       root: uiRoot,
