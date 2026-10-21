@@ -1,3 +1,4 @@
+import { join } from "node:path"
 import { expect, test } from "@playwright/test"
 
 const sizes = [
@@ -26,6 +27,10 @@ test.describe("browser card in a channel", () => {
         await expect(
           page.locator(".channel-demo-reply").getByRole("article", { name: "Navegador do Léo" }),
         ).toBeVisible()
+        const editGroup = await page.getByRole("button", { name: "Editar grupo" }).boundingBox()
+        const replyHeader = await page.locator(".channel-demo-reply .message-meta").boundingBox()
+        expect(editGroup).not.toBeNull()
+        expect(replyHeader?.y).toBeGreaterThanOrEqual((editGroup?.y ?? 0) + (editGroup?.height ?? 0))
         await expect(page.getByText("https://estadias.example.test/busca", { exact: true })).toHaveCount(1)
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
         expect(overflow).toBeLessThanOrEqual(0)
@@ -47,8 +52,10 @@ test.describe("browser card in a channel", () => {
           await expect(page.getByText("Prévia oculta para o canal enquanto Ana digita")).toBeVisible()
         if (scenario.name === "member-no-control") await expect(page.getByText("Na fila: pedido de Hugo")).toBeVisible()
 
+        const screenshotName = `channel-${scenario.name}-${size.name}.png`
+        const evidenceDirectory = process.env.TOURI_E2E_SCREENSHOTS_DIR
         await page.screenshot({
-          path: testInfo.outputPath(`channel-${scenario.name}-${size.name}.png`),
+          path: evidenceDirectory ? join(evidenceDirectory, screenshotName) : testInfo.outputPath(screenshotName),
           fullPage: true,
         })
       })

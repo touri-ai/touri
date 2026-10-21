@@ -231,8 +231,8 @@ export const BrowserActivityCard = ({
                 : channel?.canControl === false
                   ? t("Take over", {}, locale)
                   : held
-                  ? t("Hand back to {name}", { name: botName }, locale)
-                  : t("Take over", {}, locale)}
+                    ? t("Hand back to {name}", { name: botName }, locale)
+                    : t("Take over", {}, locale)}
             </button>
           )}
         </header>

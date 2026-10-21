@@ -1265,12 +1265,8 @@ export const ChatPanel = ({
     .flatMap((message) => [...message.parts].reverse())
     .find((part) => screenTool(part) && part.type === "tool_call" && toolStatus(part) === "running")
   const browserWorking = Boolean(
-    activeRun &&
-      latestReply?.runId === activeRun.id &&
-      latestReply.status === "streaming" &&
-      getBrowserActivityTools(latestReply.parts).length > 0,
+    latestReply?.status === "streaming" && getBrowserActivityTools(latestReply.parts).some((part) => part.ok == null),
   )
-
   return (
     <ChannelBrowserContext.Provider value={channelBrowser}>
       <section className="chat-panel" inert={chatIsCovered || undefined} aria-hidden={chatIsCovered || undefined}>
@@ -1506,7 +1502,7 @@ export const ChatPanel = ({
           attachmentButtonRef={attachmentButtonRef}
           activeRun={activeRun}
           browserWorking={browserWorking}
-          browserBotName={bot?.name ?? latestReply?.sender?.name ?? "touri"}
+          browserBotName={latestReply?.sender?.name ?? bot?.name ?? "touri"}
           botActive={runs.some(
             (run) => run.botId === bot?.id && ["queued", "starting", "running"].includes(run.status),
           )}
