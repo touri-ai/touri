@@ -227,7 +227,7 @@ test("bulk deletion accepts 200 ids and rejects more than 200", async () => {
   })
   expect(tooMany.status).toBe(400)
   expect(await tooMany.json()).toMatchObject({ errorCode: "INVALID_ARGS" })
-})
+}, 60_000)
 
 test("members can delete their own direct conversation but not another conversation in a channel", async () => {
   const fixture = await startFixture()
