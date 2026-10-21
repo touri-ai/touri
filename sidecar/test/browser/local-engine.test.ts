@@ -9,7 +9,10 @@ import { createGroupStore } from "../../src/groups/store"
 import { init as initStore } from "../../src/store"
 import { testKernel } from "../kernel/test-kernel"
 
-const fixture = async (unavailable = false) => {
+const fixture = async (
+  unavailable = false,
+  capture: () => Promise<JsonObject> = async () => ({ data: "cGFnZQ==" }),
+) => {
   const f = testKernel()
   await initStore(f.kernel)
   const created = await f.request("POST /bots", { name: "Local", provider: "codex", browser: "local" })
@@ -44,6 +47,7 @@ const fixture = async (unavailable = false) => {
       }
       if (method === "Target.attachToTarget") return { sessionId: `session-${params.targetId}` } as T
       if (method === "Target.closeTarget") targets.delete(String(params.targetId))
+      if (method === "Page.captureScreenshot") return (await capture()) as T
       if (method === "Runtime.evaluate")
         return {
           result: {
@@ -104,7 +108,12 @@ afterEach(async () => {
 })
 
 test("routed local engine opens a default-context window, reads only owned pages and shuts down without closing Chrome", async () => {
-  const f = await fixture()
+  const capture = Promise.withResolvers<JsonObject>()
+  const started = Promise.withResolvers<void>()
+  const f = await fixture(false, () => {
+    started.resolve()
+    return capture.promise
+  })
   try {
     expect((await f.engine.open({ url: "about:blank", ctx: f.ctx, timeoutMs: 1500 })).success).toBe(true)
     expect(f.calls.find((call) => call.method === "Target.createTarget")?.params).toEqual({
@@ -130,6 +139,21 @@ test("routed local engine opens a default-context window, reads only owned pages
       f.calls.filter((call) => call.method === "Target.attachToTarget").map((call) => call.params.targetId),
     ).toEqual(["owned-1"])
     expect(f.calls.some((call) => /Cookies|BrowserContext/.test(call.method))).toBe(false)
+    const ownedTab = f.engine.tabsForBot(f.bot.id)[0]
+    if (!ownedTab) throw new Error("Missing owned browser tab")
+    const pendingPreview = f.engine.preview({ botId: f.bot.id, tabId: ownedTab.tabId, signal: f.ctx.signal })
+    await started.promise
+    await f.engine.holdTakeover({ tabId: ownedTab.tabId, reason: "Manual control" })
+    await f.engine.releaseTakeover(ownedTab.tabId)
+    capture.resolve({ data: "cGFnZQ==" })
+
+    expect(await pendingPreview).toBeNull()
+    const captures = f.calls.filter((call) => call.method === "Page.captureScreenshot").length
+
+    expect(await f.engine.holdTakeover({ tabId: ownedTab.tabId, reason: "Manual control" })).toBe(true)
+    expect(await f.engine.preview({ botId: f.bot.id, tabId: ownedTab.tabId, signal: f.ctx.signal })).toBeNull()
+
+    expect(f.calls.filter((call) => call.method === "Page.captureScreenshot")).toHaveLength(captures)
     await f.engine.shutdown()
     expect(f.calls.filter((call) => call.method === "Target.closeTarget").map((call) => call.params.targetId)).toEqual([
       "owned-1",

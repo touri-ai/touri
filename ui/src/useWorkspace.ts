@@ -763,10 +763,13 @@ export const useWorkspace = (
           : getOptionalWorkspaceRead(api.request("GET /settings", {}), { settings: null }),
         restricted ? { previews: [] } : getOptionalWorkspaceRead(api.request("GET /previews", {}), { previews: [] }),
         (restricted ? Promise.resolve({ tabs: [] }) : api.request("GET /browser/tabs", {})).catch(() => ({ tabs: [] })),
-        getOptionalWorkspaceRead<ApiRoutes["GET /routines"]["res"]>(
-          restricted ? Promise.resolve({ routines: [] }) : api.request("GET /routines", {}),
-          { routines: [] },
-        ),
+        restricted
+          ? { routines: [], host: undefined, hostKind: undefined }
+          : getOptionalWorkspaceRead(api.request("GET /routines", {}), {
+              routines: [],
+              host: undefined,
+              hostKind: undefined,
+            }),
         (restricted ? Promise.resolve({ routineRuns: [] }) : api.request("GET /routine-runs", {})).catch(() => ({
           routineRuns: [],
         })),

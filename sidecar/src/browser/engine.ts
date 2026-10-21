@@ -4524,9 +4524,11 @@ export const createBrowserEngine = ({
         .sort((a, b) => b.info.lastUsedAt - a.info.lastUsedAt)[0]
       if (tab?.info.state !== "live" || !tab.sessionId || tab.secretMode || tab.info.heldByUser || tab.takeover)
         return null
+      const generation = tab.generation
       const data = await imageData({ client, tab, fullPage: false, quality: 30 })
       if (
         signal.aborted ||
+        tab.generation !== generation ||
         tab.secretMode ||
         tab.info.heldByUser ||
         tab.takeover ||

@@ -1755,6 +1755,12 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
         { id: threadId },
       )
     }
+    if (key === "GET /session")
+      return {
+        ok: true,
+        kind: "device",
+        person: { id: "owner", name: "Pessoa", email: null, avatarSeed: "owner", role: "admin" },
+      } as ApiRoutes[typeof route]["res"]
     if (key === "GET /settings") return { settings } as ApiRoutes[typeof route]["res"]
     if (key === "PATCH /settings") {
       settings = { ...settings, ...(input as Partial<typeof settings>) }
