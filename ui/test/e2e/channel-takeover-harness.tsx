@@ -32,6 +32,7 @@ const browserTab: BrowserTabInfo & { ownerBotId: string | null } = {
   openerTabId: null,
   heldByUser: false,
   takeoverRequested: false,
+  takeoverRunId: null,
   lastUsedAt: Date.now(),
 }
 
@@ -101,6 +102,7 @@ const emitRun = (run: Run): void => {
 const updateTakeover = (heldByUser: boolean, takeoverRequested: boolean): void => {
   browserTab.heldByUser = heldByUser
   browserTab.takeoverRequested = takeoverRequested
+  browserTab.takeoverRunId = takeoverRequested ? "run-channel-login" : null
   browserTab.lastUsedAt = getTimestamp()
   base.emit({ type: "browser.tab", tab: browserTab })
 }

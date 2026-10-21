@@ -26,6 +26,7 @@ export const BrowserActivityCard = ({
   finished,
   createdAt,
   threadId,
+  runId,
   botName,
   locale = "pt-BR",
 }: {
@@ -33,6 +34,7 @@ export const BrowserActivityCard = ({
   finished: boolean
   createdAt: number
   threadId: Id
+  runId?: Id | null
   botName: string
   locale?: Locale
 }) => {
@@ -114,10 +116,14 @@ export const BrowserActivityCard = ({
         )
       if (!candidate || !active) return
       if (!tabId) setResolvedTab({ callId: resolutionCallId, tabId: candidate.tabId })
+      const matchesRun =
+        candidate.takeoverRunId === undefined ||
+        candidate.takeoverRunId === runId ||
+        (!finished && candidate.takeoverRunId === null)
       setHeldTab({
         tabId: candidate.tabId,
-        held: candidate.heldByUser,
-        takeoverRequested: candidate.takeoverRequested === true,
+        held: matchesRun && candidate.heldByUser,
+        takeoverRequested: matchesRun && candidate.takeoverRequested === true,
         url: candidate.url,
       })
     }
@@ -131,10 +137,14 @@ export const BrowserActivityCard = ({
         hasTabEvent = true
         tabEventVersion.current += 1
         if (!tabId) setResolvedTab({ callId: resolutionCallId, tabId: event.tab.tabId })
+        const matchesRun =
+          event.tab.takeoverRunId === undefined ||
+          event.tab.takeoverRunId === runId ||
+          (!finished && event.tab.takeoverRunId === null)
         setHeldTab({
           tabId: event.tab.tabId,
-          held: event.tab.heldByUser,
-          takeoverRequested: event.tab.takeoverRequested === true,
+          held: matchesRun && event.tab.heldByUser,
+          takeoverRequested: matchesRun && event.tab.takeoverRequested === true,
           url: event.tab.url,
         })
       }
@@ -158,7 +168,7 @@ export const BrowserActivityCard = ({
       active = false
       unsubscribe()
     }
-  }, [api, botId, finished, hasTakeoverRequest, resolutionCallId, tabId, threadId])
+  }, [api, botId, finished, hasTakeoverRequest, resolutionCallId, runId, tabId, threadId])
 
   useEffect(() => {
     setPreviewError(null)

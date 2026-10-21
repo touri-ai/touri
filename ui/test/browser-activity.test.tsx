@@ -80,7 +80,14 @@ const renderCard = (parts: ToolCallPart[], finished: boolean, getTabs = async ()
   const onOpenComputer = vi.fn()
   const view = render(
     <InlinePreviewContext.Provider value={{ api, bot, machine: undefined, activeCallId: undefined, onOpenComputer }}>
-      <BrowserActivityCard parts={parts} finished={finished} createdAt={1} threadId="thread-mark" botName="Lia" />
+      <BrowserActivityCard
+        parts={parts}
+        finished={finished}
+        createdAt={1}
+        threadId="thread-mark"
+        runId="run-mark"
+        botName="Lia"
+      />
     </InlinePreviewContext.Provider>,
   )
 
@@ -153,7 +160,7 @@ test("take-over holds the browser, opens its view, and the finished card collaps
         onOpenComputer,
       }}
     >
-      <BrowserActivityCard parts={parts} finished createdAt={1} threadId="thread-mark" botName="Lia" />
+      <BrowserActivityCard parts={parts} finished createdAt={1} threadId="thread-mark" runId="run-mark" botName="Lia" />
     </InlinePreviewContext.Provider>,
   )
 
@@ -200,6 +207,27 @@ test("a finished browser takeover request keeps its page URL and handback contro
   fireEvent.click(screen.getByRole("button", { name: "Assumir controle" }))
   expect(await screen.findByRole("button", { name: "Devolver para Lia" })).toBeVisible()
 })
+
+test.each(["later-run", null])(
+  "a historical takeover card cannot control a later handoff: %s",
+  async (takeoverRunId) => {
+    const parts = [
+      getPart({
+        callId: "past-takeover",
+        tool: "mcp__touri__browser_request_takeover",
+        inputJson: '{"tabId":"browser-tab","reason":"login"}',
+      }),
+    ]
+    const laterTab = { ...tab, takeoverRequested: true, heldByUser: true, takeoverRunId }
+
+    await act(async () => {
+      renderCard(parts, true, async () => ({ tabs: [laterTab] }))
+    })
+
+    expect(screen.getByRole("button", { name: /Usou o navegador/ })).toBeVisible()
+    expect(screen.queryByRole("button", { name: "Devolver para Lia" })).toBeNull()
+  },
+)
 
 test("a newly opened output tab takes precedence over an older input tab", () => {
   const parts = [

@@ -53,6 +53,7 @@ export const TurnActivity = ({
           finished={!live}
           createdAt={message.createdAt}
           threadId={message.threadId}
+          runId={message.runId ?? run?.id}
           botName={message.sender?.name ?? "touri"}
           locale={locale}
         />

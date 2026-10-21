@@ -696,6 +696,7 @@ export type BrowserTabInfo = {
   openerTabId: Id | null
   heldByUser: boolean
   takeoverRequested?: boolean
+  takeoverRunId?: Id | null
   lastUsedAt: EpochMs
 }
 
