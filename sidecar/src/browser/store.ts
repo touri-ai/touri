@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite"
 import type { BrowserTabInfo, Id, Kernel } from "@touri/contracts"
 import type { SavedSecret } from "../approvals/secrets"
+import { sanitizeHumanTakeoverUrl } from "./takeover-privacy"
 import type { BrowserTabRow, TabState } from "./types"
 
 type SecretRow = {
@@ -33,8 +34,8 @@ const toRow = (tab: TabState, createdAt: number): BrowserTabRow => ({
   owner_thread_id: tab.info.ownerThreadId,
   opener_tab_id: tab.info.openerTabId,
   cdp_target_id: tab.targetId,
-  url: tab.info.url,
-  title: tab.info.title,
+  url: tab.privateAfterTakeover ? sanitizeHumanTakeoverUrl(tab.info.url) : tab.info.url,
+  title: tab.privateAfterTakeover ? "" : tab.info.title,
   state: tab.info.state,
   held_by_user: tab.info.heldByUser ? 1 : 0,
   private_after_takeover: tab.privateAfterTakeover ? 1 : 0,
@@ -45,6 +46,7 @@ const toRow = (tab: TabState, createdAt: number): BrowserTabRow => ({
 })
 
 export type BrowserStore = {
+  dispose: () => void
   load: () => Array<TabState>
   create: (args: { botId: Id; threadId: Id; url: string; openerTabId: Id | null; targetId: string | null }) => TabState
   save: (tab: TabState) => void
@@ -66,6 +68,7 @@ export const createBrowserStore = ({
 }): BrowserStore => {
   const database = kernel.db as Database
   const tabs = new Map<Id, TabState>()
+  let disposed = false
 
   const load = (): Array<TabState> => {
     database
@@ -168,6 +171,7 @@ export const createBrowserStore = ({
   }
 
   const save = (tab: TabState): void => {
+    if (disposed) return
     const row = toRow(tab, Date.now())
     tab.info.lastUsedAt = row.last_used_at
     database
@@ -230,7 +234,19 @@ export const createBrowserStore = ({
   }
 
   const secretAccount: BrowserStore["secretAccount"] = (args) => secretReference(args)?.account ?? null
-  return { load, create, save, update, find, list, secretAccount, secretReference }
+  return {
+    load,
+    create,
+    save,
+    update,
+    find,
+    list,
+    secretAccount,
+    secretReference,
+    dispose: () => {
+      disposed = true
+    },
+  }
 }
 
 export const publicTabInfo = ({ tab }: { tab: TabState }): BrowserTabInfo & { ownerBotId: Id | null } => ({

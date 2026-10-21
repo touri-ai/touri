@@ -1,14 +1,14 @@
 .browser-activity-stack {
   display: grid;
   gap: var(--space-4);
-  width: min(660px, 100%);
+  width: 100%;
   margin: var(--space-12) 0;
 }
 .browser-activity-card {
   position: relative;
   width: 100%;
   container-type: inline-size;
-  overflow: hidden;
+  overflow: clip;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
   background: var(--surface);
@@ -590,7 +590,7 @@
   object-fit: contain;
 }
 .chat-message-list .message-browser-narration .message-meta {
-  display: none;
+  display: flex;
 }
 .chat-message-list .browser-narration {
   display: flex;
@@ -754,4 +754,14 @@
   .browser-activity-content {
     animation: none;
   }
+}
+
+.browser-activity-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+}
+.browser-activity-card[data-finished="false"] .browser-activity-preview-frames {
+  max-height: min(30vh, 300px);
 }

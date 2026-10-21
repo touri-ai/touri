@@ -4,6 +4,11 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "Stop browser work": "Parar",
+  "The page changed. Trying again.": "A página mudou. Tentando de novo.",
+  "The browser could not connect. Reconnect and try again.":
+    "Não foi possível conectar o navegador. Reconecte e tente de novo.",
+  "The browser action did not finish. Checking the page.": "A ação no navegador não terminou. Conferindo a página.",
   "Navegador do bot": "Navegador do bot",
   "Navegador instalado. A conexão e a página serão verificadas ao abrir o navegador.":
     "Navegador instalado. A conexão e a página serão verificadas ao abrir o navegador.",
@@ -3024,6 +3029,10 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Stop browser work": "Stop",
+  "The page changed. Trying again.": "The page changed. Trying again.",
+  "The browser could not connect. Reconnect and try again.": "The browser could not connect. Reconnect and try again.",
+  "The browser action did not finish. Checking the page.": "The browser action did not finish. Checking the page.",
   "Navegador do bot": "Bot browser",
   "Navegador instalado. A conexão e a página serão verificadas ao abrir o navegador.":
     "Browser installed. The connection and page will be checked when the browser opens.",

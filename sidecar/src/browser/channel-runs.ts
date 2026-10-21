@@ -311,6 +311,19 @@ export const createChannelBrowserRuns = ({
     } | null
     if (scope) publishQueue(scope.thread_id, scope.bot_id)
   }
+  const cancelRequest = (runId: string): { runId: string; botId: string } | null => {
+    const row =
+      getRaw(runId) ??
+      (database
+        .query(`${selectRunSql}
+      WHERE c.current_run_id IN (SELECT run_id FROM group_run_links WHERE turn_id = ?)
+        AND c.status IN ('queued','running','needs_you','taken_over') LIMIT 1`)
+        .get(runId) as BrowserChannelRunRow | null)
+    if (!row || !VISIBLE_STATUSES.includes(row.status)) return null
+    updateTerminal(row.run_id, "canceled")
+    return { runId: row.current_run_id, botId: row.bot_id }
+  }
+
   const cancelQueued = (runId: string): void => {
     const scope = database.query("SELECT thread_id, bot_id FROM browser_channel_runs WHERE run_id = ?").get(runId) as {
       thread_id: string
@@ -563,6 +576,7 @@ export const createChannelBrowserRuns = ({
 
   return {
     enter,
+    cancelRequest,
     get,
     getForRun,
     getForTab,

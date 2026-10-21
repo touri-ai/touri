@@ -58,6 +58,7 @@ import { withApprovalAnswers } from "./activityStatus"
 import { BotAvatar } from "./BotAvatar"
 import { BrowserActivityControlsProvider } from "./BrowserActivityControls"
 import { getBrowserActivityTools } from "./browserActivityPresentation"
+import { getBrowserRequestMessages } from "./browserRequestMessages"
 import { ChatDisclosure } from "./ChatDisclosure"
 import { ConnectDataCard, connectDataMarker } from "./ConnectDataCard"
 import { ConversationStart } from "./ConversationStart"
@@ -213,13 +214,13 @@ export const VirtualMessageList = ({
   currentPersonId = "owner",
   machine,
   focusApproval,
-  messages,
+  messages: sourceMessages,
   api,
   runs = [],
   mainThread = false,
   routines = [],
   routineRuns = [],
-  allMessages = messages,
+  allMessages = sourceMessages,
   onSwitchBranch,
   onRetry,
   onEdit,
@@ -228,6 +229,7 @@ export const VirtualMessageList = ({
   header,
   timelineCards = emptyTimelineCards,
 }: VirtualMessageListProps) => {
+  const messages = useMemo(() => getBrowserRequestMessages(sourceMessages, runs), [sourceMessages, runs])
   const locale = getDocumentLocale(document.documentElement)
   // r8 motion: immutable IDs drive text entry, never streaming tokens or status/cards.
   const insertedMessages = useInsertedIds(

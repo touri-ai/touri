@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite"
 import { AsyncLocalStorage } from "node:async_hooks"
 import type {
   BrowserActionRecord,
@@ -26,6 +27,7 @@ import {
   requiresBrowserKeyInspection,
   requiresBrowserTakeover,
 } from "./decision"
+import { createBrowserHandoffs } from "./handoffs"
 import {
   type ChromeLauncher,
   createChromeLauncher,
@@ -1400,6 +1402,9 @@ export const createBrowserEngine = ({
   const launcher: ChromeLauncher =
     suppliedLauncher ?? createChromeLauncher({ kernel, ...(mode === undefined ? {} : { mode }) })
   const tabs = store.load()
+  const handoffs = createBrowserHandoffs(kernel.db as Database)
+  const handbackRetries = new Map<string, ReturnType<typeof setTimeout>>()
+  let shutdownPromise: Promise<void> | undefined
   let client: CdpClient | null = null
   let unsubscribe: (() => void) | null = null
   let retired = false
@@ -4380,6 +4385,7 @@ export const createBrowserEngine = ({
     if (!takeover) return null
     if (takeover.timer) clearTimeout(takeover.timer)
     if (takeover.signal && takeover.onAbort) takeover.signal.removeEventListener("abort", takeover.onAbort)
+    handoffs.resolve(tab.info.tabId, resolution)
     tab.takeover = null
     tab.info.heldByUser = false
     tab.takeoverReason = null
@@ -4391,17 +4397,36 @@ export const createBrowserEngine = ({
   }
 
   const publishTakeoverRelease = (tab: TabState): void => {
+    if (retired) return
     store.save(tab)
     kernel.publish({ type: "browser.tab", tab: safePublicTabInfo(tab) })
   }
 
-  const resumeAfterTakeover = (takeover: NonNullable<TabState["takeover"]>): void => {
-    if (!takeover.botId || !takeover.threadId || !takeover.runId) return
+  const resumeSavedHandoff = (tabId: Id, attempt = 0): void => {
+    if (retired) return
+    const saved = handoffs.get(tabId)
+    if (saved?.state !== "returned" || !saved.botId || !saved.threadId || !saved.runId) return
+    if (handoffs.hasReceipt(saved.runId)) {
+      handoffs.forget(tabId)
+      return
+    }
     kernel.services.use("runtime.resumeAfterBrowserTakeover")?.({
-      botId: takeover.botId,
-      threadId: takeover.threadId,
-      runId: takeover.runId,
+      botId: saved.botId,
+      threadId: saved.threadId,
+      runId: saved.runId,
     })
+    if (attempt >= 30) return
+    const timer = setTimeout(() => {
+      handbackRetries.delete(tabId)
+      resumeSavedHandoff(tabId, attempt + 1)
+    }, 1_000)
+    timer.unref()
+    handbackRetries.set(tabId, timer)
+  }
+
+  const resumeAfterTakeover = (takeover: NonNullable<TabState["takeover"]>, tabId: Id): void => {
+    if (!takeover.botId || !takeover.threadId || !takeover.runId) return
+    resumeSavedHandoff(tabId)
   }
 
   const requestTakeover = async ({
@@ -4464,6 +4489,7 @@ export const createBrowserEngine = ({
       onAbort: () => {},
     }
     takeover.onAbort = () => {
+      if (retired || tab.takeover !== takeover) return
       const current = clearTakeover({
         tab,
         resolution: "canceled",
@@ -4473,6 +4499,7 @@ export const createBrowserEngine = ({
       publishTakeoverRelease(tab)
     }
     takeover.timer = setTimeout(() => {
+      if (retired || tab.takeover !== takeover) return
       const current = clearTakeover({
         tab,
         resolution: "expired",
@@ -4482,6 +4509,15 @@ export const createBrowserEngine = ({
       publishTakeoverRelease(tab)
     }, timeoutMs)
     tab.takeover = takeover
+    handoffs.save({
+      tabId,
+      botId,
+      threadId: takeover.threadId,
+      runId: takeover.runId,
+      requestId,
+      expiresAt: Date.now() + timeoutMs,
+      state: "waiting",
+    })
     if (signal.aborted) takeover.onAbort()
     else signal.addEventListener("abort", takeover.onAbort, { once: true })
 
@@ -4513,6 +4549,19 @@ export const createBrowserEngine = ({
     })
   }
 
+  const cancelTakeover: BrowserEngine["cancelTakeover"] = ({ tabId }) => {
+    const tab = store.find(tabId)
+    if (!tab) return false
+    const takeover = clearTakeover({
+      tab,
+      resolution: "canceled",
+      handbackNote: "The person stopped this browser request.",
+    })
+    if (!takeover) return false
+    publishTakeoverRelease(tab)
+    return true
+  }
+
   const releaseTakeover = async (tabId: Id): Promise<boolean> => {
     const tab = store.find(tabId)
     if (!tab) return false
@@ -4528,7 +4577,7 @@ export const createBrowserEngine = ({
     }
     await refreshTakeoverPrivacy(tab)
     publishTakeoverRelease(tab)
-    if (takeover) resumeAfterTakeover(takeover)
+    if (takeover) resumeAfterTakeover(takeover, tabId)
     return true
   }
 
@@ -4573,6 +4622,15 @@ export const createBrowserEngine = ({
       runId: activeRun?.id ?? null,
       timer: null,
     }
+    handoffs.save({
+      tabId,
+      botId: tab.info.ownerBotId,
+      threadId: tab.info.ownerThreadId,
+      runId: activeRun?.id ?? null,
+      requestId: null,
+      expiresAt: Date.now() + 600_000,
+      state: "waiting",
+    })
     store.save(tab)
     kernel.publish({ type: "browser.tab", tab: safePublicTabInfo(tab) })
     await notifyBestEffort({
@@ -4685,6 +4743,8 @@ export const createBrowserEngine = ({
           if (tab.generation !== targetEpoch) return false
           const viewport = await layoutClip({ client: cdp, sessionId, fullPage: false, scale: 1 }).catch(() => null)
           if (!viewport || viewport.width !== width || viewport.height !== height) return false
+          operationSignal.throwIfAborted()
+          if (!tab.info.heldByUser) return false
 
           if (input.kind === "text") {
             privateDocuments.set(tab, tab.navigationVersion)
@@ -4753,21 +4813,23 @@ export const createBrowserEngine = ({
     return store.list(botId).map(safePublicTabInfo)
   }
 
-  const shutdown = async (): Promise<void> => {
+  const shutdown = (): Promise<void> => {
+    shutdownPromise ??= performShutdown()
+    return shutdownPromise
+  }
+
+  const performShutdown = async (): Promise<void> => {
     if (retired) return
     retired = true
     sharedPreview.clear()
     unhost()
+    handbackRetries.forEach(clearTimeout)
+    handbackRetries.clear()
     for (const tab of tabs) {
       const takeover = tab.takeover
-      if (takeover) {
-        clearTakeover({
-          tab,
-          resolution: "canceled",
-          handbackNote: "The browser handoff ended when touri stopped.",
-        })
-        publishTakeoverRelease(tab)
-      }
+      if (!takeover) continue
+      if (takeover.timer) clearTimeout(takeover.timer)
+      if (takeover.signal && takeover.onAbort) takeover.signal.removeEventListener("abort", takeover.onAbort)
     }
     unsubscribeBotDeleted()
     if (sessionTimer) clearInterval(sessionTimer)
@@ -4793,6 +4855,7 @@ export const createBrowserEngine = ({
     }
     markEngineUnavailable()
     await launcher.stop()
+    store.dispose()
   }
 
   const unsubscribeBotDeleted = kernel.subscribe(({ event }) => {
@@ -4803,6 +4866,35 @@ export const createBrowserEngine = ({
 
   const unhost = kernel.onHostNotification((notification) => {
     if (notification.method === "app.willQuit") void shutdown()
+  })
+
+  tabs.forEach((tab) => {
+    const saved = handoffs.get(tab.info.tabId)
+    if (!saved) return
+    if (saved.state === "returned") {
+      resumeSavedHandoff(saved.tabId)
+      return
+    }
+    tab.info.heldByUser = true
+    const takeover: NonNullable<TabState["takeover"]> = {
+      requestId: saved.requestId,
+      botId: saved.botId,
+      threadId: saved.threadId,
+      runId: saved.runId,
+      timer: null,
+    }
+    tab.takeover = takeover
+    const remaining = Math.max(0, saved.expiresAt - Date.now())
+    takeover.timer = setTimeout(() => {
+      if (retired || tab.takeover !== takeover) return
+      clearTakeover({
+        tab,
+        resolution: "expired",
+        handbackNote: "The browser handoff expired; the current page may have changed.",
+      })
+      publishTakeoverRelease(tab)
+    }, remaining)
+    takeover.timer.unref()
   })
 
   return {
@@ -4871,6 +4963,7 @@ export const createBrowserEngine = ({
     submitSecret,
     secretEntry,
     releaseTakeover,
+    cancelTakeover,
     releaseTakeoverForPerson,
     holdTakeover,
     getWindowBounds,

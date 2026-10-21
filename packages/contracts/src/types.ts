@@ -293,6 +293,8 @@ export type RunUsage = {
 }
 
 export type Run = {
+  /** Stable browser request across private handback continuations. Derived from the continuation ledger. */
+  browserRequestId?: Id | null
   /** Group projection only: persisted association lives in group_run_links. */
   groupTurnId?: Id
   /** The person whose message started this shared-channel run, if it came from Work. */
@@ -1614,6 +1616,8 @@ export type ServiceMap = {
   'runtime.cancelRun': (args: { runId: Id }) => boolean
   'runtime.shutdown': (options?: { appRestart?: boolean }) => Promise<void>
   'projects.info': (args: { projectId: Id; botId?: Id }) => Promise<ProjectInfo | null>
+  'browser.cancelRequest': (args: { runId: Id }) => Id | null
+  'browser.shutdown': () => Promise<void>
   'browser.tabsForBot': (args: { botId: Id }) => Array<BrowserTabInfo>
   'browser.updateDecisionModel': (model: ApiModel | null) => void
   'computer.input': ComputerInput

@@ -114,6 +114,7 @@ const makeEngine = ({
     takeoverInput: async () => false,
     secretEntry: async () => false,
     releaseTakeover: async () => false,
+    cancelTakeover: () => false,
     releaseTakeoverForPerson: async () => "not_found",
     holdTakeover: async () => false,
     getWindowBounds: async () => null,

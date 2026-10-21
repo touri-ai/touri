@@ -2111,6 +2111,7 @@ export const createRuntimeEngine = ({
       requestMessageId: marker.message.id,
       trigger: run.routineRunId ? "routine" : "retry",
       continuing: true,
+      ...(plan.reason === "browser_takeover" ? { continuationFromRunId: run.id } : {}),
       ...(run.routineRunId ? { routineRunId: run.routineRunId } : {}),
     })
     if (!next.success) return false
@@ -2336,6 +2337,9 @@ export const createRuntimeEngine = ({
     const requester = requesterPersonId ?? getRequesterPersonId(request?.sender) ?? undefined
     const run: Run = {
       id: kernel.newId(),
+      browserRequestId: continuationFromRunId
+        ? (continuations.link(continuationFromRunId)?.originalRunId ?? continuationFromRunId)
+        : null,
       ...(requester ? { requesterPersonId: requester } : {}),
       threadId,
       botId: bot.id,
@@ -2418,7 +2422,7 @@ export const createRuntimeEngine = ({
       state.continueAfterBrowserTakeover = true
       return true
     }
-    if (run.status !== "succeeded") return false
+    if (run.status !== "succeeded" && !(run.status === "interrupted" && run.errorClass === "app_restart")) return false
 
     const plan = planContinuation({ run, reason: "browser_takeover", lastActivityAt: Date.now() })
     if (!plan) return false
@@ -2467,6 +2471,8 @@ export const createRuntimeEngine = ({
   }
 
   const cancel = (id: Id): Result<{ run: Run }, "NOT_FOUND"> => {
+    const browserRunId = kernel.services.use("browser.cancelRequest")?.({ runId: id })
+    if (browserRunId && browserRunId !== id) return cancel(browserRunId)
     const run = persistence.getRun(id)
     if (!run) return { success: false, errorCode: "NOT_FOUND", error: "Run not found" }
     if (!["queued", "starting", "running"].includes(run.status)) return { success: true, run }

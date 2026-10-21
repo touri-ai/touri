@@ -28,7 +28,12 @@ export const createSharedPreviewSource = <T>({ now = Date.now, intervalMs = 800 
 
       return previous.generation === generation && isCurrent() ? result : null
     }
-    if (!previous && captures.size >= 32) return null
+    if (!previous && captures.size >= 32) {
+      captures.forEach((entry, key) => {
+        if (!entry.pending && entry.expiresAt <= now()) captures.delete(key)
+      })
+      if (captures.size >= 32) return null
+    }
 
     const current: Capture<T> = {
       generation,

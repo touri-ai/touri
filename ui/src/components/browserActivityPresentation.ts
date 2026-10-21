@@ -75,7 +75,10 @@ export const getBrowserActivityTools = (parts: readonly MessagePart[]): ToolCall
 ]
 
 export const hasBrowserTakeoverRequest = (parts: readonly ToolCallPart[]): boolean =>
-  parts.some((part) => getBrowserAction(part) === "request_takeover")
+  parts.some(
+    (part) =>
+      getBrowserAction(part) === "request_takeover" || part.outputJson?.includes('"waiting_for_person"') === true,
+  )
 
 export const getBrowserActivityTabId = (parts: readonly ToolCallPart[]): string | undefined => {
   const latest = parts.reduceRight<ToolCallPart | undefined>((latest, part) => {
@@ -120,7 +123,16 @@ export const getBrowserActivityTarget = (part: ToolCallPart): string => {
 }
 
 export const getBrowserActivityLabel = (part: ToolCallPart, locale: Locale): string => {
-  if (part.ok === false) return t("Browser action failed. Take over to continue.", {}, locale)
+  if (part.ok === false) {
+    const output = asToolRecord(parseToolValue(part.outputJson?.slice(0, MAX_OUTPUT_LENGTH) ?? ""))
+    const code = output?.errorCode ?? asToolRecord(output?.structured)?.errorCode
+    if (["TARGET_CHANGED", "STALE_REF", "NAVIGATED_DURING_SNAPSHOT"].includes(String(code)))
+      return t("The page changed. Trying again.", {}, locale)
+    if (["ENGINE_UNAVAILABLE", "DEADLINE_EXCEEDED", "CLIENT_DISCONNECTED"].includes(String(code)))
+      return t("The browser could not connect. Reconnect and try again.", {}, locale)
+
+    return t("The browser action did not finish. Checking the page.", {}, locale)
+  }
 
   const action = getBrowserAction(part)
   const target = getBrowserActivityTarget(part)

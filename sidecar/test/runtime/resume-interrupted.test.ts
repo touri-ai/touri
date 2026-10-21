@@ -160,7 +160,7 @@ exec '${process.execPath}' '${fake}' "$@"
   const links = (): Array<{ run_id: string; original_run_id: string; previous_run_id: string; reason: string }> =>
     first.db
       .query(
-        "SELECT run_id, original_run_id, previous_run_id, reason FROM run_continuations ORDER BY created_at, rowid",
+        "SELECT run_id,original_run_id,previous_run_id,reason FROM run_continuations UNION ALL SELECT run_id,original_run_id,previous_run_id,'browser_takeover' AS reason FROM browser_takeover_continuations",
       )
       .all() as Array<{ run_id: string; original_run_id: string; previous_run_id: string; reason: string }>
   const markers = (): Array<Message> =>

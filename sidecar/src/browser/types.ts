@@ -274,6 +274,7 @@ export type BrowserEngine = {
   holdTakeover: (args: { tabId: Id; reason: string }) => Promise<boolean>
   getWindowBounds: (args: { tabId: Id; botId: Id }) => Promise<WindowBounds | null>
   tabsForBot: (botId: Id | null) => Array<BrowserTabInfo & { ownerBotId: Id | null }>
+  cancelTakeover: (args: { tabId: Id }) => boolean
   shutdown: () => Promise<void>
 }
 

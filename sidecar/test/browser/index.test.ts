@@ -129,6 +129,7 @@ test("remote browser takeover gives one device an interactive session and reject
       engineReleaseCount += 1
       return true
     },
+    cancelTakeover: () => false,
     releaseTakeoverForPerson: async () => "released",
     holdTakeover: async () => true,
     getWindowBounds: async () => null,

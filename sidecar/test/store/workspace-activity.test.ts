@@ -88,9 +88,9 @@ test("workspace activity scopes private conversations to their person and channe
       INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at,started_at,requester_person_id) VALUES
         ('member-browser-run','member-channel','bot','codex','user','running',2,3,'member'),
         ('other-browser-run','other-channel','bot','codex','user','running',2,3,'other');
-      INSERT INTO browser_channel_runs(run_id,group_id,thread_id,bot_id,requester_person_id,status,queued_at,started_at)
-        VALUES ('member-browser-run','team-a','member-channel','bot','member','running',2,3),
-          ('other-browser-run','team-b','other-channel','bot','other','running',2,3);
+      INSERT INTO browser_channel_runs(run_id,current_run_id,group_id,thread_id,bot_id,requester_person_id,status,queued_at,started_at)
+        VALUES ('member-browser-run','member-browser-run','team-a','member-channel','bot','member','running',2,3),
+          ('other-browser-run','other-browser-run','team-b','other-channel','bot','other','queued',2,3);
     `)
     const insert = db.query(
       "INSERT INTO messages(id,thread_id,role,kind,status,text,parts_json,created_at,updated_at) VALUES (?,?,'user','text','complete',?,'[]',1,1)",

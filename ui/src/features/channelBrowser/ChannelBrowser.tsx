@@ -141,11 +141,12 @@ export const ChannelComposerChip = ({
         disabled={stopping}
         onClick={onStop}
       >
-        <span aria-hidden="true">{stopping ? "…" : "×"}</span>
+        {t(stopping ? "Stopping reply…" : "Stop browser work", {}, locale)}
+        <span aria-hidden="true">×</span>
       </button>
     ) : null
   const controlButton =
-    canReturnControl && hold ? (
+    canReturnControl && hold && !browserControls.canTakeOver ? (
       <button type="button" onClick={hold.release}>
         {t("Hand back", {}, locale)}
       </button>

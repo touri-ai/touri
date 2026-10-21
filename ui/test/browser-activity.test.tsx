@@ -521,7 +521,7 @@ test("failed actions never appear as successful clicks", () => {
 
   renderCard(parts, false)
 
-  expect(screen.getByText("A ação no navegador falhou. Assuma o controle para continuar.")).toBeVisible()
+  expect(screen.getByText("A ação no navegador não terminou. Conferindo a página.")).toBeVisible()
   expect(screen.queryByText("Clicou em um elemento")).toBeNull()
   expect(document.body.textContent).not.toContain("private-provider-detail")
 })
@@ -782,3 +782,21 @@ test("short browser URLs drop scheme, port and query, and target labels omit pri
   expect(getBrowserActivityLabel(click, "pt-BR")).toBe("Clicou em Buscar")
   expect(getBrowserActivityLabel(email, "pt-BR")).toBe("Clicou")
 })
+
+test.each(["TARGET_CHANGED", "ENGINE_UNAVAILABLE", "DEADLINE_EXCEEDED"])(
+  "technical browser failures never request human takeover: %s",
+  (errorCode) => {
+    const part = getPart({
+      callId: "retry",
+      tool: "browser_type",
+      inputJson: "{}",
+      outputJson: JSON.stringify({ errorCode }),
+      ok: false,
+    })
+
+    const label = getBrowserActivityLabel(part, "pt-BR")
+
+    expect(label).not.toContain("Assuma")
+    expect(label).not.toContain(errorCode)
+  },
+)

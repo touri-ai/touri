@@ -75,6 +75,7 @@ export const BrowserActivityCard = ({
   parts,
   finished: sourceFinished,
   createdAt,
+  threadId,
   botName,
   locale = "pt-BR",
   children,
@@ -108,8 +109,10 @@ export const BrowserActivityCard = ({
   const [controlEpoch, setControlEpoch] = useState<string | null>(null)
   const [takeoverViewEpoch, setTakeoverViewEpoch] = useState(0)
   const takeoverTabId = useRef(activeTabId)
+  const [resuming, setResuming] = useState(false)
+  const resumedRunId = useRef<string | null>(null)
   const held = heldTab?.tabId === activeTabId && heldTab?.held === true
-  const finished = sourceFinished && !held && !takeoverSession
+  const finished = sourceFinished && !held && !takeoverSession && !resuming
   const preview =
     !held && !channel?.previewHidden && previewFrame?.tabId === activeTabId ? previewFrame?.frame : undefined
   const [busy, setBusy] = useState(false)
@@ -140,6 +143,19 @@ export const BrowserActivityCard = ({
     setControlEpoch(null)
     setTakeoverViewEpoch(0)
   }, [activeTabId])
+
+  useEffect(() => {
+    if (!api || !resuming) return
+    return api.subscribe(({ event }) => {
+      if (event.type !== "run.updated" || event.run.botId !== botId) return
+      if (threadId && event.run.threadId !== threadId && event.run.groupThreadId !== threadId) return
+      const active = ["queued", "starting", "running"].includes(event.run.status)
+      if (!resumedRunId.current && event.run.trigger === "retry" && active) resumedRunId.current = event.run.id
+      if (event.run.id !== resumedRunId.current || active) return
+      resumedRunId.current = null
+      setResuming(false)
+    })
+  }, [api, botId, resuming, threadId])
 
   useEffect(() => {
     const updateVisibility = () => setHidden(document.hidden)
@@ -176,7 +192,12 @@ export const BrowserActivityCard = ({
     let hasTabEvent = false
     const selectTab = (tabs: Array<BrowserTabInfo & { ownerBotId: Id | null }>) => {
       const candidate = tabs
-        .filter((tab) => tab.ownerBotId === botId && tab.state === "live" && (!tabId || tab.tabId === tabId))
+        .filter(
+          (tab) =>
+            tab.ownerBotId === botId &&
+            (tab.state === "live" || (tab.state === "unloaded" && tab.heldByUser)) &&
+            (!tabId || tab.tabId === tabId),
+        )
         .reduce<(typeof tabs)[number] | undefined>(
           (latest, current) => (!latest || current.lastUsedAt > latest.lastUsedAt ? current : latest),
           undefined,
@@ -308,6 +329,7 @@ export const BrowserActivityCard = ({
           { sessionId: takeoverSession, controlEpoch },
           { id: activeTabId },
         )
+        setResuming(true)
         setTakeoverSession(null)
         setControlEpoch(null)
         setTakeoverViewEpoch(0)
@@ -395,6 +417,7 @@ export const BrowserActivityCard = ({
               active: part.ok === null,
             }))}
             onHandback={() => {
+              setResuming(true)
               setTakeoverSession(null)
               setControlEpoch(null)
               setTakeoverViewEpoch(0)
