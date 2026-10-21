@@ -262,11 +262,7 @@ test("a local preview fails closed when the worker is unavailable for an oversiz
 
   await vi.waitFor(() => expect(unavailable).toHaveBeenCalledOnce())
   expect(frame).not.toHaveBeenCalled()
-  expect(request).not.toHaveBeenCalledWith(
-    "GET /bots/:id/browser-preview",
-    expect.anything(),
-    expect.anything(),
-  )
+  expect(request).not.toHaveBeenCalledWith("GET /bots/:id/browser-preview", expect.anything(), expect.anything())
   stop()
 })
 

@@ -100,7 +100,7 @@ test.describe("full browser activity flow", () => {
         await expect(page.getByRole("button", { name: /Busca de viagem/ })).toContainText("trabalhando")
       await expect(card).toBeVisible()
       await expect(card.getByRole("group", { name: "Endereço do navegador" })).toContainText("travel.example.test")
-      await expect(card.getByRole("group", { name: "Endereço do navegador" })).toContainText("Ao vivo")
+      await expect(card.getByRole("group", { name: "Endereço do navegador" })).toContainText("Prévia ao vivo")
       await expect(card.getByLabel("Conexão segura")).toBeVisible()
       await expect(card.getByRole("progressbar", { name: "Progresso do navegador" })).toBeVisible()
       await expect(card).toContainText("Lia · Abrindo uma página")

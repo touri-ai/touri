@@ -5,8 +5,8 @@ import type { ApiRequest } from "../../src/api/client"
 import { createMockApi } from "../../src/api/mock"
 import { AvatarRuntimeProvider } from "../../src/components/AvatarRuntime"
 import { BrowserActivityControlsProvider } from "../../src/components/BrowserActivityControls"
-import { Composer } from "../../src/components/Composer"
 import { VirtualMessageList } from "../../src/components/ChatPanel"
+import { Composer } from "../../src/components/Composer"
 import { TurnActivity } from "../../src/components/TurnActivity"
 import { InlinePreviewContext } from "../../src/features/desktop/InlineLivePreview"
 import { t } from "../../src/i18n"
@@ -464,6 +464,9 @@ const requestBrowserFixture = async (step: string) => {
 }
 
 const LiveFixture = () => {
+  const [browserControlled, setBrowserControlled] = useState(false)
+  const [searchReady, setSearchReady] = useState(false)
+  const continueSearch = useRef<(() => void) | null>(null)
   const [fixture] = useState(() => {
     const fixtureApi = createMockApi()
     const mockBot = fixtureApi.getState().bots[0]
@@ -473,10 +476,30 @@ const LiveFixture = () => {
     const fixtureThread = { ...mockThread, id: "browser-thread", botId: fixtureBot.id }
     const mockRequest = fixtureApi.request
     const request = (async (route: string, input?: unknown, pathValues?: Record<string, string>) => {
-      if (route === "POST /threads/:id/messages")
-        return (await mockRequest(route, input as never, pathValues)) as never
-      if (route === "POST /runs/:id/cancel")
-        return (await mockRequest(route, input as never, pathValues)) as never
+      if (route === "POST /threads/:id/messages") return (await mockRequest(route, input as never, pathValues)) as never
+      if (route === "POST /runs/:id/cancel") return (await mockRequest(route, input as never, pathValues)) as never
+      if (route === "POST /browser/tabs/:id/takeover/session") {
+        setBrowserControlled(true)
+        return { sessionId: "browser-flow-session", controlEpoch: "browser-flow-control", viewEpoch: 0 } as never
+      }
+      if (route === "POST /browser/tabs/:id/takeover/frame") {
+        const { viewEpoch } = input as { viewEpoch: number }
+        return {
+          controlEpoch: "browser-flow-control",
+          targetEpoch: 1,
+          viewEpoch,
+          title: initialPage.title,
+          url: initialPage.url,
+          image,
+          width: 800,
+          height: 500,
+        } as never
+      }
+      if (route === "POST /browser/tabs/:id/takeover/input") return {} as never
+      if (route === "DELETE /browser/tabs/:id/takeover/session") {
+        setBrowserControlled(false)
+        return {} as never
+      }
       if (route === "GET /browser/tabs") {
         const result = await requestBrowserFixture("metadata")
         return result as never
@@ -510,6 +533,7 @@ const LiveFixture = () => {
   const [draft, setDraft] = useState("")
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const stopped = useRef(false)
+  const activeRunId = useRef<string | null>(null)
   const cancelledRunIds = useRef<string[]>([])
   const continueAfterOpen = useRef<(() => void) | null>(null)
   const settled = useRef(true)
@@ -558,7 +582,7 @@ const LiveFixture = () => {
       snapshot: () => ({
         cancelledRunIds: cancelledRunIds.current,
         parts,
-        runId: activeRun?.id ?? null,
+        runId: activeRunId.current,
         settled: settled.current,
       }),
     }
@@ -569,6 +593,14 @@ const LiveFixture = () => {
   }, [activeRun, parts])
 
   const playStep = async (step: string, narration: string, inputJson: string): Promise<void> => {
+    if (step === "search") {
+      setSearchReady(true)
+      await new Promise<void>((resolve) => {
+        continueSearch.current = resolve
+      })
+      continueSearch.current = null
+      setSearchReady(false)
+    }
     if (stopped.current) return
     setNarrations((previous) => [...previous, narration])
     const callId = `browser-flow-${ids.current + 1}`
@@ -618,6 +650,7 @@ const LiveFixture = () => {
     stopped.current = false
     settled.current = false
     cancelledRunIds.current = []
+    activeRunId.current = null
     ids.current = 0
     setStarted(true)
     setRunning(true)
@@ -634,6 +667,7 @@ const LiveFixture = () => {
       },
       { id: thread.id },
     )
+    activeRunId.current = run.id
     setActiveRun(run)
     const script = [
       ["open", "Vou abrir a busca de viagens.", JSON.stringify({ url: "https://travel.example.test/search" })],
@@ -664,15 +698,17 @@ const LiveFixture = () => {
       },
     ])
     setRunning(false)
+    setActiveRun(null)
     settled.current = true
   }
 
   const cancel = async (runId: string) => {
     const { run } = await api.request("POST /runs/:id/cancel", {}, { id: runId })
     cancelledRunIds.current = [...cancelledRunIds.current, run.id]
-    setActiveRun(run)
+    setActiveRun(null)
     stopped.current = true
     setRunning(false)
+    continueSearch.current?.()
   }
 
   return (
@@ -706,6 +742,11 @@ const LiveFixture = () => {
           <section className="browser-flow-chat">
             <header className="browser-flow-header">
               <span>Busca de viagem</span>
+              {searchReady && (
+                <button type="button" disabled={browserControlled} onClick={() => continueSearch.current?.()}>
+                  {t("Search trips", {}, locale)}
+                </button>
+              )}
               {!started && (
                 <button type="button" className="button" onClick={() => void start()}>
                   Iniciar busca de viagem
