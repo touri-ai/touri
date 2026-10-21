@@ -57,6 +57,20 @@ const parseCookies = (header: string | null): Record<string, string> =>
 const trustedProxy = (args: WebInterceptArgs, options: GateOptions): boolean =>
   options.trustedProxy === true && ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(args.clientIp ?? "")
 
+const requestOrigin = ({ args, options }: { args: WebInterceptArgs; options: GateOptions }): string | null => {
+  const proxy = trustedProxy(args, options)
+  const host = (proxy ? args.request.headers.get("x-forwarded-host") : null) ?? args.url.host
+  const forwardedProtocol = proxy ? args.request.headers.get("x-forwarded-proto") : null
+  const protocol =
+    forwardedProtocol === "http" || forwardedProtocol === "https" ? `${forwardedProtocol}:` : args.url.protocol
+  if (!host || /[\s,\\/?#@]/u.test(host) || !["http:", "https:"].includes(protocol)) return null
+  try {
+    return new URL(`${protocol}//${host}`).origin
+  } catch {
+    return null
+  }
+}
+
 const isSecureRequest = (args: WebInterceptArgs, options: GateOptions): boolean =>
   args.url.protocol === "https:" ||
   (trustedProxy(args, options) && args.request.headers.get("x-forwarded-proto") === "https")
@@ -71,7 +85,15 @@ const buildCookie = ({ token, secure }: { token: string; secure: boolean }): str
 
 /** Every caller needs a paired device token. Loopback is never trusted on its own:
  * other macOS accounts on the same Mac reach 127.0.0.1 too. */
-const authenticate = ({ args, store }: { args: WebInterceptArgs; store: AuthStore }): Principal | null => {
+const authenticate = ({
+  args,
+  store,
+  options,
+}: {
+  args: WebInterceptArgs
+  store: AuthStore
+  options: GateOptions
+}): Principal | null => {
   const ticketSession = deviceSession(args.request.signal)
   if (ticketSession?.active()) {
     const device = store.listDevices().find((item) => item.id === ticketSession.deviceId && item.revokedAt === null)
@@ -86,7 +108,7 @@ const authenticate = ({ args, store }: { args: WebInterceptArgs; store: AuthStor
   if (device && token) {
     const person = store.getPersonForDevice(device.id)
     if (!person) return null
-    const origin = args.request.headers.get("origin")
+    const origin = requestOrigin({ args, options })
     bindDeviceSession(args.request.signal, {
       deviceId: device.id,
       person: {
@@ -466,7 +488,7 @@ export const createWebGate = (options: GateOptions): ((args: WebInterceptArgs) =
         throw error
       }
     }
-    const principal = authenticate({ args, store: options.store })
+    const principal = authenticate({ args, store: options.store, options })
     if (url.pathname.startsWith("/api/")) return apiGate({ args, principal, options })
     if (principal === null) {
       if (request.method === "GET" && url.pathname === "/join")

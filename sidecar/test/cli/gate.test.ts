@@ -5,10 +5,10 @@ import { join } from "node:path"
 import { createRateLimiter } from "../../src/cli/auth/rateLimit"
 import { openAuthStore } from "../../src/cli/auth/store"
 import { createSecretStore } from "../../src/cli/host/secretStore"
-import { deviceSession } from "../../src/kernel/device-session"
 import { createWebGate, deviceCookieName } from "../../src/cli/web/gate"
 import { isDirectLoopback } from "../../src/cli/web/loopback"
 import { directoryAssets, embeddedAssets, type UiAsset, type UiAssets } from "../../src/cli/web/uiAssets"
+import { deviceSession } from "../../src/kernel/device-session"
 
 const files: Record<string, UiAsset> = {
   "index.html": { file: new Blob(["<html>app</html>"]), type: "text/html; charset=utf-8", immutable: false },
