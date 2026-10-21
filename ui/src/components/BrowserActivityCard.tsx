@@ -198,7 +198,13 @@ export const BrowserActivityCard = ({
   }, [])
 
   useEffect(() => {
-    if (!api || !botId || queued || (sourceFinished && !hasTakeoverRequest && !waitingForPerson)) return
+    if (
+      !api ||
+      !botId ||
+      queued ||
+      (sourceFinished && !hasTakeoverRequest && !waitingForPerson && !held && !takeoverSession && !resuming)
+    )
+      return
     let active = true
     // Events may arrive after the initial snapshot was taken.
     let hasTabEvent = false
@@ -264,7 +270,20 @@ export const BrowserActivityCard = ({
       window.clearInterval(poll)
       unsubscribe()
     }
-  }, [api, botId, sourceFinished, hasTakeoverRequest, resolutionCallId, runId, tabId, queued, waitingForPerson])
+  }, [
+    api,
+    botId,
+    sourceFinished,
+    hasTakeoverRequest,
+    resolutionCallId,
+    runId,
+    tabId,
+    queued,
+    waitingForPerson,
+    held,
+    takeoverSession,
+    resuming,
+  ])
 
   useEffect(() => {
     setPreviewError(null)
@@ -364,7 +383,7 @@ export const BrowserActivityCard = ({
           { id: activeTabId },
         )
         handbackRunId.current = runId
-        setResuming(sourceFinished)
+        setResuming(sourceFinished && held)
         setTakeoverSession(null)
         setControlEpoch(null)
         setTakeoverViewEpoch(0)
@@ -463,7 +482,7 @@ export const BrowserActivityCard = ({
             }))}
             onHandback={() => {
               handbackRunId.current = runId
-              setResuming(sourceFinished)
+              setResuming(sourceFinished && held)
               setTakeoverSession(null)
               setControlEpoch(null)
               setTakeoverViewEpoch(0)

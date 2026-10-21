@@ -87,10 +87,22 @@ const renderCard = (
   waitingForPerson = false,
 ) => {
   const api = createMockApi()
+  let sessionHeld: boolean | undefined
   const request = vi.fn(async (route: string) => {
-    if (route === "GET /browser/tabs") return getTabs()
-    if (route === "POST /browser/tabs/:id/takeover/session")
+    if (route === "GET /browser/tabs") {
+      const result = await getTabs()
+      return sessionHeld === undefined
+        ? result
+        : { tabs: result.tabs.map((tab) => ({ ...tab, heldByUser: sessionHeld })) }
+    }
+    if (route === "DELETE /browser/tabs/:id/takeover/session") {
+      sessionHeld = false
+      return {}
+    }
+    if (route === "POST /browser/tabs/:id/takeover/session") {
+      sessionHeld = true
       return { sessionId: "synthetic-session", controlEpoch: "synthetic-control-epoch", viewEpoch: 0 }
+    }
     if (route === "POST /browser/tabs/:id/takeover/frame")
       return {
         controlEpoch: "synthetic-control-epoch",
@@ -300,8 +312,10 @@ test("the composer takeover action opens the active browser session", async () =
   const api = createMockApi()
   const request = vi.fn(async (route: string) => {
     if (route === "GET /browser/tabs") return { tabs: [tab] }
-    if (route === "POST /browser/tabs/:id/takeover/session")
+    if (route === "POST /browser/tabs/:id/takeover/session") {
+      sessionHeld = true
       return { sessionId: "synthetic-session", controlEpoch: "synthetic-control-epoch", viewEpoch: 0 }
+    }
     return {}
   }) as ApiRequest
   api.request = request
@@ -859,4 +873,23 @@ test("reopening a completed manual handoff restores its controls", async () => {
   expect(await screen.findByRole("button", { name: "Assumir" })).toBeVisible()
   expect(await screen.findByText("Por que Lia parou")).toBeVisible()
   expect(screen.queryByText("Ver o que ele fez")).toBeNull()
+})
+
+test("an already completed continuation settles the handback without a live event", async () => {
+  const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
+  const { api, bot, view, onOpenComputer } = renderCard(parts, false)
+  fireEvent.click(await screen.findByRole("button", { name: "Assumir" }))
+  expect(await screen.findByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
+  const getCard = (runId: string) => (
+    <InlinePreviewContext.Provider value={{ api, bot, machine: undefined, activeCallId: undefined, onOpenComputer }}>
+      <BrowserActivityCard parts={parts} finished createdAt={1} runId={runId} threadId="thread-mark" botName="Lia" />
+    </InlinePreviewContext.Provider>
+  )
+  view.rerender(getCard("original"))
+  fireEvent.click(await screen.findByRole("button", { name: "Devolver para Lia" }))
+  await waitFor(() => expect(screen.queryByRole("region", { name: "Controle remoto do navegador" })).toBeNull())
+
+  view.rerender(getCard("continued"))
+
+  expect(await screen.findByText("Usou o navegador · 1 ação")).toBeVisible()
 })
