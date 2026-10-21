@@ -54,6 +54,33 @@ it("folds every routine into one Rotinas row with a single unread total that ope
   expect(document.querySelector(".routine-run-history")).toBeInTheDocument()
 })
 
+it("opening a history result clears its routine group without clearing another routine", async () => {
+  const { api, routines } = await getRoutineSidebarFixture(8, { withOtherRoutines: true, unreadRuns: 9 })
+  const routine = routines[0]
+  if (!routine) throw new Error("Missing routine history fixture")
+
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  const conversations = screen.getByRole("region", { name: "Conversas de mark" })
+  const row = within(conversations).getByRole("button", { name: /^Rotinas/ })
+  expect(row.querySelector(".sidebar-unread")).toHaveTextContent("9")
+
+  fireEvent.click(row)
+  await screen.findByRole("heading", { name: "Rotinas", exact: true })
+  const history = document.querySelector(".routine-run-history")
+  if (!(history instanceof HTMLElement)) throw new Error("Missing routine history")
+  fireEvent.change(within(history).getByRole("combobox", { name: "Filtrar histórico por rotina" }), {
+    target: { value: routine.id },
+  })
+  const oldest = within(history).getAllByRole("button", { name: "Abrir conversa" }).at(-1)
+  if (!oldest) throw new Error("Missing oldest history result")
+  fireEvent.click(oldest)
+
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  await waitFor(() => expect(row.querySelector(".sidebar-unread")).toHaveTextContent("1"))
+  expect(screen.getByText("Resumo pronto para conferir.", { selector: "p" })).toBeVisible()
+})
+
 it("groups 128 deleted routine conversations and keeps every result reachable in bounded pages", async () => {
   const { api, threads } = await getRoutineSidebarFixture(128, { withoutRoutineMetadata: true, unreadRuns: 8 })
   const oldestThread = threads[1]

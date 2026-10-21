@@ -1233,7 +1233,7 @@ const AppContent = ({ kernel }: AppProps) => {
                   onReviewApprovals={reviewApproval}
                   onNotice={showNotice}
                   onOpenThread={(threadId) => {
-                    actions.selectThread(threadId)
+                    actions.selectThread(threadId, { readRoutineGroup: true })
                     setRoute({ section: "bots", screen: "chat" })
                   }}
                 />
