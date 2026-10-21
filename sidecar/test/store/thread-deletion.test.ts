@@ -293,6 +293,28 @@ test("5,000-message deletion returns before cleanup and lets the event loop run"
   expect(Math.max(...timerLags)).toBeLessThan(150)
 })
 
+test("deletion previews omit exact counts for large histories without changing the history", async () => {
+  const fixture = await startFixture()
+  const thread = fixture.createThread("Large preview")
+  const insert = fixture.db.query(`INSERT INTO messages
+    (id,thread_id,parent_id,role,kind,status,text,parts_json,source,created_at,updated_at)
+    VALUES(?,?,NULL,'user','text','complete','message','[]','local',1,1)`)
+  fixture.db.transaction(() => {
+    Array.from({ length: 1000 }, (_, index) => `preview-${index}`).forEach((id) => insert.run(id, thread.id))
+  })()
+
+  const exact = await fixture.request(`/threads/${thread.id}/delete-preview`)
+  expect(await exact.json()).toMatchObject({ messageCount: 1000 })
+  insert.run("preview-overflow", thread.id)
+  const bounded = await fixture.request(`/threads/${thread.id}/delete-preview`)
+
+  expect(bounded.status).toBe(200)
+  expect(await bounded.json()).toEqual({ thread: { id: thread.id, title: thread.title }, messageCount: null })
+  expect(fixture.db.query("SELECT count(*) AS count FROM messages WHERE thread_id = ?").get(thread.id)).toEqual({
+    count: 1001,
+  })
+})
+
 test("deletion waits for cancellation before removing sessions or history", async () => {
   const fixture = await startFixture()
   const thread = fixture.createThread("Running conversation")

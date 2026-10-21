@@ -39,6 +39,7 @@ type ThreadRow = {
 
 const FILE_BATCH_SIZE = 16
 const ATTACHMENT_BATCH_SIZE = 50
+const PREVIEW_MESSAGE_LIMIT = 1000
 const WORKER_START_TIMEOUT_MS = 15_000
 const errorResponse = (status: number, errorCode: string, error: string): RouteResponse => ({
   status,
@@ -433,12 +434,21 @@ export const threadDeletionRoutes = (
           return errorResponse(409, "THREAD_DELETING", "Esta conversa já está sendo excluída.")
         const messageCount = Number(
           (
-            database.query("SELECT count(*) AS count FROM messages WHERE thread_id = ?").get(thread.id) as {
+            database
+              .query("SELECT count(*) AS count FROM (SELECT 1 FROM messages WHERE thread_id = ? LIMIT ?)")
+              .get(thread.id, PREVIEW_MESSAGE_LIMIT + 1) as {
               count: number
             }
           ).count,
         )
-        return { status: 200, json: { thread: { id: thread.id, title: thread.title }, messageCount } }
+        // Large histories use the generic confirmation rather than an unbounded exact count.
+        return {
+          status: 200,
+          json: {
+            thread: { id: thread.id, title: thread.title },
+            messageCount: messageCount > PREVIEW_MESSAGE_LIMIT ? null : messageCount,
+          },
+        }
       },
     },
     {

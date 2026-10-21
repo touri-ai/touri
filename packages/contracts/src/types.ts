@@ -965,7 +965,7 @@ export type ApiRoutes = {
   'GET /bots/:id/threads': { req: { archived?: boolean; before?: Id }; res: { threads: Array<Thread> } }
   'POST /threads': { req: { botId: Id; title?: string }; res: { thread: Thread } }
   'PATCH /threads/:id': { req: { title?: string; activeLeafId?: Id; archived?: boolean }; res: { thread: Thread } }
-  'GET /threads/:id/delete-preview': { req: {}; res: { thread: Pick<Thread, 'id' | 'title'>; messageCount: number } }
+  'GET /threads/:id/delete-preview': { req: {}; res: { thread: Pick<Thread, 'id' | 'title'>; messageCount: number | null } }
   'DELETE /threads/:id': { req: {}; res: { threadId: Id; phase: string } }
   'POST /threads/delete': { req: { ids: Array<Id> }; res: { threadIds: Array<Id>; phase: string } }
   'GET /threads/:id/transcript': { req: { since?: number; limit?: number }; res: { entries: Array<{ seq: number; generation: number; event: UiEvent }>; rejections: Array<TranscriptRejection>; lastSeq: number; generation: number; hasMore: boolean; resync: boolean } }

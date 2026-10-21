@@ -206,9 +206,9 @@ jobs:
 
   api-models:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: 1.4.3
@@ -241,7 +241,7 @@ jobs:
           bunx playwright test test/e2e/work-queue.spec.ts --workers=1
       - name: Keep synthetic work evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: work-queue
           path: ${{ runner.temp }}/touri-work-evidence/*.png
@@ -249,7 +249,7 @@ jobs:
           retention-days: 7
       - name: Keep work navigation diagnostics on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: work-queue-diagnostics
           path: |
@@ -385,7 +385,7 @@ jobs:
         run: bunx playwright test test/e2e/notification-preferences.spec.ts --workers=1 --output test-results/notification-preferences
       - name: Keep synthetic notification evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: notification-preferences
           path: ui/test-results/**/notification-preferences-*.png
@@ -393,7 +393,7 @@ jobs:
           retention-days: 7
       - name: Keep synthetic group evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: group-coordination
           path: ui/test-results/**/group-partial-success-*.png
