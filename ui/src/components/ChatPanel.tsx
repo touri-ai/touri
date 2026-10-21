@@ -1036,6 +1036,7 @@ const MessageBubble = ({
             <TurnActivity
               key={segment.key}
               message={{ ...message, parts }}
+              locale={locale}
               state={mascotState}
               run={run}
               browserActivity={browserActivity}

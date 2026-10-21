@@ -66,13 +66,11 @@ test("switches and remembers Work mode, with channels and routine history", asyn
         await page.reload()
         if (viewport.name === "phone") await page.locator(".mobile-menu-button").click()
         await expect(page.getByRole("region", { name: "Canais" })).toHaveCount(mode === "work" ? 1 : 0)
-        if (mode === "bots") {
-          const contrast = await new AxeBuilder({ page })
-            .include(".sidebar-mode-tabs")
-            .withRules(["color-contrast"])
-            .analyze()
-          expect(contrast.violations).toEqual([])
-        }
+        const contrast = await new AxeBuilder({ page })
+          .include(".sidebar-mode-tabs")
+          .withRules(["color-contrast"])
+          .analyze()
+        expect(contrast.violations).toEqual([])
         const botRow =
           mode === "work"
             ? page.locator('[data-work-bot-entry="bot-mark"] .bot-row-main')

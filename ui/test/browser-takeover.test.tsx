@@ -111,6 +111,7 @@ test("keeps the privacy notice visible and lets a person expand the browser view
 
   const privacy = screen.getByRole("status", { name: "Privacidade do navegador" })
   expect(privacy).toHaveTextContent("O que você digitar aqui não vai para o chat, o bot nem o histórico.")
+  expect(screen.getAllByText("O que você digitar aqui não vai para o chat, o bot nem o histórico.")).toHaveLength(1)
   const expand = screen.getByRole("button", { name: "Expandir navegador em tela cheia" })
   fireEvent.click(expand)
 

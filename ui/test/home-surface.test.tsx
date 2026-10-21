@@ -19,6 +19,7 @@ it("keeps Home, create, chat and collapsed advanced settings free of technical j
   }
   expectPlainSurface()
   fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
+  await screen.findByRole("dialog", { name: t("Create a teammate") }, { timeout: 30_000 })
   await screen.findByText(/Usa o Codex/)
   expectPlainSurface()
   fireEvent.click(screen.getByRole("button", { name: "Fechar diálogo" }))
@@ -112,6 +113,7 @@ it("opens the full routines screen from the bot's Advanced settings", async () =
   render(<App kernel={{ services: { api: createMockApi() } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   showBotSettings()
+  await screen.findByRole("dialog", { name: "Configurações de mark" })
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("tab", { name: "Rotinas" }))
   expect(await screen.findByRole("heading", { name: "Rotinas" })).toBeVisible()
