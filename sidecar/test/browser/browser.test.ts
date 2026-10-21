@@ -743,7 +743,7 @@ realSuite("WP6 real Chrome browser acceptance", () => {
 
     expect(await engine.holdTakeover({ tabId: page.tabId, reason: "fixture" })).toBe(true)
     const frame = await engine.takeoverFrame({ tabId: page.tabId, botId: botA, signal })
-    expect(frame).toMatchObject({ title: "touri fixture", url: `${base}/basic` })
+    expect(frame).toMatchObject({ title: "", url: new URL(base).origin })
     expect(frame?.width).toBeGreaterThan(0)
     expect(frame?.height).toBeGreaterThan(0)
     expect(frame?.image).toStartWith("data:image/jpeg;base64,")
@@ -787,7 +787,7 @@ realSuite("WP6 real Chrome browser acceptance", () => {
     expect(JSON.stringify(evaluated)).not.toContain(privateText)
     expect(await engine.screenshot({ tabId: page.tabId, botId: botA, fullPage: false, signal })).toMatchObject({
       success: false,
-      errorCode: "PRIVATE_TAKEOVER_ACTIVE",
+      errorCode: "SECRET_ENTRY_ACTIVE",
     })
   })
 

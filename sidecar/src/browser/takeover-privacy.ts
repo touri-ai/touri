@@ -51,7 +51,7 @@ export const sanitizeHumanTakeoverSnapshot = (snapshot: BrowserSnapshot): Browse
   url: sanitizeHumanTakeoverUrl(snapshot.url),
   title: "",
   focus: { ...snapshot.focus, name: null },
-  elements: snapshot.elements.map(({ value: _value, ...element }) => element),
+  elements: snapshot.elements.map(({ value: _value, ...element }) => ({ ...element, name: "" })),
   text: "",
   recentActions: [],
   diagnostics: [],

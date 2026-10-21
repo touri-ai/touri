@@ -70,7 +70,7 @@ test("a browser handoff creates a needs-you notification and resolves it on retu
     expect(result).toMatchObject({ success: true, structured: { status: "waiting_for_person" } })
     expect(notifications).toMatchObject([{ kind: "takeover", requestId: expect.any(String) }])
     expect(JSON.stringify(notifications)).not.toContain("fixture-secret")
-    expect(engine.tabsForBot("bot")[0]?.url).toBe("https://travel.example.test")
+    expect(engine.tabsForBot("bot")[0]?.url).toBe("")
     expect(await engine.releaseTakeover("tab")).toBe(true)
     await Bun.sleep(0)
 
