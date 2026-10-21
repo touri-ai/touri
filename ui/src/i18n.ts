@@ -608,6 +608,18 @@ export const ptBR = {
     "Prévia do navegador indisponível. Abra o navegador para reconectar.",
   "Open browser": "Abrir navegador",
   "Browser for {name}": "Navegador do {name}",
+  "Why {name} paused": "Por que {name} parou",
+  "The site asked you to sign in before continuing.": "O site pediu login para continuar.",
+  "The site asked you to review a purchase or payment before continuing.":
+    "O site pediu que você confira uma compra ou pagamento antes de continuar.",
+  "The site asked you to submit a form before continuing.":
+    "O site pediu para enviar um formulário antes de continuar.",
+  "The site needs your confirmation before continuing.": "O site pediu sua confirmação antes de continuar.",
+  "This browser is under your control now.": "Este navegador está sob seu controle.",
+  "The bot is paused until you hand control back.": "O bot está pausado até você devolver o controle.",
+  "Recent actions": "Últimas ações",
+  "What you type in the browser stays out of chat and the bot's context.":
+    "O que você digitar no navegador não vai para o chat nem para o contexto do bot.",
   "{name} is working · In the browser": "{name} está trabalhando · No navegador",
   "Used the browser · 1 action": "Usou o navegador · 1 ação",
   "Used the browser · {count} actions": "Usou o navegador · {count} ações",
@@ -2036,8 +2048,8 @@ export const ptBR = {
     "Navegar para um endereço, voltar, avançar ou recarregar e consultar a página atualizada.",
   "Click a target and return a fresh snapshot. The click point is hit-tested first; if another layer covers the target the call fails with TARGET_COVERED: dismiss the layer instead of clicking coordinates repeatedly.":
     "Clicar em um elemento e consultar a página. Se outra camada cobrir o alvo, remover a camada antes de tentar novamente.",
-  "Type text into a target (focuses it first) and return a fresh snapshot. Never type passwords or codes: use browser_submit_secret.":
-    "Digitar texto em um elemento. Para senhas e códigos, usar o preenchimento seguro de credenciais.",
+  "Type text into a target (focuses it first) and return a fresh snapshot. Never type passwords or codes; let the person enter them through browser_request_takeover.":
+    "Digitar texto em um elemento. Para senhas e códigos, a pessoa deve assumir o controle do navegador.",
   "Press a key or chord (e.g. Enter, Escape, Meta+A) in the focused element and return a fresh snapshot.":
     "Pressionar uma tecla ou combinação no elemento com foco.",
   "Hover a target (hit-tested) and return a fresh snapshot.":
@@ -2056,8 +2068,8 @@ export const ptBR = {
     "Avaliar uma expressão JavaScript somente de leitura. Bloqueado durante o preenchimento de credenciais.",
   "Hand the tab to the user (CAPTCHA, passkey, payment, unclear account choice, anything you cannot do safely). Blocks until the user hands it back or timeoutMs, then returns a fresh snapshot. While held, every other browser tool on the tab fails with TAB_HELD_BY_USER.":
     "Passar o controle da aba ao usuário para autenticação, confirmação ou uma ação que exija sua intervenção.",
-  "Fill credential fields without seeing the secret. If secretName refers to a stored secret allowed for this origin, it is filled; otherwise the user types it into a secure card. Never request or repeat secrets in chat. Returns a fresh snapshot (screenshots and evaluate stay blocked in the tab until it navigates).":
-    "Preencher credenciais sem mostrar o segredo ao bot, usando o cofre ou um campo seguro do aplicativo.",
+  "Do not use this tool to enter or submit credentials. Request browser takeover so the person can enter them directly; credential text never goes through chat or the model.":
+    "Não use esta ferramenta para inserir ou enviar credenciais. Peça que a pessoa assuma o controle e digite diretamente no navegador; o texto não passa pelo chat nem pelo contexto do bot.",
   "Screenshot of the main display (or a region), scaled to maxWidth. Coordinates in later computer_* calls are in THIS image's pixel space. Only available while the user has granted you control.":
     "Obter uma imagem da tela autorizada. Coordenadas posteriores usam os pixels desta imagem.",
   "Click at a point in the last screenshot's coordinate space. Returns a new screenshot.":

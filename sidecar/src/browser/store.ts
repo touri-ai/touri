@@ -20,24 +20,27 @@ const toInfo = (row: BrowserTabRow): TabState["info"] => ({
   state: row.state,
   openerTabId: row.opener_tab_id,
   heldByUser: row.held_by_user === 1,
+  takeoverReason: row.takeover_reason,
   lastUsedAt: row.last_used_at,
   ownerBotId: row.owner_bot_id,
   ownerThreadId: row.owner_thread_id,
 })
 
-const toRow = (info: TabState["info"], targetId: string | null, createdAt: number): BrowserTabRow => ({
-  id: info.tabId,
+const toRow = (tab: TabState, createdAt: number): BrowserTabRow => ({
+  id: tab.info.tabId,
   profile: "default",
-  owner_bot_id: info.ownerBotId,
-  owner_thread_id: info.ownerThreadId,
-  opener_tab_id: info.openerTabId,
-  cdp_target_id: targetId,
-  url: info.url,
-  title: info.title,
-  state: info.state,
-  held_by_user: info.heldByUser ? 1 : 0,
+  owner_bot_id: tab.info.ownerBotId,
+  owner_thread_id: tab.info.ownerThreadId,
+  opener_tab_id: tab.info.openerTabId,
+  cdp_target_id: tab.targetId,
+  url: tab.info.url,
+  title: tab.info.title,
+  state: tab.info.state,
+  held_by_user: tab.info.heldByUser ? 1 : 0,
+  private_after_takeover: tab.privateAfterTakeover ? 1 : 0,
+  takeover_reason: tab.takeoverReason,
   created_at: createdAt,
-  last_used_at: info.lastUsedAt,
+  last_used_at: tab.info.lastUsedAt,
 })
 
 export type BrowserStore = {
@@ -86,6 +89,8 @@ export const createBrowserStore = ({
         diagnostics: [],
         navigationVersion: 0,
         secretMode: false,
+        privateAfterTakeover: row.private_after_takeover === 1,
+        takeoverReason: row.takeover_reason,
         dialog: null,
         lastFailureKey: null,
         failureCount: 0,
@@ -123,6 +128,7 @@ export const createBrowserStore = ({
       state: targetId === null ? "unloaded" : "live",
       openerTabId,
       heldByUser: false,
+      takeoverReason: null,
       lastUsedAt: now,
       ownerBotId: botId,
       ownerThreadId: threadId,
@@ -138,6 +144,8 @@ export const createBrowserStore = ({
       diagnostics: [],
       navigationVersion: 0,
       secretMode: false,
+      privateAfterTakeover: false,
+      takeoverReason: null,
       dialog: null,
       lastFailureKey: null,
       failureCount: 0,
@@ -157,11 +165,11 @@ export const createBrowserStore = ({
   }
 
   const save = (tab: TabState): void => {
-    const row = toRow(tab.info, tab.targetId, Date.now())
+    const row = toRow(tab, Date.now())
     tab.info.lastUsedAt = row.last_used_at
     database
       .query(
-        "UPDATE browser_tabs SET owner_bot_id = ?, owner_thread_id = ?, opener_tab_id = ?, cdp_target_id = ?, url = ?, title = ?, state = ?, held_by_user = ?, last_used_at = ? WHERE id = ?",
+        "UPDATE browser_tabs SET owner_bot_id = ?, owner_thread_id = ?, opener_tab_id = ?, cdp_target_id = ?, url = ?, title = ?, state = ?, held_by_user = ?, private_after_takeover = ?, takeover_reason = ?, last_used_at = ? WHERE id = ?",
       )
       .run(
         row.owner_bot_id,
@@ -172,6 +180,8 @@ export const createBrowserStore = ({
         row.title,
         row.state,
         row.held_by_user,
+        row.private_after_takeover,
+        row.takeover_reason,
         row.last_used_at,
         row.id,
       )
@@ -226,6 +236,7 @@ export const publicTabInfo = ({ tab }: { tab: TabState }): BrowserTabInfo & { ow
   state: tab.info.state,
   openerTabId: tab.info.openerTabId,
   heldByUser: tab.info.heldByUser,
+  takeoverReason: tab.takeoverReason,
   lastUsedAt: tab.info.lastUsedAt,
   ownerBotId: tab.info.ownerBotId,
 })

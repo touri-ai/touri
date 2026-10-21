@@ -1,4 +1,4 @@
-import type { BrowserTabInfo, Id, MessagePart } from "@touri/contracts"
+import type { BrowserTabInfo, BrowserTakeoverReason, Id, MessagePart } from "@touri/contracts"
 import { useContext, useEffect, useId, useRef, useState } from "react"
 import { InlinePreviewContext } from "../features/desktop/InlineLivePreview"
 import { type PreviewFrame, startInlineFrameSource } from "../features/desktop/inlineFrameSource"
@@ -84,7 +84,11 @@ export const BrowserActivityCard = ({
   const [previewFrame, setPreviewFrame] = useState<{ tabId: string; frame: PreviewFrame }>()
   const preview = previewFrame?.tabId === activeTabId ? previewFrame?.frame : undefined
   const [previewError, setPreviewError] = useState<string | null>(null)
-  const [heldTab, setHeldTab] = useState<{ tabId: string; held: boolean }>()
+  const [heldTab, setHeldTab] = useState<{
+    tabId: string
+    held: boolean
+    reason?: BrowserTakeoverReason | null
+  }>()
   const held = heldTab?.tabId === activeTabId && heldTab?.held === true
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -110,6 +114,10 @@ export const BrowserActivityCard = ({
   useEffect(() => {
     if (finished) setExpanded(false)
   }, [finished])
+
+  useEffect(() => {
+    if (held && !finished) setExpanded(true)
+  }, [finished, held])
 
   useEffect(() => {
     const element = section.current
@@ -138,7 +146,7 @@ export const BrowserActivityCard = ({
         )
       if (!candidate || !active) return
       if (!tabId) setResolvedTab({ callId: resolutionCallId, tabId: candidate.tabId })
-      setHeldTab({ tabId: candidate.tabId, held: candidate.heldByUser })
+      setHeldTab({ tabId: candidate.tabId, held: candidate.heldByUser, reason: candidate.takeoverReason ?? null })
     }
     const unsubscribe = api.subscribe(({ event }) => {
       if (
@@ -149,7 +157,7 @@ export const BrowserActivityCard = ({
       ) {
         hasTabEvent = true
         if (!tabId) setResolvedTab({ callId: resolutionCallId, tabId: event.tab.tabId })
-        setHeldTab({ tabId: event.tab.tabId, held: event.tab.heldByUser })
+        setHeldTab({ tabId: event.tab.tabId, held: event.tab.heldByUser, reason: event.tab.takeoverReason ?? null })
       }
     })
     void api
@@ -188,7 +196,7 @@ export const BrowserActivityCard = ({
     setError(null)
     try {
       await api.request("POST /browser/tabs/:id/takeover", { hold: !held }, { id: activeTabId })
-      setHeldTab({ tabId: activeTabId, held: !held })
+      setHeldTab({ tabId: activeTabId, held: !held, reason: !held ? "requested" : null })
       if (!held) context?.onOpenComputer()
     } catch {
       setError(t("The browser tab could not be updated.", {}, locale))
@@ -210,6 +218,9 @@ export const BrowserActivityCard = ({
     locale,
   )
   const url = finished ? "" : getBrowserActivityUrl(preview?.url || getBrowserActivityOpenUrl(browserTools))
+  const takeoverActive = held && !finished
+  const takeoverReason = heldTab?.reason ?? "requested"
+  const reasonCopy = getTakeoverReasonCopy(takeoverReason, locale)
 
   return (
     <div className="browser-activity-stack">
@@ -346,13 +357,20 @@ export const BrowserActivityCard = ({
             <div
               className="browser-activity-log"
               role="log"
-              aria-label={t("Browser activity", {}, locale)}
+              aria-label={t(takeoverActive ? "Recent actions" : "Browser activity", {}, locale)}
               aria-live={finished ? "off" : "polite"}
             >
-              <strong>{t("Browser activity", {}, locale)}</strong>
+              {takeoverActive && (
+                <section className="browser-takeover-reason">
+                  <strong>{t("Why {name} paused", { name: botName }, locale)}</strong>
+                  <p>{reasonCopy}</p>
+                  <p>{t("The bot is paused until you hand control back.", {}, locale)}</p>
+                </section>
+              )}
+              <strong>{t(takeoverActive ? "Recent actions" : "Browser activity", {}, locale)}</strong>
               <ol>
                 {actions.map((part) => (
-                  <li key={part.callId}>
+                  <li key={part.callId} data-current={part.callId === currentAction?.callId && !finished}>
                     <span className="browser-activity-action-icon" aria-hidden="true">
                       <svg
                         viewBox="0 0 24 24"
@@ -381,6 +399,11 @@ export const BrowserActivityCard = ({
               {browserTools.length > MAX_VISIBLE_ACTIONS && (
                 <small>{t("Showing the latest {count} browser actions", { count: MAX_VISIBLE_ACTIONS }, locale)}</small>
               )}
+              {takeoverActive && (
+                <p className="browser-takeover-privacy">
+                  {t("What you type in the browser stays out of chat and the bot's context.", {}, locale)}
+                </p>
+              )}
               {held && <p role="status">{t("You have control of this browser tab.", {}, locale)}</p>}
               {error && <p role="alert">{error}</p>}
               {finished && screenshot?.outputAttachmentId && (
@@ -404,4 +427,13 @@ export const BrowserActivityCard = ({
       </article>
     </div>
   )
+}
+
+const getTakeoverReasonCopy = (reason: BrowserTakeoverReason, locale: Locale): string => {
+  if (reason === "login") return t("The site asked you to sign in before continuing.", {}, locale)
+  if (reason === "payment") return t("The site asked you to review a purchase or payment before continuing.", {}, locale)
+  if (reason === "form_submit") return t("The site asked you to submit a form before continuing.", {}, locale)
+  if (reason === "requested") return t("This browser is under your control now.", {}, locale)
+
+  return t("The site needs your confirmation before continuing.", {}, locale)
 }

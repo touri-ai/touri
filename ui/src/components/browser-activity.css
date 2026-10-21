@@ -227,6 +227,37 @@
   gap: var(--space-8);
   min-height: 22px;
 }
+.browser-activity-log li[data-current="true"] {
+  border-radius: var(--radius-sm);
+  background: var(--surface-control);
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+.browser-activity-log li[data-current="true"] .browser-activity-action-icon {
+  color: var(--brand);
+}
+.browser-takeover-reason {
+  display: grid;
+  gap: var(--space-8);
+  margin-bottom: var(--space-12);
+  padding: var(--space-12);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-control);
+}
+.browser-takeover-reason p,
+.browser-takeover-privacy {
+  margin: 0;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+.browser-takeover-privacy {
+  margin-top: var(--space-12);
+  padding: var(--space-8) var(--space-12);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-control);
+}
 .browser-activity-action-icon {
   display: grid;
   width: 18px;

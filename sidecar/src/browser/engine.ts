@@ -5,6 +5,7 @@ import type {
   BrowserElement,
   BrowserErrorCode,
   BrowserSnapshot,
+  BrowserTakeoverReason,
   BrowserTarget,
   Id,
   Kernel,
@@ -18,7 +19,12 @@ import type { PerformanceStageRunner } from "../kernel/performance"
 import { hostPlatform } from "../platform"
 import * as macos from "../platform/macos"
 import { CHALLENGE_ELEMENT_IDS, classifyBlockedPage, describeBlockedPage } from "./blockedPage"
-import { isBrowserSubmitKey, requiresBrowserKeyInspection, requiresBrowserTakeover } from "./decision"
+import {
+  getBrowserTakeoverReasonCode,
+  isBrowserSubmitKey,
+  requiresBrowserKeyInspection,
+  requiresBrowserTakeover,
+} from "./decision"
 import {
   type ChromeLauncher,
   createChromeLauncher,
@@ -37,6 +43,7 @@ import {
   saveBotSession,
 } from "./sessionVault"
 import { createBrowserStore, publicTabInfo } from "./store"
+import { sanitizeHumanTakeoverSnapshot, sanitizeHumanTakeoverUrl } from "./takeover-privacy"
 import type {
   BrowserEngine,
   BrowserFailure,
@@ -64,6 +71,33 @@ import {
   sleep,
   stringProperty,
 } from "./utils"
+
+const getTakeoverNotificationCopy = (reason: BrowserTakeoverReason): { title: string; body: string } => {
+  const portuguese = Intl.DateTimeFormat().resolvedOptions().locale.toLowerCase().startsWith("pt")
+  const reasons: Record<BrowserTakeoverReason, string> = portuguese
+    ? {
+        login: "O site pediu login.",
+        payment: "O site pediu uma ação de compra ou pagamento.",
+        form_submit: "O site pediu o envio de um formulário.",
+        sensitive_action: "O site pediu sua confirmação para continuar.",
+        requested: "O bot pediu sua ajuda no navegador.",
+      }
+    : {
+        login: "The site asked you to sign in.",
+        payment: "The site asked you to review a purchase or payment.",
+        form_submit: "The site asked you to submit a form.",
+        sensitive_action: "The site needs your confirmation to continue.",
+        requested: "The bot asked for your help in the browser.",
+      }
+  const reasonText = reasons[reason]
+
+  return {
+    title: portuguese ? "O navegador precisa de você" : "The browser needs you",
+    body: portuguese
+      ? `${reasonText} Devolva o controle para o bot continuar.`
+      : `${reasonText} Return control to let the bot continue.`,
+  }
+}
 
 const DEFAULT_NAVIGATION_BUDGET_MS = 10000
 const NAVIGATION_POLL_MS = 50
@@ -836,6 +870,7 @@ const cdpLabelQualifies = async ({
 
 const pageState = async (client: CdpClient, tab: TabState): Promise<PageState> => {
   if (!tab.sessionId) throw new Error("Tab is not attached")
+  const hideFieldValues = tab.privateAfterTakeover || tab.secretMode
   const state = await runtimeValue<PageState>(
     client,
     `(() => {
@@ -845,7 +880,7 @@ const pageState = async (client: CdpClient, tab: TabState): Promise<PageState> =
       try { return frame.contentDocument?.body?.innerText || ''; } catch { return ''; }
     }).filter((value) => value.length > 0).join('\\n');
     const active = document.activeElement;
-    const name = active ? String(active.getAttribute('aria-label') || active.getAttribute('name') || active.innerText || active.value || '').trim() : '';
+    const name = active ? String(active.getAttribute('aria-label') || active.getAttribute('name') || ${hideFieldValues ? "''" : "active.innerText || active.value || ''"}).trim() : '';
     const role = active ? (active.getAttribute('role') || ({BUTTON:'button',A:'link',INPUT:(active.type === 'search' ? 'searchbox' : 'textbox'),SELECT:'combobox',TEXTAREA:'textbox'}[active.tagName] || 'generic')) : '';
     return { url: location.href, title: document.title, loading: document.readyState !== 'complete', readyState: document.readyState,
       viewport: { width: innerWidth, height: innerHeight, scrollY: scrollY, scrollHeight: Math.max(document.body?.scrollHeight || 0, document.documentElement?.scrollHeight || 0) },
@@ -1368,7 +1403,11 @@ export const createBrowserEngine = ({
 
   const safePublicTabInfo = (tab: TabState): ReturnType<typeof publicTabInfo> => {
     const info = publicTabInfo({ tab })
-    return { ...info, url: kernel.redact(info.url), title: kernel.redact(info.title) }
+    return {
+      ...info,
+      url: kernel.redact(tab.privateAfterTakeover ? sanitizeHumanTakeoverUrl(info.url) : info.url),
+      title: kernel.redact(tab.privateAfterTakeover ? "" : info.title),
+    }
   }
 
   const enforceTabUrl = (tab: TabState): void => {
@@ -2535,7 +2574,7 @@ export const createBrowserEngine = ({
       dataUrl: string
       reason: "canvas-or-video" | "iframe" | "low-semantic-coverage" | "requested"
     } | null = null
-    const effectiveImage = tab.secretMode ? "never" : image
+    const effectiveImage = tab.secretMode || tab.privateAfterTakeover ? "never" : image
     if (effectiveImage !== "never" && (effectiveImage === "always" || recommendImage !== null)) {
       try {
         const data = await boundedImage({ client, tab, fullPage: false, maxBytes: 80 * 1024 })
@@ -2548,7 +2587,10 @@ export const createBrowserEngine = ({
       }
     }
     const active = page.active
-    const focusNode = nodes.find((node) => node.role === active.role && node.name === active.name)
+    const focusNode =
+      tab.privateAfterTakeover || tab.secretMode
+        ? nodes.find((node) => node.states.includes("focused"))
+        : nodes.find((node) => node.role === active.role && node.name === active.name)
     const elements = nodes.map((node) => elementFromNode(node, page))
     const snapshot: BrowserSnapshot = {
       tabId: tab.info.tabId,
@@ -2570,7 +2612,9 @@ export const createBrowserEngine = ({
       heldByUser: tab.info.heldByUser,
       notes,
     }
-    const safeSnapshot = boundSnapshot(redactSnapshot(snapshot, kernel.redact))
+    const redactedSnapshot = boundSnapshot(redactSnapshot(snapshot, kernel.redact))
+    const safeSnapshot =
+      tab.privateAfterTakeover || tab.secretMode ? sanitizeHumanTakeoverSnapshot(redactedSnapshot) : redactedSnapshot
     tab.lastSnapshot = safeSnapshot
     return success({ snapshot: safeSnapshot, text: renderSnapshot(safeSnapshot) })
   }
@@ -2852,10 +2896,7 @@ export const createBrowserEngine = ({
       }
     }
     unloadIdleTabs()
-    const publicTabs = store.list(botId).map((tab) => {
-      const info = publicTabInfo({ tab })
-      return { ...info, url: kernel.redact(info.url), title: kernel.redact(info.title) }
-    })
+    const publicTabs = store.list(botId).map(safePublicTabInfo)
     return toToolSuccess({
       content: [{ type: "text", text: JSON.stringify(publicTabs) }],
       structured: { tabs: publicTabs },
@@ -2957,10 +2998,10 @@ export const createBrowserEngine = ({
       operation: async (operationSignal) => {
         const live = await ensureTab(tab, { signal: operationSignal, budgetMs: timeoutMs })
         if (!live.success) return toToolError(live.failure)
-        if (tab.secretMode)
+        if (tab.secretMode || tab.privateAfterTakeover)
           return toToolError({
             errorCode: "SECRET_ENTRY_ACTIVE",
-            error: "Capturas de tela ficam bloqueadas enquanto a entrada de segredo está ativa.",
+            error: "Capturas de tela ficam bloqueadas depois da entrada privada no navegador.",
           })
         if (await pageUrlBlocked(tab))
           return toToolError({ errorCode: "URL_NOT_ALLOWED", error: BROWSER_URL_NOT_ALLOWED_MESSAGE })
@@ -3926,10 +3967,10 @@ export const createBrowserEngine = ({
       operation: async (operationSignal) => {
         const live = await ensureTab(tab, { signal: operationSignal, budgetMs: timeoutMs })
         if (!live.success) return toToolError(live.failure)
-        if (tab.secretMode)
+        if (tab.secretMode || tab.privateAfterTakeover)
           return toToolError({
             errorCode: "SECRET_ENTRY_ACTIVE",
-            error: "A avaliação de scripts fica bloqueada enquanto a entrada de segredo está ativa.",
+            error: "A leitura de scripts fica bloqueada depois da entrada privada no navegador.",
           })
         if (await pageUrlBlocked(tab))
           return toToolError({ errorCode: "URL_NOT_ALLOWED", error: BROWSER_URL_NOT_ALLOWED_MESSAGE })
@@ -4241,12 +4282,14 @@ export const createBrowserEngine = ({
     tabId,
     botId,
     reason,
+    reasonCode,
     timeoutMs,
     signal,
   }: {
     tabId: Id
     botId: Id
     reason: string
+    reasonCode?: BrowserTakeoverReason
     timeoutMs: number
     signal: AbortSignal
   }): Promise<ToolResult> => {
@@ -4258,23 +4301,29 @@ export const createBrowserEngine = ({
       timeoutMs,
       signal,
       operation: async () => {
+        const safeReasonCode = reasonCode ?? getBrowserTakeoverReasonCode({ intent: reason })
         tab.info.heldByUser = true
+        tab.privateAfterTakeover = true
+        tab.takeoverReason = safeReasonCode
         tab.info.lastUsedAt = Date.now()
         store.save(tab)
         kernel.publish({ type: "browser.tab", tab: safePublicTabInfo(tab) })
+        const notification = getTakeoverNotificationCopy(safeReasonCode)
         const emitNotice = kernel.services.use("notify.emit")
+        const requestId = `browser-takeover:${tabId}:${kernel.newId()}`
         if (emitNotice)
           emitNotice({
             kind: "takeover",
             botId,
             threadId: tab.info.ownerThreadId,
-            title: "Browser takeover",
-            body: `needs you in the browser: ${reason.slice(0, 300)}`,
+            requestId,
+            title: notification.title,
+            body: notification.body,
           })
         else
           await notifyBestEffort({
-            title: "Browser takeover",
-            body: `${botId} needs you in the browser: ${kernel.redact(reason).slice(0, 300)}`,
+            title: notification.title,
+            body: notification.body,
             threadId: tab.info.ownerThreadId,
           })
         await raceBudget({ work: focusManagedChrome(), ms: SIDE_EFFECT_BUDGET_MS, signal }).catch(() => undefined)
@@ -4290,9 +4339,14 @@ export const createBrowserEngine = ({
           if (signal.aborted) onAbort()
           else signal.addEventListener("abort", onAbort, { once: true })
         })
+        kernel.services.use("notify.resolve")?.({
+          requestId,
+          resolution: released === "released" ? "replied" : released === "timeout" ? "expired" : "canceled",
+        })
         tab.takeover = null
         if (released !== "released") {
           tab.info.heldByUser = false
+          tab.takeoverReason = null
           tab.generation += 1
           tab.refs.clear()
           tab.handbackNote =
@@ -4314,6 +4368,7 @@ export const createBrowserEngine = ({
     if (!tab) return false
     if (!tab.info.heldByUser) return true
     tab.info.heldByUser = false
+    tab.takeoverReason = null
     tab.generation += 1
     tab.refs.clear()
     tab.handbackNote = "User handed back the tab; the page may have changed."
@@ -4330,12 +4385,14 @@ export const createBrowserEngine = ({
     const tab = store.find(tabId)
     if (!tab || tab.info.state === "closed") return false
     tab.info.heldByUser = true
+    tab.privateAfterTakeover = true
+    tab.takeoverReason = "requested"
     tab.info.lastUsedAt = Date.now()
     store.save(tab)
     kernel.publish({ type: "browser.tab", tab: safePublicTabInfo(tab) })
     await notifyBestEffort({
-      title: "Browser takeover",
-      body: `The user took over the browser: ${kernel.redact(reason).slice(0, 300)}`,
+      title: "The browser is under your control",
+      body: kernel.redact(reason).slice(0, 300),
       threadId: tab.info.ownerThreadId,
     })
     await raceBudget({ work: focusManagedChrome(), ms: SIDE_EFFECT_BUDGET_MS }).catch(() => undefined)
@@ -4366,7 +4423,7 @@ export const createBrowserEngine = ({
 
   const tabsForBot: BrowserEngine["tabsForBot"] = (botId) => {
     unloadIdleTabs()
-    return store.list(botId).map((tab) => publicTabInfo({ tab }))
+    return store.list(botId).map(safePublicTabInfo)
   }
 
   const shutdown = async (): Promise<void> => {

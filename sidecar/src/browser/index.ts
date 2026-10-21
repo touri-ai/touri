@@ -2,6 +2,7 @@ import type {
   ApiModel,
   BrowserFailureInfo,
   BrowserSnapshot,
+  BrowserTakeoverReason,
   BrowserTarget,
   Kernel,
   RouteModule,
@@ -18,6 +19,7 @@ import {
   type BrowserDecisionFallbackReason,
   createBrowserDecisionAdapter,
   getBrowserDecisionCandidates,
+  getBrowserTakeoverReasonCode,
   isBrowserSubmitKey,
   isSafeBrowserRead,
   requiresBrowserKeyInspection,
@@ -30,6 +32,7 @@ import { createRoutedBrowserEngine } from "./vm-router"
 export const name = "browser"
 
 const OPEN_DEFAULT_TIMEOUT_MS = 20000
+const TAKEOVER_TIMEOUT_MS = 600000
 
 export const target = (value: unknown): BrowserTarget => {
   if (typeof value === "string") return { kind: "ref", ref: value }
@@ -89,12 +92,6 @@ export const withToolDeadline = async ({
     clearTimeout(timer)
   }
 }
-
-const fields = (value: unknown): Array<{ kind: "username" | "password" | "otp"; target: BrowserTarget }> =>
-  asArray(value).map((item) => {
-    const field = argsRecord(item)
-    return { kind: asString(field.kind) as "username" | "password" | "otp", target: target(field.target) }
-  })
 
 const getBrowserDecisionMarker = (reason: BrowserDecisionFallbackReason): string =>
   `TOURI_BROWSER_DECISION_HINT|${reason}`
@@ -162,11 +159,10 @@ const getDecisionName = (value: string, redact: (value: string) => string): stri
     .replace(/\b(?:\+?\d[\d\s().-]{7,}\d)\b/g, "[number]")
     .slice(0, 120)
 
-const getBrowserTakeoverRequiredResult = (): ToolResult => ({
+const getBrowserTakeoverRequiredResult = (reason: BrowserTakeoverReason = "sensitive_action"): ToolResult => ({
   success: false,
   errorCode: "USER_TAKEOVER_REQUIRED",
-  error:
-    "TOURI_BROWSER_TAKEOVER_REQUIRED|sensitive_action\nAsk the user to take over this browser tab and complete the action directly, then resume only after they hand control back.",
+  error: `TOURI_BROWSER_TAKEOVER_REQUIRED|${reason}\nAsk the user to take over this browser tab and complete the action directly, then resume only after they hand control back.`,
 })
 
 type BrowserDecisionRun = (args: {
@@ -261,7 +257,13 @@ const runWithBrowserDecision = async ({
           pointTarget: requestedTarget.kind === "point" || uninspectableTarget,
         })
       )
-        return getBrowserTakeoverRequiredResult()
+        return getBrowserTakeoverRequiredResult(
+          getBrowserTakeoverReasonCode({
+            error: submit || formSubmit ? "form_submit" : "",
+            intent,
+            pageUrl,
+          }),
+        )
 
       if (action === "click" && (button !== "left" || clickCount !== 1)) return runAction(requestedTarget)
       const initial = await runAction(requestedTarget)
@@ -404,6 +406,23 @@ export const init = async (
       const result = gate
         ? await gate.run(input.ctx, (signal) => handler({ ...input, ctx: { ...input.ctx, signal } }))
         : await handler(input)
+      if (!result.success && result.errorCode === "USER_TAKEOVER_REQUIRED") {
+        const args = argsRecord(input.args)
+        const tabId = asString(args.tabId)
+        if (!tabId) return result
+        const pageUrl = engine.tabsForBot(input.ctx.botId).find((tab) => tab.tabId === tabId)?.url ?? ""
+        const intent =
+          args.target === undefined ? (asString(args.expression) ?? "") : getTargetIntent(target(args.target))
+        const reasonCode = getBrowserTakeoverReasonCode({ error: result.error, intent, pageUrl })
+        return engine.requestTakeover({
+          tabId,
+          botId: input.ctx.botId,
+          reason: reasonCode,
+          reasonCode,
+          timeoutMs: TAKEOVER_TIMEOUT_MS,
+          signal: input.ctx.signal,
+        })
+      }
       if (!result.success)
         failures.set(input.ctx.botId, {
           tool: name,
@@ -585,7 +604,13 @@ export const init = async (
                 formSubmit: focused.formSubmit === true,
               })
             )
-              return getBrowserTakeoverRequiredResult()
+              return getBrowserTakeoverRequiredResult(
+                getBrowserTakeoverReasonCode({
+                  error: enterKey && (focused.formAssociated || focused.formSubmit) ? "form_submit" : "",
+                  intent: `${focused.role} ${focused.name}`,
+                  pageUrl: snapshot.url,
+                }),
+              )
           }
 
           return engine.press({
@@ -718,31 +743,19 @@ export const init = async (
     }),
     tool("browser_request_takeover", async ({ ctx, args }) => {
       const input = argsRecord(args)
+      const reason = asString(input.reason)
+      const pageUrl = engine.tabsForBot(ctx.botId).find((tab) => tab.tabId === input.tabId)?.url ?? ""
+      const reasonCode = reason ? getBrowserTakeoverReasonCode({ intent: reason, pageUrl }) : "requested"
       return engine.requestTakeover({
         tabId: asString(input.tabId) ?? "",
         botId: ctx.botId,
-        reason: asString(input.reason) ?? "User assistance requested",
+        reason: reason ?? "User assistance requested",
+        reasonCode,
         timeoutMs: timeout(input.timeoutMs, 600000, 1800000),
         signal: ctx.signal,
       })
     }),
-    tool("browser_submit_secret", async ({ ctx, args }) => {
-      const input = argsRecord(args)
-      const secretName = asString(input.secretName)
-      const submit = asString(input.submit)
-      const submitTarget = input.submitTarget === undefined ? undefined : target(input.submitTarget)
-      return engine.submitSecret({
-        tabId: asString(input.tabId) ?? "",
-        botId: ctx.botId,
-        threadId: ctx.threadId,
-        projectId: ctx.projectId,
-        fields: fields(input.fields),
-        ...(secretName === null ? {} : { secretName }),
-        submit: submit === "enter" || submit === "click" ? submit : "none",
-        ...(submitTarget === undefined ? {} : { submitTarget }),
-        signal: ctx.signal,
-      })
-    }),
+    tool("browser_submit_secret", async () => getBrowserTakeoverRequiredResult("login")),
   ]
   const registration = kernel.registerTools({ tools: handlers })
   if (!registration.success)
