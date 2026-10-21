@@ -746,7 +746,8 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
                 ...current,
                 bots: uniqueById(response.bots),
                 botsLoaded: true,
-                selectedBotId: selectedBot?.id ?? null,
+                isMember: member,
+                selectedBotId: member ? null : (selectedBot?.id ?? null),
                 activeProjectId: selectedBot?.projectId ?? null,
               }
             })

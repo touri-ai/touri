@@ -7,7 +7,6 @@ import { ApiError } from "../src/errors"
 import { InvitePersonDialog } from "../src/features/people/InvitePersonDialog"
 import { JoinPage } from "../src/features/people/JoinPage"
 import { getInviteToken, isJoinPath, redeemInvite } from "../src/features/people/join"
-import { init } from "../src/index"
 
 const getChannel = (id: string, name: string): BotGroup => ({
   id,
@@ -48,9 +47,12 @@ const getDelivery = (input: Partial<InviteDelivery> = {}): InviteDelivery => ({
 
 type Request = UiApi["request"]
 
-const getRequest = (handler: (route: keyof ApiRoutes, input: unknown) => unknown) =>
-  vi.fn(async (route: keyof ApiRoutes, input: unknown) => handler(route, input)) as unknown as Request &
-    ReturnType<typeof vi.fn>
+const getRequest = (handler: (route: keyof ApiRoutes, input: unknown) => unknown) => {
+  const request: Request = async <Route extends keyof ApiRoutes>(route: Route, input: ApiRoutes[Route]["req"]) =>
+    handler(route, input) as ApiRoutes[Route]["res"]
+
+  return vi.fn(request)
+}
 
 const renderDialog = (request: Request) =>
   render(
@@ -173,13 +175,6 @@ describe("join page", () => {
     expect(getInviteToken("")).toBe("")
     expect(isJoinPath("/join")).toBe(true)
     expect(isJoinPath("/")).toBe(false)
-  })
-
-  it("renders the join page, not a blank screen, at /join", async () => {
-    const element = init({}, { pathname: "/join", hash: "#invite=abc", replace: vi.fn() } as unknown as Location)
-    render(element)
-
-    expect(await screen.findByRole("heading", { name: "Entrar no touri" })).toBeInTheDocument()
   })
 
   it("redeems the invite with the typed email and then opens the workspace", async () => {

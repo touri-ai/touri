@@ -574,7 +574,9 @@ const AppContent = ({ kernel }: AppProps) => {
   }
 
   const selectedBot =
-    data.bots.find((bot) => bot.id === (requestedComputer ?? data.selectedBotId)) ?? data.bots[0] ?? null
+    data.bots.find((bot) => bot.id === (requestedComputer ?? data.selectedBotId)) ??
+    (data.isMember ? null : data.bots[0]) ??
+    null
   const selectedThread =
     data.threadCreation?.thread ?? data.threads.find((thread) => thread.id === data.selectedThreadId) ?? null
   const selectedGroup = data.groups.find((g) => g.id === selectedThread?.groupId) ?? null

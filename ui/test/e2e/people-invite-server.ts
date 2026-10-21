@@ -1,5 +1,5 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process"
-import { mkdtemp, rm } from "node:fs/promises"
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { createServer, type Server } from "node:http"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
@@ -54,7 +54,17 @@ const getPairingCode = (dataDirectory: string): string => {
 }
 
 export const createPeopleInviteServer = async () => {
-  const dataDirectory = await mkdtemp(join(tmpdir(), "touri-invite-e2e-"))
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), "touri-invite-e2e-"))
+  const dataDirectory = join(fixtureDirectory, "data")
+  await mkdir(dataDirectory)
+  const provider = join(fixtureDirectory, "fixture-provider")
+  const scenario = join(fixtureDirectory, "scenario.json")
+  await writeFile(
+    provider,
+    `#!/usr/bin/env bun\nawait import(${JSON.stringify(join(root, "sidecar/test/fakes/fake-codex.ts"))})\n`,
+  )
+  await chmod(provider, 0o700)
+  await writeFile(scenario, JSON.stringify({ deltas: ["Olá, Ana! Posso ajudar o time."] }))
   const reservation = createServer()
   await listen(reservation)
   const serverPort = getPort(reservation)
@@ -81,6 +91,8 @@ export const createPeopleInviteServer = async () => {
       env: {
         ...process.env,
         TOURI_APP_DATA: dataDirectory,
+        TOURI_CODEX_BIN: provider,
+        TOURI_FAKE_SCENARIO: scenario,
         TOURI_BROWSER_HEADLESS: "1",
         TOURI_DOCTOR_SKIP_PROVIDER_PROBES: "1",
       },
@@ -129,9 +141,9 @@ export const createPeopleInviteServer = async () => {
       await page.addInitScript(() => localStorage.setItem("touri.appearance.v1", "light"))
     }
 
-    return { serverUrl, api, install, dispose: async () => stop(child, dataDirectory) }
+    return { serverUrl, api, install, dispose: async () => stop(child, fixtureDirectory) }
   } catch (error) {
-    await stop(child, dataDirectory)
+    await stop(child, fixtureDirectory)
     throw error
   }
 }

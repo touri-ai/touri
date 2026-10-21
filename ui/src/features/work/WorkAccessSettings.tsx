@@ -102,7 +102,7 @@ export const WorkAccessSettings = ({ api }: { api: UiApi | undefined }) => {
           api.request("GET /public-address", {}),
         ])
         if (!active) return
-        setChannels((await api.request("GET /groups", {})).groups)
+        setChannels((await api.request("GET /groups", {}).catch(() => ({ groups: [] }))).groups ?? [])
         setPeople(peopleResult.people)
         setInvites(inviteResult.invites)
         setEmailDraft(getEmailDraft(emailResult.configuration))

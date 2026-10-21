@@ -196,7 +196,7 @@ const execute = (command: WriteCommand): unknown => {
     const claim = db.transaction(() => {
       const saved = db
         .query("SELECT token_hash,email FROM email_signins WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?")
-        .get(command.tokenHash, command.tokenHash, command.at) as { token_hash: string; email: string } | null
+        .get(command.tokenHash, command.at) as { token_hash: string; email: string } | null
       const person = db
         .query("SELECT 1 FROM people WHERE id = ? AND email = ? AND removed_at IS NULL LIMIT 1")
         .get(command.personId, command.email)
@@ -206,7 +206,7 @@ const execute = (command: WriteCommand): unknown => {
       if (!saved || saved.email !== command.email || !person || !matches) return false
       const updated = db
         .query("UPDATE email_signins SET used_at = ? WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?")
-        .run(command.at, invite.token_hash, command.at)
+        .run(command.at, command.tokenHash, command.at)
       if (updated.changes !== 1) return false
       db.query("INSERT INTO devices(id,name,token_hash,created_at,last_seen_at,person_id) VALUES(?,?,?,?,?,?)").run(
         command.device.id,

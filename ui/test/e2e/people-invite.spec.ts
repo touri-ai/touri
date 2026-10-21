@@ -22,10 +22,11 @@ test("an owner invites a person who joins in a second browser context", async ({
   })
   memberContext = currentMemberContext
 
-  const settings = (await currentServer.api("/settings")) as { settings: { defaultProvider: string } }
   const createdBot = (await currentServer.api("/bots", "POST", {
     name: "Léo",
-    provider: settings.settings.defaultProvider,
+    provider: "codex",
+    access: "full",
+    approvals: "never",
   })) as { bot: { id: string } }
   const createdGroup = (await currentServer.api("/groups", "POST", {
     name: "Vendas",
@@ -99,6 +100,7 @@ test("an owner invites a person who joins in a second browser context", async ({
   await composer.press("Enter")
   expect((await sent).ok()).toBe(true)
   await expect(memberPage.getByText("@Léo olá, pode ajudar o time?", { exact: true })).toBeVisible()
+  await expect(memberPage.getByText("Olá, Ana! Posso ajudar o time.", { exact: true })).toBeVisible({ timeout: 30_000 })
   const memberPath = testInfo.outputPath("people-invite-member.png")
   await memberPage.screenshot({ path: memberPath })
   await testInfo.attach("people-invite-member", { path: memberPath, contentType: "image/png" })

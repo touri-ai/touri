@@ -55,7 +55,7 @@ type SidebarProps = {
   host?: HostKind
   onNavigate?: () => void
   groups?: BotGroup[]
-  onInvitePerson?: () => void
+  onInvitePerson?: (() => void) | undefined
   onNewGroup?: () => void
   onEditGroup?: (group: BotGroup) => void
   onDeleteGroup?: (groupId: string) => Promise<void>
