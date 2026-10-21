@@ -83,7 +83,7 @@ it("preserves interleaved prose, final text and attachment order without duplica
 })
 
 it("shows live browser narration as quiet transcript text", async () => {
-  const view = render(
+  render(
     <VirtualMessageList
       {...props}
       messages={[
@@ -104,7 +104,7 @@ it("shows live browser narration as quiet transcript text", async () => {
 
   const narration = await screen.findByText("Estou na página inicial. Agora vou escolher a data.")
   expect(narration.closest(".browser-narration")).not.toBeNull()
-  expect(view.container.querySelector(".browser-activity-card")).toBeVisible()
+  expect(await screen.findByRole("article", { name: "Navegador do Lia" })).toBeVisible()
 })
 
 it.each(["pending", "approved", "denied", "expired"] as const)(
