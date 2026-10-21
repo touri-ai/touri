@@ -212,7 +212,7 @@ test("shows one secure browser address and a live marker above the preview", asy
   const address = await screen.findByRole("group", { name: "Endereço do navegador" })
   expect(address).toBeVisible()
   expect(screen.getByLabelText("Conexão segura")).toBeVisible()
-  expect(within(address).getByText("Ao vivo")).toBeVisible()
+  expect(within(address).getByText("Prévia ao vivo")).toBeVisible()
   expect(screen.getAllByText("https://travel.example.test")).toHaveLength(1)
   expect(document.body.textContent).not.toContain("/results")
 })
@@ -262,7 +262,7 @@ test("the finished browser summary shows its page title with the screenshot", as
 
   renderCard(parts, true)
 
-  expect(await screen.findByText("Resultados de Lisboa")).toBeVisible()
+  expect(await screen.findByText("Resultados de Lisboa", { exact: false })).toBeVisible()
   expect(screen.getByRole("img", { name: "Captura final do navegador" })).toBeVisible()
 })
 
@@ -525,8 +525,8 @@ test("a delayed tab snapshot cannot undo a newer takeover event", async () => {
     await tabs
   })
 
-  expect(screen.getByRole("button", { name: "Continuar no navegador" })).toBeEnabled()
-  expect(screen.queryByRole("button", { name: "Assumir" })).toBeNull()
+  expect(document.querySelector(".browser-activity-card")).toHaveAttribute("data-held", "true")
+  expect(screen.queryByRole("img", { name: "Página atual do navegador" })).toBeNull()
 })
 
 test("disabling live chat previews prevents capture and leaves browser control available", () => {

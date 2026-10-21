@@ -127,6 +127,7 @@ test("VM pipeline is always view-only, samples at 1 fps and releases its session
 })
 
 test("a session that resolves after stopping is immediately released", async () => {
+  installPreviewWorker()
   let resolve: (session: unknown) => void = () => {}
   const request = vi.fn((route: string) =>
     route === "POST /bots/:id/desktop"
@@ -271,6 +272,7 @@ test("a local preview fails closed when the worker is unavailable for an oversiz
 
 test("a VM session request that never answers reports the cause after 20 s", async () => {
   vi.useFakeTimers()
+  installPreviewWorker()
   const api = {
     request: vi.fn((route: string) =>
       route === "POST /bots/:id/desktop" ? new Promise(() => {}) : Promise.resolve({ tabs: [] }),
@@ -288,6 +290,7 @@ test("a VM session request that never answers reports the cause after 20 s", asy
 
 test("a local preview that keeps failing exposes the real reason while it keeps polling", async () => {
   vi.useFakeTimers()
+  installPreviewWorker()
   const api = {
     request: vi.fn((route: string) =>
       route === "GET /bots/:id/browser-preview"

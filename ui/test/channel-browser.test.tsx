@@ -217,12 +217,18 @@ describe("browser card in a channel", () => {
     expect(screen.getByText(/Léo pausa e chama Ana, quem pediu/)).toBeVisible()
   })
 
-  test("disables Assumir for people who are not in control", () => {
+  test("keeps the live browser address to its origin for channel viewers", () => {
+    renderCard(getState(), "user-ana")
+
+    const address = screen.getByRole("group", { name: "Endereço do navegador" })
+    expect(address).toHaveTextContent("https://estadias.example.test")
+    expect(address).not.toHaveTextContent("/busca")
+  })
+
+  test("does not offer browser control to other channel members", () => {
     renderCard(getState(), "user-hugo")
 
-    const take = screen.getByRole("button", { name: /Assumir/ })
-
-    expect(take).toBeDisabled()
+    expect(screen.queryByRole("button", { name: /Assumir/ })).toBeNull()
     expect(screen.getByText("Ana está no controle")).toBeVisible()
   })
 
