@@ -376,7 +376,9 @@ realSuite("WP6 real Chrome browser acceptance", () => {
     const results = await callBrowserTool("browser_snapshot", { tabId: page.tabId, image: "never" })
     expect(results.success).toBe(true)
     if (!results.success) return
-    const summary = snapshotOf(results)
+    expect(JSON.stringify(results)).not.toContain("viagem fictícia")
+    const continued = await open("/travel-results")
+    const summary = continued
     expect(summary.text).toContain("Lisboa, Portugal")
     expect(summary.text).toContain("October 24")
     expect(summary.text).toContain("viagem fictícia")

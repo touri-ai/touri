@@ -1644,6 +1644,7 @@ export const createBrowserEngine = ({
     if (event.method === "Page.frameNavigated") {
       if (event.sessionId !== tab.sessionId) return
       syncPageNavigation(tab, event.params)
+      if (tab.info.heldByUser) void protectTakeoverDocument(tab)
       return
     }
     if (event.method === "Page.loadEventFired") {
@@ -2504,8 +2505,8 @@ export const createBrowserEngine = ({
   }
 
   const protectedDocumentVersions = new Map<Id, number>()
-  const protectTakeoverDocument = async (tab: TabState): Promise<void> => {
-    if (protectedDocumentVersions.get(tab.info.tabId) === tab.navigationVersion) return
+  const protectTakeoverDocument = async (tab: TabState, force = false): Promise<void> => {
+    if (!force && protectedDocumentVersions.get(tab.info.tabId) === tab.navigationVersion) return
     const version = tab.navigationVersion
     const document =
       client && tab.sessionId
@@ -3080,6 +3081,7 @@ export const createBrowserEngine = ({
         if (client && tab.targetId)
           await client.call("Target.closeTarget", { targetId: tab.targetId }).catch(() => undefined)
         tab.info.state = "closed"
+        protectedDocumentVersions.delete(tabId)
         tab.targetId = null
         tab.sessionId = null
         tab.frameSessions.clear()
@@ -4602,6 +4604,7 @@ export const createBrowserEngine = ({
     const tab = store.find(tabId)
     if (!tab) return false
     if (!tab.info.heldByUser) return true
+    await protectTakeoverDocument(tab, true)
     const takeover = clearTakeover({
       tab,
       resolution: "replied",

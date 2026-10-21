@@ -35,7 +35,7 @@ const getFixture = async () => {
     loading: false,
     readyState: "complete",
     mutationVersion: 0,
-    text: documentId === 1 ? "private-input-fixture" : "Public results",
+    text: [1, 3].includes(documentId) ? "private-input-fixture" : "Public results",
     frames: [],
     challengeElements: [],
     active: { role: "", name: "", backendNodeId: null },
@@ -146,4 +146,18 @@ test("handoff cannot reveal the original document through changed metadata or br
   expect(JSON.stringify(restored)).not.toContain("private-input-fixture")
   expect(await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })).toBeNull()
   expect(fixture.captures()).toBe(2)
+})
+
+test("a document reached through native human navigation stays private after handback", async () => {
+  const fixture = await getFixture()
+  const signal = new AbortController().signal
+  await fixture.engine.list({ botId: "leo" })
+  await fixture.engine.holdTakeover({ tabId: "tab", reason: "Synthetic native control" })
+
+  fixture.navigate(3)
+  await fixture.engine.releaseTakeover("tab")
+  const page = await fixture.engine.snapshot({ tabId: "tab", botId: "leo", image: "always", signal })
+
+  expect(JSON.stringify(page)).not.toContain("private-input-fixture")
+  expect(await fixture.engine.preview({ tabId: "tab", botId: "leo", signal })).toBeNull()
 })
