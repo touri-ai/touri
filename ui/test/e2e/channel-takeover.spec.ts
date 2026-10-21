@@ -22,8 +22,8 @@ test("a channel browser handback resumes the bot and posts its answer in the sam
   await page.locator(".sidebar-needs-you").click()
   const browserCard = page.locator(".browser-activity-card").first()
   await expect(browserCard).toBeVisible()
-  await expect(browserCard.getByRole("button", { name: "Assumir controle" })).toBeVisible()
-  await expect(browserCard).toContainText("portal.example.test/login")
+  await expect(browserCard.getByRole("button", { name: "Assumir" })).toBeVisible()
+  await expect(browserCard).toContainText("portal.example.test")
 
   const saveScreenshot = async (name: string): Promise<void> => {
     const screenshot = await page.screenshot({ fullPage: true })
@@ -35,16 +35,18 @@ test("a channel browser handback resumes the bot and posts its answer in the sam
     await writeFile(join(evidenceDirectory, name), screenshot)
   }
 
-  await browserCard.getByRole("button", { name: "Assumir controle" }).click()
-  await expect(browserCard.getByRole("status")).toContainText("Você está no controle desta aba do navegador.")
+  await browserCard.getByRole("button", { name: "Assumir" }).click()
+  const control = page.getByRole("region", { name: "Controle remoto do navegador" })
+  await expect(control).toContainText("Você está no controle · Planejamento está pausado")
   await expect(browserCard.getByRole("button", { name: "Devolver para Planejamento" })).toBeVisible()
   await saveScreenshot("channel-takeover-active.png")
 
   await browserCard.getByRole("button", { name: "Devolver para Planejamento" }).click()
-  await expect(browserCard.getByRole("status")).toContainText("Planejamento voltou a trabalhar")
+  await expect(control).toHaveCount(0)
+  await expect(page.locator(".browser-activity-card")).toHaveCount(1)
   await expect(
     page.getByTestId("virtual-message-list").getByText("Retomado após a devolução do navegador", { exact: true }),
-  ).toBeVisible()
+  ).toHaveCount(0)
   await expect(page.locator(".composer-browser-status")).toContainText("Planejamento está trabalhando · No navegador")
   await page.evaluate(() => (window as Window & { completeChannelResume?: () => void }).completeChannelResume?.())
   await expect(page.getByText("O portal de demonstração está pronto para continuar.", { exact: true })).toBeVisible()

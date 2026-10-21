@@ -221,10 +221,12 @@ for (const viewport of [
     await page.setViewportSize({ width: viewport.width, height: viewport.height })
     await page.goto("/test/e2e/browser-activity-harness.html?remote=true&holdAfterOpen=true")
     await page.getByRole("button", { name: "Iniciar busca de viagem" }).click()
-    await expect(page.getByRole("button", { name: "Assumir", exact: true })).toBeVisible()
+    await expect(
+      page.locator(".browser-activity-card").getByRole("button", { name: "Assumir", exact: true }),
+    ).toBeVisible()
     await page.screenshot({ path: testInfo.outputPath(`browser-takeover-before-${viewport.name}.png`), fullPage: true })
 
-    await page.getByRole("button", { name: "Assumir", exact: true }).click()
+    await page.locator(".browser-activity-card").getByRole("button", { name: "Assumir", exact: true }).click()
     await expect(page.getByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
     await expect(page.getByText(/Você está no controle · .* está pausado/)).toBeVisible()
     const takeoverView = page.getByRole("region", { name: "Controle remoto do navegador" })
@@ -267,7 +269,9 @@ for (const viewport of [
     await expect(page.locator("body")).not.toContainText("valor privado de teste")
 
     await takeoverView.getByRole("button", { name: "Devolver para Mark" }).click()
-    await expect(page.getByRole("button", { name: "Assumir", exact: true })).toBeVisible()
+    await expect(
+      page.locator(".browser-activity-card").getByRole("button", { name: "Assumir", exact: true }),
+    ).toBeVisible()
   })
 }
 test("Composer stop cancels the active browser run and prevents later browser actions", async ({ page, baseURL }) => {
@@ -357,7 +361,9 @@ for (const fallback of ["missing_key", "no_credit"] as const) {
       const notice = isEnglish ? englishNotice : portugueseNotice
       await expect(page.getByText(notice)).toBeVisible()
       await expect(page.locator("body")).not.toContainText("TOURI_BROWSER_DECISION_HINT")
-      const takeOver = page.getByRole("button", { name: isEnglish ? "Take over" : "Assumir", exact: true })
+      const takeOver = page
+        .locator(".browser-activity-card")
+        .getByRole("button", { name: isEnglish ? "Take over" : "Assumir", exact: true })
       await takeOver.focus()
       await page.keyboard.press("Enter")
       const handBack = page.getByRole("button", { name: /Hand back to|Devolver para/ })

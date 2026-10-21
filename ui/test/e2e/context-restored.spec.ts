@@ -4,10 +4,10 @@ import { expect, test } from "@playwright/test"
 
 test.use({ viewport: { width: 1280, height: 900 }, reducedMotion: "reduce" })
 
-test("history restoration is visible beside the resumed conversation", async ({ page }, info) => {
+test("history restoration keeps plumbing out of the resumed conversation", async ({ page }, info) => {
   await page.goto("/test/e2e/r8-chat-harness.html?view=recovery&theme=light")
   const transcript = page.getByTestId("virtual-message-list")
-  await expect(transcript.getByText("O contexto da conversa foi recuperado do histórico salvo.")).toBeVisible()
+  await expect(transcript.getByText("O contexto da conversa foi recuperado do histórico salvo.")).toHaveCount(0)
   await expect(transcript.getByText("Prepare o relatório mensal e confira os totais.")).toBeVisible()
   await expect(transcript.getByText("Retomei a conferência.", { exact: false })).toBeVisible()
   await expect(transcript.getByRole("button", { name: "Detalhes técnicos" })).toHaveCount(0)

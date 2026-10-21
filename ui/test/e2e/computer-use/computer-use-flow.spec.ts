@@ -126,7 +126,7 @@ for (const variant of variants) {
 
       await expect(ui.getByText(/O site pediu login/u)).toBeVisible({ timeout: 60_000 })
       await shoot(ui, variant.name, "login-wall")
-      await ui.getByRole("button", { name: "Assumir" }).click()
+      await ui.locator(".composer-browser-status").getByRole("button", { name: "Assumir" }).click()
       await expect(ui.getByRole("button", { name: /Devolver para/ })).toBeVisible()
       await bot.page.getByLabel("E-mail").fill("voce@exemplo.com")
       await bot.page.getByLabel("Senha").fill(FIXTURE_LOGIN_VALUE)
@@ -190,7 +190,7 @@ for (const variant of variants) {
         })
 
         await expect(ui.getByText(/O site pediu login/u)).toBeVisible({ timeout: 60_000 })
-        await ui.getByRole("button", { name: "Assumir" }).click()
+        await ui.locator(".composer-browser-status").getByRole("button", { name: "Assumir" }).click()
         await ui.getByRole("button", { name: /Devolver para/ }).click()
         await bot.run
 

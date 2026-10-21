@@ -49,6 +49,7 @@ test.describe("mermaid production and desktop CSP", () => {
     }
     visit("index.html")
     const optionalModules = [
+      "src/components/BrowserActivityCard.tsx",
       "src/components/ApiModelsSettings.tsx",
       "src/components/NotificationDeliverySettings.tsx",
       "src/features/cloud/CloudPreferences.tsx",

@@ -11,7 +11,7 @@ test("r2: closing or stale websocket cannot interrupt broadcasts or sidecar requ
   let deadCalls = 0
   const healthy: Array<string> = []
   bus.add({
-    readyState: 1,
+    readyState: 1 as const,
     sendText: () => {
       deadCalls++
       throw new Error("socket closed during reload")
@@ -24,7 +24,7 @@ test("r2: closing or stale websocket cannot interrupt broadcasts or sidecar requ
     },
   })
   bus.add({
-    readyState: 1,
+    readyState: 1 as const,
     sendText: (payload: string) => {
       healthy.push(payload)
       return payload.length
@@ -47,7 +47,7 @@ afterEach(() => {
 })
 const canView = (event: UiEvent): boolean => event.type !== "import.progress" || event.importId === "public"
 const getSocket = (frames: string[]) => ({
-  readyState: 1,
+  readyState: 1 as const,
   sendText: (payload: string) => {
     frames.push(payload)
     return payload.length

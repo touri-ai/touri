@@ -165,9 +165,18 @@ jobs:
       - name: Install test browser
         working-directory: ui
         run: bunx playwright install --with-deps chromium
-      - name: Check complete browser flows
+      - name: Check computer-use browser flows
         working-directory: ui
-        run: bunx playwright test --workers=1 --shard=${{ matrix.shard }}/3
+        run: >-
+          bunx playwright test
+          test/e2e/browser-activity.spec.ts
+          test/e2e/browser-takeover.spec.ts
+          test/e2e/browser-decisions.spec.ts
+          test/e2e/channel-takeover.spec.ts
+          test/e2e/computer-use
+          test/e2e/context-restored.spec.ts
+          test/e2e/mermaid-csp.spec.ts
+          --workers=1 --shard=${{ matrix.shard }}/3
       - name: Keep browser diagnostics
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

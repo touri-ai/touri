@@ -1,16 +1,19 @@
 import type { Bot, Message, Run } from "@touri/contracts"
-import { type ReactNode, useContext, useEffect, useId, useState } from "react"
+import { lazy, type ReactNode, Suspense, useContext, useEffect, useId, useState } from "react"
 import type { UiApi } from "../api/client"
 import { InlinePreviewContext } from "../features/desktop/InlineLivePreview"
 import { type Locale, t } from "../i18n"
 import { ActivityMark } from "./ActivityMark"
-import { BrowserActivityCard } from "./BrowserActivityCard"
 import { getBrowserActivityTools } from "./browserActivityPresentation"
 import { MarkdownContent } from "./MarkdownContent"
 import type { MascotState } from "./mascotState"
 import { ToolCallCard } from "./ToolCallCard"
 import { activityGroupLabels, activityGroups, activitySummary, activityTools, approvalTools } from "./turnActivityModel"
 import "./turn-activity.css"
+
+const BrowserActivityCard = lazy(() =>
+  import("./BrowserActivityCard").then((module) => ({ default: module.BrowserActivityCard })),
+)
 
 /** The single browser card of a turn, with the bot's own preview context. */
 export const BrowserTurnCard = ({
@@ -33,18 +36,20 @@ export const BrowserTurnCard = ({
     machine: bot && inlinePreview.bot?.id !== bot.id ? undefined : inlinePreview.machine,
   }
   const card = (
-    <BrowserActivityCard
-      parts={message.parts}
-      finished={message.status !== "streaming"}
-      createdAt={message.createdAt}
-      threadId={message.threadId}
-      runId={message.runId}
-      waitingForPerson={run?.browserWaitingForPerson}
-      botName={message.sender?.name ?? bot?.name ?? inlinePreview?.bot?.name ?? "touri"}
-      locale={locale}
-    >
-      {children}
-    </BrowserActivityCard>
+    <Suspense fallback={<div className="browser-card-loading" aria-busy="true" />}>
+      <BrowserActivityCard
+        parts={message.parts}
+        finished={message.status !== "streaming"}
+        createdAt={message.createdAt}
+        threadId={message.threadId}
+        runId={message.runId}
+        waitingForPerson={run?.browserWaitingForPerson}
+        botName={message.sender?.name ?? bot?.name ?? inlinePreview?.bot?.name ?? "touri"}
+        locale={locale}
+      >
+        {children}
+      </BrowserActivityCard>
+    </Suspense>
   )
 
   return value ? <InlinePreviewContext.Provider value={value}>{card}</InlinePreviewContext.Provider> : card

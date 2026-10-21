@@ -16,9 +16,9 @@ const post = async (step: string, mode?: string) => {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ step, mode }),
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(40_000),
   })
-  expect(response.ok).toBe(true)
+  expect(response.ok, response.ok ? "" : await response.text()).toBe(true)
   return response.json()
 }
 

@@ -106,7 +106,7 @@ const updateTakeover = (heldByUser: boolean, takeoverRequested: boolean): void =
 }
 
 const resumeInChannel = (): void => {
-  if (!takeoverNotice || channelRuns.length < 1) return
+  if (!takeoverNotice || takeoverNotice.resolvedAt !== null || channelRuns.length < 1) return
   const previous = channelRuns[0]
   const previousReply = channelMessages.find((entry) => entry.id === previous?.replyMessageId)
   if (!previous || !previousReply) return
@@ -115,6 +115,7 @@ const resumeInChannel = (): void => {
   takeoverNotice.resolution = "replied"
   base.emit({ type: "notification.resolved", notification: takeoverNotice })
   updateTakeover(false, false)
+  previous.browserWaitingForPerson = false
   previous.status = "succeeded"
   previous.finishedAt = getTimestamp()
   previousReply.status = "complete"
@@ -134,6 +135,7 @@ const resumeInChannel = (): void => {
 
   const run: Run = {
     id: "run-channel-resume",
+    browserRequestId: previous.browserRequestId ?? previous.id,
     threadId: channel.id,
     botId: bot.id,
     provider: bot.provider,
@@ -219,6 +221,8 @@ const request: ApiRequest = async <K extends keyof ApiRoutes>(
     })
     const run: Run = {
       id: "run-channel-login",
+      browserRequestId: "run-channel-login",
+      browserWaitingForPerson: true,
       threadId: channel.id,
       botId: bot.id,
       provider: bot.provider,
@@ -273,6 +277,14 @@ const request: ApiRequest = async <K extends keyof ApiRoutes>(
       base.emit({ type: "message.updated", message: pendingReply })
     }
     return { message: userMessage, run } as ApiRoutes[K]["res"]
+  }
+  if (key === "POST /browser/tabs/:id/takeover/session") {
+    updateTakeover(true, true)
+    return { sessionId: "channel-session", controlEpoch: "channel-control", viewEpoch: 0 } as ApiRoutes[K]["res"]
+  }
+  if (key === "DELETE /browser/tabs/:id/takeover/session") {
+    resumeInChannel()
+    return {} as ApiRoutes[K]["res"]
   }
   if (key === "POST /browser/tabs/:id/takeover") {
     const held = (input as ApiRoutes["POST /browser/tabs/:id/takeover"]["req"]).hold
