@@ -215,10 +215,167 @@
   border-color: var(--border);
 }
 .r8-sidebar .thread-row {
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 36px;
   gap: var(--space-8);
   padding: var(--space-4) var(--space-8);
   border-radius: var(--menu-corner);
+}
+.thread-row-shell {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  gap: var(--space-2);
+}
+.thread-actions-menu {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+.r8-sidebar .thread-row-menu {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  min-width: 40px;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--menu-corner);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 18px;
+  line-height: 1;
+  opacity: 0;
+}
+.thread-row-shell:hover .thread-row-menu,
+.thread-row-shell:focus-within .thread-row-menu,
+.thread-row-menu[aria-expanded="true"] {
+  opacity: 1;
+}
+.r8-sidebar .thread-row-menu:hover,
+.r8-sidebar .thread-row-menu:focus-visible {
+  background: var(--surface-control);
+  color: var(--text);
+}
+@media (max-width: 800px), (pointer: coarse) {
+  .r8-sidebar .thread-row-menu {
+    opacity: 1;
+  }
+}
+.thread-selection-control {
+  display: grid;
+  flex: 0 0 40px;
+  min-width: 40px;
+  min-height: 36px;
+  place-items: center;
+  cursor: pointer;
+}
+.thread-selection-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--brand);
+}
+.thread-list-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  padding-block: var(--space-4);
+}
+.r8-sidebar .thread-list-tool,
+.r8-sidebar .archived-threads-toggle {
+  min-height: var(--sidebar-target-size, 40px);
+  padding: 0 var(--space-8);
+  border: 1px solid var(--border);
+  border-radius: var(--menu-corner);
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-caption);
+}
+.r8-sidebar .thread-list-tool:hover:not(:disabled),
+.r8-sidebar .archived-threads-toggle:hover {
+  background: var(--surface-control);
+  color: var(--text);
+}
+.r8-sidebar .thread-list-tool:disabled {
+  opacity: 0.5;
+}
+.r8-sidebar .thread-list-tool-danger {
+  color: var(--danger);
+}
+.thread-selection-count {
+  padding-inline: var(--space-4);
+  color: var(--text-2);
+  font-size: var(--fs-caption);
+  font-variant-numeric: tabular-nums;
+}
+.r8-sidebar .archived-threads-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--space-8);
+  text-align: start;
+}
+.archived-threads-toggle span {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.archived-thread-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-block: var(--space-4);
+}
+.thread-action-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  margin: var(--space-4) 0;
+  padding: var(--space-8);
+  border: 1px solid var(--border-notice);
+  border-radius: var(--radius-sm);
+  background: var(--surface-notice);
+  color: var(--text);
+  font-size: var(--fs-caption);
+}
+.thread-action-error button {
+  min-width: 40px;
+  min-height: 40px;
+  color: var(--text-2);
+}
+.thread-delete-toast {
+  position: fixed;
+  z-index: 1200;
+  right: var(--space-16);
+  bottom: var(--space-16);
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  max-width: min(520px, calc(100vw - var(--space-32)));
+  padding: var(--space-8) var(--space-12);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--elevation-menu);
+  color: var(--text);
+}
+.delete-old-automatic-days {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  margin-block: var(--space-12);
+}
+.delete-old-automatic-days input {
+  width: 96px;
+}
+.delete-thread-dialog-body {
+  padding: var(--space-16) var(--space-24);
+}
+.delete-thread-dialog-copy p {
+  overflow-wrap: anywhere;
 }
 .r8-sidebar .thread-row.selected {
   background: var(--surface-selected);
@@ -485,6 +642,10 @@
     .bot-row-main,
     .new-thread-row,
     .thread-row,
+    .thread-row-menu,
+    .thread-selection-control,
+    .thread-list-tool,
+    .archived-threads-toggle,
     .sidebar-connect,
     .sidebar-recovery,
     .sidebar-work-badge,
@@ -502,6 +663,21 @@
 }
 .r8-sidebar .bot-row {
   min-height: calc(var(--sidebar-target-size) + var(--space-14, 14px));
+}
+.r8-sidebar .thread-row-menu,
+.r8-sidebar .thread-selection-control,
+.r8-sidebar .thread-list-tool,
+.r8-sidebar .archived-threads-toggle {
+  min-height: var(--sidebar-target-size);
+}
+.delete-thread-dialog .modal-actions > button,
+.delete-thread-dialog .modal-close,
+.thread-delete-toast button,
+.delete-old-automatic-days input {
+  min-height: var(--touch-target-size);
+}
+.delete-old-automatic-days input {
+  min-width: var(--touch-target-size);
 }
 
 /* Preserve readable status text beside the larger action targets. */

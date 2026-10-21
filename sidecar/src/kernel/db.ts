@@ -39,13 +39,14 @@ import workIdentitySql from "./migrations/0033.sql" with { type: "text" }
 import automaticConversationSql from "./migrations/0034.sql" with { type: "text" }
 import botDeletionSql from "./migrations/0035.sql" with { type: "text" }
 import workspaceAttentionBackfillSql from "./migrations/0036.sql" with { type: "text" }
-import browserTakeoverContinuationsSql from "./migrations/0037.sql" with { type: "text" }
+import threadDeletionSql from "./migrations/0037.sql" with { type: "text" }
+import browserTakeoverContinuationsSql from "./migrations/0038.sql" with { type: "text" }
 import type { PerformanceStageRunner } from "./performance"
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 37
+export const SCHEMA_VERSION = 38
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -280,9 +281,11 @@ export const openDatabase = ({
   })()
   database.transaction(() => database.exec(workspaceAttentionBackfillSql))()
   database.transaction(() => {
+    if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'thread_deletion_version'").get())
+      database.exec(threadDeletionSql)
     if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'browser_takeover_continuations_version'").get())
       database.exec(browserTakeoverContinuationsSql)
-    database.exec("UPDATE schema_meta SET value = '37' WHERE key = 'schema_version'")
+    database.exec("UPDATE schema_meta SET value = '38' WHERE key = 'schema_version'")
   })()
   return database
 }

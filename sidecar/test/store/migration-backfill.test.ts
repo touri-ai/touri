@@ -48,7 +48,8 @@ import teamBuilderSql from "../../src/kernel/migrations/0032.sql" with { type: "
 import workIdentitySql from "../../src/kernel/migrations/0033.sql" with { type: "text" }
 import automaticConversationSql from "../../src/kernel/migrations/0034.sql" with { type: "text" }
 import botDeletionSql from "../../src/kernel/migrations/0035.sql" with { type: "text" }
-import browserTakeoverContinuationsSql from "../../src/kernel/migrations/0037.sql" with { type: "text" }
+import threadDeletionSql from "../../src/kernel/migrations/0037.sql" with { type: "text" }
+import browserTakeoverContinuationsSql from "../../src/kernel/migrations/0038.sql" with { type: "text" }
 import { captureTranscript } from "../../src/kernel/transcript-events"
 import { TRANSCRIPT_RETENTION } from "../../src/kernel/transcript-storage"
 import { init as initStore } from "../../src/store"
@@ -300,6 +301,7 @@ test("interrupted batches resume idempotently and match the shipped synchronous 
     synchronous.exec(workIdentitySql)
     synchronous.exec(automaticConversationSql)
     synchronous.exec(botDeletionSql)
+    synchronous.exec(threadDeletionSql)
     synchronous.exec(browserTakeoverContinuationsSql)
     database = openDatabase({ filename })
     expect(database.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all()).toEqual(

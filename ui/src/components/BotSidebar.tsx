@@ -1,4 +1,5 @@
 import type {
+  ApiRoutes,
   Bot,
   BotGroup,
   HostKind,
@@ -10,13 +11,15 @@ import type {
   Run,
   Thread,
 } from "@touri/contracts"
-import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react"
+import { Fragment, type ReactNode, useEffect, useId, useMemo, useState } from "react"
 import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigation"
 import { reconcileApprovalMessages } from "../approvalState"
 import { BOT_ACTIVITY_LABELS, type BotActivity } from "../botActivity"
 import { latestPreview } from "../botPreview"
+import { ApiError } from "../errors"
 import { paletteShortcutLabel } from "../features/commandPalette/shortcut"
 import { getRoutineRunCountsToday, getRoutineRunDateLabel, getRoutineRunSidebarDateLabel, t } from "../i18n"
+import { isRoutineConversation } from "../routineConversation"
 import {
   isFailureNotice,
   isInformationalNotice,
@@ -30,17 +33,23 @@ import { useMascotSnapshot } from "./AvatarRuntime"
 import { BotActionsMenu } from "./BotActionsMenu"
 import { BotAvatar } from "./BotAvatar"
 import { DeleteBotDialog } from "./DeleteBotDialog"
+import { DeleteOldAutomaticThreadsDialog } from "./DeleteOldAutomaticThreadsDialog"
+import { DeleteThreadDialog, type ThreadDeleteTarget } from "./DeleteThreadDialog"
 import { GlobalAdvancedMenu } from "./GlobalAdvancedMenu"
 import { GroupSidebar } from "./Groups"
 import { useInsertedIds } from "./Motion"
 import { mascotIsBusy } from "./mascotState"
 import { NotificationAttentionBar } from "./NotificationAttentionBar"
 import { type NotificationActions, NotificationBell } from "./NotificationCenter"
+import { ThreadActionsMenu } from "./ThreadActionsMenu"
 import { ThreadGroupHistory } from "./ThreadGroupHistory"
 import { type HoldReason, useSidebarOrder } from "./useSidebarOrder"
+import { getThreadDeletionError, type ThreadDeletion } from "./useThreadDeletion"
 import "./bot-sidebar.css"
 
 type SidebarProps = {
+  deletedThreadIds?: ReadonlySet<string> | undefined
+  threadDeletion?: ThreadDeletion | undefined
   serverMode?: boolean
   serverUrl?: string | null
   host?: HostKind
@@ -77,6 +86,12 @@ type SidebarProps = {
   onNewBot: () => void
   onBotSettings: () => void
   onDeleteBot?: (botId: string, name: string, deleteVolumes: boolean) => Promise<void>
+  onArchiveThread?: (threadId: string, archived: boolean) => Promise<Thread>
+  onArchiveThreads?: (threadIds: Array<string>, archived: boolean) => Promise<void>
+  onDeleteThread?: (threadId: string, botId: string) => Promise<void>
+  onDeleteThreads?: (threadIds: Array<string>, botId: string) => Promise<void>
+  onGetThreadDeletePreview?: (threadId: string) => Promise<ApiRoutes["GET /threads/:id/delete-preview"]["res"]>
+  onLoadArchivedThreads?: (botId: string, before?: string) => Promise<Array<Thread>>
   onSettings: () => void
   onDoctor: () => void
   onRecovery?: () => void
@@ -296,6 +311,13 @@ export const Sidebar = (props: SidebarProps) => {
                   onReviewApproval={(target) => navigate(() => props.onReviewApproval(target))}
                   onNotification={(item) => navigate(() => props.notificationActions.open(item))}
                   onDelete={props.onDeleteBot}
+                  onArchiveThread={props.onArchiveThread}
+                  onArchiveThreads={props.onArchiveThreads}
+                  onDeleteThreads={props.onDeleteThreads}
+                  onGetThreadDeletePreview={props.onGetThreadDeletePreview}
+                  onLoadArchivedThreads={props.onLoadArchivedThreads}
+                  threadDeletion={props.threadDeletion}
+                  deletedThreadIds={props.deletedThreadIds}
                 />
               </Fragment>
             )
@@ -389,7 +411,16 @@ const BotEntry = ({
   onReviewApproval,
   onNotification,
   onDelete,
+  onArchiveThread,
+  onArchiveThreads,
+  onDeleteThreads,
+  onGetThreadDeletePreview,
+  onLoadArchivedThreads,
+  threadDeletion,
+  deletedThreadIds,
 }: {
+  deletedThreadIds?: ReadonlySet<string> | undefined
+  threadDeletion?: ThreadDeletion | undefined
   navigationKey: string
   bot: Bot
   activity: BotActivity | null
@@ -415,10 +446,43 @@ const BotEntry = ({
   onReviewApproval: (target: ApprovalTarget) => void
   onNotification: (item: NotificationRecord) => void
   onDelete?: ((botId: string, name: string, deleteVolumes: boolean) => Promise<void>) | undefined
+  onArchiveThread?: ((threadId: string, archived: boolean) => Promise<Thread>) | undefined
+  onArchiveThreads?: ((threadIds: Array<string>, archived: boolean) => Promise<void>) | undefined
+  onDeleteThreads?: ((threadIds: Array<string>, botId: string) => Promise<void>) | undefined
+  onGetThreadDeletePreview?:
+    | ((threadId: string) => Promise<ApiRoutes["GET /threads/:id/delete-preview"]["res"]>)
+    | undefined
+  onLoadArchivedThreads?: ((botId: string, before?: string) => Promise<Array<Thread>>) | undefined
 }) => {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectionPage, setSelectionPage] = useState(0)
+  const [selectedThreadIds, setSelectedThreadIds] = useState<Set<string>>(new Set())
+  const [archivedThreads, setArchivedThreads] = useState<Array<Thread>>([])
+  const [archivedLoaded, setArchivedLoaded] = useState(false)
+  const [archivePage, setArchivePage] = useState(0)
+  const [archiveCursor, setArchiveCursor] = useState<string | undefined>()
+  const archiveEntries = useMemo(
+    () =>
+      [...new Map([...archivedThreads, ...threads].map((thread) => [thread.id, thread])).values()].filter(
+        (thread) => thread.archivedAt !== null && !thread.groupId && !deletedThreadIds?.has(thread.id),
+      ),
+    [archivedThreads, threads, deletedThreadIds],
+  )
+  const visibleArchivePage = Math.min(archivePage, Math.max(0, Math.ceil(archiveEntries.length / 100) - 1))
+  const [archivedOpen, setArchivedOpen] = useState(false)
+  const [archivedLoading, setArchivedLoading] = useState(false)
+  const [deleteTargets, setDeleteTargets] = useState<Array<ThreadDeleteTarget> | null>(null)
+  const [oldAutomaticOpen, setOldAutomaticOpen] = useState(false)
+  const pendingDelete = threadDeletion?.pending ?? null
+  const [actionError, setActionError] = useState<string | null>(null)
   // biome-ignore lint/correctness/useExhaustiveDependencies: dismiss on any navigation, including another bot's thread
-  useEffect(() => setMenuOpen(false), [navigationKey])
+  useEffect(() => {
+    setMenuOpen(false)
+    setSelectionMode(false)
+    setSelectionPage(0)
+    setSelectedThreadIds(new Set())
+  }, [navigationKey])
   const [deleting, setDeleting] = useState(false)
   const snapshot = useMascotSnapshot(bot)
   const ids = threads.map((thread) => thread.id)
@@ -501,8 +565,12 @@ const BotEntry = ({
   const avatarState = snapshot.state === "error" && !failed ? "idle" : undefined
   const activityKind = activity?.kind ?? null
   const runningThreadIds = useMemo(
-    () => new Set(messages.filter((message) => message.status === "streaming").map((message) => message.threadId)),
-    [messages],
+    () =>
+      new Set([
+        ...messages.filter((message) => message.status === "streaming").map((message) => message.threadId),
+        ...runs.filter((run) => ["queued", "starting", "running"].includes(run.status)).map((run) => run.threadId),
+      ]),
+    [messages, runs],
   )
   const routineRunCountsToday = useMemo(
     () => getRoutineRunCountsToday(routineRuns, routinesById),
@@ -511,7 +579,14 @@ const BotEntry = ({
   const sidebarThreads = useMemo(
     () =>
       expanded
-        ? getSidebarThreads(threads, routineRuns, selectedThreadId, runningThreadIds, routineIds, routineRunCountsToday)
+        ? getSidebarThreads(
+            threads.filter((thread) => thread.archivedAt === null),
+            routineRuns,
+            selectedThreadId,
+            runningThreadIds,
+            routineIds,
+            routineRunCountsToday,
+          )
         : [],
     [expanded, threads, routineRuns, selectedThreadId, runningThreadIds, routineIds, routineRunCountsToday],
   )
@@ -527,6 +602,158 @@ const BotEntry = ({
   const selectedRoutineId = sidebarThreads.find(({ thread }) => thread.id === selectedThreadId)?.routineRun?.routineId
   const historyRoutineId = selectedRoutineId ?? (visibleRoutineIds.length === 1 ? visibleRoutineIds[0] : undefined)
   const deletedRoutine = sidebarThreads.find((entry) => entry.deletedRoutine)
+  const selectableThreads = threads.filter((thread) => !thread.groupId && thread.archivedAt === null)
+  const visibleSelectionPage = Math.min(selectionPage, Math.max(0, Math.ceil(selectableThreads.length / 100) - 1))
+  const automaticThreads = selectableThreads.filter((thread) =>
+    isRoutineConversation({ thread, runs, routineRuns, routines: [...routinesById.values()] }),
+  )
+  const hiddenThreadIds = new Set(pendingDelete?.targets.map((target) => target.id) ?? [])
+  const openDeletePrompt = async (thread: Thread): Promise<void> => {
+    if (!onGetThreadDeletePreview || pendingDelete) return
+    setActionError(null)
+    try {
+      const preview = await onGetThreadDeletePreview(thread.id)
+      setDeleteTargets([{ ...preview.thread, messageCount: preview.messageCount }])
+    } catch (error) {
+      setActionError(getThreadDeletionError(error))
+    }
+  }
+  const openSelectedDeletePrompt = async (): Promise<void> => {
+    if (!onGetThreadDeletePreview || pendingDelete) return
+    const targets = selectableThreads.filter((thread) => selectedThreadIds.has(thread.id))
+    setActionError(null)
+    try {
+      const batches = Array.from({ length: Math.ceil(targets.length / 8) }, (_, index) =>
+        targets.slice(index * 8, (index + 1) * 8),
+      )
+      const previews: Array<ThreadDeleteTarget> = []
+      for (const batch of batches) {
+        const results = await Promise.all(batch.map((thread) => onGetThreadDeletePreview(thread.id)))
+        // This local accumulator is limited to the 200 selected conversations.
+        previews.push(...results.map((preview) => ({ ...preview.thread, messageCount: preview.messageCount })))
+      }
+      setDeleteTargets(previews)
+    } catch (error) {
+      setActionError(getThreadDeletionError(error))
+    }
+  }
+  const queueDelete = (targets: Array<ThreadDeleteTarget>): void => {
+    const ids = new Set(targets.map((target) => target.id))
+    if (
+      !threadDeletion?.queue(bot.id, targets, () => {
+        setArchivedThreads((current) => current.filter((thread) => !ids.has(thread.id)))
+      })
+    )
+      return
+    setDeleteTargets(null)
+    setSelectedThreadIds(new Set())
+  }
+  const archiveOne = async (thread: Thread, archived: boolean): Promise<void> => {
+    if (!onArchiveThread) return
+    setActionError(null)
+    try {
+      const updated = await onArchiveThread(thread.id, archived)
+      setArchivedThreads((current) =>
+        archived
+          ? [updated, ...current.filter((candidate) => candidate.id !== updated.id)]
+          : current.filter((candidate) => candidate.id !== updated.id),
+      )
+    } catch (error) {
+      if (error instanceof ApiError && error.errorCode === "THREAD_ACTIVE") {
+        setActionError(t("Finish the active run before archiving this conversation."))
+        return
+      }
+      setActionError(t("Could not update this conversation. Try again."))
+    }
+  }
+  const openArchivedThread = async (thread: Thread): Promise<void> => {
+    if (!onArchiveThread) return
+    setActionError(null)
+    try {
+      const updated = await onArchiveThread(thread.id, false)
+      setArchivedThreads((current) => current.filter((candidate) => candidate.id !== updated.id))
+      onSelectThread(updated.id)
+    } catch (error) {
+      if (error instanceof ApiError && error.errorCode === "THREAD_ACTIVE") {
+        setActionError(t("Finish the active run before archiving this conversation."))
+        return
+      }
+      setActionError(t("Could not update this conversation. Try again."))
+    }
+  }
+  const archiveSelected = async (): Promise<void> => {
+    if (!onArchiveThreads) return
+    const threadIds = selectableThreads.filter((thread) => selectedThreadIds.has(thread.id)).map((thread) => thread.id)
+    if (!threadIds.length) return
+    setActionError(null)
+    try {
+      await onArchiveThreads(threadIds, true)
+      setSelectedThreadIds(new Set())
+      setSelectionMode(false)
+    } catch {
+      setActionError(t("Could not update these conversations. Try again."))
+    }
+  }
+  const toggleArchives = async (): Promise<void> => {
+    const open = !archivedOpen
+    setArchivedOpen(open)
+    if (!open || archivedLoaded || !onLoadArchivedThreads) return
+    setArchivedLoading(true)
+    setActionError(null)
+    try {
+      const page = await onLoadArchivedThreads(bot.id)
+      setArchivedThreads(page)
+      setArchivePage(0)
+      setArchiveCursor(page.length === 100 ? page.at(-1)?.id : undefined)
+      setArchivedLoaded(true)
+    } catch {
+      setActionError(t("Could not load archived conversations."))
+    } finally {
+      setArchivedLoading(false)
+    }
+  }
+  const loadMoreArchives = async (): Promise<void> => {
+    if (!onLoadArchivedThreads || !archiveCursor || archivedLoading) return
+    setArchivedLoading(true)
+    try {
+      const page = await onLoadArchivedThreads(bot.id, archiveCursor)
+      setArchivedThreads((current) => [...current, ...page])
+      if (page.length) setArchivePage(visibleArchivePage + 1)
+      setArchiveCursor(page.length === 100 ? page.at(-1)?.id : undefined)
+    } catch {
+      setActionError(t("Could not load archived conversations."))
+    } finally {
+      setArchivedLoading(false)
+    }
+  }
+  const toggleSelection = (threadId: string): void => {
+    if (selectedThreadIds.has(threadId)) {
+      setSelectedThreadIds(new Set([...selectedThreadIds].filter((id) => id !== threadId)))
+      return
+    }
+    if (selectedThreadIds.size >= 200) {
+      setActionError(t("Select up to {count} conversations.", { count: 200 }))
+      return
+    }
+    setSelectedThreadIds(new Set([...selectedThreadIds, threadId]))
+  }
+  const selectAll = (): void => {
+    setSelectedThreadIds(
+      new Set(
+        selectableThreads
+          .filter((thread) => thread.kind !== "main")
+          .slice(0, 200)
+          .map((thread) => thread.id),
+      ),
+    )
+  }
+  const deleteOldAutomatic = (_days: number, oldThreads: Array<Thread>): void => {
+    setOldAutomaticOpen(false)
+    setDeleteTargets(
+      oldThreads.map((thread) => ({ id: thread.id, title: getSidebarThreadTitle(thread), messageCount: null })),
+    )
+    setActionError(null)
+  }
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: hover and focus only pause reordering; they trigger no action
     <div
@@ -627,54 +854,160 @@ const BotEntry = ({
       {deleting && onDelete && <DeleteBotDialog bot={bot} onDelete={onDelete} onClose={() => setDeleting(false)} />}
       {expanded && (
         <section className="bot-thread-tree" aria-label={t("Conversations for {name}", { name: bot.name })}>
-          {sidebarThreads.map(({ thread, routineRun, taskGroupName, countToday, running, unread, deletedRoutine }) => {
-            const timestamp = routineRun?.scheduledFor ?? thread.createdAt
-            const routine = routineRun ? routinesById.get(routineRun.routineId) : undefined
-            const timeZone = routine?.timezone
-            const title = deletedRoutine
-              ? t("Deleted routine")
-              : routineRun
-                ? t("Routine row title", { name: routine?.name ?? getSidebarThreadTitle(thread) })
-                : taskGroupName
-                  ? t("Task row title", { name: taskGroupName })
-                  : getSidebarThreadTitle(thread)
-            const countLabel = routineRun || taskGroupName ? t("Today count suffix", { count: countToday }) : undefined
-            const dateLabel =
-              thread.kind === "routine"
-                ? getRoutineRunSidebarDateLabel(timestamp, "pt-BR", timeZone)
-                : relativeThreadDate(thread.updatedAt)
-            const dateTitle =
-              thread.kind === "routine" ? getRoutineRunDateLabel(timestamp, "pt-BR", timeZone) : undefined
-            const secondaryLabel = routineRun ? `${countLabel ?? ""} · ${dateLabel}` : (countLabel ?? dateLabel)
-
-            return (
-              <Fragment key={thread.id}>
-                <ThreadRow
-                  inserted={insertedThreads.has(thread.id)}
-                  thread={thread}
-                  title={title}
-                  countLabel={secondaryLabel}
-                  dateLabel={dateLabel}
-                  dateTitle={dateTitle}
-                  unread={unread}
-                  selected={thread.id === selectedThreadId}
-                  running={running}
-                  onClick={() => onSelectThread(thread.id)}
-                />
-                {taskGroupName && (
-                  <ThreadGroupHistory
-                    label={t("Task conversation history for {name}", { name: taskGroupName })}
-                    threads={threads}
-                    routineRuns={routineRuns}
-                    routineIds={routineIds}
-                    groupThreadId={thread.id}
-                    selectedThreadId={selectedThreadId}
-                    onSelectThread={onSelectThread}
-                  />
+          <div className="thread-list-tools">
+            {(onArchiveThreads || onDeleteThreads) && (
+              <button
+                type="button"
+                className="thread-list-tool"
+                aria-pressed={selectionMode}
+                onClick={() => {
+                  setSelectionMode(!selectionMode)
+                  setSelectionPage(0)
+                  setSelectedThreadIds(new Set())
+                }}
+              >
+                {t(selectionMode ? "Exit selection" : "Select")}
+              </button>
+            )}
+            {selectionMode && (
+              <>
+                <button type="button" className="thread-list-tool" onClick={selectAll}>
+                  {t("Select all")}
+                </button>
+                <span className="thread-selection-count" role="status">
+                  {t("Selected: {count}", { count: selectedThreadIds.size })}
+                </span>
+                {onArchiveThreads && (
+                  <button
+                    type="button"
+                    className="thread-list-tool"
+                    disabled={!selectedThreadIds.size || Boolean(pendingDelete)}
+                    onClick={() => void archiveSelected()}
+                  >
+                    {t("Archive selected")}
+                  </button>
                 )}
-              </Fragment>
-            )
-          })}
+                {onDeleteThreads && (
+                  <button
+                    type="button"
+                    className="thread-list-tool thread-list-tool-danger"
+                    disabled={!selectedThreadIds.size || Boolean(pendingDelete)}
+                    onClick={() => void openSelectedDeletePrompt()}
+                  >
+                    {t("Delete selected…")}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+          {actionError && (
+            <p className="thread-action-error" role="alert">
+              {actionError}
+              <button type="button" aria-label={t("Dismiss notice")} onClick={() => setActionError(null)}>
+                ×
+              </button>
+            </p>
+          )}
+          {selectionMode
+            ? selectableThreads
+                .slice(visibleSelectionPage * 100, (visibleSelectionPage + 1) * 100)
+                .filter((thread) => !hiddenThreadIds.has(thread.id))
+                .map((thread) => (
+                  <ThreadRow
+                    key={thread.id}
+                    inserted={insertedThreads.has(thread.id)}
+                    thread={thread}
+                    title={getSidebarThreadTitle(thread)}
+                    countLabel={relativeThreadDate(thread.updatedAt)}
+                    dateLabel={relativeThreadDate(thread.updatedAt)}
+                    dateTitle={undefined}
+                    unread={thread.unread}
+                    selected={thread.id === selectedThreadId}
+                    running={runningThreadIds.has(thread.id)}
+                    onClick={() => onSelectThread(thread.id)}
+                    selectionMode
+                    checked={selectedThreadIds.has(thread.id)}
+                    selectionDisabled={thread.kind === "main" || thread.id === bot.mainThreadId}
+                    onToggleSelect={() => toggleSelection(thread.id)}
+                    canArchive={thread.kind !== "main" && thread.id !== bot.mainThreadId}
+                    onArchive={onArchiveThread ? () => void archiveOne(thread, true) : undefined}
+                    onDelete={onGetThreadDeletePreview ? () => void openDeletePrompt(thread) : undefined}
+                  />
+                ))
+            : sidebarThreads
+                .filter(({ thread }) => !hiddenThreadIds.has(thread.id))
+                .map(({ thread, routineRun, taskGroupName, countToday, running, unread, deletedRoutine }) => {
+                  const timestamp = routineRun?.scheduledFor ?? thread.createdAt
+                  const routine = routineRun ? routinesById.get(routineRun.routineId) : undefined
+                  const timeZone = routine?.timezone
+                  const title = deletedRoutine
+                    ? t("Deleted routine")
+                    : routineRun
+                      ? t("Routine row title", { name: routine?.name ?? getSidebarThreadTitle(thread) })
+                      : taskGroupName
+                        ? t("Task row title", { name: taskGroupName })
+                        : getSidebarThreadTitle(thread)
+                  const countLabel =
+                    routineRun || taskGroupName ? t("Today count suffix", { count: countToday }) : undefined
+                  const dateLabel =
+                    thread.kind === "routine"
+                      ? getRoutineRunSidebarDateLabel(timestamp, "pt-BR", timeZone)
+                      : relativeThreadDate(thread.updatedAt)
+                  const dateTitle =
+                    thread.kind === "routine" ? getRoutineRunDateLabel(timestamp, "pt-BR", timeZone) : undefined
+                  const secondaryLabel = routineRun ? `${countLabel ?? ""} · ${dateLabel}` : (countLabel ?? dateLabel)
+
+                  return (
+                    <Fragment key={thread.id}>
+                      <ThreadRow
+                        inserted={insertedThreads.has(thread.id)}
+                        thread={thread}
+                        title={title}
+                        countLabel={secondaryLabel}
+                        dateLabel={dateLabel}
+                        dateTitle={dateTitle}
+                        unread={unread}
+                        selected={thread.id === selectedThreadId}
+                        running={running}
+                        onClick={() => onSelectThread(thread.id)}
+                        canArchive={thread.kind !== "main" && thread.id !== bot.mainThreadId}
+                        onArchive={onArchiveThread ? () => void archiveOne(thread, true) : undefined}
+                        onDelete={onGetThreadDeletePreview ? () => void openDeletePrompt(thread) : undefined}
+                      />
+                      {taskGroupName && (
+                        <ThreadGroupHistory
+                          label={t("Task conversation history for {name}", { name: taskGroupName })}
+                          threads={threads}
+                          routineRuns={routineRuns}
+                          routineIds={routineIds}
+                          groupThreadId={thread.id}
+                          selectedThreadId={selectedThreadId}
+                          onSelectThread={onSelectThread}
+                        />
+                      )}
+                    </Fragment>
+                  )
+                })}
+          {selectionMode && selectableThreads.length > 100 && (
+            <div className="thread-list-tools">
+              <button
+                type="button"
+                className="thread-list-tool"
+                disabled={visibleSelectionPage === 0}
+                onClick={() => setSelectionPage(visibleSelectionPage - 1)}
+              >
+                {t("Previous conversations")}
+              </button>
+              <button
+                type="button"
+                className="thread-list-tool"
+                disabled={(visibleSelectionPage + 1) * 100 >= selectableThreads.length}
+                onClick={() => setSelectionPage(visibleSelectionPage + 1)}
+              >
+                {t("Next conversations")}
+              </button>
+            </div>
+          )}
           {visibleRoutineIds.length > 0 && (
             <button type="button" className="new-thread-row" onClick={() => onRoutineHistory(historyRoutineId)}>
               {t("Routine run history")}
@@ -691,13 +1024,102 @@ const BotEntry = ({
               onSelectThread={onSelectThread}
             />
           )}
+          {onDeleteThreads && (
+            <button type="button" className="new-thread-row" onClick={() => setOldAutomaticOpen(true)}>
+              {t("Delete old automatic conversations…")}
+            </button>
+          )}
           <button type="button" className="new-thread-row" onClick={onNewThread}>
             <SidebarIcon>
               <path d="M12 5v14M5 12h14" />
             </SidebarIcon>
             {t("Nova conversa")}
           </button>
+          {onLoadArchivedThreads && (
+            <>
+              <button
+                type="button"
+                className="archived-threads-toggle"
+                aria-expanded={archivedOpen}
+                onClick={() => void toggleArchives()}
+              >
+                {t("Archived")}
+                <span>{archiveEntries.length}</span>
+              </button>
+              {archivedOpen && (
+                <section className="archived-thread-list" aria-label={t("Archived")}>
+                  {archivedLoading ? (
+                    <p className="field-help">{t("Loading archived conversations…")}</p>
+                  ) : archiveEntries.filter((thread) => !hiddenThreadIds.has(thread.id)).length ? (
+                    archiveEntries
+                      .slice(visibleArchivePage * 100, (visibleArchivePage + 1) * 100)
+                      .filter((thread) => !hiddenThreadIds.has(thread.id))
+                      .map((thread) => (
+                        <ThreadRow
+                          key={thread.id}
+                          inserted={false}
+                          thread={thread}
+                          title={getSidebarThreadTitle(thread)}
+                          countLabel={relativeThreadDate(thread.updatedAt)}
+                          dateLabel={relativeThreadDate(thread.updatedAt)}
+                          dateTitle={undefined}
+                          unread={thread.unread}
+                          selected={thread.id === selectedThreadId}
+                          running={runningThreadIds.has(thread.id)}
+                          onClick={() => void openArchivedThread(thread)}
+                          archived
+                          canArchive={thread.kind !== "main" && thread.id !== bot.mainThreadId}
+                          onArchive={onArchiveThread ? () => void archiveOne(thread, false) : undefined}
+                          onDelete={onGetThreadDeletePreview ? () => void openDeletePrompt(thread) : undefined}
+                        />
+                      ))
+                  ) : (
+                    <p className="field-help">{t("No archived conversations.")}</p>
+                  )}
+                  {visibleArchivePage > 0 && (
+                    <button
+                      type="button"
+                      className="new-thread-row"
+                      onClick={() => setArchivePage(visibleArchivePage - 1)}
+                    >
+                      {t("Previous archived conversations")}
+                    </button>
+                  )}
+                  {(archiveCursor || (visibleArchivePage + 1) * 100 < archiveEntries.length) && (
+                    <button
+                      type="button"
+                      className="new-thread-row"
+                      disabled={archivedLoading}
+                      onClick={() => {
+                        if ((visibleArchivePage + 1) * 100 < archiveEntries.length) {
+                          setArchivePage(visibleArchivePage + 1)
+                          return
+                        }
+                        void loadMoreArchives()
+                      }}
+                    >
+                      {t("Load more archived conversations")}
+                    </button>
+                  )}
+                </section>
+              )}
+            </>
+          )}
         </section>
+      )}
+      {deleteTargets && (
+        <DeleteThreadDialog
+          targets={deleteTargets}
+          onClose={() => setDeleteTargets(null)}
+          onConfirm={() => queueDelete(deleteTargets)}
+        />
+      )}
+      {oldAutomaticOpen && (
+        <DeleteOldAutomaticThreadsDialog
+          threads={automaticThreads.filter((thread) => !runningThreadIds.has(thread.id))}
+          onClose={() => setOldAutomaticOpen(false)}
+          onContinue={deleteOldAutomatic}
+        />
       )}
     </div>
   )
@@ -714,6 +1136,14 @@ const ThreadRow = ({
   selected,
   running,
   onClick,
+  archived = false,
+  canArchive = true,
+  onArchive,
+  onDelete,
+  selectionMode = false,
+  checked = false,
+  selectionDisabled = false,
+  onToggleSelect,
 }: {
   thread: Thread
   title: string
@@ -725,38 +1155,75 @@ const ThreadRow = ({
   selected: boolean
   running: boolean
   onClick: () => void
+  archived?: boolean
+  canArchive?: boolean
+  onArchive?: (() => void) | undefined
+  onDelete?: (() => void) | undefined
+  selectionMode?: boolean
+  checked?: boolean
+  selectionDisabled?: boolean
+  onToggleSelect?: (() => void) | undefined
 }) => {
+  const titleId = useId()
+
   return (
-    <button
-      type="button"
-      data-motion-insert={inserted}
-      className={`thread-row ${selected ? "selected" : ""}`}
-      onClick={onClick}
-      aria-current={selected ? "page" : undefined}
-    >
-      <span className="thread-icon" aria-hidden="true">
-        {thread.kind === "routine" ? (
-          <SidebarIcon>
-            <circle cx="12" cy="12" r="8" />
-            <path d="M12 7v5l3 2" />
-          </SidebarIcon>
-        ) : (
-          <SidebarIcon>
-            <path d="M5 5h14v10H9l-4 4Z" />
-          </SidebarIcon>
-        )}
-      </span>
-      <span className="thread-copy">
-        <strong title={thread.kind === "routine" ? `${title} · ${dateTitle ?? dateLabel}` : title}>{title}</strong>
-        <small>{countLabel ?? dateLabel}</small>
-      </span>
-      {running ? (
-        <span className="sidebar-status-dot state-running" role="img" aria-label={t("Em execução")} />
-      ) : unread > 0 ? (
-        <span className="sidebar-unread" role="img" aria-label={t("Unread messages", { count: unread })}>
-          {unread > 99 ? "99+" : unread}
+    <div className="thread-row-shell" data-motion-insert={inserted}>
+      {selectionMode && (
+        <label className="thread-selection-control">
+          <input
+            type="checkbox"
+            className="thread-selection-checkbox"
+            checked={checked}
+            disabled={selectionDisabled}
+            aria-label={t("Select conversation {title}", { title })}
+            onChange={onToggleSelect}
+          />
+        </label>
+      )}
+      <button
+        type="button"
+        className={`thread-row ${selected ? "selected" : ""}`}
+        onClick={selectionMode && !selectionDisabled ? onToggleSelect : onClick}
+        aria-label={archived ? t("Open archived conversation {title}", { title }) : undefined}
+        aria-current={selected ? "page" : undefined}
+        aria-pressed={selectionMode ? checked : undefined}
+      >
+        <span className="thread-icon" aria-hidden="true">
+          {thread.kind === "routine" ? (
+            <SidebarIcon>
+              <circle cx="12" cy="12" r="8" />
+              <path d="M12 7v5l3 2" />
+            </SidebarIcon>
+          ) : (
+            <SidebarIcon>
+              <path d="M5 5h14v10H9l-4 4Z" />
+            </SidebarIcon>
+          )}
         </span>
-      ) : null}
-    </button>
+        <span className="thread-copy">
+          <strong id={titleId} title={thread.kind === "routine" ? `${title} · ${dateTitle ?? dateLabel}` : title}>
+            {title}
+          </strong>
+          <small>{countLabel ?? dateLabel}</small>
+        </span>
+        {running ? (
+          <span className="sidebar-status-dot state-running" role="img" aria-label={t("Em execução")} />
+        ) : unread > 0 ? (
+          <span className="sidebar-unread" role="img" aria-label={t("Unread messages", { count: unread })}>
+            {unread > 99 ? "99+" : unread}
+          </span>
+        ) : null}
+      </button>
+      {!selectionMode && (onArchive || onDelete) && (
+        <ThreadActionsMenu
+          title={title}
+          titleId={titleId}
+          archived={archived}
+          canArchive={canArchive}
+          {...(onArchive ? { onArchive } : {})}
+          {...(onDelete ? { onDelete } : {})}
+        />
+      )}
+    </div>
   )
 }

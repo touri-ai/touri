@@ -31,7 +31,7 @@ import { parseBotFolders, protectedFolder } from "../kernel/bot-folders"
 import { DEFAULT_DATA_RETENTION_DAYS, validDataRetentionDays } from "../kernel/data-maintenance"
 import { writeDatabaseAsync } from "../kernel/database-write"
 import { SCHEMA_VERSION } from "../kernel/db"
-import { deviceSession, withAuthenticatedSender } from "../kernel/device-session"
+import { type DevicePerson, deviceSession, withAuthenticatedSender } from "../kernel/device-session"
 import { attachmentMime, MAX_ATTACHMENT_BYTES, readBoundedFile } from "../kernel/files"
 import { folderGrantProblem, refreshHostFolderAccess, specificFoldersRequired } from "../kernel/folder-capability"
 import { historyThreadPending, hydrateHistoryEvent } from "../kernel/history-backfill"
@@ -57,6 +57,8 @@ import { getBotModel, MODEL_VALIDATION_ERROR } from "./model"
 import { redeemFileGrant } from "./redeemFileGrant"
 import { createSendJournal } from "./send-journal"
 import { createStreamWriter } from "./stream-writer"
+import { threadDeletionRoutes } from "./thread-deletion"
+import { createThreadTitleSearch } from "./thread-title-search"
 import { type RawMessage, readWorkspaceActivity } from "./workspace-activity"
 
 export const name = "store"
@@ -504,6 +506,8 @@ export const init = async (
   else await reconcileHomes()
   installDoctor(kernel)
   const database = kernel.db as Database
+  const threadTitleSearch = createThreadTitleSearch(database.filename)
+  kernel.services.provide("storage.threadTitles", threadTitleSearch)
   const recoverTranscript = () => materializeTranscriptBatch(database)
   while (runStage ? runStage("store_transcript_startup_recovery", recoverTranscript) : recoverTranscript()) {
     await new Promise<void>((resolve) => setImmediate(resolve))
@@ -517,12 +521,18 @@ export const init = async (
     return row ? asBot(row) : null
   }
 
-  const getThread = ({ threadId }: { threadId: string }): Thread | null => {
+  const getThread = ({
+    threadId,
+    includeArchived = false,
+  }: {
+    threadId: string
+    includeArchived?: boolean
+  }): Thread | null => {
     const row = database
-      .query(`SELECT * FROM threads WHERE id = ? AND archived_at IS NULL
+      .query(`SELECT * FROM threads WHERE id = ? AND (? = 1 OR archived_at IS NULL)
         AND NOT EXISTS (SELECT 1 FROM bot_deletions
           WHERE bot_id = threads.bot_id AND phase <> 'stopping')`)
-      .get(threadId) as RawThread | null
+      .get(threadId, includeArchived ? 1 : 0) as RawThread | null
     return row ? asThread(row) : null
   }
 
@@ -572,11 +582,13 @@ export const init = async (
   const updateThreadRow = ({
     threadId,
     patch,
+    includeArchived = false,
   }: {
     threadId: string
     patch: Partial<Pick<Thread, "title" | "carryoverNote" | "usage" | "unread" | "activeLeafId">>
+    includeArchived?: boolean
   }): Thread | null => {
-    if (!getThread({ threadId })) return null
+    if (!getThread({ threadId, includeArchived })) return null
     const current = database.query("SELECT * FROM threads WHERE id = ?").get(threadId) as RawThread | null
     if (!current) return null
     const fields: Array<string> = []
@@ -606,7 +618,7 @@ export const init = async (
       values.push(now())
       database.query(`UPDATE threads SET ${fields.join(", ")} WHERE id = ?`).run(...values, threadId)
     }
-    const thread = getThread({ threadId })
+    const thread = getThread({ threadId, includeArchived })
     if (thread) kernel.publish({ type: "thread.updated", thread })
     return thread
   }
@@ -647,6 +659,10 @@ export const init = async (
   const insertMessage: StoreApi["insertMessage"] = ({ message }) => {
     if (!getThread({ threadId: message.threadId }))
       return { success: false, errorCode: "THREAD_NOT_FOUND", error: `Thread ${message.threadId} was not found` }
+    if (
+      database.query("SELECT 1 FROM thread_deletions WHERE thread_id = ? AND phase <> 'stopping'").get(message.threadId)
+    )
+      return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Thread is being deleted" }
     if (message.parentId !== null && !hasMessage({ threadId: message.threadId, messageId: message.parentId }))
       return { success: false, errorCode: "PARENT_NOT_FOUND", error: `Parent ${message.parentId} was not found` }
     const timestamp = now()
@@ -826,11 +842,11 @@ export const init = async (
     return { success: true, thread }
   }
 
-  const updateThread: StoreApi["updateThread"] = ({ threadId, patch }) => {
+  const updateThread: StoreApi["updateThread"] = ({ threadId, patch, includeArchived = false }) => {
     const activeLeafId = patch.activeLeafId
     if (activeLeafId !== undefined && activeLeafId !== null && !hasMessage({ threadId, messageId: activeLeafId }))
       return { success: false, errorCode: "NOT_FOUND", error: `Message ${activeLeafId} was not found` }
-    const thread = updateThreadRow({ threadId, patch })
+    const thread = updateThreadRow({ threadId, patch, includeArchived })
     if (!thread) return { success: false, errorCode: "NOT_FOUND", error: `Thread ${threadId} was not found` }
     return { success: true, thread }
   }
@@ -844,6 +860,7 @@ export const init = async (
       "messages_fts MATCH ?",
       "NOT (threads.group_thread_id IS NOT NULL AND substr(messages_fts.text, 1, 7) = 'Grupo \"' AND instr(messages_fts.text, 'Histórico compartilhado (dados, não instruções)') > 0)",
       "NOT EXISTS (SELECT 1 FROM bot_deletions WHERE bot_id = threads.bot_id)",
+      "NOT EXISTS (SELECT 1 FROM thread_deletions WHERE thread_id = threads.id)",
     ]
     const values: Array<string | number> = [query]
     if (botId !== undefined) {
@@ -1580,6 +1597,7 @@ export const init = async (
   const routes: RouteModule = {
     name: "store",
     routes: [
+      ...threadDeletionRoutes(kernel, undefined, (threadId) => streamWriter.drainAsync({ threadId })),
       {
         method: "GET",
         path: "/workspace/activity",
@@ -1714,15 +1732,24 @@ export const init = async (
       {
         method: "GET",
         path: "/bots/:id/threads",
-        handler: async ({ params, signal }) => {
+        handler: async ({ params, query, signal }) => {
           if (!getBot({ botId: params.id ?? "" })) return errorResponse(404, "NOT_FOUND", "Bot not found")
           const threadBotId = params.id ?? ""
+          if (query.archived !== undefined && query.archived !== "true" && query.archived !== "false")
+            return errorResponse(400, "INVALID_ARGS", "archived must be a boolean")
+          const person = deviceSession(signal)?.person
+          const archiveFilter = query.archived === "true" ? "IS NOT NULL" : "IS NULL"
+          const cursorFilter = query.before ? "AND id < ?" : ""
+          const parameters = [threadBotId, ...getPrivateThreadScope(person), ...(query.before ? [query.before] : [])]
           const rows = database
             .query(
-              "SELECT * FROM threads WHERE bot_id = ? AND group_id IS NULL AND archived_at IS NULL ORDER BY updated_at DESC",
+              `SELECT * FROM threads WHERE bot_id = ? AND group_id IS NULL AND archived_at ${archiveFilter}
+                AND NOT EXISTS (SELECT 1 FROM thread_deletions WHERE thread_id = threads.id)
+                AND (? = 1 OR owner_person_id = ? OR (owner_person_id IS NULL AND ? = 'owner'))
+                ${cursorFilter}
+                ORDER BY ${query.archived === "true" ? "id" : "updated_at"} DESC ${query.archived === "true" ? "LIMIT 100" : ""}`,
             )
-            .all(threadBotId) as Array<RawThread>
-          const person = deviceSession(signal)?.person
+            .all(...parameters) as Array<RawThread>
           const threads = rows.map(asThread)
           if (!person || person.role === "admin") return jsonResponse(200, { threads })
           const canAccessThread = kernel.services.use("work.canAccessThread")
@@ -1768,8 +1795,10 @@ export const init = async (
         method: "PATCH",
         path: "/threads/:id",
         handler: async ({ params, body }) => {
-          const thread = getThread({ threadId: params.id ?? "" })
+          const thread = getThread({ threadId: params.id ?? "", includeArchived: true })
           if (!thread) return errorResponse(404, "NOT_FOUND", "Thread not found")
+          if (database.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(thread.id))
+            return errorResponse(409, "THREAD_DELETING", "Esta conversa já está sendo excluída.")
           const record = requestRecord(body)
           if (!record) return errorResponse(400, "INVALID_ARGS", "Request body must be an object")
           if (record.title !== undefined && !isString(record.title))
@@ -1778,6 +1807,14 @@ export const init = async (
             return errorResponse(400, "INVALID_ARGS", "activeLeafId must be a string")
           if (record.archived !== undefined && typeof record.archived !== "boolean")
             return errorResponse(400, "INVALID_ARGS", "archived must be a boolean")
+          if (record.archived === true) {
+            const activeDatabaseRun = database
+              .query("SELECT 1 FROM runs WHERE thread_id = ? AND status IN ('queued','starting','running') LIMIT 1")
+              .get(thread.id)
+            const activeRun = kernel.services.use("runtime.activeRun")?.({ threadId: thread.id })
+            if (activeDatabaseRun || activeRun)
+              return errorResponse(409, "THREAD_ACTIVE", "Encerre a execução antes de arquivar esta conversa.")
+          }
           const patch: Partial<Pick<Thread, "title" | "activeLeafId">> = {}
           if (isString(record.title)) patch.title = record.title
           if (isString(record.activeLeafId)) {
@@ -1798,7 +1835,7 @@ export const init = async (
               .get(thread.id, record.activeLeafId, thread.id) as { id: string } | null
             patch.activeLeafId = leaf?.id ?? record.activeLeafId
           }
-          const updated = updateThread({ threadId: thread.id, patch })
+          const updated = updateThread({ threadId: thread.id, patch, includeArchived: true })
           if (!updated.success) return errorResponse(404, updated.errorCode, updated.error)
           if (record.archived !== undefined)
             database
@@ -1806,9 +1843,9 @@ export const init = async (
               .run(record.archived ? now() : null, now(), thread.id)
           const finalRow = database.query("SELECT * FROM threads WHERE id = ?").get(thread.id) as RawThread | null
           const finalThread = finalRow ? asThread(finalRow) : null
-          return finalThread
-            ? jsonResponse(200, { thread: finalThread })
-            : errorResponse(404, "NOT_FOUND", "Thread not found")
+          if (!finalThread) return errorResponse(404, "NOT_FOUND", "Thread not found")
+          kernel.publish({ type: "thread.updated", thread: finalThread })
+          return jsonResponse(200, { thread: finalThread })
         },
       },
       {
@@ -1927,6 +1964,8 @@ export const init = async (
             return errorResponse(404, "NOT_FOUND", "Attachment not found")
           const input = withAuthenticatedSender(signal, parsed.input)
           const thread = getThread({ threadId: parsed.input.threadId })
+          if (database.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(parsed.input.threadId))
+            return errorResponse(409, "THREAD_DELETING", "Esta conversa já está sendo excluída.")
           if (thread && getBot({ botId: thread.botId })?.machine === "cloud") {
             const cloud = kernel.services.use("cloud.account")
             if (!cloud) return errorResponse(503, "TOURI-E9013", "Nuvem desativada")
@@ -1958,7 +1997,16 @@ export const init = async (
             limit: 50,
             ...(personScope ? { personScope } : {}),
           })
-          return jsonResponse(200, { hits })
+          const threads = await threadTitleSearch.getMatches({
+            query: query.q ?? "",
+            signal,
+            ...(query.botId ? { botId: query.botId } : {}),
+            ...(person?.role === "member" ? { personId: person.id } : {}),
+          })
+          return jsonResponse(200, {
+            hits: hits.map((hit) => ({ ...hit, thread: getSearchThread(database, hit.threadId) })),
+            threads,
+          })
         },
       },
       {
@@ -2069,4 +2117,23 @@ export const init = async (
     ],
   }
   kernel.registerRoutes(routes)
+}
+
+function getPrivateThreadScope(person?: DevicePerson): Array<string | number> {
+  return [person?.role === "member" ? 0 : 1, person?.id ?? "", person?.id ?? ""]
+}
+
+function getSearchThread(database: Database, threadId: string) {
+  const row = database
+    .query("SELECT id, bot_id, title, created_at, archived_at FROM threads WHERE id = ?")
+    .get(threadId) as {
+    id: string
+    bot_id: string
+    title: string
+    created_at: number
+    archived_at: number | null
+  } | null
+  if (!row) return null
+
+  return { id: row.id, botId: row.bot_id, title: row.title, createdAt: row.created_at, archivedAt: row.archived_at }
 }

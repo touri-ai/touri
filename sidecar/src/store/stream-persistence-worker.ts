@@ -134,6 +134,7 @@ const capture = () => {
     "SELECT value FROM schema_meta WHERE key = 'transcript_event_checkpoint'",
   ).get().value);
   const hasDeletions = database.query("SELECT 1 FROM schema_meta WHERE key = 'bot_deletion_version'").get();
+  const hasThreadDeletions = database.query("SELECT 1 FROM schema_meta WHERE key = 'thread_deletion_version'").get();
   const statement = database.prepare("SELECT id, thread_id, at, event_json FROM transcript_entries WHERE id > ? ORDER BY id LIMIT 32");
   const started = performance.now();
   let last = checkpoint;
@@ -144,6 +145,8 @@ const capture = () => {
       if (hasDeletions && database.query(
         "SELECT 1 FROM threads t JOIN bot_deletions d ON d.bot_id = t.bot_id WHERE t.id = ? LIMIT 1",
       ).get(row.thread_id)) continue;
+      if (hasThreadDeletions && database.query("SELECT 1 FROM thread_deletions WHERE thread_id = ? LIMIT 1").get(row.thread_id))
+        continue;
       const event = JSON.parse(row.event_json);
       if (event.legacy) continue;
       let stored = row.event_json;

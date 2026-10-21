@@ -884,6 +884,7 @@ a {
 .message-bubble a,
 .markdown-content a {
   color: var(--link);
+  text-decoration: underline;
 }
 .message-bubble ul,
 .message-bubble ol,
@@ -4089,6 +4090,11 @@ a {
 .bot-context-menu .tool-action-deny:hover,
 .bot-context-menu .tool-action-deny:focus-visible {
   background: var(--surface-notice);
+}
+@media (max-width: 800px), (pointer: coarse) {
+  .bot-context-menu button {
+    min-height: var(--touch-target-size);
+  }
 }
 .delete-bot-files {
   display: flex;

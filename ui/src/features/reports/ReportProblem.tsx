@@ -58,6 +58,10 @@ const initialInput = (errorCode?: string, errorMessage?: string): ReportInput =>
   parts: reportParts.filter((part) => part !== "transcript"),
   images: [],
 })
+const getDraft = (snapshot: ReportSnapshot | null) => ({
+  reportJson: snapshot ? JSON.stringify(snapshot.report, null, 2) : "",
+  logs: snapshot?.logs ?? {},
+})
 const toBase64 = (bytes: Uint8Array): string => {
   let value = ""
   for (const byte of bytes) value += String.fromCharCode(byte)
@@ -96,10 +100,12 @@ export const ReportProblem = ({
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState("")
   const mounted = useRef(true)
-  useEffect(() => {
-    setDraft({ reportJson: snapshot ? JSON.stringify(snapshot.report, null, 2) : "", logs: snapshot?.logs ?? {} })
+  // Seed the editors in the same update as the preview, so they never render empty.
+  const showSnapshot = (next: ReportSnapshot | null) => {
+    setSnapshot(next)
+    setDraft(getDraft(next))
     setPreviewDirty(false)
-  }, [snapshot])
+  }
   useEffect(() => {
     mounted.current = true
     return () => {
@@ -108,7 +114,7 @@ export const ReportProblem = ({
   }, [])
   const update = (patch: Partial<ReportInput>) => {
     setInput((current) => ({ ...current, ...patch }))
-    setSnapshot(null)
+    showSnapshot(null)
     setPreviewOpen(false)
   }
   const refreshHistory = async () => {
@@ -198,7 +204,7 @@ export const ReportProblem = ({
       if (reportZip(next).byteLength > reportSizeLimit)
         throw new Error("O relatório excede 10 MB. Remova capturas ou a conversa.")
       setLocalSnapshot(local)
-      setSnapshot(next)
+      showSnapshot(next)
       setPreviewOpen(true)
       if (local) setNotice("Relatório reduzido: o sidecar está indisponível. Veja as partes não coletadas na prévia.")
     })
@@ -240,7 +246,7 @@ export const ReportProblem = ({
           : await api.request("POST /reports/preview", { ...input, previewEdits })
       if (reportZip(next).byteLength > reportSizeLimit)
         throw new Error("O relatório excede 10 MB. Reduza o texto da prévia.")
-      setSnapshot(next)
+      showSnapshot(next)
       setNotice("Edição aplicada. Revise o conteúdo antes de enviar.")
     })
   return (
