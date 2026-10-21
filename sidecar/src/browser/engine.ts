@@ -4956,13 +4956,14 @@ export const createBrowserEngine = ({
       const tab = tabs
         .filter((tab) => tab.info.ownerBotId === botId && (!tabId || tab.info.tabId === tabId))
         .sort((a, b) => b.info.lastUsedAt - a.info.lastUsedAt)[0]
-      if (tab?.info.state !== "live" || !tab.sessionId || tab.secretMode) return null
+      if (tab?.info.state !== "live" || !tab.sessionId || tab.secretMode || tab.takeover) return null
       const generation = tab.generation
       const isCurrent = () =>
         !retired &&
         !tab.info.heldByUser &&
         !tab.secretMode &&
         !tab.privateAfterTakeover &&
+        !tab.takeover &&
         tab.info.state === "live" &&
         tab.generation === generation
       const frame = await sharedPreview.capture({

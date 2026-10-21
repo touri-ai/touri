@@ -36,7 +36,8 @@ test("group header updates its visible and accessible member count", async ({ pa
   const header = page.locator(".group-header")
   await expect(header.getByText("2 membros", { exact: true })).toBeVisible()
   await expect(header.getByRole("img", { name: "2 membros: Bia, Lia", exact: true })).toBeVisible()
-  await expect(header.getByRole("button")).toHaveCount(2)
+  await expect(header.getByRole("button")).toHaveCount(3)
+  await expect(header.getByRole("button", { name: "Convidar pessoa", exact: true })).toBeVisible()
   await page.evaluate(() => document.fonts.ready)
   await header.screenshot({ path: `${evidence}/after-two.png`, animations: "disabled" })
   await header.getByRole("button", { name: "Editar grupo", exact: true }).click()
@@ -45,7 +46,7 @@ test("group header updates its visible and accessible member count", async ({ pa
   await dialog.getByRole("button", { name: "Salvar grupo", exact: true }).click()
   await expect(header.getByText("1 membro", { exact: true })).toBeVisible()
   await expect(header.getByRole("img", { name: "1 membro: Bia", exact: true })).toBeVisible()
-  await expect(header.getByRole("button")).toHaveCount(2)
+  await expect(header.getByRole("button")).toHaveCount(3)
   await header.screenshot({ path: `${evidence}/after-one.png`, animations: "disabled" })
 
   await header.getByRole("button", { name: "Editar grupo", exact: true }).click()

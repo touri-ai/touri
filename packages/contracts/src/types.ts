@@ -940,6 +940,11 @@ export type SendMessageInput = {
   sender?: { name: string; id: string; avatarSeed?: string; kind?: 'person' }
 }
 
+export type PersonRole = 'member' | 'admin'
+export type InviteInput = ApiRoutes['POST /invites']['req']
+export type InviteDelivery = ApiRoutes['POST /invites']['res']
+export type Invite = ApiRoutes['GET /invites']['res']['invites'][number]
+
 export type WorkEmailConfiguration =
   | {
       transport: 'smtp'
@@ -990,7 +995,8 @@ export type ApiRoutes = {
   'POST /invites': {
     req: { name: string; email: string; role: 'member' | 'admin'; channelIds: Array<Id> }
     res: {
-      invite: { id: Id; name: string; email: string; role: 'member' | 'admin'; expiresAt: EpochMs }
+      invite: { id: Id; name: string; email: string; role: 'member' | 'admin'; expiresAt: EpochMs; channelIds: Array<Id> }
+      code?: string
       emailConfigured: boolean
       emailSent: boolean
       link: string
@@ -1000,7 +1006,7 @@ export type ApiRoutes = {
   }
   'POST /invites/:id/resend': {
     req: {}
-    res: { invite: { id: Id; name: string; email: string; role: 'member' | 'admin'; expiresAt: EpochMs }; emailConfigured: boolean; emailSent: boolean; link: string; requestOriginReachability: 'public' | 'private' | 'localhost' | 'tailnet' | 'invalid' | 'unset'; publicAddressReachability: 'public' | 'private' | 'localhost' | 'tailnet' | 'invalid' | 'unset' }
+    res: { code?: string; invite: { id: Id; name: string; email: string; role: 'member' | 'admin'; expiresAt: EpochMs; channelIds: Array<Id> }; emailConfigured: boolean; emailSent: boolean; link: string; requestOriginReachability: 'public' | 'private' | 'localhost' | 'tailnet' | 'invalid' | 'unset'; publicAddressReachability: 'public' | 'private' | 'localhost' | 'tailnet' | 'invalid' | 'unset' }
   }
   'GET /invites/:id/link': { req: {}; res: { link: string } }
   'DELETE /invites/:id': { req: {}; res: {} }

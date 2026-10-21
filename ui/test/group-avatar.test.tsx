@@ -29,6 +29,7 @@ it.each([
   const { container } = render(<GroupModal group={group} bots={bots} onClose={vi.fn()} onSave={onSave} />)
   const color = avatarColorFor({ id: group.avatarSeed, color: null })
 
+  fireEvent.click(screen.getByRole("button", { name: "Personalizar" }))
   fireEvent.click(screen.getByRole(role, { name }))
 
   expect(screen.getByRole("radio", { name: "Cor Automática" })).toBeChecked()
@@ -61,6 +62,7 @@ it("restores a new group's seeded colour and preserves its previewed head when s
       onSave={onSave}
     />,
   )
+  fireEvent.click(screen.getByRole("button", { name: "Personalizar" }))
   fireEvent.click(screen.getByRole("radio", { name: "Cor Azul" }))
 
   fireEvent.click(screen.getByRole("radio", { name: "Cor Automática" }))

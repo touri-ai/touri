@@ -571,9 +571,13 @@ export const BotCreateModal = ({
               </div>
               <AvatarPicker
                 label={t("Mascot")}
-                name={name}
-                bot={{ id: avatarSeed, avatarSeed, ...avatar }}
-                onChange={(choice) => setAvatar((current) => ({ ...current, ...choice }))}
+                bot={{ id: avatarSeed, avatarSeed, avatarShape: avatar.avatarShape, color: avatar.color }}
+                onChange={(choice) =>
+                  setAvatar((current) => ({
+                    avatarShape: choice.avatarShape ?? current.avatarShape,
+                    color: choice.color === undefined ? current.color : choice.color,
+                  }))
+                }
               />
             </div>
             <div className="bot-create-defaults" aria-live="polite">
@@ -1220,9 +1224,14 @@ export const BotSettingsModal = ({
         <div className="settings-avatar-field">
           <AvatarPicker
             label={t("Mascote")}
-            name={name}
-            bot={{ ...bot, ...avatar }}
-            onChange={(choice) => setAvatar((current) => ({ ...current, ...choice }))}
+            bot={{
+              id: bot.id,
+              avatarSeed: bot.avatarSeed ?? null,
+              avatarPath: bot.avatarPath,
+              avatarShape: avatar.avatarShape ?? bot.avatarShape ?? null,
+              color: avatar.color === undefined ? bot.color : avatar.color,
+            }}
+            onChange={(choice) => setAvatar((current) => getAvatarChoice(current, choice))}
           />
         </div>
         <BotAccessSummary
@@ -2454,3 +2463,16 @@ export const ProjectModal = ({
 }
 
 const BotSettingsLoading = () => <p role="status">{t("Loading")}</p>
+
+const getAvatarChoice = (current: Partial<AvatarChoice>, choice: Partial<AvatarChoice>): Partial<AvatarChoice> => {
+  const avatarShape = choice.avatarShape ?? current.avatarShape
+  const color = choice.color === undefined ? current.color : choice.color
+  if (avatarShape === undefined) {
+    if (color === undefined) return {}
+
+    return { color }
+  }
+  if (color === undefined) return { avatarShape }
+
+  return { avatarShape, color }
+}

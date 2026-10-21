@@ -316,6 +316,7 @@ export const GroupHeader = ({
   group,
   bots,
   onEdit,
+  onInvite,
   panelOpen,
   onTogglePanel,
   locale = "pt-BR",
@@ -323,6 +324,7 @@ export const GroupHeader = ({
   group: BotGroup
   bots: Bot[]
   onEdit: () => void
+  onInvite?: (() => void) | undefined
   panelOpen?: boolean
   onTogglePanel?: (() => void) | undefined
   locale?: Locale
@@ -358,6 +360,11 @@ export const GroupHeader = ({
         onClick={onTogglePanel}
       >
         <PanelIcon name="panel" />
+      </button>
+    )}
+    {onInvite && (
+      <button type="button" className="button button-quiet" onClick={onInvite}>
+        {t("Convidar pessoa", {}, locale)}
       </button>
     )}
     <button type="button" className="button button-quiet" onClick={onEdit}>
@@ -467,9 +474,7 @@ export const GroupModal = ({
             />
           </label>
           <AvatarPicker
-            label="Mascote do grupo"
-            description="Personalize seu grupo"
-            name={name}
+            label={t("avatar.group")}
             bot={{ id: group?.id ?? avatarSeed, avatarShape: shape, color, avatarSeed }}
             onChange={(v) => {
               if (v.avatarShape) setShape(v.avatarShape)

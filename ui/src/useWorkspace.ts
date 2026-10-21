@@ -69,6 +69,7 @@ export type WorkspaceData = {
   routineRuns: Array<RoutineRun>
   doctor: DoctorReport | null
   doctorError: string | null
+  isMember?: boolean
   settings: ApiRoutes["GET /settings"]["res"]["settings"] | null
   selectedBotId: Id | null
   selectedThreadId: Id | null
@@ -567,8 +568,13 @@ const getDraftThread = (botId: Id, groupId?: Id): Thread => {
 }
 
 // chatOpen: a draft only becomes a real thread while the chat it belongs to is on screen.
-export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Workspace => {
-  const diagnosis = useDoctorReport(api, enabled)
+export const useWorkspace = (
+  api: UiApi,
+  enabled = true,
+  chatOpen = true,
+  role: "member" | "admin" | null = "admin",
+): Workspace => {
+  const diagnosis = useDoctorReport(api, enabled && role === "admin")
   const [data, setData] = useReducer(
     (current: WorkspaceData, update: (current: WorkspaceData) => WorkspaceData) => {
       const next = update(current)
@@ -716,6 +722,8 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
     const completedRuns = new Set<Id>()
     completedDuringLoad.current = completedRuns
     try {
+      const member = role === "member"
+      const restricted = role !== "admin"
       const [
         groupResponse,
         botResponse,
@@ -741,25 +749,35 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
                 ...current,
                 bots: uniqueById(response.bots),
                 botsLoaded: true,
-                selectedBotId: selectedBot?.id ?? null,
+                isMember: member,
+                selectedBotId: member ? null : (selectedBot?.id ?? null),
                 activeProjectId: selectedBot?.projectId ?? null,
               }
             })
           }
           return response
         }),
-        getOptionalWorkspaceRead(api.request("GET /projects", {}), { projects: [] }),
-        getOptionalWorkspaceRead(api.request("GET /settings", {}), { settings: null }),
-        getOptionalWorkspaceRead(api.request("GET /previews", {}), { previews: [] }),
-        api.request("GET /browser/tabs", {}).catch(() => ({ tabs: [] })),
-        getOptionalWorkspaceRead(api.request("GET /routines", {}), {
-          routines: [],
-          host: undefined,
-          hostKind: undefined,
-        }),
-        api.request("GET /routine-runs", {}).catch(() => ({ routineRuns: [] })),
+        restricted ? { projects: [] } : getOptionalWorkspaceRead(api.request("GET /projects", {}), { projects: [] }),
+        restricted
+          ? { settings: null }
+          : getOptionalWorkspaceRead(api.request("GET /settings", {}), { settings: null }),
+        restricted ? { previews: [] } : getOptionalWorkspaceRead(api.request("GET /previews", {}), { previews: [] }),
+        (restricted ? Promise.resolve({ tabs: [] }) : api.request("GET /browser/tabs", {})).catch(() => ({ tabs: [] })),
+        restricted
+          ? { routines: [], host: undefined, hostKind: undefined }
+          : getOptionalWorkspaceRead(api.request("GET /routines", {}), {
+              routines: [],
+              host: undefined,
+              hostKind: undefined,
+            }),
+        (restricted ? Promise.resolve({ routineRuns: [] }) : api.request("GET /routine-runs", {})).catch(() => ({
+          routineRuns: [],
+        })),
         api.request("GET /notifications", {}).catch(() => ({ notifications: [] })),
-        api.request("GET /machines", {}).catch(() => ({
+        (restricted
+          ? Promise.resolve({ capability: { available: false, reason: "", provider: null }, machines: [] })
+          : api.request("GET /machines", {})
+        ).catch(() => ({
           capability: { available: false, reason: t("No virtualization on this host"), provider: null },
           machines: [],
         })),
@@ -801,7 +819,9 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
           incomingRuns,
         )
         const selectedBot = current.bots.find((bot) => bot.id === current.selectedBotId) ?? current.bots[0]
+        const channelThread = member ? threads.find((thread) => thread.groupId) : undefined
         const selectedThread =
+          channelThread ??
           threads.find((thread) => thread.id === current.selectedThreadId && thread.botId === selectedBot?.id) ??
           lastActiveThread(
             threads,
@@ -809,13 +829,14 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
             selectedBot?.id ?? "",
             current.selectedThreadId ?? threadsByBot.current[selectedBot?.id ?? ""],
           )
-        const keptCreation = current.threadCreation?.thread.botId === selectedBot?.id ? current.threadCreation : null
+        const keptCreation =
+          !member && current.threadCreation?.thread.botId === selectedBot?.id ? current.threadCreation : null
         // A bot selected at startup without conversations opens the same draft a click would.
         const selectionLost =
           !current.selectedThreadId || !threads.some((thread) => thread.id === current.selectedThreadId)
         const threadCreation: WorkspaceData["threadCreation"] =
           keptCreation ??
-          (selectedBot && !selectedThread && selectionLost
+          (role === "admin" && selectedBot && !selectedThread && selectionLost
             ? { thread: getDraftThread(selectedBot.id), status: "draft" }
             : null)
         const selectedThreadId = threadCreation ? threadCreation.thread.id : (selectedThread?.id ?? null)
@@ -823,6 +844,7 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
         const pendingRequests = countPendingRequests(notifications, activityResponse.messages)
         return {
           ...current,
+          isMember: member,
           groups: groupResponse?.groups ?? [],
           machineCapability: machineResponse.capability,
           machines: machineResponse.machines,
@@ -846,7 +868,7 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
           settings: settingsResponse.settings,
           notifications,
           pendingRequestsOnReturn: pendingRequests || null,
-          selectedBotId: selectedBot?.id ?? null,
+          selectedBotId: selectedThread?.botId ?? selectedBot?.id ?? null,
           selectedThreadId,
           threadCreation,
           composerKey:
@@ -885,7 +907,7 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
     } finally {
       if (attempt === generation.current) completedDuringLoad.current = null
     }
-  }, [api, enabled, loadThread])
+  }, [api, enabled, loadThread, role])
 
   const removeGroup = useCallback(
     (groupId: Id): void => {
@@ -1350,13 +1372,14 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
   // biome-ignore lint/correctness/useExhaustiveDependencies: a settled creation must retry a draft that waited on it
   useEffect(() => {
     const draft = data.threadCreation
-    if (!enabled || !data.loaded || !chatOpen) return
+    if (!enabled || !data.loaded || !chatOpen || role === null) return
     if (draft?.status !== "draft" || selectedBot?.id !== draft.thread.botId || selectedBot.paused) return
     void startThread(draft.thread.groupId ?? undefined)
   }, [
     enabled,
     data.loaded,
     chatOpen,
+    role,
     data.threadCreation,
     selectedBot?.id,
     selectedBot?.paused,

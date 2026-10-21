@@ -611,3 +611,17 @@ test("former channel members cannot delete a conversation even when they created
 
   expect(response).toMatchObject({ status: 403 })
 })
+
+test("a member can request previews for a channel bot but not an unrelated bot", () => {
+  const preview = (botId: string) =>
+    access.authorizeHttp({
+      personId: "member",
+      role: "member",
+      method: "GET",
+      pathname: `/bots/${botId}/browser-preview`,
+      body: null,
+    })
+
+  expect(preview("team-bot")).toBeNull()
+  expect(preview("other-bot")).toMatchObject({ status: 404 })
+})

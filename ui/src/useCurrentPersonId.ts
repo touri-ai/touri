@@ -2,8 +2,10 @@ import { useEffect, useState } from "react"
 import type { UiApi } from "./api/client"
 import { ApiError } from "./errors"
 
-export const useCurrentPersonId = (api: UiApi | null, isLocalOwner: boolean): string | null => {
-  const [session, setSession] = useState<{ api: UiApi; personId: string } | null>(null)
+type CurrentPerson = { id: string; role: "member" | "admin" }
+
+export const useCurrentPerson = (api: UiApi | null, isLocalOwner: boolean): CurrentPerson | null => {
+  const [session, setSession] = useState<{ api: UiApi; person: CurrentPerson } | null>(null)
   const isOwner = isLocalOwner || api?.isMock
 
   useEffect(() => {
@@ -22,7 +24,7 @@ export const useCurrentPersonId = (api: UiApi | null, isLocalOwner: boolean): st
         const { person } = await api.request("GET /session", {})
         if (!active) return
 
-        setSession({ api, personId: person.id })
+        setSession({ api, person: { id: person.id, role: person.role } })
         retryDelay = 2000
       } catch (error) {
         if (!active || (error instanceof ApiError && [401, 403, 404].includes(error.status))) return
@@ -50,7 +52,10 @@ export const useCurrentPersonId = (api: UiApi | null, isLocalOwner: boolean): st
     }
   }, [api, isOwner])
 
-  if (isOwner) return "owner"
+  if (isOwner) return { id: "owner", role: "admin" }
 
-  return session?.api === api ? session.personId : null
+  return session?.api === api ? session.person : null
 }
+
+export const useCurrentPersonId = (api: UiApi | null, isLocalOwner: boolean): string | null =>
+  useCurrentPerson(api, isLocalOwner)?.id ?? null

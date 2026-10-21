@@ -61,6 +61,7 @@ it.each(["mac", "computer", "server"] as const)(
     await screen.findByText(`O Codex ainda não está instalado neste ${getHostLabel(host)}.`)
     fireEvent.change(await screen.findByLabelText("Nome"), { target: { value: "Clara" } })
     fireEvent.click(screen.getByRole("radio", { name: "Caderno em ordem" }))
+    fireEvent.click(screen.getByRole("button", { name: "Personalizar" }))
     fireEvent.click(screen.getByRole("radio", { name: "Chifres Longos" }))
     fireEvent.click(screen.getByRole("radio", { name: "Acessório Coroa" }))
     const avatar = document.querySelector(".avatar-picker-preview .tb-avatar")?.getAttribute("data-bot-id")

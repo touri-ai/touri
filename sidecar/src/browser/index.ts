@@ -30,6 +30,7 @@ import {
   requiresBrowserKeyInspection,
   requiresBrowserTakeover,
 } from "./decision"
+import { createBrowserPreviewScopes } from "./preview-scopes"
 import type { BrowserEngine } from "./types"
 import { asArray, asBoolean, asNumber, asRecord, asString } from "./utils"
 import { createRoutedBrowserEngine } from "./vm-router"
@@ -594,6 +595,7 @@ export const init = async (
       })
     return request.runId
   })
+  const previewScopes = createBrowserPreviewScopes()
   // The screen viewers show the real cause when a page never reached the display.
   const tool = (name: string, handler: ToolHandler): ToolRegistration => ({
     name,
@@ -624,6 +626,7 @@ export const init = async (
       const vmInput = bot?.machine === "vm" && bot.browser === "machine" && writes
       const gate = vmInput ? kernel.services.use("computer.input") : null
       if (vmInput && !gate) return { success: false, errorCode: "COMPUTER_DISABLED", error: "Controle indisponível" }
+      previewScopes.set(input.ctx.botId, input.ctx.threadId)
       const result = gate
         ? await gate.run(input.ctx, (signal) => handler({ ...input, ctx: { ...input.ctx, signal } }))
         : await handler(input)
@@ -1025,9 +1028,23 @@ export const init = async (
                 error: "A prévia fica oculta enquanto alguém está no controle.",
               },
             }
-          const frame = selectedTabId
-            ? await engine.preview({ botId, tabId: selectedTabId, signal })
-            : await engine.preview({ botId, ...(query.tabId ? { tabId: query.tabId } : {}), signal })
+          const capture = () =>
+            selectedTabId
+              ? engine.preview({ botId, tabId: selectedTabId, signal })
+              : engine.preview({ botId, ...(query.tabId ? { tabId: query.tabId } : {}), signal })
+          const frame =
+            person?.role === "member"
+              ? await previewScopes.capture({
+                  botId,
+                  canReadThread: (threadId) =>
+                    kernel.services.use("work.canAccessThread")?.({
+                      personId: person.id,
+                      role: person.role,
+                      threadId,
+                    }) === true,
+                  capture,
+                })
+              : await capture()
           const device = deviceSession(signal)
           if (
             device &&

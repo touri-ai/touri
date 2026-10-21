@@ -3545,16 +3545,16 @@ a {
   font-size: var(--fs-caption);
 }
 
-/* Avatar customizer: preview and app-surface samples beside colour, horn and accessory choices. */
+/* Keep the mascot compact until the user opens its customization controls. */
 .avatar-picker {
   min-width: 0;
-  padding: var(--space-12);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
+  padding: 0;
+  border: 0;
   container-type: inline-size;
 }
 .avatar-picker legend {
-  padding: 0 var(--space-8);
+  margin-bottom: var(--space-8);
+  padding: 0;
   font-weight: var(--weight-semibold);
 }
 .avatar-picker fieldset {
@@ -3590,25 +3590,22 @@ a {
   outline: 2px solid var(--info);
   outline-offset: 2px;
 }
-/* Wraps the preview above the choices when the host modal is narrow. */
 .avatar-picker-layout {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-20);
+  align-items: center;
+  gap: var(--space-16);
+  padding: var(--space-8) var(--space-12);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
 }
 .avatar-picker-preview {
-  min-width: 0;
-  display: flex;
-  flex: 1 1 180px;
-  flex-direction: column;
-  gap: var(--space-12);
+  flex: none;
 }
 .avatar-picker-stage {
-  height: 136px;
+  width: 64px;
+  height: 64px;
   display: grid;
   place-items: center;
-  border-radius: var(--radius-md);
-  background: var(--surface-inset);
 }
 .avatar-picker-stage > span {
   display: grid;
@@ -3627,88 +3624,21 @@ a {
     animation: none;
   }
 }
-.avatar-picker-moods {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
-  gap: var(--space-8);
-}
-.avatar-picker-moods label {
-  height: 30px;
-  display: grid;
-  place-items: center;
-  padding: 0 var(--space-4);
-  overflow: hidden;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-2);
-  font-size: var(--fs-caption);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.avatar-picker-in-app {
+.avatar-picker-actions {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-8);
-  color: var(--text-2);
-  font-size: var(--fs-caption);
-}
-.avatar-picker-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-12);
-  padding: var(--space-8) var(--space-8);
-  border-radius: var(--radius-sm);
-  background: var(--surface-selected);
-}
-.avatar-picker-row > span {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.avatar-picker-row strong {
-  overflow: hidden;
-  color: var(--text);
-  font-size: var(--fs-body);
-  font-weight: var(--weight-semibold);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.avatar-picker-pill {
-  height: 32px;
-  max-width: 100%;
-  align-self: flex-start;
-  display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-8);
-  padding: 0 var(--space-12) 0 var(--space-8);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-pill);
-  color: var(--text);
-  font-size: var(--fs-meta);
 }
 .avatar-picker-controls {
   min-width: 0;
   display: flex;
-  flex: 999 1 280px;
   flex-direction: column;
   gap: var(--space-16);
-}
-.avatar-picker-heading {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-12);
-  row-gap: var(--space-8);
-  color: var(--text-2);
-  font-size: var(--fs-meta);
-}
-.avatar-picker-heading > span {
-  flex: 1 1 100%;
+  padding-top: var(--space-16);
 }
 .avatar-picker-shuffle,
+.avatar-picker-customize,
 .avatar-picker-reset {
   height: 32px;
   flex: none;
@@ -3787,19 +3717,13 @@ a {
 .avatar-options label:hover {
   background: var(--surface-control);
 }
-:is(.avatar-options, .avatar-picker-moods) label:has(input:checked) {
+.avatar-options label:has(input:checked) {
   border-color: var(--info);
   background: color-mix(in srgb, var(--info) 14%, transparent);
   color: var(--text);
 }
 /* Narrow hosts (the create-bot side column) keep every choice on screen: smaller tiles, names in tooltips. */
 @container (max-width: 400px) {
-  .avatar-picker-stage {
-    height: 112px;
-  }
-  .avatar-picker-moods {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
   .avatar-colors > div {
     gap: var(--space-8);
   }

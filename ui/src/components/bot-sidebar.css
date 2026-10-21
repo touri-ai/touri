@@ -664,6 +664,7 @@
 .r8-sidebar
   :is(
     .sidebar-icon-button,
+    .sidebar-invite,
     .notification-bell,
     .bot-settings,
     .sidebar-attention-button,

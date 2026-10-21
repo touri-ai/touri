@@ -18,6 +18,76 @@ export const ptBR = {
   "Nenhum navegador executável foi encontrado. Instale um navegador compatível no computador do bot e verifique novamente.":
     "Nenhum navegador executável foi encontrado. Instale um navegador compatível no computador do bot e verifique novamente.",
 
+  Navegador: "Navegador",
+  "Código do convite": "Código do convite",
+  "Opcional. Sem e-mail, compartilhe o link ou código.": "Opcional. Sem e-mail, compartilhe o link ou código.",
+  "Abra /join no endereço do time e informe o código. Válido por 24 horas, para uma pessoa.":
+    "Abra /join no endereço do time e informe o código. Válido por 24 horas, para uma pessoa.",
+  "Para convidar pessoas, configure o endereço público HTTPS em Pessoas nas preferências.":
+    "Para convidar pessoas, configure o endereço público HTTPS em Pessoas nas preferências.",
+  "Seu nome": "Seu nome",
+  "Cole o código recebido ou abra o link do convite.": "Cole o código recebido ou abra o link do convite.",
+  "Convidar pessoa": "Convidar pessoa",
+  "E-mail": "E-mail",
+  Papel: "Papel",
+  Canais: "Canais",
+  Administrador: "Administrador",
+  "Conversa nos canais em que está, chama bots com @ e aprova pedidos dos bots pelos quais responde.":
+    "Conversa nos canais em que está, chama bots com @ e aprova pedidos dos bots pelos quais responde.",
+  "Também convida pessoas, cria canais e bots e muda o que cada bot pode fazer.":
+    "Também convida pessoas, cria canais e bots e muda o que cada bot pode fazer.",
+  "Crie um canal para escolher onde a pessoa entra.": "Crie um canal para escolher onde a pessoa entra.",
+  "Enviar convite": "Enviar convite",
+  "Enviando convite…": "Enviando convite…",
+  Enviado: "Enviado",
+  "Link criado": "Link criado",
+  "Convite enviado para {email}": "Convite enviado para {email}",
+  "O link no e-mail vale por 24 horas e só pode ser usado uma vez. Se {name} não receber, você pode reenviar ou copiar o link.":
+    "O link no e-mail vale por 24 horas e só pode ser usado uma vez. Se {name} não receber, você pode reenviar ou copiar o link.",
+  "O envio de e-mail não está configurado neste servidor. Copie o link e envie para {name} por onde preferir. Ele vale por 24 horas e só pode ser usado uma vez.":
+    "O envio de e-mail não está configurado neste servidor. Copie o link e envie para {name} por onde preferir. Ele vale por 24 horas e só pode ser usado uma vez.",
+  "Não foi possível enviar o e-mail. Copie o link e envie para {name}, ou tente reenviar.":
+    "Não foi possível enviar o e-mail. Copie o link e envie para {name}, ou tente reenviar.",
+  Reenviar: "Reenviar",
+  "Reenviando…": "Reenviando…",
+  "Copiar link": "Copiar link",
+  "Link copiado": "Link copiado",
+  "Não foi possível copiar sozinho. Selecione o link abaixo e copie.":
+    "Não foi possível copiar sozinho. Selecione o link abaixo e copie.",
+  "Link do convite": "Link do convite",
+  Revogar: "Revogar",
+  "Convite revogado. O link não funciona mais.": "Convite revogado. O link não funciona mais.",
+  "O que {name} vai poder fazer": "O que {name} vai poder fazer",
+  "Conversar em {channels} e chamar bots com @.": "Conversar em {channels} e chamar bots com @.",
+  "Conversar nos canais que você adicionar depois e chamar bots com @.":
+    "Conversar nos canais que você adicionar depois e chamar bots com @.",
+  "Aprovar pedidos dos bots pelos quais responde.": "Aprovar pedidos dos bots pelos quais responde.",
+  "Convidar outras pessoas, criar canais e bots e mudar o que cada bot pode fazer.":
+    "Convidar outras pessoas, criar canais e bots e mudar o que cada bot pode fazer.",
+  "Não vê as suas conversas a sós com bots nem a configuração do servidor.":
+    "Não vê as suas conversas a sós com bots nem a configuração do servidor.",
+  Pronto: "Pronto",
+  Voltar: "Voltar",
+  "Só administradores podem convidar pessoas.": "Só administradores podem convidar pessoas.",
+  "Informe o nome e um e-mail válido.": "Informe o nome e um e-mail válido.",
+  "Este e-mail já pertence a uma pessoa do time.": "Este e-mail já pertence a uma pessoa do time.",
+  "Muitos convites em pouco tempo. Aguarde um minuto e tente de novo.":
+    "Muitos convites em pouco tempo. Aguarde um minuto e tente de novo.",
+  "Entrar no touri": "Entrar no touri",
+  "Você foi convidado. Confirme o e-mail do convite para entrar neste aparelho.":
+    "Você foi convidado. Confirme o e-mail do convite para entrar neste aparelho.",
+  "E-mail do convite": "E-mail do convite",
+  "Nome deste aparelho": "Nome deste aparelho",
+  Entrar: "Entrar",
+  "Entrando…": "Entrando…",
+  "Tudo certo! Abrindo seus canais…": "Tudo certo! Abrindo seus canais…",
+  "Convite inválido, expirado, já usado ou com outro e-mail. Peça um novo link a quem convidou.":
+    "Convite inválido, expirado, já usado ou com outro e-mail. Peça um novo link a quem convidou.",
+  "Este link não tem um convite. Abra o link completo que você recebeu.":
+    "Este link não tem um convite. Abra o link completo que você recebeu.",
+  "Muitas tentativas. Aguarde um pouco e tente de novo.": "Muitas tentativas. Aguarde um pouco e tente de novo.",
+  "Não foi possível falar com o servidor. Confira a conexão e tente de novo.":
+    "Não foi possível falar com o servidor. Confira a conexão e tente de novo.",
   "Assisted browser choices are off or have no saved key. You can enable them in API model settings. The browser will keep working.":
     "A ajuda nas escolhas está desativada ou sem chave salva. Você pode ativá-la em Modelos por API. O navegador continuará funcionando.",
   "Use this key for assisted browser choices": "Usar esta chave para ajudar nas escolhas do navegador",
@@ -2645,6 +2715,8 @@ export const ptBR = {
   "avatar.accessory.flower": "Flor",
   "avatar.accessory.crown": "Coroa",
   "avatar.shuffle": "Sortear",
+  "avatar.customize": "Personalizar",
+  "avatar.group": "Mascote do grupo",
   "avatar.reset": "Restaurar automático",
   "avatar.preview": "Pré-visualizar estado",
   "avatar.preview.idle": "Ocioso",
@@ -3222,6 +3294,76 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "This conversation is already being deleted.": "This conversation is already being deleted.",
   "Delete automatic conversations older than {days} days?": "Delete automatic conversations older than {days} days?",
   "Select up to {count} conversations.": "Select up to {count} conversations.",
+  Navegador: "Browser",
+  "Código do convite": "Invitation code",
+  "Opcional. Sem e-mail, compartilhe o link ou código.": "Optional. Without email, share the link or code.",
+  "Abra /join no endereço do time e informe o código. Válido por 24 horas, para uma pessoa.":
+    "Open /join at the team address and enter the code. Valid for 24 hours, for one person.",
+  "Para convidar pessoas, configure o endereço público HTTPS em Pessoas nas preferências.":
+    "To invite people, configure the public HTTPS address in People in settings.",
+  "Seu nome": "Your name",
+  "Cole o código recebido ou abra o link do convite.": "Paste the code you received or open the invitation link.",
+  "Convidar pessoa": "Invite person",
+  "E-mail": "Email",
+  Papel: "Role",
+  Canais: "Channels",
+  Administrador: "Administrator",
+  "Conversa nos canais em que está, chama bots com @ e aprova pedidos dos bots pelos quais responde.":
+    "Chats in the channels they are in, calls bots with @ and approves requests from the bots they answer for.",
+  "Também convida pessoas, cria canais e bots e muda o que cada bot pode fazer.":
+    "Also invites people, creates channels and bots, and changes what each bot can do.",
+  "Crie um canal para escolher onde a pessoa entra.": "Create a channel to choose where the person joins.",
+  "Enviar convite": "Send invite",
+  "Enviando convite…": "Sending invite…",
+  Enviado: "Sent",
+  "Link criado": "Link created",
+  "Convite enviado para {email}": "Invite sent to {email}",
+  "O link no e-mail vale por 24 horas e só pode ser usado uma vez. Se {name} não receber, você pode reenviar ou copiar o link.":
+    "The link in the email works for 24 hours and only once. If {name} doesn't get it, you can resend it or copy the link.",
+  "O envio de e-mail não está configurado neste servidor. Copie o link e envie para {name} por onde preferir. Ele vale por 24 horas e só pode ser usado uma vez.":
+    "Email sending is not set up on this server. Copy the link and send it to {name} however you like. It works for 24 hours and only once.",
+  "Não foi possível enviar o e-mail. Copie o link e envie para {name}, ou tente reenviar.":
+    "The email could not be sent. Copy the link and send it to {name}, or try resending.",
+  Reenviar: "Resend",
+  "Reenviando…": "Resending…",
+  "Copiar link": "Copy link",
+  "Link copiado": "Link copied",
+  "Não foi possível copiar sozinho. Selecione o link abaixo e copie.":
+    "Could not copy automatically. Select the link below and copy it.",
+  "Link do convite": "Invite link",
+  Revogar: "Revoke",
+  "Convite revogado. O link não funciona mais.": "Invite revoked. The link no longer works.",
+  "O que {name} vai poder fazer": "What {name} will be able to do",
+  "Conversar em {channels} e chamar bots com @.": "Chat in {channels} and call bots with @.",
+  "Conversar nos canais que você adicionar depois e chamar bots com @.":
+    "Chat in the channels you add later and call bots with @.",
+  "Aprovar pedidos dos bots pelos quais responde.": "Approve requests from the bots they answer for.",
+  "Convidar outras pessoas, criar canais e bots e mudar o que cada bot pode fazer.":
+    "Invite other people, create channels and bots, and change what each bot can do.",
+  "Não vê as suas conversas a sós com bots nem a configuração do servidor.":
+    "Can't see your one-on-one conversations with bots or the server settings.",
+  Pronto: "Done",
+  Voltar: "Back",
+  "Só administradores podem convidar pessoas.": "Only administrators can invite people.",
+  "Informe o nome e um e-mail válido.": "Enter a name and a valid email.",
+  "Este e-mail já pertence a uma pessoa do time.": "This email already belongs to someone on the team.",
+  "Muitos convites em pouco tempo. Aguarde um minuto e tente de novo.":
+    "Too many invites in a short time. Wait a minute and try again.",
+  "Entrar no touri": "Join touri",
+  "Você foi convidado. Confirme o e-mail do convite para entrar neste aparelho.":
+    "You have been invited. Confirm the invite's email to join on this device.",
+  "E-mail do convite": "Invite email",
+  "Nome deste aparelho": "Name of this device",
+  Entrar: "Join",
+  "Entrando…": "Joining…",
+  "Tudo certo! Abrindo seus canais…": "All set! Opening your channels…",
+  "Convite inválido, expirado, já usado ou com outro e-mail. Peça um novo link a quem convidou.":
+    "The invite is invalid, expired, already used or for another email. Ask the person who invited you for a new link.",
+  "Este link não tem um convite. Abra o link completo que você recebeu.":
+    "This link has no invite. Open the full link you received.",
+  "Muitas tentativas. Aguarde um pouco e tente de novo.": "Too many attempts. Wait a bit and try again.",
+  "Não foi possível falar com o servidor. Confira a conexão e tente de novo.":
+    "Could not reach the server. Check the connection and try again.",
   "Aviso de bot pausado": "Paused bot notice",
   "{name} está pausado": "{name} is paused",
   "Bots pausados não respondem mensagens. Retome o bot para começar a conversa.":
@@ -5018,7 +5160,9 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "avatar.accessory.cap": "Cap",
   "avatar.accessory.flower": "Flower",
   "avatar.accessory.crown": "Crown",
-  "avatar.shuffle": "Shuffle",
+  "avatar.shuffle": "Randomize",
+  "avatar.customize": "Customize",
+  "avatar.group": "Group mascot",
   "avatar.reset": "Restore automatic",
   "avatar.preview": "Preview state",
   "avatar.preview.idle": "Idle",

@@ -70,7 +70,7 @@ test("unauthenticated root shows the pairing page and the API answers 401", asyn
   expect(page?.status).toBe(200)
   expect(await page?.text()).toContain("Código de pareamento")
   expect((await call({ path: "/api/v1/bots" }))?.status).toBe(401)
-  expect((await call({ path: "/assets/app.js" }))?.status).toBe(401)
+  expect((await call({ path: "/assets/app.js" }))?.status).toBe(200)
   expect((await call({ path: "/api/v1/events", headers: { upgrade: "websocket" } }))?.status).toBe(401)
 })
 
@@ -583,4 +583,16 @@ test("a trusted-proxy server still pairs a direct loopback client that sends no 
   expect((await pair("http://127.0.0.1:8795"))?.status).toBe(200)
   expect((await pair("https://127.0.0.1:8795"))?.status).toBe(403)
   expect((await pair("http://evil.example"))?.status).toBe(403)
+})
+
+test("fresh browsers load join and its assets without a referrer while APIs stay private", async () => {
+  const { call } = await makeGate()
+
+  const page = await call({ path: "/join" })
+  const script = await call({ path: "/assets/app.js" })
+  const privateApi = await call({ path: "/api/v1/people" })
+
+  expect(page?.status).toBe(200)
+  expect(await script?.text()).toBe("js")
+  expect(privateApi?.status).toBe(401)
 })

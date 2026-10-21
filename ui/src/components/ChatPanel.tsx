@@ -1331,6 +1331,7 @@ export const ChatPanel = ({
               group={group}
               bots={groupMembers}
               onEdit={onEditGroup}
+              onInvite={onInviteToGroup}
               panelOpen={panelOpen}
               onTogglePanel={onTogglePanel}
             />
