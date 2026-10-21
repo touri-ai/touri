@@ -90,6 +90,7 @@ test("remote browser takeover gives one device an interactive session and reject
   const runtime = createKernel({ appData: root })
   let botId = ""
   let receivedInput: unknown = null
+  let frameCapture: Promise<void> | null = null
   let heldRunId: string | undefined
   let engineReleaseCount = 0
   let leaseAcquired = 0
@@ -139,14 +140,17 @@ test("remote browser takeover gives one device an interactive session and reject
     },
     getWindowBounds: async () => null,
     tabsForBot: () => [{ ...tab, ownerBotId: botId }],
-    takeoverFrame: async () => ({
-      targetEpoch: 4,
-      title: "Example page",
-      url: "https://example.test/login",
-      image: "data:image/jpeg;base64,ZmFrZQ==",
-      width: 1280,
-      height: 720,
-    }),
+    takeoverFrame: async () => {
+      await frameCapture
+      return {
+        targetEpoch: 4,
+        title: "Example page",
+        url: "https://example.test/login",
+        image: "data:image/jpeg;base64,ZmFrZQ==",
+        width: 1280,
+        height: 720,
+      }
+    },
     takeoverInput: async ({ input }: { input: unknown }) => {
       receivedInput = input
       return true
@@ -347,10 +351,13 @@ test("remote browser takeover gives one device an interactive session and reject
     const endSessionRoute = browserRoutes?.routes.find(
       (route) => route.method === "DELETE" && route.path === "/browser/tabs/:id/takeover/session",
     )
+    const frameRoute = browserRoutes?.routes.find(
+      (route) => route.method === "POST" && route.path === "/browser/tabs/:id/takeover/frame",
+    )
     const legacyTakeoverRoute = browserRoutes?.routes.find(
       (route) => route.method === "POST" && route.path === "/browser/tabs/:id/takeover",
     )
-    if (!startSessionRoute || !endSessionRoute || !legacyTakeoverRoute)
+    if (!startSessionRoute || !endSessionRoute || !legacyTakeoverRoute || !frameRoute)
       throw new Error("Browser takeover routes were not registered")
     const personSignal = (personId: string) => {
       const signal = new AbortController().signal
@@ -392,6 +399,38 @@ test("remote browser takeover gives one device an interactive session and reject
     })
     expect(ownerEnd.status).toBe(200)
     expect(leaseReleased).toBe(2)
+
+    let deviceActive = true
+    const revokedSignal = new AbortController().signal
+    bindDeviceSession(revokedSignal, {
+      deviceId: "revoked-device",
+      person: { id: "controller", name: "Controller", email: null, avatarSeed: "controller", role: "member" },
+      active: () => deviceActive,
+    })
+    const revokedSession = await startSessionRoute.handler({
+      params: { id: "t_remote" },
+      query: {},
+      body: {},
+      signal: revokedSignal,
+    })
+    if (!("json" in revokedSession)) throw new Error("Controller session response was not JSON")
+    let completeCapture: () => void = () => {}
+    frameCapture = new Promise<void>((resolve) => {
+      completeCapture = resolve
+    })
+
+    const pendingFrame = frameRoute.handler({
+      params: { id: "t_remote" },
+      query: {},
+      body: { ...(revokedSession.json as { sessionId: string; controlEpoch: string }), viewEpoch: 0 },
+      signal: revokedSignal,
+    })
+    deviceActive = false
+    completeCapture()
+    const revokedFrame = await pendingFrame
+
+    expect(revokedFrame.status).toBe(403)
+    expect(JSON.stringify(revokedFrame)).not.toContain("ZmFrZQ==")
   } finally {
     runtime.stop()
     rmSync(root, { recursive: true, force: true })

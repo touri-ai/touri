@@ -545,10 +545,11 @@ export const init = async (
     const controlEpoch = asString(body.controlEpoch)
     const tabId = request.params.id ?? ""
     const session = takeoverSessions.get(tabId)
-    if ((device && !device.active()) || !session || sessionId !== session.id) return null
+    if (!session || sessionId !== session.id) return null
     if (session.controlEpoch !== controlEpoch) return null
     if (!isTakeoverController(device, session)) return null
-    if (session.expiresAt <= Date.now()) {
+    const canView = !device?.person || visibleTabsFor(null, device.person).some((tab) => tab.tabId === tabId)
+    if ((device && !device.active()) || !canView || session.expiresAt <= Date.now()) {
       removeTakeoverSession(tabId)
       return null
     }
@@ -1025,6 +1026,12 @@ export const init = async (
           const frame = selectedTabId
             ? await engine.preview({ botId, tabId: selectedTabId, signal })
             : await engine.preview({ botId, ...(query.tabId ? { tabId: query.tabId } : {}), signal })
+          const device = deviceSession(signal)
+          if (
+            device &&
+            (!device.active() || !visibleTabsFor(botId, device.person).some((tab) => tab.tabId === selectedTabId))
+          )
+            return { status: 404, json: { error: "Página não encontrada" } }
           return frame
             ? { status: 200, json: frame }
             : { status: 409, json: { error: "Nenhuma página disponível para prévia" } }
@@ -1172,7 +1179,7 @@ export const init = async (
               signal: AbortSignal.any([request.signal, active.lifetime.signal]),
             })
             .catch(() => null)
-          const current = takeoverSessions.get(tabId)
+          const current = authorizeTakeoverSession(request)?.session
           if (current?.id !== active.id || current.viewEpoch !== active.viewEpoch)
             return { status: 403, json: { error: "Esta sessão de controle não está ativa." } }
           const completed = renewTakeoverSession(tabId, {
