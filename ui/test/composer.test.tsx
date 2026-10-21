@@ -123,10 +123,10 @@ describe("composer island", () => {
 
     expect(status).toBeInTheDocument()
     expect(status).toHaveTextContent("No navegador")
-    expect(screen.getByRole("button", { name: "Parar tarefa no navegador" })).toBeVisible()
+    expect(screen.getByRole("button", { name: "Parar mark" })).toBeVisible()
     expect(screen.queryByRole("button", { name: "Stop reply button" })).toBeNull()
 
-    fireEvent.click(screen.getByRole("button", { name: "Parar tarefa no navegador" }))
+    fireEvent.click(screen.getByRole("button", { name: "Parar mark" }))
     await waitFor(() => expect(cancel).toHaveBeenCalledWith("active"))
   })
 

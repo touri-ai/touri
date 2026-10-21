@@ -335,6 +335,8 @@ test("remote browser takeover gives one device an interactive session and reject
       })
       return signal
     }
+    runtime.kernel.services.provide("work.canAccessBot", () => true)
+    runtime.kernel.services.provide("work.canAccessThread", () => true)
     const ownerSignal = personSignal("controller")
     const ownerSession = await startSessionRoute.handler({
       params: { id: "t_remote" },

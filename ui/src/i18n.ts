@@ -4,6 +4,7 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "Waiting for the other browser request to finish.": "Aguardando o outro pedido no navegador terminar.",
   "Stop browser work": "Parar",
   "The page changed. Trying again.": "A página mudou. Tentando de novo.",
   "The browser could not connect. Reconnect and try again.":
@@ -3029,6 +3030,7 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Waiting for the other browser request to finish.": "Waiting for the other browser request to finish.",
   "Stop browser work": "Stop",
   "The page changed. Trying again.": "The page changed. Trying again.",
   "The browser could not connect. Reconnect and try again.": "The browser could not connect. Reconnect and try again.",

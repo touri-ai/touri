@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import type { Bot, BrowserTabInfo, ToolCallPart } from "@touri/contracts"
+import type { Bot, BrowserTabInfo, Run, ToolCallPart } from "@touri/contracts"
 import { afterEach, expect, test, vi } from "vitest"
 import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
@@ -360,6 +360,16 @@ test("take-over holds the browser, opens its view, and the finished card collaps
 
   expect(await screen.findByRole("button", { name: "Devolver para Lia" })).toBeVisible()
   fireEvent.click(screen.getByRole("button", { name: "Devolver para Lia" }))
+  expect(screen.queryByText("Usou o navegador · 3 ações")).toBeNull()
+  const resumedRun = {
+    id: "resumed",
+    botId: bot?.id,
+    threadId: "thread-mark",
+    trigger: "retry",
+    status: "running",
+  } as Run
+  act(() => api.emit({ type: "run.updated", run: resumedRun }))
+  act(() => api.emit({ type: "run.updated", run: { ...resumedRun, status: "succeeded" } }))
   expect(await screen.findByText("Usou o navegador · 3 ações")).toBeVisible()
   expect(screen.getByText("Ver o que ele fez")).toBeVisible()
   expect(screen.getByRole("img", { name: "Captura final do navegador" })).toBeVisible()
@@ -429,8 +439,8 @@ test("historical browser cards never sample or take over the current browser pag
   expect(request).not.toHaveBeenCalledWith("GET /browser/tabs", expect.anything())
 })
 
-test("a finished browser takeover request keeps its page URL and handback control", async () => {
-  const requestedTab = { ...tab, takeoverRequested: true }
+test("a completed provider turn keeps a pending human handoff available", async () => {
+  const requestedTab = { ...tab, heldByUser: true, takeoverRequested: true }
   const parts = [
     getPart({
       callId: "takeover",
@@ -441,9 +451,9 @@ test("a finished browser takeover request keeps its page URL and handback contro
 
   renderCard(parts, true, async () => ({ tabs: [requestedTab] }))
 
-  expect(await screen.findByRole("button", { name: "Assumir controle" })).toBeVisible()
-  expect(screen.getByText("https://travel.example.test/results")).toBeVisible()
-  fireEvent.click(screen.getByRole("button", { name: "Assumir controle" }))
+  expect(await screen.findByRole("button", { name: "Assumir" })).toBeVisible()
+  expect(screen.queryByText("https://travel.example.test/results")).toBeNull()
+  fireEvent.click(screen.getByRole("button", { name: "Assumir" }))
   expect(await screen.findByRole("button", { name: "Devolver para Lia" })).toBeVisible()
 })
 

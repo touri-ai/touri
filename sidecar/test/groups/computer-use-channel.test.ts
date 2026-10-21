@@ -17,6 +17,7 @@ const createFixture = () => {
   const database = openDatabase({ filename: join(root, "test.db") })
   const subscribers = new Set<(envelope: UiEventEnvelope) => void>()
   const notifications: Array<Record<string, unknown>> = []
+  const resumptions: Array<{ runId: string }> = []
   const kernel = {
     db: database,
     services: {
@@ -28,6 +29,11 @@ const createFixture = () => {
           return (input: Record<string, unknown>) => {
             notifications.push(input)
             return {}
+          }
+        if (name === "runtime.resumeAfterBrowserTakeover")
+          return (input: { runId: string }) => {
+            resumptions.push(input)
+            return true
           }
         if (name === "notify.resolve") return () => undefined
         return null
@@ -74,7 +80,7 @@ const createFixture = () => {
     rmSync(root, { recursive: true, force: true })
   }
 
-  return { database, kernel, notifications, addRun, publishRunStatus, context, cleanup }
+  return { database, kernel, notifications, resumptions, addRun, publishRunStatus, context, cleanup }
 }
 
 test("a channel run keeps the person who sent its triggering message", () => {
@@ -133,8 +139,14 @@ test("channel browser runs persist one active slot per bot and promote queued wo
       ["leo-other-channel", "queued", 4],
     ])
 
+    expect(await second).toEqual({ success: true, queued: true })
+    publishRunStatus("leo-2", "succeeded")
+    expect(channelRuns.get("leo-2")?.status).toBe("queued")
     publishRunStatus("leo-1", "succeeded")
-    expect(await second).toEqual({ success: true })
+    expect(fixture.resumptions.map((run) => run.runId)).toEqual(["leo-2"])
+    publishRunStatus("leo-1", "succeeded")
+    expect(fixture.resumptions).toHaveLength(1)
+    expect(await second).toEqual({ success: true, queued: true })
     expect(channelRuns.get("leo-2")?.status).toBe("running")
     database
       .query(`INSERT INTO browser_tabs
@@ -149,14 +161,15 @@ test("channel browser runs persist one active slot per bot and promote queued wo
     expect(channelRuns.isPreviewHidden("leo-tab")).toBe(false)
 
     publishRunStatus("leo-3", "canceled")
-    await expect(third).resolves.toMatchObject({ success: false, errorCode: "BROWSER_RUN_CANCELED" })
+    await expect(third).resolves.toMatchObject({ success: true, queued: true })
+    expect(channelRuns.get("leo-3")?.status).toBe("canceled")
     expect(channelRuns.get("leo-4")).toMatchObject({ status: "queued", queuePosition: 1 })
     publishRunStatus("leo-2", "succeeded")
-    expect(await fourth).toEqual({ success: true })
+    expect(await fourth).toEqual({ success: true, queued: true })
     expect(channelRuns.get("leo-4")?.status).toBe("running")
     publishRunStatus("leo-4", "succeeded")
     publishRunStatus("bia-1", "succeeded")
-    expect(await otherChannel).toEqual({ success: true })
+    expect(await otherChannel).toEqual({ success: true, queued: true })
     publishRunStatus("leo-other-channel", "succeeded")
     expect(channelRuns.list(["travel"])).toEqual([])
   } finally {
@@ -277,8 +290,8 @@ test("one browser request spans a continuation while channels and a DM wait for 
   expect(await channelRuns.enter(context("resumed", "leo", "channel-leo"))).toEqual({ success: true })
   expect(channelRuns.list().filter((run) => run.runId === "first")).toHaveLength(1)
   publishRunStatus("resumed", "succeeded")
-  expect(await otherChannel).toEqual({ success: true })
+  expect(await otherChannel).toEqual({ success: true, queued: true })
   publishRunStatus("other-channel", "canceled")
-  expect(await direct).toEqual({ success: true })
+  expect(await direct).toEqual({ success: true, queued: true })
   expect(channelRuns.get("independent")?.status).toBe("running")
 })

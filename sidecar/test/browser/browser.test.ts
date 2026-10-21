@@ -292,7 +292,7 @@ realSuite("WP6 real Chrome browser acceptance", () => {
       timeoutMs: 10000,
       signal: ctx().signal,
     })
-    expect(JSON.stringify(state)).toContain("true")
+    expect(state).toMatchObject({ success: false, errorCode: "PRIVATE_TAKEOVER_ACTIVE" })
   })
 
   test("typed decisions resume a local travel search after submit handback", async () => {
@@ -345,6 +345,7 @@ realSuite("WP6 real Chrome browser acceptance", () => {
       targetId: target.targetId,
       flatten: true,
     })
+    await chrome.call("Page.enable", {}, attached.sessionId)
     // The fixture person submits the private form; bot-side evaluation remains forbidden.
     await chrome.call(
       "Runtime.evaluate",
@@ -705,7 +706,9 @@ realSuite("WP6 real Chrome browser acceptance", () => {
     expect(returned.success).toBe(true)
     const after = snapshotOf(returned)
     expect(after.generation).toBeGreaterThan(snapshot.generation)
-    expect(after.notes).toContain("User handed back the tab; the page may have changed.")
+    expect(after.notes).toEqual([])
+    expect(after.text).toBe("")
+    expect(after.image).toBeNull()
   })
 
   test("remote browser input reaches the page while a takeover request is waiting", async () => {

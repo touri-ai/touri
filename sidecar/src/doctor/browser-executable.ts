@@ -18,7 +18,7 @@ export const getBrowserExecutableCheck = async ({
 }: {
   platform: string
   path: string
-  executable?: string
+  executable?: string | undefined
   which: (name: string, path: string) => string | null
   signal: AbortSignal
   canExecute?: (file: string) => Promise<boolean>

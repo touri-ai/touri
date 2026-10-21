@@ -4604,7 +4604,7 @@ export const createBrowserEngine = ({
     return (await releaseTakeover(tabId)) ? "released" : "not_found"
   }
 
-  const holdTakeover = async ({ tabId, reason }: { tabId: Id; reason: string }): Promise<boolean> => {
+  const holdTakeover = async ({ tabId }: { tabId: Id; reason: string }): Promise<boolean> => {
     const tab = store.find(tabId)
     if (!tab || tab.info.state === "closed") return false
     if (tab.info.heldByUser) return true
@@ -4640,11 +4640,6 @@ export const createBrowserEngine = ({
     })
     store.save(tab)
     kernel.publish({ type: "browser.tab", tab: safePublicTabInfo(tab) })
-    await notifyBestEffort({
-      title: "The browser is under your control",
-      body: kernel.redact(reason).slice(0, 300),
-      threadId: tab.info.ownerThreadId,
-    })
     await raceBudget({ work: focusManagedChrome(), ms: SIDE_EFFECT_BUDGET_MS }).catch(() => undefined)
     return true
   }
@@ -4876,6 +4871,7 @@ export const createBrowserEngine = ({
   })
 
   tabs.forEach((tab) => {
+    if (tab.privateAfterTakeover) privateDocuments.set(tab, tab.navigationVersion)
     const saved = handoffs.get(tab.info.tabId)
     if (!saved) return
     if (saved.state === "returned") {

@@ -594,6 +594,17 @@ export const init = async (
       const channelAccess = await channelRuns.enter(input.ctx)
       if (!channelAccess.success)
         return { success: false, errorCode: channelAccess.errorCode, error: channelAccess.error }
+      if (channelAccess.queued)
+        return {
+          success: true,
+          content: [
+            {
+              type: "text",
+              text: "Waiting for this bot's current browser request to finish. End this turn; touri will continue this request automatically.",
+            },
+          ],
+          structured: { status: "waiting_for_browser", requestRunId: input.ctx.runId },
+        }
       const bot = kernel.services.use("store.api")?.getBot({ botId: input.ctx.botId })
       const writes = ![
         "browser_list_tabs",
@@ -1275,7 +1286,13 @@ export const init = async (
           })
           return {
             status: 200,
-            json: { tabs, ...(botId && tabs.length ? { lastFailure: failures.get(botId) ?? null } : {}) },
+            json: {
+              tabs,
+              ...(botId &&
+              (tabs.length || !person || kernel.services.use("work.ownsBot")?.({ personId: person.id, botId }))
+                ? { lastFailure: failures.get(botId) ?? null }
+                : {}),
+            },
           }
         },
       },

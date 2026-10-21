@@ -74,6 +74,15 @@ export const getBrowserActivityTools = (parts: readonly MessagePart[]): ToolCall
   ).values(),
 ]
 
+export const isBrowserRequestQueued = (parts: readonly ToolCallPart[], runId?: string | null): boolean => {
+  const output = parts.at(-1)?.outputJson
+  const parsed = asToolRecord(parseToolValue(output?.slice(0, MAX_OUTPUT_LENGTH) ?? ""))
+  const structured = asToolRecord(parsed?.structured ?? parsed?.structuredContent ?? parsed)
+  if (structured?.status !== "waiting_for_browser") return false
+
+  return !runId || structured.requestRunId === runId
+}
+
 export const hasBrowserTakeoverRequest = (parts: readonly ToolCallPart[]): boolean =>
   parts.some(
     (part) =>
@@ -123,6 +132,7 @@ export const getBrowserActivityTarget = (part: ToolCallPart): string => {
 }
 
 export const getBrowserActivityLabel = (part: ToolCallPart, locale: Locale): string => {
+  if (isBrowserRequestQueued([part])) return t("Waiting for the other browser request to finish.", {}, locale)
   if (part.ok === false) {
     const output = asToolRecord(parseToolValue(part.outputJson?.slice(0, MAX_OUTPUT_LENGTH) ?? ""))
     const code = output?.errorCode ?? asToolRecord(output?.structured)?.errorCode

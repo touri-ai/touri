@@ -107,8 +107,6 @@ export const createChannelBrowserRuns = ({
   escalationMs?: number
   now?: () => number
 }) => {
-  const activationListeners = new Map<string, Set<() => void>>()
-  let disposed = false
   const escalationTimers = new Map<Id, ReturnType<typeof setTimeout>>()
   const personName = (personId: string | null): string | null =>
     personId ? (kernel.services.use("work.personName")?.(personId) ?? null) : null
@@ -141,9 +139,6 @@ export const createChannelBrowserRuns = ({
     return row ? toPublic(row) : null
   }
   const publish = (runId: string): void => {
-    activationListeners.get(runId)?.forEach((listener) => {
-      listener()
-    })
     const run = get(runId)
     if (run?.groupId) kernel.publish({ type: "browser.channel_run", run })
   }
@@ -305,6 +300,18 @@ export const createChannelBrowserRuns = ({
     clearEscalation(runId)
     resolveNeedsYou(runId)
     changed.forEach(publish)
+    const next = changed[1] ? getRaw(changed[1]) : null
+    const nextRun = next
+      ? (database.query("SELECT thread_id FROM runs WHERE id = ?").get(next.current_run_id) as {
+          thread_id: string
+        } | null)
+      : null
+    if (next && nextRun)
+      kernel.services.use("runtime.resumeAfterBrowserTakeover")?.({
+        botId: next.bot_id,
+        threadId: nextRun.thread_id,
+        runId: next.current_run_id,
+      })
     const scope = database.query("SELECT thread_id, bot_id FROM browser_channel_runs WHERE run_id = ?").get(runId) as {
       thread_id: string
       bot_id: string
@@ -324,56 +331,9 @@ export const createChannelBrowserRuns = ({
     return { runId: row.current_run_id, botId: row.bot_id }
   }
 
-  const cancelQueued = (runId: string): void => {
-    const scope = database.query("SELECT thread_id, bot_id FROM browser_channel_runs WHERE run_id = ?").get(runId) as {
-      thread_id: string
-      bot_id: string
-    } | null
-    const changed = database
-      .query(
-        "UPDATE browser_channel_runs SET status = 'canceled', finished_at = ? WHERE run_id = ? AND status = 'queued'",
-      )
-      .run(now(), runId).changes
-    if (changed > 0) {
-      publish(runId)
-      if (scope) publishQueue(scope.thread_id, scope.bot_id)
-    }
-  }
-  const waitForActivation = ({ runId, signal }: { runId: string; signal: AbortSignal }): Promise<boolean> =>
-    new Promise((resolve) => {
-      let dispose = () => {}
-      const finish = (active: boolean): void => {
-        dispose()
-        signal.removeEventListener("abort", onAbort)
-        resolve(active)
-      }
-      const check = (): void => {
-        if (disposed) {
-          finish(false)
-          return
-        }
-        const row = getRaw(runId)
-        if (row?.status === "running") finish(true)
-        else if (!row || !["queued", "needs_you", "taken_over"].includes(row.status)) finish(false)
-      }
-      const onAbort = (): void => {
-        cancelQueued(runId)
-        finish(false)
-      }
-      const listeners = activationListeners.get(runId) ?? new Set<() => void>()
-      listeners.add(check)
-      activationListeners.set(runId, listeners)
-      dispose = () => {
-        listeners.delete(check)
-        if (listeners.size === 0) activationListeners.delete(runId)
-      }
-      signal.addEventListener("abort", onAbort, { once: true })
-      if (signal.aborted) onAbort()
-      else check()
-    })
   const enter = async (
     ctx: ToolContext,
-  ): Promise<{ success: true } | { success: false; errorCode: string; error: string }> => {
+  ): Promise<{ success: true; queued?: boolean } | { success: false; errorCode: string; error: string }> => {
     if (!ctx.runId || ctx.signal.aborted) return { success: true }
     if (!kernel.services.use("work.personChannelIds")) return { success: true }
     const context = getContext(ctx)
@@ -441,15 +401,9 @@ export const createChannelBrowserRuns = ({
     if (outcome.status === "running") return { success: true }
     if (outcome.status !== "queued" && outcome.status !== "needs_you" && outcome.status !== "taken_over")
       return { success: false, errorCode: "BROWSER_RUN_FINISHED", error: "Este turno do navegador já foi encerrado." }
-    const active = await waitForActivation({ runId, signal: ctx.signal })
-    return active
-      ? { success: true }
-      : {
-          success: false,
-          errorCode: "BROWSER_RUN_CANCELED",
-          error: "O turno do navegador foi cancelado antes de começar.",
-        }
+    return { success: true, queued: true }
   }
+
   const needsYou = (currentRunId: string | null, reason: string): boolean => {
     if (!currentRunId) return false
     const row = getRaw(currentRunId)
@@ -562,7 +516,7 @@ export const createChannelBrowserRuns = ({
         .query("UPDATE browser_channel_runs SET current_run_id = ? WHERE run_id = ?")
         .run(event.run.id, row.run_id)
     }
-    if (event.run.status === "succeeded" && ["needs_you", "taken_over"].includes(row.status)) return
+    if (event.run.status === "succeeded" && ["queued", "needs_you", "taken_over"].includes(row.status)) return
     if (event.run.status === "succeeded") updateTerminal(row.run_id, "succeeded")
     if (event.run.status === "failed" || event.run.status === "interrupted") updateTerminal(row.run_id, "failed")
     if (event.run.status === "canceled") updateTerminal(row.run_id, "canceled")
@@ -586,13 +540,6 @@ export const createChannelBrowserRuns = ({
     returnControl,
     isPreviewHidden,
     dispose: () => {
-      disposed = true
-      activationListeners.forEach((listeners) => {
-        listeners.forEach((listener) => {
-          listener()
-        })
-      })
-      activationListeners.clear()
       onRunUpdated()
       escalationTimers.forEach(clearTimeout)
       escalationTimers.clear()
