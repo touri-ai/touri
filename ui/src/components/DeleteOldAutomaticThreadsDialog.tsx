@@ -27,24 +27,26 @@ export const DeleteOldAutomaticThreadsDialog = ({
       className="delete-thread-dialog"
       onClose={onClose}
     >
-      <p>{t("Automatic conversations older than {days} days", { days: validDays ? days : 30 })}</p>
-      <label className="delete-old-automatic-days">
-        {t("Older than")}
-        <input
-          data-initial-focus
-          type="number"
-          min={1}
-          max={3650}
-          value={daysValue}
-          onChange={(event) => setDaysValue(event.currentTarget.value)}
-        />
-        {t("days")}
-      </label>
-      <p role="status">
-        {candidates.length
-          ? t("{count} conversations found.", { count: candidates.length })
-          : t("No old automatic conversations.")}
-      </p>
+      <div className="delete-thread-dialog-body">
+        <p>{t("Automatic conversations older than {days} days", { days: validDays ? days : 30 })}</p>
+        <label className="delete-old-automatic-days">
+          {t("Older than")}
+          <input
+            data-initial-focus
+            type="number"
+            min={1}
+            max={3650}
+            value={daysValue}
+            onChange={(event) => setDaysValue(event.currentTarget.value)}
+          />
+          {t("days")}
+        </label>
+        <p role="status">
+          {candidates.length
+            ? t("{count} conversations found.", { count: candidates.length })
+            : t("No old automatic conversations.")}
+        </p>
+      </div>
       <div className="modal-actions">
         <button type="button" className="button-quiet" onClick={onClose}>
           {t("Cancel")}

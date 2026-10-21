@@ -29,34 +29,36 @@ export const DeleteThreadDialog = ({
       className="delete-thread-dialog"
       onClose={onClose}
     >
-      <div className="delete-thread-dialog-copy" id={descriptionId}>
-        {single ? (
-          <>
-            <p>{single.title}</p>
-            <p>
-              {t("This removes {count} messages and their unused attachments.", { count: single.messageCount ?? 0 })}
-            </p>
-          </>
-        ) : (
-          <>
-            <p>{t("{count} conversations found.", { count: targets.length })}</p>
-            {totalMessages !== null && (
-              <p>{t("These conversations contain {count} messages in total.", { count: totalMessages })}</p>
-            )}
-            <ul>
-              {targets.slice(0, 5).map((target) => (
-                <li key={target.id}>
-                  {target.title}
-                  {target.messageCount !== null && ` · ${target.messageCount}`}
-                </li>
-              ))}
-              {targets.length > 5 && <li>{t("+ {count} more", { count: targets.length - 5 })}</li>}
-            </ul>
-          </>
-        )}
+      <div className="delete-thread-dialog-body">
+        <div className="delete-thread-dialog-copy" id={descriptionId}>
+          {single ? (
+            <>
+              <p>{single.title}</p>
+              <p>
+                {t("This removes {count} messages and their unused attachments.", { count: single.messageCount ?? 0 })}
+              </p>
+            </>
+          ) : (
+            <>
+              <p>{t("{count} conversations found.", { count: targets.length })}</p>
+              {totalMessages !== null && (
+                <p>{t("These conversations contain {count} messages in total.", { count: totalMessages })}</p>
+              )}
+              <ul>
+                {targets.slice(0, 5).map((target) => (
+                  <li key={target.id}>
+                    {target.title}
+                    {target.messageCount !== null && ` · ${target.messageCount}`}
+                  </li>
+                ))}
+                {targets.length > 5 && <li>{t("+ {count} more", { count: targets.length - 5 })}</li>}
+              </ul>
+            </>
+          )}
+        </div>
+        <p>{t("Deleting stops any active work in these conversations.")}</p>
+        <p className="field-help">{t("You can undo for 5 seconds.")}</p>
       </div>
-      <p>{t("Deleting stops any active work in these conversations.")}</p>
-      <p className="field-help">{t("You can undo for 5 seconds.")}</p>
       <div className="modal-actions">
         <button type="button" data-initial-focus className="button-quiet" onClick={onClose}>
           {t("Cancel")}

@@ -13,14 +13,25 @@ for (const width of [1440, 390]) {
     test(`conversation actions confirm deletion at ${width}px in ${theme}`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 })
       await page.emulateMedia({ reducedMotion: "reduce", colorScheme: theme })
+      await page.addInitScript((preference) => localStorage.setItem("touri.appearance.v1", preference), theme)
       await page.clock.install({ time: new Date("2026-10-20T12:00:00Z") })
       await page.goto("/test/e2e/thread-deletion-harness.html")
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
       await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
       if (width === 390) await page.getByRole("button", { name: "Abrir menu" }).click()
       const conversations = page.getByRole("region", { name: "Conversas de mark" })
       const row = conversations.locator(".thread-row").filter({ hasText: "Eventos de leads" })
-      const screenshot = (name: string) =>
-        page.screenshot({ path: join(evidenceDirectory, `${name}-${width}-${theme}.png`) })
+      const screenshot = (name: string) => {
+        const target =
+          name === "after-confirmation"
+            ? page.getByRole("alertdialog")
+            : name === "after-menu"
+              ? page.getByRole("menu")
+              : name === "after-undo-toast"
+                ? page.locator(".thread-delete-toast")
+                : page.locator("nav.bot-sidebar")
+        return target.screenshot({ path: join(evidenceDirectory, `${name}-${width}-${theme}.png`) })
+      }
       await mkdir(evidenceDirectory, { recursive: true })
       await expect(row).toBeVisible()
       await screenshot("before")
@@ -81,16 +92,20 @@ test("archived messages remain searchable and restore when opened", async ({ pag
   await page.getByRole("button", { name: /Arquivadas/ }).click()
   await expect(page.getByRole("button", { name: "Abrir conversa arquivada Eventos de leads" })).toBeVisible()
   await mkdir(evidenceDirectory, { recursive: true })
-  await page.screenshot({ path: join(evidenceDirectory, "archive-list.png") })
+  await page.locator(".archived-thread-list").screenshot({ path: join(evidenceDirectory, "archive-list.png") })
   await page.getByRole("button", { name: "Buscar conversas", exact: true }).click()
   const search = page.getByRole("combobox", { name: "Buscar bots, conversas e configurações" })
   await search.fill("atualização automática")
   const result = page.getByRole("option", { name: /Uma atualização automática de exemplo/ })
   await expect(result).toBeVisible()
-  await page.screenshot({ path: join(evidenceDirectory, "archive-search.png") })
+  await page
+    .getByRole("dialog", { name: "Paleta de comandos" })
+    .screenshot({ path: join(evidenceDirectory, "archive-search.png") })
   await result.click()
 
   await expect(page.locator(".thread-row.selected")).toContainText("Eventos de leads")
   await expect(page.getByText("Uma atualização automática de exemplo.", { exact: true })).toBeVisible()
-  await page.screenshot({ path: join(evidenceDirectory, "archive-restored.png") })
+  await page
+    .locator('[data-message-id="message-lead-event"]')
+    .screenshot({ path: join(evidenceDirectory, "archive-restored.png") })
 }, 60_000)

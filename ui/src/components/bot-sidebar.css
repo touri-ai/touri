@@ -371,6 +371,9 @@
 .delete-old-automatic-days input {
   width: 96px;
 }
+.delete-thread-dialog-body {
+  padding: var(--space-16) var(--space-24);
+}
 .delete-thread-dialog-copy p {
   overflow-wrap: anywhere;
 }
