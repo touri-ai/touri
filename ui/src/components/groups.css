@@ -256,7 +256,7 @@
   cursor: pointer;
 }
 @media (max-width: 800px) {
-  .group-header {
+  .chat-header.group-header {
     height: auto;
     flex-basis: auto;
     padding-block: 12px;
