@@ -5,6 +5,7 @@ import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
 
 test.use({ channel: "chromium" })
+test.describe.configure({ timeout: 90_000 })
 
 const evidenceDirectory = process.env.TOURI_THREAD_EVIDENCE_DIR ?? join(tmpdir(), "touri-thread-delete-evidence")
 
@@ -80,7 +81,7 @@ for (const width of [1440, 390]) {
       if (width === 390) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
       await expect(row).toBeHidden()
       await screenshot("after-delete")
-    }, 90_000)
+    })
   }
 }
 
@@ -106,4 +107,4 @@ test("archived messages remain searchable and restore when opened", async ({ pag
   await page
     .locator('[data-message-id="message-lead-event"]')
     .screenshot({ path: join(evidenceDirectory, "archive-restored.png") })
-}, 60_000)
+})

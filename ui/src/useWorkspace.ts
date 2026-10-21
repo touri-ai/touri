@@ -55,6 +55,7 @@ export type WorkspaceData = {
   machineCapability: MachineCapability
   machines: Array<MachineState>
   threads: Array<Thread>
+  deletedThreadIds?: ReadonlySet<Id>
   messages: Array<Message>
   activityMessages: Array<Message>
   runs: Array<Run>
@@ -437,6 +438,7 @@ const getWorkspaceWithoutThreads = (data: WorkspaceData, threadIds: ReadonlySet<
   return {
     ...data,
     threads,
+    deletedThreadIds: new Set([...(data.deletedThreadIds ?? []), ...threadIds]),
     messages: data.messages.filter((message) => !threadIds.has(message.threadId)),
     activityMessages: data.activityMessages.filter((message) => !threadIds.has(message.threadId)),
     runs: data.runs.filter((run) => !threadIds.has(run.threadId)),
@@ -452,6 +454,7 @@ const getWorkspaceWithoutThreads = (data: WorkspaceData, threadIds: ReadonlySet<
 }
 
 const getWorkspaceWithUpdatedThread = (data: WorkspaceData, thread: Thread): WorkspaceData => {
+  if (data.deletedThreadIds?.has(thread.id)) return data
   const threads = mergeThreads(data.threads, [thread])
   if (thread.archivedAt === null || data.selectedThreadId !== thread.id) return { ...data, threads }
   const bot = data.bots.find((candidate) => candidate.id === thread.botId)
@@ -703,6 +706,7 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
 
   const load = useCallback(async (): Promise<void> => {
     if (!enabled) return
+    const threadsAtStart = new Map(currentData.current.threads.map((thread) => [thread.id, thread]))
     const attempt = ++generation.current
     // Pending callbacks share these request-owned arrays, so clear them before abandoning the loads.
     for (const load of threadLoads.current.values()) load.deltas.length = 0
@@ -774,7 +778,14 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
       const allThreads = [...botThreads.flat(), ...groupThreads.flatMap((r) => r.threads)]
       if (attempt !== generation.current) return
       setData((current) => {
-        const threads = mergeThreads(current.threads, allThreads)
+        const incoming = allThreads.filter((thread) => !current.deletedThreadIds?.has(thread.id))
+        const incomingIds = new Set(incoming.map((thread) => thread.id))
+        const changedDuringLoad = current.threads.filter(
+          (thread) =>
+            !current.deletedThreadIds?.has(thread.id) &&
+            (incomingIds.has(thread.id) || thread !== threadsAtStart.get(thread.id)),
+        )
+        const threads = mergeThreads(changedDuringLoad, incoming)
         // A newer run may have evicted a completed row while this snapshot was in flight.
         const incomingRuns = mergeRunRows(activityResponse.runs, workResponse.runs).filter(
           (run) => !completedRuns.has(run.id) && (liveRuns.current.get(run.id) ?? 0) <= runsAtStart,

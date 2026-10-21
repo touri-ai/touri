@@ -1082,6 +1082,7 @@ const AppContent = ({ kernel }: AppProps) => {
             onGetThreadDeletePreview={actions.getThreadDeletePreview}
             onLoadArchivedThreads={actions.loadArchivedThreads}
             threads={data.threads}
+            deletedThreadIds={data.deletedThreadIds}
             messages={data.activityMessages}
             runs={data.runs}
             routineRuns={data.routineRuns}

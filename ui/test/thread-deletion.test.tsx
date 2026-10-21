@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { Message, Thread } from "@touri/contracts"
 import { afterEach, expect, it } from "vitest"
 import App from "../src/App"
@@ -244,4 +244,38 @@ it("bounds selection pages and preserves selection while paging a large history"
   expect(within(conversations).getByRole("status")).toHaveTextContent("Selecionadas: 1")
   fireEvent.click(within(conversations).getByRole("button", { name: "Conversas anteriores" }))
   expect(within(conversations).getByRole("checkbox", { name: "Selecionar conversa Eventos de leads" })).toBeChecked()
+})
+
+it("removes a conversation deleted while disconnected after a fresh snapshot", async () => {
+  const { api, thread } = getThreadFixture()
+  const disconnectedApi = {
+    ...api,
+    subscribe: (listener: Parameters<typeof api.subscribe>[0]) =>
+      api.subscribe((event) => {
+        if (event.type !== "thread.deleted") listener(event)
+      }),
+  }
+  render(<App kernel={{ services: { api: disconnectedApi } }} />)
+  const conversations = await getConversationRegion()
+  fireEvent.click(within(conversations).getByRole("button", { name: /Eventos de leads/ }))
+
+  await api.request("DELETE /threads/:id", {}, { id: thread.id })
+  act(() => api.emit({ type: "transcript.resync" }))
+
+  await waitFor(() => expect(within(conversations).queryByRole("button", { name: /Eventos de leads/ })).toBeNull())
+})
+
+it("removes externally deleted conversations from an already open archive", async () => {
+  const { api, thread } = getThreadFixture()
+  await api.request("PATCH /threads/:id", { archived: true }, { id: thread.id })
+  render(<App kernel={{ services: { api } }} />)
+  const conversations = await getConversationRegion()
+  fireEvent.click(within(conversations).getByRole("button", { name: /Arquivadas/ }))
+  await screen.findByRole("button", { name: "Abrir conversa arquivada Eventos de leads" })
+
+  await api.request("DELETE /threads/:id", {}, { id: thread.id })
+
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "Abrir conversa arquivada Eventos de leads" })).toBeNull(),
+  )
 })

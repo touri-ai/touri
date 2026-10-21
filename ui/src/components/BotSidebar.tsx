@@ -48,6 +48,7 @@ import { getThreadDeletionError, type ThreadDeletion } from "./useThreadDeletion
 import "./bot-sidebar.css"
 
 type SidebarProps = {
+  deletedThreadIds?: ReadonlySet<string> | undefined
   threadDeletion?: ThreadDeletion | undefined
   serverMode?: boolean
   serverUrl?: string | null
@@ -316,6 +317,7 @@ export const Sidebar = (props: SidebarProps) => {
                   onGetThreadDeletePreview={props.onGetThreadDeletePreview}
                   onLoadArchivedThreads={props.onLoadArchivedThreads}
                   threadDeletion={props.threadDeletion}
+                  deletedThreadIds={props.deletedThreadIds}
                 />
               </Fragment>
             )
@@ -415,7 +417,9 @@ const BotEntry = ({
   onGetThreadDeletePreview,
   onLoadArchivedThreads,
   threadDeletion,
+  deletedThreadIds,
 }: {
+  deletedThreadIds?: ReadonlySet<string> | undefined
   threadDeletion?: ThreadDeletion | undefined
   navigationKey: string
   bot: Bot
@@ -461,9 +465,9 @@ const BotEntry = ({
   const archiveEntries = useMemo(
     () =>
       [...new Map([...archivedThreads, ...threads].map((thread) => [thread.id, thread])).values()].filter(
-        (thread) => thread.archivedAt !== null && !thread.groupId,
+        (thread) => thread.archivedAt !== null && !thread.groupId && !deletedThreadIds?.has(thread.id),
       ),
-    [archivedThreads, threads],
+    [archivedThreads, threads, deletedThreadIds],
   )
   const visibleArchivePage = Math.min(archivePage, Math.max(0, Math.ceil(archiveEntries.length / 100) - 1))
   const [archivedOpen, setArchivedOpen] = useState(false)
