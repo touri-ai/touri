@@ -206,3 +206,20 @@ it("refreshes an already loaded archive after archiving a selection", async () =
 
   await screen.findByRole("button", { name: "Abrir conversa arquivada Eventos de leads" })
 })
+
+it("returns to the main conversation when archiving the conversation in use", async () => {
+  const { api, thread } = getThreadFixture()
+  render(<App kernel={{ services: { api } }} />)
+  const conversations = await getConversationRegion()
+  fireEvent.click(within(conversations).getByRole("button", { name: /Eventos de leads/ }))
+  await waitFor(() =>
+    expect(within(conversations).getByRole("button", { name: /Eventos de leads/ })).toHaveClass("selected"),
+  )
+
+  openThreadMenu(thread.title)
+  fireEvent.click(screen.getByRole("menuitem", { name: "Arquivar conversa" }))
+
+  await waitFor(() => expect(within(conversations).queryByRole("button", { name: /Eventos de leads/ })).toBeNull())
+  expect(document.querySelector(".thread-row.selected")).toHaveTextContent("Welcome")
+  expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toBeEnabled()
+})

@@ -419,11 +419,16 @@ const getWorkspaceWithoutGroup = (data: WorkspaceData, groupId: Id): WorkspaceDa
   }
 }
 
-const withoutThread = (data: WorkspaceData, threadId: Id, botIdHint?: Id): WorkspaceData => {
-  const thread = data.threads.find((candidate) => candidate.id === threadId)
+const getWorkspaceWithoutThread = (data: WorkspaceData, threadId: Id, botIdHint?: Id): WorkspaceData =>
+  getWorkspaceWithoutThreads(data, new Set([threadId]), botIdHint)
+
+const getWorkspaceWithoutThreads = (data: WorkspaceData, threadIds: ReadonlySet<Id>, botIdHint?: Id): WorkspaceData => {
+  const thread =
+    data.threads.find((candidate) => candidate.id === data.selectedThreadId && threadIds.has(candidate.id)) ??
+    data.threads.find((candidate) => threadIds.has(candidate.id))
   const botId = thread?.botId ?? botIdHint
-  const threads = data.threads.filter((candidate) => candidate.id !== threadId)
-  const selected = data.selectedThreadId === threadId
+  const threads = data.threads.filter((candidate) => !threadIds.has(candidate.id))
+  const selected = threadIds.has(data.selectedThreadId ?? "")
   const bot = botId ? data.bots.find((candidate) => candidate.id === botId) : undefined
   const fallback =
     threads.find((candidate) => candidate.id === bot?.mainThreadId) ??
@@ -432,18 +437,30 @@ const withoutThread = (data: WorkspaceData, threadId: Id, botIdHint?: Id): Works
   return {
     ...data,
     threads,
-    messages: data.messages.filter((message) => message.threadId !== threadId),
-    activityMessages: data.activityMessages.filter((message) => message.threadId !== threadId),
-    runs: data.runs.filter((run) => run.threadId !== threadId),
-    routineRuns: data.routineRuns.map((run) => (run.threadId === threadId ? { ...run, threadId: null } : run)),
-    workRuns: data.workRuns.filter((run) => run.threadId !== threadId),
-    notifications: data.notifications.filter((item) => item.threadId !== threadId),
+    messages: data.messages.filter((message) => !threadIds.has(message.threadId)),
+    activityMessages: data.activityMessages.filter((message) => !threadIds.has(message.threadId)),
+    runs: data.runs.filter((run) => !threadIds.has(run.threadId)),
+    routineRuns: data.routineRuns.map((run) => (threadIds.has(run.threadId ?? "") ? { ...run, threadId: null } : run)),
+    workRuns: data.workRuns.filter((run) => !threadIds.has(run.threadId)),
+    notifications: data.notifications.filter((item) => !threadIds.has(item.threadId ?? "")),
     selectedBotId: selected && botId ? botId : data.selectedBotId,
     selectedThreadId: selected ? (fallback?.id ?? null) : data.selectedThreadId,
-    threadCreation: data.threadCreation?.thread.id === threadId ? null : data.threadCreation,
+    threadCreation: threadIds.has(data.threadCreation?.thread.id ?? "") ? null : data.threadCreation,
     composerKey: selected ? null : data.composerKey,
-    computerGrantRequest: data.computerGrantRequest?.threadId === threadId ? null : data.computerGrantRequest,
+    computerGrantRequest: threadIds.has(data.computerGrantRequest?.threadId ?? "") ? null : data.computerGrantRequest,
   }
+}
+
+const getWorkspaceWithUpdatedThread = (data: WorkspaceData, thread: Thread): WorkspaceData => {
+  const threads = mergeThreads(data.threads, [thread])
+  if (thread.archivedAt === null || data.selectedThreadId !== thread.id) return { ...data, threads }
+  const bot = data.bots.find((candidate) => candidate.id === thread.botId)
+  const active = threads.filter(
+    (candidate) => candidate.botId === thread.botId && candidate.archivedAt === null && !candidate.groupId,
+  )
+  const fallback = active.find((candidate) => candidate.id === bot?.mainThreadId) ?? active[0]
+
+  return { ...data, threads, selectedThreadId: fallback?.id ?? null, threadCreation: null, composerKey: null }
 }
 
 const withoutBot = (data: WorkspaceData, botId: Id): WorkspaceData => {
@@ -910,7 +927,7 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
         const load = threadLoads.current.get(event.threadId)
         if (load) load.deltas.length = 0
         threadLoads.current.delete(event.threadId)
-        setData((current) => withoutThread(current, event.threadId, event.botId))
+        setData((current) => getWorkspaceWithoutThread(current, event.threadId, event.botId))
         return
       }
       if (event.type === "group.deleted") {
@@ -952,11 +969,13 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
             ],
           }
         if (event.type === "thread.updated")
-          return {
-            ...current,
-            selectedBotId: current.selectedThreadId === event.thread.id ? event.thread.botId : current.selectedBotId,
-            threads: mergeThreads(current.threads, [event.thread]),
-          }
+          return getWorkspaceWithUpdatedThread(
+            {
+              ...current,
+              selectedBotId: current.selectedThreadId === event.thread.id ? event.thread.botId : current.selectedBotId,
+            },
+            event.thread,
+          )
         if (event.type === "message.created" || event.type === "message.updated")
           return {
             ...current,
@@ -1395,7 +1414,7 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
   const switchBranch = useCallback(
     async (threadId: Id, leafId: Id): Promise<void> => {
       const response = await api.request("PATCH /threads/:id", { activeLeafId: leafId }, { id: threadId })
-      setData((current) => ({ ...current, threads: uniqueById([...current.threads, response.thread]) }))
+      setData((current) => getWorkspaceWithUpdatedThread(current, response.thread))
     },
     [api],
   )
@@ -1808,18 +1827,18 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
       },
       archiveThread: async (threadId, archived) => {
         const response = await api.request("PATCH /threads/:id", { archived }, { id: threadId })
-        setData((current) => ({ ...current, threads: uniqueById([...current.threads, response.thread]) }))
+        setData((current) => getWorkspaceWithUpdatedThread(current, response.thread))
         return response.thread
       },
       archiveThreads: async (threadIds, archived) => {
         for (const threadId of threadIds) {
           const response = await api.request("PATCH /threads/:id", { archived }, { id: threadId })
-          setData((current) => ({ ...current, threads: uniqueById([...current.threads, response.thread]) }))
+          setData((current) => getWorkspaceWithUpdatedThread(current, response.thread))
         }
       },
       deleteThread: async (threadId, botId) => {
         await api.request("DELETE /threads/:id", {}, { id: threadId })
-        setData((current) => withoutThread(current, threadId, botId))
+        setData((current) => getWorkspaceWithoutThread(current, threadId, botId))
       },
       deleteThreads: async (threadIds, botId) => {
         const batches = Array.from({ length: Math.ceil(threadIds.length / 200) }, (_, index) =>
@@ -1827,7 +1846,7 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
         )
         for (const ids of batches) {
           await api.request("POST /threads/delete", { ids })
-          setData((current) => ids.reduce((workspace, threadId) => withoutThread(workspace, threadId, botId), current))
+          setData((current) => getWorkspaceWithoutThreads(current, new Set(ids), botId))
         }
       },
       getThreadDeletePreview: (threadId) => api.request("GET /threads/:id/delete-preview", {}, { id: threadId }),
