@@ -2977,19 +2977,19 @@ export const createBrowserEngine = ({
     signal: AbortSignal
     timeoutMs?: number
   }): Promise<ToolResult> => {
-    const owned = getTab({ tabId, botId })
+    const owned = getTab({ tabId, botId, allowHeld: true })
     if (!owned.success) return toToolError(owned.failure)
     const tab = owned.value
-    if (tab.privateInput)
-      return toToolError({
-        errorCode: "PRIVATE_TAKEOVER_ACTIVE",
-        error: "A avaliação da página foi desativada após o controle privado do navegador.",
-      })
     return withTabQueue({
       tab,
       timeoutMs,
       signal,
       operation: async () => {
+        clearTakeover({
+          tab,
+          resolution: "canceled",
+          handbackNote: "The browser task was stopped.",
+        })
         if (client && tab.targetId)
           await client.call("Target.closeTarget", { targetId: tab.targetId }).catch(() => undefined)
         tab.info.state = "closed"
@@ -4373,6 +4373,7 @@ export const createBrowserEngine = ({
     tab.refs.clear()
     tab.handbackNote = handbackNote
     if (takeover.requestId) kernel.services.use("notify.resolve")?.({ requestId: takeover.requestId, resolution })
+    kernel.services.use("browser.takeoverResolved")?.({ tabId: tab.info.tabId, resolution })
     return takeover
   }
 
@@ -4513,7 +4514,7 @@ export const createBrowserEngine = ({
     return true
   }
 
-  const holdTakeover = async ({ tabId, reason }: { tabId: Id; reason: string }): Promise<boolean> => {
+  const holdTakeover = async ({ tabId }: { tabId: Id; reason: string }): Promise<boolean> => {
     const tab = store.find(tabId)
     if (!tab || tab.info.state === "closed") return false
     if (tab.info.heldByUser) return true
@@ -4535,11 +4536,6 @@ export const createBrowserEngine = ({
     }
     store.save(tab)
     kernel.publish({ type: "browser.tab", tab: safePublicTabInfo(tab) })
-    await notifyBestEffort({
-      title: "The browser is under your control",
-      body: kernel.redact(reason).slice(0, 300),
-      threadId: tab.info.ownerThreadId,
-    })
     await raceBudget({ work: focusManagedChrome(), ms: SIDE_EFFECT_BUDGET_MS }).catch(() => undefined)
     return true
   }
@@ -4647,14 +4643,15 @@ export const createBrowserEngine = ({
           if (!viewport || viewport.width !== width || viewport.height !== height) return false
 
           if (input.kind === "text") {
-            await cdp.call("Input.insertText", { text: input.text }, sessionId)
+            await cdpCall(cdp, "Input.insertText", { text: input.text }, sessionId)
             return true
           }
 
           if (input.kind === "key") {
             const text =
               input.phase === "down" && input.key.length === 1 && input.modifiers === 0 ? input.key : undefined
-            await cdp.call(
+            await cdpCall(
+              cdp,
               "Input.dispatchKeyEvent",
               {
                 type: input.phase === "down" ? "keyDown" : "keyUp",
@@ -4672,7 +4669,8 @@ export const createBrowserEngine = ({
           const y = Math.min(viewport.height - 1, Math.round(input.y * viewport.height))
           if (input.kind === "wheel") {
             if (Math.abs(input.deltaX) > 1200 || Math.abs(input.deltaY) > 1200) return false
-            await cdp.call(
+            await cdpCall(
+              cdp,
               "Input.dispatchMouseEvent",
               { type: "mouseWheel", x, y, deltaX: input.deltaX, deltaY: input.deltaY },
               sessionId,
@@ -4681,10 +4679,16 @@ export const createBrowserEngine = ({
           }
 
           const button = input.button ?? "left"
-          await cdp.call("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button, clickCount: 1 }, sessionId)
+          await cdpCall(
+            cdp,
+            "Input.dispatchMouseEvent",
+            { type: "mousePressed", x, y, button, clickCount: 1 },
+            sessionId,
+          )
           try {
             operationSignal.throwIfAborted()
-            await cdp.call(
+            await cdpCall(
+              cdp,
               "Input.dispatchMouseEvent",
               { type: "mouseReleased", x, y, button, clickCount: 1 },
               sessionId,

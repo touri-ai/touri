@@ -1610,6 +1610,7 @@ export type ServiceMap = {
   'runtime.cancelRun': (args: { runId: Id }) => boolean
   'runtime.shutdown': (options?: { appRestart?: boolean }) => Promise<void>
   'projects.info': (args: { projectId: Id; botId?: Id }) => Promise<ProjectInfo | null>
+  'browser.takeoverResolved': (args: { tabId: Id; resolution: 'replied' | 'expired' | 'canceled' }) => void
   'browser.cancelRun': (args: { runId: Id; signal: AbortSignal }) => Promise<boolean>
   'browser.tabsForBot': (args: { botId: Id }) => Array<BrowserTabInfo>
   'browser.updateDecisionModel': (model: ApiModel | null) => void

@@ -388,7 +388,17 @@ test("ChatPanel shares channel browser state with the group header, reply card, 
       channelBrowser={{ state: getState({ botId: bot.id, botName: "Léo" }), viewerId: "user-ana" }}
       thread={{ ...thread, activeLeafId: reply.id }}
       bot={bot}
-      messages={[prompt, reply]}
+      messages={[
+        prompt,
+        getMessage({
+          id: "context-restored",
+          threadId: thread.id,
+          role: "system",
+          text: "O contexto da conversa foi recuperado do histórico salvo.",
+          parts: [{ type: "notice", code: "context_restored", level: "info", text: "Internal recovery marker" }],
+        }),
+        reply,
+      ]}
       runs={[getRun(thread.id, bot)]}
       onSend={vi.fn(async () => {})}
       onRetry={vi.fn(async () => {})}
@@ -404,6 +414,8 @@ test("ChatPanel shares channel browser state with the group header, reply card, 
   expect(screen.getByRole("status", { name: "Léo no navegador · pedido de Ana" })).toBeVisible()
   expect(screen.getByText("Todos no canal veem")).toBeVisible()
   expect(screen.getByText("Léo está trabalhando · No navegador · para Ana")).toBeVisible()
+  expect(screen.queryByText("O contexto da conversa foi recuperado do histórico salvo.")).toBeNull()
+  expect(screen.queryByText("Internal recovery marker")).toBeNull()
   expect(screen.getByText("Todos no canal veem").closest(".message-assistant")).toContainElement(
     screen.getByText("Estou na página de estadias."),
   )

@@ -89,6 +89,7 @@ test("remote browser takeover gives one device an interactive session and reject
   const runtime = createKernel({ appData: root })
   let botId = ""
   let receivedInput: unknown = null
+  let inputSignals: ReadonlyArray<AbortSignal> = []
   let engineReleaseCount = 0
   let leaseAcquired = 0
   let leaseReleased = 0
@@ -140,7 +141,8 @@ test("remote browser takeover gives one device an interactive session and reject
       width: 1280,
       height: 720,
     }),
-    takeoverInput: async ({ input }: { input: unknown }) => {
+    takeoverInput: async ({ input, signal }) => {
+      inputSignals = inputSignals.concat(signal)
       receivedInput = input
       return true
     },
@@ -310,6 +312,8 @@ test("remote browser takeover gives one device an interactive session and reject
 
     const ended = await request("/browser/tabs/t_remote/takeover/session", { sessionId, controlEpoch }, "DELETE")
     expect(ended.status).toBe(200)
+    expect(inputSignals.length).toBeGreaterThan(0)
+    expect(inputSignals.every((signal) => signal.aborted)).toBe(true)
     expect(leaseReleased).toBe(1)
 
     const browserRoutes = registeredModules.find(({ name }) => name === "browser")

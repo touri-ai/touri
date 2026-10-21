@@ -590,6 +590,7 @@ export const createChannelBrowserRuns = ({
     returnControl,
     isPreviewHidden,
     cancel: (runId: string) => updateTerminal(runId, "canceled"),
+    expire: (runId: string) => updateTerminal(runId, "failed"),
     dispose: () => {
       onRunUpdated()
       escalationTimers.forEach(clearTimeout)

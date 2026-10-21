@@ -364,7 +364,7 @@ export const BrowserActivityCard = ({
     locale,
   )
   const url =
-    finished || channel?.previewHidden
+    finished || held || channel?.previewHidden
       ? ""
       : getBrowserActivityShortUrl(preview?.url ?? "") || getBrowserActivityOpenUrl(browserTools)
   const subtitle = [botName, currentAction && getBrowserActivitySubtitleAction(currentAction, locale), url]
@@ -493,7 +493,7 @@ export const BrowserActivityCard = ({
                       <BrowserIcon name="person" />
                       {takeoverSession
                         ? t("Hand back to {name}", { name: botName }, locale)
-                        : t(held ? "Continue browser control" : "Take over browser", {}, locale)}
+                        : t("Take over browser", {}, locale)}
                     </>
                   )}
                 </button>

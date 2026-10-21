@@ -118,6 +118,12 @@ test("routed local engine opens a default-context window, reads only owned pages
       f.calls.filter((call) => call.method === "Target.attachToTarget").map((call) => call.params.targetId),
     ).toEqual(["owned-1"])
     expect(f.calls.some((call) => /Cookies|BrowserContext/.test(call.method))).toBe(false)
+
+    expect(await f.engine.holdTakeover({ tabId, reason: "Synthetic handoff" })).toBe(true)
+    expect(await f.engine.releaseTakeover(tabId)).toBe(true)
+    expect(await f.engine.holdTakeover({ tabId, reason: "Synthetic second handoff" })).toBe(true)
+    expect((await f.engine.close({ tabId, botId: f.bot.id, signal: f.ctx.signal })).success).toBe(true)
+
     await f.engine.shutdown()
     expect(f.calls.filter((call) => call.method === "Target.closeTarget").map((call) => call.params.targetId)).toEqual([
       "owned-1",

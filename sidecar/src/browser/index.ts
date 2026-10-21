@@ -38,6 +38,7 @@ export const name = "browser"
 
 const OPEN_DEFAULT_TIMEOUT_MS = 20000
 const TAKEOVER_TIMEOUT_MS = 600000
+const MIN_TAKEOVER_TIMEOUT_MS = 120_000
 const TAKEOVER_SESSION_TTL_MS = 30 * 60_000
 const TAKEOVER_FRAME_INTERVAL_MS = 250
 const MAX_TAKEOVER_SESSIONS = 16
@@ -57,6 +58,7 @@ type BrowserTakeoverSession = {
   frameWidth: number | null
   frameHeight: number | null
   pendingInputs: number
+  lifetime: AbortController
   timer: ReturnType<typeof setTimeout> | null
   releaseVm: (() => Promise<void>) | null
 }
@@ -513,6 +515,7 @@ export const init = async (
     const session = takeoverSessions.get(tabId)
     if (!session || (sessionId && session.id !== sessionId)) return false
     if (session.timer) clearTimeout(session.timer)
+    session.lifetime.abort()
     takeoverSessions.delete(tabId)
     const released = handback ? await engine.releaseTakeover(tabId).catch(() => false) : true
     if (session.releaseVm) await session.releaseVm().catch(() => undefined)
@@ -536,6 +539,16 @@ export const init = async (
     }
     return released
   }
+  kernel.services.provide("browser.takeoverResolved", ({ tabId, resolution }) => {
+    if (resolution === "replied") return
+
+    const run = channelRuns.getForTab(tabId)
+    if (run) {
+      if (resolution === "expired") channelRuns.expire(run.runId)
+      if (resolution === "canceled") channelRuns.cancel(run.runId)
+    }
+    void endTakeoverSession(tabId)
+  })
   kernel.services.provide("browser.cancelRun", async ({ runId, signal }) => {
     const run = channelRuns.getForRun(runId)
     if (!run) return false
@@ -951,7 +964,7 @@ export const init = async (
         botId: ctx.botId,
         reason,
         reasonCode,
-        timeoutMs: timeout(input.timeoutMs, 600000, 1800000),
+        timeoutMs: Math.max(MIN_TAKEOVER_TIMEOUT_MS, timeout(input.timeoutMs, TAKEOVER_TIMEOUT_MS, 1800000)),
         signal: ctx.signal,
         notify: !managedNeedsYou,
         threadId: ctx.threadId,
@@ -1089,6 +1102,7 @@ export const init = async (
                 frameWidth: null,
                 frameHeight: null,
                 pendingInputs: 0,
+                lifetime: new AbortController(),
                 timer: null,
                 releaseVm,
               })
@@ -1140,7 +1154,7 @@ export const init = async (
             .takeoverFrame({
               tabId,
               botId: active.botId,
-              signal: request.signal,
+              signal: AbortSignal.any([request.signal, active.lifetime.signal]),
             })
             .catch(() => null)
           const current = takeoverSessions.get(tabId)
@@ -1199,7 +1213,7 @@ export const init = async (
                 width,
                 height,
                 input,
-                signal: request.signal,
+                signal: AbortSignal.any([request.signal, authorized.session.lifetime.signal]),
               })
               .catch(() => false)
           } finally {

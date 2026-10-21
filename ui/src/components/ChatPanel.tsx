@@ -635,8 +635,14 @@ const isResumeMarker = (message: Message): boolean =>
   message.role === "system" && message.parts.some((part) => part.type === "notice" && part.code === "run_resumed")
 
 const isGroupCoordinationPrompt = (message: Message): boolean => {
-  const marker = message.parts[0]
-  return message.role === "system" && marker?.type === "notice" && marker.code === "group_coordination_prompt"
+  return (
+    message.role === "system" &&
+    message.parts.some(
+      (part) =>
+        part.type === "notice" &&
+        ["group_coordination_prompt", "context_restored", "session_replaced"].includes(part.code),
+    )
+  )
 }
 
 const sameCalendarDay = (left: number, right: number): boolean => {

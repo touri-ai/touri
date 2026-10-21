@@ -404,7 +404,7 @@ test("a bot-requested takeover explains why it paused and keeps browser input ou
   expect(
     screen.getByText("O que você digitar no navegador não vai para o chat nem para o contexto do bot."),
   ).toBeVisible()
-  expect(screen.getByRole("button", { name: "Continuar no navegador" })).toBeVisible()
+  expect(screen.getByRole("button", { name: "Assumir" })).toBeVisible()
   expect(screen.queryByRole("textbox")).toBeNull()
   expect(request).not.toHaveBeenCalledWith("POST /browser/tabs/:id/takeover", expect.anything(), { id: "browser-tab" })
 })
