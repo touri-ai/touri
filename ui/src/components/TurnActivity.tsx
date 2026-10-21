@@ -7,6 +7,7 @@ import { type Locale, t } from "../i18n"
 import { ActivityMark } from "./ActivityMark"
 import { BrowserActivityCard } from "./BrowserActivityCard"
 import { getBrowserActivityTools } from "./browserActivityPresentation"
+import type { BrowserContinuationActivity } from "./browserContinuationActivity"
 import { MarkdownContent } from "./MarkdownContent"
 import type { MascotState } from "./mascotState"
 import { ToolCallCard } from "./ToolCallCard"
@@ -17,11 +18,13 @@ import "./turn-activity.css"
 export const BrowserTurnCard = ({
   message,
   bot,
+  activity,
   locale = "pt-BR",
   children,
 }: {
   message: Message
   bot?: Bot | undefined
+  activity?: BrowserContinuationActivity | undefined
   locale?: Locale
   children?: ReactNode
 }) => {
@@ -33,8 +36,9 @@ export const BrowserTurnCard = ({
   }
   const card = (
     <BrowserActivityCard
-      parts={message.parts}
-      finished={message.status !== "streaming"}
+      parts={activity?.parts ?? message.parts}
+      runId={activity?.runId ?? message.runId}
+      finished={activity?.finished ?? message.status !== "streaming"}
       createdAt={message.createdAt}
       botName={message.sender?.name ?? "touri"}
       locale={locale}
@@ -53,6 +57,9 @@ export const BrowserTurnCard = ({
 export const TurnActivity = ({
   message,
   run,
+  browserActivity,
+  hideBrowserActivity = false,
+  botName: _botName,
   api,
   bot,
   state,
@@ -65,6 +72,9 @@ export const TurnActivity = ({
 }: {
   message: Message
   run?: Run | undefined
+  browserActivity?: BrowserContinuationActivity | undefined
+  hideBrowserActivity?: boolean | undefined
+  botName?: string
   api?: UiApi | undefined
   bot?: Bot | undefined
   state: MascotState
@@ -90,8 +100,8 @@ export const TurnActivity = ({
   const groups = activityGroups(tools.filter((part) => !approvals.has(part.callId) && !browserCallIds.has(part.callId)))
   const reasoning = message.parts.flatMap((part) => (part.type === "reasoning" && part.text.trim() ? [part.text] : []))
   const browserOnly = browserTools.length > 0 && groups.length === 0 && approvals.size === 0 && reasoning.length === 0
-  const browserCard = browserTools.length > 0 && !hideBrowserCard && (
-    <BrowserTurnCard message={message} bot={bot} locale={locale}>
+  const browserCard = browserTools.length > 0 && !hideBrowserCard && !hideBrowserActivity && (
+    <BrowserTurnCard message={message} bot={bot} activity={browserActivity} locale={locale}>
       {browserFlow}
     </BrowserTurnCard>
   )

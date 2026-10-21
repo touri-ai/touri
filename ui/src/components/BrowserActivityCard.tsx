@@ -30,6 +30,7 @@ import {
   getBrowserActivityTimestamps,
   getBrowserActivityTools,
   getBrowserTakeoverReason,
+  hasBrowserTakeoverRequest,
   isBrowserActivityRunning,
 } from "./browserActivityPresentation"
 import { StoredToolOutput } from "./ToolOutput"
@@ -72,6 +73,7 @@ export const hasBrowserActivity = (parts: readonly MessagePart[]): boolean => ge
 
 export const BrowserActivityCard = ({
   parts,
+  runId,
   finished: turnFinished,
   createdAt,
   botName,
@@ -79,6 +81,8 @@ export const BrowserActivityCard = ({
   children,
 }: {
   parts: readonly MessagePart[]
+  runId?: string | null | undefined
+  threadId?: string | undefined
   finished: boolean
   createdAt: number
   botName: string
@@ -90,8 +94,8 @@ export const BrowserActivityCard = ({
   const previewEnabled = useInlinePreviewPreference()
   const channel = useChannelBrowserView()
   const waitingForPerson = channel?.state.status === "needs_you" || channel?.state.status === "taken_over"
-  const finished = turnFinished && !waitingForPerson
   const browserTools = getBrowserActivityTools(parts)
+  const hasHumanRequest = hasBrowserTakeoverRequest(browserTools)
   const tabId = getBrowserActivityTabId(browserTools)
   const resolutionCallId = tabId ? "" : (browserTools.at(-1)?.callId ?? "")
   const [resolvedTab, setResolvedTab] = useState<{ callId: string; tabId: string }>()
@@ -102,10 +106,20 @@ export const BrowserActivityCard = ({
     tabId: string
     held: boolean
     reason?: BrowserTakeoverReason | null
+    requested?: boolean
+    runId?: string | null | undefined
   }>()
   const [takeoverSession, setTakeoverSession] = useState<string | null>(null)
   const [controlEpoch, setControlEpoch] = useState<string | null>(null)
   const [takeoverViewEpoch, setTakeoverViewEpoch] = useState(0)
+  const ownsHumanWait = Boolean(
+    runId &&
+      heldTab &&
+      heldTab.tabId === activeTabId &&
+      heldTab.requested &&
+      (heldTab.runId === undefined || heldTab.runId === runId),
+  )
+  const finished = turnFinished && !waitingForPerson && !ownsHumanWait && !takeoverSession
   const takeoverTabId = useRef(activeTabId)
   const held = heldTab?.tabId === activeTabId && heldTab?.held === true
   const preview =
@@ -168,7 +182,7 @@ export const BrowserActivityCard = ({
   }, [])
 
   useEffect(() => {
-    if (!api || !botId || finished) return
+    if (!api || !botId || (turnFinished && !waitingForPerson && !hasHumanRequest)) return
     let active = true
     // Events may arrive after the initial snapshot was taken.
     let hasTabEvent = false
@@ -181,7 +195,13 @@ export const BrowserActivityCard = ({
         )
       if (!candidate || !active) return
       if (!tabId) setResolvedTab({ callId: resolutionCallId, tabId: candidate.tabId })
-      setHeldTab({ tabId: candidate.tabId, held: candidate.heldByUser, reason: candidate.takeoverReason ?? null })
+      setHeldTab({
+        tabId: candidate.tabId,
+        held: candidate.heldByUser,
+        reason: candidate.takeoverReason ?? null,
+        requested: candidate.takeoverRequested === true,
+        runId: candidate.takeoverRunId,
+      })
     }
     const unsubscribe = api.subscribe(({ event }) => {
       if (
@@ -193,7 +213,13 @@ export const BrowserActivityCard = ({
         hasTabEvent = true
         if (!tabId) setResolvedTab({ callId: resolutionCallId, tabId: event.tab.tabId })
         if (event.tab.heldByUser) setPreviewFrame(undefined)
-        setHeldTab({ tabId: event.tab.tabId, held: event.tab.heldByUser, reason: event.tab.takeoverReason ?? null })
+        setHeldTab({
+          tabId: event.tab.tabId,
+          held: event.tab.heldByUser,
+          reason: event.tab.takeoverReason ?? null,
+          requested: event.tab.takeoverRequested === true,
+          runId: event.tab.takeoverRunId,
+        })
       }
     })
     const loadTabs = () =>
@@ -213,7 +239,7 @@ export const BrowserActivityCard = ({
       window.clearInterval(poll)
       unsubscribe()
     }
-  }, [api, botId, finished, resolutionCallId, tabId])
+  }, [api, botId, turnFinished, waitingForPerson, hasHumanRequest, resolutionCallId, tabId])
 
   useEffect(() => {
     setPreviewError(null)

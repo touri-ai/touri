@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs"
 import type {
   ApprovalPart,
   Bot,
+  BrowserTakeoverResume,
   Id,
   Kernel,
   Message,
@@ -107,7 +108,7 @@ type RunState = {
   generation: number | null
   fingerprint: string | null
   continueAfterApproval: boolean
-  continueAfterBrowserTakeover: boolean
+  continueAfterBrowserTakeover: BrowserTakeoverResume | null
   outputTimer: ReturnType<typeof setTimeout> | null
   partPublishImmediate: ReturnType<typeof setImmediate> | null
   lastEventLivenessCheckAt: number
@@ -238,6 +239,7 @@ type RuntimeEngine = {
     routineRunId?: Id
     delegated?: boolean
     continuing?: boolean
+    continuationFromRunId?: Id
   }) => Result<{ run: Run }, "THREAD_NOT_FOUND" | "BOT_PAUSED" | "RUNTIME_DRAINING">
   getRunSnapshot: (run: Run) => Run
   getWorkRuns: () => Array<Run>
@@ -247,6 +249,7 @@ type RuntimeEngine = {
   activeRun: (args: { threadId: Id }) => Run | null
   continueAfterApproval: ServiceMap["runtime.continueAfterApproval"]
   resumeAfterBrowserTakeover: ServiceMap["runtime.resumeAfterBrowserTakeover"]
+  canReturnBrowserTakeover: ServiceMap["runtime.canReturnBrowserTakeover"]
   cancel: (id: Id) => Result<{ run: Run }, "NOT_FOUND">
   cancelRuns: (runIds: Id[]) => Promise<void>
   cancelBotTurns: (args: { botId: Id }) => Promise<void>
@@ -524,6 +527,7 @@ export const createRuntimeEngine = ({
       ...cloneRun(run),
       groupThreadId,
       origin: getRunOrigin(metadata),
+      browserTakeoverFromRunId: metadata.browserTakeoverFromRunId ?? null,
       queuePosition: position ?? null,
       queueTotal: position === undefined ? null : queue.waiting.length,
     }
@@ -658,7 +662,7 @@ export const createRuntimeEngine = ({
       generation: null,
       fingerprint: null,
       continueAfterApproval: false,
-      continueAfterBrowserTakeover: false,
+      continueAfterBrowserTakeover: null,
       outputTimer: null,
       partPublishImmediate: null,
       lastEventLivenessCheckAt: Number.NEGATIVE_INFINITY,
@@ -1200,6 +1204,15 @@ export const createRuntimeEngine = ({
     return runStage ? runStage("runtime_request_path_lookup", getRequestFromActivePath) : getRequestFromActivePath()
   }
 
+  const getBrowserTakeoverRequestText = ({ run, reason }: { run: Run | null; reason: ContinuationReason | null }) => {
+    if (reason !== "browser_takeover" || !run?.requestMessageId || !(kernel.db instanceof Database)) return null
+    const message = kernel.db
+      .query("SELECT text FROM messages WHERE thread_id = ? AND id = ?")
+      .get(run.threadId, run.requestMessageId) as { text: string } | null
+
+    return message?.text ?? null
+  }
+
   // Group coordination envelopes use the system role; failed member attempts alone leave no conversation to restore.
   const hasPreviousMessages = (store: StoreApi, thread: Thread, requestId: string | null): boolean => {
     if (store.getPathMessage && kernel.db instanceof Database && thread.activeLeafId)
@@ -1368,8 +1381,10 @@ export const createRuntimeEngine = ({
         (resumedFrom === "app_restart" && originalRun.externalTurnId === null && previousRun?.externalTurnId === null))
         ? getActivePathMessage({ store, run: originalRun })
         : null
+    const originalRequestText =
+      originalRequest?.text ?? getBrowserTakeoverRequestText({ run: originalRun, reason: resumedFrom })
     const requestText = resumedFrom
-      ? [continuationPrompt(resumedFrom), originalRequest ? `Original request:\n${originalRequest.text}` : null]
+      ? [continuationPrompt(resumedFrom), originalRequestText ? `Original request:\n${originalRequestText}` : null]
           .filter(Boolean)
           .join("\n\n")
       : [
@@ -1756,11 +1771,14 @@ export const createRuntimeEngine = ({
           if (!errorClass) {
             const plan = state.continueAfterApproval
               ? planContinuation({ run, reason: "permission_granted", lastActivityAt: Date.now() })
-              : state.continueAfterBrowserTakeover
-                ? planContinuation({ run, reason: "browser_takeover", lastActivityAt: Date.now() })
-                : null
+              : null
+            const browserPlan = state.continueAfterBrowserTakeover
+              ? planContinuation({ run, reason: "browser_takeover", lastActivityAt: Date.now() })
+              : null
+            const browserTakeover = state.continueAfterBrowserTakeover
             state.continueAfterApproval = false
-            if (plan?.reason === "browser_takeover") state.continueAfterBrowserTakeover = false
+            state.continueAfterBrowserTakeover = null
+            const continuation = plan ?? browserPlan
             const committed = await finishLiveRun(
               run,
               () => prepareFinalParts({ run, state, store, reason: "unknown" }),
@@ -1771,7 +1789,7 @@ export const createRuntimeEngine = ({
                 finishParts({ run, state, reason: "unknown" })
                 const conclusion = turnConclusion({
                   parts: state.parts,
-                  requestText: (originalRequest ?? request)?.text ?? "",
+                  requestText: originalRequest?.text ?? originalRequestText ?? request?.text ?? "",
                   pendingPartText: state.pendingPartText,
                 })
                 if (conclusion)
@@ -1789,7 +1807,7 @@ export const createRuntimeEngine = ({
                   usage: state.usage,
                   finishedAt: Date.now(),
                 })
-                if (plan) scheduleContinuation({ run, plan })
+                if (continuation) schedulePlannedContinuation({ run, plan: continuation, browserTakeover })
                 else {
                   if (remembers && request)
                     mem0?.sync({
@@ -1811,10 +1829,11 @@ export const createRuntimeEngine = ({
               },
               state.replyMessageId ?? undefined,
             )
-            if (committed && !plan && state.continueAfterBrowserTakeover) {
-              state.continueAfterBrowserTakeover = false
-              const browserPlan = planContinuation({ run, reason: "browser_takeover", lastActivityAt: Date.now() })
-              if (browserPlan) scheduleContinuation({ run, plan: browserPlan })
+            if (committed && !continuation && state.continueAfterBrowserTakeover) {
+              const lateTakeover = state.continueAfterBrowserTakeover
+              state.continueAfterBrowserTakeover = null
+              const latePlan = planContinuation({ run, reason: "browser_takeover", lastActivityAt: Date.now() })
+              if (latePlan) schedulePlannedContinuation({ run, plan: latePlan, browserTakeover: lateTakeover })
             }
             if (!committed && state.cancelRequested && isLive(run))
               await failTurn({ run, state, store, thread, errorClass: "canceled", errorMessage: "Cancelado por você" })
@@ -2001,7 +2020,7 @@ export const createRuntimeEngine = ({
   }): ContinuationPlan | null => {
     if (shuttingDown || Date.now() - lastActivityAt > CONTINUATION_WINDOW_MS) return null
     if (reason !== "permission_granted" && reason !== "browser_takeover" && !resumeEnabled()) return null
-    if (!run.requestMessageId || continuations.isGroupRun(run.id)) return null
+    if (!run.requestMessageId || (continuations.isGroupRun(run.id) && reason !== "browser_takeover")) return null
     const originalRunId = continuations.link(run.id)?.originalRunId ?? run.id
     const interruptedContinuations =
       continuations.count({ originalRunId, reason: "app_restart" }) +
@@ -2184,6 +2203,28 @@ export const createRuntimeEngine = ({
     // A newer user turn supersedes a continuation, including during shutdown.
     persistence.listRuns(run.threadId)[0]?.id === run.id
 
+  const schedulePlannedContinuation = ({
+    run,
+    plan,
+    browserTakeover,
+  }: {
+    run: Run
+    plan: ContinuationPlan
+    browserTakeover: BrowserTakeoverResume | null
+  }): void => {
+    if (plan.reason === "browser_takeover" && continuations.isGroupRun(run.id)) {
+      kernel.services.use("groups.runtime")?.resumeAfterBrowserTakeover({
+        botId: run.botId,
+        threadId: run.threadId,
+        runId: run.id,
+        ...(browserTakeover?.delegation ? { delegation: browserTakeover.delegation } : {}),
+      })
+      return
+    }
+
+    scheduleContinuation({ run, plan })
+  }
+
   const failTurn = async ({
     run,
     state,
@@ -2263,6 +2304,14 @@ export const createRuntimeEngine = ({
       if (!runId) return
       const run = persistence.getRun(runId)
       if (run?.status !== "queued") continue
+      if (
+        kernel.db instanceof Database &&
+        kernel.db.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(run.threadId)
+      ) {
+        cancel(run.id)
+        setImmediate(() => void drain())
+        return
+      }
       active.set(run.threadId, run)
       updateRun(run, { status: "starting", startedAt: Date.now() })
       const execution = executeWithStateCleanup(run)
@@ -2284,6 +2333,7 @@ export const createRuntimeEngine = ({
     routineRunId,
     delegated = false,
     continuing = false,
+    continuationFromRunId,
   }: {
     threadId: Id
     requestMessageId: Id
@@ -2292,6 +2342,7 @@ export const createRuntimeEngine = ({
     routineRunId?: Id
     delegated?: boolean
     continuing?: boolean
+    continuationFromRunId?: Id
   }): Result<{ run: Run }, "THREAD_NOT_FOUND" | "BOT_PAUSED" | "RUNTIME_DRAINING"> => {
     if (shuttingDown || (draining && !delegated && !continuing))
       return { success: false, errorCode: "RUNTIME_DRAINING", error: "O servidor está encerrando." }
@@ -2300,6 +2351,11 @@ export const createRuntimeEngine = ({
     const thread = store?.getThread({ threadId })
     const bot = thread ? store?.getBot({ botId: thread.botId }) : null
     if (!store || !thread || !bot) return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Thread not found" }
+    if (
+      kernel.db instanceof Database &&
+      kernel.db.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(threadId)
+    )
+      return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Thread not found" }
     const activeRequest = persistence.findActiveRunForRequest({ threadId, requestMessageId })
     if (activeRequest) return { success: true, run: activeRequest }
     if (bot.paused || bot.machine === "cloud")
@@ -2333,6 +2389,16 @@ export const createRuntimeEngine = ({
       finishedAt: null,
     }
     persistence.saveRun(run)
+    if (continuationFromRunId) {
+      const previous = continuations.link(continuationFromRunId)
+      continuations.record({
+        runId: run.id,
+        originalRunId: previous?.originalRunId ?? continuationFromRunId,
+        previousRunId: continuationFromRunId,
+        reason: "browser_takeover",
+        createdAt: Date.now(),
+      })
+    }
     if (delegated) {
       publishRun(run)
       // A synchronous peer request cannot wait behind its caller's occupied slot.
@@ -2374,22 +2440,66 @@ export const createRuntimeEngine = ({
     return true
   }
 
-  const resumeAfterBrowserTakeover: RuntimeEngine["resumeAfterBrowserTakeover"] = ({ botId, threadId, runId }) => {
+  const resumeAfterBrowserTakeover: RuntimeEngine["resumeAfterBrowserTakeover"] = (input) => {
+    const { botId, threadId, runId } = input
     const run = persistence.getRun(runId)
     if (!run || run.botId !== botId || run.threadId !== threadId || !run.requestMessageId) return false
+    if (continuations.hasPrevious({ previousRunId: runId, reason: "browser_takeover" })) return true
+    if (pendingContinuations.has(runId)) return true
 
-    if (continuations.isGroupRun(run.id))
-      return kernel.services.use("groups.runtime")?.resumeBrowser({ runId }) ?? false
     if (active.get(threadId)?.id === runId && ["queued", "starting", "running"].includes(run.status)) {
       const state = getState(runId)
       if (state.cancelRequested || !isLive(run)) return false
-      state.continueAfterBrowserTakeover = true
+      if (state.continueAfterBrowserTakeover) return true
+      state.continueAfterBrowserTakeover = input
       return true
     }
     if (run.status !== "succeeded") return false
 
     const plan = planContinuation({ run, reason: "browser_takeover", lastActivityAt: Date.now() })
-    return plan !== null && startContinuation({ run, plan })
+    if (!plan) return false
+    if (continuations.isGroupRun(run.id))
+      return kernel.services.use("groups.runtime")?.resumeAfterBrowserTakeover(input) ?? false
+
+    return startContinuation({ run, plan })
+  }
+
+  const canReturnBrowserTakeover: RuntimeEngine["canReturnBrowserTakeover"] = ({
+    botId,
+    threadId,
+    runId,
+    personId,
+  }) => {
+    const store = kernel.services.use("store.api")
+    const bot = store?.getBot({ botId })
+    if (!store || !bot) return false
+    if ((bot.responsiblePersonId ?? "owner") === personId) return true
+    if (!runId) return false
+
+    const run = persistence.getRun(runId)
+    if (!run || run.botId !== botId || run.threadId !== threadId) return false
+    const originalRunId = continuations.link(runId)?.originalRunId ?? runId
+    const originalRun = persistence.getRun(originalRunId)
+    if (!originalRun?.requestMessageId) return false
+    const groupLink =
+      kernel.db instanceof Database
+        ? (kernel.db.query("SELECT turn_id FROM group_run_links WHERE run_id = ?").get(originalRunId) as {
+            turn_id: string
+          } | null)
+        : null
+    const requestRun = groupLink ? persistence.getRun(groupLink.turn_id) : originalRun
+    if (!requestRun?.requestMessageId) return false
+    if (!(kernel.db instanceof Database)) return false
+    const request = kernel.db
+      .query("SELECT sender_json FROM messages WHERE thread_id = ? AND id = ?")
+      .get(requestRun.threadId, requestRun.requestMessageId) as { sender_json: string | null } | null
+    if (!request?.sender_json) return false
+    try {
+      const sender = JSON.parse(request.sender_json) as { id?: unknown; kind?: unknown }
+      return sender.kind === "person" && sender.id === personId
+    } catch {
+      return false
+    }
   }
 
   const cancel = (id: Id): Result<{ run: Run }, "NOT_FOUND"> => {
@@ -3146,6 +3256,7 @@ export const createRuntimeEngine = ({
     activeRun,
     continueAfterApproval,
     resumeAfterBrowserTakeover,
+    canReturnBrowserTakeover,
     getRunSnapshot,
     getWorkRuns,
     settingsChanged: () => {

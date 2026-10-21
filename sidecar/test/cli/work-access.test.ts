@@ -51,6 +51,8 @@ database.exec(`
     ('other-dm', 'other-bot', NULL, 'owner', NULL, NULL), ('team-chat', 'team-bot', 'team-a', NULL, NULL, NULL),
     ('other-chat', 'other-bot', 'team-b', NULL, NULL, NULL),
     ('team-bot-session', 'team-bot', 'team-a', NULL, NULL, 'team-chat');
+  INSERT INTO threads VALUES ('team-private','team-bot',NULL,'owner',NULL,NULL);
+  INSERT INTO browser_tabs VALUES ('channel-tab','team-bot','team-chat'), ('private-tab','team-bot','team-private');
   INSERT INTO workspace_message_attention VALUES ('member-approval', 'member-dm', 'approval', 'pending'),
     ('other-approval', 'other-dm', 'approval', 'pending'), ('team-approval', 'team-chat', 'approval', 'pending');
   INSERT INTO runs VALUES ('member-run', 'member-dm', 'member-request'), ('other-run', 'other-dm', 'owner-request');
@@ -64,6 +66,8 @@ database.exec(`
 
 afterEach(() => {
   database.exec("DELETE FROM group_run_links; DELETE FROM notifications; DELETE FROM workspace_attention_backfill")
+  database.query("DELETE FROM threads WHERE id = 'member-channel-thread'").run()
+  database.query("UPDATE threads SET archived_at = NULL WHERE id = 'member-dm'").run()
 })
 
 const access = createWorkAccess({
@@ -73,7 +77,7 @@ const access = createWorkAccess({
       personId === "member" || personId === "second-member" ? ["team-a", "deleted-channel"] : [],
     getPerson: (personId) => {
       if (personId === "owner")
-        return { id: "owner", name: "Thiago", role: "admin" } as ReturnType<AuthStore["getPerson"]>
+        return { id: "owner", name: "Carla", role: "admin" } as ReturnType<AuthStore["getPerson"]>
       if (personId === "member" || personId === "second-member")
         return { id: personId, name: "Ana", role: "member" } as ReturnType<AuthStore["getPerson"]>
       return null
@@ -159,6 +163,72 @@ test("members cannot create channels or bots, delete bots, invite people, or ope
   ).toMatchObject({ status: 403 })
 })
 
+test("thread deletion routes allow admins and thread owners but deny other channel members", () => {
+  database
+    .query(
+      "INSERT INTO threads(id,bot_id,group_id,owner_person_id,archived_at) VALUES ('member-channel-thread','team-bot','team-a','member',NULL)",
+    )
+    .run()
+  const authorize = (method: string, pathname: string, body: unknown = null) =>
+    access.authorizeHttp({ personId: "member", role: "member", method, pathname, body })
+
+  expect(authorize("GET", "/threads/member-dm/delete-preview")).toBeNull()
+  expect(authorize("DELETE", "/threads/member-dm")).toBeNull()
+  expect(authorize("DELETE", "/threads/member-channel-thread")).toBeNull()
+  expect(authorize("GET", "/threads/team-chat/delete-preview")).toMatchObject({ status: 403 })
+  expect(authorize("DELETE", "/threads/team-chat")).toMatchObject({ status: 403 })
+  expect(authorize("DELETE", "/threads/other-dm")).toMatchObject({ status: 403 })
+  expect(authorize("POST", "/threads/delete", { ids: ["member-dm", "team-chat"] })).toMatchObject({ status: 403 })
+  expect(authorize("POST", "/threads/delete", { ids: ["member-dm", "member-channel-thread"] })).toBeNull()
+  expect(
+    access.authorizeHttp({
+      personId: "owner",
+      role: "admin",
+      method: "DELETE",
+      pathname: "/threads/team-chat",
+      body: null,
+    }),
+  ).toBeNull()
+})
+
+test("thread owners can open and restore archived conversations", () => {
+  database.query("UPDATE threads SET archived_at = 1 WHERE id = 'member-dm'").run()
+
+  expect(access.canAccessThread({ personId: "member", role: "member", threadId: "member-dm" })).toBe(true)
+  expect(
+    access.authorizeHttp({
+      personId: "member",
+      role: "member",
+      method: "PATCH",
+      pathname: "/threads/member-dm",
+      body: { archived: false },
+    }),
+  ).toBeNull()
+})
+
+test("deleted thread events only reach the owner, bot owner, admins or channel members", () => {
+  const groupEvent: UiEvent = {
+    type: "thread.deleted",
+    threadId: "team-chat",
+    botId: "team-bot",
+    groupId: "team-a",
+    ownerPersonId: null,
+    responsiblePersonId: "owner",
+  }
+  const privateEvent: UiEvent = {
+    type: "thread.deleted",
+    threadId: "other-dm",
+    botId: "other-bot",
+    groupId: null,
+    ownerPersonId: "owner",
+    responsiblePersonId: "owner",
+  }
+
+  expect(access.visibleEvent({ personId: "member", role: "member", event: groupEvent })).toBe(true)
+  expect(access.visibleEvent({ personId: "member", role: "member", event: privateEvent })).toBe(false)
+  expect(access.visibleEvent({ personId: "owner", role: "member", event: privateEvent })).toBe(true)
+})
+
 test("channel membership cannot open a private session with another person's bot", () => {
   const request = { personId: "member", role: "member" as const, method: "POST", pathname: "/threads" }
 
@@ -166,7 +236,7 @@ test("channel membership cannot open a private session with another person's bot
   expect(access.authorizeHttp({ ...request, body: { botId: "member-bot" } })).toBeNull()
 })
 
-test("browser preview follows bot visibility and remote takeover follows control permissions", () => {
+test("browser visibility filters requests before the handler checks legacy control permissions", () => {
   expect(
     access.authorizeHttp({
       personId: "member",
@@ -184,7 +254,7 @@ test("browser preview follows bot visibility and remote takeover follows control
       pathname: "/browser/tabs/team-tab/takeover/session",
       body: null,
     }),
-  ).toMatchObject({ status: 404 })
+  ).toBeNull()
   expect(
     access.authorizeHttp({
       personId: "member",
@@ -326,7 +396,7 @@ test("only the requester and the responsible person can stop or take over a chan
     .query(`INSERT INTO browser_channel_runs(run_id,group_id,thread_id,bot_id,requester_person_id,responsible_person_id,controller_person_id,status,queued_at) VALUES
       ('channel-browser-run', 'team-a', 'team-chat', 'team-bot', 'member', 'owner', 'owner', 'taken_over', 1)`)
     .run()
-  database.query("INSERT INTO browser_tabs VALUES ('channel-tab', 'team-bot', 'team-bot-session')").run()
+  database.query("INSERT OR REPLACE INTO browser_tabs VALUES ('channel-tab', 'team-bot', 'team-bot-session')").run()
 
   const cancel = {
     role: "member" as const,
@@ -339,7 +409,7 @@ test("only the requester and the responsible person can stop or take over a chan
   expect(access.authorizeHttp({ ...cancel, personId: "other", role: "member" })).toMatchObject({ status: 404 })
   const deniedCancel = access.authorizeHttp({ ...cancel, personId: "second-member", role: "member" })
   expect(deniedCancel).toMatchObject({ status: 403, json: { errorCode: "BROWSER_CONTROL_FORBIDDEN" } })
-  expect(deniedCancel?.json.error).toContain("Thiago está no controle")
+  expect(deniedCancel?.json.error).toContain("Carla está no controle")
 
   const takeover = {
     role: "member" as const,
@@ -352,7 +422,7 @@ test("only the requester and the responsible person can stop or take over a chan
   expect(access.authorizeHttp({ ...takeover, personId: "other", role: "member" })).toMatchObject({ status: 404 })
   const deniedTakeover = access.authorizeHttp({ ...takeover, personId: "second-member", role: "member" })
   expect(deniedTakeover).toMatchObject({ status: 403, json: { errorCode: "BROWSER_CONTROL_FORBIDDEN" } })
-  expect(deniedTakeover?.json.error).toContain("Thiago está no controle")
+  expect(deniedTakeover?.json.error).toContain("Carla está no controle")
 
   expect(
     access.authorizeHttp({
@@ -474,4 +544,77 @@ test("members can fetch files from their own chats and channels only", () => {
       attachmentIds: Array.from({ length: 51 }, (_, index) => `file-${index}`),
     }),
   ).toBe(false)
+})
+
+test("browser control reaches requester authorization and rejects malformed requests", () => {
+  const request = {
+    personId: "member",
+    role: "member" as const,
+    method: "POST",
+    pathname: "/browser/tabs/channel-tab/takeover",
+    body: { hold: false },
+  }
+
+  const handback = access.authorizeHttp(request)
+  const takeover = access.authorizeHttp({ ...request, body: { hold: true } })
+  const malformed = access.authorizeHttp({ ...request, body: {} })
+
+  expect(handback).toBeNull()
+  expect(takeover).toBeNull()
+  expect(malformed?.status).toBe(403)
+})
+
+test("channel browser visibility includes shared tabs and excludes the same bot's private tabs", () => {
+  const viewer = { personId: "member", role: "member" as const }
+
+  const channel = access.canAccessBrowserTab({ ...viewer, tabId: "channel-tab" })
+  const privateTab = access.canAccessBrowserTab({ ...viewer, tabId: "private-tab" })
+  const own = access.canAccessBrowserTab({ ...viewer, tabId: "member-tab" })
+
+  expect(channel).toBe(true)
+  expect(privateTab).toBe(false)
+  expect(own).toBe(true)
+  expect(access.canAccessBrowserTab({ personId: "owner", role: "member", tabId: "private-tab" })).toBe(true)
+  expect(access.canAccessBrowserTab({ ...viewer, tabId: "missing" })).toBe(false)
+})
+
+test("channel browser events use tab scope rather than shared bot membership", () => {
+  const viewer = { personId: "member", role: "member" as const }
+  const tab = {
+    tabId: "channel-tab",
+    ownerBotId: "team-bot",
+    url: "https://portal.example.test/login",
+    title: "Portal",
+    state: "live" as const,
+    openerTabId: null,
+    heldByUser: false,
+    lastUsedAt: 1,
+  }
+
+  const shared = access.visibleEvent({ ...viewer, event: { type: "browser.tab", tab } })
+  const privateEvent = access.visibleEvent({
+    ...viewer,
+    event: { type: "browser.tab", tab: { ...tab, tabId: "private-tab" } },
+  })
+
+  expect(shared).toBe(true)
+  expect(privateEvent).toBe(false)
+})
+
+test("former channel members cannot delete a conversation even when they created it", () => {
+  database
+    .query(
+      "INSERT INTO threads(id,bot_id,group_id,owner_person_id,archived_at) VALUES ('member-channel-thread','other-bot','team-b','member',NULL)",
+    )
+    .run()
+
+  const response = access.authorizeHttp({
+    personId: "member",
+    role: "member",
+    method: "DELETE",
+    pathname: "/threads/member-channel-thread",
+    body: null,
+  })
+
+  expect(response).toMatchObject({ status: 403 })
 })

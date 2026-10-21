@@ -51,6 +51,8 @@ type BrowserTakeoverSession = {
   deviceId: string
   personId: string | null
   channelRunId: string | null
+  sourceThreadId: string | null
+  sourceRunId: string | null
   expiresAt: number
   lastFrameAt: number
   frameInFlight: boolean
@@ -521,32 +523,54 @@ export const init = async (
     takeoverSessions.set(tabId, renewed)
     return renewed
   }
+  const setBrowserControl = async ({
+    tabId,
+    hold,
+    personId,
+  }: {
+    tabId: string
+    hold: boolean
+    personId?: string | undefined
+  }): Promise<boolean> => {
+    if (!personId)
+      return hold
+        ? engine.holdTakeover({ tabId, reason: "The user requested browser takeover" })
+        : engine.releaseTakeover(tabId)
+    if (hold) return (await engine.holdTakeoverForPerson({ tabId, personId })) === "held"
+
+    return (await engine.releaseTakeoverForPerson({ tabId, personId })) === "released"
+  }
   const endTakeoverSession = async (tabId: string, sessionId?: string, handback = false): Promise<boolean> => {
     const session = takeoverSessions.get(tabId)
     if (!session || (sessionId && session.id !== sessionId)) return false
+    const actorPersonId =
+      session.personId ?? (session.deviceId === "native" ? kernel.services.use("work.defaultPersonId")?.() : null)
+    const run = session.channelRunId ? channelRuns.get(session.channelRunId) : null
+    const sourceId = run?.activeRunId ?? run?.runId
+    const source = sourceId
+      ? ((kernel.db as Database).query("SELECT thread_id FROM runs WHERE id = ?").get(sourceId) as {
+          thread_id: string
+        } | null)
+      : null
+    if (handback && run && actorPersonId && !channelRuns.returnControl({ runId: run.runId, actorPersonId }).success)
+      return false
     if (session.timer) clearTimeout(session.timer)
     session.lifetime.abort()
     takeoverSessions.delete(tabId)
     const released = handback ? await engine.releaseTakeover(tabId).catch(() => false) : true
-    if (session.releaseVm) await session.releaseVm().catch(() => undefined)
-    const actorPersonId =
-      session.personId ?? (session.deviceId === "native" ? kernel.services.use("work.defaultPersonId")?.() : null)
-    if (handback && released && session.channelRunId && actorPersonId) {
-      const run = channelRuns.get(session.channelRunId)
-      const sourceId = run?.activeRunId ?? run?.runId
-      const source = sourceId
-        ? ((kernel.db as Database).query("SELECT thread_id FROM runs WHERE id = ?").get(sourceId) as {
-            thread_id: string
-          } | null)
-        : null
-      if (run && source && sourceId)
-        kernel.services.use("runtime.resumeAfterBrowserTakeover")?.({
-          botId: run.botId,
-          threadId: source.thread_id,
-          runId: sourceId,
-        })
-      channelRuns.returnControl({ runId: session.channelRunId, actorPersonId })
+    if (!handback) {
+      if (run) channelRuns.cancel(run.runId)
+      await engine.close({ tabId, botId: session.botId, signal: new AbortController().signal }).catch(() => undefined)
     }
+    if (!released && run && actorPersonId) channelRuns.takeControl({ runId: run.runId, actorPersonId })
+    if (session.releaseVm) await session.releaseVm().catch(() => undefined)
+    if (handback && released && run && source && sourceId)
+      kernel.services.use("runtime.resumeAfterBrowserTakeover")?.({
+        botId: run.botId,
+        threadId: source.thread_id,
+        runId: sourceId,
+      })
+
     return released
   }
   kernel.services.provide("browser.takeoverResolved", ({ tabId, resolution }) => {
@@ -591,6 +615,18 @@ export const init = async (
     if (session.controlEpoch !== controlEpoch) return null
     if (!isTakeoverController(device, session)) return null
     if (device?.person && !visibleTabsFor(session.botId, device.person).some((tab) => tab.tabId === tabId)) return null
+    if (session.personId && !session.channelRunId) {
+      const ownsBot = kernel.services.use("work.ownsBot")?.({ personId: session.personId, botId: session.botId })
+      const canReturn =
+        session.sourceThreadId &&
+        kernel.services.use("runtime.canReturnBrowserTakeover")?.({
+          botId: session.botId,
+          threadId: session.sourceThreadId,
+          runId: session.sourceRunId,
+          personId: session.personId,
+        })
+      if (!ownsBot && !canReturn) return null
+    }
     if (session.channelRunId) {
       const run = channelRuns.get(session.channelRunId)
       const actorId = session.personId ?? kernel.services.use("work.defaultPersonId")?.()
@@ -1120,9 +1156,20 @@ export const init = async (
               }
 
               sharedPreview.invalidateBot(bot.id)
-              const held = await engine
-                .holdTakeover({ tabId, reason: "The user requested browser takeover" })
-                .catch(() => false)
+              if (
+                device &&
+                (!device.active() ||
+                  !visibleTabsFor(bot.id, device.person).some((candidate) => candidate.tabId === tabId))
+              ) {
+                await releaseVm?.().catch(() => undefined)
+                undoChannelControl()
+                return null
+              }
+              const held = await setBrowserControl({
+                tabId,
+                hold: true,
+                personId: channelRun ? undefined : (actorPersonId ?? undefined),
+              }).catch(() => false)
               if (!held) {
                 await releaseVm?.().catch(() => undefined)
                 undoChannelControl()
@@ -1135,6 +1182,13 @@ export const init = async (
                 deviceId: controller.deviceId,
                 personId: controller.personId,
                 channelRunId: channelRun?.runId ?? null,
+                sourceRunId: tab.takeoverRunId ?? null,
+                sourceThreadId:
+                  (
+                    (kernel.db as Database)
+                      .query("SELECT owner_thread_id FROM browser_tabs WHERE id = ?")
+                      .get(tabId) as { owner_thread_id: string | null } | null
+                  )?.owner_thread_id ?? null,
                 expiresAt: 0,
                 lastFrameAt: 0,
                 frameInFlight: false,
@@ -1348,7 +1402,8 @@ export const init = async (
         path: "/browser/tabs/:id/takeover",
         handler: async (request) => {
           const body = argsRecord(request.body)
-          const hold = asBoolean(body.hold) === true
+          if (typeof body.hold !== "boolean") return { status: 400, json: { errorCode: "INVALID_ARGS" } }
+          const hold = body.hold
           const tabId = request.params.id ?? ""
           const device = deviceSession(request.signal)
           const actorPersonId = device?.person?.id ?? (!device ? kernel.services.use("work.defaultPersonId")?.() : null)
@@ -1368,9 +1423,11 @@ export const init = async (
           const ok =
             controller && !hold
               ? await endTakeoverSession(tabId, controller.id, true)
-              : hold
-                ? await engine.holdTakeover({ tabId, reason: "The user requested browser takeover" })
-                : await engine.releaseTakeover(tabId)
+              : await setBrowserControl({
+                  tabId,
+                  hold,
+                  personId: channelRun ? undefined : (actorPersonId ?? undefined),
+                })
           if (!ok && actorPersonId && channelRun && !controller) {
             if (hold) channelRuns.returnControl({ runId: channelRun.runId, actorPersonId })
             else channelRuns.takeControl({ runId: channelRun.runId, actorPersonId })

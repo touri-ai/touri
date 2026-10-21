@@ -205,7 +205,8 @@ export const createChannelBrowserRuns = ({
           COALESCE(r.requester_person_id, original.requester_person_id) AS requester_person_id, b.responsible_person_id
         FROM runs r JOIN threads t ON t.id = r.thread_id JOIN bots b ON b.id = r.bot_id
         LEFT JOIN run_continuations continuation ON continuation.run_id = r.id
-        LEFT JOIN runs original ON original.id = continuation.original_run_id
+        LEFT JOIN browser_takeover_continuations browser_continuation ON browser_continuation.run_id = r.id
+        LEFT JOIN runs original ON original.id = COALESCE(continuation.original_run_id, browser_continuation.original_run_id)
         LEFT JOIN group_run_links link ON link.run_id = COALESCE(original.id, r.id)
         LEFT JOIN runs parent ON parent.id = link.turn_id
         WHERE r.id = ? AND r.bot_id = ? LIMIT 1`)
@@ -566,7 +567,28 @@ export const createChannelBrowserRuns = ({
           status: BrowserChannelRunStatus
         } | null)
       : getRaw(event.run.id)
-    if (!row || (row.active_run_id && row.active_run_id !== event.run.id)) return
+    if (!row) return
+    if (row.active_run_id && row.active_run_id !== event.run.id) {
+      const continuation = database
+        .query(`SELECT continuation.previous_run_id, request.next_turn_id
+        FROM browser_takeover_continuations continuation
+        LEFT JOIN browser_resume_requests request ON request.previous_run_id = continuation.previous_run_id
+        JOIN browser_request_runs alias ON alias.run_id = continuation.previous_run_id
+        WHERE continuation.run_id = ? AND alias.request_run_id = ? LIMIT 1`)
+        .get(event.run.id, row.run_id) as { previous_run_id: string; next_turn_id: string | null } | null
+      if (!continuation || ![continuation.previous_run_id, continuation.next_turn_id].includes(row.active_run_id))
+        return
+      database
+        .transaction(() => {
+          database
+            .query("UPDATE browser_channel_runs SET active_run_id = ? WHERE run_id = ?")
+            .run(event.run.id, row.run_id)
+          database
+            .query("INSERT OR IGNORE INTO browser_request_runs(run_id,request_run_id) VALUES (?,?)")
+            .run(event.run.id, row.run_id)
+        })
+        .immediate()
+    }
     if (event.run.status === "succeeded" && ["needs_you", "taken_over"].includes(row.status)) return
     if (event.run.status === "succeeded") updateTerminal(row.run_id, "succeeded")
     if (event.run.status === "failed" || event.run.status === "interrupted") updateTerminal(row.run_id, "failed")

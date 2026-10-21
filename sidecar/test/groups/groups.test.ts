@@ -3,10 +3,16 @@ import { afterEach, expect, spyOn, test } from "bun:test"
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { Bot, GroupInput, Kernel, ProviderAdapter, Run, ToolContext } from "@touri/contracts"
+import type { Bot, GroupDelegation, GroupInput, Kernel, ProviderAdapter, Run, ToolContext } from "@touri/contracts"
 import { init as initGroups } from "../../src/groups"
 import { createGroupRuntime } from "../../src/groups/runtime"
-import { delegatedBot, delegationCeiling, delegationSecrets, setDelegation } from "../../src/groups/security"
+import {
+  delegatedBot,
+  delegationCeiling,
+  delegationSecrets,
+  getDelegation,
+  setDelegation,
+} from "../../src/groups/security"
 import { createGroupStore, routeGroupMessage } from "../../src/groups/store"
 import { createKernel } from "../../src/kernel"
 import { openDatabase, SCHEMA_VERSION } from "../../src/kernel/db"
@@ -74,14 +80,24 @@ const fixture = async (
   const order: string[] = []
   const canceledBots = new Set<string>()
   const engine = {
-    enqueue: ({ threadId, requestMessageId }: { threadId: string; requestMessageId: string }) => {
+    enqueue: ({
+      threadId,
+      requestMessageId,
+      trigger = "user",
+      continuationFromRunId,
+    }: {
+      threadId: string
+      requestMessageId: string
+      trigger?: Run["trigger"]
+      continuationFromRunId?: string
+    }) => {
       const botId = store.getThread({ threadId })?.botId ?? ""
       const run: Run = {
         id: host.kernel.newId(),
         threadId,
         botId,
         provider: "codex",
-        trigger: "user",
+        trigger,
         requestMessageId,
         replyMessageId: null,
         externalTurnId: null,
@@ -95,6 +111,10 @@ const fixture = async (
         finishedAt: null,
       }
       persistence.saveRun(run)
+      if (continuationFromRunId)
+        db.query(
+          "INSERT INTO browser_takeover_continuations (run_id, original_run_id, previous_run_id, created_at) VALUES (?, ?, ?, ?)",
+        ).run(run.id, continuationFromRunId, continuationFromRunId, Date.now())
       const controller = new AbortController()
       controllers.set(run.id, controller)
       const ctx: ToolContext = {
@@ -169,7 +189,11 @@ const fixture = async (
   const runtime = createGroupRuntime(host.kernel, engine, timeout)
   host.kernel.services.provide("groups.runtime", runtime)
   host.kernel.services.provide("runtime.enqueue", runtime.enqueue)
-  const send = (text: string, targetThreadId = thread.id) => {
+  const send = (
+    text: string,
+    targetThreadId = thread.id,
+    sender: { id: string; name: string; kind: "person" } | null = null,
+  ) => {
     const m = store.insertMessage({
       message: {
         id: host.kernel.newId(),
@@ -181,7 +205,7 @@ const fixture = async (
         runId: null,
         text,
         parts: [{ type: "text", text }],
-        sender: null,
+        sender,
         source: "local",
       },
     })
@@ -316,6 +340,120 @@ test("groups have separate conversations, private member sessions, ordered repli
   const direct = await f.request(`/bots/${f.bots[0]?.id}/threads`, undefined, "GET")
   expect(((await direct.json()) as { threads: { groupId?: string }[] }).threads.every((t) => !t.groupId)).toBe(true)
 })
+
+test("browser handback resumes one bot in the same channel and ignores duplicate returns", async () => {
+  const f = await fixture(undefined, 30_000)
+  const botId = f.group.memberIds[0]
+  if (!botId) throw new Error("Missing group member")
+  const original = f.send("@pm conclua depois do login", f.thread.id, {
+    id: "requester",
+    name: "Requester",
+    kind: "person",
+  })
+  await until(() => f.persistence.getRun(original.id)?.status === "succeeded", 3000)
+  const child = f.db.query("SELECT run_id FROM group_run_links WHERE turn_id = ? AND depth = 0").get(original.id) as {
+    run_id: string
+  } | null
+  const source = child ? f.persistence.getRun(child.run_id) : null
+  if (!source) throw new Error("Missing channel member run")
+
+  const followup = f.store.insertMessage({
+    message: {
+      id: f.host.kernel.newId(),
+      threadId: f.thread.id,
+      parentId: f.store.getThread({ threadId: f.thread.id })?.activeLeafId ?? null,
+      role: "user",
+      kind: "text",
+      status: "complete",
+      runId: null,
+      text: "Aguardo o retorno do portal.",
+      parts: [{ type: "text", text: "Aguardo o retorno do portal." }],
+      sender: { id: "requester", name: "Requester", kind: "person" },
+      source: "local",
+    },
+  })
+  if (!followup.success) throw new Error(followup.error)
+
+  expect(f.runtime.resumeAfterBrowserTakeover({ botId, threadId: source.threadId, runId: source.id })).toBe(true)
+  expect(f.runtime.resumeAfterBrowserTakeover({ botId, threadId: source.threadId, runId: source.id })).toBe(true)
+  await until(() => f.order.filter((id) => id === botId).length === 2, 3000)
+  await until(() => {
+    const continuations = f.db
+      .query("SELECT COUNT(*) AS count FROM browser_takeover_continuations WHERE previous_run_id = ?")
+      .get(source.id) as { count: number }
+    return continuations.count === 1
+  })
+
+  const channelRuns = f.db
+    .query(
+      "SELECT r.thread_id, r.trigger, g.recipients_json FROM runs r JOIN group_turns g ON g.run_id = r.id WHERE r.thread_id = ?",
+    )
+    .all(f.thread.id) as Array<{ thread_id: string; trigger: string; recipients_json: string }>
+  const channelMessages = f.store.activePath({ threadId: f.thread.id })
+  const resumedMember = f.runtime.listRuns(f.thread.id).find((run) => run.browserTakeoverFromRunId === source.id)
+  expect(resumedMember?.groupTurnId).toBeDefined()
+  expect(channelRuns).toHaveLength(2)
+  expect(channelRuns[1]).toMatchObject({
+    thread_id: f.thread.id,
+    trigger: "retry",
+    recipients_json: JSON.stringify([botId]),
+  })
+  expect(channelMessages.filter((message) => message.role === "user")).toHaveLength(2)
+  expect(channelMessages.some((message) => message.id === followup.message.id)).toBe(true)
+  expect(channelMessages.some((message) => message.text === "Retomado após a devolução do navegador")).toBe(true)
+  expect(channelMessages.filter((message) => message.role === "assistant")).toHaveLength(2)
+  expect(
+    channelMessages.some((message) => message.status === "failed" || message.text.includes("Cancelado por você")),
+  ).toBe(false)
+}, 30_000)
+
+test("delegated browser handback preserves the original permission ceiling, secret scope and caller", async () => {
+  const ready = Promise.withResolvers<Awaited<ReturnType<typeof fixture>>>()
+  // Provider callbacks record each attempt independently, including its effective capability view.
+  const attempts = new Map<string, { ctx: ToolContext; bot: Bot; delegation: GroupDelegation }>()
+  const f = await fixture(async (ctx, complete) => {
+    const scenario = await ready.promise
+    if (ctx.botId === scenario.bots[0]?.id) {
+      const result = await scenario.runtime.askBot(ctx, { bot: "dev", message: "Confira o portal após o login." })
+      expect(result.success).toBe(true)
+      complete("Pedido delegado")
+      return
+    }
+    const target = scenario.store.getBot({ botId: ctx.botId })
+    const delegation = getDelegation(scenario.host.kernel, ctx.threadId)
+    if (!target || !delegation || !ctx.runId) throw new Error("Missing delegated browser context")
+
+    attempts.set(ctx.runId, { ctx, bot: delegatedBot(scenario.host.kernel, ctx.threadId, target), delegation })
+    complete("Portal conferido")
+  }, 30_000)
+  ready.resolve(f)
+  const callerId = f.bots[0]?.id ?? ""
+  const targetId = f.bots[1]?.id ?? ""
+  f.db.query("UPDATE bots SET access='read-only',approvals='on-request',browser_enabled=1 WHERE id=?").run(callerId)
+  f.db.query("UPDATE bots SET access='full',approvals='never',browser_enabled=1 WHERE id=?").run(targetId)
+  f.host.kernel.services.provide("approvals.present", async () => ({ success: true, behavior: "allow" }))
+  const original = f.send("@pm confira o portal")
+  await until(() => f.persistence.getRun(original.id)?.status === "succeeded", 3000)
+  const source = [...attempts.values()][0]
+  if (!source?.ctx.runId) throw new Error("Missing delegated source run")
+  const handback = { botId: targetId, threadId: source.ctx.threadId, runId: source.ctx.runId }
+  expect(getDelegation(f.host.kernel, source.ctx.threadId)).toBeNull()
+  f.db.query("UPDATE bots SET access='full',approvals='never' WHERE id=?").run(callerId)
+
+  expect(f.runtime.resumeAfterBrowserTakeover(handback)).toBe(false)
+  expect(f.runtime.resumeAfterBrowserTakeover({ ...handback, delegation: source.delegation })).toBe(true)
+  expect(f.runtime.resumeAfterBrowserTakeover({ ...handback, delegation: source.delegation })).toBe(true)
+  await until(() => attempts.size === 2, 3000)
+
+  const resumed = [...attempts.values()][1]
+  expect(resumed?.bot).toMatchObject({ access: "read-only", approvals: "on-request" })
+  expect(resumed?.delegation).toMatchObject({ caller: { id: callerId }, secrets: false })
+  const resumedRun = resumed?.ctx.runId ? f.persistence.getRun(resumed.ctx.runId) : null
+  const request = f.store
+    .activePath({ threadId: source.ctx.threadId })
+    .find((message) => message.id === resumedRun?.requestMessageId)
+  expect(request?.sender?.id).toBe(callerId)
+}, 30_000)
 
 test("search excludes legacy and current coordination prompts from member threads", async () => {
   const f = await fixture()

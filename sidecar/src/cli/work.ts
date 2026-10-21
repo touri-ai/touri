@@ -122,6 +122,7 @@ export const initWorkMode = ({
   kernel.services.provide("work.canAccessThread", access.canAccessThread)
   kernel.services.provide("work.canAccessGroup", access.canAccessGroup)
   kernel.services.provide("work.canAccessBot", access.canAccessBot)
+  kernel.services.provide("work.canAccessBrowserTab", access.canAccessBrowserTab)
   kernel.services.provide("work.ownsBot", access.ownsBot)
   kernel.services.provide("work.accessibleBotIds", access.accessibleBotIds)
   kernel.services.provide("work.canAccessAttachments", access.canAccessAttachments)

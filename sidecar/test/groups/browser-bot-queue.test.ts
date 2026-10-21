@@ -191,3 +191,26 @@ test("durable browser receipts use server request identity instead of provider m
   })
   expect(otherTool).not.toHaveProperty("browserRequestId")
 })
+
+test("a continuation that answers without another browser tool releases its original bot slot", async () => {
+  const fixture = getFixture()
+  await fixture.enter("first", "leo", "session-a", "source")
+  fixture.runs.needsYou("first", "Synthetic handoff")
+  fixture.finish("first")
+  fixture.runs.returnControl({ runId: "first", actorPersonId: "ana" })
+  fixture.database.exec(`
+    INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at)
+      VALUES ('resumed-turn','channel-a','leo','codex','retry','queued',2),
+        ('resumed-child','session-a','leo','codex','retry','running',3);
+    INSERT INTO browser_resume_requests(previous_run_id,next_turn_id) VALUES ('first','resumed-turn');
+    INSERT INTO browser_takeover_continuations(run_id,original_run_id,previous_run_id,created_at)
+      VALUES ('resumed-child','first','first',3);
+    UPDATE browser_channel_runs SET active_run_id='resumed-turn' WHERE run_id='first';
+  `)
+
+  fixture.finish("resumed-child")
+
+  expect(fixture.runs.get("first")).toMatchObject({ status: "succeeded", activeRunId: "resumed-child" })
+  await expect(fixture.enter("next", "leo", "session-b")).resolves.toEqual({ success: true })
+  expect(fixture.runs.get("next")?.status).toBe("running")
+})

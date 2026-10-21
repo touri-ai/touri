@@ -20,7 +20,7 @@ test("schema 32 upgrades bot, thread, and attachment ownership columns", () => {
     `)
     database.close()
     database = openDatabase({ filename })
-    expect(SCHEMA_VERSION).toBe(43)
+    expect(SCHEMA_VERSION).toBe(45)
     expect(database.query("PRAGMA table_info(bots)").all()).toContainEqual(
       expect.objectContaining({ name: "responsible_person_id" }),
     )

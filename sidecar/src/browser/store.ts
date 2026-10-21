@@ -172,6 +172,9 @@ export const createBrowserStore = ({
   }
 
   const save = (tab: TabState): void => {
+    // A deleted channel cannot remain the foreign-key owner of a live browser tab.
+    if (tab.info.ownerThreadId && !database.query("SELECT 1 FROM threads WHERE id = ?").get(tab.info.ownerThreadId))
+      tab.info = Object.assign({}, tab.info, { ownerThreadId: null })
     const row = toRow(tab, Date.now())
     tab.info.lastUsedAt = row.last_used_at
     database
@@ -246,6 +249,8 @@ export const publicTabInfo = ({ tab }: { tab: TabState }): BrowserTabInfo & { ow
   openerTabId: tab.info.openerTabId,
   heldByUser: tab.info.heldByUser,
   takeoverReason: tab.takeoverReason,
+  takeoverRequested: tab.takeover !== null,
+  takeoverRunId: tab.takeover?.runId ?? null,
   lastUsedAt: tab.info.lastUsedAt,
   ownerBotId: tab.info.ownerBotId,
 })

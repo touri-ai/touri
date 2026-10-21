@@ -357,6 +357,9 @@ test("take-over holds the browser, opens its view, and the finished card collaps
   expect(await screen.findByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
   expect(onOpenComputer).not.toHaveBeenCalled()
 
+  fireEvent.click(screen.getByRole("button", { name: "Devolver para Lia" }))
+  await waitFor(() => expect(screen.queryByRole("region", { name: "Controle remoto do navegador" })).toBeNull())
+
   view.rerender(
     <InlinePreviewContext.Provider
       value={{
@@ -772,4 +775,36 @@ test("short browser URLs drop scheme, port and query, and target labels omit pri
 
   expect(getBrowserActivityLabel(click, "pt-BR")).toBe("Clicou em Buscar")
   expect(getBrowserActivityLabel(email, "pt-BR")).toBe("Clicou")
+})
+
+test("a finished direct-message request keeps control available only on its original browser handoff", async () => {
+  const api = createMockApi()
+  const bot = api.getState().bots[0]
+  if (!bot) throw new Error("Missing synthetic bot")
+  const request: ApiRequest = (async () => ({
+    tabs: [Object.assign({}, tab, { takeoverRequested: true, takeoverRunId: "original-run" })],
+  })) as ApiRequest
+  const fixtureApi = Object.assign({}, api, { request })
+  const parts = [
+    getPart({ callId: "takeover", tool: "browser_request_takeover", inputJson: '{"tabId":"browser-tab"}' }),
+  ]
+  const view = render(
+    <InlinePreviewContext.Provider
+      value={{ api: fixtureApi, bot, machine: undefined, activeCallId: undefined, onOpenComputer: () => {} }}
+    >
+      <BrowserActivityCard parts={parts} finished runId="original-run" createdAt={1} botName="Lia" />
+    </InlinePreviewContext.Provider>,
+  )
+
+  expect(await screen.findByRole("button", { name: "Assumir", exact: true })).toBeVisible()
+  view.rerender(
+    <InlinePreviewContext.Provider
+      value={{ api: fixtureApi, bot, machine: undefined, activeCallId: undefined, onOpenComputer: () => {} }}
+    >
+      <BrowserActivityCard parts={parts} finished runId="historical-run" createdAt={1} botName="Lia" />
+    </InlinePreviewContext.Provider>,
+  )
+
+  expect(screen.queryByRole("button", { name: "Assumir", exact: true })).toBeNull()
+  expect(screen.getByRole("button", { name: /Usou o navegador/ })).toBeVisible()
 })

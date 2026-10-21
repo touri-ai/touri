@@ -15,6 +15,7 @@ import type {
   ToolResult,
 } from "@touri/contracts"
 import { approveSecretRelease } from "../approvals/secrets"
+import { getDelegation } from "../groups/security"
 import { createBackgroundTask, getMeasuredStage, yieldBackground } from "../kernel/background-task"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import { hostPlatform } from "../platform"
@@ -4479,6 +4480,7 @@ export const createBrowserEngine = ({
       botId: takeover.botId,
       threadId: takeover.threadId,
       runId: takeover.runId,
+      ...(takeover.delegation ? { delegation: takeover.delegation } : {}),
     })
   }
 
@@ -4531,9 +4533,14 @@ export const createBrowserEngine = ({
     await protectTakeoverDocument(tab)
     tab.info.lastUsedAt = Date.now()
     const notification = getTakeoverNotificationCopy(safeReasonCode)
+    const sourceThread = kernel.services
+      .use("store.api")
+      ?.getThread({ threadId: threadId ?? tab.info.ownerThreadId ?? "" })
+    const notificationThreadId = sourceThread?.groupThreadId ?? threadId ?? tab.info.ownerThreadId
     const requestId = notify ? `browser-takeover:${tabId}:${kernel.newId()}` : null
     const takeover: NonNullable<TabState["takeover"]> = {
       requestId,
+      delegation: getDelegation(kernel, threadId ?? tab.info.ownerThreadId ?? ""),
       botId,
       threadId: threadId ?? tab.info.ownerThreadId,
       runId: runId ?? null,
@@ -4569,7 +4576,7 @@ export const createBrowserEngine = ({
         emitNotice({
           kind: "takeover",
           botId,
-          threadId: tab.info.ownerThreadId,
+          threadId: notificationThreadId,
           requestId: requestId ?? null,
           title: notification.title,
           body: notification.body,
@@ -4578,7 +4585,7 @@ export const createBrowserEngine = ({
         void notifyBestEffort({
           title: notification.title,
           body: notification.body,
-          threadId: tab.info.ownerThreadId,
+          threadId: notificationThreadId,
         })
     }
     store.save(tab)
@@ -4610,6 +4617,36 @@ export const createBrowserEngine = ({
     return true
   }
 
+  const canControlTakeover = (tab: TabState, personId: Id): boolean => {
+    const takeover = tab.takeover
+    return (
+      kernel.services.use("runtime.canReturnBrowserTakeover")?.({
+        botId: takeover?.botId ?? tab.info.ownerBotId ?? "",
+        threadId: takeover?.threadId ?? tab.info.ownerThreadId ?? "",
+        runId: takeover?.runId ?? null,
+        personId,
+      }) ?? false
+    )
+  }
+
+  const releaseTakeoverForPerson: BrowserEngine["releaseTakeoverForPerson"] = async ({ tabId, personId }) => {
+    const tab = store.find(tabId)
+    if (!tab) return "not_found"
+    if (!tab.info.heldByUser && !tab.takeover) return "released"
+    if (!canControlTakeover(tab, personId)) return "forbidden"
+
+    return (await releaseTakeover(tabId)) ? "released" : "not_found"
+  }
+
+  const holdTakeoverForPerson: BrowserEngine["holdTakeoverForPerson"] = async ({ tabId, personId }) => {
+    const tab = store.find(tabId)
+    if (!tab || tab.info.state === "closed") return "not_found"
+    if (!canControlTakeover(tab, personId)) return "forbidden"
+
+    const held = await holdTakeover({ tabId, reason: "The user requested browser takeover" })
+    return held ? "held" : "not_found"
+  }
+
   const holdTakeover = async ({ tabId }: { tabId: Id; reason: string }): Promise<boolean> => {
     const tab = store.find(tabId)
     if (!tab || tab.info.state === "closed") return false
@@ -4630,6 +4667,7 @@ export const createBrowserEngine = ({
       : null
     tab.takeover = {
       requestId: null,
+      delegation: getDelegation(kernel, tab.info.ownerThreadId ?? ""),
       botId: tab.info.ownerBotId,
       threadId: tab.info.ownerThreadId,
       runId: activeRun?.id ?? null,
@@ -4923,6 +4961,8 @@ export const createBrowserEngine = ({
     submitSecret,
     secretEntry,
     releaseTakeover,
+    releaseTakeoverForPerson,
+    holdTakeoverForPerson,
     holdTakeover,
     getWindowBounds,
     tabsForBot,

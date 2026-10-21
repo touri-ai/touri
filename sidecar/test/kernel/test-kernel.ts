@@ -64,6 +64,9 @@ export const testKernel = () => {
       return response
     },
     close: () => {
+      kernel.services.use("storage.threadDeletion")?.dispose()
+      kernel.services.use("storage.threadTitles")?.dispose()
+      kernel.services.use("storage.botDeletion")?.dispose()
       db.close()
       rmSync(root, { recursive: true, force: true })
     },

@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite"
 import { afterEach, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -132,6 +133,8 @@ test("remote browser takeover gives one device an interactive session and reject
       return true
     },
     holdTakeover: async () => true,
+    holdTakeoverForPerson: async () => "held",
+    releaseTakeoverForPerson: async () => "released",
     getWindowBounds: async () => null,
     tabsForBot: () => [{ ...tab, ownerBotId: botId }],
     takeoverFrame: async () => ({
@@ -172,9 +175,8 @@ test("remote browser takeover gives one device an interactive session and reject
     const botResponse = await request("/bots", { name: "Léo", machine: "local", provider: "codex" })
     expect(botResponse.status).toBe(201)
     botId = ((await botResponse.json()) as { bot: Bot }).bot.id
-    ;(runtime.kernel.db as import("bun:sqlite").Database)
-      .query("UPDATE bots SET machine = 'vm', browser = 'machine' WHERE id = ?")
-      .run(botId)
+    const database = runtime.kernel.db as Database
+    database.query("UPDATE bots SET machine = 'vm', browser = 'machine' WHERE id = ?").run(botId)
     runtime.kernel.services.provide(
       "vm.runtime",
       getTakeoverVmRuntime(async () => {
@@ -341,6 +343,7 @@ test("remote browser takeover gives one device an interactive session and reject
       })
       return signal
     }
+    runtime.kernel.services.provide("work.ownsBot", ({ personId }) => personId === "controller")
     runtime.kernel.services.provide("work.canAccessBot", () => true)
     runtime.kernel.services.provide("work.canAccessThread", () => true)
     const ownerSignal = personSignal("controller")
@@ -502,6 +505,7 @@ test.each([1, 10])(
     expect(p99TickMs).toBeLessThan(50)
     expect(maxTickMs).toBeLessThan(250)
   },
+  15_000,
 )
 
 test("a browser tool answers within its timeoutMs even when the engine never settles", async () => {
@@ -536,6 +540,44 @@ test("the engine budget leaves room for its own cause before the tool deadline",
       },
     })
   expect(budgets).toEqual([1, 750, 17500, 27500])
+})
+
+test("browser takeover enforces a two-minute minimum and a thirty-minute maximum", async () => {
+  const root = mkdtempSync(join(tmpdir(), "touri-browser-takeover-timeout-"))
+  const runtime = createKernel({ appData: root })
+  const handlers = new Map<string, ToolRegistration>()
+  const durations: number[] = []
+  runtime.kernel.registerTools = ({ tools }) => {
+    for (const item of tools) handlers.set(item.name, item)
+    return { success: true, count: tools.length }
+  }
+  const engine: BrowserEngine = {
+    ...createBrowserEngine({ kernel: runtime.kernel }),
+    requestTakeover: async ({ timeoutMs }: { timeoutMs: number }) => {
+      durations.push(timeoutMs)
+      return { success: true, content: [] }
+    },
+    tabsForBot: () => [],
+  }
+  try {
+    await init(runtime.kernel, undefined, { engine })
+    const handler = handlers.get("browser_request_takeover")?.handler
+    if (!handler) throw new Error("Missing browser takeover tool")
+    const ctx = {
+      botId: "bot-1",
+      threadId: "thread-1",
+      runId: "run-1",
+      projectId: null,
+      cwd: root,
+      signal: new AbortController().signal,
+    }
+    await handler({ ctx, args: { tabId: "tab-1", timeoutMs: 5000 } })
+    await handler({ ctx, args: { tabId: "tab-1", timeoutMs: 3600000 } })
+    expect(durations).toEqual([120000, 1800000])
+  } finally {
+    runtime.stop()
+    rmSync(root, { recursive: true, force: true })
+  }
 })
 
 test("the last failed browser tool of a bot is exposed to the screen viewers", async () => {

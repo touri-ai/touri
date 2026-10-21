@@ -40,7 +40,7 @@ test("schema 29 converts legacy member prompts to notices and preserves attachme
       .query("SELECT role,kind,text,parts_json FROM messages WHERE id='legacy-member'")
       .get() as { role: string; kind: string; text: string; parts_json: string }
     const parts = JSON.parse(migrated.parts_json) as Array<Record<string, unknown>>
-    expect(SCHEMA_VERSION).toBe(43)
+    expect(SCHEMA_VERSION).toBe(45)
     expect(database.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({
       value: String(SCHEMA_VERSION),
     })

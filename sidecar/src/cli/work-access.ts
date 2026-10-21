@@ -91,7 +91,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
     if (role === "admin") return true
     const thread = database
       .query(`SELECT t.group_id, coalesce(t.owner_person_id, 'owner') AS owner_person_id FROM threads t JOIN bots b ON b.id = t.bot_id
-        WHERE t.id = ? AND t.archived_at IS NULL AND b.archived_at IS NULL`)
+        WHERE t.id = ? AND b.archived_at IS NULL`)
       .get(threadId) as { group_id: string | null; owner_person_id: string | null } | null
     if (!thread) return false
     if (thread.group_id) return canAccessGroup({ personId, role, groupId: thread.group_id })
@@ -101,10 +101,34 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
   const ownsPrivateThread = ({ personId, threadId }: { personId: string; threadId: string }): boolean =>
     Boolean(
       database
-        .query(`SELECT 1 FROM threads WHERE id = ? AND group_id IS NULL AND archived_at IS NULL
+        .query(`SELECT 1 FROM threads WHERE id = ? AND group_id IS NULL
           AND (owner_person_id = ? OR (owner_person_id IS NULL AND ? = 'owner'))`)
         .get(threadId, personId, personId),
     )
+
+  const canDeleteThread = ({
+    personId,
+    role,
+    threadId,
+  }: {
+    personId: string
+    role: PersonRole
+    threadId: string
+  }): boolean => {
+    if (role === "admin") return true
+    const thread = database
+      .query(`SELECT t.owner_person_id, t.group_id, b.responsible_person_id FROM threads t
+        JOIN bots b ON b.id = t.bot_id WHERE t.id = ?`)
+      .get(threadId) as {
+      owner_person_id: string | null
+      group_id: string | null
+      responsible_person_id: string | null
+    } | null
+    if (!thread) return false
+    if (thread.group_id && !canAccessGroup({ personId, role, groupId: thread.group_id })) return false
+    if (thread.owner_person_id === personId) return true
+    return thread.group_id === null && thread.responsible_person_id === personId
+  }
 
   const ownsBot = ({ personId, botId }: { personId: string; botId: string }): boolean =>
     Boolean(
@@ -113,6 +137,26 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
           AND (responsible_person_id = ? OR (responsible_person_id IS NULL AND ? = 'owner'))`)
         .get(botId, personId, personId),
     )
+
+  const canAccessBrowserTab = ({
+    personId,
+    role,
+    tabId,
+  }: {
+    personId: string
+    role: PersonRole
+    tabId: string
+  }): boolean => {
+    if (role === "admin") return true
+    const tab = database.query("SELECT owner_bot_id, owner_thread_id FROM browser_tabs WHERE id = ?").get(tabId) as {
+      owner_bot_id: string | null
+      owner_thread_id: string | null
+    } | null
+    if (!tab?.owner_bot_id) return false
+    if (ownsBot({ personId, botId: tab.owner_bot_id })) return true
+
+    return Boolean(tab.owner_thread_id && canAccessThread({ personId, role, threadId: tab.owner_thread_id }))
+  }
 
   const canAccessAttachments = ({
     personId,
@@ -270,9 +314,14 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
       })
     if (role === "admin") return true
     if (event.type === "transcript.resync" || event.type === "transcript.superseded") return true
+    if (event.type === "browser.tab") return canAccessBrowserTab({ personId, role, tabId: event.tab.tabId })
     if (event.type === "group.updated") return canAccessGroup({ personId, role, groupId: event.group.id })
     if (event.type === "bot.updated") return canAccessBot({ personId, role, botId: event.bot.id })
     if (event.type === "thread.updated") return canAccessThread({ personId, role, threadId: event.thread.id })
+    if (event.type === "thread.deleted") {
+      if (event.ownerPersonId === personId || event.responsiblePersonId === personId) return true
+      return Boolean(event.groupId && canAccessGroup({ personId, role, groupId: event.groupId }))
+    }
     if (event.type === "message.created" || event.type === "message.updated")
       return canAccessThread({ personId, role, threadId: event.message.threadId })
     if (event.type === "message.delta" || event.type === "message.parts" || event.type === "transcript.rejected")
@@ -368,6 +417,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
     }
     const browserTakeover = /^\/browser\/tabs\/([^/]+)\/takeover(?:\/(session|frame|input))?$/u.exec(pathname)
     if (browserTakeover && ["POST", "DELETE"].includes(verb)) {
+      if (browserTakeover[2] === undefined && (!isRecord(body) || typeof body.hold !== "boolean")) return denied
       const tabId = browserTakeover[1] ?? ""
       const tab = database.query("SELECT owner_bot_id, owner_thread_id FROM browser_tabs WHERE id = ?").get(tabId) as {
         owner_bot_id: string | null
@@ -392,11 +442,19 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
       if (decision) return decision
 
       if (run) return null
-      if (browserTakeover[2] !== undefined) return ownsBot({ personId, botId: tab.owner_bot_id }) ? null : notFound
+      if (browserTakeover[2] !== undefined) return null
       return canAccessBot({ personId, role, botId: tab.owner_bot_id }) ? null : notFound
     }
     if (role === "admin") return null
     if (verb === "POST" && pathname === "/ws-ticket") return null
+    // The browser handler verifies the original requester or bot owner for each control change.
+    if (
+      verb === "POST" &&
+      /^\/browser\/tabs\/[^/]+\/takeover$/u.test(pathname) &&
+      isRecord(body) &&
+      typeof body.hold === "boolean"
+    )
+      return null
     if (
       verb === "GET" &&
       [
@@ -441,14 +499,26 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
         ? null
         : denied
     }
+    if (verb === "GET" && pathname === "/browser/tabs") return null
+    if (verb === "POST" && pathname === "/threads/delete") {
+      const ids = isRecord(body) && Array.isArray(body.ids) ? body.ids : null
+      if (!ids || ids.length < 1 || ids.length > 200 || ids.some((id) => typeof id !== "string" || !id.trim()))
+        return null
+      return ids.every((threadId) => canDeleteThread({ personId, role, threadId })) ? null : denied
+    }
     if (verb === "POST" && pathname === "/attachments") return null
     const attachmentRoute = /^\/attachments\/([^/]+)(?:\/content)?$/u.exec(pathname)
     if (attachmentRoute && verb === "GET")
       return canAccessAttachment({ personId, role, attachmentId: attachmentRoute[1] ?? "" }) ? null : notFound
-    const threadRoute = /^\/threads\/([^/]+)(?:\/(messages|transcript|goal|respond|runs))?$/u.exec(pathname)
+    const threadRoute = /^\/threads\/([^/]+)(?:\/(messages|transcript|goal|respond|runs|delete-preview))?$/u.exec(
+      pathname,
+    )
     if (threadRoute) {
       const threadId = threadRoute[1] ?? ""
       const action = threadRoute[2] ?? ""
+      if (action === "delete-preview" && verb === "GET")
+        return canDeleteThread({ personId, role, threadId }) ? null : denied
+      if (!action && verb === "DELETE") return canDeleteThread({ personId, role, threadId }) ? null : denied
       if (action === "respond" && verb === "POST")
         return canAccessThread({ personId, role, threadId }) ? null : notFound
       if (!canAccessThread({ personId, role, threadId })) return notFound
@@ -471,6 +541,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
   return {
     canAccessGroup,
     canAccessBot,
+    canAccessBrowserTab,
     accessibleBotIds,
     canAccessThread,
     canAccessRun,
@@ -483,6 +554,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
     isAdminRun,
     canApprove,
     ownsPrivateThread,
+    canDeleteThread,
     ownsBot,
     visibleEvent,
     authorizeHttp,
