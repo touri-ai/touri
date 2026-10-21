@@ -326,6 +326,21 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
     const presenceRoute = /^\/bots\/([^/]+)\/machine\/presence\/socket$/u.exec(pathname)
     if (presenceRoute && verb === "GET")
       return canAccessBot({ personId, role, botId: presenceRoute[1] ?? "" }) ? null : notFound
+    const browserPreview = /^\/bots\/([^/]+)\/browser-preview$/u.exec(pathname)
+    if (browserPreview && verb === "GET")
+      return canAccessBot({ personId, role, botId: browserPreview[1] ?? "" }) ? null : notFound
+    const browserTakeover = /^\/browser\/tabs\/([^/]+)\/takeover(?:\/(session|frame|input))?$/u.exec(pathname)
+    if (browserTakeover && ["POST", "DELETE"].includes(verb)) {
+      const tab = database
+        .query("SELECT owner_bot_id FROM browser_tabs WHERE id = ?")
+        .get(browserTakeover[1] ?? "") as { owner_bot_id: string | null } | null
+      if (!tab?.owner_bot_id) return notFound
+      const isControllerAction = browserTakeover[2] !== undefined
+      const hasPermission = isControllerAction
+        ? ownsBot({ personId, botId: tab.owner_bot_id })
+        : canAccessBot({ personId, role, botId: tab.owner_bot_id })
+      return hasPermission ? null : notFound
+    }
     if (verb === "POST" && pathname === "/threads") {
       const botId = stringValue(isRecord(body) ? body.botId : null)
       if (botId) return ownsBot({ personId, botId }) ? null : denied

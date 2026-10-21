@@ -85,7 +85,7 @@
   aspect-ratio: 16 / 10;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  background: #101014;
+  background: var(--surface-control);
   object-fit: contain;
 }
 .browser-activity-preview-full > img {
@@ -132,6 +132,144 @@
   opacity: 0.55;
   cursor: default;
 }
+.browser-takeover-view {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+}
+.browser-takeover-toolbar,
+.browser-takeover-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.browser-takeover-toolbar > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.browser-takeover-toolbar span,
+.browser-takeover-footer p {
+  overflow: hidden;
+  margin: 0;
+  color: var(--text-2);
+  text-overflow: ellipsis;
+}
+.browser-takeover-toolbar span {
+  overflow-wrap: anywhere;
+  white-space: nowrap;
+}
+.browser-takeover-layout {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1.6fr) minmax(220px, 0.8fr);
+  gap: 12px;
+}
+.browser-takeover-screen {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-control);
+  touch-action: none;
+}
+.browser-takeover-canvas,
+.browser-takeover-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+.browser-takeover-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: var(--text-2);
+}
+.browser-takeover-footer p {
+  min-width: 0;
+  font-size: var(--fs-caption);
+}
+.browser-takeover-aside {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 10px;
+}
+.browser-takeover-reason,
+.browser-takeover-actions {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-control);
+}
+.browser-takeover-reason p {
+  margin: 0;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+.browser-takeover-actions ol {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.browser-takeover-actions li {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 16px minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  font-size: var(--fs-caption);
+}
+.browser-takeover-actions li[data-active="true"] {
+  background: var(--raised);
+  color: var(--text);
+}
+.browser-takeover-actions li span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.browser-takeover-actions time {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.browser-takeover-keyboard {
+  position: fixed;
+  z-index: 0;
+  bottom: 1px;
+  left: 1px;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0.01;
+  pointer-events: none;
+}
+.browser-takeover-error {
+  margin: 0;
+  color: var(--danger);
+}
+@media (max-width: 1024px) {
+  .browser-takeover-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .browser-activity-log {
   min-width: 0;
   max-height: 290px;
@@ -151,15 +289,28 @@
 }
 .browser-activity-log li {
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  align-items: baseline;
-  gap: 8px;
+  grid-template-columns: 16px minmax(0, 1fr) max-content;
+  align-items: start;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+}
+.browser-activity-log li[data-active="true"] {
+  background: var(--raised);
+  color: var(--text);
+}
+.browser-activity-icon {
+  color: var(--text-2);
+  font-size: var(--fs-meta);
+  line-height: 1.3;
+  text-align: center;
 }
 .browser-activity-log time {
+  justify-self: end;
   color: var(--text-2);
   font-variant-numeric: tabular-nums;
 }
-.browser-activity-log li span {
+.browser-activity-log li > span:nth-child(2) {
   overflow-wrap: anywhere;
 }
 .browser-activity-log li small {
@@ -189,6 +340,26 @@
 @media (max-width: 600px) {
   .browser-activity-content {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .browser-activity-header {
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px;
+  }
+  .browser-activity-header .button {
+    white-space: nowrap;
+  }
+  .browser-takeover-toolbar,
+  .browser-takeover-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .browser-takeover-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .browser-takeover-toolbar .button,
+  .browser-takeover-footer .button {
+    align-self: flex-start;
   }
   .browser-activity-thumbnail {
     width: 96px;

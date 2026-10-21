@@ -84,6 +84,8 @@ const makeEngine = ({
       return result(true)
     },
     requestTakeover: async () => result(true),
+    takeoverFrame: async () => null,
+    takeoverInput: async () => false,
     submitSecret: async () => result(true),
     secretEntry: async () => false,
     releaseTakeover: async () => false,

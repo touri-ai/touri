@@ -9,6 +9,7 @@ database.exec(`
   CREATE TABLE bots (
     id TEXT PRIMARY KEY, archived_at INTEGER, responsible_person_id TEXT, sort_order INTEGER DEFAULT 0, created_at INTEGER DEFAULT 0
   );
+  CREATE TABLE browser_tabs (id TEXT PRIMARY KEY, owner_bot_id TEXT);
   CREATE TABLE bot_deletions (bot_id TEXT PRIMARY KEY, phase TEXT NOT NULL);
   CREATE TABLE bot_groups (id TEXT PRIMARY KEY);
   CREATE TABLE group_members (bot_id TEXT NOT NULL, group_id TEXT NOT NULL);
@@ -35,6 +36,7 @@ database.exec(`
   CREATE TABLE group_run_links (run_id TEXT NOT NULL, turn_id TEXT NOT NULL);
   INSERT INTO bots(id, archived_at, responsible_person_id) VALUES ('legacy-bot', NULL, NULL), ('member-bot', NULL, 'member'),
     ('other-bot', NULL, 'owner'), ('team-bot', NULL, 'owner'), ('deleted-channel-bot', NULL, 'owner');
+  INSERT INTO browser_tabs VALUES ('member-tab', 'member-bot'), ('team-tab', 'team-bot'), ('other-tab', 'other-bot');
   INSERT INTO bot_groups VALUES ('team-a'), ('team-b');
   INSERT INTO group_members VALUES ('team-bot', 'team-a'), ('other-bot', 'team-b'),
     ('deleted-channel-bot', 'deleted-channel');
@@ -152,6 +154,45 @@ test("channel membership cannot open a private session with another person's bot
 
   expect(access.authorizeHttp({ ...request, body: { botId: "team-bot" } })).toMatchObject({ status: 403 })
   expect(access.authorizeHttp({ ...request, body: { botId: "member-bot" } })).toBeNull()
+})
+
+test("browser preview follows bot visibility while remote input stays with the bot owner", () => {
+  expect(
+    access.authorizeHttp({
+      personId: "member",
+      role: "member",
+      method: "GET",
+      pathname: "/bots/team-bot/browser-preview",
+      body: null,
+    }),
+  ).toBeNull()
+  expect(
+    access.authorizeHttp({
+      personId: "member",
+      role: "member",
+      method: "POST",
+      pathname: "/browser/tabs/team-tab/takeover/session",
+      body: null,
+    }),
+  ).toMatchObject({ status: 404 })
+  expect(
+    access.authorizeHttp({
+      personId: "member",
+      role: "member",
+      method: "POST",
+      pathname: "/browser/tabs/member-tab/takeover/session",
+      body: null,
+    }),
+  ).toBeNull()
+  expect(
+    access.authorizeHttp({
+      personId: "member",
+      role: "member",
+      method: "POST",
+      pathname: "/browser/tabs/other-tab/takeover/input",
+      body: null,
+    }),
+  ).toMatchObject({ status: 404 })
 })
 
 test("members get event sockets and presence only for bots in their channels", () => {
