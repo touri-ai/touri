@@ -8,6 +8,7 @@ import type {
   BrowserSnapshot,
   BrowserTakeoverReason,
   BrowserTarget,
+  GroupDelegation,
   Id,
   Kernel,
   ToolContent,
@@ -15,6 +16,7 @@ import type {
   ToolResult,
 } from "@touri/contracts"
 import { approveSecretRelease } from "../approvals/secrets"
+import { getDelegation } from "../groups/security"
 import { createBackgroundTask, getMeasuredStage, yieldBackground } from "../kernel/background-task"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import { hostPlatform } from "../platform"
@@ -4411,7 +4413,7 @@ export const createBrowserEngine = ({
     kernel.publish({ type: "browser.tab", tab: safePublicTabInfo(tab) })
   }
 
-  const resumeSavedHandoff = (tabId: Id, attempt = 0): void => {
+  const resumeSavedHandoff = (tabId: Id, attempt = 0, delegation?: GroupDelegation | null): void => {
     if (retired) return
     const saved = handoffs.get(tabId)
     if (saved?.state !== "returned" || !saved.botId || !saved.threadId || !saved.runId) return
@@ -4423,11 +4425,12 @@ export const createBrowserEngine = ({
       botId: saved.botId,
       threadId: saved.threadId,
       runId: saved.runId,
+      ...(delegation ? { delegation } : {}),
     })
     if (attempt >= 30) return
     const timer = setTimeout(() => {
       handbackRetries.delete(tabId)
-      resumeSavedHandoff(tabId, attempt + 1)
+      resumeSavedHandoff(tabId, attempt + 1, delegation)
     }, 1_000)
     timer.unref()
     handbackRetries.set(tabId, timer)
@@ -4435,7 +4438,7 @@ export const createBrowserEngine = ({
 
   const resumeAfterTakeover = (takeover: NonNullable<TabState["takeover"]>, tabId: Id): void => {
     if (!takeover.botId || !takeover.threadId || !takeover.runId) return
-    resumeSavedHandoff(tabId)
+    resumeSavedHandoff(tabId, 0, takeover.delegation)
   }
 
   const requestTakeover = async ({
@@ -4490,6 +4493,7 @@ export const createBrowserEngine = ({
     const requestId = notify ? `browser-takeover:${tabId}:${kernel.newId()}` : null
     const takeover: NonNullable<TabState["takeover"]> = {
       requestId,
+      delegation: getDelegation(kernel, threadId ?? tab.info.ownerThreadId ?? ""),
       botId,
       threadId: threadId ?? tab.info.ownerThreadId,
       runId: runId ?? null,
@@ -4625,6 +4629,7 @@ export const createBrowserEngine = ({
       ? (kernel.services.use("runtime.activeRun")?.({ threadId: tab.info.ownerThreadId }) ?? null)
       : null
     tab.takeover = {
+      delegation: getDelegation(kernel, tab.info.ownerThreadId ?? ""),
       requestId: null,
       botId: tab.info.ownerBotId,
       threadId: tab.info.ownerThreadId,
@@ -4655,6 +4660,22 @@ export const createBrowserEngine = ({
     kernel.publish({ type: "browser.tab", tab: safePublicTabInfo(tab) })
     await raceBudget({ work: focusManagedChrome(), ms: SIDE_EFFECT_BUDGET_MS }).catch(() => undefined)
     return true
+  }
+
+  const holdTakeoverForPerson: BrowserEngine["holdTakeoverForPerson"] = async ({ tabId, personId }) => {
+    const tab = store.find(tabId)
+    if (!tab || tab.info.state === "closed") return "not_found"
+    const takeover = tab.takeover
+    const allowed = kernel.services.use("runtime.canReturnBrowserTakeover")?.({
+      botId: takeover?.botId ?? tab.info.ownerBotId ?? "",
+      threadId: takeover?.threadId ?? tab.info.ownerThreadId ?? "",
+      runId: takeover?.runId ?? null,
+      personId,
+    })
+    if (!allowed) return "forbidden"
+
+    const held = await holdTakeover({ tabId, reason: "The user requested browser takeover" })
+    return held ? "held" : "not_found"
   }
 
   const getWindowBounds = async ({ tabId, botId }: { tabId: Id; botId: Id }): Promise<WindowBounds | null> => {
@@ -4992,6 +5013,7 @@ export const createBrowserEngine = ({
     releaseTakeover,
     cancelTakeover,
     releaseTakeoverForPerson,
+    holdTakeoverForPerson,
     holdTakeover,
     getWindowBounds,
     tabsForBot,

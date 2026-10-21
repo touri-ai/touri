@@ -11,6 +11,7 @@ import type {
   BrowserTakeoverReason,
   BrowserTarget,
   EpochMs,
+  GroupDelegation,
   Id,
   Kernel,
   ToolContext,
@@ -132,6 +133,7 @@ export type TabState = {
     timer: ReturnType<typeof setTimeout> | null
     signal?: AbortSignal
     onAbort?: () => void
+    delegation?: GroupDelegation | null
   } | null
   handbackNote: string | null
   lastSnapshot: BrowserSnapshot | null
@@ -271,6 +273,7 @@ export type BrowserEngine = {
   secretEntry: (args: { tabId: Id; secretName?: string; cancel: boolean }) => Promise<boolean>
   releaseTakeover: (tabId: Id) => Promise<boolean>
   releaseTakeoverForPerson: (args: { tabId: Id; personId: Id }) => Promise<"released" | "forbidden" | "not_found">
+  holdTakeoverForPerson: (args: { tabId: Id; personId: Id }) => Promise<"held" | "forbidden" | "not_found">
   holdTakeover: (args: { tabId: Id; reason: string; runId?: Id }) => Promise<boolean>
   getWindowBounds: (args: { tabId: Id; botId: Id }) => Promise<WindowBounds | null>
   tabsForBot: (botId: Id | null) => Array<BrowserTabInfo & { ownerBotId: Id | null }>

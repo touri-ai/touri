@@ -1,5 +1,15 @@
 import type { Database } from "bun:sqlite"
-import type { Bot, BotGroup, Kernel, MessagePart, Run, ServiceMap, ToolContext, ToolResult } from "@touri/contracts"
+import type {
+  Bot,
+  BotGroup,
+  GroupDelegation,
+  Kernel,
+  MessagePart,
+  Run,
+  ServiceMap,
+  ToolContext,
+  ToolResult,
+} from "@touri/contracts"
 import { hasRecordedActions } from "@touri/contracts/run-failure"
 import { getRequesterPersonId } from "../browser/channel-runs"
 import { attachedServers } from "../mcp/attached"
@@ -23,6 +33,7 @@ type Turn = {
   completion: ReturnType<typeof Promise.withResolvers<void>>
   tail: string | null
   continuationFromRunId?: string
+  continuationDelegation?: GroupDelegation
   /** Routine turns share the routine's timeout instead of the per-bot chat limit. */
   deadline: number | null
 }
@@ -247,14 +258,22 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     if (!bot || bot.archivedAt || bot.paused) throw new Error("Bot indisponível ou pausado")
     const thread = groups.participant(turn.group, turn.run.threadId, botId)
     const ceiling = caller ? delegationCeiling(caller, bot) : bot
+    const allowedSecrets = caller ? delegationSecrets({ caller, target: bot, inherited: secrets }) : secrets
     if (caller)
       setDelegation(kernel, thread.id, {
         ceiling,
         caller: { id: caller.id, name: caller.name },
         groupThreadId: turn.run.threadId,
-        secrets,
+        secrets: allowedSecrets,
       })
-    frames.set(thread.id, { turn, depth, stack, bot: ceiling, configuration: configuration(bot), secrets })
+    frames.set(thread.id, {
+      turn,
+      depth,
+      stack,
+      bot: ceiling,
+      configuration: configuration(bot),
+      secrets: allowedSecrets,
+    })
     // Each native session keeps its own history. The shared context is explicit input, bounded to 16k.
     const contextRows = db
       .query(`SELECT role, text, sender_json FROM messages
@@ -524,8 +543,23 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     if (turn.continuationFromRunId) {
       const botId = turn.recipients[0]
       if (!botId) throw new Error("O bot da retomada não está mais no grupo.")
+      const delegation = turn.continuationDelegation
+      const latestCaller = delegation ? withServers(store.getBot({ botId: delegation.caller.id })) : null
+      if (delegation && (!latestCaller || latestCaller.paused || latestCaller.archivedAt))
+        throw new Error("O bot que delegou a tarefa não está disponível para a retomada.")
+      const caller = delegation && latestCaller ? delegationCeiling(delegation.ceiling, latestCaller) : undefined
       const prompt = `${continuationPrompt("browser_takeover")} The shared channel history contains the original request and hand-back marker. Continue that request from the current browser state.`
-      await runBot(turn, botId, prompt, 0, [botId], false, undefined, true, turn.continuationFromRunId)
+      await runBot(
+        turn,
+        botId,
+        prompt,
+        delegation ? 1 : 0,
+        delegation ? [delegation.caller.id, botId] : [botId],
+        Boolean(delegation),
+        caller,
+        delegation?.secrets ?? true,
+        turn.continuationFromRunId,
+      )
       return
     }
     if (turn.action !== "ask_all") {
@@ -612,6 +646,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     recipients: string[],
     action?: string,
     continuationFromRunId?: string,
+    continuationDelegation?: GroupDelegation,
   ): Turn => {
     const budget = run.routineRunId
       ? (db
@@ -633,6 +668,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       completion: Promise.withResolvers<void>(),
       tail: run.requestMessageId,
       ...(continuationFromRunId ? { continuationFromRunId } : {}),
+      ...(continuationDelegation ? { continuationDelegation } : {}),
       deadline: budget ? (budget.started_at ?? Date.now()) + budget.timeout_minutes * 60_000 : null,
     }
   }
@@ -696,6 +732,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     botId,
     threadId,
     runId,
+    delegation,
   }) => {
     const source = persistence.getRun(runId)
     if (!source || source.botId !== botId || source.threadId !== threadId || !source.requestMessageId) return false
@@ -703,14 +740,23 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     if (db.query("SELECT 1 FROM browser_takeover_continuations WHERE previous_run_id = ? LIMIT 1").get(runId))
       return true
 
-    const link = db.query("SELECT turn_id FROM group_run_links WHERE run_id = ?").get(runId) as {
+    const link = db.query("SELECT turn_id, depth FROM group_run_links WHERE run_id = ?").get(runId) as {
       turn_id: string
+      depth: number
     } | null
     if (!link) return false
+    if (link.depth > 0 && !delegation) return false
     const previousTurn = persistence.getRun(link.turn_id)
     const channel = previousTurn ? store.getThread({ threadId: previousTurn.threadId }) : null
     const group = channel?.groupId ? groups.get(channel.groupId) : null
     if (!previousTurn || !channel || !group?.memberIds.includes(botId)) return false
+    if (
+      delegation &&
+      (delegation.ceiling.id !== botId ||
+        delegation.groupThreadId !== channel.id ||
+        !group.memberIds.includes(delegation.caller.id))
+    )
+      return false
     const bot = store.getBot({ botId })
     if (!bot || bot.paused || bot.archivedAt) return false
 
@@ -759,7 +805,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     }
     persistence.saveRun(continuationRun)
     db.query("INSERT INTO group_turns VALUES(?,?,?)").run(continuationRun.id, group.id, JSON.stringify([botId]))
-    const turn = getTurn(continuationRun, group, [botId], undefined, runId)
+    const turn = getTurn(continuationRun, group, [botId], undefined, runId, delegation)
     turns.set(continuationRun.id, turn)
     queues.set(group.id, [...(queues.get(group.id) ?? []), turn])
     browserTakeoverContinuations.add(runId)
@@ -833,7 +879,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     const roots = persistence.listRuns(threadId, options)
     const children = db
       .query(
-        "SELECT r.*, l.turn_id AS group_turn_id FROM runs r JOIN group_run_links l ON l.run_id=r.id JOIN runs root ON root.id=l.turn_id WHERE root.thread_id=? ORDER BY r.queued_at DESC",
+        "SELECT r.*, l.turn_id AS group_turn_id, continuation.previous_run_id AS browser_takeover_from_run_id FROM runs r JOIN group_run_links l ON l.run_id=r.id JOIN runs root ON root.id=l.turn_id LEFT JOIN browser_takeover_continuations continuation ON continuation.run_id=r.id WHERE root.thread_id=? ORDER BY r.queued_at DESC",
       )
       .all(threadId)
     return [

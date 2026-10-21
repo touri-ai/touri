@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs"
 import type {
   ApprovalPart,
   Bot,
+  BrowserTakeoverResume,
   Id,
   Kernel,
   Message,
@@ -107,7 +108,7 @@ type RunState = {
   generation: number | null
   fingerprint: string | null
   continueAfterApproval: boolean
-  continueAfterBrowserTakeover: boolean
+  continueAfterBrowserTakeover: BrowserTakeoverResume | null
   outputTimer: ReturnType<typeof setTimeout> | null
   partPublishImmediate: ReturnType<typeof setImmediate> | null
   lastEventLivenessCheckAt: number
@@ -526,6 +527,7 @@ export const createRuntimeEngine = ({
       ...cloneRun(run),
       groupThreadId,
       origin: getRunOrigin(metadata),
+      browserTakeoverFromRunId: metadata.browserTakeoverFromRunId ?? null,
       queuePosition: position ?? null,
       queueTotal: position === undefined ? null : queue.waiting.length,
     }
@@ -660,7 +662,7 @@ export const createRuntimeEngine = ({
       generation: null,
       fingerprint: null,
       continueAfterApproval: false,
-      continueAfterBrowserTakeover: false,
+      continueAfterBrowserTakeover: null,
       outputTimer: null,
       partPublishImmediate: null,
       lastEventLivenessCheckAt: Number.NEGATIVE_INFINITY,
@@ -1773,8 +1775,9 @@ export const createRuntimeEngine = ({
             const browserPlan = state.continueAfterBrowserTakeover
               ? planContinuation({ run, reason: "browser_takeover", lastActivityAt: Date.now() })
               : null
+            const browserTakeover = state.continueAfterBrowserTakeover
             state.continueAfterApproval = false
-            state.continueAfterBrowserTakeover = false
+            state.continueAfterBrowserTakeover = null
             const continuation = plan ?? browserPlan
             const committed = await finishLiveRun(
               run,
@@ -1804,7 +1807,7 @@ export const createRuntimeEngine = ({
                   usage: state.usage,
                   finishedAt: Date.now(),
                 })
-                if (continuation) schedulePlannedContinuation({ run, plan: continuation })
+                if (continuation) schedulePlannedContinuation({ run, plan: continuation, browserTakeover })
                 else {
                   if (remembers && request)
                     mem0?.sync({
@@ -1827,9 +1830,10 @@ export const createRuntimeEngine = ({
               state.replyMessageId ?? undefined,
             )
             if (committed && !plan && state.continueAfterBrowserTakeover) {
-              state.continueAfterBrowserTakeover = false
+              const browserTakeover = state.continueAfterBrowserTakeover
+              state.continueAfterBrowserTakeover = null
               const browserPlan = planContinuation({ run, reason: "browser_takeover", lastActivityAt: Date.now() })
-              if (browserPlan) scheduleContinuation({ run, plan: browserPlan })
+              if (browserPlan) schedulePlannedContinuation({ run, plan: browserPlan, browserTakeover })
             }
             if (!committed && state.cancelRequested && isLive(run))
               await failTurn({ run, state, store, thread, errorClass: "canceled", errorMessage: "Cancelado por você" })
@@ -2189,12 +2193,21 @@ export const createRuntimeEngine = ({
     // A newer user turn supersedes a continuation, including during shutdown.
     persistence.listRuns(run.threadId)[0]?.id === run.id
 
-  const schedulePlannedContinuation = ({ run, plan }: { run: Run; plan: ContinuationPlan }): void => {
+  const schedulePlannedContinuation = ({
+    run,
+    plan,
+    browserTakeover,
+  }: {
+    run: Run
+    plan: ContinuationPlan
+    browserTakeover: BrowserTakeoverResume | null
+  }): void => {
     if (plan.reason === "browser_takeover" && continuations.isGroupRun(run.id)) {
       kernel.services.use("groups.runtime")?.resumeAfterBrowserTakeover({
         botId: run.botId,
         threadId: run.threadId,
         runId: run.id,
+        ...(browserTakeover?.delegation ? { delegation: browserTakeover.delegation } : {}),
       })
       return
     }
@@ -2422,7 +2435,8 @@ export const createRuntimeEngine = ({
     return true
   }
 
-  const resumeAfterBrowserTakeover: RuntimeEngine["resumeAfterBrowserTakeover"] = ({ botId, threadId, runId }) => {
+  const resumeAfterBrowserTakeover: RuntimeEngine["resumeAfterBrowserTakeover"] = (input) => {
+    const { botId, threadId, runId } = input
     const run = persistence.getRun(runId)
     if (!run || run.botId !== botId || run.threadId !== threadId || !run.requestMessageId) return false
     if (continuations.hasPrevious({ previousRunId: runId, reason: "browser_takeover" })) return true
@@ -2432,7 +2446,7 @@ export const createRuntimeEngine = ({
       const state = getState(runId)
       if (state.cancelRequested || !isLive(run)) return false
       if (state.continueAfterBrowserTakeover) return true
-      state.continueAfterBrowserTakeover = true
+      state.continueAfterBrowserTakeover = input
       return true
     }
     if (run.status !== "succeeded" && !(run.status === "interrupted" && run.errorClass === "app_restart")) return false
@@ -2440,7 +2454,7 @@ export const createRuntimeEngine = ({
     const plan = planContinuation({ run, reason: "browser_takeover", lastActivityAt: Date.now() })
     if (!plan) return false
     if (continuations.isGroupRun(run.id))
-      return kernel.services.use("groups.runtime")?.resumeAfterBrowserTakeover({ botId, threadId, runId }) ?? false
+      return kernel.services.use("groups.runtime")?.resumeAfterBrowserTakeover(input) ?? false
 
     return startContinuation({ run, plan })
   }

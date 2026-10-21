@@ -172,6 +172,11 @@ export const createBrowserStore = ({
 
   const save = (tab: TabState): void => {
     if (disposed) return
+    // A deleted conversation can leave a stale owner in a live browser tab.
+    const thread = tab.info.ownerThreadId
+      ? database.query<{ id: Id }, [Id]>("SELECT id FROM threads WHERE id = ?").get(tab.info.ownerThreadId)
+      : null
+    tab.info = { ...tab.info, ownerThreadId: thread?.id ?? null }
     const row = toRow(tab, Date.now())
     tab.info.lastUsedAt = row.last_used_at
     database

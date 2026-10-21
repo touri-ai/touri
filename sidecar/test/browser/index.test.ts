@@ -134,6 +134,7 @@ test("remote browser takeover gives one device an interactive session and reject
     },
     cancelTakeover: () => false,
     releaseTakeoverForPerson: async () => "released",
+    holdTakeoverForPerson: async () => "held",
     holdTakeover: async ({ runId }) => {
       heldRunId = runId
       return true
@@ -431,6 +432,37 @@ test("remote browser takeover gives one device an interactive session and reject
 
     expect(revokedFrame.status).toBe(403)
     expect(JSON.stringify(revokedFrame)).not.toContain("ZmFrZQ==")
+  } finally {
+    await runtime.stop()
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test("a local owner can return browser control without a paired work identity", async () => {
+  const root = mkdtempSync(join(tmpdir(), "touri-browser-takeover-owner-"))
+  const runtime = createKernel({ appData: root })
+  const people: string[] = []
+  const engine: BrowserEngine = {
+    ...createBrowserEngine({ kernel: runtime.kernel }),
+    tabsForBot: () => [],
+    releaseTakeoverForPerson: async ({ personId }: { personId: string }) => {
+      people.push(personId)
+      return "released"
+    },
+  }
+  try {
+    await init(runtime.kernel, undefined, { engine })
+    const response = await fetch(`http://127.0.0.1:${runtime.handshake.port}/api/v1/browser/tabs/tab-1/takeover`, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer dev-ui-token",
+        Origin: "tauri://localhost",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ hold: false }),
+    })
+    expect(response.status).toBe(200)
+    expect(people).toEqual(["owner"])
   } finally {
     runtime.stop()
     rmSync(root, { recursive: true, force: true })

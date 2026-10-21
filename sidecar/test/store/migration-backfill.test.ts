@@ -322,6 +322,7 @@ test("interrupted batches resume idempotently and match the shipped synchronous 
     synchronous.exec(browserPendingHandoffsSql)
     synchronous.exec(browserRequestResumeSql)
     synchronous.exec(threadDeletionSql)
+    synchronous.exec(browserTakeoverContinuationsSql)
     database = openDatabase({ filename })
     expect(database.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all()).toEqual(
       synchronous.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all(),

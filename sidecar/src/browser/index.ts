@@ -468,6 +468,8 @@ export const init = async (
     engine.tabsForBot(botId).filter((tab) => {
       if (!person || kernel.services.use("work.ownsBot")?.({ personId: person.id, botId: tab.ownerBotId ?? "" }))
         return true
+      const canRead = kernel.services.use("work.canAccessBrowserTab")
+      if (canRead) return canRead({ personId: person.id, role: person.role, tabId: tab.tabId })
       const row = (kernel.db as Database)
         .query("SELECT owner_thread_id FROM browser_tabs WHERE id = ?")
         .get(tab.tabId) as { owner_thread_id: string | null } | null
@@ -1097,13 +1099,18 @@ export const init = async (
                 }
               }
 
-              const held = await engine
-                .holdTakeover({
+              const hold = async (): Promise<boolean> => {
+                if (!channelRun && kernel.services.use("work.defaultPersonId")) {
+                  const status = await engine.holdTakeoverForPerson({ tabId, personId: actorPersonId ?? "" })
+                  return status === "held"
+                }
+                return engine.holdTakeover({
                   tabId,
                   reason: "The user requested browser takeover",
                   ...(channelRun ? { runId: channelRuns.getCurrentRunId(channelRun.runId) ?? channelRun.runId } : {}),
                 })
-                .catch(() => false)
+              }
+              const held = await hold().catch(() => false)
               if (!held) {
                 await releaseVm?.().catch(() => undefined)
                 undoChannelControl()
@@ -1304,8 +1311,7 @@ export const init = async (
             status: 200,
             json: {
               tabs,
-              ...(botId &&
-              (tabs.length || !person || kernel.services.use("work.ownsBot")?.({ personId: person.id, botId }))
+              ...(botId && (!person || kernel.services.use("work.ownsBot")?.({ personId: person.id, botId }))
                 ? { lastFailure: failures.get(botId) ?? null }
                 : {}),
             },
@@ -1334,13 +1340,13 @@ export const init = async (
             if (!control.success)
               return { status: 403, json: { errorCode: "BROWSER_CONTROL_FORBIDDEN", error: control.error } }
           }
-          const release =
-            !hold && !controller && !channelRun
-              ? await engine.releaseTakeoverForPerson({
-                  tabId,
-                  personId: actorPersonId ?? "",
-                })
-              : null
+          const applyUnmanagedControl = async () => {
+            if (controller || channelRun) return null
+            const personId = actorPersonId ?? ""
+            if (hold) return engine.holdTakeoverForPerson({ tabId, personId })
+            return engine.releaseTakeoverForPerson({ tabId, personId })
+          }
+          const release = await applyUnmanagedControl()
           if (release === "forbidden")
             return {
               status: 403,
@@ -1349,18 +1355,17 @@ export const init = async (
                 error: "Só quem pediu ou a pessoa responsável pelo bot pode devolver o controle.",
               },
             }
-          const ok =
-            controller && !hold
-              ? await endTakeoverSession(tabId, controller.id)
-              : hold
-                ? await engine.holdTakeover({
-                    tabId,
-                    reason: "The user requested browser takeover",
-                    ...(channelRun ? { runId: channelRuns.getCurrentRunId(channelRun.runId) ?? channelRun.runId } : {}),
-                  })
-                : release === null
-                  ? await engine.releaseTakeover(tabId)
-                  : release === "released"
+          const applyControl = async (): Promise<boolean> => {
+            if (controller && !hold) return endTakeoverSession(tabId, controller.id)
+            if (release !== null) return release === "held" || release === "released"
+            if (!hold) return engine.releaseTakeover(tabId)
+            return engine.holdTakeover({
+              tabId,
+              reason: "The user requested browser takeover",
+              ...(channelRun ? { runId: channelRuns.getCurrentRunId(channelRun.runId) ?? channelRun.runId } : {}),
+            })
+          }
+          const ok = await applyControl()
           if (!ok && actorPersonId && channelRun && !controller)
             channelRuns.restoreControl({ runId: channelRun.runId, actorPersonId, status: channelRun.status })
           return ok
