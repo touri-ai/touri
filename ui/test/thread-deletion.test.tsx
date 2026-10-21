@@ -223,3 +223,25 @@ it("returns to the main conversation when archiving the conversation in use", as
   expect(document.querySelector(".thread-row.selected")).toHaveTextContent("Welcome")
   expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toBeEnabled()
 })
+
+it("bounds selection pages and preserves selection while paging a large history", async () => {
+  const { api, thread } = getThreadFixture()
+  // The mock exposes a fixture-only mutable collection before the app mounts.
+  api
+    .getState()
+    .threads.push(
+      ...Array.from({ length: 220 }, (_, index) => ({ ...thread, id: `paged-${index}`, title: `Synthetic ${index}` })),
+    )
+  render(<App kernel={{ services: { api } }} />)
+  const conversations = await getConversationRegion()
+
+  fireEvent.click(within(conversations).getByRole("button", { name: "Selecionar", exact: true }))
+  expect(within(conversations).getAllByRole("checkbox")).toHaveLength(100)
+  fireEvent.click(within(conversations).getByRole("checkbox", { name: "Selecionar conversa Eventos de leads" }))
+  fireEvent.click(within(conversations).getByRole("button", { name: "Próximas conversas" }))
+
+  expect(within(conversations).getAllByRole("checkbox")).toHaveLength(100)
+  expect(within(conversations).getByRole("status")).toHaveTextContent("Selecionadas: 1")
+  fireEvent.click(within(conversations).getByRole("button", { name: "Conversas anteriores" }))
+  expect(within(conversations).getByRole("checkbox", { name: "Selecionar conversa Eventos de leads" })).toBeChecked()
+})

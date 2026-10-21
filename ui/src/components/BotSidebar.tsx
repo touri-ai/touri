@@ -42,9 +42,9 @@ import { mascotIsBusy } from "./mascotState"
 import { NotificationAttentionBar } from "./NotificationAttentionBar"
 import { type NotificationActions, NotificationBell } from "./NotificationCenter"
 import { ThreadActionsMenu } from "./ThreadActionsMenu"
-import { getThreadDeletionError, type ThreadDeletion } from "./useThreadDeletion"
 import { ThreadGroupHistory } from "./ThreadGroupHistory"
 import { type HoldReason, useSidebarOrder } from "./useSidebarOrder"
+import { getThreadDeletionError, type ThreadDeletion } from "./useThreadDeletion"
 import "./bot-sidebar.css"
 
 type SidebarProps = {
@@ -312,7 +312,6 @@ export const Sidebar = (props: SidebarProps) => {
                   onDelete={props.onDeleteBot}
                   onArchiveThread={props.onArchiveThread}
                   onArchiveThreads={props.onArchiveThreads}
-                  onDeleteThread={props.onDeleteThread}
                   onDeleteThreads={props.onDeleteThreads}
                   onGetThreadDeletePreview={props.onGetThreadDeletePreview}
                   onLoadArchivedThreads={props.onLoadArchivedThreads}
@@ -412,7 +411,6 @@ const BotEntry = ({
   onDelete,
   onArchiveThread,
   onArchiveThreads,
-  onDeleteThread,
   onDeleteThreads,
   onGetThreadDeletePreview,
   onLoadArchivedThreads,
@@ -446,7 +444,6 @@ const BotEntry = ({
   onDelete?: ((botId: string, name: string, deleteVolumes: boolean) => Promise<void>) | undefined
   onArchiveThread?: ((threadId: string, archived: boolean) => Promise<Thread>) | undefined
   onArchiveThreads?: ((threadIds: Array<string>, archived: boolean) => Promise<void>) | undefined
-  onDeleteThread?: ((threadId: string, botId: string) => Promise<void>) | undefined
   onDeleteThreads?: ((threadIds: Array<string>, botId: string) => Promise<void>) | undefined
   onGetThreadDeletePreview?:
     | ((threadId: string) => Promise<ApiRoutes["GET /threads/:id/delete-preview"]["res"]>)
@@ -455,6 +452,7 @@ const BotEntry = ({
 }) => {
   const [menuOpen, setMenuOpen] = useState(false)
   const [selectionMode, setSelectionMode] = useState(false)
+  const [selectionPage, setSelectionPage] = useState(0)
   const [selectedThreadIds, setSelectedThreadIds] = useState<Set<string>>(new Set())
   const [archivedThreads, setArchivedThreads] = useState<Array<Thread>>([])
   const [archivedLoaded, setArchivedLoaded] = useState(false)
@@ -478,6 +476,7 @@ const BotEntry = ({
   useEffect(() => {
     setMenuOpen(false)
     setSelectionMode(false)
+    setSelectionPage(0)
     setSelectedThreadIds(new Set())
   }, [navigationKey])
   const [deleting, setDeleting] = useState(false)
@@ -600,6 +599,7 @@ const BotEntry = ({
   const historyRoutineId = selectedRoutineId ?? (visibleRoutineIds.length === 1 ? visibleRoutineIds[0] : undefined)
   const deletedRoutine = sidebarThreads.find((entry) => entry.deletedRoutine)
   const selectableThreads = threads.filter((thread) => !thread.groupId && thread.archivedAt === null)
+  const visibleSelectionPage = Math.min(selectionPage, Math.max(0, Math.ceil(selectableThreads.length / 100) - 1))
   const automaticThreads = selectableThreads.filter((thread) =>
     isRoutineConversation({ thread, runs, routineRuns, routines: [...routinesById.values()] }),
   )
@@ -858,6 +858,7 @@ const BotEntry = ({
                 aria-pressed={selectionMode}
                 onClick={() => {
                   setSelectionMode(!selectionMode)
+                  setSelectionPage(0)
                   setSelectedThreadIds(new Set())
                 }}
               >
@@ -905,6 +906,7 @@ const BotEntry = ({
           )}
           {selectionMode
             ? selectableThreads
+                .slice(visibleSelectionPage * 100, (visibleSelectionPage + 1) * 100)
                 .filter((thread) => !hiddenThreadIds.has(thread.id))
                 .map((thread) => (
                   <ThreadRow
@@ -982,6 +984,26 @@ const BotEntry = ({
                     </Fragment>
                   )
                 })}
+          {selectionMode && selectableThreads.length > 100 && (
+            <div className="thread-list-tools">
+              <button
+                type="button"
+                className="thread-list-tool"
+                disabled={visibleSelectionPage === 0}
+                onClick={() => setSelectionPage(visibleSelectionPage - 1)}
+              >
+                {t("Previous conversations")}
+              </button>
+              <button
+                type="button"
+                className="thread-list-tool"
+                disabled={(visibleSelectionPage + 1) * 100 >= selectableThreads.length}
+                onClick={() => setSelectionPage(visibleSelectionPage + 1)}
+              >
+                {t("Next conversations")}
+              </button>
+            </div>
+          )}
           {visibleRoutineIds.length > 0 && (
             <button type="button" className="new-thread-row" onClick={() => onRoutineHistory(historyRoutineId)}>
               {t("Routine run history")}
