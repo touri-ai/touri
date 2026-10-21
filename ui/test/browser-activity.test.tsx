@@ -3,8 +3,8 @@ import type { Bot, BrowserTabInfo, ToolCallPart } from "@touri/contracts"
 import { afterEach, expect, test, vi } from "vitest"
 import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
-import { BrowserActivityControlsProvider } from "../src/components/BrowserActivityControls"
 import { BrowserActivityCard } from "../src/components/BrowserActivityCard"
+import { BrowserActivityControlsProvider } from "../src/components/BrowserActivityControls"
 import { BrowserWorkingStatus } from "../src/components/BrowserWorkingStatus"
 import {
   getBrowserActivityNotice,
@@ -12,8 +12,8 @@ import {
   getBrowserActivityUrl,
   getBrowserTakeoverReason,
 } from "../src/components/browserActivityPresentation"
-import { InlinePreviewContext } from "../src/features/desktop/InlineLivePreview"
 import { ChannelComposerChip } from "../src/features/channelBrowser/ChannelBrowser"
+import { InlinePreviewContext } from "../src/features/desktop/InlineLivePreview"
 import { startInlineFrameSource } from "../src/features/desktop/inlineFrameSource"
 import { setInlinePreviewPreference } from "../src/features/desktop/inlinePreviewPreference"
 
@@ -281,7 +281,9 @@ test("the composer takeover action opens the active browser session", async () =
   render(
     <BrowserActivityControlsProvider>
       <ChannelComposerChip botName="Lia" />
-      <InlinePreviewContext.Provider value={{ api, bot, machine: undefined, activeCallId: undefined, onOpenComputer: vi.fn() }}>
+      <InlinePreviewContext.Provider
+        value={{ api, bot, machine: undefined, activeCallId: undefined, onOpenComputer: vi.fn() }}
+      >
         <BrowserActivityCard parts={parts} finished={false} createdAt={1} botName="Lia" />
       </InlinePreviewContext.Provider>
     </BrowserActivityControlsProvider>,

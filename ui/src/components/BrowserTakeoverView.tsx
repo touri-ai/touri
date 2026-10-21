@@ -2,8 +2,8 @@ import type { BrowserTakeoverFrame, BrowserTakeoverInput } from "@touri/contract
 import type { KeyboardEvent, PointerEvent, WheelEvent } from "react"
 import { useEffect, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
-import { useBrowserActivityControls } from "./BrowserActivityControls"
 import { type Locale, t } from "../i18n"
+import { useBrowserActivityControls } from "./BrowserActivityControls"
 import { getBrowserActivityUrl } from "./browserActivityPresentation"
 
 type FrameMeta = Pick<BrowserTakeoverFrame, "title" | "url" | "width" | "height" | "targetEpoch" | "viewEpoch">

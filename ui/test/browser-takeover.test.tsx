@@ -107,10 +107,7 @@ test("keeps the privacy notice visible and lets a person expand the browser view
   const expand = screen.getByRole("button", { name: "Expandir navegador em tela cheia" })
   fireEvent.click(expand)
 
-  expect(screen.getByRole("region", { name: "Controle remoto do navegador" })).toHaveAttribute(
-    "data-full-view",
-    "true",
-  )
+  expect(screen.getByRole("region", { name: "Controle remoto do navegador" })).toHaveAttribute("data-full-view", "true")
 })
 
 test("a reconnected browser view requests frames at its retained viewport epoch", async () => {
@@ -175,11 +172,9 @@ test("disconnecting the takeover view leaves the browser paused for reconnection
   expect(request).not.toHaveBeenCalledWith("POST /browser/tabs/:id/takeover/input", expect.anything(), {
     id: "synthetic-tab",
   })
-  expect(request).not.toHaveBeenCalledWith(
-    "DELETE /browser/tabs/:id/takeover/session",
-    expect.anything(),
-    { id: "synthetic-tab" },
-  )
+  expect(request).not.toHaveBeenCalledWith("DELETE /browser/tabs/:id/takeover/session", expect.anything(), {
+    id: "synthetic-tab",
+  })
 })
 
 test("turns phone drags into remote scrolling and phone taps into browser clicks", async () => {

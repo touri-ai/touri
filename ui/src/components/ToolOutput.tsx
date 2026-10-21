@@ -330,7 +330,11 @@ export const StoredToolOutput = ({
     return src ? (
       <span className="stored-tool-thumbnail-content">
         <img className="stored-tool-thumbnail" src={src} alt={t("Final browser screenshot", {}, locale)} />
-        {title && <small>{t("Page title", {}, locale)} · {title}</small>}
+        {title && (
+          <small>
+            {t("Page title", {}, locale)} · {title}
+          </small>
+        )}
       </span>
     ) : null
   }

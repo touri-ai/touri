@@ -77,8 +77,10 @@
 .browser-activity-address {
   display: flex;
   min-width: 0;
+  min-inline-size: 0;
   align-items: center;
   gap: var(--space-8);
+  margin: 0;
   padding: var(--space-4) var(--space-8);
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);

@@ -136,7 +136,10 @@ test.describe("full browser activity flow", () => {
       const search = page.getByRole("button", { name: "Buscar viagens" })
       await expect(search).toBeDisabled()
       await expect(page.getByText("Resultados da busca")).toHaveCount(0)
-      await page.locator(".composer-browser-status").getByRole("button", { name: /Devolver para/ }).click()
+      await page
+        .locator(".composer-browser-status")
+        .getByRole("button", { name: /Devolver para/ })
+        .click()
       await expect(search).toBeEnabled()
       await search.click()
 
@@ -287,7 +290,8 @@ test("Composer stop cancels the active browser run and prevents later browser ac
   await page.locator(".composer-browser-status").getByRole("button", { name: "Parar" }).click()
   await expect.poll(() => cancelledRunIds).toEqual(["browser-flow-run"])
   await page.evaluate(() => {
-    const browserActivity = (window as Window & { browserActivity?: { continueAfterOpen?: () => void } }).browserActivity
+    const browserActivity = (window as Window & { browserActivity?: { continueAfterOpen?: () => void } })
+      .browserActivity
     browserActivity?.continueAfterOpen?.()
   })
   await page.waitForFunction(() => {

@@ -3,8 +3,8 @@ import type { Bot, BotGroup, Message, Run, ToolCallPart } from "@touri/contracts
 import { useEffect } from "react"
 import { afterEach, describe, expect, test, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
-import { BrowserActivityControlsProvider, useBrowserActivityControls } from "../src/components/BrowserActivityControls"
 import { BrowserActivityCard } from "../src/components/BrowserActivityCard"
+import { BrowserActivityControlsProvider, useBrowserActivityControls } from "../src/components/BrowserActivityControls"
 import { ChatPanel } from "../src/components/ChatPanel"
 import { GroupHeader, GroupSidebar } from "../src/components/Groups"
 import { ChannelBrowserContext, ChannelComposerChip } from "../src/features/channelBrowser/ChannelBrowser"
@@ -62,7 +62,10 @@ const browserParts = [
 
 const RegisterTakeoverAction = ({ onTakeover }: { onTakeover: () => void }) => {
   const controls = useBrowserActivityControls()
-  useEffect(() => controls.registerTakeover({ label: "Assumir", run: onTakeover }), [controls.registerTakeover, onTakeover])
+  useEffect(
+    () => controls.registerTakeover({ label: "Assumir", run: onTakeover }),
+    [controls.registerTakeover, onTakeover],
+  )
 
   return null
 }

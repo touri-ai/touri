@@ -342,104 +342,104 @@ const Fixture = () => {
     >
       <BrowserActivityControlsProvider>
         <main className="browser-activity-demo">
-        <header>
-          <div>
-            <p className="eyebrow">touri · {t("Local browser fixture", {}, locale)}</p>
-            <h1>{t("Travel search fixture", {}, locale)}</h1>
-          </div>
-          {!started && (
-            <button type="button" className="button" onClick={start}>
-              {t("Start travel search", {}, locale)}
-            </button>
-          )}
-        </header>
-        <section className="browser-fixture-card" aria-label={t("Travel search fixture", {}, locale)}>
-          <label htmlFor="destination">{t("Destination", {}, locale)}</label>
-          <input
-            id="destination"
-            aria-label={t("Destination", {}, locale)}
-            value={destination}
-            onChange={(event) => updateDestination(event.target.value)}
-          />
-          {suggestions && (
-            <div role="listbox" aria-label={t("Destination suggestions", {}, locale)}>
-              {[t("Lisboa, Portugal", {}, locale), t("Lisboa Airport", {}, locale)].map((choice) => (
-                <button type="button" key={choice} role="option" onClick={chooseSuggestion}>
-                  {choice}
-                </button>
-              ))}
+          <header>
+            <div>
+              <p className="eyebrow">touri · {t("Local browser fixture", {}, locale)}</p>
+              <h1>{t("Travel search fixture", {}, locale)}</h1>
             </div>
-          )}
-          <label htmlFor="cabin">{t("Cabin", {}, locale)}</label>
-          <select id="cabin" aria-label={t("Cabin", {}, locale)} onChange={selectCabin}>
-            <option value="economy">{t("Economy", {}, locale)}</option>
-            <option value="business">{t("Business", {}, locale)}</option>
-          </select>
-          <button type="button" className="button button-quiet" onClick={openCalendar}>
-            {t("Open departure calendar", {}, locale)}
-          </button>
-          {dateOpen && (
-            <button type="button" aria-label={t("Departure date October 24", {}, locale)} onClick={chooseDate}>
-              {t("October 24", {}, locale)}
+            {!started && (
+              <button type="button" className="button" onClick={start}>
+                {t("Start travel search", {}, locale)}
+              </button>
+            )}
+          </header>
+          <section className="browser-fixture-card" aria-label={t("Travel search fixture", {}, locale)}>
+            <label htmlFor="destination">{t("Destination", {}, locale)}</label>
+            <input
+              id="destination"
+              aria-label={t("Destination", {}, locale)}
+              value={destination}
+              onChange={(event) => updateDestination(event.target.value)}
+            />
+            {suggestions && (
+              <div role="listbox" aria-label={t("Destination suggestions", {}, locale)}>
+                {[t("Lisboa, Portugal", {}, locale), t("Lisboa Airport", {}, locale)].map((choice) => (
+                  <button type="button" key={choice} role="option" onClick={chooseSuggestion}>
+                    {choice}
+                  </button>
+                ))}
+              </div>
+            )}
+            <label htmlFor="cabin">{t("Cabin", {}, locale)}</label>
+            <select id="cabin" aria-label={t("Cabin", {}, locale)} onChange={selectCabin}>
+              <option value="economy">{t("Economy", {}, locale)}</option>
+              <option value="business">{t("Business", {}, locale)}</option>
+            </select>
+            <button type="button" className="button button-quiet" onClick={openCalendar}>
+              {t("Open departure calendar", {}, locale)}
             </button>
+            {dateOpen && (
+              <button type="button" aria-label={t("Departure date October 24", {}, locale)} onClick={chooseDate}>
+                {t("October 24", {}, locale)}
+              </button>
+            )}
+            {date && <p>{t("Selected date: {date}", { date }, locale)}</p>}
+            {running && confidence !== null && (
+              <p role="status">{t("JEV confidence: {percent}%", { percent: Math.round(confidence * 100) }, locale)}</p>
+            )}
+            {running && (
+              <button type="button" className="button" disabled={held} onClick={finish}>
+                {t("Search trips", {}, locale)}
+              </button>
+            )}
+            {results && (
+              <section aria-label={t("Search results", {}, locale)}>
+                <h2>{t("Search results", {}, locale)}</h2>
+                <ul>
+                  <li>{t("Lisboa · direct · fictional trip", {}, locale)}</li>
+                  <li>{t("Lisboa Airport · connection", {}, locale)}</li>
+                </ul>
+                <p>{t("The local search is complete.", {}, locale)}</p>
+              </section>
+            )}
+          </section>
+          {browserView && (
+            <p className="browser-live-view" role="status">
+              {t("Live browser view opened", {}, locale)}
+            </p>
           )}
-          {date && <p>{t("Selected date: {date}", { date }, locale)}</p>}
-          {running && confidence !== null && (
-            <p role="status">{t("JEV confidence: {percent}%", { percent: Math.round(confidence * 100) }, locale)}</p>
+          {started && (
+            <TurnActivity
+              message={
+                {
+                  id: "browser-reply",
+                  threadId: "browser-thread",
+                  parentId: null,
+                  role: "assistant",
+                  kind: "text",
+                  status: running ? "streaming" : "complete",
+                  runId: null,
+                  text: "",
+                  parts,
+                  sender: { name: bot.name, id: bot.id },
+                  source: "local",
+                  createdAt: Date.now() - 1_000,
+                  updatedAt: Date.now(),
+                } satisfies Message
+              }
+              api={api}
+              state={running ? "working-tool" : "done"}
+              locale={locale}
+            />
           )}
-          {running && (
-            <button type="button" className="button" disabled={held} onClick={finish}>
-              {t("Search trips", {}, locale)}
-            </button>
-          )}
-          {results && (
-            <section aria-label={t("Search results", {}, locale)}>
-              <h2>{t("Search results", {}, locale)}</h2>
-              <ul>
-                <li>{t("Lisboa · direct · fictional trip", {}, locale)}</li>
-                <li>{t("Lisboa Airport · connection", {}, locale)}</li>
-              </ul>
-              <p>{t("The local search is complete.", {}, locale)}</p>
-            </section>
-          )}
-        </section>
-        {browserView && (
-          <p className="browser-live-view" role="status">
-            {t("Live browser view opened", {}, locale)}
-          </p>
-        )}
-        {started && (
-          <TurnActivity
-            message={
-              {
-                id: "browser-reply",
-                threadId: "browser-thread",
-                parentId: null,
-                role: "assistant",
-                kind: "text",
-                status: running ? "streaming" : "complete",
-                runId: null,
-                text: "",
-                parts,
-                sender: { name: bot.name, id: bot.id },
-                source: "local",
-                createdAt: Date.now() - 1_000,
-                updatedAt: Date.now(),
-              } satisfies Message
-            }
-            api={api}
-            state={running ? "working-tool" : "done"}
-            locale={locale}
-          />
-        )}
-        <footer className="browser-activity-composer">
-          {running && (
-            <div className="composer-browser-status" role="status">
-              {t("{name} is working · In the browser", { name: bot.name }, locale)}
-            </div>
-          )}
-          <textarea aria-label={t("Message", {}, locale)} placeholder={t("Write a message…", {}, locale)} />
-        </footer>
+          <footer className="browser-activity-composer">
+            {running && (
+              <div className="composer-browser-status" role="status">
+                {t("{name} is working · In the browser", { name: bot.name }, locale)}
+              </div>
+            )}
+            <textarea aria-label={t("Message", {}, locale)} placeholder={t("Write a message…", {}, locale)} />
+          </footer>
         </main>
       </BrowserActivityControlsProvider>
     </InlinePreviewContext.Provider>

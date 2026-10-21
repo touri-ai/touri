@@ -11,11 +11,11 @@ import { InlinePreviewContext } from "../features/desktop/InlineLivePreview"
 import { type PreviewFrame, startInlineFrameSource } from "../features/desktop/inlineFrameSource"
 import { useInlinePreviewPreference } from "../features/desktop/inlinePreviewPreference"
 import { type Locale, t } from "../i18n"
-import { BrowserTakeoverView } from "./BrowserTakeoverView"
 import { useBrowserActivityControls } from "./BrowserActivityControls"
+import { BrowserTakeoverView } from "./BrowserTakeoverView"
 import {
-  getBrowserActivityIcon,
   getBrowserActivityCurrentLabel,
+  getBrowserActivityIcon,
   getBrowserActivityKind,
   getBrowserActivityLabel,
   getBrowserActivityNotice,
@@ -303,7 +303,10 @@ export const BrowserActivityCard = ({
     { count: browserTools.length },
     locale,
   )
-  const url = finished || channel?.previewHidden ? "" : getBrowserActivityUrl(preview?.url || getBrowserActivityOpenUrl(browserTools))
+  const url =
+    finished || channel?.previewHidden
+      ? ""
+      : getBrowserActivityUrl(preview?.url || getBrowserActivityOpenUrl(browserTools))
   const takeoverActive = held && !finished
   const takeoverReason = heldTab?.reason ?? "requested"
   const reasonCopy = getTakeoverReasonCopy(takeoverReason, locale)
@@ -417,15 +420,10 @@ export const BrowserActivityCard = ({
                 </span>
               )}
               {url && (
-                <span className="browser-activity-address" role="group" aria-label={t("Browser address", {}, locale)}>
+                <fieldset className="browser-activity-address">
+                  <legend className="visually-hidden">{t("Browser address", {}, locale)}</legend>
                   <span className="browser-activity-lock" role="img" aria-label={t("Secure connection", {}, locale)}>
-                    <svg
-                      viewBox="0 0 16 16"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.4"
-                      aria-hidden="true"
-                    >
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
                       <rect x="3" y="7" width="10" height="7" rx="1.5" />
                       <path d="M5 7V5a3 3 0 0 1 6 0v2" />
                     </svg>
@@ -437,7 +435,7 @@ export const BrowserActivityCard = ({
                     <span className="channel-dot" aria-hidden="true" />
                     {t("Live preview", {}, locale)}
                   </span>
-                </span>
+                </fieldset>
               )}
             </div>
             <ChannelVisibilityLabel locale={locale} />
@@ -548,14 +546,21 @@ export const BrowserActivityCard = ({
                     </span>
                     <span
                       className="browser-activity-action-state"
+                      role="img"
                       aria-label={t(
-                        part.ok === null ? "Action in progress" : part.ok === false ? "Action failed" : "Action complete",
+                        part.ok === null
+                          ? "Action in progress"
+                          : part.ok === false
+                            ? "Action failed"
+                            : "Action complete",
                         {},
                         locale,
                       )}
                       data-status={part.ok === null ? "in-progress" : part.ok === false ? "failed" : "complete"}
                     >
-                      {part.ok === null ? <span className="browser-activity-action-spinner" aria-hidden="true" /> : null}
+                      {part.ok === null ? (
+                        <span className="browser-activity-action-spinner" aria-hidden="true" />
+                      ) : null}
                       {part.ok === false ? "!" : part.ok === true ? "✓" : null}
                     </span>
                     <time dateTime={new Date(part.startedAt ?? part.resolvedAt ?? createdAt).toISOString()}>
@@ -618,7 +623,8 @@ export const BrowserActivityCard = ({
 
 const getTakeoverReasonCopy = (reason: BrowserTakeoverReason, locale: Locale): string => {
   if (reason === "login") return t("The site asked you to sign in before continuing.", {}, locale)
-  if (reason === "payment") return t("The site asked you to review a purchase or payment before continuing.", {}, locale)
+  if (reason === "payment")
+    return t("The site asked you to review a purchase or payment before continuing.", {}, locale)
   if (reason === "form_submit") return t("The site asked you to submit a form before continuing.", {}, locale)
   if (reason === "requested") return t("This browser is under your control now.", {}, locale)
 

@@ -1,5 +1,5 @@
-import { type Locale } from "../i18n"
 import { ChannelComposerChip } from "../features/channelBrowser/ChannelBrowser"
+import type { Locale } from "../i18n"
 
 export const BrowserWorkingStatus = ({
   name,
