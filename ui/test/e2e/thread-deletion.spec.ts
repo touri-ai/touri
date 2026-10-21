@@ -19,7 +19,6 @@ for (const width of [1440, 390]) {
       await page.goto("/test/e2e/thread-deletion-harness.html")
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
       await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
-      await page.clock.pauseAt(new Date("2026-10-20T12:01:00Z"))
       if (width === 390) await page.getByRole("button", { name: "Abrir menu" }).click()
       const conversations = page.getByRole("region", { name: "Conversas de mark" })
       const row = conversations.locator(".thread-row").filter({ hasText: "Eventos de leads" })
@@ -66,6 +65,8 @@ for (const width of [1440, 390]) {
         .withTags(["wcag2a", "wcag2aa"])
         .analyze()
       expect(dialogA11y.violations).toEqual([])
+      // Accessibility checks schedule timers; freeze only the undo interval.
+      await page.clock.pauseAt(new Date("2026-10-20T12:05:00Z"))
       await confirmation.getByRole("button", { name: "Apagar", exact: true }).click()
       await expect(page.locator(".thread-delete-toast")).toContainText("Desfazer")
       await screenshot("after-undo-toast")
