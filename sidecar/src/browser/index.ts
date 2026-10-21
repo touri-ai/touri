@@ -1346,10 +1346,8 @@ export const init = async (
                 : release === null
                   ? await engine.releaseTakeover(tabId)
                   : release === "released"
-          if (!ok && person && channelRun && !controller) {
-            if (hold) channelRuns.returnControl({ runId: channelRun.runId, actorPersonId: person.id })
-            else channelRuns.takeControl({ runId: channelRun.runId, actorPersonId: person.id })
-          }
+          if (!ok && actorPersonId && channelRun && !controller)
+            channelRuns.restoreControl({ runId: channelRun.runId, actorPersonId, status: channelRun.status })
           return ok
             ? { status: 200, json: {} }
             : {

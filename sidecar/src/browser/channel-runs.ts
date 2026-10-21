@@ -108,6 +108,7 @@ export const createChannelBrowserRuns = ({
   escalationMs?: number
   now?: () => number
 }) => {
+  let restoreTimer: ReturnType<typeof setTimeout> | undefined
   const resumeTimers = new Map<Id, ReturnType<typeof setTimeout>>()
   const escalationTimers = new Map<Id, ReturnType<typeof setTimeout>>()
   const personName = (personId: string | null): string | null =>
@@ -581,12 +582,21 @@ export const createChannelBrowserRuns = ({
     if (event.run.status === "failed" || event.run.status === "interrupted") updateTerminal(row.run_id, "failed")
     if (event.run.status === "canceled") updateTerminal(row.run_id, "canceled")
   })
-  const resumable = database
-    .query("SELECT run_id FROM browser_channel_runs WHERE resume_pending = 1 AND status = 'running' LIMIT 20")
-    .all() as Array<{ run_id: string }>
-  resumable.forEach(({ run_id }) => {
-    resumeRequest(run_id)
-  })
+  const restoreResumptions = (after = ""): void => {
+    const resumable = database
+      .query(
+        "SELECT run_id FROM browser_channel_runs WHERE resume_pending = 1 AND status = 'running' AND run_id > ? ORDER BY run_id LIMIT 20",
+      )
+      .all(after) as Array<{ run_id: string }>
+    resumable.forEach(({ run_id }) => {
+      resumeRequest(run_id)
+    })
+    const last = resumable.at(-1)?.run_id
+    if (resumable.length !== 20 || !last) return
+    restoreTimer = setTimeout(() => restoreResumptions(last), 0)
+    restoreTimer.unref()
+  }
+  restoreResumptions()
   const pending = database
     .query("SELECT run_id FROM browser_channel_runs WHERE status = 'needs_you' AND escalated_at IS NULL LIMIT 100")
     .all() as Array<{ run_id: string }>
@@ -608,6 +618,7 @@ export const createChannelBrowserRuns = ({
     isPreviewHidden,
     dispose: () => {
       onRunUpdated()
+      if (restoreTimer) clearTimeout(restoreTimer)
       resumeTimers.forEach(clearTimeout)
       resumeTimers.clear()
       escalationTimers.forEach(clearTimeout)

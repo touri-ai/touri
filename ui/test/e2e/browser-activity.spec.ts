@@ -52,8 +52,10 @@ test.afterAll(async () => {
 
 const liveVariants = [
   { name: "desktop-dark", width: 1440, height: 900, theme: "dark", colorScheme: "dark" as const },
+  { name: "desktop-light", width: 1440, height: 900, theme: "light", colorScheme: "light" as const },
   { name: "compact-desktop", width: 1024, height: 700, theme: "dark", colorScheme: "dark" as const },
   { name: "phone-light", width: 390, height: 844, theme: "light", colorScheme: "light" as const },
+  { name: "phone-dark", width: 390, height: 844, theme: "dark", colorScheme: "dark" as const },
 ]
 
 test.describe("full browser activity flow", () => {
