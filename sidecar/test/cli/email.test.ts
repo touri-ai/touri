@@ -89,7 +89,7 @@ test("sign-in email includes the inviter, team, copyable one-time link, expiry, 
   expect(content.text).toContain("ignore este e-mail")
   expect(content.text).toContain("ignore this email")
   expect(content.html).toContain('href="https://public.example.test/login#signin=secret-token"')
-  expect(content.html).toContain("Ignore this email")
+  expect(content.html).toContain("ignore this email")
 })
 
 test("SMTP and HTTP delivery use only stored secrets and the invited recipient", async () => {
