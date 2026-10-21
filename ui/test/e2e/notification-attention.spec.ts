@@ -9,7 +9,7 @@ for (const theme of ["dark", "light"] as const) {
     { name: "desktop", width: 1440, height: 900 },
     { name: "phone", width: 390, height: 844 },
   ]) {
-    test(`shows the needs-you bar on ${viewport.name} in ${theme}`, async ({ page }, testInfo) => {
+    test(`keeps one bot request action on ${viewport.name} in ${theme}`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height })
       await page.emulateMedia({ reducedMotion: "reduce" })
       await page.addInitScript((appearance) => localStorage.setItem("touri.appearance.v1", appearance), theme)
@@ -20,8 +20,7 @@ for (const theme of ["dark", "light"] as const) {
       if (viewport.name === "phone") await page.getByRole("button", { name: "Abrir menu" }).click()
       const bar = page.getByRole("button", { name: "Abrir pendência de onb" }).first()
       await expect(bar).toBeVisible()
-      await expect(bar).toContainText("Precisa de você")
-      await expect(bar).toContainText("onb precisa da sua resposta")
+      await expect(page.locator(".sidebar-needs-you")).toHaveCount(0)
 
       const output = process.env.NOTIFICATION_ATTENTION_CAPTURE ?? testInfo.outputDir
       mkdirSync(output, { recursive: true })
@@ -45,7 +44,7 @@ test("closes phone navigation and focuses the pending approval", async ({ page }
   await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
   await page.getByRole("button", { name: "Abrir menu" }).click()
 
-  await page.getByRole("button", { name: /^Abrir pendência de / }).click()
+  await page.locator(".sidebar-approval-badge").click()
 
   await expect(page.getByRole("dialog", { name: "Barra lateral", exact: true })).not.toBeVisible()
   await expect(page.locator('[data-approval-id="preview-approval"]')).toBeFocused()

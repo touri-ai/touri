@@ -1051,7 +1051,7 @@ const AppContent = ({ kernel }: AppProps) => {
         <div className="app-grid">
           <SidebarDrawer
             panelOpen={section === "bots" && screen === "chat" && panelOpen}
-            workspaceHeaderKey={`${section}:${screen}:${advancedPage ?? ""}`}
+            workspaceHeaderKey={`${section}:${screen}:${advancedPage ?? ""}:${route.section === "advanced" ? (route.botId ?? "") : ""}`}
             serverMode={serverMode}
             serverUrl={serverState.status?.url ?? null}
             host={data.routineHost}

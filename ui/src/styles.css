@@ -3921,6 +3921,13 @@ a {
   align-items: center;
   column-gap: var(--space-8);
 }
+.tool-card-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-8);
+}
 .tool-card-header strong {
   grid-column: 2;
   min-width: 0;
@@ -4305,10 +4312,10 @@ a {
   .tool-standing-action {
     position: static;
   }
-  .tool-card-header .tool-status-chip {
+  .tool-card-header .tool-card-status {
     grid-column: 1 / -1;
     justify-self: start;
-    margin-inline: 0;
+    justify-content: flex-start;
   }
   .tool-card-header strong {
     grid-column: 2 / -1;

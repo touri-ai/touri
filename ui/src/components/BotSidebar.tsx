@@ -131,6 +131,15 @@ export const Sidebar = (props: SidebarProps) => {
     props.onNavigate?.()
     action()
   }
+  const openNotification = (item: NotificationRecord): void => {
+    if (isFailureNotice(item)) {
+      navigate(() => props.notificationActions.open(item))
+      return
+    }
+
+    const open = props.onNeedsYou ?? props.notificationActions.open
+    navigate(() => open(item))
+  }
   // Switching bots inside Preview keeps that view; global pages return to the bot conversation.
   const select = (id: Id): void => {
     props.onNavigate?.()
@@ -297,7 +306,7 @@ export const Sidebar = (props: SidebarProps) => {
                     navigate(() => openRoutineHistory(bot.id, routineId ?? selectedRoutineId))
                   }
                   onReviewApproval={(target) => navigate(() => props.onReviewApproval(target))}
-                  onNotification={(item) => navigate(() => (props.onNeedsYou ?? props.notificationActions.open)(item))}
+                  onNotification={openNotification}
                   onDelete={props.onDeleteBot}
                 />
               </Fragment>
