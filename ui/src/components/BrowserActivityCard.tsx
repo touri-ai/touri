@@ -125,6 +125,10 @@ export const BrowserActivityCard = ({
 
   useEffect(() => {
     setPreviewError(null)
+    if (held) {
+      setPreviewFrame(undefined)
+      return
+    }
     if (!api || !botId || !machine || !activeTabId || !canPreview || !previewEnabled || !visible || hidden || finished)
       return
 
@@ -138,7 +142,7 @@ export const BrowserActivityCard = ({
         setPreviewError(reason ? t("Browser preview unavailable. Open the browser to reconnect.", {}, locale) : null),
       { intervalMs: 3_000 },
     )
-  }, [activeTabId, api, botId, machine, canPreview, finished, hidden, locale, previewEnabled, visible])
+  }, [activeTabId, api, botId, machine, canPreview, finished, held, hidden, locale, previewEnabled, visible])
 
   const toggleTakeover = async (): Promise<void> => {
     if (!api || !activeTabId || busy) return
@@ -165,7 +169,7 @@ export const BrowserActivityCard = ({
     { count: browserTools.length },
     locale,
   )
-  const url = finished ? "" : getBrowserActivityUrl(preview?.url ?? "")
+  const url = finished || held ? "" : getBrowserActivityUrl(preview?.url ?? "")
 
   return (
     <article
@@ -222,9 +226,9 @@ export const BrowserActivityCard = ({
       )}
       {expanded && (
         <div
-          className={`browser-activity-content${fullView || finished || !previewEnabled ? " browser-activity-content-full" : ""}`}
+          className={`browser-activity-content${fullView || finished || held || !previewEnabled ? " browser-activity-content-full" : ""}`}
         >
-          {!finished && previewEnabled && (
+          {!finished && !held && previewEnabled && (
             <div className={`browser-activity-preview${fullView ? " browser-activity-preview-full" : ""}`}>
               {preview?.src ? (
                 <img src={preview.src} alt={t("Current browser page", {}, locale)} />
@@ -268,7 +272,9 @@ export const BrowserActivityCard = ({
             {browserTools.length > MAX_VISIBLE_ACTIONS && (
               <small>{t("Showing the latest {count} browser actions", { count: MAX_VISIBLE_ACTIONS }, locale)}</small>
             )}
-            {held && <p role="status">{t("You have control of this browser tab.", {}, locale)}</p>}
+            {held && (
+              <p role="status">{t("A person is controlling this browser tab; the bot is paused.", {}, locale)}</p>
+            )}
             {error && <p role="alert">{error}</p>}
             {finished && screenshot?.outputAttachmentId && (
               <section className="browser-activity-final-shot" aria-label={t("Final browser screenshot", {}, locale)}>

@@ -620,6 +620,8 @@ export const ptBR = {
   "Collapse browser view": "Recolher navegador",
   "Browser activity": "Atividade do navegador",
   "Showing the latest {count} browser actions": "Exibindo as últimas {count} ações do navegador",
+  "A person is controlling this browser tab; the bot is paused.":
+    "Uma pessoa está controlando esta aba; o bot está pausado.",
   "You have control of this browser tab.": "Você está no controle desta aba do navegador.",
   "Travel search fixture": "Busca de viagem de teste",
   "Local browser fixture": "Navegador de teste local",

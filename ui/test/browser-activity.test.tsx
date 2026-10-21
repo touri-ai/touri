@@ -120,6 +120,17 @@ test("shows live browser steps and keeps typed values and URL credentials and qu
   expect(screen.getAllByText("https://travel.example.test/results")).toHaveLength(2)
 })
 
+test("hides the live browser preview while a person controls the tab", async () => {
+  const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
+  const heldTab = { ...tab, heldByUser: true }
+
+  renderCard(parts, false, async () => ({ tabs: [heldTab] }))
+
+  expect(await screen.findByText("Uma pessoa está controlando esta aba; o bot está pausado.")).toBeVisible()
+  expect(screen.queryByRole("img", { name: "Página atual do navegador" })).toBeNull()
+  expect(document.querySelector(".browser-activity-preview")).toBeNull()
+})
+
 test("take-over holds the browser, opens its view, and the finished card collapses with the final image", async () => {
   const parts = [
     getPart({ callId: "open", tool: "mcp__touri__browser_open", inputJson: '{"tabId":"browser-tab"}' }),
