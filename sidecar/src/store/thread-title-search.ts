@@ -35,7 +35,9 @@ export const createThreadTitleSearch = (filename: string) => {
   }
   const dispose = (): void => {
     disposed = true
-    workers.forEach((abort) => abort())
+    workers.forEach((abort) => {
+      abort()
+    })
   }
 
   return { search, dispose }
