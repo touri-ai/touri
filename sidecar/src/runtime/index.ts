@@ -128,6 +128,7 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
   kernel.services.provide("runtime.activeRun", ({ threadId }) => engine.activeRun({ threadId }))
   kernel.services.provide("runtime.continueAfterApproval", engine.continueAfterApproval)
   kernel.services.provide("runtime.resumeAfterBrowserTakeover", engine.resumeAfterBrowserTakeover)
+  kernel.services.provide("runtime.canReturnBrowserTakeover", engine.canReturnBrowserTakeover)
   kernel.services.provide("runtime.cancelBotTurns", groups.cancelBotTurns)
   kernel.services.provide("runtime.cancelRun", ({ runId }) => {
     const grouped = groups.cancel(runId)

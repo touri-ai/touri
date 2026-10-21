@@ -270,6 +270,7 @@ export type BrowserEngine = {
   }) => Promise<ToolResult>
   secretEntry: (args: { tabId: Id; secretName?: string; cancel: boolean }) => Promise<boolean>
   releaseTakeover: (tabId: Id) => Promise<boolean>
+  releaseTakeoverForPerson: (args: { tabId: Id; personId: Id }) => Promise<"released" | "forbidden" | "not_found">
   holdTakeover: (args: { tabId: Id; reason: string }) => Promise<boolean>
   getWindowBounds: (args: { tabId: Id; botId: Id }) => Promise<WindowBounds | null>
   tabsForBot: (botId: Id | null) => Array<BrowserTabInfo & { ownerBotId: Id | null }>

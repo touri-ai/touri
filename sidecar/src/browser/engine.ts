@@ -3082,10 +3082,16 @@ export const createBrowserEngine = ({
           })
         if (await pageUrlBlocked(tab))
           return toToolError({ errorCode: "URL_NOT_ALLOWED", error: BROWSER_URL_NOT_ALLOWED_MESSAGE })
+        const captureGeneration = tab.generation
         const data = await boundedImage({ client: client as CdpClient, tab, fullPage }).catch((error: unknown) => {
           if (errorMessage(error) === SCREENSHOT_TOO_LARGE) return null
           throw error
         })
+        if (tab.info.heldByUser || tab.privateAfterTakeover || tab.generation !== captureGeneration)
+          return toToolError({
+            errorCode: "SECRET_ENTRY_ACTIVE",
+            error: "A captura foi descartada porque o controle do navegador mudou.",
+          })
         if (data === null)
           return toToolError({
             errorCode: "ENGINE_UNAVAILABLE",
@@ -4526,6 +4532,22 @@ export const createBrowserEngine = ({
     return true
   }
 
+  const releaseTakeoverForPerson: BrowserEngine["releaseTakeoverForPerson"] = async ({ tabId, personId }) => {
+    const tab = store.find(tabId)
+    if (!tab) return "not_found"
+    if (!tab.info.heldByUser && !tab.takeover) return "released"
+    const takeover = tab.takeover
+    const allowed = kernel.services.use("runtime.canReturnBrowserTakeover")?.({
+      botId: takeover?.botId ?? tab.info.ownerBotId ?? "",
+      threadId: takeover?.threadId ?? tab.info.ownerThreadId ?? "",
+      runId: takeover?.runId ?? null,
+      personId,
+    })
+    if (!allowed) return "forbidden"
+
+    return (await releaseTakeover(tabId)) ? "released" : "not_found"
+  }
+
   const holdTakeover = async ({ tabId, reason }: { tabId: Id; reason: string }): Promise<boolean> => {
     const tab = store.find(tabId)
     if (!tab || tab.info.state === "closed") return false
@@ -4849,6 +4871,7 @@ export const createBrowserEngine = ({
     submitSecret,
     secretEntry,
     releaseTakeover,
+    releaseTakeoverForPerson,
     holdTakeover,
     getWindowBounds,
     tabsForBot,

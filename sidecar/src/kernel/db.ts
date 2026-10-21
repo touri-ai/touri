@@ -43,12 +43,13 @@ import browserTakeoverPrivacySql from "./migrations/0037.sql" with { type: "text
 import browserChannelRunsSql from "./migrations/0038.sql" with { type: "text" }
 import browserTakeoverContinuationsSql from "./migrations/0039.sql" with { type: "text" }
 import browserPrivateInputSql from "./migrations/0040.sql" with { type: "text" }
+import browserHandbackLedgerSql from "./migrations/0041.sql" with { type: "text" }
 import type { PerformanceStageRunner } from "./performance"
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 40
+export const SCHEMA_VERSION = 41
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -307,6 +308,11 @@ export const openDatabase = ({
       else database.exec("INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('browser_private_input_version', '1')")
     }
     database.exec("UPDATE schema_meta SET value = '40' WHERE key = 'schema_version'")
+  })()
+  database.transaction(() => {
+    if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'browser_handback_ledger_version'").get())
+      database.exec(browserHandbackLedgerSql)
+    database.exec("UPDATE schema_meta SET value = '41' WHERE key = 'schema_version'")
   })()
   return database
 }

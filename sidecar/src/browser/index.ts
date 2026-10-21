@@ -38,6 +38,7 @@ export const name = "browser"
 
 const OPEN_DEFAULT_TIMEOUT_MS = 20000
 const TAKEOVER_TIMEOUT_MS = 600000
+const TAKEOVER_MINIMUM_TIMEOUT_MS = 120_000
 const TAKEOVER_SESSION_TTL_MS = 30 * 60_000
 const TAKEOVER_FRAME_INTERVAL_MS = 250
 const MAX_TAKEOVER_SESSIONS = 16
@@ -122,8 +123,8 @@ const requestedTimeout = (value: unknown): number | null => {
   return asNumber(value)
 }
 
-const timeout = (value: unknown, fallback = 10000, maximum = 30000): number =>
-  Math.min(maximum, Math.max(1, requestedTimeout(value) ?? fallback))
+const timeout = (value: unknown, fallback = 10000, maximum = 30000, minimum = 1): number =>
+  Math.min(maximum, Math.max(minimum, requestedTimeout(value) ?? fallback))
 
 // The engine (and the VM router) may add transport slack to a budget; reserve it so the
 // tool itself still answers within the caller's timeoutMs with the engine's own cause.
@@ -920,7 +921,7 @@ export const init = async (
         botId: ctx.botId,
         reason,
         reasonCode,
-        timeoutMs: timeout(input.timeoutMs, 600000, 1800000),
+        timeoutMs: timeout(input.timeoutMs, 600000, 1800000, TAKEOVER_MINIMUM_TIMEOUT_MS),
         signal: ctx.signal,
         notify: !managedNeedsYou,
         threadId: ctx.threadId,
@@ -1261,12 +1262,29 @@ export const init = async (
             if (!control.success)
               return { status: 403, json: { errorCode: "BROWSER_CONTROL_FORBIDDEN", error: control.error } }
           }
+          const release =
+            !hold && !controller && !channelRun
+              ? await engine.releaseTakeoverForPerson({
+                  tabId,
+                  personId: person?.id ?? (kernel.services.use("work.defaultPersonId") ? "" : "owner"),
+                })
+              : null
+          if (release === "forbidden")
+            return {
+              status: 403,
+              json: {
+                errorCode: "BROWSER_CONTROL_FORBIDDEN",
+                error: "Só quem pediu ou a pessoa responsável pelo bot pode devolver o controle.",
+              },
+            }
           const ok =
             controller && !hold
               ? await endTakeoverSession(tabId, controller.id)
               : hold
                 ? await engine.holdTakeover({ tabId, reason: "The user requested browser takeover" })
-                : await engine.releaseTakeover(tabId)
+                : release === null
+                  ? await engine.releaseTakeover(tabId)
+                  : release === "released"
           if (!ok && person && channelRun && !controller) {
             if (hold) channelRuns.returnControl({ runId: channelRun.runId, actorPersonId: person.id })
             else channelRuns.takeControl({ runId: channelRun.runId, actorPersonId: person.id })

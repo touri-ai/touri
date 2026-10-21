@@ -74,14 +74,24 @@ const fixture = async (
   const order: string[] = []
   const canceledBots = new Set<string>()
   const engine = {
-    enqueue: ({ threadId, requestMessageId }: { threadId: string; requestMessageId: string }) => {
+    enqueue: ({
+      threadId,
+      requestMessageId,
+      trigger = "user",
+      continuationFromRunId,
+    }: {
+      threadId: string
+      requestMessageId: string
+      trigger?: Run["trigger"]
+      continuationFromRunId?: string
+    }) => {
       const botId = store.getThread({ threadId })?.botId ?? ""
       const run: Run = {
         id: host.kernel.newId(),
         threadId,
         botId,
         provider: "codex",
-        trigger: "user",
+        trigger,
         requestMessageId,
         replyMessageId: null,
         externalTurnId: null,
@@ -95,6 +105,10 @@ const fixture = async (
         finishedAt: null,
       }
       persistence.saveRun(run)
+      if (continuationFromRunId)
+        db.query(
+          "INSERT INTO browser_takeover_continuations (run_id, original_run_id, previous_run_id, created_at) VALUES (?, ?, ?, ?)",
+        ).run(run.id, continuationFromRunId, continuationFromRunId, Date.now())
       const controller = new AbortController()
       controllers.set(run.id, controller)
       const ctx: ToolContext = {
@@ -169,7 +183,11 @@ const fixture = async (
   const runtime = createGroupRuntime(host.kernel, engine, timeout)
   host.kernel.services.provide("groups.runtime", runtime)
   host.kernel.services.provide("runtime.enqueue", runtime.enqueue)
-  const send = (text: string, targetThreadId = thread.id) => {
+  const send = (
+    text: string,
+    targetThreadId = thread.id,
+    sender: { id: string; name: string; kind: "person" } | null = null,
+  ) => {
     const m = store.insertMessage({
       message: {
         id: host.kernel.newId(),
@@ -181,7 +199,7 @@ const fixture = async (
         runId: null,
         text,
         parts: [{ type: "text", text }],
-        sender: null,
+        sender,
         source: "local",
       },
     })
@@ -315,6 +333,52 @@ test("groups have separate conversations, private member sessions, ordered repli
   expect(f.store.activePath({ threadId: other.id })).toHaveLength(0)
   const direct = await f.request(`/bots/${f.bots[0]?.id}/threads`, undefined, "GET")
   expect(((await direct.json()) as { threads: { groupId?: string }[] }).threads.every((t) => !t.groupId)).toBe(true)
+})
+
+test("browser handback resumes one bot in the same channel and ignores duplicate returns", async () => {
+  const f = await fixture()
+  const botId = f.group.memberIds[0]
+  if (!botId) throw new Error("Missing group member")
+  const original = f.send("@pm conclua depois do login", f.thread.id, {
+    id: "requester",
+    name: "Requester",
+    kind: "person",
+  })
+  await until(() => f.persistence.getRun(original.id)?.status === "succeeded")
+  const child = f.db.query("SELECT run_id FROM group_run_links WHERE turn_id = ? AND depth = 0").get(original.id) as {
+    run_id: string
+  } | null
+  const source = child ? f.persistence.getRun(child.run_id) : null
+  if (!source) throw new Error("Missing channel member run")
+
+  expect(f.runtime.resumeAfterBrowserTakeover({ botId, threadId: source.threadId, runId: source.id })).toBe(true)
+  expect(f.runtime.resumeAfterBrowserTakeover({ botId, threadId: source.threadId, runId: source.id })).toBe(true)
+  await until(() => f.order.filter((id) => id === botId).length === 2)
+  await until(() => {
+    const continuations = f.db
+      .query("SELECT COUNT(*) AS count FROM browser_takeover_continuations WHERE previous_run_id = ?")
+      .get(source.id) as { count: number }
+    return continuations.count === 1
+  })
+
+  const channelRuns = f.db
+    .query(
+      "SELECT r.thread_id, r.trigger, g.recipients_json FROM runs r JOIN group_turns g ON g.run_id = r.id WHERE r.thread_id = ?",
+    )
+    .all(f.thread.id) as Array<{ thread_id: string; trigger: string; recipients_json: string }>
+  const channelMessages = f.store.activePath({ threadId: f.thread.id })
+  expect(channelRuns).toHaveLength(2)
+  expect(channelRuns[1]).toMatchObject({
+    thread_id: f.thread.id,
+    trigger: "retry",
+    recipients_json: JSON.stringify([botId]),
+  })
+  expect(channelMessages.filter((message) => message.role === "user")).toHaveLength(1)
+  expect(channelMessages.some((message) => message.text === "Retomado após a devolução do navegador")).toBe(true)
+  expect(channelMessages.filter((message) => message.role === "assistant")).toHaveLength(2)
+  expect(
+    channelMessages.some((message) => message.status === "failed" || message.text.includes("Cancelado por você")),
+  ).toBe(false)
 })
 
 test("search excludes legacy and current coordination prompts from member threads", async () => {

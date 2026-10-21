@@ -36,6 +36,13 @@ export const getTeamBuilder = (kernel: Kernel, caller: Caller) => {
   const isAdminRun = kernel.services.use("work.isAdminRun")
   if (isAdminRun ? !isAdminRun(run.id) : request.sender !== null) return null
   const db = kernel.db as Database
-  if (db.query("SELECT 1 FROM run_continuations WHERE run_id = ?").get(run.id)) return null
+  if (
+    db
+      .query(
+        "SELECT 1 FROM run_continuations WHERE run_id = ? UNION ALL SELECT 1 FROM browser_takeover_continuations WHERE run_id = ? LIMIT 1",
+      )
+      .get(run.id, run.id)
+  )
+    return null
   return { bot, run }
 }

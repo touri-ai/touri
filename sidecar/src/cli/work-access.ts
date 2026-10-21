@@ -397,6 +397,14 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
     }
     if (role === "admin") return null
     if (verb === "POST" && pathname === "/ws-ticket") return null
+    // The browser handler verifies the original requester or bot owner before releasing control.
+    if (
+      verb === "POST" &&
+      /^\/browser\/tabs\/[^/]+\/takeover$/u.test(pathname) &&
+      isRecord(body) &&
+      body.hold === false
+    )
+      return null
     if (
       verb === "GET" &&
       [

@@ -241,7 +241,7 @@ it("folds narration and step rows into the finished card and shows only the fina
   )
 
   expect(await screen.findByText("Voo por R$ 900")).toBeVisible()
-  expect(screen.getByText("terminou")).toBeVisible()
+  expect(screen.getByText("concluído")).toBeVisible()
   expect(screen.queryByText("Vou abrir a busca.")).toBeNull()
   expect(screen.queryByText("Agora vou escolher a data.")).toBeNull()
   expect(view.container.querySelectorAll(".browser-steps")).toHaveLength(0)
