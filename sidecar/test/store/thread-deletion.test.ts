@@ -340,6 +340,7 @@ test("archived pages are bounded, seek by id and keep messages searchable", asyn
   const first = await fixture.request(`/bots/${fixture.bot.id}/threads?archived=true`)
   const page = ((await first.json()) as { threads: Array<Thread> }).threads
   const cursor = page.at(-1)?.id
+  if (!cursor) throw new Error("Missing archive cursor")
   const second = await fixture.request(`/bots/${fixture.bot.id}/threads?archived=true&before=${cursor}`)
   const next = ((await second.json()) as { threads: Array<Thread> }).threads
   const search = await fixture.request("/search?q=syntheticarchive")

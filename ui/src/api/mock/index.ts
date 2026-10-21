@@ -1208,6 +1208,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     if (key === "GET /bots/:id/threads") {
       const { archived = false, before } = input as { archived?: boolean; before?: string }
       return {
+        // This response owns the filtered array; copying sort is outside the ES2022 target.
         threads: threads
           .filter(
             (thread) =>
@@ -1216,7 +1217,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
               Boolean(thread.archivedAt) === archived &&
               (!before || thread.id < before),
           )
-          .toSorted((left, right) => (archived ? right.id.localeCompare(left.id) : right.updatedAt - left.updatedAt))
+          .sort((left, right) => (archived ? right.id.localeCompare(left.id) : right.updatedAt - left.updatedAt))
           .slice(0, archived ? 100 : undefined),
       } as ApiRoutes[typeof route]["res"]
     }

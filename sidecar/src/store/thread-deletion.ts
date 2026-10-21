@@ -3,6 +3,7 @@ import { isAbsolute, relative } from "node:path"
 import type { Kernel, RouteModule, RouteResponse } from "@touri/contracts"
 import { removePrivateFileAsync } from "../kernel/async-files"
 import { collectUnusedOutputBlobs, isStorageUpgradePending } from "../kernel/data-maintenance"
+import { writeDatabaseAsync } from "../kernel/database-write"
 import { deviceSession } from "../kernel/device-session"
 import { threadDeletionWorkerSource } from "./thread-deletion-worker"
 
@@ -382,30 +383,28 @@ export const threadDeletionRoutes = (
   const manager = createThreadDeletionManager(kernel, collectBlobs, drainThread)
   kernel.services.provide("storage.threadDeletion", { dispose: manager.dispose })
 
-  const queueDeletion = (threads: Array<ThreadRow>) => {
+  const queueDeletion = async (threads: Array<ThreadRow>): Promise<void> => {
     const at = Date.now()
-    database
-      .transaction(() => {
-        const insert = database.query(`INSERT INTO thread_deletions(
+    await writeDatabaseAsync(database, () => {
+      const insert = database.query(`INSERT INTO thread_deletions(
         thread_id, bot_id, group_id, owner_person_id, responsible_person_id, phase, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, 'stopping', ?, ?)`)
-        threads.forEach((thread) => {
-          insert.run(
-            thread.id,
-            thread.bot_id,
-            thread.group_id,
-            thread.owner_person_id,
-            thread.responsible_person_id,
-            at,
-            at,
-          )
-        })
-        database
-          .query(`UPDATE schema_meta SET value = cast(max(cast(value AS INTEGER),
-        (SELECT coalesce(max(seq), 0) FROM ui_event_log)) AS TEXT) WHERE key = 'ui_event_floor_seq'`)
-          .run()
+      threads.forEach((thread) => {
+        insert.run(
+          thread.id,
+          thread.bot_id,
+          thread.group_id,
+          thread.owner_person_id,
+          thread.responsible_person_id,
+          at,
+          at,
+        )
       })
-      .immediate()
+      database
+        .query(`UPDATE schema_meta SET value = cast(max(cast(value AS INTEGER),
+        (SELECT coalesce(max(seq), 0) FROM ui_event_log)) AS TEXT) WHERE key = 'ui_event_floor_seq'`)
+        .run()
+    })
     manager.start()
   }
 
@@ -450,7 +449,7 @@ export const threadDeletionRoutes = (
         if (!thread) return errorResponse(404, "NOT_FOUND", "Conversa não encontrada.")
         const error = validateDeletion(thread, signal)
         if (error) return error
-        queueDeletion([thread])
+        await queueDeletion([thread])
         return { status: 202, json: { threadId: thread.id, phase: "stopping" } }
       },
     },
@@ -482,7 +481,7 @@ export const threadDeletionRoutes = (
           if (error) return error
         }
 
-        queueDeletion(threads)
+        await queueDeletion(threads)
         return { status: 202, json: { threadIds: ids, phase: "stopping" } }
       },
     },
