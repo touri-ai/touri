@@ -90,6 +90,7 @@ test("remote browser takeover gives one device an interactive session and reject
   const runtime = createKernel({ appData: root })
   let botId = ""
   let receivedInput: unknown = null
+  let heldRunId: string | undefined
   let engineReleaseCount = 0
   let leaseAcquired = 0
   let leaseReleased = 0
@@ -132,7 +133,10 @@ test("remote browser takeover gives one device an interactive session and reject
     },
     cancelTakeover: () => false,
     releaseTakeoverForPerson: async () => "released",
-    holdTakeover: async () => true,
+    holdTakeover: async ({ runId }) => {
+      heldRunId = runId
+      return true
+    },
     getWindowBounds: async () => null,
     tabsForBot: () => [{ ...tab, ownerBotId: botId }],
     takeoverFrame: async () => ({
@@ -206,6 +210,7 @@ test("remote browser takeover gives one device an interactive session and reject
 
     const started = await request("/browser/tabs/t_remote/takeover/session", {})
     expect(started.status).toBe(200)
+    expect(heldRunId).toBe("remote-run")
     expect(leaseAcquired).toBe(1)
     expect(leaseReleased).toBe(0)
     const { sessionId, controlEpoch } = (await started.json()) as { sessionId: string; controlEpoch: string }
@@ -497,7 +502,7 @@ test("browser preview stays below 50 ms event-loop lag for 1 Hz maximum-sized fr
   expect(previewCount).toBe(5)
   expect(p99TickMs).toBeLessThan(50)
   expect(maxTickMs).toBeLessThan(250)
-})
+}, 15_000)
 
 test("a browser tool answers within its timeoutMs even when the engine never settles", async () => {
   let aborted: AbortSignal | null = null

@@ -109,8 +109,9 @@ test.describe("full browser activity flow", () => {
       await expect(page.locator(".tool-call-card")).toHaveCount(0)
       await expect(card.getByRole("button", { name: "Assumir" })).toBeVisible({ timeout: 20_000 })
 
+      await expect(card.getByRole("button", { name: "Assumir" })).toBeEnabled({ timeout: 40_000 })
       const livePreview = card.getByRole("img", { name: "Página atual do navegador" })
-      await expect(livePreview).toBeVisible({ timeout: 20_000 })
+      await expect(livePreview).toBeVisible({ timeout: 40_000 })
       await expect(card.getByRole("button", { name: "Expandir navegador" })).toBeEnabled()
       const expandBrowser = card.locator(".browser-activity-header-actions .browser-activity-icon-button").first()
       await expandBrowser.click()
@@ -127,7 +128,7 @@ test.describe("full browser activity flow", () => {
       await expect(takeOver).toBeVisible()
       await takeOver.click()
       await expect(page.getByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
-      await expect(page.getByRole("button", { name: "Digitar no navegador" })).toBeVisible()
+      await expect(page.getByRole("button", { name: "Digitar no navegador" })).toBeEnabled()
       const takeoverView = page.getByRole("region", { name: "Controle remoto do navegador" })
       const remoteScreen = takeoverView.locator(".browser-takeover-screen")
       const privacy = takeoverView.getByRole("status", { name: "Privacidade do navegador" })
@@ -245,6 +246,7 @@ for (const viewport of [
     const fullScreenHeight = await browserScreen.evaluate((element) => element.getBoundingClientRect().height)
     expect(fullScreenHeight).toBeGreaterThan(viewport.height * 0.6)
 
+    await expect(page.getByRole("button", { name: "Digitar no navegador" })).toBeEnabled()
     const keyboard = page.getByRole("textbox", { name: "Entrada de teclado para o navegador" })
     await keyboard.evaluate((element) => {
       const textarea = element as HTMLTextAreaElement

@@ -4,6 +4,8 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "Your last page stays private until a new safe page is ready.":
+    "A página que você usou continua privada até uma nova página segura ficar pronta.",
   "Waiting for the other browser request to finish.": "Aguardando o outro pedido no navegador terminar.",
   "Stop browser work": "Parar",
   "The page changed. Trying again.": "A página mudou. Tentando de novo.",
@@ -3041,6 +3043,8 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Your last page stays private until a new safe page is ready.":
+    "Your last page stays private until a new safe page is ready.",
   "Waiting for the other browser request to finish.": "Waiting for the other browser request to finish.",
   "Stop browser work": "Stop",
   "The page changed. Trying again.": "The page changed. Trying again.",

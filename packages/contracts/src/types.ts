@@ -295,6 +295,7 @@ export type RunUsage = {
 export type Run = {
   /** Stable browser request across private handback continuations. Derived from the continuation ledger. */
   browserRequestId?: Id | null
+  browserWaitingForPerson?: boolean
   /** Group projection only: persisted association lives in group_run_links. */
   groupTurnId?: Id
   /** The person whose message started this shared-channel run, if it came from Work. */

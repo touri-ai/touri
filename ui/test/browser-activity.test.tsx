@@ -84,6 +84,7 @@ const renderCard = (
   finished: boolean,
   getTabs = async () => ({ tabs: [tab] }),
   machine: Bot["machine"] = "local",
+  waitingForPerson = false,
 ) => {
   const api = createMockApi()
   const request = vi.fn(async (route: string) => {
@@ -121,7 +122,14 @@ const renderCard = (
   const onOpenComputer = vi.fn()
   const view = render(
     <InlinePreviewContext.Provider value={{ api, bot, machine: undefined, activeCallId: undefined, onOpenComputer }}>
-      <BrowserActivityCard parts={parts} finished={finished} createdAt={1} threadId="thread-mark" botName="Lia" />
+      <BrowserActivityCard
+        parts={parts}
+        finished={finished}
+        waitingForPerson={waitingForPerson}
+        createdAt={1}
+        threadId="thread-mark"
+        botName="Lia"
+      />
     </InlinePreviewContext.Provider>,
   )
 
@@ -835,4 +843,20 @@ test("browser login notifications use the interface language", () => {
 
   expect(t(body, {}, "pt-BR")).toBe("O site pediu login. Devolva o controle para o bot continuar.")
   expect(t(body, {}, "en")).toBe(body)
+})
+
+test("reopening a completed manual handoff restores its controls", async () => {
+  const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
+
+  renderCard(
+    parts,
+    true,
+    async () => ({ tabs: [{ ...tab, heldByUser: true, takeoverRequested: true }] }),
+    "local",
+    true,
+  )
+
+  expect(await screen.findByRole("button", { name: "Assumir" })).toBeVisible()
+  expect(await screen.findByText("Por que Lia parou")).toBeVisible()
+  expect(screen.queryByText("Ver o que ele fez")).toBeNull()
 })

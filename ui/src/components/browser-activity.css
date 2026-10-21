@@ -782,3 +782,16 @@
   height: 100%;
   object-fit: cover;
 }
+
+@media (max-width: 600px) {
+  .browser-activity-card[data-finished="false"] .browser-activity-log {
+    height: 156px;
+  }
+  .browser-activity-card[data-finished="false"] .browser-activity-preview-frames {
+    height: min(26vh, 220px);
+    max-height: min(26vh, 220px);
+  }
+  .browser-activity-card[data-finished="false"] .browser-activity-placeholder {
+    height: calc(min(26vh, 220px) + 24px);
+  }
+}

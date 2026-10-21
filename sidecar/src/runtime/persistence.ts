@@ -86,6 +86,7 @@ export const toRun = (value: unknown): Run | null => {
     id: text(row, "id"),
     requesterPersonId: nullableText(row, "requester_person_id"),
     browserRequestId: nullableText(row, "browser_request_id"),
+    ...(row.browser_waiting_for_person ? { browserWaitingForPerson: true } : {}),
     threadId: text(row, "thread_id"),
     botId: text(row, "bot_id"),
     provider: text(row, "provider") as Run["provider"],
@@ -203,6 +204,7 @@ const canUseDatabase = (value: unknown): value is Database => {
 
 const RUN_SNAPSHOT_SELECT = `SELECT r.*, COALESCE(root.thread_id, t.group_thread_id) AS group_thread_id,
   COALESCE(browser_continuation.original_run_id, r.id) AS browser_request_id,
+  EXISTS(SELECT 1 FROM browser_pending_handoffs handoff WHERE handoff.run_id IN (r.id, browser_continuation.original_run_id) AND handoff.state = 'waiting') AS browser_waiting_for_person,
   CASE
     WHEN continuation.run_id IS NOT NULL OR browser_continuation.run_id IS NOT NULL THEN 'resume'
     WHEN EXISTS(SELECT 1 FROM json_each(request.parts_json)

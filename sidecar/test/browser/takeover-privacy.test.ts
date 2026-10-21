@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import type { BrowserSnapshot } from "@touri/contracts"
 import {
   canResumeAfterHumanTakeover,
+  captureCurrentBrowserControlFrame,
   captureSafeBrowserPreview,
   sanitizeHumanTakeoverPreviewMetadata,
   sanitizeHumanTakeoverSnapshot,
@@ -183,4 +184,40 @@ test("post-takeover preview metadata omits page titles and URL values", () => {
 
   expect(JSON.stringify(metadata)).not.toContain("fixture-secret")
   expect(metadata).toEqual({ title: "", url: "https://travel.example.test" })
+})
+
+test("a private frame captured before navigation cannot advertise the new target epoch", async () => {
+  let epoch = 4
+  let complete: (frame: { image: string }) => void = () => {}
+  const capture = captureCurrentBrowserControlFrame({
+    getEpoch: () => epoch,
+    canRead: () => true,
+    capture: () =>
+      new Promise<{ image: string }>((resolve) => {
+        complete = resolve
+      }),
+  })
+
+  epoch = 5
+  complete({ image: "old-page" })
+
+  expect(await capture).toBeNull()
+})
+
+test("revoking control discards an already running private capture", async () => {
+  let held = true
+  let complete: (frame: { image: string }) => void = () => {}
+  const capture = captureCurrentBrowserControlFrame({
+    getEpoch: () => 4,
+    canRead: () => held,
+    capture: () =>
+      new Promise<{ image: string }>((resolve) => {
+        complete = resolve
+      }),
+  })
+
+  held = false
+  complete({ image: "private-page" })
+
+  expect(await capture).toBeNull()
 })

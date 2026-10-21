@@ -78,6 +78,7 @@ export const BrowserActivityCard = ({
   createdAt,
   threadId,
   runId,
+  waitingForPerson = false,
   botName,
   locale = "pt-BR",
   children,
@@ -87,6 +88,7 @@ export const BrowserActivityCard = ({
   createdAt: number
   threadId?: Id
   runId?: Id | null
+  waitingForPerson?: boolean | undefined
   botName: string
   locale?: Locale
   children?: ReactNode
@@ -115,6 +117,8 @@ export const BrowserActivityCard = ({
   const takeoverTabId = useRef(activeTabId)
   const [resuming, setResuming] = useState(false)
   const resumedRunId = useRef<string | null>(null)
+  const handbackRunId = useRef<Id | null | undefined>(undefined)
+  const [privacyPending, setPrivacyPending] = useState(false)
   const held = heldTab?.tabId === activeTabId && heldTab?.held === true
   const finished = sourceFinished && !held && !takeoverSession && !resuming && !queued
   const preview =
@@ -149,8 +153,8 @@ export const BrowserActivityCard = ({
   }, [activeTabId])
 
   useEffect(() => {
-    if (!sourceFinished) setResuming(false)
-  }, [sourceFinished])
+    if (!sourceFinished || (resuming && runId !== handbackRunId.current)) setResuming(false)
+  }, [sourceFinished, resuming, runId])
 
   useEffect(() => {
     if (!api || !resuming) return
@@ -194,7 +198,7 @@ export const BrowserActivityCard = ({
   }, [])
 
   useEffect(() => {
-    if (!api || !botId || queued || (sourceFinished && !hasTakeoverRequest)) return
+    if (!api || !botId || queued || (sourceFinished && !hasTakeoverRequest && !waitingForPerson)) return
     let active = true
     // Events may arrive after the initial snapshot was taken.
     let hasTabEvent = false
@@ -260,7 +264,7 @@ export const BrowserActivityCard = ({
       window.clearInterval(poll)
       unsubscribe()
     }
-  }, [api, botId, sourceFinished, hasTakeoverRequest, resolutionCallId, runId, tabId, queued])
+  }, [api, botId, sourceFinished, hasTakeoverRequest, resolutionCallId, runId, tabId, queued, waitingForPerson])
 
   useEffect(() => {
     setPreviewError(null)
@@ -285,7 +289,10 @@ export const BrowserActivityCard = ({
       api,
       { id: botId, machine },
       activeTabId,
-      (frame) => setPreviewFrame({ tabId: activeTabId, frame }),
+      (frame) => {
+        setPrivacyPending(false)
+        setPreviewFrame({ tabId: activeTabId, frame })
+      },
       () => setPreviewError(t("Browser preview unavailable. Open the browser to reconnect.", {}, locale)),
       (reason) =>
         setPreviewError(reason ? t("Browser preview unavailable. Open the browser to reconnect.", {}, locale) : null),
@@ -315,7 +322,10 @@ export const BrowserActivityCard = ({
   ])
 
   useEffect(() => {
-    if (held || channel?.previewHidden) setPreviewFrame(undefined)
+    if (held || channel?.previewHidden) {
+      setPrivacyPending(true)
+      setPreviewFrame(undefined)
+    }
   }, [channel?.previewHidden, held])
 
   // Refresh after each completed browser action; the source keeps sampling serial and throttled.
@@ -353,6 +363,7 @@ export const BrowserActivityCard = ({
           { sessionId: takeoverSession, controlEpoch },
           { id: activeTabId },
         )
+        handbackRunId.current = runId
         setResuming(sourceFinished)
         setTakeoverSession(null)
         setControlEpoch(null)
@@ -405,6 +416,9 @@ export const BrowserActivityCard = ({
   const takeoverActions = browserTools.slice(-5)
   const takeoverTimes = getBrowserActivityTimestamps(takeoverActions, createdAt)
   const currentAction = browserTools.at(-1)
+  const previewNotice = privacyPending
+    ? t("Your last page stays private until a new safe page is ready.", {}, locale)
+    : previewError
   const title = t("Browser for {name}", { name: botName }, locale)
   const summary = t(
     browserTools.length === 1 ? "Used the browser · 1 action" : "Used the browser · {count} actions",
@@ -448,6 +462,7 @@ export const BrowserActivityCard = ({
               active: part.ok === null,
             }))}
             onHandback={() => {
+              handbackRunId.current = runId
               setResuming(sourceFinished)
               setTakeoverSession(null)
               setControlEpoch(null)
@@ -593,7 +608,7 @@ export const BrowserActivityCard = ({
                   </div>
                 ) : previewEnabled ? (
                   <p className="browser-activity-placeholder">
-                    {previewError ??
+                    {previewNotice ??
                       t(
                         waitedTooLong
                           ? "The browser is taking longer than expected. Trying to reconnect…"

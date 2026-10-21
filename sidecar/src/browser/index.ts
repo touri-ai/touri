@@ -1091,7 +1091,11 @@ export const init = async (
               }
 
               const held = await engine
-                .holdTakeover({ tabId, reason: "The user requested browser takeover" })
+                .holdTakeover({
+                  tabId,
+                  reason: "The user requested browser takeover",
+                  ...(channelRun ? { runId: channelRuns.getCurrentRunId(channelRun.runId) ?? channelRun.runId } : {}),
+                })
                 .catch(() => false)
               if (!held) {
                 await releaseVm?.().catch(() => undefined)
@@ -1342,7 +1346,11 @@ export const init = async (
             controller && !hold
               ? await endTakeoverSession(tabId, controller.id)
               : hold
-                ? await engine.holdTakeover({ tabId, reason: "The user requested browser takeover" })
+                ? await engine.holdTakeover({
+                    tabId,
+                    reason: "The user requested browser takeover",
+                    ...(channelRun ? { runId: channelRuns.getCurrentRunId(channelRun.runId) ?? channelRun.runId } : {}),
+                  })
                 : release === null
                   ? await engine.releaseTakeover(tabId)
                   : release === "released"

@@ -29,6 +29,23 @@ export const captureSafeBrowserPreview = async <T>({
   return frame
 }
 
+export const captureCurrentBrowserControlFrame = async <T extends object>({
+  getEpoch,
+  canRead,
+  capture,
+}: {
+  getEpoch: () => number
+  canRead: () => boolean
+  capture: () => Promise<T | null>
+}): Promise<(T & { targetEpoch: number }) | null> => {
+  const targetEpoch = getEpoch()
+  if (!canRead()) return null
+  const frame = await capture()
+  if (!frame || !canRead() || getEpoch() !== targetEpoch) return null
+
+  return { ...frame, targetEpoch }
+}
+
 const getBrowserPreviewBlockReason = (page: BrowserPreviewPage): BrowserPreviewBlockReason | null => {
   if (page.heldByUser || page.secretMode) return "human_control"
   if (page.url.length > MAX_PREVIEW_URL_LENGTH || page.title.length > MAX_PREVIEW_TITLE_LENGTH) return "sensitive_page"

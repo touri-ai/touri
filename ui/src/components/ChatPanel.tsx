@@ -1058,7 +1058,7 @@ const MessageBubble = ({
           <MarkdownContent content={message.role === "system" ? localizeNotice(text) : text} />
         )
       ) : null}
-      {quietBrowserNarration && <BrowserTurnCard message={{ ...message, parts }} bot={bot} />}
+      {quietBrowserNarration && <BrowserTurnCard message={{ ...message, parts }} run={run} bot={bot} />}
       {message.role !== "assistant" && !routinePrompt && (
         <MessageAttachments parts={parts.filter((part) => part.type === "image" || part.type === "file")} api={api} />
       )}

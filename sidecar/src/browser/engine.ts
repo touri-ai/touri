@@ -6,7 +6,6 @@ import type {
   BrowserElement,
   BrowserErrorCode,
   BrowserSnapshot,
-  BrowserTakeoverCapture,
   BrowserTakeoverReason,
   BrowserTarget,
   Id,
@@ -49,6 +48,7 @@ import { createSharedPreviewSource } from "./shared-preview"
 import { createBrowserStore, publicTabInfo } from "./store"
 import {
   canResumeAfterHumanTakeover,
+  captureCurrentBrowserControlFrame,
   captureSafeBrowserPreview,
   HAS_SENSITIVE_ENTRY_EXPRESSION,
   sanitizeHumanTakeoverSnapshot,
@@ -4606,7 +4606,7 @@ export const createBrowserEngine = ({
     return (await releaseTakeover(tabId)) ? "released" : "not_found"
   }
 
-  const holdTakeover = async ({ tabId }: { tabId: Id; reason: string }): Promise<boolean> => {
+  const holdTakeover = async ({ tabId, runId }: { tabId: Id; reason: string; runId?: Id }): Promise<boolean> => {
     const tab = store.find(tabId)
     if (!tab || tab.info.state === "closed") return false
     if (tab.info.heldByUser) return true
@@ -4628,14 +4628,25 @@ export const createBrowserEngine = ({
       requestId: null,
       botId: tab.info.ownerBotId,
       threadId: tab.info.ownerThreadId,
-      runId: activeRun?.id ?? null,
+      runId: runId ?? activeRun?.id ?? null,
       timer: null,
     }
+    const takeover = tab.takeover
+    takeover.timer = setTimeout(() => {
+      if (retired || tab.takeover !== takeover) return
+      clearTakeover({
+        tab,
+        resolution: "expired",
+        handbackNote: "The browser handoff expired; the current page may have changed.",
+      })
+      publishTakeoverRelease(tab)
+    }, 600_000)
+    takeover.timer.unref()
     handoffs.save({
       tabId,
       botId: tab.info.ownerBotId,
       threadId: tab.info.ownerThreadId,
-      runId: activeRun?.id ?? null,
+      runId: runId ?? activeRun?.id ?? null,
       requestId: null,
       expiresAt: Date.now() + 600_000,
       state: "waiting",
@@ -4678,37 +4689,48 @@ export const createBrowserEngine = ({
     const cdp = client
     const sessionId = tab.sessionId
     if (!cdp || !sessionId) return null
-    const viewport = await layoutClip({ client: cdp, sessionId, fullPage: false, scale: 1 }).catch(() => null)
-    if (!viewport || signal.aborted) return null
+    return captureCurrentBrowserControlFrame({
+      getEpoch: () => tab.generation,
+      canRead: () =>
+        !retired &&
+        !signal.aborted &&
+        tab.info.heldByUser &&
+        !tab.secretMode &&
+        tab.info.state === "live" &&
+        tab.sessionId === sessionId,
+      capture: async () => {
+        const viewport = await layoutClip({ client: cdp, sessionId, fullPage: false, scale: 1 }).catch(() => null)
+        if (!viewport || signal.aborted) return null
 
-    for (const scale of [0.65, 0.5, 0.35]) {
-      const result = await cdpCall<unknown>(
-        cdp,
-        "Page.captureScreenshot",
-        {
-          format: "jpeg",
-          quality: 50,
-          captureBeyondViewport: false,
-          fromSurface: true,
-          clip: { x: viewport.x, y: viewport.y, width: viewport.width, height: viewport.height, scale },
-        },
-        sessionId,
-      ).catch(() => null)
-      const data = asString(asRecord(result)?.data)
-      if (!data || data.length > 450_000) continue
-      if (signal.aborted || !tab.info.heldByUser || tab.secretMode || tab.info.state !== "live") return null
+        for (const scale of [0.65, 0.5, 0.35]) {
+          const result = await cdpCall<unknown>(
+            cdp,
+            "Page.captureScreenshot",
+            {
+              format: "jpeg",
+              quality: 50,
+              captureBeyondViewport: false,
+              fromSurface: true,
+              clip: { x: viewport.x, y: viewport.y, width: viewport.width, height: viewport.height, scale },
+            },
+            sessionId,
+          ).catch(() => null)
+          const data = asString(asRecord(result)?.data)
+          if (!data || data.length > 450_000) continue
+          if (signal.aborted || !tab.info.heldByUser || tab.secretMode || tab.info.state !== "live") return null
 
-      return {
-        targetEpoch: tab.generation,
-        title: kernel.redact(tab.privateAfterTakeover ? "" : tab.info.title),
-        url: kernel.redact(tab.privateAfterTakeover ? sanitizeHumanTakeoverUrl(tab.info.url) : tab.info.url),
-        image: `data:image/jpeg;base64,${data}`,
-        width: viewport.width,
-        height: viewport.height,
-      } satisfies BrowserTakeoverCapture
-    }
+          return {
+            title: kernel.redact(tab.privateAfterTakeover ? "" : tab.info.title),
+            url: kernel.redact(tab.privateAfterTakeover ? sanitizeHumanTakeoverUrl(tab.info.url) : tab.info.url),
+            image: `data:image/jpeg;base64,${data}`,
+            width: viewport.width,
+            height: viewport.height,
+          }
+        }
 
-    return null
+        return null
+      },
+    })
   }
 
   const takeoverInput: BrowserEngine["takeoverInput"] = async ({

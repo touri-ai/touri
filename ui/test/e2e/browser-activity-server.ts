@@ -2,21 +2,27 @@ import type { Database } from "bun:sqlite"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { BrowserSnapshot, BrowserTabInfo, BrowserTakeoverInput, ToolRegistration } from "@touri/contracts"
+import type { BrowserSnapshot, BrowserTabInfo, RouteModule, ToolRegistration } from "@touri/contracts"
 import { init } from "../../../sidecar/src/browser"
 import { createBrowserEngine } from "../../../sidecar/src/browser/engine"
 import { createHeadlessHost } from "../../../sidecar/src/cli/host/headlessHost"
 import { createSecretStore } from "../../../sidecar/src/cli/host/secretStore"
 import { createKernel } from "../../../sidecar/src/kernel"
+import { init as initStore } from "../../../sidecar/src/store"
 
 const root = await mkdtemp(join(tmpdir(), "touri-browser-flow-"))
 const runtime = createKernel({ appData: join(root, "data") })
 const secrets = createSecretStore({ dir: join(root, "vault"), env: { TOURI_SECRETS_KEY: "synthetic-encryption-key" } })
 const host = createHeadlessHost({ secrets })({ publish: runtime.kernel.publish, log: runtime.kernel.log })
 const handlers = new Map<string, ToolRegistration>()
+let browserRoutes: RouteModule | undefined
 const kernel = {
   ...runtime.kernel,
   callHost: host,
+  registerRoutes: (module: RouteModule) => {
+    if (module.name === "browser") browserRoutes = module
+    return runtime.kernel.registerRoutes(module)
+  },
   registerTools: (input: Parameters<typeof runtime.kernel.registerTools>[0]) => {
     input.tools.forEach((tool) => {
       handlers.set(tool.name, tool)
@@ -24,6 +30,7 @@ const kernel = {
     return runtime.kernel.registerTools(input)
   },
 }
+await initStore(kernel)
 const engine = createBrowserEngine({ kernel })
 const fixtureUrl = process.env.TOURI_BROWSER_FLOW_FIXTURE_URL
 if (!fixtureUrl) throw new Error("The local travel fixture URL is missing.")
@@ -131,20 +138,27 @@ const getSnapshot = async (): Promise<BrowserSnapshot | null> => {
   return result.success ? (result.structured as BrowserSnapshot) : null
 }
 
-const getTab = async (): Promise<(BrowserTabInfo & { ownerBotId: string }) | null> => {
-  const snapshot = await getSnapshot()
-  if (!snapshot) return null
+const getTab = (): (BrowserTabInfo & { ownerBotId: string | null }) | null => {
+  const tab = engine.tabsForBot(ctx.botId).find((candidate) => candidate.tabId === tabId)
 
-  return {
-    tabId: snapshot.tabId,
-    ownerBotId: ctx.botId,
-    url: snapshot.url,
-    title: snapshot.title,
-    state: "live",
-    openerTabId: null,
-    heldByUser: false,
-    lastUsedAt: Date.now(),
-  }
+  return tab ? { ...tab, url: "https://travel.example.test" } : null
+}
+
+const dispatchControl = async (
+  method: "POST" | "DELETE",
+  path: string,
+  tabId: string,
+  body: unknown,
+): Promise<Response> => {
+  const route = browserRoutes?.routes.find((route) => route.method === method && route.path === path)
+  if (!route) throw new Error("The browser control route is missing.")
+  const response = await route.handler({ params: { id: tabId }, query: {}, body, signal: ctx.signal })
+  if (!("json" in response)) throw new Error("The browser control response was not JSON.")
+  const result = response.json as Record<string, unknown>
+
+  return Response.json(typeof result.url === "string" ? { ...result, url: "https://travel.example.test" } : result, {
+    status: response.status,
+  })
 }
 
 const server = Bun.serve({
@@ -153,55 +167,36 @@ const server = Bun.serve({
   fetch: async (request) => {
     if (request.headers.get("Authorization") !== `Bearer ${process.env.TOURI_BROWSER_FLOW_TOKEN}`)
       return new Response("Unauthorized", { status: 401 })
-    const {
-      step,
-      tabId: requestedTabId,
-      input,
-    } = (await request.json()) as {
-      step: string
-      tabId?: string
-      input?: BrowserTakeoverInput
-    }
+    const body = (await request.json()) as Record<string, unknown>
+    const step = typeof body.step === "string" ? body.step : ""
+    const requestedTabId = typeof body.tabId === "string" ? body.tabId : undefined
     const takeoverTabId = requestedTabId ?? tabId
     if (step === "metadata") {
       const tab = await getTab()
       return Response.json({ tabs: tab ? [tab] : [] })
     }
     if (step === "stats") return Response.json({ decisionCount, failedSteps, takeoverInputCount })
-    if (step === "preview" || step === "attachment") {
-      const snapshot = await getSnapshot()
-      return Response.json({
-        image: step === "attachment" ? finalImage : (snapshot?.image?.dataUrl ?? ""),
-        title: snapshot?.title ?? "",
-        url: snapshot?.url ?? "",
-      })
+    if (step === "preview") {
+      const preview = await engine.preview({ botId: ctx.botId, tabId, signal: ctx.signal })
+      return Response.json(preview ? { ...preview, url: "https://travel.example.test" } : { image: "" })
     }
-    if (step === "takeover-session") {
-      const held = await engine.holdTakeover({ tabId: takeoverTabId, reason: "The user requested browser takeover" })
-      return held
-        ? Response.json({ sessionId: "browser-flow-session" })
-        : Response.json({ error: "The browser could not be paused." }, { status: 409 })
-    }
-    if (step === "takeover-frame") {
-      const frame = await engine.takeoverFrame({ tabId: takeoverTabId, botId: ctx.botId, signal: ctx.signal })
-      return frame
-        ? Response.json(frame)
-        : Response.json({ error: "The browser frame is unavailable." }, { status: 409 })
-    }
+    if (step === "attachment") return Response.json({ image: finalImage })
+    if (step === "takeover-session")
+      return dispatchControl("POST", "/browser/tabs/:id/takeover/session", takeoverTabId, body)
+    if (step === "takeover-frame")
+      return dispatchControl("POST", "/browser/tabs/:id/takeover/frame", takeoverTabId, body)
     if (step === "takeover-input") {
-      if (!input) return Response.json({ error: "The browser input is missing." }, { status: 400 })
-      const sent = await engine.takeoverInput({ tabId: takeoverTabId, botId: ctx.botId, input, signal: ctx.signal })
-      if (!sent) return Response.json({ error: "The browser did not receive the input." }, { status: 409 })
-      takeoverInputCount += 1
-      return Response.json({})
+      const response = await dispatchControl("POST", "/browser/tabs/:id/takeover/input", takeoverTabId, body)
+      if (response.ok) takeoverInputCount += 1
+      return response
     }
-    if (step === "takeover-release") {
-      await engine.releaseTakeover(takeoverTabId)
-      return Response.json({})
-    }
+    if (step === "takeover-release")
+      return dispatchControl("DELETE", "/browser/tabs/:id/takeover/session", takeoverTabId, body)
     if (step === "open") {
       if (tabId) await engine.close({ tabId, botId: ctx.botId, signal: ctx.signal })
       decisionCount = 0
+      takeoverInputCount = 0
+      finalImage = ""
       failedSteps.length = 0
       const result = await engine.open({ url: fixtureUrl, ctx, timeoutMs: 30_000 })
       if (!result.success) return Response.json({ error: result.error }, { status: 500 })
@@ -218,6 +213,17 @@ const server = Bun.serve({
         },
       })
     }
+    if (step === "read") {
+      // The scripted bot revisits its known public search page after a manual handback.
+      const navigation = await engine.navigate({
+        tabId,
+        botId: ctx.botId,
+        url: fixtureUrl,
+        signal: ctx.signal,
+        timeoutMs: 30_000,
+      })
+      if (!navigation.success) return Response.json({ error: navigation.error }, { status: 500 })
+    }
     const command = commands[step]
     if (!command) return new Response("Unknown browser step", { status: 400 })
 
@@ -226,7 +232,7 @@ const server = Bun.serve({
     const resolvedAt = Date.now()
     if (!result) return new Response("Browser tool is unavailable", { status: 500 })
     if (!result.success) failedSteps.push(`${step}:${result.errorCode}`)
-    const snapshot = await getSnapshot()
+    const snapshot = step === "screenshot" ? await getSnapshot() : null
     if (step === "screenshot") finalImage = snapshot?.image?.dataUrl ?? ""
     const content = result.success ? [] : (result.content ?? [])
     const part = {

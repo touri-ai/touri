@@ -15,11 +15,13 @@ import "./turn-activity.css"
 /** The single browser card of a turn, with the bot's own preview context. */
 export const BrowserTurnCard = ({
   message,
+  run,
   bot,
   locale = "pt-BR",
   children,
 }: {
   message: Message
+  run?: Run | undefined
   bot?: Bot | undefined
   locale?: Locale
   children?: ReactNode
@@ -37,6 +39,7 @@ export const BrowserTurnCard = ({
       createdAt={message.createdAt}
       threadId={message.threadId}
       runId={message.runId}
+      waitingForPerson={run?.browserWaitingForPerson}
       botName={message.sender?.name ?? bot?.name ?? inlinePreview?.bot?.name ?? "touri"}
       locale={locale}
     >
@@ -88,7 +91,7 @@ export const TurnActivity = ({
   const reasoning = message.parts.flatMap((part) => (part.type === "reasoning" && part.text.trim() ? [part.text] : []))
   const browserOnly = browserTools.length > 0 && groups.length === 0 && approvals.size === 0 && reasoning.length === 0
   const browserCard = browserTools.length > 0 && !hideBrowserCard && (
-    <BrowserTurnCard message={message} bot={bot} locale={locale}>
+    <BrowserTurnCard message={message} run={run} bot={bot} locale={locale}>
       {browserFlow}
     </BrowserTurnCard>
   )

@@ -1,4 +1,4 @@
-import type { Bot, BrowserTabInfo, BrowserTakeoverInput, Message, Run, Thread, ToolCallPart } from "@touri/contracts"
+import type { Bot, BrowserTabInfo, Message, Run, Thread, ToolCallPart } from "@touri/contracts"
 import { useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 import type { ApiRequest } from "../../src/api/client"
@@ -445,11 +445,11 @@ const Fixture = () => {
 
 const wait = (duration: number): Promise<void> => new Promise((resolve) => window.setTimeout(resolve, duration))
 
-const requestBrowserFixture = async (step: string, payload?: { tabId?: string; input?: unknown }) => {
+const requestBrowserFixture = async (step: string, payload?: Record<string, unknown>) => {
   const response = await fetch("/__browser-activity-fixture", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload ? { step, tabId: payload.tabId, input: payload.input } : { step }),
+    body: JSON.stringify({ step, ...payload }),
   })
   if (!response.ok) throw new Error(`The browser fixture could not run ${step}.`)
 
@@ -496,6 +496,7 @@ type LiveBrowserActivityWindow = Window & {
 const LiveFixture = () => {
   const [fixture] = useState(() => {
     const fixtureApi = createMockApi()
+    const originalRequest = fixtureApi.request
     const mockBot = fixtureApi.getState().bots[0]
     const mockThread = fixtureApi.getState().threads[0]
     if (!mockBot || !mockThread) throw new Error("The mocked bot is missing.")
@@ -524,16 +525,21 @@ const LiveFixture = () => {
       if (route === "POST /browser/tabs/:id/takeover/session")
         return (await requestBrowserFixture("takeover-session", { tabId })) as never
       if (route === "POST /browser/tabs/:id/takeover/frame")
-        return (await requestBrowserFixture("takeover-frame", { tabId })) as never
+        return (await requestBrowserFixture("takeover-frame", {
+          tabId,
+          ...(input as Record<string, unknown>),
+        })) as never
       if (route === "POST /browser/tabs/:id/takeover/input") {
-        const browserInput = (input as { input: BrowserTakeoverInput }).input
-        return (await requestBrowserFixture("takeover-input", { tabId, input: browserInput })) as never
+        return (await requestBrowserFixture("takeover-input", {
+          tabId,
+          ...(input as Record<string, unknown>),
+        })) as never
       }
       if (route === "DELETE /browser/tabs/:id/takeover/session") {
-        await requestBrowserFixture("takeover-release", { tabId })
+        await requestBrowserFixture("takeover-release", { tabId, ...(input as Record<string, unknown>) })
         return {} as never
       }
-      return {} as never
+      return originalRequest(route as Parameters<ApiRequest>[0], input as never, pathValues)
     }) as ApiRequest
     fixtureApi.request = request
 

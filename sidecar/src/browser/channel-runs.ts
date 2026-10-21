@@ -610,6 +610,7 @@ export const createChannelBrowserRuns = ({
     get,
     getForRun,
     getForTab,
+    getCurrentRunId: (runId: string) => getRaw(runId)?.current_run_id ?? null,
     list,
     needsYou,
     takeControl,

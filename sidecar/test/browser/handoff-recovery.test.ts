@@ -6,6 +6,7 @@ import { join } from "node:path"
 import { createBrowserEngine } from "../../src/browser/engine"
 import { createBrowserHandoffs } from "../../src/browser/handoffs"
 import { createKernel } from "../../src/kernel"
+import { createRuntimePersistence } from "../../src/runtime/persistence"
 
 const cleanups = new Set<() => Promise<void>>()
 afterEach(async () => {
@@ -49,6 +50,8 @@ test("a waiting handoff survives browser shutdown with its original deadline and
     timeoutMs: 120_000,
     signal: new AbortController().signal,
   })
+  const persistence = createRuntimePersistence({ database })
+  expect(persistence.getRun("old")?.browserWaitingForPerson).toBe(true)
   const deadline = ledger.get("tab")?.expiresAt
   await first.shutdown()
   let resumed = 0
@@ -67,8 +70,12 @@ test("a waiting handoff survives browser shutdown with its original deadline and
   expect(await restored.releaseTakeover("tab")).toBe(true)
   expect(await restored.releaseTakeover("tab")).toBe(true)
   await restored.shutdown()
-  getEngine()
+  const again = getEngine()
 
   expect(resumed).toBe(1)
   expect(ledger.get("tab")).toBeNull()
+  expect(persistence.getRun("old")?.browserWaitingForPerson).not.toBe(true)
+  await again.holdTakeover({ tabId: "tab", reason: "fixture", runId: "resumed" })
+  expect(ledger.get("tab")?.runId).toBe("resumed")
+  expect(persistence.getRun("resumed")?.browserWaitingForPerson).toBe(true)
 })
