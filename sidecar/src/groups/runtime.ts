@@ -26,6 +26,7 @@ type Turn = {
   group: BotGroup
   recipients: string[]
   controller: AbortController
+  timeoutError?: { errorClass: "timeout"; errorMessage: string }
   calls: number
   reservations: Set<string>
   action?: "ask_all" | "summarize"
@@ -128,7 +129,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
   const readRun = (id: string) => persistence.getRun(id)
   const cancelChildren = (turn: Turn): void => {
     turn.children.forEach((child) => {
-      engine.cancel(child)
+      engine.cancel(child, turn.timeoutError)
     })
   }
   const cancelTurn = (turn: Turn): void => {
@@ -165,8 +166,9 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     turn.controller.abort()
     cancelChildren(turn)
   }
-  const waitRun = (id: string, signal: AbortSignal, deadline: number | null): Promise<Run> =>
+  const waitRun = (id: string, turn: Turn, deadline: number | null): Promise<Run> =>
     new Promise((resolve, reject) => {
+      const signal = turn.controller.signal
       let timer: ReturnType<typeof setTimeout> | undefined
       let timedOut = false
       let dispose = () => {}
@@ -176,7 +178,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
         signal.removeEventListener("abort", abort)
       }
       const abort = () => {
-        if (signal.reason !== RESTART_ABORT_REASON) engine.cancel(id)
+        if (signal.reason !== RESTART_ABORT_REASON) engine.cancel(id, turn.timeoutError)
         check()
       }
       const check = () => {
@@ -219,10 +221,11 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
               return
             }
             timedOut = true
-            engine.cancel(id, {
+            turn.timeoutError = {
               errorClass: "timeout",
               errorMessage: "O pedido excedeu o prazo de execução. Tente novamente.",
-            })
+            }
+            engine.cancel(id, turn.timeoutError)
             check()
           },
           Math.max(1, expiresAt - Date.now()),
@@ -363,7 +366,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       throw new Error(result.error)
     }
     try {
-      const run = await waitRun(result.run.id, turn.controller.signal, turn.deadline)
+      const run = await waitRun(result.run.id, turn, turn.deadline)
       await pendingSharedUpdates
       await store.flushWritesAsync?.({ threadId: thread.id })
       if (run.status !== "succeeded") throw new Error(run.errorMessage ?? "O bot não concluiu o pedido")
@@ -609,7 +612,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
           save(turn, { status: "succeeded", finishedAt: Date.now() })
         } catch (error) {
           const interrupted = turn.controller.signal.reason === RESTART_ABORT_REASON
-          const canceled = turn.controller.signal.aborted && !interrupted
+          const canceled = turn.controller.signal.aborted && !interrupted && !turn.timeoutError
           // A failed coordinator must not leave delegated members running without a stoppable turn.
           turn.controller.abort()
           if (!interrupted) cancelChildren(turn)
@@ -624,8 +627,8 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
                 }
               : {
                   status: canceled ? "canceled" : "failed",
-                  errorClass: canceled ? "canceled" : "unknown",
-                  errorMessage: kernel.redact(String(error)),
+                  errorClass: canceled ? "canceled" : (turn.timeoutError?.errorClass ?? "unknown"),
+                  errorMessage: turn.timeoutError?.errorMessage ?? kernel.redact(String(error)),
                   finishedAt: Date.now(),
                 },
           )

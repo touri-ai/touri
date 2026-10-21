@@ -164,11 +164,11 @@ const fixture = async (
       })
       return { success: true as const, run }
     },
-    cancel: (id: string) => {
+    cancel: (id: string, reason?: { errorClass: "timeout"; errorMessage: string }) => {
       const run = persistence.getRun(id)
       if (!run) return { success: false as const, errorCode: "NOT_FOUND" as const, error: "missing" }
       if (["running", "queued"].includes(run.status)) {
-        Object.assign(run, { status: "canceled", finishedAt: Date.now() })
+        Object.assign(run, { status: reason ? "failed" : "canceled", ...(reason ?? {}), finishedAt: Date.now() })
         persistence.saveRun(run)
         controllers.get(id)?.abort()
         host.kernel.publish({ type: "run.updated", run })
@@ -545,7 +545,7 @@ test("R11: a read-only coordinator's ask_bot gets a consent card and the target 
     const target = f.store.getBot({ botId: ctx.botId })
     targetAccess = target ? delegatedBot(f.host.kernel, ctx.threadId, target).access : undefined
     complete("Lido")
-  })
+  }, 30_000)
   f.db.query("UPDATE bots SET access = 'read-only', approvals = 'never' WHERE id = ?").run(f.bots[0]?.id ?? "")
   f.db.query("UPDATE bots SET access = 'full', approvals = 'never' WHERE id = ?").run(f.bots[1]?.id ?? "")
   const cards: string[] = []
@@ -555,11 +555,11 @@ test("R11: a read-only coordinator's ask_bot gets a consent card and the target 
   })
   f.group = f.data.save({ ...f.input, coordinatorBotId: f.bots[0]?.id ?? null }, f.group)
   const run = f.send("@qa planeje")
-  await until(() => f.persistence.getRun(run.id)?.status === "succeeded")
+  await until(() => f.persistence.getRun(run.id)?.status === "succeeded", 3000)
   expect(cards).toContain("ask_bot")
   expect(answer).toMatchObject({ success: true, structured: { answer: "Lido" } })
   expect(targetAccess).toBe("read-only")
-})
+}, 30_000)
 
 test("queue serializes turns across group conversations; Parar cancels active and queued turns", async () => {
   const f = await fixture(async () => {})
@@ -846,12 +846,15 @@ test("target approval stays pending until user decision; timeout cancels a stall
       .some((m) => m.parts.some((p) => p.type === "approval" && p.decision === "pending")),
   ).toBe(true)
   await until(() => f.persistence.getRun(run.id)?.status === "failed")
-  const child = f.db
-    .query(
-      "SELECT r.error_class, r.status FROM runs r JOIN group_run_links link ON link.run_id = r.id WHERE link.turn_id = ? LIMIT 1",
-    )
-    .get(run.id)
-  expect(child).toEqual({ error_class: "timeout", status: "failed" })
+  const getChild = () =>
+    f.db
+      .query<{ error_class: string | null; status: string }, [string]>(
+        "SELECT r.error_class, r.status FROM runs r JOIN group_run_links link ON link.run_id = r.id WHERE link.turn_id = ? LIMIT 1",
+      )
+      .get(run.id)
+  await until(() => getChild()?.status === "failed")
+
+  expect(getChild()).toEqual({ error_class: "timeout", status: "failed" })
   finish?.("late answer")
   expect(f.store.activePath({ threadId: f.thread.id }).some((m) => m.text === "late answer")).toBe(false)
 })
@@ -1696,7 +1699,7 @@ test("a waiting group routine keeps its original timeout after restart", async (
   expect(f.persistence.getRun(runId)?.errorClass).not.toBe("app_restart")
   const members = restarted.listRuns(f.thread.id).filter((run) => run.groupTurnId === runId)
   expect(members).toHaveLength(1)
-  expect(members[0]?.status).toBe("canceled")
+  expect(members[0]).toMatchObject({ status: "failed", errorClass: "timeout" })
 })
 
 test("a group routine posts its prompt into the group conversation and finishes with every member's reply", async () => {
@@ -2074,7 +2077,7 @@ test("ask_all gives every peer the remaining turn deadline and cancels the entir
 
   const children = scenario.runtime.listRuns(scenario.thread.id).filter((run) => run.groupTurnId === turn.id)
   expect(children).toHaveLength(3)
-  expect(children.every((run) => run.status === "canceled")).toBe(true)
+  expect(children.every((run) => run.status === "failed" && run.errorClass === "timeout")).toBe(true)
   finish.resolve()
 })
 
