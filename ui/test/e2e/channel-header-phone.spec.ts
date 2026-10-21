@@ -5,7 +5,8 @@ import type { ApiRequest } from "../../src/api/client"
 
 for (const width of [360, 390, 430]) {
   test(`channel header contains its members above scrolling messages at ${width}px`, async ({ page }) => {
-    const evidence = resolve(import.meta.dirname, "../../../docs/qa/landing-bugs")
+    const evidence = resolve(import.meta.dirname, "../../test-results/channel-header-phone")
+    test.setTimeout(60_000)
     mkdirSync(evidence, { recursive: true })
     await page.setViewportSize({ width: 1100, height: 844 })
     await page.goto("/test/e2e/groups-harness.html")
@@ -29,17 +30,18 @@ for (const width of [360, 390, 430]) {
         coordinatorBotId: null,
       })
     })
+    await page.getByRole("tab", { name: /^Work,/ }).click()
     await page
-      .getByRole("region", { name: "Grupos", exact: true })
-      .getByRole("button", { name: "Viagens", exact: true })
+      .getByRole("region", { name: "Canais", exact: true })
+      .getByRole("button", { name: /^Viagens/ })
       .click()
-    const composer = page.getByRole("textbox", { name: "Mensagem para Viagens" })
+    const composer = page.getByRole("textbox", { name: "Mensagem em #Viagens" })
     await expect(composer).toBeVisible()
     await composer.fill("Vamos organizar a viagem de demonstração.")
     await composer.press("Enter")
     await page.setViewportSize({ width, height: 844 })
     const header = page.locator(".group-header")
-    const members = page.locator(".group-header-members")
+    const members = header.locator(".group-member-count")
     await expect(members).toBeVisible()
     await page.evaluate(() => document.fonts.ready)
     await page.screenshot({ path: `${evidence}/channel-header-${width}.png` })

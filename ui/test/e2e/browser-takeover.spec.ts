@@ -42,6 +42,11 @@ for (const viewport of [
 
     const keyboard = page.getByRole("textbox", { name: "Entrada de teclado para o navegador" })
     await expect(keyboard).toBeEnabled()
+    const keyboardButton = page.getByRole("button", { name: "Digitar no navegador" })
+    const keyboardButtonSize = await keyboardButton.boundingBox()
+    if (!keyboardButtonSize) throw new Error("Missing browser keyboard control")
+    expect(keyboardButtonSize.width).toBeGreaterThan(100)
+    expect(keyboardButtonSize.height).toBeLessThan(65)
     await page.getByRole("button", { name: "Digitar no navegador" }).click()
     await expect(keyboard).toBeFocused()
     await page.keyboard.insertText("valor privado de teste")
