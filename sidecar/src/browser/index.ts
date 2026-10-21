@@ -1,4 +1,3 @@
-import type { Database } from "bun:sqlite"
 import type {
   ApiModel,
   BrowserFailureInfo,
@@ -789,11 +788,19 @@ export const init = async (
           if (scoped && !tab) return { status: 404, json: { error: "Bot não encontrado" } }
           const tabId = scoped ? tab?.tabId : query.tabId
           const capture = () => engine.preview({ botId, ...(tabId ? { tabId } : {}), signal })
-          const frame = person?.role === "member" ? await previewScopes.capture({
-            botId,
-            canReadThread: (threadId) => kernel.services.use("work.canAccessThread")?.({ personId: person.id, role: person.role, threadId }) === true,
-            capture,
-          }) : await capture()
+          const frame =
+            person?.role === "member"
+              ? await previewScopes.capture({
+                  botId,
+                  canReadThread: (threadId) =>
+                    kernel.services.use("work.canAccessThread")?.({
+                      personId: person.id,
+                      role: person.role,
+                      threadId,
+                    }) === true,
+                  capture,
+                })
+              : await capture()
           return frame
             ? { status: 200, json: frame }
             : { status: 409, json: { error: "Nenhuma página disponível para prévia" } }

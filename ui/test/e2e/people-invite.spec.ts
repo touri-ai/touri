@@ -72,6 +72,7 @@ test("an owner invites a person who joins in a second browser context", async ({
   }
   expect(delivery.invite.channelIds).toEqual([createdGroup.group.id])
   expect(delivery.invite.role).toBe("member")
+  await expect(inviteDialog.getByLabel("Código do convite", { exact: true })).toHaveValue(delivery.code)
   await expect(inviteDialog.getByText(/O envio de e-mail não está configurado/)).toBeVisible()
   await expect(inviteDialog.getByRole("button", { name: "Copiar link", exact: true })).toBeVisible()
   await expect(inviteDialog.getByRole("button", { name: "Revogar", exact: true })).toBeVisible()
