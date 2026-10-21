@@ -18,20 +18,18 @@ for (const width of [1440, 390]) {
       await page.goto("/test/e2e/thread-deletion-harness.html")
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
       await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+      await page.clock.pauseAt(new Date("2026-10-20T12:01:00Z"))
       if (width === 390) await page.getByRole("button", { name: "Abrir menu" }).click()
       const conversations = page.getByRole("region", { name: "Conversas de mark" })
       const row = conversations.locator(".thread-row").filter({ hasText: "Eventos de leads" })
-      const screenshot = (name: string) => {
-        const target =
-          name === "after-confirmation"
-            ? page.getByRole("alertdialog")
-            : name === "after-menu"
-              ? page.getByRole("menu")
-              : name === "after-undo-toast"
-                ? page.locator(".thread-delete-toast")
-                : page.locator("nav.bot-sidebar")
-        return target.screenshot({ path: join(evidenceDirectory, `${name}-${width}-${theme}.png`) })
+      const getEvidenceTarget = (name: string) => {
+        if (name === "after-confirmation") return page.getByRole("alertdialog")
+        if (name === "after-menu") return page.getByRole("menu")
+        if (name === "after-undo-toast") return page.locator(".thread-delete-toast")
+        return page.locator("nav.bot-sidebar")
       }
+      const screenshot = (name: string) =>
+        getEvidenceTarget(name).screenshot({ path: join(evidenceDirectory, `${name}-${width}-${theme}.png`) })
       await mkdir(evidenceDirectory, { recursive: true })
       await expect(row).toBeVisible()
       await screenshot("before")
