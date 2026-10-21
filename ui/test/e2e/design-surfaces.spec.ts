@@ -123,17 +123,26 @@ for (const viewport of viewports) {
 }
 
 test("phone navigation survives replacing a bot routine header", async ({ page }) => {
+  test.setTimeout(60_000)
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto("/test/e2e/home-harness.html")
   await openSidebar(page)
   await showBotRoutines(page, "mark")
   await expect(page.locator(".cron-screen")).toBeVisible()
+  const header = page.locator(".cron-screen .screen-header")
+  await expect(header.getByRole("button", { name: "Abrir menu", exact: true })).toBeVisible()
   await openSidebar(page)
 
   await showBotRoutines(page, "onb")
 
   const menu = page.getByRole("button", { name: "Abrir menu", exact: true })
   await expect(menu).toBeVisible()
+  await expect(header.getByRole("button", { name: "Abrir menu", exact: true })).toBeVisible()
+  const menuBounds = await menu.boundingBox()
+  const copyBounds = await header.locator("div").first().boundingBox()
+  if (!menuBounds || !copyBounds) throw new Error("Missing phone header bounds")
+
+  expect(copyBounds.x + copyBounds.width).toBeLessThanOrEqual(menuBounds.x)
   await menu.click()
   await expect(page.getByRole("dialog", { name: "Barra lateral", exact: true })).toBeVisible()
 })

@@ -46,6 +46,16 @@ test.describe("phone layout review", () => {
       ),
     )
     expect(Math.max(...controlCenters) - Math.min(...controlCenters)).toBeLessThanOrEqual(4)
+    const bounds = await Promise.all(
+      [".model-picker-trigger.composer-model", ".composer-project-chip", ".composer-actions"].map((selector) =>
+        composer.locator(selector).boundingBox(),
+      ),
+    )
+    const [model, project, actions] = bounds
+    if (!model || !project || !actions) throw new Error("Missing composer selection bounds")
+
+    expect(model.x + model.width).toBeLessThanOrEqual(project.x)
+    expect(project.x + project.width).toBeLessThanOrEqual(actions.x)
   })
 
   test("wrapped approval status starts at the tool card content edge", async ({ page }) => {

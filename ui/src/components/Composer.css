@@ -329,6 +329,10 @@
     height: var(--icon-button-size);
     text-align: left;
   }
+  .composer-island .composer-project-chip {
+    width: 100%;
+    max-width: 100%;
+  }
   .composer-island .composer-model-name {
     min-width: 0;
     overflow: hidden;

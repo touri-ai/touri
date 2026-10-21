@@ -211,6 +211,7 @@ const AppContent = ({ kernel }: AppProps) => {
   const [routineDraft, setRoutineDraft] = useState<RoutineDraft | null>(null)
   const [localNotice, setLocalNotice] = useState<unknown>(null)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [workspaceHeader, setWorkspaceHeader] = useState<HTMLElement | null>(null)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const unavailableApi = useMemo<UiApi>(
     () => ({
@@ -1061,7 +1062,7 @@ const AppContent = ({ kernel }: AppProps) => {
         <div className="app-grid">
           <SidebarDrawer
             panelOpen={section === "bots" && screen === "chat" && panelOpen}
-            workspaceHeaderKey={`${section}:${screen}:${advancedPage ?? ""}:${route.section === "advanced" ? (route.botId ?? "") : ""}`}
+            workspaceHeader={workspaceHeader}
             serverMode={serverMode}
             serverUrl={serverState.status?.url ?? null}
             host={data.routineHost}
@@ -1127,7 +1128,7 @@ const AppContent = ({ kernel }: AppProps) => {
             onNotificationsOpen={setNotificationsOpen}
           />
           <Suspense fallback={<PageLoading />}>
-            <PageTransition route={route}>
+            <PageTransition route={route} onHeaderChange={setWorkspaceHeader}>
               {section === "bots" && screen === "chat" && !selectedGroup && (
                 <TeamNextStep
                   bots={data.bots}

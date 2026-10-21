@@ -13,13 +13,12 @@ const subscribe = (changed: () => void) => {
 }
 const isNarrow = () => window.matchMedia(query).matches
 
-type SidebarDrawerProps = ComponentProps<typeof Sidebar> & { panelOpen?: boolean; workspaceHeaderKey?: string }
+type SidebarDrawerProps = ComponentProps<typeof Sidebar> & { panelOpen?: boolean; workspaceHeader?: HTMLElement | null }
 
-export const SidebarDrawer = ({ panelOpen = false, workspaceHeaderKey = "", ...props }: SidebarDrawerProps) => {
+export const SidebarDrawer = ({ panelOpen = false, workspaceHeader = null, ...props }: SidebarDrawerProps) => {
   const deletion = useThreadDeletion(props)
   const narrow = useSyncExternalStore(subscribe, isNarrow)
   const [open, setOpen] = useState(false)
-  const [workspaceHeader, setWorkspaceHeader] = useState<HTMLElement | null>(null)
   const dialog = useRef<HTMLDialogElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   const close = () => {
@@ -38,16 +37,6 @@ export const SidebarDrawer = ({ panelOpen = false, workspaceHeaderKey = "", ...p
     element?.querySelector<HTMLButtonElement>(".sidebar-close")?.focus()
     return () => element?.close()
   }, [narrow, open])
-  // biome-ignore lint/correctness/useExhaustiveDependencies: Screen navigation can replace this header without changing the media query.
-  useEffect(() => {
-    if (!narrow) {
-      setWorkspaceHeader(null)
-      return
-    }
-
-    setWorkspaceHeader(document.querySelector<HTMLElement>(".workspace-page .screen-header"))
-  }, [narrow, workspaceHeaderKey])
-
   if (!narrow)
     return (
       <>

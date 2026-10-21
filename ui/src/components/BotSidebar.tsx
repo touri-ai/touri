@@ -147,13 +147,12 @@ export const Sidebar = (props: SidebarProps) => {
     action()
   }
   const openNotification = (item: NotificationRecord): void => {
-    if (isFailureNotice(item)) {
-      navigate(() => props.notificationActions.open(item))
+    if (props.onNeedsYou && !isFailureNotice(item)) {
+      props.onNeedsYou(item)
       return
     }
 
-    const open = props.onNeedsYou ?? props.notificationActions.open
-    navigate(() => open(item))
+    navigate(() => props.notificationActions.open(item))
   }
   // Switching bots inside Preview keeps that view; global pages return to the bot conversation.
   const select = (id: Id): void => {

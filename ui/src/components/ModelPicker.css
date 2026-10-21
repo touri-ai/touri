@@ -205,8 +205,8 @@
   }
 
   .composer.composer-island .model-picker-trigger.composer-model {
-    width: auto;
-    max-width: 34vw;
+    width: 100%;
+    max-width: 100%;
     min-height: var(--icon-button-size);
     text-align: left;
   }
