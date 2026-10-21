@@ -139,6 +139,7 @@ export const InvitePersonDialog = ({
             onChange={(event) => setName(event.target.value)}
           />
           <label htmlFor={emailId}>{t("E-mail", {}, locale)}</label>
+          <p className="field-help">{t("Opcional. Sem e-mail, compartilhe o link ou código.", {}, locale)}</p>
           <input
             id={emailId}
             type="email"
@@ -254,6 +255,15 @@ const InviteSent = ({
         {delivery.emailSent && <span>{t("Convite enviado para {email}", { email: invite.email }, locale)}</span>}
       </p>
       <p className="field-help">{notice.text}</p>
+      {delivery.code && (
+        <label>
+          {t("Código do convite", {}, locale)}
+          <input readOnly value={delivery.code} onFocus={(event) => event.currentTarget.select()} />
+        </label>
+      )}
+      <p className="field-help">
+        {t("Abra /join no endereço do time e informe o código. Válido por 24 horas, para uma pessoa.", {}, locale)}
+      </p>
       <div className="invite-actions">
         {delivery.emailConfigured && (
           <button type="button" className="button" disabled={busy !== null} onClick={onResend}>

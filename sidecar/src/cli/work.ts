@@ -138,6 +138,7 @@ export const initWorkMode = ({
   const issueInvite = async ({
     invite,
     token,
+    code,
     inviter,
     requestOrigin,
     publicAddress,
@@ -145,6 +146,7 @@ export const initWorkMode = ({
   }: {
     invite: Invite
     token: string
+    code: string
     inviter: Person
     requestOrigin: string | null
     publicAddress: string
@@ -153,6 +155,7 @@ export const initWorkMode = ({
     emailConfigured: boolean
     emailSent: boolean
     link: string
+    code: string
     requestOriginReachability: ReturnType<typeof getAddressReachability>
     publicAddressReachability: ReturnType<typeof getAddressReachability>
   }> => {
@@ -161,11 +164,18 @@ export const initWorkMode = ({
     const config = pendingEmailConfig(authStore)
     const requestOriginReachability = getAddressReachability(requestOrigin)
     const publicAddressReachability = getAddressReachability(publicAddress)
-    if (!config || !(await email.hasCredentials(config)))
-      return { emailConfigured: false, emailSent: false, link, requestOriginReachability, publicAddressReachability }
+    if (!invite.email || !config || !(await email.hasCredentials(config)))
+      return {
+        emailConfigured: false,
+        emailSent: false,
+        link,
+        code,
+        requestOriginReachability,
+        publicAddressReachability,
+      }
     const content = buildInvitationContent({ invite, inviter, config, link })
     const emailSent = await email.send({ config, content, signal })
-    return { emailConfigured: true, emailSent, link, requestOriginReachability, publicAddressReachability }
+    return { emailConfigured: true, emailSent, link, code, requestOriginReachability, publicAddressReachability }
   }
 
   const routes: RouteModule = {
@@ -290,7 +300,7 @@ export const initWorkMode = ({
           if (
             name.length === 0 ||
             name.length > 80 ||
-            !isValidEmail(emailAddress) ||
+            (emailAddress !== "" && !isValidEmail(emailAddress)) ||
             (role !== "member" && role !== "admin") ||
             channelIds === null
           )
@@ -312,6 +322,7 @@ export const initWorkMode = ({
           const delivery = await issueInvite({
             invite: created.invite,
             token: created.token,
+            code: created.code,
             inviter: actor,
             requestOrigin,
             publicAddress,
@@ -338,6 +349,7 @@ export const initWorkMode = ({
           const delivery = await issueInvite({
             invite: resent.invite,
             token: resent.token,
+            code: resent.code,
             inviter: actor,
             requestOrigin,
             publicAddress,
@@ -427,7 +439,7 @@ export const initWorkMode = ({
           const recipient = normalizeEmail(asText(isRecord(body) ? body.to : null))
           if (!isValidEmail(recipient)) return fail(400, "INVALID_ARGS", "Informe um e-mail válido para o teste")
           const config = pendingEmailConfig(authStore)
-          if (!config || !(await email.hasCredentials(config)))
+          if (!invite.email || !config || !(await email.hasCredentials(config)))
             return fail(409, "EMAIL_NOT_CONFIGURED", "Configure o envio de e-mail primeiro")
           const testContent = getTestEmail({ teamName: config.teamName })
           const sent = await email.send({ config, content: { ...testContent, to: recipient }, signal })

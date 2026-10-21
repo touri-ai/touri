@@ -13,11 +13,13 @@ export const redeemInvite = async ({
   token,
   email,
   deviceName,
+  name,
   fetchImpl = fetch,
 }: {
   token: string
   email: string
   deviceName: string
+  name?: string
   fetchImpl?: typeof fetch
 }): Promise<RedeemResult> => {
   try {
@@ -25,7 +27,12 @@ export const redeemInvite = async ({
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, email: email.trim(), deviceName: deviceName.trim() || "Navegador" }),
+      body: JSON.stringify({
+        token,
+        ...(name ? { name } : {}),
+        email: email.trim(),
+        deviceName: deviceName.trim() || "Navegador",
+      }),
       signal: AbortSignal.timeout(15_000),
     })
     if (response.ok) return { ok: true }

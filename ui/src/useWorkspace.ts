@@ -69,6 +69,7 @@ export type WorkspaceData = {
   routineRuns: Array<RoutineRun>
   doctor: DoctorReport | null
   doctorError: string | null
+  isMember?: boolean
   settings: ApiRoutes["GET /settings"]["res"]["settings"] | null
   selectedBotId: Id | null
   selectedThreadId: Id | null
@@ -568,7 +569,8 @@ const getDraftThread = (botId: Id, groupId?: Id): Thread => {
 
 // chatOpen: a draft only becomes a real thread while the chat it belongs to is on screen.
 export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Workspace => {
-  const diagnosis = useDoctorReport(api, enabled)
+  const [isMember, setIsMember] = useState<boolean | null>(null)
+  const diagnosis = useDoctorReport(api, enabled && isMember === false)
   const [data, setData] = useReducer(
     (current: WorkspaceData, update: (current: WorkspaceData) => WorkspaceData) => {
       const next = update(current)
@@ -716,6 +718,9 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
     const completedRuns = new Set<Id>()
     completedDuringLoad.current = completedRuns
     try {
+      const session = await api.request("GET /session", {}).catch(() => null)
+      const member = session?.person?.role === "member"
+      setIsMember(member)
       const [
         groupResponse,
         botResponse,
@@ -748,18 +753,28 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
           }
           return response
         }),
-        getOptionalWorkspaceRead(api.request("GET /projects", {}), { projects: [] }),
-        getOptionalWorkspaceRead(api.request("GET /settings", {}), { settings: null }),
-        getOptionalWorkspaceRead(api.request("GET /previews", {}), { previews: [] }),
-        api.request("GET /browser/tabs", {}).catch(() => ({ tabs: [] })),
-        getOptionalWorkspaceRead(api.request("GET /routines", {}), {
-          routines: [],
-          host: undefined,
-          hostKind: undefined,
-        }),
-        api.request("GET /routine-runs", {}).catch(() => ({ routineRuns: [] })),
+        member ? { projects: [] } : getOptionalWorkspaceRead(api.request("GET /projects", {}), { projects: [] }),
+        member ? { settings: null } : getOptionalWorkspaceRead(api.request("GET /settings", {}), { settings: null }),
+        member ? { previews: [] } : getOptionalWorkspaceRead(api.request("GET /previews", {}), { previews: [] }),
+        (member ? Promise.resolve({ tabs: [] }) : api.request("GET /browser/tabs", {})).catch(() => ({ tabs: [] })),
+        getOptionalWorkspaceRead(
+          member
+            ? Promise.resolve({ routines: [], host: undefined, hostKind: undefined })
+            : api.request("GET /routines", {}),
+          {
+            routines: [],
+            host: undefined,
+            hostKind: undefined,
+          },
+        ),
+        (member ? Promise.resolve({ routineRuns: [] }) : api.request("GET /routine-runs", {})).catch(() => ({
+          routineRuns: [],
+        })),
         api.request("GET /notifications", {}).catch(() => ({ notifications: [] })),
-        api.request("GET /machines", {}).catch(() => ({
+        (member
+          ? Promise.resolve({ capability: { available: false, reason: "", provider: null }, machines: [] })
+          : api.request("GET /machines", {})
+        ).catch(() => ({
           capability: { available: false, reason: t("No virtualization on this host"), provider: null },
           machines: [],
         })),
@@ -801,7 +816,9 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
           incomingRuns,
         )
         const selectedBot = current.bots.find((bot) => bot.id === current.selectedBotId) ?? current.bots[0]
+        const channelThread = member ? threads.find((thread) => thread.groupId) : undefined
         const selectedThread =
+          channelThread ??
           threads.find((thread) => thread.id === current.selectedThreadId && thread.botId === selectedBot?.id) ??
           lastActiveThread(
             threads,
@@ -823,6 +840,7 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
         const pendingRequests = countPendingRequests(notifications, activityResponse.messages)
         return {
           ...current,
+          isMember: member,
           groups: groupResponse?.groups ?? [],
           machineCapability: machineResponse.capability,
           machines: machineResponse.machines,
@@ -846,7 +864,7 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
           settings: settingsResponse.settings,
           notifications,
           pendingRequestsOnReturn: pendingRequests || null,
-          selectedBotId: selectedBot?.id ?? null,
+          selectedBotId: selectedThread?.botId ?? selectedBot?.id ?? null,
           selectedThreadId,
           threadCreation,
           composerKey:

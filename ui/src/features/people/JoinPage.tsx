@@ -14,24 +14,23 @@ export const JoinPage = ({
   redeem?: typeof redeemInvite
   onJoined: () => void
 }) => {
-  const token = getInviteToken(hash)
+  const [token, setToken] = useState(() => getInviteToken(hash))
+  const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [deviceName, setDeviceName] = useState(getDefaultDeviceName)
   const [busy, setBusy] = useState(false)
   const [joined, setJoined] = useState(false)
-  const [message, setMessage] = useState<TranslationKey | null>(
-    token ? null : "Este link não tem um convite. Abra o link completo que você recebeu.",
-  )
+  const [message, setMessage] = useState<TranslationKey | null>(null)
   const emailId = useId()
   const deviceId = useId()
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (busy || !token || !email.trim()) return
+    if (busy || !token || !name.trim()) return
 
     setBusy(true)
     setMessage(null)
-    const result = await redeem({ token, email, deviceName })
+    const result = await redeem({ token, email, deviceName, name })
     if (!result.ok) {
       setMessage(result.message)
       setBusy(false)
@@ -46,15 +45,36 @@ export const JoinPage = ({
     <main className="join-page">
       <form className="join-card" onSubmit={(event) => void submit(event)}>
         <h1>{t("Entrar no touri")}</h1>
-        <p>{t("Você foi convidado. Confirme o e-mail do convite para entrar neste aparelho.")}</p>
+        <p>{t("Cole o código recebido ou abra o link do convite.")}</p>
+        <label>
+          {t("Código do convite")}
+          <input
+            value={token}
+            autoComplete="off"
+            maxLength={256}
+            required
+            disabled={busy}
+            onChange={(event) => setToken(event.target.value)}
+          />
+        </label>
+        <label>
+          {t("Seu nome")}
+          <input
+            value={name}
+            autoComplete="name"
+            maxLength={80}
+            required
+            disabled={busy}
+            onChange={(event) => setName(event.target.value)}
+          />
+        </label>
         <label htmlFor={emailId}>{t("E-mail do convite")}</label>
         <input
           id={emailId}
           type="email"
           autoComplete="email"
           value={email}
-          required
-          disabled={busy || !token}
+          disabled={busy}
           onChange={(event) => setEmail(event.target.value)}
         />
         <label htmlFor={deviceId}>{t("Nome deste aparelho")}</label>
@@ -62,12 +82,12 @@ export const JoinPage = ({
           id={deviceId}
           value={deviceName}
           maxLength={80}
-          disabled={busy || !token}
+          disabled={busy}
           onChange={(event) => setDeviceName(event.target.value)}
         />
         {message && <p role="alert">{getJoinMessage(message)}</p>}
         {joined && <p role="status">{t("Tudo certo! Abrindo seus canais…")}</p>}
-        <button type="submit" className="brand-button" disabled={busy || !token || !email.trim()}>
+        <button type="submit" className="brand-button" disabled={busy || !token || !name.trim()}>
           {t(busy ? "Entrando…" : "Entrar")}
         </button>
       </form>

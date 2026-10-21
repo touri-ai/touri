@@ -1063,6 +1063,7 @@ const AppContent = ({ kernel }: AppProps) => {
             serverUrl={serverState.status?.url ?? null}
             host={data.routineHost}
             groups={data.groups}
+            onInvitePerson={data.isMember ? undefined : () => openModal("invite")}
             onNewGroup={() => {
               setEditingGroup(null)
               openModal("group")
@@ -1241,7 +1242,7 @@ const AppContent = ({ kernel }: AppProps) => {
                               setEditingGroup(selectedGroup)
                               openModal("group")
                             }}
-                            onInviteToGroup={() => openModal("invite")}
+                            onInviteToGroup={data.isMember ? undefined : () => openModal("invite")}
                             focusApproval={
                               approvalFocus?.threadId === selectedThread?.id ? (approvalFocus ?? undefined) : undefined
                             }

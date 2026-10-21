@@ -18,7 +18,7 @@ export const inviteRoles: ReadonlyArray<{ id: PersonRole; name: TranslationKey; 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export const isInviteFormValid = ({ name, email }: { name: string; email: string }): boolean =>
-  name.trim().length > 0 && name.trim().length <= 80 && emailPattern.test(email.trim())
+  name.trim().length > 0 && name.trim().length <= 80 && (email.trim() === "" || emailPattern.test(email.trim()))
 
 /** The banner under the sent state: it tells the owner whether the email left or the link must be shared by hand. */
 export const getDeliveryNotice = (
@@ -59,6 +59,8 @@ export const getInviteErrorMessage = (error: unknown, locale: Locale = "pt-BR"):
   if (!(error instanceof ApiError)) return userFacingError(error)
   if (error.status === 403) return t("Só administradores podem convidar pessoas.", {}, locale)
   if (error.status === 429) return t("Muitos convites em pouco tempo. Aguarde um minuto e tente de novo.", {}, locale)
+  if (error.errorCode === "PUBLIC_ADDRESS_REQUIRED")
+    return t("Para convidar pessoas, configure o endereço público HTTPS em Pessoas nas preferências.", {}, locale)
   if (error.errorCode === "PERSON_EXISTS") return t("Este e-mail já pertence a uma pessoa do time.", {}, locale)
   if (error.errorCode === "INVALID_ARGS") return t("Informe o nome e um e-mail válido.", {}, locale)
 

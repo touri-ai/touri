@@ -86,6 +86,10 @@ const hasAuthSchema = (database: Database): boolean =>
   )
 
 const migrateAuthDatabase = (database: Database): void => {
+  const inviteColumns = database.query("PRAGMA table_info(invites)").all() as Array<{ name: string }>
+  if (!inviteColumns.some(({ name }) => name === "code_hash"))
+    database.exec("ALTER TABLE invites ADD COLUMN code_hash TEXT")
+  database.exec("CREATE UNIQUE INDEX IF NOT EXISTS invites_code_hash ON invites(code_hash) WHERE code_hash IS NOT NULL")
   const hasColumn = (table: string, column: string): boolean =>
     (database.query(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some(({ name }) => name === column)
   const hasDevicePersonColumn = (): boolean => hasColumn("devices", "person_id")

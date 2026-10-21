@@ -386,3 +386,45 @@ test("successful admin actions share a bounded per-person rate window", () => {
   now += 60_001
   expect(limiter.check("owner")).toEqual({ allowed: true })
 })
+
+test("short invitation codes allow a named member without email and are single use", async () => {
+  const directory = await makeDirectory()
+  const store = await openAuthStore({ filename: join(directory, "auth.db") })
+  stores.add(store)
+  const created = await store.createInvite({
+    actorPersonId: "owner",
+    name: "Pessoa convidada",
+    email: "",
+    role: "member",
+    channelIds: ["channel-a"],
+  })
+  if (!created.success) throw new Error("Invitation creation failed")
+
+  const claims = await Promise.all(
+    ["Ana", "Bia"].map((name) =>
+      store.claimInvite({
+        token: created.code.toLowerCase().replaceAll("-", ""),
+        email: "",
+        name,
+        deviceName: "Browser",
+      }),
+    ),
+  )
+
+  expect(created.code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/u)
+  expect(claims.filter((claim) => claim.success)).toHaveLength(1)
+  const accepted = claims.find((claim) => claim.success)
+  if (!accepted?.success) throw new Error("Invitation redemption failed")
+  expect(["Ana", "Bia"]).toContain(accepted.person.name)
+  expect(accepted.person.email).toBeNull()
+  expect(store.getPersonChannelIds(accepted.person.id)).toEqual(["channel-a"])
+  expect(
+    await store.createInvite({
+      actorPersonId: accepted.person.id,
+      name: "Outra pessoa",
+      email: "",
+      role: "admin",
+      channelIds: [],
+    }),
+  ).toMatchObject({ success: false })
+})

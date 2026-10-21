@@ -5,6 +5,14 @@ export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
   Navegador: "Navegador",
+  "Código do convite": "Código do convite",
+  "Opcional. Sem e-mail, compartilhe o link ou código.": "Opcional. Sem e-mail, compartilhe o link ou código.",
+  "Abra /join no endereço do time e informe o código. Válido por 24 horas, para uma pessoa.":
+    "Abra /join no endereço do time e informe o código. Válido por 24 horas, para uma pessoa.",
+  "Para convidar pessoas, configure o endereço público HTTPS em Pessoas nas preferências.":
+    "Para convidar pessoas, configure o endereço público HTTPS em Pessoas nas preferências.",
+  "Seu nome": "Seu nome",
+  "Cole o código recebido ou abra o link do convite.": "Cole o código recebido ou abra o link do convite.",
   "Convidar pessoa": "Convidar pessoa",
   "E-mail": "E-mail",
   Papel: "Papel",
@@ -3100,6 +3108,14 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Delete automatic conversations older than {days} days?": "Delete automatic conversations older than {days} days?",
   "Select up to {count} conversations.": "Select up to {count} conversations.",
   Navegador: "Browser",
+  "Código do convite": "Invitation code",
+  "Opcional. Sem e-mail, compartilhe o link ou código.": "Optional. Without email, share the link or code.",
+  "Abra /join no endereço do time e informe o código. Válido por 24 horas, para uma pessoa.":
+    "Open /join at the team address and enter the code. Valid for 24 hours, for one person.",
+  "Para convidar pessoas, configure o endereço público HTTPS em Pessoas nas preferências.":
+    "To invite people, configure the public HTTPS address in People in settings.",
+  "Seu nome": "Your name",
+  "Cole o código recebido ou abra o link do convite.": "Paste the code you received or open the invitation link.",
   "Convidar pessoa": "Invite person",
   "E-mail": "Email",
   Papel: "Role",

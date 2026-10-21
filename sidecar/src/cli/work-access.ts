@@ -380,6 +380,9 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
       const botId = pathname.split("/")[2] ?? ""
       return canAccessBot({ personId, role, botId }) ? null : notFound
     }
+    const browserPreview = /^\/bots\/([^/]+)\/browser-preview$/u.exec(pathname)
+    if (browserPreview && verb === "GET")
+      return canAccessBot({ personId, role, botId: browserPreview[1] ?? "" }) ? null : notFound
     const presenceRoute = /^\/bots\/([^/]+)\/machine\/presence\/socket$/u.exec(pathname)
     if (presenceRoute && verb === "GET")
       return canAccessBot({ personId, role, botId: presenceRoute[1] ?? "" }) ? null : notFound
