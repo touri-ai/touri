@@ -602,6 +602,7 @@ export const ptBR = {
   "{name} is working again": "{name} voltou a trabalhar",
   "Só quem fez o pedido ou a pessoa responsável pelo bot pode controlar esta aba.":
     "Só quem fez o pedido ou a pessoa responsável pelo bot pode controlar esta aba.",
+  "O pedido excedeu o prazo de execução. Tente novamente.": "O pedido excedeu o prazo de execução. Tente novamente.",
   "O bot que delegou a tarefa não está disponível para a retomada.":
     "O bot que delegou a tarefa não está disponível para a retomada.",
   "Could not choose safely. Take over the tab to choose.":
@@ -3118,6 +3119,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "No executable browser was found. Install a compatible browser on the bot's computer and check again.",
 
   "Take over tab": "Take over",
+  "Take over browser": "Take over",
   "Check your tools": "Check your tools",
   "See what is ready to use and what needs your attention.": "See what is ready to use and what needs your attention.",
   "{tool} is installed": "{tool} is installed",
@@ -4440,6 +4442,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "{name} is working again": "{name} is working again",
   "Só quem fez o pedido ou a pessoa responsável pelo bot pode controlar esta aba.":
     "Only the requester or the bot owner can control this tab.",
+  "O pedido excedeu o prazo de execução. Tente novamente.": "The request exceeded its time limit. Try again.",
   "O bot que delegou a tarefa não está disponível para a retomada.":
     "The bot that delegated the task is unavailable to resume it.",
   "Baixar imagem": "Download image",

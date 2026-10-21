@@ -116,7 +116,7 @@ it("keeps bots reachable beside global screens, footer integrations and creation
   fireEvent.click(within(sidebar).getByRole("button", { name: "Integrações", exact: true }))
   expect(await screen.findByRole("heading", { name: "Integrações" })).toBeVisible()
   fireEvent.click(within(sidebar).getByRole("button", { name: "Criar bot" }))
-  expect(screen.getByRole("dialog", { name: "Criar um bot" })).toBeVisible()
+  expect(await screen.findByRole("dialog", { name: "Criar um bot" })).toBeVisible()
 })
 
 it("cleans bot, thread and search previews and opens search with either shortcut", async () => {

@@ -209,7 +209,7 @@ it("never approves: approval cards are not palette results and Enter in the pale
 it("does not open over another dialog", async () => {
   await start()
   fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
-  expect(screen.getByRole("dialog", { name: "Criar um bot" })).toBeVisible()
+  expect(await screen.findByRole("dialog", { name: "Criar um bot" })).toBeVisible()
   fireEvent.keyDown(window, { key: "k", metaKey: true })
   expect(screen.queryByRole("dialog", { name: DIALOG })).toBeNull()
 })

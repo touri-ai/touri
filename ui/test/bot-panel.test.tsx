@@ -97,7 +97,7 @@ test("panel tabs are accessible from arrows and save the label", async () => {
   expect(await screen.findByRole("button", { name: /notas.md.*KB/ })).toBeVisible()
   fireEvent.keyDown(screen.getByRole("tab", { name: "Biblioteca" }), { key: "End" })
   expect(screen.getByRole("tab", { name: "Computador" })).toHaveFocus()
-  expect(screen.getByRole("button", { name: "Ligar computador" })).toBeVisible()
+  expect(await screen.findByRole("button", { name: "Ligar computador" })).toBeVisible()
 })
 
 test("panel visibility persists independently per bot and survives remount", async () => {

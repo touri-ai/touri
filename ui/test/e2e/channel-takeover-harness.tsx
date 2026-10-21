@@ -40,6 +40,21 @@ localStorage.setItem(
   JSON.stringify({ botId: bot.id, threadId: channel.id, route: { section: "bots", screen: "chat" } }),
 )
 
+const previewCanvas = document.createElement("canvas")
+previewCanvas.width = 800
+previewCanvas.height = 500
+const previewDrawing = previewCanvas.getContext("2d")
+if (previewDrawing) {
+  previewDrawing.fillStyle = "#f4f4f5"
+  previewDrawing.fillRect(0, 0, 800, 500)
+  previewDrawing.fillStyle = "#242429"
+  previewDrawing.font = "28px sans-serif"
+  previewDrawing.fillText("Portal de demonstração", 48, 100)
+  previewDrawing.font = "20px sans-serif"
+  previewDrawing.fillText("Página fictícia para conferir a devolução", 48, 150)
+}
+const previewImage = previewCanvas.toDataURL("image/jpeg")
+
 const channelMessages: Message[] = []
 const channelRuns: Run[] = []
 let takeoverNotice: NotificationRecord | null = null
@@ -78,12 +93,16 @@ const getMessage = ({
   updatedAt: getTimestamp(),
 })
 
-const getBrowserAction = (callId: string, action: "request_takeover" | "snapshot"): ToolCallPart => ({
+const getBrowserAction = (callId: string, action: "open" | "request_takeover" | "snapshot"): ToolCallPart => ({
   type: "tool_call",
   callId,
   tool: `mcp__touri__browser_${action}`,
   summary: action,
-  inputJson: JSON.stringify({ tabId: browserTab.tabId, ...(action === "request_takeover" ? { reason: "login" } : {}) }),
+  inputJson: JSON.stringify({
+    tabId: browserTab.tabId,
+    ...(action === "open" ? { url: browserTab.url } : {}),
+    ...(action === "request_takeover" ? { reason: "login" } : {}),
+  }),
   outputJson: JSON.stringify({ structured: { status: action === "request_takeover" ? "waiting_for_person" : "ok" } }),
   startedAt: getTimestamp(),
   resolvedAt: getTimestamp(),
@@ -195,8 +214,7 @@ const request: ApiRequest = async <K extends keyof ApiRoutes>(
     return {
       title: browserTab.title,
       url: browserTab.url,
-      image:
-        "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='500'%3E%3Crect width='100%25' height='100%25' fill='%23f8fafc'/%3E%3Ctext x='48' y='110' font-size='28' fill='%230f172a'%3EPortal de demonstra%C3%A7%C3%A3o%3C/text%3E%3Ctext x='48' y='180' font-size='22' fill='%23475569'%3EFa%C3%A7a login para continuar%3C/text%3E%3C/svg%3E",
+      image: previewImage,
     } as ApiRoutes[K]["res"]
   if (key === "GET /threads/:id/messages" && pathValues.id === channel.id)
     return { messages: [...channelMessages], activeLeafId: channelMessages.at(-1)?.id ?? null } as ApiRoutes[K]["res"]
@@ -249,6 +267,7 @@ const request: ApiRequest = async <K extends keyof ApiRoutes>(
       parentId: userMessage.id,
       parts: [
         { type: "text", text: t("O portal de demonstração pediu login para continuar.", {}, "pt-BR") },
+        getBrowserAction("portal-open", "open"),
         getBrowserAction("login-takeover", "request_takeover"),
       ],
     })
@@ -282,6 +301,17 @@ const request: ApiRequest = async <K extends keyof ApiRoutes>(
     updateTakeover(true, true)
     return { sessionId: "channel-session", controlEpoch: "channel-control", viewEpoch: 0 } as ApiRoutes[K]["res"]
   }
+  if (key === "POST /browser/tabs/:id/takeover/frame")
+    return {
+      controlEpoch: "channel-control",
+      targetEpoch: 1,
+      viewEpoch: (input as { viewEpoch: number }).viewEpoch,
+      title: browserTab.title,
+      url: browserTab.url,
+      image: previewImage,
+      width: 800,
+      height: 500,
+    } as ApiRoutes[K]["res"]
   if (key === "DELETE /browser/tabs/:id/takeover/session") {
     resumeInChannel()
     return {} as ApiRoutes[K]["res"]

@@ -130,7 +130,7 @@ it("uses a pt-BR preferences title and separate labels for the shortcut and brow
   render(<App kernel={{ services: { api: createMockApi() } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   fireEvent.click(screen.getByRole("button", { name: /Você Local/ }))
-  const settings = screen.getByRole("dialog", { name: "Configurações" })
+  const settings = await screen.findByRole("dialog", { name: "Configurações" })
   expect(within(settings).getByText("preferências locais")).toBeVisible()
   fireEvent.click(within(settings).getByText("Chat, barra lateral e atalhos"))
   const shortcut = within(settings).getByText("Atalho para controle do computador:")

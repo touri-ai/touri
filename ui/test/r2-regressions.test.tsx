@@ -277,7 +277,7 @@ describe("r2 regressions", () => {
     )
     expect(document.querySelector(".preview-process-entry")).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "Conectar" }))
-    const dialog = screen.getByRole("dialog", { name: "Conectar projeto" })
+    const dialog = await screen.findByRole("dialog", { name: "Conectar projeto" })
     const checked = within(dialog)
       .getAllByRole("checkbox")
       .filter((item) => (item as HTMLInputElement).checked)

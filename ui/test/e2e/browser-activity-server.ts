@@ -99,6 +99,7 @@ await init(kernel, undefined, {
 
 let tabId = ""
 let finalImage = ""
+let shouldRefreshPublicPage = false
 const failedSteps: string[] = []
 const commands: Record<string, { tool: string; args: Record<string, unknown> }> = {
   open: { tool: "browser_open", args: { url: fixtureUrl } },
@@ -182,6 +183,7 @@ const server = Bun.serve({
       return Response.json(preview ? { ...preview, url: "https://travel.example.test" } : { image: "" })
     }
     if (step === "attachment") return Response.json({ image: finalImage })
+    if (step === "takeover-release") shouldRefreshPublicPage = true
     if (step === "takeover-session")
       return dispatchControl("POST", "/browser/tabs/:id/takeover/session", takeoverTabId, body)
     if (step === "takeover-frame")
@@ -198,6 +200,7 @@ const server = Bun.serve({
       decisionCount = 0
       takeoverInputCount = 0
       finalImage = ""
+      shouldRefreshPublicPage = false
       failedSteps.length = 0
       const result = await engine.open({ url: fixtureUrl, ctx, timeoutMs: 30_000 })
       if (!result.success) return Response.json({ error: result.error }, { status: 500 })
@@ -214,16 +217,18 @@ const server = Bun.serve({
         },
       })
     }
-    if (step === "read") {
+    if (step === "read" && shouldRefreshPublicPage) {
       // The scripted bot revisits its known public search page after a manual handback.
       const navigation = await engine.navigate({
         tabId,
         botId: ctx.botId,
         url: fixtureUrl,
+        action: "goto",
         signal: ctx.signal,
         timeoutMs: 30_000,
       })
       if (!navigation.success) return Response.json({ error: navigation.error }, { status: 500 })
+      shouldRefreshPublicPage = false
     }
     const command = commands[step]
     if (!command) return new Response("Unknown browser step", { status: 400 })

@@ -1,4 +1,4 @@
-import { type ComponentProps, lazy, Suspense } from "react"
+import { type ComponentProps, lazy, type ReactNode, Suspense, useEffect, useRef } from "react"
 import { t } from "../i18n"
 import { Modal } from "./Modal"
 import { MotionSkeleton } from "./Motion"
@@ -20,39 +20,39 @@ const DeferredSettingsModal = lazy(() =>
 )
 
 export const BotCreateModal = (props: ComponentProps<typeof DeferredBotCreateModal>) => (
-  <Suspense fallback={<LoadingModal onClose={props.onClose} />}>
+  <DeferredDialog onClose={props.onClose}>
     <DeferredBotCreateModal {...props} />
-  </Suspense>
+  </DeferredDialog>
 )
 
 export const BotSettingsModal = (props: ComponentProps<typeof DeferredBotSettingsModal>) => (
-  <Suspense fallback={<LoadingModal onClose={props.onClose} />}>
+  <DeferredDialog onClose={props.onClose}>
     <DeferredBotSettingsModal {...props} />
-  </Suspense>
+  </DeferredDialog>
 )
 
 export const DoctorModal = (props: ComponentProps<typeof DeferredDoctorModal>) => (
-  <Suspense fallback={<LoadingModal onClose={props.onClose} />}>
+  <DeferredDialog onClose={props.onClose}>
     <DeferredDoctorModal {...props} />
-  </Suspense>
+  </DeferredDialog>
 )
 
 export const ImportWizard = (props: ComponentProps<typeof DeferredImportWizard>) => (
-  <Suspense fallback={<LoadingModal onClose={props.onClose} />}>
+  <DeferredDialog onClose={props.onClose}>
     <DeferredImportWizard {...props} />
-  </Suspense>
+  </DeferredDialog>
 )
 
 export const ProjectModal = (props: ComponentProps<typeof DeferredProjectModal>) => (
-  <Suspense fallback={<LoadingModal onClose={props.onClose} />}>
+  <DeferredDialog onClose={props.onClose}>
     <DeferredProjectModal {...props} />
-  </Suspense>
+  </DeferredDialog>
 )
 
 export const SettingsModal = (props: ComponentProps<typeof DeferredSettingsModal>) => (
-  <Suspense fallback={<LoadingModal onClose={props.onClose} />}>
+  <DeferredDialog onClose={props.onClose}>
     <DeferredSettingsModal {...props} />
-  </Suspense>
+  </DeferredDialog>
 )
 
 const LoadingModal = ({ onClose }: { onClose: () => void }) => (
@@ -60,3 +60,16 @@ const LoadingModal = ({ onClose }: { onClose: () => void }) => (
     <MotionSkeleton />
   </Modal>
 )
+
+const DeferredDialog = ({ onClose, children }: { onClose: () => void; children: ReactNode }) => {
+  const returnFocus = useRef(document.activeElement)
+  useEffect(
+    () => () => {
+      if (returnFocus.current instanceof HTMLElement && returnFocus.current.isConnected)
+        returnFocus.current.focus({ preventScroll: true })
+    },
+    [],
+  )
+
+  return <Suspense fallback={<LoadingModal onClose={onClose} />}>{children}</Suspense>
+}

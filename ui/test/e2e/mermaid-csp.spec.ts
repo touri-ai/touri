@@ -51,9 +51,7 @@ test.describe("mermaid production and desktop CSP", () => {
     const optionalModules = [
       "src/components/BrowserActivityCard.tsx",
       "src/components/BotComputer.tsx",
-      "src/components/BotPanel.tsx",
       "src/components/Modals.tsx",
-      "src/components/SettingsModal.tsx",
       "src/components/ApiModelsSettings.tsx",
       "src/components/NotificationDeliverySettings.tsx",
       "src/features/cloud/CloudPreferences.tsx",
@@ -68,6 +66,8 @@ test.describe("mermaid production and desktop CSP", () => {
       "src/components/WorkspaceScreens.tsx",
     ].map((key) => manifest[key])
     expect(optionalModules.every((chunk) => chunk?.isDynamicEntry && !initialFiles.has(chunk.file))).toBe(true)
+    const settings = Object.values(manifest).find((chunk) => chunk.name === "SettingsModal")
+    expect(settings && !initialFiles.has(settings.file)).toBe(true)
     // Rollup may merge the renderer and its vendor modules into a named shared chunk.
     const adapter = Object.values(manifest).find((chunk) => chunk.name === "mermaidRenderer")
     expect(adapter?.isDynamicEntry).toBe(true)

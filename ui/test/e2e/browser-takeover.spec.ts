@@ -32,6 +32,9 @@ for (const viewport of [
     await expect(page.getByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
     await expect(page.getByText(/Você está no controle · .* está pausado/)).toBeVisible()
     await expect(
+      page.getByRole("region", { name: "Controle remoto do navegador" }).getByRole("button", { name: /Devolver para/ }),
+    ).toHaveCSS("min-height", "44px")
+    await expect(
       page.locator(".browser-takeover-screen img, .browser-takeover-screen canvas:visible").first(),
     ).toBeVisible()
     const afterScreenshot = captureDir

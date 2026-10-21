@@ -4,6 +4,7 @@ import { expect, test } from "@playwright/test"
 
 test.use({
   channel: "chromium",
+  video: "on",
   reducedMotion: "reduce",
   viewport: { width: 1440, height: 900 },
 })

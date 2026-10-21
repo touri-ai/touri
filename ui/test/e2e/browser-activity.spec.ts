@@ -4,10 +4,11 @@ import { mkdir } from "node:fs/promises"
 import { resolve } from "node:path"
 import { createInterface } from "node:readline"
 import AxeBuilder from "@axe-core/playwright"
-import { chromium, expect, test } from "@playwright/test"
+import { type BrowserContext, chromium, expect, test } from "@playwright/test"
 
 test.describe.configure({ mode: "default" })
 const token = randomUUID()
+const contexts = new Set<BrowserContext>()
 let child: ChildProcess
 let endpoint = ""
 
@@ -42,6 +43,12 @@ test.beforeAll(async ({ baseURL }) => {
   })
 })
 
+test.afterEach(async () => {
+  const opened = Array.from(contexts)
+  contexts.clear()
+  await Promise.all(opened.map((context) => context.close()))
+})
+
 test.afterAll(async () => {
   if (!child || child.exitCode !== null) return
   await new Promise<void>((done) => {
@@ -71,6 +78,7 @@ test.describe("full browser activity flow", () => {
         reducedMotion: "no-preference",
         recordVideo: { dir: info.outputDir, size: { width: variant.width, height: variant.height } },
       })
+      contexts.add(context)
       const page = await context.newPage()
       await page.route("**/__browser-activity-fixture", async (route) => {
         const response = await fetch(endpoint, {
@@ -113,6 +121,10 @@ test.describe("full browser activity flow", () => {
       const livePreview = card.getByRole("img", { name: "Página atual do navegador" })
       await expect(livePreview).toBeVisible({ timeout: 40_000 })
       await expect(card.getByRole("button", { name: "Expandir navegador" })).toBeEnabled()
+      const initialColumns = await card
+        .locator(".browser-activity-content")
+        .evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length)
+      expect(initialColumns).toBe(variant.width <= 1100 ? 1 : 2)
       const expandBrowser = card.locator(".browser-activity-header-actions .browser-activity-icon-button").first()
       await expandBrowser.click()
       await expect(expandBrowser).toHaveAttribute("aria-pressed", "true")
@@ -120,8 +132,8 @@ test.describe("full browser activity flow", () => {
       const columns = await card
         .locator(".browser-activity-content")
         .evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length)
-      expect(columns).toBe(variant.width <= 1100 ? 1 : 2)
-      if (variant.width <= 600) await expect(card.locator(".browser-activity-more-actions")).toBeVisible()
+      expect(columns).toBe(1)
+      if (variant.width <= 600) await expect(card.locator(".browser-activity-log")).toHaveCSS("height", "156px")
       await page.screenshot({ path: info.outputPath(`browser-live-${variant.name}.png`), fullPage: true })
       await card.getByRole("button", { name: "Recolher navegador" }).click()
       const takeOver = page.locator(".composer-browser-status").getByRole("button", { name: "Assumir" })
