@@ -1,6 +1,7 @@
 import type { Bot } from "@touri/contracts"
 import { afterEach, expect, test, vi } from "vitest"
-import type { UiApi } from "../src/api/client"
+import type { ApiRequest, UiApi } from "../src/api/client"
+import { createMockApi } from "../src/api/mock"
 import { startInlineFrameSource } from "../src/features/desktop/inlineFrameSource"
 
 const mock = vi.hoisted(() => ({
@@ -126,6 +127,7 @@ test("VM pipeline is always view-only, samples at 1 fps and releases its session
 })
 
 test("a session that resolves after stopping is immediately released", async () => {
+  installPreviewWorker()
   let resolve: (session: unknown) => void = () => {}
   const request = vi.fn((route: string) =>
     route === "POST /bots/:id/desktop"
@@ -246,16 +248,13 @@ test("a local preview fails closed when the worker is unavailable for an oversiz
     },
   )
   const image = `data:image/png;base64,${"A".repeat(24_000_001)}`
+  const api = createMockApi()
   const request = vi.fn(async (route: string) =>
     route === "GET /bots/:id/browser-preview"
       ? { image, title: "Synthetic page", url: "https://example.test" }
       : { tabs: [] },
-  )
-  const api = {
-    request,
-    subscribe: () => () => {},
-    isMock: false,
-  } as UiApi
+  ) as ApiRequest
+  api.request = request
   const frame = vi.fn()
   const unavailable = vi.fn()
 
@@ -269,6 +268,7 @@ test("a local preview fails closed when the worker is unavailable for an oversiz
 
 test("a VM session request that never answers reports the cause after 20 s", async () => {
   vi.useFakeTimers()
+  installPreviewWorker()
   const api = {
     request: vi.fn((route: string) =>
       route === "POST /bots/:id/desktop" ? new Promise(() => {}) : Promise.resolve({ tabs: [] }),
@@ -286,6 +286,7 @@ test("a VM session request that never answers reports the cause after 20 s", asy
 
 test("a local preview that keeps failing exposes the real reason while it keeps polling", async () => {
   vi.useFakeTimers()
+  installPreviewWorker()
   const api = {
     request: vi.fn((route: string) =>
       route === "GET /bots/:id/browser-preview"

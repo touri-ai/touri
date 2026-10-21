@@ -12,8 +12,8 @@ import { InlinePreviewContext } from "../features/desktop/InlineLivePreview"
 import { type PreviewFrame, startInlineFrameSource } from "../features/desktop/inlineFrameSource"
 import { useInlinePreviewPreference } from "../features/desktop/inlinePreviewPreference"
 import { type Locale, t } from "../i18n"
-import { BrowserIcon, getBrowserIconName } from "./BrowserIcon"
 import { useBrowserActivityControls } from "./BrowserActivityControls"
+import { BrowserIcon, getBrowserIconName } from "./BrowserIcon"
 import { BrowserTakeoverView } from "./BrowserTakeoverView"
 import {
   getBrowserActivityCurrentLabel,
@@ -106,7 +106,8 @@ export const BrowserActivityCard = ({
   const [takeoverViewEpoch, setTakeoverViewEpoch] = useState(0)
   const takeoverTabId = useRef(activeTabId)
   const held = heldTab?.tabId === activeTabId && heldTab?.held === true
-  const preview = !held && !channel?.previewHidden && previewFrame?.tabId === activeTabId ? previewFrame?.frame : undefined
+  const preview =
+    !held && !channel?.previewHidden && previewFrame?.tabId === activeTabId ? previewFrame?.frame : undefined
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(!finished)
@@ -226,7 +227,6 @@ export const BrowserActivityCard = ({
       !expanded ||
       held ||
       finished ||
-      !expanded ||
       channel?.previewHidden ||
       takeoverSession
     )
@@ -257,7 +257,6 @@ export const BrowserActivityCard = ({
     channel?.previewHidden,
     expanded,
     finished,
-    expanded,
     held,
     hidden,
     locale,

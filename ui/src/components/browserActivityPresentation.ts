@@ -7,7 +7,6 @@ const MAX_INPUT_LENGTH = 12_000
 const MAX_OUTPUT_LENGTH = 16_000
 const MAX_LABEL_LENGTH = 72
 const MAX_TARGET_LENGTH = 32
-const MAX_SUBTITLE_PATH = 24
 
 const getBrowserAction = (part: ToolCallPart): string =>
   toolLeaf(part.tool)

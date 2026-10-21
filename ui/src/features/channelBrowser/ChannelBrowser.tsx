@@ -144,11 +144,12 @@ export const ChannelComposerChip = ({
         <span aria-hidden="true">{stopping ? "…" : "×"}</span>
       </button>
     ) : null
-  const controlButton = canReturnControl && hold ? (
-    <button type="button" onClick={hold.release}>
-      {t("Hand back", {}, locale)}
-    </button>
-  ) : null
+  const controlButton =
+    canReturnControl && hold ? (
+      <button type="button" onClick={hold.release}>
+        {t("Hand back", {}, locale)}
+      </button>
+    ) : null
 
   return (
     <div className="composer-browser-status" data-held={canReturnControl}>

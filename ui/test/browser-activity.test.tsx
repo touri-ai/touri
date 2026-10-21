@@ -15,8 +15,8 @@ import {
   getBrowserActivityUrl,
   getBrowserTakeoverReason,
 } from "../src/components/browserActivityPresentation"
-import { clearBrowserHold, setBrowserHold } from "../src/features/desktop/browserHold"
 import { ChannelComposerChip } from "../src/features/channelBrowser/ChannelBrowser"
+import { clearBrowserHold, setBrowserHold } from "../src/features/desktop/browserHold"
 import { InlinePreviewContext } from "../src/features/desktop/InlineLivePreview"
 import { startInlineFrameSource } from "../src/features/desktop/inlineFrameSource"
 import { setInlinePreviewPreference } from "../src/features/desktop/inlinePreviewPreference"
@@ -738,7 +738,7 @@ test("browser action times stay ordered when tool completions arrive late", () =
 
 test("short browser URLs drop scheme, port and query, and target labels omit private values", () => {
   expect(getBrowserActivityShortUrl("http://127.0.0.1:45229/test/e2e/fixtures/travel-search.html?x=1")).toBe(
-    "127.0.0.1/test/e2e/fixtures/trav…",
+    "127.0.0.1",
   )
   expect(getBrowserActivityShortUrl("https://travel.example.test/")).toBe("travel.example.test")
   expect(getBrowserActivityShortUrl("file:///etc/passwd")).toBe("")

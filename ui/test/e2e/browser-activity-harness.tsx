@@ -433,11 +433,11 @@ const Fixture = () => {
               locale={locale}
             />
           )}
-        <footer className="browser-activity-composer">
-          {running && <BrowserWorkingStatus name={bot.name} botId={bot.id} locale={locale} />}
-          <textarea aria-label={t("Message", {}, locale)} placeholder={t("Write a message…", {}, locale)} />
-        </footer>
-      </main>
+          <footer className="browser-activity-composer">
+            {running && <BrowserWorkingStatus name={bot.name} botId={bot.id} locale={locale} />}
+            <textarea aria-label={t("Message", {}, locale)} placeholder={t("Write a message…", {}, locale)} />
+          </footer>
+        </main>
       </BrowserActivityControlsProvider>
     </InlinePreviewContext.Provider>
   )
@@ -720,49 +720,49 @@ const LiveFixture = () => {
       >
         <BrowserActivityControlsProvider>
           <main className="browser-flow-app" data-theme={params.get("theme") ?? "dark"}>
-          <aside className="browser-flow-sidebar" aria-label="Conversas">
-            <strong>touri</strong>
-            <button type="button" className="browser-flow-sidebar-row" onClick={() => undefined}>
-              <span>Busca de viagem</span>
-              {running && <small>trabalhando</small>}
-            </button>
-          </aside>
-          <section className="browser-flow-chat">
-            <header className="browser-flow-header">
-              <span>Busca de viagem</span>
-              {!started && (
-                <button type="button" className="button" onClick={() => void start()}>
-                  Iniciar busca de viagem
-                </button>
-              )}
-            </header>
-            <div className="browser-flow-messages">
-              <VirtualMessageList
-                api={api}
-                messages={started ? [userMessage, assistantMessage] : [userMessage]}
-                mainThread
-                onSwitchBranch={() => undefined}
-                onRetry={async () => undefined}
-              />
-            </div>
-            <footer className="browser-flow-composer">
-              <Composer
-                bot={bot}
-                threadId={thread.id}
-                parentId={userMessage.id}
-                api={api}
-                draft={draft}
-                onDraft={setDraft}
-                inputRef={inputRef}
-                activeRun={activeRun}
-                browserWorking={running}
-                browserBotName={bot.name}
-                queuedCount={0}
-                onSend={async () => {}}
-                onCancel={cancel}
-              />
-            </footer>
-          </section>
+            <aside className="browser-flow-sidebar" aria-label="Conversas">
+              <strong>touri</strong>
+              <button type="button" className="browser-flow-sidebar-row" onClick={() => undefined}>
+                <span>Busca de viagem</span>
+                {running && <small>trabalhando</small>}
+              </button>
+            </aside>
+            <section className="browser-flow-chat">
+              <header className="browser-flow-header">
+                <span>Busca de viagem</span>
+                {!started && (
+                  <button type="button" className="button" onClick={() => void start()}>
+                    Iniciar busca de viagem
+                  </button>
+                )}
+              </header>
+              <div className="browser-flow-messages">
+                <VirtualMessageList
+                  api={api}
+                  messages={started ? [userMessage, assistantMessage] : [userMessage]}
+                  mainThread
+                  onSwitchBranch={() => undefined}
+                  onRetry={async () => undefined}
+                />
+              </div>
+              <footer className="browser-flow-composer">
+                <Composer
+                  bot={bot}
+                  threadId={thread.id}
+                  parentId={userMessage.id}
+                  api={api}
+                  draft={draft}
+                  onDraft={setDraft}
+                  inputRef={inputRef}
+                  activeRun={activeRun}
+                  browserWorking={running}
+                  browserBotName={bot.name}
+                  queuedCount={0}
+                  onSend={async () => {}}
+                  onCancel={cancel}
+                />
+              </footer>
+            </section>
           </main>
         </BrowserActivityControlsProvider>
       </InlinePreviewContext.Provider>

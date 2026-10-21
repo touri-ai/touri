@@ -456,7 +456,11 @@ export const BrowserTakeoverView = ({
           {returning ? t("Returning control…", {}, locale) : t("Hand back to {name}", { name: botName }, locale)}
         </button>
       </header>
-      <p className="browser-takeover-privacy browser-takeover-privacy-sticky" role="status" aria-label={t("Browser privacy", {}, locale)}>
+      <p
+        className="browser-takeover-privacy browser-takeover-privacy-sticky"
+        role="status"
+        aria-label={t("Browser privacy", {}, locale)}
+      >
         {t("What you type here stays out of chat, the bot, and history.", {}, locale)}
       </p>
       <div className={`browser-takeover-layout${fullView ? " browser-takeover-layout-full" : ""}`}>
