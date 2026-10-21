@@ -120,7 +120,7 @@ export const ComposerProjectChip = ({
       >
         <PanelIcon name="folder" />
         <span className="composer-model-name">{label}</span>
-        <span aria-hidden="true">⌄</span>
+        <PanelIcon name="chevron-down" />
       </button>
       {active && (
         <span id={lockedId} className="visually-hidden">

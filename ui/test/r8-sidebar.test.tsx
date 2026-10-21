@@ -176,6 +176,27 @@ it("opening a failure clears row and bell attention persistently, while keeping 
   ).toBeVisible()
 })
 
+it("opening a question from the bot row focuses its response and keeps it pending", async () => {
+  const api = createMockApi()
+  api.notify({
+    kind: "question",
+    botId: "bot-onb",
+    threadId: "thread-onb",
+    title: "Escolha a pasta",
+    body: "Qual pasta devo revisar?",
+    createdAt: Date.now() + 1000,
+  })
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+  fireEvent.click(screen.getByRole("button", { name: "Abrir pendência de onb" }))
+
+  const row = (await screen.findByText("Qual pasta devo revisar?")).closest("[data-notification-id]")
+  await waitFor(() => expect(row).toHaveFocus())
+  expect(screen.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
+  expect(api.calls.some((call) => call.route === "POST /notifications/:id/dismiss")).toBe(false)
+})
+
 it("shows chronological notifications and leaves a superseded failure out of the bell count", async () => {
   const api = createMockApi()
   render(<App kernel={{ services: { api } }} />)

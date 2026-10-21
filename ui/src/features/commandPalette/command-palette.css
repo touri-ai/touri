@@ -46,6 +46,7 @@
 }
 .command-palette-input input:focus-visible {
   outline: none;
+  box-shadow: none;
 }
 .command-palette kbd {
   padding: 0 var(--space-4);

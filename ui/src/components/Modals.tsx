@@ -43,6 +43,7 @@ import { FolderPicker } from "./FolderPicker"
 import { MachineFields } from "./MachineFields"
 import { Modal } from "./Modal"
 import { ModelPicker } from "./ModelPicker"
+import { PanelIcon } from "./PanelIcon"
 import { ProviderInstallation } from "./ProviderInstallation"
 import { ProviderLogin } from "./ProviderLogin"
 import { ProviderMark, providerName } from "./ProviderMark"
@@ -186,7 +187,7 @@ export const ImportWizard = ({ bots, api, onClose, onNotice }: ImportWizardProps
           </div>
           <button type="button" className="button button-dark wizard-next" onClick={() => setStep(1)}>
             {t("Continue")}
-            <span>→</span>
+            <PanelIcon name="arrow-right" />
           </button>
         </div>
       )}
@@ -289,7 +290,7 @@ export const ImportWizard = ({ bots, api, onClose, onNotice }: ImportWizardProps
           {report && <ImportReportView report={report} />}
           <button type="button" className="button button-dark wizard-next" onClick={() => setStep(4)}>
             {t("Show cut-over checklist")}
-            <span>→</span>
+            <PanelIcon name="arrow-right" />
           </button>
         </div>
       )}
@@ -316,7 +317,7 @@ export const ImportWizard = ({ bots, api, onClose, onNotice }: ImportWizardProps
           </ol>
           <button type="button" className="button button-dark wizard-next" onClick={onClose}>
             {t("Start using touri")}
-            <span>→</span>
+            <PanelIcon name="arrow-right" />
           </button>
         </div>
       )}
@@ -2280,7 +2281,7 @@ export const ProjectModal = ({
               className="button button-dark"
               onClick={() => setProcessFormOpen((current) => !current)}
             >
-              {t("＋ Adicionar processo")}
+              <PanelIcon name="plus" /> {t("Adicionar processo")}
             </button>
           </div>
           {processFormOpen && (
@@ -2328,7 +2329,7 @@ export const ProjectModal = ({
                       ])
                     }
                   >
-                    {t("＋ adicionar")}
+                    <PanelIcon name="plus" /> {t("Adicionar variável")}
                   </button>
                 </div>
                 {envRows.map((row, index) => (

@@ -200,7 +200,7 @@ const NotificationRow = ({
             name: item.botName ?? "touri",
           }
         }
-        size={32}
+        size={24}
       />
       <div className="notification-main">
         <div className="notification-head">

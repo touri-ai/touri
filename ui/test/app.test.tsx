@@ -137,7 +137,9 @@ describe("WP9 frontend acceptance", () => {
     fireEvent.change(screen.getByLabelText("Comando", { selector: "input", exact: true }), {
       target: { value: "bun dev" },
     })
-    fireEvent.click(screen.getByRole("button", { name: "Adicionar processo" }))
+    const processForm = document.querySelector<HTMLElement>(".process-definition-form")
+    if (!processForm) throw new Error("Missing process definition form")
+    fireEvent.click(within(processForm).getByRole("button", { name: "Adicionar processo" }))
     await waitFor(() => {
       expect(api.calls.some((call) => call.route === "POST /projects")).toBe(true)
       expect(api.calls.some((call) => call.route === "PUT /projects/:id/processes/:name")).toBe(true)

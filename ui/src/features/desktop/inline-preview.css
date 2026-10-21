@@ -34,8 +34,8 @@
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  background: #101014;
-  color: #aaa;
+  background: var(--surface-code);
+  color: var(--text-2);
   cursor: zoom-in;
 }
 .inline-preview-screen img {

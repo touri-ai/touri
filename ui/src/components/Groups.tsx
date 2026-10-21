@@ -8,6 +8,7 @@ import { AvatarPicker } from "./AvatarPicker"
 import { BotAvatar } from "./BotAvatar"
 import { DeleteGroupDialog } from "./DeleteGroupDialog"
 import { getGroupProjection, getIdleMemberState } from "./groupProjection"
+import { PanelIcon } from "./PanelIcon"
 import { SidebarActionsMenu } from "./SidebarActionsMenu"
 import "./groups.css"
 
@@ -58,7 +59,7 @@ export const GroupSidebar = ({
   <section className="group-sidebar" aria-label={t("Bot groups", {}, locale)}>
     {groups.length === 0 ? (
       <button type="button" className="group-empty-create" onClick={onCreate}>
-        <span aria-hidden="true">+</span>
+        <PanelIcon name="plus" />
         {t("Criar grupo", {}, locale)}
       </button>
     ) : (
@@ -68,7 +69,7 @@ export const GroupSidebar = ({
             {t("Bot groups", {}, locale)} <small>{groups.length}</small>
           </span>
           <button type="button" aria-label={t("Criar grupo", {}, locale)} onClick={onCreate}>
-            +
+            <PanelIcon name="plus" />
           </button>
         </div>
         {groups.map((group) => (
@@ -356,7 +357,7 @@ export const GroupHeader = ({
         aria-controls="bot-panel"
         onClick={onTogglePanel}
       >
-        ◧
+        <PanelIcon name="panel" />
       </button>
     )}
     <button type="button" className="button button-quiet" onClick={onEdit}>

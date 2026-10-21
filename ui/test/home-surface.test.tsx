@@ -44,7 +44,9 @@ it("limits primary navigation to the bot list and Advanced, with chat and compos
   render(<App kernel={{ services: { api: createMockApi() } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   const sidebar = screen.getByRole("navigation", { name: "Barra lateral" })
-  const primary = sidebar.querySelectorAll(".sidebar-list-heading button, .sidebar-advanced > button")
+  const primary = sidebar.querySelectorAll(
+    ".traffic-light-row .sidebar-bots-link, .sidebar-list-heading button, .sidebar-advanced > button",
+  )
   expect(Array.from(primary, (button) => button.textContent?.replace(/\d|⚙|›/g, "").trim())).toEqual([
     "Bots",
     "Avançado",
@@ -87,7 +89,7 @@ it("shows one primary hire action and quiet secondary actions, even when checks 
     within(landing)
       .getAllByRole("button")
       .map((button) => button.textContent),
-  ).toEqual(["Criar meu primeiro bot→", "Importar", "Verificar este servidor"])
+  ).toEqual(["Criar meu primeiro bot", "Importar", "Verificar este servidor"])
   expect(landing).toHaveTextContent(
     "O histórico fica neste servidor. Sua IA recebe o conteúdo necessário para responder. O touri não coleta telemetria.",
   )

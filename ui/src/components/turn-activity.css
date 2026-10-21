@@ -25,7 +25,7 @@
   color: var(--text);
 }
 .turn-activity-toggle:focus-visible {
-  outline: 2px solid var(--brand);
+  outline: 2px solid var(--accent-info);
   outline-offset: 2px;
   border-radius: var(--radius-xs);
 }

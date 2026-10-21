@@ -1,4 +1,6 @@
-import type { ReactNode } from "react"
+import { type ReactNode, useContext } from "react"
+import { PanelIcon } from "./PanelIcon"
+import { ScreenHeaderContext } from "./ScreenHeaderContext"
 
 export const ScreenHeader = ({
   id,
@@ -10,16 +12,20 @@ export const ScreenHeader = ({
   title: string
   description: string
   actions?: ReactNode
-}) => (
-  <header className="screen-header">
-    <div>
-      <span className="screen-crumb">touri / {title}</span>
-      <h1 id={id}>{title}</h1>
-      <p>{description}</p>
-    </div>
-    {actions && <div className="screen-header-actions">{actions}</div>}
-  </header>
-)
+}) => {
+  const registerHeader = useContext(ScreenHeaderContext)
+
+  return (
+    <header ref={registerHeader} className="screen-header">
+      <div>
+        <span className="screen-crumb">touri / {title}</span>
+        <h1 id={id}>{title}</h1>
+        <p>{description}</p>
+      </div>
+      {actions && <div className="screen-header-actions">{actions}</div>}
+    </header>
+  )
+}
 
 export const ScreenState = ({
   kind,
@@ -52,7 +58,7 @@ export const ScreenState = ({
   return (
     <div className={`screen-state screen-${kind}`} role={kind === "error" ? "alert" : undefined}>
       <span className="screen-state-mark" aria-hidden="true">
-        {kind === "error" ? "!" : "◇"}
+        {kind === "error" ? <PanelIcon name="warning" /> : "◇"}
       </span>
       <strong>{kind === "error" ? "Não foi possível carregar" : title}</strong>
       {description && <p>{description}</p>}

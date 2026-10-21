@@ -46,6 +46,7 @@ import {
 } from "./components/LazyModals"
 import { MotionPresence, MotionSkeleton } from "./components/Motion"
 import { PageTransition } from "./components/PageTransition"
+import { PanelIcon } from "./components/PanelIcon"
 import { RoutineEditor } from "./components/RoutineEditor"
 import { SidebarDrawer } from "./components/SidebarDrawer"
 import { getWindowChrome, WindowFrame } from "./components/WindowFrame"
@@ -210,6 +211,7 @@ const AppContent = ({ kernel }: AppProps) => {
   const [routineDraft, setRoutineDraft] = useState<RoutineDraft | null>(null)
   const [localNotice, setLocalNotice] = useState<unknown>(null)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [workspaceHeader, setWorkspaceHeader] = useState<HTMLElement | null>(null)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const unavailableApi = useMemo<UiApi>(
     () => ({
@@ -1049,14 +1051,20 @@ const AppContent = ({ kernel }: AppProps) => {
           <div className="notice-bar approval-notice" role="status">
             {t("Você tem {n} solicitações pendentes.", { n: pendingReturnCount })}
             <button type="button" onClick={actions.dismissNotice} aria-label={t("Dismiss notice")}>
-              ×
+              <PanelIcon name="close" />
             </button>
           </div>
         )}
-        <ApprovalNotice notifications={data.notifications} messages={data.activityMessages} onReview={reviewApproval} />
+        <ApprovalNotice
+          notifications={data.notifications}
+          messages={data.activityMessages}
+          onReview={reviewApproval}
+          activeThreadId={section === "bots" && screen === "chat" && !modal ? (selectedThread?.id ?? null) : null}
+        />
         <div className="app-grid">
           <SidebarDrawer
             panelOpen={section === "bots" && screen === "chat" && panelOpen}
+            workspaceHeader={workspaceHeader}
             serverMode={serverMode}
             serverUrl={serverState.status?.url ?? null}
             host={data.routineHost}
@@ -1122,7 +1130,7 @@ const AppContent = ({ kernel }: AppProps) => {
             onNotificationsOpen={setNotificationsOpen}
           />
           <Suspense fallback={<PageLoading />}>
-            <PageTransition route={route}>
+            <PageTransition route={route} onHeaderChange={setWorkspaceHeader}>
               {section === "bots" && screen === "chat" && !selectedGroup && (
                 <TeamNextStep
                   bots={data.bots}
@@ -1476,7 +1484,7 @@ const LoadingScreen = ({
   onSettings?: (() => void) | undefined
 }) => (
   <main className="loading-screen">
-    <BotAvatar bot={{ id: "touri", color: "#e5322d" }} size={64} mood="connecting" />
+    <BotAvatar bot={{ id: "touri", color: null }} size={64} mood="connecting" />
     <p>{t(serverMode ? "Conectando ao servidor…" : "Warming the local workspace…")}</p>
     {onSettings && (
       <button type="button" className="button button-quiet" onClick={onSettings}>
@@ -1519,7 +1527,7 @@ const SidecarErrorScreen = ({
       </div>
       <button type="button" className="button button-brand" onClick={onRetry} disabled={retrying} aria-busy={retrying}>
         {t("Retry connection")}
-        <span>→</span>
+        <PanelIcon name="arrow-right" />
       </button>
       {onSettings && (
         <button type="button" className="button button-quiet" onClick={onSettings}>
@@ -1555,7 +1563,7 @@ const OnboardingLanding = ({
       <div className="onboarding-actions">
         <button type="button" className="button button-brand" onClick={onCreateBot}>
           {t("Create my first bot")}
-          <span aria-hidden="true">→</span>
+          <PanelIcon name="arrow-right" />
         </button>
       </div>
       <div className="onboarding-secondary">

@@ -1,6 +1,7 @@
 import { createContext, type ReactNode, useContext, useEffect, useRef } from "react"
 import { createPortal } from "react-dom"
 import { t } from "../i18n"
+import { PanelIcon } from "./PanelIcon"
 
 const ModalLayerContext = createContext(false)
 
@@ -104,7 +105,7 @@ export const Modal = ({
               <h2>{title}</h2>
             </div>
             <button type="button" className="icon-button modal-close" onClick={onClose} aria-label={t("Close dialog")}>
-              ×
+              <PanelIcon name="close" />
             </button>
           </header>
           {/* Nested confirmations must escape this panel's animated transform too. */}

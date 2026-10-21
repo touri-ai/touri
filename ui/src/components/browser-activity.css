@@ -96,7 +96,7 @@
 }
 .browser-activity-icon-button:hover:not(:disabled) {
   border-color: var(--border);
-  background: var(--surface-control);
+  background: var(--surface-code);
   color: var(--text);
 }
 .browser-activity-icon-button:focus-visible,
@@ -118,7 +118,7 @@
   cursor: pointer;
 }
 .browser-activity-summary:hover {
-  background: var(--surface-control);
+  background: var(--surface-code);
 }
 .browser-activity-summary-copy strong {
   font-weight: var(--weight-semibold);

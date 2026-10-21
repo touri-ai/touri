@@ -47,6 +47,9 @@
   --space-40: 40px;
   --space-56: 56px;
   --space-100: 100px;
+  --icon-sm: 16px;
+  --icon-md: 20px;
+  --icon-button-size: var(--space-40);
   /* Radii. */
   --radius-xs: 6px;
   --radius-sm: 10px;

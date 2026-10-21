@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test"
 
 test.use({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce" })
 
-test("phone settings navigation shows every tab and supports touch and keyboard", async ({ page }) => {
+test("phone settings navigation scrolls every tab into view for touch and keyboard", async ({ page }) => {
   await page.goto("/test/e2e/r8-settings-harness.html")
   await page.getByRole("button", { name: "Abrir menu" }).click()
   await page.getByRole("button", { name: /Você Local/ }).click()
@@ -35,13 +35,14 @@ test("phone settings navigation shows every tab and supports touch and keyboard"
     }
   })
 
-  expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth)
-  expect(layout.rows).toBeGreaterThan(1)
-  expect(layout.tabsFit).toBe(true)
+  expect(layout.scrollWidth).toBeGreaterThan(layout.clientWidth)
+  expect(layout.rows).toBe(1)
+  expect(layout.tabsFit).toBe(false)
 
   const diagnosis = tablist.getByRole("tab", { name: "Diagnóstico", exact: true })
   await diagnosis.click()
   await expect(diagnosis).toHaveAttribute("aria-selected", "true")
+  await expect(diagnosis).toBeInViewport()
 
   await tabs.first().click()
   const tabElements = await tabs.all()
@@ -49,5 +50,6 @@ test("phone settings navigation shows every tab and supports touch and keyboard"
     if (index > 0) await page.keyboard.press("ArrowRight")
     await expect(tab).toBeFocused()
     await expect(tab).toHaveAttribute("aria-selected", "true")
+    await expect(tab).toBeInViewport()
   }
 })

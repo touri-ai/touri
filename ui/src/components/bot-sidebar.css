@@ -4,6 +4,10 @@
   flex-basis: 44px;
   padding-inline: var(--space-16) var(--space-12);
 }
+.r8-sidebar .traffic-light-row .sidebar-bots-link {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
 .sidebar-traffic-lights,
 .sidebar-top-actions {
   display: flex;
@@ -11,7 +15,7 @@
   gap: var(--space-8);
 }
 .sidebar-top-actions {
-  margin-left: auto;
+  margin-left: 0;
   gap: var(--space-4);
 }
 .sidebar-icon-button {
@@ -171,9 +175,28 @@
   font-variant-numeric: tabular-nums;
 }
 .r8-sidebar .sidebar-approval-badge {
-  border: 1px solid var(--border-warning);
-  background: var(--surface-warning);
+  position: relative;
+  width: var(--space-40);
+  height: var(--space-40);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-round);
+  background: transparent;
   color: var(--warning);
+}
+.r8-sidebar .sidebar-approval-badge::before {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: var(--space-20);
+  height: var(--space-20);
+  border-radius: var(--radius-pill);
+  background: var(--surface-warning);
+  content: "";
+  transform: translate(-50%, -50%);
+}
+.r8-sidebar .sidebar-approval-badge > span {
+  position: relative;
+  z-index: 1;
 }
 .sidebar-unread {
   background: var(--surface-control-raised);
@@ -387,12 +410,12 @@
 .r8-sidebar .thread-icon {
   display: grid;
   place-items: center;
-  width: 14px;
+  width: var(--icon-sm);
   color: var(--text-2);
 }
 .r8-sidebar .thread-icon > svg {
-  width: 13px;
-  height: 13px;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
 }
 .r8-sidebar .thread-row.selected .thread-icon {
   color: var(--brand);
@@ -413,8 +436,8 @@
   font-size: var(--fs-caption);
 }
 .r8-sidebar .new-thread-row > svg {
-  width: 13px;
-  height: 13px;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
 }
 .r8-sidebar .new-thread-row:hover {
   background: var(--surface-control);
@@ -484,6 +507,14 @@
 .sidebar-connect[aria-current="page"] {
   background: var(--surface-control);
   color: var(--text);
+}
+@media (max-width: 620px) {
+  .sidebar-drawer .r8-sidebar .traffic-light-row .sidebar-bots-link {
+    margin-left: 0;
+  }
+  .sidebar-drawer .r8-sidebar .traffic-light-row .sidebar-top-actions {
+    margin-left: auto;
+  }
 }
 .sidebar-recovery {
   display: flex;
