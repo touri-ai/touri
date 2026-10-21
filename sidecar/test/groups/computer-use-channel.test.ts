@@ -146,6 +146,8 @@ test("channel browser runs persist one active slot per bot and promote queued wo
     expect(fixture.resumptions.map((run) => run.runId)).toEqual(["leo-2"])
     publishRunStatus("leo-1", "succeeded")
     expect(fixture.resumptions).toHaveLength(1)
+    publishRunStatus("leo-2", "succeeded")
+    expect(channelRuns.get("leo-2")?.status).toBe("running")
     expect(await second).toEqual({ success: true, queued: true })
     expect(channelRuns.get("leo-2")?.status).toBe("running")
     database
@@ -164,10 +166,14 @@ test("channel browser runs persist one active slot per bot and promote queued wo
     await expect(third).resolves.toMatchObject({ success: true, queued: true })
     expect(channelRuns.get("leo-3")?.status).toBe("canceled")
     expect(channelRuns.get("leo-4")).toMatchObject({ status: "queued", queuePosition: 1 })
-    publishRunStatus("leo-2", "succeeded")
+    addRun({ runId: "leo-2-resumed", botId: "leo", threadId: "channel-leo" })
+    database.exec("INSERT INTO browser_takeover_continuations VALUES ('leo-2-resumed','leo-2','leo-2',2)")
+    publishRunStatus("leo-2-resumed", "succeeded")
     expect(await fourth).toEqual({ success: true, queued: true })
     expect(channelRuns.get("leo-4")?.status).toBe("running")
-    publishRunStatus("leo-4", "succeeded")
+    addRun({ runId: "leo-4-resumed", botId: "leo", threadId: "channel-leo" })
+    database.exec("INSERT INTO browser_takeover_continuations VALUES ('leo-4-resumed','leo-4','leo-4',3)")
+    publishRunStatus("leo-4-resumed", "succeeded")
     publishRunStatus("bia-1", "succeeded")
     expect(await otherChannel).toEqual({ success: true, queued: true })
     publishRunStatus("leo-other-channel", "succeeded")
@@ -294,4 +300,52 @@ test("one browser request spans a continuation while channels and a DM wait for 
   publishRunStatus("other-channel", "canceled")
   expect(await direct).toEqual({ success: true, queued: true })
   expect(channelRuns.get("independent")?.status).toBe("running")
+})
+
+test("canceling a waiting request preserves the active human controller", async () => {
+  const fixture = createFixture()
+  const { database, kernel, addRun, publishRunStatus, context } = fixture
+  const channelRuns = createChannelBrowserRuns({ kernel, database })
+  additionalCleanups.add(() => {
+    channelRuns.dispose()
+    fixture.cleanup()
+  })
+  addRun({ runId: "held", botId: "leo", threadId: "channel-leo" })
+  addRun({ runId: "waiting", botId: "leo", threadId: "channel-2-leo" })
+  await channelRuns.enter(context("held", "leo", "channel-leo"))
+  channelRuns.takeControl({ runId: "held", actorPersonId: "ana" })
+  await channelRuns.enter(context("waiting", "leo", "channel-2-leo"))
+
+  expect(channelRuns.cancelRequest("waiting")).toMatchObject({ runId: "waiting", ownsControl: false })
+  publishRunStatus("waiting", "canceled")
+
+  expect(channelRuns.get("held")).toMatchObject({ status: "taken_over", controllerPersonId: "ana" })
+  expect(fixture.resumptions).toHaveLength(0)
+})
+
+test("promotion survives restart and old completion cannot finish the continuation", async () => {
+  const fixture = createFixture()
+  const { database, kernel, addRun, publishRunStatus, context } = fixture
+  const first = createChannelBrowserRuns({ kernel, database })
+  addRun({ runId: "active", botId: "leo", threadId: "channel-leo" })
+  addRun({ runId: "next", botId: "leo", threadId: "channel-2-leo" })
+  await first.enter(context("active", "leo", "channel-leo"))
+  await first.enter(context("next", "leo", "channel-2-leo"))
+  publishRunStatus("next", "succeeded")
+  publishRunStatus("active", "succeeded")
+  first.dispose()
+  const restored = createChannelBrowserRuns({ kernel, database })
+  additionalCleanups.add(() => {
+    restored.dispose()
+    fixture.cleanup()
+  })
+
+  expect(fixture.resumptions.map((run) => run.runId)).toEqual(["next", "next"])
+  publishRunStatus("next", "succeeded")
+  expect(restored.get("next")?.status).toBe("running")
+  addRun({ runId: "continued", botId: "leo", threadId: "channel-2-leo" })
+  database.exec("INSERT INTO browser_takeover_continuations VALUES ('continued','next','next',2)")
+  publishRunStatus("continued", "succeeded")
+
+  expect(restored.get("next")?.status).toBe("succeeded")
 })

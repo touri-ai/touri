@@ -46,12 +46,13 @@ import browserPrivateInputSql from "./migrations/0040.sql" with { type: "text" }
 import browserHandbackLedgerSql from "./migrations/0041.sql" with { type: "text" }
 import browserBotArbitrationSql from "./migrations/0042.sql" with { type: "text" }
 import browserPendingHandoffsSql from "./migrations/0043.sql" with { type: "text" }
+import browserRequestResumeSql from "./migrations/0044.sql" with { type: "text" }
 import type { PerformanceStageRunner } from "./performance"
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 43
+export const SCHEMA_VERSION = 44
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -325,6 +326,11 @@ export const openDatabase = ({
     if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'browser_pending_handoffs_version'").get())
       database.exec(browserPendingHandoffsSql)
     database.exec("UPDATE schema_meta SET value = '43' WHERE key = 'schema_version'")
+  })()
+  database.transaction(() => {
+    if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'browser_request_resume_version'").get())
+      database.exec(browserRequestResumeSql)
+    database.exec("UPDATE schema_meta SET value = '44' WHERE key = 'schema_version'")
   })()
   return database
 }

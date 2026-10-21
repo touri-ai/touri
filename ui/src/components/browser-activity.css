@@ -110,7 +110,7 @@
 }
 .browser-activity-summary {
   width: 100%;
-  min-height: 140px;
+  min-height: 64px;
   border: 0;
   background: transparent;
   color: inherit;
@@ -775,4 +775,10 @@
 .browser-activity-card[data-finished="false"] .browser-activity-placeholder {
   height: calc(min(30vh, 300px) + 24px);
   aspect-ratio: auto;
+}
+
+.browser-activity-thumbnail > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }

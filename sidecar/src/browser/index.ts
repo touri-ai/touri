@@ -579,7 +579,12 @@ export const init = async (
     if (!request) return null
     engine
       .tabsForBot(request.botId)
-      .filter((tab) => tab.heldByUser)
+      .filter(
+        (tab) =>
+          request.ownsControl &&
+          tab.heldByUser &&
+          (tab.takeoverRunId === request.requestId || tab.takeoverRunId === request.runId),
+      )
       .forEach((tab) => {
         void revokeTakeoverSession(tab.tabId)
         void engine.cancelTakeover({ tabId: tab.tabId })

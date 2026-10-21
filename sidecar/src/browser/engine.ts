@@ -4399,6 +4399,8 @@ export const createBrowserEngine = ({
     tab.generation += 1
     tab.refs.clear()
     tab.handbackNote = handbackNote
+    if (resolution === "expired" && takeover.runId)
+      kernel.services.use("browser.cancelRequest")?.({ runId: takeover.runId })
     if (takeover.requestId) kernel.services.use("notify.resolve")?.({ requestId: takeover.requestId, resolution })
     return takeover
   }

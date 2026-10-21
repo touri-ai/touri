@@ -324,9 +324,9 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
       database
         .query(`SELECT run.requester_person_id, run.responsible_person_id, run.controller_person_id
           FROM browser_tabs tab JOIN threads owner_thread ON owner_thread.id = tab.owner_thread_id
-          JOIN browser_channel_runs run ON run.group_id = owner_thread.group_id
-            AND run.thread_id = owner_thread.group_thread_id AND run.bot_id = tab.owner_bot_id
-          WHERE tab.id = ? AND run.status IN ('queued','running','needs_you','taken_over')
+          JOIN browser_channel_runs run ON run.thread_id = COALESCE(owner_thread.group_thread_id, owner_thread.id)
+            AND run.bot_id = tab.owner_bot_id
+          WHERE tab.id = ? AND run.status IN ('running','needs_you','taken_over')
           ORDER BY run.queued_at DESC LIMIT 1`)
         .get(tabId) as {
         requester_person_id: string | null

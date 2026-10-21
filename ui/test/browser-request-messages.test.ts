@@ -85,3 +85,24 @@ test("a continuing browser request stays live without changing stored history", 
   expect(visible[0]).toMatchObject({ id: "first", status: "streaming", runId: "new" })
   expect(first.status).toBe("complete")
 })
+
+test("browser handback plumbing stays out of the visible conversation", () => {
+  const restored = Object.assign({}, getMessage("restored", "old", "Context"), {
+    role: "system" as const,
+    parts: [{ type: "notice" as const, level: "info" as const, code: "context_restored", text: "Context" }],
+  })
+  const marker = Object.assign({}, restored, {
+    id: "marker",
+    parts: [
+      {
+        type: "notice" as const,
+        level: "info" as const,
+        code: "run_resumed",
+        text: "Retomado após a devolução do navegador",
+      },
+    ],
+  })
+  const answer = getMessage("answer", "new", "Resposta final")
+
+  expect(getBrowserRequestMessages([restored, marker, answer], [])).toEqual([answer])
+})

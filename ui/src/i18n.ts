@@ -653,6 +653,17 @@ export const ptBR = {
     "A prévia fica oculta enquanto alguém está no controle.",
   "The browser needs your attention": "O navegador precisa de atenção",
   "The browser needs you": "O navegador precisa de você",
+  "The site asked you to sign in. Return control to let the bot continue.":
+    "O site pediu login. Devolva o controle para o bot continuar.",
+  "The site asked you to review a purchase or payment. Return control to let the bot continue.":
+    "O site pediu uma ação de compra ou pagamento. Devolva o controle para o bot continuar.",
+  "The site asked you to submit a form. Return control to let the bot continue.":
+    "O site pediu o envio de um formulário. Devolva o controle para o bot continuar.",
+  "The site needs your confirmation to continue. Return control to let the bot continue.":
+    "O site pediu sua confirmação para continuar. Devolva o controle para o bot continuar.",
+  "The bot asked for your help in the browser. Return control to let the bot continue.":
+    "O bot pediu sua ajuda no navegador. Devolva o controle para o bot continuar.",
+
   "The requester has not taken control. As the person responsible for the bot, you can help now.":
     "A pessoa que pediu ainda não assumiu o navegador. Você, responsável pelo bot, pode ajudar agora.",
   "The bot paused the browser and needs you to take control to continue.":

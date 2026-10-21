@@ -14,6 +14,7 @@ import {
   getBrowserActivityTimestamps,
   getBrowserActivityUrl,
   getBrowserTakeoverReason,
+  isBrowserRequestQueued,
 } from "../src/components/browserActivityPresentation"
 import { ChannelComposerChip } from "../src/features/channelBrowser/ChannelBrowser"
 import { clearBrowserHold, setBrowserHold } from "../src/features/desktop/browserHold"
@@ -361,6 +362,7 @@ test("take-over holds the browser, opens its view, and the finished card collaps
   expect(await screen.findByRole("button", { name: "Devolver para Lia" })).toBeVisible()
   fireEvent.click(screen.getByRole("button", { name: "Devolver para Lia" }))
   expect(screen.queryByText("Usou o navegador · 3 ações")).toBeNull()
+  await waitFor(() => expect(screen.queryByRole("region", { name: "Controle remoto do navegador" })).toBeNull())
   const resumedRun = {
     id: "resumed",
     botId: bot?.id,
@@ -810,3 +812,19 @@ test.each(["TARGET_CHANGED", "ENGINE_UNAVAILABLE", "DEADLINE_EXCEEDED"])(
     expect(label).not.toContain(errorCode)
   },
 )
+
+test("a detached browser request stays waiting without previewing or controlling another request", async () => {
+  const part = getPart({
+    callId: "queued",
+    tool: "browser_open",
+    inputJson: "{}",
+    outputJson: JSON.stringify({ structured: { status: "waiting_for_browser", requestRunId: "queued-run" } }),
+  })
+  const { request } = renderCard([part], true)
+
+  expect(screen.getAllByText(/Aguardando o outro pedido/).length).toBeGreaterThan(0)
+  expect(screen.getByRole("button", { name: "Assumir" })).toBeDisabled()
+  expect(request).not.toHaveBeenCalledWith("GET /browser/tabs", expect.anything())
+  expect(isBrowserRequestQueued([part], "queued-run")).toBe(true)
+  expect(isBrowserRequestQueued([part], "continuation")).toBe(false)
+})

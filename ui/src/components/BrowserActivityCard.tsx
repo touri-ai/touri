@@ -149,6 +149,10 @@ export const BrowserActivityCard = ({
   }, [activeTabId])
 
   useEffect(() => {
+    if (!sourceFinished) setResuming(false)
+  }, [sourceFinished])
+
+  useEffect(() => {
     if (!api || !resuming) return
     return api.subscribe(({ event }) => {
       if (event.type !== "run.updated" || event.run.botId !== botId) return
@@ -349,7 +353,7 @@ export const BrowserActivityCard = ({
           { sessionId: takeoverSession, controlEpoch },
           { id: activeTabId },
         )
-        setResuming(true)
+        setResuming(sourceFinished)
         setTakeoverSession(null)
         setControlEpoch(null)
         setTakeoverViewEpoch(0)
@@ -395,6 +399,7 @@ export const BrowserActivityCard = ({
   if (!browserTools.length) return null
 
   const screenshot = getBrowserActivityScreenshot(browserTools)
+  const finalPreview = !held && !channel?.previewHidden ? preview : undefined
   const actions = browserTools.slice(-MAX_VISIBLE_ACTIONS)
   const times = getBrowserActivityTimestamps(actions, createdAt)
   const takeoverActions = browserTools.slice(-5)
@@ -443,7 +448,7 @@ export const BrowserActivityCard = ({
               active: part.ok === null,
             }))}
             onHandback={() => {
-              setResuming(true)
+              setResuming(sourceFinished)
               setTakeoverSession(null)
               setControlEpoch(null)
               setTakeoverViewEpoch(0)
@@ -505,6 +510,10 @@ export const BrowserActivityCard = ({
                   autoOpen
                   thumbnail
                 />
+              </span>
+            ) : finalPreview ? (
+              <span className="browser-activity-thumbnail">
+                <img src={finalPreview.src} alt={t("Final browser screenshot", {}, locale)} />
               </span>
             ) : null}
             <span aria-hidden="true">{expanded ? "−" : "+"}</span>
