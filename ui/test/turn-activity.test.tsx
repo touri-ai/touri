@@ -4,8 +4,12 @@ import { afterEach, expect, it } from "vitest"
 import { VirtualMessageList } from "../src/components/ChatPanel"
 import { TurnActivity } from "../src/components/TurnActivity"
 import { assistantSegments } from "../src/components/turnActivityModel"
+import { setDocumentLanguage } from "../src/documentLanguage"
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  setDocumentLanguage("pt-BR", document.documentElement)
+})
 const tool = (index: number, name = "Read"): ToolCallPart => ({
   type: "tool_call",
   callId: `call-${index}`,
@@ -262,4 +266,22 @@ it("splits browser steps between narrations in the segment model", () => {
     "browser-steps",
   ])
   expect(segments.filter((segment) => segment.type === "browser-steps").map((segment) => segment.count)).toEqual([2, 1])
+})
+
+it.each(["streaming", "complete"] as const)("keeps a %s browser card in the document language", async (status) => {
+  setDocumentLanguage("en", document.documentElement)
+  const reply = message([tool(1, "mcp__touri__browser_snapshot")], {
+    status,
+    sender: { id: "bot-lia", name: "Lia" },
+  })
+
+  render(<VirtualMessageList {...props} messages={[reply]} />)
+
+  const card = await screen.findByRole("article", { name: "Browser for Lia" })
+  expect(card).toBeVisible()
+  if (status === "streaming") {
+    expect(within(card).getByRole("button", { name: "Take over" })).toBeVisible()
+    return
+  }
+  expect(within(card).getByRole("button", { name: /Used the browser/ })).toBeVisible()
 })

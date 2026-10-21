@@ -51,7 +51,11 @@ test("a channel browser handback resumes the bot and posts its answer in the sam
   ).toHaveCount(0)
   await expect(page.locator(".composer-browser-status")).toContainText("Planejamento está trabalhando · No navegador")
   await page.evaluate(() => (window as Window & { completeChannelResume?: () => void }).completeChannelResume?.())
-  await expect(page.getByText("O portal de demonstração está pronto para continuar.", { exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByTestId("virtual-message-list")
+      .getByText("O portal de demonstração está pronto para continuar.", { exact: true }),
+  ).toBeVisible()
   await expect(page.getByText("Cancelado por você", { exact: true })).toHaveCount(0)
   await expect(page.getByText("Falhou", { exact: true })).toHaveCount(0)
   await saveScreenshot("channel-takeover-resumed.png")

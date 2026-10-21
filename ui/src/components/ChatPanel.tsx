@@ -705,6 +705,7 @@ const MessageBubble = ({
   editDisabled: boolean
   onImageLoad: (messageId: string) => void
 }) => {
+  const locale = getDocumentLocale(document.documentElement)
   const runtimeState = useMessageMascotState(message, run)
   const threadBot = useThreadBot(message.threadId)
   const senderBot = useAvatarBot(message.sender?.id ?? null)
@@ -1012,6 +1013,7 @@ const MessageBubble = ({
             <TurnActivity
               key={segment.key}
               message={{ ...message, parts }}
+              locale={locale}
               state={mascotState}
               run={run}
               api={api}
@@ -1060,7 +1062,7 @@ const MessageBubble = ({
           <MarkdownContent content={message.role === "system" ? localizeNotice(text) : text} />
         )
       ) : null}
-      {quietBrowserNarration && <BrowserTurnCard message={{ ...message, parts }} run={run} bot={bot} />}
+      {quietBrowserNarration && <BrowserTurnCard message={{ ...message, parts }} run={run} bot={bot} locale={locale} />}
       {message.role !== "assistant" && !routinePrompt && (
         <MessageAttachments parts={parts.filter((part) => part.type === "image" || part.type === "file")} api={api} />
       )}

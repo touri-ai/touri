@@ -80,7 +80,6 @@ test("a waiting handoff survives browser shutdown with its original deadline and
   expect(persistence.getRunSnapshots(["resumed"])[0]?.browserWaitingForPerson).toBe(true)
 })
 
-
 test("legacy held tabs without a handoff deadline release safely on startup", async () => {
   const root = await mkdtemp(join(tmpdir(), "touri-handoff-orphan-"))
   const runtime = createKernel({ appData: root })
