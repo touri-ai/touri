@@ -141,6 +141,7 @@ const resumeInChannel = (): void => {
     provider: bot.provider,
     trigger: "retry",
     origin: "resume",
+    browserTakeoverFromRunId: previous.id,
     requestMessageId: marker.id,
     replyMessageId: null,
     externalTurnId: "turn-channel-resume",

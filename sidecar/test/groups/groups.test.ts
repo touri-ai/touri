@@ -384,6 +384,8 @@ test("browser handback resumes one bot in the same channel and ignores duplicate
     )
     .all(f.thread.id) as Array<{ thread_id: string; trigger: string; recipients_json: string }>
   const channelMessages = f.store.activePath({ threadId: f.thread.id })
+  const resumedMember = f.runtime.listRuns(f.thread.id).find((run) => run.browserTakeoverFromRunId === source.id)
+  expect(resumedMember?.groupTurnId).toBeDefined()
   expect(channelRuns).toHaveLength(2)
   expect(channelRuns[1]).toMatchObject({
     thread_id: f.thread.id,

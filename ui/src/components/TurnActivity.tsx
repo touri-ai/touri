@@ -6,6 +6,7 @@ import { type Locale, t } from "../i18n"
 import { ActivityMark } from "./ActivityMark"
 import { BrowserActivityCard } from "./BrowserActivityCard"
 import { getBrowserActivityTools } from "./browserActivityPresentation"
+import type { BrowserContinuationActivity } from "./browserContinuationActivity"
 import { MarkdownContent } from "./MarkdownContent"
 import type { MascotState } from "./mascotState"
 import { ToolCallCard } from "./ToolCallCard"
@@ -15,6 +16,9 @@ import "./turn-activity.css"
 export const TurnActivity = ({
   message,
   run,
+  browserActivity,
+  hideBrowserActivity = false,
+  botName,
   api,
   bot,
   state,
@@ -25,6 +29,9 @@ export const TurnActivity = ({
 }: {
   message: Message
   run?: Run | undefined
+  browserActivity?: BrowserContinuationActivity | undefined
+  hideBrowserActivity?: boolean | undefined
+  botName?: string
   api?: UiApi | undefined
   bot?: AvatarIdentity | undefined
   state: MascotState
@@ -47,14 +54,14 @@ export const TurnActivity = ({
   const reasoning = message.parts.flatMap((part) => (part.type === "reasoning" && part.text.trim() ? [part.text] : []))
   return (
     <div className="turn-activity" data-running={live}>
-      {browserTools.length > 0 && (
+      {browserTools.length > 0 && !hideBrowserActivity && (
         <BrowserActivityCard
-          parts={message.parts}
-          finished={!live}
+          parts={browserActivity?.parts ?? message.parts}
+          finished={browserActivity?.finished ?? !live}
           createdAt={message.createdAt}
           threadId={message.threadId}
-          runId={message.runId ?? run?.id}
-          botName={message.sender?.name ?? "touri"}
+          runId={browserActivity?.runId ?? message.runId ?? run?.id ?? null}
+          botName={botName ?? message.sender?.name ?? "touri"}
           locale={locale}
         />
       )}

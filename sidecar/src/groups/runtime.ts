@@ -769,7 +769,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     const roots = persistence.listRuns(threadId, options)
     const children = db
       .query(
-        "SELECT r.*, l.turn_id AS group_turn_id FROM runs r JOIN group_run_links l ON l.run_id=r.id JOIN runs root ON root.id=l.turn_id WHERE root.thread_id=? ORDER BY r.queued_at DESC",
+        "SELECT r.*, l.turn_id AS group_turn_id, continuation.previous_run_id AS browser_takeover_from_run_id FROM runs r JOIN group_run_links l ON l.run_id=r.id JOIN runs root ON root.id=l.turn_id LEFT JOIN browser_takeover_continuations continuation ON continuation.run_id=r.id WHERE root.thread_id=? ORDER BY r.queued_at DESC",
       )
       .all(threadId)
     return [

@@ -311,6 +311,7 @@ export type Run = {
   queueTotal?: number | null
   /** Origin derived from the request and continuation records. */
   origin?: 'message' | 'routine' | 'delegation' | 'resume'
+  browserTakeoverFromRunId?: Id | null
   errorClass: RunErrorClass | null
   errorMessage: string | null
   usage: RunUsage | null

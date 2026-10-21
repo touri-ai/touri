@@ -42,6 +42,7 @@ test("a channel browser handback resumes the bot and posts its answer in the sam
 
   await browserCard.getByRole("button", { name: "Devolver para Planejamento" }).click()
   await expect(browserCard.getByRole("status")).toContainText("Planejamento voltou a trabalhar")
+  await expect(page.locator(".browser-activity-card")).toHaveCount(1)
   await expect(
     page.getByTestId("virtual-message-list").getByText("Retomado após a devolução do navegador", { exact: true }),
   ).toBeVisible()
@@ -50,5 +51,7 @@ test("a channel browser handback resumes the bot and posts its answer in the sam
   await expect(page.getByText("O portal de demonstração está pronto para continuar.", { exact: true })).toBeVisible()
   await expect(page.getByText("Cancelado por você", { exact: true })).toHaveCount(0)
   await expect(page.getByText("Falhou", { exact: true })).toHaveCount(0)
+  await expect(page.locator(".browser-activity-card")).toHaveCount(1)
+  await expect(browserCard).toContainText("Usou o navegador · 2 ações")
   await saveScreenshot("channel-takeover-resumed.png")
 })

@@ -100,6 +100,9 @@ export const toRun = (value: unknown): Run | null => {
     ...(row.provider_started_at == null ? {} : { providerStartedAt: integer(row, "provider_started_at") }),
     finishedAt: nullableInteger(row, "finished_at"),
     ...("group_thread_id" in row ? { groupThreadId: nullableText(row, "group_thread_id") } : {}),
+    ...("browser_takeover_from_run_id" in row
+      ? { browserTakeoverFromRunId: nullableText(row, "browser_takeover_from_run_id") }
+      : {}),
     ...("origin" in row ? { origin: text(row, "origin") as NonNullable<Run["origin"]> } : {}),
   }
 }
@@ -200,6 +203,7 @@ const canUseDatabase = (value: unknown): value is Database => {
 }
 
 const RUN_SNAPSHOT_SELECT = `SELECT r.*, COALESCE(root.thread_id, t.group_thread_id) AS group_thread_id,
+  browser_continuation.previous_run_id AS browser_takeover_from_run_id,
   CASE
     WHEN continuation.run_id IS NOT NULL OR browser_continuation.run_id IS NOT NULL THEN 'resume'
     WHEN EXISTS(SELECT 1 FROM json_each(request.parts_json)

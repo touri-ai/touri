@@ -524,6 +524,7 @@ export const createRuntimeEngine = ({
       ...cloneRun(run),
       groupThreadId,
       origin: getRunOrigin(metadata),
+      browserTakeoverFromRunId: metadata.browserTakeoverFromRunId ?? null,
       queuePosition: position ?? null,
       queueTotal: position === undefined ? null : queue.waiting.length,
     }

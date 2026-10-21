@@ -56,6 +56,7 @@ import { useAvatarBot, useMascotSnapshot, useMessageMascotState, useThreadBot } 
 import { withApprovalAnswers } from "./activityStatus"
 import { BotAvatar } from "./BotAvatar"
 import { getBrowserActivityTools } from "./browserActivityPresentation"
+import { type BrowserContinuationActivity, getBrowserContinuationActivities } from "./browserContinuationActivity"
 import { ChatDisclosure } from "./ChatDisclosure"
 import { ConnectDataCard, connectDataMarker } from "./ConnectDataCard"
 import { ConversationStart } from "./ConversationStart"
@@ -226,6 +227,7 @@ export const VirtualMessageList = ({
   timelineCards = emptyTimelineCards,
 }: VirtualMessageListProps) => {
   const locale = getDocumentLocale(document.documentElement)
+  const browserContinuations = useMemo(() => getBrowserContinuationActivities(messages, runs), [messages, runs])
   // r8 motion: immutable IDs drive text entry, never streaming tokens or status/cards.
   const insertedMessages = useInsertedIds(
     messages.map((message) => message.id),
@@ -541,6 +543,8 @@ export const VirtualMessageList = ({
                     machine={machine}
                     message={message}
                     run={run}
+                    browserActivity={browserContinuations.activities.get(message.id)}
+                    hideBrowserActivity={browserContinuations.hidden.has(message.id)}
                     routineReply={getRoutineReplyRun(message, runs, allMessages) !== undefined}
                     routinePrompt={
                       !mainThread &&
@@ -665,6 +669,8 @@ const MessageBubble = ({
   recovered,
   message,
   run,
+  browserActivity,
+  hideBrowserActivity,
   routineReply,
   routinePrompt,
   routineHeader,
@@ -685,6 +691,8 @@ const MessageBubble = ({
   recovered: boolean
   message: Message
   run?: Run | undefined
+  browserActivity?: BrowserContinuationActivity | undefined
+  hideBrowserActivity: boolean
   routineReply: boolean
   routinePrompt: boolean
   routineHeader?: string | undefined
@@ -979,6 +987,9 @@ const MessageBubble = ({
               message={{ ...message, parts }}
               state={mascotState}
               run={run}
+              browserActivity={browserActivity}
+              hideBrowserActivity={hideBrowserActivity}
+              botName={messageRoleLabel}
               api={api}
               bot={bot}
               onCancel={onCancel}
