@@ -2,6 +2,7 @@ export const threadDeletionWorkerSource = `
 import { Database, constants } from "bun:sqlite";
 
 let database;
+let checkpointBatches = 0;
 
 const EVENT_LIMIT = 128;
 const TRANSCRIPT_LIMIT = 64;
@@ -207,6 +208,12 @@ const processBatch = (threadId) => {
   if (job.phase === "transcript") processTranscript(job);
   if (job.phase === "messages") processMessages(job);
   if (job.phase === "finalize") finalize(job);
+  // Checkpoints run outside write transactions and off the server event loop.
+  checkpointBatches += 1;
+  if (checkpointBatches >= 32) {
+    database.query("PRAGMA wal_checkpoint(PASSIVE)").get();
+    checkpointBatches = 0;
+  }
   const next = database.query("SELECT phase FROM thread_deletions WHERE thread_id = ?").get(threadId);
   return { done: next?.phase === "cleanup", phase: next?.phase ?? "done" };
 };
@@ -215,7 +222,7 @@ self.onmessage = ({ data }) => {
   if (data.type === "start") {
     try {
       database = new Database(data.filename, constants.SQLITE_OPEN_READWRITE | constants.SQLITE_OPEN_NOFOLLOW);
-      database.exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 0; PRAGMA wal_autocheckpoint = 0");
+      database.exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 0; PRAGMA synchronous = NORMAL; PRAGMA wal_autocheckpoint = 0");
       self.postMessage({ type: "ready" });
     } catch (error) {
       self.postMessage({ type: "startup-error", error: String(error) });
