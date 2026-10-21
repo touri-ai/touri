@@ -11,6 +11,7 @@ type Name =
   | "computer"
   | "expand"
   | "collapse"
+  | "archive"
   | "trash"
 
 const paths: Record<Name, string> = {
@@ -26,6 +27,7 @@ const paths: Record<Name, string> = {
   computer: "M3 4h18v13H3V4Zm9 13v4m-5 0h10",
   expand: "M8 3H3v5m0-5 7 7m6 11h5v-5m0 5-7-7M21 8V3h-5m5 0-7 7M3 16v5h5m-5 0 7-7",
   collapse: "M8 3v5H3m5-5L3 8m13 13v-5h5m-5 5 5-5M21 8h-5V3m5 5-7-7M3 16h5v5m-5-5 7 7",
+  archive: "M3 4h18v4H3V4Zm2 4v12h14V8m-9 3h4",
   trash: "M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7",
 }
 

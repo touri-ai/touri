@@ -703,6 +703,16 @@ const AppContent = ({ kernel }: AppProps) => {
       return
     }
     if (command.kind === "thread") {
+      if (command.archived) {
+        void actions
+          .archiveThread(command.threadId, false)
+          .then(() => {
+            actions.selectThread(command.threadId)
+            setRoute({ section: "bots", screen: "chat" })
+          })
+          .catch(() => showNotice(t("Could not update this conversation. Try again.")))
+        return
+      }
       actions.selectThread(command.threadId)
       setRoute({ section: "bots", screen: "chat" })
       return
@@ -1065,7 +1075,14 @@ const AppContent = ({ kernel }: AppProps) => {
             bots={data.bots}
             onDeleteBot={actions.deleteBot}
             onDeleteGroup={actions.deleteGroup}
+            onArchiveThread={actions.archiveThread}
+            onArchiveThreads={actions.archiveThreads}
+            onDeleteThread={actions.deleteThread}
+            onDeleteThreads={actions.deleteThreads}
+            onGetThreadDeletePreview={actions.getThreadDeletePreview}
+            onLoadArchivedThreads={actions.loadArchivedThreads}
             threads={data.threads}
+            deletedThreadIds={data.deletedThreadIds}
             messages={data.activityMessages}
             runs={data.runs}
             routineRuns={data.routineRuns}

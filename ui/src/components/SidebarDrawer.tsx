@@ -2,6 +2,7 @@ import { type ComponentProps, useEffect, useRef, useState, useSyncExternalStore 
 import { isNewBotShortcut, isPaletteShortcut } from "../features/commandPalette/shortcut"
 import { t } from "../i18n"
 import { Sidebar } from "./BotSidebar"
+import { ThreadDeletionNotice, useThreadDeletion } from "./useThreadDeletion"
 
 const query = "(max-width: 620px)"
 const subscribe = (changed: () => void) => {
@@ -14,6 +15,7 @@ const isNarrow = () => window.matchMedia(query).matches
 type SidebarDrawerProps = ComponentProps<typeof Sidebar> & { panelOpen?: boolean }
 
 export const SidebarDrawer = ({ panelOpen = false, ...props }: SidebarDrawerProps) => {
+  const deletion = useThreadDeletion(props)
   const narrow = useSyncExternalStore(subscribe, isNarrow)
   const [open, setOpen] = useState(false)
   const dialog = useRef<HTMLDialogElement>(null)
@@ -35,7 +37,13 @@ export const SidebarDrawer = ({ panelOpen = false, ...props }: SidebarDrawerProp
     return () => element?.close()
   }, [narrow, open])
 
-  if (!narrow) return <Sidebar {...props} />
+  if (!narrow)
+    return (
+      <>
+        <Sidebar {...props} threadDeletion={deletion} />
+        <ThreadDeletionNotice deletion={deletion} />
+      </>
+    )
   return (
     <>
       <button
@@ -95,8 +103,14 @@ export const SidebarDrawer = ({ panelOpen = false, ...props }: SidebarDrawerProp
           if (event.target === event.currentTarget) close()
         }}
       >
-        {open && <Sidebar {...props} onNavigate={close} />}
+        {open && (
+          <>
+            <Sidebar {...props} threadDeletion={deletion} onNavigate={close} />
+            <ThreadDeletionNotice deletion={deletion} />
+          </>
+        )}
       </dialog>
+      {!open && <ThreadDeletionNotice deletion={deletion} />}
     </>
   )
 }

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
 import { MarkdownContent } from "../src/components/MarkdownContent"
 import { ApiError } from "../src/errors"
+import { t } from "../src/i18n"
 import { localFilePath } from "../src/messageMarkdown"
 import { saveFile } from "../src/saveFile"
 
@@ -136,5 +137,79 @@ describe("local files in chat Markdown", () => {
     render(<MarkdownContent content="[notas.md](/workspace/notas.md)" />)
     fireEvent.click(await screen.findByRole("button", { name: "notas.md" }))
     expect(await screen.findByRole("alert")).toHaveTextContent("conversa do bot")
+  })
+  it.each([
+    "`/workspace/report-{analysis,draft}.txt`",
+    "Read /workspace/report-{analysis,draft}.txt.",
+    "[reports](/workspace/report-{analysis,draft}.txt)",
+    "`/workspace/report-{1..3}.md`",
+    "`/workspace/report-{a..c}.txt`",
+    "`/workspace/{analysis,draft}/report.txt`",
+    "`/workspace/report-%7Banalysis%2Cdraft%7D.txt`",
+    "`/workspace/report-{analysis,{draft}}.txt`",
+    "Read /workspace/report-{{analysis},draft}.txt.",
+    "[reports](/workspace/report-{analysis,{{draft}}}.txt)",
+    "[reports](/workspace/report-{analysis,draft}.png)",
+    "[Download reports](/workspace/report-{1..3}.png)",
+  ])("keeps shell-brace citations inert: %s", async (content) => {
+    const { evidence, request } = fixture(async () => ({
+      name: "unused.txt",
+      mime: "text/plain",
+      base64: btoa("Unused"),
+    }))
+
+    render(<MarkdownContent content={content} evidence={evidence} />)
+
+    await screen.findByText(content.startsWith("[") ? /reports/ : /workspace/)
+    expect(document.querySelector(".local-file-link")).toBeNull()
+    expect(document.querySelector("a[href]")).toBeNull()
+    expect(screen.queryByRole("button")).toBeNull()
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { content: "`/workspace/report-{draft}.txt`", path: "/workspace/report-{draft}.txt" },
+    { content: "Read /workspace/{draft}/report.txt.", path: "/workspace/{draft}/report.txt" },
+    { content: "Read /workspace/report.txt.", path: "/workspace/report.txt" },
+    { content: "`/workspace/report-{{draft}}.txt`", path: "/workspace/report-{{draft}}.txt" },
+    { content: "`/workspace/{analysis},report-{draft}.txt`", path: "/workspace/{analysis},report-{draft}.txt" },
+  ])("keeps a literal path clickable: $content", async ({ content, path }) => {
+    const { evidence, request } = fixture(async () => ({
+      name: "report.txt",
+      mime: "text/plain",
+      base64: btoa("Saved report"),
+    }))
+
+    render(<MarkdownContent content={content} evidence={evidence} />)
+    fireEvent.click(await screen.findByRole("button", { name: path }))
+
+    expect(await screen.findByRole("dialog")).toHaveTextContent("Saved report")
+    expect(request).toHaveBeenCalledWith("GET /bots/:id/files/content", { path }, { id: evidence.bot.id })
+  })
+
+  it("names a file-level 404 without exposing transport diagnostics", async () => {
+    const { evidence } = fixture(async () => {
+      throw new ApiError(404, "Arquivo ou pasta não encontrado")
+    })
+
+    render(<MarkdownContent evidence={evidence} content="[missing](/workspace/missing.txt)" />)
+    fireEvent.click(await screen.findByRole("button", { name: "missing" }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/^Arquivo não encontrado\.$/)
+    expect(t("Arquivo não encontrado.", {}, "en")).toBe("File not found.")
+  })
+
+  it("does not mislabel an archived-bot 404 as a missing file", async () => {
+    const { evidence } = fixture(async () => {
+      throw new ApiError(404, "Bot não encontrado")
+    })
+
+    render(<MarkdownContent evidence={evidence} content="[report](/workspace/report.txt)" />)
+    fireEvent.click(await screen.findByRole("button", { name: "report", exact: true }))
+
+    const error = await screen.findByRole("alert")
+    expect(error).toHaveTextContent("removido")
+    expect(error).not.toHaveTextContent("Arquivo não encontrado.")
+    expect(error).not.toHaveTextContent("Bot não encontrado")
   })
 })
