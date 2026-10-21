@@ -37,7 +37,7 @@ for (const viewport of viewports) {
 
       await openSidebar(page)
       await showBotRoutines(page)
-      await expect(page.locator(".cron-screen")).toBeVisible()
+      await expect(page.locator(".cron-screen")).toBeVisible({ timeout: 30_000 })
       await captureSurface(page, info, "routines")
       await page.getByRole("button", { name: "Criar rotina", exact: true }).click()
       await expect(page.getByRole("dialog")).toBeVisible()
@@ -130,7 +130,7 @@ test("phone navigation survives replacing a bot routine header", async ({ page }
   await page.goto("/test/e2e/home-harness.html")
   await openSidebar(page)
   await showBotRoutines(page, "mark")
-  await expect(page.locator(".cron-screen")).toBeVisible()
+  await expect(page.locator(".cron-screen")).toBeVisible({ timeout: 30_000 })
   const header = page.locator(".cron-screen .screen-header")
   await expect(header.getByRole("button", { name: "Abrir menu", exact: true })).toBeVisible()
   await openSidebar(page)

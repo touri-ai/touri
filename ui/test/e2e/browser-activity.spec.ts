@@ -365,3 +365,23 @@ for (const fallback of ["missing_key", "no_credit"] as const) {
     })
   }
 }
+
+for (const width of [360, 390, 430, 1440]) {
+  test(`finished browser card without an image stays compact at ${width}px`, async ({ page }) => {
+    const evidence = resolve(import.meta.dirname, "../../test-results/browser-compact")
+    await mkdir(evidence, { recursive: true })
+    await page.setViewportSize({ width, height: 844 })
+    await page.goto("/test/e2e/browser-activity-harness.html?screenshot=none")
+    await page.getByRole("button", { name: "Iniciar busca de viagem" }).click()
+    await page.getByRole("button", { name: "Buscar viagens" }).click()
+    const summary = page.getByRole("button", { name: /Usou o navegador/ })
+    await expect(summary).toBeVisible()
+    await expect(summary.locator("img")).toHaveCount(0)
+    await page.screenshot({ path: `${evidence}/browser-no-image-${width}.png` })
+
+    expect((await summary.boundingBox())?.height).toBeLessThan(90)
+    await expect(summary).toContainText("Ver o que ele fez")
+    await summary.click()
+    await expect(page.getByText("Atividade do navegador", { exact: true })).toBeVisible()
+  })
+}

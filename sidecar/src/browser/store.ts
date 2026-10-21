@@ -136,7 +136,7 @@ export const createBrowserStore = ({
       takeoverReason: null,
       lastUsedAt: now,
       ownerBotId: botId,
-      ownerThreadId: threadId,
+      ownerThreadId: getExistingThreadId(database, threadId),
     }
     const tab: TabState = {
       info,
@@ -166,15 +166,14 @@ export const createBrowserStore = ({
       .query(
         "INSERT INTO browser_tabs (id, profile, owner_bot_id, owner_thread_id, opener_tab_id, cdp_target_id, url, title, state, held_by_user, private_input, created_at, last_used_at) VALUES (?, ?, ?, ?, ?, ?, ?, '', ?, 0, 0, ?, ?)",
       )
-      .run(tabId, profile, botId, threadId, openerTabId, targetId, url, info.state, now, now)
+      .run(tabId, profile, botId, info.ownerThreadId, openerTabId, targetId, url, info.state, now, now)
     tabs.set(tabId, tab)
     return tab
   }
 
   const save = (tab: TabState): void => {
-    // A deleted channel cannot remain the foreign-key owner of a live browser tab.
-    if (tab.info.ownerThreadId && !database.query("SELECT 1 FROM threads WHERE id = ?").get(tab.info.ownerThreadId))
-      tab.info = Object.assign({}, tab.info, { ownerThreadId: null })
+    // Channel deletion can leave a stale owner in a live tab’s cached reference.
+    tab.info = Object.assign({}, tab.info, { ownerThreadId: getExistingThreadId(database, tab.info.ownerThreadId) })
     const row = toRow(tab, Date.now())
     tab.info.lastUsedAt = row.last_used_at
     database
@@ -270,4 +269,10 @@ const getPrivateDocumentIds = (row: BrowserTabRow): ReadonlyArray<number> => {
   } catch {
     return [0]
   }
+}
+
+const getExistingThreadId = (database: Database, threadId: Id | null): Id | null => {
+  if (!threadId) return null
+
+  return database.query<{ id: Id }, [Id]>("SELECT id FROM threads WHERE id = ?").get(threadId)?.id ?? null
 }

@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Bot, BotGroup, MessagePart, RunStatus, Thread } from "@touri/contracts"
+import { createBrowserStore } from "../../src/browser/store"
 import { init as initGroups } from "../../src/groups"
 import { createGroupStore } from "../../src/groups/store"
 import { createKernel } from "../../src/kernel"
@@ -70,6 +71,51 @@ test("DELETE /groups/:id removes shared, participant and archived history while 
     delete_before_id: 0,
     ui_delete_before_seq: 0,
   })
+})
+
+test("channel deletion detaches live tabs and tolerates late browser writes and popups", async () => {
+  const fixture = await getFixture()
+  const browser = createBrowserStore({ kernel: fixture.host.kernel })
+  const participant = fixture.groups.participant(fixture.group, fixture.thread.id, fixture.bot.id)
+  const tabs = [fixture.thread, participant].map((thread) =>
+    browser.create({
+      botId: fixture.bot.id,
+      threadId: thread.id,
+      url: "about:blank",
+      openerTabId: null,
+      targetId: thread.id,
+    }),
+  )
+  const retained = browser.create({
+    botId: fixture.peer.id,
+    threadId: fixture.otherThread.id,
+    url: "about:blank",
+    openerTabId: null,
+    targetId: "retained-target",
+  })
+
+  const response = await fixture.request(`/groups/${fixture.group.id}`, undefined, "DELETE")
+
+  tabs.forEach((tab) => {
+    browser.save(tab)
+  })
+  const popup = browser.create({
+    botId: fixture.bot.id,
+    threadId: participant.id,
+    url: "about:blank",
+    openerTabId: tabs[0]?.info.tabId ?? null,
+    targetId: "late-popup",
+  })
+
+  expect(response.status).toBe(200)
+  tabs.forEach((tab) => {
+    expect(tab.info.ownerThreadId).toBeNull()
+    expect(browser.find(tab.info.tabId)?.info.state).toBe("live")
+  })
+  expect(popup.info.ownerThreadId).toBeNull()
+  expect(browser.find(retained.info.tabId)?.info.ownerThreadId).toBe(fixture.otherThread.id)
+  expect(fixture.db.query("PRAGMA foreign_key_check").all()).toEqual([])
+  expect((await fixture.request("/groups", undefined, "GET")).status).toBe(200)
 })
 
 test("DELETE /groups/:id returns 404 for an unknown group without changing existing groups", async () => {

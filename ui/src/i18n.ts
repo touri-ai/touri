@@ -832,6 +832,7 @@ export const ptBR = {
   "Expand browser view": "Expandir navegador",
   "Collapse browser view": "Recolher navegador",
   "Browser activity": "Atividade do navegador",
+  "See what the bot did": "Ver o que ele fez",
   "Showing the latest {count} browser actions": "Exibindo as últimas {count} ações do navegador",
   "A person is controlling this browser tab; the bot is paused.":
     "Uma pessoa está controlando esta aba; o bot está pausado.",
@@ -3258,6 +3259,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "Screenshots are blocked after private browser control.",
   "Informe um endereço HTTPS válido, sem caminho.": "Enter a valid HTTPS address without a path.",
   "Take over tab": "Take over",
+  "See what the bot did": "See what the bot did",
   "Check your tools": "Check your tools",
   "See what is ready to use and what needs your attention.": "See what is ready to use and what needs your attention.",
   "{tool} is installed": "{tool} is installed",

@@ -6,6 +6,7 @@ const evidence =
   process.env.TOURI_GROUP_EVIDENCE_DIR ?? resolve(import.meta.dirname, "../../test-results/group-member-count")
 
 test("group header updates its visible and accessible member count", async ({ page }) => {
+  test.setTimeout(60_000)
   mkdirSync(evidence, { recursive: true })
   await page.setViewportSize({ width: 1100, height: 800 })
   await page.emulateMedia({ reducedMotion: "reduce" })

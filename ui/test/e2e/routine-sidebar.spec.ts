@@ -11,7 +11,7 @@ for (const [name, width, height] of [
   ["desktop", 1440, 900],
   ["phone", 390, 844],
 ] as const) {
-  test(`routine sidebar: ${name} clears grouped unread runs with one click`, async ({ page }) => {
+  test(`routine sidebar: ${name} clears grouped unread runs after opening a result from history`, async ({ page }) => {
     await page.setViewportSize({ width, height })
     await page.emulateMedia({ reducedMotion: "reduce" })
     await page.goto("/test/e2e/routine-sidebar-harness.html?unread")
@@ -24,6 +24,9 @@ for (const [name, width, height] of [
     await expect(routine.locator(".sidebar-unread")).toHaveText("8")
     if (directory) await page.screenshot({ path: `${directory}/unread-group-${name}.png`, animations: "disabled" })
     await routine.click()
+    const history = page.locator(".routine-run-history")
+    await expect(history).toHaveAttribute("data-open", "true")
+    await history.getByRole("button", { name: "Abrir conversa" }).last().click()
     await expect(page.locator(".message-assistant")).toContainText("Resumo pronto para conferir.")
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
 

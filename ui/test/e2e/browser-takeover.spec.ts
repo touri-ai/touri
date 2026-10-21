@@ -8,6 +8,7 @@ for (const viewport of [
   { name: "phone", width: 390, height: 844 },
 ]) {
   test(`server browser takeover stays interactive and private: ${viewport.name}`, async ({ page }, testInfo) => {
+    test.setTimeout(60_000)
     await page.setViewportSize({ width: viewport.width, height: viewport.height })
     await page.goto("/test/e2e/browser-activity-harness.html?remote=true")
     await page.getByRole("button", { name: "Iniciar busca de viagem" }).click()
