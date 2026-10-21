@@ -17,6 +17,12 @@ export const startBrowserFixtureServer = (): Server<undefined> =>
           "const primary=document.querySelector('#destination-primary');const suggestions=document.querySelector('#suggestions');primary.addEventListener('input',()=>{suggestions.hidden=false});suggestions.addEventListener('click',event=>{const option=event.target.closest('[role=option]');if(!option)return;primary.value=option.dataset.city;suggestions.hidden=true});document.querySelector('#calendar-open').addEventListener('click',()=>{document.querySelector('#calendar').hidden=false});document.querySelector('#calendar').addEventListener('click',event=>{if(event.target.matches('button'))document.querySelector('#selected-date').textContent=event.target.getAttribute('aria-label')});document.querySelector('#travel-search').addEventListener('submit',event=>{event.preventDefault();const results=document.querySelector('#results');const direct=document.createElement('li');direct.textContent=primary.value+' · direto · viagem fictícia';const connection=document.createElement('li');connection.textContent='Lisboa Airport · conexão';results.replaceChildren(direct,connection);results.hidden=false})",
         )
       if (pathname === "/basic") return page('<button id="save">Save</button><input aria-label="Name">')
+      if (pathname === "/")
+        return page(
+          '<div role="dialog"><h1>Welcome back</h1><form><label>Email<input type="email" aria-label="Email"></label><label>Password<input type="password" aria-label="Password"></label></form></div>',
+        )
+      if (pathname === "/login")
+        return page('<form><label>Password<input type="password" aria-label="Password"></label></form>')
       if (pathname === "/mutating-link" || pathname === "/click-destination")
         return page(
           '<a id="changing-link" href="/click-destination"><img alt="Go to destination" width="80" height="30" src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2230%22/%3E"></a><div style="height:1800px"></div><a id="below-fold" href="/click-destination">Below fold</a>',

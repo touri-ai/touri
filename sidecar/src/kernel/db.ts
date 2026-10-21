@@ -41,12 +41,13 @@ import botDeletionSql from "./migrations/0035.sql" with { type: "text" }
 import workspaceAttentionBackfillSql from "./migrations/0036.sql" with { type: "text" }
 import browserTakeoverPrivacySql from "./migrations/0037.sql" with { type: "text" }
 import browserChannelRunsSql from "./migrations/0038.sql" with { type: "text" }
+import browserTakeoverContinuationsSql from "./migrations/0039.sql" with { type: "text" }
 import type { PerformanceStageRunner } from "./performance"
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 38
+export const SCHEMA_VERSION = 39
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -292,6 +293,11 @@ export const openDatabase = ({
     if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'browser_channel_runs_version'").get())
       database.exec(browserChannelRunsSql)
     database.exec("UPDATE schema_meta SET value = '38' WHERE key = 'schema_version'")
+  })()
+  database.transaction(() => {
+    if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'browser_takeover_continuations_version'").get())
+      database.exec(browserTakeoverContinuationsSql)
+    database.exec("UPDATE schema_meta SET value = '39' WHERE key = 'schema_version'")
   })()
   return database
 }

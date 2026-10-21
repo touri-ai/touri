@@ -275,8 +275,9 @@ export const requiresBrowserTakeover = ({
   pointTarget?: boolean | undefined
   formSubmit?: boolean | undefined
 }): boolean => {
-  if (submit || pointTarget || formSubmit || SENSITIVE_PATH.test(getPath(pageUrl) ?? "")) return true
+  if (submit || formSubmit || SENSITIVE_PATH.test(getPath(pageUrl) ?? "")) return true
   if (action === "type") return SENSITIVE_FIELD.test(intent) || HIGH_IMPACT_TARGET.test(intent)
+  if (pointTarget) return true
 
   return HIGH_IMPACT_TARGET.test(intent)
 }

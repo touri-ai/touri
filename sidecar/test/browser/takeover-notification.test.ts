@@ -11,6 +11,7 @@ test("a browser handoff creates a needs-you notification and resolves it on retu
   const runtime = createKernel({ appData: root })
   let notifications: Array<NotifyInput> = []
   let resolutions: Array<{ requestId: string; resolution: NotifyResolution }> = []
+  let resumptions: Array<{ botId: string; threadId: string; runId: string }> = []
   let engine: ReturnType<typeof createBrowserEngine> | null = null
   try {
     const database = runtime.kernel.db as { run: (sql: string, ...args: Array<unknown>) => unknown }
@@ -45,6 +46,10 @@ test("a browser handoff creates a needs-you notification and resolves it on retu
     runtime.kernel.services.provide("notify.resolve", (input) => {
       resolutions = [...resolutions, input]
     })
+    runtime.kernel.services.provide("runtime.resumeAfterBrowserTakeover", (input) => {
+      resumptions = [...resumptions, input]
+      return true
+    })
     engine = createBrowserEngine({
       kernel: runtime.kernel,
       discoverBotId: "bot",
@@ -58,15 +63,19 @@ test("a browser handoff creates a needs-you notification and resolves it on retu
       reasonCode: "login",
       timeoutMs: 10000,
       signal: new AbortController().signal,
+      threadId: "thread",
+      runId: "run",
     })
-    await Bun.sleep(0)
+    const result = await Promise.race([pending, Bun.sleep(500).then(() => null)])
+    expect(result).toMatchObject({ success: true, structured: { status: "waiting_for_person" } })
     expect(notifications).toMatchObject([{ kind: "takeover", requestId: expect.any(String) }])
     expect(JSON.stringify(notifications)).not.toContain("fixture-secret")
     expect(engine.tabsForBot("bot")[0]?.url).toBe("https://travel.example.test")
     expect(await engine.releaseTakeover("tab")).toBe(true)
-    await pending
+    await Bun.sleep(0)
 
     expect(resolutions).toMatchObject([{ requestId: notifications[0]?.requestId, resolution: "replied" }])
+    expect(resumptions).toEqual([{ botId: "bot", threadId: "thread", runId: "run" }])
   } finally {
     await engine?.shutdown()
     runtime.stop()

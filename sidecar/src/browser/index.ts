@@ -233,7 +233,6 @@ const runWithBrowserDecision = async ({
       }
       const pageUrl = getPageUrl({ tabId, botId })
       let intent = getTargetIntent(requestedTarget)
-      let uninspectableTarget = false
       let formSubmit = false
       if (requestedTarget.kind === "ref") {
         const inspect = await snapshotBrowser({
@@ -248,7 +247,12 @@ const runWithBrowserDecision = async ({
         if (element) {
           intent = `${element.role} ${getDecisionName(element.name, redact)}`
           formSubmit = element.formSubmit === true
-        } else uninspectableTarget = true
+        } else
+          return {
+            success: false,
+            errorCode: "TARGET_CHANGED",
+            error: "The target is not in the current browser snapshot. Take a fresh snapshot and use one of its refs.",
+          }
       }
       if (
         requiresBrowserTakeover({
@@ -257,7 +261,7 @@ const runWithBrowserDecision = async ({
           pageUrl,
           submit,
           formSubmit,
-          pointTarget: requestedTarget.kind === "point" || uninspectableTarget,
+          pointTarget: requestedTarget.kind === "point",
         })
       )
         return getBrowserTakeoverRequiredResult(
@@ -456,6 +460,8 @@ export const init = async (
           reasonCode,
           timeoutMs: TAKEOVER_TIMEOUT_MS,
           signal: input.ctx.signal,
+          threadId: input.ctx.threadId,
+          runId: input.ctx.runId,
         })
       }
       if (!result.success)
@@ -791,6 +797,8 @@ export const init = async (
         timeoutMs: timeout(input.timeoutMs, 600000, 1800000),
         signal: ctx.signal,
         notify: !managedNeedsYou,
+        threadId: ctx.threadId,
+        runId: ctx.runId,
       })
     }),
     tool("browser_submit_secret", async () => getBrowserTakeoverRequiredResult("login")),

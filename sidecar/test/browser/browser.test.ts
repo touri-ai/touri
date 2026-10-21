@@ -280,7 +280,8 @@ realSuite("WP6 real Chrome browser acceptance", () => {
       target: { kind: "css", selector: "#calendar-open" },
     })
 
-    expect(blocked).toMatchObject({ success: false, errorCode: "USER_TAKEOVER_REQUIRED" })
+    expect(blocked).toMatchObject({ success: true, structured: { status: "waiting_for_person" } })
+    expect(await engine.releaseTakeover(page.tabId)).toBe(true)
     const state = await engine.evaluate({
       tabId: page.tabId,
       botId: botA,
@@ -291,7 +292,7 @@ realSuite("WP6 real Chrome browser acceptance", () => {
     expect(JSON.stringify(state)).toContain("true")
   })
 
-  test("typed decisions complete a local travel search with autocomplete and a date picker", async () => {
+  test("typed decisions resume a local travel search after submit handback", async () => {
     const requestStart = decisionRequests.length
     const page = await open("/travel-search")
     const fill = await callBrowserTool("browser_type", {
@@ -331,8 +332,8 @@ realSuite("WP6 real Chrome browser acceptance", () => {
       tabId: page.tabId,
       target: { kind: "role", role: "button", name: "Search trips" },
     })
-    expect(submit).toMatchObject({ success: false, errorCode: "USER_TAKEOVER_REQUIRED" })
-    expect(JSON.stringify(submit)).toContain("TOURI_BROWSER_TAKEOVER_REQUIRED|form_submit")
+    expect(submit).toMatchObject({ success: true, structured: { status: "waiting_for_person" } })
+    expect(await engine.releaseTakeover(page.tabId)).toBe(true)
     expect(
       await engine.evaluate({
         tabId: page.tabId,

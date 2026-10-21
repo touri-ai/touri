@@ -301,6 +301,29 @@ afterEach(async () => {
   for (const cleanup of drainCleanups.splice(0)) await cleanup()
 })
 
+test("returning browser control resumes the same request even when restart recovery is disabled", async () => {
+  const f = await fixture()
+  try {
+    f.disableResume()
+    const run = f.send(f.first.engine)
+    await waitFor(f.streamed("INÍCIO"))
+    f.release()
+    await waitFor(() => f.runs().some((item) => item.id === run.id && item.status === "succeeded"))
+
+    expect(f.first.engine.resumeAfterBrowserTakeover({ botId: "b", threadId: "t", runId: run.id })).toBe(true)
+    await waitFor(() => f.links().some((link) => link.reason === "browser_takeover"))
+    await waitFor(() => {
+      const resumed = f.runs().find((item) => item.id !== run.id)
+      return resumed?.status === "succeeded"
+    })
+
+    expect(f.links()).toMatchObject([{ original_run_id: run.id, previous_run_id: run.id, reason: "browser_takeover" }])
+    expect(f.markers().map((message) => message.text)).toContain("Retomado após a devolução do navegador")
+  } finally {
+    await f.close()
+  }
+})
+
 test.each(["active", "completion"] as const)("approval continuation survives drain during %s", async (at) => {
   const f = await fixture()
   drainCleanups.push(f.close)
