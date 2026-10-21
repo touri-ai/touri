@@ -16,6 +16,23 @@ export const localFilePath = (href: string): string | null => {
   return path.startsWith("/") && !path.startsWith("//") ? path : absolute ? href : null
 }
 
+/** Shell alternatives name several possible files, not one literal preview target. */
+export const hasShellBraceAlternatives = (path: string): boolean => {
+  if (/\{(?:[+-]?\d+\.\.[+-]?\d+|[a-zA-Z]\.\.[a-zA-Z])(?:\.\.[+-]?\d+)?\}/.test(path)) return true
+
+  // Local depth counters recognize nested alternatives in one pass without expanding paths.
+  let depth = 0
+  let commaDepth = 0
+  for (const [marker] of path.matchAll(/[{},]/g)) {
+    if (marker === "{") depth += 1
+    if (marker === "," && depth > 0) commaDepth = depth
+    if (marker !== "}" || depth === 0) continue
+    if (commaDepth === depth) return true
+    depth -= 1
+  }
+  return false
+}
+
 type FileNode = { type: string; value?: string; url?: string; children?: FileNode[] }
 
 /** Link parsed prose and inline code only; persisted messages and fenced examples stay intact. */
@@ -23,8 +40,11 @@ export const localFileLinks = () => (tree: FileNode) => {
   const visit = (node: FileNode) => {
     if (["link", "linkReference", "image", "code", "html"].includes(node.type) || !node.children) return
     node.children = node.children.flatMap((child): FileNode[] => {
-      if (child.type === "inlineCode" && localFilePath(child.value ?? ""))
+      if (child.type === "inlineCode") {
+        const path = localFilePath(child.value ?? "")
+        if (!path || hasShellBraceAlternatives(path)) return [child]
         return [{ type: "link", url: child.value ?? "", children: [child] }]
+      }
       if (child.type !== "text") {
         visit(child)
         return [child]
@@ -35,10 +55,13 @@ export const localFileLinks = () => (tree: FileNode) => {
       for (const match of value.matchAll(/(?:^|[\s(])((?:file:\/\/\/|\/(?!\/))[^\s<>`"'()[\]]+)/g)) {
         const path = (match[1] ?? "").replace(/[.,;:!?]+$/, "")
         const start = (match.index ?? 0) + match[0].length - (match[1]?.length ?? 0)
-        if (!localFilePath(path) || !/\/[^/]+\.[\w]+$/.test(path)) continue
+        const local = localFilePath(path)
+        if (!local || !/\/[^/]+\.[\w]+$/.test(path)) continue
         result.push(
           { type: "text", value: value.slice(offset, start) },
-          { type: "link", url: path, children: [{ type: "text", value: path }] },
+          hasShellBraceAlternatives(local)
+            ? { type: "inlineCode", value: path }
+            : { type: "link", url: path, children: [{ type: "text", value: path }] },
         )
         offset = start + path.length
       }

@@ -156,7 +156,7 @@ jobs:
     env:
       TOURI_DOCTOR_SKIP_PROVIDER_PROBES: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: 1.4.3
@@ -190,9 +190,12 @@ jobs:
       - name: Check long-conversation typing
         working-directory: ui
         run: bunx playwright test test/e2e/composer-performance.spec.ts test/e2e/streaming-memory.spec.ts --workers=1
+      - name: Check local file citations and previews
+        working-directory: ui
+        run: bunx playwright test test/e2e/local-file-links.spec.ts --workers=1 --output test-results/local-file-links
       - name: Keep synthetic performance evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: composer-performance
           path: |
@@ -201,6 +204,9 @@ jobs:
             ui/test-results/**/streaming-memory.json
             ui/test-results/**/after-streaming.png
             ui/test-results/**/after-completed.png
+            ui/test-results/local-file-links/**/brace-files-*.png
+            ui/test-results/local-file-links/**/generated-image-and-file-links.png
+            ui/test-results/local-file-links/**/local-file-preview.png
           if-no-files-found: ignore
           retention-days: 7
 
@@ -236,7 +242,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: 1.4.3
