@@ -2,13 +2,14 @@ import { expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { Bot, BrowserTabInfo, ToolRegistration, ToolResult, VmRuntime } from "@touri/contracts"
+import type { Bot, BrowserTabInfo, RouteModule, ToolRegistration, ToolResult, VmRuntime } from "@touri/contracts"
 import { init, withToolDeadline } from "../../src/browser"
 import { createBrowserEngine } from "../../src/browser/engine"
 import type { BrowserEngine } from "../../src/browser/types"
 import { init as initComputer } from "../../src/computer"
 import { createKernel } from "../../src/kernel"
 import { init as initStore } from "../../src/store"
+import { bindDeviceSession } from "../../src/kernel/device-session"
 import "./test-helper"
 
 const getTakeoverVmRuntime = (acquire: VmRuntime["acquire"]): VmRuntime => {
@@ -80,8 +81,10 @@ test("remote browser takeover gives one device an interactive session and reject
   const runtime = createKernel({ appData: root })
   let botId = ""
   let receivedInput: unknown = null
+  let engineReleaseCount = 0
   let leaseAcquired = 0
   let leaseReleased = 0
+  const registeredModules: Array<RouteModule> = []
   const getResult = (): ToolResult => ({ success: true, content: [] })
   const tab: BrowserTabInfo & { ownerBotId: string | null; ownerThreadId: string | null } = {
     tabId: "t_remote",
@@ -114,7 +117,10 @@ test("remote browser takeover gives one device an interactive session and reject
     requestTakeover: async () => getResult(),
     submitSecret: async () => getResult(),
     secretEntry: async () => false,
-    releaseTakeover: async () => true,
+    releaseTakeover: async () => {
+      engineReleaseCount += 1
+      return true
+    },
     holdTakeover: async () => true,
     getWindowBounds: async () => null,
     tabsForBot: () => [{ ...tab, ownerBotId: botId }],
@@ -133,6 +139,11 @@ test("remote browser takeover gives one device an interactive session and reject
     shutdown: async () => {},
   }
   try {
+    const registerRoutes = runtime.kernel.registerRoutes
+    runtime.kernel.registerRoutes = (module) => {
+      registeredModules.push(module)
+      registerRoutes(module)
+    }
     await initStore(runtime.kernel)
     await init(runtime.kernel, undefined, { engine })
     const baseUrl = `http://127.0.0.1:${runtime.handshake.port}/api/v1`
@@ -292,6 +303,55 @@ test("remote browser takeover gives one device an interactive session and reject
     const ended = await request("/browser/tabs/t_remote/takeover/session", { sessionId, controlEpoch }, "DELETE")
     expect(ended.status).toBe(200)
     expect(leaseReleased).toBe(1)
+
+    const browserRoutes = registeredModules.find(({ name }) => name === "browser")
+    const startSessionRoute = browserRoutes?.routes.find(
+      (route) => route.method === "POST" && route.path === "/browser/tabs/:id/takeover/session",
+    )
+    const endSessionRoute = browserRoutes?.routes.find(
+      (route) => route.method === "DELETE" && route.path === "/browser/tabs/:id/takeover/session",
+    )
+    const legacyTakeoverRoute = browserRoutes?.routes.find(
+      (route) => route.method === "POST" && route.path === "/browser/tabs/:id/takeover",
+    )
+    if (!startSessionRoute || !endSessionRoute || !legacyTakeoverRoute)
+      throw new Error("Browser takeover routes were not registered")
+    const personSignal = (personId: string) => {
+      const signal = new AbortController().signal
+      bindDeviceSession(signal, {
+        deviceId: "shared-device",
+        person: { id: personId, name: personId, email: null, avatarSeed: personId, role: "member" },
+        active: () => true,
+      })
+      return signal
+    }
+    const ownerSignal = personSignal("controller")
+    const ownerSession = await startSessionRoute.handler({
+      params: { id: "t_remote" },
+      query: {},
+      body: {},
+      signal: ownerSignal,
+    })
+    expect(ownerSession.status).toBe(200)
+    if (!("json" in ownerSession)) throw new Error("Controller session response was not JSON")
+    const ownerCredentials = ownerSession.json as { sessionId: string; controlEpoch: string }
+    const releasesBeforeOtherPerson = engineReleaseCount
+    const otherPersonRelease = await legacyTakeoverRoute.handler({
+      params: { id: "t_remote" },
+      query: {},
+      body: { hold: false },
+      signal: personSignal("another-person"),
+    })
+    expect(otherPersonRelease.status).toBe(403)
+    expect(engineReleaseCount).toBe(releasesBeforeOtherPerson)
+    const ownerEnd = await endSessionRoute.handler({
+      params: { id: "t_remote" },
+      query: {},
+      body: ownerCredentials,
+      signal: ownerSignal,
+    })
+    expect(ownerEnd.status).toBe(200)
+    expect(leaseReleased).toBe(2)
   } finally {
     runtime.stop()
     rmSync(root, { recursive: true, force: true })

@@ -1141,26 +1141,30 @@ export const init = async (
           const tabId = request.params.id ?? ""
           const controller = takeoverSessions.get(tabId)
           const device = deviceSession(request.signal)
-          if (controller && (!device?.active() || controller.deviceId !== device.deviceId))
+          if (controller && ((device && !device.active()) || !isTakeoverController(device, controller)))
             return { status: 403, json: { error: "Somente quem assumiu o navegador pode devolver o controle." } }
-          const ok = hold
-            ? await engine.holdTakeover({ tabId, reason: "The user requested browser takeover" })
-            : await engine.releaseTakeover(tabId)
-          if (ok && !hold && controller && controller.deviceId === device?.deviceId) {
-            if (controller.timer) clearTimeout(controller.timer)
-            takeoverSessions.delete(tabId)
+          const success = { status: 200, json: {} }
+          const failure = {
+            status: 404,
+            json: {
+              errorCode: "TAB_NOT_FOUND",
+              error: hold
+                ? "Não foi possível assumir a aba: ela foi fechada ou o navegador da máquina não respondeu. Reconecte e tente de novo."
+                : "Não foi possível devolver a aba: ela foi fechada ou o navegador da máquina não respondeu.",
+            },
           }
-          return ok
-            ? { status: 200, json: {} }
-            : {
-                status: 404,
-                json: {
-                  errorCode: "TAB_NOT_FOUND",
-                  error: hold
-                    ? "Não foi possível assumir a aba: ela foi fechada ou o navegador da máquina não respondeu. Reconecte e tente de novo."
-                    : "Não foi possível devolver a aba: ela foi fechada ou o navegador da máquina não respondeu.",
-                },
-              }
+          if (hold) {
+            const held = await engine.holdTakeover({ tabId, reason: "The user requested browser takeover" })
+            if (!held) return failure
+            return success
+          }
+          if (controller) {
+            await endTakeoverSession(tabId, controller.id)
+            return success
+          }
+          const released = await engine.releaseTakeover(tabId)
+          if (!released) return failure
+          return success
         },
       },
       {
