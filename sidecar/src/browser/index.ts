@@ -12,6 +12,7 @@ import type {
 } from "@touri/contracts"
 import { getApiModelKey } from "../api-models"
 import { getBrowserDecisionModel } from "../api-models/config"
+import { deviceSession } from "../kernel/device-session"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import {
   type BrowserDecisionAction,
@@ -30,6 +31,7 @@ import { createRoutedBrowserEngine } from "./vm-router"
 export const name = "browser"
 
 const OPEN_DEFAULT_TIMEOUT_MS = 20000
+const TAKEOVER_MINIMUM_TIMEOUT_MS = 120_000
 
 export const target = (value: unknown): BrowserTarget => {
   if (typeof value === "string") return { kind: "ref", ref: value }
@@ -45,8 +47,8 @@ const requestedTimeout = (value: unknown): number | null => {
   return asNumber(value)
 }
 
-const timeout = (value: unknown, fallback = 10000, maximum = 30000): number =>
-  Math.min(maximum, Math.max(1, requestedTimeout(value) ?? fallback))
+const timeout = (value: unknown, fallback = 10000, maximum = 30000, minimum = 1): number =>
+  Math.min(maximum, Math.max(minimum, requestedTimeout(value) ?? fallback))
 
 // The engine (and the VM router) may add transport slack to a budget; reserve it so the
 // tool itself still answers within the caller's timeoutMs with the engine's own cause.
@@ -722,8 +724,10 @@ export const init = async (
         tabId: asString(input.tabId) ?? "",
         botId: ctx.botId,
         reason: asString(input.reason) ?? "User assistance requested",
-        timeoutMs: timeout(input.timeoutMs, 600000, 1800000),
+        timeoutMs: timeout(input.timeoutMs, 600000, 1800000, TAKEOVER_MINIMUM_TIMEOUT_MS),
         signal: ctx.signal,
+        threadId: ctx.threadId,
+        runId: ctx.runId,
       })
     }),
     tool("browser_submit_secret", async ({ ctx, args }) => {
@@ -805,9 +809,20 @@ export const init = async (
           const body = argsRecord(request.body)
           const hold = asBoolean(body.hold) === true
           const tabId = request.params.id ?? ""
+          const person = deviceSession(request.signal)?.person
+          const personId = person?.id ?? (kernel.services.use("work.defaultPersonId") ? "" : "owner")
+          const release = hold ? "released" : await engine.releaseTakeoverForPerson({ tabId, personId })
+          if (!hold && release === "forbidden")
+            return {
+              status: 403,
+              json: {
+                errorCode: "DENIED",
+                error: "Só quem fez o pedido ou a pessoa responsável pelo bot pode devolver o controle.",
+              },
+            }
           const ok = hold
             ? await engine.holdTakeover({ tabId, reason: "The user requested browser takeover" })
-            : await engine.releaseTakeover(tabId)
+            : release === "released"
           return ok
             ? { status: 200, json: {} }
             : {

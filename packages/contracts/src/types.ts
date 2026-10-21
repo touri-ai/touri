@@ -695,6 +695,7 @@ export type BrowserTabInfo = {
   state: 'live' | 'unloaded' | 'closed'
   openerTabId: Id | null
   heldByUser: boolean
+  takeoverRequested?: boolean
   lastUsedAt: EpochMs
 }
 
@@ -1488,6 +1489,7 @@ export type ServiceMap = {
     waitForDrain: () => Promise<void>
     shutdown: (options?: { appRestart?: boolean }) => void
     canCoordinate: (threadId: Id) => boolean
+    resumeAfterBrowserTakeover: (input: { botId: Id; threadId: Id; runId: Id }) => boolean
   }
   'vm.stopShells': () => void
   'mem0.api': {
@@ -1520,6 +1522,13 @@ export type ServiceMap = {
   'runtime.settingsChanged': () => void
   'runtime.activeRun': (args: { threadId: Id }) => Run | null
   'runtime.continueAfterApproval': (ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId' | 'signal'>) => boolean
+  'runtime.resumeAfterBrowserTakeover': (input: { botId: Id; threadId: Id; runId: Id }) => boolean
+  'runtime.canReturnBrowserTakeover': (input: {
+    botId: Id
+    threadId: Id
+    runId: Id | null
+    personId: Id
+  }) => boolean
   'runtime.cancelBotTurns': (args: { botId: Id }) => Promise<void>
   'runtime.cancelRun': (args: { runId: Id }) => boolean
   'runtime.shutdown': (options?: { appRestart?: boolean }) => Promise<void>

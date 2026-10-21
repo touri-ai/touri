@@ -25,6 +25,7 @@ import {
 } from "react"
 import type { UiApi } from "../api/client"
 import type { ApprovalFocus } from "../approvalNavigation"
+import { getDocumentLocale } from "../documentLanguage"
 import { userFacingRunError } from "../errors"
 import { ComputerGrantCard } from "../features/computer"
 import { InlineLivePreview, InlinePreviewContext, screenTool } from "../features/desktop/InlineLivePreview"
@@ -34,6 +35,7 @@ import {
   getHostLabel,
   getRoutineRunDateLabel,
   getRoutineRunTimeLabel,
+  type Locale,
   localizeNotice,
   type TranslationKey,
   t,
@@ -223,6 +225,7 @@ export const VirtualMessageList = ({
   header,
   timelineCards = emptyTimelineCards,
 }: VirtualMessageListProps) => {
+  const locale = getDocumentLocale(document.documentElement)
   // r8 motion: immutable IDs drive text entry, never streaming tokens or status/cards.
   const insertedMessages = useInsertedIds(
     messages.map((message) => message.id),
@@ -489,11 +492,7 @@ export const VirtualMessageList = ({
                 return (
                   <div key={saved.id} className="message-row" data-message-row={saved.id}>
                     <p className="run-resumed-marker" role="note" data-message-id={saved.id}>
-                      <span>
-                        {saved.text === "Retomado após aprovação de acesso"
-                          ? t("Retomado após aprovação de acesso")
-                          : saved.text}
-                      </span>
+                      <span>{getResumeMarkerText(saved, locale)}</span>
                     </p>
                   </div>
                 )
@@ -621,6 +620,13 @@ export const VirtualMessageList = ({
 /** The marker the runtime inserts before a turn it continued automatically. */
 const isResumeMarker = (message: Message): boolean =>
   message.role === "system" && message.parts.some((part) => part.type === "notice" && part.code === "run_resumed")
+
+const getResumeMarkerText = (message: Message, locale: Locale): string => {
+  if (message.text === "Retomado após aprovação de acesso") return t(message.text, {}, locale)
+  if (message.text === "Retomado após a devolução do navegador") return t(message.text, {}, locale)
+
+  return message.text
+}
 
 const isGroupCoordinationPrompt = (message: Message): boolean => {
   const marker = message.parts[0]

@@ -52,6 +52,9 @@ export const getBrowserActivityTools = (parts: readonly MessagePart[]): ToolCall
   ).values(),
 ]
 
+export const hasBrowserTakeoverRequest = (parts: readonly ToolCallPart[]): boolean =>
+  parts.some((part) => getBrowserAction(part) === "request_takeover")
+
 export const getBrowserActivityTabId = (parts: readonly ToolCallPart[]): string | undefined => {
   const latest = parts.reduceRight<ToolCallPart | undefined>((latest, part) => {
     if (latest) return latest

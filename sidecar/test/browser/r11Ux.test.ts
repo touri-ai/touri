@@ -338,6 +338,15 @@ realSuite("R11 browser UX against real Chrome", () => {
       signal: signal(),
     })
     expect(result.success).toBe(true)
-    expect(engine.tabsForBot(botId).find((item) => item.tabId === first.tabId)?.heldByUser).toBe(false)
+    expect(engine.tabsForBot(botId).find((item) => item.tabId === first.tabId)).toMatchObject({
+      heldByUser: false,
+      takeoverRequested: true,
+    })
+    expect((await engine.snapshot({ tabId: first.tabId, botId, image: "auto", signal: signal() })).success).toBe(false)
+    await Bun.sleep(650)
+    expect(engine.tabsForBot(botId).find((item) => item.tabId === first.tabId)).toMatchObject({
+      heldByUser: false,
+      takeoverRequested: false,
+    })
   })
 })
