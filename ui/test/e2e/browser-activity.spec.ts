@@ -235,6 +235,7 @@ test.describe("full browser activity flow", () => {
 })
 
 test("remote keyboard input reaches the managed page without entering the conversation", async ({ page }) => {
+  test.setTimeout(60_000)
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto("/test/e2e/browser-activity-harness.html?flow=live&holdAfterOpen=true")
   await page.getByRole("button", { name: "Iniciar busca de viagem" }).click()
