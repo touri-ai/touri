@@ -275,18 +275,7 @@ export const getBrowserActivityShortUrl = (value: string): string => {
     const url = new URL(value)
     if (!["https:", "http:"].includes(url.protocol)) return ""
 
-    const safePath = redactToolText(url.pathname)
-      .split("/")
-      .map((segment) =>
-        /@/.test(segment) || /(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z0-9_-]{8,}/.test(segment) || /\d{5,}/.test(segment)
-          ? "…"
-          : segment,
-      )
-      .join("/")
-    const path = safePath === "/" ? "" : safePath.replace(/\/$/, "")
-    const shortPath = path.length > MAX_SUBTITLE_PATH ? `${path.slice(0, MAX_SUBTITLE_PATH - 1)}…` : path
-
-    return `${url.hostname}${shortPath}`
+    return url.hostname
   } catch {
     return ""
   }

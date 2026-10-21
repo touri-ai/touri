@@ -223,6 +223,7 @@ export const BrowserActivityCard = ({
       !previewEnabled ||
       !visible ||
       hidden ||
+      !expanded ||
       held ||
       finished ||
       !expanded ||
@@ -256,6 +257,7 @@ export const BrowserActivityCard = ({
     channel?.previewHidden,
     expanded,
     finished,
+    expanded,
     held,
     hidden,
     locale,

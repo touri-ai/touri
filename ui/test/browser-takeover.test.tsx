@@ -20,6 +20,11 @@ const getBrowserFrame = (url = "https://exemplo.test/entrar") => ({
   height: 500,
 })
 
+const loadFirstBrowserFrame = async (): Promise<void> => {
+  const image = await screen.findByRole("img", { name: "Página atual do navegador" })
+  fireEvent.load(image)
+}
+
 test("sends private browser typing only to the remote input route and returns control", async () => {
   const api = createMockApi()
   const request = vi.fn(async (route: string) => {
@@ -136,7 +141,7 @@ test("a reconnected browser view requests frames at its retained viewport epoch"
     />,
   )
 
-  await screen.findByRole("img")
+  await loadFirstBrowserFrame()
   expect(request).toHaveBeenCalledWith(
     "POST /browser/tabs/:id/takeover/frame",
     { sessionId: "synthetic-session", controlEpoch: "control-epoch", viewEpoch: 7 },
@@ -165,7 +170,7 @@ test("disconnecting the takeover view leaves the browser paused for reconnection
     />,
   )
 
-  await screen.findByRole("img")
+  await loadFirstBrowserFrame()
   const keyboard = await screen.findByRole("textbox", { name: "Entrada de teclado para o navegador" })
   fireEvent.input(keyboard, { target: { value: "texto privado pendente" } })
   unmount()
@@ -201,7 +206,7 @@ test("turns phone drags into remote scrolling and phone taps into browser clicks
     />,
   )
 
-  await screen.findByRole("img")
+  await loadFirstBrowserFrame()
   const page = document.querySelector(".browser-takeover-screen")
   if (!page) throw new Error("The remote browser frame should be rendered")
   page.getBoundingClientRect = vi.fn(
@@ -282,6 +287,7 @@ test("intercepts paste text without forwarding the paste shortcut to the page", 
     />,
   )
 
+  await loadFirstBrowserFrame()
   const keyboard = await screen.findByRole("textbox", { name: "Entrada de teclado para o navegador" })
   fireEvent.keyDown(keyboard, { key: "v", code: "KeyV", ctrlKey: true })
   fireEvent.paste(keyboard, {
@@ -330,6 +336,7 @@ test("rejects oversized text before encoding or sending it to the browser", asyn
     />,
   )
 
+  await loadFirstBrowserFrame()
   const keyboard = await screen.findByRole("textbox", { name: "Entrada de teclado para o navegador" })
   fireEvent.input(keyboard, { target: { value: "x".repeat(16_385) } })
 

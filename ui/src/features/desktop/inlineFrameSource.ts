@@ -100,6 +100,8 @@ export const startInlineFrameSource = (
   const stop = () => {
     if (!active) return
     active = false
+    unsubscribe()
+    unsubscribe = () => {}
     clearTimeout(timer)
     unsubscribe()
     unsubscribe = () => {}

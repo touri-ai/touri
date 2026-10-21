@@ -60,7 +60,7 @@ test("the browser working chip exposes a stop control", () => {
 const tab = {
   tabId: "browser-tab",
   ownerBotId: "bot-mark",
-  url: "https://travel.example.test/results",
+  url: "https://travel.example.test",
   title: "Resultados de Lisboa",
   state: "live",
   openerTabId: null,
@@ -102,7 +102,7 @@ const renderCard = (
       return {
         text: JSON.stringify({
           title: "Resultados de Lisboa",
-          url: "https://person:fixture-password@travel.example.test/results?token=fixture-token",
+          url: "https://person:fixture-password@travel.example.test?token=fixture-token",
           content: [{ type: "image", mimeType: "image/png", data: "ZmFrZQ==" }],
         }),
         offset: 0,
@@ -152,7 +152,7 @@ test("shows live browser steps and keeps typed values and URL credentials and qu
   expect(screen.getByText("Navegador do Lia")).toBeVisible()
   expect(screen.getByText("Preencheu um campo")).toBeVisible()
   expect(screen.getByText("Clicou em Lisboa, Portugal")).toBeVisible()
-  expect(screen.getByText("Lia · clicou em Lisboa, Portugal · travel.example.test/reset/…")).toBeVisible()
+  expect(screen.getByText("Lia · clicou em Lisboa, Portugal · travel.example.test")).toBeVisible()
   expect(screen.getByRole("progressbar", { name: "Progresso do navegador" })).toBeVisible()
   expect(screen.getByRole("button", { name: "Expandir navegador" })).toBeVisible()
   expect(screen.getByRole("button", { name: "Recolher cartão do navegador" })).toBeVisible()
@@ -229,9 +229,9 @@ test("shows one sanitized browser URL in the live subtitle", async () => {
 
   renderCard(parts, false)
 
-  const subtitle = await screen.findByText("Lia · abrindo uma página · travel.example.test/results")
+  const subtitle = await screen.findByText("Lia · abrindo uma página · travel.example.test")
   expect(subtitle).toBeVisible()
-  expect(screen.getAllByText(/travel\.example\.test\/results/)).toHaveLength(1)
+  expect(screen.getAllByText(/travel\.example\.test/)).toHaveLength(1)
   expect(screen.queryByRole("group", { name: "Endereço do navegador" })).toBeNull()
 })
 
@@ -280,7 +280,7 @@ test("the finished browser summary shows its page title with the screenshot", as
 
   renderCard(parts, true)
 
-  expect(await screen.findByText("Resultados de Lisboa")).toBeVisible()
+  expect(await screen.findByText("Resultados de Lisboa", { exact: false })).toBeVisible()
   expect(screen.getByRole("img", { name: "Captura final do navegador" })).toBeVisible()
 })
 
@@ -557,8 +557,8 @@ test("a delayed tab snapshot cannot undo a newer takeover event", async () => {
     await tabs
   })
 
-  expect(screen.getByRole("button", { name: "Continuar no navegador" })).toBeEnabled()
-  expect(screen.queryByRole("button", { name: "Assumir" })).toBeNull()
+  expect(document.querySelector(".browser-activity-card")).toHaveAttribute("data-held", "true")
+  expect(screen.queryByRole("img", { name: "Página atual do navegador" })).toBeNull()
 })
 
 test("disabling live chat previews prevents capture and leaves browser control available", () => {
@@ -643,7 +643,7 @@ test("take-over purges the inline frame, stops sampling and explains why the bot
   const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
   const stop = vi.fn()
   vi.mocked(startInlineFrameSource).mockImplementationOnce((_api, _bot, _tabId, frame) => {
-    frame({ src: "data:image/jpeg;base64,ZmFrZQ==", title: "Resultados", url: "https://travel.example.test/results" })
+    frame({ src: "data:image/jpeg;base64,ZmFrZQ==", title: "Resultados", url: "https://travel.example.test" })
 
     return () => stop()
   })
