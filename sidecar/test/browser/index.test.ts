@@ -8,8 +8,8 @@ import { createBrowserEngine } from "../../src/browser/engine"
 import type { BrowserEngine } from "../../src/browser/types"
 import { init as initComputer } from "../../src/computer"
 import { createKernel } from "../../src/kernel"
-import { init as initStore } from "../../src/store"
 import { bindDeviceSession } from "../../src/kernel/device-session"
+import { init as initStore } from "../../src/store"
 import "./test-helper"
 
 const getTakeoverVmRuntime = (acquire: VmRuntime["acquire"]): VmRuntime => {

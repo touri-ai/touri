@@ -16,7 +16,9 @@ for (const viewport of [
     await page.getByRole("button", { name: "Assumir", exact: true }).click()
     await expect(page.getByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
     await expect(page.getByText(/Você está no controle · .* está pausado/)).toBeVisible()
-    await expect(page.locator(".browser-takeover-screen img, .browser-takeover-screen canvas:visible").first()).toBeVisible()
+    await expect(
+      page.locator(".browser-takeover-screen img, .browser-takeover-screen canvas:visible").first(),
+    ).toBeVisible()
     await page.screenshot({ path: testInfo.outputPath(`browser-takeover-after-${viewport.name}.png`), fullPage: true })
 
     const keyboard = page.getByRole("textbox", { name: "Entrada de teclado para o navegador" })
