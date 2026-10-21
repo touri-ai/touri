@@ -91,7 +91,20 @@ test("one bot waits across channels and direct messages while another bot works"
   await expect(second).resolves.toEqual({ success: true, queued: true })
   expect(fixture.runs.get("third")?.status).toBe("queued")
 
-  fixture.finish("second")
+  fixture.database.exec(`
+    INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at)
+      VALUES ('second-continued','session-b','leo','codex','retry','running',2);
+    INSERT INTO browser_takeover_continuations VALUES ('second-continued','second','second',2);
+  `)
+  await fixture.runs.enter({
+    runId: "second-continued",
+    botId: "leo",
+    threadId: "session-b",
+    projectId: null,
+    cwd: "/tmp",
+    signal: new AbortController().signal,
+  })
+  fixture.finish("second-continued")
   await expect(third).resolves.toEqual({ success: true, queued: true })
   expect(fixture.runs.get("third")?.status).toBe("running")
 })

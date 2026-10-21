@@ -1,11 +1,10 @@
 import type { Bot, Message, Run } from "@touri/contracts"
-import { type ReactNode, useContext, useEffect, useId, useState } from "react"
+import { lazy, type ReactNode, Suspense, useContext, useEffect, useId, useState } from "react"
 import type { UiApi } from "../api/client"
 import { ChannelBrowserScope } from "../features/channelBrowser/ChannelBrowser"
 import { InlinePreviewContext } from "../features/desktop/InlineLivePreview"
 import { type Locale, t } from "../i18n"
 import { ActivityMark } from "./ActivityMark"
-import { BrowserActivityCard } from "./BrowserActivityCard"
 import { getBrowserActivityTools } from "./browserActivityPresentation"
 import type { BrowserContinuationActivity } from "./browserContinuationActivity"
 import { MarkdownContent } from "./MarkdownContent"
@@ -13,6 +12,10 @@ import type { MascotState } from "./mascotState"
 import { ToolCallCard } from "./ToolCallCard"
 import { activityGroupLabels, activityGroups, activitySummary, activityTools, approvalTools } from "./turnActivityModel"
 import "./turn-activity.css"
+
+const BrowserActivityCard = lazy(() =>
+  import("./BrowserActivityCard").then((module) => ({ default: module.BrowserActivityCard })),
+)
 
 /** The single browser card of a turn, with the bot's own preview context. */
 export const BrowserTurnCard = ({
@@ -37,18 +40,20 @@ export const BrowserTurnCard = ({
     machine: bot && inlinePreview.bot?.id !== bot.id ? undefined : inlinePreview.machine,
   }
   const card = (
-    <BrowserActivityCard
-      parts={activity?.parts ?? message.parts}
-      threadId={message.threadId}
-      runId={activity?.runId ?? message.runId}
-      waitingForPerson={run?.browserWaitingForPerson}
-      finished={activity?.finished ?? message.status !== "streaming"}
-      createdAt={message.createdAt}
-      botName={message.sender?.name ?? "touri"}
-      locale={locale}
-    >
-      {children}
-    </BrowserActivityCard>
+    <Suspense fallback={<div className="browser-card-loading" aria-busy="true" />}>
+      <BrowserActivityCard
+        parts={activity?.parts ?? message.parts}
+        threadId={message.threadId}
+        runId={activity?.runId ?? message.runId}
+        waitingForPerson={run?.browserWaitingForPerson}
+        finished={activity?.finished ?? message.status !== "streaming"}
+        createdAt={message.createdAt}
+        botName={message.sender?.name ?? "touri"}
+        locale={locale}
+      >
+        {children}
+      </BrowserActivityCard>
+    </Suspense>
   )
 
   return (

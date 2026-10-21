@@ -23,7 +23,7 @@ export const createSharedPreviewSource = <T>({ now = Date.now, intervalMs = 800 
     if (!isCurrent()) return null
     const previous = captures.get(target)
     if (previous?.pending && previous.generation !== generation) return null
-    if (previous && (previous.pending || previous.expiresAt > now())) {
+    if (previous && previous.generation === generation && (previous.pending || previous.expiresAt > now())) {
       const result = await previous.result
 
       return previous.generation === generation && isCurrent() ? result : null
