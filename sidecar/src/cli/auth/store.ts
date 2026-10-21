@@ -12,6 +12,7 @@ export const lastSeenGranularityMs = 60 * 1000
 /** A device token expires after this long without use; active devices renew implicitly. */
 export const deviceTokenTtlMs = 30 * 24 * 60 * 60_000
 export const inviteTtlMs = 24 * 60 * 60_000
+export const magicLinkTtlMs = 15 * 60_000
 const codeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 const codeGroups = 3
 const codeGroupLength = 4
@@ -51,18 +52,22 @@ export type Invite = {
 export type CreatePairingCodeSuccess = { success: true; code: string; expiresAt: number }
 export type ClaimPairingCodeSuccess = { success: true; device: Device; token: string }
 export type AuthError = { success: false; errorCode: "INVALID_CODE" | "NOT_FOUND"; error: string }
-export type CreatePairingCodeResult = CreatePairingCodeSuccess
+export type CreatePairingCodeResult = CreatePairingCodeSuccess | AuthError
 export type ClaimPairingCodeResult = ClaimPairingCodeSuccess | AuthError
 export type RevokeDeviceResult = { success: true; device: Device } | AuthError
 export type CreateInviteResult = { success: true; invite: Invite; token: string } | AuthError
 export type ClaimInviteResult = { success: true; device: Device; person: Person; token: string } | AuthError
+export type CreateEmailSignInResult = { success: true; token: string; expiresAt: number } | AuthError
+export type ClaimEmailSignInResult = { success: true; device: Device; person: Person; token: string } | AuthError
 
 export type AuthStore = {
-  createPairingCode: () => Promise<CreatePairingCodeResult>
+  createPairingCode: () => Promise<CreatePairingCodeSuccess>
+  createPersonPairingCode: (personId: string) => Promise<CreatePairingCodeResult>
   claimPairingCode: (args: { code: string; deviceName: string }) => Promise<ClaimPairingCodeResult>
   verifyDeviceToken: (token: string) => Device | null
   rotateDeviceToken: (token: string) => Promise<{ token: string; device: Device } | null>
   listDevices: () => Array<Device>
+  listActiveDevices: (personId?: string) => Array<Device>
   revokeDevice: (idOrPrefix: string) => Promise<RevokeDeviceResult>
   getPerson: (id: string) => Person | null
   getPersonForDevice: (deviceId: string) => Person | null
@@ -79,9 +84,13 @@ export type AuthStore = {
   resendInvite: (args: { id: string; actorPersonId: string }) => Promise<CreateInviteResult>
   revokeInvite: (args: { id: string; actorPersonId: string }) => Promise<AuthError | { success: true }>
   claimInvite: (args: { token: string; email: string; deviceName: string }) => Promise<ClaimInviteResult>
+  createEmailSignIn: (args: { email: string }) => Promise<CreateEmailSignInResult>
+  claimEmailSignIn: (args: { token: string; deviceName: string }) => Promise<ClaimEmailSignInResult>
   removePerson: (args: { id: string; actorPersonId: string }) => Promise<AuthError | { success: true }>
   getEmailConfig: () => unknown | null
   saveEmailConfig: (args: { actorPersonId: string; config: unknown }) => Promise<boolean>
+  getPublicAddress: () => string | null
+  savePublicAddress: (args: { actorPersonId: string; address: string | null }) => Promise<boolean>
   pendingCodeCount: () => number
   close: () => Promise<void>
 }
@@ -216,12 +225,27 @@ export const openAuthStore = async ({
   }
   const lastSeenScheduled = new Map<string, number>()
 
-  const createPairingCode = async (): Promise<CreatePairingCodeResult> => {
+  const createPersonPairingCode = async (personId: string): Promise<CreatePairingCodeResult> => {
+    if (!database.query("SELECT 1 FROM people WHERE id = ? AND removed_at IS NULL LIMIT 1").get(personId))
+      return { success: false, errorCode: "NOT_FOUND", error: "Person not found" }
     const at = now()
     const code = generateCode()
     const expiresAt = expiryAt({ now: at, ttlMs: pairingCodeTtlMs })
-    await writer.write({ type: "create-pairing", codeHash: sha256(normalizeCode(code)), at, expiresAt })
+    const created = await writer.write({
+      type: "create-pairing",
+      codeHash: sha256(normalizeCode(code)),
+      personId,
+      at,
+      expiresAt,
+    })
+    if (!created) return { success: false, errorCode: "NOT_FOUND", error: "Person not found" }
     return { success: true, code, expiresAt }
+  }
+
+  const createPairingCode = async (): Promise<CreatePairingCodeSuccess> => {
+    const pairing = await createPersonPairingCode(ownerPersonId)
+    if (!pairing.success) throw new Error(pairing.error)
+    return pairing
   }
 
   const claimPairingCode = async ({
@@ -235,21 +259,27 @@ export const openAuthStore = async ({
     const normalized = normalizeCode(code)
     if (normalized.length !== codeGroups * codeGroupLength)
       return { success: false, errorCode: "INVALID_CODE", error: "Invalid, expired or already used pairing code" }
-    const token = newToken(at)
+    const pairing = database
+      .query("SELECT person_id FROM pairing_codes WHERE code_hash = ? AND used_at IS NULL AND expires_at > ?")
+      .get(sha256(normalized), now()) as { person_id: string } | null
+    if (!pairing)
+      return { success: false, errorCode: "INVALID_CODE", error: "Invalid, expired or already used pairing code" }
+    const personId = pairing.person_id
     const id = randomBytes(6).toString("hex")
     const name = deviceName.trim().slice(0, 80) || "Unnamed device"
+    const authToken = newToken(at, personId)
     const claimed = await writer.write({
       type: "claim-pairing",
       codeHash: sha256(normalized),
       at,
-      device: { id, name, tokenHash: sha256(token), personId: ownerPersonId },
+      device: { id, name, tokenHash: sha256(authToken), personId },
     })
     if (!claimed)
       return { success: false, errorCode: "INVALID_CODE", error: "Invalid, expired or already used pairing code" }
     return {
       success: true,
-      device: { id, name, personId: ownerPersonId, createdAt: at, lastSeenAt: at, revokedAt: null },
-      token,
+      device: { id, name, personId, createdAt: at, lastSeenAt: at, revokedAt: null },
+      token: authToken,
     }
   }
 
@@ -302,6 +332,25 @@ export const openAuthStore = async ({
         .query("SELECT id, name, person_id, created_at, last_seen_at, revoked_at FROM devices ORDER BY created_at ASC")
         .all() as Array<DeviceRow>
     ).map(toDevice)
+
+  const listActiveDevices = (personId?: string): Array<Device> => {
+    if (personId) {
+      return (
+        database
+          .query(
+            "SELECT id,name,person_id,created_at,last_seen_at,revoked_at FROM devices INDEXED BY devices_active_person_id WHERE person_id = ? AND revoked_at IS NULL ORDER BY id LIMIT 500",
+          )
+          .all(personId) as Array<DeviceRow>
+      ).map(toDevice)
+    }
+    return (
+      database
+        .query(
+          "SELECT id,name,person_id,created_at,last_seen_at,revoked_at FROM devices INDEXED BY devices_active_id WHERE revoked_at IS NULL ORDER BY id LIMIT 500",
+        )
+        .all() as Array<DeviceRow>
+    ).map(toDevice)
+  }
 
   const revokeDevice = async (idOrPrefix: string): Promise<RevokeDeviceResult> => {
     const matches = listDevices().filter((device) => device.id.startsWith(idOrPrefix) && device.revokedAt === null)
@@ -475,6 +524,62 @@ export const openAuthStore = async ({
     }
   }
 
+  const createEmailSignIn = async ({ email }: { email: string }): Promise<CreateEmailSignInResult> => {
+    const normalizedEmail = normalizeEmail(email)
+    if (!isValidEmail(normalizedEmail)) return invalidCode()
+    const at = now()
+    const token = randomBytes(32).toString("base64url")
+    const expiresAt = expiryAt({ now: at, ttlMs: magicLinkTtlMs })
+    const created = await writer.write({
+      type: "create-email-signin",
+      id: randomBytes(12).toString("hex"),
+      tokenHash: sha256(token),
+      email: normalizedEmail,
+      at,
+      expiresAt,
+    })
+    return created ? { success: true, token, expiresAt } : invalidCode()
+  }
+
+  const claimEmailSignIn = async ({
+    token,
+    deviceName,
+  }: {
+    token: string
+    deviceName: string
+  }): Promise<ClaimEmailSignInResult> => {
+    if (!tokenMatches(token)) return invalidCode()
+    const tokenHash = sha256(token)
+    const signIn = database
+      .query("SELECT email FROM email_signins WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?")
+      .get(tokenHash, now()) as { email: string } | null
+    if (!signIn) return invalidCode()
+    const personRow = database
+      .query("SELECT * FROM people WHERE email = ? AND removed_at IS NULL LIMIT 1")
+      .get(signIn.email) as PersonRow | null
+    if (!personRow) return invalidCode()
+    const person = toPerson(personRow)
+    const at = now()
+    const id = randomBytes(6).toString("hex")
+    const name = deviceName.trim().slice(0, 80) || "Browser"
+    const authToken = newToken(at, person.id)
+    const claimed = await writer.write({
+      type: "claim-email-signin",
+      tokenHash,
+      email: signIn.email,
+      personId: person.id,
+      at,
+      device: { id, name, tokenHash: sha256(authToken) },
+    })
+    if (!claimed) return invalidCode()
+    return {
+      success: true,
+      person,
+      device: { id, name, personId: person.id, createdAt: at, lastSeenAt: at, revokedAt: null },
+      token: authToken,
+    }
+  }
+
   const removePerson = async ({
     id,
     actorPersonId,
@@ -516,12 +621,30 @@ export const openAuthStore = async ({
       }),
     )
 
+  const getPublicAddress = (): string | null => {
+    const row = database.query("SELECT public_address FROM work_settings WHERE id = 1").get() as {
+      public_address: string
+    } | null
+    return row?.public_address ?? null
+  }
+
+  const savePublicAddress = async ({
+    actorPersonId,
+    address,
+  }: {
+    actorPersonId: string
+    address: string | null
+  }): Promise<boolean> =>
+    Boolean(await writer.write({ type: "save-public-address", actorPersonId, address, at: now() }))
+
   return {
     createPairingCode,
+    createPersonPairingCode,
     claimPairingCode,
     verifyDeviceToken,
     rotateDeviceToken,
     listDevices,
+    listActiveDevices,
     revokeDevice,
     getPerson,
     getPersonForDevice,
@@ -532,9 +655,13 @@ export const openAuthStore = async ({
     resendInvite,
     revokeInvite,
     claimInvite,
+    createEmailSignIn,
+    claimEmailSignIn,
     removePerson,
     getEmailConfig,
     saveEmailConfig,
+    getPublicAddress,
+    savePublicAddress,
     pendingCodeCount,
     close: async () => {
       try {

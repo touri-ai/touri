@@ -8,6 +8,7 @@ import { createSecretStore } from "../../src/cli/host/secretStore"
 import { createWebGate, deviceCookieName } from "../../src/cli/web/gate"
 import { isDirectLoopback } from "../../src/cli/web/loopback"
 import { directoryAssets, embeddedAssets, type UiAsset, type UiAssets } from "../../src/cli/web/uiAssets"
+import { deviceSession } from "../../src/kernel/device-session"
 
 const files: Record<string, UiAsset> = {
   "index.html": { file: new Blob(["<html>app</html>"]), type: "text/html; charset=utf-8", immutable: false },
@@ -20,7 +21,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup()
 })
 
-const makeGate = async () => {
+const makeGate = async ({ trustedProxy = false }: { trustedProxy?: boolean } = {}) => {
   const dir = mkdtempSync(join(tmpdir(), "touri-gate-"))
   const store = await openAuthStore({ filename: join(dir, "auth.db") })
   cleanups.push(async () => {
@@ -29,7 +30,7 @@ const makeGate = async () => {
   })
   const secrets = createSecretStore({ dir, env: { TOURI_SECRETS_KEY: "k" } })
   const limiter = createRateLimiter({ maxFailures: 3, windowMs: 60_000 })
-  const intercept = createWebGate({ store, secrets, ui, limiter })
+  const intercept = createWebGate({ store, secrets, ui, limiter, trustedProxy })
   const call = ({
     path,
     method = "GET",
@@ -102,6 +103,39 @@ test("a bearer token works for the CLI and a revoked device is refused", async (
   const [device] = store.listDevices()
   await store.revokeDevice(device?.id ?? "")
   expect((await call({ path: "/api/v1/bots", headers }))?.status).toBe(401)
+})
+
+test("same-origin API requests keep their URL origin when browsers omit Origin", async () => {
+  const { pair, intercept } = await makeGate()
+  const { token } = await pair()
+  const url = new URL("https://192.168.1.20:8795/api/v1/session")
+  const request = new Request(url, {
+    headers: { authorization: `Bearer ${token}`, "X-Touri-Client": "cli" },
+  })
+
+  const response = await intercept({ request, url, clientIp: "192.168.1.20" })
+
+  expect(response?.status).toBe(200)
+  expect(deviceSession(request.signal)?.origin).toBe(url.origin)
+})
+
+test("trusted proxy requests use forwarded host and protocol when Origin is absent", async () => {
+  const { pair, intercept } = await makeGate({ trustedProxy: true })
+  const { token } = await pair()
+  const url = new URL("http://127.0.0.1:8795/api/v1/session")
+  const request = new Request(url, {
+    headers: {
+      authorization: `Bearer ${token}`,
+      "X-Touri-Client": "cli",
+      "x-forwarded-host": "team-123.ts.net",
+      "x-forwarded-proto": "https",
+    },
+  })
+
+  const response = await intercept({ request, url, clientIp: "127.0.0.1" })
+
+  expect(response?.status).toBe(200)
+  expect(deviceSession(request.signal)?.origin).toBe("https://team-123.ts.net")
 })
 
 test("both API prefixes accept a paired native client and reject invalid, revoked and query tokens", async () => {
@@ -192,6 +226,85 @@ test("invite redemption checks Origin and invited email, returns a cookie withou
     )?.status,
   ).toBe(401)
   expect((await call({ path: `/api/v1/invites/redeem?invite=${invite.token}` }))?.status).toBe(401)
+})
+
+test("email sign-in sends the same accepted response for known and unknown addresses", async () => {
+  const { store, secrets, limiter } = await makeGate()
+  const invite = await store.createInvite({
+    actorPersonId: "owner",
+    name: "Ana",
+    email: "ana@example.test",
+    role: "member",
+    channelIds: [],
+  })
+  if (!invite.success) throw new Error("Invite setup failed")
+  const accepted = await store.claimInvite({
+    token: invite.token,
+    email: "ana@example.test",
+    deviceName: "First browser",
+  })
+  if (!accepted.success) throw new Error("Invite redemption failed")
+  const requested: Array<string> = []
+  const gate = createWebGate({
+    store,
+    secrets,
+    ui,
+    limiter,
+    requestEmailSignIn: async ({ emailAddress }) => void requested.push(emailAddress),
+  })
+  const call = async (email: string) => {
+    const url = new URL("https://box.example:8445/api/v1/auth/email")
+    const request = new Request(url, {
+      method: "POST",
+      headers: { host: url.host, origin: url.origin },
+      body: JSON.stringify({ email }),
+    })
+    return gate({ request, url, clientIp: "100.64.0.20" })
+  }
+
+  const known = await call("ana@example.test")
+  const unknown = await call("nobody@example.test")
+
+  expect(known?.status).toBe(202)
+  expect(unknown?.status).toBe(202)
+  expect(await known?.text()).toBe(await unknown?.text())
+  expect(requested).toEqual(["ana@example.test", "nobody@example.test"])
+})
+
+test("a magic link pairs a new device once and never returns its device token", async () => {
+  const { call, store } = await makeGate()
+  const invite = await store.createInvite({
+    actorPersonId: "owner",
+    name: "Bia",
+    email: "bia@example.test",
+    role: "member",
+    channelIds: [],
+  })
+  if (!invite.success) throw new Error("Invite setup failed")
+  const member = await store.claimInvite({ token: invite.token, email: invite.invite.email, deviceName: "Phone" })
+  if (!member.success) throw new Error("Invite redemption failed")
+  const signIn = await store.createEmailSignIn({ email: member.person.email ?? "" })
+  if (!signIn.success) throw new Error("Email sign-in setup failed")
+  const endpoint = { path: "/api/v1/auth/email/redeem", method: "POST" }
+  const wrongOrigin = await call({ ...endpoint, body: { token: signIn.token } })
+  expect(wrongOrigin?.status).toBe(403)
+  const redeemed = await call({
+    ...endpoint,
+    headers: { origin: "https://box.example:8445" },
+    body: { token: signIn.token, deviceName: "New laptop" },
+  })
+  expect(redeemed?.status).toBe(200)
+  expect(redeemed?.headers.get("set-cookie")).toContain("HttpOnly")
+  const cookie = redeemed?.headers.get("set-cookie") ?? ""
+  const deviceCookie = cookie.split(";")[0]?.split("=")[1] ?? ""
+  expect(store.verifyDeviceToken(deviceCookie)?.personId).toBe(member.person.id)
+  expect(JSON.stringify(await redeemed?.json())).not.toContain(deviceCookie)
+  const replayed = await call({
+    ...endpoint,
+    headers: { origin: "https://box.example:8445" },
+    body: { token: signIn.token },
+  })
+  expect(replayed?.status).toBe(401)
 })
 
 test("cookie-authenticated writes from another origin are refused", async () => {

@@ -145,26 +145,86 @@ export const getInviteEmail = ({
   const text = [
     `Olá, ${name}!`,
     `${invitedBy} convidou você para participar de ${teamName} no touri.`,
-    `Aceitar convite: ${link}`,
+    `Aceite o convite: ${link}`,
     `O link expira em 24 horas (${expires}).`,
+    "Se este convite não foi feito para você, ignore este e-mail.",
     "",
     `Hello, ${name}!`,
     `${invitedBy} invited you to join ${teamName} on touri.`,
     `Accept invitation: ${link}`,
     `This link expires in 24 hours (${expires}).`,
+    "If this invitation was not for you, ignore this email.",
   ].join("\n")
   const html = [
     `<p>Olá, ${safeName}!</p>`,
     `<p>${safeInviter} convidou você para participar de ${safeTeam} no touri.</p>`,
-    `<p><a href="${safeLink}">Aceitar convite</a></p>`,
+    `<p><a role="button" href="${safeLink}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#b91c1c;color:#fff;text-decoration:none">Aceitar convite</a></p>`,
+    `<p>Se o botão não funcionar, copie e cole este link:</p><p><a href="${safeLink}">${safeLink}</a></p>`,
     `<p>O link expira em 24 horas (${escapeHtml(expires)}).</p>`,
+    "<p>Se este convite não foi feito para você, ignore este e-mail.</p>",
     "<hr>",
     `<p>Hello, ${safeName}!</p>`,
     `<p>${safeInviter} invited you to join ${safeTeam} on touri.</p>`,
-    `<p><a href="${safeLink}">Accept invitation</a></p>`,
+    `<p><a role="button" href="${safeLink}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#b91c1c;color:#fff;text-decoration:none">Accept invitation</a></p>`,
+    `<p>If the button does not work, copy and paste this link:</p><p><a href="${safeLink}">${safeLink}</a></p>`,
     `<p>This link expires in 24 hours (${escapeHtml(expires)}).</p>`,
+    "<p>If this invitation was not for you, ignore this email.</p>",
   ].join("\n")
   return { to: "", subject, text, html }
+}
+
+export const getMagicSignInEmail = ({
+  inviter,
+  config,
+  link,
+  expiresAt,
+}: {
+  inviter: Pick<Person, "name">
+  config: Pick<EmailConfiguration, "teamName" | "fromName">
+  link: string
+  expiresAt: number
+}): EmailContent => {
+  const safeInviter = escapeHtmlText(inviter.name.trim())
+  const safeTeam = escapeHtmlText(config.teamName.trim())
+  const safeLink = escapeHtmlText(link)
+  const expires = new Date(expiresAt).toISOString()
+
+  return {
+    to: "",
+    subject: `Acesso a ${safeHeaderText(config.teamName)} · Sign in to ${safeHeaderText(config.teamName)}`,
+    text: [
+      "Olá!",
+      `${inviter.name.trim()} preparou um link para você entrar na equipe ${config.teamName.trim()} no touri.`,
+      "Este link de uso único expira em 15 minutos.",
+      `Entrar com e-mail: ${link}`,
+      `Expira em: ${expires}`,
+      "Se você não pediu este acesso, ignore este e-mail.",
+      "",
+      "Hello!",
+      `${inviter.name.trim()} prepared a link for you to sign in to the ${config.teamName.trim()} team on touri.`,
+      "This single-use link expires in 15 minutes.",
+      `Sign in with email: ${link}`,
+      `Expires at: ${expires}`,
+      "If you did not request this sign-in, ignore this email.",
+    ].join("\n"),
+    html: [
+      "<p>Olá!</p>",
+      `<p>${safeInviter} preparou um link para você entrar na equipe ${safeTeam} no touri.</p>`,
+      "<p>Este link de uso único expira em 15 minutos.</p>",
+      `<p><a role="button" href="${safeLink}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#b91c1c;color:#fff;text-decoration:none">Entrar com e-mail</a></p>`,
+      `<p>Se o botão não funcionar, copie e cole este link:</p><p><a href="${safeLink}">${safeLink}</a></p>`,
+      `<p>Expira em: ${escapeHtmlText(expires)}</p>`,
+      "<p>Se você não pediu este acesso, ignore este e-mail.</p>",
+      "<hr>",
+      "<p>Hello!</p>",
+      `<p>${safeInviter} prepared a link for you to sign in to the ${safeTeam} team on touri.</p>`,
+      "<p>This single-use link expires in 15 minutes.</p>",
+      `<p><a role="button" href="${safeLink}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#b91c1c;color:#fff;text-decoration:none">Sign in with email</a></p>`,
+      `<p>If the button does not work, copy and paste this link:</p><p><a href="${safeLink}">${safeLink}</a></p>`,
+      `<p>Expires at: ${escapeHtmlText(expires)}</p>`,
+      "<p>If you did not request this sign-in, ignore this email.</p>",
+    ].join("\n"),
+  }
 }
 
 export const getTestEmail = ({ teamName }: { teamName: string }): Omit<EmailContent, "to"> => ({
