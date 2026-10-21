@@ -586,6 +586,8 @@ export const ptBR = {
   "Só quem fez o pedido ou a pessoa responsável pelo bot pode controlar esta aba.":
     "Só quem fez o pedido ou a pessoa responsável pelo bot pode controlar esta aba.",
   "{name} is working again": "{name} voltou a trabalhar",
+  "O bot que delegou a tarefa não está disponível para a retomada.":
+    "O bot que delegou a tarefa não está disponível para a retomada.",
   "Could not choose safely. Take over the tab to choose.":
     "Não foi possível escolher com segurança. Assuma o controle da aba para escolher.",
   "Browser action failed. Take over to continue.": "A ação no navegador falhou. Assuma o controle para continuar.",
@@ -4253,6 +4255,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Só quem fez o pedido ou a pessoa responsável pelo bot pode controlar esta aba.":
     "Only the requester or the bot owner can control this tab.",
   "{name} is working again": "{name} is working again",
+  "O bot que delegou a tarefa não está disponível para a retomada.":
+    "The bot that delegated the task is unavailable to resume it.",
   "Baixar imagem": "Download image",
   "Unread messages": "{count} unread messages",
   "Cloud execution coming soon": "Cloud execution coming soon",

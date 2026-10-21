@@ -13,6 +13,7 @@ import type {
   ToolResult,
 } from "@touri/contracts"
 import { approveSecretRelease } from "../approvals/secrets"
+import { getDelegation } from "../groups/security"
 import { createBackgroundTask, getMeasuredStage, yieldBackground } from "../kernel/background-task"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import { hostPlatform } from "../platform"
@@ -4274,6 +4275,7 @@ export const createBrowserEngine = ({
     const requestId = `browser-takeover:${tabId}:${kernel.newId()}`
     const takeover: NonNullable<TabState["takeover"]> = {
       requestId,
+      delegation: getDelegation(kernel, threadId ?? tab.info.ownerThreadId ?? ""),
       botId,
       threadId: threadId ?? tab.info.ownerThreadId ?? "",
       runId: runId ?? null,
@@ -4363,6 +4365,7 @@ export const createBrowserEngine = ({
       botId: takeover.botId,
       threadId: takeover.threadId,
       runId: takeover.runId,
+      ...(takeover.delegation ? { delegation: takeover.delegation } : {}),
     })
   }
 

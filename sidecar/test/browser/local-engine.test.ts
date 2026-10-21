@@ -1,9 +1,10 @@
 import { afterEach, expect, spyOn, test } from "bun:test"
-import type { Bot, BotGroup, Thread, ToolContext } from "@touri/contracts"
+import type { Bot, BotGroup, BrowserTakeoverResume, Thread, ToolContext } from "@touri/contracts"
 import { attachLocalChrome } from "../../src/browser/launcher"
 import type { CdpClient, CdpEvent, JsonObject } from "../../src/browser/types"
 import { createRoutedBrowserEngine } from "../../src/browser/vm-router"
 import { init as initGroups } from "../../src/groups"
+import { setDelegation } from "../../src/groups/security"
 import { createGroupStore } from "../../src/groups/store"
 import { init as initStore } from "../../src/store"
 import { testKernel } from "../kernel/test-kernel"
@@ -194,7 +195,13 @@ test("channel takeover notifies the channel and checks both control changes befo
   const participant = createGroupStore(f.kernel).participant(group, thread.id, f.bot.id)
   const ctx = { ...f.ctx, threadId: participant.id, runId: "handoff-run" }
   const notifications: Array<string | null> = []
-  const resumed: Array<{ botId: string; threadId: string; runId: string }> = []
+  const resumed: BrowserTakeoverResume[] = []
+  const delegation = {
+    ceiling: { ...f.bot, access: "read-only" as const },
+    caller: { id: "coordinator", name: "Planejamento" },
+    groupThreadId: thread.id,
+    secrets: false,
+  }
   f.kernel.services.provide(
     "runtime.canReturnBrowserTakeover",
     (input) =>
@@ -226,6 +233,7 @@ test("channel takeover notifies the channel and checks both control changes befo
   expect((await f.engine.open({ url: "about:blank", ctx, timeoutMs: 1500 })).success).toBe(true)
   const tabId = f.engine.tabsForBot(f.bot.id)[0]?.tabId
   if (!tabId) throw new Error("Missing browser tab")
+  setDelegation(f.kernel, participant.id, delegation)
   await f.engine.requestTakeover({
     tabId,
     botId: f.bot.id,
@@ -235,6 +243,7 @@ test("channel takeover notifies the channel and checks both control changes befo
     timeoutMs: 120_000,
     signal: ctx.signal,
   })
+  setDelegation(f.kernel, participant.id, null)
   const captures = f.calls.filter((call) => call.method === "Page.captureScreenshot").length
   expect(await f.engine.preview({ botId: f.bot.id, tabId, signal: ctx.signal })).toBeNull()
   expect(await f.engine.holdTakeoverForPerson({ tabId, personId: "other-member" })).toBe("forbidden")
@@ -247,5 +256,42 @@ test("channel takeover notifies the channel and checks both control changes befo
   expect(await f.engine.releaseTakeoverForPerson({ tabId, personId: "requester" })).toBe("released")
 
   expect(notifications).toEqual([thread.id])
-  expect(resumed).toEqual([{ botId: f.bot.id, threadId: participant.id, runId: ctx.runId }])
+  expect(resumed).toEqual([{ botId: f.bot.id, threadId: participant.id, runId: ctx.runId, delegation }])
+})
+
+test("a browser handback after channel deletion does not restore a stale thread reference", async () => {
+  const f = await fixture()
+  takeoverFixtures.add(f)
+  await initGroups(f.kernel)
+  const response = await f.request("POST /groups", {
+    name: "Equipe de viagens",
+    color: "#2563eb",
+    avatarShape: "classic-none",
+    memberIds: [f.bot.id],
+    coordinatorBotId: null,
+  })
+  const { group, thread } = response.json as { group: BotGroup; thread: Thread }
+  const participant = createGroupStore(f.kernel).participant(group, thread.id, f.bot.id)
+  const ctx = { ...f.ctx, threadId: participant.id }
+  await f.engine.open({ url: "about:blank", ctx, timeoutMs: 1500 })
+  const tabId = f.engine.tabsForBot(f.bot.id)[0]?.tabId
+  if (!tabId) throw new Error("Missing browser tab")
+  await f.engine.requestTakeover({
+    tabId,
+    botId: f.bot.id,
+    threadId: participant.id,
+    reason: "Login",
+    timeoutMs: 120_000,
+    signal: ctx.signal,
+  })
+
+  const deleted = await f.request("DELETE /groups/:id", {}, { id: group.id })
+  expect(deleted.status).toBe(200)
+  expect(await f.engine.releaseTakeover(tabId)).toBe(true)
+  const snapshot = await f.engine.snapshot({ tabId, botId: f.bot.id, image: "never", signal: ctx.signal })
+
+  expect(snapshot.success).toBe(true)
+  expect(f.db.query("SELECT owner_thread_id FROM browser_tabs WHERE id=?").get(tabId)).toEqual({
+    owner_thread_id: null,
+  })
 })

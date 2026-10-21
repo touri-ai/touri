@@ -1448,6 +1448,20 @@ export type StoreApi = {
   }) => Array<{ threadId: Id; messageId: Id; snippet: string }>
 }
 
+export type GroupDelegation = {
+  ceiling: Bot
+  caller: { id: Id; name: string }
+  groupThreadId: Id
+  secrets: boolean
+}
+
+export type BrowserTakeoverResume = {
+  botId: Id
+  threadId: Id
+  runId: Id
+  delegation?: GroupDelegation
+}
+
 /** Cross-module services. Providers call `provide` in their init; consumers must tolerate `null` from `use`. */
 export type ServiceMap = {
   'work.authorizeHttp': (input: { personId: Id; role: 'member' | 'admin'; method: string; pathname: string; body: unknown }) => { status: number; json: unknown } | null
@@ -1496,7 +1510,7 @@ export type ServiceMap = {
     waitForDrain: () => Promise<void>
     shutdown: (options?: { appRestart?: boolean }) => void
     canCoordinate: (threadId: Id) => boolean
-    resumeAfterBrowserTakeover: (input: { botId: Id; threadId: Id; runId: Id }) => boolean
+    resumeAfterBrowserTakeover: (input: BrowserTakeoverResume) => boolean
   }
   'vm.stopShells': () => void
   'mem0.api': {
@@ -1531,7 +1545,7 @@ export type ServiceMap = {
   'runtime.settingsChanged': () => void
   'runtime.activeRun': (args: { threadId: Id }) => Run | null
   'runtime.continueAfterApproval': (ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId' | 'signal'>) => boolean
-  'runtime.resumeAfterBrowserTakeover': (input: { botId: Id; threadId: Id; runId: Id }) => boolean
+  'runtime.resumeAfterBrowserTakeover': (input: BrowserTakeoverResume) => boolean
   'runtime.canReturnBrowserTakeover': (input: {
     botId: Id
     threadId: Id

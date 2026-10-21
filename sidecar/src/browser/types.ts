@@ -8,6 +8,7 @@ import type {
   BrowserTabInfo,
   BrowserTarget,
   EpochMs,
+  GroupDelegation,
   Id,
   Kernel,
   ToolContext,
@@ -117,6 +118,7 @@ export type TabState = {
   queue: Promise<void>
   takeover: {
     requestId: string
+    delegation: GroupDelegation | null
     botId: Id
     threadId: Id
     runId: Id | null
