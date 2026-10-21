@@ -24,12 +24,14 @@ const setup = ({
   access = "workspace-write",
   activeRun = null,
   queuedCount = 0,
+  browserWorking = false,
   send = vi.fn().mockResolvedValue(undefined),
 }: {
   draft?: string
   access?: Bot["access"]
   activeRun?: Run | null
   queuedCount?: number
+  browserWorking?: boolean
   send?: ReturnType<typeof vi.fn>
 } = {}) => {
   const api = createMockApi()
@@ -51,6 +53,7 @@ const setup = ({
         onDraft={setText}
         inputRef={input}
         activeRun={currentRun}
+        browserWorking={browserWorking}
         queuedCount={queuedCount}
         onSend={send}
         onCancel={cancel}
@@ -112,6 +115,19 @@ describe("composer island", () => {
     setup({ access: "full", queuedCount: 2 })
     expect(screen.queryByRole("button", { name: /Permissões do bot/ })).toBeNull()
     expect(screen.getByRole("status")).toHaveTextContent("2 mensagens na fila")
+  })
+
+  it("uses the browser status chip as the single stop control while browser work is active", async () => {
+    const { cancel } = setup({ activeRun: run, browserWorking: true })
+    const status = screen.getByText("mark está trabalhando").closest(".composer-browser-status")
+
+    expect(status).toBeInTheDocument()
+    expect(status).toHaveTextContent("No navegador")
+    expect(screen.getByRole("button", { name: "Parar tarefa no navegador" })).toBeVisible()
+    expect(screen.queryByRole("button", { name: "Stop reply button" })).toBeNull()
+
+    fireEvent.click(screen.getByRole("button", { name: "Parar tarefa no navegador" }))
+    await waitFor(() => expect(cancel).toHaveBeenCalledWith("active"))
   })
 
   it("keeps draft attention separate from runtime work (r7 step 67)", async () => {

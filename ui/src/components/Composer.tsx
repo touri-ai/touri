@@ -391,7 +391,7 @@ export const Composer = ({
     }
   }
   const hasContent = Boolean(draft.trim() || files.length)
-  const showStop = Boolean(activeRun && !hasContent && !sending)
+  const showStop = Boolean(activeRun && !browserWorking && !hasContent && !sending)
   const composer = (
     <form
       ref={island}
@@ -641,7 +641,7 @@ export const Composer = ({
             onActiveChange={setDictating}
             onTranscript={(text) => onDraft(getDraftWithTranscript(draftRef.current, text))}
           />
-          {activeRun && !showStop && (
+          {activeRun && !browserWorking && !showStop && (
             <button
               type="button"
               className={stopping ? "composer-stop" : "composer-icon"}
@@ -702,7 +702,22 @@ export const Composer = ({
       {notice && <ComposerNotice {...notice} api={api} active={Boolean(activeRun)} loginFlowShown={login.blocked} />}
       {browserWorking && (
         <div className="composer-browser-status" role="status">
-          {t("{name} is working · In the browser", { name: browserBotName ?? bot?.name ?? "touri" }, locale)}
+          <span className="composer-browser-status-dot" aria-hidden="true" />
+          <strong>{t("{name} is working", { name: browserBotName ?? bot?.name ?? "touri" }, locale)}</strong>
+          <span aria-hidden="true">·</span>
+          <span>{t("In the browser", {}, locale)}</span>
+          {activeRun && (
+            <button
+              type="button"
+              aria-label={t("Stop browser task", {}, locale)}
+              title={t("Stop browser task", {}, locale)}
+              disabled={stopping}
+              onClick={() => void stop()}
+            >
+              {t("Stop browser work", {}, locale)}
+              <span aria-hidden="true">×</span>
+            </button>
+          )}
         </div>
       )}
       {composer}

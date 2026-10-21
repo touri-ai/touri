@@ -9,6 +9,7 @@ import {
   getBrowserActivityIcon,
   getBrowserActivityLabel,
   getBrowserActivityNotice,
+  getBrowserActivityProgressLabel,
   getBrowserActivityScreenshot,
   getBrowserActivityTabId,
   getBrowserActivityTime,
@@ -57,6 +58,7 @@ export const BrowserActivityCard = ({
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(!finished)
   const [fullView, setFullView] = useState(false)
+  const [showAllActions, setShowAllActions] = useState(false)
   const section = useRef<HTMLElement>(null)
   const [visible, setVisible] = useState(false)
   const [hidden, setHidden] = useState(document.hidden)
@@ -207,6 +209,7 @@ export const BrowserActivityCard = ({
 
   const screenshot = getBrowserActivityScreenshot(browserTools)
   const actions = browserTools.slice(-MAX_VISIBLE_ACTIONS)
+  const currentTool = browserTools.at(-1)
   const title = t("Browser for {name}", { name: botName }, locale)
   const summary = t(
     browserTools.length === 1 ? "Used the browser · 1 action" : "Used the browser · {count} actions",
@@ -214,6 +217,11 @@ export const BrowserActivityCard = ({
     locale,
   )
   const url = finished || takeoverSession ? "" : getBrowserActivityUrl(preview?.url ?? "")
+  const liveAction =
+    currentTool && currentTool.ok == null
+      ? getBrowserActivityProgressLabel(currentTool, locale)
+      : t("Working in the browser", {}, locale)
+  const finalTitle = finished ? preview?.title : undefined
 
   return (
     <article
@@ -223,6 +231,15 @@ export const BrowserActivityCard = ({
       data-finished={finished}
       data-held={held}
     >
+      {!finished && !takeoverSession && (
+        <div
+          className="browser-activity-progress"
+          role="progressbar"
+          aria-label={t("Browser progress", {}, locale)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        />
+      )}
       {finished ? (
         <button
           type="button"
@@ -232,7 +249,8 @@ export const BrowserActivityCard = ({
         >
           <span className="browser-activity-summary-copy">
             <strong>{summary}</strong>
-            {url && <small>{url}</small>}
+            {finalTitle && <small>{finalTitle}</small>}
+            <small>{expanded ? t("Hide browser steps", {}, locale) : t("See what it did", {}, locale)}</small>
           </span>
           {screenshot?.outputAttachmentId ? (
             <span className="browser-activity-thumbnail">
@@ -249,22 +267,57 @@ export const BrowserActivityCard = ({
               />
             </span>
           ) : null}
-          <span aria-hidden="true">{expanded ? "−" : "+"}</span>
+          <PanelIcon name={expanded ? "collapse" : "expand"} />
         </button>
       ) : !takeoverSession ? (
         <header className="browser-activity-header">
-          <div>
+          <div className="browser-activity-heading">
             <strong>{title}</strong>
-            {url && <span title={url}>{url}</span>}
+            <div className="browser-activity-meta">
+              <span className="browser-activity-subtitle" aria-live="polite">
+                {botName} · {liveAction}
+              </span>
+              {url && (
+                <span className="browser-activity-address" title={url}>
+                  <PanelIcon name="shield" />
+                  <span>{url}</span>
+                </span>
+              )}
+              {preview?.src && (
+                <span className="browser-activity-live">
+                  <i aria-hidden="true" />
+                  {t("Live", {}, locale)}
+                </span>
+              )}
+            </div>
           </div>
-          {activeTabId && !takeoverSession && (
-            <button type="button" className="button button-quiet" disabled={busy} onClick={() => void toggleTakeover()}>
-              <PanelIcon name="computer" />
-              {busy && t("Updating browser control…", {}, locale)}
-              {!busy && held && t("Continue browser control", {}, locale)}
-              {!busy && !held && t("Take over browser", {}, locale)}
-            </button>
-          )}
+          <div className="browser-activity-header-actions">
+            {previewEnabled && (
+              <button
+                type="button"
+                className="browser-activity-icon-button"
+                aria-label={t(fullView ? "Collapse browser view" : "Expand browser view", {}, locale)}
+                title={t(fullView ? "Collapse browser view" : "Expand browser view", {}, locale)}
+                aria-pressed={fullView}
+                onClick={() => setFullView((value) => !value)}
+              >
+                <PanelIcon name={fullView ? "collapse" : "expand"} />
+              </button>
+            )}
+            {activeTabId && (
+              <button
+                type="button"
+                className="button button-quiet"
+                disabled={busy}
+                onClick={() => void toggleTakeover()}
+              >
+                <PanelIcon name="computer" />
+                {busy && t("Updating browser control…", {}, locale)}
+                {!busy && held && t("Continue browser control", {}, locale)}
+                {!busy && !held && t("Take over browser", {}, locale)}
+              </button>
+            )}
+          </div>
         </header>
       ) : null}
       {expanded && (
@@ -308,14 +361,6 @@ export const BrowserActivityCard = ({
                     </p>
                   )}
                   {preview?.src && previewError && <small role="status">{previewError}</small>}
-                  <div className="browser-activity-preview-actions">
-                    <button type="button" disabled={!preview} onClick={() => setFullView((value) => !value)}>
-                      {fullView ? t("Collapse browser view", {}, locale) : t("Expand browser view", {}, locale)}
-                    </button>
-                    <button type="button" onClick={() => context?.onOpenComputer()} disabled={!context}>
-                      {t("Open browser", {}, locale)}
-                    </button>
-                  </div>
                 </div>
               )}
               <div
@@ -325,24 +370,39 @@ export const BrowserActivityCard = ({
                 aria-live={finished ? "off" : "polite"}
               >
                 <strong>{t("Browser activity", {}, locale)}</strong>
-                <ol>
+                <ol data-expanded={showAllActions || undefined}>
                   {actions.map((part) => (
-                    <li key={part.callId} data-active={!finished && part.callId === browserTools.at(-1)?.callId}>
+                    <li key={part.callId} data-active={!finished && part.callId === currentTool?.callId}>
                       <span className="browser-activity-icon" aria-hidden="true">
                         {getBrowserActivityIcon(part)}
                       </span>
                       <span>
-                        {getBrowserActivityLabel(part, locale)}
+                        {!finished && part.ok == null
+                          ? getBrowserActivityProgressLabel(part, locale)
+                          : getBrowserActivityLabel(part, locale)}
                         {getBrowserActivityNotice(part, locale) && (
                           <small>{getBrowserActivityNotice(part, locale)}</small>
                         )}
                       </span>
+                      {!finished && part.callId === currentTool?.callId && <i className="browser-activity-spinner" />}
                       <time dateTime={new Date(part.startedAt ?? part.resolvedAt ?? createdAt).toISOString()}>
                         {getBrowserActivityTime(part, createdAt, locale)}
                       </time>
                     </li>
                   ))}
                 </ol>
+                {actions.length > 3 && (
+                  <button
+                    type="button"
+                    className="browser-activity-show-actions"
+                    aria-expanded={showAllActions}
+                    onClick={() => setShowAllActions((value) => !value)}
+                  >
+                    {showAllActions
+                      ? t("Show fewer browser actions", {}, locale)
+                      : t("See all browser actions", {}, locale)}
+                  </button>
+                )}
                 {browserTools.length > MAX_VISIBLE_ACTIONS && (
                   <small>
                     {t("Showing the latest {count} browser actions", { count: MAX_VISIBLE_ACTIONS }, locale)}

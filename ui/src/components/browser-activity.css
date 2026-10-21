@@ -1,4 +1,5 @@
 .browser-activity-card {
+  position: relative;
   width: min(660px, 100%);
   margin: 12px 0;
   overflow: hidden;
@@ -8,6 +9,31 @@
   color: var(--text);
   font-size: var(--fs-caption);
 }
+.browser-activity-progress {
+  position: absolute;
+  z-index: 1;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 2px;
+  overflow: hidden;
+  background: var(--surface-control);
+}
+.browser-activity-progress::after {
+  display: block;
+  width: 34%;
+  height: 100%;
+  background: var(--brand);
+  content: "";
+  animation: browser-activity-progress 1.6s ease-in-out infinite;
+}
+@keyframes browser-activity-progress {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(310%);
+  }
+}
 .browser-activity-header,
 .browser-activity-summary {
   display: flex;
@@ -16,21 +42,101 @@
   gap: 12px;
   padding: 12px;
 }
-.browser-activity-header > div,
+.browser-activity-heading,
 .browser-activity-summary-copy {
   display: grid;
   min-width: 0;
   gap: 4px;
 }
-.browser-activity-header span,
 .browser-activity-summary small {
   overflow: hidden;
   color: var(--text-2);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.browser-activity-header .button {
+.browser-activity-header {
+  min-width: 0;
+}
+.browser-activity-heading {
+  flex: 1 1 auto;
+}
+.browser-activity-meta {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 10px;
+}
+.browser-activity-subtitle {
+  color: var(--text-2);
+}
+.browser-activity-address {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-2);
+}
+.browser-activity-address > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.browser-activity-address .panel-icon {
+  width: 12px;
+  height: 12px;
   flex: 0 0 auto;
+}
+.browser-activity-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-2);
+}
+.browser-activity-live i,
+.composer-browser-status-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-pill);
+  background: var(--accent-success);
+}
+.browser-activity-header-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+.browser-activity-header-actions .button {
+  white-space: nowrap;
+}
+.browser-activity-icon-button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-control);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.browser-activity-icon-button:hover {
+  color: var(--text);
+}
+.browser-activity-icon-button:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.browser-activity-icon-button .panel-icon,
+.browser-activity-summary > .panel-icon {
+  width: 16px;
+  height: 16px;
+}
+.browser-activity-icon-button .panel-icon {
+  width: 17px;
+  height: 17px;
 }
 .browser-activity-summary {
   width: 100%;
@@ -45,12 +151,12 @@
 }
 .browser-activity-thumbnail {
   display: grid;
-  width: 144px;
-  height: 84px;
+  width: 180px;
+  height: 112px;
   flex: 0 0 auto;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  background: #101014;
+  background: var(--surface-control);
   object-fit: contain;
 }
 .browser-activity-thumbnail > img {
@@ -71,7 +177,6 @@
 .browser-activity-content-full {
   grid-template-columns: minmax(0, 1fr);
 }
-.browser-activity-preview-actions button:focus-visible,
 .browser-activity-summary:focus-visible {
   outline: 2px solid var(--text);
   outline-offset: -2px;
@@ -112,25 +217,6 @@
   color: var(--text-2);
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.browser-activity-preview-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 8px;
-}
-.browser-activity-preview-actions button {
-  min-height: 32px;
-  padding: 4px;
-  border: 0;
-  background: transparent;
-  color: var(--text-2);
-  text-decoration: underline;
-  cursor: pointer;
-}
-.browser-activity-preview-actions button:disabled {
-  opacity: 0.55;
-  cursor: default;
 }
 .browser-takeover-view {
   display: grid;
@@ -184,6 +270,10 @@
   cursor: crosshair;
   touch-action: none;
   user-select: none;
+}
+.browser-takeover-canvas[hidden],
+.browser-takeover-image[hidden] {
+  display: none;
 }
 .browser-takeover-placeholder {
   position: absolute;
@@ -289,7 +379,7 @@
 }
 .browser-activity-log li {
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) max-content;
+  grid-template-columns: 16px minmax(0, 1fr) 12px max-content;
   align-items: start;
   gap: 6px;
   padding: 4px 6px;
@@ -304,6 +394,32 @@
   font-size: var(--fs-meta);
   line-height: 1.3;
   text-align: center;
+}
+.browser-activity-spinner {
+  width: 10px;
+  height: 10px;
+  justify-self: center;
+  border: 1.5px solid var(--border-strong);
+  border-top-color: var(--brand);
+  border-radius: var(--radius-pill);
+  animation: browser-activity-spin 0.8s linear infinite;
+}
+@keyframes browser-activity-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.browser-activity-show-actions {
+  display: none;
+  min-height: 32px;
+  margin-top: 6px;
+  padding: 4px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--link);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
 }
 .browser-activity-log time {
   justify-self: end;
@@ -337,17 +453,49 @@
   max-height: 180px;
   object-fit: contain;
 }
-@media (max-width: 600px) {
+@media (prefers-reduced-motion: reduce) {
+  .browser-activity-progress::after,
+  .browser-activity-spinner {
+    animation: none;
+  }
+}
+@media (max-width: 1100px) {
   .browser-activity-content {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .browser-activity-log ol:not([data-expanded="true"]) li:nth-last-child(n + 4) {
+    display: none;
+  }
+  .browser-activity-show-actions {
+    display: inline-flex;
+    align-items: center;
   }
   .browser-activity-header {
     align-items: flex-start;
     gap: 8px;
     padding: 10px;
   }
-  .browser-activity-header .button {
-    white-space: nowrap;
+  .browser-activity-header-actions {
+    align-items: flex-start;
+  }
+  .browser-activity-icon-button {
+    width: 32px;
+    height: 32px;
+  }
+  .browser-activity-header-actions .button {
+    min-height: 32px;
+    padding: 5px 7px;
+  }
+  .browser-activity-summary {
+    flex-wrap: wrap;
+  }
+  .browser-activity-summary-copy {
+    flex: 1 1 150px;
+  }
+  .browser-activity-summary > .panel-icon {
+    margin-left: auto;
   }
   .browser-takeover-toolbar,
   .browser-takeover-footer {
@@ -375,7 +523,7 @@
     white-space: normal;
   }
   .browser-activity-thumbnail {
-    width: 96px;
-    height: 60px;
+    width: 112px;
+    height: 70px;
   }
 }

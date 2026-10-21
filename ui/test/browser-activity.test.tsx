@@ -125,6 +125,13 @@ test("shows live browser steps and keeps typed values and URL credentials and qu
       startedAt: 30,
       inputJson: '{"tabId":"browser-tab","target":{"kind":"role","role":"option","name":"Lisboa, Portugal"}}',
     }),
+    getPart({
+      callId: "read",
+      tool: "mcp__touri__browser_snapshot",
+      startedAt: 40,
+      inputJson: '{"tabId":"browser-tab"}',
+      ok: null,
+    }),
   ]
 
   renderCard(parts, false)
@@ -132,6 +139,10 @@ test("shows live browser steps and keeps typed values and URL credentials and qu
   expect(screen.getByText("Navegador do Lia")).toBeVisible()
   expect(screen.getByText("Preencheu Destination")).toBeVisible()
   expect(screen.getByText("Clicou em Lisboa, Portugal")).toBeVisible()
+  expect(screen.getByText("Lia · Lendo a página")).toBeVisible()
+  expect(screen.getByText("Ao vivo")).toBeVisible()
+  expect(screen.getByRole("progressbar", { name: "Progresso do navegador" })).toBeVisible()
+  expect(screen.getByRole("button", { name: "Expandir navegador" })).toBeVisible()
   await waitFor(() => expect(screen.getByRole("img", { name: "Página atual do navegador" })).toBeVisible())
   expect(document.body.textContent).not.toContain("private search value")
   expect(document.body.textContent).not.toContain("person@example.test")
@@ -177,6 +188,7 @@ test("take-over holds the browser, opens its view, and the finished card collaps
   )
 
   expect(await screen.findByText("Usou o navegador · 3 ações")).toBeVisible()
+  expect(screen.getByText("Ver o que ele fez")).toBeVisible()
   expect(screen.getByRole("img", { name: "Captura final do navegador" })).toBeVisible()
   expect(screen.queryByText("Atividade do navegador")).toBeNull()
   fireEvent.click(screen.getByRole("button", { name: /Usou o navegador/ }))

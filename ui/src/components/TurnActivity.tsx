@@ -56,7 +56,7 @@ export const TurnActivity = ({
           locale={locale}
         />
       )}
-      {live ? (
+      {live && browserTools.length > 0 && state !== "waiting-approval" ? null : live ? (
         <ActivityMark
           state={state}
           run={run}

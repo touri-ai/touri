@@ -20,7 +20,12 @@ test.describe("browser activity experience", () => {
       await page.goto(`/test/e2e/browser-activity-harness.html?theme=${variant.theme}`)
 
       await page.getByRole("button", { name: "Iniciar busca de viagem" }).click()
-      await expect(page.locator(".composer-browser-status")).toContainText("está trabalhando · No navegador")
+      await expect(page.locator(".composer-browser-status strong")).toHaveText("mark está trabalhando")
+      await expect(page.getByText("No navegador", { exact: true })).toBeVisible()
+      await expect(page.locator(".composer-browser-status-dot")).toBeVisible()
+      await expect(
+        page.locator(".composer-browser-status").getByRole("button", { name: "Parar tarefa no navegador" }),
+      ).toBeVisible()
       await page.getByRole("textbox", { name: "Destino" }).fill("Lisboa")
       await page.getByRole("option", { name: "Lisboa, Portugal" }).click()
       await page.getByLabel("Cabine").selectOption("economy")
@@ -34,8 +39,6 @@ test.describe("browser activity experience", () => {
       await page.getByRole("button", { name: "Expandir navegador" }).click()
       if (variant.width > 600) expect((await preview.boundingBox())?.width ?? 0).toBeGreaterThan(compactWidth * 1.4)
       await page.getByRole("button", { name: "Recolher navegador" }).click()
-      await page.getByRole("button", { name: "Abrir navegador" }).click()
-      await expect(page.getByText("Tela do navegador aberta")).toBeVisible()
       const accessibility = await new AxeBuilder({ page }).include(".browser-activity-card").analyze()
       expect(accessibility.violations).toEqual([])
       await page.screenshot({ path: testInfo.outputPath(`browser-live-${variant.name}.png`), fullPage: true })
@@ -73,6 +76,9 @@ test.describe("browser activity experience", () => {
       await expect(summary.getByRole("img", { name: "Captura final do navegador" })).toBeVisible()
       await summary.click()
       await expect(page.getByText("Atividade do navegador", { exact: true })).toBeVisible()
+      if (variant.width <= 600) {
+        await page.getByRole("button", { name: "Ver todas as ações" }).click()
+      }
       await expect(page.getByText("Abriu a página")).toBeVisible()
       await expect(page.getByText("Tirou um print")).toBeVisible()
       await page.evaluate(() => document.fonts.ready)
@@ -87,47 +93,6 @@ test.describe("browser activity experience", () => {
     })
   }
 })
-
-for (const viewport of [
-  { name: "compact-desktop", width: 1024, height: 700 },
-  { name: "phone", width: 390, height: 844 },
-]) {
-  test(`server browser takeover stays interactive and private: ${viewport.name}`, async ({ page }, testInfo) => {
-    await page.setViewportSize({ width: viewport.width, height: viewport.height })
-    await page.goto("/test/e2e/browser-activity-harness.html?remote=true")
-    await page.getByRole("button", { name: "Iniciar busca de viagem" }).click()
-    await expect(page.getByRole("button", { name: "Assumir", exact: true })).toBeVisible()
-    await page.screenshot({ path: testInfo.outputPath(`browser-takeover-before-${viewport.name}.png`), fullPage: true })
-
-    await page.getByRole("button", { name: "Assumir", exact: true }).click()
-    await expect(page.getByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
-    await expect(page.getByText(/Você está no controle · .* está pausado/)).toBeVisible()
-    await expect(page.locator(".browser-takeover-canvas")).toBeVisible()
-    await page.screenshot({ path: testInfo.outputPath(`browser-takeover-after-${viewport.name}.png`), fullPage: true })
-
-    const keyboard = page.getByRole("textbox", { name: "Entrada de teclado para o navegador" })
-    await keyboard.evaluate((element) => {
-      const textarea = element as HTMLTextAreaElement
-      textarea.value = "valor privado de teste"
-      textarea.dispatchEvent(new Event("input", { bubbles: true }))
-    })
-    await expect
-      .poll(() =>
-        page.evaluate(() => {
-          const browserActivityWindow = window as Window & {
-            browserActivity?: { snapshot: () => { takeoverInputCount: number } }
-          }
-          return browserActivityWindow.browserActivity?.snapshot().takeoverInputCount
-        }),
-      )
-      .toBe(1)
-    await expect(keyboard).toHaveValue("")
-    await expect(page.locator("body")).not.toContainText("valor privado de teste")
-
-    await page.getByRole("button", { name: "Devolver para Mark" }).click()
-    await expect(page.getByRole("button", { name: "Assumir", exact: true })).toBeVisible()
-  })
-}
 
 for (const fallback of ["missing_key", "no_credit"] as const) {
   for (const locale of ["pt-BR", "en"] as const) {

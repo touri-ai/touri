@@ -218,7 +218,12 @@
   font-size: var(--fs-caption);
 }
 .composer-browser-status {
+  display: flex;
   width: min(900px, calc(100% - 48px));
+  min-height: 38px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-8);
   margin: 0 auto var(--space-4);
   padding: var(--space-4) var(--space-8);
   border: 1px solid var(--border-strong);
@@ -226,6 +231,39 @@
   background: var(--surface);
   color: var(--text-2);
   font-size: var(--fs-caption);
+}
+.composer-browser-status strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.composer-browser-status-dot {
+  display: block;
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  min-height: 8px;
+  flex: none;
+}
+.composer-browser-status button {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: var(--space-4);
+  margin-left: auto;
+  padding: 2px var(--space-8);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-control);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.composer-browser-status button:hover {
+  border-color: var(--border-strong);
+}
+.composer-browser-status button:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 .composer-status:empty {
   display: none;

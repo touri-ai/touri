@@ -1,8 +1,9 @@
-import type { BrowserTabInfo, Message, ToolCallPart } from "@touri/contracts"
+import type { BrowserTabInfo, MachineState, Message, ToolCallPart } from "@touri/contracts"
 import { useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 import type { ApiRequest } from "../../src/api/client"
 import { createMockApi } from "../../src/api/mock"
+import "../../src/components/Composer.css"
 import { TurnActivity } from "../../src/components/TurnActivity"
 import { InlinePreviewContext } from "../../src/features/desktop/InlineLivePreview"
 import { t } from "../../src/i18n"
@@ -187,6 +188,7 @@ const Fixture = () => {
   )
   const { api, bot } = fixture
   const activityBot = remote ? { ...bot, machine: "vm" as const } : bot
+  const machine: MachineState | undefined = remote ? ({ botId: bot.id, status: "running" } as MachineState) : undefined
   const browserActivitySnapshot = useRef<BrowserActivitySnapshot>({
     parts,
     running,
@@ -279,9 +281,7 @@ const Fixture = () => {
   }
 
   return (
-    <InlinePreviewContext.Provider
-      value={{ api, bot: activityBot, machine: undefined, activeCallId: undefined, onOpenComputer }}
-    >
+    <InlinePreviewContext.Provider value={{ api, bot: activityBot, machine, activeCallId: undefined, onOpenComputer }}>
       <main className="browser-activity-demo">
         <header>
           <div>
@@ -376,7 +376,14 @@ const Fixture = () => {
         <footer className="browser-activity-composer">
           {running && (
             <div className="composer-browser-status" role="status">
-              {t("{name} is working · In the browser", { name: bot.name }, locale)}
+              <span className="composer-browser-status-dot" aria-hidden="true" />
+              <strong>{t("{name} is working", { name: bot.name }, locale)}</strong>
+              <span aria-hidden="true">·</span>
+              <span>{t("In the browser", {}, locale)}</span>
+              <button type="button" aria-label={t("Stop browser task", {}, locale)} onClick={() => setRunning(false)}>
+                {t("Stop browser work", {}, locale)}
+                <span aria-hidden="true">×</span>
+              </button>
             </div>
           )}
           <textarea aria-label={t("Message", {}, locale)} placeholder={t("Write a message…", {}, locale)} />
