@@ -36,11 +36,12 @@ CREATE INDEX browser_channel_runs_queue
 CREATE INDEX browser_channel_runs_thread_queue
   ON browser_channel_runs(thread_id, bot_id, status, queued_at, run_id);
 CREATE UNIQUE INDEX browser_channel_runs_request ON browser_channel_runs(bot_id, request_id);
+CREATE INDEX browser_channel_runs_tab_history ON browser_channel_runs(thread_id, bot_id, queued_at DESC, run_id DESC);
 CREATE INDEX browser_channel_runs_bot_queue
   ON browser_channel_runs(bot_id, status, queued_at, run_id);
 CREATE UNIQUE INDEX browser_channel_runs_active_slot
   ON browser_channel_runs(bot_id) WHERE status IN ('running','needs_you','taken_over');
-CREATE TABLE browser_group_resumes (
+CREATE TABLE browser_resume_requests (
   previous_run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
   next_turn_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE
 );

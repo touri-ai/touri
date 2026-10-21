@@ -2308,3 +2308,32 @@ test("ask-all records a rejected enqueue as one failed member and keeps the othe
   expect(members.filter((run) => run.status === "succeeded")).toHaveLength(2)
   expect(members.find((run) => run.botId === scenario.bots[1]?.id)).toMatchObject({ status: "failed" })
 })
+
+test("returning channel browser control resumes only its bot and only once", async () => {
+  const fixture = await fixtureForBrowserResume()
+  const source = fixture.db
+    .query("SELECT run_id FROM group_run_links WHERE turn_id = ? LIMIT 1")
+    .get(fixture.original.id) as { run_id: string } | null
+  if (!source) throw new Error("Missing browser member run")
+
+  expect(fixture.runtime.resumeBrowser({ runId: source.run_id })).toBe(true)
+  expect(fixture.runtime.resumeBrowser({ runId: source.run_id })).toBe(true)
+  await until(() => fixture.order.length === 2)
+
+  expect(fixture.order).toEqual([fixture.bots[0]?.id ?? "", fixture.bots[0]?.id ?? ""])
+  expect(
+    fixture.db
+      .query("SELECT COUNT(*) AS count FROM browser_resume_requests WHERE previous_run_id = ?")
+      .get(source.run_id),
+  ).toEqual({ count: 1 })
+})
+
+const fixtureForBrowserResume = async () => {
+  const value = await fixture()
+  const first = value.bots[0]
+  if (!first) throw new Error("Missing fixture bot")
+  const original = value.send(`@${first.name} pesquise estadias`)
+  await until(() => value.persistence.getRun(original.id)?.status === "succeeded")
+
+  return Object.assign({}, value, { original })
+}

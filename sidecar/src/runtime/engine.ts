@@ -2062,6 +2062,13 @@ export const createRuntimeEngine = ({
   }
 
   const startContinuation = ({ run, plan }: { run: Run; plan: ContinuationPlan }): boolean => {
+    const database = kernel.db
+    if (
+      plan.reason === "browser_takeover" &&
+      database instanceof Database &&
+      database.query("SELECT 1 FROM browser_resume_requests WHERE previous_run_id = ?").get(run.id)
+    )
+      return true
     if (!routineAllowsContinuation(run)) return false
     const goal = goals.getForRun(run.id)
     if (goal && !goals.prepareContinuation(goal)) return false
@@ -2103,6 +2110,10 @@ export const createRuntimeEngine = ({
       cancel(next.run.id)
       return false
     }
+    if (plan.reason === "browser_takeover" && database instanceof Database)
+      database
+        .query("INSERT INTO browser_resume_requests(previous_run_id,next_turn_id) VALUES (?,?)")
+        .run(run.id, next.run.id)
     continuations.record({
       runId: next.run.id,
       originalRunId: plan.originalRunId,

@@ -3,9 +3,10 @@ import { afterEach, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { Run, ToolContext } from "@touri/contracts"
+import type { ToolContext } from "@touri/contracts"
 import { createChannelBrowserRuns, getNextChannelBrowserRun } from "../../src/browser/channel-runs"
 import { createKernel } from "../../src/kernel"
+import { toRun } from "../../src/runtime/persistence"
 
 const cleanups = new Set<() => void>()
 
@@ -59,11 +60,12 @@ const getFixture = () => {
     const row = database.query("SELECT * FROM runs WHERE id = ?").get(runId)
     if (!row) throw new Error("Missing fixture run")
 
-    const run = { id: runId, status: "succeeded" } as Run
+    const run = toRun(Object.assign({}, row, { status: "succeeded" }))
+    if (!run) throw new Error("Invalid fixture run")
     runtime.kernel.publish({ type: "run.updated", run })
   }
 
-  return { runs, enter, finish }
+  return { runs, enter, finish, database, kernel: runtime.kernel }
 }
 
 test("one bot waits across channels and direct messages while another bot works", async () => {
@@ -97,4 +99,26 @@ test("queue eligibility is scoped to the bot across channel boundaries", () => {
   const next = getNextChannelBrowserRun({ queued, active: new Set(["leo"]) })
 
   expect(next?.runId).toBe("other")
+})
+
+test("the human wait keeps its owner and bot slot after the provider finishes", async () => {
+  const fixture = getFixture()
+  await fixture.enter("first", "leo", "session-a")
+  fixture.database
+    .query(`INSERT INTO browser_tabs(id,profile,owner_bot_id,owner_thread_id,url,state,created_at,last_used_at)
+    VALUES ('tab','default','leo','session-a','https://example.test','live',1,1)`)
+    .run()
+  fixture.runs.needsYou("first", "login")
+
+  fixture.finish("first")
+
+  expect(fixture.runs.getForTab("tab")).toMatchObject({ status: "needs_you", requesterPersonId: "ana" })
+  expect(fixture.runs.takeControl({ runId: "first", actorPersonId: "other" }).success).toBe(false)
+  expect(fixture.runs.takeControl({ runId: "first", actorPersonId: "ana" }).success).toBe(true)
+  expect(fixture.runs.isPreviewHidden("tab")).toBe(true)
+
+  fixture.runs.cancel("first")
+
+  expect(fixture.runs.getForTab("tab")?.status).toBe("canceled")
+  expect(fixture.runs.takeControl({ runId: "first", actorPersonId: "other" }).success).toBe(false)
 })

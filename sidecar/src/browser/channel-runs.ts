@@ -97,6 +97,26 @@ const selectRunSql = `SELECT c.*,
   ) ELSE NULL END AS queue_position
   FROM browser_channel_runs c`
 
+export const getBrowserTabRunId = (database: Database, tabId: string): string | null => {
+  const tab = database
+    .query(`SELECT tab.owner_bot_id AS bot_id,
+    COALESCE(thread.group_thread_id, thread.id) AS thread_id
+    FROM browser_tabs tab JOIN threads thread ON thread.id = tab.owner_thread_id WHERE tab.id = ?`)
+    .get(tabId) as { bot_id: string | null; thread_id: string } | null
+  if (!tab?.bot_id) return null
+  const active = database
+    .query(`SELECT run_id FROM browser_channel_runs WHERE bot_id = ? AND thread_id = ?
+    AND status IN ('running','needs_you','taken_over') LIMIT 1`)
+    .get(tab.bot_id, tab.thread_id) as { run_id: string } | null
+  if (active) return active.run_id
+  const previous = database
+    .query(`SELECT run_id FROM browser_channel_runs WHERE thread_id = ? AND bot_id = ?
+    AND status != 'queued' ORDER BY queued_at DESC, run_id DESC LIMIT 1`)
+    .get(tab.thread_id, tab.bot_id) as { run_id: string } | null
+
+  return previous?.run_id ?? null
+}
+
 export const createChannelBrowserRuns = ({
   kernel,
   database,
@@ -165,15 +185,8 @@ export const createChannelBrowserRuns = ({
     return rows.map(toPublic)
   }
   const getForTab = (tabId: string): BrowserChannelRun | null => {
-    const row = database
-      .query(`${selectRunSql}
-        JOIN browser_tabs tab ON tab.owner_bot_id = c.bot_id
-        JOIN threads owner_thread ON owner_thread.id = tab.owner_thread_id
-        WHERE tab.id = ? AND owner_thread.group_id IS c.group_id
-          AND COALESCE(owner_thread.group_thread_id, owner_thread.id) = c.thread_id AND c.status IN ('running','needs_you','taken_over')
-        ORDER BY c.queued_at DESC LIMIT 1`)
-      .get(tabId) as BrowserChannelRunRow | null
-    return row ? toPublic(row) : null
+    const runId = getBrowserTabRunId(database, tabId)
+    return runId ? get(runId) : null
   }
   const getForRun = (runId: string): BrowserChannelRun | null => {
     const row = database

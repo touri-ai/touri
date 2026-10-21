@@ -583,7 +583,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     const group = groups.get(thread.groupId)
     if (!group) return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Grupo não encontrado" }
     const request = store
-      .activePath({ threadId: thread.id, leafId: args.requestMessageId })
+      .activePath({ threadId: thread.id, leafId: args.requestMessageId, limit: 1 })
       .find((message) => message.id === args.requestMessageId)
     const actionPart = request?.parts.find(
       (part) => part.type === "notice" && ["group_ask_all", "group_summary"].includes(part.code),
@@ -633,7 +633,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     if (stopped || draining) return false
     return db
       .transaction(() => {
-        if (db.query("SELECT 1 FROM browser_group_resumes WHERE previous_run_id = ?").get(runId)) return true
+        if (db.query("SELECT 1 FROM browser_resume_requests WHERE previous_run_id = ?").get(runId)) return true
         const source = db
           .query(`SELECT parent.thread_id, parent.request_message_id, child.bot_id, child.status
         FROM group_run_links link JOIN runs child ON child.id = link.run_id
@@ -646,7 +646,10 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
           source.bot_id,
         )
         if (!next.success) return false
-        db.query("INSERT INTO browser_group_resumes(previous_run_id,next_turn_id) VALUES (?,?)").run(runId, next.run.id)
+        db.query("INSERT INTO browser_resume_requests(previous_run_id,next_turn_id) VALUES (?,?)").run(
+          runId,
+          next.run.id,
+        )
         db.query(
           "UPDATE browser_channel_runs SET active_run_id = ? WHERE bot_id = ? AND request_id = ? AND status IN ('needs_you','taken_over')",
         ).run(next.run.id, source.bot_id, source.request_message_id)

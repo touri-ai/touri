@@ -37,7 +37,7 @@ database.exec(`
   CREATE TABLE browser_channel_runs (
     run_id TEXT PRIMARY KEY, group_id TEXT NOT NULL, thread_id TEXT NOT NULL, bot_id TEXT NOT NULL,
     requester_person_id TEXT, responsible_person_id TEXT, controller_person_id TEXT, status TEXT NOT NULL,
-    queued_at INTEGER DEFAULT 1
+    queued_at INTEGER DEFAULT 1, active_run_id TEXT
   );
   CREATE TABLE browser_tabs (id TEXT PRIMARY KEY, owner_bot_id TEXT, owner_thread_id TEXT);
   INSERT INTO bots(id, archived_at, responsible_person_id) VALUES ('legacy-bot', NULL, NULL), ('member-bot', NULL, 'member'),
@@ -323,7 +323,7 @@ test("members cannot inspect or stop another person's runs", () => {
 test("only the requester and the responsible person can stop or take over a channel browser run", () => {
   database.query(`INSERT INTO runs VALUES ('channel-browser-run', 'team-bot-session', 'request')`).run()
   database
-    .query(`INSERT INTO browser_channel_runs VALUES
+    .query(`INSERT INTO browser_channel_runs(run_id,group_id,thread_id,bot_id,requester_person_id,responsible_person_id,controller_person_id,status,queued_at) VALUES
       ('channel-browser-run', 'team-a', 'team-chat', 'team-bot', 'member', 'owner', 'owner', 'taken_over', 1)`)
     .run()
   database.query("INSERT INTO browser_tabs VALUES ('channel-tab', 'team-bot', 'team-bot-session')").run()
