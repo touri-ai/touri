@@ -57,6 +57,7 @@ import { getBotModel, MODEL_VALIDATION_ERROR } from "./model"
 import { redeemFileGrant } from "./redeemFileGrant"
 import { createSendJournal } from "./send-journal"
 import { createStreamWriter } from "./stream-writer"
+import { threadDeletionRoutes } from "./thread-deletion"
 import { type RawMessage, readWorkspaceActivity } from "./workspace-activity"
 
 export const name = "store"
@@ -517,12 +518,18 @@ export const init = async (
     return row ? asBot(row) : null
   }
 
-  const getThread = ({ threadId }: { threadId: string }): Thread | null => {
+  const getThread = ({
+    threadId,
+    includeArchived = false,
+  }: {
+    threadId: string
+    includeArchived?: boolean
+  }): Thread | null => {
     const row = database
-      .query(`SELECT * FROM threads WHERE id = ? AND archived_at IS NULL
+      .query(`SELECT * FROM threads WHERE id = ? AND (? = 1 OR archived_at IS NULL)
         AND NOT EXISTS (SELECT 1 FROM bot_deletions
           WHERE bot_id = threads.bot_id AND phase <> 'stopping')`)
-      .get(threadId) as RawThread | null
+      .get(threadId, includeArchived ? 1 : 0) as RawThread | null
     return row ? asThread(row) : null
   }
 
@@ -572,11 +579,13 @@ export const init = async (
   const updateThreadRow = ({
     threadId,
     patch,
+    includeArchived = false,
   }: {
     threadId: string
     patch: Partial<Pick<Thread, "title" | "carryoverNote" | "usage" | "unread" | "activeLeafId">>
+    includeArchived?: boolean
   }): Thread | null => {
-    if (!getThread({ threadId })) return null
+    if (!getThread({ threadId, includeArchived })) return null
     const current = database.query("SELECT * FROM threads WHERE id = ?").get(threadId) as RawThread | null
     if (!current) return null
     const fields: Array<string> = []
@@ -606,7 +615,7 @@ export const init = async (
       values.push(now())
       database.query(`UPDATE threads SET ${fields.join(", ")} WHERE id = ?`).run(...values, threadId)
     }
-    const thread = getThread({ threadId })
+    const thread = getThread({ threadId, includeArchived })
     if (thread) kernel.publish({ type: "thread.updated", thread })
     return thread
   }
@@ -647,6 +656,8 @@ export const init = async (
   const insertMessage: StoreApi["insertMessage"] = ({ message }) => {
     if (!getThread({ threadId: message.threadId }))
       return { success: false, errorCode: "THREAD_NOT_FOUND", error: `Thread ${message.threadId} was not found` }
+    if (database.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(message.threadId))
+      return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Thread is being deleted" }
     if (message.parentId !== null && !hasMessage({ threadId: message.threadId, messageId: message.parentId }))
       return { success: false, errorCode: "PARENT_NOT_FOUND", error: `Parent ${message.parentId} was not found` }
     const timestamp = now()
@@ -826,11 +837,11 @@ export const init = async (
     return { success: true, thread }
   }
 
-  const updateThread: StoreApi["updateThread"] = ({ threadId, patch }) => {
+  const updateThread: StoreApi["updateThread"] = ({ threadId, patch, includeArchived = false }) => {
     const activeLeafId = patch.activeLeafId
     if (activeLeafId !== undefined && activeLeafId !== null && !hasMessage({ threadId, messageId: activeLeafId }))
       return { success: false, errorCode: "NOT_FOUND", error: `Message ${activeLeafId} was not found` }
-    const thread = updateThreadRow({ threadId, patch })
+    const thread = updateThreadRow({ threadId, patch, includeArchived })
     if (!thread) return { success: false, errorCode: "NOT_FOUND", error: `Thread ${threadId} was not found` }
     return { success: true, thread }
   }
@@ -1580,6 +1591,7 @@ export const init = async (
   const routes: RouteModule = {
     name: "store",
     routes: [
+      ...threadDeletionRoutes(kernel, undefined, (threadId) => streamWriter.drainAsync({ threadId })),
       {
         method: "GET",
         path: "/workspace/activity",
@@ -1714,12 +1726,17 @@ export const init = async (
       {
         method: "GET",
         path: "/bots/:id/threads",
-        handler: async ({ params, signal }) => {
+        handler: async ({ params, query, signal }) => {
           if (!getBot({ botId: params.id ?? "" })) return errorResponse(404, "NOT_FOUND", "Bot not found")
           const threadBotId = params.id ?? ""
+          if (query.archived !== undefined && query.archived !== "true" && query.archived !== "false")
+            return errorResponse(400, "INVALID_ARGS", "archived must be a boolean")
+          const archiveFilter = query.archived === "true" ? "IS NOT NULL" : "IS NULL"
           const rows = database
             .query(
-              "SELECT * FROM threads WHERE bot_id = ? AND group_id IS NULL AND archived_at IS NULL ORDER BY updated_at DESC",
+              `SELECT * FROM threads WHERE bot_id = ? AND group_id IS NULL AND archived_at ${archiveFilter}
+                AND NOT EXISTS (SELECT 1 FROM thread_deletions WHERE thread_id = threads.id)
+                ORDER BY updated_at DESC`,
             )
             .all(threadBotId) as Array<RawThread>
           const person = deviceSession(signal)?.person
@@ -1768,8 +1785,10 @@ export const init = async (
         method: "PATCH",
         path: "/threads/:id",
         handler: async ({ params, body }) => {
-          const thread = getThread({ threadId: params.id ?? "" })
+          const thread = getThread({ threadId: params.id ?? "", includeArchived: true })
           if (!thread) return errorResponse(404, "NOT_FOUND", "Thread not found")
+          if (database.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(thread.id))
+            return errorResponse(409, "THREAD_DELETING", "Esta conversa já está sendo excluída.")
           const record = requestRecord(body)
           if (!record) return errorResponse(400, "INVALID_ARGS", "Request body must be an object")
           if (record.title !== undefined && !isString(record.title))
@@ -1778,6 +1797,14 @@ export const init = async (
             return errorResponse(400, "INVALID_ARGS", "activeLeafId must be a string")
           if (record.archived !== undefined && typeof record.archived !== "boolean")
             return errorResponse(400, "INVALID_ARGS", "archived must be a boolean")
+          if (record.archived === true) {
+            const activeDatabaseRun = database
+              .query("SELECT 1 FROM runs WHERE thread_id = ? AND status IN ('queued','starting','running') LIMIT 1")
+              .get(thread.id)
+            const activeRun = kernel.services.use("runtime.activeRun")?.({ threadId: thread.id })
+            if (activeDatabaseRun || activeRun)
+              return errorResponse(409, "THREAD_ACTIVE", "Encerre a execução antes de arquivar esta conversa.")
+          }
           const patch: Partial<Pick<Thread, "title" | "activeLeafId">> = {}
           if (isString(record.title)) patch.title = record.title
           if (isString(record.activeLeafId)) {
@@ -1798,7 +1825,7 @@ export const init = async (
               .get(thread.id, record.activeLeafId, thread.id) as { id: string } | null
             patch.activeLeafId = leaf?.id ?? record.activeLeafId
           }
-          const updated = updateThread({ threadId: thread.id, patch })
+          const updated = updateThread({ threadId: thread.id, patch, includeArchived: true })
           if (!updated.success) return errorResponse(404, updated.errorCode, updated.error)
           if (record.archived !== undefined)
             database
@@ -1806,9 +1833,9 @@ export const init = async (
               .run(record.archived ? now() : null, now(), thread.id)
           const finalRow = database.query("SELECT * FROM threads WHERE id = ?").get(thread.id) as RawThread | null
           const finalThread = finalRow ? asThread(finalRow) : null
-          return finalThread
-            ? jsonResponse(200, { thread: finalThread })
-            : errorResponse(404, "NOT_FOUND", "Thread not found")
+          if (!finalThread) return errorResponse(404, "NOT_FOUND", "Thread not found")
+          kernel.publish({ type: "thread.updated", thread: finalThread })
+          return jsonResponse(200, { thread: finalThread })
         },
       },
       {
@@ -1927,6 +1954,8 @@ export const init = async (
             return errorResponse(404, "NOT_FOUND", "Attachment not found")
           const input = withAuthenticatedSender(signal, parsed.input)
           const thread = getThread({ threadId: parsed.input.threadId })
+          if (database.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(parsed.input.threadId))
+            return errorResponse(409, "THREAD_DELETING", "Esta conversa já está sendo excluída.")
           if (thread && getBot({ botId: thread.botId })?.machine === "cloud") {
             const cloud = kernel.services.use("cloud.account")
             if (!cloud) return errorResponse(503, "TOURI-E9013", "Nuvem desativada")

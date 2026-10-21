@@ -962,9 +962,12 @@ export type ApiRoutes = {
   'POST /bots/:id/desktop/return': { req: {}; res: {} }
   'POST /desktop/:id/text': { req: { text: string }; res: {} }
   'DELETE /desktop/:id': { req: {}; res: {} }
-  'GET /bots/:id/threads': { req: {}; res: { threads: Array<Thread> } }
+  'GET /bots/:id/threads': { req: { archived?: boolean }; res: { threads: Array<Thread> } }
   'POST /threads': { req: { botId: Id; title?: string }; res: { thread: Thread } }
   'PATCH /threads/:id': { req: { title?: string; activeLeafId?: Id; archived?: boolean }; res: { thread: Thread } }
+  'GET /threads/:id/delete-preview': { req: {}; res: { thread: Pick<Thread, 'id' | 'title'>; messageCount: number } }
+  'DELETE /threads/:id': { req: {}; res: { threadId: Id; phase: string } }
+  'POST /threads/delete': { req: { ids: Array<Id> }; res: { threadIds: Array<Id>; phase: string } }
   'GET /threads/:id/transcript': { req: { since?: number; limit?: number }; res: { entries: Array<{ seq: number; generation: number; event: UiEvent }>; rejections: Array<TranscriptRejection>; lastSeq: number; generation: number; hasMore: boolean; resync: boolean } }
   'GET /threads/:id/messages': { req: { all?: boolean }; res: { messages: Array<Message>; activeLeafId: Id | null } }
   'POST /threads/:id/messages': { req: SendMessageInput; res: { message: Message; run: Run } }
@@ -1105,6 +1108,7 @@ export type UiEvent =
   | { type: 'bot.deleted'; botId: Id }
   | { type: 'project.created'; project: Project }
   | { type: 'thread.updated'; thread: Thread }
+  | { type: 'thread.deleted'; threadId: Id; botId: Id; groupId: Id | null; ownerPersonId: Id | null; responsiblePersonId: Id | null }
   | { type: 'message.created'; message: Message }
   | { type: 'message.delta'; threadId: Id; messageId: Id; partIndex: number; delta: string; offset?: number; updatedSeq?: number; generation?: number; partType?: 'text' | 'reasoning'; updatedAt?: EpochMs }
   | { type: 'message.parts'; threadId: Id; messageId: Id; parts: Array<{ partIndex: number; part: MessagePart }>; updatedSeq?: number; generation?: number; updatedAt?: EpochMs }
@@ -1357,9 +1361,9 @@ export type StoreApi = {
   getPathMessage?: (args: { threadId: Id; messageId: Id; leafId?: Id }) => Message | null
   setActiveLeaf: (args: { threadId: Id; leafId: Id }) => Result<{ thread: Thread }, 'NOT_FOUND'>
   getBot: (args: { botId: Id }) => Bot | null
-  getThread: (args: { threadId: Id }) => Thread | null
+  getThread: (args: { threadId: Id; includeArchived?: boolean }) => Thread | null
   createThread: (args: { botId: Id; kind: ThreadKind; title: string; parentThreadId?: Id; routineRunId?: Id; groupId?: Id; groupThreadId?: Id; ownerPersonId?: Id }) => Result<{ thread: Thread }, 'BOT_NOT_FOUND'>
-  updateThread: (args: { threadId: Id; patch: Partial<Pick<Thread, 'title' | 'carryoverNote' | 'usage' | 'unread' | 'activeLeafId'>> }) => Result<{ thread: Thread }, 'NOT_FOUND'>
+  updateThread: (args: { threadId: Id; patch: Partial<Pick<Thread, 'title' | 'carryoverNote' | 'usage' | 'unread' | 'activeLeafId'>>; includeArchived?: boolean }) => Result<{ thread: Thread }, 'NOT_FOUND'>
   search: (args: {
     q: string
     botId?: Id
@@ -1433,6 +1437,7 @@ export type ServiceMap = {
   'doctor': { start: () => void; dispose: () => void; snapshot: (refresh?: boolean) => DoctorReport; settled: () => Promise<void> }
   'storage.maintenance': { scheduleSessionKeyRetry: () => void; start: (vacuum?: boolean) => boolean; snapshot: () => StorageMaintenanceStatus; dispose: (options?: { closing?: boolean }) => void }
   'storage.botDeletion': { dispose: () => void }
+  'storage.threadDeletion': { dispose: () => void }
   'mcp.botTools': (bot: Bot) => Array<string>
 
   'cloud.settingsChanged': () => void

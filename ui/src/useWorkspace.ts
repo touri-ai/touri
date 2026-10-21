@@ -106,6 +106,12 @@ export type WorkspaceActions = {
   updateBot: (botId: Id, patch: Partial<ApiRoutes["PATCH /bots/:id"]["req"]>) => Promise<void>
   updateBotModel: (botId: Id, model: string | null) => Promise<void>
   deleteBot: (botId: Id, name: string, deleteVolumes: boolean) => Promise<void>
+  archiveThread: (threadId: Id, archived: boolean) => Promise<Thread>
+  archiveThreads: (threadIds: Array<Id>, archived: boolean) => Promise<void>
+  deleteThread: (threadId: Id, botId: Id) => Promise<void>
+  deleteThreads: (threadIds: Array<Id>, botId: Id) => Promise<void>
+  getThreadDeletePreview: (threadId: Id) => Promise<ApiRoutes["GET /threads/:id/delete-preview"]["res"]>
+  loadArchivedThreads: (botId: Id) => Promise<Array<Thread>>
   machineAction: (botId: Id, reset: boolean, projectId?: Id | null, stopTurns?: boolean) => Promise<void>
   createBot: (
     input: ApiRoutes["POST /bots"]["req"],
@@ -410,6 +416,33 @@ const getWorkspaceWithoutGroup = (data: WorkspaceData, groupId: Id): WorkspaceDa
     threadCreation: data.threadCreation?.thread.groupId === groupId ? null : data.threadCreation,
     composerKey: isSelected ? null : data.composerKey,
     computerGrantRequest: threadIds.has(data.computerGrantRequest?.threadId ?? "") ? null : data.computerGrantRequest,
+  }
+}
+
+const withoutThread = (data: WorkspaceData, threadId: Id, botIdHint?: Id): WorkspaceData => {
+  const thread = data.threads.find((candidate) => candidate.id === threadId)
+  const botId = thread?.botId ?? botIdHint
+  const threads = data.threads.filter((candidate) => candidate.id !== threadId)
+  const selected = data.selectedThreadId === threadId
+  const bot = botId ? data.bots.find((candidate) => candidate.id === botId) : undefined
+  const fallback =
+    threads.find((candidate) => candidate.id === bot?.mainThreadId) ??
+    threads.find((candidate) => candidate.botId === botId && !candidate.groupId && !candidate.archivedAt)
+
+  return {
+    ...data,
+    threads,
+    messages: data.messages.filter((message) => message.threadId !== threadId),
+    activityMessages: data.activityMessages.filter((message) => message.threadId !== threadId),
+    runs: data.runs.filter((run) => run.threadId !== threadId),
+    routineRuns: data.routineRuns.map((run) => (run.threadId === threadId ? { ...run, threadId: null } : run)),
+    workRuns: data.workRuns.filter((run) => run.threadId !== threadId),
+    notifications: data.notifications.filter((item) => item.threadId !== threadId),
+    selectedBotId: selected && botId ? botId : data.selectedBotId,
+    selectedThreadId: selected ? (fallback?.id ?? null) : data.selectedThreadId,
+    threadCreation: data.threadCreation?.thread.id === threadId ? null : data.threadCreation,
+    composerKey: selected ? null : data.composerKey,
+    computerGrantRequest: data.computerGrantRequest?.threadId === threadId ? null : data.computerGrantRequest,
   }
 }
 
@@ -869,6 +902,15 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
         return
       if (event.type === "transcript.resync") {
         resync()
+        return
+      }
+      if (event.type === "thread.deleted") {
+        privateThreads.current.delete(event.threadId)
+        loadedThreads.current.delete(event.threadId)
+        const load = threadLoads.current.get(event.threadId)
+        if (load) load.deltas.length = 0
+        threadLoads.current.delete(event.threadId)
+        setData((current) => withoutThread(current, event.threadId, event.botId))
         return
       }
       if (event.type === "group.deleted") {
@@ -1763,6 +1805,35 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
           getDocumentLocale(document.documentElement),
         )
         setData((current) => ({ ...withoutBot(current, botId), notice }))
+      },
+      archiveThread: async (threadId, archived) => {
+        const response = await api.request("PATCH /threads/:id", { archived }, { id: threadId })
+        setData((current) => ({ ...current, threads: uniqueById([...current.threads, response.thread]) }))
+        return response.thread
+      },
+      archiveThreads: async (threadIds, archived) => {
+        for (const threadId of threadIds) {
+          const response = await api.request("PATCH /threads/:id", { archived }, { id: threadId })
+          setData((current) => ({ ...current, threads: uniqueById([...current.threads, response.thread]) }))
+        }
+      },
+      deleteThread: async (threadId, botId) => {
+        await api.request("DELETE /threads/:id", {}, { id: threadId })
+        setData((current) => withoutThread(current, threadId, botId))
+      },
+      deleteThreads: async (threadIds, botId) => {
+        const batches = Array.from({ length: Math.ceil(threadIds.length / 200) }, (_, index) =>
+          threadIds.slice(index * 200, (index + 1) * 200),
+        )
+        for (const ids of batches) {
+          await api.request("POST /threads/delete", { ids })
+          setData((current) => ids.reduce((workspace, threadId) => withoutThread(workspace, threadId, botId), current))
+        }
+      },
+      getThreadDeletePreview: (threadId) => api.request("GET /threads/:id/delete-preview", {}, { id: threadId }),
+      loadArchivedThreads: async (botId) => {
+        const response = await api.request("GET /bots/:id/threads", { archived: true }, { id: botId })
+        return response.threads
       },
       createBot,
       machineAction,

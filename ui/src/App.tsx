@@ -1065,6 +1065,12 @@ const AppContent = ({ kernel }: AppProps) => {
             bots={data.bots}
             onDeleteBot={actions.deleteBot}
             onDeleteGroup={actions.deleteGroup}
+            onArchiveThread={actions.archiveThread}
+            onArchiveThreads={actions.archiveThreads}
+            onDeleteThread={actions.deleteThread}
+            onDeleteThreads={actions.deleteThreads}
+            onGetThreadDeletePreview={actions.getThreadDeletePreview}
+            onLoadArchivedThreads={actions.loadArchivedThreads}
             threads={data.threads}
             messages={data.activityMessages}
             runs={data.runs}
