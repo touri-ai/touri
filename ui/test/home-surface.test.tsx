@@ -94,7 +94,7 @@ it("shows one primary hire action and quiet secondary actions, even when checks 
     within(landing)
       .getAllByRole("button")
       .map((button) => button.textContent),
-  ).toEqual(["Criar meu primeiro bot→", "Importar", "Verificar este servidor"])
+  ).toEqual(["Criar meu primeiro bot", "Importar", "Verificar este servidor"])
   expect(landing).toHaveTextContent(
     "O histórico fica neste servidor. Sua IA recebe o conteúdo necessário para responder. O touri não coleta telemetria.",
   )

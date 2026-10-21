@@ -1,6 +1,7 @@
 import type { NotificationRecord } from "@touri/contracts"
 import { type TranslationKey, t } from "../i18n"
 import { BotAvatar } from "./BotAvatar"
+import { PanelIcon } from "./PanelIcon"
 import "./notification-attention-bar.css"
 
 export const NotificationAttentionBar = ({
@@ -48,9 +49,7 @@ export const NotificationAttentionBar = ({
         <small>{t(reason, { name: first.botName ?? "touri" })}</small>
       </span>
       {pending.length > 1 && <span className="sidebar-needs-you-count">{pending.length}</span>}
-      <span className="sidebar-needs-you-arrow" aria-hidden="true">
-        ›
-      </span>
+      <PanelIcon name="chevron-right" />
     </button>
   )
 }

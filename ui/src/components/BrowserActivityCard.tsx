@@ -79,7 +79,9 @@ export const BrowserActivityCard = ({
   botName,
   locale = "pt-BR",
   children,
+  showSteps = true,
 }: {
+  showSteps?: boolean
   parts: readonly MessagePart[]
   runId?: string | null | undefined
   threadId?: string | undefined
@@ -106,6 +108,7 @@ export const BrowserActivityCard = ({
     tabId: string
     held: boolean
     reason?: BrowserTakeoverReason | null
+    url?: string
     requested?: boolean
     runId?: string | null | undefined
   }>()
@@ -199,6 +202,7 @@ export const BrowserActivityCard = ({
         tabId: candidate.tabId,
         held: candidate.heldByUser,
         reason: candidate.takeoverReason ?? null,
+        url: candidate.url,
         requested: candidate.takeoverRequested === true,
         runId: candidate.takeoverRunId,
       })
@@ -217,6 +221,7 @@ export const BrowserActivityCard = ({
           tabId: event.tab.tabId,
           held: event.tab.heldByUser,
           reason: event.tab.takeoverReason ?? null,
+          url: event.tab.url,
           requested: event.tab.takeoverRequested === true,
           runId: event.tab.takeoverRunId,
         })
@@ -392,7 +397,7 @@ export const BrowserActivityCard = ({
   const url =
     finished || held || channel?.previewHidden
       ? ""
-      : getBrowserActivityShortUrl(preview?.url ?? "") || getBrowserActivityOpenUrl(browserTools)
+      : getBrowserActivityShortUrl(preview?.url ?? heldTab?.url ?? "") || getBrowserActivityOpenUrl(browserTools)
   const subtitle = [botName, currentAction && getBrowserActivitySubtitleAction(currentAction, locale), url]
     .filter(Boolean)
     .join(" · ")
@@ -440,14 +445,12 @@ export const BrowserActivityCard = ({
 
   const card = (
     <div className="browser-activity-stack">
-      {!finished && completedActions.length > 0 && (
+      {showSteps && !finished && completedActions.length > 0 && (
         <ol className="browser-activity-checklist" aria-label={t("Browser steps", {}, locale)}>
-          {completedActions.map((part) => (
-            <li key={part.callId}>
-              <span aria-hidden="true">✓</span>
-              <span>{t("Used the browser", {}, locale)}</span>
-            </li>
-          ))}
+          <li data-actions={completedActions.length}>
+            <span aria-hidden="true">✓</span>
+            <span>{t("Used the browser", {}, locale)}</span>
+          </li>
         </ol>
       )}
       <article
@@ -597,8 +600,12 @@ export const BrowserActivityCard = ({
               {takeoverActive && (
                 <section className="browser-takeover-reason">
                   <strong>{t("Why {name} paused", { name: botName }, locale)}</strong>
-                  <p>{reasonCopy}</p>
-                  <p>{t("The bot is paused until you hand control back.", {}, locale)}</p>
+                  <p>
+                    {channel?.state.controllerId
+                      ? t("{person} is in control", { person: channel.controlName }, locale)
+                      : reasonCopy}
+                  </p>
+                  <p>{t("A person is controlling this browser tab; the bot is paused.", {}, locale)}</p>
                 </section>
               )}
               <strong>{t(takeoverActive ? "Recent actions" : "Browser activity", {}, locale)}</strong>

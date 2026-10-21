@@ -16,7 +16,9 @@ const getSmallTargets = (page: Page, minimum: number) =>
     const selector = ".bot-sidebar :is(button, summary, a)"
     return Array.from(document.querySelectorAll<HTMLElement>(selector))
       .map((element) => ({ element, box: element.getBoundingClientRect() }))
-      .filter(({ box }) => box.width > 0 && box.height > 0)
+      .filter(
+        ({ element, box }) => getComputedStyle(element).visibility === "visible" && box.width > 0 && box.height > 0,
+      )
       .filter(({ box }) => box.width < min || box.height < min)
       .map(
         ({ element, box }) =>

@@ -166,6 +166,12 @@ realSuite("WP6 real Chrome browser acceptance", () => {
           const started = await launcher.start(options)
           if (!started) return null
           fixtureClient = started.client
+          started.client.subscribe((event) => {
+            if (event.method !== "Target.attachedToTarget") return
+            const target = event.params.targetInfo as { targetId?: string } | undefined
+            const sessionId = event.params.sessionId
+            if (target?.targetId && typeof sessionId === "string") fixtureSessions.set(target.targetId, sessionId)
+          })
           return {
             ...started,
             client: {
@@ -718,7 +724,9 @@ realSuite("WP6 real Chrome browser acceptance", () => {
     expect(returned.success).toBe(true)
     const after = snapshotOf(returned)
     expect(after.generation).toBeGreaterThan(snapshot.generation)
-    expect(after.notes).toContain("User handed back the tab; the page may have changed.")
+    expect(after.notes.join(" ")).toContain("private browser input")
+    expect(after.text).toBe("")
+    expect(after.elements.every((element) => !element.name && !element.value)).toBe(true)
   })
 
   test("remote browser input reaches the page while a takeover request is waiting", async () => {

@@ -10,6 +10,7 @@ import type { RoutineHistoryTarget } from "../workspaceState"
 import { BotAvatar } from "./BotAvatar"
 import { DeleteRoutineDialog } from "./DeleteRoutineDialog"
 import { Disclosure } from "./Disclosure"
+import { PanelIcon } from "./PanelIcon"
 import { RoutineEditor, routineHostNotice } from "./RoutineEditor"
 import { RoutineSchedule } from "./RoutineSchedule"
 import { ScreenHeader, ScreenState } from "./ScreenPrimitives"
@@ -248,7 +249,7 @@ const CronScreen = ({
                 })
               }
             >
-              <span aria-hidden="true">＋</span>
+              <PanelIcon name="plus" />
               {t("Criar cron")}
             </button>
           </>
@@ -285,13 +286,15 @@ const CronScreen = ({
               }}
             >
               <span className="approval-icon" aria-hidden="true">
-                !
+                <PanelIcon name="warning" />
               </span>
               <span>
                 <strong>{t("Pending approval count", { count: pendingApprovals.length })}</strong>
                 <small>{t("Revise antes de continuar as rotinas")}</small>
               </span>
-              <span className="approval-link">{t("Revisar →")}</span>
+              <span className="approval-link">
+                {t("Revisar")} <PanelIcon name="arrow-right" />
+              </span>
             </button>
           )}
           <section className="cron-card routine-queue">
@@ -513,7 +516,7 @@ const CronScreen = ({
                 aria-label={t("Mês anterior")}
                 onClick={() => setMonth((value) => shiftMonth(value, -1))}
               >
-                ‹
+                <PanelIcon name="chevron-left" />
               </button>
               <span>{month.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</span>
               <button
@@ -521,7 +524,7 @@ const CronScreen = ({
                 aria-label={t("Próximo mês")}
                 onClick={() => setMonth((value) => shiftMonth(value, 1))}
               >
-                ›
+                <PanelIcon name="chevron-right" />
               </button>
             </span>
           </div>

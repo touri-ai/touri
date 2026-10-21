@@ -1,7 +1,8 @@
-import { type CSSProperties, type ReactNode, useLayoutEffect, useRef } from "react"
+import { type CSSProperties, type ReactNode, type RefCallback, useLayoutEffect, useRef } from "react"
 import { isMotionReduced, observeMotionPreference } from "../design/motionPreference"
 import { motionTiers, springEasing } from "../design/spring"
 import type { AppRoute } from "../workspaceState"
+import { ScreenHeaderContext } from "./ScreenHeaderContext"
 
 const depth = (route: AppRoute): number =>
   route.section === "bots"
@@ -16,7 +17,15 @@ const depth = (route: AppRoute): number =>
 export const pageDirection = (from: AppRoute, to: AppRoute): number => (depth(to) < depth(from) ? -1 : 1)
 export const pageKey = (route: AppRoute): string => (route.section === "bots" ? route.screen : route.page)
 
-export const PageTransition = ({ route, children }: { route: AppRoute; children: ReactNode }) => {
+export const PageTransition = ({
+  route,
+  children,
+  onHeaderChange,
+}: {
+  route: AppRoute
+  children: ReactNode
+  onHeaderChange?: RefCallback<HTMLElement>
+}) => {
   const key = pageKey(route)
   const nextDepth = depth(route)
   const previous = useRef({ key, depth: nextDepth })
@@ -63,14 +72,16 @@ export const PageTransition = ({ route, children }: { route: AppRoute; children:
     }
   }, [key, nextDepth, direction])
   return (
-    <div
-      ref={ref}
-      className="workspace-page"
-      data-page={key}
-      data-navigation={direction === -1 ? "pop" : "push"}
-      style={{ "--page-step": direction } as CSSProperties}
-    >
-      {children}
-    </div>
+    <ScreenHeaderContext.Provider value={onHeaderChange}>
+      <div
+        ref={ref}
+        className="workspace-page"
+        data-page={key}
+        data-navigation={direction === -1 ? "pop" : "push"}
+        style={{ "--page-step": direction } as CSSProperties}
+      >
+        {children}
+      </div>
+    </ScreenHeaderContext.Provider>
   )
 }

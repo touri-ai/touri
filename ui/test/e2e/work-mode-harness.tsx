@@ -4,6 +4,7 @@ import { installMotionTokens } from "../../src/design/spring"
 import { initializeTheme } from "../../src/design/theme"
 import "../../src/styles.css"
 import { getRoutineSidebarFixture } from "../routine-sidebar-fixture"
+import { installWorkBrowserFixture } from "./work-browser-fixture"
 
 type FixtureApi = Awaited<ReturnType<typeof getRoutineSidebarFixture>>["api"]
 
@@ -61,6 +62,8 @@ const start = async (): Promise<void> => {
     }))
     await Promise.all(channels.map((channel) => api.request("POST /groups", channel)))
   }
+  const browserMode = new URLSearchParams(location.search).get("browser")
+  if (browserMode) await installWorkBrowserFixture(api, browserMode)
   Object.assign(window, { workModeQa: { api } })
   installMotionTokens(document.documentElement)
   initializeTheme()

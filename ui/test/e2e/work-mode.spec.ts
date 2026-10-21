@@ -39,7 +39,7 @@ test("switches and remembers Work mode, with channels and routine history", asyn
   await expect(botsPanel.locator('[data-bot-entry="bot-mark"] .thread-row')).toHaveCount(2)
   await routineRow.click()
   const routineHistory = page.locator(".routine-run-history")
-  await expect(routineHistory).toHaveAttribute("open", "")
+  await expect(routineHistory).toHaveAttribute("data-open", "true")
   await expect(routineHistory.getByRole("button", { name: "Abrir conversa" })).toHaveCount(30)
 
   await botsTab.click()
@@ -177,24 +177,104 @@ test("keeps the channel row mounted through rapid mode switches", async ({ page 
     if (!channelRow || !botsTab || !workTab) return { stayedMounted: false, maxFrameMs: Number.POSITIVE_INFINITY }
 
     const frame = (): Promise<number> => new Promise((resolve) => requestAnimationFrame(resolve))
+    const frameTimes: number[] = []
+    const handlerTimes: number[] = []
     let maxFrameMs = 0
 
     for (let iteration = 0; iteration < 20; iteration += 1) {
       const started = performance.now()
       botsTab.click()
-      maxFrameMs = Math.max(maxFrameMs, (await frame()) - started)
+      handlerTimes.push(performance.now() - started)
+      frameTimes.push((await frame()) - started)
+      maxFrameMs = Math.max(maxFrameMs, frameTimes.at(-1) ?? 0)
       const workStarted = performance.now()
       workTab.click()
-      maxFrameMs = Math.max(maxFrameMs, (await frame()) - workStarted)
+      handlerTimes.push(performance.now() - workStarted)
+      frameTimes.push((await frame()) - workStarted)
+      maxFrameMs = Math.max(maxFrameMs, frameTimes.at(-1) ?? 0)
     }
 
     return {
       stayedMounted: channelRow === document.querySelector(".group-select"),
       maxFrameMs,
+      frameP95Ms: frameTimes.toSorted((left, right) => left - right)[Math.ceil(frameTimes.length * 0.95) - 1],
+      handlerP95Ms: handlerTimes.toSorted((left, right) => left - right)[Math.ceil(handlerTimes.length * 0.95) - 1],
     }
   })
 
+  console.log("Work mode switching: 40 switches, 101 channels", JSON.stringify(switchMetrics))
+  const panelHeights = await page
+    .locator(".sidebar-mode-panel")
+    .evaluateAll((panels) => panels.map((panel) => panel.getBoundingClientRect().height))
+  expect(panelHeights.every((height) => height > 0)).toBe(true)
+  expect(Math.abs((panelHeights[0] ?? 0) - (panelHeights[1] ?? 0))).toBeLessThan(1)
   expect(switchMetrics.stayedMounted).toBe(true)
   expect(switchMetrics.maxFrameMs).toBeLessThan(250)
   await expect(page.getByRole("tab", { name: /^Work,/ })).toHaveAttribute("aria-selected", "true")
 })
+
+for (const viewport of [
+  { name: "desktop", width: 1440, height: 900 },
+  { name: "compact", width: 1024, height: 700 },
+  { name: "phone", width: 390, height: 844 },
+]) {
+  for (const mode of ["live", "held", "finished"]) {
+    test(`the actual Work transcript shows ${mode} browser activity at ${viewport.name}`, async ({ page }) => {
+      mkdirSync(evidence, { recursive: true })
+      await page.setViewportSize(viewport)
+      await page.addInitScript(() => {
+        localStorage.setItem("touri.appearance.v1", "dark")
+        localStorage.setItem("touri.sidebar.mode", "work")
+      })
+      await page.goto(`/test/e2e/work-mode-harness.html?browser=${mode}`)
+      await expect(page.getByRole("textbox", { name: "Mensagem para Léo" })).toBeVisible()
+      if (viewport.width <= 600) await page.locator(".mobile-menu-button").click()
+      await page.getByRole("button", { name: /^Viagens/ }).click()
+      const card = page.locator(".message-assistant .browser-activity-card")
+      await expect(card).toHaveCount(1)
+      await expect(card).toBeVisible()
+      await expect(page.locator(".group-member-count")).toContainText("2 pessoas · 1 bot")
+      await expect(page.locator(".group-header-actions")).toBeVisible()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0)
+      if (mode !== "finished") {
+        await expect(page.locator(".browser-narration")).toContainText("Abri a busca.")
+        await expect(page.locator(".browser-activity-checklist")).toHaveCount(0)
+      }
+      const header = page.locator(".group-header")
+      const title = header.locator(".group-heading-name strong")
+      await expect(title).toHaveText("Viagens")
+      expect(await title.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+      if (mode === "live") {
+        const columns = await card
+          .locator(".browser-activity-content")
+          .evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length)
+        expect(columns).toBe(viewport.width > 1100 ? 2 : 1)
+        await expect(card.getByRole("img", { name: "Página atual do navegador" })).toBeVisible()
+        await expect(card.getByRole("progressbar")).toBeVisible()
+        await expect(card.getByRole("button", { name: "Assumir", exact: true })).toBeEnabled()
+        await expect(page.locator(".composer-browser-status")).toHaveCount(1)
+        await expect(card.locator(".browser-activity-subtitle")).toContainText("estadias.example.test")
+        await expect(card.getByText(/estadias\.example\.test/)).toHaveCount(1)
+      }
+      if (mode === "held") {
+        await expect(card.getByText("Prévia oculta para o canal enquanto Ana digita")).toBeVisible()
+        await expect(card.locator(".browser-activity-preview img, .browser-activity-preview canvas")).toHaveCount(0)
+        await expect(page.locator(".composer-browser-status")).toContainText("Ana está no controle")
+      }
+      if (mode === "finished") {
+        await expect(card.getByRole("button", { name: /Usou o navegador · 4 ações/ })).toBeVisible()
+        await expect(card.getByText("Ver o que ele fez")).toBeVisible()
+        await expect(card.locator(".browser-activity-thumbnail img")).toBeVisible()
+        await expect(page.locator(".message-assistant ol li")).toHaveCount(2)
+      }
+      await card
+        .locator(mode === "finished" ? ".browser-activity-summary" : ".browser-activity-header")
+        .scrollIntoViewIfNeeded()
+      await page.screenshot({
+        path: resolve(evidence, `work-browser-${mode}-${viewport.name}.png`),
+        animations: "disabled",
+        fullPage: true,
+      })
+    })
+  }
+}

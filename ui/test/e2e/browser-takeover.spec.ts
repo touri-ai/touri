@@ -11,7 +11,7 @@ for (const viewport of [
     await page.setViewportSize({ width: viewport.width, height: viewport.height })
     await page.goto("/test/e2e/browser-activity-harness.html?remote=true")
     await page.getByRole("button", { name: "Iniciar busca de viagem" }).click()
-    const takeOverButton = page.getByRole("button", { name: "Assumir", exact: true })
+    const takeOverButton = page.locator(".browser-activity-card").getByRole("button", { name: "Assumir", exact: true })
     await expect(takeOverButton).toBeVisible()
     expect(
       await takeOverButton.evaluate((button) => {
@@ -28,7 +28,7 @@ for (const viewport of [
       : testInfo.outputPath(`browser-takeover-before-${viewport.name}.png`)
     await page.screenshot({ path: beforeScreenshot, fullPage: true })
 
-    await page.getByRole("button", { name: "Assumir", exact: true }).click()
+    await page.locator(".browser-activity-card").getByRole("button", { name: "Assumir", exact: true }).click()
     await expect(page.getByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
     await expect(page.getByText(/Você está no controle · .* está pausado/)).toBeVisible()
     await expect(
@@ -57,7 +57,12 @@ for (const viewport of [
     await expect(keyboard).toHaveValue("")
     await expect(page.locator("body")).not.toContainText("valor privado de teste")
 
-    await page.getByRole("button", { name: /Devolver para mark/i }).click()
-    await expect(page.getByRole("button", { name: "Assumir", exact: true })).toBeVisible()
+    await page
+      .locator(".browser-activity-card")
+      .getByRole("button", { name: /Devolver para mark/i })
+      .click()
+    await expect(
+      page.locator(".browser-activity-card").getByRole("button", { name: "Assumir", exact: true }),
+    ).toBeVisible()
   })
 }

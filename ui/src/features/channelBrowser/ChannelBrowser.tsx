@@ -69,7 +69,7 @@ export const ChannelVisibilityLabel = ({ locale = "pt-BR" }: { locale?: Locale }
 
 export const ChannelControlNote = ({ locale = "pt-BR" }: { locale?: Locale }) => {
   const channel = useChannelBrowserView()
-  if (!channel || channel.canControl || !channel.state.controllerId) return null
+  if (!channel || !channel.state.controllerId) return null
 
   return (
     <span className="channel-visibility" role="status">
@@ -94,6 +94,8 @@ export const ChannelCardFooter = ({ locale = "pt-BR" }: { locale?: Locale }) => 
   if (!channel) return null
 
   const queue = getChannelQueueLabel(channel.state.queue, locale)
+  const finished = ["succeeded", "failed", "canceled"].includes(channel.state.status ?? "")
+  if (finished && !queue) return null
 
   return (
     <div className="channel-card-footer">
@@ -177,7 +179,7 @@ export const ChannelComposerChip = ({
         <span className="composer-browser-status-text">{text}</span>
       </span>
       {controlButton}
-      {browserControls.canTakeOver && (!channel || channel.canControl) && (
+      {browserControls.canTakeOver && !canReturnControl && (!channel || channel.canControl) && (
         <button
           type="button"
           className="composer-browser-takeover"

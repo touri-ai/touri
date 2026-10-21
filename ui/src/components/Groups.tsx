@@ -10,6 +10,7 @@ import { AvatarPicker } from "./AvatarPicker"
 import { BotAvatar } from "./BotAvatar"
 import { DeleteGroupDialog } from "./DeleteGroupDialog"
 import { getGroupProjection, getIdleMemberState } from "./groupProjection"
+import { PanelIcon } from "./PanelIcon"
 import { SidebarActionsMenu } from "./SidebarActionsMenu"
 import { SidebarCount, SidebarDot, SidebarRow } from "./SidebarRow"
 import "./groups.css"
@@ -591,7 +592,7 @@ export const GroupHeader = ({
             aria-controls="bot-panel"
             onClick={onTogglePanel}
           >
-            ◧
+            <PanelIcon name="panel" />
           </button>
         )}
         {channelMode && (

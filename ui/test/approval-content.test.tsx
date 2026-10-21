@@ -109,9 +109,9 @@ it("previews a supplied diff even when the provider omits its file list", () => 
   expect(screen.getByRole("figure", { name: "Prévia das alterações" })).toHaveTextContent("-old +new")
 })
 
-it("collapses missing details into one quiet line instead of five empty rows", () => {
+it("explains missing file details in one quiet line instead of five empty rows", () => {
   const view = render(<ApprovalCard part={approval("file_change", {})} api={createMockApi()} />)
-  expect(screen.getByText("O provedor não detalhou o pedido")).toBeVisible()
+  expect(screen.getByText(/não informou quais arquivos serão alterados/)).toBeVisible()
   expect(view.container.querySelector("dl")).toBeNull()
   expect(view.container.textContent).not.toMatch(/Não informada|não informou o motivo/)
 })
@@ -120,7 +120,7 @@ it("drops the detail rows once the request is decided", () => {
   const part = { ...approval("file_change", { cwd: "/workspace/project" }), decision: "approved" as const }
   const view = render(<ApprovalCard part={part} api={createMockApi()} />)
   expect(view.container.querySelector("dl")).toBeNull()
-  expect(screen.queryByText("O provedor não detalhou o pedido")).toBeNull()
+  expect(view.container.textContent).not.toMatch(/não informou quais arquivos/)
 })
 
 it("explains permission-only requests with read/write and network scope in plain words", () => {

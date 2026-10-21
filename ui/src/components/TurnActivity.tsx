@@ -36,6 +36,7 @@ export const BrowserTurnCard = ({
   }
   const card = (
     <BrowserActivityCard
+      showSteps={false}
       parts={activity?.parts ?? message.parts}
       runId={activity?.runId ?? message.runId}
       finished={activity?.finished ?? message.status !== "streaming"}
@@ -135,9 +136,9 @@ export const TurnActivity = ({
         >
           <svg
             className="turn-activity-chevron"
-            width="6"
-            height="14"
-            viewBox="8 0 10 24"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
             aria-hidden="true"

@@ -35,7 +35,7 @@ test.describe("browser card in a channel", () => {
         expect(replyHeader?.y).toBeGreaterThanOrEqual((editGroup?.y ?? 0) + (editGroup?.height ?? 0))
         const visibleUrl = scenario.name === "takeover-hidden-preview" ? 0 : 1
         await expect(
-          page.locator(".browser-activity-subtitle").filter({ hasText: "estadias.example.test/busca" }),
+          page.locator(".browser-activity-subtitle").filter({ hasText: "estadias.example.test" }),
         ).toHaveCount(visibleUrl)
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
         expect(overflow).toBeLessThanOrEqual(0)
@@ -51,7 +51,8 @@ test.describe("browser card in a channel", () => {
         if (scenario.name === "requester") await expect(page.getByRole("button", { name: /Assumir/ })).toBeEnabled()
         if (scenario.name !== "requester") {
           await expect(page.getByRole("button", { name: /Assumir/ })).toHaveCount(0)
-          await expect(page.getByText("Ana está no controle").first()).toBeVisible()
+          if (scenario.name === "takeover-hidden-preview")
+            await expect(page.getByText("Ana está no controle").first()).toBeVisible()
         }
         if (scenario.name === "takeover-hidden-preview")
           await expect(page.getByText("Prévia oculta para o canal enquanto Ana digita")).toBeVisible()

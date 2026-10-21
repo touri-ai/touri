@@ -47,9 +47,12 @@
   content-visibility: auto;
   contain-intrinsic-size: auto 44px;
 }
-.group-header {
-  gap: 18px;
+.chat-header.group-header {
+  height: auto;
+  flex: 0 0 auto;
+  gap: var(--space-16);
   min-height: 90px;
+  padding-block: var(--space-12);
 }
 .group-header > div:first-child {
   min-width: 0;
@@ -108,9 +111,9 @@
   inset: 0;
   display: grid;
   place-items: center;
-  background: #0006;
+  background: var(--surface-backdrop);
   z-index: 100;
-  padding: 20px;
+  padding: var(--space-20);
 }
 .modal-card.group-modal {
   width: min(560px, 100%);
@@ -120,8 +123,8 @@
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 26px;
-  box-shadow: 0 24px 80px #0003;
+  padding: var(--space-24);
+  box-shadow: var(--elevation-modal);
 }
 .group-modal-heading {
   display: flex;
@@ -570,4 +573,25 @@
 }
 .group-header.channel-mode .group-member-count {
   white-space: normal;
+}
+
+@media (max-width: 800px) {
+  .chat-header.group-header.channel-mode {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-8);
+  }
+  .group-header.channel-mode > div:first-child {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .group-header.channel-mode > .group-header-actions {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .group-header.channel-mode > .channel-chip {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: start;
+  }
 }

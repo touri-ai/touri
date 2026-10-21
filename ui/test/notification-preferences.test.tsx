@@ -112,7 +112,7 @@ it("keeps one actionable approval reminder and every pending request in the cent
   api.notify({
     kind: "approval",
     botId: "bot-mark",
-    threadId: "thread-mark",
+    threadId: "thread-mark-background",
     title: "Revisar arquivo",
     body: "Autorizar alteração",
     requestId: "request-demo",
@@ -135,6 +135,24 @@ it("keeps one actionable approval reminder and every pending request in the cent
 
   expect(screen.getAllByTestId("notification-row")).toHaveLength(2)
   expect(screen.getByRole("region", { name: "Central de notificações" })).toHaveTextContent("Qual pasta usar?")
+})
+
+it("keeps an approval reminder inside the selected conversation", async () => {
+  const api = createMockApi()
+  api.notify({
+    kind: "approval",
+    botId: "bot-mark",
+    threadId: "thread-mark",
+    title: "Revisar arquivo",
+    body: "Autorizar alteração",
+    requestId: "active-request",
+  })
+  const view = render(<App kernel={{ services: { api } }} />)
+
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+  expect(view.container.querySelectorAll(".approval-notice")).toHaveLength(0)
+  expect(screen.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
 })
 
 it("shows a plain no-news result for historical notification bodies", async () => {

@@ -156,7 +156,11 @@ test("shows live browser steps and keeps typed values and URL credentials and qu
   expect(screen.getByRole("progressbar", { name: "Progresso do navegador" })).toBeVisible()
   expect(screen.getByRole("button", { name: "Expandir navegador" })).toBeVisible()
   expect(screen.getByRole("button", { name: "Recolher cartão do navegador" })).toBeVisible()
-  expect(screen.getByRole("list", { name: "Etapas do navegador" }).children).toHaveLength(3)
+  expect(screen.getByRole("list", { name: "Etapas do navegador" }).children).toHaveLength(1)
+  expect(screen.getByRole("list", { name: "Etapas do navegador" }).firstElementChild).toHaveAttribute(
+    "data-actions",
+    "3",
+  )
   await waitFor(() => expect(screen.getByRole("img", { name: "Página atual do navegador" })).toBeVisible())
   expect(document.body.textContent).not.toContain("private search value")
   expect(document.body.textContent).not.toContain("person@example.test")

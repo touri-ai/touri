@@ -65,9 +65,15 @@ const CommandElapsed = ({ startedAt }: { startedAt: number }) => {
   )
 }
 
-const ApprovalContext = ({ review }: { review: { reason: string; scope: { label: string; value: string }[] } }) => {
+const ApprovalContext = ({
+  review,
+}: {
+  review: { reason: string; scope: { label: string; value: string }[]; missingFiles?: string }
+}) => {
   const rows = [{ label: "Motivo", value: review.reason }, ...review.scope].filter((row) => row.value)
-  if (!rows.length) return <p className="tool-approval-unknown">{t("O provedor não detalhou o pedido")}</p>
+  if (!rows.length && !review.missingFiles)
+    return <p className="tool-approval-unknown">{t("Nenhum detalhe adicional foi informado")}</p>
+  if (!rows.length) return null
 
   return (
     <dl className="tool-approval-context">
@@ -153,21 +159,23 @@ export const ToolCallCard = ({
           <ToolIcon kind={presentation.kind} />
         </span>
         <strong id={titleId}>{presentation.name}</strong>
-        {part?.type === "command" && part.exitCode !== null && (
-          <span className={`tool-exit-chip ${part.exitCode === 0 ? "tool-exit-ok" : "tool-exit-fail"}`}>
-            {part.exitCode === 0 ? "Saída 0 · OK" : `Saída ${part.exitCode} · Falha`}
+        <div className="tool-card-status">
+          {part?.type === "command" && part.exitCode !== null && (
+            <span className={`tool-exit-chip ${part.exitCode === 0 ? "tool-exit-ok" : "tool-exit-fail"}`}>
+              {part.exitCode === 0 ? "Saída 0 · OK" : `Saída ${part.exitCode} · Falha`}
+            </span>
+          )}
+          <span className="tool-status-chip" role="status">
+            <ToolIcon kind={status} />
+            {labels[status]}
+            {timestamp !== undefined && (
+              <time dateTime={new Date(timestamp).toISOString()}> · {toolTime(timestamp)}</time>
+            )}
+            {liveCommand && part && "startedAt" in part && part.startedAt !== undefined && (
+              <CommandElapsed startedAt={part.startedAt} />
+            )}
           </span>
-        )}
-        <span className="tool-status-chip" role="status">
-          <ToolIcon kind={status} />
-          {labels[status]}
-          {timestamp !== undefined && (
-            <time dateTime={new Date(timestamp).toISOString()}> · {toolTime(timestamp)}</time>
-          )}
-          {liveCommand && part && "startedAt" in part && part.startedAt !== undefined && (
-            <CommandElapsed startedAt={part.startedAt} />
-          )}
-        </span>
+        </div>
       </header>
       <p className="tool-summary" title={presentation.summary}>
         {presentation.summary}

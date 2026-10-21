@@ -1,4 +1,5 @@
 import { type ComponentProps, useEffect, useRef, useState, useSyncExternalStore } from "react"
+import { createPortal } from "react-dom"
 import { isNewBotShortcut, isPaletteShortcut } from "../features/commandPalette/shortcut"
 import { t } from "../i18n"
 import { Sidebar } from "./BotSidebar"
@@ -12,9 +13,9 @@ const subscribe = (changed: () => void) => {
 }
 const isNarrow = () => window.matchMedia(query).matches
 
-type SidebarDrawerProps = ComponentProps<typeof Sidebar> & { panelOpen?: boolean }
+type SidebarDrawerProps = ComponentProps<typeof Sidebar> & { panelOpen?: boolean; workspaceHeader?: HTMLElement | null }
 
-export const SidebarDrawer = ({ panelOpen = false, ...props }: SidebarDrawerProps) => {
+export const SidebarDrawer = ({ panelOpen = false, workspaceHeader = null, ...props }: SidebarDrawerProps) => {
   const deletion = useThreadDeletion(props)
   const narrow = useSyncExternalStore(subscribe, isNarrow)
   const [open, setOpen] = useState(false)
@@ -36,7 +37,6 @@ export const SidebarDrawer = ({ panelOpen = false, ...props }: SidebarDrawerProp
     element?.querySelector<HTMLButtonElement>(".sidebar-close")?.focus()
     return () => element?.close()
   }, [narrow, open])
-
   if (!narrow)
     return (
       <>
@@ -44,31 +44,35 @@ export const SidebarDrawer = ({ panelOpen = false, ...props }: SidebarDrawerProp
         <ThreadDeletionNotice deletion={deletion} />
       </>
     )
+  const menuButton = (
+    <button
+      ref={trigger}
+      type="button"
+      className="toolbar-icon mobile-menu-button"
+      hidden={panelOpen && narrow}
+      aria-label={t("Open menu")}
+      aria-expanded={open}
+      aria-controls="workspace-sidebar-drawer"
+      aria-haspopup="dialog"
+      onClick={() => setOpen(true)}
+    >
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        aria-hidden="true"
+      >
+        <path d="M4 6h16M4 12h16M4 18h16" />
+      </svg>
+    </button>
+  )
+
   return (
     <>
-      <button
-        ref={trigger}
-        type="button"
-        className="toolbar-icon mobile-menu-button"
-        hidden={panelOpen && narrow}
-        aria-label={t("Open menu")}
-        aria-expanded={open}
-        aria-controls="workspace-sidebar-drawer"
-        aria-haspopup="dialog"
-        onClick={() => setOpen(true)}
-      >
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          aria-hidden="true"
-        >
-          <path d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
-      </button>
+      {workspaceHeader ? createPortal(menuButton, workspaceHeader) : menuButton}
       <dialog
         ref={dialog}
         id="workspace-sidebar-drawer"
