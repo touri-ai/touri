@@ -4,8 +4,8 @@ import type {
   ApiModel,
   BrowserFailureInfo,
   BrowserSnapshot,
-  BrowserTakeoverReason,
   BrowserTakeoverInput,
+  BrowserTakeoverReason,
   BrowserTarget,
   Kernel,
   RouteModule,
@@ -896,7 +896,9 @@ export const init = async (
       const requestedReason = asString(input.reason)
       const reason = requestedReason ?? "User assistance requested"
       const pageUrl = engine.tabsForBot(ctx.botId).find((tab) => tab.tabId === input.tabId)?.url ?? ""
-      const reasonCode = requestedReason ? getBrowserTakeoverReasonCode({ intent: requestedReason, pageUrl }) : "requested"
+      const reasonCode = requestedReason
+        ? getBrowserTakeoverReasonCode({ intent: requestedReason, pageUrl })
+        : "requested"
       const managedNeedsYou = channelRuns.needsYou(ctx.runId, reason)
       return engine.requestTakeover({
         tabId: asString(input.tabId) ?? "",
@@ -973,10 +975,7 @@ export const init = async (
 
           const existing = takeoverSessions.get(tabId)
           if (existing && existing.expiresAt > Date.now()) {
-            if (
-              existing.deviceId !== controllerId ||
-              existing.personId !== (device?.person?.id ?? null)
-            )
+            if (existing.deviceId !== controllerId || existing.personId !== (device?.person?.id ?? null))
               return { status: 409, json: { error: "Outra pessoa está controlando esta página." } }
             const renewed = renewTakeoverSession(tabId, existing)
             return { status: 200, json: { sessionId: renewed.id } }
@@ -1182,7 +1181,9 @@ export const init = async (
           const controller = takeoverSessions.get(tabId)
           if (
             controller &&
-            (!device?.active() || controller.deviceId !== device.deviceId || controller.personId !== (person?.id ?? null))
+            (!device?.active() ||
+              controller.deviceId !== device.deviceId ||
+              controller.personId !== (person?.id ?? null))
           )
             return { status: 403, json: { error: "Somente quem assumiu o navegador pode devolver o controle." } }
           const channelRun = channelRuns.getForTab(tabId)
@@ -1195,11 +1196,12 @@ export const init = async (
             if (!control.success)
               return { status: 403, json: { errorCode: "BROWSER_CONTROL_FORBIDDEN", error: control.error } }
           }
-          const ok = controller && !hold
-            ? await endTakeoverSession(tabId, controller.id)
-            : hold
-              ? await engine.holdTakeover({ tabId, reason: "The user requested browser takeover" })
-              : await engine.releaseTakeover(tabId)
+          const ok =
+            controller && !hold
+              ? await endTakeoverSession(tabId, controller.id)
+              : hold
+                ? await engine.holdTakeover({ tabId, reason: "The user requested browser takeover" })
+                : await engine.releaseTakeover(tabId)
           if (!ok && person && channelRun && !controller) {
             if (hold) channelRuns.returnControl({ runId: channelRun.runId, actorPersonId: person.id })
             else channelRuns.takeControl({ runId: channelRun.runId, actorPersonId: person.id })

@@ -326,6 +326,9 @@ export const BrowserTakeoverView = ({
           {returning ? t("Returning control…", {}, locale) : t("Hand back to {name}", { name: botName }, locale)}
         </button>
       </header>
+      <p className="browser-takeover-privacy browser-takeover-privacy-sticky">
+        {t("What you type here stays out of chat, the bot, and history.", {}, locale)}
+      </p>
       <div className="browser-takeover-layout">
         <div
           className="browser-takeover-screen"
@@ -375,7 +378,6 @@ export const BrowserTakeoverView = ({
             </ol>
           </section>
           <div className="browser-takeover-footer">
-            <p>{t("What you type here stays out of chat, the bot, and history.", {}, locale)}</p>
             <button type="button" className="button button-quiet" onClick={() => keyboard.current?.focus()}>
               {t("Type in the browser", {}, locale)}
             </button>

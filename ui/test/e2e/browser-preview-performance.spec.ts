@@ -22,9 +22,12 @@ test("browser preview sampling keeps UI long tasks below 50 ms", async ({ page }
 
   await page.evaluate(() => (window as BrowserActivityWindow).browserActivity?.resetPreviewMetrics())
   await expect
-    .poll(() => page.evaluate(() => (window as BrowserActivityWindow).browserActivity?.snapshot().previewRequests ?? 0), {
-      timeout: 10_000,
-    })
+    .poll(
+      () => page.evaluate(() => (window as BrowserActivityWindow).browserActivity?.snapshot().previewRequests ?? 0),
+      {
+        timeout: 10_000,
+      },
+    )
     .toBeGreaterThanOrEqual(2)
 
   const metrics = await page.evaluate(() => (window as BrowserActivityWindow).browserActivity?.snapshot())

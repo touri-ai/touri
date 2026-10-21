@@ -741,9 +741,9 @@ const MessageBubble = ({
   const finalText = segments.filter((segment) => segment.type === "text").at(-1)
   const senderName = message.sender?.name ?? bot?.name ?? "touri"
   const renderBrowserSteps = (key: string, count: number) => (
-    <p className="browser-steps" key={key}>
+    <p className="browser-steps" key={key} data-actions={count}>
       <span aria-hidden="true">✓</span>
-      {t(count === 1 ? "Used the browser" : "Used the browser · {count} actions", { count })}
+      {t("Used the browser")}
     </p>
   )
   const getMessageRoleLabel = (): string => {

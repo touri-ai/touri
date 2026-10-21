@@ -84,11 +84,13 @@ test("remote input is not queued behind the bot's waiting takeover request", asy
   const client: CdpClient = {
     call: async <T>(method: string, params: Record<string, unknown> = {}) => {
       calls.push({ method, params })
-      return (method === "Target.getTargets"
-        ? { targetInfos: [{ targetId: "manual", type: "page", title: "Sign in", url: "https://example.test/login" }] }
-        : method === "Target.attachToTarget"
-          ? { sessionId: "manual-session" }
-          : {}) as T
+      return (
+        method === "Target.getTargets"
+          ? { targetInfos: [{ targetId: "manual", type: "page", title: "Sign in", url: "https://example.test/login" }] }
+          : method === "Target.attachToTarget"
+            ? { sessionId: "manual-session" }
+            : {}
+      ) as T
     },
     subscribe: () => () => {},
     close: async () => {},

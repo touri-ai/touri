@@ -236,6 +236,37 @@ test("browser thumbnails are resized in a worker and use the CSP-safe JPEG sourc
   expect(worker.terminate).toHaveBeenCalledOnce()
 })
 
+test("a local preview fails closed when the worker is unavailable for an oversized image", async () => {
+  vi.stubGlobal(
+    "Worker",
+    class {
+      constructor() {
+        throw new Error("Worker could not start")
+      }
+    },
+  )
+  const image = `data:image/png;base64,${"A".repeat(24_000_001)}`
+  const request = vi.fn(async (route: string) =>
+    route === "GET /bots/:id/browser-preview"
+      ? { image, title: "Synthetic page", url: "https://example.test" }
+      : { tabs: [] },
+  )
+  const api = {
+    request,
+    subscribe: () => () => {},
+    isMock: false,
+  } as UiApi
+  const frame = vi.fn()
+  const unavailable = vi.fn()
+
+  const stop = startInlineFrameSource(api, { id: "bot", machine: "local" } as Bot, undefined, frame, unavailable)
+
+  await vi.waitFor(() => expect(unavailable).toHaveBeenCalledOnce())
+  expect(frame).not.toHaveBeenCalled()
+  expect(request).not.toHaveBeenCalledWith("GET /bots/:id/browser-preview", expect.anything(), expect.anything())
+  stop()
+})
+
 test("a VM session request that never answers reports the cause after 20 s", async () => {
   vi.useFakeTimers()
   const api = {

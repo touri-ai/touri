@@ -1,11 +1,11 @@
-import type { BrowserTabInfo, Message, ToolCallPart } from "@touri/contracts"
+import type { Bot, BrowserTabInfo, Message, Run, Thread, ToolCallPart } from "@touri/contracts"
 import { useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 import type { ApiRequest } from "../../src/api/client"
 import { createMockApi } from "../../src/api/mock"
 import { AvatarRuntimeProvider } from "../../src/components/AvatarRuntime"
-import { BrowserWorkingStatus } from "../../src/components/BrowserWorkingStatus"
 import { VirtualMessageList } from "../../src/components/ChatPanel"
+import { Composer } from "../../src/components/Composer"
 import { TurnActivity } from "../../src/components/TurnActivity"
 import { InlinePreviewContext } from "../../src/features/desktop/InlineLivePreview"
 import { t } from "../../src/i18n"
@@ -447,6 +447,39 @@ const requestBrowserFixture = async (step: string) => {
   }>
 }
 
+const getBrowserRun = (bot: Bot, thread: Thread, requestMessageId: string, now: number): Run => ({
+  id: "browser-flow-run",
+  threadId: thread.id,
+  botId: bot.id,
+  provider: bot.provider,
+  trigger: "user",
+  requestMessageId,
+  replyMessageId: null,
+  externalTurnId: null,
+  status: "running",
+  errorClass: null,
+  errorMessage: null,
+  usage: null,
+  routineRunId: null,
+  queuedAt: now - 1_000,
+  startedAt: now - 1_000,
+  finishedAt: null,
+})
+
+type LiveBrowserActivitySnapshot = {
+  running: boolean
+  settled: boolean
+  cancelledRunIds: string[]
+  parts: ToolCallPart[]
+}
+
+type LiveBrowserActivityWindow = Window & {
+  browserActivity?: {
+    snapshot: () => LiveBrowserActivitySnapshot
+    continueAfterOpen: () => void
+  }
+}
+
 const LiveFixture = () => {
   const [fixture] = useState(() => {
     const fixtureApi = createMockApi()
@@ -485,8 +518,13 @@ const LiveFixture = () => {
   const [narrations, setNarrations] = useState<string[]>([])
   const [running, setRunning] = useState(false)
   const [started, setStarted] = useState(false)
+  const [scriptSettled, setScriptSettled] = useState(true)
+  const [cancelledRunIds, setCancelledRunIds] = useState<string[]>([])
   const stopped = useRef(false)
+  const continueAfterOpen = useRef<(() => void) | null>(null)
   const ids = useRef(0)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const [draft, setDraft] = useState("")
   const now = Date.now()
   const userMessage: Message = {
     id: "browser-user-request",
@@ -519,6 +557,24 @@ const LiveFixture = () => {
     createdAt: now - 1_000,
     updatedAt: now,
   }
+  const activeRun = running ? getBrowserRun(bot, thread, userMessage.id, now) : null
+  const liveSnapshot = useRef<LiveBrowserActivitySnapshot>({ running, settled: scriptSettled, cancelledRunIds, parts })
+  liveSnapshot.current = { running, settled: scriptSettled, cancelledRunIds, parts }
+
+  useEffect(() => {
+    const browserWindow = window as LiveBrowserActivityWindow
+    browserWindow.browserActivity = {
+      snapshot: () => liveSnapshot.current,
+      continueAfterOpen: () => {
+        continueAfterOpen.current?.()
+        continueAfterOpen.current = null
+      },
+    }
+
+    return () => {
+      delete browserWindow.browserActivity
+    }
+  }, [])
 
   const playStep = async (step: string, narration: string, inputJson: string): Promise<void> => {
     if (stopped.current) return
@@ -555,14 +611,24 @@ const LiveFixture = () => {
     const completedPart = result.part
     if (!completedPart) throw new Error(`The browser fixture returned no action for ${step}.`)
     setParts((previous) => previous.map((part) => (part.callId === callId ? { ...completedPart, callId } : part)))
-    if (step === "open") await wait(3_000)
+    if (step !== "open") return
+    if (params.get("holdAfterOpen") !== "true") {
+      await wait(3_000)
+      return
+    }
+    await new Promise<void>((resolve) => {
+      continueAfterOpen.current = resolve
+    })
   }
 
   const start = async () => {
     stopped.current = false
+    continueAfterOpen.current = null
     ids.current = 0
     setStarted(true)
     setRunning(true)
+    setScriptSettled(false)
+    setCancelledRunIds([])
     setNarrations([])
     setParts([])
     const script = [
@@ -581,7 +647,10 @@ const LiveFixture = () => {
     ] as const
     for (const [step, narration, inputJson] of script) {
       await playStep(step, narration, inputJson)
-      if (stopped.current) return
+      if (stopped.current) {
+        setScriptSettled(true)
+        return
+      }
     }
     setParts((previous) => [
       ...previous,
@@ -591,11 +660,16 @@ const LiveFixture = () => {
       },
     ])
     setRunning(false)
+    setScriptSettled(true)
   }
 
   const stop = () => {
     stopped.current = true
     setRunning(false)
+  }
+  const cancel = async (runId: string) => {
+    setCancelledRunIds((previous) => [...previous, runId])
+    stop()
   }
 
   return (
@@ -645,8 +719,21 @@ const LiveFixture = () => {
               />
             </div>
             <footer className="browser-flow-composer">
-              {running && <BrowserWorkingStatus name={bot.name} onStop={stop} />}
-              <textarea aria-label="Mensagem" placeholder="Escreva uma mensagem…" />
+              <Composer
+                bot={bot}
+                threadId={thread.id}
+                parentId={userMessage.id}
+                api={api}
+                draft={draft}
+                onDraft={setDraft}
+                inputRef={inputRef}
+                activeRun={activeRun}
+                browserWorking={running}
+                browserBotName={bot.name}
+                queuedCount={0}
+                onSend={async () => {}}
+                onCancel={cancel}
+              />
             </footer>
           </section>
         </main>

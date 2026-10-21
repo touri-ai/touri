@@ -30,7 +30,7 @@ vi.mock("../src/features/desktop/inlineFrameSource", () => ({
       frame({
         src: "data:image/jpeg;base64,ZmFrZQ==",
         title: "Resultados de Lisboa",
-        url: "https://person@example.test:private-password@travel.example.test/results?email=person@example.test",
+        url: "https://travel.example.test/reset/invite-Q7z8k2fR?token=fixture-token",
       })
 
       return () => {}
@@ -94,6 +94,7 @@ const renderCard = (
     if (route === "GET /attachments/:id/content")
       return {
         text: JSON.stringify({
+          title: "Resultados de Lisboa",
           url: "https://person:fixture-password@travel.example.test/results?token=fixture-token",
           content: [{ type: "image", mimeType: "image/png", data: "ZmFrZQ==" }],
         }),
@@ -144,16 +145,65 @@ test("shows live browser steps and keeps typed values and URL credentials and qu
   expect(screen.getByText("Navegador do Lia")).toBeVisible()
   expect(screen.getByText("Preencheu um campo")).toBeVisible()
   expect(screen.getByText("Clicou em Lisboa, Portugal")).toBeVisible()
-  expect(screen.getByText("Lia · clicou em Lisboa, Portugal · travel.example.test/results")).toBeVisible()
+  expect(screen.getByText("Lia · clicou em Lisboa, Portugal · travel.example.test/reset/…")).toBeVisible()
   expect(screen.getByRole("progressbar", { name: "Progresso do navegador" })).toBeVisible()
   expect(screen.getByRole("button", { name: "Expandir navegador" })).toBeVisible()
   expect(screen.getByRole("button", { name: "Recolher cartão do navegador" })).toBeVisible()
-  expect(document.querySelectorAll(".browser-activity-checklist li")).toHaveLength(3)
+  expect(document.querySelector(".browser-activity-checklist")).toBeNull()
   await waitFor(() => expect(screen.getByRole("img", { name: "Página atual do navegador" })).toBeVisible())
   expect(document.body.textContent).not.toContain("private search value")
   expect(document.body.textContent).not.toContain("person@example.test")
   expect(document.body.textContent).not.toContain("private-password")
   expect(document.body.textContent).not.toContain("https://travel.example.test")
+  expect(document.body.textContent).not.toContain("invite-Q7z8k2fR")
+  expect(document.body.textContent).not.toContain("fixture-token")
+})
+
+test("collapsing a live card stops its preview source until the card is expanded", async () => {
+  const stopPreview = vi.fn()
+  vi.mocked(startInlineFrameSource).mockReturnValueOnce(stopPreview)
+  const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
+
+  renderCard(parts, false)
+
+  await waitFor(() => expect(startInlineFrameSource).toHaveBeenCalledOnce())
+  fireEvent.click(screen.getByRole("button", { name: "Recolher cartão do navegador" }))
+
+  await waitFor(() => expect(stopPreview).toHaveBeenCalledOnce())
+  fireEvent.click(screen.getByRole("button", { name: "Expandir cartão do navegador" }))
+
+  await waitFor(() => expect(startInlineFrameSource).toHaveBeenCalledTimes(2))
+})
+
+test("the activity log is keyboard-accessible and disclosure controls reference mounted content", () => {
+  const parts = [getPart({ callId: "read", tool: "browser_snapshot", inputJson: "{}" })]
+
+  renderCard(parts, false)
+
+  const disclosure = screen.getByRole("button", { name: "Recolher cartão do navegador" })
+  const log = screen.getByRole("log", { name: "Atividade do navegador" })
+  expect(log).toHaveAttribute("tabindex", "0")
+  expect(disclosure).toHaveAttribute("aria-controls", log.parentElement?.id)
+
+  fireEvent.click(disclosure)
+
+  expect(disclosure).not.toHaveAttribute("aria-controls")
+  expect(screen.queryByRole("log", { name: "Atividade do navegador" })).toBeNull()
+})
+
+test("a completed card only controls its history after the disclosure is open", () => {
+  const parts = [getPart({ callId: "read", tool: "browser_snapshot", inputJson: "{}" })]
+
+  renderCard(parts, true)
+
+  const summary = screen.getByRole("button", { name: /Ver o que ele fez/ })
+  expect(summary).not.toHaveAttribute("aria-controls")
+
+  fireEvent.click(summary)
+
+  const contentId = summary.getAttribute("aria-controls")
+  expect(contentId).toBeTruthy()
+  expect(document.getElementById(contentId ?? "")).toBeVisible()
 })
 
 test("sanitizes a takeover reason before showing it", () => {
@@ -206,6 +256,7 @@ test("take-over holds the browser, opens its view, and the finished card collaps
   expect(await screen.findByText("Usou o navegador · 3 ações")).toBeVisible()
   expect(screen.getByText("Ver o que ele fez")).toBeVisible()
   expect(screen.getByRole("img", { name: "Captura final do navegador" })).toBeVisible()
+  expect(await screen.findByText("Resultados de Lisboa")).toBeVisible()
   expect(screen.queryByText("Atividade do navegador")).toBeNull()
   fireEvent.click(screen.getByRole("button", { name: /Usou o navegador/ }))
   expect(await screen.findByText("Atividade do navegador")).toBeVisible()
@@ -366,6 +417,14 @@ test.each(["file:///workspace/private.txt", "javascript:alert(1)", "data:text/pl
     expect(getBrowserActivityUrl(url)).toBe("")
   },
 )
+
+test.each([
+  "https://travel.example.test/reset/invite-Q7z8k2fR",
+  "https://travel.example.test/auth/9b0d9f4a5e7c",
+  "https://travel.example.test/confirm/opaque-token?next=%2Faccount",
+])("only displays the origin when a browser URL contains a private path: %s", (url) => {
+  expect(getBrowserActivityUrl(url)).toBe("https://travel.example.test")
+})
 
 test("a delayed tab snapshot cannot undo a newer takeover event", async () => {
   let resolveTabs: (value: { tabs: (typeof tab)[] }) => void = () => {}

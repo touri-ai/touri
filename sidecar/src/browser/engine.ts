@@ -5,8 +5,8 @@ import type {
   BrowserElement,
   BrowserErrorCode,
   BrowserSnapshot,
-  BrowserTakeoverReason,
   BrowserTakeoverFrame,
+  BrowserTakeoverReason,
   BrowserTarget,
   Id,
   Kernel,
@@ -4466,7 +4466,7 @@ export const createBrowserEngine = ({
           kind: "takeover",
           botId,
           threadId: tab.info.ownerThreadId,
-          requestId: requestId ?? undefined,
+          requestId,
           title: notification.title,
           body: notification.body,
         })

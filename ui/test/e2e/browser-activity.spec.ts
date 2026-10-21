@@ -63,6 +63,8 @@ test.describe("full browser activity flow", () => {
       const context = await browser.newContext({
         viewport: { width: variant.width, height: variant.height },
         colorScheme: variant.colorScheme,
+        hasTouch: variant.width <= 600,
+        isMobile: variant.width <= 600,
         reducedMotion: "no-preference",
         recordVideo: { dir: info.outputDir, size: { width: variant.width, height: variant.height } },
       })
@@ -84,7 +86,13 @@ test.describe("full browser activity flow", () => {
 
       const card = page.getByRole("article", { name: "Navegador do Lia" })
       await expect(page.getByRole("status").filter({ hasText: "Lia está trabalhando · No navegador" })).toBeVisible()
-      await expect(page.getByRole("button", { name: "Parar tarefa no navegador" })).toBeVisible()
+      const stopBrowserTask = page.getByRole("button", { name: "Parar Lia" })
+      await expect(stopBrowserTask).toBeVisible()
+      if (variant.width <= 600) {
+        const touchTarget = await stopBrowserTask.boundingBox()
+        expect(touchTarget?.width ?? 0).toBeGreaterThanOrEqual(44)
+        expect(touchTarget?.height ?? 0).toBeGreaterThanOrEqual(44)
+      }
       if (variant.width > 600)
         await expect(page.getByRole("button", { name: /Busca de viagem/ })).toContainText("trabalhando")
       await expect(card).toBeVisible()
@@ -189,6 +197,13 @@ for (const viewport of [
     await page.getByRole("button", { name: "Assumir", exact: true }).click()
     await expect(page.getByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
     await expect(page.getByText(/Você está no controle · .* está pausado/)).toBeVisible()
+    const privacyNotice = page.getByText("O que você digitar aqui não vai para a conversa, para o bot nem para o histórico.")
+    await expect(privacyNotice).toBeVisible()
+    await expect(privacyNotice).toHaveCSS("position", "sticky")
+    const takeoverColumns = await page
+      .locator(".browser-takeover-layout")
+      .evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length)
+    expect(takeoverColumns).toBe(1)
     await expect(page.locator(".browser-takeover-canvas")).toBeVisible()
     await page.screenshot({ path: testInfo.outputPath(`browser-takeover-after-${viewport.name}.png`), fullPage: true })
 
@@ -215,6 +230,70 @@ for (const viewport of [
     await expect(page.getByRole("button", { name: "Assumir", exact: true })).toBeVisible()
   })
 }
+test("Composer stop cancels the active browser run and prevents later browser actions", async ({ page, baseURL }) => {
+  const browserActions: string[] = []
+  const browserActionSteps = new Set([
+    "open",
+    "read",
+    "destination",
+    "option",
+    "cabin",
+    "calendar",
+    "date",
+    "search",
+    "wait",
+    "tabs",
+    "screenshot",
+  ])
+  await page.route("**/__browser-activity-fixture", async (route) => {
+    const body = JSON.parse(route.request().postData() ?? "{}") as { step?: string; runId?: string }
+    if (body.step && browserActionSteps.has(body.step)) browserActions.push(body.step)
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    await route.fulfill({ status: response.status, contentType: "application/json", body: await response.text() })
+  })
+  await page.goto(`${baseURL}/test/e2e/browser-activity-harness.html?flow=live&holdAfterOpen=true`)
+
+  await page.getByRole("button", { name: "Iniciar busca de viagem" }).click()
+  await expect(page.getByRole("article", { name: "Navegador do Lia" })).toBeVisible()
+  await expect.poll(() => browserActions).toEqual(["open"])
+  await page.waitForFunction(() => {
+    const browserActivity = (
+      window as Window & {
+        browserActivity?: { snapshot: () => { running: boolean; parts: Array<{ ok?: boolean }> } }
+      }
+    ).browserActivity
+    const snapshot = browserActivity?.snapshot()
+
+    return snapshot?.running === true && snapshot.parts.at(-1)?.ok === true
+  })
+
+  await page.getByRole("button", { name: "Parar Lia" }).click()
+  await page.waitForFunction(() => {
+    const browserActivity = (
+      window as Window & {
+        browserActivity?: { snapshot: () => { cancelledRunIds: string[] } }
+      }
+    ).browserActivity
+
+    return browserActivity?.snapshot().cancelledRunIds.includes("browser-flow-run") === true
+  })
+  await page.evaluate(() => {
+    const browserActivity = (window as Window & { browserActivity?: { continueAfterOpen: () => void } }).browserActivity
+    browserActivity?.continueAfterOpen()
+  })
+  await page.waitForFunction(() => {
+    const browserActivity = (window as Window & { browserActivity?: { snapshot: () => { settled: boolean } } })
+      .browserActivity
+
+    return browserActivity?.snapshot().settled === true
+  })
+
+  expect(browserActions).toEqual(["open"])
+})
 
 for (const fallback of ["missing_key", "no_credit"] as const) {
   for (const locale of ["pt-BR", "en"] as const) {

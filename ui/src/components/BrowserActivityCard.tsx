@@ -15,8 +15,8 @@ import { type Locale, t } from "../i18n"
 import { BrowserIcon, getBrowserIconName } from "./BrowserIcon"
 import { BrowserTakeoverView } from "./BrowserTakeoverView"
 import {
-  getBrowserActivityIcon,
   getBrowserActivityCurrentLabel,
+  getBrowserActivityIcon,
   getBrowserActivityKind,
   getBrowserActivityLabel,
   getBrowserActivityNotice,
@@ -277,7 +277,11 @@ export const BrowserActivityCard = ({
     setError(null)
     try {
       if (takeoverSession) {
-        await api.request("DELETE /browser/tabs/:id/takeover/session", { sessionId: takeoverSession }, { id: activeTabId })
+        await api.request(
+          "DELETE /browser/tabs/:id/takeover/session",
+          { sessionId: takeoverSession },
+          { id: activeTabId },
+        )
         setTakeoverSession(null)
         setHeldTab({ tabId: activeTabId, held: false, reason: null })
       } else {
@@ -307,7 +311,6 @@ export const BrowserActivityCard = ({
   const times = getBrowserActivityTimestamps(actions, createdAt)
   const takeoverActions = browserTools.slice(-5)
   const takeoverTimes = getBrowserActivityTimestamps(takeoverActions, createdAt)
-  const completedActions = browserTools.filter((part) => part.ok === true).slice(-MAX_VISIBLE_ACTIONS)
   const currentAction = browserTools.at(-1)
   const title = t("Browser for {name}", { name: botName }, locale)
   const summary = t(
@@ -315,8 +318,9 @@ export const BrowserActivityCard = ({
     { count: browserTools.length },
     locale,
   )
-  const url =
-    finished || channel?.previewHidden ? "" : getBrowserActivityShortUrl(preview?.url || getBrowserActivityOpenUrl(browserTools))
+  const url = finished || channel?.previewHidden
+    ? ""
+    : getBrowserActivityShortUrl(preview?.url ?? "") || getBrowserActivityOpenUrl(browserTools)
   const subtitle = [botName, currentAction && getBrowserActivitySubtitleAction(currentAction, locale), url]
     .filter(Boolean)
     .join(" · ")
@@ -360,16 +364,6 @@ export const BrowserActivityCard = ({
 
   const card = (
     <div className="browser-activity-stack">
-      {completedActions.length > 0 && (
-        <ol className="browser-activity-checklist" aria-label={t("Browser steps", {}, locale)}>
-          {completedActions.map((part) => (
-            <li key={part.callId}>
-              <span aria-hidden="true">✓</span>
-              <span>{t("Used the browser", {}, locale)}</span>
-            </li>
-          ))}
-        </ol>
-      )}
       <article
         className="browser-activity-card"
         ref={section}
@@ -390,7 +384,7 @@ export const BrowserActivityCard = ({
             type="button"
             className="browser-activity-summary"
             aria-expanded={expanded}
-            aria-controls={contentId}
+            aria-controls={expanded ? contentId : undefined}
             onClick={() => setExpanded((value) => !value)}
           >
             <span className="browser-activity-summary-copy">
@@ -433,6 +427,8 @@ export const BrowserActivityCard = ({
                 >
                   {busy ? (
                     t("Updating browser control…", {}, locale)
+                  ) : held && !takeoverSession ? (
+                    t("Browser is being controlled", {}, locale)
                   ) : (
                     <>
                       <BrowserIcon name="person" />
@@ -510,6 +506,8 @@ export const BrowserActivityCard = ({
               className="browser-activity-log"
               data-all={showAll}
               role="log"
+              // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard users need to scroll this fixed-height log
+              tabIndex={0}
               aria-label={t(takeoverActive ? "Recent actions" : "Browser activity", {}, locale)}
               aria-live={finished ? "off" : "polite"}
               ref={logList}
@@ -600,7 +598,8 @@ export const BrowserActivityCard = ({
 
 const getTakeoverReasonCopy = (reason: BrowserTakeoverReason, locale: Locale): string => {
   if (reason === "login") return t("The site asked you to sign in before continuing.", {}, locale)
-  if (reason === "payment") return t("The site asked you to review a purchase or payment before continuing.", {}, locale)
+  if (reason === "payment")
+    return t("The site asked you to review a purchase or payment before continuing.", {}, locale)
   if (reason === "form_submit") return t("The site asked you to submit a form before continuing.", {}, locale)
   if (reason === "requested") return t("This browser is under your control now.", {}, locale)
 

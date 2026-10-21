@@ -327,7 +327,10 @@ export const StoredToolOutput = ({
     const src = thumbnailImage?.src
 
     return src ? (
-      <img className="stored-tool-thumbnail" src={src} alt={t("Final browser screenshot", {}, locale)} />
+      <>
+        <img className="stored-tool-thumbnail" src={src} alt={t("Final browser screenshot", {}, locale)} />
+        {result?.title && <small className="stored-tool-thumbnail-title">{result.title.slice(0, 80)}</small>}
+      </>
     ) : null
   }
 
