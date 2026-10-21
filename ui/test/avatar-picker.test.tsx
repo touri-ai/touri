@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import type { AvatarIdentity } from "@touri/contracts/avatar"
-import { avatarProfileFor } from "@touri/contracts/avatar"
+import type { AvatarShape } from "@touri/contracts"
+import { type AvatarIdentity, avatarProfileFor, LEGACY_AVATAR_SHAPES } from "@touri/contracts/avatar"
 import { type ComponentProps, useState } from "react"
 import { afterEach, expect, it, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
@@ -183,8 +183,8 @@ it("persists a randomized group mascot and preserves it when saving the collapse
   const head = document.querySelector(".avatar-picker-stage [data-avatar-body]")?.getAttribute("d")
   fireEvent.click(screen.getByRole("button", { name: "Criar grupo", exact: true }))
 
-  await waitFor(() =>
-    expect(api.getState().groups.find((group) => group.name === "Randomized team")).toMatchObject({
+  await waitFor(async () =>
+    expect((await api.request("GET /groups")).groups.find((group) => group.name === "Randomized team")).toMatchObject({
       avatarShape: expect.stringMatching(/:none-crown$/),
       color: "#e152b0",
     }),
@@ -206,6 +206,68 @@ it("persists a randomized group mascot and preserves it when saving the collapse
       expect.objectContaining({ avatarShape: group.avatarShape, color: group.color }),
     ),
   )
+})
+
+it("creates a group with its previewed default without opening customization", async () => {
+  const seed = "00000000-0000-4000-8000-000000000578"
+  mockSeed(seed)
+  const save = vi.fn().mockResolvedValue(undefined)
+  const api = createMockApi()
+  const profile = avatarProfileFor({ id: seed, color: null })
+  render(
+    <GroupModal
+      group={null}
+      bots={api.getState().bots}
+      initial={{ name: "Default team", memberIds: ["bot-mark"] }}
+      onClose={vi.fn()}
+      onSave={save}
+    />,
+  )
+
+  expectCompactPicker(document.body)
+  expect(document.querySelector(".avatar-picker-stage [data-avatar-body]")).toHaveAttribute("fill", profile.color)
+
+  fireEvent.click(screen.getByRole("button", { name: "Criar grupo", exact: true }))
+
+  await waitFor(() =>
+    expect(save).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ avatarShape: `${profile.headShape}:${profile.shape}`, color: profile.color }),
+    ),
+  )
+})
+
+it.each<AvatarShape | null>(
+  Array.of<AvatarShape | null>(null, "long-crown", "nuage:short-glasses").concat(LEGACY_AVATAR_SHAPES),
+)("preserves the saved %s mascot when settings are saved without customization", async (avatarShape) => {
+  const api = createMockApi()
+  const original = api.getState().bots[0]
+  if (!original) throw new Error("Missing fixture bot")
+  const bot = Object.assign({}, original, { avatarShape, avatarSeed: null, color: null })
+  const updateBot = vi.fn<WorkspaceActions["updateBot"]>().mockResolvedValue(undefined)
+  const actions = { updateBot } as WorkspaceActions
+  const settings = render(
+    <BotSettingsModal bot={bot} projects={[]} routines={[]} actions={actions} onClose={vi.fn()} />,
+  )
+  const head = document.querySelector(".avatar-picker-stage [data-avatar-body]")?.getAttribute("d")
+
+  expectCompactPicker(document.body)
+
+  fireEvent.click(screen.getByRole("button", { name: "Personalizar" }))
+  fireEvent.click(screen.getByRole("button", { name: "Personalizar" }))
+  fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Renamed bot" } })
+  fireEvent.click(screen.getByRole("button", { name: "Salvar configurações" }))
+
+  await waitFor(() => expect(updateBot).toHaveBeenCalledOnce())
+  const patch = updateBot.mock.calls[0]?.[1]
+  expect(patch).toMatchObject({ name: "Renamed bot" })
+  expect(patch).not.toHaveProperty("avatarShape")
+  expect(patch).not.toHaveProperty("avatarSeed")
+  expect(patch).not.toHaveProperty("color")
+  settings.unmount()
+  render(<BotSettingsModal bot={bot} projects={[]} routines={[]} actions={actions} onClose={vi.fn()} />)
+
+  expectCompactPicker(document.body)
+  expect(document.querySelector(".avatar-picker-stage [data-avatar-body]")).toHaveAttribute("d", head)
 })
 
 const getBot = (): AvatarIdentity => ({
