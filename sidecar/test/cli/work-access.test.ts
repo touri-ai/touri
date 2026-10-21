@@ -13,7 +13,8 @@ database.exec(`
   CREATE TABLE bot_groups (id TEXT PRIMARY KEY);
   CREATE TABLE group_members (bot_id TEXT NOT NULL, group_id TEXT NOT NULL);
   CREATE TABLE threads (
-    id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, group_id TEXT, owner_person_id TEXT, archived_at INTEGER
+    id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, group_id TEXT, owner_person_id TEXT, archived_at INTEGER,
+    group_thread_id TEXT
   );
   CREATE TABLE workspace_message_attention (
     approval_id TEXT, thread_id TEXT NOT NULL, type TEXT NOT NULL, decision TEXT
@@ -33,14 +34,21 @@ database.exec(`
     PRIMARY KEY(thread_id,message_id,attachment_id)
   );
   CREATE TABLE group_run_links (run_id TEXT NOT NULL, turn_id TEXT NOT NULL);
+  CREATE TABLE browser_channel_runs (
+    run_id TEXT PRIMARY KEY, group_id TEXT NOT NULL, thread_id TEXT NOT NULL, bot_id TEXT NOT NULL,
+    requester_person_id TEXT, responsible_person_id TEXT, controller_person_id TEXT, status TEXT NOT NULL,
+    queued_at INTEGER DEFAULT 1
+  );
+  CREATE TABLE browser_tabs (id TEXT PRIMARY KEY, owner_bot_id TEXT, owner_thread_id TEXT);
   INSERT INTO bots(id, archived_at, responsible_person_id) VALUES ('legacy-bot', NULL, NULL), ('member-bot', NULL, 'member'),
     ('other-bot', NULL, 'owner'), ('team-bot', NULL, 'owner'), ('deleted-channel-bot', NULL, 'owner');
   INSERT INTO bot_groups VALUES ('team-a'), ('team-b');
   INSERT INTO group_members VALUES ('team-bot', 'team-a'), ('other-bot', 'team-b'),
     ('deleted-channel-bot', 'deleted-channel');
-  INSERT INTO threads VALUES ('member-dm', 'member-bot', NULL, 'member', NULL),
-    ('other-dm', 'other-bot', NULL, 'owner', NULL), ('team-chat', 'team-bot', 'team-a', NULL, NULL),
-    ('other-chat', 'other-bot', 'team-b', NULL, NULL);
+  INSERT INTO threads VALUES ('member-dm', 'member-bot', NULL, 'member', NULL, NULL),
+    ('other-dm', 'other-bot', NULL, 'owner', NULL, NULL), ('team-chat', 'team-bot', 'team-a', NULL, NULL, NULL),
+    ('other-chat', 'other-bot', 'team-b', NULL, NULL, NULL),
+    ('team-bot-session', 'team-bot', 'team-a', NULL, NULL, 'team-chat');
   INSERT INTO workspace_message_attention VALUES ('member-approval', 'member-dm', 'approval', 'pending'),
     ('other-approval', 'other-dm', 'approval', 'pending'), ('team-approval', 'team-chat', 'approval', 'pending');
   INSERT INTO runs VALUES ('member-run', 'member-dm', 'member-request'), ('other-run', 'other-dm', 'owner-request');
@@ -59,13 +67,15 @@ afterEach(() => {
 const access = createWorkAccess({
   database,
   authStore: {
-    getPersonChannelIds: (personId) => (personId === "member" ? ["team-a", "deleted-channel"] : []),
-    getPerson: (personId) =>
-      personId === "owner"
-        ? ({ id: "owner", role: "admin" } as ReturnType<AuthStore["getPerson"]>)
-        : personId === "member"
-          ? ({ id: "member", role: "member" } as ReturnType<AuthStore["getPerson"]>)
-          : null,
+    getPersonChannelIds: (personId) =>
+      personId === "member" || personId === "second-member" ? ["team-a", "deleted-channel"] : [],
+    getPerson: (personId) => {
+      if (personId === "owner")
+        return { id: "owner", name: "Thiago", role: "admin" } as ReturnType<AuthStore["getPerson"]>
+      if (personId === "member" || personId === "second-member")
+        return { id: personId, name: "Ana", role: "member" } as ReturnType<AuthStore["getPerson"]>
+      return null
+    },
   } as AuthStore,
 })
 
@@ -267,6 +277,78 @@ test("members cannot inspect or stop another person's runs", () => {
   expect(access.isAdminRun("member-run")).toBe(false)
   expect(access.personForRun("other-run")).toBe("owner")
   expect(access.isAdminRun("other-run")).toBe(true)
+})
+
+test("only the requester and the responsible person can stop or take over a channel browser run", () => {
+  database.query(`INSERT INTO runs VALUES ('channel-browser-run', 'team-bot-session', 'request')`).run()
+  database
+    .query(`INSERT INTO browser_channel_runs VALUES
+      ('channel-browser-run', 'team-a', 'team-chat', 'team-bot', 'member', 'owner', 'owner', 'taken_over', 1)`)
+    .run()
+  database.query("INSERT INTO browser_tabs VALUES ('channel-tab', 'team-bot', 'team-bot-session')").run()
+
+  const cancel = {
+    role: "member" as const,
+    method: "POST",
+    pathname: "/runs/channel-browser-run/cancel",
+    body: null,
+  }
+  expect(access.authorizeHttp({ ...cancel, personId: "member" })).toBeNull()
+  expect(access.authorizeHttp({ ...cancel, personId: "owner", role: "admin" })).toBeNull()
+  expect(access.authorizeHttp({ ...cancel, personId: "other", role: "member" })).toMatchObject({ status: 404 })
+  const deniedCancel = access.authorizeHttp({ ...cancel, personId: "second-member", role: "member" })
+  expect(deniedCancel).toMatchObject({ status: 403, json: { errorCode: "BROWSER_CONTROL_FORBIDDEN" } })
+  expect(deniedCancel?.json.error).toContain("Thiago está no controle")
+
+  const takeover = {
+    role: "member" as const,
+    method: "POST",
+    pathname: "/browser/tabs/channel-tab/takeover",
+    body: { hold: true },
+  }
+  expect(access.authorizeHttp({ ...takeover, personId: "member" })).toBeNull()
+  expect(access.authorizeHttp({ ...takeover, personId: "owner", role: "admin" })).toBeNull()
+  expect(access.authorizeHttp({ ...takeover, personId: "other", role: "member" })).toMatchObject({ status: 404 })
+  const deniedTakeover = access.authorizeHttp({ ...takeover, personId: "second-member", role: "member" })
+  expect(deniedTakeover).toMatchObject({ status: 403, json: { errorCode: "BROWSER_CONTROL_FORBIDDEN" } })
+  expect(deniedTakeover?.json.error).toContain("Thiago está no controle")
+})
+
+test("targeted needs-you events and notifications are private to their recipient", () => {
+  expect(
+    access.canAccessNotification({
+      personId: "member",
+      role: "member",
+      threadId: "team-chat",
+      kind: "takeover",
+      requestId: "browser-needs-you",
+      targetPersonId: "member",
+    }),
+  ).toBe(true)
+  expect(
+    access.canAccessNotification({
+      personId: "second-member",
+      role: "member",
+      threadId: "team-chat",
+      kind: "takeover",
+      requestId: "browser-needs-you",
+      targetPersonId: "member",
+    }),
+  ).toBe(false)
+  expect(
+    access.visibleEvent({
+      personId: "owner",
+      role: "admin",
+      event: {
+        type: "notify",
+        level: "warning",
+        title: "O navegador precisa de você",
+        body: "",
+        threadId: "team-chat",
+        targetPersonId: "member",
+      },
+    }),
+  ).toBe(false)
 })
 
 test("members can fetch files from their own chats and channels only", () => {

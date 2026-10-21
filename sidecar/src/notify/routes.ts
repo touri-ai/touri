@@ -138,16 +138,21 @@ export const createNotifyRoutes = ({
         handler: async ({ signal }) => {
           const person = deviceSession(signal)?.person
           const tasks = syncRecoveryTasks()
-          if (!person || person.role === "admin") return { status: 200, json: { tasks } }
-          const visible = tasks.filter((task) =>
-            kernel.services.use("work.canAccessNotification")?.({
-              personId: person.id,
-              role: person.role,
-              threadId: task.notification.threadId,
-              kind: task.notification.kind,
-              requestId: task.notification.requestId,
-            }),
-          )
+          const visible = tasks.filter((task) => {
+            if (!person) return true
+            if (task.notification.targetPersonId && task.notification.targetPersonId !== person.id) return false
+            if (person.role === "admin") return true
+            return Boolean(
+              kernel.services.use("work.canAccessNotification")?.({
+                personId: person.id,
+                role: person.role,
+                threadId: task.notification.threadId,
+                kind: task.notification.kind,
+                requestId: task.notification.requestId,
+                targetPersonId: task.notification.targetPersonId ?? null,
+              }),
+            )
+          })
           return { status: 200, json: { tasks: visible } }
         },
       },
@@ -191,18 +196,21 @@ export const createNotifyRoutes = ({
         handler: async ({ signal }) => {
           const person = deviceSession(signal)?.person
           const notifications = store.pending()
-          const visible =
-            !person || person.role === "admin"
-              ? notifications
-              : notifications.filter((notification) =>
-                  kernel.services.use("work.canAccessNotification")?.({
-                    personId: person.id,
-                    role: person.role,
-                    threadId: notification.threadId,
-                    kind: notification.kind,
-                    requestId: notification.requestId,
-                  }),
-                )
+          const visible = notifications.filter((notification) => {
+            if (!person) return true
+            if (notification.targetPersonId && notification.targetPersonId !== person.id) return false
+            if (person.role === "admin") return true
+            return Boolean(
+              kernel.services.use("work.canAccessNotification")?.({
+                personId: person.id,
+                role: person.role,
+                threadId: notification.threadId,
+                kind: notification.kind,
+                requestId: notification.requestId,
+                targetPersonId: notification.targetPersonId ?? null,
+              }),
+            )
+          })
           return { status: 200, json: { notifications: visible, lastSeq: store.lastSeq() } }
         },
       },
@@ -217,18 +225,21 @@ export const createNotifyRoutes = ({
           )
           const notifications = store.recent(limit)
           const person = deviceSession(signal)?.person
-          const visible =
-            !person || person.role === "admin"
-              ? notifications
-              : notifications.filter((notification) =>
-                  kernel.services.use("work.canAccessNotification")?.({
-                    personId: person.id,
-                    role: person.role,
-                    threadId: notification.threadId,
-                    kind: notification.kind,
-                    requestId: notification.requestId,
-                  }),
-                )
+          const visible = notifications.filter((notification) => {
+            if (!person) return true
+            if (notification.targetPersonId && notification.targetPersonId !== person.id) return false
+            if (person.role === "admin") return true
+            return Boolean(
+              kernel.services.use("work.canAccessNotification")?.({
+                personId: person.id,
+                role: person.role,
+                threadId: notification.threadId,
+                kind: notification.kind,
+                requestId: notification.requestId,
+                targetPersonId: notification.targetPersonId ?? null,
+              }),
+            )
+          })
           return { status: 200, json: { notifications: visible } }
         },
       },

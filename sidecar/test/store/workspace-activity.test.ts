@@ -85,6 +85,12 @@ test("workspace activity scopes private conversations to their person and channe
           ('other-dm','bot','Other chat',1,1,'owner',NULL),
           ('member-channel','bot','Member channel',1,1,NULL,'team-a'),
           ('other-channel','bot','Other channel',1,1,NULL,'team-b');
+      INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at,started_at,requester_person_id) VALUES
+        ('member-browser-run','member-channel','bot','codex','user','running',2,3,'member'),
+        ('other-browser-run','other-channel','bot','codex','user','running',2,3,'other');
+      INSERT INTO browser_channel_runs(run_id,group_id,thread_id,bot_id,requester_person_id,status,queued_at,started_at)
+        VALUES ('member-browser-run','team-a','member-channel','bot','member','running',2,3),
+          ('other-browser-run','team-b','other-channel','bot','other','running',2,3);
     `)
     const insert = db.query(
       "INSERT INTO messages(id,thread_id,role,kind,status,text,parts_json,created_at,updated_at) VALUES (?,?,'user','text','complete',?,'[]',1,1)",
@@ -95,6 +101,13 @@ test("workspace activity scopes private conversations to their person and channe
     insert.run("other-channel-message", "other-channel", "Secret")
     const activity = readWorkspaceActivity(db, { personId: "member", channelIds: ["team-a"] })
     expect(activity.messages.map((message) => message.id).sort()).toEqual(["member-channel-message", "own-message"])
+    expect(activity.browserRuns.map((run) => run.runId)).toEqual(["member-browser-run"])
+    expect(activity.browserRuns[0]).toMatchObject({
+      groupId: "team-a",
+      threadId: "member-channel",
+      requesterPersonId: "member",
+      status: "running",
+    })
   } finally {
     db.close()
     rmSync(root, { recursive: true, force: true })

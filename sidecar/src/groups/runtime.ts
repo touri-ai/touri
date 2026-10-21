@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite"
 import type { Bot, BotGroup, Kernel, MessagePart, Run, ServiceMap, ToolContext, ToolResult } from "@touri/contracts"
 import { hasRecordedActions } from "@touri/contracts/run-failure"
+import { getRequesterPersonId } from "../browser/channel-runs"
 import { attachedServers } from "../mcp/attached"
 import type { createRuntimeEngine } from "../runtime/engine"
 import { createRuntimePersistence, toRun } from "../runtime/persistence"
@@ -270,6 +271,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       threadId: thread.id,
       requestMessageId: request.message.id,
       trigger: "user",
+      ...(turn.run.requesterPersonId ? { requesterPersonId: turn.run.requesterPersonId } : {}),
       delegated,
       continuing: true,
     })
@@ -604,6 +606,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       trigger: args.trigger,
       requestMessageId: args.requestMessageId,
       replyMessageId: null,
+      requesterPersonId: getRequesterPersonId(request?.sender),
       externalTurnId: null,
       status: "queued",
       errorClass: null,

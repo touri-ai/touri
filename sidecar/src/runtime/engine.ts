@@ -28,6 +28,7 @@ import { redactToolText } from "@touri/contracts/redaction"
 import { hasRecordedActions, refineErrorClass, safeRunFailure } from "@touri/contracts/run-failure"
 import { createApprovalBridge } from "../approvals/bridge"
 import { approvalOutcome } from "../approvals/outcome"
+import { getRequesterPersonId } from "../browser/channel-runs"
 import { delegatedBot } from "../groups/security"
 import { createGroupStore } from "../groups/store"
 import { buildChildEnv } from "../kernel"
@@ -232,6 +233,7 @@ type RuntimeEngine = {
     threadId: Id
     requestMessageId: Id
     trigger: RunTrigger
+    requesterPersonId?: Id
     routineRunId?: Id
     delegated?: boolean
     continuing?: boolean
@@ -2244,6 +2246,7 @@ export const createRuntimeEngine = ({
     threadId,
     requestMessageId,
     trigger,
+    requesterPersonId,
     routineRunId,
     delegated = false,
     continuing = false,
@@ -2251,6 +2254,7 @@ export const createRuntimeEngine = ({
     threadId: Id
     requestMessageId: Id
     trigger: RunTrigger
+    requesterPersonId?: Id
     routineRunId?: Id
     delegated?: boolean
     continuing?: boolean
@@ -2261,7 +2265,7 @@ export const createRuntimeEngine = ({
     const store = kernel.services.use("store.api")
     const thread = store?.getThread({ threadId })
     const bot = thread ? store?.getBot({ botId: thread.botId }) : null
-    if (!thread || !bot) return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Thread not found" }
+    if (!store || !thread || !bot) return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Thread not found" }
     const activeRequest = persistence.findActiveRunForRequest({ threadId, requestMessageId })
     if (activeRequest) return { success: true, run: activeRequest }
     if (bot.paused || bot.machine === "cloud")
@@ -2271,8 +2275,13 @@ export const createRuntimeEngine = ({
         error: bot.machine === "cloud" ? "Este bot usa o runtime remoto." : "Bot is paused",
       }
     if (trigger === "user") goals.pauseForUser(threadId)
+    const request = store
+      .activePath({ threadId, leafId: requestMessageId })
+      .find((message) => message.id === requestMessageId)
+    const requester = requesterPersonId ?? getRequesterPersonId(request?.sender) ?? undefined
     const run: Run = {
       id: kernel.newId(),
+      ...(requester ? { requesterPersonId: requester } : {}),
       threadId,
       botId: bot.id,
       provider: bot.provider,

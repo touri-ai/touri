@@ -606,6 +606,23 @@ export const ptBR = {
   "Stop browser task": "Parar tarefa no navegador",
   "Browser preview unavailable. Open the browser to reconnect.":
     "Prévia do navegador indisponível. Abra o navegador para reconectar.",
+  "Only the person who requested this work or the person responsible for the bot can control this browser.":
+    "Só quem pediu este trabalho ou a pessoa responsável pelo bot pode controlar este navegador.",
+  "{name} is controlling the browser. Only the requester or the person responsible for the bot can change control.":
+    "{name} está no controle do navegador. Só quem pediu ou a pessoa responsável pelo bot pode alterar o controle.",
+  "The browser queue is full. Try again shortly.": "A fila deste navegador está cheia. Tente de novo em instantes.",
+  "This browser run ended before it started.": "O turno do navegador foi cancelado antes de começar.",
+  "This browser run has already ended.": "Este turno do navegador já foi encerrado.",
+  "This browser is no longer active.": "Este navegador não está mais ativo.",
+  "The browser preview is hidden while someone is in control.":
+    "A prévia fica oculta enquanto alguém está no controle.",
+  "The browser needs your attention": "O navegador precisa de atenção",
+  "The browser needs you": "O navegador precisa de você",
+  "The requester has not taken control. As the person responsible for the bot, you can help now.":
+    "A pessoa que pediu ainda não assumiu o navegador. Você, responsável pelo bot, pode ajudar agora.",
+  "The bot paused the browser and needs you to take control to continue.":
+    "O bot pausou o navegador e precisa que você assuma o controle para continuar.",
+  "The bot paused the browser and needs help: {reason}": "O bot pausou o navegador e precisa de ajuda: {reason}",
   "Open browser": "Abrir navegador",
   "Browser for {name}": "Navegador do {name}",
   "Why {name} paused": "Por que {name} parou",

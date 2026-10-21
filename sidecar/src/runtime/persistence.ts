@@ -84,6 +84,7 @@ export const toRun = (value: unknown): Run | null => {
   if (!row) return null
   return {
     id: text(row, "id"),
+    requesterPersonId: nullableText(row, "requester_person_id"),
     threadId: text(row, "thread_id"),
     botId: text(row, "bot_id"),
     provider: text(row, "provider") as Run["provider"],
@@ -360,12 +361,13 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
     const error = getPersistedRunError(run)
     const result = db
       .query(
-        `INSERT INTO runs (id, thread_id, bot_id, provider, trigger, request_message_id, reply_message_id, external_turn_id, status, error_class, error_message, usage_json, routine_run_id, queued_at, started_at, finished_at, provider_started_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO runs (id, thread_id, bot_id, provider, trigger, request_message_id, reply_message_id, external_turn_id, status, error_class, error_message, usage_json, routine_run_id, queued_at, started_at, finished_at, provider_started_at, requester_person_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET request_message_id=excluded.request_message_id, reply_message_id=excluded.reply_message_id,
          external_turn_id=excluded.external_turn_id, status=excluded.status, error_class=excluded.error_class,
          error_message=excluded.error_message, usage_json=excluded.usage_json, routine_run_id=excluded.routine_run_id,
-         queued_at=excluded.queued_at, started_at=excluded.started_at, finished_at=excluded.finished_at, provider_started_at=excluded.provider_started_at
+         queued_at=excluded.queued_at, started_at=excluded.started_at, finished_at=excluded.finished_at, provider_started_at=excluded.provider_started_at,
+         requester_person_id=excluded.requester_person_id
          WHERE runs.status IN ('queued', 'starting', 'running')`,
       )
       .run(
@@ -386,6 +388,7 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
         run.startedAt,
         run.finishedAt,
         run.providerStartedAt ?? null,
+        run.requesterPersonId ?? null,
       )
     if (result.changes === 0) return false
     const current = runs.get(run.id)

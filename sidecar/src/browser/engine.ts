@@ -4285,6 +4285,7 @@ export const createBrowserEngine = ({
     reasonCode,
     timeoutMs,
     signal,
+    notify = true,
   }: {
     tabId: Id
     botId: Id
@@ -4292,6 +4293,7 @@ export const createBrowserEngine = ({
     reasonCode?: BrowserTakeoverReason
     timeoutMs: number
     signal: AbortSignal
+    notify?: boolean
   }): Promise<ToolResult> => {
     const owned = getTab({ tabId, botId })
     if (!owned.success) return toToolError(owned.failure)
@@ -4308,24 +4310,26 @@ export const createBrowserEngine = ({
         tab.info.lastUsedAt = Date.now()
         store.save(tab)
         kernel.publish({ type: "browser.tab", tab: safePublicTabInfo(tab) })
-        const notification = getTakeoverNotificationCopy(safeReasonCode)
-        const emitNotice = kernel.services.use("notify.emit")
         const requestId = `browser-takeover:${tabId}:${kernel.newId()}`
-        if (emitNotice)
-          emitNotice({
-            kind: "takeover",
-            botId,
-            threadId: tab.info.ownerThreadId,
-            requestId,
-            title: notification.title,
-            body: notification.body,
-          })
-        else
-          await notifyBestEffort({
-            title: notification.title,
-            body: notification.body,
-            threadId: tab.info.ownerThreadId,
-          })
+        if (notify) {
+          const notification = getTakeoverNotificationCopy(safeReasonCode)
+          const emitNotice = kernel.services.use("notify.emit")
+          if (emitNotice)
+            emitNotice({
+              kind: "takeover",
+              botId,
+              threadId: tab.info.ownerThreadId,
+              requestId,
+              title: notification.title,
+              body: notification.body,
+            })
+          else
+            await notifyBestEffort({
+              title: notification.title,
+              body: notification.body,
+              threadId: tab.info.ownerThreadId,
+            })
+        }
         await raceBudget({ work: focusManagedChrome(), ms: SIDE_EFFECT_BUDGET_MS, signal }).catch(() => undefined)
         const released = await new Promise<"released" | "timeout" | "canceled">((resolve) => {
           const finish = (outcome: "released" | "timeout" | "canceled"): void => {
@@ -4339,10 +4343,11 @@ export const createBrowserEngine = ({
           if (signal.aborted) onAbort()
           else signal.addEventListener("abort", onAbort, { once: true })
         })
-        kernel.services.use("notify.resolve")?.({
-          requestId,
-          resolution: released === "released" ? "replied" : released === "timeout" ? "expired" : "canceled",
-        })
+        if (notify)
+          kernel.services.use("notify.resolve")?.({
+            requestId,
+            resolution: released === "released" ? "replied" : released === "timeout" ? "expired" : "canceled",
+          })
         tab.takeover = null
         if (released !== "released") {
           tab.info.heldByUser = false

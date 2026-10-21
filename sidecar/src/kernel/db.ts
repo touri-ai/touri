@@ -40,12 +40,13 @@ import automaticConversationSql from "./migrations/0034.sql" with { type: "text"
 import botDeletionSql from "./migrations/0035.sql" with { type: "text" }
 import workspaceAttentionBackfillSql from "./migrations/0036.sql" with { type: "text" }
 import browserTakeoverPrivacySql from "./migrations/0037.sql" with { type: "text" }
+import browserChannelRunsSql from "./migrations/0038.sql" with { type: "text" }
 import type { PerformanceStageRunner } from "./performance"
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 37
+export const SCHEMA_VERSION = 38
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -282,7 +283,15 @@ export const openDatabase = ({
   database.transaction(() => {
     const columns = database.query("PRAGMA table_info(browser_tabs)").all() as Array<{ name: string }>
     if (!columns.some((column) => column.name === "private_after_takeover")) database.exec(browserTakeoverPrivacySql)
-    database.exec("UPDATE schema_meta SET value = '37' WHERE key = 'schema_version'")
+    const runColumns = database.query("PRAGMA table_info(runs)").all() as Array<{ name: string }>
+    const notificationColumns = database.query("PRAGMA table_info(notifications)").all() as Array<{ name: string }>
+    if (!runColumns.some(({ name }) => name === "requester_person_id"))
+      database.exec("ALTER TABLE runs ADD COLUMN requester_person_id TEXT")
+    if (!notificationColumns.some(({ name }) => name === "target_person_id"))
+      database.exec("ALTER TABLE notifications ADD COLUMN target_person_id TEXT")
+    if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'browser_channel_runs_version'").get())
+      database.exec(browserChannelRunsSql)
+    database.exec("UPDATE schema_meta SET value = '38' WHERE key = 'schema_version'")
   })()
   return database
 }

@@ -234,6 +234,7 @@ export type BrowserEngine = {
     reasonCode?: BrowserTakeoverReason
     timeoutMs: number
     signal: AbortSignal
+    notify?: boolean
   }) => Promise<ToolResult>
   submitSecret: (args: {
     tabId: Id

@@ -1593,8 +1593,12 @@ export const init = async (
                   channelIds: kernel.services.use("work.personChannelIds")?.(person.id) ?? [],
                 }
               : undefined
-          const { messages, runs } = readWorkspaceActivity(database, scope)
-          return jsonResponse(200, { messages: messages.map(asMessage), runs })
+          const { messages, runs, browserRuns } = readWorkspaceActivity(
+            database,
+            scope,
+            (personId) => kernel.services.use("work.personName")?.(personId) ?? null,
+          )
+          return jsonResponse(200, { messages: messages.map(asMessage), runs, browserRuns })
         },
       },
       {
