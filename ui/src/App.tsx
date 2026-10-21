@@ -1061,18 +1061,12 @@ const AppContent = ({ kernel }: AppProps) => {
           </div>
         )}
         {workspaceNotice}
-        {pendingReturnCount > 0 && !hasApprovalReminder && (
-          <div className="notice-bar approval-notice" role="status">
-            {t("Você tem {n} solicitações pendentes.", { n: pendingReturnCount })}
-            <button type="button" onClick={actions.dismissNotice} aria-label={t("Dismiss notice")}>
-              <PanelIcon name="close" />
-            </button>
-          </div>
-        )}
         <ApprovalNotice
           notifications={data.notifications}
           messages={data.activityMessages}
           onReview={reviewApproval}
+          pendingReturnCount={hasApprovalReminder ? 0 : pendingReturnCount}
+          onDismissPending={actions.dismissNotice}
           activeThreadId={section === "bots" && screen === "chat" && !modal ? (selectedThread?.id ?? null) : null}
         />
         <div className="app-grid">

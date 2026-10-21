@@ -1,25 +1,15 @@
 import { expect, test } from "@playwright/test"
-import type { createMockApi } from "../../src/api/mock"
 import { showBotPanel } from "./home-navigation"
 
 const evidence = "../docs/qa/r4-shots"
-type VisualWindow = Window & { r4Api: ReturnType<typeof createMockApi> }
 test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto("/test/e2e/r4-harness.html")
   await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
 })
 
-test("r4 approval center is above the chat and sends the decision to the full card", async ({ page }) => {
-  await page.evaluate(() =>
-    (window as unknown as VisualWindow).r4Api.notify({
-      kind: "approval",
-      title: "Aprovar comando",
-      body: "gh pr list — revisar execução pendente e responder explicitamente",
-      botId: "bot-mark",
-      requestId: "visual-approval",
-    }),
-  )
+test("r4 approval center is above the chat and opens the full card", async ({ page }, info) => {
+  await page.goto("/test/e2e/approval-notice-harness.html")
   await page.getByRole("button", { name: "Notificações, 1 precisa de atenção" }).click()
   const center = page.getByRole("region", { name: "Central de notificações" })
   await expect(center).toBeVisible()
@@ -31,9 +21,17 @@ test("r4 approval center is above the chat and sends the decision to the full ca
       return element.contains(document.elementFromPoint(box.right - 10, box.top + 50))
     }),
   ).toBe(true)
-  await page.screenshot({ path: `${evidence}/notifications.png` })
+  const beforeReview = info.outputPath("approval-center-before-review.png")
+  await page.screenshot({ path: beforeReview, animations: "disabled" })
+  await info.attach("approval center before review", { path: beforeReview, contentType: "image/png" })
   await center.getByRole("button", { name: "Abrir e revisar" }).click()
-  await expect(page.getByRole("button", { name: "Notificações", exact: true })).toBeVisible()
+  await expect(page.locator('[data-approval-id="folder-review"]')).toBeFocused()
+  await expect(center).not.toBeVisible()
+  const notifications = page.getByRole("button", { name: /^Notificações/ })
+  await expect(notifications).toBeVisible()
+  const afterReview = info.outputPath("approval-center-after-review.png")
+  await page.screenshot({ path: afterReview, animations: "disabled" })
+  await info.attach("approval center after review", { path: afterReview, contentType: "image/png" })
 })
 
 test("r4 search backdrop fills the viewport without a native dialog strip", async ({ page }) => {

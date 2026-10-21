@@ -57,7 +57,8 @@ for (const appearance of appearances) {
     await expect(page.locator(".routine-run-marker")).toContainText("Resumo da caixa de entrada")
     await expect(page.locator(".routine-run-marker")).toContainText("Concluído")
     await expect(page.locator(".routine-run-marker time")).toHaveText("16:04")
-    if (!mobile) await expect(page.locator(".thread-row.selected strong")).toHaveText("Resumo da caixa de entrada")
+    if (!mobile)
+      await expect(page.locator(".thread-row.selected strong")).toHaveText("Rotina Resumo da caixa de entrada")
 
     const marker = await page.locator(".routine-run-marker").boundingBox()
     const answer = await page.locator(".message-assistant").boundingBox()

@@ -85,7 +85,7 @@ test("bot actions support keyboard access and routines keep their bot filter aft
 test("first run has one primary action, secondary links and no diagnostic counts", async ({ page }) => {
   await page.goto("/test/e2e/home-harness.html?scenario=empty")
   await expect(page.getByRole("heading", { name: "touri" })).toBeVisible()
-  await expect(page.locator(".onboarding-actions button")).toHaveText(["Criar meu primeiro bot→"])
+  await expect(page.locator(".onboarding-actions button")).toHaveText(["Criar meu primeiro bot"])
   await expect(page.getByRole("main")).toContainText(
     "O histórico fica neste servidor. Sua IA recebe o conteúdo necessário para responder. O touri não coleta telemetria.",
   )

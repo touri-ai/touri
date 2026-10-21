@@ -65,7 +65,12 @@ it.each(["chat", "bell", "other-tab"])(
       const messages = [message(resolved && source === "chat")]
       return (
         <>
-          <ApprovalNotice notifications={notifications} messages={messages} onReview={vi.fn()} />
+          <ApprovalNotice
+            notifications={notifications}
+            messages={messages}
+            onReview={vi.fn()}
+            pendingReturnCount={resolved ? 0 : 1}
+          />
           <NotificationBell notifications={notifications} messages={messages} actions={actions} />
         </>
       )
@@ -75,6 +80,7 @@ it.each(["chat", "bell", "other-tab"])(
     view.rerender(<Surface resolved />)
     expect(screen.queryByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeNull()
     expect(screen.getByRole("status")).toHaveTextContent("Autorizado. Retomando a tarefa.")
+    expect(screen.getAllByRole("status")).toHaveLength(1)
     expect(screen.queryByRole("button", { name: "Revisar", exact: true })).toBeNull()
     act(() => vi.advanceTimersByTime(3999))
     expect(screen.getByRole("status")).toBeInTheDocument()
@@ -82,6 +88,35 @@ it.each(["chat", "bell", "other-tab"])(
     expect(screen.queryByRole("status")).toBeNull()
   },
 )
+
+it("shows the pending return count when no approval reminder can be shown", () => {
+  const onDismissPending = vi.fn()
+  render(
+    <ApprovalNotice
+      notifications={[]}
+      messages={[]}
+      onReview={vi.fn()}
+      pendingReturnCount={1}
+      onDismissPending={onDismissPending}
+    />,
+  )
+
+  expect(screen.getByRole("status")).toHaveTextContent("Você tem 1 solicitação pendente.")
+  fireEvent.click(screen.getByRole("button", { name: "Dispensar aviso" }))
+  expect(onDismissPending).toHaveBeenCalledOnce()
+})
+
+it("shows one approval notice while a decision confirmation outranks a pending return count", () => {
+  vi.useFakeTimers()
+  const onReview = vi.fn()
+  const props = { onReview, pendingReturnCount: 1 }
+  const view = render(<ApprovalNotice notifications={[note]} messages={[message()]} {...props} />)
+
+  view.rerender(<ApprovalNotice notifications={[allowed]} messages={[message(true)]} {...props} />)
+
+  expect(screen.getAllByRole("status")).toHaveLength(1)
+  expect(screen.getByRole("status")).toHaveTextContent("Autorizado. Retomando a tarefa.")
+})
 
 it("shares a duplicate request's decision without treating dismissal as approval", () => {
   const duplicate = { ...note, id: 902 }

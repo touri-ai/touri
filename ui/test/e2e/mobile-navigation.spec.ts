@@ -26,7 +26,7 @@ test("phone navigation traps focus and reaches conversations, search, creation a
   expect(await drawer.evaluate((element) => element.contains(document.activeElement))).toBe(true)
   await drawer.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).focus()
   await page.keyboard.press("Tab")
-  await expect(drawer.getByRole("button", { name: "Buscar conversas" })).toBeFocused()
+  await expect(drawer.getByRole("button", { name: /^Bots/ })).toBeFocused()
   const accessibility = await new AxeBuilder({ page }).analyze()
   expect(accessibility.violations.filter((item) => ["serious", "critical"].includes(item.impact ?? ""))).toEqual([])
   await page.screenshot({ path: "test-results/mobile-navigation-drawer.png" })
