@@ -464,6 +464,19 @@ test("historical browser cards never sample or take over the current browser pag
   expect(request).not.toHaveBeenCalledWith("GET /browser/tabs", expect.anything())
 })
 
+test("a persisted human pause keeps controls available before the held-tab event arrives", async () => {
+  renderCard(
+    [getPart({ callId: "pending-open", tool: "mcp__touri__browser_open", inputJson: '{"tabId":"browser-tab"}' })],
+    true,
+    undefined,
+    "local",
+    true,
+  )
+
+  expect(await screen.findByRole("button", { name: "Assumir" })).toBeVisible()
+  expect(screen.queryByRole("button", { name: /Usou o navegador/ })).toBeNull()
+})
+
 test("a completed provider turn keeps a pending human handoff available", async () => {
   const requestedTab = { ...tab, heldByUser: true, takeoverRequested: true }
   const parts = [

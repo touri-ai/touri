@@ -4535,12 +4535,14 @@ export const createBrowserEngine = ({
     else signal.addEventListener("abort", takeover.onAbort, { once: true })
 
     if (notify) {
+      const sourceThread = kernel.services.use("store.api")?.getThread({ threadId: takeover.threadId ?? "" })
+      const notificationThreadId = sourceThread?.groupThreadId ?? takeover.threadId
       const emitNotice = kernel.services.use("notify.emit")
       if (emitNotice)
         emitNotice({
           kind: "takeover",
           botId,
-          threadId: tab.info.ownerThreadId,
+          threadId: notificationThreadId,
           requestId: requestId ?? null,
           title: notification.title,
           body: notification.body,
@@ -4549,7 +4551,7 @@ export const createBrowserEngine = ({
         void notifyBestEffort({
           title: notification.title,
           body: notification.body,
-          threadId: tab.info.ownerThreadId,
+          threadId: notificationThreadId,
         })
     }
     store.save(tab)

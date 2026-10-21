@@ -9,6 +9,7 @@ import { createHeadlessHost } from "../../../sidecar/src/cli/host/headlessHost"
 import { createSecretStore } from "../../../sidecar/src/cli/host/secretStore"
 import { createKernel } from "../../../sidecar/src/kernel"
 import { startBrowserFixtureServer } from "../../../sidecar/test/browser/fixture-server"
+import { createFixtureBrowserLauncher } from "./browser-fixture-launcher"
 
 const root = await mkdtemp(join(tmpdir(), "touri-decisions-e2e-"))
 const runtime = createKernel({ appData: join(root, "data") })
@@ -25,7 +26,7 @@ const kernel = {
     return runtime.kernel.registerTools(input)
   },
 }
-const engine = createBrowserEngine({ kernel })
+const engine = createBrowserEngine({ kernel, launcher: createFixtureBrowserLauncher() })
 const fixture = startBrowserFixtureServer()
 const db = kernel.db as Database
 const now = Date.now()

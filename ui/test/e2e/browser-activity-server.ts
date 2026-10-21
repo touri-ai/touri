@@ -9,6 +9,7 @@ import { createHeadlessHost } from "../../../sidecar/src/cli/host/headlessHost"
 import { createSecretStore } from "../../../sidecar/src/cli/host/secretStore"
 import { createKernel } from "../../../sidecar/src/kernel"
 import { init as initStore } from "../../../sidecar/src/store"
+import { createFixtureBrowserLauncher } from "./browser-fixture-launcher"
 
 const root = await mkdtemp(join(tmpdir(), "touri-browser-flow-"))
 const runtime = createKernel({ appData: join(root, "data") })
@@ -31,7 +32,7 @@ const kernel = {
   },
 }
 await initStore(kernel)
-const engine = createBrowserEngine({ kernel })
+const engine = createBrowserEngine({ kernel, launcher: createFixtureBrowserLauncher() })
 const fixtureUrl = process.env.TOURI_BROWSER_FLOW_FIXTURE_URL
 if (!fixtureUrl) throw new Error("The local travel fixture URL is missing.")
 

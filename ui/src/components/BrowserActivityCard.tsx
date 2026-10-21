@@ -122,7 +122,7 @@ export const BrowserActivityCard = ({
   const held = heldTab?.tabId === activeTabId && heldTab?.held === true
   const heldRef = useRef(held)
   heldRef.current = held
-  const finished = sourceFinished && !held && !takeoverSession && !resuming && !queued
+  const finished = sourceFinished && !waitingForPerson && !held && !takeoverSession && !resuming && !queued
   const preview =
     !held && !channel?.previewHidden && previewFrame?.tabId === activeTabId ? previewFrame?.frame : undefined
   const [busy, setBusy] = useState(false)
