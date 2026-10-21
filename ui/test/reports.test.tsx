@@ -122,6 +122,21 @@ it("A14 offers an editable redacted preview and blocks delivery until edits are 
   await screen.findByText("Salvo em /Users/test/Downloads/report.zip")
 })
 
+it("shows the report editor already filled when the preview first appears", async () => {
+  const { api, invoke } = fixture()
+  const seen: string[] = []
+  const observer = new MutationObserver(() => {
+    const editor = screen.queryByRole("textbox", { name: "Editar report.json" })
+    if (editor) seen.push((editor as HTMLTextAreaElement).value)
+  })
+  observer.observe(document.body, { childList: true, subtree: true })
+  render(<ReportProblem api={api} invokeCommand={invoke} />)
+  await prepare()
+  observer.disconnect()
+  expect(seen.length).toBeGreaterThan(0)
+  expect(seen.filter((value) => value === "")).toEqual([])
+})
+
 it("C-09 explains why a cloud without reports support has no delivery option", async () => {
   const { api, invoke } = fixture()
   render(<ReportProblem api={api} invokeCommand={invoke} />)
