@@ -27,16 +27,21 @@ const getChannel = () => {
 }
 
 describe("channel view", () => {
-  it("shows a channel summary and an invite button that opens the member editor", () => {
+  it("shows a channel summary and keeps invitations separate from editing the channel", () => {
     const { bots, group } = getChannel()
     const onEdit = vi.fn()
-    render(<GroupHeader group={group} bots={bots} onEdit={onEdit} channelMode />)
+    const onInvite = vi.fn()
+    render(<GroupHeader group={group} bots={bots} onEdit={onEdit} onInvite={onInvite} channelMode />)
 
     expect(screen.getByText("Canais / Equipe QA")).toBeVisible()
     expect(screen.getByText("2 bots · mark coordena")).toBeVisible()
     expect(document.querySelector(".channel-heading-hash")).toHaveTextContent("#")
     expect(document.querySelector(".group-header-members")).toBeNull()
-    fireEvent.click(screen.getByRole("button", { name: "Convidar para o canal" }))
+    fireEvent.click(screen.getByRole("button", { name: "Convidar pessoa" }))
+    expect(onInvite).toHaveBeenCalledOnce()
+    expect(onEdit).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole("button", { name: "Editar canal" }))
     expect(onEdit).toHaveBeenCalledOnce()
   })
 
