@@ -266,11 +266,15 @@ export const createChannelBrowserRuns = ({
       thread_id: string
     } | null
     if (!run) return
-    kernel.services.use("runtime.resumeAfterBrowserTakeover")?.({
-      botId: row.bot_id,
-      threadId: run.thread_id,
-      runId: row.current_run_id,
-    })
+    const waiting = database
+      .query("SELECT 1 FROM browser_pending_handoffs WHERE run_id IN (?,?) AND state = 'waiting' LIMIT 1")
+      .get(row.current_run_id, row.run_id)
+    if (!waiting)
+      kernel.services.use("runtime.resumeAfterBrowserTakeover")?.({
+        botId: row.bot_id,
+        threadId: run.thread_id,
+        runId: row.current_run_id,
+      })
     if (attempt >= 30) return
     const previous = resumeTimers.get(runId)
     if (previous) clearTimeout(previous)
@@ -334,6 +338,7 @@ export const createChannelBrowserRuns = ({
   }
   const cancelRequest = (
     runId: string,
+    status: "failed" | "canceled" = "canceled",
   ): { runId: string; requestId: string; botId: string; ownsControl: boolean } | null => {
     const row =
       getRaw(runId) ??
@@ -343,7 +348,7 @@ export const createChannelBrowserRuns = ({
         AND c.status IN ('queued','running','needs_you','taken_over') LIMIT 1`)
         .get(runId) as BrowserChannelRunRow | null)
     if (!row || !VISIBLE_STATUSES.includes(row.status)) return null
-    updateTerminal(row.run_id, "canceled")
+    updateTerminal(row.run_id, status)
     return {
       runId: row.current_run_id,
       requestId: row.run_id,
@@ -491,6 +496,24 @@ export const createChannelBrowserRuns = ({
     publish(runId)
     return { success: true }
   }
+  const restoreControl = ({
+    runId,
+    actorPersonId,
+    status,
+  }: {
+    runId: string
+    actorPersonId: string
+    status: BrowserChannelRunStatus
+  }): void => {
+    const restoredStatus = status === "needs_you" ? "needs_you" : "running"
+    database
+      .query(
+        "UPDATE browser_channel_runs SET status = ?, controller_person_id = NULL WHERE run_id = ? AND controller_person_id = ?",
+      )
+      .run(restoredStatus, runId, actorPersonId)
+    publish(runId)
+    if (restoredStatus === "needs_you") scheduleEscalation(runId)
+  }
   const returnControl = ({
     runId,
     actorPersonId,
@@ -581,6 +604,7 @@ export const createChannelBrowserRuns = ({
     needsYou,
     takeControl,
     returnControl,
+    restoreControl,
     isPreviewHidden,
     dispose: () => {
       onRunUpdated()

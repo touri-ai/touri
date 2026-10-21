@@ -310,6 +310,9 @@ test("interrupted batches resume idempotently and match the shipped synchronous 
     synchronous.exec(botDeletionSql)
     synchronous.exec(workspaceAttentionBackfillSql)
     synchronous.exec(browserTakeoverPrivacySql)
+    synchronous.exec(
+      "ALTER TABLE runs ADD COLUMN requester_person_id TEXT; ALTER TABLE notifications ADD COLUMN target_person_id TEXT;",
+    )
     synchronous.exec(browserChannelRunsSql)
     synchronous.exec(browserTakeoverContinuationsSql)
     synchronous.exec(browserPrivateInputSql)

@@ -176,7 +176,11 @@ test("channel browser runs persist one active slot per bot and promote queued wo
     publishRunStatus("leo-4-resumed", "succeeded")
     publishRunStatus("bia-1", "succeeded")
     expect(await otherChannel).toEqual({ success: true, queued: true })
-    publishRunStatus("leo-other-channel", "succeeded")
+    addRun({ runId: "leo-other-resumed", botId: "leo", threadId: "channel-2-leo" })
+    database.exec(
+      "INSERT INTO browser_takeover_continuations VALUES ('leo-other-resumed','leo-other-channel','leo-other-channel',4)",
+    )
+    publishRunStatus("leo-other-resumed", "succeeded")
     expect(channelRuns.list(["travel"])).toEqual([])
   } finally {
     channelRuns.dispose()
@@ -348,4 +352,22 @@ test("promotion survives restart and old completion cannot finish the continuati
   publishRunStatus("continued", "succeeded")
 
   expect(restored.get("next")?.status).toBe("succeeded")
+})
+
+test("failed control startup restores the human wait without starting a continuation", async () => {
+  const fixture = createFixture()
+  const channelRuns = createChannelBrowserRuns({ kernel: fixture.kernel, database: fixture.database })
+  additionalCleanups.add(() => {
+    channelRuns.dispose()
+    fixture.cleanup()
+  })
+  fixture.addRun({ runId: "login", botId: "leo", threadId: "channel-leo" })
+  await channelRuns.enter(fixture.context("login", "leo", "channel-leo"))
+  channelRuns.needsYou("login", "login")
+  channelRuns.takeControl({ runId: "login", actorPersonId: "ana" })
+
+  channelRuns.restoreControl({ runId: "login", actorPersonId: "ana", status: "needs_you" })
+
+  expect(channelRuns.get("login")).toMatchObject({ status: "needs_you", controllerPersonId: null })
+  expect(fixture.resumptions).toHaveLength(0)
 })

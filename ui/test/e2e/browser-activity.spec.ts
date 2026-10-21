@@ -11,8 +11,8 @@ const token = randomUUID()
 let child: ChildProcess
 let endpoint = ""
 
-test.beforeAll(async () => {
-  const baseUrl = process.env.PLAYWRIGHT_BASE_URL
+test.beforeAll(async ({ baseURL }) => {
+  const baseUrl = process.env.PLAYWRIGHT_BASE_URL ?? baseURL
   if (!baseUrl) throw new Error("The local browser fixture URL is missing.")
   const fixtureUrl = new URL("/test/e2e/fixtures/travel-search.html", baseUrl).toString()
   child = spawn("bun", [resolve("test/e2e/browser-activity-server.ts")], {

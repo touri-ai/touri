@@ -21,6 +21,7 @@ import { clearBrowserHold, setBrowserHold } from "../src/features/desktop/browse
 import { InlinePreviewContext } from "../src/features/desktop/InlineLivePreview"
 import { startInlineFrameSource } from "../src/features/desktop/inlineFrameSource"
 import { setInlinePreviewPreference } from "../src/features/desktop/inlinePreviewPreference"
+import { t } from "../src/i18n"
 
 vi.mock("../src/features/desktop/inlineFrameSource", () => ({
   startInlineFrameSource: vi.fn(
@@ -827,4 +828,11 @@ test("a detached browser request stays waiting without previewing or controlling
   expect(request).not.toHaveBeenCalledWith("GET /browser/tabs", expect.anything())
   expect(isBrowserRequestQueued([part], "queued-run")).toBe(true)
   expect(isBrowserRequestQueued([part], "continuation")).toBe(false)
+})
+
+test("browser login notifications use the interface language", () => {
+  const body = "The site asked you to sign in. Return control to let the bot continue."
+
+  expect(t(body, {}, "pt-BR")).toBe("O site pediu login. Devolva o controle para o bot continuar.")
+  expect(t(body, {}, "en")).toBe(body)
 })

@@ -772,6 +772,12 @@ test("target approval stays pending until user decision; timeout cancels a stall
       .some((m) => m.parts.some((p) => p.type === "approval" && p.decision === "pending")),
   ).toBe(true)
   await until(() => f.persistence.getRun(run.id)?.status === "failed")
+  const child = f.db
+    .query(
+      "SELECT r.error_class, r.status FROM runs r JOIN group_run_links link ON link.run_id = r.id WHERE link.turn_id = ? LIMIT 1",
+    )
+    .get(run.id)
+  expect(child).toEqual({ error_class: "timeout", status: "failed" })
   finish?.("late answer")
   expect(f.store.activePath({ threadId: f.thread.id }).some((m) => m.text === "late answer")).toBe(false)
 })

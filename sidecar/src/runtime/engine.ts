@@ -249,7 +249,7 @@ type RuntimeEngine = {
   continueAfterApproval: ServiceMap["runtime.continueAfterApproval"]
   resumeAfterBrowserTakeover: ServiceMap["runtime.resumeAfterBrowserTakeover"]
   canReturnBrowserTakeover: ServiceMap["runtime.canReturnBrowserTakeover"]
-  cancel: (id: Id) => Result<{ run: Run }, "NOT_FOUND">
+  cancel: (id: Id, reason?: { errorClass: "timeout"; errorMessage: string }) => Result<{ run: Run }, "NOT_FOUND">
   cancelRuns: (runIds: Id[]) => Promise<void>
   cancelBotTurns: (args: { botId: Id }) => Promise<void>
   retry: (
@@ -1853,7 +1853,7 @@ export const createRuntimeEngine = ({
             store,
             thread,
             errorClass: state.cancelRequested ? "canceled" : (state.completionError?.errorClass ?? result.errorCode),
-            errorMessage: result.error,
+            errorMessage: state.completionError?.errorMessage ?? result.error,
           })
         }
       } finally {
@@ -2470,12 +2470,32 @@ export const createRuntimeEngine = ({
     }
   }
 
-  const cancel = (id: Id): Result<{ run: Run }, "NOT_FOUND"> => {
-    const browserRunId = kernel.services.use("browser.cancelRequest")?.({ runId: id })
-    if (browserRunId && browserRunId !== id) return cancel(browserRunId)
+  const cancel: RuntimeEngine["cancel"] = (id, reason) => {
+    const browserRunId = kernel.services.use("browser.cancelRequest")?.({
+      runId: id,
+      ...(reason ? { reason: "timeout" as const } : {}),
+    })
+    if (browserRunId && browserRunId !== id) return cancel(browserRunId, reason)
     const run = persistence.getRun(id)
     if (!run) return { success: false, errorCode: "NOT_FOUND", error: "Run not found" }
     if (!["queued", "starting", "running"].includes(run.status)) return { success: true, run }
+    if (reason) {
+      const state = getState(id)
+      state.completionError = reason
+      controllers.get(id)?.abort()
+      approvalBridge.cancelRun(id)
+      const store = kernel.services.use("store.api")
+      const thread = store?.getThread({ threadId: run.threadId })
+      if (store && thread)
+        void failTurn({ run, state, store, thread, ...reason }).catch(() => {
+          kernel.log({
+            level: "error",
+            module: "runtime",
+            msg: "Não foi possível encerrar o pedido que excedeu o prazo",
+          })
+        })
+      return { success: true, run }
+    }
     if (run.status === "queued" || (run.status === "starting" && run.providerStartedAt == null)) {
       controllers.get(id)?.abort()
       const store = kernel.services.use("store.api")

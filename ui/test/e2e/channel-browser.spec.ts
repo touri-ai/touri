@@ -23,7 +23,7 @@ test.describe("browser card in a channel", () => {
         await expect(page.getByText("Todos no canal veem")).toBeVisible()
         await expect(page.getByRole("status", { name: "Léo no navegador · pedido de Ana" })).toBeVisible()
         await expect(page.getByTitle("Léo trabalhando aqui")).toBeVisible()
-        if (scenario.name === "takeover-hidden-preview")
+        if (scenario.name !== "requester")
           await expect(page.locator(".composer-browser-status")).toContainText("Ana está no controle")
         else await expect(page.locator(".composer-browser-status")).toContainText("para Ana")
         await expect(
@@ -35,7 +35,7 @@ test.describe("browser card in a channel", () => {
         expect(replyHeader?.y).toBeGreaterThanOrEqual((editGroup?.y ?? 0) + (editGroup?.height ?? 0))
         const visibleUrl = scenario.name === "takeover-hidden-preview" ? 0 : 1
         await expect(
-          page.locator(".browser-activity-subtitle").filter({ hasText: "estadias.example.test/busca" }),
+          page.locator(".browser-activity-subtitle").filter({ hasText: "estadias.example.test" }),
         ).toHaveCount(visibleUrl)
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
         expect(overflow).toBeLessThanOrEqual(0)

@@ -157,6 +157,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
   const waitRun = (id: string, signal: AbortSignal, deadline: number | null): Promise<Run> =>
     new Promise((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout> | undefined
+      let timedOut = false
       let dispose = () => {}
       const cleanup = () => {
         dispose()
@@ -180,9 +181,41 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
           return
         }
         // Queue time must not consume a member's chat budget. Routines retain their absolute deadline.
-        if (timer || (deadline === null && run.startedAt === null)) return
-        const expiresAt = deadline ?? (run.startedAt ?? Date.now()) + timeoutMs
-        timer = setTimeout(abort, Math.max(1, expiresAt - Date.now()))
+        if (timedOut || timer || (deadline === null && run.startedAt === null)) return
+        const browserActive = Boolean(
+          db
+            .query(
+              "SELECT 1 FROM browser_channel_runs WHERE current_run_id = ? AND status IN ('running','queued','needs_you','taken_over') LIMIT 1",
+            )
+            .get(id),
+        )
+        const budget = browserActive ? Math.max(timeoutMs, 10 * 60_000) : timeoutMs
+        const expiresAt = deadline ?? (run.startedAt ?? Date.now()) + budget
+        timer = setTimeout(
+          () => {
+            timer = undefined
+            if (Date.now() < expiresAt) {
+              check()
+              return
+            }
+            const browserNow = db
+              .query(
+                "SELECT 1 FROM browser_channel_runs WHERE current_run_id = ? AND status IN ('running','queued','needs_you','taken_over') LIMIT 1",
+              )
+              .get(id)
+            if (deadline === null && browserNow && expiresAt < (run.startedAt ?? 0) + 10 * 60_000) {
+              check()
+              return
+            }
+            timedOut = true
+            engine.cancel(id, {
+              errorClass: "timeout",
+              errorMessage: "O pedido excedeu o prazo de execução. Tente novamente.",
+            })
+            check()
+          },
+          Math.max(1, expiresAt - Date.now()),
+        )
       }
       dispose = kernel.subscribe(({ event }) => {
         if (
