@@ -95,6 +95,7 @@ type ChatPanelProps = {
   group?: BotGroup | null
   groupMembers?: Bot[]
   onEditGroup?: () => void
+  onInviteToGroup?: (() => void) | undefined
   channelBrowser?: ChannelBrowserValue | null
   focusApproval?: ApprovalFocus | undefined
   panelOpen?: boolean
@@ -1153,6 +1154,7 @@ export const ChatPanel = ({
   group = null,
   groupMembers = [],
   onEditGroup = () => {},
+  onInviteToGroup,
   channelBrowser = null,
   focusApproval,
   thread,
