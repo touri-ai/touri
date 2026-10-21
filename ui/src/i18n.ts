@@ -4,6 +4,10 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "Este documento contém entrada privada. Continue a tarefa em uma nova aba.":
+    "Este documento contém entrada privada. Continue a tarefa em uma nova aba.",
+  "Capturas de tela ficam bloqueadas depois do controle privado do navegador.":
+    "Capturas de tela ficam bloqueadas depois do controle privado do navegador.",
   "Para convidar pessoas, configure o endereço público HTTPS em Pessoas nas preferências.":
     "Para convidar pessoas, configure o endereço público HTTPS em Pessoas nas preferências.",
   "Informe um endereço HTTPS válido, sem caminho.": "Informe um endereço HTTPS válido, sem caminho.",
@@ -3114,6 +3118,10 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Este documento contém entrada privada. Continue a tarefa em uma nova aba.":
+    "This document contains private input. Continue the task in a new tab.",
+  "Capturas de tela ficam bloqueadas depois do controle privado do navegador.":
+    "Screenshots are blocked after private browser control.",
   "Para convidar pessoas, configure o endereço público HTTPS em Pessoas nas preferências.":
     "To invite people, set the public HTTPS address under People in preferences.",
   "Informe um endereço HTTPS válido, sem caminho.": "Enter a valid HTTPS address without a path.",

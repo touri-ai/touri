@@ -2874,6 +2874,12 @@ export const createBrowserEngine = ({
         const knownTabs = new Set(store.list(tab.info.ownerBotId).map((item) => item.info.tabId))
         const live = await ensureTab(tab, { signal: operationSignal, budgetMs: timeoutMs })
         if (!live.success) return toToolError(live.failure)
+        await refreshTakeoverPrivacy(tab)
+        if (tab.privateInput && tab.privateAfterTakeover && tool !== "browser_navigate")
+          return toToolError({
+            errorCode: "PRIVATE_TAKEOVER_ACTIVE",
+            error: "Este documento contém entrada privada. Continue a tarefa em uma nova aba.",
+          })
         let operationResult: OperationResult<unknown>
         try {
           operationResult = await withOneTransientRetry({
@@ -3139,6 +3145,11 @@ export const createBrowserEngine = ({
     const owned = getTab({ tabId, botId })
     if (!owned.success) return toToolError(owned.failure)
     const tab = owned.value
+    if (tab.privateInput)
+      return toToolError({
+        errorCode: "PRIVATE_TAKEOVER_ACTIVE",
+        error: "Capturas de tela ficam bloqueadas depois do controle privado do navegador.",
+      })
     return withTabQueue({
       tab,
       timeoutMs,

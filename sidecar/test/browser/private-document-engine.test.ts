@@ -120,11 +120,26 @@ test("handoff cannot reveal the original document through changed metadata or br
   expect(JSON.stringify(original)).not.toContain("private-input-fixture")
   expect(await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })).toBeNull()
   expect(fixture.captures()).toBe(1)
+  const clicked = await fixture.engine.click({
+    tabId: "tab",
+    botId: "leo",
+    target: { kind: "role", role: "textbox", name: "Synthetic field" },
+    button: "left",
+    clickCount: 1,
+    timeoutMs: 1000,
+    signal,
+  })
+  expect(clicked).toMatchObject({ success: false, errorCode: "PRIVATE_TAKEOVER_ACTIVE" })
+  expect(JSON.stringify(clicked)).not.toContain("private-input-fixture")
 
   fixture.navigate(2)
   const publicPage = await fixture.engine.snapshot({ botId: "leo", tabId: "tab", image: "always", signal })
   expect(publicPage).toMatchObject({ success: true, structured: { text: "Public results", image: null } })
   expect(await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })).not.toBeNull()
+  expect(await fixture.engine.screenshot({ tabId: "tab", botId: "leo", fullPage: false, signal })).toMatchObject({
+    success: false,
+    errorCode: "PRIVATE_TAKEOVER_ACTIVE",
+  })
 
   fixture.navigate(1)
   const restored = await fixture.engine.snapshot({ botId: "leo", tabId: "tab", image: "always", signal })
