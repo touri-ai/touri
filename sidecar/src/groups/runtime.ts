@@ -727,6 +727,12 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     return true
   }
   const cancel = (id: string): boolean => {
+    const browser = db
+      .query(
+        "SELECT current_run_id FROM browser_channel_runs WHERE run_id = ? AND status IN ('running','needs_you','taken_over')",
+      )
+      .get(id) as { current_run_id: string } | null
+    if (browser && browser.current_run_id !== id) return cancel(browser.current_run_id)
     const link = db.query("SELECT turn_id FROM group_run_links WHERE run_id=?").get(id) as { turn_id: string } | null
     const root = link?.turn_id ?? id
     const turn = turns.get(root)

@@ -196,31 +196,6 @@ export const getBrowserActivityKind = (part: ToolCallPart): string => {
   return "other"
 }
 
-export const getBrowserActivityProgressLabel = (part: ToolCallPart, locale: Locale): string => {
-  const labels: Record<string, keyof typeof ptBR> = {
-    open: "Opening a page",
-    navigate: "Opening a page",
-    snapshot: "Reading the page",
-    click: "Clicking",
-    type: "Filling a field",
-    fill_form: "Filling a form",
-    select_option: "Selecting an option",
-    set_checked: "Updating a choice",
-    screenshot: "Taking a screenshot",
-    take_screenshot: "Taking a screenshot",
-    scroll: "Scrolling the page",
-    hover: "Inspecting an element",
-    wait_for: "Waiting for the page",
-    request_takeover: "Asking for your help",
-    submit_secret: "Filling a saved credential",
-    fill_secret: "Filling a saved credential",
-    press: "Pressing a key",
-  } satisfies Record<string, keyof typeof ptBR>
-  const label = labels[getBrowserAction(part)] ?? "Working in the browser"
-
-  return t(label, {}, locale)
-}
-
 export const getBrowserActivityNotice = (part: ToolCallPart, locale: Locale): string | null => {
   const output = part.outputJson?.slice(0, MAX_OUTPUT_LENGTH) ?? ""
   const outputValue = asToolRecord(parseToolValue(redactToolText(output)))

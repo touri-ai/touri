@@ -12,6 +12,7 @@ import { providerLoginPty } from "../platform/provider-login"
 import { touriVersion } from "../version"
 import { BOT_IMAGE, imageContext } from "../vm/image"
 import { NATIVE_VAULT_GUIDANCE } from "../vm/provider-login"
+import { getBrowserExecutableCheck } from "./browser-executable"
 import { browserSessionChecks } from "./browserSessions"
 import { check, shellQuote } from "./check"
 import { codexSessionsCheck } from "./codex-sessions"
@@ -379,24 +380,32 @@ export const collectLocalChecks = async (
       'exec "$SHELL" -l',
     ),
   ]
-  const [claude, codex, opencode, containers, keychain, logins, codexSessions, browserSessions] = await Promise.all([
-    cliChecks("claude", probes.which("claude", path), safeRun, signal, probes.platform),
-    cliChecks("codex", probes.which("codex", path), safeRun, signal, probes.platform),
-    openCodeChecks(
-      probes.which("opencode", path) ??
-        probes.which(join(environment.HOME ?? homedir(), ".opencode/bin/opencode"), path),
-      safeRun,
-      signal,
-      environment,
-      kernel,
-    ),
-    containerChecks(kernel, probes.which("container", path), safeRun, signal, probes, path),
-    keychainCheck(kernel, signal, probes),
-    providerLoginChecks(kernel, environment.HOME ?? homedir(), signal, probes),
-    codexSessionsCheck(environment.HOME ?? homedir(), signal),
-    browserSessionChecks(kernel, signal, probes),
-  ])
-  checks.push(...claude, ...codex, ...opencode, ...logins, codexSessions, ...browserSessions)
+  const [claude, codex, opencode, containers, keychain, logins, codexSessions, browserSessions, browserExecutable] =
+    await Promise.all([
+      cliChecks("claude", probes.which("claude", path), safeRun, signal, probes.platform),
+      cliChecks("codex", probes.which("codex", path), safeRun, signal, probes.platform),
+      openCodeChecks(
+        probes.which("opencode", path) ??
+          probes.which(join(environment.HOME ?? homedir(), ".opencode/bin/opencode"), path),
+        safeRun,
+        signal,
+        environment,
+        kernel,
+      ),
+      containerChecks(kernel, probes.which("container", path), safeRun, signal, probes, path),
+      keychainCheck(kernel, signal, probes),
+      providerLoginChecks(kernel, environment.HOME ?? homedir(), signal, probes),
+      codexSessionsCheck(environment.HOME ?? homedir(), signal),
+      browserSessionChecks(kernel, signal, probes),
+      getBrowserExecutableCheck({
+        platform: probes.platform,
+        path,
+        executable: environment.TOURI_CHROME_BIN,
+        which: probes.which,
+        signal,
+      }),
+    ])
+  checks.push(...claude, ...codex, ...opencode, ...logins, codexSessions, ...browserSessions, browserExecutable)
   if (probes.platform !== "darwin") {
     const pty = providerLoginPty(probes.platform, "provider", [], environment.TOURI_DESKTOP_HELPER)
     const available = pty.supported && !!probes.which(pty.command, path)

@@ -123,14 +123,14 @@ test("channel browser runs persist one active slot per bot and promote queued wo
     const third = channelRuns.enter(context("leo-3", "leo", "channel-leo"))
     const fourth = channelRuns.enter(context("leo-4", "leo", "channel-leo"))
     expect(await channelRuns.enter(context("bia-1", "bia-bot", "channel-bia"))).toEqual({ success: true })
-    expect(await channelRuns.enter(context("leo-other-channel", "leo", "channel-2-leo"))).toEqual({ success: true })
+    const otherChannel = channelRuns.enter(context("leo-other-channel", "leo", "channel-2-leo"))
     expect(channelRuns.list(["travel"]).map((run) => [run.runId, run.status, run.queuePosition])).toEqual([
       ["bia-1", "running", null],
       ["leo-1", "running", null],
       ["leo-2", "queued", 1],
       ["leo-3", "queued", 2],
       ["leo-4", "queued", 3],
-      ["leo-other-channel", "running", null],
+      ["leo-other-channel", "queued", 4],
     ])
 
     publishRunStatus("leo-1", "succeeded")
@@ -156,6 +156,7 @@ test("channel browser runs persist one active slot per bot and promote queued wo
     expect(channelRuns.get("leo-4")?.status).toBe("running")
     publishRunStatus("leo-4", "succeeded")
     publishRunStatus("bia-1", "succeeded")
+    expect(await otherChannel).toEqual({ success: true })
     publishRunStatus("leo-other-channel", "succeeded")
     expect(channelRuns.list(["travel"])).toEqual([])
   } finally {
@@ -232,7 +233,7 @@ test("the browser queue serializes one bot in a channel while another bot stays 
   const first = { runId: "a1", channelId: "channel-1", botId: "leo", queuedAt: 1 }
   const second = { runId: "a2", channelId: "channel-1", botId: "leo", queuedAt: 2 }
   const otherBot = { runId: "b1", channelId: "channel-1", botId: "ana-bot", queuedAt: 3 }
-  const active = new Set(["channel-1:leo"])
+  const active = new Set(["leo"])
 
   expect(getNextChannelBrowserRun({ queued: [first, second, otherBot], active })).toEqual(otherBot)
   expect(getNextChannelBrowserRun({ queued: [first, second], active: new Set() })).toEqual(first)

@@ -8,7 +8,7 @@ test("computer-use channel migration stores requester, controller and queue stat
   const root = mkdtempSync(join(tmpdir(), "touri-computer-use-channel-"))
   const db = openDatabase({ filename: join(root, "test.db") })
   try {
-    expect(SCHEMA_VERSION).toBe(41)
+    expect(SCHEMA_VERSION).toBe(42)
     expect(db.query("SELECT value FROM schema_meta WHERE key = 'browser_channel_runs_version'").get()).toEqual({
       value: "1",
     })
@@ -20,7 +20,7 @@ test("computer-use channel migration stores requester, controller and queue stat
     ).toEqual({ name: "target_person_id" })
     expect(db.query("PRAGMA index_list('browser_channel_runs')").all()).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: "browser_channel_runs_queue" }),
+        expect.objectContaining({ name: "browser_channel_runs_bot_queue" }),
         expect.objectContaining({ name: "browser_channel_runs_thread_queue" }),
         expect.objectContaining({ name: "browser_channel_runs_active_slot", unique: 1 }),
       ]),

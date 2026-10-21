@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs"
+import { access, readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import type { Kernel } from "@touri/contracts"
@@ -135,7 +135,7 @@ export const attachLocalChrome = ({
   dataDir = process.platform === "darwin"
     ? join(homedir(), "Library", "Application Support", "Google", "Chrome")
     : join(homedir(), ".config", "google-chrome"),
-  timeoutMs = 5000,
+  timeoutMs = 30_000,
 }: {
   dataDir?: string
   timeoutMs?: number
@@ -151,7 +151,7 @@ export const attachLocalChrome = ({
     pending = (async () => {
       let transport: CdpClient | null = null
       try {
-        const lines = readFileSync(join(dataDir, "DevToolsActivePort"), "utf8").split(/\r?\n/)
+        const lines = (await readFile(join(dataDir, "DevToolsActivePort"), "utf8")).split(/\r?\n/)
         const port = lines[0]?.trim() ?? ""
         const path = lines[1]?.trim() ?? ""
         // Accept only the two Chrome fields, never a URL, authority, query or redirect.
@@ -207,7 +207,14 @@ const chromeExecutable = async ({
       Bun.which("google-chrome")
     )
   }
-  if (mode === "system-chrome" && existsSync(systemChrome)) return systemChrome
+  if (
+    mode === "system-chrome" &&
+    (await access(systemChrome).then(
+      () => true,
+      () => false,
+    ))
+  )
+    return systemChrome
   const result = await downloadChromeForTesting({
     root: kernel.paths.appData,
     destination: join(kernel.paths.browserDir, "chrome"),
@@ -253,11 +260,11 @@ export const createChromeLauncher = ({
   const waitForActivePort = async (profile: string): Promise<{ port: number; path: string } | null> => {
     const activePortPath = join(profile, "DevToolsActivePort")
     return poll({
-      timeoutMs: 5000,
+      timeoutMs: 30_000,
       intervalMs: 50,
       probe: async () => {
         try {
-          return parseDevToolsActivePort(readFileSync(activePortPath, "utf8"))
+          return parseDevToolsActivePort(await readFile(activePortPath, "utf8"))
         } catch {
           return null
         }

@@ -4,6 +4,12 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "Navegador do bot": "Navegador do bot",
+  "Navegador instalado. A conexão e a página serão verificadas ao abrir o navegador.":
+    "Navegador instalado. A conexão e a página serão verificadas ao abrir o navegador.",
+  "Nenhum navegador executável foi encontrado. Instale um navegador compatível no computador do bot e verifique novamente.":
+    "Nenhum navegador executável foi encontrado. Instale um navegador compatível no computador do bot e verifique novamente.",
+
   "Assisted browser choices are off or have no saved key. You can enable them in API model settings. The browser will keep working.":
     "A ajuda nas escolhas está desativada ou sem chave salva. Você pode ativá-la em Modelos por API. O navegador continuará funcionando.",
   "Use this key for assisted browser choices": "Usar esta chave para ajudar nas escolhas do navegador",
@@ -3018,6 +3024,12 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Navegador do bot": "Bot browser",
+  "Navegador instalado. A conexão e a página serão verificadas ao abrir o navegador.":
+    "Browser installed. The connection and page will be checked when the browser opens.",
+  "Nenhum navegador executável foi encontrado. Instale um navegador compatível no computador do bot e verifique novamente.":
+    "No executable browser was found. Install a compatible browser on the bot's computer and check again.",
+
   "Take over tab": "Take over",
   "Check your tools": "Check your tools",
   "See what is ready to use and what needs your attention.": "See what is ready to use and what needs your attention.",

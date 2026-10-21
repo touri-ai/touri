@@ -2328,9 +2328,11 @@ export const createRuntimeEngine = ({
         error: bot.machine === "cloud" ? "Este bot usa o runtime remoto." : "Bot is paused",
       }
     if (trigger === "user") goals.pauseForUser(threadId)
-    const request = store
-      .activePath({ threadId, leafId: requestMessageId })
-      .find((message) => message.id === requestMessageId)
+    const request = store.getPathMessage
+      ? store.getPathMessage({ threadId, messageId: requestMessageId })
+      : store
+          .activePath({ threadId, leafId: requestMessageId, limit: 1 })
+          .find((message) => message.id === requestMessageId)
     const requester = requesterPersonId ?? getRequesterPersonId(request?.sender) ?? undefined
     const run: Run = {
       id: kernel.newId(),

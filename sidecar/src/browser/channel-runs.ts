@@ -11,7 +11,8 @@ const VISIBLE_STATUSES: Array<BrowserChannelRunStatus> = ["queued", ...LIVE_STAT
 type QueueItem = { runId: string; channelId: string; botId: string; queuedAt: number }
 type BrowserChannelRunRow = {
   run_id: string
-  group_id: string
+  current_run_id: string
+  group_id: string | null
   thread_id: string
   bot_id: string
   requester_person_id: string | null
@@ -83,14 +84,14 @@ export const getNextChannelBrowserRun = ({
   active: ReadonlySet<string>
 }): QueueItem | undefined =>
   queued
-    .filter((item) => !active.has(`${item.channelId}:${item.botId}`))
+    .filter((item) => !active.has(item.botId))
     .slice()
     .sort((first, second) => first.queuedAt - second.queuedAt || first.runId.localeCompare(second.runId))[0]
 
 const selectRunSql = `SELECT c.*,
   CASE WHEN c.status = 'queued' THEN 1 + (
     SELECT COUNT(*) FROM browser_channel_runs queued
-    WHERE queued.thread_id = c.thread_id AND queued.bot_id = c.bot_id AND queued.status = 'queued'
+    WHERE queued.bot_id = c.bot_id AND queued.status = 'queued'
       AND (queued.queued_at < c.queued_at OR (queued.queued_at = c.queued_at AND queued.run_id < c.run_id))
   ) ELSE NULL END AS queue_position
   FROM browser_channel_runs c`
@@ -106,14 +107,20 @@ export const createChannelBrowserRuns = ({
   escalationMs?: number
   now?: () => number
 }) => {
+  const activationListeners = new Map<string, Set<() => void>>()
+  let disposed = false
   const escalationTimers = new Map<Id, ReturnType<typeof setTimeout>>()
   const personName = (personId: string | null): string | null =>
     personId ? (kernel.services.use("work.personName")?.(personId) ?? null) : null
   const getRaw = (runId: string): BrowserChannelRunRow | null =>
-    (database.query(`${selectRunSql} WHERE c.run_id = ?`).get(runId) as BrowserChannelRunRow | null) ?? null
+    (database
+      .query(
+        `${selectRunSql} WHERE c.run_id = ? OR c.current_run_id = ? OR c.run_id = (SELECT original_run_id FROM browser_takeover_continuations WHERE run_id = ?)`,
+      )
+      .get(runId, runId, runId) as BrowserChannelRunRow | null) ?? null
   const toPublic = (row: BrowserChannelRunRow): BrowserChannelRun => ({
     runId: row.run_id,
-    groupId: row.group_id,
+    groupId: row.group_id ?? "",
     threadId: row.thread_id,
     botId: row.bot_id,
     requesterPersonId: row.requester_person_id,
@@ -134,14 +141,17 @@ export const createChannelBrowserRuns = ({
     return row ? toPublic(row) : null
   }
   const publish = (runId: string): void => {
+    activationListeners.get(runId)?.forEach((listener) => {
+      listener()
+    })
     const run = get(runId)
-    if (run) kernel.publish({ type: "browser.channel_run", run })
+    if (run?.groupId) kernel.publish({ type: "browser.channel_run", run })
   }
-  const publishQueue = (channelId: string, botId: string): void => {
+  const publishQueue = (_channelId: string, botId: string): void => {
     const rows = database
-      .query(`${selectRunSql} WHERE c.thread_id = ? AND c.bot_id = ? AND c.status = 'queued'
+      .query(`${selectRunSql} WHERE c.bot_id = ? AND c.status = 'queued' AND c.group_id IS NOT NULL
         ORDER BY c.queued_at, c.run_id LIMIT ${MAX_QUEUED_BROWSER_RUNS}`)
-      .all(channelId, botId) as BrowserChannelRunRow[]
+      .all(botId) as BrowserChannelRunRow[]
     rows.forEach((row) => {
       kernel.publish({ type: "browser.channel_run", run: toPublic(row) })
     })
@@ -150,7 +160,7 @@ export const createChannelBrowserRuns = ({
     if (groupIds && groupIds.length === 0) return []
     const scope = groupIds ? `AND c.group_id IN (${groupIds.map(() => "?").join(",")})` : ""
     const rows = database
-      .query(`${selectRunSql} WHERE c.status IN ('queued','running','needs_you','taken_over') ${scope}
+      .query(`${selectRunSql} WHERE c.group_id IS NOT NULL AND c.status IN ('queued','running','needs_you','taken_over') ${scope}
         ORDER BY c.group_id, c.thread_id, c.bot_id, c.queued_at, c.run_id LIMIT 100`)
       .all(...(groupIds ?? [])) as BrowserChannelRunRow[]
     return rows.map(toPublic)
@@ -267,8 +277,8 @@ export const createChannelBrowserRuns = ({
         if (!LIVE_STATUSES.includes(current.status)) return [runId]
         const queued = database
           .query(`SELECT run_id, bot_id, queued_at FROM browser_channel_runs
-            WHERE thread_id = ? AND bot_id = ? AND status = 'queued' ORDER BY queued_at, run_id LIMIT 20`)
-          .all(current.thread_id, current.bot_id) as Array<{
+            WHERE bot_id = ? AND status = 'queued' ORDER BY queued_at, run_id LIMIT 20`)
+          .all(current.bot_id) as Array<{
           run_id: string
           bot_id: string
           queued_at: number
@@ -325,6 +335,10 @@ export const createChannelBrowserRuns = ({
         resolve(active)
       }
       const check = (): void => {
+        if (disposed) {
+          finish(false)
+          return
+        }
         const row = getRaw(runId)
         if (row?.status === "running") finish(true)
         else if (!row || !["queued", "needs_you", "taken_over"].includes(row.status)) finish(false)
@@ -333,9 +347,13 @@ export const createChannelBrowserRuns = ({
         cancelQueued(runId)
         finish(false)
       }
-      dispose = kernel.subscribe(({ event }) => {
-        if (event.type === "browser.channel_run" && event.run.runId === runId) check()
-      })
+      const listeners = activationListeners.get(runId) ?? new Set<() => void>()
+      listeners.add(check)
+      activationListeners.set(runId, listeners)
+      dispose = () => {
+        listeners.delete(check)
+        if (listeners.size === 0) activationListeners.delete(runId)
+      }
       signal.addEventListener("abort", onAbort, { once: true })
       if (signal.aborted) onAbort()
       else check()
@@ -346,24 +364,28 @@ export const createChannelBrowserRuns = ({
     if (!ctx.runId || ctx.signal.aborted) return { success: true }
     if (!kernel.services.use("work.personChannelIds")) return { success: true }
     const context = getContext(ctx)
-    if (!context?.group_id || !context.group_thread_id) return { success: true }
-    const runId = ctx.runId
+    if (!context) return { success: true }
+    const continuation = database
+      .query("SELECT original_run_id FROM browser_takeover_continuations WHERE run_id = ?")
+      .get(ctx.runId) as { original_run_id: string } | null
+    const runId = continuation?.original_run_id ?? ctx.runId
     const outcome = database
       .transaction(() => {
         const existing = database.query("SELECT status FROM browser_channel_runs WHERE run_id = ?").get(runId) as {
           status: BrowserChannelRunStatus
         } | null
-        if (existing) return { status: existing.status, inserted: false }
+        if (existing) {
+          database.query("UPDATE browser_channel_runs SET current_run_id = ? WHERE run_id = ?").run(ctx.runId, runId)
+          return { status: existing.status, inserted: false }
+        }
         const active = database
-          .query(`SELECT run_id FROM browser_channel_runs WHERE thread_id = ? AND bot_id = ?
+          .query(`SELECT run_id FROM browser_channel_runs WHERE bot_id = ?
             AND status IN ('running','needs_you','taken_over') LIMIT 1`)
-          .get(context.group_thread_id, ctx.botId)
+          .get(ctx.botId)
         const queuedCount = (
           database
-            .query(
-              "SELECT COUNT(*) AS count FROM browser_channel_runs WHERE thread_id = ? AND bot_id = ? AND status = 'queued'",
-            )
-            .get(context.group_thread_id, ctx.botId) as { count: number }
+            .query("SELECT COUNT(*) AS count FROM browser_channel_runs WHERE bot_id = ? AND status = 'queued'")
+            .get(ctx.botId) as { count: number }
         ).count
         if (active && queuedCount >= MAX_QUEUED_BROWSER_RUNS) return { status: null, inserted: false }
         const status: BrowserChannelRunStatus = active ? "queued" : "running"
@@ -371,20 +393,21 @@ export const createChannelBrowserRuns = ({
           ? ((
               database
                 .query(
-                  "SELECT MAX(queued_at) AS queued_at FROM browser_channel_runs WHERE thread_id = ? AND bot_id = ? AND status = 'queued'",
+                  "SELECT MAX(queued_at) AS queued_at FROM browser_channel_runs WHERE bot_id = ? AND status = 'queued'",
                 )
-                .get(context.group_thread_id, ctx.botId) as { queued_at: number | null }
+                .get(ctx.botId) as { queued_at: number | null }
             ).queued_at ?? -1)
           : -1
         const queuedAt = Math.max(now(), lastQueuedAt + 1)
         database
           .query(`INSERT INTO browser_channel_runs
-            (run_id,group_id,thread_id,bot_id,requester_person_id,responsible_person_id,status,queued_at,started_at)
-            VALUES (?,?,?,?,?,?,?,?,?)`)
+            (run_id,current_run_id,group_id,thread_id,bot_id,requester_person_id,responsible_person_id,status,queued_at,started_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?)`)
           .run(
             runId,
+            ctx.runId,
             context.group_id,
-            context.group_thread_id,
+            context.group_thread_id ?? ctx.threadId,
             ctx.botId,
             context.requester_person_id,
             context.responsible_person_id ?? kernel.services.use("work.defaultPersonId")?.() ?? null,
@@ -414,10 +437,11 @@ export const createChannelBrowserRuns = ({
           error: "O turno do navegador foi cancelado antes de começar.",
         }
   }
-  const needsYou = (runId: string | null, reason: string): boolean => {
-    if (!runId) return false
-    const row = getRaw(runId)
+  const needsYou = (currentRunId: string | null, reason: string): boolean => {
+    if (!currentRunId) return false
+    const row = getRaw(currentRunId)
     if (!row || !["running", "needs_you"].includes(row.status)) return false
+    const runId = row.run_id
     if (row.status === "running")
       database
         .query("UPDATE browser_channel_runs SET status = 'needs_you', needs_you_at = ? WHERE run_id = ?")
@@ -514,9 +538,21 @@ export const createChannelBrowserRuns = ({
     )
   const onRunUpdated = kernel.subscribe(({ event }) => {
     if (event.type !== "run.updated") return
-    if (event.run.status === "succeeded") updateTerminal(event.run.id, "succeeded")
-    if (event.run.status === "failed" || event.run.status === "interrupted") updateTerminal(event.run.id, "failed")
-    if (event.run.status === "canceled") updateTerminal(event.run.id, "canceled")
+    const row = getRaw(event.run.id)
+    if (!row) return
+    if (row.current_run_id !== event.run.id) {
+      const continuation = database
+        .query("SELECT original_run_id FROM browser_takeover_continuations WHERE run_id = ?")
+        .get(event.run.id) as { original_run_id: string } | null
+      if (continuation?.original_run_id !== row.run_id) return
+      database
+        .query("UPDATE browser_channel_runs SET current_run_id = ? WHERE run_id = ?")
+        .run(event.run.id, row.run_id)
+    }
+    if (event.run.status === "succeeded" && ["needs_you", "taken_over"].includes(row.status)) return
+    if (event.run.status === "succeeded") updateTerminal(row.run_id, "succeeded")
+    if (event.run.status === "failed" || event.run.status === "interrupted") updateTerminal(row.run_id, "failed")
+    if (event.run.status === "canceled") updateTerminal(row.run_id, "canceled")
   })
   const pending = database
     .query("SELECT run_id FROM browser_channel_runs WHERE status = 'needs_you' AND escalated_at IS NULL LIMIT 100")
@@ -536,6 +572,13 @@ export const createChannelBrowserRuns = ({
     returnControl,
     isPreviewHidden,
     dispose: () => {
+      disposed = true
+      activationListeners.forEach((listeners) => {
+        listeners.forEach((listener) => {
+          listener()
+        })
+      })
+      activationListeners.clear()
       onRunUpdated()
       escalationTimers.forEach(clearTimeout)
       escalationTimers.clear()
