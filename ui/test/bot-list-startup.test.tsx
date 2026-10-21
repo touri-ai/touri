@@ -31,7 +31,9 @@ it.each([false, true])(
     render(<App kernel={{ services: { api: { ...api, request } } }} />)
     expect(screen.getByText("Preparando o espaço de trabalho…")).toBeVisible()
     await act(async () => botsReady())
-    await waitFor(() => expect(document.querySelectorAll(".bot-entry")).toHaveLength(api.getState().bots.length))
+    await waitFor(() =>
+      expect(document.querySelectorAll("#sidebar-mode-panel-bots .bot-entry")).toHaveLength(api.getState().bots.length),
+    )
     expect(screen.queryByText("Preparando o espaço de trabalho…")).not.toBeInTheDocument()
     expect(api.calls.some((call) => call.route === "GET /machines")).toBe(false)
     await act(async () => detailsReady())
@@ -76,7 +78,9 @@ it("keeps a native conversation link pending until the thread index is ready", a
     return {}
   })
   render(<App kernel={{ services: { api: { ...api, request }, invoke: invoke as TauriInvoke } }} />)
-  await waitFor(() => expect(document.querySelectorAll(".bot-entry")).toHaveLength(api.getState().bots.length))
+  await waitFor(() =>
+    expect(document.querySelectorAll("#sidebar-mode-panel-bots .bot-entry")).toHaveLength(api.getState().bots.length),
+  )
   expect(invoke).not.toHaveBeenCalledWith("deep_link_ack", { requestId: 7 })
   await act(async () => detailsReady())
   await waitFor(() => expect(invoke).toHaveBeenCalledWith("deep_link_ack", { requestId: 7 }))

@@ -28,6 +28,9 @@ describe("sidebar work mode", () => {
     const workPanel = document.getElementById("sidebar-mode-panel-work")
     const botsPanel = document.getElementById("sidebar-mode-panel-bots")
     if (!workPanel || !botsPanel) throw new Error("Missing persistent sidebar mode panels")
+    const botEntry = document.querySelector('[data-bot-entry="bot-mark"]')
+    const dmEntry = document.querySelector('[data-work-bot-entry="bot-mark"]')
+    if (!botEntry || !dmEntry) throw new Error("Both navigation lists should remain mounted")
     expect(workPanel).not.toHaveAttribute("hidden")
     expect(botsPanel).toHaveAttribute("hidden")
     expect(screen.getByRole("tab", { name: "Work, 3 mensagens não lidas" })).toBeVisible()
@@ -37,6 +40,10 @@ describe("sidebar work mode", () => {
     expect(within(channels).getByRole("button", { name: "Equipe QA, 3 mensagens não lidas" })).toBeVisible()
     expect(within(channels).getByRole("button", { name: "Novo canal" })).toBeVisible()
     expect(screen.getByRole("heading", { name: "Mensagens diretas" })).toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: "Buscar canais e mensagens" }))
+    expect(await screen.findByRole("dialog", { name: "Paleta de comandos" })).toBeVisible()
+    fireEvent.keyDown(window, { key: "Escape" })
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Paleta de comandos" })).toBeNull())
 
     fireEvent.click(screen.getByRole("tab", { name: /^Bots,/ }))
 
@@ -45,12 +52,15 @@ describe("sidebar work mode", () => {
     expect(document.getElementById("sidebar-mode-panel-work")).toBe(workPanel)
     expect(workPanel).toHaveAttribute("hidden")
     expect(botsPanel).not.toHaveAttribute("hidden")
-    expect(document.querySelector('[data-bot-entry="bot-mark"]')).toBeVisible()
+    expect(document.querySelector('[data-bot-entry="bot-mark"]')).toBe(botEntry)
+    expect(document.querySelector('[data-work-bot-entry="bot-mark"]')).toBe(dmEntry)
     expect(screen.getByRole("tab", { name: /^Bots,/ })).toHaveAttribute("aria-selected", "true")
 
     fireEvent.click(screen.getByRole("tab", { name: /^Work,/ }))
     expect(document.getElementById("sidebar-mode-panel-work")).toBe(workPanel)
     expect(workPanel).not.toHaveAttribute("hidden")
+    expect(document.querySelector('[data-bot-entry="bot-mark"]')).toBe(botEntry)
+    expect(document.querySelector('[data-work-bot-entry="bot-mark"]')).toBe(dmEntry)
     const restoredChannel = within(screen.getByRole("region", { name: "Canais" })).getByRole("button", {
       name: /^Equipe QA/,
     })
@@ -153,6 +163,7 @@ describe("sidebar design", () => {
       botId: "bot-onb",
       title: "Conversa da loja",
     })
+    await api.request("PATCH /threads/:id", { unread: 3 }, { id: directMessage.id })
     api.notify({
       kind: "question",
       botId: "bot-onb",
@@ -165,13 +176,40 @@ describe("sidebar design", () => {
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
     const workTab = screen.getByRole("tab", {
-      name: "Work, 1 item precisa da sua atenção, 2 mensagens não lidas",
+      name: "Work, 1 item precisa da sua atenção, 5 mensagens não lidas",
     })
     const botsTab = screen.getByRole("tab", { name: "Bots, 1 item precisa da sua atenção" })
 
-    expect(workTab.querySelector(".sidebar-unread")).toHaveTextContent("3")
+    expect(workTab.querySelector(".sidebar-unread")).toHaveTextContent("6")
     expect(botsTab.querySelector(".sidebar-unread")).toHaveTextContent("1")
-    expect(workTab).toHaveAccessibleName("Work, 1 item precisa da sua atenção, 2 mensagens não lidas")
+    expect(workTab).toHaveAccessibleName("Work, 1 item precisa da sua atenção, 5 mensagens não lidas")
+  })
+
+  it("keeps channel unread messages out of the compact direct-message row", async () => {
+    const api = createMockApi()
+    await Promise.all(
+      api
+        .getState()
+        .threads.filter((candidate) => !candidate.groupId)
+        .map((candidate) => api.request("PATCH /threads/:id", { unread: 0 }, { id: candidate.id })),
+    )
+    const { thread } = await api.request("POST /groups", {
+      name: "Equipe QA",
+      color: "#dc2626",
+      avatarShape: "classic-none",
+      memberIds: ["bot-mark", "bot-onb"],
+      coordinatorBotId: "bot-mark",
+    })
+    await api.request("PATCH /threads/:id", { unread: 4 }, { id: thread.id })
+    window.localStorage.setItem("touri.sidebar.mode", "work")
+    render(<App kernel={{ services: { api } }} />)
+    await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+    expect(screen.getByRole("tab", { name: "Work, 4 mensagens não lidas" })).toBeVisible()
+    expect(screen.getByRole("button", { name: "Equipe QA, 4 mensagens não lidas" })).toBeVisible()
+    const directMessageRow = document.querySelector('[data-work-bot-entry="bot-mark"]')
+    if (!directMessageRow) throw new Error("Missing direct-message row")
+    expect(directMessageRow.querySelector(".sidebar-unread")).toBeNull()
   })
 
   it("hides both mode counts when there is nothing unread or waiting", async () => {
@@ -205,8 +243,8 @@ describe("sidebar design", () => {
     }
     expect(channelRows[0]?.querySelector(".sidebar-unread")).toHaveTextContent("12")
     expect(channelRows[0]?.querySelector(".group-mascots")).toBeNull()
-    expect(screen.queryByRole("textbox", { name: "Buscar canais e mensagens" })).toBeNull()
-    expect(screen.queryByRole("button", { name: "Buscar canais e mensagens" })).toBeNull()
+    expect(screen.getByRole("button", { name: "Buscar canais e mensagens" })).toBeVisible()
+    expect(channelRows[0]?.querySelectorAll(".channel-bot-avatar")).toHaveLength(2)
   })
 
   it("shows direct messages as one line and keeps the channel header free of counts", async () => {

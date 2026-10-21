@@ -60,7 +60,7 @@ it("limits primary navigation to the bot list and Advanced, with chat and compos
     .forEach((row) => {
       expect(row.closest(".bot-thread-tree")).not.toBeNull()
     })
-  expect(sidebar.querySelectorAll("[data-bot-entry]")).toHaveLength(3)
+  expect(sidebar.querySelectorAll("#sidebar-mode-panel-bots [data-bot-entry]")).toHaveLength(3)
   const advanced = within(sidebar).getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ })
   fireEvent.click(advanced)
   expect(

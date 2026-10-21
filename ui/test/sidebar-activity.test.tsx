@@ -222,6 +222,29 @@ it("keeps only hidden unread messages on an expanded bot and restores its total 
   expect(document.querySelector(".bot-thread-tree")).toBeNull()
 })
 
+it("keeps unread counts visible when the conversation is beyond the first five rows", () => {
+  const { bots, threads } = fixture()
+  const bot = bots[0]
+  const baseThread = threads[0]
+  if (!bot || !baseThread) throw new Error("Missing unread fixture")
+  const conversations = Array.from({ length: 7 }, (_, index) =>
+    makeThread(baseThread, `conversation-${index}`, bot.id, {
+      updatedAt: T0 + 7 - index,
+      unread: index === 6 ? 1 : 0,
+    }),
+  )
+  const selectedThreadId = conversations[0]?.id ?? null
+
+  renderSidebar({ bots: [bot], threads: conversations, selectedBotId: bot.id, selectedThreadId })
+
+  expect(within(entry(bot.id)).getByRole("img", { name: "1 mensagem não lida" })).toBeVisible()
+  const showMore = screen.getByRole("button", { name: /^Mostrar mais 2/ })
+  fireEvent.click(showMore)
+
+  const conversationTree = screen.getByRole("region", { name: "Conversas de alfa" })
+  expect(within(conversationTree).getByRole("img", { name: "1 mensagem não lida" })).toBeVisible()
+})
+
 it("shows active work as a clear navigation action in both languages", () => {
   const { bots, threads } = fixture()
   const running = run("run-active", "bot-alfa", "thread-alfa")

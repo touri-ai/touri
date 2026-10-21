@@ -242,6 +242,9 @@ export const Sidebar = (props: SidebarProps) => {
     },
     [navigate],
   )
+  const openSearch = useCallback((): void => {
+    navigate(() => propsRef.current.onSearch())
+  }, [navigate])
   const createChannel = useCallback((): void => {
     navigate(() => propsRef.current.onNewGroup?.())
   }, [navigate])
@@ -281,16 +284,6 @@ export const Sidebar = (props: SidebarProps) => {
     () => new Set(attention.flatMap((item) => (item.threadId ? [item.threadId] : []))),
     [attention],
   )
-  const channelUnreadById = useMemo(
-    () =>
-      props.threads.reduce((unread, thread) => {
-        if (!thread.groupId || thread.groupThreadId) return unread
-
-        unread.set(thread.groupId, (unread.get(thread.groupId) ?? 0) + thread.unread)
-        return unread
-      }, new Map<string, number>()),
-    [props.threads],
-  )
   const channelAttentionGroupIds = useMemo(
     () =>
       new Set(
@@ -302,10 +295,11 @@ export const Sidebar = (props: SidebarProps) => {
   )
   const workNeedsYouCount =
     botsWaitingCount + (props.groups ?? []).filter((group) => channelAttentionGroupIds.has(group.id)).length
-  const workUnreadCount = (props.groups ?? []).reduce(
-    (count, group) => count + (channelUnreadById.get(group.id) ?? 0),
-    0,
-  )
+  const workUnreadCount = props.threads.reduce((count, thread) => {
+    if (thread.id === props.selectedThreadId || thread.archivedAt !== null || thread.groupThreadId) return count
+
+    return count + thread.unread
+  }, 0)
   const workWaitingCount = workNeedsYouCount + workUnreadCount
   const attentionByBot = useMemo(
     () =>
@@ -319,6 +313,44 @@ export const Sidebar = (props: SidebarProps) => {
         return byBot
       }, new Map<string, NotificationRecord[]>()),
     [attention],
+  )
+  const workThreadsByBot = useMemo(
+    () =>
+      new Map(
+        [...sidebarDataByBot].map(([botId, data]) => [
+          botId,
+          data.threads.filter((thread) => !thread.groupId && !thread.groupThreadId && thread.archivedAt === null),
+        ]),
+      ),
+    [sidebarDataByBot],
+  )
+  const workThreadIdsByBot = useMemo(
+    () =>
+      new Map([...workThreadsByBot].map(([botId, threads]) => [botId, new Set(threads.map((thread) => thread.id))])),
+    [workThreadsByBot],
+  )
+  const workAttentionByBot = useMemo(
+    () =>
+      new Map(
+        [...attentionByBot].map(([botId, botAttention]) => {
+          const threadIds = workThreadIdsByBot.get(botId)
+          return [botId, botAttention.filter((item) => !item.threadId || threadIds?.has(item.threadId))]
+        }),
+      ),
+    [attentionByBot, workThreadIdsByBot],
+  )
+  const workNotificationsByBot = useMemo(
+    () =>
+      new Map(
+        props.bots.map((bot) => {
+          const threadIds = workThreadIdsByBot.get(bot.id)
+          return [
+            bot.id,
+            notifications.filter((item) => item.botId === bot.id && (!item.threadId || threadIds?.has(item.threadId))),
+          ]
+        }),
+      ),
+    [props.bots, notifications, workThreadIdsByBot],
   )
   const botNavigationKey = `${props.section}:${props.advancedPage}:${props.selectedBotId}:${props.selectedThreadId}`
   useEffect(() => {
@@ -353,6 +385,13 @@ export const Sidebar = (props: SidebarProps) => {
         const selected = props.section === "bots" && bot.id === props.selectedBotId && !selectedThreadIsGroup
         const expanded = mode === "bots" && bot.id === props.selectedBotId && !selectedThreadIsGroup
         const botData = sidebarDataByBot.get(bot.id)
+        const threads =
+          mode === "work" ? (workThreadsByBot.get(bot.id) ?? EMPTY_THREADS) : (botData?.threads ?? EMPTY_THREADS)
+        const entryAttention =
+          mode === "work"
+            ? (workAttentionByBot.get(bot.id) ?? EMPTY_NOTIFICATIONS)
+            : (attentionByBot.get(bot.id) ?? EMPTY_NOTIFICATIONS)
+        const entryNotifications = mode === "work" ? (workNotificationsByBot.get(bot.id) ?? []) : notifications
 
         return (
           <Fragment key={`${mode}:${bot.id}`}>
@@ -363,15 +402,15 @@ export const Sidebar = (props: SidebarProps) => {
               activity={activity?.kind ?? null}
               onHold={ordered.hold}
               insertedThreads={insertedThreads}
-              threads={botData?.threads ?? EMPTY_THREADS}
+              threads={threads}
               routineRuns={botData?.routineRuns ?? EMPTY_ROUTINE_RUNS}
               routineRunCountsToday={routineRunCountsToday}
               runs={runs}
               routineIds={routineIds}
               routinesById={routinesById}
               messages={messages}
-              attention={attentionByBot.get(bot.id) ?? EMPTY_NOTIFICATIONS}
-              notifications={notifications}
+              attention={entryAttention}
+              notifications={entryNotifications}
               selected={selected}
               expanded={expanded}
               selectedThreadId={expanded ? props.selectedThreadId : null}
@@ -526,7 +565,7 @@ export const Sidebar = (props: SidebarProps) => {
         tabIndex={-1}
         hidden={sidebarMode !== "bots"}
       >
-        {sidebarMode === "bots" && <div className="bot-groups">{renderBotEntries("bots")}</div>}
+        <div className="bot-groups">{renderBotEntries("bots")}</div>
       </div>
       <div
         id="sidebar-mode-panel-work"
@@ -539,17 +578,19 @@ export const Sidebar = (props: SidebarProps) => {
         {props.onNewGroup && (
           <GroupSidebar
             groups={props.groups ?? EMPTY_GROUPS}
+            bots={props.bots}
             threads={props.threads}
             attentionThreadIds={attentionThreadIds}
             selectedThreadId={props.selectedThreadId}
             onSelect={selectThread}
             onCreate={createChannel}
+            onSearch={openSearch}
             onEdit={editChannel}
             onDelete={props.onDeleteGroup ? deleteChannel : undefined}
             onNewThread={createChannelThread}
           />
         )}
-        <div className="bot-groups work-mode-dms">{sidebarMode === "work" ? renderBotEntries("work") : null}</div>
+        <div className="bot-groups work-mode-dms">{renderBotEntries("work")}</div>
       </div>
       {props.onRecovery && (props.recoveryCount ?? 0) > 0 && (
         <button type="button" className="sidebar-recovery" onClick={() => navigate(() => props.onRecovery?.())}>
@@ -713,7 +754,7 @@ const BotEntry = memo(
     )
     const waiting = attention.find((item) => ["approval", "question", "takeover", "incident"].includes(item.kind))
     const approvals = pendingApprovalTargets(botMessages)
-    const unread = threads.reduce((count, thread) => count + thread.unread, 0)
+    const unread = threads.reduce((count, thread) => count + (thread.id === selectedThreadId ? 0 : thread.unread), 0)
     const preview = latestPreview({ threadIds: ids, messages, runs })
     const reason =
       approvals.length || waiting?.kind === "approval"
@@ -770,8 +811,6 @@ const BotEntry = memo(
           : [],
       [showTree, threads, routineRuns, selectedThreadId, runningThreadIds, routineIds, routineRunCountsToday],
     )
-    const visibleUnread = sidebarThreads.reduce((count, entry) => count + entry.unread, 0)
-    const botUnread = unread - visibleUnread
     const visibleRoutineIds = [
       ...new Set(
         routineRuns
@@ -790,6 +829,8 @@ const BotEntry = memo(
       : conversationEntries.filter(
           (entry, index) => index < MAX_SIDEBAR_CONVERSATIONS || entry.thread.id === selectedThreadId,
         )
+    const visibleUnread = [...shownConversations, ...routineEntries].reduce((count, entry) => count + entry.unread, 0)
+    const botUnread = Math.max(0, unread - visibleUnread)
     const selectedRoutineEntry = routineEntries.find((entry) => entry.thread.id === selectedThreadId)
     const labelledRoutineEntry = selectedRoutineEntry ?? routineEntries[0]
     const routineRunLabel = labelledRoutineEntry

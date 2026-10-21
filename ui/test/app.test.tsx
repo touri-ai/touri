@@ -77,7 +77,7 @@ describe("WP9 frontend acceptance", () => {
     expect(screen.getByRole("navigation", { name: "Opções avançadas" })).toBeVisible()
     fireEvent.keyDown(window, { key: "Escape" })
     fireEvent.click(screen.getByRole("tab", { name: /^Bots,/ }))
-    expect(document.querySelectorAll(".bot-entry")).toHaveLength(api.getState().bots.length)
+    expect(document.querySelectorAll("#sidebar-mode-panel-bots .bot-entry")).toHaveLength(api.getState().bots.length)
     fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
     fireEvent.click(screen.getByRole("button", { name: /MCP/ }))
     expect(await screen.findByRole("heading", { name: "MCP" })).toBeVisible()

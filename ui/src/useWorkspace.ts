@@ -483,9 +483,22 @@ const lastActiveThread = (threads: Thread[], runs: Run[], botId: Id, rememberedI
   )
 }
 
-/** Re-selecting a bot of the same project keeps its loaded processes: no refetch follows an unchanged project id. */
-const getProcessesForProject = (current: WorkspaceData, projectId: Id | null): ProcessEntry[] =>
-  current.activeProjectId === projectId ? current.processes : []
+const getProcessScope = (bot: Bot | undefined): string | null => {
+  if (!bot) return null
+  if (bot.machine === "local") return "local"
+
+  return `${bot.machine}:${bot.id}`
+}
+
+/** Keep a process list only when both its project and computer scope still match the selected bot. */
+const getProcessesForBot = (current: WorkspaceData, bot: Bot | undefined): ProcessEntry[] => {
+  if (!bot?.projectId || current.activeProjectId !== bot.projectId) return []
+
+  const previousBot = current.bots.find((candidate) => candidate.id === current.selectedBotId)
+  if (getProcessScope(previousBot) !== getProcessScope(bot)) return []
+
+  return current.processes
+}
 
 const getDraftThread = (botId: Id, groupId?: Id): Thread => {
   const now = Date.now()
@@ -1174,7 +1187,7 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
           composerKey,
           selectedThreadId: draftThread?.id ?? null,
           activeProjectId: bot?.projectId ?? null,
-          processes: getProcessesForProject(current, bot?.projectId ?? null),
+          processes: getProcessesForBot(current, bot),
         }
       }
       return {
@@ -1184,7 +1197,7 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
         composerKey: null,
         selectedThreadId: thread.id,
         activeProjectId: bot?.projectId ?? null,
-        processes: getProcessesForProject(current, bot?.projectId ?? null),
+        processes: getProcessesForBot(current, bot),
       }
     })
   }, [])
