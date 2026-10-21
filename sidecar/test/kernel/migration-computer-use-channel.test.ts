@@ -8,7 +8,7 @@ test("computer-use channel migration stores requester, controller and queue stat
   const root = mkdtempSync(join(tmpdir(), "touri-computer-use-channel-"))
   const db = openDatabase({ filename: join(root, "test.db") })
   try {
-    expect(SCHEMA_VERSION).toBe(41)
+    expect(SCHEMA_VERSION).toBe(42)
     expect(db.query("SELECT value FROM schema_meta WHERE key = 'browser_channel_runs_version'").get()).toEqual({
       value: "1",
     })
@@ -30,6 +30,10 @@ test("computer-use channel migration stores requester, controller and queue stat
         WHERE bot_id = ? AND status = 'queued' ORDER BY queued_at, run_id LIMIT 20`)
       .all("bot")
     expect(JSON.stringify(queuePlan)).toContain("browser_channel_runs_bot_queue")
+    const resumePlan = db
+      .query("EXPLAIN QUERY PLAN SELECT previous_run_id FROM browser_resume_requests WHERE next_turn_id = ?")
+      .all("next-turn")
+    expect(JSON.stringify(resumePlan)).toContain("browser_resume_requests_next_turn")
   } finally {
     db.close()
     rmSync(root, { recursive: true, force: true })

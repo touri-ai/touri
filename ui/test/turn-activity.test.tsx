@@ -1,3 +1,7 @@
+import "react-markdown"
+import "remark-gfm"
+import "remark-parse"
+import "unified"
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import type { ApprovalPart, Message, MessagePart, Run, ToolCallPart } from "@touri/contracts"
 import { afterEach, expect, it } from "vitest"
@@ -241,7 +245,7 @@ it("folds narration and step rows into the finished card and shows only the fina
   )
 
   expect(await screen.findByText("Voo por R$ 900")).toBeVisible()
-  expect(screen.getByText("terminou")).toBeVisible()
+  expect(screen.getByText("Ver o que ele fez")).toBeVisible()
   expect(screen.queryByText("Vou abrir a busca.")).toBeNull()
   expect(screen.queryByText("Agora vou escolher a data.")).toBeNull()
   expect(view.container.querySelectorAll(".browser-steps")).toHaveLength(0)

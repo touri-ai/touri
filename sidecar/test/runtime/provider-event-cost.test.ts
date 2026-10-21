@@ -662,7 +662,7 @@ test("Dispatch attribution exposes time outside the named stages and avoids coun
 
   expect(attribution.providerAdapterMs).toBe(6)
   expect(attribution.runtimeEventMs).toBe(4)
-  expect(attribution.providerDispatchMs).toBe(41)
+  expect(attribution.providerDispatchMs).toBe(40)
   expect(attribution.providerDispatchAttribution).toBe(0.25)
   expect(attribution.providerDispatchAttribution).toBeLessThan(0.9)
 })

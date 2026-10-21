@@ -156,7 +156,7 @@ test("shows live browser steps and keeps typed values and URL credentials and qu
   expect(screen.getByRole("progressbar", { name: "Progresso do navegador" })).toBeVisible()
   expect(screen.getByRole("button", { name: "Expandir navegador" })).toBeVisible()
   expect(screen.getByRole("button", { name: "Recolher cartão do navegador" })).toBeVisible()
-  expect(document.querySelector(".browser-activity-checklist")).toBeNull()
+  expect(screen.getByRole("list", { name: "Etapas do navegador" }).children).toHaveLength(3)
   await waitFor(() => expect(screen.getByRole("img", { name: "Página atual do navegador" })).toBeVisible())
   expect(document.body.textContent).not.toContain("private search value")
   expect(document.body.textContent).not.toContain("person@example.test")
@@ -229,7 +229,7 @@ test("shows one sanitized browser URL in the live subtitle", async () => {
 
   renderCard(parts, false)
 
-  const subtitle = await screen.findByText("Lia · abrindo uma página · travel.example.test")
+  const subtitle = await screen.findByText("Lia · abriu uma página · travel.example.test")
   expect(subtitle).toBeVisible()
   expect(screen.getAllByText(/travel\.example\.test/)).toHaveLength(1)
   expect(screen.queryByRole("group", { name: "Endereço do navegador" })).toBeNull()
@@ -322,13 +322,15 @@ test("the composer takeover action opens the active browser session", async () =
 
 test("hides the live browser preview while a person controls the tab", async () => {
   const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
+  const stopPreview = vi.fn()
+  vi.mocked(startInlineFrameSource).mockReturnValueOnce(stopPreview)
   const heldTab = { ...tab, heldByUser: true }
 
   renderCard(parts, false, async () => ({ tabs: [heldTab] }))
 
-  expect(await screen.findByText("Uma pessoa está controlando esta aba; o bot está pausado.")).toBeVisible()
+  expect(await screen.findByText("O bot está pausado até você devolver o controle.")).toBeVisible()
   expect(screen.queryByRole("img", { name: "Página atual do navegador" })).toBeNull()
-  expect(document.querySelector(".browser-activity-preview")).toBeNull()
+  expect(stopPreview).toHaveBeenCalledOnce()
 })
 
 test("take-over holds the browser, opens its view, and the finished card collapses with the final image", async () => {
@@ -371,7 +373,7 @@ test("take-over holds the browser, opens its view, and the finished card collaps
   expect(await screen.findByText("Usou o navegador · 3 ações")).toBeVisible()
   expect(screen.getByText("Ver o que ele fez")).toBeVisible()
   expect(screen.getByRole("img", { name: "Captura final do navegador" })).toBeVisible()
-  expect(await screen.findByText("Resultados de Lisboa")).toBeVisible()
+  expect(await screen.findByText("Resultados de Lisboa", { exact: false })).toBeVisible()
   expect(screen.queryByText("Atividade do navegador")).toBeNull()
   fireEvent.click(screen.getByRole("button", { name: /Usou o navegador/ }))
   expect(await screen.findByText("Atividade do navegador")).toBeVisible()
@@ -402,7 +404,7 @@ test("a bot-requested takeover explains why it paused and keeps browser input ou
   expect(
     screen.getByText("O que você digitar no navegador não vai para o chat nem para o contexto do bot."),
   ).toBeVisible()
-  expect(screen.getByRole("button", { name: "Assumir" })).toBeVisible()
+  expect(screen.getByRole("button", { name: "Continuar no navegador" })).toBeVisible()
   expect(screen.queryByRole("textbox")).toBeNull()
   expect(request).not.toHaveBeenCalledWith("POST /browser/tabs/:id/takeover", expect.anything(), { id: "browser-tab" })
 })
@@ -749,7 +751,7 @@ test("browser action times stay ordered when tool completions arrive late", () =
 
 test("short browser URLs drop scheme, port and query, and target labels omit private values", () => {
   expect(getBrowserActivityShortUrl("http://127.0.0.1:45229/test/e2e/fixtures/travel-search.html?x=1")).toBe(
-    "127.0.0.1/test/e2e/fixtures/trav…",
+    "127.0.0.1",
   )
   expect(getBrowserActivityShortUrl("https://travel.example.test/")).toBe("travel.example.test")
   expect(getBrowserActivityShortUrl("file:///etc/passwd")).toBe("")

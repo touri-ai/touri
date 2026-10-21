@@ -137,12 +137,12 @@ describe("getChannelBrowserView", () => {
     expect(view.previewHidden).toBe(false)
   })
 
-  test("hides the preview for everyone but the controller during a take-over", () => {
+  test("hides the shared preview for everyone during a take-over", () => {
     const state = getState({ controllerId: "user-ana", controllerName: "Ana" })
 
     expect(getChannelBrowserView(state, "user-hugo").previewHidden).toBe(true)
     expect(getChannelBrowserView(state, "user-owner").previewHidden).toBe(true)
-    expect(getChannelBrowserView(state, "user-ana").previewHidden).toBe(false)
+    expect(getChannelBrowserView(state, "user-ana").previewHidden).toBe(true)
   })
 
   test("names the controller when someone took over", () => {
@@ -303,7 +303,7 @@ describe("channel chrome", () => {
       />,
     )
 
-    const row = screen.getByRole("button", { name: "viagens" }).closest(".group-sidebar-row") as HTMLElement
+    const row = screen.getByRole("button", { name: "viagens" }).closest(".sidebar-row") as HTMLElement
 
     expect(within(row).getByTitle("Léo trabalhando aqui")).toBeVisible()
   })

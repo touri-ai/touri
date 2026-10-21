@@ -44,12 +44,13 @@ import browserChannelRunsSql from "./migrations/0038.sql" with { type: "text" }
 import browserTakeoverContinuationsSql from "./migrations/0039.sql" with { type: "text" }
 import browserPrivateInputSql from "./migrations/0040.sql" with { type: "text" }
 import browserBotQueueSql from "./migrations/0041.sql" with { type: "text" }
+import browserResumeIndexSql from "./migrations/0042.sql" with { type: "text" }
 import type { PerformanceStageRunner } from "./performance"
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 41
+export const SCHEMA_VERSION = 42
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -314,5 +315,6 @@ export const openDatabase = ({
       database.exec(browserBotQueueSql)
     database.exec("UPDATE schema_meta SET value = '41' WHERE key = 'schema_version'")
   })()
+  database.exec(browserResumeIndexSql)
   return database
 }
