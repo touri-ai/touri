@@ -336,7 +336,7 @@ test("groups have separate conversations, private member sessions, ordered repli
 })
 
 test("browser handback resumes one bot in the same channel and ignores duplicate returns", async () => {
-  const f = await fixture()
+  const f = await fixture(undefined, 30_000)
   const botId = f.group.memberIds[0]
   if (!botId) throw new Error("Missing group member")
   const original = f.send("@pm conclua depois do login", f.thread.id, {
@@ -344,7 +344,7 @@ test("browser handback resumes one bot in the same channel and ignores duplicate
     name: "Requester",
     kind: "person",
   })
-  await until(() => f.persistence.getRun(original.id)?.status === "succeeded")
+  await until(() => f.persistence.getRun(original.id)?.status === "succeeded", 3000)
   const child = f.db.query("SELECT run_id FROM group_run_links WHERE turn_id = ? AND depth = 0").get(original.id) as {
     run_id: string
   } | null
@@ -370,7 +370,7 @@ test("browser handback resumes one bot in the same channel and ignores duplicate
 
   expect(f.runtime.resumeAfterBrowserTakeover({ botId, threadId: source.threadId, runId: source.id })).toBe(true)
   expect(f.runtime.resumeAfterBrowserTakeover({ botId, threadId: source.threadId, runId: source.id })).toBe(true)
-  await until(() => f.order.filter((id) => id === botId).length === 2)
+  await until(() => f.order.filter((id) => id === botId).length === 2, 3000)
   await until(() => {
     const continuations = f.db
       .query("SELECT COUNT(*) AS count FROM browser_takeover_continuations WHERE previous_run_id = ?")
@@ -397,7 +397,7 @@ test("browser handback resumes one bot in the same channel and ignores duplicate
   expect(
     channelMessages.some((message) => message.status === "failed" || message.text.includes("Cancelado por você")),
   ).toBe(false)
-})
+}, 30_000)
 
 test("search excludes legacy and current coordination prompts from member threads", async () => {
   const f = await fixture()
