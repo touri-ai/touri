@@ -257,6 +257,9 @@
 }
 @media (max-width: 800px) {
   .group-header {
+    height: auto;
+    flex-basis: auto;
+    padding-block: 12px;
     flex-wrap: wrap;
     gap: 8px;
   }

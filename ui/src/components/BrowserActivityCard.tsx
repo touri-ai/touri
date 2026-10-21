@@ -269,13 +269,14 @@ export const BrowserActivityCard = ({
       {!controlsVisible ? (
         <button
           type="button"
-          className="browser-activity-summary"
+          className={`browser-activity-summary${screenshot?.outputAttachmentId ? "" : " browser-activity-summary-compact"}`}
           aria-expanded={expanded}
           onClick={() => setExpanded((value) => !value)}
         >
           <span className="browser-activity-summary-copy">
             <strong>{summary}</strong>
-            {url && <small>{url}</small>}
+            <small>{t("See what the bot did", {}, locale)}</small>
+            {screenshot?.outputAttachmentId && url && <small>{url}</small>}
           </span>
           {screenshot?.outputAttachmentId ? (
             <span className="browser-activity-thumbnail">

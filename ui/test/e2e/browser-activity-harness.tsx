@@ -227,7 +227,7 @@ const Fixture = () => {
     setRunning(false)
     currentPage.current = resultPage
     add("browser_snapshot", { tabId: tab.tabId })
-    add("browser_screenshot", { tabId: tab.tabId }, "browser-final-screenshot")
+    if (params.get("screenshot") !== "none") add("browser_screenshot", { tabId: tab.tabId }, "browser-final-screenshot")
   }
 
   return (
