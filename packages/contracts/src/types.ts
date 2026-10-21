@@ -883,6 +883,11 @@ export type SendMessageInput = {
   sender?: { name: string; id: string; avatarSeed?: string; kind?: 'person' }
 }
 
+export type PersonRole = 'member' | 'admin'
+export type InviteInput = ApiRoutes['POST /invites']['req']
+export type InviteDelivery = ApiRoutes['POST /invites']['res']
+export type Invite = InviteDelivery['invite']
+
 export type WorkEmailConfiguration =
   | {
       transport: 'smtp'

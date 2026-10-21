@@ -108,12 +108,16 @@ const McpScreen = lazy(() => import("./components/WorkspaceScreens").then((modul
 const PreviewScreen = lazy(() =>
   import("./components/WorkspaceScreens").then((module) => ({ default: module.PreviewScreen })),
 )
+const InvitePersonDialog = lazy(() =>
+  import("./features/people/InvitePersonDialog").then((module) => ({ default: module.InvitePersonDialog })),
+)
 
 export type UiKernel = { services?: { api?: UiApi | null; invoke?: TauriInvoke | null } }
 
 type AppProps = { kernel?: UiKernel }
 type ModalKind =
   | "group"
+  | "invite"
   | "doctor"
   | "import"
   | "bot"
@@ -1237,6 +1241,7 @@ const AppContent = ({ kernel }: AppProps) => {
                               setEditingGroup(selectedGroup)
                               openModal("group")
                             }}
+                            onInviteToGroup={() => openModal("invite")}
                             focusApproval={
                               approvalFocus?.threadId === selectedThread?.id ? (approvalFocus ?? undefined) : undefined
                             }
@@ -1415,6 +1420,16 @@ const AppContent = ({ kernel }: AppProps) => {
                   setRoute({ section: "bots", screen: "chat" })
                 }}
               />
+            )}
+            {modal === "invite" && (
+              <Suspense fallback={<PageLoading />}>
+                <InvitePersonDialog
+                  channels={data.groups}
+                  request={api.request}
+                  {...(selectedGroup ? { initialChannelId: selectedGroup.id } : {})}
+                  onClose={closeModal}
+                />
+              </Suspense>
             )}
             {setupModal}
             {modal === "project" && (

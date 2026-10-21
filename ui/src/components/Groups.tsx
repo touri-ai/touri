@@ -307,6 +307,7 @@ export const GroupHeader = ({
   group,
   bots,
   onEdit,
+  onInvite,
   panelOpen,
   onTogglePanel,
   locale = "pt-BR",
@@ -314,6 +315,7 @@ export const GroupHeader = ({
   group: BotGroup
   bots: Bot[]
   onEdit: () => void
+  onInvite?: (() => void) | undefined
   panelOpen?: boolean
   onTogglePanel?: (() => void) | undefined
   locale?: Locale
@@ -348,6 +350,11 @@ export const GroupHeader = ({
         onClick={onTogglePanel}
       >
         ◧
+      </button>
+    )}
+    {onInvite && (
+      <button type="button" className="button button-quiet" onClick={onInvite}>
+        {t("Convidar pessoa", {}, locale)}
       </button>
     )}
     <button type="button" className="button button-quiet" onClick={onEdit}>
