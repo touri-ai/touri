@@ -221,7 +221,7 @@ describe("browser card in a channel", () => {
     renderCard(getState(), "user-hugo")
 
     expect(screen.queryByRole("button", { name: /Assumir/ })).toBeNull()
-    expect(screen.getByText("Ana está no controle")).toBeVisible()
+    expect(screen.queryByText("Ana está no controle")).toBeNull()
   })
 
   test("keeps Assumir enabled for the requester", () => {
@@ -315,7 +315,7 @@ describe("channel chrome", () => {
       </ChannelBrowserContext.Provider>,
     )
 
-    expect(screen.getByRole("status")).toHaveTextContent("Ana está no controle")
+    expect(screen.getByRole("status")).toHaveTextContent("para Ana")
   })
 
   test("composer chip stops the active browser run", () => {
@@ -352,7 +352,7 @@ describe("channel chrome", () => {
     )
 
     expect(screen.queryByRole("button", { name: "Assumir" })).toBeNull()
-    expect(screen.getByRole("status")).toHaveTextContent("Ana está no controle")
+    expect(screen.getByRole("status")).toHaveTextContent("para Ana")
   })
 })
 
@@ -419,4 +419,17 @@ test("ChatPanel shares channel browser state with the group header, reply card, 
   expect(screen.getByText("Todos no canal veem").closest(".message-assistant")).toContainElement(
     screen.getByText("Estou na página de estadias."),
   )
+})
+
+test("the owner sees the actual controller while another person is typing", () => {
+  render(
+    <ChannelBrowserContext.Provider
+      value={{ state: getState({ controllerId: "user-ana", controllerName: "Ana" }), viewerId: "user-owner" }}
+    >
+      <ChannelComposerChip botName="Léo" />
+    </ChannelBrowserContext.Provider>,
+  )
+
+  expect(screen.getByRole("status")).toHaveTextContent("Ana está no controle")
+  expect(screen.getByRole("status")).not.toHaveTextContent("está trabalhando")
 })

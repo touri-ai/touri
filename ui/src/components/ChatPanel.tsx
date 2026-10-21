@@ -27,12 +27,14 @@ import {
 import type { UiApi } from "../api/client"
 import type { ApprovalFocus } from "../approvalNavigation"
 import { userFacingRunError } from "../errors"
+import { getBrowserRequestMessages } from "../features/channelBrowser/browserRequestMessages"
 import {
   ChannelBrowserContext,
   ChannelBrowserRunsContext,
   type ChannelBrowserValue,
 } from "../features/channelBrowser/ChannelBrowser"
 import { getChannelBrowserValue } from "../features/channelBrowser/channelBrowserModel"
+import { useChannelPeople } from "../features/channelBrowser/useChannelPeople"
 import { ComputerGrantCard } from "../features/computer"
 import { InlineLivePreview, InlinePreviewContext, screenTool } from "../features/desktop/InlineLivePreview"
 import { useIsServerMode } from "../features/server/serverMode"
@@ -1220,6 +1222,7 @@ export const ChatPanel = ({
     })
     return () => window.cancelAnimationFrame(frame)
   }, [chatIsCovered])
+  const channelPeople = useChannelPeople(api, group?.id ?? null)
   const activeRun = useMemo(
     () =>
       runs.find(
@@ -1300,7 +1303,7 @@ export const ChatPanel = ({
         message.parts.some((part) => part.type === "approval" && part.decision === "pending")) &&
       !visibleMessageIds.has(message.id),
   )
-  const visibleMessages = [...messagePath, ...pendingMessages]
+  const visibleMessages = getBrowserRequestMessages(messagePath.concat(pendingMessages), group ? undefined : bot?.id)
   const routineConversation = isRoutineConversation({ thread, runs, routineRuns, routines })
   const repeatDraft =
     bot && !activeRun && !routineConversation
@@ -1359,6 +1362,7 @@ export const ChatPanel = ({
               <GroupHeader
                 group={group}
                 bots={groupMembers}
+                people={channelPeople}
                 channelMode={channelMode}
                 onEdit={onEditGroup}
                 panelOpen={panelOpen}
@@ -1465,7 +1469,13 @@ export const ChatPanel = ({
                 header={
                   visibleMessages.length === 0 && !activeRun && visibleRuns.length === 0 ? (
                     group ? (
-                      <GroupConversationStart group={group} bots={groupMembers} channelMode={channelMode} />
+                      <GroupConversationStart
+                        group={group}
+                        bots={groupMembers}
+                        people={channelPeople}
+                        currentPersonId={currentPersonId}
+                        channelMode={channelMode}
+                      />
                     ) : (
                       <ConversationStart
                         bot={bot}

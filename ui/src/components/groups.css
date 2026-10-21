@@ -541,3 +541,33 @@
 .group-sidebar-empty .group-empty-create:hover {
   background: var(--surface-control);
 }
+
+.channel-person-avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-round);
+  background: var(--surface-control-raised);
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.group-header-actions {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: var(--space-8);
+  margin-left: auto;
+}
+.group-header.channel-mode > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+.group-header.channel-mode .group-heading-name {
+  flex-wrap: wrap;
+}
+.group-header.channel-mode .group-member-count {
+  white-space: normal;
+}

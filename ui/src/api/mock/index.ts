@@ -1036,6 +1036,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       return {
         maintenance: { running: false, processed: 0, total: 0 },
       } as ApiRoutes[typeof route]["res"]
+    if (key === "GET /groups/:id/people") return { people: [] } as ApiRoutes[typeof route]["res"]
     if (key === "GET /groups") return { groups } as ApiRoutes[typeof route]["res"]
     if (key === "DELETE /groups/:id") {
       const group = groups.find((group) => group.id === pathValues.id)

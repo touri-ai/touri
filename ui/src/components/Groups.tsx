@@ -1,8 +1,10 @@
-import type { AvatarShape, Bot, BotGroup, GroupInput, Message, Run, Thread } from "@touri/contracts"
+import type { AvatarShape, Bot, BotGroup, ChannelPerson, GroupInput, Message, Run, Thread } from "@touri/contracts"
 import { avatarColorFor, avatarProfileFor } from "@touri/contracts/avatar"
 import { memo, useEffect, useMemo, useRef, useState } from "react"
+import type { UiApi } from "../api/client"
 import { userFacingError } from "../errors"
 import { ChannelHeaderChip, ChannelWorkingMarker } from "../features/channelBrowser/ChannelBrowser"
+import { useChannelPeople } from "../features/channelBrowser/useChannelPeople"
 import { type Locale, t } from "../i18n"
 import { AvatarPicker } from "./AvatarPicker"
 import { BotAvatar } from "./BotAvatar"
@@ -334,13 +336,18 @@ export const GroupRoutingNote = ({
 const GroupMembers = ({
   group,
   bots,
+  people = [],
+  currentPersonId,
   channelMode = false,
 }: {
   group: BotGroup
   bots: Bot[]
+  people?: ChannelPerson[]
+  currentPersonId?: string | null | undefined
   channelMode?: boolean
 }) => (
   <ol className="group-context-members" aria-label={t(channelMode ? "Channel members" : "Membros do grupo")}>
+    <ChannelPeople people={people} currentPersonId={currentPersonId} />
     {bots.map((bot) => (
       <li key={bot.id}>
         <BotAvatar bot={bot} size={28} />
@@ -357,10 +364,14 @@ const GroupMembers = ({
 export const GroupConversationStart = ({
   group,
   bots,
+  people = [],
+  currentPersonId,
   channelMode = false,
 }: {
   group: BotGroup
   bots: Bot[]
+  people?: ChannelPerson[]
+  currentPersonId?: string | null | undefined
   channelMode?: boolean
 }) => {
   const startTitle = channelMode
@@ -385,7 +396,13 @@ export const GroupConversationStart = ({
       )}
       <h2>{startTitle}</h2>
       <p>{startHint}</p>
-      <GroupMembers group={group} bots={bots} channelMode={channelMode} />
+      <GroupMembers
+        group={group}
+        bots={bots}
+        people={people}
+        currentPersonId={currentPersonId}
+        channelMode={channelMode}
+      />
       <GroupRoutingNote group={group} bots={bots} channelMode={channelMode} />
     </section>
   )
@@ -393,6 +410,8 @@ export const GroupConversationStart = ({
 
 export const GroupPanel = ({
   group,
+  api,
+  currentPersonId,
   bots,
   threadId,
   messages = [],
@@ -402,6 +421,8 @@ export const GroupPanel = ({
   channelMode = false,
 }: {
   group: BotGroup
+  api?: UiApi | null | undefined
+  currentPersonId?: string | null | undefined
   bots: Bot[]
   threadId?: string | undefined
   messages?: Message[]
@@ -410,6 +431,7 @@ export const GroupPanel = ({
   onEdit: () => void
   channelMode?: boolean
 }) => {
+  const people = useChannelPeople(api, channelMode ? group.id : null)
   const { board, members, removed } = useMemo(
     () => getGroupProjection(threadId, messages, runs),
     [threadId, messages, runs],
@@ -445,6 +467,7 @@ export const GroupPanel = ({
           className="group-context-members group-status-members"
           aria-label={t(channelMode ? "Channel members" : "Membros do grupo")}
         >
+          <ChannelPeople people={people} currentPersonId={currentPersonId} />
           {bots.map((bot) => {
             const member = members.get(bot.id) ?? getIdleMemberState()
             return (
@@ -499,6 +522,7 @@ export const GroupPanel = ({
 export const GroupHeader = ({
   group,
   bots,
+  people = [],
   onEdit,
   panelOpen,
   onTogglePanel,
@@ -507,6 +531,7 @@ export const GroupHeader = ({
 }: {
   group: BotGroup
   bots: Bot[]
+  people?: ChannelPerson[]
   onEdit: () => void
   panelOpen?: boolean
   onTogglePanel?: (() => void) | undefined
@@ -514,9 +539,10 @@ export const GroupHeader = ({
   channelMode?: boolean
 }) => {
   const coordinator = bots.find((bot) => bot.id === group.coordinatorBotId)
-  const channelSummary = coordinator
-    ? t("Channel summary with coordinator", { count: bots.length, name: coordinator.name }, locale)
-    : t("Channel summary", { count: bots.length }, locale)
+  const botCount = t(bots.length === 1 ? "1 bot" : "{count} bots", { count: bots.length }, locale)
+  const peopleCount = getChannelPeopleCount(people.length, locale)
+  const coordinatorLabel = coordinator ? t("{name} coordinates", { name: coordinator.name }, locale) : ""
+  const channelSummary = [peopleCount, botCount, coordinatorLabel].filter(Boolean).join(" · ")
 
   return (
     <header className={`chat-header group-header${channelMode ? " channel-mode" : ""}`} data-tauri-drag-region="deep">
@@ -555,32 +581,34 @@ export const GroupHeader = ({
           </span>
         </div>
       )}
-      {onTogglePanel && (
-        <button
-          type="button"
-          className="toolbar-icon bot-panel-toggle"
-          aria-label={t(channelMode ? "Channel panel" : "Painel do grupo", {}, locale)}
-          aria-expanded={panelOpen}
-          aria-controls="bot-panel"
-          onClick={onTogglePanel}
-        >
-          ◧
+      <div className="group-header-actions">
+        {onTogglePanel && (
+          <button
+            type="button"
+            className="toolbar-icon bot-panel-toggle"
+            aria-label={t(channelMode ? "Channel panel" : "Painel do grupo", {}, locale)}
+            aria-expanded={panelOpen}
+            aria-controls="bot-panel"
+            onClick={onTogglePanel}
+          >
+            ◧
+          </button>
+        )}
+        {channelMode && (
+          <button
+            type="button"
+            className="toolbar-icon channel-invite"
+            aria-label={t("Invite to channel", {}, locale)}
+            title={t("Invite to channel", {}, locale)}
+            onClick={onEdit}
+          >
+            <span aria-hidden="true">+</span>
+          </button>
+        )}
+        <button type="button" className="button button-quiet" onClick={onEdit}>
+          {t(channelMode ? "Edit channel" : "Editar grupo", {}, locale)}
         </button>
-      )}
-      {channelMode && (
-        <button
-          type="button"
-          className="toolbar-icon channel-invite"
-          aria-label={t("Invite to channel", {}, locale)}
-          title={t("Invite to channel", {}, locale)}
-          onClick={onEdit}
-        >
-          <span aria-hidden="true">+</span>
-        </button>
-      )}
-      <button type="button" className="button button-quiet" onClick={onEdit}>
-        {t(channelMode ? "Edit channel" : "Editar grupo", {}, locale)}
-      </button>
+      </div>
     </header>
   )
 }
@@ -791,4 +819,29 @@ const getNewGroupAvatarShape = (avatarSeed: string, avatarShape?: AvatarShape): 
   const profile = avatarProfileFor({ id: avatarSeed, color: null, avatarShape: avatarShape ?? null })
 
   return `${profile.headShape}:${profile.shape}`
+}
+
+const ChannelPeople = ({
+  people,
+  currentPersonId,
+}: {
+  people: ChannelPerson[]
+  currentPersonId?: string | null | undefined
+}) =>
+  people.map((person) => (
+    <li key={`person:${person.id}`}>
+      <span className="channel-person-avatar" aria-hidden="true">
+        {Array.from(person.name.trim())[0]?.toLocaleUpperCase("pt-BR")}
+      </span>
+      <div>
+        <strong>{person.id === currentPersonId ? t("Você") : person.name}</strong>
+        <small>{t("Person")}</small>
+      </div>
+    </li>
+  ))
+
+const getChannelPeopleCount = (count: number, locale: Locale): string => {
+  if (!count) return ""
+
+  return t(count === 1 ? "1 person" : "{count} people", { count }, locale)
 }

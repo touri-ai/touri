@@ -423,7 +423,7 @@ test("R11: a read-only coordinator's ask_bot gets a consent card and the target 
   expect(targetAccess).toBe("read-only")
 })
 
-test("queue serializes turns across group conversations; Parar cancels active and queued turns", async () => {
+test("queue serializes turns across group conversations; Parar cancels only the chosen turn", async () => {
   const f = await fixture(async () => {})
   const first = f.send("primeiro")
   const other = f.data.createThread(f.group, "Outra conversa")
@@ -432,8 +432,9 @@ test("queue serializes turns across group conversations; Parar cancels active an
   expect((await f.request(`/groups/${f.group.id}`, f.input, "PATCH")).status).toBe(409)
   expect(f.runtime.cancel(first.id)).toBe(true)
   await until(() => f.persistence.getRun(first.id)?.status === "canceled")
-  expect(f.persistence.getRun(second.id)?.status).toBe("canceled")
-  expect(f.order).toHaveLength(1)
+  expect(f.persistence.getRun(second.id)?.status).not.toBe("canceled")
+  await until(() => f.order.length === 2)
+  expect(f.runtime.cancel(second.id)).toBe(true)
 })
 
 test("draining finishes the active group turn and replays waiting turns in order after restart", async () => {
@@ -2337,3 +2338,21 @@ const fixtureForBrowserResume = async () => {
 
   return Object.assign({}, value, { original })
 }
+
+test("stopping one channel request preserves a waiting sibling request", async () => {
+  const pending = Promise.withResolvers<void>()
+  const scenario = await fixture(async (_ctx, complete) => {
+    await pending.promise
+    complete("Resposta sintética")
+  })
+  const first = scenario.send("Primeiro pedido")
+  await until(() => scenario.order.length > 0)
+  const second = scenario.send("Segundo pedido")
+
+  scenario.runtime.cancel(first.id)
+  const siblingStatus = scenario.persistence.getRun(second.id)?.status
+  pending.resolve()
+
+  expect(siblingStatus).not.toBe("canceled")
+  await until(() => scenario.persistence.getRun(second.id)?.status === "succeeded")
+})

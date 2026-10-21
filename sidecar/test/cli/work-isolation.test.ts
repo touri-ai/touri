@@ -173,6 +173,26 @@ test("tool output files follow the visibility of their message", async () => {
   )
 })
 
+test("a channel roster exposes only display identities to its members", async () => {
+  const fixture = await getFixture()
+
+  const response = await fixture.request("/groups/member-channel/people")
+  const payload = (await response.json()) as { people: Array<Record<string, unknown>> }
+
+  expect(response.status).toBe(200)
+  expect(payload.people.some((person) => person.id === fixture.personId)).toBe(true)
+  expect(payload.people.some((person) => person.id === "owner")).toBe(true)
+  payload.people.forEach((person) => {
+    expect(Object.keys(person)).toHaveLength(4)
+    expect(person).toHaveProperty("id")
+    expect(person).toHaveProperty("name")
+    expect(person).toHaveProperty("avatarSeed")
+    expect(person).toHaveProperty("role")
+  })
+  expect((await fixture.request("/groups/other-channel/people")).status).toBe(404)
+  expect((await fixture.request("/people")).status).toBe(403)
+})
+
 const getFixture = async ({ completeBoot = false }: { completeBoot?: boolean } = {}) => {
   const root = await mkdtemp(join(tmpdir(), "touri-work-isolation-"))
   const authStore = await openAuthStore({ filename: join(root, "auth.db") })

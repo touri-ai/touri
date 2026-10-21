@@ -1310,6 +1310,8 @@ const AppContent = ({ kernel }: AppProps) => {
                       <MotionPresence show={panelOpen && Boolean(selectedGroup || selectedBot)} kind="panel">
                         {selectedGroup ? (
                           <GroupPanel
+                            api={api}
+                            currentPersonId={currentPersonId}
                             key={selectedGroup.id}
                             group={selectedGroup}
                             channelMode={Boolean(selectedGroup)}

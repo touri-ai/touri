@@ -69,7 +69,7 @@ export const ChannelVisibilityLabel = ({ locale = "pt-BR" }: { locale?: Locale }
 
 export const ChannelControlNote = ({ locale = "pt-BR" }: { locale?: Locale }) => {
   const channel = useChannelBrowserView()
-  if (!channel || channel.canControl) return null
+  if (!channel || channel.canControl || !channel.state.controllerId) return null
 
   return (
     <span className="channel-visibility" role="status">
@@ -198,7 +198,7 @@ const getChannelComposerText = (
   locale: Locale,
 ): string => {
   if (!channel) return base
-  if (!channel.canControl) return t("{person} is in control", { person: channel.controlName }, locale)
+  if (channel.state.controllerId) return t("{person} is in control", { person: channel.controlName }, locale)
 
   return `${base} · ${t("for {person}", { person: channel.state.requesterName }, locale)}`
 }
