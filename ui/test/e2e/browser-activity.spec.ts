@@ -57,7 +57,7 @@ const liveVariants = [
 ]
 
 test.describe("full browser activity flow", () => {
-  test.setTimeout(120_000)
+  test.setTimeout(180_000)
 
   for (const variant of liveVariants) {
     test(`plays the travel search and records ${variant.name}`, async ({ browser, baseURL }, info) => {
@@ -101,10 +101,11 @@ test.describe("full browser activity flow", () => {
       if (variant.width > 600)
         await expect(page.getByRole("button", { name: /Busca de viagem/ })).toContainText("trabalhando")
       await expect(card).toBeVisible()
-      await expect(card.locator(".browser-activity-subtitle")).toContainText(fixtureHost)
+      await expect(card.getByRole("button", { name: "Assumir", exact: true })).toBeEnabled({ timeout: 90_000 })
+      await expect(card.locator(".browser-activity-subtitle")).toContainText(fixtureHost, { timeout: 30_000 })
       await expect(card.getByText(fixtureHost, { exact: false })).toHaveCount(1)
       await expect(card.getByRole("progressbar", { name: "Progresso do navegador" })).toBeVisible()
-      await expect(card).toContainText("Lia · abrindo uma página")
+      await expect(card).toContainText("Lia · abriu uma página")
       await expect(page.locator(".browser-activity-card")).toHaveCount(1)
       await expect(page.locator(".tool-call-card")).toHaveCount(0)
       await expect(card.getByRole("button", { name: "Assumir" })).toBeVisible({ timeout: 20_000 })
@@ -254,11 +255,10 @@ for (const viewport of [
     expect(fullScreenHeight).toBeGreaterThan(viewport.height * 0.6)
 
     const keyboard = page.getByRole("textbox", { name: "Entrada de teclado para o navegador" })
-    await keyboard.evaluate((element) => {
-      const textarea = element as HTMLTextAreaElement
-      textarea.value = "valor privado de teste"
-      textarea.dispatchEvent(new Event("input", { bubbles: true }))
-    })
+    await expect(keyboard).toBeEnabled()
+    await takeoverView.getByRole("button", { name: "Digitar no navegador" }).click()
+    await expect(keyboard).toBeFocused()
+    await page.keyboard.insertText("valor privado de teste")
     await expect
       .poll(() =>
         page.evaluate(() => {

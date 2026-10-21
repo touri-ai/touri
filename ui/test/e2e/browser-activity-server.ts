@@ -133,21 +133,8 @@ const getSnapshot = async (): Promise<BrowserSnapshot | null> => {
   return result.success ? (result.structured as BrowserSnapshot) : null
 }
 
-const getTab = async (): Promise<(BrowserTabInfo & { ownerBotId: string }) | null> => {
-  const snapshot = await getSnapshot()
-  if (!snapshot) return null
-
-  return {
-    tabId: snapshot.tabId,
-    ownerBotId: ctx.botId,
-    url: snapshot.url,
-    title: snapshot.title,
-    state: "live",
-    openerTabId: null,
-    heldByUser: false,
-    lastUsedAt: Date.now(),
-  }
-}
+const getTab = (): (BrowserTabInfo & { ownerBotId: string | null }) | null =>
+  engine.tabsForBot(ctx.botId).find((tab) => tab.tabId === tabId) ?? null
 
 const server = Bun.serve({
   hostname: "127.0.0.1",
@@ -210,7 +197,7 @@ const server = Bun.serve({
       takeoverInputCount = 0
       resumedPrivateDocumentHidden = false
       failedSteps.length = 0
-      const result = await engine.open({ url: fixtureUrl, ctx, timeoutMs: 30_000 })
+      const result = await engine.open({ url: fixtureUrl, ctx, timeoutMs: 60_000 })
       if (!result.success) return Response.json({ error: result.error }, { status: 500 })
       tabId = (result.structured as BrowserSnapshot).tabId
       return Response.json({

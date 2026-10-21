@@ -782,7 +782,7 @@ realSuite("WP6 real Chrome browser acceptance", () => {
 
     expect(await engine.holdTakeover({ tabId: page.tabId, reason: "fixture" })).toBe(true)
     const frame = await engine.takeoverFrame({ tabId: page.tabId, botId: botA, signal })
-    expect(frame).toMatchObject({ title: "", url: base })
+    expect(frame).toMatchObject({ title: "", url: "" })
     expect(frame?.width).toBeGreaterThan(0)
     expect(frame?.height).toBeGreaterThan(0)
     expect(frame?.image).toStartWith("data:image/jpeg;base64,")
@@ -813,6 +813,7 @@ realSuite("WP6 real Chrome browser acceptance", () => {
     if (!snapshot.success) return
     expect(snapshot.content.some((item) => item.type === "image")).toBe(false)
     const result = snapshotOf(snapshot)
+    expect(result).toMatchObject({ url: "", title: "", text: "", image: null })
     expect(result.elements.find((element) => element.name === "Name")?.value).toBeUndefined()
     expect(JSON.stringify(result.recentActions)).not.toContain(privateText)
     expect(JSON.stringify(result)).not.toContain(privateText)
