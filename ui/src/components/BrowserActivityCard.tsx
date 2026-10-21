@@ -120,6 +120,8 @@ export const BrowserActivityCard = ({
   const handbackRunId = useRef<Id | null | undefined>(undefined)
   const [privacyPending, setPrivacyPending] = useState(false)
   const held = heldTab?.tabId === activeTabId && heldTab?.held === true
+  const heldRef = useRef(held)
+  heldRef.current = held
   const finished = sourceFinished && !held && !takeoverSession && !resuming && !queued
   const preview =
     !held && !channel?.previewHidden && previewFrame?.tabId === activeTabId ? previewFrame?.frame : undefined
@@ -202,7 +204,7 @@ export const BrowserActivityCard = ({
       !api ||
       !botId ||
       queued ||
-      (sourceFinished && !hasTakeoverRequest && !waitingForPerson && !held && !takeoverSession && !resuming)
+      (sourceFinished && !hasTakeoverRequest && !waitingForPerson && !heldRef.current && !takeoverSession && !resuming)
     )
       return
     let active = true
@@ -280,7 +282,6 @@ export const BrowserActivityCard = ({
     tabId,
     queued,
     waitingForPerson,
-    held,
     takeoverSession,
     resuming,
   ])
