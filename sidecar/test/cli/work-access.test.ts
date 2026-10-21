@@ -165,7 +165,7 @@ test("members cannot create channels or bots, delete bots, invite people, or ope
 })
 
 test("thread deletion routes allow admins and thread owners but deny other channel members", () => {
-  database.query("INSERT INTO threads VALUES ('member-channel-thread','team-bot','team-a','member',NULL)").run()
+  database.query("INSERT INTO threads VALUES ('member-channel-thread','team-bot','team-a','member',NULL,NULL)").run()
   const authorize = (method: string, pathname: string, body: unknown = null) =>
     access.authorizeHttp({ personId: "member", role: "member", method, pathname, body })
 
@@ -393,7 +393,7 @@ test("only the requester and the responsible person can stop or take over a chan
     .query(`INSERT INTO browser_channel_runs VALUES
       ('channel-browser-run', 'team-a', 'team-chat', 'team-bot', 'member', 'owner', 'owner', 'taken_over', 1)`)
     .run()
-  database.query("INSERT INTO browser_tabs VALUES ('channel-tab', 'team-bot', 'team-bot-session')").run()
+  database.query("INSERT OR REPLACE INTO browser_tabs VALUES ('channel-tab', 'team-bot', 'team-bot-session')").run()
 
   const cancel = {
     role: "member" as const,
@@ -599,7 +599,7 @@ test("channel browser events use tab scope rather than shared bot membership", (
 })
 
 test("former channel members cannot delete a conversation even when they created it", () => {
-  database.query("INSERT INTO threads VALUES ('member-channel-thread','other-bot','team-b','member',NULL)").run()
+  database.query("INSERT INTO threads VALUES ('member-channel-thread','other-bot','team-b','member',NULL,NULL)").run()
 
   const response = access.authorizeHttp({
     personId: "member",

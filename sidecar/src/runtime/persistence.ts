@@ -85,7 +85,7 @@ export const toRun = (value: unknown): Run | null => {
   return {
     id: text(row, "id"),
     requesterPersonId: nullableText(row, "requester_person_id"),
-    browserRequestId: nullableText(row, "browser_request_id"),
+    ...("browser_request_id" in row ? { browserRequestId: nullableText(row, "browser_request_id") } : {}),
     ...(row.browser_waiting_for_person ? { browserWaitingForPerson: true } : {}),
     threadId: text(row, "thread_id"),
     botId: text(row, "bot_id"),

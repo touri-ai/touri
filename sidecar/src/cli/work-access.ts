@@ -417,6 +417,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
     }
     const browserTakeover = /^\/browser\/tabs\/([^/]+)\/takeover(?:\/(session|frame|input))?$/u.exec(pathname)
     if (browserTakeover && ["POST", "DELETE"].includes(verb)) {
+      if (browserTakeover[2] === undefined && (!isRecord(body) || typeof body.hold !== "boolean")) return denied
       const tabId = browserTakeover[1] ?? ""
       const tab = database.query("SELECT owner_bot_id, owner_thread_id FROM browser_tabs WHERE id = ?").get(tabId) as {
         owner_bot_id: string | null

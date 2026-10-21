@@ -182,7 +182,7 @@ test("module initialization starts Doctor in the background without waiting for 
   } finally {
     runtime.emitHostNotification({ method: "app.willQuit", params: {} })
     await stopMcp({ kernel: runtime.kernel })
-    runtime.stop()
+    await runtime.stop()
     expect(stopped).toBe(true)
     rmSync(root, { recursive: true, force: true })
   }
