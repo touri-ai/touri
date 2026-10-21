@@ -66,7 +66,7 @@ const activeRun = (bot: Bot): Run => ({
 })
 
 describe("composer project picker", () => {
-  it("keeps selected names wrapping in the phone grid with separate send controls", async () => {
+  it("truncates selected names in the phone grid with separate send controls", async () => {
     await setup()
     const composerStyles = await readFile("src/components/Composer.css", "utf8")
     const { container } = render(<style>{composerStyles}</style>)
@@ -109,10 +109,9 @@ describe("composer project picker", () => {
     expect(selection?.getPropertyValue("max-width")).toBe("none")
     expect(control?.height).toBe("auto")
     expect(control?.getPropertyValue("min-height")).toBe("34px")
-    expect(label?.overflow).toBe("visible")
-    expect(label?.getPropertyValue("overflow-wrap")).toBe("anywhere")
-    expect(label?.getPropertyValue("text-overflow")).toBe("clip")
-    expect(label?.getPropertyValue("white-space")).toBe("normal")
+    expect(label?.overflow).toBe("hidden")
+    expect(label?.getPropertyValue("text-overflow")).toBe("ellipsis")
+    expect(label?.getPropertyValue("white-space")).toBe("nowrap")
   })
 
   it("shows the project beside the provider/model in the composer with the bot panel closed", async () => {
