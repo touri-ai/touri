@@ -27,6 +27,9 @@
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-chat) transparent;
 }
+.composer.composer-island textarea:focus-visible {
+  box-shadow: none;
+}
 @supports (field-sizing: content) {
   .composer.composer-island textarea {
     height: auto;

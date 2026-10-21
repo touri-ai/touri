@@ -223,6 +223,10 @@ test("the migration keeps touri fonts and components only consume defined color 
       expect(declarations(css)[match[1]]).toMatch(/^var\(--(?:text(?:-[\w-]+)?|warning|danger|success|link)\)$/)
       continue
     }
+    if (match[1] === "--activity-line") {
+      expect(declarations(css)[match[1]]).toBe("var(--space-24)")
+      continue
+    }
     expect(() => color(match[1] ?? "")).not.toThrow()
   }
 })

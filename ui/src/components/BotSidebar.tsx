@@ -297,7 +297,7 @@ export const Sidebar = (props: SidebarProps) => {
                     navigate(() => openRoutineHistory(bot.id, routineId ?? selectedRoutineId))
                   }
                   onReviewApproval={(target) => navigate(() => props.onReviewApproval(target))}
-                  onNotification={(item) => navigate(() => props.notificationActions.open(item))}
+                  onNotification={(item) => navigate(() => (props.onNeedsYou ?? props.notificationActions.open)(item))}
                   onDelete={props.onDeleteBot}
                 />
               </Fragment>
