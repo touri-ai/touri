@@ -457,9 +457,7 @@ export const GroupModal = ({
             />
           </label>
           <AvatarPicker
-            label="Mascote do grupo"
-            description="Personalize seu grupo"
-            name={name}
+            label={t("avatar.group")}
             bot={{ id: group?.id ?? avatarSeed, avatarShape: shape, color, avatarSeed }}
             onChange={(v) => {
               if (v.avatarShape) setShape(v.avatarShape)

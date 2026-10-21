@@ -55,6 +55,7 @@ it("preserves advanced drafts while keeping creation on one screen", async () =>
   expect(screen.getByRole("button", { name: "Criar bot" })).toBeDisabled()
   expect(screen.getByLabelText("Nome")).toHaveFocus()
   fireEvent.change(screen.getByLabelText("Nome"), { target: { value: " Clara " } })
+  fireEvent.click(screen.getByRole("button", { name: "Personalizar" }))
   fireEvent.click(screen.getByRole("radio", { name: "Chifres Curtos" }))
   fireEvent.click(screen.getByRole("radio", { name: "Acessório Flor" }))
   fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))

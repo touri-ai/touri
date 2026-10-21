@@ -62,6 +62,7 @@ for (const [device, width, height] of [
       await dialog.getByLabel("Nome", { exact: true }).fill("Clara")
       await dialog.getByRole("searchbox", { name: "Buscar trabalhos" }).fill("repositório")
       await dialog.getByRole("radio", { name: "Mapa do repositório" }).click()
+      await dialog.getByRole("button", { name: "Personalizar", exact: true }).click()
       await dialog.getByRole("radio", { name: "Chifres Longos" }).click()
       await dialog.getByRole("button", { name: "Criar bot", exact: true }).click()
       await expect(dialog.getByRole("alert")).toContainText("Instale a IA")

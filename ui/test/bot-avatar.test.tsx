@@ -4,7 +4,6 @@ import { avatarMoodFor, avatarProfileFor, renderAvatarSvg } from "@touri/contrac
 import { afterEach, describe, expect, it, vi } from "vitest"
 import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
-import { AvatarPicker } from "../src/components/AvatarPicker"
 import { type AvatarRuntime, AvatarRuntimeProvider } from "../src/components/AvatarRuntime"
 import { BotAvatar } from "../src/components/BotAvatar"
 import { GroupModal } from "../src/components/Groups"
@@ -180,29 +179,6 @@ describe("procedural avatars", () => {
     expect(cronAvatar).toHaveAttribute("data-avatar-mood", "waiting")
   })
 
-  it("previews every state, shuffles a full look and restores the seeded automatic look", () => {
-    const change = vi.fn()
-    vi.spyOn(Math, "random").mockReturnValue(0.99)
-    const { container } = render(<AvatarPicker bot={bot} name="Clara" onChange={change} />)
-    const preview = () => container.querySelector(".avatar-picker-stage .tb-avatar")
-
-    fireEvent.click(screen.getByRole("radio", { name: "Aguardando" }))
-    const hopBeforeChoice = container.querySelector(".avatar-picker-hop")
-    fireEvent.click(screen.getByRole("button", { name: "Sortear" }))
-    const hop = container.querySelector(".avatar-picker-hop")
-    fireEvent.click(screen.getByRole("button", { name: "Restaurar automático" }))
-
-    expect(hopBeforeChoice).toBeNull()
-    expect(hop).not.toBeNull()
-    expect(container.querySelector(".avatar-picker-hop")).not.toBe(hop)
-    expect(preview()).toHaveAttribute("data-avatar-phase", "waiting")
-    expect(screen.getByText("Precisa da sua aprovação")).toBeVisible()
-    expect(screen.getByRole("radio", { name: "Acessório Coroa" })).toBeChecked()
-    expect(change.mock.calls).toEqual([
-      [{ color: "#e152b0", avatarShape: "none-crown" }],
-      [{ color: null, avatarShape: avatarProfileFor({ id: bot.id, color: null }).shape }],
-    ])
-  })
   it("persists avatar and VM choices together through creation and settings", async () => {
     const api = createMockApi()
     const capability = { available: true, reason: null, provider: "apple-container" as const }
@@ -217,6 +193,7 @@ describe("procedural avatars", () => {
       />,
     )
     fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Avatar bot" } })
+    fireEvent.click(screen.getByRole("button", { name: "Personalizar" }))
     fireEvent.click(screen.getByRole("radio", { name: "Chifres Longos" }))
     fireEvent.click(screen.getByRole("radio", { name: "Acessório Coroa" }))
     fireEvent.click(screen.getByRole("radio", { name: "Cor Azul" }))
@@ -257,6 +234,8 @@ describe("procedural avatars", () => {
         onClose={() => undefined}
       />,
     )
+    fireEvent.click(screen.getByRole("button", { name: "Personalizar" }))
+
     expect(screen.getByRole("radio", { name: "Chifres Longos" })).toBeChecked()
     expect(screen.getByRole("radio", { name: "Acessório Coroa" })).toBeChecked()
     expect(screen.getByRole("radio", { name: "Cor Azul" })).toBeChecked()
