@@ -71,6 +71,14 @@ export const createBrowserStore = ({
   let disposed = false
 
   const load = (): Array<TabState> => {
+    // Older releases saved holds without a deadline; release them without exposing the private page or resuming work.
+    database
+      .query(`UPDATE browser_tabs
+        SET held_by_user = 0, takeover_reason = NULL, private_after_takeover = 1, private_input = 1
+        WHERE profile = ? AND held_by_user = 1 AND NOT EXISTS (
+          SELECT 1 FROM browser_pending_handoffs handoff WHERE handoff.tab_id = browser_tabs.id AND handoff.state = 'waiting'
+        )`)
+      .run(profile)
     database
       .query(
         `UPDATE browser_tabs SET state = 'unloaded'${retainTargets ? "" : ", cdp_target_id = NULL"} WHERE state = 'live' AND profile = ?`,

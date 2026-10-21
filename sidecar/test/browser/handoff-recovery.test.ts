@@ -79,3 +79,40 @@ test("a waiting handoff survives browser shutdown with its original deadline and
   expect(ledger.get("tab")?.runId).toBe("resumed")
   expect(persistence.getRunSnapshots(["resumed"])[0]?.browserWaitingForPerson).toBe(true)
 })
+
+
+test("legacy held tabs without a handoff deadline release safely on startup", async () => {
+  const root = await mkdtemp(join(tmpdir(), "touri-handoff-orphan-"))
+  const runtime = createKernel({ appData: root })
+  const database = runtime.kernel.db as Database
+  database.exec(`
+    INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('bot','Lia','codex','/workspace/lia',1,1);
+    INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES ('thread','bot','Test',1,1);
+    INSERT INTO browser_tabs(id,owner_bot_id,owner_thread_id,url,state,held_by_user,takeover_reason,created_at,last_used_at)
+      VALUES ('orphan','bot','thread','https://travel.example.test/login','unloaded',1,'login',1,1);
+  `)
+  const engine = createBrowserEngine({
+    kernel: runtime.kernel,
+    launcher: { start: async () => null, stop: async () => {} },
+  })
+  cleanups.add(async () => {
+    await engine.shutdown()
+    await runtime.stop()
+    await rm(root, { recursive: true })
+  })
+
+  const restored = engine.tabsForBot("bot")[0]
+
+  expect(restored?.heldByUser).toBe(false)
+  expect(restored?.takeoverRequested).toBe(false)
+  expect(restored?.url).toBe("https://travel.example.test")
+  expect(
+    database
+      .query("SELECT held_by_user, private_after_takeover, private_input FROM browser_tabs WHERE id = 'orphan'")
+      .get(),
+  ).toEqual({
+    held_by_user: 0,
+    private_after_takeover: 1,
+    private_input: 1,
+  })
+})
