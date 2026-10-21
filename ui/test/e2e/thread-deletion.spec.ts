@@ -6,7 +6,7 @@ import { expect, test } from "@playwright/test"
 
 test.use({ channel: "chromium" })
 
-const evidenceDirectory = join(tmpdir(), "touri-thread-delete-evidence")
+const evidenceDirectory = process.env.TOURI_THREAD_EVIDENCE_DIR ?? join(tmpdir(), "touri-thread-delete-evidence")
 
 for (const width of [1440, 390]) {
   for (const theme of ["light", "dark"]) {
