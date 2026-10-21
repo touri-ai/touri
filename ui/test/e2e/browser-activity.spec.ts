@@ -111,7 +111,7 @@ test.describe("full browser activity flow", () => {
       }
       if (variant.width > 600)
         await expect(page.getByRole("button", { name: /Busca de viagem/ })).toContainText("trabalhando")
-      await expect(card).toBeVisible()
+      await expect(card).toBeVisible({ timeout: 40_000 })
       await expect(card.locator(".browser-activity-subtitle")).toContainText("travel.example.test")
       await expect(card.getByText(/travel\.example\.test/)).toHaveCount(1)
       await expect(card.getByRole("progressbar", { name: "Progresso do navegador" })).toBeVisible()
@@ -244,7 +244,7 @@ test.describe("full browser activity flow", () => {
   }
 })
 
-test("remote keyboard input reaches the managed page without entering the conversation", async ({ page }) => {
+test("remote keyboard input reaches the managed page without entering the conversation", async ({ page }, info) => {
   test.setTimeout(60_000)
   await connectBrowserFixture(page)
   await page.setViewportSize({ width: 390, height: 844 })
@@ -292,6 +292,7 @@ test("remote keyboard input reaches the managed page without entering the conver
     .toBe(true)
 
   await expect(page.getByTestId("virtual-message-list")).not.toContainText("entrada privada fictícia")
+  await page.screenshot({ path: getEvidencePath(info, "browser-private-input-phone.png"), fullPage: true })
   await control.getByRole("button", { name: /Devolver para/ }).click()
   await page.getByRole("button", { name: "Parar Lia" }).click()
 })

@@ -4,8 +4,10 @@ import type { ChromeLauncher } from "../../../sidecar/src/browser/launcher"
 import type { CdpClient } from "../../../sidecar/src/browser/types"
 
 /** The test runner owns this disposable browser and its loopback CDP transport. */
-export const createFixtureBrowserLauncher = (): ChromeLauncher => {
-  let active: { browser: Browser; client: CdpClient } | null = null
+export const createFixtureBrowserLauncher = (): ChromeLauncher & {
+  connectInspection: () => Promise<CdpClient | null>
+} => {
+  let active: { browser: Browser; client: CdpClient; url: string } | null = null
   const stop = async (): Promise<void> => {
     const current = active
     active = null
@@ -29,7 +31,7 @@ export const createFixtureBrowserLauncher = (): ChromeLauncher => {
       if (!response.ok) throw new Error("Test browser transport did not start")
       const version = (await response.json()) as { webSocketDebuggerUrl: string }
       const client = await connectCdpWebSocket({ url: version.webSocketDebuggerUrl, timeoutMs: 5_000 })
-      active = { browser, client }
+      active = { browser, client, url: version.webSocketDebuggerUrl }
       return { client }
     } catch (error) {
       await browser.close()
@@ -37,5 +39,8 @@ export const createFixtureBrowserLauncher = (): ChromeLauncher => {
     }
   }
 
-  return { start, stop }
+  const connectInspection = async (): Promise<CdpClient | null> =>
+    active ? connectCdpWebSocket({ url: active.url, timeoutMs: 5_000 }) : null
+
+  return { start, stop, connectInspection }
 }

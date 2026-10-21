@@ -142,20 +142,19 @@ const getSnapshot = async (): Promise<BrowserSnapshot | null> => {
 }
 
 const getFixturePageValue = async <T>(expression: string): Promise<T | null> => {
-  const running = await launcher.start({ runningOnly: true })
-  if (!running) return null
-  const { client } = running
-  const { targetInfos } = await client.call<{ targetInfos: Array<{ targetId: string; url: string }> }>(
-    "Target.getTargets",
-  )
-  const target = targetInfos.find((item) => item.url.startsWith(fixtureUrl))
-  if (!target) return null
-  const { sessionId } = await client.call<{ sessionId: string }>("Target.attachToTarget", {
-    targetId: target.targetId,
-    flatten: true,
-  })
+  const client = await launcher.connectInspection()
+  if (!client) return null
 
   try {
+    const { targetInfos } = await client.call<{ targetInfos: Array<{ targetId: string; url: string }> }>(
+      "Target.getTargets",
+    )
+    const target = targetInfos.find((item) => item.url.startsWith(fixtureUrl))
+    if (!target) return null
+    const { sessionId } = await client.call<{ sessionId: string }>("Target.attachToTarget", {
+      targetId: target.targetId,
+      flatten: true,
+    })
     const { result } = await client.call<{ result: { value?: T } }>(
       "Runtime.evaluate",
       { expression, returnByValue: true },
@@ -163,7 +162,7 @@ const getFixturePageValue = async <T>(expression: string): Promise<T | null> => 
     )
     return result.value ?? null
   } finally {
-    await client.call("Target.detachFromTarget", { sessionId }).catch(() => undefined)
+    await client.close()
   }
 }
 

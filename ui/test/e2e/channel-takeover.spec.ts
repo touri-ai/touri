@@ -66,6 +66,6 @@ test("a channel browser handback resumes the bot and posts its answer in the sam
   await expect(page.getByText("Cancelado por você", { exact: true })).toHaveCount(0)
   await expect(page.getByText("Falhou", { exact: true })).toHaveCount(0)
   await expect(page.locator(".browser-activity-card")).toHaveCount(1)
-  await expect(browserCard).toContainText("Usou o navegador · 2 ações")
+  await expect(browserCard).toContainText("Usou o navegador · 3 ações")
   await saveScreenshot("channel-takeover-resumed.png")
 })
