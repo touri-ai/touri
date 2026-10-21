@@ -44,16 +44,26 @@ for (const viewport of [
   })
 }
 
-test("a reopened page shows one actionable reminder and a plain no-news result", async ({ page }) => {
+test("a reopened page keeps approval reminders actionable without repeating the active conversation", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto("/test/e2e/notification-preferences-harness.html")
   const reminder = page.locator(".approval-notice")
+  await expect(reminder).toHaveCount(0)
+
+  await page.locator('[data-bot-entry="bot-onb"] .bot-row-main').click()
+
   await expect(reminder).toHaveCount(1)
   await expect(reminder).toContainText("mark pede sua aprovação:")
   await expect(reminder.getByRole("button", { name: "Revisar", exact: true })).toBeVisible()
   await expect(page.getByText("Você tem 2 solicitações pendentes.")).toHaveCount(0)
   await expect(page.getByRole("button", { name: "Notificações, 2 precisam de atenção", exact: true })).toBeVisible()
 
+  await reminder.getByRole("button", { name: "Revisar", exact: true }).click()
+
+  await expect(page.getByRole("textbox", { name: "Mensagem para mark", exact: true })).toBeVisible()
+  await expect(reminder).toHaveCount(0)
   await page.getByRole("button", { name: /^Notificações,/ }).click()
 
   const center = page.getByRole("region", { name: "Central de notificações" })
