@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><title>estadias · Entrar</title><link rel="stylesheet" href="/site.css"></head>
+<body>
+<header class="top"><span class="brand">estadias</span></header>
+<form class="card" id="login" autocomplete="off">
+  <h1>Entre para ver o preço final</h1>
+  <label>E-mail<input id="email" type="email" aria-label="E-mail" placeholder="voce@exemplo.com"></label>
+  <label>Senha<input id="senha" type="password" aria-label="Senha"></label>
+  <button type="submit">Continuar</button>
+</form>
+<script>
+document.getElementById("login").addEventListener("submit", (e) => {
+  e.preventDefault()
+  const next = new URLSearchParams(location.search).get("next") || "/final"
+  location.href = next
+})
+</script>
+</body>
+</html>
