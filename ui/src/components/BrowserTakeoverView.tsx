@@ -52,6 +52,7 @@ export const BrowserTakeoverView = ({
   const keyboard = useRef<HTMLTextAreaElement>(null)
   const renderedFrame = useRef<FrameMeta | null>(null)
   const latestFrameMeta = useRef<FrameMeta | null>(null)
+  const loadedFallbackImage = useRef("")
   const viewEpoch = useRef(initialViewEpoch)
   const connected = useRef(false)
   const pendingInputs = useRef(0)
@@ -77,6 +78,7 @@ export const BrowserTakeoverView = ({
     let latestImage = ""
     let latestFrameId = 0
     let latestFrameMeta: FrameMeta | null = null
+    let workerFrameDrawn = false
     let worker: Worker | null = null
     connected.current = true
     const canvasElement = canvas.current
@@ -84,6 +86,7 @@ export const BrowserTakeoverView = ({
     const invalidateView = (): void => {
       viewEpoch.current += 1
       renderedFrame.current = null
+      workerFrameDrawn = false
       setFrameReady(false)
       setWorkerFrameReady(false)
     }
@@ -99,16 +102,26 @@ export const BrowserTakeoverView = ({
         const stopWorker = () => {
           worker?.terminate()
           worker = null
+          workerFrameDrawn = false
           setFallbackImage(latestImage)
-          renderedFrame.current = latestFrameMeta
-          setFrameReady(Boolean(latestFrameMeta))
+          const fallbackFrame =
+            latestFrameMeta?.viewEpoch === viewEpoch.current && loadedFallbackImage.current === latestImage
+              ? latestFrameMeta
+              : null
+          renderedFrame.current = fallbackFrame
+          setFrameReady(Boolean(fallbackFrame))
           setWorkerReady(false)
           setWorkerFrameReady(false)
         }
         worker.onmessage = (event: MessageEvent<{ type?: string; frameId?: number }>) => {
           if (!active) return
           if (event.data.type === "error") stopWorker()
-          if (event.data.type === "drawn" && event.data.frameId === latestFrameId) {
+          if (
+            event.data.type === "drawn" &&
+            event.data.frameId === latestFrameId &&
+            latestFrameMeta?.viewEpoch === viewEpoch.current
+          ) {
+            workerFrameDrawn = true
             renderedFrame.current = latestFrameMeta
             setFrameReady(true)
             setWorkerFrameReady(true)
@@ -152,6 +165,15 @@ export const BrowserTakeoverView = ({
         }
         latestFrameMeta.current = nextFrame
         setFallbackImage(next.image)
+        if (!workerFrameDrawn) {
+          if (loadedFallbackImage.current === next.image) {
+            renderedFrame.current = nextFrame
+            setFrameReady(true)
+          } else {
+            renderedFrame.current = null
+            setFrameReady(false)
+          }
+        }
         setFrame((current) => {
           if (!current) return nextFrame
           if (
@@ -167,10 +189,6 @@ export const BrowserTakeoverView = ({
         if (worker) {
           latestFrameId += 1
           worker.postMessage({ type: "frame", frameId: latestFrameId, image: next.image })
-        } else {
-          renderedFrame.current = nextFrame
-          setFallbackImage(next.image)
-          setFrameReady(true)
         }
       } catch {
         if (active) setError(t("The browser control connection was interrupted.", {}, localeRef.current))
@@ -434,7 +452,8 @@ export const BrowserTakeoverView = ({
               src={fallbackImage}
               alt={t("Live browser page", {}, locale)}
               decoding="async"
-              onLoad={() => {
+              onLoad={(event) => {
+                loadedFallbackImage.current = event.currentTarget.src
                 const loadedFrame = latestFrameMeta.current
                 if (loadedFrame?.viewEpoch !== viewEpoch.current) return
                 renderedFrame.current = loadedFrame

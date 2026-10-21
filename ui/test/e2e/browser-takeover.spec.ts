@@ -23,7 +23,7 @@ for (const viewport of [
     await expect(keyboard).toBeEnabled()
     await page.getByRole("button", { name: "Digitar no navegador" }).click()
     await expect(keyboard).toBeFocused()
-    await keyboard.pressSequentially("valor privado de teste")
+    await page.keyboard.insertText("valor privado de teste")
     await expect
       .poll(() =>
         page.evaluate(() => {
