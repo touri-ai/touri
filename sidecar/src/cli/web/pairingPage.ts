@@ -39,8 +39,8 @@ code{font:.85rem ui-monospace,Menlo,monospace;background:var(--bg);padding:.1rem
 <label id="email-label" for="email">E-mail</label>
 <input id="email" name="email" type="email" autocomplete="email" maxlength="254" required>
 <button id="email-button" type="submit">Enviar link de acesso</button>
-<div class="status" id="email-status" role="status" aria-live="polite"></div>
 </form>
+<div class="status" id="email-status" role="status" aria-live="polite"></div>
 <hr id="separator">
 <form id="pair-form" autocomplete="off">
 <h2 id="pair-heading">Usar código de pareamento</h2>
@@ -94,8 +94,16 @@ event.preventDefault();pairButton.disabled=true;pairStatus.textContent="";
 requestJson("/pair",{code:codeInput.value,name:navigator.userAgent.slice(0,80)}).then(function(result){if(result.ok){location.replace("/");return}pairStatus.textContent=copy.pairFailed}).catch(function(){pairStatus.textContent=copy.connectionFailed}).finally(function(){pairButton.disabled=false});
 });
 var fragment=new URLSearchParams(location.hash.slice(1));var signInToken=fragment.get("signin");
+const showSignInError = (message) => {
+  emailStatus.textContent = message;
+  emailStatus.className = "status error";
+  emailForm.hidden = false;
+  pairForm.hidden = false;
+  document.getElementById("separator").hidden = false;
+  emailInput.focus();
+};
 if(signInToken){history.replaceState(null,"",location.pathname+location.search);emailForm.hidden=true;pairForm.hidden=true;document.getElementById("separator").hidden=true;emailStatus.textContent=copy.redeeming;
-requestJson("/api/v1/auth/email/redeem",{token:signInToken,deviceName:navigator.userAgent.slice(0,80)}).then(function(result){if(result.ok){location.replace("/");return}emailStatus.textContent=copy.invalidLink;emailStatus.className="status error"}).catch(function(){emailStatus.textContent=copy.connectionFailed;emailStatus.className="status error"});
+requestJson("/api/v1/auth/email/redeem",{token:signInToken,deviceName:navigator.userAgent.slice(0,80)}).then(function(result){if(result.ok){location.replace("/");return}showSignInError(copy.invalidLink)}).catch(function(){showSignInError(copy.connectionFailed)});
 }
 </script>
 </body>
