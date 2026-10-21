@@ -4,6 +4,20 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "Para convidar pessoas, configure o endereço público HTTPS em Pessoas nas preferências.":
+    "Para convidar pessoas, configure o endereço público HTTPS em Pessoas nas preferências.",
+  "Informe um endereço HTTPS válido, sem caminho.": "Informe um endereço HTTPS válido, sem caminho.",
+  "The browser needs your help.": "O navegador precisa da sua ajuda.",
+  "You are in control of the browser.": "Você está no controle do navegador.",
+  "1 bot": "1 bot",
+  "{count} bots": "{count} bots",
+  "1 person": "1 pessoa",
+  "{count} people": "{count} pessoas",
+  "{name} coordinates": "{name} coordena",
+  Person: "Pessoa",
+  "Browser takeover": "Controle do navegador",
+  "This document contains private browser input. Continue the original task in a new tab; do not read this document.":
+    "Esta página contém dados digitados em privado. Continue a tarefa em outra aba, sem ler esta página.",
   "Updating a choice": "Atualizando uma escolha",
   "Scrolling the page": "Rolando a página",
   "Asking for your help": "Pedindo sua ajuda",
@@ -3100,6 +3114,9 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Para convidar pessoas, configure o endereço público HTTPS em Pessoas nas preferências.":
+    "To invite people, set the public HTTPS address under People in preferences.",
+  "Informe um endereço HTTPS válido, sem caminho.": "Enter a valid HTTPS address without a path.",
   "Take over tab": "Take over",
   "Check your tools": "Check your tools",
   "See what is ready to use and what needs your attention.": "See what is ready to use and what needs your attention.",
@@ -5527,6 +5544,8 @@ export const statusLabel = (status: string): string => {
 
 /** Translate only application-authored notices, leaving bot/user content intact. */
 export const localizeNotice = (value: string): string => {
+  if (/^needs you in the browser:/iu.test(value)) return t("The browser needs your help.")
+  if (/^The user took over the browser:/u.test(value)) return t("You are in control of the browser.")
   const routineSkip = getRoutineSkipSummary(value)
   if (routineSkip) return routineSkip
   const toolCheck = /^Ferramentas do touri · (.+)$/.exec(value)

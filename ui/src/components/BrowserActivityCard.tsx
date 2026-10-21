@@ -127,7 +127,7 @@ export const BrowserActivityCard = ({
   const bot = context?.bot
   const botId = bot?.id
   const machine = bot?.machine
-  const canPreview = !!api && !!bot && (bot.machine === "local" || context?.machine?.status === "running")
+  const canPreview = !!api && !!bot
   const completedCount = browserTools.filter((part) => !isBrowserActivityRunning(part)).length
   const needsTabRef = useRef(!activeTabId)
   needsTabRef.current = !activeTabId
@@ -242,7 +242,7 @@ export const BrowserActivityCard = ({
       () => setPreviewError(t("Browser preview unavailable. Open the browser to reconnect.", {}, locale)),
       (reason) =>
         setPreviewError(reason ? t("Browser preview unavailable. Open the browser to reconnect.", {}, locale) : null),
-      { intervalMs: 700 },
+      { intervalMs: 700, onReset: () => setPreviewFrame(undefined) },
     )
     frameSource.current = source
 

@@ -267,7 +267,7 @@ test("list on stopped VM or unopened Chromium returns empty with hint and never 
   expect(f.hostSpawns()).toBe(0)
 })
 
-test("guest previews never acquire or launch, including with an attached browser", async () => {
+test("guest previews never acquire or launch and capture only attached running browser tabs", async () => {
   const f = await fixture()
   for (const status of ["stopped", "running"] as const) {
     f.publish({ status })
@@ -277,11 +277,14 @@ test("guest previews never acquire or launch, including with an attached browser
   expect(f.endpoints).toHaveLength(0)
   expect(f.transports).toHaveLength(0)
   await f.browser.list({ botId: f.bot.id })
-  const calls = [...(f.transports[0]?.calls ?? [])]
-  expect(await f.browser.preview({ botId: f.bot.id, signal: f.ctx.signal })).toBeNull()
+  const tabId = f.browser.tabsForBot(f.bot.id)[0]?.tabId
+  if (!tabId) throw new Error("Missing synthetic tab")
+  expect(await f.browser.preview({ botId: f.bot.id, tabId, signal: f.ctx.signal })).toMatchObject({
+    image: "data:image/jpeg;base64,ZmFrZQ==",
+  })
   expect(f.acquisitions).toHaveLength(1)
   expect(f.endpoints).toHaveLength(1)
-  expect(f.transports[0]?.calls).toEqual(calls)
+  expect(f.transports[0]?.calls).toContain("Page.captureScreenshot")
   expect(f.hostSpawns()).toBe(0)
 })
 

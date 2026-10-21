@@ -158,7 +158,7 @@ test("takeover privacy can lift only after bounded metadata identifies a safe pa
   ).toBe(false)
 })
 
-test("safe pages can resume previews after handback", async () => {
+test("a private document stays hidden after handback until its provenance is approved", async () => {
   const page = {
     heldByUser: false,
     privateAfterTakeover: true,
@@ -172,7 +172,13 @@ test("safe pages can resume previews after handback", async () => {
     capture: async () => "fixture-image",
   })
 
-  expect(preview).toBe("fixture-image")
+  expect(preview).toBeNull()
+
+  const publicPreview = await captureSafeBrowserPreview({
+    getPage: () => Object.assign({}, page, { privateAfterTakeover: false }),
+    capture: async () => "fixture-image",
+  })
+  expect(publicPreview).toBe("fixture-image")
 })
 
 test("post-takeover preview metadata omits page titles and URL values", () => {
@@ -183,4 +189,18 @@ test("post-takeover preview metadata omits page titles and URL values", () => {
 
   expect(JSON.stringify(metadata)).not.toContain("fixture-secret")
   expect(metadata).toEqual({ title: "", url: "https://travel.example.test" })
+})
+
+test("the original document and a restored history document stay private even when login fields disappear", () => {
+  const page = {
+    url: "https://example.test/results",
+    title: "Results",
+    hasSensitiveEntry: false,
+    privateDocumentIds: [100],
+  }
+
+  expect(canResumeAfterHumanTakeover(Object.assign({}, page, { documentId: 100 }))).toBe(false)
+  expect(canResumeAfterHumanTakeover(Object.assign({}, page, { documentId: 200 }))).toBe(true)
+  expect(canResumeAfterHumanTakeover(Object.assign({}, page, { documentId: 100 }))).toBe(false)
+  expect(canResumeAfterHumanTakeover(Object.assign({}, page, { documentId: 200, privateDocumentIds: [0] }))).toBe(false)
 })

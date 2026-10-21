@@ -49,6 +49,7 @@ export const apiRouteKeys = [
   "GET /workspace/activity",
   "GET /runs",
   "GET /groups",
+  "GET /groups/:id/people",
   "POST /groups",
   "PATCH /groups/:id",
   "DELETE /groups/:id",
@@ -179,6 +180,7 @@ export type ApiRequest = <K extends keyof ApiRoutes>(
   route: K,
   input: ApiRoutes[K]["req"],
   pathValues?: Record<string, string>,
+  transport?: { signal?: AbortSignal },
 ) => Promise<ApiRoutes[K]["res"]>
 
 export type UiApi = {
@@ -415,7 +417,7 @@ export const createApiClient = ({
       connecting = false
     }
   }
-  const request: ApiRequest = async (route, input, pathValues = {}) => {
+  const request: ApiRequest = async (route, input, pathValues = {}, transport = {}) => {
     const [method, routePath] = String(route).split(" ")
     if (!method || !routePath) throw new Error(`invalid route ${String(route)}`)
     const path = replacePath(routePath, pathValues)
@@ -433,7 +435,9 @@ export const createApiClient = ({
         method,
         headers,
         credentials: "same-origin",
-        signal: AbortSignal.timeout(30_000),
+        signal: transport.signal
+          ? AbortSignal.any([transport.signal, AbortSignal.timeout(30_000)])
+          : AbortSignal.timeout(30_000),
         ...(!isGet ? { body: JSON.stringify(input) } : {}),
       })
     }
@@ -441,12 +445,14 @@ export const createApiClient = ({
     try {
       response = await send()
     } catch {
+      transport.signal?.throwIfAborted()
       // Only reads may be replayed. A lost mutation response may already have committed.
       if (!isGet) throw new ApiError(0, "", undefined, "TOURI-E1010")
       try {
         await refreshEndpoint()
         response = await send()
       } catch {
+        transport.signal?.throwIfAborted()
         reconnectUnavailableService()
         throw new ApiError(0, "", undefined, "TOURI-E1009")
       }
@@ -462,6 +468,7 @@ export const createApiClient = ({
         if (typeof parsed.errorCode === "string") errorCode = parsed.errorCode
         if (isErrorCode(parsed.code)) code = parsed.code
       } catch {
+        transport.signal?.throwIfAborted()
         // Keep the plain response body when it is not JSON.
       }
       const retryAfter = response.headers.get("Retry-After")

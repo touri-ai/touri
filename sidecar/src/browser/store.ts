@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite"
 import type { BrowserTabInfo, Id, Kernel } from "@touri/contracts"
 import type { SavedSecret } from "../approvals/secrets"
+import { sanitizeHumanTakeoverUrl } from "./takeover-privacy"
 import type { BrowserTabRow, TabState } from "./types"
 
 type SecretRow = {
@@ -33,13 +34,14 @@ const toRow = (tab: TabState, createdAt: number): BrowserTabRow => ({
   owner_thread_id: tab.info.ownerThreadId,
   opener_tab_id: tab.info.openerTabId,
   cdp_target_id: tab.targetId,
-  url: tab.info.url,
-  title: tab.info.title,
+  url: tab.privateInput || tab.secretMode ? sanitizeHumanTakeoverUrl(tab.info.url) : tab.info.url,
+  title: tab.privateInput || tab.secretMode ? "" : tab.info.title,
   state: tab.info.state,
   held_by_user: tab.info.heldByUser ? 1 : 0,
   private_after_takeover: tab.privateAfterTakeover ? 1 : 0,
   takeover_reason: tab.takeoverReason,
   private_input: tab.privateInput ? 1 : 0,
+  private_document_ids_json: JSON.stringify(tab.privateDocumentIds),
   created_at: createdAt,
   last_used_at: tab.info.lastUsedAt,
 })
@@ -93,6 +95,7 @@ export const createBrowserStore = ({
         privateAfterTakeover: row.private_after_takeover === 1,
         takeoverReason: row.takeover_reason,
         privateInput: row.private_input === 1,
+        privateDocumentIds: getPrivateDocumentIds(row),
         dialog: null,
         lastFailureKey: null,
         failureCount: 0,
@@ -149,6 +152,7 @@ export const createBrowserStore = ({
       privateAfterTakeover: false,
       takeoverReason: null,
       privateInput: false,
+      privateDocumentIds: [],
       dialog: null,
       lastFailureKey: null,
       failureCount: 0,
@@ -172,7 +176,7 @@ export const createBrowserStore = ({
     tab.info.lastUsedAt = row.last_used_at
     database
       .query(
-        "UPDATE browser_tabs SET owner_bot_id = ?, owner_thread_id = ?, opener_tab_id = ?, cdp_target_id = ?, url = ?, title = ?, state = ?, held_by_user = ?, private_after_takeover = ?, takeover_reason = ?, private_input = ?, last_used_at = ? WHERE id = ?",
+        "UPDATE browser_tabs SET owner_bot_id = ?, owner_thread_id = ?, opener_tab_id = ?, cdp_target_id = ?, url = ?, title = ?, state = ?, held_by_user = ?, private_after_takeover = ?, takeover_reason = ?, private_input = ?, private_document_ids_json = ?, last_used_at = ? WHERE id = ?",
       )
       .run(
         row.owner_bot_id,
@@ -186,6 +190,7 @@ export const createBrowserStore = ({
         row.private_after_takeover,
         row.takeover_reason,
         row.private_input,
+        row.private_document_ids_json,
         row.last_used_at,
         row.id,
       )
@@ -235,8 +240,8 @@ export const createBrowserStore = ({
 
 export const publicTabInfo = ({ tab }: { tab: TabState }): BrowserTabInfo & { ownerBotId: Id | null } => ({
   tabId: tab.info.tabId,
-  url: tab.info.url,
-  title: tab.info.title,
+  url: tab.privateInput || tab.secretMode ? sanitizeHumanTakeoverUrl(tab.info.url) : tab.info.url,
+  title: tab.privateInput || tab.secretMode ? "" : tab.info.title,
   state: tab.info.state,
   openerTabId: tab.info.openerTabId,
   heldByUser: tab.info.heldByUser,
@@ -244,3 +249,20 @@ export const publicTabInfo = ({ tab }: { tab: TabState }): BrowserTabInfo & { ow
   lastUsedAt: tab.info.lastUsedAt,
   ownerBotId: tab.info.ownerBotId,
 })
+
+const getPrivateDocumentIds = (row: BrowserTabRow): ReadonlyArray<number> => {
+  try {
+    const epochs: unknown = JSON.parse(row.private_document_ids_json)
+    if (
+      !Array.isArray(epochs) ||
+      epochs.length > 32 ||
+      epochs.some((epoch) => typeof epoch !== "number" || !Number.isFinite(epoch) || epoch < 0)
+    )
+      return [0]
+    if (row.private_input === 1 && epochs.length === 0) return [0]
+
+    return epochs
+  } catch {
+    return [0]
+  }
+}

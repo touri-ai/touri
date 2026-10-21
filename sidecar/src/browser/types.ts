@@ -102,6 +102,7 @@ export type BrowserTabRow = {
   private_after_takeover: number
   takeover_reason: BrowserTakeoverReason | null
   private_input: number
+  private_document_ids_json: string
   created_at: EpochMs
   last_used_at: EpochMs
 }
@@ -120,6 +121,7 @@ export type TabState = {
   privateAfterTakeover: boolean
   takeoverReason: BrowserTakeoverReason | null
   privateInput: boolean
+  privateDocumentIds: ReadonlyArray<number>
   dialog: { type: "alert" | "confirm" | "prompt" | "beforeunload"; message: string } | null
   lastFailureKey: string | null
   failureCount: number
@@ -154,6 +156,7 @@ export type BrowserEngine = {
     height: number
     input: BrowserTakeoverInput
     signal: AbortSignal
+    isAuthorized?: () => boolean
   }) => Promise<boolean>
   open: (args: { url: string; ctx: ToolContext; timeoutMs: number }) => Promise<ToolResult>
   list: (args: { botId: Id | null; signal?: AbortSignal; timeoutMs?: number }) => Promise<ToolResult>

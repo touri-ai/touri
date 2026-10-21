@@ -118,3 +118,15 @@ test("errors before route dispatch also use the public error boundary", async ()
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test("public address errors retain actionable guidance without raw diagnostics", () => {
+  const required = normalizeErrorBody({ errorCode: "PUBLIC_ADDRESS_REQUIRED", error: "private diagnostic" }, 409)
+  const invalid = normalizeErrorBody({ errorCode: "PUBLIC_ADDRESS_INVALID", error: "private diagnostic" }, 400)
+
+  expect(required).toMatchObject({
+    code: "TOURI-E1017",
+    error: "Para convidar pessoas, configure o endereço público HTTPS em Pessoas nas preferências.",
+  })
+  expect(invalid).toMatchObject({ code: "TOURI-E1018", error: "Informe um endereço HTTPS válido, sem caminho." })
+  expect(JSON.stringify([required, invalid])).not.toContain("private diagnostic")
+})

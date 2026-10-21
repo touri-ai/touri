@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite"
 import { afterAll, afterEach, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { createServer, type Server as NetServer } from "node:net"
@@ -15,6 +16,7 @@ import {
   downloadChromeForTesting,
   parseDevToolsActivePort,
 } from "../../src/browser/launcher"
+import type { CdpClient, JsonObject } from "../../src/browser/types"
 import { createKernel } from "../../src/kernel"
 import { createFakeHost } from "../fakes/fakeHost"
 import { startBrowserFixtureServer } from "./fixture-server"
@@ -126,6 +128,8 @@ realSuite("WP6 real Chrome browser acceptance", () => {
   let chromeLaunchArgs: Array<string> = []
   let failHitTest = false
   let nodeInspectionCalls = 0
+  let fixtureClient: CdpClient | null = null
+  const fixtureSessions = new Map<string, string>()
   const browserTools = new Map<string, ToolRegistration>()
   const decisionRequests: Array<{ intent: string; candidates: Array<{ ref: string; role: string; name: string }> }> = []
   const botA = "bot-browser-a"
@@ -161,15 +165,24 @@ realSuite("WP6 real Chrome browser acceptance", () => {
         start: async (options) => {
           const started = await launcher.start(options)
           if (!started) return null
+          fixtureClient = started.client
           return {
             ...started,
             client: {
               ...started.client,
-              call: (method, ...args) => {
+              call: async <T>(method: string, params?: JsonObject, sessionId?: string): Promise<T> => {
                 if (["DOM.getBoxModel", "DOM.describeNode"].includes(method)) nodeInspectionCalls += 1
                 if (failHitTest && ["DOM.getNodeForLocation", "DOM.scrollIntoViewIfNeeded"].includes(method))
                   return Promise.reject(new Error("fixture CDP locator unavailable"))
-                return started.client.call(method, ...args)
+                const response = await started.client.call<T>(method, params, sessionId)
+                if (method === "Target.attachToTarget") {
+                  const targetId = params?.targetId
+                  const attached = response as { sessionId?: string }
+                  if (typeof targetId === "string" && attached.sessionId)
+                    fixtureSessions.set(targetId, attached.sessionId)
+                }
+
+                return response
               },
             },
           }
@@ -265,6 +278,22 @@ realSuite("WP6 real Chrome browser acceptance", () => {
     return handler({ ctx: ctx(), args })
   }
 
+  const evaluateAsPerson = async (tabId: string, expression: string): Promise<unknown> => {
+    const row = (runtime.kernel.db as Database)
+      .query("SELECT cdp_target_id FROM browser_tabs WHERE id = ?")
+      .get(tabId) as { cdp_target_id: string } | null
+    const sessionId = row ? fixtureSessions.get(row.cdp_target_id) : undefined
+    if (!fixtureClient || !sessionId) throw new Error("Missing synthetic browser session")
+    // The fixture driver represents the person, independently of the bot's restricted tools.
+    const result = await fixtureClient.call<{ result?: { value?: unknown } }>(
+      "Runtime.evaluate",
+      { expression, returnByValue: true },
+      sessionId,
+    )
+
+    return result.result?.value
+  }
+
   test("selector targets cannot bypass sensitive-action takeover", async () => {
     const page = await open("/travel-search")
     await engine.evaluate({
@@ -281,15 +310,15 @@ realSuite("WP6 real Chrome browser acceptance", () => {
     })
 
     expect(blocked).toMatchObject({ success: true, structured: { status: "waiting_for_person" } })
+    expect(await evaluateAsPerson(page.tabId, "document.querySelector('#calendar').hidden")).toBe(true)
     expect(await engine.releaseTakeover(page.tabId)).toBe(true)
     const state = await engine.evaluate({
       tabId: page.tabId,
       botId: botA,
       expression: "document.querySelector('#calendar').hidden",
-      timeoutMs: 10000,
       signal: ctx().signal,
     })
-    expect(JSON.stringify(state)).toContain("true")
+    expect(state).toMatchObject({ success: false, errorCode: "PRIVATE_TAKEOVER_ACTIVE" })
   })
 
   test("typed decisions resume a local travel search after submit handback", async () => {
@@ -333,16 +362,16 @@ realSuite("WP6 real Chrome browser acceptance", () => {
       target: { kind: "role", role: "button", name: "Search trips" },
     })
     expect(submit).toMatchObject({ success: true, structured: { status: "waiting_for_person" } })
+    await evaluateAsPerson(page.tabId, "document.querySelector('#travel-search').requestSubmit()")
     expect(await engine.releaseTakeover(page.tabId)).toBe(true)
-    expect(
-      await engine.evaluate({
-        tabId: page.tabId,
-        botId: botA,
-        expression: "document.querySelector('#travel-search').requestSubmit()",
-        timeoutMs: 10000,
-        signal: ctx().signal,
-      }),
-    ).toMatchObject({ success: true })
+    const navigated = await engine.waitFor({
+      tabId: page.tabId,
+      botId: botA,
+      condition: { url: `${base}/travel-results` },
+      timeoutMs: 10000,
+      signal: ctx().signal,
+    })
+    expect(navigated.success).toBe(true)
 
     const results = await callBrowserTool("browser_snapshot", { tabId: page.tabId, image: "never" })
     expect(results.success).toBe(true)
@@ -743,7 +772,7 @@ realSuite("WP6 real Chrome browser acceptance", () => {
 
     expect(await engine.holdTakeover({ tabId: page.tabId, reason: "fixture" })).toBe(true)
     const frame = await engine.takeoverFrame({ tabId: page.tabId, botId: botA, signal })
-    expect(frame).toMatchObject({ title: "touri fixture", url: `${base}/basic` })
+    expect(frame).toMatchObject({ title: "", url: base })
     expect(frame?.width).toBeGreaterThan(0)
     expect(frame?.height).toBeGreaterThan(0)
     expect(frame?.image).toStartWith("data:image/jpeg;base64,")

@@ -33,10 +33,10 @@ export const captureSafeBrowserPreview = async <T>({
 }
 
 const getBrowserPreviewBlockReason = (page: BrowserPreviewPage): BrowserPreviewBlockReason | null => {
+  if (page.privateAfterTakeover) return "sensitive_page"
   if (page.heldByUser || page.secretMode) return "human_control"
   if (page.url.length > MAX_PREVIEW_URL_LENGTH || page.title.length > MAX_PREVIEW_TITLE_LENGTH) return "sensitive_page"
   if (isSensitiveTakeoverPage(page.url, page.title)) return "sensitive_page"
-  if (page.privateAfterTakeover && !sanitizeHumanTakeoverUrl(page.url)) return "sensitive_page"
 
   return null
 }
@@ -54,7 +54,7 @@ export const sanitizeHumanTakeoverSnapshot = (snapshot: BrowserSnapshot): Browse
   url: sanitizeHumanTakeoverUrl(snapshot.url),
   title: "",
   focus: { ...snapshot.focus, name: null },
-  elements: snapshot.elements.map(({ value: _value, ...element }) => element),
+  elements: snapshot.elements.map(({ value: _value, ...element }) => Object.assign({}, element, { name: "" })),
   text: "",
   recentActions: [],
   diagnostics: [],
@@ -78,11 +78,23 @@ export const canResumeAfterHumanTakeover = ({
   url,
   title,
   hasSensitiveEntry,
+  documentId,
+  privateDocumentIds = [],
 }: {
   url: string
   title: string
   hasSensitiveEntry: boolean
+  documentId?: number | undefined
+  privateDocumentIds?: ReadonlyArray<number>
 }): boolean => {
+  if (
+    privateDocumentIds.length > 0 &&
+    (documentId === undefined ||
+      !Number.isFinite(documentId) ||
+      privateDocumentIds.includes(0) ||
+      privateDocumentIds.includes(documentId))
+  )
+    return false
   if (hasSensitiveEntry) return false
   if (url.length > MAX_PREVIEW_URL_LENGTH || title.length > MAX_PREVIEW_TITLE_LENGTH) return false
   if (!getBrowserPreviewPath(url)) return false

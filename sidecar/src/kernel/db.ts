@@ -45,12 +45,13 @@ import browserTakeoverContinuationsSql from "./migrations/0039.sql" with { type:
 import browserPrivateInputSql from "./migrations/0040.sql" with { type: "text" }
 import browserBotQueueSql from "./migrations/0041.sql" with { type: "text" }
 import browserResumeIndexSql from "./migrations/0042.sql" with { type: "text" }
+import browserDocumentPrivacySql from "./migrations/0043.sql" with { type: "text" }
 import type { PerformanceStageRunner } from "./performance"
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 42
+export const SCHEMA_VERSION = 43
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -316,5 +317,10 @@ export const openDatabase = ({
     database.exec("UPDATE schema_meta SET value = '41' WHERE key = 'schema_version'")
   })()
   database.exec(browserResumeIndexSql)
+  database.transaction(() => {
+    const columns = database.query("PRAGMA table_info(browser_tabs)").all() as Array<{ name: string }>
+    if (!columns.some((column) => column.name === "private_document_ids_json")) database.exec(browserDocumentPrivacySql)
+    database.exec("UPDATE schema_meta SET value = '43' WHERE key = 'schema_version'")
+  })()
   return database
 }

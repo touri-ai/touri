@@ -324,9 +324,10 @@ test("hides the live browser preview while a person controls the tab", async () 
   const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
   const stopPreview = vi.fn()
   vi.mocked(startInlineFrameSource).mockReturnValueOnce(stopPreview)
-  const heldTab = { ...tab, heldByUser: true }
+  const { api } = renderCard(parts, false)
+  await waitFor(() => expect(startInlineFrameSource).toHaveBeenCalledOnce())
 
-  renderCard(parts, false, async () => ({ tabs: [heldTab] }))
+  act(() => api.emit({ type: "browser.tab", tab: Object.assign({}, tab, { heldByUser: true }) }))
 
   expect(await screen.findByText("O bot está pausado até você devolver o controle.")).toBeVisible()
   expect(screen.queryByRole("img", { name: "Página atual do navegador" })).toBeNull()
@@ -607,7 +608,10 @@ test("live browser thumbnails sample every 700 ms and pause while the card is of
   act(() => visibilityUpdates[0]?.(true))
   await waitFor(() => expect(startInlineFrameSource).toHaveBeenCalledOnce())
 
-  expect(vi.mocked(startInlineFrameSource).mock.calls[0]?.[6]).toEqual({ intervalMs: 700 })
+  expect(vi.mocked(startInlineFrameSource).mock.calls[0]?.[6]).toEqual({
+    intervalMs: 700,
+    onReset: expect.any(Function),
+  })
 
   act(() => visibilityUpdates[0]?.(false))
   await waitFor(() => expect(stop).toHaveBeenCalledOnce())

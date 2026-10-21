@@ -119,7 +119,8 @@ const authenticate = ({
         role: person.role,
       },
       ...(origin ? { origin } : {}),
-      active: () => store.verifyDeviceToken(token)?.id === device.id,
+      active: () =>
+        store.verifyDeviceToken(token)?.id === device.id && store.getPersonForDevice(device.id)?.role === person.role,
     })
     return { kind: "device", device, person, viaCookie: bearer === null, token }
   }
