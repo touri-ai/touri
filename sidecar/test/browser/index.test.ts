@@ -432,6 +432,27 @@ test("remote browser takeover gives one device an interactive session and reject
 
     expect(revokedFrame.status).toBe(403)
     expect(JSON.stringify(revokedFrame)).not.toContain("ZmFrZQ==")
+
+    const expiredSession = await startSessionRoute.handler({
+      params: { id: "t_remote" },
+      query: {},
+      body: {},
+      signal: ownerSignal,
+    })
+    if (!("json" in expiredSession)) throw new Error("Controller session response was not JSON")
+    const expiredCredentials = expiredSession.json as { sessionId: string; controlEpoch: string }
+    const releasesBeforeExpiry = leaseReleased
+
+    runtime.kernel.publish({ type: "browser.tab", tab: Object.assign({}, tab, { ownerBotId: botId }) })
+    const expiredFrame = await frameRoute.handler({
+      params: { id: "t_remote" },
+      query: {},
+      body: Object.assign({}, expiredCredentials, { viewEpoch: 0 }),
+      signal: ownerSignal,
+    })
+
+    expect(expiredFrame.status).toBe(403)
+    expect(leaseReleased).toBe(releasesBeforeExpiry + 1)
   } finally {
     await runtime.stop()
     rmSync(root, { recursive: true, force: true })

@@ -537,6 +537,9 @@ export const init = async (
   const removeTakeoverSession = (tabId: string): void => {
     void revokeTakeoverSession(tabId)
   }
+  const unsubscribeTakeoverRelease = kernel.subscribe(({ event }) => {
+    if (event.type === "browser.tab" && !event.tab.heldByUser) removeTakeoverSession(event.tab.tabId)
+  })
   const authorizeTakeoverSession = (request: {
     signal: AbortSignal
     params: Record<string, string>
@@ -562,6 +565,7 @@ export const init = async (
   const shutdown = (): Promise<void> => {
     shutdownPromise ??= (async () => {
       unhostSessions()
+      unsubscribeTakeoverRelease()
       channelRuns.dispose()
       const sessions = Array.from(takeoverSessions.values())
       takeoverSessions.clear()
