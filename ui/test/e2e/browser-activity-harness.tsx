@@ -590,7 +590,7 @@ const LiveFixture = () => {
     return () => {
       delete browserWindow.browserActivity
     }
-  }, [activeRun, parts])
+  }, [parts])
 
   const playStep = async (step: string, narration: string, inputJson: string): Promise<void> => {
     if (step === "search") {
