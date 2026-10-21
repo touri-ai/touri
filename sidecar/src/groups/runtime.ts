@@ -500,6 +500,13 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       while (!stopped && !draining) {
         const turn = queues.get(groupId)?.shift()
         if (!turn) break
+        if (db.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(turn.run.threadId)) {
+          cancelTurn(turn)
+          turns.delete(turn.run.id)
+          turn.completion.resolve()
+          setImmediate(() => void drain(groupId))
+          break
+        }
         if (terminal(turn.run)) {
           turns.delete(turn.run.id)
           turn.completion.resolve()
@@ -671,9 +678,15 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     const affected = [...turns.values()].filter(
       (turn) => turn.run.threadId === threadId || [...turn.children].some((id) => readRun(id)?.threadId === threadId),
     )
-    affected.forEach(cancelTurn)
-    await engine.cancelRuns?.(affected.flatMap((turn) => [...turn.children]))
-    await Promise.all(affected.map((turn) => turn.completion.promise))
+    const batches = Array.from({ length: Math.ceil(affected.length / 8) }, (_, index) =>
+      affected.slice(index * 8, (index + 1) * 8),
+    )
+    for (const batch of batches) {
+      batch.forEach(cancelTurn)
+      await engine.cancelRuns?.(batch.flatMap((turn) => [...turn.children]))
+      await Promise.all(batch.map((turn) => turn.completion.promise))
+      await new Promise<void>((resolve) => setImmediate(resolve))
+    }
   }
   const listRuns = (threadId: string, options?: { all?: boolean }): Run[] => {
     const roots = persistence.listRuns(threadId, options)

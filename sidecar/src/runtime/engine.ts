@@ -2227,6 +2227,14 @@ export const createRuntimeEngine = ({
       if (!runId) return
       const run = persistence.getRun(runId)
       if (run?.status !== "queued") continue
+      if (
+        kernel.db instanceof Database &&
+        kernel.db.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(run.threadId)
+      ) {
+        cancel(run.id)
+        setImmediate(() => void drain())
+        return
+      }
       active.set(run.threadId, run)
       updateRun(run, { status: "starting", startedAt: Date.now() })
       const execution = executeWithStateCleanup(run)

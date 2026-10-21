@@ -113,6 +113,41 @@ test("deleting a streaming conversation aborts and waits for its provider before
   expect(fixture.engine.activeRun({ threadId: "thread" })).toBeNull()
 })
 
+test("queued work cannot start after its conversation is marked for deletion", async () => {
+  const fixture = await getFixture()
+  await fixture.ready
+  fixture.kernel.services.use("storage.threadDeletion")?.dispose()
+  const message = fixture.store.insertMessage({
+    message: {
+      id: "queued-request",
+      threadId: "thread",
+      parentId: null,
+      role: "user",
+      kind: "text",
+      status: "complete",
+      text: "Outra tarefa sintética.",
+      parts: [],
+      runId: null,
+      sender: null,
+      source: "local",
+    },
+  })
+  if (!message.success) throw new Error("Missing queued request")
+  const queued = fixture.engine.enqueue({ threadId: "thread", requestMessageId: message.message.id, trigger: "user" })
+  if (!queued.success) throw new Error("Could not queue fixture work")
+  fixture.database
+    .query(
+      "INSERT INTO thread_deletions(thread_id,bot_id,phase,created_at,updated_at) VALUES('thread','bot','stopping',1,1)",
+    )
+    .run()
+
+  fixture.finish()
+  await fixture.engine.cancelRuns([fixture.runId])
+  await getReady(() => fixture.engine.listRuns("thread").find(({ id }) => id === queued.run.id)?.status === "canceled")
+
+  expect(fixture.getProviderStartCount()).toBe(1)
+})
+
 test("a failed stream drain still finalizes the run and releases its thread", async () => {
   const fixture = await getFixture()
   await fixture.ready
@@ -287,6 +322,8 @@ const getFixture = async (answerApproval: ProviderAdapter["answerApproval"] = as
     },
   })
   if (!created.success) throw new Error(created.error)
+  // Count adapter calls to verify that deleted queued work never starts.
+  let providerStartCount = 0
   const ready = Promise.withResolvers<StartTurnArgs>()
   const finish = Promise.withResolvers<void>()
   const engine = createRuntimeEngine({
@@ -297,6 +334,7 @@ const getFixture = async (answerApproval: ProviderAdapter["answerApproval"] = as
         provider: "codex",
         detect: async () => ({ success: true, path: "/tmp/fixture-provider", version: "1", loggedIn: true }),
         startTurn: async (args) => {
+          providerStartCount += 1
           args.onEvent({ type: "turn_started", externalTurnId: "fixture-turn" })
           ready.resolve(args)
           await finish.promise
@@ -324,6 +362,7 @@ const getFixture = async (answerApproval: ProviderAdapter["answerApproval"] = as
     frames: first.frames,
     runId: queued.run.id,
     ready: ready.promise,
+    getProviderStartCount: () => providerStartCount,
     finish: finish.resolve,
   }
 }
