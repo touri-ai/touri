@@ -681,7 +681,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       message: {
         id: kernel.newId(),
         threadId: channel.id,
-        parentId: visibleReply?.visible_message_id ?? previousTurn.requestMessageId ?? channel.activeLeafId,
+        parentId: channel.activeLeafId ?? visibleReply?.visible_message_id ?? previousTurn.requestMessageId,
         role: "system",
         kind: "notice",
         status: "complete",

@@ -351,6 +351,23 @@ test("browser handback resumes one bot in the same channel and ignores duplicate
   const source = child ? f.persistence.getRun(child.run_id) : null
   if (!source) throw new Error("Missing channel member run")
 
+  const followup = f.store.insertMessage({
+    message: {
+      id: f.host.kernel.newId(),
+      threadId: f.thread.id,
+      parentId: f.store.getThread({ threadId: f.thread.id })?.activeLeafId ?? null,
+      role: "user",
+      kind: "text",
+      status: "complete",
+      runId: null,
+      text: "Aguardo o retorno do portal.",
+      parts: [{ type: "text", text: "Aguardo o retorno do portal." }],
+      sender: { id: "requester", name: "Requester", kind: "person" },
+      source: "local",
+    },
+  })
+  if (!followup.success) throw new Error(followup.error)
+
   expect(f.runtime.resumeAfterBrowserTakeover({ botId, threadId: source.threadId, runId: source.id })).toBe(true)
   expect(f.runtime.resumeAfterBrowserTakeover({ botId, threadId: source.threadId, runId: source.id })).toBe(true)
   await until(() => f.order.filter((id) => id === botId).length === 2)
@@ -373,7 +390,8 @@ test("browser handback resumes one bot in the same channel and ignores duplicate
     trigger: "retry",
     recipients_json: JSON.stringify([botId]),
   })
-  expect(channelMessages.filter((message) => message.role === "user")).toHaveLength(1)
+  expect(channelMessages.filter((message) => message.role === "user")).toHaveLength(2)
+  expect(channelMessages.some((message) => message.id === followup.message.id)).toBe(true)
   expect(channelMessages.some((message) => message.text === "Retomado após a devolução do navegador")).toBe(true)
   expect(channelMessages.filter((message) => message.role === "assistant")).toHaveLength(2)
   expect(
