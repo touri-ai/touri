@@ -40,8 +40,11 @@ test("an owner invites a person who joins in a second browser context", async ({
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto(currentServer.serverUrl)
+  await expect(page.locator(".bot-sidebar")).toBeVisible()
+  const workTab = page.getByRole("tab", { name: /Work|Trabalho/ })
+  if (await workTab.count()) await workTab.click()
   await page.getByRole("button", { name: "Vendas", exact: true }).click()
-  await expect(page.getByRole("textbox", { name: "Mensagem para Vendas", exact: true })).toBeVisible()
+  await expect(page.getByRole("textbox", { name: /Mensagem (?:para |em #)Vendas/ })).toBeVisible()
   await expect(page.getByRole("button", { name: "Convidar pessoa", exact: true }).first()).toBeVisible()
   const beforePath = testInfo.outputPath("people-invite-before.png")
   await page.screenshot({ path: beforePath })
@@ -90,9 +93,9 @@ test("an owner invites a person who joins in a second browser context", async ({
   await memberPage.getByRole("button", { name: "Entrar", exact: true }).click()
   await memberPage.waitForURL(`${new URL(currentServer.serverUrl).origin}/`)
 
-  await expect(memberPage.getByRole("textbox", { name: "Mensagem para Vendas", exact: true })).toBeVisible()
+  await expect(memberPage.getByRole("textbox", { name: /Mensagem (?:para |em #)Vendas/ })).toBeVisible()
   await expect(memberPage.getByRole("alert")).toHaveCount(0)
-  const composer = memberPage.getByRole("textbox", { name: "Mensagem para Vendas", exact: true })
+  const composer = memberPage.getByRole("textbox", { name: /Mensagem (?:para |em #)Vendas/ })
   await composer.fill("@Léo olá, pode ajudar o time?")
   const sent = memberPage.waitForResponse(
     (response) => /\/threads\/[^/]+\/messages$/.test(response.url()) && response.request().method() === "POST",

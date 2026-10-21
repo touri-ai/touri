@@ -85,7 +85,7 @@ import { requestTaskResume, requestTaskReview } from "./recoveryEvents"
 import { isRoutineConversation } from "./routineConversation"
 import { getTeamRoutineDraft, type RoutineDraft } from "./routineDraft"
 import { isFailureNotice } from "./sidebarAttention"
-import { useCurrentPersonId } from "./useCurrentPersonId"
+import { useCurrentPerson } from "./useCurrentPersonId"
 import { useHost } from "./useHost"
 import { useNotificationSounds } from "./useNotificationSounds"
 import { RecoveryTasksContext, useRecoveryTasks } from "./useRecoveryTasks"
@@ -162,7 +162,8 @@ const AppContent = ({ kernel }: AppProps) => {
   const serverState = useServerMode()
   const serverMode = serverState.status?.mode === "server" || Boolean(serverState.error)
   const [api, setApi] = useState<UiApi | null>(() => kernel?.services?.api ?? null)
-  const currentPersonId = useCurrentPersonId(api, isNativeDesktop() && !serverMode)
+  const currentPerson = useCurrentPerson(api, isNativeDesktop() && !serverMode)
+  const currentPersonId = currentPerson?.id ?? null
   const host = useHost(api)
   const attachmentButtonRef = useRef<HTMLButtonElement>(null)
   const apiRef = useRef(api)
@@ -227,7 +228,12 @@ const AppContent = ({ kernel }: AppProps) => {
   )
   const activeApi = api ?? unavailableApi
   useEffect(() => installComputerKillSwitch(activeApi, invokeCommand, setLocalNotice), [activeApi, invokeCommand])
-  const workspace = useWorkspace(activeApi, api !== null, route.section === "bots" && route.screen === "chat")
+  const workspace = useWorkspace(
+    activeApi,
+    api !== null,
+    route.section === "bots" && route.screen === "chat",
+    currentPerson?.role ?? null,
+  )
   const { data, actions } = workspace
   const interruptedWork = useRecoveryTasks(api)
   const [recoveryOpen, setRecoveryOpen] = useState(false)

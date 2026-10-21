@@ -439,7 +439,7 @@ export const initWorkMode = ({
           const recipient = normalizeEmail(asText(isRecord(body) ? body.to : null))
           if (!isValidEmail(recipient)) return fail(400, "INVALID_ARGS", "Informe um e-mail válido para o teste")
           const config = pendingEmailConfig(authStore)
-          if (!invite.email || !config || !(await email.hasCredentials(config)))
+          if (!config || !(await email.hasCredentials(config)))
             return fail(409, "EMAIL_NOT_CONFIGURED", "Configure o envio de e-mail primeiro")
           const testContent = getTestEmail({ teamName: config.teamName })
           const sent = await email.send({ config, content: { ...testContent, to: recipient }, signal })

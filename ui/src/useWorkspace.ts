@@ -568,9 +568,13 @@ const getDraftThread = (botId: Id, groupId?: Id): Thread => {
 }
 
 // chatOpen: a draft only becomes a real thread while the chat it belongs to is on screen.
-export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Workspace => {
-  const [isMember, setIsMember] = useState<boolean | null>(null)
-  const diagnosis = useDoctorReport(api, enabled && isMember === false)
+export const useWorkspace = (
+  api: UiApi,
+  enabled = true,
+  chatOpen = true,
+  role: "member" | "admin" | null = "admin",
+): Workspace => {
+  const diagnosis = useDoctorReport(api, enabled && role === "admin")
   const [data, setData] = useReducer(
     (current: WorkspaceData, update: (current: WorkspaceData) => WorkspaceData) => {
       const next = update(current)
@@ -718,9 +722,8 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
     const completedRuns = new Set<Id>()
     completedDuringLoad.current = completedRuns
     try {
-      const session = await api.request("GET /session", {}).catch(() => null)
-      const member = session?.person?.role === "member"
-      setIsMember(member)
+      const member = role === "member"
+      const restricted = role !== "admin"
       const [
         groupResponse,
         botResponse,
@@ -754,25 +757,21 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
           }
           return response
         }),
-        member ? { projects: [] } : getOptionalWorkspaceRead(api.request("GET /projects", {}), { projects: [] }),
-        member ? { settings: null } : getOptionalWorkspaceRead(api.request("GET /settings", {}), { settings: null }),
-        member ? { previews: [] } : getOptionalWorkspaceRead(api.request("GET /previews", {}), { previews: [] }),
-        (member ? Promise.resolve({ tabs: [] }) : api.request("GET /browser/tabs", {})).catch(() => ({ tabs: [] })),
-        getOptionalWorkspaceRead(
-          member
-            ? Promise.resolve({ routines: [], host: undefined, hostKind: undefined })
-            : api.request("GET /routines", {}),
-          {
-            routines: [],
-            host: undefined,
-            hostKind: undefined,
-          },
+        restricted ? { projects: [] } : getOptionalWorkspaceRead(api.request("GET /projects", {}), { projects: [] }),
+        restricted
+          ? { settings: null }
+          : getOptionalWorkspaceRead(api.request("GET /settings", {}), { settings: null }),
+        restricted ? { previews: [] } : getOptionalWorkspaceRead(api.request("GET /previews", {}), { previews: [] }),
+        (restricted ? Promise.resolve({ tabs: [] }) : api.request("GET /browser/tabs", {})).catch(() => ({ tabs: [] })),
+        getOptionalWorkspaceRead<ApiRoutes["GET /routines"]["res"]>(
+          restricted ? Promise.resolve({ routines: [] }) : api.request("GET /routines", {}),
+          { routines: [] },
         ),
-        (member ? Promise.resolve({ routineRuns: [] }) : api.request("GET /routine-runs", {})).catch(() => ({
+        (restricted ? Promise.resolve({ routineRuns: [] }) : api.request("GET /routine-runs", {})).catch(() => ({
           routineRuns: [],
         })),
         api.request("GET /notifications", {}).catch(() => ({ notifications: [] })),
-        (member
+        (restricted
           ? Promise.resolve({ capability: { available: false, reason: "", provider: null }, machines: [] })
           : api.request("GET /machines", {})
         ).catch(() => ({
@@ -827,13 +826,14 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
             selectedBot?.id ?? "",
             current.selectedThreadId ?? threadsByBot.current[selectedBot?.id ?? ""],
           )
-        const keptCreation = current.threadCreation?.thread.botId === selectedBot?.id ? current.threadCreation : null
+        const keptCreation =
+          !member && current.threadCreation?.thread.botId === selectedBot?.id ? current.threadCreation : null
         // A bot selected at startup without conversations opens the same draft a click would.
         const selectionLost =
           !current.selectedThreadId || !threads.some((thread) => thread.id === current.selectedThreadId)
         const threadCreation: WorkspaceData["threadCreation"] =
           keptCreation ??
-          (selectedBot && !selectedThread && selectionLost
+          (role === "admin" && selectedBot && !selectedThread && selectionLost
             ? { thread: getDraftThread(selectedBot.id), status: "draft" }
             : null)
         const selectedThreadId = threadCreation ? threadCreation.thread.id : (selectedThread?.id ?? null)
@@ -904,7 +904,7 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
     } finally {
       if (attempt === generation.current) completedDuringLoad.current = null
     }
-  }, [api, enabled, loadThread])
+  }, [api, enabled, loadThread, role])
 
   const removeGroup = useCallback(
     (groupId: Id): void => {
@@ -1369,13 +1369,14 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
   // biome-ignore lint/correctness/useExhaustiveDependencies: a settled creation must retry a draft that waited on it
   useEffect(() => {
     const draft = data.threadCreation
-    if (!enabled || !data.loaded || !chatOpen) return
+    if (!enabled || !data.loaded || !chatOpen || role === null) return
     if (draft?.status !== "draft" || selectedBot?.id !== draft.thread.botId || selectedBot.paused) return
     void startThread(draft.thread.groupId ?? undefined)
   }, [
     enabled,
     data.loaded,
     chatOpen,
+    role,
     data.threadCreation,
     selectedBot?.id,
     selectedBot?.paused,

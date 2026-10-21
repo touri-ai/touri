@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite"
 import type {
   ApiModel,
   BrowserFailureInfo,
