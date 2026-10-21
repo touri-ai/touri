@@ -2351,6 +2351,7 @@ export const ptBR = {
   "Delete {count} conversations": "Apagar {count} conversas",
   "These conversations contain {count} messages in total.": "Essas conversas têm {count} mensagens no total.",
   "Delete “{title}”?": "Apagar “{title}”?",
+  "This removes the conversation and its unused attachments.": "Isso remove a conversa e os anexos sem uso dela.",
   "This removes {count} messages and their unused attachments.":
     "Isso remove {count} mensagens e os anexos sem uso delas.",
   "+ {count} more": "+ {count} outras",
@@ -2903,6 +2904,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "These conversations contain {count} messages in total.": "These conversations contain {count} messages in total.",
   "{count} conversations found.": "{count} conversations found.",
   "Delete “{title}”?": "Delete “{title}”?",
+  "This removes the conversation and its unused attachments.":
+    "This removes the conversation and its unused attachments.",
   "This removes {count} messages and their unused attachments.":
     "This removes {count} messages and their unused attachments.",
   "+ {count} more": "+ {count} more",

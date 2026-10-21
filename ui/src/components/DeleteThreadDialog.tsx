@@ -35,7 +35,9 @@ export const DeleteThreadDialog = ({
             <>
               <p>{single.title}</p>
               <p>
-                {t("This removes {count} messages and their unused attachments.", { count: single.messageCount ?? 0 })}
+                {single.messageCount === null
+                  ? t("This removes the conversation and its unused attachments.")
+                  : t("This removes {count} messages and their unused attachments.", { count: single.messageCount })}
               </p>
             </>
           ) : (

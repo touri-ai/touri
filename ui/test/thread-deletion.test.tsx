@@ -157,6 +157,10 @@ it("finds old automatic conversations using the selected age", async () => {
   expect(within(dialog).getByRole("status")).toHaveTextContent("Não há conversas automáticas antigas.")
   fireEvent.change(age, { target: { value: "30" } })
   expect(within(dialog).getByRole("status")).toHaveTextContent("1 conversa encontrada.")
+  fireEvent.click(within(dialog).getByRole("button", { name: "Continuar" }))
+  const confirmation = await screen.findByRole("alertdialog", { name: "Apagar “Eventos de leads”?" })
+  expect(confirmation).toHaveTextContent("Isso remove a conversa e os anexos sem uso dela.")
+  expect(confirmation).not.toHaveTextContent("0 mensagens")
 })
 
 it("provides English labels for archive, deletion confirmation and undo", () => {
