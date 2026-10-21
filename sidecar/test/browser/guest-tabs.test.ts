@@ -34,7 +34,11 @@ test("guest browser_list_tabs discovers manually opened pages and refreshes titl
         ? { targetInfos: pages }
         : method === "Target.attachToTarget"
           ? { sessionId: "manual-session" }
-          : {}) as T,
+          : method === "Page.getLayoutMetrics"
+            ? { cssVisualViewport: { pageX: 0, pageY: 0, clientWidth: 800, clientHeight: 500 } }
+            : method === "Page.captureScreenshot"
+              ? { data: "ZmFrZQ==" }
+              : {}) as T,
     subscribe: () => () => {},
     close: async () => {},
     isClosed: () => false,
@@ -89,7 +93,11 @@ test("remote input is not queued behind the bot's waiting takeover request", asy
           ? { targetInfos: [{ targetId: "manual", type: "page", title: "Sign in", url: "https://example.test/login" }] }
           : method === "Target.attachToTarget"
             ? { sessionId: "manual-session" }
-            : {}
+            : method === "Page.getLayoutMetrics"
+              ? { cssVisualViewport: { pageX: 0, pageY: 0, clientWidth: 800, clientHeight: 500 } }
+              : method === "Page.captureScreenshot"
+                ? { data: "ZmFrZQ==" }
+                : {}
       ) as T
     },
     subscribe: () => () => {},
@@ -133,11 +141,16 @@ test("remote input is not queued behind the bot's waiting takeover request", asy
   })
 
   await held
+  const frame = await engine.takeoverFrame({ tabId, botId: bot.id, signal: new AbortController().signal })
+  if (!frame) throw new Error("Missing takeover frame")
   const input = await withDeadline({
     operation: (signal) =>
       engine.takeoverInput({
         tabId,
         botId: bot.id,
+        targetEpoch: frame.targetEpoch,
+        width: frame.width,
+        height: frame.height,
         input: { kind: "text", text: "synthetic private value" },
         signal,
       }),

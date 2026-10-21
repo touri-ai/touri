@@ -1,4 +1,5 @@
 import { createContext, useContext } from "react"
+import { useBrowserActivityControls } from "../../components/BrowserActivityControls"
 import { type Locale, t } from "../../i18n"
 import { useBrowserHold } from "../desktop/browserHold"
 import {
@@ -7,7 +8,7 @@ import {
   getChannelBrowserView,
   getChannelQueueLabel,
   getChannelWorkingTitle,
-} from "./channelBrowser"
+} from "./channelBrowserModel"
 import "./channel-browser.css"
 
 export type ChannelBrowserValue = {
@@ -124,14 +125,12 @@ export const ChannelComposerChip = ({
 }) => {
   const channel = useChannelBrowserView()
   const hold = useBrowserHold(botId)
+  const browserControls = useBrowserActivityControls()
   const canReturnControl = Boolean(hold && (!channel || channel.canControl))
   const base = t("{name} is working · In the browser", { name: botName }, locale)
-  const text =
-    channel?.state.controllerId && !channel.canControl
-      ? t("{person} is in control", { person: channel.controlName }, locale)
-      : channel
-        ? `${base} · ${t("for {person}", { person: channel.state.requesterName }, locale)}`
-        : base
+  const text = canReturnControl
+    ? t("You are in control · {name} paused", { name: botName }, locale)
+    : getChannelComposerText(channel, base, locale)
   const stopButton =
     onStop && (!channel || channel.canControl) && !channel?.state.controllerId ? (
       <button
@@ -145,14 +144,11 @@ export const ChannelComposerChip = ({
         <span aria-hidden="true">{stopping ? "…" : "×"}</span>
       </button>
     ) : null
-  const controlButton =
-    canReturnControl && hold ? (
-      <button type="button" onClick={hold.release}>
-        {t("Hand back", {}, locale)}
-      </button>
-    ) : (
-      stopButton
-    )
+  const controlButton = canReturnControl && hold ? (
+    <button type="button" onClick={hold.release}>
+      {t("Hand back", {}, locale)}
+    </button>
+  ) : null
 
   return (
     <div className="composer-browser-status" data-held={canReturnControl}>
@@ -161,8 +157,30 @@ export const ChannelComposerChip = ({
         <span className="composer-browser-status-text">{text}</span>
       </span>
       {controlButton}
+      {browserControls.canTakeOver && (!channel || channel.canControl) && (
+        <button
+          type="button"
+          className="composer-browser-takeover"
+          aria-label={browserControls.label}
+          onClick={browserControls.requestTakeover}
+        >
+          {browserControls.label}
+        </button>
+      )}
+      {!canReturnControl && stopButton}
     </div>
   )
+}
+
+const getChannelComposerText = (
+  channel: (ChannelBrowserView & { state: ChannelBrowserState }) | null,
+  base: string,
+  locale: Locale,
+): string => {
+  if (!channel) return base
+  if (!channel.canControl) return t("{person} is in control", { person: channel.controlName }, locale)
+
+  return `${base} · ${t("for {person}", { person: channel.state.requesterName }, locale)}`
 }
 
 export const ChannelWorkingMarker = ({ names, locale = "pt-BR" }: { names: readonly string[]; locale?: Locale }) => {

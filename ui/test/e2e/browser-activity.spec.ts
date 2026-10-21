@@ -52,6 +52,7 @@ test.afterAll(async () => {
 
 const liveVariants = [
   { name: "desktop-dark", width: 1440, height: 900, theme: "dark", colorScheme: "dark" as const },
+  { name: "compact-desktop", width: 1024, height: 700, theme: "dark", colorScheme: "dark" as const },
   { name: "phone-light", width: 390, height: 844, theme: "light", colorScheme: "light" as const },
 ]
 
@@ -98,6 +99,8 @@ test.describe("full browser activity flow", () => {
       if (variant.width > 600)
         await expect(page.getByRole("button", { name: /Busca de viagem/ })).toContainText("trabalhando")
       await expect(card).toBeVisible()
+      await expect(card.locator(".browser-activity-subtitle")).toContainText("travel.example.test")
+      await expect(card.getByText(/travel\.example\.test/)).toHaveCount(1)
       await expect(card.getByRole("progressbar", { name: "Progresso do navegador" })).toBeVisible()
       await expect(card).toContainText("Lia · abrindo uma página")
       await expect(page.locator(".browser-activity-card")).toHaveCount(1)
@@ -114,16 +117,21 @@ test.describe("full browser activity flow", () => {
       const columns = await card
         .locator(".browser-activity-content")
         .evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length)
-      expect(columns).toBe(1)
+      expect(columns).toBe(variant.width <= 1100 ? 1 : 2)
+      if (variant.width <= 600) await expect(card.locator(".browser-activity-more-actions")).toBeVisible()
       await page.screenshot({ path: info.outputPath(`browser-live-${variant.name}.png`), fullPage: true })
       await card.getByRole("button", { name: "Recolher navegador" }).click()
-      const takeOver = page.getByRole("button", { name: "Assumir", exact: true })
+      const takeOver = page.locator(".composer-browser-status").getByRole("button", { name: "Assumir" })
       await expect(takeOver).toBeVisible()
       await takeOver.click()
       await expect(page.getByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
       await expect(page.getByRole("button", { name: "Digitar no navegador" })).toBeVisible()
-      const remoteScreen = page.locator(".browser-takeover-screen")
+      const takeoverView = page.getByRole("region", { name: "Controle remoto do navegador" })
+      const remoteScreen = takeoverView.locator(".browser-takeover-screen")
+      const privacy = takeoverView.getByRole("status", { name: "Privacidade do navegador" })
       await expect(remoteScreen).toBeVisible()
+      await expect(privacy).toBeVisible()
+      await expect(privacy).toHaveCSS("position", "sticky")
       await remoteScreen.click({ position: { x: 80, y: 80 } })
       await expect
         .poll(() =>
@@ -162,6 +170,7 @@ test.describe("full browser activity flow", () => {
       expect(fixtureStats).toEqual({ decisionCount: 4, failedSteps: [], takeoverInputCount: 1 })
       await expect(page.getByText("Voo direto", { exact: false })).toBeVisible()
       await expect(page.getByText("Uma conexão", { exact: false })).toBeVisible()
+      await expect(page.getByText("Resultados da busca", { exact: true })).toBeVisible()
       await expect(page.getByRole("progressbar", { name: "Progresso do navegador" })).toHaveCount(0)
       await expect(page.locator(".browser-activity-card")).toHaveAttribute("data-finished", "true")
       const summary = page.getByRole("button", { name: /Usou o navegador/ })
@@ -215,17 +224,24 @@ for (const viewport of [
     await page.getByRole("button", { name: "Assumir", exact: true }).click()
     await expect(page.getByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
     await expect(page.getByText(/Você está no controle · .* está pausado/)).toBeVisible()
-    const privacyNotice = page.getByText(
-      "O que você digitar aqui não vai para a conversa, para o bot nem para o histórico.",
-    )
-    await expect(privacyNotice).toBeVisible()
-    await expect(privacyNotice).toHaveCSS("position", "sticky")
-    const takeoverColumns = await page
+    const takeoverView = page.getByRole("region", { name: "Controle remoto do navegador" })
+    const browserScreen = takeoverView.locator(".browser-takeover-screen")
+    const privacy = takeoverView.getByRole("status", { name: "Privacidade do navegador" })
+    await expect(browserScreen).toBeVisible()
+    await expect(privacy).toBeVisible()
+    await expect(privacy).toHaveCSS("position", "sticky")
+    const screenWidth = await browserScreen.evaluate((element) => element.getBoundingClientRect().width)
+    const layoutWidth = await takeoverView
       .locator(".browser-takeover-layout")
-      .evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length)
-    expect(takeoverColumns).toBe(1)
-    await expect(page.locator(".browser-takeover-canvas")).toBeVisible()
+      .evaluate((element) => element.getBoundingClientRect().width)
+    expect(screenWidth).toBeGreaterThan(layoutWidth * 0.95)
     await page.screenshot({ path: testInfo.outputPath(`browser-takeover-after-${viewport.name}.png`), fullPage: true })
+
+    const expand = takeoverView.getByRole("button", { name: "Expandir navegador em tela cheia" })
+    await expand.click()
+    await expect(takeoverView).toHaveAttribute("data-full-view", "true")
+    const fullScreenHeight = await browserScreen.evaluate((element) => element.getBoundingClientRect().height)
+    expect(fullScreenHeight).toBeGreaterThan(viewport.height * 0.6)
 
     const keyboard = page.getByRole("textbox", { name: "Entrada de teclado para o navegador" })
     await keyboard.evaluate((element) => {
@@ -246,7 +262,7 @@ for (const viewport of [
     await expect(keyboard).toHaveValue("")
     await expect(page.locator("body")).not.toContainText("valor privado de teste")
 
-    await page.getByRole("button", { name: "Devolver para Mark" }).click()
+    await takeoverView.getByRole("button", { name: "Devolver para Mark" }).click()
     await expect(page.getByRole("button", { name: "Assumir", exact: true })).toBeVisible()
   })
 }

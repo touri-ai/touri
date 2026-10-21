@@ -3,9 +3,10 @@ import type { KeyboardEvent, PointerEvent, WheelEvent } from "react"
 import { useEffect, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import { type Locale, t } from "../i18n"
+import { useBrowserActivityControls } from "./BrowserActivityControls"
 import { getBrowserActivityUrl } from "./browserActivityPresentation"
 
-type FrameMeta = Pick<BrowserTakeoverFrame, "title" | "url" | "width" | "height">
+type FrameMeta = Pick<BrowserTakeoverFrame, "title" | "url" | "width" | "height" | "targetEpoch" | "viewEpoch">
 type TouchGesture = {
   pointerId: number
   startX: number
@@ -28,6 +29,8 @@ export const BrowserTakeoverView = ({
   api,
   tabId,
   sessionId,
+  controlEpoch,
+  initialViewEpoch = 0,
   botName,
   locale,
   reason,
@@ -37,6 +40,8 @@ export const BrowserTakeoverView = ({
   api: UiApi
   tabId: string
   sessionId: string
+  controlEpoch: string
+  initialViewEpoch?: number
   botName: string
   locale: Locale
   reason: string | null
@@ -44,7 +49,11 @@ export const BrowserTakeoverView = ({
   onHandback: () => void
 }) => {
   const canvas = useRef<HTMLCanvasElement>(null)
+  const screen = useRef<HTMLDivElement>(null)
   const keyboard = useRef<HTMLTextAreaElement>(null)
+  const renderedFrame = useRef<FrameMeta | null>(null)
+  const viewEpoch = useRef(initialViewEpoch)
+  const connected = useRef(false)
   const pendingInputs = useRef(0)
   const inputQueue = useRef(Promise.resolve())
   const lastInputAt = useRef(0)
@@ -53,32 +62,51 @@ export const BrowserTakeoverView = ({
   const composing = useRef(false)
   const released = useRef(false)
   const releasing = useRef(false)
+  const handbackRef = useRef<() => Promise<void>>(async () => {})
+  const browserControls = useBrowserActivityControls()
   const [frame, setFrame] = useState<FrameMeta | null>(null)
   const [fallbackImage, setFallbackImage] = useState("")
   const [workerReady, setWorkerReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [returning, setReturning] = useState(false)
+  const [fullView, setFullView] = useState(false)
   localeRef.current = locale
 
   useEffect(() => {
     let active = true
     let timer: ReturnType<typeof setTimeout> | undefined
     let latestImage = ""
+    let latestFrameId = 0
+    let latestFrameMeta: FrameMeta | null = null
     let worker: Worker | null = null
-    const screen = canvas.current
-    if (screen && typeof screen.transferControlToOffscreen === "function") {
+    connected.current = true
+    const canvasElement = canvas.current
+    const screenElement = screen.current
+    const invalidateView = (): void => {
+      viewEpoch.current += 1
+      renderedFrame.current = null
+    }
+    const resizeObserver =
+      screenElement && typeof ResizeObserver !== "undefined" ? new ResizeObserver(invalidateView) : null
+    if (screenElement && resizeObserver) resizeObserver.observe(screenElement)
+    if (!resizeObserver) window.addEventListener("orientationchange", invalidateView)
+    if (canvasElement && typeof canvasElement.transferControlToOffscreen === "function") {
       try {
         worker = new Worker(new URL("./browserTakeover.worker.ts", import.meta.url), { type: "module" })
-        const offscreen = screen.transferControlToOffscreen()
+        const offscreen = canvasElement.transferControlToOffscreen()
         worker.postMessage({ type: "canvas", canvas: offscreen }, [offscreen])
         const stopWorker = () => {
           worker?.terminate()
           worker = null
           setFallbackImage(latestImage)
+          renderedFrame.current = latestFrameMeta
           setWorkerReady(false)
         }
-        worker.onmessage = (event: MessageEvent<{ type?: string }>) => {
-          if (active && event.data.type === "error") stopWorker()
+        worker.onmessage = (event: MessageEvent<{ type?: string; frameId?: number }>) => {
+          if (!active) return
+          if (event.data.type === "error") stopWorker()
+          if (event.data.type === "drawn" && event.data.frameId === latestFrameId)
+            renderedFrame.current = latestFrameMeta
         }
         worker.onerror = () => {
           if (active) stopWorker()
@@ -97,10 +125,25 @@ export const BrowserTakeoverView = ({
         return
       }
       try {
-        const next = await api.request("POST /browser/tabs/:id/takeover/frame", { sessionId }, { id: tabId })
+        const next = await api.request(
+          "POST /browser/tabs/:id/takeover/frame",
+          { sessionId, controlEpoch, viewEpoch: viewEpoch.current },
+          { id: tabId },
+        )
         if (!active) return
+        if (next.viewEpoch !== viewEpoch.current) {
+          timer = setTimeout(() => void poll(), 0)
+          return
+        }
         latestImage = next.image
-        const nextFrame = { title: next.title, url: next.url, width: next.width, height: next.height }
+        const nextFrame = {
+          title: next.title,
+          url: next.url,
+          width: next.width,
+          height: next.height,
+          targetEpoch: next.targetEpoch,
+          viewEpoch: next.viewEpoch,
+        }
         setFrame((current) => {
           if (!current) return nextFrame
           if (
@@ -113,8 +156,14 @@ export const BrowserTakeoverView = ({
           return nextFrame
         })
         setError(null)
-        if (worker) worker.postMessage({ type: "frame", image: next.image })
-        else setFallbackImage(next.image)
+        if (worker) {
+          latestFrameId += 1
+          latestFrameMeta = nextFrame
+          worker.postMessage({ type: "frame", frameId: latestFrameId, image: next.image })
+        } else {
+          renderedFrame.current = nextFrame
+          setFallbackImage(next.image)
+        }
       } catch {
         if (active) setError(t("The browser control connection was interrupted.", {}, localeRef.current))
       }
@@ -126,17 +175,22 @@ export const BrowserTakeoverView = ({
     void poll()
     return () => {
       active = false
+      connected.current = false
       clearTimeout(timer)
+      resizeObserver?.disconnect()
+      if (!resizeObserver) window.removeEventListener("orientationchange", invalidateView)
       worker?.terminate()
-      if (!released.current)
-        void inputQueue.current
-          .then(() => api.request("DELETE /browser/tabs/:id/takeover/session", { sessionId }, { id: tabId }))
-          .catch(() => {})
+      // A lost client leaves the bot paused so its controller can reconnect safely.
     }
-  }, [api, sessionId, tabId])
+  }, [api, controlEpoch, sessionId, tabId])
 
   const sendInput = (input: BrowserTakeoverInput): void => {
     if (released.current || releasing.current) return
+    const observedFrame = renderedFrame.current
+    if (!observedFrame || observedFrame.viewEpoch !== viewEpoch.current) {
+      setError(t("The browser view changed. Wait for the refreshed page.", {}, locale))
+      return
+    }
     lastInputAt.current = Date.now()
     if (pendingInputs.current >= MAX_PENDING_INPUTS) {
       setError(t("The browser is catching up. Try again in a moment.", {}, locale))
@@ -144,10 +198,30 @@ export const BrowserTakeoverView = ({
     }
     pendingInputs.current += 1
     inputQueue.current = inputQueue.current
-      .then(() => api.request("POST /browser/tabs/:id/takeover/input", { sessionId, input }, { id: tabId }))
+      .then(() => {
+        if (!connected.current || released.current || releasing.current) return
+        if (observedFrame.viewEpoch !== viewEpoch.current) return
+        return api.request(
+          "POST /browser/tabs/:id/takeover/input",
+          {
+            sessionId,
+            controlEpoch,
+            targetEpoch: observedFrame.targetEpoch,
+            viewEpoch: observedFrame.viewEpoch,
+            width: observedFrame.width,
+            height: observedFrame.height,
+            input,
+          },
+          { id: tabId },
+        )
+      })
       .then(
-        () => setError(null),
-        () => setError(t("The browser did not receive that action.", {}, locale)),
+        () => {
+          if (connected.current) setError(null)
+        },
+        () => {
+          if (connected.current) setError(t("The browser did not receive that action.", {}, locale))
+        },
       )
       .then(() => {
         pendingInputs.current -= 1
@@ -173,7 +247,7 @@ export const BrowserTakeoverView = ({
     setReturning(true)
     try {
       await inputQueue.current
-      await api.request("DELETE /browser/tabs/:id/takeover/session", { sessionId }, { id: tabId })
+      await api.request("DELETE /browser/tabs/:id/takeover/session", { sessionId, controlEpoch }, { id: tabId })
       released.current = true
       onHandback()
     } catch {
@@ -183,6 +257,17 @@ export const BrowserTakeoverView = ({
       setReturning(false)
     }
   }
+
+  handbackRef.current = handback
+
+  useEffect(
+    () =>
+      browserControls.registerTakeover({
+        label: t("Hand back to {name}", { name: botName }, locale),
+        run: () => void handbackRef.current(),
+      }),
+    [botName, browserControls.registerTakeover, locale],
+  )
 
   const mousePoint = (event: { clientX: number; clientY: number; currentTarget: HTMLElement }) => {
     const bounds = event.currentTarget.getBoundingClientRect()
@@ -313,7 +398,11 @@ export const BrowserTakeoverView = ({
   const safeUrl = frame ? getBrowserActivityUrl(frame.url) : ""
 
   return (
-    <section className="browser-takeover-view" aria-label={t("Remote browser control", {}, locale)}>
+    <section
+      className="browser-takeover-view"
+      aria-label={t("Remote browser control", {}, locale)}
+      data-full-view={fullView}
+    >
       <header className="browser-takeover-toolbar">
         <div>
           <strong>{t("Browser for {name}", { name: botName }, locale)}</strong>
@@ -322,19 +411,34 @@ export const BrowserTakeoverView = ({
             {safeUrl ? ` · ${safeUrl}` : ` · ${t("Connecting to the browser…", {}, locale)}`}
           </span>
         </div>
+        <button
+          type="button"
+          className="browser-activity-icon-button"
+          aria-label={t(fullView ? "Collapse browser full screen" : "Expand browser to full screen", {}, locale)}
+          aria-pressed={fullView}
+          onClick={() => setFullView((value) => !value)}
+        >
+          <span aria-hidden="true">{fullView ? "↙" : "↗"}</span>
+        </button>
         <button type="button" className="button button-quiet" disabled={returning} onClick={() => void handback()}>
           {returning ? t("Returning control…", {}, locale) : t("Hand back to {name}", { name: botName }, locale)}
         </button>
       </header>
-      <p className="browser-takeover-privacy browser-takeover-privacy-sticky">
+      <p className="browser-takeover-privacy browser-takeover-privacy-sticky" role="status" aria-label={t("Browser privacy", {}, locale)}>
         {t("What you type here stays out of chat, the bot, and history.", {}, locale)}
       </p>
-      <div className="browser-takeover-layout">
+      <div className={`browser-takeover-layout${fullView ? " browser-takeover-layout-full" : ""}`}>
         <div
+          ref={screen}
           className="browser-takeover-screen"
           role="application"
           aria-label={t("Live browser page", {}, locale)}
-          style={{ aspectRatio: frame ? `${frame.width} / ${frame.height}` : "16 / 10" }}
+          data-full-view={fullView}
+          style={
+            fullView
+              ? { aspectRatio: "auto", height: "min(72vh, 720px)" }
+              : { aspectRatio: frame ? `${frame.width} / ${frame.height}` : "16 / 10" }
+          }
           onPointerDown={pointerDown}
           onPointerMove={pointerMove}
           onPointerUp={pointerUp}

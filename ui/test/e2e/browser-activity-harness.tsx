@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client"
 import type { ApiRequest } from "../../src/api/client"
 import { createMockApi } from "../../src/api/mock"
 import { AvatarRuntimeProvider } from "../../src/components/AvatarRuntime"
+import { BrowserActivityControlsProvider } from "../../src/components/BrowserActivityControls"
 import { BrowserWorkingStatus } from "../../src/components/BrowserWorkingStatus"
 import { VirtualMessageList } from "../../src/components/ChatPanel"
 import { Composer } from "../../src/components/Composer"
@@ -134,16 +135,21 @@ const getFixtureApi = ({
     if (route === "POST /browser/tabs/:id/takeover/session") {
       heldByUser.current = true
       onHeldChange(true)
-      return { sessionId: "synthetic-browser-session" }
+      return { sessionId: "synthetic-browser-session", controlEpoch: "synthetic-control-epoch", viewEpoch: 0 }
     }
-    if (route === "POST /browser/tabs/:id/takeover/frame")
+    if (route === "POST /browser/tabs/:id/takeover/frame") {
+      const viewEpoch = (input as { viewEpoch: number }).viewEpoch
       return {
+        controlEpoch: "synthetic-control-epoch",
+        targetEpoch: 1,
+        viewEpoch,
         title: currentPage.current.title,
         url: currentPage.current.url,
         image,
         width: 800,
         height: 500,
       }
+    }
     if (route === "POST /browser/tabs/:id/takeover/input") {
       onTakeoverInput()
       return {}
@@ -156,7 +162,11 @@ const getFixtureApi = ({
     if (route === "GET /attachments/:id/content") {
       onAttachmentRead()
       return {
-        text: JSON.stringify({ content: [{ type: "image", mimeType: "image/png", data: attachmentImage }] }),
+        text: JSON.stringify({
+          title: currentPage.current.title,
+          url: currentPage.current.url,
+          content: [{ type: "image", mimeType: "image/png", data: attachmentImage }],
+        }),
         offset: 0,
         nextOffset: null,
         bytes: attachmentBytes,
@@ -331,102 +341,104 @@ const Fixture = () => {
     <InlinePreviewContext.Provider
       value={{ api, bot: activityBot, machine: undefined, activeCallId: undefined, onOpenComputer }}
     >
-      <main className="browser-activity-demo">
-        <header>
-          <div>
-            <p className="eyebrow">touri · {t("Local browser fixture", {}, locale)}</p>
-            <h1>{t("Travel search fixture", {}, locale)}</h1>
-          </div>
-          {!started && (
-            <button type="button" className="button" onClick={start}>
-              {t("Start travel search", {}, locale)}
-            </button>
-          )}
-        </header>
-        <section className="browser-fixture-card" aria-label={t("Travel search fixture", {}, locale)}>
-          <label htmlFor="destination">{t("Destination", {}, locale)}</label>
-          <input
-            id="destination"
-            aria-label={t("Destination", {}, locale)}
-            value={destination}
-            onChange={(event) => updateDestination(event.target.value)}
-          />
-          {suggestions && (
-            <div role="listbox" aria-label={t("Destination suggestions", {}, locale)}>
-              {[t("Lisboa, Portugal", {}, locale), t("Lisboa Airport", {}, locale)].map((choice) => (
-                <button type="button" key={choice} role="option" onClick={chooseSuggestion}>
-                  {choice}
-                </button>
-              ))}
+      <BrowserActivityControlsProvider>
+        <main className="browser-activity-demo">
+          <header>
+            <div>
+              <p className="eyebrow">touri · {t("Local browser fixture", {}, locale)}</p>
+              <h1>{t("Travel search fixture", {}, locale)}</h1>
             </div>
-          )}
-          <label htmlFor="cabin">{t("Cabin", {}, locale)}</label>
-          <select id="cabin" aria-label={t("Cabin", {}, locale)} onChange={selectCabin}>
-            <option value="economy">{t("Economy", {}, locale)}</option>
-            <option value="business">{t("Business", {}, locale)}</option>
-          </select>
-          <button type="button" className="button button-quiet" onClick={openCalendar}>
-            {t("Open departure calendar", {}, locale)}
-          </button>
-          {dateOpen && (
-            <button type="button" aria-label={t("Departure date October 24", {}, locale)} onClick={chooseDate}>
-              {t("October 24", {}, locale)}
+            {!started && (
+              <button type="button" className="button" onClick={start}>
+                {t("Start travel search", {}, locale)}
+              </button>
+            )}
+          </header>
+          <section className="browser-fixture-card" aria-label={t("Travel search fixture", {}, locale)}>
+            <label htmlFor="destination">{t("Destination", {}, locale)}</label>
+            <input
+              id="destination"
+              aria-label={t("Destination", {}, locale)}
+              value={destination}
+              onChange={(event) => updateDestination(event.target.value)}
+            />
+            {suggestions && (
+              <div role="listbox" aria-label={t("Destination suggestions", {}, locale)}>
+                {[t("Lisboa, Portugal", {}, locale), t("Lisboa Airport", {}, locale)].map((choice) => (
+                  <button type="button" key={choice} role="option" onClick={chooseSuggestion}>
+                    {choice}
+                  </button>
+                ))}
+              </div>
+            )}
+            <label htmlFor="cabin">{t("Cabin", {}, locale)}</label>
+            <select id="cabin" aria-label={t("Cabin", {}, locale)} onChange={selectCabin}>
+              <option value="economy">{t("Economy", {}, locale)}</option>
+              <option value="business">{t("Business", {}, locale)}</option>
+            </select>
+            <button type="button" className="button button-quiet" onClick={openCalendar}>
+              {t("Open departure calendar", {}, locale)}
             </button>
+            {dateOpen && (
+              <button type="button" aria-label={t("Departure date October 24", {}, locale)} onClick={chooseDate}>
+                {t("October 24", {}, locale)}
+              </button>
+            )}
+            {date && <p>{t("Selected date: {date}", { date }, locale)}</p>}
+            {running && confidence !== null && (
+              <p role="status">{t("JEV confidence: {percent}%", { percent: Math.round(confidence * 100) }, locale)}</p>
+            )}
+            {running && (
+              <button type="button" className="button" disabled={held} onClick={finish}>
+                {t("Search trips", {}, locale)}
+              </button>
+            )}
+            {results && (
+              <section aria-label={t("Search results", {}, locale)}>
+                <h2>{t("Search results", {}, locale)}</h2>
+                <ul>
+                  <li>{t("Lisboa · direct · fictional trip", {}, locale)}</li>
+                  <li>{t("Lisboa Airport · connection", {}, locale)}</li>
+                </ul>
+                <p>{t("The local search is complete.", {}, locale)}</p>
+              </section>
+            )}
+          </section>
+          {browserView && (
+            <p className="browser-live-view" role="status">
+              {t("Live browser view opened", {}, locale)}
+            </p>
           )}
-          {date && <p>{t("Selected date: {date}", { date }, locale)}</p>}
-          {running && confidence !== null && (
-            <p role="status">{t("JEV confidence: {percent}%", { percent: Math.round(confidence * 100) }, locale)}</p>
+          {started && (
+            <TurnActivity
+              message={
+                {
+                  id: "browser-reply",
+                  threadId: "browser-thread",
+                  parentId: null,
+                  role: "assistant",
+                  kind: "text",
+                  status: running ? "streaming" : "complete",
+                  runId: null,
+                  text: "",
+                  parts,
+                  sender: { name: bot.name, id: bot.id },
+                  source: "local",
+                  createdAt: Date.now() - 1_000,
+                  updatedAt: Date.now(),
+                } satisfies Message
+              }
+              api={api}
+              state={running ? "working-tool" : "done"}
+              locale={locale}
+            />
           )}
-          {running && (
-            <button type="button" className="button" disabled={held} onClick={finish}>
-              {t("Search trips", {}, locale)}
-            </button>
-          )}
-          {results && (
-            <section aria-label={t("Search results", {}, locale)}>
-              <h2>{t("Search results", {}, locale)}</h2>
-              <ul>
-                <li>{t("Lisboa · direct · fictional trip", {}, locale)}</li>
-                <li>{t("Lisboa Airport · connection", {}, locale)}</li>
-              </ul>
-              <p>{t("The local search is complete.", {}, locale)}</p>
-            </section>
-          )}
-        </section>
-        {browserView && (
-          <p className="browser-live-view" role="status">
-            {t("Live browser view opened", {}, locale)}
-          </p>
-        )}
-        {started && (
-          <TurnActivity
-            message={
-              {
-                id: "browser-reply",
-                threadId: "browser-thread",
-                parentId: null,
-                role: "assistant",
-                kind: "text",
-                status: running ? "streaming" : "complete",
-                runId: null,
-                text: "",
-                parts,
-                sender: { name: bot.name, id: bot.id },
-                source: "local",
-                createdAt: Date.now() - 1_000,
-                updatedAt: Date.now(),
-              } satisfies Message
-            }
-            api={api}
-            state={running ? "working-tool" : "done"}
-            locale={locale}
-          />
-        )}
         <footer className="browser-activity-composer">
           {running && <BrowserWorkingStatus name={bot.name} botId={bot.id} locale={locale} />}
           <textarea aria-label={t("Message", {}, locale)} placeholder={t("Write a message…", {}, locale)} />
         </footer>
       </main>
+      </BrowserActivityControlsProvider>
     </InlinePreviewContext.Provider>
   )
 }
@@ -706,7 +718,8 @@ const LiveFixture = () => {
           onOpenComputer: () => undefined,
         }}
       >
-        <main className="browser-flow-app" data-theme={params.get("theme") ?? "dark"}>
+        <BrowserActivityControlsProvider>
+          <main className="browser-flow-app" data-theme={params.get("theme") ?? "dark"}>
           <aside className="browser-flow-sidebar" aria-label="Conversas">
             <strong>touri</strong>
             <button type="button" className="browser-flow-sidebar-row" onClick={() => undefined}>
@@ -750,7 +763,8 @@ const LiveFixture = () => {
               />
             </footer>
           </section>
-        </main>
+          </main>
+        </BrowserActivityControlsProvider>
       </InlinePreviewContext.Provider>
     </AvatarRuntimeProvider>
   )

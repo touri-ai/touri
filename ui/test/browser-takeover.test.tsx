@@ -10,6 +10,9 @@ afterEach(() => {
 })
 
 const getBrowserFrame = (url = "https://exemplo.test/entrar") => ({
+  controlEpoch: "control-epoch",
+  targetEpoch: 1,
+  viewEpoch: 0,
   title: "Página de teste",
   url,
   image: "data:image/png;base64,ZmFrZQ==",
@@ -31,6 +34,7 @@ test("sends private browser typing only to the remote input route and returns co
       api={api}
       tabId="synthetic-tab"
       sessionId="synthetic-session"
+      controlEpoch="control-epoch"
       botName="Lia"
       locale="pt-BR"
       reason="O site pediu login para mostrar o preço final."
@@ -51,7 +55,15 @@ test("sends private browser typing only to the remote input route and returns co
   await waitFor(() =>
     expect(request).toHaveBeenCalledWith(
       "POST /browser/tabs/:id/takeover/input",
-      { sessionId: "synthetic-session", input: { kind: "text", text: "valor privado de teste" } },
+      {
+        sessionId: "synthetic-session",
+        controlEpoch: "control-epoch",
+        targetEpoch: 1,
+        viewEpoch: 0,
+        width: 1_000,
+        height: 500,
+        input: { kind: "text", text: "valor privado de teste" },
+      },
       { id: "synthetic-tab" },
     ),
   )
@@ -63,10 +75,107 @@ test("sends private browser typing only to the remote input route and returns co
   await waitFor(() =>
     expect(request).toHaveBeenCalledWith(
       "DELETE /browser/tabs/:id/takeover/session",
-      { sessionId: "synthetic-session" },
+      { sessionId: "synthetic-session", controlEpoch: "control-epoch" },
       { id: "synthetic-tab" },
     ),
   )
+})
+
+test("keeps the privacy notice visible and lets a person expand the browser view", async () => {
+  const api = createMockApi()
+  const request = vi.fn(async (route: string) => {
+    if (route === "POST /browser/tabs/:id/takeover/frame") return getBrowserFrame()
+    return {}
+  }) as ApiRequest
+  api.request = request
+
+  render(
+    <BrowserTakeoverView
+      api={api}
+      tabId="synthetic-tab"
+      sessionId="synthetic-session"
+      controlEpoch="control-epoch"
+      botName="Lia"
+      locale="pt-BR"
+      reason="O site pediu login para mostrar o preço final."
+      actions={[]}
+      onHandback={vi.fn()}
+    />,
+  )
+
+  const privacy = screen.getByRole("status", { name: "Privacidade do navegador" })
+  expect(privacy).toHaveTextContent("O que você digitar aqui não vai para o chat, o bot nem o histórico.")
+  const expand = screen.getByRole("button", { name: "Expandir navegador em tela cheia" })
+  fireEvent.click(expand)
+
+  expect(screen.getByRole("region", { name: "Controle remoto do navegador" })).toHaveAttribute("data-full-view", "true")
+})
+
+test("a reconnected browser view requests frames at its retained viewport epoch", async () => {
+  const api = createMockApi()
+  const request = vi.fn(async (route: string, body?: unknown) => {
+    if (route !== "POST /browser/tabs/:id/takeover/frame") return {}
+    const viewEpoch = (body as { viewEpoch: number }).viewEpoch
+    return { ...getBrowserFrame(), viewEpoch }
+  }) as ApiRequest
+  api.request = request
+
+  render(
+    <BrowserTakeoverView
+      api={api}
+      tabId="synthetic-tab"
+      sessionId="synthetic-session"
+      controlEpoch="control-epoch"
+      initialViewEpoch={7}
+      botName="Lia"
+      locale="pt-BR"
+      reason={null}
+      actions={[]}
+      onHandback={vi.fn()}
+    />,
+  )
+
+  await screen.findByRole("img")
+  expect(request).toHaveBeenCalledWith(
+    "POST /browser/tabs/:id/takeover/frame",
+    { sessionId: "synthetic-session", controlEpoch: "control-epoch", viewEpoch: 7 },
+    { id: "synthetic-tab" },
+  )
+})
+
+test("disconnecting the takeover view leaves the browser paused for reconnection", async () => {
+  const api = createMockApi()
+  const request = vi.fn(async (route: string) =>
+    route === "POST /browser/tabs/:id/takeover/frame" ? getBrowserFrame() : {},
+  ) as ApiRequest
+  api.request = request
+
+  const { unmount } = render(
+    <BrowserTakeoverView
+      api={api}
+      tabId="synthetic-tab"
+      sessionId="synthetic-session"
+      controlEpoch="control-epoch"
+      botName="Lia"
+      locale="pt-BR"
+      reason={null}
+      actions={[]}
+      onHandback={vi.fn()}
+    />,
+  )
+
+  await screen.findByRole("img")
+  const keyboard = await screen.findByRole("textbox", { name: "Entrada de teclado para o navegador" })
+  fireEvent.input(keyboard, { target: { value: "texto privado pendente" } })
+  unmount()
+  await Promise.resolve()
+
+  expect(request).not.toHaveBeenCalledWith("POST /browser/tabs/:id/takeover/input", expect.anything(), {
+    id: "synthetic-tab",
+  })
+  expect(request).not.toHaveBeenCalledWith("DELETE /browser/tabs/:id/takeover/session", expect.anything(), {
+    id: "synthetic-tab",
+  })
 })
 
 test("turns phone drags into remote scrolling and phone taps into browser clicks", async () => {
@@ -82,6 +191,7 @@ test("turns phone drags into remote scrolling and phone taps into browser clicks
       api={api}
       tabId="synthetic-tab"
       sessionId="synthetic-session"
+      controlEpoch="control-epoch"
       botName="Lia"
       locale="pt-BR"
       reason={null}
@@ -162,6 +272,7 @@ test("intercepts paste text without forwarding the paste shortcut to the page", 
       api={api}
       tabId="synthetic-tab"
       sessionId="synthetic-session"
+      controlEpoch="control-epoch"
       botName="Lia"
       locale="pt-BR"
       reason={null}
@@ -179,7 +290,15 @@ test("intercepts paste text without forwarding the paste shortcut to the page", 
   await waitFor(() =>
     expect(request).toHaveBeenCalledWith(
       "POST /browser/tabs/:id/takeover/input",
-      { sessionId: "synthetic-session", input: { kind: "text", text: "texto colado privado" } },
+      {
+        sessionId: "synthetic-session",
+        controlEpoch: "control-epoch",
+        targetEpoch: 1,
+        viewEpoch: 0,
+        width: 1_000,
+        height: 500,
+        input: { kind: "text", text: "texto colado privado" },
+      },
       { id: "synthetic-tab" },
     ),
   )
@@ -201,6 +320,7 @@ test("rejects oversized text before encoding or sending it to the browser", asyn
       api={api}
       tabId="synthetic-tab"
       sessionId="synthetic-session"
+      controlEpoch="control-epoch"
       botName="Lia"
       locale="pt-BR"
       reason={null}

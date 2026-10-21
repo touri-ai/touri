@@ -127,6 +127,7 @@ test("remote browser takeover gives one device an interactive session and reject
     getWindowBounds: async () => null,
     tabsForBot: () => [{ ...tab, ownerBotId: botId }],
     takeoverFrame: async () => ({
+      targetEpoch: 4,
       title: "Example page",
       url: "https://example.test/login",
       image: "data:image/jpeg;base64,ZmFrZQ==",
@@ -151,7 +152,7 @@ test("remote browser takeover gives one device an interactive session and reject
           "x-touri-client": "browser-takeover-test",
           "Content-Type": "application/json",
         },
-        ...(method === "POST" ? { body: JSON.stringify(body) } : {}),
+        ...(method !== "GET" ? { body: JSON.stringify(body) } : {}),
       })
     const botResponse = await request("/bots", { name: "Léo", machine: "local", provider: "codex" })
     expect(botResponse.status).toBe(201)
@@ -173,22 +174,99 @@ test("remote browser takeover gives one device an interactive session and reject
     expect(started.status).toBe(200)
     expect(leaseAcquired).toBe(1)
     expect(leaseReleased).toBe(0)
-    const { sessionId } = (await started.json()) as { sessionId: string }
+    const { sessionId, controlEpoch } = (await started.json()) as { sessionId: string; controlEpoch: string }
     expect(sessionId).toHaveLength(64)
+    expect(controlEpoch).toHaveLength(32)
+
+    const hiddenPreview = await request(`/bots/${botId}/browser-preview`, {}, "GET")
+    expect(hiddenPreview.status).toBe(409)
+    const tabs = await request(`/browser/tabs?botId=${botId}`, {}, "GET")
+    expect(await tabs.json()).toMatchObject({
+      tabs: [{ title: "", url: "" }],
+    })
+
+    const reconnected = await request("/browser/tabs/t_remote/takeover/session", {})
+    expect(reconnected.status).toBe(200)
+    expect(await reconnected.json()).toEqual({ sessionId, controlEpoch, viewEpoch: 0 })
 
     const denied = await request("/browser/tabs/t_remote/takeover/input", {
       sessionId: "another-device-session",
+      controlEpoch,
       input: { kind: "text", text: "private-login-value" },
     })
     expect(denied.status).toBe(403)
     expect(receivedInput).toBeNull()
 
-    const frame = await request("/browser/tabs/t_remote/takeover/frame", { sessionId })
+    const staleControl = await request("/browser/tabs/t_remote/takeover/input", {
+      sessionId,
+      controlEpoch: "stale-control-epoch",
+      targetEpoch: 4,
+      viewEpoch: 0,
+      width: 1280,
+      height: 720,
+      input: { kind: "text", text: "private-login-value" },
+    })
+    expect(staleControl.status).toBe(403)
+    expect(receivedInput).toBeNull()
+
+    const frame = await request("/browser/tabs/t_remote/takeover/frame", { sessionId, controlEpoch, viewEpoch: 0 })
     expect(frame.status).toBe(200)
-    expect(await frame.json()).toMatchObject({ width: 1280, height: 720 })
+    expect(await frame.json()).toMatchObject({ controlEpoch, targetEpoch: 4, viewEpoch: 0, width: 1280, height: 720 })
+
+    const staleTarget = await request("/browser/tabs/t_remote/takeover/input", {
+      sessionId,
+      controlEpoch,
+      targetEpoch: 3,
+      viewEpoch: 0,
+      width: 1280,
+      height: 720,
+      input: { kind: "text", text: "private-login-value" },
+    })
+    expect(staleTarget.status).toBe(409)
+    expect(receivedInput).toBeNull()
+
+    const staleGeometry = await request("/browser/tabs/t_remote/takeover/input", {
+      sessionId,
+      controlEpoch,
+      targetEpoch: 4,
+      viewEpoch: 0,
+      width: 800,
+      height: 600,
+      input: { kind: "text", text: "private-login-value" },
+    })
+    expect(staleGeometry.status).toBe(409)
+    expect(receivedInput).toBeNull()
+
+    const resizedFrame = await request("/browser/tabs/t_remote/takeover/frame", {
+      sessionId,
+      controlEpoch,
+      viewEpoch: 1,
+    })
+    expect(resizedFrame.status).toBe(200)
+    expect(await resizedFrame.json()).toMatchObject({ controlEpoch, targetEpoch: 4, viewEpoch: 1 })
+    const resumedAfterResize = await request("/browser/tabs/t_remote/takeover/session", {})
+    expect(resumedAfterResize.status).toBe(200)
+    expect(await resumedAfterResize.json()).toEqual({ sessionId, controlEpoch, viewEpoch: 1 })
+
+    const staleView = await request("/browser/tabs/t_remote/takeover/input", {
+      sessionId,
+      controlEpoch,
+      targetEpoch: 4,
+      viewEpoch: 0,
+      width: 1280,
+      height: 720,
+      input: { kind: "text", text: "private-login-value" },
+    })
+    expect(staleView.status).toBe(409)
+    expect(receivedInput).toBeNull()
 
     const typed = await request("/browser/tabs/t_remote/takeover/input", {
       sessionId,
+      controlEpoch,
+      targetEpoch: 4,
+      viewEpoch: 1,
+      width: 1280,
+      height: 720,
       input: { kind: "text", text: "private-login-value" },
     })
     expect(typed.status).toBe(200)
@@ -197,6 +275,11 @@ test("remote browser takeover gives one device an interactive session and reject
 
     const keyed = await request("/browser/tabs/t_remote/takeover/input", {
       sessionId,
+      controlEpoch,
+      targetEpoch: 4,
+      viewEpoch: 1,
+      width: 1280,
+      height: 720,
       input: { kind: "key", phase: "down", key: "Enter", code: "Enter", modifiers: 0 },
     })
     expect(keyed.status).toBe(200)
@@ -204,12 +287,17 @@ test("remote browser takeover gives one device an interactive session and reject
 
     const oversizedInput = await request("/browser/tabs/t_remote/takeover/input", {
       sessionId,
+      controlEpoch,
+      targetEpoch: 4,
+      viewEpoch: 1,
+      width: 1280,
+      height: 720,
       input: { kind: "text", text: "x".repeat(70_000) },
     })
     expect(oversizedInput.status).toBe(400)
-    expect(receivedInput).toEqual({ kind: "text", text: "private-login-value" })
+    expect(receivedInput).toEqual({ kind: "key", phase: "down", key: "Enter", code: "Enter", modifiers: 0 })
 
-    const ended = await request("/browser/tabs/t_remote/takeover/session", { sessionId }, "DELETE")
+    const ended = await request("/browser/tabs/t_remote/takeover/session", { sessionId, controlEpoch }, "DELETE")
     expect(ended.status).toBe(200)
     expect(leaseReleased).toBe(1)
   } finally {

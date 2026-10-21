@@ -20,6 +20,7 @@ test.each(["machine_service_unavailable", "machine_service_start_failed", "group
       for (const [index, errorMessage] of ["private XPC failure", "", null].entries()) {
         const run: Run = {
           id: `r-${index}`,
+          requesterPersonId: null,
           threadId: "t",
           botId: "b",
           provider: "codex",

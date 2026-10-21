@@ -1,8 +1,10 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import type { Bot, BotGroup, Message, Run, ToolCallPart } from "@touri/contracts"
+import { useEffect } from "react"
 import { afterEach, describe, expect, test, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
 import { BrowserActivityCard } from "../src/components/BrowserActivityCard"
+import { BrowserActivityControlsProvider, useBrowserActivityControls } from "../src/components/BrowserActivityControls"
 import { ChatPanel } from "../src/components/ChatPanel"
 import { GroupHeader, GroupSidebar } from "../src/components/Groups"
 import { ChannelBrowserContext, ChannelComposerChip } from "../src/features/channelBrowser/ChannelBrowser"
@@ -11,7 +13,7 @@ import {
   getChannelBrowserView,
   getChannelQueueLabel,
   getChannelWorking,
-} from "../src/features/channelBrowser/channelBrowser"
+} from "../src/features/channelBrowser/channelBrowserModel"
 import { InlinePreviewContext } from "../src/features/desktop/InlineLivePreview"
 
 vi.mock("../src/features/desktop/inlineFrameSource", () => ({
@@ -57,6 +59,16 @@ const browserParts = [
   getPart("open", "mcp__touri__browser_open", '{"url":"https://estadias.example.test/busca"}'),
   getPart("click", "mcp__touri__browser_click", '{"tabId":"tab-1","target":{"name":"Chicago"}}'),
 ]
+
+const RegisterTakeoverAction = ({ onTakeover }: { onTakeover: () => void }) => {
+  const controls = useBrowserActivityControls()
+  useEffect(
+    () => controls.registerTakeover({ label: "Assumir", run: onTakeover }),
+    [controls.registerTakeover, onTakeover],
+  )
+
+  return null
+}
 
 const getMessage = (overrides: Partial<Message> = {}): Message => ({
   id: "prompt",
@@ -296,14 +308,14 @@ describe("channel chrome", () => {
     expect(within(row).getByTitle("Léo trabalhando aqui")).toBeVisible()
   })
 
-  test("composer chip says who the work is for", () => {
+  test("composer chip tells bystanders who has browser control", () => {
     render(
       <ChannelBrowserContext.Provider value={{ state: getState(), viewerId: "user-hugo" }}>
         <ChannelComposerChip botName="Léo" />
       </ChannelBrowserContext.Provider>,
     )
 
-    expect(screen.getByRole("status")).toHaveTextContent("Léo está trabalhando · No navegador · para Ana")
+    expect(screen.getByRole("status")).toHaveTextContent("Ana está no controle")
   })
 
   test("composer chip stops the active browser run", () => {
@@ -313,6 +325,34 @@ describe("channel chrome", () => {
     fireEvent.click(screen.getByRole("button", { name: "Parar Léo" }))
 
     expect(onStop).toHaveBeenCalledOnce()
+  })
+
+  test("only channel controllers get a takeover action in the composer chip", async () => {
+    const onTakeover = vi.fn()
+    const view = render(
+      <BrowserActivityControlsProvider>
+        <ChannelBrowserContext.Provider value={{ state: getState(), viewerId: "user-ana" }}>
+          <RegisterTakeoverAction onTakeover={onTakeover} />
+          <ChannelComposerChip botName="Léo" />
+        </ChannelBrowserContext.Provider>
+      </BrowserActivityControlsProvider>,
+    )
+    const takeOver = await screen.findByRole("button", { name: "Assumir" })
+
+    fireEvent.click(takeOver)
+    expect(onTakeover).toHaveBeenCalledOnce()
+
+    view.rerender(
+      <BrowserActivityControlsProvider>
+        <ChannelBrowserContext.Provider value={{ state: getState(), viewerId: "user-hugo" }}>
+          <RegisterTakeoverAction onTakeover={onTakeover} />
+          <ChannelComposerChip botName="Léo" />
+        </ChannelBrowserContext.Provider>
+      </BrowserActivityControlsProvider>,
+    )
+
+    expect(screen.queryByRole("button", { name: "Assumir" })).toBeNull()
+    expect(screen.getByRole("status")).toHaveTextContent("Ana está no controle")
   })
 })
 

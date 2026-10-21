@@ -6,7 +6,7 @@ import type {
   BrowserRef,
   BrowserSnapshot,
   BrowserTabInfo,
-  BrowserTakeoverFrame,
+  BrowserTakeoverCapture,
   BrowserTakeoverInput,
   BrowserTakeoverReason,
   BrowserTarget,
@@ -145,8 +145,16 @@ export type BrowserEngine = {
     tabId?: Id
     signal: AbortSignal
   }) => Promise<{ title: string; url: string; image: string } | null>
-  takeoverFrame: (args: { tabId: Id; botId: Id; signal: AbortSignal }) => Promise<BrowserTakeoverFrame | null>
-  takeoverInput: (args: { tabId: Id; botId: Id; input: BrowserTakeoverInput; signal: AbortSignal }) => Promise<boolean>
+  takeoverFrame: (args: { tabId: Id; botId: Id; signal: AbortSignal }) => Promise<BrowserTakeoverCapture | null>
+  takeoverInput: (args: {
+    tabId: Id
+    botId: Id
+    targetEpoch: number
+    width: number
+    height: number
+    input: BrowserTakeoverInput
+    signal: AbortSignal
+  }) => Promise<boolean>
   open: (args: { url: string; ctx: ToolContext; timeoutMs: number }) => Promise<ToolResult>
   list: (args: { botId: Id | null; signal?: AbortSignal; timeoutMs?: number }) => Promise<ToolResult>
   close: (args: { tabId: Id; botId: Id; signal: AbortSignal; timeoutMs?: number }) => Promise<ToolResult>

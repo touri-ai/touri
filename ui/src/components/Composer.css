@@ -264,8 +264,8 @@
   color: var(--text);
   font: inherit;
   cursor: pointer;
-}
-.composer-browser-status .composer-browser-stop {
+.composer-browser-status .composer-browser-stop,
+.composer-browser-status .composer-browser-takeover {
   display: inline-flex;
   width: auto;
   height: auto;
@@ -280,14 +280,17 @@
   color: var(--text);
   font-size: var(--fs-caption);
 }
-.composer-browser-status .composer-browser-stop:hover:not(:disabled) {
+.composer-browser-status .composer-browser-stop:hover:not(:disabled),
+.composer-browser-status .composer-browser-takeover:hover:not(:disabled) {
   background: var(--surface-control);
 }
-.composer-browser-status .composer-browser-stop:focus-visible {
+.composer-browser-status .composer-browser-stop:focus-visible,
+.composer-browser-status .composer-browser-takeover:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
-.composer-browser-status .composer-browser-stop:disabled {
+.composer-browser-status .composer-browser-stop:disabled,
+.composer-browser-status .composer-browser-takeover:disabled {
   opacity: 0.55;
   cursor: default;
 }

@@ -391,6 +391,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
       const decision = browserControlDecision(run)
       if (decision) return decision
 
+      if (run) return null
       if (browserTakeover[2] !== undefined) return ownsBot({ personId, botId: tab.owner_bot_id }) ? null : notFound
       return canAccessBot({ personId, role, botId: tab.owner_bot_id }) ? null : notFound
     }

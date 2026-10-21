@@ -1,8 +1,8 @@
-type FrameMessage = { type: "frame"; image: string } | { type: "canvas"; canvas: OffscreenCanvas }
+type FrameMessage = { type: "frame"; frameId: number; image: string } | { type: "canvas"; canvas: OffscreenCanvas }
 
 let canvas: OffscreenCanvas | null = null
 let drawing = false
-let pendingImage: string | null = null
+let pendingFrame: { frameId: number; image: string } | null = null
 
 const imageBlob = (value: string): Blob => {
   const separator = value.indexOf(",")
@@ -19,17 +19,18 @@ const imageBlob = (value: string): Blob => {
 }
 
 const drawFrames = async (): Promise<void> => {
-  if (!canvas || drawing || !pendingImage) return
+  if (!canvas || drawing || !pendingFrame) return
   drawing = true
-  while (canvas && pendingImage) {
-    const image = pendingImage
-    pendingImage = null
-    const bitmap = await createImageBitmap(imageBlob(image))
+  while (canvas && pendingFrame) {
+    const frame = pendingFrame
+    pendingFrame = null
+    const bitmap = await createImageBitmap(imageBlob(frame.image))
     try {
       if (!canvas) return
       canvas.width = bitmap.width
       canvas.height = bitmap.height
       canvas.getContext("2d")?.drawImage(bitmap, 0, 0)
+      self.postMessage({ type: "drawn", frameId: frame.frameId })
     } finally {
       bitmap.close()
     }
@@ -42,7 +43,7 @@ self.addEventListener("message", (event: MessageEvent<FrameMessage>) => {
     canvas = event.data.canvas
     return
   }
-  pendingImage = event.data.image
+  pendingFrame = { frameId: event.data.frameId, image: event.data.image }
   void drawFrames().catch(() => {
     drawing = false
     Reflect.apply(self.postMessage, self, [{ type: "error" }, []])

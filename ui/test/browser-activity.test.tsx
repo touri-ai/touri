@@ -1,9 +1,10 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { Bot, BrowserTabInfo, ToolCallPart } from "@touri/contracts"
 import { afterEach, expect, test, vi } from "vitest"
 import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { BrowserActivityCard } from "../src/components/BrowserActivityCard"
+import { BrowserActivityControlsProvider } from "../src/components/BrowserActivityControls"
 import { BrowserWorkingStatus } from "../src/components/BrowserWorkingStatus"
 import {
   getBrowserActivityLabel,
@@ -15,6 +16,7 @@ import {
   getBrowserTakeoverReason,
 } from "../src/components/browserActivityPresentation"
 import { clearBrowserHold, setBrowserHold } from "../src/features/desktop/browserHold"
+import { ChannelComposerChip } from "../src/features/channelBrowser/ChannelBrowser"
 import { InlinePreviewContext } from "../src/features/desktop/InlineLivePreview"
 import { startInlineFrameSource } from "../src/features/desktop/inlineFrameSource"
 import { setInlinePreviewPreference } from "../src/features/desktop/inlinePreviewPreference"
@@ -83,9 +85,13 @@ const renderCard = (
   const api = createMockApi()
   const request = vi.fn(async (route: string) => {
     if (route === "GET /browser/tabs") return getTabs()
-    if (route === "POST /browser/tabs/:id/takeover/session") return { sessionId: "synthetic-session" }
+    if (route === "POST /browser/tabs/:id/takeover/session")
+      return { sessionId: "synthetic-session", controlEpoch: "synthetic-control-epoch", viewEpoch: 0 }
     if (route === "POST /browser/tabs/:id/takeover/frame")
       return {
+        controlEpoch: "synthetic-control-epoch",
+        targetEpoch: 1,
+        viewEpoch: 0,
         title: "Página de teste",
         url: "https://exemplo.test/pesquisa",
         image: "data:image/png;base64,ZmFrZQ==",
@@ -155,6 +161,7 @@ test("shows live browser steps and keeps typed values and URL credentials and qu
   expect(document.body.textContent).not.toContain("private search value")
   expect(document.body.textContent).not.toContain("person@example.test")
   expect(document.body.textContent).not.toContain("private-password")
+  expect(screen.getAllByText(/travel\.example\.test/)).toHaveLength(1)
   expect(document.body.textContent).not.toContain("https://travel.example.test")
   expect(document.body.textContent).not.toContain("invite-Q7z8k2fR")
   expect(document.body.textContent).not.toContain("fixture-token")
@@ -215,6 +222,102 @@ test("sanitizes a takeover reason before showing it", () => {
   })
 
   expect(getBrowserTakeoverReason([part])).toBe("Confirm with [email] at [number]")
+})
+
+test("shows one sanitized browser URL in the live subtitle", async () => {
+  const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
+
+  renderCard(parts, false)
+
+  const subtitle = await screen.findByText("Lia · abrindo uma página · travel.example.test/results")
+  expect(subtitle).toBeVisible()
+  expect(screen.getAllByText(/travel\.example\.test\/results/)).toHaveLength(1)
+  expect(screen.queryByRole("group", { name: "Endereço do navegador" })).toBeNull()
+})
+
+test("marks completed and current browser actions with their progress state", () => {
+  const parts = [
+    getPart({ callId: "open", tool: "browser_open", inputJson: "{}", ok: true }),
+    getPart({ callId: "click", tool: "browser_click", inputJson: "{}", ok: null }),
+  ]
+
+  renderCard(parts, false)
+
+  const rows = screen.getByRole("log", { name: "Atividade do navegador" }).querySelectorAll("li")
+  expect(rows[0]).toHaveAttribute("data-status", "complete")
+  expect(rows[1]).toHaveAttribute("data-status", "in-progress")
+  expect(within(rows[1] as HTMLElement).getByLabelText("Em andamento")).toBeVisible()
+})
+
+test("lets a phone reader expand the compact browser action list", () => {
+  const parts = [
+    getPart({ callId: "open", tool: "browser_open", inputJson: "{}" }),
+    getPart({ callId: "read", tool: "browser_snapshot", inputJson: "{}" }),
+    getPart({ callId: "click", tool: "browser_click", inputJson: "{}" }),
+    getPart({ callId: "fill", tool: "browser_type", inputJson: "{}" }),
+    getPart({ callId: "shot", tool: "browser_screenshot", inputJson: "{}" }),
+  ]
+
+  renderCard(parts, false)
+
+  const showAll = screen.getByRole("button", { name: "Ver tudo", hidden: true })
+  expect(showAll).toHaveAttribute("aria-expanded", "false")
+  fireEvent.click(showAll)
+  expect(showAll).toHaveAttribute("aria-expanded", "true")
+})
+
+test("the finished browser summary shows its page title with the screenshot", async () => {
+  const parts = [
+    getPart({
+      callId: "screenshot",
+      tool: "browser_screenshot",
+      inputJson: "{}",
+      outputAttachmentId: "final-shot",
+      outputBytes: 64,
+      outputPreview: "",
+    }),
+  ]
+
+  renderCard(parts, true)
+
+  expect(await screen.findByText("Resultados de Lisboa")).toBeVisible()
+  expect(screen.getByRole("img", { name: "Captura final do navegador" })).toBeVisible()
+})
+
+test("the composer takeover action opens the active browser session", async () => {
+  const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
+  const api = createMockApi()
+  const request = vi.fn(async (route: string) => {
+    if (route === "GET /browser/tabs") return { tabs: [tab] }
+    if (route === "POST /browser/tabs/:id/takeover/session")
+      return { sessionId: "synthetic-session", controlEpoch: "synthetic-control-epoch", viewEpoch: 0 }
+    return {}
+  }) as ApiRequest
+  api.request = request
+  const storedBot = api.getState().bots[0] ?? null
+  const bot = storedBot ? { ...storedBot, machine: "local" as const } : null
+
+  render(
+    <BrowserActivityControlsProvider>
+      <ChannelComposerChip botName="Lia" />
+      <InlinePreviewContext.Provider
+        value={{ api, bot, machine: undefined, activeCallId: undefined, onOpenComputer: vi.fn() }}
+      >
+        <BrowserActivityCard parts={parts} finished={false} createdAt={1} botName="Lia" />
+      </InlinePreviewContext.Provider>
+    </BrowserActivityControlsProvider>,
+  )
+
+  const takeOver = await waitFor(() => {
+    const status = document.querySelector(".composer-browser-status")
+    if (!status) throw new Error("Browser status chip is missing")
+    return within(status).getByRole("button", { name: "Assumir" })
+  })
+  fireEvent.click(takeOver)
+
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith("POST /browser/tabs/:id/takeover/session", {}, { id: "browser-tab" }),
+  )
 })
 
 test("take-over holds the browser, opens its view, and the finished card collapses with the final image", async () => {
@@ -454,8 +557,8 @@ test("a delayed tab snapshot cannot undo a newer takeover event", async () => {
     await tabs
   })
 
-  expect(screen.getByRole("button", { name: "Assumir" })).toBeEnabled()
-  expect(screen.queryByRole("button", { name: "O navegador está sob controle" })).toBeNull()
+  expect(screen.getByRole("button", { name: "Continuar no navegador" })).toBeEnabled()
+  expect(screen.queryByRole("button", { name: "Assumir" })).toBeNull()
 })
 
 test("disabling live chat previews prevents capture and leaves browser control available", () => {
