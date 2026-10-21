@@ -11,7 +11,7 @@ import type {
   Run,
   Thread,
 } from "@touri/contracts"
-import { Fragment, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react"
+import { Fragment, type ReactNode, useEffect, useId, useMemo, useState } from "react"
 import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigation"
 import { reconcileApprovalMessages } from "../approvalState"
 import { BOT_ACTIVITY_LABELS, type BotActivity } from "../botActivity"
@@ -42,11 +42,13 @@ import { mascotIsBusy } from "./mascotState"
 import { NotificationAttentionBar } from "./NotificationAttentionBar"
 import { type NotificationActions, NotificationBell } from "./NotificationCenter"
 import { ThreadActionsMenu } from "./ThreadActionsMenu"
+import { getThreadDeletionError, type ThreadDeletion } from "./useThreadDeletion"
 import { ThreadGroupHistory } from "./ThreadGroupHistory"
 import { type HoldReason, useSidebarOrder } from "./useSidebarOrder"
 import "./bot-sidebar.css"
 
 type SidebarProps = {
+  threadDeletion?: ThreadDeletion | undefined
   serverMode?: boolean
   serverUrl?: string | null
   host?: HostKind
@@ -314,6 +316,7 @@ export const Sidebar = (props: SidebarProps) => {
                   onDeleteThreads={props.onDeleteThreads}
                   onGetThreadDeletePreview={props.onGetThreadDeletePreview}
                   onLoadArchivedThreads={props.onLoadArchivedThreads}
+                  threadDeletion={props.threadDeletion}
                 />
               </Fragment>
             )
@@ -413,7 +416,9 @@ const BotEntry = ({
   onDeleteThreads,
   onGetThreadDeletePreview,
   onLoadArchivedThreads,
+  threadDeletion,
 }: {
+  threadDeletion?: ThreadDeletion | undefined
   navigationKey: string
   bot: Bot
   activity: BotActivity | null
@@ -467,21 +472,14 @@ const BotEntry = ({
   const [archivedLoading, setArchivedLoading] = useState(false)
   const [deleteTargets, setDeleteTargets] = useState<Array<ThreadDeleteTarget> | null>(null)
   const [oldAutomaticOpen, setOldAutomaticOpen] = useState(false)
-  const [pendingDelete, setPendingDelete] = useState<{ id: string; targets: Array<ThreadDeleteTarget> } | null>(null)
+  const pendingDelete = threadDeletion?.pending ?? null
   const [actionError, setActionError] = useState<string | null>(null)
-  const deleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // biome-ignore lint/correctness/useExhaustiveDependencies: dismiss on any navigation, including another bot's thread
   useEffect(() => {
     setMenuOpen(false)
     setSelectionMode(false)
     setSelectedThreadIds(new Set())
   }, [navigationKey])
-  useEffect(
-    () => () => {
-      if (deleteTimer.current) clearTimeout(deleteTimer.current)
-    },
-    [],
-  )
   const [deleting, setDeleting] = useState(false)
   const snapshot = useMascotSnapshot(bot)
   const ids = threads.map((thread) => thread.id)
@@ -606,15 +604,6 @@ const BotEntry = ({
     isRoutineConversation({ thread, runs, routineRuns, routines: [...routinesById.values()] }),
   )
   const hiddenThreadIds = new Set(pendingDelete?.targets.map((target) => target.id) ?? [])
-  const getDeleteError = (error: unknown): string => {
-    const code = error instanceof ApiError ? error.errorCode : undefined
-    if (code === "THREAD_ACTIVE") return t("Finish the active run before deleting this conversation.")
-    if (code === "THREAD_MAIN") return t("The bot's main conversation can't be deleted.")
-    if (code === "THREAD_DELETE_FORBIDDEN") return t("You don't have permission to delete this conversation.")
-    if (code === "THREAD_REMOTE") return t("This remote conversation can't be deleted here.")
-    if (code === "THREAD_DELETING") return t("This conversation is already being deleted.")
-    return t("Could not delete this conversation. Try again.")
-  }
   const openDeletePrompt = async (thread: Thread): Promise<void> => {
     if (!onGetThreadDeletePreview || pendingDelete) return
     setActionError(null)
@@ -622,7 +611,7 @@ const BotEntry = ({
       const preview = await onGetThreadDeletePreview(thread.id)
       setDeleteTargets([{ ...preview.thread, messageCount: preview.messageCount }])
     } catch (error) {
-      setActionError(getDeleteError(error))
+      setActionError(getThreadDeletionError(error))
     }
   }
   const openSelectedDeletePrompt = async (): Promise<void> => {
@@ -641,34 +630,19 @@ const BotEntry = ({
       }
       setDeleteTargets(previews)
     } catch (error) {
-      setActionError(getDeleteError(error))
+      setActionError(getThreadDeletionError(error))
     }
   }
   const queueDelete = (targets: Array<ThreadDeleteTarget>): void => {
-    if (!targets.length || pendingDelete || deleteTimer.current) return
-    const id = crypto.randomUUID()
-    const threadIds = targets.map((target) => target.id)
-    const timer = setTimeout(() => {
-      deleteTimer.current = null
-      setPendingDelete((current) => (current?.id === id ? null : current))
-      const remove =
-        threadIds.length === 1 && onDeleteThread
-          ? onDeleteThread(threadIds[0] ?? "", bot.id)
-          : onDeleteThreads?.(threadIds, bot.id)
-      if (!remove) return
-      void remove
-        .then(() => setArchivedThreads((current) => current.filter((thread) => !threadIds.includes(thread.id))))
-        .catch((error: unknown) => setActionError(getDeleteError(error)))
-    }, 5000)
-    deleteTimer.current = timer
+    const ids = new Set(targets.map((target) => target.id))
+    if (
+      !threadDeletion?.queue(bot.id, targets, () => {
+        setArchivedThreads((current) => current.filter((thread) => !ids.has(thread.id)))
+      })
+    )
+      return
     setDeleteTargets(null)
     setSelectedThreadIds(new Set())
-    setPendingDelete({ id, targets })
-  }
-  const undoDelete = (): void => {
-    if (deleteTimer.current) clearTimeout(deleteTimer.current)
-    deleteTimer.current = null
-    setPendingDelete(null)
   }
   const archiveOne = async (thread: Thread, archived: boolean): Promise<void> => {
     if (!onArchiveThread) return
@@ -1052,7 +1026,7 @@ const BotEntry = ({
                     <p className="field-help">{t("Loading archived conversations…")}</p>
                   ) : archiveEntries.filter((thread) => !hiddenThreadIds.has(thread.id)).length ? (
                     archiveEntries
-                      .slice(archivePage * 100, (visibleArchivePage + 1) * 100)
+                      .slice(visibleArchivePage * 100, (visibleArchivePage + 1) * 100)
                       .filter((thread) => !hiddenThreadIds.has(thread.id))
                       .map((thread) => (
                         <ThreadRow
@@ -1120,18 +1094,6 @@ const BotEntry = ({
           onClose={() => setOldAutomaticOpen(false)}
           onContinue={deleteOldAutomatic}
         />
-      )}
-      {pendingDelete && (
-        <div className="thread-delete-toast" role="status" aria-live="polite">
-          <span>
-            {pendingDelete.targets.length === 1
-              ? t("Your conversation will be deleted in 5 seconds.")
-              : t("Your conversations will be deleted in 5 seconds.")}
-          </span>
-          <button type="button" className="button-quiet" onClick={undoDelete}>
-            {t("Undo")}
-          </button>
-        </div>
       )}
     </div>
   )
