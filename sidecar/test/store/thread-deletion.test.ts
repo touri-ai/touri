@@ -85,6 +85,7 @@ const getPercentile = (values: Array<number>, percentile: number): number => {
 }
 
 const getDeletionRoute = (fixture: Awaited<ReturnType<typeof startFixture>>) => {
+  fixture.runtime.kernel.services.use("storage.threadDeletion")?.dispose()
   const route = threadDeletionRoutes(fixture.runtime.kernel).find(
     (candidate) => candidate.method === "DELETE" && candidate.path === "/threads/:id",
   )
