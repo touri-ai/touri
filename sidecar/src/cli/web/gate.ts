@@ -1,9 +1,10 @@
+import { createHash } from "node:crypto"
 import { isIP } from "node:net"
 import type { WebInterceptArgs } from "../../kernel"
 import { bindDeviceSession, type DevicePerson, deviceSession } from "../../kernel/device-session"
 import { normalizeErrorBody } from "../../kernel/errors"
-import type { RateLimiter } from "../auth/rateLimit"
-import type { AuthStore, Device } from "../auth/store"
+import { createActionLimiter, type RateLimiter } from "../auth/rateLimit"
+import { type AuthStore, type Device, isValidEmail, normalizeEmail } from "../auth/store"
 import type { SecretStore } from "../host/secretStore"
 import { BodyError, readJsonBody } from "./body"
 import { compressBufferedResponse } from "./compression"
@@ -22,6 +23,7 @@ export type GateOptions = {
   trustedProxy?: boolean
   pairReadDeadlineMs?: number
   maxPairingRequests?: number
+  requestEmailSignIn?: (input: { emailAddress: string; signal: AbortSignal }) => Promise<void>
   authorizeMember?: (input: {
     personId: string
     method: string
@@ -55,6 +57,20 @@ const parseCookies = (header: string | null): Record<string, string> =>
 const trustedProxy = (args: WebInterceptArgs, options: GateOptions): boolean =>
   options.trustedProxy === true && ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(args.clientIp ?? "")
 
+const requestOrigin = ({ args, options }: { args: WebInterceptArgs; options: GateOptions }): string | null => {
+  const proxy = trustedProxy(args, options)
+  const host = (proxy ? args.request.headers.get("x-forwarded-host") : null) ?? args.url.host
+  const forwardedProtocol = proxy ? args.request.headers.get("x-forwarded-proto") : null
+  const protocol =
+    forwardedProtocol === "http" || forwardedProtocol === "https" ? `${forwardedProtocol}:` : args.url.protocol
+  if (!host || /[\s,\\/?#@]/u.test(host) || !["http:", "https:"].includes(protocol)) return null
+  try {
+    return new URL(`${protocol}//${host}`).origin
+  } catch {
+    return null
+  }
+}
+
 const isSecureRequest = (args: WebInterceptArgs, options: GateOptions): boolean =>
   args.url.protocol === "https:" ||
   (trustedProxy(args, options) && args.request.headers.get("x-forwarded-proto") === "https")
@@ -69,7 +85,15 @@ const buildCookie = ({ token, secure }: { token: string; secure: boolean }): str
 
 /** Every caller needs a paired device token. Loopback is never trusted on its own:
  * other macOS accounts on the same Mac reach 127.0.0.1 too. */
-const authenticate = ({ args, store }: { args: WebInterceptArgs; store: AuthStore }): Principal | null => {
+const authenticate = ({
+  args,
+  store,
+  options,
+}: {
+  args: WebInterceptArgs
+  store: AuthStore
+  options: GateOptions
+}): Principal | null => {
   const ticketSession = deviceSession(args.request.signal)
   if (ticketSession?.active()) {
     const device = store.listDevices().find((item) => item.id === ticketSession.deviceId && item.revokedAt === null)
@@ -84,7 +108,7 @@ const authenticate = ({ args, store }: { args: WebInterceptArgs; store: AuthStor
   if (device && token) {
     const person = store.getPersonForDevice(device.id)
     if (!person) return null
-    const origin = args.request.headers.get("origin")
+    const origin = requestOrigin({ args, options })
     bindDeviceSession(args.request.signal, {
       deviceId: device.id,
       person: {
@@ -127,6 +151,76 @@ const pairingPage = (): Response =>
     status: 200,
     headers: { ...baseHeaders, "Content-Type": "text/html; charset=utf-8" },
   })
+
+const magicLinkResponse = (): Response => json(202, { ok: true })
+
+const handleEmailSignInRequest = async ({
+  args,
+  options,
+  limiter,
+}: {
+  args: WebInterceptArgs
+  options: GateOptions
+  limiter: ReturnType<typeof createActionLimiter>
+}): Promise<Response> => {
+  if (args.request.method !== "POST") return json(405, { errorCode: "METHOD_NOT_ALLOWED", error: "Use POST" })
+  if (!args.request.headers.get("origin") || !originAllowed(args.request, trustedProxy(args, options)))
+    return json(403, { errorCode: "FORBIDDEN", error: "Invalid Origin" })
+  const body = await readJsonBody(args.request, { maxBytes: 4096, deadlineMs: options.pairReadDeadlineMs ?? 5000 })
+  const emailAddress = normalizeEmail(typeof body?.email === "string" ? body.email : "")
+  if (!isValidEmail(emailAddress)) return magicLinkResponse()
+  const source = `signin:${sourceOf(args, options)}`
+  const addressKey = `signin-email:${createHash("sha256").update(emailAddress).digest("hex")}`
+  const sourceLimit = limiter.check(source)
+  const addressLimit = limiter.check(addressKey)
+  if (!sourceLimit.allowed || !addressLimit.allowed) return magicLinkResponse()
+  limiter.record(source)
+  limiter.record(addressKey)
+  try {
+    await options.requestEmailSignIn?.({ emailAddress, signal: args.request.signal })
+  } catch {
+    // The response stays the same for known and unknown addresses, including delivery failures.
+  }
+  return magicLinkResponse()
+}
+
+const handleEmailSignInRedeem = async ({
+  args,
+  options,
+}: {
+  args: WebInterceptArgs
+  options: GateOptions
+}): Promise<Response> => {
+  if (args.request.method !== "POST") return json(405, { errorCode: "METHOD_NOT_ALLOWED", error: "Use POST" })
+  if (!args.request.headers.get("origin") || !originAllowed(args.request, trustedProxy(args, options)))
+    return json(403, { errorCode: "FORBIDDEN", error: "Invalid Origin" })
+  const source = `signin-redeem:${sourceOf(args, options)}`
+  const limited = options.limiter.check(source)
+  if (!limited.allowed)
+    return json(
+      429,
+      { errorCode: "RATE_LIMITED", error: "Aguarde antes de tentar novamente" },
+      {
+        "Retry-After": String(limited.retryAfterSeconds),
+      },
+    )
+  const body = await readJsonBody(args.request, { maxBytes: 4096, deadlineMs: options.pairReadDeadlineMs ?? 5000 })
+  const token = typeof body?.token === "string" ? body.token : ""
+  const deviceName = typeof body?.deviceName === "string" ? body.deviceName : "Browser"
+  const claimed = await options.store.claimEmailSignIn({ token, deviceName })
+  if (!claimed.success) {
+    options.limiter.recordFailure(source)
+    return json(401, { errorCode: "INVALID_SIGN_IN", error: "Link inválido, expirado ou já usado" })
+  }
+  options.limiter.reset(source)
+  return json(
+    200,
+    { ok: true, deviceId: claimed.device.id },
+    {
+      "Set-Cookie": buildCookie({ token: claimed.token, secure: isSecureRequest(args, options) }),
+    },
+  )
+}
 
 const handlePair = async ({ args, options }: { args: WebInterceptArgs; options: GateOptions }): Promise<Response> => {
   const { request } = args
@@ -339,6 +433,7 @@ const apiGate = async ({
 export const createWebGate = (options: GateOptions): ((args: WebInterceptArgs) => Promise<Response | null>) => {
   let inFlight = 0
   const bySource = new Map<string, number>()
+  const emailSignInLimiter = createActionLimiter({ maxActions: 3, windowMs: 15 * 60_000 })
   const intercept = async (args: WebInterceptArgs): Promise<Response | null> => {
     const { url, request } = args
     if (!isSecureRequest(args, options) && !isDirectLoopback({ clientIp: args.clientIp, headers: request.headers }))
@@ -349,6 +444,22 @@ export const createWebGate = (options: GateOptions): ((args: WebInterceptArgs) =
       })
     if (url.searchParams.has("token") || url.searchParams.has("invite"))
       return json(401, { errorCode: "UNAUTHORIZED", error: "Credenciais não são aceitas na URL" })
+    if (url.pathname === "/api/v1/auth/email") {
+      try {
+        return await handleEmailSignInRequest({ args, options, limiter: emailSignInLimiter })
+      } catch (error) {
+        if (error instanceof BodyError) return json(error.status, { errorCode: "INVALID_BODY", error: error.message })
+        throw error
+      }
+    }
+    if (url.pathname === "/api/v1/auth/email/redeem") {
+      try {
+        return await handleEmailSignInRedeem({ args, options })
+      } catch (error) {
+        if (error instanceof BodyError) return json(error.status, { errorCode: "INVALID_BODY", error: error.message })
+        throw error
+      }
+    }
     if (url.pathname === "/pair") {
       if (request.method !== "POST") return handlePair({ args, options })
       const source = sourceOf(args, options)
@@ -377,11 +488,12 @@ export const createWebGate = (options: GateOptions): ((args: WebInterceptArgs) =
         throw error
       }
     }
-    const principal = authenticate({ args, store: options.store })
+    const principal = authenticate({ args, store: options.store, options })
     if (url.pathname.startsWith("/api/")) return apiGate({ args, principal, options })
     if (principal === null) {
       if (request.method === "GET" && url.pathname === "/join")
         return serveStatic({ pathname: "/join", request, ui: options.ui })
+      if (request.method === "GET" && url.pathname === "/login") return pairingPage()
       if (["GET", "HEAD"].includes(request.method) && isJoinAssetRequest({ request, url }))
         return serveStatic({ pathname: url.pathname, request, ui: options.ui })
       const wantsPage = request.method === "GET" && !/\.[A-Za-z0-9]+$/.test(url.pathname)

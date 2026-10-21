@@ -14,7 +14,7 @@ import {
 } from "react"
 import type { Components } from "react-markdown"
 import { userFacingError } from "../errors"
-import { localFileLinks, localFilePath } from "../messageMarkdown"
+import { hasShellBraceAlternatives, localFileLinks, localFilePath } from "../messageMarkdown"
 import { useSaveNotice } from "../useSaveNotice"
 import { protectDiffFences } from "./codeFence"
 import { observeCodeVisibility } from "./codeVisibility"
@@ -58,6 +58,7 @@ const MarkdownLink = ({ href, children }: { href?: string | undefined; children?
   const path = href
     ? (localFilePath(href) ?? decodedEvidencePath(href, /\b(baixar|download|save)\b/i.test(linkText(children))))
     : null
+  if (path && hasShellBraceAlternatives(path)) return <>{children}</>
   if (context && path && evidencePath(path)) {
     const filename = path.split("/").at(-1) || "Arquivo"
     const download = async () => {

@@ -14,6 +14,7 @@ import {
   parseEmailConfiguration,
 } from "./email"
 import type { SecretStore } from "./host/secretStore"
+import { getAddressReachability, parsePublicAddress } from "./public-address"
 import type { MemberAuthorizer } from "./web/gate"
 import { createWorkAccess } from "./work-access"
 
@@ -37,6 +38,8 @@ const inviteLink = ({ origin, token }: { origin: string; token: string }): strin
   link.hash = `invite=${encodeURIComponent(token)}`
   return link.toString()
 }
+
+const inviteSecretName = (id: string): string => `work.invite.${id}`
 
 const pendingEmailConfig = (authStore: AuthStore) => parseEmailConfiguration(authStore.getEmailConfig())
 
@@ -135,21 +138,33 @@ export const initWorkMode = ({
     invite,
     token,
     inviter,
-    origin,
+    requestOrigin,
+    publicAddress,
     signal,
   }: {
     invite: Invite
     token: string
     inviter: Person
-    origin: string
+    requestOrigin: string | null
+    publicAddress: string
     signal: AbortSignal
-  }): Promise<{ emailConfigured: boolean; emailSent: boolean; link: string }> => {
-    const link = inviteLink({ origin, token })
+  }): Promise<{
+    emailConfigured: boolean
+    emailSent: boolean
+    link: string
+    requestOriginReachability: ReturnType<typeof getAddressReachability>
+    publicAddressReachability: ReturnType<typeof getAddressReachability>
+  }> => {
+    const link = inviteLink({ origin: publicAddress, token })
+    await secrets.set({ account: inviteSecretName(invite.id), value: token })
     const config = pendingEmailConfig(authStore)
-    if (!config || !(await email.hasCredentials(config))) return { emailConfigured: false, emailSent: false, link }
+    const requestOriginReachability = getAddressReachability(requestOrigin)
+    const publicAddressReachability = getAddressReachability(publicAddress)
+    if (!config || !(await email.hasCredentials(config)))
+      return { emailConfigured: false, emailSent: false, link, requestOriginReachability, publicAddressReachability }
     const content = buildInvitationContent({ invite, inviter, config, link })
     const emailSent = await email.send({ config, content, signal })
-    return { emailConfigured: true, emailSent, link }
+    return { emailConfigured: true, emailSent, link, requestOriginReachability, publicAddressReachability }
   }
 
   const routes: RouteModule = {
@@ -159,8 +174,67 @@ export const initWorkMode = ({
         method: "GET",
         path: "/people",
         handler: async ({ signal }) => {
+          const actor = getActor({ authStore, signal })
+          if (!actor) return fail(403, "FORBIDDEN", "Pair this device first")
+          const people = authStore.listPeople().filter((person) => actor.role === "admin" || person.id === actor.id)
+          const devices = authStore.listActiveDevices(actor.role === "admin" ? undefined : actor.id)
+          return {
+            status: 200,
+            json: {
+              people: people.map((person) => ({
+                ...person,
+                devices: devices.filter((device) => device.personId === person.id),
+              })),
+            },
+          }
+        },
+      },
+      {
+        method: "POST",
+        path: "/pairing-codes",
+        handler: async ({ signal }) => {
+          const actor = getActor({ authStore, signal })
+          if (!actor) return fail(403, "FORBIDDEN", "Pair this device first")
+          const limited = actionLimiter.check(actor.id)
+          if (!limited.allowed)
+            return { status: 429, json: { errorCode: "RATE_LIMITED", retryAfterSeconds: limited.retryAfterSeconds } }
+          actionLimiter.record(actor.id)
+          const pairing = await authStore.createPersonPairingCode(actor.id)
+          if (!pairing.success) return fail(404, pairing.errorCode, pairing.error)
+          return { status: 201, json: { code: pairing.code, expiresAt: pairing.expiresAt } }
+        },
+      },
+      {
+        method: "GET",
+        path: "/public-address",
+        handler: async ({ signal }) => {
           if (!isAdmin(getActor({ authStore, signal }))) return fail(403, "FORBIDDEN", "Admin role required")
-          return { status: 200, json: { people: authStore.listPeople() } }
+          const address = parsePublicAddress(authStore.getPublicAddress()) || null
+          const requestOrigin = deviceSession(signal)?.origin ?? null
+          return {
+            status: 200,
+            json: {
+              address,
+              reachability: getAddressReachability(address),
+              requestOriginReachability: getAddressReachability(requestOrigin),
+            },
+          }
+        },
+      },
+      {
+        method: "PUT",
+        path: "/public-address",
+        handler: async ({ body, signal }) => {
+          const actor = getActor({ authStore, signal })
+          if (!isAdmin(actor)) return fail(403, "FORBIDDEN", "Admin role required")
+          const input = isRecord(body) ? body.address : undefined
+          const address = input === null || input === "" ? null : parsePublicAddress(input)
+          if (address === null && input !== null && input !== "")
+            return fail(400, "INVALID_ARGS", "Informe um endereço HTTPS válido, sem caminho")
+          const saved = await authStore.savePublicAddress({ actorPersonId: actor.id, address })
+          if (!saved) return fail(403, "FORBIDDEN", "Admin role required")
+          const publicAddress = address || null
+          return { status: 200, json: { address: publicAddress, reachability: getAddressReachability(publicAddress) } }
         },
       },
       {
@@ -169,12 +243,33 @@ export const initWorkMode = ({
         handler: async ({ signal }) => {
           if (!isAdmin(getActor({ authStore, signal }))) return fail(403, "FORBIDDEN", "Admin role required")
           const now = Date.now()
+          const invites = authStore.listInvites()
+          await Promise.all(
+            invites
+              .filter((invite) => inviteStatus(invite, now) !== "pending")
+              .map((invite) => secrets.delete(inviteSecretName(invite.id))),
+          )
           return {
             status: 200,
             json: {
-              invites: authStore.listInvites().map((invite) => ({ ...invite, status: inviteStatus(invite, now) })),
+              invites: invites.map((invite) => ({ ...invite, status: inviteStatus(invite, now) })),
             },
           }
+        },
+      },
+      {
+        method: "GET",
+        path: "/invites/:id/link",
+        handler: async ({ params, signal }) => {
+          if (!isAdmin(getActor({ authStore, signal }))) return fail(403, "FORBIDDEN", "Admin role required")
+          const invite = authStore.listInvites().find((item) => item.id === params.id)
+          if (!invite || inviteStatus(invite, Date.now()) !== "pending")
+            return fail(404, "NOT_FOUND", "Invite not found")
+          const address = parsePublicAddress(authStore.getPublicAddress())
+          if (!address) return fail(409, "PUBLIC_ADDRESS_REQUIRED", "Configure o endereço público primeiro")
+          const token = await secrets.getAsync(inviteSecretName(invite.id))
+          if (!token) return fail(404, "NOT_FOUND", "Invite link is no longer available")
+          return { status: 200, json: { link: inviteLink({ origin: address, token }) } }
         },
       },
       {
@@ -201,8 +296,9 @@ export const initWorkMode = ({
             return fail(400, "INVALID_ARGS", "Informe nome, e-mail válido, perfil e canais existentes")
           if (authStore.listPeople().some((person) => person.email && normalizeEmail(person.email) === emailAddress))
             return fail(409, "PERSON_EXISTS", "Este e-mail já pertence a uma pessoa ativa")
-          const origin = deviceSession(signal)?.origin
-          if (!origin) return fail(400, "INVITE_ORIGIN_REQUIRED", "Abra o convite no navegador do servidor")
+          const publicAddress = parsePublicAddress(authStore.getPublicAddress())
+          if (!publicAddress) return fail(409, "PUBLIC_ADDRESS_REQUIRED", "Configure o endereço público primeiro")
+          const requestOrigin = deviceSession(signal)?.origin ?? null
           actionLimiter.record(actor.id)
           const created = await authStore.createInvite({
             actorPersonId: actor.id,
@@ -216,7 +312,8 @@ export const initWorkMode = ({
             invite: created.invite,
             token: created.token,
             inviter: actor,
-            origin,
+            requestOrigin,
+            publicAddress,
             signal,
           })
           return { status: 201, json: { invite: created.invite, ...delivery } }
@@ -231,8 +328,9 @@ export const initWorkMode = ({
           const limited = actionLimiter.check(actor.id)
           if (!limited.allowed)
             return { status: 429, json: { errorCode: "RATE_LIMITED", retryAfterSeconds: limited.retryAfterSeconds } }
-          const origin = deviceSession(signal)?.origin
-          if (!origin) return fail(400, "INVITE_ORIGIN_REQUIRED", "Abra o convite no navegador do servidor")
+          const publicAddress = parsePublicAddress(authStore.getPublicAddress())
+          if (!publicAddress) return fail(409, "PUBLIC_ADDRESS_REQUIRED", "Configure o endereço público primeiro")
+          const requestOrigin = deviceSession(signal)?.origin ?? null
           actionLimiter.record(actor.id)
           const resent = await authStore.resendInvite({ id: params.id ?? "", actorPersonId: actor.id })
           if (!resent.success) return fail(404, resent.errorCode, resent.error)
@@ -240,7 +338,8 @@ export const initWorkMode = ({
             invite: resent.invite,
             token: resent.token,
             inviter: actor,
-            origin,
+            requestOrigin,
+            publicAddress,
             signal,
           })
           return { status: 200, json: { invite: resent.invite, ...delivery } }
@@ -253,7 +352,9 @@ export const initWorkMode = ({
           const actor = getActor({ authStore, signal })
           if (!isAdmin(actor)) return fail(403, "FORBIDDEN", "Admin role required")
           const revoked = await authStore.revokeInvite({ id: params.id ?? "", actorPersonId: actor.id })
-          return revoked.success ? { status: 200, json: {} } : fail(404, revoked.errorCode, revoked.error)
+          if (!revoked.success) return fail(404, revoked.errorCode, revoked.error)
+          await secrets.delete(inviteSecretName(params.id ?? ""))
+          return { status: 200, json: {} }
         },
       },
       {
@@ -262,8 +363,15 @@ export const initWorkMode = ({
         handler: async ({ params, signal }) => {
           const actor = getActor({ authStore, signal })
           if (!isAdmin(actor)) return fail(403, "FORBIDDEN", "Admin role required")
+          const person = authStore.getPerson(params.id ?? "")
+          const inviteSecretNames = authStore
+            .listInvites()
+            .filter((invite) => invite.createdByPersonId === person?.id || invite.email === person?.email)
+            .map((invite) => inviteSecretName(invite.id))
           const removed = await authStore.removePerson({ id: params.id ?? "", actorPersonId: actor.id })
-          return removed.success ? { status: 200, json: {} } : fail(404, removed.errorCode, removed.error)
+          if (!removed.success) return fail(404, removed.errorCode, removed.error)
+          await Promise.all(inviteSecretNames.map((account) => secrets.delete(account)))
+          return { status: 200, json: {} }
         },
       },
       {
@@ -288,9 +396,9 @@ export const initWorkMode = ({
           if (!parsed) return fail(400, "INVALID_ARGS", "Confira o servidor, TLS e o endereço de envio")
           if (!(await email.hasCredentialsWithInput({ config: parsed.config, input: parsed.input })))
             return fail(400, "EMAIL_CREDENTIALS_REQUIRED", "Informe as credenciais de envio")
+          await email.saveSecrets({ config: parsed.config, input: parsed.input })
           const saved = await authStore.saveEmailConfig({ actorPersonId: actor.id, config: parsed.config })
           if (!saved) return fail(403, "FORBIDDEN", "Admin role required")
-          await email.saveSecrets({ config: parsed.config, input: parsed.input })
           return { status: 200, json: { configuration: parsed.config, configured: true } }
         },
       },

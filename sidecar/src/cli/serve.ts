@@ -8,6 +8,7 @@ import { initModules } from "../main"
 import type { ServeOptions } from "./args"
 import { createRateLimiter } from "./auth/rateLimit"
 import { openAuthStore } from "./auth/store"
+import { createEmailSignInSender } from "./email-signin"
 import { createHeadlessHost } from "./host/headlessHost"
 import { createSecretStore } from "./host/secretStore"
 import { startHeadlessStderr } from "./nativeStderr"
@@ -57,6 +58,7 @@ const startServer = async (options: ServeOptions, stopStderr: () => Promise<void
     ui,
     trustedProxy: options.trustedProxy === true || options.tailscale,
     limiter: createRateLimiter({ maxFailures: failedPairingsPerWindow, windowMs: pairingWindowMs }),
+    requestEmailSignIn: createEmailSignInSender({ authStore: store, secrets }),
     authorizeMember: (input) => authorization.authorize?.(input) ?? null,
   })
   const runtime = createKernel({

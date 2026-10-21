@@ -3,6 +3,7 @@ import { createPortal } from "react-dom"
 import { isNewBotShortcut, isPaletteShortcut } from "../features/commandPalette/shortcut"
 import { t } from "../i18n"
 import { Sidebar } from "./BotSidebar"
+import { ThreadDeletionNotice, useThreadDeletion } from "./useThreadDeletion"
 
 const query = "(max-width: 620px)"
 const subscribe = (changed: () => void) => {
@@ -15,6 +16,7 @@ const isNarrow = () => window.matchMedia(query).matches
 type SidebarDrawerProps = ComponentProps<typeof Sidebar> & { panelOpen?: boolean; workspaceHeaderKey?: string }
 
 export const SidebarDrawer = ({ panelOpen = false, workspaceHeaderKey = "", ...props }: SidebarDrawerProps) => {
+  const deletion = useThreadDeletion(props)
   const narrow = useSyncExternalStore(subscribe, isNarrow)
   const [open, setOpen] = useState(false)
   const [workspaceHeader, setWorkspaceHeader] = useState<HTMLElement | null>(null)
@@ -46,7 +48,13 @@ export const SidebarDrawer = ({ panelOpen = false, workspaceHeaderKey = "", ...p
     setWorkspaceHeader(document.querySelector<HTMLElement>(".workspace-page .screen-header"))
   }, [narrow, workspaceHeaderKey])
 
-  if (!narrow) return <Sidebar {...props} />
+  if (!narrow)
+    return (
+      <>
+        <Sidebar {...props} threadDeletion={deletion} />
+        <ThreadDeletionNotice deletion={deletion} />
+      </>
+    )
   const menuButton = (
     <button
       ref={trigger}
@@ -110,8 +118,14 @@ export const SidebarDrawer = ({ panelOpen = false, workspaceHeaderKey = "", ...p
           if (event.target === event.currentTarget) close()
         }}
       >
-        {open && <Sidebar {...props} onNavigate={close} />}
+        {open && (
+          <>
+            <Sidebar {...props} threadDeletion={deletion} onNavigate={close} />
+            <ThreadDeletionNotice deletion={deletion} />
+          </>
+        )}
       </dialog>
+      {!open && <ThreadDeletionNotice deletion={deletion} />}
     </>
   )
 }

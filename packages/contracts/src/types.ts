@@ -880,7 +880,79 @@ export type SendMessageInput = {
   sender?: { name: string; id: string; avatarSeed?: string; kind?: 'person' }
 }
 
+export type WorkEmailConfiguration =
+  | {
+      transport: 'smtp'
+      host: string
+      port: number
+      tls: true
+      fromEmail: string
+      fromName: string
+      teamName: string
+    }
+  | { transport: 'http'; endpoint: string; fromEmail: string; fromName: string; teamName: string }
+
 export type ApiRoutes = {
+  'GET /people': {
+    req: {}
+    res: {
+      people: Array<{
+        id: Id
+        name: string
+        email: string | null
+        avatarSeed: string
+        role: 'member' | 'admin'
+        createdAt: EpochMs
+        removedAt: EpochMs | null
+        devices: Array<{ id: Id; name: string; personId: Id; createdAt: EpochMs; lastSeenAt: EpochMs | null; revokedAt: EpochMs | null }>
+      }>
+    }
+  }
+  'POST /pairing-codes': { req: {}; res: { code: string; expiresAt: EpochMs } }
+  'GET /invites': {
+    req: {}
+    res: {
+      invites: Array<{
+        id: Id
+        name: string
+        email: string
+        role: 'member' | 'admin'
+        channelIds: Array<Id>
+        createdByPersonId: Id
+        createdAt: EpochMs
+        expiresAt: EpochMs
+        usedAt: EpochMs | null
+        revokedAt: EpochMs | null
+        status: 'pending' | 'accepted' | 'revoked' | 'expired'
+      }>
+    }
+  }
+  'POST /invites': {
+    req: { name: string; email: string; role: 'member' | 'admin'; channelIds: Array<Id> }
+    res: {
+      invite: { id: Id; name: string; email: string; role: 'member' | 'admin'; expiresAt: EpochMs }
+      emailConfigured: boolean
+      emailSent: boolean
+      link: string
+      requestOriginReachability: 'public' | 'private' | 'localhost' | 'tailnet' | 'invalid' | 'unset'
+      publicAddressReachability: 'public' | 'private' | 'localhost' | 'tailnet' | 'invalid' | 'unset'
+    }
+  }
+  'POST /invites/:id/resend': {
+    req: {}
+    res: { invite: { id: Id; name: string; email: string; role: 'member' | 'admin'; expiresAt: EpochMs }; emailConfigured: boolean; emailSent: boolean; link: string; requestOriginReachability: 'public' | 'private' | 'localhost' | 'tailnet' | 'invalid' | 'unset'; publicAddressReachability: 'public' | 'private' | 'localhost' | 'tailnet' | 'invalid' | 'unset' }
+  }
+  'GET /invites/:id/link': { req: {}; res: { link: string } }
+  'DELETE /invites/:id': { req: {}; res: {} }
+  'DELETE /people/:id': { req: {}; res: {} }
+  'GET /email': { req: {}; res: { configuration: WorkEmailConfiguration | null; configured: boolean } }
+  'PUT /email': { req: WorkEmailConfiguration & { user?: string; password?: string; apiKey?: string }; res: { configuration: WorkEmailConfiguration; configured: boolean } }
+  'DELETE /email': { req: {}; res: {} }
+  'POST /email/test': { req: { to: string }; res: { sent: true } }
+  'GET /public-address': { req: {}; res: { address: string | null; reachability: 'public' | 'private' | 'localhost' | 'tailnet' | 'invalid' | 'unset'; requestOriginReachability: 'public' | 'private' | 'localhost' | 'tailnet' | 'invalid' | 'unset' } }
+  'PUT /public-address': { req: { address: string | null }; res: { address: string | null; reachability: 'public' | 'private' | 'localhost' | 'tailnet' | 'invalid' | 'unset' } }
+  'POST /auth/email': { req: { email: string }; res: { ok: true } }
+  'POST /auth/email/redeem': { req: { token: string; deviceName?: string }; res: { ok: true; deviceId: Id } }
   'GET /groups': { req: {}; res: { groups: Array<BotGroup> } }
   'POST /groups': { req: GroupInput; res: { group: BotGroup; thread: Thread } }
   'PATCH /groups/:id': { req: GroupInput; res: { group: BotGroup } }
@@ -896,7 +968,7 @@ export type ApiRoutes = {
   'PUT /cloud/bots/:id/key': { req: { apiKey: string }; res: {} }
 
   'GET /health': { req: {}; res: { ok: true; version: string; schemaVersion: number; draining?: boolean; host?: 'mac' | 'server'; hostKind?: HostKind; historyMigration?: { running: boolean; done: number; total: number }; eventLoop?: { lagMs: number; p99Ms: number; maxMs: number; samples: number } } }
-  'GET /session': { req: {}; res: { person: { id: Id; name: string; avatarSeed: string; role: 'member' | 'admin' } } }
+  'GET /session': { req: {}; res: { ok: true; kind: 'device'; person: { id: Id; name: string; email: string | null; avatarSeed: string; role: 'member' | 'admin' } } }
   'POST /ui/errors': { req: { area: string; message: string; stack: string; componentStack: string }; res: { ok: true } }
   'POST /reports/:id/saved': { req: { destination: 'zip' | 'github' }; res: {} }
   'POST /reports/history': { req: { history: import('./reports').ReportHistory[] }; res: {} }
@@ -962,9 +1034,12 @@ export type ApiRoutes = {
   'POST /bots/:id/desktop/return': { req: {}; res: {} }
   'POST /desktop/:id/text': { req: { text: string }; res: {} }
   'DELETE /desktop/:id': { req: {}; res: {} }
-  'GET /bots/:id/threads': { req: {}; res: { threads: Array<Thread> } }
+  'GET /bots/:id/threads': { req: { archived?: boolean; before?: Id }; res: { threads: Array<Thread> } }
   'POST /threads': { req: { botId: Id; title?: string }; res: { thread: Thread } }
   'PATCH /threads/:id': { req: { title?: string; activeLeafId?: Id; archived?: boolean }; res: { thread: Thread } }
+  'GET /threads/:id/delete-preview': { req: {}; res: { thread: Pick<Thread, 'id' | 'title'>; messageCount: number | null } }
+  'DELETE /threads/:id': { req: {}; res: { threadId: Id; phase: string } }
+  'POST /threads/delete': { req: { ids: Array<Id> }; res: { threadIds: Array<Id>; phase: string } }
   'GET /threads/:id/transcript': { req: { since?: number; limit?: number }; res: { entries: Array<{ seq: number; generation: number; event: UiEvent }>; rejections: Array<TranscriptRejection>; lastSeq: number; generation: number; hasMore: boolean; resync: boolean } }
   'GET /threads/:id/messages': { req: { all?: boolean }; res: { messages: Array<Message>; activeLeafId: Id | null } }
   'POST /threads/:id/messages': { req: SendMessageInput; res: { message: Message; run: Run } }
@@ -978,7 +1053,7 @@ export type ApiRoutes = {
   'POST /runs/:id/cancel': { req: {}; res: { run: Run } }
   'POST /runs/:id/retry': { req: {}; res: { run: Run } }
   'POST /approvals/:id': { req: { decision: 'approved' | 'denied'; standing?: boolean }; res: {} }
-  'GET /search': { req: { q: string; botId?: Id }; res: { hits: Array<{ threadId: Id; messageId: Id; snippet: string }> } }
+  'GET /search': { req: { q: string; botId?: Id }; res: { hits: Array<{ threadId: Id; messageId: Id; snippet: string; thread?: Pick<Thread, 'id' | 'botId' | 'title' | 'createdAt' | 'archivedAt'> | null }>; threads?: Array<Pick<Thread, 'id' | 'botId' | 'title' | 'createdAt' | 'archivedAt'>> } }
   'POST /attachments': { req: { grantId: string } | { path: AbsolutePath }; res: { attachment: Attachment } }
   'GET /attachments/:id': { req: {}; res: Blob }
   'GET /attachments/:id/content': { req: { offset?: number; limit?: number }; res: { text: string; offset: number; nextOffset: number | null; bytes: number } }
@@ -1105,6 +1180,7 @@ export type UiEvent =
   | { type: 'bot.deleted'; botId: Id }
   | { type: 'project.created'; project: Project }
   | { type: 'thread.updated'; thread: Thread }
+  | { type: 'thread.deleted'; threadId: Id; botId: Id; groupId: Id | null; ownerPersonId: Id | null; responsiblePersonId: Id | null }
   | { type: 'message.created'; message: Message }
   | { type: 'message.delta'; threadId: Id; messageId: Id; partIndex: number; delta: string; offset?: number; updatedSeq?: number; generation?: number; partType?: 'text' | 'reasoning'; updatedAt?: EpochMs }
   | { type: 'message.parts'; threadId: Id; messageId: Id; parts: Array<{ partIndex: number; part: MessagePart }>; updatedSeq?: number; generation?: number; updatedAt?: EpochMs }
@@ -1357,9 +1433,9 @@ export type StoreApi = {
   getPathMessage?: (args: { threadId: Id; messageId: Id; leafId?: Id }) => Message | null
   setActiveLeaf: (args: { threadId: Id; leafId: Id }) => Result<{ thread: Thread }, 'NOT_FOUND'>
   getBot: (args: { botId: Id }) => Bot | null
-  getThread: (args: { threadId: Id }) => Thread | null
+  getThread: (args: { threadId: Id; includeArchived?: boolean }) => Thread | null
   createThread: (args: { botId: Id; kind: ThreadKind; title: string; parentThreadId?: Id; routineRunId?: Id; groupId?: Id; groupThreadId?: Id; ownerPersonId?: Id }) => Result<{ thread: Thread }, 'BOT_NOT_FOUND'>
-  updateThread: (args: { threadId: Id; patch: Partial<Pick<Thread, 'title' | 'carryoverNote' | 'usage' | 'unread' | 'activeLeafId'>> }) => Result<{ thread: Thread }, 'NOT_FOUND'>
+  updateThread: (args: { threadId: Id; patch: Partial<Pick<Thread, 'title' | 'carryoverNote' | 'usage' | 'unread' | 'activeLeafId'>>; includeArchived?: boolean }) => Result<{ thread: Thread }, 'NOT_FOUND'>
   search: (args: {
     q: string
     botId?: Id
@@ -1433,6 +1509,8 @@ export type ServiceMap = {
   'doctor': { start: () => void; dispose: () => void; snapshot: (refresh?: boolean) => DoctorReport; settled: () => Promise<void> }
   'storage.maintenance': { scheduleSessionKeyRetry: () => void; start: (vacuum?: boolean) => boolean; snapshot: () => StorageMaintenanceStatus; dispose: (options?: { closing?: boolean }) => void }
   'storage.botDeletion': { dispose: () => void }
+  'storage.threadTitles': { dispose: () => void }
+  'storage.threadDeletion': { dispose: () => void }
   'mcp.botTools': (bot: Bot) => Array<string>
 
   'cloud.settingsChanged': () => void
@@ -1448,6 +1526,7 @@ export type ServiceMap = {
   'runtime.settingsChanged': () => void
   'runtime.activeRun': (args: { threadId: Id }) => Run | null
   'runtime.continueAfterApproval': (ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId' | 'signal'>) => boolean
+  'runtime.cancelThreadTurns': (args: { threadId: Id }) => Promise<void>
   'runtime.cancelBotTurns': (args: { botId: Id }) => Promise<void>
   'runtime.cancelRun': (args: { runId: Id }) => boolean
   'runtime.shutdown': (options?: { appRestart?: boolean }) => Promise<void>

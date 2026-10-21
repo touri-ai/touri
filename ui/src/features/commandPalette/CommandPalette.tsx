@@ -3,7 +3,7 @@ import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 
 import { createPortal } from "react-dom"
 import type { UiApi } from "../../api/client"
 import { MotionPresence } from "../../components/Motion"
-import { threadTitle } from "../../i18n"
+import { t, threadTitle } from "../../i18n"
 import { markdownSummary } from "../../markdownSummary"
 import {
   buildMessageIndex,
@@ -52,9 +52,14 @@ export const CommandPalette = ({
   const [query, setQuery] = useState("")
   const [active, setActive] = useState(0)
   const [recentIds, setRecentIds] = useState<Array<string>>(readRecentPaletteIds)
-  const [search, setSearch] = useState<{ query: string; hits: ApiRoutes["GET /search"]["res"]["hits"] }>({
+  const [search, setSearch] = useState<{
+    query: string
+    hits: ApiRoutes["GET /search"]["res"]["hits"]
+    threads: NonNullable<ApiRoutes["GET /search"]["res"]["threads"]>
+  }>({
     query: "",
     hits: [],
+    threads: [],
   })
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -65,10 +70,26 @@ export const CommandPalette = ({
   const groups = useMemo(() => {
     const groups = searchPalette({ index, query, messages: messageIndex, recentIds })
     if (!open || search.query !== query || !query.trim()) return groups
+    const known = groups.find((group) => group.id === "threads")?.items ?? []
+    const archived: Array<PaletteItem> = search.threads
+      .filter((thread) => !known.some((item) => item.id === `thread:${thread.id}`))
+      .map((thread) => ({
+        id: `thread:${thread.id}`,
+        group: "threads",
+        label: thread.title,
+        detail: t("Archived"),
+        command: { kind: "thread", threadId: thread.id, archived: true },
+      }))
+    const titleGroups = archived.length
+      ? [
+          ...groups.filter((group) => group.id !== "threads"),
+          { id: "threads" as const, label: t("Conversations"), items: [...known, ...archived].slice(0, 8) },
+        ]
+      : groups
     const local = groups.find((group) => group.id === "messages")?.items ?? []
     const items = new Map(local.map((item) => [item.id, item]))
     for (const hit of search.hits) {
-      const thread = threads.find((thread) => thread.id === hit.threadId)
+      const thread = hit.thread ?? threads.find((thread) => thread.id === hit.threadId)
       const id = `message:${hit.messageId}`
       if (thread && !items.has(id))
         items.set(id, {
@@ -76,15 +97,15 @@ export const CommandPalette = ({
           group: "messages",
           label: markdownSummary(hit.snippet),
           detail: markdownSummary(threadTitle(thread.title, thread.createdAt)),
-          command: { kind: "thread", threadId: thread.id },
+          command: { kind: "thread", threadId: thread.id, archived: thread.archivedAt !== null },
         })
     }
     return items.size
       ? [
-          ...groups.filter((group) => group.id !== "messages"),
+          ...titleGroups.filter((group) => group.id !== "messages"),
           { id: "messages" as const, label: "Mensagens", items: [...items.values()].slice(0, 8) },
         ]
-      : groups
+      : titleGroups
   }, [index, query, messageIndex, recentIds, search, threads, open])
   const flat = useMemo(() => groups.flatMap((group) => group.items), [groups])
   const activeIndex = flat.length === 0 ? -1 : Math.min(active, flat.length - 1)
@@ -96,11 +117,11 @@ export const CommandPalette = ({
     const timer = window.setTimeout(() => {
       void api
         .request("GET /search", { q: query })
-        .then(({ hits }) => {
-          if (active) setSearch({ query, hits })
+        .then(({ hits, threads = [] }) => {
+          if (active) setSearch({ query, hits, threads })
         })
         .catch(() => {
-          if (active) setSearch({ query, hits: [] })
+          if (active) setSearch({ query, hits: [], threads: [] })
         })
     }, 150)
     return () => {

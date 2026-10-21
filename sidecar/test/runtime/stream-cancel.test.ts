@@ -10,6 +10,7 @@ import { createEventBus } from "../../src/kernel/event-bus"
 import { createRuntimeEngine } from "../../src/runtime/engine"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { init as initStore } from "../../src/store"
+import { threadDeletionRoutes } from "../../src/store/thread-deletion"
 
 const cleanups = new Set<() => void | Promise<void>>()
 
@@ -72,6 +73,79 @@ test("mid-stream cancellation preserves buffered text in live sockets, reconnect
   expect(reconnected.frames.map(({ seq }) => seq)).toEqual(
     Array.from({ length: reconnected.frames.length }, (_, index) => cursor + index + 1),
   )
+})
+
+test("deleting a streaming conversation aborts and waits for its provider before purging", async () => {
+  const fixture = await getFixture()
+  const turn = await fixture.ready
+  const canceled = Promise.withResolvers<void>()
+  const settled = Promise.withResolvers<void>()
+  turn.signal.addEventListener("abort", () => canceled.resolve(), { once: true })
+  fixture.kernel.services.provide("runtime.cancelThreadTurns", async () => {
+    await fixture.engine.cancelRuns([fixture.runId])
+    settled.resolve()
+  })
+  fixture.kernel.services.provide("runtime.activeRun", fixture.engine.activeRun)
+  fixture.kernel.services.use("storage.threadDeletion")?.dispose()
+  const route = threadDeletionRoutes(
+    fixture.kernel,
+    undefined,
+    (threadId) => fixture.store.flushWritesAsync?.({ threadId }) ?? Promise.resolve(),
+  ).find(({ method }) => method === "DELETE")
+  if (!route) throw new Error("Missing deletion route")
+  cleanups.add(() => fixture.kernel.services.use("storage.threadDeletion")?.dispose())
+
+  const response = await route.handler({
+    params: { id: "thread" },
+    query: {},
+    body: {},
+    signal: new AbortController().signal,
+  })
+  await canceled.promise
+
+  expect(response.status).toBe(202)
+  expect(turn.signal.aborted).toBe(true)
+  expect(fixture.database.query("SELECT 1 FROM threads WHERE id = 'thread'").get()).not.toBeNull()
+  fixture.finish()
+  await settled.promise
+  await getReady(() => !fixture.database.query("SELECT 1 FROM thread_deletions WHERE thread_id = 'thread'").get())
+  expect(fixture.database.query("SELECT 1 FROM threads WHERE id = 'thread'").get()).toBeNull()
+  expect(fixture.engine.activeRun({ threadId: "thread" })).toBeNull()
+})
+
+test("queued work cannot start after its conversation is marked for deletion", async () => {
+  const fixture = await getFixture()
+  await fixture.ready
+  fixture.kernel.services.use("storage.threadDeletion")?.dispose()
+  const message = fixture.store.insertMessage({
+    message: {
+      id: "queued-request",
+      threadId: "thread",
+      parentId: null,
+      role: "user",
+      kind: "text",
+      status: "complete",
+      text: "Outra tarefa sintética.",
+      parts: [],
+      runId: null,
+      sender: null,
+      source: "local",
+    },
+  })
+  if (!message.success) throw new Error("Missing queued request")
+  const queued = fixture.engine.enqueue({ threadId: "thread", requestMessageId: message.message.id, trigger: "user" })
+  if (!queued.success) throw new Error("Could not queue fixture work")
+  fixture.database
+    .query(
+      "INSERT INTO thread_deletions(thread_id,bot_id,phase,created_at,updated_at) VALUES('thread','bot','stopping',1,1)",
+    )
+    .run()
+
+  fixture.finish()
+  await fixture.engine.cancelRuns([fixture.runId])
+  await getReady(() => fixture.engine.listRuns("thread").find(({ id }) => id === queued.run.id)?.status === "canceled")
+
+  expect(fixture.getProviderStartCount()).toBe(1)
 })
 
 test("a failed stream drain still finalizes the run and releases its thread", async () => {
@@ -248,6 +322,8 @@ const getFixture = async (answerApproval: ProviderAdapter["answerApproval"] = as
     },
   })
   if (!created.success) throw new Error(created.error)
+  // Count adapter calls to verify that deleted queued work never starts.
+  let providerStartCount = 0
   const ready = Promise.withResolvers<StartTurnArgs>()
   const finish = Promise.withResolvers<void>()
   const engine = createRuntimeEngine({
@@ -258,6 +334,7 @@ const getFixture = async (answerApproval: ProviderAdapter["answerApproval"] = as
         provider: "codex",
         detect: async () => ({ success: true, path: "/tmp/fixture-provider", version: "1", loggedIn: true }),
         startTurn: async (args) => {
+          providerStartCount += 1
           args.onEvent({ type: "turn_started", externalTurnId: "fixture-turn" })
           ready.resolve(args)
           await finish.promise
@@ -285,6 +362,7 @@ const getFixture = async (answerApproval: ProviderAdapter["answerApproval"] = as
     frames: first.frames,
     runId: queued.run.id,
     ready: ready.promise,
+    getProviderStartCount: () => providerStartCount,
     finish: finish.resolve,
   }
 }

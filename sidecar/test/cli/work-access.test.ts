@@ -54,6 +54,8 @@ database.exec(`
 
 afterEach(() => {
   database.exec("DELETE FROM group_run_links; DELETE FROM notifications; DELETE FROM workspace_attention_backfill")
+  database.query("DELETE FROM threads WHERE id = 'member-channel-thread'").run()
+  database.query("UPDATE threads SET archived_at = NULL WHERE id = 'member-dm'").run()
 })
 
 const access = createWorkAccess({
@@ -145,6 +147,68 @@ test("members cannot create channels or bots, delete bots, invite people, or ope
       body: {},
     }),
   ).toMatchObject({ status: 403 })
+})
+
+test("thread deletion routes allow admins and thread owners but deny other channel members", () => {
+  database.query("INSERT INTO threads VALUES ('member-channel-thread','team-bot','team-a','member',NULL)").run()
+  const authorize = (method: string, pathname: string, body: unknown = null) =>
+    access.authorizeHttp({ personId: "member", role: "member", method, pathname, body })
+
+  expect(authorize("GET", "/threads/member-dm/delete-preview")).toBeNull()
+  expect(authorize("DELETE", "/threads/member-dm")).toBeNull()
+  expect(authorize("DELETE", "/threads/member-channel-thread")).toBeNull()
+  expect(authorize("GET", "/threads/team-chat/delete-preview")).toMatchObject({ status: 403 })
+  expect(authorize("DELETE", "/threads/team-chat")).toMatchObject({ status: 403 })
+  expect(authorize("DELETE", "/threads/other-dm")).toMatchObject({ status: 403 })
+  expect(authorize("POST", "/threads/delete", { ids: ["member-dm", "team-chat"] })).toMatchObject({ status: 403 })
+  expect(authorize("POST", "/threads/delete", { ids: ["member-dm", "member-channel-thread"] })).toBeNull()
+  expect(
+    access.authorizeHttp({
+      personId: "owner",
+      role: "admin",
+      method: "DELETE",
+      pathname: "/threads/team-chat",
+      body: null,
+    }),
+  ).toBeNull()
+})
+
+test("thread owners can open and restore archived conversations", () => {
+  database.query("UPDATE threads SET archived_at = 1 WHERE id = 'member-dm'").run()
+
+  expect(access.canAccessThread({ personId: "member", role: "member", threadId: "member-dm" })).toBe(true)
+  expect(
+    access.authorizeHttp({
+      personId: "member",
+      role: "member",
+      method: "PATCH",
+      pathname: "/threads/member-dm",
+      body: { archived: false },
+    }),
+  ).toBeNull()
+})
+
+test("deleted thread events only reach the owner, bot owner, admins or channel members", () => {
+  const groupEvent: UiEvent = {
+    type: "thread.deleted",
+    threadId: "team-chat",
+    botId: "team-bot",
+    groupId: "team-a",
+    ownerPersonId: null,
+    responsiblePersonId: "owner",
+  }
+  const privateEvent: UiEvent = {
+    type: "thread.deleted",
+    threadId: "other-dm",
+    botId: "other-bot",
+    groupId: null,
+    ownerPersonId: "owner",
+    responsiblePersonId: "owner",
+  }
+
+  expect(access.visibleEvent({ personId: "member", role: "member", event: groupEvent })).toBe(true)
+  expect(access.visibleEvent({ personId: "member", role: "member", event: privateEvent })).toBe(false)
+  expect(access.visibleEvent({ personId: "owner", role: "member", event: privateEvent })).toBe(true)
 })
 
 test("channel membership cannot open a private session with another person's bot", () => {
@@ -314,4 +378,18 @@ test("members can fetch files from their own chats and channels only", () => {
       attachmentIds: Array.from({ length: 51 }, (_, index) => `file-${index}`),
     }),
   ).toBe(false)
+})
+
+test("former channel members cannot delete a conversation even when they created it", () => {
+  database.query("INSERT INTO threads VALUES ('member-channel-thread','other-bot','team-b','member',NULL)").run()
+
+  const response = access.authorizeHttp({
+    personId: "member",
+    role: "member",
+    method: "DELETE",
+    pathname: "/threads/member-channel-thread",
+    body: null,
+  })
+
+  expect(response).toMatchObject({ status: 403 })
 })

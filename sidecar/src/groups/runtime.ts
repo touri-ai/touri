@@ -500,6 +500,13 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       while (!stopped && !draining) {
         const turn = queues.get(groupId)?.shift()
         if (!turn) break
+        if (db.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(turn.run.threadId)) {
+          cancelTurn(turn)
+          turns.delete(turn.run.id)
+          turn.completion.resolve()
+          setImmediate(() => void drain(groupId))
+          break
+        }
         if (terminal(turn.run)) {
           turns.delete(turn.run.id)
           turn.completion.resolve()
@@ -572,6 +579,8 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
   }
   const enqueue: ServiceMap["groups.runtime"]["enqueue"] = (args) => {
     if (draining) return { success: false, errorCode: "RUNTIME_DRAINING", error: "O servidor está encerrando." }
+    if (db.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(args.threadId))
+      return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Conversa não encontrada" }
 
     const thread = store.getThread({ threadId: args.threadId })
     if (!thread?.groupId || thread.groupThreadId) return engine.enqueue(args)
@@ -664,6 +673,20 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       save(turn, { status: "canceled", errorClass: "canceled", finishedAt: Date.now() })
     })
     await engine.cancelRuns?.(affected.flatMap((turn) => [...turn.children]))
+  }
+  const cancelThreadTurns = async ({ threadId }: { threadId: string }): Promise<void> => {
+    const affected = [...turns.values()].filter(
+      (turn) => turn.run.threadId === threadId || [...turn.children].some((id) => readRun(id)?.threadId === threadId),
+    )
+    const batches = Array.from({ length: Math.ceil(affected.length / 8) }, (_, index) =>
+      affected.slice(index * 8, (index + 1) * 8),
+    )
+    for (const batch of batches) {
+      batch.forEach(cancelTurn)
+      await engine.cancelRuns?.(batch.flatMap((turn) => [...turn.children]))
+      await Promise.all(batch.map((turn) => turn.completion.promise))
+      await new Promise<void>((resolve) => setImmediate(resolve))
+    }
   }
   const listRuns = (threadId: string, options?: { all?: boolean }): Run[] => {
     const roots = persistence.listRuns(threadId, options)
@@ -913,6 +936,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     enqueue,
     cancel,
     cancelBotTurns,
+    cancelThreadTurns,
     cancelGroupTurns,
     retry,
     listRuns,

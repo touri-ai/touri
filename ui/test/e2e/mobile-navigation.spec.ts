@@ -35,7 +35,7 @@ test("phone navigation traps focus and reaches conversations, search, creation a
   await expect(drawer).not.toBeVisible()
   await expect(page.locator('[data-message-id="m2"]')).toHaveCount(0)
   await menu.click()
-  await drawer.getByRole("button", { name: /Campaign review/ }).click()
+  await drawer.locator(".thread-row").filter({ hasText: "Campaign review" }).click()
   await expect(drawer).not.toBeVisible()
   await expect(menu).toBeFocused()
   await expect(page.locator('[data-message-id="m2"]')).toBeVisible()

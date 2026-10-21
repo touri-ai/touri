@@ -2227,6 +2227,14 @@ export const createRuntimeEngine = ({
       if (!runId) return
       const run = persistence.getRun(runId)
       if (run?.status !== "queued") continue
+      if (
+        kernel.db instanceof Database &&
+        kernel.db.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(run.threadId)
+      ) {
+        cancel(run.id)
+        setImmediate(() => void drain())
+        return
+      }
       active.set(run.threadId, run)
       updateRun(run, { status: "starting", startedAt: Date.now() })
       const execution = executeWithStateCleanup(run)
@@ -2262,6 +2270,11 @@ export const createRuntimeEngine = ({
     const thread = store?.getThread({ threadId })
     const bot = thread ? store?.getBot({ botId: thread.botId }) : null
     if (!thread || !bot) return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Thread not found" }
+    if (
+      kernel.db instanceof Database &&
+      kernel.db.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(threadId)
+    )
+      return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Thread not found" }
     const activeRequest = persistence.findActiveRunForRequest({ threadId, requestMessageId })
     if (activeRequest) return { success: true, run: activeRequest }
     if (bot.paused || bot.machine === "cloud")
