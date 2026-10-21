@@ -326,7 +326,11 @@ export const Sidebar = (props: SidebarProps) => {
         </div>
       </div>
       {props.onInvitePerson && (
-        <button type="button" className="button button-quiet" onClick={() => navigate(() => props.onInvitePerson?.())}>
+        <button
+          type="button"
+          className="button button-quiet sidebar-invite"
+          onClick={() => navigate(() => props.onInvitePerson?.())}
+        >
           {t("Convidar pessoa")}
         </button>
       )}
