@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import type { Bot, BotGroup, Message, Run, ToolCallPart } from "@touri/contracts"
 import { useEffect } from "react"
 import { afterEach, describe, expect, test, vi } from "vitest"
@@ -110,7 +110,7 @@ const renderCard = (state: ChannelBrowserState, viewerId: string) => {
   const api = createMockApi()
   const bot = api.getState().bots[0] ?? null
 
-  return render(
+  const view = render(
     <ChannelBrowserContext.Provider value={{ state, viewerId }}>
       <InlinePreviewContext.Provider
         value={{ api, bot, machine: undefined, activeCallId: undefined, onOpenComputer: vi.fn() }}
@@ -119,6 +119,8 @@ const renderCard = (state: ChannelBrowserState, viewerId: string) => {
       </InlinePreviewContext.Provider>
     </ChannelBrowserContext.Provider>,
   )
+
+  return { view, api, bot }
 }
 
 describe("getChannelBrowserView", () => {
@@ -231,7 +233,25 @@ describe("browser card in a channel", () => {
   })
 
   test("hides the preview for the channel while someone has control", async () => {
-    renderCard(getState({ controllerId: "user-ana", controllerName: "Ana" }), "user-hugo")
+    const { api, bot } = renderCard(getState({ controllerId: "user-ana", controllerName: "Ana" }), "user-hugo")
+    if (!bot) throw new Error("Missing fixture bot")
+
+    act(() =>
+      api.emit({
+        type: "browser.tab",
+        tab: {
+          tabId: "tab-1",
+          ownerBotId: bot.id,
+          url: "",
+          title: "",
+          state: "live",
+          openerTabId: null,
+          heldByUser: true,
+          takeoverReason: "requested",
+          lastUsedAt: 1,
+        },
+      }),
+    )
 
     expect(screen.queryByRole("img", { name: "Página atual do navegador" })).toBeNull()
     expect(screen.getByText("Prévia oculta para o canal enquanto Ana digita")).toBeVisible()
