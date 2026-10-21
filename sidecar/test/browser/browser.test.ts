@@ -709,9 +709,14 @@ realSuite("WP6 real Chrome browser acceptance", () => {
 
     try {
       await held
+      const frame = await engine.takeoverFrame({ tabId: page.tabId, botId: botA, signal: ctx().signal })
+      if (!frame) throw new Error("Missing takeover frame")
       const input = engine.takeoverInput({
         tabId: page.tabId,
         botId: botA,
+        targetEpoch: frame.targetEpoch,
+        width: frame.width,
+        height: frame.height,
         input: { kind: "text", text: "private sign-in value" },
         signal: ctx().signal,
       })
@@ -742,14 +747,26 @@ realSuite("WP6 real Chrome browser acceptance", () => {
     expect(frame?.width).toBeGreaterThan(0)
     expect(frame?.height).toBeGreaterThan(0)
     expect(frame?.image).toStartWith("data:image/jpeg;base64,")
+    if (!frame) throw new Error("Missing takeover frame")
 
     await engine.takeoverInput({
       tabId: page.tabId,
       botId: botA,
+      targetEpoch: frame.targetEpoch,
+      width: frame.width,
+      height: frame.height,
       signal,
       input: { kind: "click", x: 50 / (frame?.width ?? 1), y: 60 / (frame?.height ?? 1) },
     })
-    await engine.takeoverInput({ tabId: page.tabId, botId: botA, signal, input: { kind: "text", text: privateText } })
+    await engine.takeoverInput({
+      tabId: page.tabId,
+      botId: botA,
+      targetEpoch: frame.targetEpoch,
+      width: frame.width,
+      height: frame.height,
+      signal,
+      input: { kind: "text", text: privateText },
+    })
     expect(await engine.releaseTakeover(page.tabId)).toBe(true)
 
     const snapshot = await engine.snapshot({ tabId: page.tabId, botId: botA, image: "never", signal })

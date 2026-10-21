@@ -296,15 +296,20 @@ test("interactive takeover operations reach the VM browser while a session lease
 
   expect(await f.browser.holdTakeover({ tabId: tab.tabId, reason: "A sign-in is needed" })).toBe(true)
   const signal = new AbortController().signal
-  expect(await f.browser.takeoverFrame({ tabId: tab.tabId, botId: f.bot.id, signal })).toMatchObject({
+  const frame = await f.browser.takeoverFrame({ tabId: tab.tabId, botId: f.bot.id, signal })
+  expect(frame).toMatchObject({
     image: "data:image/jpeg;base64,ZmFrZQ==",
     width: 800,
     height: 500,
   })
+  if (!frame) throw new Error("Missing takeover frame")
   expect(
     await f.browser.takeoverInput({
       tabId: tab.tabId,
       botId: f.bot.id,
+      targetEpoch: frame.targetEpoch,
+      width: frame.width,
+      height: frame.height,
       signal,
       input: { kind: "text", text: "private fixture value" },
     }),

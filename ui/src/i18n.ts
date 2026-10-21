@@ -624,6 +624,8 @@ export const ptBR = {
     "O bot pausou o navegador e precisa que você assuma o controle para continuar.",
   "The bot paused the browser and needs help: {reason}": "O bot pausou o navegador e precisa de ajuda: {reason}",
   "Browser is being controlled": "O navegador está sob controle",
+  "Continue browser control": "Continuar no navegador",
+  "The browser view changed. Wait for the refreshed page.": "A página mudou. Aguarde a atualização para continuar.",
   "The browser control connection was interrupted.": "A conexão com o controle do navegador foi interrompida.",
   "The browser is catching up. Try again in a moment.": "O navegador está respondendo. Tente de novo em instantes.",
   "The browser did not receive that action.": "O navegador não recebeu essa ação.",

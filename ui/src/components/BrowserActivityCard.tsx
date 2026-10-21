@@ -93,7 +93,6 @@ export const BrowserActivityCard = ({
   const [resolvedTab, setResolvedTab] = useState<{ callId: string; tabId: string }>()
   const activeTabId = tabId ?? (resolvedTab?.callId === resolutionCallId ? resolvedTab.tabId : undefined)
   const [previewFrame, setPreviewFrame] = useState<{ tabId: string; frame: PreviewFrame }>()
-  const preview = previewFrame?.tabId === activeTabId ? previewFrame?.frame : undefined
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [heldTab, setHeldTab] = useState<{
     tabId: string
@@ -101,8 +100,11 @@ export const BrowserActivityCard = ({
     reason?: BrowserTakeoverReason | null
   }>()
   const [takeoverSession, setTakeoverSession] = useState<string | null>(null)
+  const [controlEpoch, setControlEpoch] = useState<string | null>(null)
+  const [takeoverViewEpoch, setTakeoverViewEpoch] = useState(0)
   const takeoverTabId = useRef(activeTabId)
   const held = heldTab?.tabId === activeTabId && heldTab?.held === true
+  const preview = !held && previewFrame?.tabId === activeTabId ? previewFrame?.frame : undefined
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(!finished)
@@ -121,6 +123,8 @@ export const BrowserActivityCard = ({
     if (takeoverTabId.current === activeTabId) return
     takeoverTabId.current = activeTabId
     setTakeoverSession(null)
+    setControlEpoch(null)
+    setTakeoverViewEpoch(0)
   }, [activeTabId])
 
   useEffect(() => {
@@ -176,6 +180,7 @@ export const BrowserActivityCard = ({
       ) {
         hasTabEvent = true
         if (!tabId) setResolvedTab({ callId: resolutionCallId, tabId: event.tab.tabId })
+        if (event.tab.heldByUser) setPreviewFrame(undefined)
         setHeldTab({ tabId: event.tab.tabId, held: event.tab.heldByUser, reason: event.tab.takeoverReason ?? null })
       }
     })
@@ -203,6 +208,7 @@ export const BrowserActivityCard = ({
       !previewEnabled ||
       !visible ||
       hidden ||
+      held ||
       finished ||
       channel?.previewHidden ||
       takeoverSession
@@ -219,7 +225,21 @@ export const BrowserActivityCard = ({
         setPreviewError(reason ? t("Browser preview unavailable. Open the browser to reconnect.", {}, locale) : null),
       { intervalMs: 700 },
     )
-  }, [activeTabId, api, botId, machine, canPreview, channel?.previewHidden, finished, hidden, locale, previewEnabled, takeoverSession, visible])
+  }, [
+    activeTabId,
+    api,
+    botId,
+    machine,
+    canPreview,
+    channel?.previewHidden,
+    finished,
+    held,
+    hidden,
+    locale,
+    previewEnabled,
+    takeoverSession,
+    visible,
+  ])
 
   const toggleTakeover = async (): Promise<void> => {
     if (!api || !activeTabId || busy) return
@@ -227,14 +247,28 @@ export const BrowserActivityCard = ({
     setError(null)
     try {
       if (takeoverSession) {
-        await api.request("DELETE /browser/tabs/:id/takeover/session", { sessionId: takeoverSession }, { id: activeTabId })
+        if (!controlEpoch) throw new Error("Missing browser control epoch")
+        await api.request(
+          "DELETE /browser/tabs/:id/takeover/session",
+          { sessionId: takeoverSession, controlEpoch },
+          { id: activeTabId },
+        )
         setTakeoverSession(null)
+        setControlEpoch(null)
+        setTakeoverViewEpoch(0)
         setHeldTab({ tabId: activeTabId, held: false, reason: null })
-      } else {
-        const session = await api.request("POST /browser/tabs/:id/takeover/session", {}, { id: activeTabId })
-        setTakeoverSession(session.sessionId)
-        setHeldTab({ tabId: activeTabId, held: true, reason: heldTab?.reason ?? "requested" })
+        return
       }
+
+      const {
+        sessionId,
+        controlEpoch: nextControlEpoch,
+        viewEpoch: nextViewEpoch,
+      } = await api.request("POST /browser/tabs/:id/takeover/session", {}, { id: activeTabId })
+      setTakeoverSession(sessionId)
+      setControlEpoch(nextControlEpoch)
+      setTakeoverViewEpoch(nextViewEpoch)
+      setHeldTab({ tabId: activeTabId, held: true, reason: heldTab?.reason ?? "requested" })
     } catch {
       setError(t("The browser tab could not be updated.", {}, locale))
     } finally {
@@ -258,7 +292,7 @@ export const BrowserActivityCard = ({
   const takeoverActive = held && !finished
   const takeoverReason = heldTab?.reason ?? "requested"
   const reasonCopy = getTakeoverReasonCopy(takeoverReason, locale)
-  if (takeoverSession && activeTabId && api && !finished) {
+  if (takeoverSession && controlEpoch && activeTabId && api && !finished) {
     const takeoverCard = (
       <div className="browser-activity-stack">
         <article className="browser-activity-card" ref={section} aria-label={title} data-held="true">
@@ -266,6 +300,8 @@ export const BrowserActivityCard = ({
             api={api}
             tabId={activeTabId}
             sessionId={takeoverSession}
+            controlEpoch={controlEpoch}
+            initialViewEpoch={takeoverViewEpoch}
             botName={botName}
             locale={locale}
             reason={getBrowserTakeoverReason(browserTools) ?? reasonCopy}
@@ -278,6 +314,8 @@ export const BrowserActivityCard = ({
             }))}
             onHandback={() => {
               setTakeoverSession(null)
+              setControlEpoch(null)
+              setTakeoverViewEpoch(0)
               setHeldTab({ tabId: activeTabId, held: false, reason: null })
             }}
           />

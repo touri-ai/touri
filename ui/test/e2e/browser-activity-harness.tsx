@@ -133,16 +133,21 @@ const getFixtureApi = ({
     if (route === "POST /browser/tabs/:id/takeover/session") {
       heldByUser.current = true
       onHeldChange(true)
-      return { sessionId: "synthetic-browser-session" }
+      return { sessionId: "synthetic-browser-session", controlEpoch: "synthetic-control-epoch", viewEpoch: 0 }
     }
-    if (route === "POST /browser/tabs/:id/takeover/frame")
+    if (route === "POST /browser/tabs/:id/takeover/frame") {
+      const viewEpoch = (input as { viewEpoch: number }).viewEpoch
       return {
+        controlEpoch: "synthetic-control-epoch",
+        targetEpoch: 1,
+        viewEpoch,
         title: currentPage.current.title,
         url: currentPage.current.url,
         image,
         width: 800,
         height: 500,
       }
+    }
     if (route === "POST /browser/tabs/:id/takeover/input") {
       onTakeoverInput()
       return {}

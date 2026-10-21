@@ -734,12 +734,17 @@ export type BrowserChannelRun = {
 }
 
 export type BrowserTakeoverFrame = {
+  controlEpoch: string
+  targetEpoch: number
+  viewEpoch: number
   title: string
   url: string
   image: string
   width: number
   height: number
 }
+
+export type BrowserTakeoverCapture = Omit<BrowserTakeoverFrame, "controlEpoch" | "viewEpoch">
 
 export type BrowserTakeoverInput =
   | { kind: 'click'; x: number; y: number; button?: 'left' | 'right' | 'middle' }
@@ -1141,13 +1146,27 @@ export type ApiRoutes = {
   }
   'GET /bots/:id/browser-preview': { req: { tabId?: Id }; res: { title: string; url: string; image: string } }
   'POST /browser/tabs/:id/takeover': { req: { hold: boolean }; res: {} }
-  'POST /browser/tabs/:id/takeover/session': { req: {}; res: { sessionId: string } }
-  'POST /browser/tabs/:id/takeover/frame': { req: { sessionId: string }; res: BrowserTakeoverFrame }
+  'POST /browser/tabs/:id/takeover/session': {
+    req: {}
+    res: { sessionId: string; controlEpoch: string; viewEpoch: number }
+  }
+  'POST /browser/tabs/:id/takeover/frame': {
+    req: { sessionId: string; controlEpoch: string; viewEpoch: number }
+    res: BrowserTakeoverFrame
+  }
   'POST /browser/tabs/:id/takeover/input': {
-    req: { sessionId: string; input: BrowserTakeoverInput }
+    req: {
+      sessionId: string
+      controlEpoch: string
+      targetEpoch: number
+      viewEpoch: number
+      width: number
+      height: number
+      input: BrowserTakeoverInput
+    }
     res: {}
   }
-  'DELETE /browser/tabs/:id/takeover/session': { req: { sessionId: string }; res: {} }
+  'DELETE /browser/tabs/:id/takeover/session': { req: { sessionId: string; controlEpoch: string }; res: {} }
   'POST /browser/secret-entry/:id': { req: { secretName: string } | { cancel: true }; res: {} }
   'POST /computer/grants': { req: { botId: Id; threadId: Id; minutes: number }; res: { grantId: Id; expiresAt: EpochMs } }
   'POST /computer/kill': { req: {}; res: { revoked: number } }
