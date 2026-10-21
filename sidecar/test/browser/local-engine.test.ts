@@ -235,8 +235,12 @@ test("channel takeover notifies the channel and checks both control changes befo
     timeoutMs: 120_000,
     signal: ctx.signal,
   })
+  const captures = f.calls.filter((call) => call.method === "Page.captureScreenshot").length
+  expect(await f.engine.preview({ botId: f.bot.id, tabId, signal: ctx.signal })).toBeNull()
   expect(await f.engine.holdTakeoverForPerson({ tabId, personId: "other-member" })).toBe("forbidden")
   expect(await f.engine.holdTakeoverForPerson({ tabId, personId: "requester" })).toBe("held")
+  expect(await f.engine.preview({ botId: f.bot.id, tabId, signal: ctx.signal })).toBeNull()
+  expect(f.calls.filter((call) => call.method === "Page.captureScreenshot")).toHaveLength(captures)
   expect(await f.engine.releaseTakeoverForPerson({ tabId, personId: "other-member" })).toBe("forbidden")
   expect(f.engine.tabsForBot(f.bot.id)[0]?.heldByUser).toBe(true)
   expect(await f.engine.releaseTakeoverForPerson({ tabId, personId: "owner" })).toBe("released")

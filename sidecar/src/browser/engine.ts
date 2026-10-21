@@ -4519,9 +4519,18 @@ export const createBrowserEngine = ({
       const tab = tabs
         .filter((tab) => tab.info.ownerBotId === botId && (!tabId || tab.info.tabId === tabId))
         .sort((a, b) => b.info.lastUsedAt - a.info.lastUsedAt)[0]
-      if (tab?.info.state !== "live" || !tab.sessionId || tab.secretMode) return null
+      if (tab?.info.state !== "live" || !tab.sessionId || tab.secretMode || tab.info.heldByUser || tab.takeover)
+        return null
       const data = await imageData({ client, tab, fullPage: false, quality: 30 })
-      if (signal.aborted || tab.secretMode || tab.info.state !== "live" || data.length > 1_500_000) return null
+      if (
+        signal.aborted ||
+        tab.secretMode ||
+        tab.info.heldByUser ||
+        tab.takeover ||
+        tab.info.state !== "live" ||
+        data.length > 1_500_000
+      )
+        return null
       return {
         title: kernel.redact(tab.info.title),
         url: kernel.redact(tab.info.url),
