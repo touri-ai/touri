@@ -257,6 +257,8 @@ for (const viewport of [
         await expect(card.getByText(/estadias\.example\.test/)).toHaveCount(1)
       }
       if (mode === "held") {
+        await expect(card.getByRole("progressbar")).toHaveCount(0)
+        await expect(card.locator('[data-running="true"]')).toHaveCount(0)
         await expect(card.getByText("Prévia oculta para o canal enquanto Ana digita")).toBeVisible()
         await expect(card.locator(".browser-activity-preview img, .browser-activity-preview canvas")).toHaveCount(0)
         await expect(page.locator(".composer-browser-status")).toContainText("Ana está no controle")

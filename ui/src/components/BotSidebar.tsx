@@ -258,7 +258,11 @@ export const Sidebar = (props: SidebarProps) => {
   )
   const openNotification = useCallback(
     (item: NotificationRecord): void => {
-      navigate(() => propsRef.current.notificationActions.open(item))
+      const currentProps = propsRef.current
+      const open = isFailureNotice(item)
+        ? currentProps.notificationActions.open
+        : (currentProps.onNeedsYou ?? currentProps.notificationActions.open)
+      navigate(() => open(item))
     },
     [navigate],
   )

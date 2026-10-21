@@ -1,4 +1,4 @@
-import type { BrowserTabInfo, BrowserTakeoverReason, Id, MessagePart } from "@touri/contracts"
+import type { BrowserTabInfo, BrowserTakeoverReason, Id, MessagePart, ToolCallPart } from "@touri/contracts"
 import { type ReactNode, useContext, useEffect, useId, useRef, useState } from "react"
 import {
   ChannelCardFooter,
@@ -398,9 +398,11 @@ export const BrowserActivityCard = ({
     finished || held || channel?.previewHidden
       ? ""
       : getBrowserActivityShortUrl(preview?.url ?? heldTab?.url ?? "") || getBrowserActivityOpenUrl(browserTools)
-  const subtitle = [botName, currentAction && getBrowserActivitySubtitleAction(currentAction, locale), url]
-    .filter(Boolean)
-    .join(" · ")
+  const subtitle = held
+    ? t("{name} está pausado", { name: botName }, locale)
+    : [botName, currentAction && getBrowserActivitySubtitleAction(currentAction, locale), url]
+        .filter(Boolean)
+        .join(" · ")
   const takeoverActive = held && !finished
   const takeoverReason = heldTab?.reason ?? "requested"
   const reasonCopy = getTakeoverReasonCopy(takeoverReason, locale)
@@ -462,7 +464,7 @@ export const BrowserActivityCard = ({
         data-expanded={expanded}
         data-show-all-actions={finished || showAllActions}
       >
-        {!finished && (
+        {!finished && !held && (
           <span
             className="browser-activity-progress"
             role="progressbar"
@@ -613,17 +615,15 @@ export const BrowserActivityCard = ({
                 {actions.map((part, index) => (
                   <li
                     key={part.callId}
-                    data-current={part.callId === currentAction?.callId && !finished}
-                    data-running={!finished && isBrowserActivityRunning(part)}
-                    data-status={part.ok === null ? "in-progress" : part.ok === false ? "failed" : "complete"}
+                    data-current={part.callId === currentAction?.callId && !finished && !held}
+                    data-running={!finished && !held && isBrowserActivityRunning(part)}
+                    data-status={getBrowserActionState(part, held)}
                   >
                     <span className="browser-activity-action-icon" aria-hidden="true">
                       <BrowserIcon name={getBrowserIconName(getBrowserActivityKind(part))} />
                     </span>
                     <span className="browser-activity-action-label">
-                      {!finished && isBrowserActivityRunning(part)
-                        ? getBrowserActivityCurrentLabel(part, locale)
-                        : getBrowserActivityLabel(part, locale)}
+                      {getBrowserActionLabel(part, held, finished, locale)}
                       {getBrowserActivityNotice(part, locale) && (
                         <small>{getBrowserActivityNotice(part, locale)}</small>
                       )}
@@ -631,18 +631,10 @@ export const BrowserActivityCard = ({
                     <span
                       className="browser-activity-action-state"
                       role="img"
-                      aria-label={t(
-                        part.ok === null
-                          ? "Action in progress"
-                          : part.ok === false
-                            ? "Action failed"
-                            : "Action complete",
-                        {},
-                        locale,
-                      )}
-                      data-status={part.ok === null ? "in-progress" : part.ok === false ? "failed" : "complete"}
+                      aria-label={getBrowserActionStatusLabel(part, held, locale)}
+                      data-status={getBrowserActionState(part, held)}
                     >
-                      {part.ok === null ? (
+                      {part.ok === null && !held ? (
                         <span className="browser-activity-action-spinner" aria-hidden="true" />
                       ) : null}
                       {part.ok === false ? "!" : part.ok === true ? "✓" : null}
@@ -713,4 +705,29 @@ const getTakeoverReasonCopy = (reason: BrowserTakeoverReason, locale: Locale): s
   if (reason === "requested") return t("This browser is under your control now.", {}, locale)
 
   return t("The site needs your confirmation before continuing.", {}, locale)
+}
+
+const getBrowserActionState = (part: ToolCallPart, held: boolean): "failed" | "complete" | "paused" | "in-progress" => {
+  if (part.ok === false) return "failed"
+  if (part.ok === true) return "complete"
+
+  return held ? "paused" : "in-progress"
+}
+
+const getBrowserActionLabel = (part: ToolCallPart, held: boolean, finished: boolean, locale: Locale): string => {
+  if (held && isBrowserActivityRunning(part)) return t("Pausado", {}, locale)
+  if (!finished && isBrowserActivityRunning(part)) return getBrowserActivityCurrentLabel(part, locale)
+
+  return getBrowserActivityLabel(part, locale)
+}
+
+const getBrowserActionStatusLabel = (part: ToolCallPart, held: boolean, locale: Locale): string => {
+  const labels = {
+    failed: "Action failed",
+    complete: "Action complete",
+    paused: "Pausado",
+    "in-progress": "Action in progress",
+  } as const
+
+  return t(labels[getBrowserActionState(part, held)], {}, locale)
 }

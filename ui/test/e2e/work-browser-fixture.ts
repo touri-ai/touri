@@ -38,7 +38,7 @@ export const installWorkBrowserFixture = async (api: ReturnType<typeof createMoc
     runId: null,
     text: "@Léo pesquise duas estadias em Chicago, com nota e preço total.",
     parts: [{ type: "text", text: "@Léo pesquise duas estadias em Chicago, com nota e preço total." }],
-    sender: { id: "ana", name: "Ana" },
+    sender: { id: "ana", name: "Ana", kind: "person", avatarSeed: "ana" },
     source: "local",
     createdAt: now - 6000,
     updatedAt: now - 6000,

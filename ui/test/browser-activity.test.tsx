@@ -325,7 +325,10 @@ test("the composer takeover action opens the active browser session", async () =
 })
 
 test("hides the live browser preview while a person controls the tab", async () => {
-  const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
+  const parts = [
+    getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' }),
+    getPart({ callId: "read", tool: "browser_snapshot", inputJson: '{"tabId":"browser-tab"}', ok: null }),
+  ]
   const stopPreview = vi.fn()
   vi.mocked(startInlineFrameSource).mockReturnValueOnce(stopPreview)
   const { api } = renderCard(parts, false)
@@ -336,6 +339,9 @@ test("hides the live browser preview while a person controls the tab", async () 
   expect(await screen.findByText("Uma pessoa está controlando esta aba; o bot está pausado.")).toBeVisible()
   expect(screen.queryByRole("img", { name: "Página atual do navegador" })).toBeNull()
   expect(stopPreview).toHaveBeenCalledOnce()
+  expect(screen.queryByRole("progressbar")).toBeNull()
+  expect(document.querySelectorAll('[data-running="true"], .browser-activity-action-spinner')).toHaveLength(0)
+  expect(screen.getByText("Lia está pausado")).toBeVisible()
 })
 
 test("take-over holds the browser, opens its view, and the finished card collapses with the final image", async () => {
