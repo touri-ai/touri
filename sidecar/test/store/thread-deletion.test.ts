@@ -368,7 +368,7 @@ test("archived title search ignores accents and stays scoped without any message
   const search = createThreadTitleSearch(fixture.db.filename)
   cleanups.add(async () => search.dispose())
 
-  const matches = await search.search({
+  const matches = await search.getMatches({
     query: "relatorio ROTINA",
     personId: "member-a",
     signal: new AbortController().signal,

@@ -8,7 +8,7 @@ export const createThreadTitleSearch = (filename: string) => {
   const workers = new Map<Worker, () => void>()
   let disposed = false
 
-  const search = async ({ query, botId, personId, signal }: SearchInput): Promise<Matches> => {
+  const getMatches = async ({ query, botId, personId, signal }: SearchInput): Promise<Matches> => {
     if (disposed || signal.aborted || !query.trim() || workers.size >= 2) return []
     const url = URL.createObjectURL(new Blob([workerSource], { type: "application/javascript" }))
     const worker = new Worker(url, { smol: true, ref: false })
@@ -40,7 +40,7 @@ export const createThreadTitleSearch = (filename: string) => {
     })
   }
 
-  return { search, dispose }
+  return { getMatches, dispose }
 }
 
 const workerSource = `
@@ -52,20 +52,28 @@ self.onmessage = ({ data }) => {
     database = new Database(data.filename, constants.SQLITE_OPEN_READONLY | constants.SQLITE_OPEN_NOFOLLOW);
     database.exec("PRAGMA busy_timeout = 0");
     const tokens = normalize(data.query).trim().split(/\\s+/u);
-    database.function("title_matches", { deterministic: true }, (title) => {
-      const text = normalize(title);
-      return tokens.every((token) => text.includes(token)) ? 1 : 0;
-    });
-    const matches = database.query(\`SELECT t.id, t.bot_id AS botId, substr(t.title, 1, 512) AS title,
+    const statement = database.query(\`SELECT t.id, t.bot_id AS botId, substr(t.title, 1, 512) AS title,
       t.created_at AS createdAt, t.archived_at AS archivedAt
       FROM threads t JOIN bots b ON b.id = t.bot_id
       WHERE t.archived_at IS NOT NULL AND t.group_id IS NULL AND b.archived_at IS NULL
         AND (?1 IS NULL OR t.bot_id = ?1)
         AND (?2 IS NULL OR coalesce(t.owner_person_id, 'owner') = ?2)
+        AND t.id > ?3
         AND NOT EXISTS (SELECT 1 FROM thread_deletions WHERE thread_id = t.id)
         AND NOT EXISTS (SELECT 1 FROM bot_deletions WHERE bot_id = t.bot_id)
-        AND title_matches(substr(t.title, 1, 512)) = 1
-      ORDER BY t.id DESC LIMIT 50\`).all(data.botId, data.personId);
+      ORDER BY t.id LIMIT 100\`);
+    let cursor = "";
+    let matches = [];
+    while (matches.length < 50) {
+      const rows = statement.all(data.botId, data.personId, cursor);
+      if (!rows.length) break;
+      const found = rows.filter((thread) => {
+        const title = normalize(thread.title);
+        return tokens.every((token) => title.includes(token));
+      });
+      matches = [...matches, ...found].slice(0, 50);
+      cursor = rows[rows.length - 1].id;
+    }
     self.postMessage(matches);
   } catch {
     self.postMessage([]);

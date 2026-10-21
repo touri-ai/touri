@@ -1997,7 +1997,7 @@ export const init = async (
             limit: 50,
             ...(personScope ? { personScope } : {}),
           })
-          const threads = await threadTitleSearch.search({
+          const threads = await threadTitleSearch.getMatches({
             query: query.q ?? "",
             signal,
             ...(query.botId ? { botId: query.botId } : {}),
