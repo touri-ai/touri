@@ -4,7 +4,7 @@ import { mkdir } from "node:fs/promises"
 import { resolve } from "node:path"
 import { createInterface } from "node:readline"
 import AxeBuilder from "@axe-core/playwright"
-import { type BrowserContext, chromium, expect, test } from "@playwright/test"
+import { type BrowserContext, chromium, expect, type Page, type TestInfo, test } from "@playwright/test"
 
 test.describe.configure({ mode: "default" })
 const token = randomUUID()
@@ -57,6 +57,20 @@ test.afterAll(async () => {
   })
 })
 
+const getEvidencePath = (info: TestInfo, name: string): string =>
+  process.env.TOURI_E2E_EVIDENCE_DIR ? resolve(process.env.TOURI_E2E_EVIDENCE_DIR, name) : info.outputPath(name)
+
+const connectBrowserFixture = async (page: Page): Promise<void> => {
+  await page.route("**/__browser-activity-fixture", async (route) => {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: route.request().postData() ?? "{}",
+    })
+    await route.fulfill({ status: response.status, contentType: "application/json", body: await response.text() })
+  })
+}
+
 const liveVariants = [
   { name: "desktop-dark", width: 1440, height: 900, theme: "dark", colorScheme: "dark" as const },
   { name: "desktop-light", width: 1440, height: 900, theme: "light", colorScheme: "light" as const },
@@ -80,18 +94,7 @@ test.describe("full browser activity flow", () => {
       })
       contexts.add(context)
       const page = await context.newPage()
-      await page.route("**/__browser-activity-fixture", async (route) => {
-        const response = await fetch(endpoint, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: route.request().postData() ?? "{}",
-        })
-        await route.fulfill({
-          status: response.status,
-          contentType: "application/json",
-          body: await response.text(),
-        })
-      })
+      await connectBrowserFixture(page)
       await page.goto(
         `${baseURL}/test/e2e/browser-activity-harness.html?flow=live&theme=${variant.theme}&holdAfterOpen=true`,
       )
@@ -134,7 +137,7 @@ test.describe("full browser activity flow", () => {
         .evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length)
       expect(columns).toBe(1)
       if (variant.width <= 600) await expect(card.locator(".browser-activity-log")).toHaveCSS("height", "156px")
-      await page.screenshot({ path: info.outputPath(`browser-live-${variant.name}.png`), fullPage: true })
+      await page.screenshot({ path: getEvidencePath(info, `browser-live-${variant.name}.png`), fullPage: true })
       await card.getByRole("button", { name: "Recolher navegador" }).click()
       const takeOver = page.locator(".composer-browser-status").getByRole("button", { name: "Assumir" })
       await expect(takeOver).toBeVisible()
@@ -147,7 +150,7 @@ test.describe("full browser activity flow", () => {
       await expect(remoteScreen).toBeVisible()
       await expect(privacy).toBeVisible()
       await expect(privacy).toHaveCSS("position", "sticky")
-      await remoteScreen.click({ position: { x: 80, y: 80 } })
+      await remoteScreen.click()
       await expect
         .poll(() =>
           page.evaluate(async () => {
@@ -192,6 +195,8 @@ test.describe("full browser activity flow", () => {
       await expect(page.locator(".browser-activity-card")).toHaveAttribute("data-finished", "true")
       const summary = page.getByRole("button", { name: /Usou o navegador/ })
       await expect(summary).toContainText("Ver o que ele fez")
+      await summary.scrollIntoViewIfNeeded()
+      await page.screenshot({ path: getEvidencePath(info, `browser-summary-${variant.name}.png`), fullPage: true })
       await expect(summary.getByRole("img", { name: "Captura final do navegador" })).toBeVisible()
       await expect
         .poll(() =>
@@ -216,7 +221,7 @@ test.describe("full browser activity flow", () => {
       await expect(page.locator(".tool-call-card")).toHaveCount(0)
       const accessibility = await new AxeBuilder({ page }).include(".browser-activity-card").analyze()
       expect(accessibility.violations).toEqual([])
-      await page.screenshot({ path: info.outputPath(`browser-finished-${variant.name}.png`), fullPage: true })
+      await page.screenshot({ path: getEvidencePath(info, `browser-finished-${variant.name}.png`), fullPage: true })
 
       const outputDirectory = process.env.TOURI_BROWSER_FLOW_OUTPUT
       if (outputDirectory) {
@@ -226,7 +231,7 @@ test.describe("full browser activity flow", () => {
       const video = page.video()
       await context.close()
       if (video) {
-        const videoPath = info.outputPath(`browser-${variant.name}.webm`)
+        const videoPath = getEvidencePath(info, `browser-${variant.name}.webm`)
         await video.saveAs(videoPath)
         if (outputDirectory) await video.saveAs(resolve(outputDirectory, `browser-${variant.name}.webm`))
       }
@@ -236,6 +241,7 @@ test.describe("full browser activity flow", () => {
 
 test("remote keyboard input reaches the managed page without entering the conversation", async ({ page }) => {
   test.setTimeout(60_000)
+  await connectBrowserFixture(page)
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto("/test/e2e/browser-activity-harness.html?flow=live&holdAfterOpen=true")
   await page.getByRole("button", { name: "Iniciar busca de viagem" }).click()
@@ -243,8 +249,10 @@ test("remote keyboard input reaches the managed page without entering the conver
   await expect(takeOver).toBeEnabled({ timeout: 40_000 })
   await takeOver.click()
   const control = page.getByRole("region", { name: "Controle remoto do navegador" })
+  await control.getByRole("button", { name: "Expandir navegador em tela cheia" }).click()
   const screen = control.locator(".browser-takeover-screen")
   await expect(screen.locator("canvas:visible, img").first()).toBeVisible()
+  await expect(control.getByRole("button", { name: "Digitar no navegador" })).toBeEnabled()
   const target = await page.evaluate(async () => {
     const response = await fetch("/__browser-activity-fixture", {
       method: "POST",
@@ -294,7 +302,10 @@ for (const viewport of [
     await expect(
       page.locator(".browser-activity-card").getByRole("button", { name: "Assumir", exact: true }),
     ).toBeVisible()
-    await page.screenshot({ path: testInfo.outputPath(`browser-takeover-before-${viewport.name}.png`), fullPage: true })
+    await page.screenshot({
+      path: getEvidencePath(testInfo, `browser-takeover-before-${viewport.name}.png`),
+      fullPage: true,
+    })
 
     await page.locator(".browser-activity-card").getByRole("button", { name: "Assumir", exact: true }).click()
     await expect(page.getByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
@@ -310,7 +321,10 @@ for (const viewport of [
       .locator(".browser-takeover-layout")
       .evaluate((element) => element.getBoundingClientRect().width)
     expect(screenWidth).toBeGreaterThan(layoutWidth * 0.95)
-    await page.screenshot({ path: testInfo.outputPath(`browser-takeover-after-${viewport.name}.png`), fullPage: true })
+    await page.screenshot({
+      path: getEvidencePath(testInfo, `browser-takeover-after-${viewport.name}.png`),
+      fullPage: true,
+    })
 
     const expand = takeoverView.getByRole("button", { name: "Expandir navegador em tela cheia" })
     await expand.click()
@@ -440,7 +454,7 @@ for (const fallback of ["missing_key", "no_credit"] as const) {
         .locator(".browser-activity-card")
         .getByRole("button", { name: /Hand back to|Devolver para/ })
       await expect(handBack).toBeVisible()
-      await page.screenshot({ path: testInfo.outputPath(`browser-${fallback}-${locale}.png`), fullPage: true })
+      await page.screenshot({ path: getEvidencePath(testInfo, `browser-${fallback}-${locale}.png`), fullPage: true })
       await handBack.click()
       await page.getByRole("button", { name: isEnglish ? "Search trips" : "Buscar viagens" }).click()
       await expect(page.getByRole("button", { name: /Used the browser|Usou o navegador/ })).toBeVisible()

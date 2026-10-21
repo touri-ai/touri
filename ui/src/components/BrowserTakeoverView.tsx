@@ -316,25 +316,42 @@ export const BrowserTakeoverView = ({
     [botName, browserControls.registerTakeover, locale],
   )
 
-  const mousePoint = (event: { clientX: number; clientY: number; currentTarget: HTMLElement }) => {
-    const bounds = event.currentTarget.getBoundingClientRect()
-    if (!bounds.width || !bounds.height) return null
+  const getPageBounds = (element: HTMLElement) => {
+    const bounds = element.getBoundingClientRect()
+    const image = element.querySelector("canvas:not([hidden]), img")
+    if (!frame || !image || getComputedStyle(image).objectFit !== "contain") return bounds
+
+    const scale = Math.min(bounds.width / frame.width, bounds.height / frame.height)
+    const width = frame.width * scale
+    const height = frame.height * scale
+
     return {
-      x: Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width)),
-      y: Math.min(1, Math.max(0, (event.clientY - bounds.top) / bounds.height)),
+      left: bounds.left + (bounds.width - width) / 2,
+      top: bounds.top + (bounds.height - height) / 2,
+      width,
+      height,
     }
+  }
+  const getMousePoint = (event: { clientX: number; clientY: number; currentTarget: HTMLElement }) => {
+    const bounds = getPageBounds(event.currentTarget)
+    if (!bounds.width || !bounds.height) return null
+    const x = (event.clientX - bounds.left) / bounds.width
+    const y = (event.clientY - bounds.top) / bounds.height
+    if (x < 0 || x > 1 || y < 0 || y > 1) return null
+
+    return { x, y }
   }
   const clickPage = (event: PointerEvent<HTMLElement>) => {
     event.preventDefault()
     if (event.pointerType !== "touch") keyboard.current?.focus({ preventScroll: true })
-    const point = mousePoint(event)
+    const point = getMousePoint(event)
     if (!point) return
     const button = event.button === 2 ? "right" : event.button === 1 ? "middle" : "left"
     sendInput({ kind: "click", ...point, button })
   }
   const flushTouchScroll = (event: PointerEvent<HTMLElement>, gesture: TouchGesture): TouchGesture => {
-    const point = mousePoint(event)
-    const bounds = event.currentTarget.getBoundingClientRect()
+    const point = getMousePoint(event)
+    const bounds = getPageBounds(event.currentTarget)
     if (!point || !bounds.width || !bounds.height || (!gesture.deltaX && !gesture.deltaY)) return gesture
     const scaleX = (frame?.width ?? bounds.width) / bounds.width
     const scaleY = (frame?.height ?? bounds.height) / bounds.height
@@ -405,7 +422,7 @@ export const BrowserTakeoverView = ({
     event.preventDefault()
     if (gesture.moved) flushTouchScroll(event, gesture)
     else {
-      const point = mousePoint(event)
+      const point = getMousePoint(event)
       if (point) sendInput({ kind: "click", x: point.x, y: point.y, button: "left" })
     }
     touch.current = null
@@ -419,7 +436,7 @@ export const BrowserTakeoverView = ({
   }
   const scrollPage = (event: WheelEvent<HTMLElement>) => {
     event.preventDefault()
-    const point = mousePoint(event)
+    const point = getMousePoint(event)
     if (!point) return
     const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? (frame?.height ?? 720) : 1
     const clamp = (value: number) => Math.max(-1200, Math.min(1200, value * scale))

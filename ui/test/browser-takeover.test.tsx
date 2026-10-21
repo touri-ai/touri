@@ -345,3 +345,45 @@ test("rejects oversized text before encoding or sending it to the browser", asyn
     id: "synthetic-tab",
   })
 })
+
+test("maps phone full-screen clicks to the contained page and ignores its margins", async () => {
+  const api = createMockApi()
+  const request = vi.fn(async (route: string) =>
+    route === "POST /browser/tabs/:id/takeover/frame" ? getBrowserFrame() : {},
+  )
+  api.request = request as ApiRequest
+  render(
+    <BrowserTakeoverView
+      api={api}
+      tabId="synthetic-tab"
+      sessionId="synthetic-session"
+      controlEpoch="control-epoch"
+      botName="Lia"
+      locale="pt-BR"
+      reason={null}
+      actions={[]}
+      onHandback={vi.fn()}
+    />,
+  )
+  await loadFirstBrowserFrame()
+  const page = document.querySelector(".browser-takeover-screen")
+  const image = screen.getByRole("img", { name: "Página atual do navegador" })
+  if (!page || !(image instanceof HTMLImageElement)) throw new Error("The browser page should be rendered")
+  image.style.objectFit = "contain"
+  page.getBoundingClientRect = vi.fn(() => new DOMRect(0, 0, 512, 512))
+
+  fireEvent(page, new MouseEvent("pointerdown", { bubbles: true, clientX: 128, clientY: 192 }))
+
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith(
+      "POST /browser/tabs/:id/takeover/input",
+      expect.objectContaining({ input: { kind: "click", x: 0.25, y: 0.25, button: "left" } }),
+      { id: "synthetic-tab" },
+    ),
+  )
+
+  fireEvent(page, new MouseEvent("pointerdown", { bubbles: true, clientX: 128, clientY: 40 }))
+  await Promise.resolve()
+
+  expect(request.mock.calls.filter(([route]) => route === "POST /browser/tabs/:id/takeover/input")).toHaveLength(1)
+})
