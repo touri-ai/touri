@@ -305,7 +305,6 @@ export const Sidebar = (props: SidebarProps) => {
   )
   const attention = useMemo(() => pendingNotifications(notifications, messages), [notifications, messages])
   const needsYou = useMemo(() => attention.filter((item) => !isInformationalNotice(item)), [attention])
-  const hasNeedsYou = needsYou.some((item) => item.resolvedAt === null)
   const ordered = useSidebarOrder({ ...props, messages, notifications, attention })
   const botsWaitingCount = [...ordered.activity.values()].filter((activity) => activity.kind === "needs-you").length
   const attentionThreadIds = useMemo(
@@ -380,6 +379,17 @@ export const Sidebar = (props: SidebarProps) => {
       ),
     [props.bots, notifications, workThreadIdsByBot],
   )
+  const visibleBotIds = useMemo(() => new Set(props.bots.map((bot) => bot.id)), [props.bots])
+  const rowAttentionIds = useMemo(() => {
+    const rowNotifications =
+      sidebarMode === "bots"
+        ? needsYou.filter((item) => item.botId && visibleBotIds.has(item.botId))
+        : Array.from(workAttentionByBot.values()).flat()
+
+    return new Set(rowNotifications.map((item) => item.id))
+  }, [sidebarMode, needsYou, visibleBotIds, workAttentionByBot])
+  const barNeedsYou = needsYou.filter((item) => !rowAttentionIds.has(item.id))
+  const hasNeedsYou = barNeedsYou.length > 0
   const botNavigationKey = `${props.section}:${props.advancedPage}:${props.selectedBotId}:${props.selectedThreadId}`
   useEffect(() => {
     if (savedSidebarMode !== null || hasUserSelectedMode || !(props.groups?.length ?? 0)) return
@@ -565,7 +575,7 @@ export const Sidebar = (props: SidebarProps) => {
       </div>
       {hasNeedsYou ? (
         <NotificationAttentionBar
-          notifications={needsYou}
+          notifications={barNeedsYou}
           onSelect={(item) => {
             const selectNotification = props.onNeedsYou ?? props.notificationActions.open
             if (item.kind === "approval" && item.threadId && item.requestId) props.onNavigate?.()

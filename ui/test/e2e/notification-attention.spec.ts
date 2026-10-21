@@ -9,9 +9,7 @@ for (const theme of ["dark", "light"] as const) {
     { name: "desktop", width: 1440, height: 900 },
     { name: "phone", width: 390, height: 844 },
   ]) {
-    test(`opens the pending question from the attention bar on ${viewport.name} in ${theme}`, async ({
-      page,
-    }, testInfo) => {
+    test(`keeps one bot request action on ${viewport.name} in ${theme}`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height })
       await page.emulateMedia({ reducedMotion: "reduce" })
       await page.addInitScript((appearance) => localStorage.setItem("touri.appearance.v1", appearance), theme)
@@ -20,9 +18,10 @@ for (const theme of ["dark", "light"] as const) {
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
 
       if (viewport.name === "phone") await page.getByRole("button", { name: "Abrir menu" }).click()
-      const bar = page.locator(".sidebar-needs-you")
+      const bar = page.getByRole("button", { name: "Abrir pendência de onb", exact: true })
       await expect(bar).toBeVisible()
       await expect(bar).toHaveCount(1)
+      await expect(page.locator(".sidebar-needs-you")).toHaveCount(0)
 
       const output = process.env.NOTIFICATION_ATTENTION_CAPTURE ?? testInfo.outputDir
       mkdirSync(output, { recursive: true })

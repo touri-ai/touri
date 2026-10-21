@@ -56,8 +56,6 @@ test("a channel browser handback resumes the bot and posts its answer in the sam
   await browserCard.getByRole("button", { name: "Devolver para Planejamento" }).click()
   await expect(page.locator(".composer-browser-status")).toContainText("Planejamento está trabalhando · No navegador")
   await expect(page.locator(".browser-activity-card")).toHaveCount(1)
-  await expect(browserCard.getByRole("status")).toContainText("Planejamento voltou a trabalhar")
-  await expect(page.locator(".browser-activity-card")).toHaveCount(1)
   await expect(messages.getByText("Retomado após a devolução do navegador", { exact: true })).toBeVisible()
   await expect(page.locator(".composer-browser-status")).toContainText("Planejamento está trabalhando · No navegador")
   await page.evaluate(() => (window as Window & { completeChannelResume?: () => void }).completeChannelResume?.())

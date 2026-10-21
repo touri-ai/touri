@@ -10,6 +10,39 @@ beforeEach(clearSidebarMode)
 afterEach(cleanup)
 
 describe("sidebar work mode", () => {
+  it("keeps channel requests reachable without duplicating the bot-row action in Bots mode", async () => {
+    const api = createMockApi()
+    const { thread } = await api.request("POST /groups", {
+      name: "Equipe QA",
+      color: "#dc2626",
+      avatarShape: "classic-none",
+      memberIds: ["bot-mark"],
+      coordinatorBotId: null,
+    })
+    api.notify({
+      kind: "takeover",
+      title: "Lia precisa de ajuda",
+      body: "Conclua o acesso no navegador.",
+      botId: "bot-mark",
+      threadId: thread.id,
+      requestId: "channel-browser-request",
+    })
+
+    render(<App kernel={{ services: { api } }} />)
+    await screen.findByRole("textbox", { name: "Mensagem para mark" })
+    await waitFor(() => expect(screen.getByRole("tab", { name: /^Work,/ })).toHaveAttribute("aria-selected", "true"))
+
+    expect(document.querySelectorAll(".sidebar-needs-you")).toHaveLength(1)
+    const workPanel = document.getElementById("sidebar-mode-panel-work")
+    if (!workPanel) throw new Error("Missing Work navigation")
+    expect(within(workPanel).queryByRole("button", { name: "Abrir pendência de mark" })).toBeNull()
+
+    fireEvent.click(screen.getByRole("tab", { name: /^Bots,/ }))
+
+    expect(document.querySelector(".sidebar-needs-you")).toBeNull()
+    expect(screen.getByRole("button", { name: "Abrir pendência de mark" })).toBeVisible()
+  })
+
   it("opens Work by default for existing channels and keeps both mode panels mounted", async () => {
     const api = createMockApi()
     const { thread } = await api.request("POST /groups", {

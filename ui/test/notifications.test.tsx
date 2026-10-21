@@ -168,7 +168,7 @@ it("opens a notification's bot and thread from the touri tab", async () => {
   expect(screen.getByRole("button", { name: /Notification target/ })).toHaveClass("selected")
 })
 
-it("shows the needs-you bar and focuses the selected pending card", async () => {
+it("shows one bot-row request action and focuses its pending card", async () => {
   const api = createMockApi()
   api.notify({
     kind: "question",
@@ -181,12 +181,9 @@ it("shows the needs-you bar and focuses the selected pending card", async () => 
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
-  const bar = screen.getByRole("button", {
-    name: "Abrir pendência de onb",
-    description: "onb precisa da sua resposta",
-  })
-  expect(bar).toHaveTextContent("Precisa de você")
-  fireEvent.click(bar)
+  const requestCue = screen.getByRole("button", { name: "Abrir pendência de onb" })
+  expect(document.querySelector(".sidebar-needs-you")).toBeNull()
+  fireEvent.click(requestCue)
 
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
   const row = await screen.findByTestId("notification-row")
