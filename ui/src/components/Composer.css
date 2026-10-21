@@ -264,6 +264,7 @@
   color: var(--text);
   font: inherit;
   cursor: pointer;
+}
 .composer-browser-status .composer-browser-stop,
 .composer-browser-status .composer-browser-takeover {
   display: inline-flex;

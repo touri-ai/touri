@@ -1249,12 +1249,7 @@ export const init = async (
           const person = deviceSession(request.signal)?.person
           const device = deviceSession(request.signal)
           const controller = takeoverSessions.get(tabId)
-          if (
-            controller &&
-            (!device?.active() ||
-              controller.deviceId !== device.deviceId ||
-              controller.personId !== (person?.id ?? null))
-          )
+          if (controller && ((device && !device.active()) || !isTakeoverController(device, controller)))
             return { status: 403, json: { error: "Somente quem assumiu o navegador pode devolver o controle." } }
           const channelRun = channelRuns.getForTab(tabId)
           if (channelRun && !controller && !person)

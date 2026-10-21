@@ -52,6 +52,8 @@ export const BrowserTakeoverView = ({
   const screen = useRef<HTMLDivElement>(null)
   const keyboard = useRef<HTMLTextAreaElement>(null)
   const renderedFrame = useRef<FrameMeta | null>(null)
+  const latestFrameMetaRef = useRef<FrameMeta | null>(null)
+  const loadedFallbackImage = useRef("")
   const viewEpoch = useRef(initialViewEpoch)
   const connected = useRef(false)
   const pendingInputs = useRef(0)
@@ -66,7 +68,9 @@ export const BrowserTakeoverView = ({
   const browserControls = useBrowserActivityControls()
   const [frame, setFrame] = useState<FrameMeta | null>(null)
   const [fallbackImage, setFallbackImage] = useState("")
+  const [frameReady, setFrameReady] = useState(false)
   const [workerReady, setWorkerReady] = useState(false)
+  const [workerFrameReady, setWorkerFrameReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [returning, setReturning] = useState(false)
   const [fullView, setFullView] = useState(false)
@@ -77,7 +81,8 @@ export const BrowserTakeoverView = ({
     let timer: ReturnType<typeof setTimeout> | undefined
     let latestImage = ""
     let latestFrameId = 0
-    let latestFrameMeta: FrameMeta | null = null
+    let hasFrame = false
+    let workerFrameDrawn = false
     let worker: Worker | null = null
     connected.current = true
     const canvasElement = canvas.current
@@ -85,6 +90,9 @@ export const BrowserTakeoverView = ({
     const invalidateView = (): void => {
       viewEpoch.current += 1
       renderedFrame.current = null
+      workerFrameDrawn = false
+      setFrameReady(false)
+      setWorkerFrameReady(false)
     }
     const resizeObserver =
       screenElement && typeof ResizeObserver !== "undefined" ? new ResizeObserver(invalidateView) : null
@@ -98,15 +106,31 @@ export const BrowserTakeoverView = ({
         const stopWorker = () => {
           worker?.terminate()
           worker = null
+          workerFrameDrawn = false
           setFallbackImage(latestImage)
-          renderedFrame.current = latestFrameMeta
+          const latestFrame = latestFrameMetaRef.current
+          const fallbackFrame =
+            latestFrame?.viewEpoch === viewEpoch.current && loadedFallbackImage.current === latestImage
+              ? latestFrame
+              : null
+          renderedFrame.current = fallbackFrame
+          setFrameReady(Boolean(fallbackFrame))
           setWorkerReady(false)
+          setWorkerFrameReady(false)
         }
         worker.onmessage = (event: MessageEvent<{ type?: string; frameId?: number }>) => {
           if (!active) return
-          if (event.data.type === "error") stopWorker()
-          if (event.data.type === "drawn" && event.data.frameId === latestFrameId)
-            renderedFrame.current = latestFrameMeta
+          if (event.data.type === "error") {
+            stopWorker()
+            return
+          }
+          if (event.data.type !== "drawn" || event.data.frameId !== latestFrameId) return
+          const latestFrame = latestFrameMetaRef.current
+          if (!latestFrame || latestFrame.viewEpoch !== viewEpoch.current) return
+          workerFrameDrawn = true
+          renderedFrame.current = latestFrame
+          setFrameReady(true)
+          setWorkerFrameReady(true)
         }
         worker.onerror = () => {
           if (active) stopWorker()
@@ -120,7 +144,7 @@ export const BrowserTakeoverView = ({
 
     const poll = async (): Promise<void> => {
       if (!active) return
-      if (document.hidden) {
+      if (document.hidden && hasFrame) {
         timer = setTimeout(() => void poll(), 1_000)
         return
       }
@@ -135,6 +159,7 @@ export const BrowserTakeoverView = ({
           timer = setTimeout(() => void poll(), 0)
           return
         }
+        hasFrame = true
         latestImage = next.image
         const nextFrame = {
           title: next.title,
@@ -143,6 +168,17 @@ export const BrowserTakeoverView = ({
           height: next.height,
           targetEpoch: next.targetEpoch,
           viewEpoch: next.viewEpoch,
+        }
+        latestFrameMetaRef.current = nextFrame
+        setFallbackImage(next.image)
+        if (!workerFrameDrawn) {
+          if (loadedFallbackImage.current === next.image) {
+            renderedFrame.current = nextFrame
+            setFrameReady(true)
+          } else {
+            renderedFrame.current = null
+            setFrameReady(false)
+          }
         }
         setFrame((current) => {
           if (!current) return nextFrame
@@ -158,11 +194,7 @@ export const BrowserTakeoverView = ({
         setError(null)
         if (worker) {
           latestFrameId += 1
-          latestFrameMeta = nextFrame
           worker.postMessage({ type: "frame", frameId: latestFrameId, image: next.image })
-        } else {
-          renderedFrame.current = nextFrame
-          setFallbackImage(next.image)
         }
       } catch {
         if (active) setError(t("The browser control connection was interrupted.", {}, localeRef.current))
@@ -450,10 +482,22 @@ export const BrowserTakeoverView = ({
             ref={canvas}
             className="browser-takeover-canvas"
             aria-label={t("Live browser page", {}, locale)}
-            hidden={!workerReady}
+            hidden={!workerReady || !workerFrameReady}
           />
-          {!workerReady && fallbackImage && (
-            <img className="browser-takeover-image" src={fallbackImage} alt={t("Live browser page", {}, locale)} />
+          {fallbackImage && (!workerReady || !workerFrameReady) && (
+            <img
+              className="browser-takeover-image"
+              src={fallbackImage}
+              alt={t("Live browser page", {}, locale)}
+              decoding="async"
+              onLoad={(event) => {
+                loadedFallbackImage.current = event.currentTarget.src
+                const loadedFrame = latestFrameMetaRef.current
+                if (loadedFrame?.viewEpoch !== viewEpoch.current) return
+                renderedFrame.current = loadedFrame
+                setFrameReady(true)
+              }}
+            />
           )}
           {!frame && !error && (
             <p className="browser-takeover-placeholder">{t("Connecting to the browser…", {}, locale)}</p>
@@ -482,7 +526,13 @@ export const BrowserTakeoverView = ({
             </ol>
           </section>
           <div className="browser-takeover-footer">
-            <button type="button" className="button button-quiet" onClick={() => keyboard.current?.focus()}>
+            <p>{t("What you type here stays out of chat, the bot, and history.", {}, locale)}</p>
+            <button
+              type="button"
+              className="button button-quiet"
+              disabled={!frameReady}
+              onClick={() => keyboard.current?.focus()}
+            >
               {t("Type in the browser", {}, locale)}
             </button>
           </div>
@@ -496,6 +546,7 @@ export const BrowserTakeoverView = ({
         autoCapitalize="off"
         autoCorrect="off"
         spellCheck={false}
+        disabled={!frameReady}
         onKeyDown={keyDown}
         onKeyUp={keyUp}
         onCompositionStart={() => {

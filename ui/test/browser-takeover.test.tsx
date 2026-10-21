@@ -44,6 +44,7 @@ test("sends private browser typing only to the remote input route and returns co
   )
 
   await waitFor(() => expect(document.body.textContent).toContain("https://exemplo.test"))
+  await loadFirstBrowserFrame()
   const keyboard = await screen.findByRole("textbox", { name: "Entrada de teclado para o navegador" })
   const browserUrl = document.querySelector(".browser-takeover-toolbar span")
   expect(browserUrl).toHaveAttribute("title", "https://exemplo.test")

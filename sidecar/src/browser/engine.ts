@@ -4029,6 +4029,11 @@ export const createBrowserEngine = ({
     const owned = getTab({ tabId, botId })
     if (!owned.success) return toToolError(owned.failure)
     const tab = owned.value
+    if (tab.privateInput)
+      return toToolError({
+        errorCode: "PRIVATE_TAKEOVER_ACTIVE",
+        error: "A avaliação de scripts fica bloqueada depois do controle privado do navegador.",
+      })
     return withTabQueue({
       tab,
       timeoutMs,

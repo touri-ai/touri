@@ -769,9 +769,10 @@ realSuite("WP6 real Chrome browser acceptance", () => {
     })
     expect(await engine.releaseTakeover(page.tabId)).toBe(true)
 
-    const snapshot = await engine.snapshot({ tabId: page.tabId, botId: botA, image: "never", signal })
+    const snapshot = await engine.snapshot({ tabId: page.tabId, botId: botA, image: "always", signal })
     expect(snapshot.success).toBe(true)
     if (!snapshot.success) return
+    expect(snapshot.content.some((item) => item.type === "image")).toBe(false)
     const result = snapshotOf(snapshot)
     expect(result.elements.find((element) => element.name === "Name")?.value).toBeUndefined()
     expect(JSON.stringify(result.recentActions)).not.toContain(privateText)
@@ -784,6 +785,10 @@ realSuite("WP6 real Chrome browser acceptance", () => {
     })
     expect(evaluated).toMatchObject({ success: false, errorCode: "PRIVATE_TAKEOVER_ACTIVE" })
     expect(JSON.stringify(evaluated)).not.toContain(privateText)
+    expect(await engine.screenshot({ tabId: page.tabId, botId: botA, fullPage: false, signal })).toMatchObject({
+      success: false,
+      errorCode: "PRIVATE_TAKEOVER_ACTIVE",
+    })
   })
 
   test("R9 secure secret entry never exposes the value", async () => {
