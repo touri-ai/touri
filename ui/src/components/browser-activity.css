@@ -1,30 +1,21 @@
-.browser-activity-stack {
-  display: grid;
-  gap: var(--space-4);
-  width: min(660px, 100%);
-  margin: var(--space-12) 0;
-}
-.browser-activity-checklist {
-  display: grid;
-  gap: var(--space-4);
-  margin: 0;
-  padding: 0 0 0 var(--space-16);
-  color: var(--text-2);
-  font-size: var(--fs-caption);
-  list-style: none;
-}
-.browser-activity-checklist li {
+.chat-message-list .browser-steps {
   display: flex;
   align-items: baseline;
   gap: var(--space-8);
   min-height: 20px;
+  margin: var(--space-4) 0;
+  color: var(--text-2);
+  font-size: var(--fs-caption);
 }
-.browser-activity-checklist li > span:first-child {
+.browser-run-state {
+  color: var(--text-2);
   font-size: var(--fs-caption);
 }
 .browser-activity-card {
   position: relative;
   width: 100%;
+  margin: var(--space-8) 0;
+  container-type: inline-size;
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
@@ -44,8 +35,8 @@
 .browser-activity-progress::after {
   position: absolute;
   inset: 0 auto 0 0;
-  width: 34%;
-  background: var(--brand);
+  width: 40%;
+  background: linear-gradient(90deg, transparent, var(--brand) 45%, var(--brand) 55%, transparent);
   content: "";
   animation: browser-activity-progress 1.8s ease-in-out infinite;
 }
@@ -67,7 +58,6 @@
   font-weight: var(--weight-semibold);
 }
 .browser-activity-subtitle,
-.browser-activity-url,
 .browser-activity-summary-copy small {
   overflow: hidden;
   color: var(--text-2);
@@ -81,8 +71,19 @@
   flex: 0 0 auto;
 }
 .browser-activity-header-actions .button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
   min-height: 30px;
   padding-inline: var(--space-8);
+}
+.browser-activity-header-actions .button svg {
+  width: 16px;
+  height: 16px;
+}
+.browser-activity-icon-button svg {
+  width: 18px;
+  height: 18px;
 }
 .browser-activity-icon-button {
   display: grid;
@@ -127,31 +128,51 @@
 .browser-activity-summary-copy strong {
   font-weight: var(--weight-semibold);
 }
+.browser-activity-summary-copy {
+  margin-right: auto;
+}
 .browser-activity-thumbnail {
   display: grid;
-  width: 144px;
-  height: 84px;
+  width: 192px;
   flex: 0 0 auto;
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--surface-control);
 }
-.browser-activity-thumbnail > img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-.browser-activity-summary > span:last-child {
+.browser-activity-thumbnail > small {
+  overflow: hidden;
+  padding: var(--space-4) var(--space-8);
   color: var(--text-2);
-  font-size: var(--fs-title);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.browser-activity-thumbnail img {
+  width: 100%;
+  height: 108px;
+  object-fit: cover;
+  object-position: top;
+}
+.browser-activity-chevron {
+  display: grid;
+  width: 18px;
+  flex: 0 0 auto;
+  color: var(--text-2);
+}
+.browser-activity-chevron svg {
+  width: 18px;
+  height: 18px;
+}
+.browser-activity-history {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: var(--space-4);
 }
 .browser-activity-content {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(180px, 0.8fr);
-  align-items: start;
+  grid-template-columns: minmax(0, 3fr) minmax(220px, 2fr);
+  align-items: stretch;
   gap: var(--space-12);
-  min-height: 220px;
   padding: 0 var(--space-12) var(--space-12);
   animation: browser-activity-reveal var(--duration-standard) var(--ease-standard) both;
 }
@@ -183,7 +204,8 @@
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
+  object-position: top;
   animation: browser-activity-frame-in 260ms ease-out both;
 }
 .browser-activity-preview-image-previous {
@@ -202,11 +224,36 @@
   min-width: 0;
   max-height: 290px;
   overflow: auto;
-  padding: var(--space-4) var(--space-4) var(--space-4) 0;
+  padding: 0;
   overscroll-behavior: contain;
 }
+/* The log takes the height of the preview, so new rows never resize the card. */
 .browser-activity-card[data-finished="false"] .browser-activity-log {
-  height: 220px;
+  max-height: none;
+  contain: size;
+  align-self: stretch;
+}
+.browser-activity-takeover {
+  display: grid;
+  align-content: center;
+  gap: var(--space-8);
+  min-width: 0;
+  aspect-ratio: 16 / 10;
+  min-height: 150px;
+  padding: var(--space-16);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-control);
+}
+.browser-activity-takeover p {
+  margin: 0;
+}
+.browser-activity-privacy {
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+.browser-activity-takeover small {
+  color: var(--text-2);
 }
 .browser-activity-log > strong {
   display: block;
@@ -215,7 +262,7 @@
 }
 .browser-activity-log ol {
   display: grid;
-  gap: var(--space-8);
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -225,7 +272,20 @@
   grid-template-columns: 18px minmax(0, 1fr) max-content;
   align-items: center;
   gap: var(--space-8);
-  min-height: 22px;
+  min-height: 32px;
+  padding: var(--space-4) var(--space-8);
+  border-top: 1px solid var(--border);
+}
+.browser-activity-log li:first-child {
+  border-top: 0;
+}
+.browser-activity-log li[data-current="true"] {
+  border-radius: var(--radius-sm);
+  background: var(--surface-control);
+}
+.browser-activity-log li[data-running="true"] .browser-activity-action-icon {
+  color: var(--brand);
+  animation: browser-activity-pulse 1.2s ease-in-out infinite;
 }
 .browser-activity-action-icon {
   display: grid;
@@ -258,19 +318,9 @@
   margin: var(--space-8) 0 0;
   color: var(--text-2);
 }
-.browser-activity-final-shot {
-  margin-top: var(--space-12);
-}
-.browser-activity-final-shot > strong {
-  display: block;
-  margin-bottom: var(--space-8);
-}
-.browser-activity-final-shot .evidence-gallery img {
-  max-height: 180px;
-  object-fit: contain;
-}
-.chat-message-list .message-browser-narration .message-meta {
+.browser-activity-show-all {
   display: none;
+  margin: var(--space-4) var(--space-8);
 }
 .chat-message-list .browser-narration {
   display: flex;
@@ -294,6 +344,11 @@
   }
   to {
     transform: translateX(330%);
+  }
+}
+@keyframes browser-activity-pulse {
+  50% {
+    opacity: 0.45;
   }
 }
 @keyframes browser-activity-frame-in {
@@ -322,6 +377,17 @@
     transform: translateY(0);
   }
 }
+/* The card follows its own width (the transcript column), not the window. */
+@container (max-width: 760px) {
+  .browser-activity-content {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-8);
+  }
+  .browser-activity-card[data-finished="false"] .browser-activity-log {
+    contain: none;
+    height: 168px;
+  }
+}
 @media (max-width: 600px) {
   .browser-activity-header {
     align-items: flex-start;
@@ -331,32 +397,34 @@
     flex-wrap: wrap;
     justify-content: flex-end;
   }
-  .browser-activity-header-actions .button {
-    min-width: 56px;
-  }
   .browser-activity-content {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-8);
     padding-inline: var(--space-8);
   }
   .browser-activity-preview-frames,
   .browser-activity-placeholder {
     min-height: 120px;
   }
-  .browser-activity-log {
-    height: 180px;
-  }
   .browser-activity-card[data-finished="false"] .browser-activity-log {
-    height: 180px;
+    height: auto;
+    overflow: visible;
+  }
+  .browser-activity-log[data-all="false"] li:not(:nth-last-child(-n + 3)) {
+    display: none;
+  }
+  .browser-activity-show-all {
+    display: inline-block;
   }
   .browser-activity-thumbnail {
-    width: 96px;
-    height: 60px;
+    width: 112px;
+  }
+  .browser-activity-thumbnail img {
+    height: 64px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
   .browser-activity-progress::after,
   .browser-activity-preview-image,
+  .browser-activity-log li[data-running="true"] .browser-activity-action-icon,
   .browser-activity-content {
     animation: none;
   }

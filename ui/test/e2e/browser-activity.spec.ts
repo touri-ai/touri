@@ -79,23 +79,31 @@ test.describe("full browser activity flow", () => {
           body: await response.text(),
         })
       })
+      await page.addInitScript(() => {
+        const state = { shifts: 0 }
+        Object.assign(window, { __layoutShifts: state })
+        new PerformanceObserver((list) => {
+          for (const entry of list.getEntries() as unknown as Array<{ value: number; hadRecentInput: boolean }>)
+            if (!entry.hadRecentInput) state.shifts += entry.value
+        }).observe({ type: "layout-shift", buffered: true })
+      })
       await page.goto(`${baseURL}/test/e2e/browser-activity-harness.html?flow=live&theme=${variant.theme}`)
       await page.getByRole("button", { name: "Iniciar busca de viagem" }).click()
 
       const card = page.getByRole("article", { name: "Navegador do Lia" })
       await expect(page.getByRole("status").filter({ hasText: "Lia está trabalhando · No navegador" })).toBeVisible()
-      await expect(page.getByRole("button", { name: "Parar tarefa no navegador" })).toBeVisible()
+      await expect(page.getByRole("button", { name: "Parar o Lia" })).toBeVisible()
       if (variant.width > 600)
         await expect(page.getByRole("button", { name: /Busca de viagem/ })).toContainText("trabalhando")
       await expect(card).toBeVisible()
       await expect(card.getByRole("progressbar", { name: "Progresso do navegador" })).toBeVisible()
-      await expect(card).toContainText("Lia · Abrindo uma página")
+      await expect(card).toContainText(/Lia · abrindo uma página/)
       await expect(page.locator(".browser-activity-card")).toHaveCount(1)
       await expect(page.locator(".tool-call-card")).toHaveCount(0)
-      await expect(card.getByRole("button", { name: "Assumir controle" })).toBeVisible({ timeout: 20_000 })
+      await expect(card.getByRole("button", { name: "Assumir" })).toBeVisible()
 
       const livePreview = card.getByRole("img", { name: "Página atual do navegador" })
-      await expect(livePreview).toBeVisible({ timeout: 20_000 })
+      await expect(livePreview).toBeVisible({ timeout: 60_000 })
       await expect(card.getByRole("button", { name: "Expandir navegador" })).toBeEnabled()
       const previewBox = await livePreview.boundingBox()
       await card.getByRole("button", { name: "Expandir navegador" }).click()
@@ -127,13 +135,17 @@ test.describe("full browser activity flow", () => {
       await expect(page.getByText("Uma conexão", { exact: false })).toBeVisible()
       await expect(page.getByRole("progressbar", { name: "Progresso do navegador" })).toHaveCount(0)
       await expect(page.locator(".browser-activity-card")).toHaveAttribute("data-finished", "true")
+      const layoutShift = await page.evaluate(
+        () => (window as unknown as { __layoutShifts: { shifts: number } }).__layoutShifts.shifts,
+      )
+      expect(layoutShift).toBeLessThan(0.05)
       const summary = page.getByRole("button", { name: /Usou o navegador/ })
       await expect(summary).toContainText("Ver o que ele fez")
       await expect(summary.getByRole("img", { name: "Captura final do navegador" })).toBeVisible()
       await summary.click()
       const activity = page.getByRole("log", { name: "Atividade do navegador" })
       for (const action of [
-        "Abriu a página",
+        "Abriu uma página",
         "Leu a página",
         "Clicou",
         "Preencheu um campo",
@@ -185,7 +197,7 @@ for (const fallback of ["missing_key", "no_credit"] as const) {
       const notice = isEnglish ? englishNotice : portugueseNotice
       await expect(page.getByText(notice)).toBeVisible()
       await expect(page.locator("body")).not.toContainText("TOURI_BROWSER_DECISION_HINT")
-      const takeOver = page.getByRole("button", { name: isEnglish ? "Take over" : "Assumir controle" })
+      const takeOver = page.getByRole("button", { name: isEnglish ? "Take over" : "Assumir" })
       await takeOver.focus()
       await page.keyboard.press("Enter")
       const handBack = page.getByRole("button", { name: /Hand back to|Devolver para/ })

@@ -704,6 +704,7 @@ export const Composer = ({
       {browserWorking && (
         <BrowserWorkingStatus
           name={browserBotName ?? bot?.name ?? "touri"}
+          botId={bot?.id}
           locale={locale}
           onStop={activeRun ? () => void onCancel(activeRun.id) : undefined}
         />

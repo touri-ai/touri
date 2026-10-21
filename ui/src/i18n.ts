@@ -603,15 +603,30 @@ export const ptBR = {
   "See what it did": "Ver o que ele fez",
   "Collapse browser card": "Recolher cartão do navegador",
   "Expand browser card": "Expandir cartão do navegador",
-  "Stop browser task": "Parar tarefa no navegador",
   "Browser preview unavailable. Open the browser to reconnect.":
     "Prévia do navegador indisponível. Abra o navegador para reconectar.",
   "Open browser": "Abrir navegador",
   "Browser for {name}": "Navegador do {name}",
   "{name} is working · In the browser": "{name} está trabalhando · No navegador",
+  "Stop {name}": "Parar o {name}",
+  "You are in control · {name} paused": "Você está no controle · {name} pausado",
+  "Take over tab": "Assumir",
+  "Preparing the browser…": "Preparando o navegador…",
+  "The browser is taking longer than expected. Trying to reconnect…":
+    "O navegador está demorando mais que o esperado. Tentando reconectar…",
+  "Why {name} stopped": "Por que o {name} parou",
+  "{name} paused so you can handle this step in the browser.":
+    "O {name} pausou para você cuidar deste passo no navegador.",
+  "What you type here does not go to the chat or to {name}.":
+    "O que você digita aqui não vai para o chat nem para o {name}.",
+  "Preview hidden while you are in control.": "Prévia oculta enquanto você está no controle.",
+  "Show all": "Ver tudo",
+  "Show fewer": "Ver menos",
+  "in progress": "em andamento",
+  finished: "terminou",
   "Used the browser · 1 action": "Usou o navegador · 1 ação",
   "Used the browser · {count} actions": "Usou o navegador · {count} ações",
-  "Opened a page": "Abriu a página",
+  "Opened a page": "Abriu uma página",
   "Read the page": "Leu a página",
   "Clicked {target}": "Clicou em {target}",
   "Clicked an element": "Clicou em um elemento",
@@ -640,7 +655,6 @@ export const ptBR = {
   "Collapse browser view": "Recolher navegador",
   "Browser activity": "Atividade do navegador",
   "Showing the latest {count} browser actions": "Exibindo as últimas {count} ações do navegador",
-  "You have control of this browser tab.": "Você está no controle desta aba do navegador.",
   "Travel search fixture": "Busca de viagem de teste",
   "Local browser fixture": "Navegador de teste local",
   "Start travel search": "Iniciar busca de viagem",
@@ -2803,6 +2817,7 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Take over tab": "Take over",
   "Aviso de bot pausado": "Paused bot notice",
   "{name} está pausado": "{name} is paused",
   "Bots pausados não respondem mensagens. Retome o bot para começar a conversa.":

@@ -179,6 +179,36 @@ test("host browser polling sends images to the worker and stays serial", async (
   expect(request).not.toHaveBeenCalledWith("POST /bots/:id/desktop", expect.anything(), expect.anything())
 })
 
+test("refresh grabs a frame right after an action but never faster than the minimum interval", async () => {
+  vi.useFakeTimers()
+  installPreviewWorker()
+  const request = vi.fn(async (route: string) =>
+    route === "GET /browser/tabs"
+      ? { tabs: [] }
+      : { title: "Página", url: "https://example.org", image: "data:image/jpeg;base64,aGVsbG8=" },
+  )
+  const api = { request, subscribe: () => () => {}, isMock: false } as UiApi
+  const frame = vi.fn()
+  const stop = startInlineFrameSource(api, { id: "host", machine: "local" } as Bot, "tab", frame, vi.fn(), undefined, {
+    intervalMs: 3_000,
+  })
+  await vi.advanceTimersByTimeAsync(0)
+  expect(frame).toHaveBeenCalledTimes(1)
+
+  stop.refresh()
+  await vi.advanceTimersByTimeAsync(0)
+  expect(frame).toHaveBeenCalledTimes(1)
+
+  await vi.advanceTimersByTimeAsync(900)
+  stop.refresh()
+  await vi.advanceTimersByTimeAsync(0)
+  expect(frame).toHaveBeenCalledTimes(2)
+  stop()
+  stop.refresh()
+  await vi.advanceTimersByTimeAsync(5_000)
+  expect(frame).toHaveBeenCalledTimes(2)
+})
+
 test("a VM session request that never answers reports the cause after 20 s", async () => {
   vi.useFakeTimers()
   const api = {

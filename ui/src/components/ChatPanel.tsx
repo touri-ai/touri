@@ -73,8 +73,8 @@ import { useInsertedIds } from "./Motion"
 import { mascotSignalFor } from "./mascotState"
 import { ToolCallList } from "./ToolCallList"
 import { ToolText } from "./ToolOutput"
-import { TurnActivity } from "./TurnActivity"
-import { toolStatus } from "./toolPresentation"
+import { BrowserTurnCard, TurnActivity } from "./TurnActivity"
+import { toolIdentity, toolStatus } from "./toolPresentation"
 import { approvalTools, assistantSegments } from "./turnActivityModel"
 import { type EditMessage, UserMessageEdit } from "./UserMessageEdit"
 import { usePhoneViewport } from "./usePhoneViewport"
@@ -723,9 +723,17 @@ const MessageBubble = ({
   const markdown = messageMarkdown(message)
   const text = message.role === "assistant" ? markdown.replace(connectDataMarker, "") : markdown
   const segments = message.role === "assistant" ? assistantSegments({ ...message, parts }) : []
-  const quietBrowserNarration =
-    message.role === "assistant" && message.status === "streaming" && getBrowserActivityTools(parts).length > 0
+  const hasBrowserTools = message.role === "assistant" && getBrowserActivityTools(parts).length > 0
+  const quietBrowserNarration = hasBrowserTools && message.status === "streaming"
+  const foldBrowserFlow = hasBrowserTools && message.status !== "streaming"
   const finalText = segments.filter((segment) => segment.type === "text").at(-1)
+  const senderName = message.sender?.name ?? bot?.name ?? "touri"
+  const renderBrowserSteps = (key: string, count: number) => (
+    <p className="browser-steps" key={key}>
+      <span aria-hidden="true">✓</span>
+      {t(count === 1 ? "Used the browser" : "Used the browser · {count} actions", { count })}
+    </p>
+  )
   const technicalNotice =
     message.role === "system" &&
     message.parts.some((part) => part.type === "notice" && part.code === "session_replaced")
@@ -913,6 +921,11 @@ const MessageBubble = ({
           <time dateTime={new Date(message.createdAt).toISOString()}>
             {new Date(message.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
           </time>
+          {hasBrowserTools && (
+            <span className="browser-run-state" role="status">
+              {t(quietBrowserNarration ? "in progress" : "finished")}
+            </span>
+          )}
           {message.role === "user" && message.delivery && (
             <span className="delivery-state" role="status">
               {deliveryLabels[message.delivery.status]}
@@ -927,14 +940,17 @@ const MessageBubble = ({
       )}
       {message.role === "assistant" ? (
         segments.map((segment) => {
+          if (segment.type === "browser-steps")
+            return quietBrowserNarration ? renderBrowserSteps(segment.key, segment.count) : null
           if (segment.type === "text") {
+            if (foldBrowserFlow && segment !== finalText) return null
             const answer = renderAnswer(segment.text, segment === finalText)
             if (!quietBrowserNarration) return <Fragment key={segment.key}>{answer}</Fragment>
             if (!answer) return null
 
             return (
               <div className="browser-narration" key={segment.key}>
-                <strong>{message.sender?.name ?? bot?.name ?? "touri"}:</strong>
+                <strong>{senderName}:</strong>
                 {answer}
               </div>
             )
@@ -965,6 +981,22 @@ const MessageBubble = ({
               bot={bot}
               onCancel={onCancel}
               preparingEnvironment={Boolean(vmBotId)}
+              hideBrowserCard={quietBrowserNarration}
+              browserFlow={
+                foldBrowserFlow
+                  ? segments.map((flow) => {
+                      if (flow.type === "browser-steps") return renderBrowserSteps(flow.key, flow.count)
+                      if (flow.type !== "text" || flow === finalText) return null
+
+                      return (
+                        <div className="browser-narration" key={flow.key}>
+                          <strong>{senderName}:</strong>
+                          <MarkdownContent content={flow.text.replace(connectDataMarker, "")} />
+                        </div>
+                      )
+                    })
+                  : undefined
+              }
               onFocusApproval={(approvalId) => {
                 const card = Array.from(root.current?.querySelectorAll<HTMLElement>("[data-approval-id]") ?? []).find(
                   (element) => element.dataset.approvalId === approvalId,
@@ -991,6 +1023,7 @@ const MessageBubble = ({
           <MarkdownContent content={message.role === "system" ? localizeNotice(text) : text} />
         )
       ) : null}
+      {quietBrowserNarration && <BrowserTurnCard message={{ ...message, parts }} bot={bot} />}
       {message.role !== "assistant" && !routinePrompt && (
         <MessageAttachments parts={parts.filter((part) => part.type === "image" || part.type === "file")} api={api} />
       )}
@@ -1010,7 +1043,9 @@ const MessageBubble = ({
           onResolved={(approvalId, decision) => setAnswers((current) => ({ ...current, [approvalId]: decision }))}
         />
       )}
-      {parts.some(screenTool) && (
+      {parts.some(
+        (part) => part.type === "tool_call" && screenTool(part) && toolIdentity(part.tool).kind !== "browser",
+      ) && (
         <ChatDisclosure label={t("Advanced computer view")}>
           <InlineLivePreview parts={parts} finished={message.status !== "streaming"} />
         </ChatDisclosure>
