@@ -12,7 +12,7 @@
     :is(.sidebar-icon-button, .bot-settings, .bot-row-menu, .thread-row-menu, .sidebar-brand, .sidebar-bots-link) {
     flex-shrink: 0;
   }
-  .activity-mark {
+  :root body .activity-mark {
     --activity-line: var(--touch-target-size);
   }
   :is(

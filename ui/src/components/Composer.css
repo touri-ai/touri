@@ -14,7 +14,7 @@
     0 0 0 2px var(--focus-soft),
     var(--elevation-card);
 }
-.composer-island textarea {
+.composer.composer-island textarea {
   field-sizing: content;
   width: 100%;
   min-height: 38px;
@@ -28,7 +28,7 @@
   scrollbar-color: var(--scrollbar-chat) transparent;
 }
 @supports (field-sizing: content) {
-  .composer-island textarea {
+  .composer.composer-island textarea {
     height: auto;
     overflow-y: auto;
     transition: none;
@@ -304,7 +304,7 @@
   }
 }
 @media (max-width: 620px) {
-  .composer-island textarea {
+  .composer.composer-island textarea {
     min-height: var(--touch-target-size);
   }
   .composer-island .composer-footer {
@@ -347,7 +347,7 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .composer-island textarea {
+  .composer.composer-island textarea {
     transition: none;
   }
 }

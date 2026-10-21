@@ -190,6 +190,12 @@
   width: 100%;
 }
 
+@media (min-width: 621px) {
+  .composer-island .composer-tools-left {
+    flex-wrap: wrap;
+  }
+}
+
 @media (max-width: 620px) {
   .composer.composer-island .model-picker-anchor {
     grid-column: auto;

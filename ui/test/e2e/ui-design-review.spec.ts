@@ -31,8 +31,14 @@ test.describe("phone layout review", () => {
     expect(textBounds).not.toBeNull()
     if (!textBounds) throw new Error("Missing composer input")
     expect(textBounds.height).toBeGreaterThanOrEqual(44)
+    const controlSelectors = [
+      ".composer-tools-left",
+      ".model-picker-trigger.composer-model",
+      ".composer-project",
+      ".composer-actions",
+    ]
     const controlCenters = await Promise.all(
-      [".composer-tools-left", ".composer-model", ".composer-project", ".composer-actions"].map((selector) =>
+      controlSelectors.map((selector) =>
         composer.locator(selector).evaluate((element) => {
           const bounds = element.getBoundingClientRect()
           return bounds.top + bounds.height / 2
@@ -59,7 +65,9 @@ test.describe("phone layout review", () => {
   test("file approval shows one useful explanation when file details are missing", async ({ page }) => {
     await page.goto("/test/e2e/approval-harness.html?scene=unknown")
 
-    await expect(page.locator(".tool-summary")).toContainText("não informou quais arquivos")
+    await expect(
+      page.getByText("O provedor não informou quais arquivos serão consultados.", { exact: true }),
+    ).toHaveCount(1)
     await expect(page.locator(".tool-approval-unknown")).toHaveCount(0)
   })
 })
