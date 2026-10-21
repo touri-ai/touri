@@ -73,7 +73,9 @@ test("a legacy cloud head survives preview changes, saving settings and reopenin
 
   await dialog.getByRole("button", { name: "Salvar configurações", exact: true }).click()
   await expect(dialog).toHaveCount(0)
-  await expect(page.locator('.bot-row-main [data-bot-id="bot-mark"] [data-avatar-body]')).toHaveAttribute("d", head)
+  await expect(
+    page.locator('#sidebar-mode-panel-bots .bot-row-main [data-bot-id="bot-mark"] [data-avatar-body]'),
+  ).toHaveAttribute("d", head)
   const saved = await page.evaluate(() => {
     const fixtureWindow = window as AvatarFixtureWindow
     const bot = fixtureWindow.groupsQa.api.getState().bots.find((candidate) => candidate.id === "bot-mark")

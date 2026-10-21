@@ -235,6 +235,7 @@ describe("browser card in a channel", () => {
 
     expect(screen.queryByRole("img", { name: "Página atual do navegador" })).toBeNull()
     expect(screen.getByText("Prévia oculta para o canal enquanto Ana digita")).toBeVisible()
+    expect(screen.queryByText("Este navegador está sob seu controle.")).toBeNull()
   })
 
   test("shows the queued request below the card", () => {

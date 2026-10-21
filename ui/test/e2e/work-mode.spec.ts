@@ -260,6 +260,7 @@ for (const viewport of [
         await expect(card.getByText("Prévia oculta para o canal enquanto Ana digita")).toBeVisible()
         await expect(card.locator(".browser-activity-preview img, .browser-activity-preview canvas")).toHaveCount(0)
         await expect(page.locator(".composer-browser-status")).toContainText("Ana está no controle")
+        await expect(card.getByText("Este navegador está sob seu controle.")).toHaveCount(0)
       }
       if (mode === "finished") {
         await expect(card.getByRole("button", { name: /Usou o navegador · 4 ações/ })).toBeVisible()

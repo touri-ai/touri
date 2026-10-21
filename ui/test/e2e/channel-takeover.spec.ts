@@ -31,6 +31,7 @@ test("a channel browser handback resumes the bot and posts its answer in the sam
   await composer.press("Enter")
 
   await expect(messages.getByText("O portal de demonstração pediu login para continuar.")).toBeVisible()
+  await page.getByRole("tab", { name: /^Bots,/ }).click()
   await page.locator('[data-bot-entry="bot-onb"] .bot-row-main').click()
   await expect(page.getByRole("textbox", { name: "Mensagem para onb" })).toBeVisible()
   await expect(page.locator(".browser-activity-card")).toHaveCount(0)

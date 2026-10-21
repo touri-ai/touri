@@ -222,18 +222,20 @@ const scrollToEnd = (list: HTMLElement, programmaticTop: { current: number | nul
   programmaticTop.current = list.scrollTop
 }
 
+const emptyRuns: Run[] = []
+
 export const VirtualMessageList = ({
   vmBotId,
   currentPersonId = "owner",
   machine,
   focusApproval,
-  messages,
+  messages: sourceMessages,
   api,
-  runs = [],
+  runs = emptyRuns,
   mainThread = false,
   routines = [],
   routineRuns = [],
-  allMessages = messages,
+  allMessages = sourceMessages,
   onSwitchBranch,
   onRetry,
   onEdit,
@@ -242,6 +244,7 @@ export const VirtualMessageList = ({
   header,
   timelineCards = emptyTimelineCards,
 }: VirtualMessageListProps) => {
+  const messages = useMemo(() => getBrowserRequestMessages(sourceMessages, runs), [sourceMessages, runs])
   const locale = getDocumentLocale(document.documentElement)
   const browserContinuations = useMemo(() => getBrowserContinuationActivities(messages, runs), [messages, runs])
   // r8 motion: immutable IDs drive text entry, never streaming tokens or status/cards.

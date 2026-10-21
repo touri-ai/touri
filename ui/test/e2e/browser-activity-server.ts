@@ -257,16 +257,10 @@ const server = Bun.serve({
       })
     }
     if (step === "read" && shouldRefreshPublicPage) {
-      // The scripted bot revisits its known public search page after a manual handback.
-      const navigation = await engine.navigate({
-        tabId,
-        botId: ctx.botId,
-        url: fixtureUrl,
-        action: "goto",
-        signal: ctx.signal,
-        timeoutMs: 30_000,
-      })
+      // Continue in a fresh public tab; the document used for private input stays protected.
+      const navigation = await engine.open({ url: fixtureUrl, ctx, timeoutMs: 30_000 })
       if (!navigation.success) return Response.json({ error: navigation.error }, { status: 500 })
+      tabId = (navigation.structured as BrowserSnapshot).tabId
       shouldRefreshPublicPage = false
     }
     const command = commands[step]
@@ -288,7 +282,7 @@ const server = Bun.serve({
       inputJson: JSON.stringify(command.args),
       outputJson: JSON.stringify({
         content,
-        ...(step === "open" ? { structured: { tabId } } : {}),
+        structured: { tabId },
       }),
       ...(step === "screenshot" && finalImage
         ? { outputAttachmentId: "browser-flow-final-screenshot", outputBytes: Math.floor((finalImage.length * 3) / 4) }

@@ -772,7 +772,7 @@ const getTakeoverReasonCopy = (reason: BrowserTakeoverReason, locale: Locale): s
   if (reason === "payment")
     return t("The site asked you to review a purchase or payment before continuing.", {}, locale)
   if (reason === "form_submit") return t("The site asked you to submit a form before continuing.", {}, locale)
-  if (reason === "requested") return t("This browser is under your control now.", {}, locale)
+  if (reason === "requested") return t("A person is controlling this browser tab; the bot is paused.", {}, locale)
 
   return t("The site needs your confirmation before continuing.", {}, locale)
 }

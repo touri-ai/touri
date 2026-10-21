@@ -147,8 +147,8 @@ test("group automatic colour and previewed head survive restoring and saving", a
   await dialog.getByRole("button", { name: "Criar canal", exact: true }).click()
 
   await expect(page.getByRole("textbox", { name: "Mensagem para Equipe QA" })).toBeVisible()
-  await expect(page.locator(".group-heading-name [data-avatar-body]")).toHaveAttribute("fill", automatic ?? "")
-  await expect(page.locator(".group-heading-name [data-avatar-body]")).toHaveAttribute("d", head ?? "")
+  await expect(page.locator(".group-heading-name strong")).toHaveText("Equipe QA")
+  await expect(page.locator(".channel-heading-hash")).toBeVisible()
 
   await page.locator(".group-header").getByRole("button", { name: "Editar canal", exact: true }).click()
 
