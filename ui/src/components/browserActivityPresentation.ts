@@ -89,6 +89,14 @@ export const hasBrowserTakeoverRequest = (parts: readonly ToolCallPart[]): boole
       getBrowserAction(part) === "request_takeover" || part.outputJson?.includes('"waiting_for_person"') === true,
   )
 
+export const isBrowserActivityOpening = (parts: readonly ToolCallPart[]): boolean =>
+  parts.some(
+    (part) =>
+      getBrowserAction(part) === "open" &&
+      isBrowserActivityRunning(part) &&
+      typeof (getOutputTabId(part) ?? getArgs(part)?.tabId) !== "string",
+  )
+
 export const getBrowserActivityTabId = (parts: readonly ToolCallPart[]): string | undefined => {
   const latest = parts.reduceRight<ToolCallPart | undefined>((latest, part) => {
     if (latest) return latest

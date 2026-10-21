@@ -781,6 +781,23 @@ test("keeps polling until the browser tab resolves", async () => {
   await waitFor(() => expect(screen.getByRole("button", { name: "Assumir" })).toBeEnabled(), { timeout: 5_000 })
 })
 
+test("does not offer an older bot tab while a new browser opening is pending", async () => {
+  const parts = [
+    getPart({
+      callId: "pending-open",
+      tool: "browser_open",
+      inputJson: '{"url":"https://travel.example.test/new-search"}',
+      ok: null,
+    }),
+  ]
+  renderCard(parts, false)
+
+  await act(async () => {})
+
+  expect(screen.getByRole("button", { name: "Assumir" })).toBeDisabled()
+  expect(startInlineFrameSource).not.toHaveBeenCalled()
+})
+
 test("highlights the running step and shows one sanitized URL in the live subtitle", () => {
   const parts = [
     getPart({ callId: "open", tool: "browser_open", startedAt: 9_999_999_999_000, inputJson: "{}" }),

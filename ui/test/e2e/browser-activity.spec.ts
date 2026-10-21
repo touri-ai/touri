@@ -150,6 +150,11 @@ test.describe("full browser activity flow", () => {
       await expect(remoteScreen).toBeVisible()
       await expect(privacy).toBeVisible()
       await expect(privacy).toHaveCSS("position", "sticky")
+      await remoteScreen.scrollIntoViewIfNeeded()
+      await remoteScreen.evaluate(
+        () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+      )
+      await expect(page.getByRole("button", { name: "Digitar no navegador" })).toBeEnabled()
       await remoteScreen.click()
       await expect
         .poll(() =>

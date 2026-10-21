@@ -31,6 +31,7 @@ import {
   getBrowserActivityTools,
   getBrowserTakeoverReason,
   hasBrowserTakeoverRequest,
+  isBrowserActivityOpening,
   isBrowserActivityRunning,
   isBrowserRequestQueued,
 } from "./browserActivityPresentation"
@@ -101,9 +102,12 @@ export const BrowserActivityCard = ({
   const hasTakeoverRequest = hasBrowserTakeoverRequest(browserTools)
   const queued = isBrowserRequestQueued(browserTools, runId)
   const tabId = getBrowserActivityTabId(browserTools)
+  const opening = isBrowserActivityOpening(browserTools)
   const resolutionCallId = tabId ? "" : (browserTools.at(-1)?.callId ?? "")
   const [resolvedTab, setResolvedTab] = useState<{ callId: string; tabId: string }>()
-  const activeTabId = tabId ?? (resolvedTab?.callId === resolutionCallId ? resolvedTab.tabId : undefined)
+  const activeTabId = opening
+    ? undefined
+    : (tabId ?? (resolvedTab?.callId === resolutionCallId ? resolvedTab.tabId : undefined))
   const [previewFrame, setPreviewFrame] = useState<{ tabId: string; frame: PreviewFrame }>()
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [heldTab, setHeldTab] = useState<{
@@ -203,6 +207,7 @@ export const BrowserActivityCard = ({
     if (
       !api ||
       !botId ||
+      opening ||
       queued ||
       (sourceFinished && !hasTakeoverRequest && !waitingForPerson && !heldRef.current && !takeoverSession && !resuming)
     )
@@ -275,6 +280,7 @@ export const BrowserActivityCard = ({
   }, [
     api,
     botId,
+    opening,
     sourceFinished,
     hasTakeoverRequest,
     resolutionCallId,
