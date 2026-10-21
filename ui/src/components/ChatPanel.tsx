@@ -152,6 +152,7 @@ type VirtualMessageListProps = {
   timelineCards?: Array<{ id: string; createdAt: number; content: ReactNode }>
 }
 const emptyTimelineCards: NonNullable<VirtualMessageListProps["timelineCards"]> = []
+const emptyRuns: Run[] = []
 
 export const activeMessagePath = (messages: Array<Message>, leafId: Id | null): Array<Message> => {
   if (!leafId) return messages
@@ -218,7 +219,7 @@ export const VirtualMessageList = ({
   focusApproval,
   messages: sourceMessages,
   api,
-  runs = [],
+  runs = emptyRuns,
   mainThread = false,
   routines = [],
   routineRuns = [],
