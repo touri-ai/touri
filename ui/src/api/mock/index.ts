@@ -1168,7 +1168,16 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
             threadId: message.threadId,
             messageId: message.id,
             snippet: message.text.slice(0, 512),
-            thread: findThread(message.threadId),
+            thread:
+              threads
+                .filter((thread) => thread.id === message.threadId)
+                .map((thread) => ({
+                  id: thread.id,
+                  botId: thread.botId,
+                  title: thread.title,
+                  createdAt: thread.createdAt,
+                  archivedAt: thread.archivedAt,
+                }))[0] ?? null,
           })),
       } as ApiRoutes[typeof route]["res"]
     }

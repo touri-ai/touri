@@ -798,7 +798,7 @@ export type ApiRoutes = {
   'POST /runs/:id/cancel': { req: {}; res: { run: Run } }
   'POST /runs/:id/retry': { req: {}; res: { run: Run } }
   'POST /approvals/:id': { req: { decision: 'approved' | 'denied'; standing?: boolean }; res: {} }
-  'GET /search': { req: { q: string; botId?: Id }; res: { hits: Array<{ threadId: Id; messageId: Id; snippet: string; thread?: Thread | null }> } }
+  'GET /search': { req: { q: string; botId?: Id }; res: { hits: Array<{ threadId: Id; messageId: Id; snippet: string; thread?: Pick<Thread, 'id' | 'botId' | 'title' | 'createdAt' | 'archivedAt'> | null }> } }
   'POST /attachments': { req: { grantId: string } | { path: AbsolutePath }; res: { attachment: Attachment } }
   'GET /attachments/:id': { req: {}; res: Blob }
   'GET /routines': { req: { botId?: Id }; res: { routines: Array<Routine>; host?: 'mac' | 'server' } }

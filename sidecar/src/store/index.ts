@@ -1995,7 +1995,7 @@ export const init = async (
             ...(personScope ? { personScope } : {}),
           })
           return jsonResponse(200, {
-            hits: hits.map((hit) => ({ ...hit, thread: getThread({ threadId: hit.threadId, includeArchived: true }) })),
+            hits: hits.map((hit) => ({ ...hit, thread: getSearchThread(database, hit.threadId) })),
           })
         },
       },
@@ -2111,4 +2111,19 @@ export const init = async (
 
 function getPrivateThreadScope(person?: DevicePerson): Array<string | number> {
   return [person?.role === "member" ? 0 : 1, person?.id ?? "", person?.id ?? ""]
+}
+
+function getSearchThread(database: Database, threadId: string) {
+  const row = database
+    .query("SELECT id, bot_id, title, created_at, archived_at FROM threads WHERE id = ?")
+    .get(threadId) as {
+    id: string
+    bot_id: string
+    title: string
+    created_at: number
+    archived_at: number | null
+  } | null
+  if (!row) return null
+
+  return { id: row.id, botId: row.bot_id, title: row.title, createdAt: row.created_at, archivedAt: row.archived_at }
 }
