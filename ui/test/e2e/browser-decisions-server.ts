@@ -167,6 +167,7 @@ const server = Bun.serve({
           content: result?.success
             ? (result.content ?? [])
             : [{ type: "text", text: `ERROR ${result?.errorCode}: ${result?.error}` }],
+          ...(result?.structured ? { structured: result.structured } : {}),
         }),
         ok: result?.success ?? false,
       },

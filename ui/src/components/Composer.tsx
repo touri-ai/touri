@@ -5,6 +5,7 @@ import type { UiApi } from "../api/client"
 import { attachmentAccept, maxAttachmentBytes } from "../attachmentFiles"
 import { composerKeyAction } from "../composerKeys"
 import { userFacingError } from "../errors"
+import { ChannelComposerChip } from "../features/channelBrowser/ChannelBrowser"
 import { useCloudAccount } from "../features/cloud/useCloudAccount"
 import { useIsServerMode } from "../features/server/serverMode"
 import { dropRejectionMessage, type FileDrop, listenForFileDrops } from "../fileDrops"
@@ -391,7 +392,7 @@ export const Composer = ({
     }
   }
   const hasContent = Boolean(draft.trim() || files.length)
-  const showStop = Boolean(activeRun && !hasContent && !sending)
+  const showStop = Boolean(activeRun && !hasContent && !sending && !browserWorking)
   const composer = (
     <form
       ref={island}
@@ -641,7 +642,7 @@ export const Composer = ({
             onActiveChange={setDictating}
             onTranscript={(text) => onDraft(getDraftWithTranscript(draftRef.current, text))}
           />
-          {activeRun && !showStop && (
+          {activeRun && !showStop && !browserWorking && (
             <button
               type="button"
               className={stopping ? "composer-stop" : "composer-icon"}
@@ -701,9 +702,13 @@ export const Composer = ({
     <>
       {notice && <ComposerNotice {...notice} api={api} active={Boolean(activeRun)} loginFlowShown={login.blocked} />}
       {browserWorking && (
-        <div className="composer-browser-status" role="status">
-          {t("{name} is working · In the browser", { name: browserBotName ?? bot?.name ?? "touri" }, locale)}
-        </div>
+        <ChannelComposerChip
+          botName={browserBotName ?? bot?.name ?? "touri"}
+          botId={bot?.id}
+          onStop={() => void stop()}
+          stopping={stopping}
+          locale={locale}
+        />
       )}
       {composer}
     </>

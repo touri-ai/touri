@@ -2,6 +2,7 @@ import type { AvatarShape, Bot, BotGroup, GroupInput, Message, Run, Thread } fro
 import { avatarColorFor, avatarProfileFor } from "@touri/contracts/avatar"
 import { memo, useEffect, useMemo, useRef, useState } from "react"
 import { userFacingError } from "../errors"
+import { ChannelHeaderChip, ChannelWorkingMarker } from "../features/channelBrowser/ChannelBrowser"
 import { type Locale, t } from "../i18n"
 import { AvatarPicker } from "./AvatarPicker"
 import { BotAvatar } from "./BotAvatar"
@@ -12,6 +13,7 @@ import { SidebarCount, SidebarDot, SidebarRow } from "./SidebarRow"
 import "./groups.css"
 
 const EMPTY_BOTS: Bot[] = []
+const EMPTY_WORKING_BOTS: string[] = []
 const EMPTY_THREADS: Thread[] = []
 
 export const MemberMascots = ({ bots, locale = "pt-BR" }: { bots: Bot[]; locale?: Locale }) => (
@@ -46,6 +48,7 @@ export const GroupSidebar = memo(
     bots = EMPTY_BOTS,
     threads,
     attentionThreadIds = new Set(),
+    channelWorking,
     selectedThreadId,
     onSelect,
     onCreate,
@@ -58,6 +61,7 @@ export const GroupSidebar = memo(
     groups: BotGroup[]
     bots?: Bot[]
     threads: Thread[]
+    channelWorking?: Record<string, string[]> | undefined
     attentionThreadIds?: ReadonlySet<string>
     selectedThreadId: string | null
     onSelect: (id: string) => void
@@ -142,6 +146,7 @@ export const GroupSidebar = memo(
               onEdit={onEdit}
               onNewThread={onNewThread}
               onDelete={onDelete}
+              workingBots={channelWorking?.[group.id] ?? EMPTY_WORKING_BOTS}
               locale={locale}
             />
           )
@@ -180,6 +185,7 @@ const GroupSidebarEntry = memo(
     unread,
     selectedUnread,
     needsAttention,
+    workingBots,
     selected,
     selectedThreadId,
     onSelect,
@@ -195,6 +201,7 @@ const GroupSidebarEntry = memo(
     unread: number
     selectedUnread: number
     needsAttention: boolean
+    workingBots: string[]
     selected: boolean
     selectedThreadId: string | null
     onSelect: (id: string) => void
@@ -238,7 +245,12 @@ const GroupSidebarEntry = memo(
               </span>
             </>
           }
-          label={<span className="channel-name">{group.name}</span>}
+          label={
+            <>
+              <span className="channel-name">{group.name}</span>
+              <ChannelWorkingMarker names={workingBots} locale={locale} />
+            </>
+          }
           trailing={
             needsAttention ? (
               <SidebarDot tone="waiting" label={attentionLabel} />
@@ -529,6 +541,7 @@ export const GroupHeader = ({
           </span>
         </div>
       </div>
+      <ChannelHeaderChip locale={locale} />
       {!channelMode && (
         <div className="group-header-members">
           <MemberMascots bots={bots} locale={locale} />

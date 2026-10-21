@@ -6,6 +6,9 @@ import type {
   BrowserRef,
   BrowserSnapshot,
   BrowserTabInfo,
+  BrowserTakeoverCapture,
+  BrowserTakeoverInput,
+  BrowserTakeoverReason,
   BrowserTarget,
   EpochMs,
   Id,
@@ -96,6 +99,9 @@ export type BrowserTabRow = {
   title: string
   state: "live" | "unloaded" | "closed"
   held_by_user: number
+  private_after_takeover: number
+  takeover_reason: BrowserTakeoverReason | null
+  private_input: number
   created_at: EpochMs
   last_used_at: EpochMs
 }
@@ -111,13 +117,21 @@ export type TabState = {
   diagnostics: Array<BrowserDiagnostic>
   navigationVersion: number
   secretMode: boolean
+  privateAfterTakeover: boolean
+  takeoverReason: BrowserTakeoverReason | null
+  privateInput: boolean
   dialog: { type: "alert" | "confirm" | "prompt" | "beforeunload"; message: string } | null
   lastFailureKey: string | null
   failureCount: number
   queue: Promise<void>
   takeover: {
-    resolve: (() => void) | null
+    requestId: string | null
+    botId: Id | null
+    threadId: Id | null
+    runId: Id | null
     timer: ReturnType<typeof setTimeout> | null
+    signal?: AbortSignal
+    onAbort?: () => void
   } | null
   handbackNote: string | null
   lastSnapshot: BrowserSnapshot | null
@@ -131,6 +145,16 @@ export type BrowserEngine = {
     tabId?: Id
     signal: AbortSignal
   }) => Promise<{ title: string; url: string; image: string } | null>
+  takeoverFrame: (args: { tabId: Id; botId: Id; signal: AbortSignal }) => Promise<BrowserTakeoverCapture | null>
+  takeoverInput: (args: {
+    tabId: Id
+    botId: Id
+    targetEpoch: number
+    width: number
+    height: number
+    input: BrowserTakeoverInput
+    signal: AbortSignal
+  }) => Promise<boolean>
   open: (args: { url: string; ctx: ToolContext; timeoutMs: number }) => Promise<ToolResult>
   list: (args: { botId: Id | null; signal?: AbortSignal; timeoutMs?: number }) => Promise<ToolResult>
   close: (args: { tabId: Id; botId: Id; signal: AbortSignal; timeoutMs?: number }) => Promise<ToolResult>
@@ -226,8 +250,12 @@ export type BrowserEngine = {
     tabId: Id
     botId: Id
     reason: string
+    reasonCode?: BrowserTakeoverReason
     timeoutMs: number
     signal: AbortSignal
+    notify?: boolean
+    threadId?: Id
+    runId?: Id | null
   }) => Promise<ToolResult>
   submitSecret: (args: {
     tabId: Id

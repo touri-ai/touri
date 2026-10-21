@@ -1,0 +1,100 @@
+import type { Database } from "bun:sqlite"
+import { afterEach, expect, test } from "bun:test"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import type { Run, ToolContext } from "@touri/contracts"
+import { createChannelBrowserRuns, getNextChannelBrowserRun } from "../../src/browser/channel-runs"
+import { createKernel } from "../../src/kernel"
+
+const cleanups = new Set<() => void>()
+
+afterEach(() => {
+  cleanups.forEach((cleanup) => {
+    cleanup()
+  })
+  cleanups.clear()
+})
+
+const getFixture = () => {
+  const root = mkdtempSync(join(tmpdir(), "touri-browser-bot-queue-"))
+  const runtime = createKernel({ appData: root })
+  const database = runtime.kernel.db as Database
+  runtime.kernel.services.provide("work.personChannelIds", () => ["team"])
+  runtime.kernel.services.provide("work.defaultPersonId", () => "owner")
+  database.exec(`
+    INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at)
+      VALUES ('leo','Léo','codex','/tmp/fixture-leo',1,1), ('bia','Bia','codex','/tmp/fixture-bia',1,1);
+    INSERT INTO bot_groups(id,name,color,avatar_shape,avatar_seed,created_at,updated_at)
+      VALUES ('team','Equipe','#888888','circle','team',1,1);
+    INSERT INTO threads(id,bot_id,title,created_at,updated_at,group_id)
+      VALUES ('channel-a','leo','Canal A',1,1,'team'), ('channel-b','leo','Canal B',1,1,'team'),
+        ('dm','leo','Conversa',1,1,NULL);
+    INSERT INTO threads(id,bot_id,title,created_at,updated_at,group_id,group_thread_id)
+      VALUES ('session-a','leo','Canal A',1,1,'team','channel-a'),
+        ('session-b','leo','Canal B',1,1,'team','channel-b'), ('session-bia','bia','Canal A',1,1,'team','channel-a');
+  `)
+  const runs = createChannelBrowserRuns({ kernel: runtime.kernel, database })
+  cleanups.add(() => {
+    runs.dispose()
+    runtime.stop()
+    rmSync(root, { recursive: true, force: true })
+  })
+  const enter = (runId: string, botId: string, threadId: string) => {
+    database
+      .query(`INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at,requester_person_id)
+      VALUES (?, ?, ?, 'codex', 'user', 'running', 1, 'ana')`)
+      .run(runId, threadId, botId)
+    const ctx: ToolContext = {
+      runId,
+      botId,
+      threadId,
+      projectId: null,
+      cwd: "/tmp",
+      signal: new AbortController().signal,
+    }
+    return runs.enter(ctx)
+  }
+  const finish = (runId: string) => {
+    const row = database.query("SELECT * FROM runs WHERE id = ?").get(runId)
+    if (!row) throw new Error("Missing fixture run")
+
+    const run = { id: runId, status: "succeeded" } as Run
+    runtime.kernel.publish({ type: "run.updated", run })
+  }
+
+  return { runs, enter, finish }
+}
+
+test("one bot waits across channels and direct messages while another bot works", async () => {
+  const fixture = getFixture()
+  await fixture.enter("first", "leo", "session-a")
+
+  const second = fixture.enter("second", "leo", "session-b")
+  const third = fixture.enter("third", "leo", "dm")
+  await fixture.enter("independent", "bia", "session-bia")
+
+  expect(fixture.runs.get("second")).toMatchObject({ status: "queued", queuePosition: 1 })
+  expect(fixture.runs.get("third")).toMatchObject({ status: "queued", queuePosition: 2 })
+  expect(fixture.runs.get("independent")?.status).toBe("running")
+
+  fixture.finish("first")
+  await expect(second).resolves.toEqual({ success: true })
+  expect(fixture.runs.get("third")?.status).toBe("queued")
+
+  fixture.finish("second")
+  await expect(third).resolves.toEqual({ success: true })
+  expect(fixture.runs.get("third")?.status).toBe("running")
+})
+
+test("queue eligibility is scoped to the bot across channel boundaries", () => {
+  const queued = [
+    { runId: "first", channelId: "a", botId: "leo", queuedAt: 1 },
+    { runId: "second", channelId: "b", botId: "leo", queuedAt: 2 },
+    { runId: "other", channelId: "a", botId: "bia", queuedAt: 3 },
+  ]
+
+  const next = getNextChannelBrowserRun({ queued, active: new Set(["leo"]) })
+
+  expect(next?.runId).toBe("other")
+})

@@ -132,6 +132,7 @@ export const initWorkMode = ({
   kernel.services.provide("work.personForRun", access.personForRun)
   kernel.services.provide("work.isAdminRun", access.isAdminRun)
   kernel.services.provide("work.personChannelIds", access.channelIdsFor)
+  kernel.services.provide("work.personName", (personId) => authStore.getPerson(personId)?.name ?? null)
   kernel.services.provide("work.defaultPersonId", () => ownerPersonId)
 
   const issueInvite = async ({

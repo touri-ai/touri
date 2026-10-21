@@ -5,11 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Busca local do navegador</title>
     <style>
-      html.browser-activity-fixture, html.browser-activity-fixture body, html.browser-activity-fixture #root { height: auto; min-height: 100%; overflow: auto; }
+      html.browser-activity-fixture, html.browser-activity-fixture body, html.browser-activity-fixture #root { height: 100%; min-height: 100%; overflow: hidden; }
       .browser-activity-demo { max-width: 960px; margin: 0 auto; padding: 24px; }
       .browser-fixture-card { display: grid; gap: 12px; max-width: 660px; margin: 24px 0; }
       .browser-activity-composer { margin-top: 24px; }
       .browser-activity-composer textarea { width: min(660px, 100%); }
+      .browser-flow-app { display: grid; grid-template-columns: 232px minmax(0, 1fr); width: 100%; height: 100dvh; min-height: 0; background: var(--surface); color: var(--text); }
+      .browser-flow-sidebar { display: grid; align-content: start; gap: var(--space-24); padding: var(--space-20) var(--space-12); border-right: 1px solid var(--border); background: var(--surface-2); }
+      .browser-flow-sidebar > strong { padding: 0 var(--space-8); font: var(--weight-semibold) var(--fs-title) var(--font-heading); }
+      .browser-flow-sidebar-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-8); padding: var(--space-8); border: 0; border-radius: var(--radius-sm); background: var(--surface-active); color: var(--text); text-align: left; }
+      .browser-flow-sidebar-row small { color: var(--text-2); font-size: var(--fs-caption); }
+      .browser-flow-chat { display: flex; min-width: 0; height: 100%; flex-direction: column; }
+      .browser-flow-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-12); min-height: 60px; padding: var(--space-8) var(--space-20); border-bottom: 1px solid var(--border); font-weight: var(--weight-semibold); }
+      .browser-flow-messages { display: flex; min-height: 0; flex: 1; }
+      .browser-flow-composer { display: grid; gap: var(--space-8); width: min(760px, calc(100% - 32px)); margin: 0 auto var(--space-16); }
+      .browser-flow-composer textarea { width: 100%; min-height: 48px; padding: var(--space-12); border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--surface-control); color: var(--text); font: inherit; resize: none; }
+      @media (max-width: 600px) { .browser-flow-app { grid-template-columns: minmax(0, 1fr); } .browser-flow-sidebar { display: none; } .browser-flow-header { min-height: 52px; padding-inline: var(--space-12); } .browser-flow-header .button { min-height: 32px; padding-inline: var(--space-8); font-size: var(--fs-caption); } .browser-flow-composer { width: calc(100% - 24px); margin-bottom: var(--space-8); } }
     </style>
   </head>
   <body>

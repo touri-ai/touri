@@ -3,6 +3,7 @@ import type { ApprovalPart, Message, MessagePart, Run, ToolCallPart } from "@tou
 import { afterEach, expect, it } from "vitest"
 import { VirtualMessageList } from "../src/components/ChatPanel"
 import { TurnActivity } from "../src/components/TurnActivity"
+import { assistantSegments } from "../src/components/turnActivityModel"
 
 afterEach(cleanup)
 const tool = (index: number, name = "Read"): ToolCallPart => ({
@@ -79,6 +80,31 @@ it("preserves interleaved prose, final text and attachment order without duplica
   expect(screen.getAllByText("Vou conferir as notas.")).toHaveLength(1)
   expect(screen.queryByText("Conferindo detalhes internos.")).toBeNull()
   expect(view.container.querySelectorAll(".turn-activity")).toHaveLength(1)
+})
+
+it("shows live browser narration as quiet transcript text", async () => {
+  const view = render(
+    <VirtualMessageList
+      {...props}
+      messages={[
+        message(
+          [
+            { type: "text", text: "Estou na página inicial. Agora vou escolher a data." },
+            {
+              ...tool(1, "mcp__touri__browser_click"),
+              ok: null,
+              inputJson: '{"target":{"kind":"role","role":"button","name":"Abrir calendário"}}',
+            },
+          ],
+          { status: "streaming", sender: { id: "bot-mark", name: "Lia" } },
+        ),
+      ]}
+    />,
+  )
+
+  const narration = await screen.findByText("Estou na página inicial. Agora vou escolher a data.")
+  expect(narration.closest(".browser-narration")).not.toBeNull()
+  expect(view.container.querySelector(".browser-activity-card")).toBeVisible()
 })
 
 it.each(["pending", "approved", "denied", "expired"] as const)(
@@ -164,4 +190,76 @@ it("keeps one activity toggle when a running turn needs attention outside a tool
   fireEvent.click(toggle)
   expect(toggle).toHaveAttribute("aria-expanded", "true")
   expect(screen.getByText("Aguardando a pessoa.")).toBeVisible()
+})
+
+const browserCall = (index: number, overrides: Partial<ToolCallPart> = {}): ToolCallPart => ({
+  ...tool(index, "mcp__touri__browser_click"),
+  inputJson: '{"target":{"kind":"role","role":"button","name":"Buscar"}}',
+  ...overrides,
+})
+const browserParts: MessagePart[] = [
+  { type: "text", text: "Vou abrir a busca." },
+  browserCall(1),
+  browserCall(2),
+  { type: "text", text: "Agora vou escolher a data." },
+  browserCall(3, { ok: null }),
+]
+
+it("keeps live steps and narration in order with the single card last", async () => {
+  const view = render(
+    <VirtualMessageList
+      {...props}
+      messages={[message(browserParts, { status: "streaming", sender: { id: "bot-mark", name: "Lia" } })]}
+    />,
+  )
+
+  const first = await screen.findByText("Vou abrir a busca.")
+  const second = screen.getByText("Agora vou escolher a data.")
+  const steps = Array.from(view.container.querySelectorAll(".browser-steps"))
+  const card = view.container.querySelector(".browser-activity-card")
+  expect(steps.map((step) => step.textContent)).toEqual(["✓Usou o navegador", "✓Usou o navegador"])
+  expect(steps[0]).toHaveAttribute("data-actions", "2")
+  expect(view.container.querySelectorAll(".browser-activity-card")).toHaveLength(1)
+  const order = [first, steps[0], second, steps[1], card] as Element[]
+  for (const [index, element] of order.slice(1).entries())
+    expect(order[index]?.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(screen.getByText("em andamento")).toBeVisible()
+  expect(screen.queryByText("Avançado")).toBeNull()
+  expect(screen.queryByText("Advanced computer view")).toBeNull()
+})
+
+it("folds narration and step rows into the finished card and shows only the final answer", async () => {
+  const view = render(
+    <VirtualMessageList
+      {...props}
+      messages={[
+        message([...browserParts.slice(0, 4), browserCall(3), { type: "text", text: "Voo por R$ 900" }], {
+          sender: { id: "bot-mark", name: "Lia" },
+        }),
+      ]}
+    />,
+  )
+
+  expect(await screen.findByText("Voo por R$ 900")).toBeVisible()
+  expect(screen.getByText("terminou")).toBeVisible()
+  expect(screen.queryByText("Vou abrir a busca.")).toBeNull()
+  expect(screen.queryByText("Agora vou escolher a data.")).toBeNull()
+  expect(view.container.querySelectorAll(".browser-steps")).toHaveLength(0)
+  fireEvent.click(screen.getByRole("button", { name: /Usou o navegador · 3 ações/ }))
+  expect(screen.getByText("Vou abrir a busca.")).toBeVisible()
+  expect(screen.getByText("Agora vou escolher a data.")).toBeVisible()
+  expect(view.container.querySelectorAll(".browser-activity-history .browser-steps")).toHaveLength(2)
+})
+
+it("splits browser steps between narrations in the segment model", () => {
+  const segments = assistantSegments(message(browserParts, { status: "streaming" }))
+
+  expect(segments.map((segment) => segment.type)).toEqual([
+    "text",
+    "activity",
+    "browser-steps",
+    "text",
+    "browser-steps",
+  ])
+  expect(segments.filter((segment) => segment.type === "browser-steps").map((segment) => segment.count)).toEqual([2, 1])
 })

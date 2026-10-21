@@ -42,7 +42,11 @@ const fakeCdp = (targetId: string) => {
           ? { targetInfos: [{ targetId, type: "page", title: targetId, url: "https://example.test/" }] }
           : method === "Target.attachToTarget"
             ? { sessionId: `session-${targetId}` }
-            : {}
+            : method === "Page.getLayoutMetrics"
+              ? { cssVisualViewport: { pageX: 0, pageY: 0, clientWidth: 800, clientHeight: 500 } }
+              : method === "Page.captureScreenshot"
+                ? { data: "ZmFrZQ==" }
+                : {}
       ) as T
     },
     subscribe: () => () => {},
@@ -278,6 +282,41 @@ test("guest previews never acquire or launch, including with an attached browser
   expect(f.acquisitions).toHaveLength(1)
   expect(f.endpoints).toHaveLength(1)
   expect(f.transports[0]?.calls).toEqual(calls)
+  expect(f.hostSpawns()).toBe(0)
+})
+
+test("interactive takeover operations reach the VM browser while a session lease keeps it running", async () => {
+  const f = await fixture()
+  const database = f.runtime.kernel.db as { run: (sql: string, ...args: string[]) => unknown }
+  database.run("UPDATE bots SET browser = 'machine' WHERE id = ?", f.bot.id)
+
+  expect((await f.browser.list({ botId: f.bot.id })).success).toBe(true)
+  const tab = f.browser.tabsForBot(f.bot.id)[0]
+  if (!tab) throw new Error("Missing guest browser tab")
+
+  expect(await f.browser.holdTakeover({ tabId: tab.tabId, reason: "A sign-in is needed" })).toBe(true)
+  const signal = new AbortController().signal
+  const frame = await f.browser.takeoverFrame({ tabId: tab.tabId, botId: f.bot.id, signal })
+  expect(frame).toMatchObject({
+    image: "data:image/jpeg;base64,ZmFrZQ==",
+    width: 800,
+    height: 500,
+  })
+  if (!frame) throw new Error("Missing takeover frame")
+  expect(
+    await f.browser.takeoverInput({
+      tabId: tab.tabId,
+      botId: f.bot.id,
+      targetEpoch: frame.targetEpoch,
+      width: frame.width,
+      height: frame.height,
+      signal,
+      input: { kind: "text", text: "private fixture value" },
+    }),
+  ).toBe(true)
+  expect(f.transports[0]?.calls).toContain("Input.insertText")
+  expect(await f.browser.releaseTakeover(tab.tabId)).toBe(true)
+  expect(f.releases()).toBe(f.acquisitions.length)
   expect(f.hostSpawns()).toBe(0)
 })
 

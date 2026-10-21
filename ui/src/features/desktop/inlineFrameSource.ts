@@ -11,8 +11,13 @@ const HANDSHAKE_TIMEOUT_MS = 15_000
 const SESSION_TIMEOUT_MESSAGE = "A VM não respondeu ao pedido da prévia em 20 s. Confira se a máquina está ligada."
 const HANDSHAKE_TIMEOUT_MESSAGE =
   "A VM não entregou a primeira imagem em 15 s. Use Abrir no Computador para reconectar."
-const FRAME_TYPE = "image/jpeg"
-const FRAME_QUALITY = 0.65
+type FrameRequest = { id: number; title: string; url: string } & (
+  | { image: string; bitmap?: never }
+  | { image?: never; bitmap: ImageBitmap }
+)
+type FrameResponse = { id: number; title: string; url: string; src?: string; error?: string }
+const MAX_SOURCE_PIXELS = 8_000_000
+const MIN_REFRESH_MS = 800
 
 /** Decodes a data: URL without fetch(), which the desktop CSP (connect-src) refuses for data: URLs. */
 export const dataUrlBlob = (value: string): Blob => {
@@ -34,14 +39,54 @@ export const startInlineFrameSource = (
   unavailable: (reason?: string) => void,
   status?: (message: string | null) => void,
   options: { intervalMs?: number } = {},
-): (() => void) => {
+): (() => void) & { refresh: () => void } => {
   const intervalMs = options.intervalMs ?? 1_000
   let active = true
   let timer: ReturnType<typeof setTimeout> | undefined
   let viewer: import("@novnc/novnc").default | undefined
   let socket: WebSocket | undefined
   let sessionId: string | undefined
+  let frameId = 0
+  let sampling = false
+  let lastSampleAt = 0
+  let processor: Worker | undefined
+  let unsubscribe = () => {}
   let page: Pick<BrowserTabInfo, "title" | "url"> = { title: "Tela do computador", url: "" }
+  const pendingFrames = new Map<number, { resolve: (frame: PreviewFrame) => void; reject: (error: Error) => void }>()
+  try {
+    processor = new Worker(new URL("./browser-preview.worker.ts", import.meta.url), { type: "module" })
+  } catch {
+    processor = undefined
+  }
+  processor?.addEventListener("message", (event) => {
+    const result = (event as MessageEvent<FrameResponse>).data
+    const pending = pendingFrames.get(result.id)
+    if (!pending) return
+    pendingFrames.delete(result.id)
+    if (!result.src || result.error) {
+      pending.reject(new Error(result.error ?? "A prévia do navegador não pôde ser processada."))
+      return
+    }
+    pending.resolve({ src: result.src, title: result.title, url: result.url })
+  })
+  processor?.addEventListener("error", () => {
+    pendingFrames.forEach(({ reject }) => {
+      reject(new Error("A prévia do navegador não pôde ser processada."))
+    })
+    pendingFrames.clear()
+    processor?.terminate()
+    processor = undefined
+  })
+  const processFrame = (input: Omit<FrameRequest, "id">): Promise<PreviewFrame> | null => {
+    if (!processor) return null
+    const id = frameId + 1
+    frameId = id
+    const result = new Promise<PreviewFrame>((resolve, reject) => pendingFrames.set(id, { resolve, reject }))
+    if ("bitmap" in input && input.bitmap) processor.postMessage({ ...input, id }, [input.bitmap])
+    else processor.postMessage({ ...input, id })
+
+    return result
+  }
   const release = () => {
     const id = sessionId
     sessionId = undefined
@@ -53,67 +98,82 @@ export const startInlineFrameSource = (
     stop()
   }
   const stop = () => {
+    if (!active) return
     active = false
+    unsubscribe()
+    unsubscribe = () => {}
     clearTimeout(timer)
+    unsubscribe()
+    unsubscribe = () => {}
     viewer?.disconnect()
     viewer = undefined
     socket?.close()
     socket = undefined
+    processor?.terminate()
+    processor = undefined
+    pendingFrames.forEach(({ reject }) => {
+      reject(new Error("A prévia do navegador foi encerrada."))
+    })
+    pendingFrames.clear()
     release()
-    buffer.width = buffer.height = source.width = source.height = 0
     slot.replaceChildren()
   }
   const slot = document.createElement("div")
-  const source = document.createElement("canvas")
-  const buffer = document.createElement("canvas")
-  buffer.width = 640
-  buffer.height = 400
+  if (!processor) {
+    fail("A prévia do navegador não está disponível neste computador.")
+    return Object.assign(stop, { refresh: () => {} })
+  }
   const sample = async () => {
+    sampling = true
+    lastSampleAt = Date.now()
     try {
       if (!active) return
+      if (!processor) return fail("A prévia do navegador não está disponível neste computador.")
       if (bot.machine === "local") {
         const result = await api.request("GET /bots/:id/browser-preview", tabId ? { tabId } : {}, { id: bot.id })
         if (!active) return
-        const bitmap = await createImageBitmap(dataUrlBlob(result.image))
-        try {
-          if (!active) return
-          const ctx = buffer.getContext("2d")
-          if (!ctx) return fail("O navegador não conseguiu desenhar a prévia.")
-          status?.(null)
-          ctx.clearRect(0, 0, 640, 400)
-          const ratio = Math.min(640 / bitmap.width, 400 / bitmap.height)
-          const width = bitmap.width * ratio
-          const height = bitmap.height * ratio
-          ctx.drawImage(bitmap, (640 - width) / 2, (400 - height) / 2, width, height)
-          frame({ src: buffer.toDataURL(FRAME_TYPE, FRAME_QUALITY), title: result.title, url: result.url })
-        } finally {
-          bitmap.close()
-        }
+        const processed = await processFrame({ image: result.image, title: result.title, url: result.url })
+        if (!active) return
+        if (!processed) return fail("A prévia do navegador não está disponível neste computador.")
+        status?.(null)
+        frame(processed)
       } else if (viewer) {
-        const image = viewer.getImageData()
-        if (!image.width || !image.height || !image.data.some((value, index) => index % 4 === 3 && value)) {
+        const canvas = slot.querySelector("canvas")
+        if (!canvas?.width || !canvas.height) {
           timer = setTimeout(() => void sample(), intervalMs)
           return
         }
-        source.width = image.width
-        source.height = image.height
-        source.getContext("2d")?.putImageData(image, 0, 0)
-        const ctx = buffer.getContext("2d")
-        if (!ctx) return fail("O navegador não conseguiu desenhar a prévia.")
-        ctx.clearRect(0, 0, 640, 400)
-        const ratio = Math.min(640 / image.width, 400 / image.height)
-        const width = image.width * ratio
-        const height = image.height * ratio
-        ctx.drawImage(source, (640 - width) / 2, (400 - height) / 2, width, height)
-        frame({ src: buffer.toDataURL(FRAME_TYPE, FRAME_QUALITY), ...page })
+        if (canvas.width * canvas.height > MAX_SOURCE_PIXELS) return fail("A prévia do navegador está muito grande.")
+        const bitmap = await createImageBitmap(canvas)
+        if (!active) {
+          bitmap.close()
+          return
+        }
+        const processed = await processFrame({ bitmap, ...page })
+        if (!active) return
+        if (!processed) {
+          bitmap.close()
+          return fail("A prévia do navegador não está disponível neste computador.")
+        }
+        frame(processed)
       }
       if (active) timer = setTimeout(() => void sample(), intervalMs)
     } catch (error) {
       if (active && bot.machine === "local") {
+        if (!processor) return fail("A prévia do navegador não está disponível neste computador.")
         status?.(userFacingError(error))
         timer = setTimeout(() => void sample(), intervalMs)
       } else fail("A prévia perdeu a conexão com a VM.")
+    } finally {
+      sampling = false
     }
+  }
+  /** Grabs a frame right after an action, still one at a time and never faster than MIN_REFRESH_MS. */
+  const refresh = () => {
+    if (!active || sampling || !(bot.machine === "local" || viewer)) return
+    if (Date.now() - lastSampleAt < MIN_REFRESH_MS) return
+    clearTimeout(timer)
+    void sample()
   }
   const start = async () => {
     if (bot.machine === "local") return sample()
@@ -148,7 +208,7 @@ export const startInlineFrameSource = (
     timer = setTimeout(() => fail(HANDSHAKE_TIMEOUT_MESSAGE), HANDSHAKE_TIMEOUT_MS)
   }
   // Metadata events share the viewer's existing browser tab pipeline.
-  const unsubscribe = api.subscribe(({ event }) => {
+  unsubscribe = api.subscribe(({ event }) => {
     if (event.type === "browser.tab" && event.tab.ownerBotId === bot.id && (!tabId || event.tab.tabId === tabId))
       page = event.tab
   })
@@ -162,8 +222,5 @@ export const startInlineFrameSource = (
     })
     .catch(() => {})
   void start().catch((error: unknown) => fail(userFacingError(error)))
-  return () => {
-    stop()
-    unsubscribe()
-  }
+  return Object.assign(stop, { refresh })
 }

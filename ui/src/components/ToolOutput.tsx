@@ -325,9 +325,17 @@ export const StoredToolOutput = ({
   const url = getBrowserActivityUrl(result?.url ?? "")
   if (thumbnail) {
     const src = thumbnailImage?.src
+    const title = result?.title.trim().replace(/\s+/g, " ").slice(0, 80)
 
     return src ? (
-      <img className="stored-tool-thumbnail" src={src} alt={t("Final browser screenshot", {}, locale)} />
+      <span className="stored-tool-thumbnail-content">
+        <img className="stored-tool-thumbnail" src={src} alt={t("Final browser screenshot", {}, locale)} />
+        {title && (
+          <small>
+            {t("Page title", {}, locale)} · {title}
+          </small>
+        )}
+      </span>
     ) : null
   }
 

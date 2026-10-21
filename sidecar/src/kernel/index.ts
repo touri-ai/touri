@@ -140,9 +140,38 @@ const corsPreflight = (request: Request, port: number): Response => {
 const developmentUiToken = (): string =>
   process.env.NODE_ENV === "test" ? "dev-ui-token" : randomBytes(32).toString("hex")
 
+const TAKEOVER_REQUEST_BODY_LIMIT_BYTES = 64 * 1024
+
+const isBrowserTakeoverRequest = (request: Request): boolean =>
+  /\/browser\/tabs\/[^/]+\/takeover(?:\/(?:session|frame|input))?$/u.test(new URL(request.url).pathname)
+
+const readBrowserTakeoverBody = async (request: Request): Promise<string | null> => {
+  const reader = request.body?.getReader()
+  if (!reader) return ""
+  const chunks: Array<Uint8Array> = []
+  let bytes = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      bytes += value.byteLength
+      if (bytes > TAKEOVER_REQUEST_BODY_LIMIT_BYTES) {
+        await reader.cancel().catch(() => undefined)
+        return null
+      }
+      chunks.push(value)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+
+  return Buffer.concat(chunks, bytes).toString("utf8")
+}
+
 const parseBody = async (request: Request): Promise<unknown> => {
   if (["GET", "HEAD"].includes(request.method)) return {}
-  const text = await request.text()
+  const text = isBrowserTakeoverRequest(request) ? await readBrowserTakeoverBody(request) : await request.text()
+  if (text === null) return null
   if (!text) return {}
   try {
     return JSON.parse(text) as unknown

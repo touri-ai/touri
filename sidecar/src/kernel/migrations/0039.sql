@@ -1,0 +1,13 @@
+CREATE TABLE run_continuations_next (
+  run_id          TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
+  original_run_id TEXT NOT NULL,
+  previous_run_id TEXT NOT NULL,
+  reason          TEXT NOT NULL CHECK (reason IN ('app_restart', 'provider_crash', 'permission_granted', 'browser_takeover')),
+  created_at      INTEGER NOT NULL
+);
+INSERT INTO run_continuations_next SELECT * FROM run_continuations;
+DROP TABLE run_continuations;
+ALTER TABLE run_continuations_next RENAME TO run_continuations;
+CREATE INDEX run_continuations_original ON run_continuations(original_run_id);
+INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('browser_takeover_continuations_version', '1');
+UPDATE schema_meta SET value = '39' WHERE key = 'schema_version';

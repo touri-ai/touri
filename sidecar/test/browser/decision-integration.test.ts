@@ -2,7 +2,13 @@ import { afterEach, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { BrowserSnapshot, BrowserTarget, ToolRegistration, ToolResult } from "@touri/contracts"
+import type {
+  BrowserSnapshot,
+  BrowserTakeoverReason,
+  BrowserTarget,
+  ToolRegistration,
+  ToolResult,
+} from "@touri/contracts"
 import { init } from "../../src/browser"
 import { isSafeBrowserRead } from "../../src/browser/decision"
 import type { BrowserEngine } from "../../src/browser/types"
@@ -49,11 +55,17 @@ const makeEngine = ({
 } = {}): {
   engine: BrowserEngine
   clicks: () => Array<BrowserTarget>
+  takeovers: () => Array<{ tabId: string; botId: string; reason: string; reasonCode?: BrowserTakeoverReason }>
   presses: () => number
+  secretSubmissions: () => number
+  types: () => number
   evaluations: () => Array<string>
 } => {
   let clicks: Array<BrowserTarget> = []
+  let takeovers: Array<{ tabId: string; botId: string; reason: string; reasonCode?: BrowserTakeoverReason }> = []
   let presses = 0
+  let secretSubmissions = 0
+  let types = 0
   let evaluations: Array<string> = []
   const engine: BrowserEngine = {
     preview: async () => null,
@@ -69,7 +81,10 @@ const makeEngine = ({
         ? { success: false, errorCode: "AMBIGUOUS_TARGET", error: "Two targets match." }
         : result(true)
     },
-    type: async () => result(true),
+    type: async () => {
+      types += 1
+      return result(true)
+    },
     press: async () => {
       presses += 1
       return result(true)
@@ -83,8 +98,20 @@ const makeEngine = ({
       evaluations = [...evaluations, expression]
       return result(true)
     },
-    requestTakeover: async () => result(true),
-    submitSecret: async () => result(true),
+    requestTakeover: async (input) => {
+      takeovers = [...takeovers, input]
+      return {
+        success: true,
+        content: [{ type: "text", text: "Waiting for the person to return control of the browser." }],
+        structured: { status: "waiting_for_person" },
+      }
+    },
+    submitSecret: async () => {
+      secretSubmissions += 1
+      return result(true)
+    },
+    takeoverFrame: async () => null,
+    takeoverInput: async () => false,
     secretEntry: async () => false,
     releaseTakeover: async () => false,
     holdTakeover: async () => false,
@@ -104,7 +131,15 @@ const makeEngine = ({
     shutdown: async () => {},
   }
 
-  return { engine, clicks: () => clicks, presses: () => presses, evaluations: () => evaluations }
+  return {
+    engine,
+    clicks: () => clicks,
+    takeovers: () => takeovers,
+    presses: () => presses,
+    secretSubmissions: () => secretSubmissions,
+    types: () => types,
+    evaluations: () => evaluations,
+  }
 }
 
 const makeFixture = async ({
@@ -124,7 +159,9 @@ const makeFixture = async ({
     for (const tool of input.tools) handlers.set(tool.name, tool)
     return registered(input)
   }
-  const fake = makeEngine(pageSnapshot ? { snapshot: pageSnapshot } : {})
+  const fake = makeEngine({
+    ...(pageSnapshot ? { snapshot: pageSnapshot } : {}),
+  })
   await init(runtime.kernel, undefined, {
     engine: fake.engine,
     getDecisionApiKey: getApiKey,
@@ -149,15 +186,35 @@ const makeFixture = async ({
   return {
     context,
     handler: handlers.get("browser_click")?.handler,
+    typeHandler: handlers.get("browser_type")?.handler,
     pressHandler: handlers.get("browser_press")?.handler,
+    secretHandler: handlers.get("browser_submit_secret")?.handler,
     evaluateHandler: handlers.get("browser_evaluate")?.handler,
     clicks: fake.clicks,
     presses: fake.presses,
+    secretSubmissions: fake.secretSubmissions,
+    types: fake.types,
     evaluations: fake.evaluations,
+    takeovers: fake.takeovers,
   }
 }
 
-test("browser script tool permits only simple read-only page queries", async () => {
+test("typing into a stale plain search ref asks for a fresh snapshot without takeover", async () => {
+  const fixture = await makeFixture({
+    getApiKey: async () => null,
+    fetchDecision: async () => Response.json({}),
+  })
+  const response = await fixture.typeHandler?.({
+    ctx: fixture.context,
+    args: { tabId: snapshot.tabId, target: { kind: "ref", ref: "9.9" }, text: "Lisboa", submit: false },
+  })
+
+  expect(response).toMatchObject({ success: false, errorCode: "TARGET_CHANGED" })
+  expect(fixture.takeovers()).toEqual([])
+  expect(fixture.types()).toBe(0)
+})
+
+test("browser script tool limits reads and requests takeover for actions", async () => {
   expect(isSafeBrowserRead('document.querySelector("#results").textContent')).toBe(true)
   expect(isSafeBrowserRead("document.querySelector('#results').textContent")).toBe(true)
   expect(isSafeBrowserRead("document.querySelector('#search').click()")).toBe(false)
@@ -168,12 +225,13 @@ test("browser script tool permits only simple read-only page queries", async () 
     getApiKey: async () => null,
     fetchDecision: async () => Response.json({}),
   })
-  const blocked = await fixture.evaluateHandler?.({
+  const takeover = await fixture.evaluateHandler?.({
     ctx: fixture.context,
     args: { tabId: snapshot.tabId, expression: "document.querySelector('#search')['click']()" },
   })
-  expect(blocked).toMatchObject({ success: false, errorCode: "USER_TAKEOVER_REQUIRED" })
+  expect(takeover?.success).toBe(true)
   expect(fixture.evaluations()).toEqual([])
+  expect(fixture.takeovers()).toMatchObject([{ reasonCode: "sensitive_action" }])
 
   const readOnly = await fixture.evaluateHandler?.({
     ctx: fixture.context,
@@ -296,27 +354,29 @@ test("missing keys keep the existing browser result and add a localized hint mar
   expect(JSON.stringify(response)).toContain("TOURI_BROWSER_DECISION_HINT|missing_key")
 })
 
-test("sensitive actions are stopped before execution and ask the user to take over", async () => {
-  let requests = 0
+test("sensitive actions return while waiting for the person and do not run", async () => {
   const fixture = await makeFixture({
-    getApiKey: async () => "synthetic-test-key",
-    fetchDecision: async () => {
-      requests += 1
-      return Response.json({})
-    },
+    getApiKey: async () => null,
+    fetchDecision: async () => Response.json({}),
   })
   const response = await fixture.handler?.({
     ctx: fixture.context,
     args: { tabId: snapshot.tabId, target: { kind: "role", role: "button", name: "Buy this ticket" } },
   })
 
-  expect(response).toMatchObject({ success: false, errorCode: "USER_TAKEOVER_REQUIRED" })
+  expect(response).toMatchObject({ success: true, structured: { status: "waiting_for_person" } })
   expect(fixture.clicks()).toHaveLength(0)
-  expect(requests).toBe(0)
-  expect(JSON.stringify(response)).toContain("TOURI_BROWSER_TAKEOVER_REQUIRED|sensitive_action")
+  expect(fixture.takeovers()).toMatchObject([
+    {
+      tabId: snapshot.tabId,
+      botId: "bot-test",
+      reason: "payment",
+      reasonCode: "payment",
+    },
+  ])
 })
 
-test("Enter in a form asks for takeover before it can submit", async () => {
+test("Enter on a form pauses the run until the person returns control", async () => {
   const pageSnapshot: BrowserSnapshot = {
     ...snapshot,
     focus: { ref: "2.4", role: "textbox", name: "Destination" },
@@ -338,16 +398,45 @@ test("Enter in a form asks for takeover before it can submit", async () => {
     fetchDecision: async () => Response.json({}),
     pageSnapshot,
   })
+
   const response = await fixture.pressHandler?.({
     ctx: fixture.context,
     args: { tabId: snapshot.tabId, key: "NumpadEnter" },
   })
 
-  expect(response).toMatchObject({ success: false, errorCode: "USER_TAKEOVER_REQUIRED" })
+  expect(response?.success).toBe(true)
   expect(fixture.presses()).toBe(0)
+  expect(fixture.takeovers()).toMatchObject([
+    {
+      tabId: snapshot.tabId,
+      botId: "bot-test",
+      reason: "form_submit",
+      reasonCode: "form_submit",
+    },
+  ])
 })
 
-test.each(["Enter", "NumpadEnter", " "])("keyboard %s cannot activate a focused consent control", async (key) => {
+test("credential entry pauses for the person without sending stored secrets to the browser tool", async () => {
+  const fixture = await makeFixture({
+    getApiKey: async () => null,
+    fetchDecision: async () => Response.json({}),
+  })
+
+  const response = await fixture.secretHandler?.({
+    ctx: fixture.context,
+    args: {
+      tabId: snapshot.tabId,
+      secretName: "saved-login",
+      fields: [{ kind: "password", target: { kind: "role", role: "textbox", name: "Password" } }],
+    },
+  })
+
+  expect(response?.success).toBe(true)
+  expect(fixture.secretSubmissions()).toBe(0)
+  expect(fixture.takeovers()).toMatchObject([{ reasonCode: "login" }])
+})
+
+test.each(["Enter", "NumpadEnter", " "])("keyboard %s pauses before activating a consent control", async (key) => {
   const pageSnapshot: BrowserSnapshot = {
     ...snapshot,
     focus: { ref: "2.4", role: "button", name: "Aceitar cookies" },
@@ -371,6 +460,7 @@ test.each(["Enter", "NumpadEnter", " "])("keyboard %s cannot activate a focused 
 
   const result = await fixture.pressHandler?.({ ctx: fixture.context, args: { tabId: snapshot.tabId, key } })
 
-  expect(result).toMatchObject({ success: false, errorCode: "USER_TAKEOVER_REQUIRED" })
+  expect(result?.success).toBe(true)
   expect(fixture.presses()).toBe(0)
+  expect(fixture.takeovers()).toMatchObject([{ reasonCode: "sensitive_action" }])
 })

@@ -332,21 +332,21 @@
       "description": "Click a target and return a fresh snapshot. The click point is hit-tested first; if another layer covers the target the call fails with TARGET_COVERED: dismiss the layer instead of clicking coordinates repeatedly.",
       "inputSchema": { "type": "object", "required": ["tabId", "target"], "additionalProperties": false,
         "properties": { "tabId": { "$ref": "#/definitions/tabId" }, "target": { "$ref": "#/definitions/target" }, "button": { "enum": ["left", "right", "middle"], "default": "left" }, "clickCount": { "type": "integer", "minimum": 1, "maximum": 3, "default": 1 }, "timeoutMs": { "$ref": "#/definitions/timeoutMs" } } },
-      "x-touri": { "group": "browser", "mvp": true, "mutates": true }
+      "x-touri": { "group": "browser", "mvp": true, "mutates": true, "deadlineMs": 1800000 }
     },
     {
       "name": "browser_type",
-      "description": "Type text into a target (focuses it first) and return a fresh snapshot. Never type passwords or codes: use browser_submit_secret.",
+      "description": "Type text into a target (focuses it first) and return a fresh snapshot. Never type passwords or codes; let the person enter them through browser_request_takeover.",
       "inputSchema": { "type": "object", "required": ["tabId", "target", "text"], "additionalProperties": false,
         "properties": { "tabId": { "$ref": "#/definitions/tabId" }, "target": { "$ref": "#/definitions/target" }, "text": { "type": "string", "maxLength": 20000 }, "clear": { "type": "boolean", "default": true }, "submit": { "type": "boolean", "default": false }, "timeoutMs": { "$ref": "#/definitions/timeoutMs" } } },
-      "x-touri": { "group": "browser", "mvp": true, "mutates": true }
+      "x-touri": { "group": "browser", "mvp": true, "mutates": true, "deadlineMs": 1800000 }
     },
     {
       "name": "browser_press",
       "description": "Press a key or chord (e.g. Enter, Escape, Meta+A) in the focused element and return a fresh snapshot.",
       "inputSchema": { "type": "object", "required": ["tabId", "key"], "additionalProperties": false,
         "properties": { "tabId": { "$ref": "#/definitions/tabId" }, "key": { "type": "string" }, "timeoutMs": { "$ref": "#/definitions/timeoutMs" } } },
-      "x-touri": { "group": "browser", "mvp": true, "mutates": true }
+      "x-touri": { "group": "browser", "mvp": true, "mutates": true, "deadlineMs": 1800000 }
     },
     {
       "name": "browser_hover",
@@ -367,14 +367,14 @@
       "description": "Select option(s) of a <select> or listbox by value or label and return a fresh snapshot.",
       "inputSchema": { "type": "object", "required": ["tabId", "target", "values"], "additionalProperties": false,
         "properties": { "tabId": { "$ref": "#/definitions/tabId" }, "target": { "$ref": "#/definitions/target" }, "values": { "type": "array", "items": { "type": "string" }, "minItems": 1 }, "timeoutMs": { "$ref": "#/definitions/timeoutMs" } } },
-      "x-touri": { "group": "browser", "mvp": true, "mutates": true }
+      "x-touri": { "group": "browser", "mvp": true, "mutates": true, "deadlineMs": 1800000 }
     },
     {
       "name": "browser_set_checked",
       "description": "Set a checkbox/radio/switch state and return a fresh snapshot.",
       "inputSchema": { "type": "object", "required": ["tabId", "target", "checked"], "additionalProperties": false,
         "properties": { "tabId": { "$ref": "#/definitions/tabId" }, "target": { "$ref": "#/definitions/target" }, "checked": { "type": "boolean" }, "timeoutMs": { "$ref": "#/definitions/timeoutMs" } } },
-      "x-touri": { "group": "browser", "mvp": false, "mutates": true }
+      "x-touri": { "group": "browser", "mvp": false, "mutates": true, "deadlineMs": 1800000 }
     },
     {
       "name": "browser_wait_for",
@@ -412,7 +412,7 @@
     },
     {
       "name": "browser_submit_secret",
-      "description": "Fill credential fields without seeing the secret. If secretName refers to a stored secret allowed for this origin, it is filled; otherwise the user types it into a secure card. Never request or repeat secrets in chat. Returns a fresh snapshot (screenshots and evaluate stay blocked in the tab until it navigates).",
+      "description": "Do not use this tool to enter or submit credentials. Request browser takeover so the person can enter them directly; credential text never goes through chat or the model.",
       "inputSchema": { "type": "object", "required": ["tabId", "fields"], "additionalProperties": false,
         "properties": { "tabId": { "$ref": "#/definitions/tabId" },
           "fields": { "type": "array", "minItems": 1, "maxItems": 3, "items": { "type": "object", "required": ["kind", "target"], "additionalProperties": false,
@@ -420,7 +420,7 @@
           "secretName": { "$ref": "#/definitions/envName" },
           "submit": { "enum": ["none", "enter", "click"], "default": "none" },
           "submitTarget": { "$ref": "#/definitions/target" } } },
-      "x-touri": { "group": "browser", "mvp": true, "mutates": true, "deadlineMs": 600000 }
+      "x-touri": { "group": "browser", "mvp": true, "mutates": true, "deadlineMs": 1800000 }
     },
     {
       "name": "computer_screenshot",

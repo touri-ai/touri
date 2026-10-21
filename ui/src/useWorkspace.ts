@@ -2,6 +2,7 @@ import type {
   ApiRoutes,
   Bot,
   BotGroup,
+  BrowserChannelRun,
   BrowserTabInfo,
   DoctorReport,
   GroupAction,
@@ -63,6 +64,7 @@ export type WorkspaceData = {
   processes: Array<ProcessEntry>
   previews: Array<PreviewTarget>
   browserTabs: Array<BrowserTabInfo & { ownerBotId: Id | null }>
+  browserRuns?: Array<BrowserChannelRun>
   routineHost: HostKind
   routines: Array<Routine>
   routineRuns: Array<RoutineRun>
@@ -156,6 +158,7 @@ const emptyState = (): WorkspaceData => ({
   processes: [],
   previews: [],
   browserTabs: [],
+  browserRuns: [],
   routineHost: "computer",
   routines: [],
   routineRuns: [],
@@ -796,6 +799,7 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
           projects: projectResponse.projects,
           previews: previewResponse.previews,
           browserTabs: browserResponse.tabs,
+          browserRuns: activityResponse.browserRuns ?? [],
           routineHost: routinesResponse.hostKind ?? routinesResponse.host ?? "computer",
           routines: uniqueById(routinesResponse.routines),
           routineRuns: uniqueById(routineRunsResponse.routineRuns),
@@ -870,6 +874,17 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
     const unsubscribe = api.subscribe((envelope: UiEventEnvelope) => {
       const event = envelope.event
       localResponseTimings().observe(event)
+      if (event.type === "browser.channel_run") {
+        setData((current) =>
+          Object.assign({}, current, {
+            browserRuns: (current.browserRuns ?? [])
+              .filter((run) => run.runId !== event.run.runId)
+              .concat(event.run)
+              .slice(-200),
+          }),
+        )
+        return
+      }
       if (event.type === "thread.updated" && event.thread.groupThreadId) {
         privateThreads.current.add(event.thread.id)
         return
@@ -1067,6 +1082,7 @@ export const useWorkspace = (api: UiApi, enabled = true, chatOpen = true): Works
               messages: reconcileApprovalMessages(current.messages, notifications, activity.messages),
               activityMessages: current.activityMessages.reduce(updateMessage, activity.messages.map(activityMessage)),
               pendingRequestsOnReturn: countPendingRequests(notifications, messages),
+              browserRuns: activity.browserRuns ?? [],
             }
           })
           const threadId = currentData.current.threadCreation ? null : currentData.current.selectedThreadId

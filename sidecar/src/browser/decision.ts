@@ -1,4 +1,4 @@
-import type { BrowserElement, BrowserTarget } from "@touri/contracts"
+import type { BrowserElement, BrowserTakeoverReason, BrowserTarget } from "@touri/contracts"
 
 export type BrowserDecisionAction = "click" | "type" | "select" | "check"
 export type BrowserDecisionCandidate = Pick<BrowserElement, "ref" | "role" | "name">
@@ -275,10 +275,38 @@ export const requiresBrowserTakeover = ({
   pointTarget?: boolean | undefined
   formSubmit?: boolean | undefined
 }): boolean => {
-  if (submit || pointTarget || formSubmit || SENSITIVE_PATH.test(getPath(pageUrl) ?? "")) return true
+  if (submit || formSubmit || SENSITIVE_PATH.test(getPath(pageUrl) ?? "")) return true
   if (action === "type") return SENSITIVE_FIELD.test(intent) || HIGH_IMPACT_TARGET.test(intent)
+  if (pointTarget) return true
 
   return HIGH_IMPACT_TARGET.test(intent)
+}
+
+export const getBrowserTakeoverReasonCode = ({
+  error = "",
+  intent = "",
+  pageUrl = "",
+}: {
+  error?: string
+  intent?: string
+  pageUrl?: string
+}): BrowserTakeoverReason => {
+  const value = `${error} ${intent} ${getPath(pageUrl) ?? ""}`.toLowerCase()
+  if (/form_submit|form submit|\bsubmit\b|send form|enviar formulário/.test(value)) return "form_submit"
+  if (
+    /payment|pay\b|purchase|buy\b|checkout|order|book|reserve|reservation|booking|pagamento|compra|comprar|reservar|reserva|cart[aã]o/.test(
+      value,
+    )
+  )
+    return "payment"
+  if (
+    /login|sign in|signin|sign-in|auth|password|senha|passcode|otp|verification code|email|e-mail|username|user name|account|entrar|acessar conta|usu[aá]rio/.test(
+      value,
+    )
+  )
+    return "login"
+
+  return "sensitive_action"
 }
 
 const tokens = (value: string): Array<string> =>

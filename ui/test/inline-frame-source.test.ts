@@ -13,6 +13,16 @@ const mock = vi.hoisted(() => ({
       sendKey: ReturnType<typeof vi.fn>
     }
   >,
+  workers: [] as Array<
+    EventTarget & {
+      sent: Array<{
+        message: { id: number; title: string; url: string; image?: string; bitmap?: ImageBitmap }
+        transfer: Transferable[]
+      }>
+      postMessage: ReturnType<typeof vi.fn>
+      terminate: ReturnType<typeof vi.fn>
+    }
+  >,
 }))
 vi.mock("@novnc/novnc", () => ({
   default: class extends EventTarget {
@@ -21,18 +31,47 @@ vi.mock("@novnc/novnc", () => ({
     focusOnClick = true
     disconnect = vi.fn()
     sendKey = vi.fn()
-    getImageData = () => ({ width: 1, height: 1, data: new Uint8ClampedArray([1, 2, 3, 255]) })
-    constructor() {
+    constructor(target: HTMLElement) {
       super()
+      const canvas = document.createElement("canvas")
+      canvas.width = 1280
+      canvas.height = 800
+      target.append(canvas)
       mock.viewers.push(this)
     }
   },
 }))
+
+const installPreviewWorker = () => {
+  class PreviewWorker extends EventTarget {
+    sent: Array<{
+      message: { id: number; title: string; url: string; image?: string; bitmap?: ImageBitmap }
+      transfer: Transferable[]
+    }> = []
+    postMessage = vi.fn((message: PreviewWorker["sent"][number]["message"], transfer: Transferable[] = []) => {
+      this.sent.push({ message, transfer })
+      if (message.bitmap) message.bitmap.close()
+      this.dispatchEvent(
+        new MessageEvent("message", {
+          data: { id: message.id, title: message.title, url: message.url, src: "data:image/jpeg;base64,cHJvY2Vzc2Vk" },
+        }),
+      )
+    })
+    terminate = vi.fn()
+
+    constructor() {
+      super()
+      mock.workers.push(this)
+    }
+  }
+  vi.stubGlobal("Worker", PreviewWorker)
+}
 afterEach(() => {
   vi.useRealTimers()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   mock.viewers.splice(0)
+  mock.workers.splice(0)
 })
 
 test("VM pipeline is always view-only, samples at 1 fps and releases its session", async () => {
@@ -43,12 +82,12 @@ test("VM pipeline is always view-only, samples at 1 fps and releases its session
       close = vi.fn()
     },
   )
-  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
-    putImageData: vi.fn(),
-    drawImage: vi.fn(),
-    clearRect: vi.fn(),
-  } as unknown as CanvasRenderingContext2D)
-  vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/jpeg;base64,AAAA")
+  installPreviewWorker()
+  const bitmap = { width: 1280, height: 800, close: vi.fn() } as ImageBitmap
+  vi.stubGlobal(
+    "createImageBitmap",
+    vi.fn(async () => bitmap),
+  )
   const request = vi.fn(async (route: string) =>
     route === "POST /bots/:id/desktop"
       ? { sessionId: "preview", path: "/api/v1/desktop/preview/socket", control: false }
@@ -72,6 +111,7 @@ test("VM pipeline is always view-only, samples at 1 fps and releases its session
   viewer?.dispatchEvent(new Event("connect"))
   await vi.advanceTimersByTimeAsync(0)
   expect(frame).toHaveBeenCalledTimes(1)
+  expect(mock.workers[0]?.sent[0]?.transfer).toEqual([bitmap])
   await vi.advanceTimersByTimeAsync(999)
   expect(frame).toHaveBeenCalledTimes(1)
   await vi.advanceTimersByTimeAsync(1)
@@ -107,21 +147,11 @@ test("a session that resolves after stopping is immediately released", async () 
   expect(frame).not.toHaveBeenCalled()
 })
 
-test("host browser polling is serial, downsizes frames, closes bitmaps and stops cleanly", async () => {
+test("host browser polling sends images to the worker and stays serial", async () => {
   vi.useFakeTimers()
-  const bitmap = { width: 1280, height: 800, close: vi.fn() }
-  vi.stubGlobal(
-    "createImageBitmap",
-    vi.fn(async () => bitmap),
-  )
+  installPreviewWorker()
   const fetch = vi.fn()
   vi.stubGlobal("fetch", fetch)
-  const draw = vi.fn()
-  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
-    drawImage: draw,
-    clearRect: vi.fn(),
-  } as unknown as CanvasRenderingContext2D)
-  vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/jpeg;base64,dGh1bWI=")
   const request = vi.fn(async (route: string) =>
     route === "GET /browser/tabs"
       ? { tabs: [] }
@@ -132,13 +162,12 @@ test("host browser polling is serial, downsizes frames, closes bitmaps and stops
   const stop = startInlineFrameSource(api, { id: "host", machine: "local" } as Bot, "tab", frame, vi.fn())
   await vi.advanceTimersByTimeAsync(0)
   expect(request).toHaveBeenCalledWith("GET /bots/:id/browser-preview", { tabId: "tab" }, { id: "host" })
-  expect(draw).toHaveBeenCalledWith(bitmap, 0, 0, 640, 400)
-  expect(bitmap.close).toHaveBeenCalledOnce()
+  expect(mock.workers[0]?.sent[0]?.message.image).toBe("data:image/jpeg;base64,aGVsbG8=")
   expect(frame).toHaveBeenCalledTimes(1)
   // connect-src refuses fetch(data:) in the app; frames are decoded and emitted as data: images.
   expect(fetch).not.toHaveBeenCalled()
   expect(frame).toHaveBeenCalledWith({
-    src: "data:image/jpeg;base64,dGh1bWI=",
+    src: "data:image/jpeg;base64,cHJvY2Vzc2Vk",
     title: "Página",
     url: "https://example.org",
   })
@@ -148,6 +177,94 @@ test("host browser polling is serial, downsizes frames, closes bitmaps and stops
   await vi.advanceTimersByTimeAsync(2_000)
   expect(frame).toHaveBeenCalledTimes(2)
   expect(request).not.toHaveBeenCalledWith("POST /bots/:id/desktop", expect.anything(), expect.anything())
+})
+
+test("browser thumbnails are resized in a worker and use the CSP-safe JPEG source", async () => {
+  const workers: Array<{
+    dispatchEvent: EventTarget["dispatchEvent"]
+    postMessage: ReturnType<typeof vi.fn>
+    terminate: ReturnType<typeof vi.fn>
+  }> = []
+  class MockPreviewWorker extends EventTarget {
+    postMessage = vi.fn((_message: unknown, _transfer?: Transferable[]) => {})
+    terminate = vi.fn()
+    constructor() {
+      super()
+      workers.push(this)
+    }
+  }
+  vi.stubGlobal("Worker", MockPreviewWorker)
+  const toDataURL = vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/jpeg;base64,AAAA")
+  const request = vi.fn(async (route: string) =>
+    route === "GET /bots/:id/browser-preview"
+      ? { title: "Página", url: "https://example.org", image: "data:image/jpeg;base64,c21hbGw=" }
+      : { tabs: [] },
+  )
+  const api = { request, subscribe: () => () => {}, isMock: false } as UiApi
+  const frame = vi.fn()
+
+  const stop = startInlineFrameSource(api, { id: "bot", machine: "local" } as Bot, "tab", frame, vi.fn())
+  await vi.waitFor(() =>
+    expect(request).toHaveBeenCalledWith("GET /bots/:id/browser-preview", { tabId: "tab" }, { id: "bot" }),
+  )
+
+  const worker = workers[0]
+  if (!worker) throw new Error("The browser thumbnail worker did not start")
+  const message = worker.postMessage.mock.calls[0]?.[0] as { id: number }
+  worker.dispatchEvent(
+    new MessageEvent("message", {
+      data: {
+        id: message.id,
+        title: "Página",
+        url: "https://example.org",
+        src: "data:image/jpeg;base64,SlBFRw==",
+      },
+    }),
+  )
+  await vi.waitFor(() =>
+    expect(frame).toHaveBeenCalledWith({
+      src: "data:image/jpeg;base64,SlBFRw==",
+      title: "Página",
+      url: "https://example.org",
+    }),
+  )
+
+  expect(toDataURL).not.toHaveBeenCalled()
+
+  stop()
+
+  expect(worker.terminate).toHaveBeenCalledOnce()
+})
+
+test("a local preview fails closed when the worker is unavailable for an oversized image", async () => {
+  vi.stubGlobal(
+    "Worker",
+    class {
+      constructor() {
+        throw new Error("Worker could not start")
+      }
+    },
+  )
+  const image = `data:image/png;base64,${"A".repeat(24_000_001)}`
+  const request = vi.fn(async (route: string) =>
+    route === "GET /bots/:id/browser-preview"
+      ? { image, title: "Synthetic page", url: "https://example.test" }
+      : { tabs: [] },
+  )
+  const api = {
+    request,
+    subscribe: () => () => {},
+    isMock: false,
+  } as UiApi
+  const frame = vi.fn()
+  const unavailable = vi.fn()
+
+  const stop = startInlineFrameSource(api, { id: "bot", machine: "local" } as Bot, undefined, frame, unavailable)
+
+  await vi.waitFor(() => expect(unavailable).toHaveBeenCalledOnce())
+  expect(frame).not.toHaveBeenCalled()
+  expect(request).not.toHaveBeenCalledWith("GET /bots/:id/browser-preview", expect.anything(), expect.anything())
+  stop()
 })
 
 test("a VM session request that never answers reports the cause after 20 s", async () => {

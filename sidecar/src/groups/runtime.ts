@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite"
 import type { Bot, BotGroup, Kernel, MessagePart, Run, ServiceMap, ToolContext, ToolResult } from "@touri/contracts"
 import { hasRecordedActions } from "@touri/contracts/run-failure"
+import { getRequesterPersonId } from "../browser/channel-runs"
 import { attachedServers } from "../mcp/attached"
 import type { createRuntimeEngine } from "../runtime/engine"
 import { createRuntimePersistence, toRun } from "../runtime/persistence"
@@ -270,6 +271,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       threadId: thread.id,
       requestMessageId: request.message.id,
       trigger: "user",
+      ...(turn.run.requesterPersonId ? { requesterPersonId: turn.run.requesterPersonId } : {}),
       delegated,
       continuing: true,
     })
@@ -570,7 +572,10 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       deadline: budget ? (budget.started_at ?? Date.now()) + budget.timeout_minutes * 60_000 : null,
     }
   }
-  const enqueue: ServiceMap["groups.runtime"]["enqueue"] = (args) => {
+  const enqueue = (
+    args: Parameters<ServiceMap["groups.runtime"]["enqueue"]>[0],
+    resumeBotId?: string,
+  ): ReturnType<ServiceMap["groups.runtime"]["enqueue"]> => {
     if (draining) return { success: false, errorCode: "RUNTIME_DRAINING", error: "O servidor está encerrando." }
 
     const thread = store.getThread({ threadId: args.threadId })
@@ -589,7 +594,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       const bot = store.getBot({ botId: id })
       return bot ? [bot] : []
     })
-    const recipients = getRecipients(group, bots, text, action)
+    const recipients = resumeBotId ? [resumeBotId] : getRecipients(group, bots, text, action)
     if (action === "group_ask_all" && recipients.length > 6)
       return { success: false, errorCode: "DELEGATION_LIMIT", error: "Pergunte a no máximo 6 membros por turno." }
     if (recipients.some((id) => !bots.some((b) => b.id === id && !b.paused && !b.archivedAt)))
@@ -604,6 +609,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       trigger: args.trigger,
       requestMessageId: args.requestMessageId,
       replyMessageId: null,
+      requesterPersonId: getRequesterPersonId(request?.sender),
       externalTurnId: null,
       status: "queued",
       errorClass: null,
@@ -623,9 +629,38 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     queueMicrotask(() => void drain(group.id))
     return { success: true, run }
   }
+  const resumeBrowser: ServiceMap["groups.runtime"]["resumeBrowser"] = ({ runId }) => {
+    if (stopped || draining) return false
+    return db
+      .transaction(() => {
+        if (db.query("SELECT 1 FROM browser_group_resumes WHERE previous_run_id = ?").get(runId)) return true
+        const source = db
+          .query(`SELECT parent.thread_id, parent.request_message_id, child.bot_id, child.status
+        FROM group_run_links link JOIN runs child ON child.id = link.run_id
+        JOIN runs parent ON parent.id = link.turn_id WHERE child.id = ?`)
+          .get(runId) as { thread_id: string; request_message_id: string | null; bot_id: string; status: string } | null
+        if (!source?.request_message_id || !["queued", "starting", "running", "succeeded"].includes(source.status))
+          return false
+        const next = enqueue(
+          { threadId: source.thread_id, requestMessageId: source.request_message_id, trigger: "retry" },
+          source.bot_id,
+        )
+        if (!next.success) return false
+        db.query("INSERT INTO browser_group_resumes(previous_run_id,next_turn_id) VALUES (?,?)").run(runId, next.run.id)
+        db.query(
+          "UPDATE browser_channel_runs SET active_run_id = ? WHERE bot_id = ? AND request_id = ? AND status IN ('needs_you','taken_over')",
+        ).run(next.run.id, source.bot_id, source.request_message_id)
+        return true
+      })
+      .immediate()
+  }
   const cancel = (id: string): boolean => {
     const link = db.query("SELECT turn_id FROM group_run_links WHERE run_id=?").get(id) as { turn_id: string } | null
-    const root = link?.turn_id ?? id
+    if (link) {
+      const canceled = engine.cancel(id)
+      return canceled.success
+    }
+    const root = id
     const turn = turns.get(root)
     if (!turn) return !!db.query("SELECT run_id FROM group_turns WHERE run_id=?").get(root)
     // Parar ends the active turn and pending messages for this group, across all its conversations.
@@ -911,6 +946,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
   })
   return {
     enqueue,
+    resumeBrowser,
     cancel,
     cancelBotTurns,
     cancelGroupTurns,

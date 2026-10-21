@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Navegador num canal</title>
+    <style>
+      html, body, #root { height: auto; min-height: 100%; overflow: auto; }
+      .channel-demo { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 100vh; }
+      .channel-demo-main { display: grid; align-content: start; gap: 16px; padding: 0 16px 24px; min-width: 0; }
+      .channel-demo-reply { display: grid; min-width: 0; gap: 8px; }
+      .channel-demo-reply > p { margin: 0; }
+      @media (max-width: 700px) { .channel-demo { grid-template-columns: minmax(0, 1fr); } }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./channel-browser-harness.tsx"></script>
+  </body>
+</html>

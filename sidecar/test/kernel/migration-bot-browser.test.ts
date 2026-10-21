@@ -22,7 +22,13 @@ test("schema 18 keeps existing host bots on touri and VM bots on the machine bro
     )
     database.close()
     database = openDatabase({ filename })
-    expect(SCHEMA_VERSION).toBe(36)
+    expect(SCHEMA_VERSION).toBe(41)
+    expect(database.query("PRAGMA table_info(browser_tabs)").all()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "private_after_takeover" }),
+        expect.objectContaining({ name: "takeover_reason" }),
+      ]),
+    )
     expect(database.query("SELECT id,browser FROM bots ORDER BY id").all()).toEqual([
       { id: "guest", browser: "machine" },
       { id: "host", browser: "touri" },

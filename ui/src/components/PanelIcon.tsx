@@ -9,6 +9,8 @@ type Name =
   | "settings"
   | "shield"
   | "computer"
+  | "expand"
+  | "collapse"
   | "trash"
 
 const paths: Record<Name, string> = {
@@ -22,6 +24,8 @@ const paths: Record<Name, string> = {
   settings: "M4 6h16M4 12h16M4 18h16M8 3v6m8 0v6m-6 0v6",
   shield: "M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6l-8-3Z",
   computer: "M3 4h18v13H3V4Zm9 13v4m-5 0h10",
+  expand: "M8 3H3v5m0-5 7 7m6 11h5v-5m0 5-7-7M21 8V3h-5m5 0-7 7M3 16v5h5m-5 0 7-7",
+  collapse: "M8 3v5H3m5-5L3 8m13 13v-5h5m-5 5 5-5M21 8h-5V3m5 5-7-7M3 16h5v5m-5-5 7 7",
   trash: "M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7",
 }
 

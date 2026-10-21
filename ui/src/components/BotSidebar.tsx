@@ -26,6 +26,7 @@ import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigati
 import { reconcileApprovalMessages } from "../approvalState"
 import { BOT_ACTIVITY_LABELS, type BotActivityKind } from "../botActivity"
 import { latestPreview } from "../botPreview"
+import { getChannelWorking } from "../features/channelBrowser/channelBrowserModel"
 import { paletteShortcutLabel } from "../features/commandPalette/shortcut"
 import { getRoutineRunSidebarDateLabel, t } from "../i18n"
 import {
@@ -271,6 +272,7 @@ export const Sidebar = (props: SidebarProps) => {
     () => reconcileApprovalMessages(props.messages, props.notifications),
     [props.messages, props.notifications],
   )
+  const channelWorking = useMemo(() => getChannelWorking(props.threads, messages), [props.threads, messages])
   const notifications = useMemo(
     () => reconcileFailureNotifications(props.notifications, runs),
     [props.notifications, runs],
@@ -582,6 +584,7 @@ export const Sidebar = (props: SidebarProps) => {
             bots={props.bots}
             threads={props.threads}
             attentionThreadIds={attentionThreadIds}
+            channelWorking={channelWorking}
             selectedThreadId={props.selectedThreadId}
             onSelect={selectThread}
             onCreate={createChannel}

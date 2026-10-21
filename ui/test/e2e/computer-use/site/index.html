@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><title>estadias · Encontre onde ficar</title><link rel="stylesheet" href="/site.css"></head>
+<body>
+<header class="top"><span class="brand">estadias</span><a href="/entrar">Entrar</a></header>
+<main>
+  <h1>Encontre onde ficar</h1>
+  <form class="search" id="search" autocomplete="off">
+    <label class="field wide"><span>Destino</span><input id="destino" role="combobox" aria-expanded="false" aria-controls="sugestoes" aria-label="Destino" placeholder="Para onde?"></label>
+    <button type="button" class="field" id="datas" aria-label="Datas"><span>Datas</span><strong class="muted" id="datas-valor">Quando?</strong></button>
+    <button type="button" class="go" id="buscar" disabled>Buscar</button>
+    <div class="suggest" id="sugestoes" role="listbox" aria-label="Sugestões de destino" hidden></div>
+    <div class="calendar" id="calendario" role="dialog" aria-label="Escolha as datas" hidden>
+      <h2>novembro de 2026</h2>
+      <div class="days" id="dias"></div>
+    </div>
+  </form>
+  <div class="tiles"><div style="background:#c9b79c"></div><div style="background:#9fb4c7"></div><div style="background:#b7c4a5"></div><div style="background:#d2a9a0"></div></div>
+</main>
+<script>
+const cities = ["Chicago, Illinois, EUA", "Chicago Heights, Illinois", "Chicago Ridge, Illinois", "São Paulo, Brasil", "Lisboa, Portugal"]
+const $ = (id) => document.getElementById(id)
+const state = { destino: "", entrada: 0, saida: 0 }
+const renderDays = () => {
+  const days = Array.from({ length: 30 }, (_, i) => i + 1)
+  $("dias").replaceChildren(...Array.from({ length: 6 }, () => document.createElement("span")), ...days.map((d) => {
+    const b = document.createElement("button")
+    b.type = "button"; b.textContent = String(d); b.setAttribute("aria-label", `${d} de novembro`); b.disabled = d < 3
+    b.className = d === state.entrada || d === state.saida ? "edge" : state.entrada && state.saida && d > state.entrada && d < state.saida ? "mid" : ""
+    b.onclick = () => pick(d)
+    return b
+  }))
+}
+const refresh = () => {
+  const ready = state.destino && state.entrada && state.saida
+  $("datas-valor").textContent = state.entrada ? `${state.entrada + (state.saida ? ` – ${state.saida}` : "")} de nov.` : "Quando?"
+  $("datas-valor").className = state.entrada ? "" : "muted"
+  $("buscar").disabled = !ready
+  renderDays()
+}
+const pick = (d) => {
+  if (!state.entrada || state.saida) { state.entrada = d; state.saida = 0 } else state.saida = d > state.entrada ? d : state.entrada
+  if (state.entrada && state.saida) $("calendario").hidden = true
+  refresh()
+}
+const choose = (city) => {
+  state.destino = city; $("destino").value = city; $("sugestoes").hidden = true
+  $("destino").setAttribute("aria-expanded", "false")
+  $("calendario").hidden = false; refresh()
+}
+$("destino").addEventListener("input", (e) => {
+  const q = e.target.value.trim().toLowerCase()
+  const found = q.length < 2 ? [] : cities.filter((c) => c.toLowerCase().startsWith(q))
+  state.destino = ""
+  $("sugestoes").replaceChildren(...found.map((c) => {
+    const b = document.createElement("button")
+    b.type = "button"; b.setAttribute("role", "option"); b.textContent = c; b.onclick = () => choose(c)
+    return b
+  }))
+  $("sugestoes").hidden = found.length === 0
+  $("destino").setAttribute("aria-expanded", String(found.length > 0))
+  refresh()
+})
+$("buscar").onclick = () => { location.href = `/s/chicago?entrada=${state.entrada}-11&saida=${state.saida}-11` }
+$("datas").onclick = () => { $("calendario").hidden = false }
+renderDays()
+</script>
+</body>
+</html>

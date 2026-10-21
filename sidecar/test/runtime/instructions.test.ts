@@ -146,6 +146,16 @@ for (const provider of ["codex", "claude", "opencode"] as const) {
   })
 }
 
+test("browser guidance requests help at a login wall and waits for handback before continuing", async () => {
+  const f = await fixture()
+  const instructions = await f.compose({ browserEnabled: true })
+
+  expect(instructions).toContain("When a login wall blocks the requested result, call browser_request_takeover")
+  expect(instructions).toContain("waiting_for_person")
+  expect(instructions).toContain("continue automatically after the person returns control")
+  expect(instructions).toContain("Do not claim the task is complete while waiting")
+})
+
 test("local approvals, read-only mode and folder grants describe their actual limits", async () => {
   const f = await fixture()
   const approved = await f.compose({ machine: "local", access: "full", approvals: "on-request" })

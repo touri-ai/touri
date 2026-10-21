@@ -127,6 +127,7 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
   kernel.services.provide("approvals.completeTeam", engine.approvalBridge.completeTeam)
   kernel.services.provide("runtime.activeRun", ({ threadId }) => engine.activeRun({ threadId }))
   kernel.services.provide("runtime.continueAfterApproval", engine.continueAfterApproval)
+  kernel.services.provide("runtime.resumeAfterBrowserTakeover", engine.resumeAfterBrowserTakeover)
   kernel.services.provide("runtime.cancelBotTurns", groups.cancelBotTurns)
   kernel.services.provide("runtime.cancelRun", ({ runId }) => {
     const grouped = groups.cancel(runId)
@@ -240,7 +241,7 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
       {
         method: "POST",
         path: "/runs/:id/cancel",
-        handler: async ({ params }) => {
+        handler: async ({ params, signal }) => {
           const remote = (kernel.db as Database)
             .query("SELECT bot_id FROM cloud_runs WHERE run_id = ?")
             .get(params.id ?? "")
@@ -252,6 +253,7 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
               json: await cloud.request("POST", `/v1/runs/${encodeURIComponent(params.id ?? "")}/cancel`, {}),
             }
           }
+          await kernel.services.use("browser.cancelRun")?.({ runId: params.id ?? "", signal })
           groups.cancel(params.id ?? "")
           const result = engine.cancel(params.id ?? "")
           return result.success

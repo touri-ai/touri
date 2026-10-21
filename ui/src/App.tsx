@@ -1229,6 +1229,7 @@ const AppContent = ({ kernel }: AppProps) => {
                           <ChatPanel
                             channelMode={Boolean(selectedGroup)}
                             workspaceMode={sidebarMode}
+                            browserRuns={data.browserRuns ?? []}
                             onRepeatTask={setRoutineDraft}
                             currentPersonId={currentPersonId}
                             group={selectedGroup}
