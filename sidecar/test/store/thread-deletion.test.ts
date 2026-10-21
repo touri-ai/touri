@@ -300,7 +300,9 @@ test("deletion previews omit exact counts for large histories without changing t
     (id,thread_id,parent_id,role,kind,status,text,parts_json,source,created_at,updated_at)
     VALUES(?,?,NULL,'user','text','complete','message','[]','local',1,1)`)
   fixture.db.transaction(() => {
-    Array.from({ length: 1000 }, (_, index) => `preview-${index}`).forEach((id) => insert.run(id, thread.id))
+    Array.from({ length: 1000 }, (_, index) => `preview-${index}`).forEach((id) => {
+      insert.run(id, thread.id)
+    })
   })()
 
   const exact = await fixture.request(`/threads/${thread.id}/delete-preview`)
