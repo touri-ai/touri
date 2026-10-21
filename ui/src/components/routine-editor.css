@@ -112,9 +112,79 @@
   border-top: 1px solid var(--surface-control-raised);
   font-size: var(--fs-caption);
 }
-.routine-run-history li {
-  margin: 8px 0;
+.routine-run-history > .ds-disclosure-trigger {
+  width: 100%;
+  margin: 0 0 var(--space-8);
+  font-size: var(--fs-caption);
+  line-height: var(--leading-body);
+}
+.routine-history-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.routine-history-list > li {
+  margin: 0;
+  padding: var(--space-8) 0;
+  border-bottom: 1px solid var(--border-subtle);
   overflow-wrap: anywhere;
+}
+.routine-history-day {
+  margin: 0 0 var(--space-8);
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  font-weight: var(--weight-medium);
+  text-transform: capitalize;
+}
+.routine-history-run {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-8);
+}
+.routine-history-copy {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--space-2) var(--space-8);
+  min-width: 0;
+}
+.routine-history-copy > strong {
+  grid-column: 1 / -1;
+  font-size: var(--fs-meta);
+}
+.routine-history-copy time,
+.routine-history-copy small {
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+}
+.routine-history-status {
+  padding: var(--space-2) var(--space-8);
+  border-radius: var(--radius-pill);
+  background: var(--surface-control);
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  white-space: nowrap;
+}
+.routine-history-status-succeeded {
+  color: var(--success);
+}
+.routine-history-status-failed,
+.routine-history-status-skipped {
+  color: var(--danger);
+}
+.routine-history-status-running {
+  color: var(--info);
+}
+.routine-history-note {
+  margin: var(--space-4) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  line-height: var(--leading-body);
+}
+.routine-history-run > .outline-button {
+  min-height: 32px;
+  white-space: nowrap;
 }
 @media (max-width: 600px) {
   .routine-fields {
@@ -125,5 +195,12 @@
   }
   .routine-editor .routine-modal-actions button {
     flex: 1 0 auto;
+  }
+  .routine-history-run {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .routine-history-run > .outline-button {
+    grid-column: 1 / -1;
+    justify-self: start;
   }
 }

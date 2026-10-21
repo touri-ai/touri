@@ -45,5 +45,39 @@ it("shows channel avatars, unread totals and an attention badge", () => {
 
   expect(within(channel).getByRole("img", { name: "1 item precisa de você" })).toBeVisible()
   expect(within(channel).queryByRole("img", { name: /mensagens não lidas/ })).toBeNull()
-  expect(channel).toHaveAccessibleName("Equipe QA, 1 item precisa de você")
+  expect(channel).toHaveAccessibleName("Equipe QA, 1 item precisa de você, 3 mensagens não lidas")
+})
+
+it("hides an unread badge for the selected channel conversation", () => {
+  const state = createMockApi().getState()
+  const bot = state.bots[0]
+  const baseThread = state.threads[0]
+  if (!bot || !baseThread) throw new Error("Missing channel fixture")
+  const group: BotGroup = {
+    id: "channel-selected",
+    name: "Produto",
+    memberIds: [bot.id],
+    coordinatorBotId: bot.id,
+    color: "#dc2626",
+    avatarShape: "classic-none",
+    avatarSeed: "channel-selected",
+    createdAt: 1,
+    updatedAt: 1,
+  }
+  const thread: Thread = { ...baseThread, id: "channel-selected-thread", groupId: group.id, unread: 4 }
+
+  render(
+    <GroupSidebar
+      groups={[group]}
+      threads={[thread]}
+      selectedThreadId={thread.id}
+      onSelect={() => undefined}
+      onCreate={() => undefined}
+      onEdit={() => undefined}
+      onNewThread={() => undefined}
+    />,
+  )
+
+  const channel = screen.getByRole("button", { name: "Produto" })
+  expect(channel.querySelector(".sidebar-unread")).toBeNull()
 })

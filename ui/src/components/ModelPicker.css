@@ -204,8 +204,10 @@
   }
 
   .composer-island .model-picker-trigger.composer-model .model-picker-trigger-label {
-    white-space: normal;
-    overflow-wrap: anywhere;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .composer-island .model-picker-popover {

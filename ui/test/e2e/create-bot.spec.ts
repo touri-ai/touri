@@ -105,7 +105,9 @@ test("a job can be searched and chosen by keyboard, with advanced edits preserve
   await expect(dialog.getByLabel("Modelo", { exact: true })).toHaveValue("custom-model")
   await dialog.getByRole("button", { name: "Criar bot", exact: true }).click()
   await expect(page.getByRole("textbox", { name: "Mensagem para Clara" })).toBeVisible()
-  await expect(page.locator(".bot-entry").filter({ hasText: "Clara" }).locator(".bot-role")).toContainText("estrutura")
+  await expect(
+    page.locator("#sidebar-mode-panel-bots .bot-entry").filter({ hasText: "Clara" }).locator(".bot-role"),
+  ).toContainText("estrutura")
 })
 
 test("a missing account is explained inline and creating succeeds after sign-in", async ({ page }) => {

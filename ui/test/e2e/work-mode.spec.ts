@@ -103,6 +103,31 @@ test("switches and remembers Work mode, with channels and routine history", asyn
   expect(touchTargetHeights.every((height) => height >= 44)).toBe(true)
 })
 
+test("captures an open channel on desktop and phone", async ({ page }) => {
+  mkdirSync(evidence, { recursive: true })
+  await page.addInitScript(() => {
+    localStorage.setItem("touri.appearance.v1", "dark")
+    localStorage.setItem("touri.sidebar.mode", "work")
+  })
+
+  for (const viewport of [
+    { name: "desktop", width: 1440, height: 900 },
+    { name: "phone", width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height })
+    await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "dark" })
+    await page.goto("/test/e2e/work-mode-harness.html")
+    await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+    if (viewport.name === "phone") await page.locator(".mobile-menu-button").click()
+    await page.getByRole("button", { name: /^Planejamento/ }).click()
+    await expect(page.locator(".chat-header-crumb")).toHaveText("Canais / Planejamento")
+    await page.screenshot({
+      path: resolve(evidence, `channel-open-${viewport.name}.png`),
+      animations: "disabled",
+    })
+  }
+})
+
 test("preserves each mode's independent scroll position when switching", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
   await page.addInitScript(() => localStorage.setItem("touri.sidebar.mode", "work"))

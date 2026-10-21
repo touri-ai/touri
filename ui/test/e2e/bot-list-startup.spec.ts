@@ -6,7 +6,7 @@ test("bot list startup: secondary requests do not block the list", async ({ page
   const before = process.env.STARTUP_PHASE === "before"
   const output = process.env.STARTUP_CAPTURE ?? "../docs/qa/bot-list-startup"
   if (before) await expect(page.getByText("Preparando o espaço de trabalho…")).toBeVisible()
-  else await expect(page.locator(".bot-entry")).toHaveCount(3)
+  else await expect(page.locator("#sidebar-mode-panel-bots .bot-entry")).toHaveCount(3)
   await page.screenshot({ animations: "disabled", path: `${output}/${before ? "before" : "after"}-pending.png` })
   await page.evaluate(() =>
     (window as unknown as { startupEvidence: { release: () => void } }).startupEvidence.release(),

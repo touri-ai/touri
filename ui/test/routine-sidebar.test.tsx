@@ -17,24 +17,24 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-it("counts today's routine executions using the viewer's local calendar day", async () => {
+it("counts today's routine executions using each routine's timezone", async () => {
   const { routineRuns, routines } = await getRoutineSidebarFixture(2)
   const routine = routines[0]
   const first = routineRuns[0]
   const second = routineRuns[1]
   if (!routine || !first || !second) throw new Error("Missing routine count fixture")
   const localRoutine = { ...routine, timezone: "America/Sao_Paulo" }
-  const now = new Date(2026, 8, 22, 12).getTime()
+  const now = Date.parse("2026-09-22T12:00:00Z")
   const counts = getRoutineRunCountsToday(
     [
-      { ...first, scheduledFor: new Date(2026, 8, 22, 10).getTime() },
-      { ...second, scheduledFor: new Date(2026, 8, 22, 2).getTime() },
+      { ...first, scheduledFor: Date.parse("2026-09-22T13:00:00Z") },
+      { ...second, scheduledFor: Date.parse("2026-09-22T02:00:00Z") },
     ],
     new Map([[localRoutine.id, localRoutine]]),
     now,
   )
 
-  expect(counts.get(routine.id)).toBe(2)
+  expect(counts.get(routine.id)).toBe(1)
 })
 
 it("folds every routine into one Rotinas row with a single unread total that opens the history", async () => {
@@ -453,7 +453,7 @@ it("shows routine run time in the routine timezone in the sidebar", async () => 
   await screen.findByRole("heading", { name: "Rotinas" })
   const history = document.querySelector(".routine-run-history")
 
-  expect(history).toHaveTextContent("17/10/2026, 16:04:00")
+  expect(history).toHaveTextContent("17/10/2026, 16:04")
 })
 
 it("excludes archived and group threads, preserves missing metadata and leaves main-thread continuity alone", async () => {

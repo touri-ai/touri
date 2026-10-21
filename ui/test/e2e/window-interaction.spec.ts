@@ -49,7 +49,7 @@ test("title bars leave bot rows, header actions and top-bar controls clickable",
   )
   const dialog = page.getByRole("dialog", { name: "Editar canal" })
   await expect(dialog).toBeVisible()
-  await dialog.getByRole("button", { name: "Fechar grupo" }).click()
+  await dialog.getByRole("button", { name: "Fechar canal" }).click()
   await expect(dialog).not.toBeVisible()
   await pointerClick(page.locator('.sidebar-top-actions button[aria-label="Buscar conversas"] svg'))
   await expect(page.getByRole("dialog", { name: "Paleta de comandos" })).toBeVisible()

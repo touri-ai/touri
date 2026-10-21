@@ -27,13 +27,15 @@ const getChannel = () => {
 }
 
 describe("channel view", () => {
-  it("shows breadcrumb, members and an invite button that opens the member editor", () => {
+  it("shows a channel summary and an invite button that opens the member editor", () => {
     const { bots, group } = getChannel()
     const onEdit = vi.fn()
     render(<GroupHeader group={group} bots={bots} onEdit={onEdit} channelMode />)
 
     expect(screen.getByText("Canais / Equipe QA")).toBeVisible()
-    expect(screen.getByText("2 membros do canal")).toBeVisible()
+    expect(screen.getByText("2 bots · mark coordena")).toBeVisible()
+    expect(document.querySelector(".channel-heading-hash")).toHaveTextContent("#")
+    expect(document.querySelector(".group-header-members")).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "Convidar para o canal" }))
     expect(onEdit).toHaveBeenCalledOnce()
   })
@@ -54,6 +56,8 @@ describe("channel view", () => {
     const composer = await screen.findByRole("textbox", { name: "Mensagem para Equipe QA" })
     expect(composer).toHaveAttribute("placeholder", "Mensagem em #Equipe QA")
     expect(screen.getByRole("group", { name: "Ações do canal" })).toBeVisible()
+    expect(screen.getByRole("heading", { name: "Comece a conversa em #Equipe QA" })).toBeVisible()
+    expect(screen.getByText("Envie uma mensagem para começar.")).toBeVisible()
     expect(within(document.body).queryByText(/grupo/i)).toBeNull()
   })
 
@@ -61,5 +65,7 @@ describe("channel view", () => {
     expect(t("Message in channel", { name: "QA" }, "en")).toBe("Message #QA")
     expect(t("Invite to channel", {}, "en")).toBe("Invite to channel")
     expect(t("Channel composer actions", {}, "en")).toBe("Channel actions")
+    expect(t("Channel summary with coordinator", { count: 2, name: "Alex" }, "en")).toBe("2 bots · Alex coordinates")
+    expect(t("Start a conversation in channel {name}", { name: "qa" }, "en")).toBe("Start the conversation in #qa")
   })
 })

@@ -11,6 +11,9 @@ import { SidebarActionsMenu } from "./SidebarActionsMenu"
 import { SidebarCount, SidebarDot, SidebarRow } from "./SidebarRow"
 import "./groups.css"
 
+const EMPTY_BOTS: Bot[] = []
+const EMPTY_THREADS: Thread[] = []
+
 export const MemberMascots = ({ bots, locale = "pt-BR" }: { bots: Bot[]; locale?: Locale }) => (
   <span
     role="img"
@@ -40,22 +43,26 @@ export const MemberMascots = ({ bots, locale = "pt-BR" }: { bots: Bot[]; locale?
 export const GroupSidebar = memo(
   ({
     groups,
+    bots = EMPTY_BOTS,
     threads,
     attentionThreadIds = new Set(),
     selectedThreadId,
     onSelect,
     onCreate,
+    onSearch,
     onEdit,
     onNewThread,
     onDelete,
     locale = "pt-BR",
   }: {
     groups: BotGroup[]
+    bots?: Bot[]
     threads: Thread[]
     attentionThreadIds?: ReadonlySet<string>
     selectedThreadId: string | null
     onSelect: (id: string) => void
     onCreate: () => void
+    onSearch?: (() => void) | undefined
     onEdit: (group: BotGroup) => void
     onNewThread: (group: BotGroup) => void
     onDelete?: ((groupId: string) => Promise<void>) | undefined
@@ -65,9 +72,33 @@ export const GroupSidebar = memo(
       () => getGroupThreadSummaries(threads, attentionThreadIds),
       [threads, attentionThreadIds],
     )
+    const membersByGroup = useMemo(
+      () =>
+        new Map(
+          groups.map((group) => [
+            group.id,
+            group.memberIds.flatMap((id) => {
+              const bot = bots.find((candidate) => candidate.id === id)
+              return bot ? [bot] : []
+            }),
+          ]),
+        ),
+      [groups, bots],
+    )
 
     return (
       <section className="group-sidebar" aria-label={t("Channels", {}, locale)}>
+        {onSearch && (
+          <button
+            type="button"
+            className="channel-search-trigger"
+            aria-label={t("Search channels and messages", {}, locale)}
+            onClick={onSearch}
+          >
+            <span aria-hidden="true">⌕</span>
+            <span>{t("Search channels and messages", {}, locale)}</span>
+          </button>
+        )}
         <div className="group-sidebar-heading">
           <h2>{t("Channels", {}, locale)}</h2>
           <button
@@ -91,18 +122,22 @@ export const GroupSidebar = memo(
         )}
         {groups.map((group) => {
           const summary = threadSummaries.get(group.id)
+          const groupThreads = summary?.threads ?? EMPTY_THREADS
+          const isSelected = groupThreads.some((thread) => thread.id === selectedThreadId)
+          const selectedUnread = groupThreads.find((thread) => thread.id === selectedThreadId)?.unread ?? 0
 
           return (
             <GroupSidebarEntry
               key={group.id}
               group={group}
-              threads={summary?.threads ?? []}
+              bots={membersByGroup.get(group.id) ?? EMPTY_BOTS}
+              threads={isSelected ? groupThreads : EMPTY_THREADS}
+              firstThreadId={groupThreads[0]?.id ?? null}
               unread={summary?.unread ?? 0}
+              selectedUnread={selectedUnread}
               needsAttention={summary?.needsAttention ?? false}
-              selected={summary?.threads.some((thread) => thread.id === selectedThreadId) ?? false}
-              selectedThreadId={
-                summary?.threads.some((thread) => thread.id === selectedThreadId) ? selectedThreadId : null
-              }
+              selected={isSelected}
+              selectedThreadId={isSelected ? selectedThreadId : null}
               onSelect={onSelect}
               onEdit={onEdit}
               onNewThread={onNewThread}
@@ -139,8 +174,11 @@ const getGroupThreadSummaries = (threads: Thread[], attentionThreadIds: Readonly
 const GroupSidebarEntry = memo(
   ({
     group,
+    bots,
     threads,
+    firstThreadId,
     unread,
+    selectedUnread,
     needsAttention,
     selected,
     selectedThreadId,
@@ -151,8 +189,11 @@ const GroupSidebarEntry = memo(
     locale,
   }: {
     group: BotGroup
+    bots: Bot[]
     threads: Thread[]
+    firstThreadId: string | null
     unread: number
+    selectedUnread: number
     needsAttention: boolean
     selected: boolean
     selectedThreadId: string | null
@@ -169,8 +210,9 @@ const GroupSidebarEntry = memo(
     useEffect(() => setMenuOpen(false), [navigationKey])
 
     const attentionLabel = t("Channel attention count", { count: 1 }, locale)
-    const unreadLabel = t("Unread messages", { count: unread }, locale)
-    const stateLabel = needsAttention ? attentionLabel : unread > 0 ? unreadLabel : null
+    const unreadCount = Math.max(0, unread - selectedUnread)
+    const unreadLabel = t("Unread messages", { count: unreadCount }, locale)
+    const stateLabels = [...(needsAttention ? [attentionLabel] : []), ...(unreadCount > 0 ? [unreadLabel] : [])]
 
     return (
       <div className={`group-sidebar-item ${selected ? "selected" : ""}`}>
@@ -178,14 +220,30 @@ const GroupSidebarEntry = memo(
           selected={selected}
           rowAttention={needsAttention ? "waiting" : undefined}
           className="group-select"
-          ariaLabel={[group.name, stateLabel].filter(Boolean).join(", ")}
-          leading={<span className="channel-hash">#</span>}
+          ariaLabel={[group.name, ...stateLabels].join(", ")}
+          leading={
+            <>
+              <span className="channel-hash">#</span>
+              <span className="channel-bot-avatars" aria-hidden="true">
+                {bots.slice(0, 2).map((bot) => (
+                  <span
+                    key={bot.id}
+                    className="channel-bot-avatar"
+                    style={{ backgroundColor: bot.color ?? avatarColorFor(bot) }}
+                  >
+                    {bot.name.trim().slice(0, 1).toLocaleUpperCase(locale) || "?"}
+                  </span>
+                ))}
+                {bots.length > 2 && <span className="channel-bot-overflow">+{bots.length - 2}</span>}
+              </span>
+            </>
+          }
           label={<span className="channel-name">{group.name}</span>}
           trailing={
             needsAttention ? (
               <SidebarDot tone="waiting" label={attentionLabel} />
-            ) : unread > 0 ? (
-              <SidebarCount count={unread} label={unreadLabel} />
+            ) : unreadCount > 0 ? (
+              <SidebarCount count={unreadCount} label={unreadLabel} />
             ) : null
           }
           actions={
@@ -203,10 +261,9 @@ const GroupSidebarEntry = memo(
             />
           }
           onClick={() => {
-            const thread = threads[0]
-            if (!thread) return onNewThread(group)
+            if (!firstThreadId) return onNewThread(group)
 
-            onSelect(thread.id)
+            onSelect(firstThreadId)
           }}
         />
         {deleting && onDelete && (
@@ -293,27 +350,34 @@ export const GroupConversationStart = ({
   group: BotGroup
   bots: Bot[]
   channelMode?: boolean
-}) => (
-  <section
-    className="conversation-start"
-    aria-label={t(channelMode ? "Start a conversation with {name}" : "Comece uma conversa com {name}", {
-      name: group.name,
-    })}
-  >
-    <BotAvatar
-      bot={{ id: group.id, color: group.color, avatarShape: group.avatarShape, avatarSeed: group.avatarSeed }}
-      size={36}
-    />
-    <h2>
-      {t(channelMode ? "Start a conversation with {name}" : "Comece uma conversa com {name}", { name: group.name })}
-    </h2>
-    <p>
-      {t(channelMode ? "Tell the channel what to do to get started." : "Conte o que o grupo deve fazer para começar.")}
-    </p>
-    <GroupMembers group={group} bots={bots} channelMode={channelMode} />
-    <GroupRoutingNote group={group} bots={bots} channelMode={channelMode} />
-  </section>
-)
+}) => {
+  const startTitle = channelMode
+    ? t("Start a conversation in channel {name}", { name: group.name })
+    : t("Comece uma conversa com {name}", { name: group.name })
+  const startHint = channelMode ? t("Channel conversation hint") : t("Conte o que o grupo deve fazer para começar.")
+
+  return (
+    <section
+      className={`conversation-start${channelMode ? " channel-conversation-start" : ""}`}
+      aria-label={startTitle}
+    >
+      {channelMode ? (
+        <span className="channel-start-hash" aria-hidden="true">
+          #
+        </span>
+      ) : (
+        <BotAvatar
+          bot={{ id: group.id, color: group.color, avatarShape: group.avatarShape, avatarSeed: group.avatarSeed }}
+          size={36}
+        />
+      )}
+      <h2>{startTitle}</h2>
+      <p>{startHint}</p>
+      <GroupMembers group={group} bots={bots} channelMode={channelMode} />
+      <GroupRoutingNote group={group} bots={bots} channelMode={channelMode} />
+    </section>
+  )
+}
 
 export const GroupPanel = ({
   group,
@@ -436,59 +500,77 @@ export const GroupHeader = ({
   onTogglePanel?: (() => void) | undefined
   locale?: Locale
   channelMode?: boolean
-}) => (
-  <header className="chat-header group-header" data-tauri-drag-region="deep">
-    <div>
-      <span className="chat-header-crumb">
-        {t(channelMode ? "Channels / {name}" : "Grupos / {name}", { name: group.name }, locale)}
-      </span>
-      <div className="group-heading-name">
-        <BotAvatar
-          bot={{ id: group.id, color: group.color, avatarShape: group.avatarShape, avatarSeed: group.avatarSeed }}
-          size={30}
-        />
-        <strong>{group.name}</strong>
-        <span className="group-member-count">
-          {t(channelMode ? "Channel member count" : "Group member count", { count: bots.length }, locale)}
+}) => {
+  const coordinator = bots.find((bot) => bot.id === group.coordinatorBotId)
+  const channelSummary = coordinator
+    ? t("Channel summary with coordinator", { count: bots.length, name: coordinator.name }, locale)
+    : t("Channel summary", { count: bots.length }, locale)
+
+  return (
+    <header className={`chat-header group-header${channelMode ? " channel-mode" : ""}`} data-tauri-drag-region="deep">
+      <div>
+        <span className="chat-header-crumb">
+          {t(channelMode ? "Channels / {name}" : "Grupos / {name}", { name: group.name }, locale)}
         </span>
+        <div className={`group-heading-name ${channelMode ? "channel-heading-name" : ""}`}>
+          {channelMode ? (
+            <span className="channel-heading-hash" aria-hidden="true">
+              #
+            </span>
+          ) : (
+            <BotAvatar
+              bot={{ id: group.id, color: group.color, avatarShape: group.avatarShape, avatarSeed: group.avatarSeed }}
+              size={30}
+            />
+          )}
+          <strong>{group.name}</strong>
+          <span className="group-member-count">
+            {channelMode ? channelSummary : t("Group member count", { count: bots.length }, locale)}
+          </span>
+        </div>
       </div>
-    </div>
-    <div className="group-header-members">
-      <MemberMascots bots={bots} locale={locale} />
-      <span>
-        {bots
-          .map((b) => `${b.name}${b.id === group.coordinatorBotId ? t("Group coordinator suffix", {}, locale) : ""}`)
-          .join(", ")}
-      </span>
-    </div>
-    {onTogglePanel && (
-      <button
-        type="button"
-        className="toolbar-icon bot-panel-toggle"
-        aria-label={t(channelMode ? "Channel panel" : "Painel do grupo", {}, locale)}
-        aria-expanded={panelOpen}
-        aria-controls="bot-panel"
-        onClick={onTogglePanel}
-      >
-        ◧
+      {!channelMode && (
+        <div className="group-header-members">
+          <MemberMascots bots={bots} locale={locale} />
+          <span>
+            {bots
+              .map(
+                (bot) =>
+                  `${bot.name}${bot.id === group.coordinatorBotId ? t("Group coordinator suffix", {}, locale) : ""}`,
+              )
+              .join(", ")}
+          </span>
+        </div>
+      )}
+      {onTogglePanel && (
+        <button
+          type="button"
+          className="toolbar-icon bot-panel-toggle"
+          aria-label={t(channelMode ? "Channel panel" : "Painel do grupo", {}, locale)}
+          aria-expanded={panelOpen}
+          aria-controls="bot-panel"
+          onClick={onTogglePanel}
+        >
+          ◧
+        </button>
+      )}
+      {channelMode && (
+        <button
+          type="button"
+          className="toolbar-icon channel-invite"
+          aria-label={t("Invite to channel", {}, locale)}
+          title={t("Invite to channel", {}, locale)}
+          onClick={onEdit}
+        >
+          <span aria-hidden="true">+</span>
+        </button>
+      )}
+      <button type="button" className="button button-quiet" onClick={onEdit}>
+        {t(channelMode ? "Edit channel" : "Editar grupo", {}, locale)}
       </button>
-    )}
-    {channelMode && (
-      <button
-        type="button"
-        className="toolbar-icon channel-invite"
-        aria-label={t("Invite to channel", {}, locale)}
-        title={t("Invite to channel", {}, locale)}
-        onClick={onEdit}
-      >
-        <span aria-hidden="true">+</span>
-      </button>
-    )}
-    <button type="button" className="button button-quiet" onClick={onEdit}>
-      {t(channelMode ? "Edit channel" : "Editar grupo", {}, locale)}
-    </button>
-  </header>
-)
+    </header>
+  )
+}
 
 export const GroupModal = ({
   group,

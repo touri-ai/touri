@@ -129,8 +129,8 @@ describe("Grupos", () => {
     fireEvent.click(screen.getByRole("tab", { name: /^Work,/ }))
     fireEvent.click(within(screen.getByRole("region", { name: "Canais" })).getByRole("button", { name: /^Equipe QA/ }))
     await screen.findByRole("textbox", { name: "Mensagem para Equipe QA" })
-    const welcome = screen.getByRole("region", { name: "Comece uma conversa com Equipe QA" })
-    expect(within(welcome).getByRole("heading", { name: "Comece uma conversa com Equipe QA" })).toBeVisible()
+    const welcome = screen.getByRole("region", { name: "Comece a conversa em #Equipe QA" })
+    expect(within(welcome).getByRole("heading", { name: "Comece a conversa em #Equipe QA" })).toBeVisible()
     expect(within(welcome).getByText(/Mencione @nome para escolher quem responde/)).toBeVisible()
     expect(within(welcome).getByRole("list", { name: "Membros do canal" })).toHaveTextContent("mark")
     expect(within(welcome).getByRole("list", { name: "Membros do canal" })).toHaveTextContent("onb")
@@ -157,10 +157,8 @@ describe("Grupos", () => {
     fireEvent.change(within(modal).getByLabelText("Coordenador do canal"), { target: { value: "bot-mark" } })
     fireEvent.click(within(modal).getByRole("button", { name: "Criar canal" }))
     const composer = await screen.findByRole("textbox", { name: "Mensagem para Produto" })
-    expect(screen.getByText("mark · coordenador, onb")).toBeVisible()
     const header = within(document.querySelector(".group-header") as HTMLElement)
-    expect(header.getByText("2 membros do canal", { exact: true })).toBeVisible()
-    expect(header.getByRole("img", { name: "2 membros: mark, onb", exact: true })).toBeVisible()
+    expect(header.getByText("2 bots · mark coordena", { exact: true })).toBeVisible()
     const payload = api.calls.find((c) => c.route === "POST /groups")?.input
     expect(payload).toMatchObject({ name: "Produto", memberIds: ["bot-mark", "bot-onb"], coordinatorBotId: "bot-mark" })
     fireEvent.focus(composer)
@@ -175,8 +173,7 @@ describe("Grupos", () => {
     expect(within(edit).getByLabelText("Coordenador do canal")).toHaveValue("")
     fireEvent.click(within(edit).getByRole("button", { name: "Salvar canal" }))
     await screen.findByRole("textbox", { name: "Mensagem para Produto" })
-    expect(header.getByText("1 membro do canal", { exact: true })).toBeVisible()
-    expect(header.getByRole("img", { name: "1 membro: onb", exact: true })).toBeVisible()
+    expect(header.getByText("1 bot", { exact: true })).toBeVisible()
     expect(api.calls.find((c) => c.route === "PATCH /groups/:id")?.input).toMatchObject({
       memberIds: ["bot-onb"],
       coordinatorBotId: null,
@@ -227,8 +224,8 @@ describe("Grupos", () => {
     })
     const deleted = await within(row as HTMLElement).findByRole("img", { name: "Membro excluído: onb" })
     const header = within(document.querySelector(".group-header") as HTMLElement)
-    expect(header.getByText("1 membro do canal", { exact: true })).toBeVisible()
-    expect(header.getByRole("img", { name: "1 membro: mark", exact: true })).toBeVisible()
+    expect(header.getByText("1 bot · mark coordena", { exact: true })).toBeVisible()
+    expect(header.getByText("1 bot · mark coordena", { exact: true })).toBeVisible()
     expect(deleted.querySelector(".tb-avatar")).toHaveAttribute("data-bot-id", "bot-onb")
     expect(row?.querySelector('[data-bot-id="bot-mark"]')).toBeNull()
     expect(row?.querySelector(".message-role")).toHaveTextContent("onb")

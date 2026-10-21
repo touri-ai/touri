@@ -318,10 +318,13 @@
     text-align: left;
   }
   .composer-island .composer-model-name {
-    overflow: visible;
-    overflow-wrap: anywhere;
-    text-overflow: clip;
-    white-space: normal;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .composer-island .composer-project {
+    width: 100%;
   }
   .composer-island .composer-model > [aria-hidden="true"] {
     flex-shrink: 0;

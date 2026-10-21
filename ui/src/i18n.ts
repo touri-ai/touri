@@ -1383,6 +1383,10 @@ export const ptBR = {
   "Your channel": "Seu canal",
   "Channels / {name}": "Canais / {name}",
   "Invite to channel": "Convidar para o canal",
+  "Channel summary with coordinator": "{count} bots · {name} coordena",
+  "Channel summary": "{count} bots",
+  "Start a conversation in channel {name}": "Comece a conversa em #{name}",
+  "Channel conversation hint": "Envie uma mensagem para começar.",
   "Start a conversation with {name}": "Comece uma conversa com {name}",
   "Tell the channel what to do to get started.": "Conte o que o canal deve fazer para começar.",
   "Channel name": "Nome do canal",
@@ -1452,6 +1456,8 @@ export const ptBR = {
   "Next routine time": "Próxima: {time} · {timezone}",
   "Waiting for the next schedule": "Aguardando próximo agendamento",
   "Routine paused": "Pausada",
+  "Routine active": "Ativa",
+  "Routine completed": "Concluída",
   "No scheduled routines": "Nenhuma rotina agendada",
   "Set a routine for recurring tasks.": "Configure uma rotina para este bot cuidar de tarefas recorrentes.",
   "Configure routines": "Configurar rotinas",
@@ -4256,6 +4262,10 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Your channel": "Your channel",
   "Channels / {name}": "Channels / {name}",
   "Invite to channel": "Invite to channel",
+  "Channel summary with coordinator": "{count} bots · {name} coordinates",
+  "Channel summary": "{count} bots",
+  "Start a conversation in channel {name}": "Start the conversation in #{name}",
+  "Channel conversation hint": "Send a message to get started.",
   "Start a conversation with {name}": "Start a conversation with {name}",
   "Tell the channel what to do to get started.": "Tell the channel what to do to get started.",
   "Channel name": "Channel name",
@@ -4324,6 +4334,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Next routine time": "Next: {time} · {timezone}",
   "Waiting for the next schedule": "Waiting for the next schedule",
   "Routine paused": "Paused",
+  "Routine active": "Active",
+  "Routine completed": "Completed",
   "No scheduled routines": "No scheduled routines",
   "Set a routine for recurring tasks.": "Set a routine for this bot to handle recurring tasks.",
   "Configure routines": "Configure routines",
@@ -5110,6 +5122,8 @@ const singular: Partial<Record<TranslationKey, [string, string]>> = {
   "Tab unread count": ["1 mensagem não lida", "1 unread message"],
   "Channel attention count": ["1 item precisa de você", "1 item needs your attention"],
   "Channel member count": ["{count} membro do canal", "{count} channel member"],
+  "Channel summary with coordinator": ["{count} bot · {name} coordena", "{count} bot · {name} coordinates"],
+  "Channel summary": ["{count} bot", "{count} bot"],
   "Conexão pronta: {count} ferramentas disponíveis. Salve para usá-las neste bot.": [
     "Conexão pronta: {count} ferramenta disponível. Salve para usá-la neste bot.",
     "Connection ready: {count} tool available. Save to use it with this bot.",
@@ -5193,14 +5207,17 @@ export const getRoutineRunCountsToday = (
   readDayBounds: RoutineRunDayBoundsReader = getRoutineRunDayBounds,
 ): ReadonlyMap<string, number> => {
   const counts = new Map<string, number>()
+  const boundsByTimeZone = new Map<string | undefined, RoutineRunDayBounds>()
   if (!routineRuns.length || !routines.size) return counts
 
-  const bounds = readDayBounds(now)
-
-  // The local count map keeps this scan linear; viewer-local "today" needs one shared day boundary.
   routineRuns.forEach((run) => {
     if (!run.threadId) return
-    if (!routines.has(run.routineId)) return
+    const routine = routines.get(run.routineId)
+    if (!routine) return
+
+    const timeZone = routine.timezone
+    const bounds = boundsByTimeZone.get(timeZone) ?? readDayBounds(now, timeZone)
+    if (!boundsByTimeZone.has(timeZone)) boundsByTimeZone.set(timeZone, bounds)
     if (run.scheduledFor < bounds.start || run.scheduledFor >= bounds.end) return
 
     counts.set(run.routineId, (counts.get(run.routineId) ?? 0) + 1)
@@ -5216,7 +5233,13 @@ export const getNextRoutineRunDayBoundary = (
 ): number | undefined => {
   if (!routines.size) return undefined
 
-  return readDayBounds(now).end
+  return [...new Set([...routines.values()].map((routine) => routine.timezone))].reduce<number | undefined>(
+    (nextBoundary, timeZone) => {
+      const boundary = readDayBounds(now, timeZone).end
+      return nextBoundary === undefined ? boundary : Math.min(nextBoundary, boundary)
+    },
+    undefined,
+  )
 }
 
 const getRoutineRunDayBounds: RoutineRunDayBoundsReader = (now, timeZone) => {
