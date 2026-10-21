@@ -164,6 +164,8 @@ const AppContent = ({ kernel }: AppProps) => {
   const [api, setApi] = useState<UiApi | null>(() => kernel?.services?.api ?? null)
   const currentPerson = useCurrentPerson(api, isNativeDesktop() && !serverMode)
   const currentPersonId = currentPerson?.id ?? null
+  const canInvitePeople =
+    currentPerson?.role === "admin" && (!isNativeDesktop() || serverState.status?.mode === "server")
   const host = useHost(api)
   const attachmentButtonRef = useRef<HTMLButtonElement>(null)
   const apiRef = useRef(api)
@@ -1071,7 +1073,7 @@ const AppContent = ({ kernel }: AppProps) => {
             serverUrl={serverState.status?.url ?? null}
             host={data.routineHost}
             groups={data.groups}
-            onInvitePerson={data.isMember ? undefined : () => openModal("invite")}
+            onInvitePerson={canInvitePeople ? () => openModal("invite") : undefined}
             onNewGroup={() => {
               setEditingGroup(null)
               openModal("group")
@@ -1250,7 +1252,7 @@ const AppContent = ({ kernel }: AppProps) => {
                               setEditingGroup(selectedGroup)
                               openModal("group")
                             }}
-                            onInviteToGroup={data.isMember ? undefined : () => openModal("invite")}
+                            onInviteToGroup={canInvitePeople ? () => openModal("invite") : undefined}
                             focusApproval={
                               approvalFocus?.threadId === selectedThread?.id ? (approvalFocus ?? undefined) : undefined
                             }

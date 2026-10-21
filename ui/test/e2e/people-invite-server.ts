@@ -27,10 +27,12 @@ const listen = (server: Server) =>
 
 const close = (server: Server) => new Promise<void>((done) => server.close(() => done()))
 
-const waitForServer = async (serverUrl: string, child: ChildProcess): Promise<boolean> => {
+const waitForServer = async (serverUrl: string, child: ChildProcess, token?: string): Promise<boolean> => {
+  const path = token ? "/api/v1/bots" : "/pair"
+  const headers = token ? { Authorization: `Bearer ${token}`, "X-Touri-Client": "desktop-test" } : undefined
   for (const _attempt of Array.from({ length: 300 })) {
     if (child.exitCode !== null || child.signalCode !== null) throw new Error("The isolated server exited")
-    const ready = await fetch(`${serverUrl}/pair`, { signal: AbortSignal.timeout(500) })
+    const ready = await fetch(`${serverUrl}${path}`, { headers, signal: AbortSignal.timeout(500) })
       .then((response) => response.ok)
       .catch(() => false)
     if (ready) return true
@@ -114,6 +116,8 @@ export const createPeopleInviteServer = async () => {
     })
     const pairResult = (await pairResponse.json()) as { token?: string }
     if (!pairResponse.ok || !pairResult.token) throw new Error("The isolated server rejected the pairing code")
+    if (!(await waitForServer(serverUrl, child, pairResult.token)))
+      throw new Error("The isolated workspace did not become ready")
 
     const api = async (path: string, method = "GET", body?: unknown) => {
       const response = await fetch(`${serverUrl}/api/v1${path}`, {

@@ -33,6 +33,26 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
+it.each([
+  { status: local, canInvite: false },
+  { status: server, canInvite: true },
+])("only offers people invitations with a server connection ($status.mode)", async ({ status, canInvite }) => {
+  native()
+  const api = { ...createMockApi(), isMock: false }
+  const invoke = vi.fn(async (command: string) => (command === "server_mode_status" ? status : {}))
+
+  render(<App kernel={{ services: { api, invoke: invoke as TauriInvoke } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+  const invite = screen.queryByRole("button", { name: "Convidar pessoa", exact: true })
+  if (!canInvite) {
+    expect(invite).not.toBeInTheDocument()
+    return
+  }
+
+  expect(invite).toBeVisible()
+})
+
 it("keeps the advanced native server setting out of the browser app", () => {
   const invoke = vi.fn()
   render(<SettingsModal invokeCommand={invoke} settings={null} onSave={vi.fn()} onClose={vi.fn()} />)

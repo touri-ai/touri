@@ -1,9 +1,16 @@
-import type { BrowserContext } from "@playwright/test"
+import { join } from "node:path"
+import AxeBuilder from "@axe-core/playwright"
+import type { BrowserContext, TestInfo } from "@playwright/test"
 import { expect, test } from "@playwright/test"
 import { createPeopleInviteServer } from "./people-invite-server"
 
 let server: Awaited<ReturnType<typeof createPeopleInviteServer>> | null = null
 let memberContext: BrowserContext | null = null
+
+const getImagePath = (testInfo: TestInfo, name: string): string => {
+  const directory = process.env.TOURI_INVITE_EVIDENCE_DIR
+  return directory ? join(directory, name) : testInfo.outputPath(name)
+}
 
 test.afterEach(async () => {
   await memberContext?.close()
@@ -11,6 +18,43 @@ test.afterEach(async () => {
   await server?.dispose()
   server = null
 })
+
+for (const theme of ["light", "dark"] as const) {
+  test(`sent invitation badge has readable contrast (${theme})`, async ({ page }, testInfo) => {
+    test.setTimeout(90_000)
+    const currentServer = await createPeopleInviteServer()
+    server = currentServer
+    await currentServer.api("/bots", "POST", { name: "Léo", provider: "codex" })
+    await currentServer.install(page)
+    await page.addInitScript((value) => localStorage.setItem("touri.appearance.v1", value), theme)
+    await page.emulateMedia({ reducedMotion: "reduce" })
+    await page.route("**/api/v1/invites", (route) =>
+      route.fulfill({
+        json: {
+          invite: { id: "synthetic-invite", name: "Ana", email: "ana@example.test", role: "member", channelIds: [] },
+          emailConfigured: true,
+          emailSent: true,
+          link: "https://team.example.test/join#invite=synthetic",
+        },
+      }),
+    )
+
+    await page.goto(currentServer.serverUrl)
+    await page.getByRole("button", { name: "Convidar pessoa", exact: true }).first().click()
+    const dialog = page.getByRole("dialog", { name: "Convidar pessoa", exact: true })
+    await dialog.getByLabel("Nome", { exact: true }).fill("Ana")
+    await dialog.getByLabel("E-mail", { exact: true }).fill("ana@example.test")
+    await dialog.getByRole("button", { name: "Enviar convite", exact: true }).click()
+    await expect(dialog.locator(".invite-badge-ok")).toHaveText("Enviado")
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
+    const imagePath = getImagePath(testInfo, `people-invite-sent-${theme}.png`)
+    await page.screenshot({ path: imagePath })
+    await testInfo.attach(`people-invite-sent-${theme}`, { path: imagePath, contentType: "image/png" })
+    const contrast = await new AxeBuilder({ page }).include(".invite-badge-ok").withRules(["color-contrast"]).analyze()
+
+    expect(contrast.violations).toEqual([])
+  })
+}
 
 test("an owner invites a person who joins in a second browser context", async ({ page, browser }, testInfo) => {
   test.setTimeout(90_000)
@@ -46,7 +90,7 @@ test("an owner invites a person who joins in a second browser context", async ({
   await page.getByRole("button", { name: "Vendas", exact: true }).click()
   await expect(page.getByRole("textbox", { name: /Mensagem (?:para |em #)Vendas/ })).toBeVisible()
   await expect(page.getByRole("button", { name: "Convidar pessoa", exact: true }).first()).toBeVisible()
-  const beforePath = testInfo.outputPath("people-invite-before.png")
+  const beforePath = getImagePath(testInfo, "people-invite-before.png")
   await page.screenshot({ path: beforePath })
   await testInfo.attach("people-invite-before", { path: beforePath, contentType: "image/png" })
 
@@ -76,7 +120,7 @@ test("an owner invites a person who joins in a second browser context", async ({
   await expect(inviteDialog.getByText(/O envio de e-mail não está configurado/)).toBeVisible()
   await expect(inviteDialog.getByRole("button", { name: "Copiar link", exact: true })).toBeVisible()
   await expect(inviteDialog.getByRole("button", { name: "Revogar", exact: true })).toBeVisible()
-  const afterPath = testInfo.outputPath("people-invite-after.png")
+  const afterPath = getImagePath(testInfo, "people-invite-after.png")
   await page.screenshot({ path: afterPath })
   await testInfo.attach("people-invite-after", { path: afterPath, contentType: "image/png" })
 
@@ -90,13 +134,14 @@ test("an owner invites a person who joins in a second browser context", async ({
   await memberPage.getByLabel("Seu nome", { exact: true }).fill("Ana")
   await memberPage.getByLabel("Nome deste aparelho", { exact: true }).fill("Celular da Ana")
 
-  const joinPath = testInfo.outputPath("people-invite-join.png")
+  const joinPath = getImagePath(testInfo, "people-invite-join.png")
   await memberPage.screenshot({ path: joinPath })
   await testInfo.attach("people-invite-join", { path: joinPath, contentType: "image/png" })
   await memberPage.getByRole("button", { name: "Entrar", exact: true }).click()
   await memberPage.waitForURL(`${new URL(currentServer.serverUrl).origin}/`)
 
   await expect(memberPage.getByRole("textbox", { name: /Mensagem (?:para |em #)Vendas/ })).toBeVisible()
+  await expect(memberPage.getByRole("button", { name: "Convidar pessoa", exact: true })).toHaveCount(0)
   await expect(memberPage.getByRole("alert")).toHaveCount(0)
   const composer = memberPage.getByRole("textbox", { name: /Mensagem (?:para |em #)Vendas/ })
   await composer.fill("@Léo olá, pode ajudar o time?")
@@ -108,7 +153,7 @@ test("an owner invites a person who joins in a second browser context", async ({
   await expect(memberPage.getByText("@Léo olá, pode ajudar o time?", { exact: true })).toBeVisible()
   await expect(memberPage.getByText("Olá, Ana! Posso ajudar o time.", { exact: true })).toBeVisible({ timeout: 30_000 })
   await expect(memberPage.getByRole("alert")).toHaveCount(0)
-  const memberPath = testInfo.outputPath("people-invite-member.png")
+  const memberPath = getImagePath(testInfo, "people-invite-member.png")
   await memberPage.screenshot({ path: memberPath })
   await testInfo.attach("people-invite-member", { path: memberPath, contentType: "image/png" })
   expect(

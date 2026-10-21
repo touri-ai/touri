@@ -70,8 +70,8 @@
   background: var(--surface-2, rgba(128, 128, 128, 0.16));
 }
 .invite-badge-ok {
-  background: rgba(52, 199, 123, 0.14);
-  color: #1f9d5c;
+  background: var(--surface-success);
+  color: var(--text-success-strong);
 }
 .invite-link {
   width: 100%;
