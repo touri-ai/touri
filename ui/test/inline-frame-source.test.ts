@@ -179,6 +179,63 @@ test("host browser polling sends images to the worker and stays serial", async (
   expect(request).not.toHaveBeenCalledWith("POST /bots/:id/desktop", expect.anything(), expect.anything())
 })
 
+test("browser thumbnails are resized in a worker and use the CSP-safe JPEG source", async () => {
+  const workers: Array<{
+    dispatchEvent: EventTarget["dispatchEvent"]
+    postMessage: ReturnType<typeof vi.fn>
+    terminate: ReturnType<typeof vi.fn>
+  }> = []
+  class MockPreviewWorker extends EventTarget {
+    postMessage = vi.fn((_message: unknown, _transfer?: Transferable[]) => {})
+    terminate = vi.fn()
+    constructor() {
+      super()
+      workers.push(this)
+    }
+  }
+  vi.stubGlobal("Worker", MockPreviewWorker)
+  const toDataURL = vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/jpeg;base64,AAAA")
+  const request = vi.fn(async (route: string) =>
+    route === "GET /bots/:id/browser-preview"
+      ? { title: "Página", url: "https://example.org", image: "data:image/jpeg;base64,c21hbGw=" }
+      : { tabs: [] },
+  )
+  const api = { request, subscribe: () => () => {}, isMock: false } as UiApi
+  const frame = vi.fn()
+
+  const stop = startInlineFrameSource(api, { id: "bot", machine: "local" } as Bot, "tab", frame, vi.fn())
+  await vi.waitFor(() =>
+    expect(request).toHaveBeenCalledWith("GET /bots/:id/browser-preview", { tabId: "tab" }, { id: "bot" }),
+  )
+
+  const worker = workers[0]
+  if (!worker) throw new Error("The browser thumbnail worker did not start")
+  const message = worker.postMessage.mock.calls[0]?.[0] as { id: number }
+  worker.dispatchEvent(
+    new MessageEvent("message", {
+      data: {
+        id: message.id,
+        title: "Página",
+        url: "https://example.org",
+        src: "data:image/jpeg;base64,SlBFRw==",
+      },
+    }),
+  )
+  await vi.waitFor(() =>
+    expect(frame).toHaveBeenCalledWith({
+      src: "data:image/jpeg;base64,SlBFRw==",
+      title: "Página",
+      url: "https://example.org",
+    }),
+  )
+
+  expect(toDataURL).not.toHaveBeenCalled()
+
+  stop()
+
+  expect(worker.terminate).toHaveBeenCalledOnce()
+})
+
 test("a VM session request that never answers reports the cause after 20 s", async () => {
   vi.useFakeTimers()
   const api = {

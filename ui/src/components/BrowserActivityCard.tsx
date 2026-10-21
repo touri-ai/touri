@@ -186,7 +186,7 @@ export const BrowserActivityCard = ({
       () => setPreviewError(t("Browser preview unavailable. Open the browser to reconnect.", {}, locale)),
       (reason) =>
         setPreviewError(reason ? t("Browser preview unavailable. Open the browser to reconnect.", {}, locale) : null),
-      { intervalMs: 3_000 },
+      { intervalMs: 700 },
     )
   }, [activeTabId, api, botId, machine, canPreview, finished, hidden, locale, previewEnabled, visible])
 

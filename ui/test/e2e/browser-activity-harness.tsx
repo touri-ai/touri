@@ -15,7 +15,7 @@ const params = new URLSearchParams(location.search)
 document.documentElement.dataset.theme = params.get("theme") ?? "dark"
 const locale = params.get("locale") === "en" ? "en" : "pt-BR"
 document.documentElement.lang = locale
-const attachmentImage = (() => {
+const fixtureImages = (() => {
   const canvas = document.createElement("canvas")
   canvas.width = 800
   canvas.height = 500
@@ -41,9 +41,13 @@ const attachmentImage = (() => {
   context.font = "20px sans-serif"
   context.fillText("Resultados de teste, dados fictícios", 50, 280)
 
-  return canvas.toDataURL("image/png").split(",")[1] ?? ""
+  return {
+    attachment: canvas.toDataURL("image/png").split(",")[1] ?? "",
+    preview: canvas.toDataURL("image/jpeg", 0.8),
+  }
 })()
-const image = `data:image/png;base64,${attachmentImage}`
+const attachmentImage = fixtureImages.attachment
+const image = fixtureImages.preview
 const attachmentBytes = Math.floor((attachmentImage.length * 3) / 4)
 const initialPage = { title: t("Travel search fixture", {}, locale), url: "https://travel.example.test/search" }
 const resultPage = { title: t("Search results", {}, locale), url: "https://travel.example.test/results" }
@@ -65,19 +69,42 @@ type BrowserActivitySnapshot = {
   started: boolean
   results: boolean
   attachmentRead: boolean
+  previewRequests: number
+  maxUiLongTaskMs: number
+  longTaskObserverAvailable: boolean
 }
-type BrowserActivityWindow = Window & { browserActivity?: { snapshot: () => BrowserActivitySnapshot } }
+type BrowserActivityWindow = Window & {
+  browserActivity?: { resetPreviewMetrics: () => void; snapshot: () => BrowserActivitySnapshot }
+}
+
+const previewMetrics = { requests: 0, maxLongTaskMs: 0, observerAvailable: false }
+const previewLongTaskObserver =
+  typeof PerformanceObserver === "undefined"
+    ? undefined
+    : new PerformanceObserver((list) => {
+        previewMetrics.maxLongTaskMs = list
+          .getEntries()
+          .reduce((maximum, entry) => Math.max(maximum, entry.duration), previewMetrics.maxLongTaskMs)
+      })
+try {
+  previewLongTaskObserver?.observe({ entryTypes: ["longtask"] })
+  previewMetrics.observerAvailable = previewLongTaskObserver !== undefined
+} catch {
+  previewMetrics.observerAvailable = false
+}
 
 const getFixtureApi = ({
   currentPage,
   heldByUser,
   onHeldChange,
   onAttachmentRead,
+  onPreviewRequested,
 }: {
   currentPage: { current: FixturePage }
   heldByUser: { current: boolean }
   onHeldChange: (held: boolean) => void
   onAttachmentRead: () => void
+  onPreviewRequested: () => void
 }) => {
   const api = createMockApi()
   const bot = api.getState().bots.find((item) => item.id === "bot-mark")
@@ -96,8 +123,10 @@ const getFixtureApi = ({
       onHeldChange(held)
       return {}
     }
-    if (route === "GET /bots/:id/browser-preview")
+    if (route === "GET /bots/:id/browser-preview") {
+      onPreviewRequested()
       return { image, title: currentPage.current.title, url: currentPage.current.url }
+    }
     if (route === "GET /attachments/:id/content") {
       onAttachmentRead()
       return {
@@ -153,14 +182,47 @@ const Fixture = () => {
       heldByUser,
       onHeldChange: setHeld,
       onAttachmentRead: () => setAttachmentRead(true),
+      onPreviewRequested: () => {
+        previewMetrics.requests += 1
+      },
     }),
   )
   const { api, bot } = fixture
-  const browserActivitySnapshot = useRef<BrowserActivitySnapshot>({ parts, running, started, results, attachmentRead })
-  browserActivitySnapshot.current = { parts, running, started, results, attachmentRead }
+  const browserActivitySnapshot = useRef<BrowserActivitySnapshot>({
+    parts,
+    running,
+    started,
+    results,
+    attachmentRead,
+    previewRequests: previewMetrics.requests,
+    maxUiLongTaskMs: previewMetrics.maxLongTaskMs,
+    longTaskObserverAvailable: previewMetrics.observerAvailable,
+  })
+  browserActivitySnapshot.current = {
+    parts,
+    running,
+    started,
+    results,
+    attachmentRead,
+    previewRequests: previewMetrics.requests,
+    maxUiLongTaskMs: previewMetrics.maxLongTaskMs,
+    longTaskObserverAvailable: previewMetrics.observerAvailable,
+  }
   useEffect(() => {
     const browserWindow = window as BrowserActivityWindow
-    browserWindow.browserActivity = { snapshot: () => browserActivitySnapshot.current }
+    browserWindow.browserActivity = {
+      snapshot: () => ({
+        ...browserActivitySnapshot.current,
+        previewRequests: previewMetrics.requests,
+        maxUiLongTaskMs: previewMetrics.maxLongTaskMs,
+        longTaskObserverAvailable: previewMetrics.observerAvailable,
+      }),
+      resetPreviewMetrics: () => {
+        previewLongTaskObserver?.takeRecords()
+        previewMetrics.requests = 0
+        previewMetrics.maxLongTaskMs = 0
+      },
+    }
 
     return () => {
       delete browserWindow.browserActivity
