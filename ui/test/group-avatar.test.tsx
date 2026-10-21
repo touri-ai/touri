@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { BotGroup } from "@touri/contracts"
-import { avatarColorFor, avatarShapeFor } from "@touri/contracts/avatar"
+import { avatarColorFor, avatarProfileFor, avatarShapeFor } from "@touri/contracts/avatar"
 import { afterEach, expect, it, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
 import { GroupModal } from "../src/components/Groups"
@@ -46,8 +46,9 @@ it.each([
   })
 })
 
-it("restores a new group's own seeded colour before saving", async () => {
+it("restores a new group's seeded colour and preserves its previewed head when saving", async () => {
   const seed = "00000000-0000-4000-8000-000000000001"
+  const profile = avatarProfileFor({ id: seed, color: null })
   vi.spyOn(crypto, "randomUUID").mockReturnValue(seed)
   const onSave = vi.fn().mockResolvedValue(undefined)
   const bots = createMockApi().getState().bots
@@ -76,7 +77,7 @@ it("restores a new group's own seeded colour before saving", async () => {
   expect(onSave).toHaveBeenCalledWith({
     name: "Equipe",
     color: avatarColorFor({ id: seed, color: null }),
-    avatarShape: avatarShapeFor(seed),
+    avatarShape: `${profile.headShape}:${profile.shape}`,
     memberIds: ["bot-mark"],
     coordinatorBotId: null,
   })

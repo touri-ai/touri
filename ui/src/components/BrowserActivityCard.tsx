@@ -1,5 +1,12 @@
 import type { BrowserTabInfo, BrowserTakeoverReason, Id, MessagePart } from "@touri/contracts"
 import { useContext, useEffect, useId, useRef, useState } from "react"
+import {
+  ChannelCardFooter,
+  ChannelControlNote,
+  ChannelHiddenPreview,
+  ChannelVisibilityLabel,
+  useChannelBrowserView,
+} from "../features/channelBrowser/ChannelBrowser"
 import { InlinePreviewContext } from "../features/desktop/InlineLivePreview"
 import { type PreviewFrame, startInlineFrameSource } from "../features/desktop/inlineFrameSource"
 import { useInlinePreviewPreference } from "../features/desktop/inlinePreviewPreference"
@@ -76,6 +83,7 @@ export const BrowserActivityCard = ({
 }) => {
   const context = useContext(InlinePreviewContext)
   const previewEnabled = useInlinePreviewPreference()
+  const channel = useChannelBrowserView()
   const browserTools = getBrowserActivityTools(parts)
   const tabId = getBrowserActivityTabId(browserTools)
   const resolutionCallId = tabId ? "" : (browserTools.at(-1)?.callId ?? "")
@@ -175,7 +183,18 @@ export const BrowserActivityCard = ({
 
   useEffect(() => {
     setPreviewError(null)
-    if (!api || !botId || !machine || !activeTabId || !canPreview || !previewEnabled || !visible || hidden || finished)
+    if (
+      !api ||
+      !botId ||
+      !machine ||
+      !activeTabId ||
+      !canPreview ||
+      !previewEnabled ||
+      !visible ||
+      hidden ||
+      finished ||
+      channel?.previewHidden
+    )
       return
 
     return startInlineFrameSource(
@@ -188,7 +207,7 @@ export const BrowserActivityCard = ({
         setPreviewError(reason ? t("Browser preview unavailable. Open the browser to reconnect.", {}, locale) : null),
       { intervalMs: 700 },
     )
-  }, [activeTabId, api, botId, machine, canPreview, finished, hidden, locale, previewEnabled, visible])
+  }, [activeTabId, api, botId, machine, canPreview, channel?.previewHidden, finished, hidden, locale, previewEnabled, visible])
 
   const toggleTakeover = async (): Promise<void> => {
     if (!api || !activeTabId || busy) return
@@ -217,12 +236,12 @@ export const BrowserActivityCard = ({
     { count: browserTools.length },
     locale,
   )
-  const url = finished ? "" : getBrowserActivityUrl(preview?.url || getBrowserActivityOpenUrl(browserTools))
+  const url = finished || channel?.previewHidden ? "" : getBrowserActivityUrl(preview?.url || getBrowserActivityOpenUrl(browserTools))
   const takeoverActive = held && !finished
   const takeoverReason = heldTab?.reason ?? "requested"
   const reasonCopy = getTakeoverReasonCopy(takeoverReason, locale)
 
-  return (
+  const card = (
     <div className="browser-activity-stack">
       {completedActions.length > 0 && (
         <ol className="browser-activity-checklist" aria-label={t("Browser steps", {}, locale)}>
@@ -297,19 +316,26 @@ export const BrowserActivityCard = ({
                 </span>
               )}
             </div>
+            <ChannelVisibilityLabel locale={locale} />
+            <ChannelControlNote locale={locale} />
             <div className="browser-activity-header-actions">
-              {activeTabId && (
+              {activeTabId && channel?.canControl !== false && (
                 <button
                   type="button"
                   className="button button-quiet"
                   disabled={busy}
                   onClick={() => void toggleTakeover()}
                 >
-                  {busy
-                    ? t("Updating browser control…", {}, locale)
-                    : held
-                      ? t("Hand back to {name}", { name: botName }, locale)
-                      : t("Take over", {}, locale)}
+                  {busy ? (
+                    t("Updating browser control…", {}, locale)
+                  ) : (
+                    <>
+                      <span aria-hidden="true">{held ? "↩" : "↗"}</span>
+                      {held
+                        ? t("Hand back to {name}", { name: botName }, locale)
+                        : t("Take over browser", {}, locale)}
+                    </>
+                  )}
                 </button>
               )}
               {previewEnabled && (
@@ -342,15 +368,17 @@ export const BrowserActivityCard = ({
             id={contentId}
             className={`browser-activity-content${fullView || finished || !previewEnabled ? " browser-activity-content-full" : ""}`}
           >
-            {!finished && previewEnabled && (
+            {!finished && (channel?.previewHidden || previewEnabled) && (
               <div className={`browser-activity-preview${fullView ? " browser-activity-preview-full" : ""}`}>
-                {preview?.src ? (
+                {channel?.previewHidden ? (
+                  <ChannelHiddenPreview locale={locale} />
+                ) : preview?.src ? (
                   <BrowserPreviewImage src={preview.src} alt={t("Current browser page", {}, locale)} />
-                ) : (
+                ) : previewEnabled ? (
                   <p className="browser-activity-placeholder">
                     {previewError ?? t("Waiting for the browser page…", {}, locale)}
                   </p>
-                )}
+                ) : null}
                 {preview?.src && previewError && <small role="status">{previewError}</small>}
               </div>
             )}
@@ -425,6 +453,15 @@ export const BrowserActivityCard = ({
           </div>
         )}
       </article>
+    </div>
+  )
+
+  if (!channel) return card
+
+  return (
+    <div className="channel-browser-card">
+      {card}
+      <ChannelCardFooter locale={locale} />
     </div>
   )
 }

@@ -382,6 +382,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
     if (
       verb === "GET" &&
       [
+        "/health",
         "/groups",
         "/bots",
         "/workspace/activity",

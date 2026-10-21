@@ -126,7 +126,7 @@ for (const variant of variants) {
 
       await expect(ui.getByText(/O site pediu login/u)).toBeVisible({ timeout: 60_000 })
       await shoot(ui, variant.name, "login-wall")
-      await ui.getByRole("button", { name: "Assumir controle" }).click()
+      await ui.getByRole("button", { name: "Assumir" }).click()
       await expect(ui.getByRole("button", { name: /Devolver para/ })).toBeVisible()
       await bot.page.getByLabel("E-mail").fill("voce@exemplo.com")
       await bot.page.getByLabel("Senha").fill(SECRET_PASSWORD)
@@ -177,7 +177,7 @@ for (const variant of variants) {
             expect(ui.getByRole("button", { name: /Usou o navegador · \d+ ações?/ }).first()).toBeVisible(),
           9: async () => {
             await expect(card.getByText("Tirou um print")).toBeVisible()
-            await expect(card.getByRole("button", { name: "Assumir controle" })).toBeVisible()
+            await expect(card.getByRole("button", { name: "Assumir" })).toBeVisible()
           },
         }
         const bot = await play(ui, browser, async (index) => {
@@ -190,7 +190,7 @@ for (const variant of variants) {
         })
 
         await expect(ui.getByText(/O site pediu login/u)).toBeVisible({ timeout: 60_000 })
-        await ui.getByRole("button", { name: "Assumir controle" }).click()
+        await ui.getByRole("button", { name: "Assumir" }).click()
         await ui.getByRole("button", { name: /Devolver para/ }).click()
         await bot.run
 

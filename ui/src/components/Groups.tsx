@@ -1,7 +1,8 @@
 import type { AvatarShape, Bot, BotGroup, GroupInput, Message, Run, Thread } from "@touri/contracts"
-import { avatarColorFor, avatarShapeFor } from "@touri/contracts/avatar"
+import { avatarColorFor, avatarProfileFor } from "@touri/contracts/avatar"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { userFacingError } from "../errors"
+import { ChannelHeaderChip, ChannelWorkingMarker } from "../features/channelBrowser/ChannelBrowser"
 import { type Locale, t } from "../i18n"
 import { AvatarPicker } from "./AvatarPicker"
 import { BotAvatar } from "./BotAvatar"
@@ -38,6 +39,7 @@ export const GroupSidebar = ({
   onEdit,
   onNewThread,
   onDelete,
+  channelWorking,
   locale = "pt-BR",
 }: {
   groups: BotGroup[]
@@ -49,6 +51,8 @@ export const GroupSidebar = ({
   onEdit: (group: BotGroup) => void
   onNewThread: (group: BotGroup) => void
   onDelete?: ((groupId: string) => Promise<void>) | undefined
+  // Group id -> names of the bots working in the browser for that channel.
+  channelWorking?: Record<string, string[]> | undefined
   locale?: Locale
 }) => (
   <section className="group-sidebar" aria-label={t("Bot groups", {}, locale)}>
@@ -78,6 +82,7 @@ export const GroupSidebar = ({
             onEdit={() => onEdit(group)}
             onNewThread={() => onNewThread(group)}
             onDelete={onDelete}
+            workingBots={channelWorking?.[group.id] ?? []}
             locale={locale}
           />
         ))}
@@ -95,6 +100,7 @@ const GroupSidebarEntry = ({
   onEdit,
   onNewThread,
   onDelete,
+  workingBots,
   locale,
 }: {
   group: BotGroup
@@ -105,6 +111,7 @@ const GroupSidebarEntry = ({
   onEdit: () => void
   onNewThread: () => void
   onDelete?: ((groupId: string) => Promise<void>) | undefined
+  workingBots: string[]
   locale: Locale
 }) => {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -136,6 +143,7 @@ const GroupSidebarEntry = ({
             locale={locale}
           />
           <span>{group.name}</span>
+          <ChannelWorkingMarker names={workingBots} locale={locale} />
         </button>
         <SidebarActionsMenu
           label={t("Ações do grupo {name}", { name: group.name }, locale)}
@@ -330,6 +338,7 @@ export const GroupHeader = ({
         <span className="group-member-count">{t("Group member count", { count: bots.length }, locale)}</span>
       </div>
     </div>
+    <ChannelHeaderChip locale={locale} />
     <div className="group-header-members">
       <MemberMascots bots={bots} locale={locale} />
       <span>
@@ -376,7 +385,7 @@ export const GroupModal = ({
   const [avatarSeed] = useState(() => group?.avatarSeed ?? crypto.randomUUID())
   const [color, setColor] = useState<string | null>(group?.color ?? null)
   // The stored shape is sent back untouched (even an older silhouette id) until the user picks a look.
-  const [shape, setShape] = useState<AvatarShape>(() => group?.avatarShape ?? avatarShapeFor(avatarSeed))
+  const [shape, setShape] = useState<AvatarShape>(() => group?.avatarShape ?? getNewGroupAvatarShape(avatarSeed))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const dialog = useRef<HTMLDivElement>(null)
@@ -422,7 +431,7 @@ export const GroupModal = ({
               await onSave({
                 name,
                 color: color ?? avatarColorFor({ id: avatarSeed, color: null }),
-                avatarShape: shape,
+                avatarShape: group ? shape : getNewGroupAvatarShape(avatarSeed, shape),
                 memberIds,
                 coordinatorBotId,
               })
@@ -529,4 +538,11 @@ export const GroupModal = ({
       </div>
     </div>
   )
+}
+
+// The server assigns a permanent seed on creation; keep the head and look the user previewed, including after reset.
+const getNewGroupAvatarShape = (avatarSeed: string, avatarShape?: AvatarShape): AvatarShape => {
+  const profile = avatarProfileFor({ id: avatarSeed, color: null, avatarShape: avatarShape ?? null })
+
+  return `${profile.headShape}:${profile.shape}`
 }

@@ -1,12 +1,26 @@
 # Bot avatars
 
-Every bot is a bull from the same family as the touri mascot, drawn as vector shapes in the language of the earlier blob avatars: a smooth silhouette in the bot colour, an ink outline, light pill eyes and a pulsing glow while it works. A bot changes its colour, horns and accessory; each runtime state has its own face, effect and CSS animation. The drawing is original touri artwork in `packages/contracts/src/avatar.ts`; there is no rendering dependency.
+Every bot is a bull from the same family as the touri mascot, drawn as vector shapes in the language of the earlier blob avatars: a distinct head silhouette in the bot colour, an ink outline, light pill eyes and a pulsing glow while it works. A bot changes its colour, horns and accessory; each runtime state has its own face, effect and CSS animation. The drawing is original touri artwork in `packages/contracts/src/avatar.ts` and `avatar-head.ts`; there is no rendering dependency.
 
 ## Identity
 
-Use a saved avatar seed, otherwise the stable bot ID. Hash UTF-16 code units with unsigned 32-bit FNV-1a and select each part with its own suffix: `:horns` (classic, short, long, none), `:accessory` (none, ring, glasses, headphones, cap, flower, crown) and `:color` (rouge, orange, ambre, vert, turquoise, bleu, violet, rose). The blink offset is the unsigned seed hash divided by 2^32, multiplied by the 4.2-second blink cycle.
+Use a saved avatar seed, otherwise the stable bot ID. Hash UTF-16 code units with unsigned 32-bit FNV-1a and select each part with its own suffix: `:shape` (the seven heads below), `:horns` (classic, short, long, none), `:accessory` (none, ring, glasses, headphones, cap, flower, crown) and `:color` (rouge, orange, ambre, vert, turquoise, bleu, violet, rose). Head selection uses the order in `LEGACY_AVATAR_SHAPES`. Horns, accessories, colours and blink offsets keep their existing seed behaviour. The blink offset is the unsigned seed hash divided by 2^32, multiplied by the 4.2-second blink cycle.
 
-`avatarShape` stores the chosen look as `<horns>-<accessory>` (`short-flower`). The API still accepts the seven older silhouette ids (`cercle`, `galet`, `squircle`, `capsule`, `triangle`, `hexagone`, `nuage`; `goutte` stays invalid), and they render the seeded automatic look, so stored bots and groups need no migration. Bot settings only send `avatarShape` and `color` when the user changes them, and the group dialog sends a stored shape back untouched, so saving never rewrites an older id. Each new group dialog draws its look from its own random seed.
+`avatarShape` stores the chosen look as `<horns>-<accessory>` (`short-flower`); its head stays seeded. A saved legacy silhouette selects its matching head and keeps seeded horns and accessories:
+
+| Stored silhouette | Bull head |
+| --- | --- |
+| `cercle` | Circle |
+| `galet` | Broad rounded pebble |
+| `squircle` | Soft square |
+| `capsule` | Tall pill (pilule) |
+| `triangle` | Tapered shield |
+| `hexagone` | Rounded hexagon |
+| `nuage` | Scalloped cloud |
+
+When the user customizes the horns or accessory of a legacy silhouette, the picker saves `<head>:<horns>-<accessory>` (`nuage:short-glasses`). This additive string format is needed to retain the explicit head after saving and reopening, including for groups whose seeds cannot be edited. The MCP schema documents this format within the existing bounded string field; no database change or migration is needed. Existing seeds and stored choices stay untouched until edited. Restore automatic retains an explicit head while restoring its seeded horns, accessory and colour; Shuffle also retains the head. `avatarShapeFor` preserves stored silhouettes and composite choices so notifications show the same identity. `goutte` stays invalid.
+
+Bot settings only send `avatarShape` and `color` when the user changes them, and the group dialog sends a stored shape back untouched, so saving never rewrites an older id. Each new group dialog draws its look from its own random seed and saves its selected head with the look, preserving the preview when the server assigns the group's permanent seed.
 
 | Stored hue | Label | Engine color | Hex |
 | --- | --- | --- | --- |
@@ -25,7 +39,7 @@ Lime and Violet remain valid aliases but are omitted from the eight visible colo
 
 ## Drawing
 
-The bull keeps the proportions of the original 16 × 16 design as smooth paths in a 100-unit box: a wide flat forehead, horizontal ears with a light inside, a gold snout that forms the chin, white horns shaded grey at the base, and brows that carry its frown. Horns, ears and the snout outline are drawn for the left side and mirrored. An ink outline (the bot colour mixed toward near-black) sits under horns, ears and head, and under accessories that leave the face, so light horns, caps and headphones read on both themes. The yellow bull gets a paler snout.
+The bull keeps the language of the original 16 × 16 design as smooth paths in a 100-unit box: horizontal ears with a light inside, a broad gold snout, white horns shaded grey at the base, and brows that carry its frown. Each head has its own path and independent registrations for ears, horn roots, snout, eyes, forehead accessories, temple accessories and headphones. Glasses follow the eyes, the ring and steam follow the snout, and tears follow the eyes across every phase. Horn and ear outlines are placed before mirroring; the aura reuses those placed outlines and the selected head path. Facial features and accessories use local SVG matrices shared by React and static export. An ink outline (the bot colour mixed toward near-black) sits under horns, ears and head, and under accessories that leave the face, so light horns, caps and headphones read on both themes. The yellow bull gets a paler snout.
 
 Layers, in order: the aura (thinking and working only), ink outline, horns, ears, head, forehead tufts, snout, nostrils and brows; then the eyes; then the accessory; then the state effects.
 
@@ -65,4 +79,6 @@ The deterministic harness is `ui/test/fixtures/mascotHarness.ts`; state and inte
 
 ## Verification
 
-`ui/test/avatar-motion.test.tsx` covers identity, the drawing and motion rules; `ui/test/e2e/avatars.spec.ts` and `ui/test/e2e/mascot-state.spec.ts` check the animations, reduced motion and the absence of DOM writes in a headless browser.
+`ui/test/avatar-motion.test.tsx` covers identity, the drawing and motion rules. `ui/test/avatar-heads.test.tsx` covers seeded head diversity, every legacy mapping, actual geometry and feature registrations, React/static path parity, and picker preservation. `ui/test/e2e/avatar-heads.spec.ts` exercises the labeled gallery and the saved bot settings flow; `avatars.spec.ts` and `mascot-state.spec.ts` cover animations, reduced motion and the absence of DOM writes in a headless browser.
+
+For synthetic screenshots, open `ui/test/e2e/fixtures/avatars.html?still&theme=light` or `?still&theme=dark`. The labeled head gallery isolates all seven silhouettes at 24, 40 and 64px with the same colour and look; the remaining sections show seeded diversity and every horn/accessory combination. The Mood and Theme controls update the gallery without changing head identity.

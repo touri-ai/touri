@@ -930,6 +930,7 @@ export type ApiRoutes = {
   'PUT /cloud/bots/:id/key': { req: { apiKey: string }; res: {} }
 
   'GET /health': { req: {}; res: { ok: true; version: string; schemaVersion: number; draining?: boolean; host?: 'mac' | 'server'; hostKind?: HostKind; historyMigration?: { running: boolean; done: number; total: number }; eventLoop?: { lagMs: number; p99Ms: number; maxMs: number; samples: number } } }
+  'GET /session': { req: {}; res: { person: { id: Id; name: string; avatarSeed: string; role: 'member' | 'admin' } } }
   'POST /ui/errors': { req: { area: string; message: string; stack: string; componentStack: string }; res: { ok: true } }
   'POST /reports/:id/saved': { req: { destination: 'zip' | 'github' }; res: {} }
   'POST /reports/history': { req: { history: import('./reports').ReportHistory[] }; res: {} }
@@ -1193,9 +1194,11 @@ export type AvatarHorns = 'classic' | 'short' | 'long' | 'none'
 export type AvatarAccessory = 'none' | 'ring' | 'glasses' | 'headphones' | 'cap' | 'flower' | 'crown'
 /** Bull look, horns then accessory (`short-flower`). */
 export type AvatarBullShape = `${AvatarHorns}-${AvatarAccessory}`
-/** Silhouette ids saved before the bulls; still accepted, rendered as the seeded automatic look. */
+/** Silhouette ids saved before the bulls; each selects its matching bull head. */
 export type AvatarLegacyShape = 'cercle' | 'galet' | 'squircle' | 'capsule' | 'triangle' | 'hexagone' | 'nuage'
-export type AvatarShape = AvatarBullShape | AvatarLegacyShape
+/** Keeps an explicit legacy head when its horns or accessory are customized. */
+export type AvatarCustomShape = `${AvatarLegacyShape}:${AvatarBullShape}`
+export type AvatarShape = AvatarBullShape | AvatarLegacyShape | AvatarCustomShape
 
 /** Persisted notification. `id` is stable; `requestId` is set for approval/question and is what `respond` takes. */
 export type NotificationRecord = {

@@ -10,7 +10,10 @@ import { createSecretStore } from "../../src/cli/host/secretStore"
 import { createWebGate, type MemberAuthorizer } from "../../src/cli/web/gate"
 import { noAssets } from "../../src/cli/web/uiAssets"
 import { initWorkMode } from "../../src/cli/work"
+import { init as initGroups } from "../../src/groups"
 import { createKernel } from "../../src/kernel"
+import { init as initNotify } from "../../src/notify"
+import { init as initRuntime } from "../../src/runtime"
 import { init as initStore } from "../../src/store"
 
 const cleanups = new Set<() => Promise<void>>()
@@ -22,13 +25,27 @@ afterEach(async () => {
 test("member HTTP requests cannot cross person or channel boundaries or perform admin writes", async () => {
   const fixture = await getFixture()
 
-  for (const path of ["/people", "/invites", "/email"]) {
+  for (const path of [
+    "/people",
+    "/invites",
+    "/email",
+    "/settings",
+    "/projects",
+    "/previews",
+    "/routines",
+    "/doctor",
+    "/api-models",
+    "/provider-profiles",
+    "/machines",
+    "/health/details",
+  ]) {
     expect((await fixture.request(path)).status).toBe(403)
   }
   for (const path of ["/threads/owner-chat/messages", "/groups/other-channel/threads"]) {
     expect((await fixture.request(path)).status).toBe(404)
   }
   for (const [method, path, body] of [
+    ["POST", "/health", {}],
     ["POST", "/invites", { role: "admin", email: "new@example.test" }],
     ["DELETE", "/people/owner", {}],
     ["PUT", "/email", {}],
@@ -50,6 +67,44 @@ test("member HTTP requests cannot cross person or channel boundaries or perform 
   const history = await fixture.request("/threads/member-chat/messages")
   const payload = (await history.json()) as { messages: Message[] }
   expect(payload.messages[0]?.sender).toMatchObject({ id: fixture.personId, name: "Pessoa de teste" })
+})
+
+test("an invited member can boot Work and use an authorized channel", async () => {
+  const fixture = await getFixture({ completeBoot: true })
+
+  const health = await fixture.request("/health")
+  expect(health.status).toBe(200)
+
+  const snapshot = await Promise.all(
+    ["/bots", "/groups", "/workspace/activity", "/runs", "/notifications", "/notifications/pending"].map((path) =>
+      fixture.request(path),
+    ),
+  )
+  expect(snapshot.map((response) => response.status)).toEqual([200, 200, 200, 200, 200, 200])
+
+  const channelThreads = await fixture.request("/groups/member-channel/threads")
+  const messages = await fixture.request("/threads/member-chat/messages")
+  expect(channelThreads.status).toBe(200)
+  expect(messages.status).toBe(200)
+
+  const upload = await fixture.request("/attachments", "POST", {
+    name: "channel-file.txt",
+    dataBase64: Buffer.from("Synthetic channel attachment").toString("base64"),
+  })
+  const uploadPayload = (await upload.json()) as { attachment: Attachment }
+  const [attachment, attachmentContent] = await Promise.all([
+    fixture.request(`/attachments/${uploadPayload.attachment.id}`),
+    fixture.request(`/attachments/${uploadPayload.attachment.id}/content`),
+  ])
+  expect(upload.status).toBe(201)
+  expect(attachment.status).toBe(200)
+  expect(attachmentContent.status).toBe(200)
+
+  const ticketResponse = await fixture.request("/ws-ticket", "POST", { path: "/api/v1/events" })
+  expect(ticketResponse.status).toBe(201)
+  const ticketPayload = (await ticketResponse.json()) as { ticket: string }
+  const socket = await fixture.connectEvents(ticketPayload.ticket)
+  expect(socket.readyState).toBe(WebSocket.OPEN)
 })
 
 test("private session creation checks the requested bot even when the member owns another bot", async () => {
@@ -113,12 +168,12 @@ test("tool output files follow the visibility of their message", async () => {
     clientNonce: "forwarded-output",
   })
   const history = (await (await fixture.request("/threads/member-chat/messages")).json()) as { messages: Message[] }
-  expect(history.messages[0]?.parts).toContainEqual(
+  expect(history.messages.flatMap((message) => message.parts ?? [])).toContainEqual(
     expect.objectContaining({ type: "file", name: `${attachment.id}.txt` }),
   )
 })
 
-const getFixture = async () => {
+const getFixture = async ({ completeBoot = false }: { completeBoot?: boolean } = {}) => {
   const root = await mkdtemp(join(tmpdir(), "touri-work-isolation-"))
   const authStore = await openAuthStore({ filename: join(root, "auth.db") })
   const secrets = createSecretStore({ dir: root, env: { TOURI_SECRETS_KEY: "synthetic-test-key" } })
@@ -139,13 +194,21 @@ const getFixture = async () => {
       host: () => async () => ({ success: false, errorCode: "HOST_UNAVAILABLE", error: "Test host" }),
     },
   })
+  const sockets = new Set<WebSocket>()
   cleanups.add(async () => {
+    for (const socket of sockets) socket.close()
+    await runtime.kernel.services.use("runtime.shutdown")?.()
     runtime.stop()
     await authStore.close()
     await rm(root, { recursive: true, force: true })
   })
   initWorkMode({ kernel: runtime.kernel, authStore, secrets, authorization })
   await initStore(runtime.kernel)
+  if (completeBoot) {
+    await initGroups(runtime.kernel)
+    await initNotify(runtime.kernel)
+    await initRuntime(runtime.kernel)
+  }
   const invite = await authStore.createInvite({
     actorPersonId: "owner",
     name: "Pessoa de teste",
@@ -179,13 +242,13 @@ const getFixture = async () => {
     .query(`INSERT INTO threads(id,bot_id,title,created_at,updated_at,owner_person_id)
     VALUES ('member-chat','member-bot','Own chat',1,1,?)`)
     .run(claimed.person.id)
-  runtime.kernel.registerRoutes({
-    name: "channel-fixture",
-    routes: [
-      { method: "GET", path: "/groups/:id/threads", handler: async () => ({ status: 200, json: { threads: [] } }) },
-    ],
-  })
-
+  if (!completeBoot)
+    runtime.kernel.registerRoutes({
+      name: "channel-fixture",
+      routes: [
+        { method: "GET", path: "/groups/:id/threads", handler: async () => ({ status: 200, json: { threads: [] } }) },
+      ],
+    })
   const requestAs = (token: string, path: string, method = "GET", body?: unknown) =>
     fetch(`http://127.0.0.1:${runtime.handshake.port}/api/v1${path}`, {
       method,
@@ -196,10 +259,37 @@ const getFixture = async () => {
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
+  const connectEvents = async (ticket: string): Promise<WebSocket> => {
+    const socket = new WebSocket(
+      `ws://127.0.0.1:${runtime.handshake.port}/api/v1/events?ticket=${encodeURIComponent(ticket)}`,
+    )
+    sockets.add(socket)
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("Member events socket timed out")), 2_000)
+      socket.addEventListener(
+        "open",
+        () => {
+          clearTimeout(timeout)
+          resolve()
+        },
+        { once: true },
+      )
+      socket.addEventListener(
+        "error",
+        () => {
+          clearTimeout(timeout)
+          reject(new Error("Member events socket failed"))
+        },
+        { once: true },
+      )
+    })
+    return socket
+  }
   return {
     database,
     request: (path: string, method = "GET", body?: unknown) => requestAs(claimed.token, path, method, body),
     ownerRequest: (path: string, method = "GET", body?: unknown) => requestAs(owner.token, path, method, body),
+    connectEvents,
     personId: claimed.person.id,
   }
 }

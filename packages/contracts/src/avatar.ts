@@ -1,3 +1,4 @@
+import { type AvatarAnchor, type AvatarHeadGeometry, getAvatarHeadGeometry } from "./avatar-head"
 import type {
   AvatarAccessory,
   AvatarBullShape,
@@ -10,6 +11,8 @@ import type {
   Run,
 } from "./types"
 
+export { getAvatarHeadGeometry } from "./avatar-head"
+
 export type AvatarHue = 0 | 30 | 55 | 100 | 150 | 185 | 215 | 245 | 280 | 320
 export type AvatarIdentity = Pick<Bot, "id" | "color"> &
   Pick<Partial<Bot>, "avatarShape" | "avatarSeed" | "avatarPath"> & { avatarHue?: AvatarHue | null }
@@ -17,10 +20,15 @@ export type AvatarMood = "idle" | "working" | "waiting" | "failed" | "responded"
 export type AvatarMotion = "hover" | "idle" | "always"
 /** The seven animated states of the bull, matching the UI's mascot phases. */
 export type AvatarPhase = "idle" | "thinking" | "working" | "waiting" | "done" | "failed" | "asleep"
-export type AvatarLook = { color: string; horns: AvatarHorns; accessory: AvatarAccessory }
-export type AvatarProfile = AvatarLook & { shape: AvatarBullShape; offset: number }
+export type AvatarLook = {
+  color: string
+  horns: AvatarHorns
+  accessory: AvatarAccessory
+  headShape?: AvatarLegacyShape
+}
+export type AvatarProfile = AvatarLook & { shape: AvatarBullShape; headShape: AvatarLegacyShape; offset: number }
 /** One vector layer; stroked layers (`stroke`, `width`) draw with round caps and no fill. */
-export type AvatarPath = { d: string; fill: string; stroke?: string; width?: number }
+export type AvatarPath = { d: string; fill: string; stroke?: string; width?: number; transform?: string }
 export type AvatarEffect = { id: string; paths: AvatarPath[] }
 export type AvatarBull = {
   color: string
@@ -53,7 +61,7 @@ export const AVATAR_ACCESSORIES: readonly AvatarAccessory[] = [
 export const AVATAR_SHAPES: readonly AvatarBullShape[] = AVATAR_HORNS.flatMap((horns) =>
   AVATAR_ACCESSORIES.map((accessory): AvatarBullShape => `${horns}-${accessory}`),
 )
-// Silhouettes saved before the bulls. The API keeps accepting them; they render the seeded automatic look.
+// Silhouettes saved before the bulls also form the seeded head palette.
 export const LEGACY_AVATAR_SHAPES: readonly AvatarLegacyShape[] = [
   "cercle",
   "galet",
@@ -105,8 +113,10 @@ export const avatarSeedHash = (seed: string): number => {
 }
 const seededIndex = (seed: string, field: string, count: number): number => avatarSeedHash(`${seed}:${field}`) % count
 export const validAvatarShape = (shape: unknown): shape is AvatarShape =>
-  isBullShape(shape) || LEGACY_AVATAR_SHAPES.some((item) => item === shape)
+  isBullShape(shape) || isLegacyShape(shape) || getCustomShape(shape) !== undefined
 const isBullShape = (shape: unknown): shape is AvatarBullShape => AVATAR_SHAPES.some((item) => item === shape)
+const isLegacyShape = (shape: unknown): shape is AvatarLegacyShape =>
+  LEGACY_AVATAR_SHAPES.some((item) => item === shape)
 export const validAvatarColor = (color: unknown): color is string =>
   typeof color === "string" && /^#[\da-f]{6}$/i.test(color)
 export const avatarShapeOf = (horns: AvatarHorns, accessory: AvatarAccessory): AvatarBullShape =>
@@ -114,7 +124,9 @@ export const avatarShapeOf = (horns: AvatarHorns, accessory: AvatarAccessory): A
 
 export const avatarProfileFor = (bot: AvatarIdentity): AvatarProfile => {
   const seed = bot.avatarSeed ?? bot.id
-  const shape = isBullShape(bot.avatarShape) ? bot.avatarShape : getSeededShape(seed)
+  const customShape = getCustomShape(bot.avatarShape)
+  const shape = customShape?.look ?? getBullShape(bot.avatarShape, seed)
+  const headShape = customShape?.head ?? getAvatarHeadShape(bot.avatarShape, seed)
   const [horns, accessory] = getLookParts(shape)
   const automatic = PALETTE[seededIndex(seed, "color", AVATAR_COLORS.length)]?.hex ?? "#e8483f"
   const storedColor = PALETTE.find(
@@ -125,11 +137,53 @@ export const avatarProfileFor = (bot: AvatarIdentity): AvatarProfile => {
   const custom = (bot.avatarShape || bot.avatarSeed) && validAvatarColor(bot.color) ? bot.color : null
   const color = bot.avatarHue != null ? avatarHueColor(bot.avatarHue) : (storedColor ?? custom ?? automatic)
 
-  return { shape, horns, accessory, color, offset: (avatarSeedHash(seed) / 4294967296) * AVATAR_BLINK_SECONDS }
+  return {
+    shape,
+    headShape,
+    horns,
+    accessory,
+    color,
+    offset: (avatarSeedHash(seed) / 4294967296) * AVATAR_BLINK_SECONDS,
+  }
 }
-export const avatarShapeFor = (bot: string | AvatarIdentity): AvatarBullShape =>
-  avatarProfileFor(typeof bot === "string" ? { id: bot, color: null } : bot).shape
+export const avatarShapeFor = (bot: string | AvatarIdentity): AvatarShape => {
+  const identity: AvatarIdentity = typeof bot === "string" ? { id: bot, color: null } : bot
+  if (validAvatarShape(identity.avatarShape)) return identity.avatarShape
+
+  return avatarProfileFor(identity).shape
+}
 export const avatarColorFor = (bot: AvatarIdentity): string => avatarProfileFor(bot).color
+
+/** Retains an explicitly stored head without changing the seed or other identity fields. */
+export const getAvatarShapeForLook = (
+  bot: AvatarIdentity,
+  horns: AvatarHorns,
+  accessory: AvatarAccessory,
+): AvatarShape => {
+  const look = avatarShapeOf(horns, accessory)
+  const head = getCustomShape(bot.avatarShape)?.head ?? bot.avatarShape
+  if (isLegacyShape(head)) return `${head}:${look}`
+
+  return look
+}
+
+const getCustomShape = (shape: unknown): { head: AvatarLegacyShape; look: AvatarBullShape } | undefined => {
+  if (typeof shape !== "string" || shape.length > 40) return undefined
+  const [head, look, extra] = shape.split(":")
+  if (extra !== undefined || !isLegacyShape(head) || !isBullShape(look)) return undefined
+
+  return { head, look }
+}
+const getBullShape = (shape: unknown, seed: string): AvatarBullShape => {
+  if (isBullShape(shape)) return shape
+
+  return getSeededShape(seed)
+}
+const getAvatarHeadShape = (shape: unknown, seed: string): AvatarLegacyShape => {
+  if (isLegacyShape(shape)) return shape
+
+  return LEGACY_AVATAR_SHAPES[seededIndex(seed, "shape", LEGACY_AVATAR_SHAPES.length)] ?? "cercle"
+}
 
 const getSeededShape = (seed: string): AvatarBullShape =>
   avatarShapeOf(
@@ -199,34 +253,52 @@ export const avatarPhaseForMood = (mood: AvatarMood): AvatarPhase => MOOD_PHASES
 export const avatarBullFor = (look: AvatarLook, phase: AvatarPhase): AvatarBull => {
   const color = validAvatarColor(look.color) ? look.color : "#e8483f"
   const shades = getShadesFor(color)
-  const horn = HORN_PATHS[look.horns]
-  const shade = HORN_SHADE_PATHS[look.horns]
+  const geometry = getAvatarHeadGeometry(look.headShape ?? "galet")
+  const horns = getAnchoredSides(HORN_PATHS[look.horns], geometry.horns, HORN_ORIGIN)
+  const hornShades = getAnchoredSides(HORN_SHADE_PATHS[look.horns], geometry.horns, HORN_ORIGIN)
+  const ears = getAnchoredSides(EAR, geometry.ears, EAR_ORIGIN)
   const pose = PHASE_POSES[phase]
-  const silhouette = [...(horn ? getBothSides(horn) : []), ...getBothSides(EAR), HEAD]
+  const silhouette = horns.concat(ears, geometry.path)
+  const outline: AvatarPath[] = silhouette.map((d) => ({
+    d,
+    fill: shades.ink,
+    stroke: shades.ink,
+    width: INK_WIDTH * 2,
+  }))
+  const snout = getPlacedLayers(
+    [
+      { d: SNOUT, fill: shades.snout },
+      { d: `${getEllipse(40, 79.5, 3.3, 4.4)}${getEllipse(60, 79.5, 3.3, 4.4)}`, fill: shades.nostril },
+    ],
+    geometry.snout,
+    SNOUT_ORIGIN,
+  )
+  const brows = getBothSides(BROW_PATHS[pose.eyes]).map((d) => ({
+    d,
+    fill: "none",
+    stroke: shades.ink,
+    width: 4.6,
+  }))
 
   return {
     color,
-    head: HEAD,
+    head: geometry.path,
     silhouette,
     aura: phase === "thinking" || phase === "working",
-    body: [
-      ...silhouette.map((d) => ({ d, fill: shades.ink, stroke: shades.ink, width: INK_WIDTH * 2 })),
-      ...(horn ? getBothSides(horn).map((d) => ({ d, fill: HORN })) : []),
-      ...(shade ? getBothSides(shade).map((d) => ({ d, fill: HORN_SHADE })) : []),
-      ...getBothSides(EAR).map((d) => ({ d, fill: color })),
-      ...getBothSides(EAR_INNER).map((d) => ({ d, fill: shades.ear })),
-      { d: HEAD, fill: color },
-      ...getBothSides(TUFT).map((d) => ({ d, fill: shades.tuft })),
-      { d: SNOUT, fill: shades.snout },
-      { d: `${getEllipse(40, 79.5, 3.3, 4.4)}${getEllipse(60, 79.5, 3.3, 4.4)}`, fill: shades.nostril },
-      ...getBothSides(BROW_PATHS[pose.eyes]).map((d) => ({ d, fill: "none", stroke: shades.ink, width: 4.6 })),
-    ],
-    eyes: EYE_PATHS[pose.eyes],
-    blink: pose.blink,
-    accessory: ACCESSORY_PATHS[look.accessory].flatMap((path) =>
-      path.inked ? [getInked(path, shades.ink), getLayer(path)] : [getLayer(path)],
+    body: outline.concat(
+      getFillLayers(horns, HORN),
+      getFillLayers(hornShades, HORN_SHADE),
+      getFillLayers(ears, color),
+      getFillLayers(getAnchoredSides(EAR_INNER, geometry.ears, EAR_ORIGIN), shades.ear),
+      { d: geometry.path, fill: color },
+      getPlacedLayers(getFillLayers(getBothSides(TUFT), shades.tuft), geometry.forehead, TUFT_ORIGIN),
+      snout,
+      getPlacedLayers(brows, geometry.eyes, EYE_ORIGIN),
     ),
-    effects: pose.effects,
+    eyes: getPlacedLayers(EYE_PATHS[pose.eyes], geometry.eyes, EYE_ORIGIN),
+    blink: pose.blink,
+    accessory: getAccessoryLayers(look.accessory, geometry, shades.ink),
+    effects: getEffects(pose.effects, geometry),
   }
 }
 
@@ -240,7 +312,11 @@ export const renderAvatarSvg = (
   const aura = bull.aura
     ? `<g opacity="0.38">${bull.silhouette.map((d) => getPathMarkup({ d, fill: bull.color, stroke: bull.color, width: AVATAR_AURA_WIDTH })).join("")}</g>`
     : ""
-  const paths = [...bull.body, ...bull.eyes, ...bull.accessory, ...bull.effects.flatMap((effect) => effect.paths)]
+  const paths = bull.body.concat(
+    bull.eyes,
+    bull.accessory,
+    bull.effects.flatMap((effect) => effect.paths),
+  )
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${dimension}" height="${dimension}" viewBox="${AVATAR_VIEWBOX}" overflow="visible" stroke-linecap="round" stroke-linejoin="round">${aura}${paths.map(getPathMarkup).join("")}</svg>`
 }
@@ -257,10 +333,15 @@ const HORN_SHADE = "#c6c6cd"
 const EFFECT_GREY = "#9a9aa0"
 const GOLD = "#febc2e"
 const SILVER = "#d1d1d6"
-// Forehead wide and nearly flat, sides falling straight, jaw rounding into the snout: the pixel head, smoothed.
-const HEAD =
-  "M50 31C65 31 77 31 83 35C88 38 89 44 88 51C87 62 85 73 79 82C74 89 64 93 50 93C36 93 26 89 21 82C15 73 13 62 12 51C11 44 12 38 17 35C23 31 35 31 50 31Z"
-// The snout is the chin: its lower edge follows the jaw.
+// Registrations of the reusable artwork; each head places these features independently.
+const HORN_ORIGIN = { x: 28, y: 36 }
+const EAR_ORIGIN = { x: 17, y: 51.5 }
+const SNOUT_ORIGIN = { x: 50, y: 79.5 }
+const EYE_ORIGIN = { x: 50, y: 56 }
+const FOREHEAD_ORIGIN = { x: 50, y: 35 }
+// Tufts sit below the hat registration so they stay inside curved foreheads.
+const TUFT_ORIGIN = { x: 50, y: 31 }
+// The broad rounded snout keeps the original pixel bull's chin.
 const SNOUT =
   "M30 66.5H70C75.5 66.5 80 69.5 82 74C81.2 76.8 80.2 79.5 79 82C74 89 64 93 50 93C36 93 26 89 21 82C19.8 79.5 18.8 76.8 18 74C20 69.5 24.5 66.5 30 66.5Z"
 // Left-side outlines; `getBothSides` mirrors each one across the vertical centre line.
@@ -449,10 +530,76 @@ const getInked = (path: AvatarPath, ink: string): AvatarPath => ({
 })
 const getLayer = ({ d, fill, stroke, width }: AccessoryLayer): AvatarPath =>
   stroke ? { d, fill, stroke, width: width ?? 1 } : { d, fill }
-const getPathMarkup = (path: AvatarPath): string =>
-  path.stroke
-    ? `<path d="${path.d}" fill="${path.fill}" stroke="${path.stroke}" stroke-width="${path.width ?? 1}"/>`
-    : `<path d="${path.d}" fill="${path.fill}"/>`
+const getPathMarkup = (path: AvatarPath): string => {
+  const transform = path.transform ? ` transform="${path.transform}"` : ""
+  if (path.stroke)
+    return `<path d="${path.d}" fill="${path.fill}" stroke="${path.stroke}" stroke-width="${path.width ?? 1}"${transform}/>`
+
+  return `<path d="${path.d}" fill="${path.fill}"${transform}/>`
+}
+
+type AvatarPoint = Readonly<{ x: number; y: number }>
+
+const getFillLayers = (paths: readonly string[], fill: string): AvatarPath[] => paths.map((d) => ({ d, fill }))
+const getCoordinate = (value: number): number => Number(value.toFixed(3))
+const getTransform = (anchor: AvatarAnchor, origin: AvatarPoint): string => {
+  const x = getCoordinate(anchor.x - origin.x * anchor.scaleX)
+  const y = getCoordinate(anchor.y - origin.y * anchor.scaleY)
+
+  return `matrix(${anchor.scaleX} 0 0 ${anchor.scaleY} ${x} ${y})`
+}
+const getPlacedLayers = (paths: readonly AvatarPath[], anchor: AvatarAnchor, origin: AvatarPoint): AvatarPath[] => {
+  const transform = getTransform(anchor, origin)
+
+  return paths.map((path) => getPlacedLayer(path, transform))
+}
+const getPlacedLayer = (path: AvatarPath, transform: string): AvatarPath => {
+  if (path.stroke) return { d: path.d, fill: path.fill, stroke: path.stroke, width: path.width ?? 1, transform }
+
+  return { d: path.d, fill: path.fill, transform }
+}
+
+// These outlines use only absolute M/L/C/Q coordinates, keeping the aura on the same placed geometry.
+const getAnchoredSides = (left: string | null, anchor: AvatarAnchor, origin: AvatarPoint): string[] => {
+  if (!left) return []
+  const placed = left.replace(/(-?[\d.]+) (-?[\d.]+)/g, (_, x: string, y: string) => {
+    const placedX = getCoordinate(anchor.x + (Number(x) - origin.x) * anchor.scaleX)
+    const placedY = getCoordinate(anchor.y + (Number(y) - origin.y) * anchor.scaleY)
+
+    return `${placedX} ${placedY}`
+  })
+
+  return getBothSides(placed)
+}
+
+const getAccessoryLayers = (accessory: AvatarAccessory, geometry: AvatarHeadGeometry, ink: string): AvatarPath[] => {
+  const placements = {
+    none: { anchor: geometry.forehead, origin: FOREHEAD_ORIGIN },
+    ring: { anchor: geometry.snout, origin: SNOUT_ORIGIN },
+    glasses: { anchor: geometry.eyes, origin: EYE_ORIGIN },
+    headphones: { anchor: geometry.headphones, origin: { x: 50, y: 50 } },
+    cap: { anchor: geometry.forehead, origin: FOREHEAD_ORIGIN },
+    flower: { anchor: geometry.temple, origin: { x: 82, y: 33 } },
+    crown: { anchor: geometry.forehead, origin: FOREHEAD_ORIGIN },
+  }
+  const placement = placements[accessory]
+  const paths = ACCESSORY_PATHS[accessory].flatMap((path) =>
+    path.inked ? [getInked(path, ink), getLayer(path)] : [getLayer(path)],
+  )
+
+  return getPlacedLayers(paths, placement.anchor, placement.origin)
+}
+
+const getEffects = (effects: readonly AvatarEffect[], geometry: AvatarHeadGeometry): AvatarEffect[] =>
+  effects.map((effect) => ({ id: effect.id, paths: getEffectLayers(effect, geometry) }))
+
+const getEffectLayers = (effect: AvatarEffect, geometry: AvatarHeadGeometry): AvatarPath[] => {
+  if (effect.id.startsWith("steam-")) return getPlacedLayers(effect.paths, geometry.snout, SNOUT_ORIGIN)
+  if (effect.id === "tear") return getPlacedLayers(effect.paths, geometry.eyes, EYE_ORIGIN)
+
+  return getPlacedLayers(effect.paths, geometry.forehead, FOREHEAD_ORIGIN)
+}
+
 // Mirrors absolute `x y` pairs (M, L, C, Q) across x = 50; arcs and relative commands must not be passed in.
 function getBothSides(left: string): [string, string] {
   return [

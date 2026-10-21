@@ -343,7 +343,9 @@ it("groups Doctor checks by environment and uses zero plurals in the summary", (
       onRefresh={vi.fn()}
     />,
   )
-  expect(within(screen.getByRole("region", { name: "Provedores de IA" })).getByText("Codex")).toBeVisible()
+  expect(
+    within(screen.getByRole("region", { name: "Provedores de IA" })).getByText("Codex está instalado"),
+  ).toBeVisible()
   expect(
     within(screen.getByRole("region", { name: "Computadores isolados" })).getByText("Serviço de máquinas"),
   ).toBeVisible()

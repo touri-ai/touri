@@ -47,10 +47,16 @@ describe("avatar identity specification", () => {
     expect(new Set(profiles.map((profile) => profile.shape)).size).toBe(AVATAR_SHAPES.length)
     expect(AVATAR_SHAPES).toHaveLength(AVATAR_HORNS.length * AVATAR_ACCESSORIES.length)
   })
-  it("keeps accepting the stored silhouette ids and renders them as the seeded look", () => {
+  it("keeps accepting stored silhouettes and uses seeded horns and accessories on their matching heads", () => {
+    const automatic = avatarProfileFor(bot)
+    const legacy = avatarProfileFor({ id: bot.id, color: null, avatarShape: "cercle" })
+
     expect(LEGACY_AVATAR_SHAPES.every(validAvatarShape)).toBe(true)
     expect(validAvatarShape("goutte")).toBe(false)
-    expect(avatarProfileFor({ ...bot, avatarShape: "cercle" })).toEqual(avatarProfileFor(bot))
+    expect(legacy.headShape).toBe("cercle")
+    expect(legacy.shape).toBe(automatic.shape)
+    expect(legacy.color).toBe(automatic.color)
+    expect(legacy.offset).toBe(automatic.offset)
   })
   it("maps all ten stored hues to eight colors and exposes the correct labels", () => {
     expect(AVATAR_HUES.map(({ label }) => label)).toEqual([

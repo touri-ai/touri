@@ -92,7 +92,7 @@ test.describe("full browser activity flow", () => {
       await expect(card).toContainText("Lia · Abrindo uma página")
       await expect(page.locator(".browser-activity-card")).toHaveCount(1)
       await expect(page.locator(".tool-call-card")).toHaveCount(0)
-      await expect(card.getByRole("button", { name: "Assumir controle" })).toBeVisible({ timeout: 20_000 })
+      await expect(card.getByRole("button", { name: "Assumir" })).toBeVisible({ timeout: 20_000 })
 
       const livePreview = card.getByRole("img", { name: "Página atual do navegador" })
       await expect(livePreview).toBeVisible({ timeout: 20_000 })
@@ -185,7 +185,7 @@ for (const fallback of ["missing_key", "no_credit"] as const) {
       const notice = isEnglish ? englishNotice : portugueseNotice
       await expect(page.getByText(notice)).toBeVisible()
       await expect(page.locator("body")).not.toContainText("TOURI_BROWSER_DECISION_HINT")
-      const takeOver = page.getByRole("button", { name: isEnglish ? "Take over" : "Assumir controle" })
+      const takeOver = page.getByRole("button", { name: isEnglish ? "Take over browser" : "Assumir" })
       await takeOver.focus()
       await page.keyboard.press("Enter")
       const handBack = page.getByRole("button", { name: /Hand back to|Devolver para/ })
