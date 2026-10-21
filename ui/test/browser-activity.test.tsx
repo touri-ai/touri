@@ -160,8 +160,8 @@ test("take-over holds the browser, opens its view, and the finished card collaps
   expect(await screen.findByRole("button", { name: "Devolver para Lia" })).toBeVisible()
   fireEvent.click(screen.getByRole("button", { name: "Devolver para Lia" }))
   expect(await screen.findByText("Usou o navegador · 3 ações")).toBeVisible()
-  expect(screen.getByRole("region", { name: "Captura final do navegador" })).toBeVisible()
   await waitFor(() => expect(screen.queryByText("Atividade do navegador")).toBeNull())
+  expect(await screen.findByRole("img", { name: "Captura final do navegador" })).toBeVisible()
   fireEvent.click(screen.getByRole("button", { name: /Usou o navegador/ }))
   expect(await screen.findByText("Atividade do navegador")).toBeVisible()
   await waitFor(() =>
