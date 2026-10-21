@@ -838,6 +838,7 @@ export const ptBR = {
   "Expand browser view": "Expandir navegador",
   "Collapse browser view": "Recolher navegador",
   "Browser activity": "Atividade do navegador",
+  "See what the bot did": "Ver o que ele fez",
   "Showing the latest {count} browser actions": "Exibindo as últimas {count} ações do navegador",
   "You have control of this browser tab.": "Você está no controle desta aba do navegador.",
   "Travel search fixture": "Busca de viagem de teste",
@@ -3192,6 +3193,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
 
   "Take over tab": "Take over",
   "Take over browser": "Take over",
+  "See what the bot did": "See what the bot did",
   "Check your tools": "Check your tools",
   "See what is ready to use and what needs your attention.": "See what is ready to use and what needs your attention.",
   "{tool} is installed": "{tool} is installed",

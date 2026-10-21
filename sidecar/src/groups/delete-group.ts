@@ -140,5 +140,8 @@ const deleteGroupHistory = (database: Database, groupId: string): void => {
     .query(`DELETE FROM tool_calls WHERE thread_id IN (${groupThreads}) OR run_id IN (${groupRuns})`)
     .run(groupId, groupId)
   database.query("DELETE FROM routines WHERE group_id = ?").run(groupId)
+  database
+    .query(`UPDATE browser_tabs SET owner_thread_id = NULL WHERE owner_thread_id IN (${groupThreads})`)
+    .run(groupId)
   database.query(`DELETE FROM threads WHERE group_id = ?`).run(groupId)
 }

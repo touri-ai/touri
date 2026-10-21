@@ -136,7 +136,7 @@ export const createBrowserStore = ({
       takeoverReason: null,
       lastUsedAt: now,
       ownerBotId: botId,
-      ownerThreadId: threadId,
+      ownerThreadId: getExistingThreadId(database, threadId),
     }
     const tab: TabState = {
       info,
@@ -165,7 +165,7 @@ export const createBrowserStore = ({
       .query(
         "INSERT INTO browser_tabs (id, profile, owner_bot_id, owner_thread_id, opener_tab_id, cdp_target_id, url, title, state, held_by_user, private_input, created_at, last_used_at) VALUES (?, ?, ?, ?, ?, ?, ?, '', ?, 0, 0, ?, ?)",
       )
-      .run(tabId, profile, botId, threadId, openerTabId, targetId, url, info.state, now, now)
+      .run(tabId, profile, botId, info.ownerThreadId, openerTabId, targetId, url, info.state, now, now)
     tabs.set(tabId, tab)
     return tab
   }
@@ -267,3 +267,9 @@ export const publicTabInfo = ({ tab }: { tab: TabState }): BrowserTabInfo & { ow
   lastUsedAt: tab.info.lastUsedAt,
   ownerBotId: tab.info.ownerBotId,
 })
+
+const getExistingThreadId = (database: Database, threadId: Id | null): Id | null => {
+  if (!threadId) return null
+
+  return database.query<{ id: Id }, [Id]>("SELECT id FROM threads WHERE id = ?").get(threadId)?.id ?? null
+}

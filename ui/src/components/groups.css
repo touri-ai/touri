@@ -259,6 +259,7 @@
 }
 @media (max-width: 1100px) {
   .chat-header.group-header {
+    padding-block: var(--space-12);
     flex-wrap: wrap;
     height: auto;
     flex: 0 0 auto;

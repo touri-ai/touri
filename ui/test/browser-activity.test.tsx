@@ -906,3 +906,24 @@ test("an already completed continuation settles the handback without a live even
 
   expect(await screen.findByText("Usou o navegador · 1 ação")).toBeVisible()
 })
+
+test("a finished browser task without a screenshot keeps a compact disclosure and its action log", () => {
+  const parts = [
+    getPart({ callId: "read", tool: "mcp__touri__browser_snapshot", inputJson: '{"tabId":"browser-tab"}' }),
+  ]
+
+  const { view } = renderCard(parts, true)
+  const summary = screen.getByRole("button", { name: /Usou o navegador/ })
+
+  expect(summary).toHaveClass("browser-activity-summary-compact")
+  expect(summary).toHaveTextContent("Ver o que ele fez")
+  expect(view.container.querySelector(".browser-activity-thumbnail")).toBeNull()
+  fireEvent.click(summary)
+  expect(screen.getByRole("log", { name: "Atividade do navegador" })).toBeVisible()
+
+  view.rerender(
+    <BrowserActivityCard parts={parts} finished createdAt={1} threadId="thread-mark" botName="Lia" locale="en" />,
+  )
+
+  expect(screen.getByRole("button", { name: /Used the browser/ })).toHaveTextContent("See what the bot did")
+})
