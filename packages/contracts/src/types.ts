@@ -880,7 +880,79 @@ export type SendMessageInput = {
   sender?: { name: string; id: string; avatarSeed?: string; kind?: 'person' }
 }
 
+export type WorkEmailConfiguration =
+  | {
+      transport: 'smtp'
+      host: string
+      port: number
+      tls: true
+      fromEmail: string
+      fromName: string
+      teamName: string
+    }
+  | { transport: 'http'; endpoint: string; fromEmail: string; fromName: string; teamName: string }
+
 export type ApiRoutes = {
+  'GET /people': {
+    req: {}
+    res: {
+      people: Array<{
+        id: Id
+        name: string
+        email: string | null
+        avatarSeed: string
+        role: 'member' | 'admin'
+        createdAt: EpochMs
+        removedAt: EpochMs | null
+        devices: Array<{ id: Id; name: string; personId: Id; createdAt: EpochMs; lastSeenAt: EpochMs | null; revokedAt: EpochMs | null }>
+      }>
+    }
+  }
+  'POST /pairing-codes': { req: {}; res: { code: string; expiresAt: EpochMs } }
+  'GET /invites': {
+    req: {}
+    res: {
+      invites: Array<{
+        id: Id
+        name: string
+        email: string
+        role: 'member' | 'admin'
+        channelIds: Array<Id>
+        createdByPersonId: Id
+        createdAt: EpochMs
+        expiresAt: EpochMs
+        usedAt: EpochMs | null
+        revokedAt: EpochMs | null
+        status: 'pending' | 'accepted' | 'revoked' | 'expired'
+      }>
+    }
+  }
+  'POST /invites': {
+    req: { name: string; email: string; role: 'member' | 'admin'; channelIds: Array<Id> }
+    res: {
+      invite: { id: Id; name: string; email: string; role: 'member' | 'admin'; expiresAt: EpochMs }
+      emailConfigured: boolean
+      emailSent: boolean
+      link: string
+      requestOriginReachability: 'public' | 'private' | 'localhost' | 'tailnet' | 'invalid' | 'unset'
+      publicAddressReachability: 'public' | 'private' | 'localhost' | 'tailnet' | 'invalid' | 'unset'
+    }
+  }
+  'POST /invites/:id/resend': {
+    req: {}
+    res: { invite: { id: Id; name: string; email: string; role: 'member' | 'admin'; expiresAt: EpochMs }; emailConfigured: boolean; emailSent: boolean; link: string; requestOriginReachability: 'public' | 'private' | 'localhost' | 'tailnet' | 'invalid' | 'unset'; publicAddressReachability: 'public' | 'private' | 'localhost' | 'tailnet' | 'invalid' | 'unset' }
+  }
+  'GET /invites/:id/link': { req: {}; res: { link: string } }
+  'DELETE /invites/:id': { req: {}; res: {} }
+  'DELETE /people/:id': { req: {}; res: {} }
+  'GET /email': { req: {}; res: { configuration: WorkEmailConfiguration | null; configured: boolean } }
+  'PUT /email': { req: WorkEmailConfiguration & { user?: string; password?: string; apiKey?: string }; res: { configuration: WorkEmailConfiguration; configured: boolean } }
+  'DELETE /email': { req: {}; res: {} }
+  'POST /email/test': { req: { to: string }; res: { sent: true } }
+  'GET /public-address': { req: {}; res: { address: string | null; reachability: 'public' | 'private' | 'localhost' | 'tailnet' | 'invalid' | 'unset'; requestOriginReachability: 'public' | 'private' | 'localhost' | 'tailnet' | 'invalid' | 'unset' } }
+  'PUT /public-address': { req: { address: string | null }; res: { address: string | null; reachability: 'public' | 'private' | 'localhost' | 'tailnet' | 'invalid' | 'unset' } }
+  'POST /auth/email': { req: { email: string }; res: { ok: true } }
+  'POST /auth/email/redeem': { req: { token: string; deviceName?: string }; res: { ok: true; deviceId: Id } }
   'GET /groups': { req: {}; res: { groups: Array<BotGroup> } }
   'POST /groups': { req: GroupInput; res: { group: BotGroup; thread: Thread } }
   'PATCH /groups/:id': { req: GroupInput; res: { group: BotGroup } }
@@ -896,7 +968,7 @@ export type ApiRoutes = {
   'PUT /cloud/bots/:id/key': { req: { apiKey: string }; res: {} }
 
   'GET /health': { req: {}; res: { ok: true; version: string; schemaVersion: number; draining?: boolean; host?: 'mac' | 'server'; hostKind?: HostKind; historyMigration?: { running: boolean; done: number; total: number }; eventLoop?: { lagMs: number; p99Ms: number; maxMs: number; samples: number } } }
-  'GET /session': { req: {}; res: { person: { id: Id; name: string; avatarSeed: string; role: 'member' | 'admin' } } }
+  'GET /session': { req: {}; res: { ok: true; kind: 'device'; person: { id: Id; name: string; email: string | null; avatarSeed: string; role: 'member' | 'admin' } } }
   'POST /ui/errors': { req: { area: string; message: string; stack: string; componentStack: string }; res: { ok: true } }
   'POST /reports/:id/saved': { req: { destination: 'zip' | 'github' }; res: {} }
   'POST /reports/history': { req: { history: import('./reports').ReportHistory[] }; res: {} }

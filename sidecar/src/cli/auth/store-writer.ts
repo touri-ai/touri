@@ -12,9 +12,12 @@ const execute = (command: WriteCommand): unknown => {
   const db = database
   if (!db) throw new Error("The authentication writer is not ready")
   if (command.type === "create-pairing") {
+    if (!db.query("SELECT 1 FROM people WHERE id = ? AND removed_at IS NULL LIMIT 1").get(command.personId))
+      return false
     db.query("DELETE FROM pairing_codes WHERE expires_at < ? OR used_at IS NOT NULL").run(command.at)
-    db.query("INSERT INTO pairing_codes (code_hash, created_at, expires_at) VALUES (?, ?, ?)").run(
+    db.query("INSERT INTO pairing_codes (code_hash, person_id, created_at, expires_at) VALUES (?, ?, ?, ?)").run(
       command.codeHash,
+      command.personId,
       command.at,
       command.expiresAt,
     )
@@ -23,8 +26,10 @@ const execute = (command: WriteCommand): unknown => {
   if (command.type === "claim-pairing") {
     const claim = db.transaction(() => {
       const result = db
-        .query("UPDATE pairing_codes SET used_at = ? WHERE code_hash = ? AND used_at IS NULL AND expires_at > ?")
-        .run(command.at, command.codeHash, command.at)
+        .query(
+          "UPDATE pairing_codes SET used_at = ? WHERE code_hash = ? AND person_id = ? AND used_at IS NULL AND expires_at > ?",
+        )
+        .run(command.at, command.codeHash, command.device.personId, command.at)
       if (result.changes !== 1) return false
       db.query(
         "INSERT INTO devices (id, name, token_hash, created_at, last_seen_at, person_id) VALUES (?, ?, ?, ?, ?, ?)",
@@ -167,6 +172,58 @@ const execute = (command: WriteCommand): unknown => {
     db.query(
       "INSERT INTO email_config(id,config_json,updated_at) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET config_json=excluded.config_json,updated_at=excluded.updated_at",
     ).run(command.configJson, command.at)
+    return true
+  }
+  if (command.type === "create-email-signin") {
+    db.query(
+      "DELETE FROM email_signins WHERE id IN (SELECT id FROM email_signins WHERE used_at IS NOT NULL OR expires_at <= ? ORDER BY expires_at ASC LIMIT 128)",
+    ).run(command.at)
+    db.query("INSERT INTO email_signins(id,token_hash,email,created_at,expires_at) VALUES(?,?,?,?,?)").run(
+      command.id,
+      command.tokenHash,
+      command.email,
+      command.at,
+      command.expiresAt,
+    )
+    return true
+  }
+  if (command.type === "claim-email-signin") {
+    const claim = db.transaction(() => {
+      const saved = db
+        .query("SELECT token_hash,email FROM email_signins WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?")
+        .get(command.tokenHash, command.at) as { token_hash: string; email: string } | null
+      const person = db
+        .query("SELECT 1 FROM people WHERE id = ? AND email = ? AND removed_at IS NULL LIMIT 1")
+        .get(command.personId, command.email)
+      const savedHash = saved?.token_hash ?? "0".repeat(64)
+      const providedHash = command.tokenHash.length === 64 ? command.tokenHash : "0".repeat(64)
+      const matches = timingSafeEqual(Buffer.from(savedHash), Buffer.from(providedHash))
+      if (!saved || saved.email !== command.email || !person || !matches) return false
+      const updated = db
+        .query("UPDATE email_signins SET used_at = ? WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?")
+        .run(command.at, command.tokenHash, command.at)
+      if (updated.changes !== 1) return false
+      db.query("INSERT INTO devices(id,name,token_hash,created_at,last_seen_at,person_id) VALUES(?,?,?,?,?,?)").run(
+        command.device.id,
+        command.device.name,
+        command.device.tokenHash,
+        command.at,
+        command.at,
+        command.personId,
+      )
+      return true
+    })
+    return claim.immediate()
+  }
+  if (command.type === "save-public-address") {
+    if (!isActiveAdmin(db, command.actorPersonId)) return false
+    if (command.address === null) {
+      db.query("DELETE FROM work_settings WHERE id = 1").run()
+      return true
+    }
+    db.query(
+      "INSERT INTO work_settings(id,public_address) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET public_address=excluded.public_address",
+    ).run(command.address)
     return true
   }
   if (command.type === "last-seen") {

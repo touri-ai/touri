@@ -315,6 +315,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
       ].includes(pathname)
     )
       return null
+    if (verb === "POST" && pathname === "/pairing-codes") return null
     const groupThreads = /^\/groups\/([^/]+)\/threads$/u.exec(pathname)
     if (groupThreads && ["GET", "POST"].includes(verb))
       return canAccessGroup({ personId, role, groupId: groupThreads[1] ?? "" }) ? null : notFound

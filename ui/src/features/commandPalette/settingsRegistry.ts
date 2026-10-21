@@ -12,6 +12,7 @@ export type AppSettingsSectionId =
   | "notifications"
   | "diagnostics"
   | "advanced"
+  | "work"
   | "api-models"
 export type BotSettingsSectionId = "model" | "access" | "computer" | "project" | "tools" | "permissions" | "routines"
 export type TouriPage = "cron" | "integracoes" | "mcp" | "work" | "performance"
@@ -75,6 +76,14 @@ export const SERVER_SETTINGS_SECTION: SectionDefinition<AppSettingsSectionId> = 
   description: t("Escolha se os bots trabalham neste computador ou em um servidor touri."),
   icon: "computer",
   keywords: ["servidor", "pareamento", "conexão", "modo local"],
+}
+
+export const WORK_SETTINGS_SECTION: SectionDefinition<AppSettingsSectionId> = {
+  id: "work",
+  label: t("Work"),
+  description: t("Work access settings"),
+  icon: "computer",
+  keywords: ["e-mail", "smtp", "pessoas", "convites", "dispositivos", "endereço público"],
 }
 
 export const BOT_SETTINGS_SECTIONS: ReadonlyArray<SectionDefinition<BotSettingsSectionId>> = [

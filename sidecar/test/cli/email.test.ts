@@ -3,6 +3,7 @@ import {
   buildInvitationContent,
   createEmailService,
   getInviteEmail,
+  getMagicSignInEmail,
   isPublicAddress,
   parseEmailConfiguration,
 } from "../../src/cli/email"
@@ -62,11 +63,33 @@ test("invitation email has escaped plain and HTML pt-BR and English text without
   expect(content.text).toContain("invited you")
   expect(content.text).toContain("expira em 24 horas")
   expect(content.text).toContain("expires in 24 hours")
+  expect(content.text).toContain("Se este convite não foi feito para você")
+  expect(content.text).toContain("If this invitation was not for you")
   expect(content.html).toContain("Ana &lt;admin&gt;")
   expect(content.html).toContain("Equipe &lt;A&gt;")
   expect(content.html).not.toContain("Ana <admin>")
   expect(content.html).not.toContain("pixel")
   expect(content.html).toContain("https://server.example.test/join#invite=secret-token")
+  expect(content.html).toContain("If this invitation was not for you")
+})
+
+test("sign-in email includes the inviter, team, copyable one-time link, expiry, and ignore guidance in both languages", () => {
+  const content = getMagicSignInEmail({
+    inviter: { name: "Dani" },
+    config: { teamName: "Equipe A", fromName: "Touri" },
+    link: "https://public.example.test/login#signin=secret-token",
+    expiresAt: 1_800_000_900_000,
+  })
+
+  expect(content.text).toContain("Dani")
+  expect(content.text).toContain("Equipe A")
+  expect(content.text).toContain("https://public.example.test/login#signin=secret-token")
+  expect(content.text).toContain("15 minutos")
+  expect(content.text).toContain("15 minutes")
+  expect(content.text).toContain("ignore este e-mail")
+  expect(content.text).toContain("ignore this email")
+  expect(content.html).toContain('href="https://public.example.test/login#signin=secret-token"')
+  expect(content.html).toContain("ignore this email")
 })
 
 test("SMTP and HTTP delivery use only stored secrets and the invited recipient", async () => {
