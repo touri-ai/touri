@@ -14,6 +14,7 @@ import { t } from "../../src/i18n"
 import "../../src/styles.css"
 
 const params = new URLSearchParams(location.search)
+document.documentElement.classList.toggle("browser-activity-fixture", params.get("flow") === "live")
 document.documentElement.dataset.theme = params.get("theme") ?? "dark"
 const locale = params.get("locale") === "en" ? "en" : "pt-BR"
 document.documentElement.lang = locale
