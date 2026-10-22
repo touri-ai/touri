@@ -16,7 +16,8 @@ legacy app bots, chats and routines so you can switch over.
 
 Optional channel navigation, channel headers, member panels, group dialogs and the routine editor
 load asynchronously outside the initial application bundle. Opening them preserves their existing
-actions and keyboard access; dialogs show a dismissible loading state while their module loads.
+actions and keyboard access; panels and dialogs keep their close control while their module loads.
+Closing a loading channel panel restores focus to its trigger and leaves the conversation available.
 The initial HTML, JavaScript and CSS remain limited to 400,000 bytes gzip.
 
 During browser takeover, choosing the keyboard control keeps focus in the remote input without

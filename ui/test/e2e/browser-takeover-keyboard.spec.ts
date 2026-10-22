@@ -67,7 +67,9 @@ const connectBrowserFixture = async (page: Page): Promise<void> => {
   })
 }
 
-for (const width of [1440, 390]) {
+const keyboardWidths = [1440, 390]
+
+keyboardWidths.forEach((width) => {
   test(`remote keyboard input reaches the managed page without entering the conversation at ${width}px`, async ({
     page,
   }) => {
@@ -155,4 +157,4 @@ for (const width of [1440, 390]) {
     await control.getByRole("button", { name: /Devolver para/ }).click()
     await page.getByRole("button", { name: "Parar Lia" }).click()
   })
-}
+})

@@ -650,6 +650,10 @@ const AppContent = ({ kernel }: AppProps) => {
     },
     [selectedBot],
   )
+  const closeGroupPanel = () => {
+    setPanelOpen(false)
+    window.requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".bot-panel-toggle")?.focus())
+  }
   const evidenceContext = useMemo(
     () =>
       selectedBot && api
@@ -1349,7 +1353,7 @@ const AppContent = ({ kernel }: AppProps) => {
                       {/* r8 motion: preserve the panel during its inert exit */}
                       <MotionPresence show={panelOpen && Boolean(selectedGroup || selectedBot)} kind="panel">
                         {selectedGroup ? (
-                          <Suspense fallback={<GroupPanelLoading />}>
+                          <Suspense fallback={<GroupPanelLoading onClose={closeGroupPanel} />}>
                             <GroupPanel
                               api={api}
                               currentPersonId={currentPersonId}
@@ -1365,12 +1369,7 @@ const AppContent = ({ kernel }: AppProps) => {
                                 setGroupModalChannelMode(Boolean(selectedGroup))
                                 openModal("group")
                               }}
-                              onClose={() => {
-                                setPanelOpen(false)
-                                window.requestAnimationFrame(() =>
-                                  document.querySelector<HTMLButtonElement>(".bot-panel-toggle")?.focus(),
-                                )
-                              }}
+                              onClose={closeGroupPanel}
                             />
                           </Suspense>
                         ) : (
@@ -1521,9 +1520,14 @@ const PageLoading = () => (
   </div>
 )
 
-const GroupPanelLoading = () => (
-  <aside className="bot-panel group-panel" aria-busy="true" aria-label={t("Loading")}>
-    <p role="status">{t("Loading")}</p>
+const GroupPanelLoading = ({ onClose }: { onClose: () => void }) => (
+  <aside id="bot-panel" className="bot-panel group-panel" aria-busy="true" aria-label={t("Loading")}>
+    <div className="bot-panel-top">
+      <span role="status">{t("Loading")}</span>
+      <button type="button" className="toolbar-icon" aria-label={t("Close channel panel")} onClick={onClose}>
+        ×
+      </button>
+    </div>
   </aside>
 )
 
