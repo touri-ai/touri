@@ -35,5 +35,6 @@ test("lets a person close the channel panel while its module is still loading", 
 
   await waitFor(() => expect(screen.queryByRole("complementary", { name: "Carregando…" })).toBeNull())
   expect(toggle).toHaveAttribute("aria-expanded", "false")
+  await waitFor(() => expect(toggle).toHaveFocus())
   expect(screen.getByRole("textbox", { name: "Mensagem para Produto" })).toBeVisible()
 })

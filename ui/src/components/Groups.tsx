@@ -577,7 +577,7 @@ const ChannelHeader = ({
         {onTogglePanel ? (
           <button
             type="button"
-            className="channel-members-button"
+            className="channel-members-button bot-panel-toggle"
             aria-label={membersLabel}
             title={summary}
             aria-expanded={panelOpen}
