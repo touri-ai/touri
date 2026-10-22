@@ -3,7 +3,6 @@ import { resolve } from "node:path"
 import { expect, test } from "@playwright/test"
 import { showBotPanel } from "./home-navigation"
 
-test.use({ channel: "chrome" })
 const phase = process.env.VISUAL_CAPTURE_PHASE === "before" ? "before" : "after"
 const evidence = resolve(import.meta.dirname, "../../../docs/qa/visual")
 mkdirSync(evidence, { recursive: true })

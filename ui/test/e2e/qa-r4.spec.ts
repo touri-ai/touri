@@ -3,7 +3,6 @@ import { resolve } from "node:path"
 import { expect, type Page, test } from "@playwright/test"
 import { showBotPanel } from "./home-navigation"
 
-test.use({ channel: "chrome" })
 const frame = readFileSync(resolve(import.meta.dirname, "fixtures/qa-r4-desktop.js"), "utf8")
 const evidence = resolve(import.meta.dirname, "../../../docs/evidence/qa-r4")
 const mockFrames = async (page: Page) => {
