@@ -218,7 +218,7 @@ test("a routine uses its own bot's owner and title even when another bot coordin
       scheduledFor: 1,
       status: "running",
       threadId: fixture.thread.id,
-      runId: "map-turn",
+      runId: null,
       triggerSource: "cron",
       summary: null,
       startedAt: 1,
