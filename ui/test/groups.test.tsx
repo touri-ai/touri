@@ -102,7 +102,7 @@ describe("Grupos", () => {
       fireEvent.click(screen.getByRole("button", { name: /^Membros do canal:/ }))
     const panel = await screen.findByRole("complementary", { name: panelName, exact: true })
     expect(within(panel).getByRole("list", { name: "Membros do canal" })).toHaveTextContent("mark")
-    expect(within(panel).getByText("Bot", { exact: true })).toBeVisible()
+    expect(within(panel).getAllByText("Bot", { exact: true })).toHaveLength(2)
     expect(within(panel).getByRole("button", { name: "Editar canal" })).toBeVisible()
     expect(within(panel).queryByRole("button", { name: "Preview do projeto" })).toBeNull()
     fireEvent.click(screen.getByRole("tab", { name: /^Bots,/ }))

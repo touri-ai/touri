@@ -292,7 +292,10 @@ test("an attached CSV reaches the provider as real rows rather than a filename p
   const f = await fixture()
   try {
     const requestLogPath = join(f.assets, "csv-requests.jsonl")
-    writeFileSync(f.scenario, JSON.stringify({ requestLogPath, events: [{ type: "complete" }] }))
+    writeFileSync(
+      f.scenario,
+      JSON.stringify({ requestLogPath, events: [{ type: "delta", delta: "Linhas recebidas." }, { type: "complete" }] }),
+    )
     const path = join(f.runtime.kernel.paths.attachmentsDir, "cadastros.csv")
     mkdirSync(f.runtime.kernel.paths.attachmentsDir, { recursive: true })
     const csv = "cadastro,valor\nregistro-a,12\nregistro-b,30\n"

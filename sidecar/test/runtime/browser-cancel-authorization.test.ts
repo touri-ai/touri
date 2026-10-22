@@ -401,6 +401,7 @@ const getFixture = async (workMode = true) => {
         signals.add(args.signal)
         const finish = (status: "succeeded" | "interrupted") => {
           args.signal.removeEventListener("abort", abort)
+          if (status === "succeeded") args.onEvent({ type: "text_delta", itemId: "answer", delta: "Tarefa concluída." })
           args.onEvent({ type: "turn_completed", status, errorClass: null, errorMessage: null })
           resolve({ success: true, externalSessionId: args.thread.id, rolloutPath: null, status })
         }

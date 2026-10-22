@@ -48,6 +48,7 @@ for (const provider of ["codex", "claude"] as const) {
               })
             }
             args.onEvent({ type: "turn_started", externalTurnId: "fixture-turn" })
+            args.onEvent({ type: "text_delta", itemId: "answer", delta: "Pedido retomado e concluído." })
             return { success: true, externalSessionId: "fixture-session", rolloutPath: null, status: "succeeded" }
           },
           answerApproval: async () => ({ success: true }),

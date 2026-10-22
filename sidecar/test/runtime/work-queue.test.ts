@@ -416,6 +416,7 @@ const getAdapter = (completions: Map<string, () => void>): ProviderAdapter => ({
   startTurn: (args: StartTurnArgs) =>
     new Promise<StartTurnResult>((resolve) => {
       const finish = (status: "succeeded" | "interrupted") => {
+        if (status === "succeeded") args.onEvent({ type: "text_delta", itemId: "answer", delta: "Tarefa concluída." })
         args.onEvent({ type: "turn_completed", status, errorClass: null, errorMessage: null })
         resolve({ success: true, externalSessionId: `session-${args.thread.id}`, rolloutPath: null, status })
       }
