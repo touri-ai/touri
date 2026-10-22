@@ -27,6 +27,79 @@ afterEach(async () => {
   cleanups.clear()
 })
 
+test("settling one approval keeps a caller's other pending delegation protected", async () => {
+  const fixture = await getFixture()
+  const browser = await fixture.startBrowser()
+  const peer = await fixture.startBrowser("peer", "requester", "other-responsible")
+  const first = await fixture.startPendingDelegation(browser)
+  const second = await fixture.startPendingDelegation(browser, "pending-other")
+  first.deny()
+  await first.finished
+  const before = fixture.getSnapshot()
+
+  const denied = await fixture.cancel(browser.runId, getPerson("responsible"))
+
+  expectForbidden(denied)
+  fixture.expectUnchanged(before)
+
+  second.deny()
+  await second.finished
+  const allowed = await fixture.cancel(browser.runId, getPerson("responsible"))
+
+  expect(allowed.status).toBe(200)
+  expect(peer.signal.aborted).toBe(false)
+  expect(fixture.coordinator.signal.aborted).toBe(false)
+})
+
+test.each(["member", "admin"] as const)(
+  "pending delegation approval cannot bypass a protected sibling's ownership for a %s",
+  async (role) => {
+    const fixture = await getFixture()
+    const browser = await fixture.startBrowser()
+    await fixture.startBrowser("peer", "requester", "other-responsible")
+    await fixture.startPendingDelegation(browser)
+    const before = fixture.getSnapshot()
+
+    const response = await fixture.cancel(browser.runId, getPerson("responsible", role))
+
+    expectForbidden(response)
+    fixture.expectUnchanged(before)
+  },
+)
+
+test("the requester can cancel all affected browser work during pending delegation approval", async () => {
+  const fixture = await getFixture()
+  const browser = await fixture.startBrowser()
+  const peer = await fixture.startBrowser("peer", "requester", "other-responsible")
+  await fixture.startPendingDelegation(browser)
+
+  const response = await fixture.cancel(browser.runId, getPerson("requester"))
+  await Promise.all([fixture.waitForCanceled(browser.runId), fixture.waitForCanceled(peer.runId)])
+
+  expect(response.status).toBe(200)
+  expect(fixture.channelRuns.get(browser.runId)?.status).toBe("canceled")
+  expect(fixture.channelRuns.get(peer.runId)?.status).toBe("canceled")
+  expect(fixture.coordinator.signal.aborted).toBe(true)
+  expect(fixture.getRun(fixture.waiting.id)?.status).not.toBe("canceled")
+})
+
+test("a denied delegation removes its abort effect so a browser leaf can still be canceled alone", async () => {
+  const fixture = await getFixture()
+  const browser = await fixture.startBrowser()
+  const peer = await fixture.startBrowser("peer", "requester", "other-responsible")
+  const approval = await fixture.startPendingDelegation(browser)
+  approval.deny()
+  await approval.finished
+
+  const response = await fixture.cancel(browser.runId, getPerson("responsible"))
+
+  expect(response.status).toBe(200)
+  expect(browser.signal.aborted).toBe(true)
+  expect(peer.signal.aborted).toBe(false)
+  expect(fixture.coordinator.signal.aborted).toBe(false)
+  expect(fixture.channelRuns.get(peer.runId)?.status).toBe("running")
+})
+
 test.each(["member", "admin"] as const)(
   "live cancellation denies an unrelated %s through the browser request and its group root",
   async (role) => {
@@ -310,7 +383,10 @@ const getFixture = async (workMode = true) => {
   if (!store) throw new Error("Missing store")
   const persistence = createRuntimePersistence({ database: base.db })
   const starts = new Map(
-    ["coordinator", "browser", "peer"].map((botId) => [botId, Promise.withResolvers<StartedTurn>()]),
+    ["coordinator", "browser", "peer", "pending", "pending-other"].map((botId) => [
+      botId,
+      Promise.withResolvers<StartedTurn>(),
+    ]),
   )
   const groupStarts = new Map<string, ReturnType<typeof Promise.withResolvers<StartedTurn>>>()
   const completions = new Map<string, () => void>()
@@ -399,7 +475,7 @@ const getFixture = async (workMode = true) => {
         kind: "text",
         status: "complete",
         runId: null,
-        text: "Fixture request",
+        text: "@coordinator Fixture request",
         parts: [],
         sender: { id: "requester", name: "Fixture requester", kind: "person" },
         source: "local",
@@ -464,6 +540,26 @@ const getFixture = async (workMode = true) => {
       return started.promise
     },
     complete: (runId: string) => completions.get(runId)?.(),
+    startPendingDelegation: async (caller: ToolContext, target = "pending") => {
+      base.db.query("UPDATE bots SET machine = 'vm' WHERE id = ?").run(target)
+      const approvalStarted = Promise.withResolvers<void>()
+      const decision = Promise.withResolvers<Awaited<ReturnType<ServiceMap["approvals.present"]>>>()
+      const deny = () => decision.resolve({ success: false, errorCode: "DENIED", error: "Fixture denial" })
+      kernel.services.provide("approvals.present", async ({ ctx }) => {
+        ctx.signal.addEventListener("abort", deny, { once: true })
+        approvalStarted.resolve()
+        try {
+          return await decision.promise
+        } finally {
+          ctx.signal.removeEventListener("abort", deny)
+        }
+      })
+      const finished = groups.askBot(caller, { bot: target, message: "Fixture pending delegation" })
+      delegations.add(finished)
+      await approvalStarted.promise
+
+      return { deny, finished }
+    },
     addContinuationAlias: (runId: string) => {
       const run = persistence.getRun(runId)
       if (!run) throw new Error("Missing continuation run")

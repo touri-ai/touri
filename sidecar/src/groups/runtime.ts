@@ -38,7 +38,15 @@ type Turn = {
   /** Routine turns share the routine's timeout instead of the per-bot chat limit. */
   deadline: number | null
 }
-type Frame = { turn: Turn; stack: string[]; depth: number; bot: Bot; configuration: string; secrets: boolean }
+type Frame = {
+  turn: Turn
+  stack: string[]
+  depth: number
+  bot: Bot
+  configuration: string
+  secrets: boolean
+  delegations: Set<string>
+}
 const RESTART_ABORT_REASON = "app_restart"
 const configuration = (bot: Bot) =>
   JSON.stringify([
@@ -276,6 +284,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       bot: ceiling,
       configuration: configuration(bot),
       secrets: allowedSecrets,
+      delegations: new Set(),
     })
     // Each native session keeps its own history. The shared context is explicit input, bounded to 16k.
     const contextRows = db
@@ -829,10 +838,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     const frame = frames.get(run.threadId)
     if (!frame) return [runId]
     const isRecipient = frame.turn.action !== "ask_all" && frame.turn.recipients.includes(run.botId)
-    const hasDelegation = Array.from(frames.values()).some(
-      (candidate) => candidate.turn === frame.turn && candidate.stack.slice(0, -1).includes(run.botId),
-    )
-    if (!isRecipient && !hasDelegation) return [runId]
+    if (!isRecipient && frame.delegations.size === 0) return [runId]
 
     // A recipient failure or a caller's abort listener propagates cancellation to its turn's children.
     return [frame.turn.run.id].concat(Array.from(frame.turn.children))
@@ -994,6 +1000,8 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     frame.turn.reservations.add(target)
     // Tool cancellation must stop the target as well. A canceled/expired tool ends the group turn.
     const abort = () => frame.turn.controller.abort()
+    // Match each live abort listener, including approval waits and overlapping delegations.
+    frame.delegations.add(target)
     ctx.signal.addEventListener("abort", abort, { once: true })
     try {
       ctx.signal.throwIfAborted()
@@ -1055,6 +1063,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       return fail(frame.turn.controller.signal.aborted ? "CANCELED" : "DELEGATION_FAILED", kernel.redact(String(error)))
     } finally {
       frame.turn.reservations.delete(target)
+      frame.delegations.delete(target)
       ctx.signal.removeEventListener("abort", abort)
     }
   }

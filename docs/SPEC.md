@@ -409,6 +409,12 @@ routine uses the routine's timeout instead (§3.8). Delegated work may use a
 bounded extra runtime slot so a caller occupying the last normal slot cannot deadlock its peer.
 Approvals remain with the recipient; notifications point to the shared conversation.
 
+Browser cancellation in shared channels requires the requester or the bot's responsible person,
+even for administrators. Original and resumed run IDs retain the same ownership check. Before
+canceling a group or a delegating caller, the server checks every browser request the abort would
+affect, including work reached while delegation approval is still pending. A denial leaves all runs,
+browser control and pending turns unchanged; a browser leaf can still be canceled in isolation.
+
 Parar cancels the active group turn, its delegated work and pending group turns. Editing members
 or the coordinator requires idle group conversations. Restart interrupts unfinished group turns
 without replaying tasks. UI: Grupos in the sidebar, create/edit dialog, @mention completion,
