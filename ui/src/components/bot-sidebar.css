@@ -4,10 +4,6 @@
   flex-basis: 44px;
   padding-inline: var(--space-16) var(--space-12);
 }
-.r8-sidebar .traffic-light-row .sidebar-bots-link {
-  flex: 0 0 auto;
-  margin-left: auto;
-}
 .sidebar-traffic-lights,
 .sidebar-top-actions {
   display: flex;
@@ -33,13 +29,6 @@
 .sidebar-icon-button:hover {
   background: var(--surface-control);
   color: var(--text);
-}
-.sidebar-list-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-8);
-  padding: var(--space-4) var(--space-16) var(--space-8);
 }
 .sidebar-mode-panel {
   flex: 1;
@@ -72,48 +61,6 @@
   flex: initial;
   min-height: auto;
   overflow: visible;
-}
-.sidebar-brand,
-.sidebar-bots-link {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-8);
-  height: var(--control-size-compact);
-  padding: 0 var(--space-4);
-  border: 0;
-  border-radius: var(--menu-corner);
-  background: transparent;
-  color: var(--text-2);
-  font-size: var(--fs-caption);
-}
-.sidebar-brand {
-  color: var(--text);
-  font-weight: var(--weight-semibold);
-  font-size: var(--fs-body);
-}
-.sidebar-brand img {
-  width: 22px;
-  height: 22px;
-  object-fit: contain;
-}
-.sidebar-brand > svg {
-  width: 12px;
-  color: var(--text-2);
-}
-.sidebar-brand:hover,
-.sidebar-bots-link:hover {
-  background: var(--surface-control);
-}
-.sidebar-bots-link > span {
-  color: var(--text-2);
-  font-variant-numeric: tabular-nums;
-}
-.r8-sidebar .touri-nav {
-  flex: 0 0 auto;
-  gap: var(--space-2);
-  margin: 0 var(--space-12) var(--space-8);
-  padding: 0 0 var(--space-8);
-  border-bottom: 1px solid var(--border);
 }
 .r8-sidebar .sidebar-nav-item {
   min-height: var(--menu-row-height);
@@ -150,17 +97,6 @@
   padding: var(--space-8) var(--space-8);
   gap: var(--space-12);
   border-radius: var(--radius-sm);
-}
-.r8-sidebar .bot-row-copy {
-  gap: var(--space-4);
-}
-.r8-sidebar .bot-row-copy strong {
-  overflow: hidden;
-  font-weight: var(--weight-semibold);
-  font-size: var(--fs-body);
-  line-height: 1.2;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 .r8-sidebar .bot-preview {
   font-size: var(--fs-caption);
@@ -541,9 +477,6 @@
   color: var(--text);
 }
 @media (max-width: 620px) {
-  .sidebar-drawer .r8-sidebar .traffic-light-row .sidebar-bots-link {
-    margin-left: 0;
-  }
   .sidebar-drawer .r8-sidebar .traffic-light-row .sidebar-top-actions {
     margin-left: auto;
   }
@@ -623,7 +556,6 @@
     .bot-settings,
     .sidebar-attention-button,
     .sidebar-approval-badge,
-    .sidebar-bots-link,
     .sidebar-nav-item,
     .bot-row-main,
     .new-thread-row,

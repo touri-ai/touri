@@ -4,7 +4,6 @@
   display: grid;
   place-items: center;
   background: var(--surface-backdrop);
-  z-index: 100;
   padding: var(--space-20);
 }
 .modal-card.group-modal {

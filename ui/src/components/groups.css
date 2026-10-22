@@ -70,8 +70,7 @@
   font-size: var(--fs-caption);
   white-space: nowrap;
 }
-.channel-heading-hash,
-.channel-start-hash {
+.channel-heading-hash {
   display: grid;
   flex: 0 0 auto;
   place-items: center;
@@ -85,12 +84,6 @@
   width: 30px;
   height: 30px;
   font-size: var(--fs-emphasis);
-}
-.channel-start-hash {
-  width: 36px;
-  height: 36px;
-  margin-bottom: var(--space-20);
-  font-size: var(--fs-title);
 }
 .channel-conversation-start {
   text-align: center;

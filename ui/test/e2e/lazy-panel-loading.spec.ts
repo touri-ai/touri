@@ -33,6 +33,8 @@ viewportWidths.forEach((width) => {
     const create = page.getByRole("dialog", { name: "Criar canal", exact: true })
     await create.getByRole("textbox", { name: "Nome do canal" }).fill("Produto")
     await create.getByRole("checkbox", { name: "mark", exact: true }).check()
+
+    await expect(create.locator("..")).toHaveCSS("z-index", "1000")
     const evidence = process.env.TOURI_E2E_EVIDENCE_DIR
     if (evidence) {
       await mkdir(evidence, { recursive: true })
