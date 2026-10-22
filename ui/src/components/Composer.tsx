@@ -1,4 +1,4 @@
-import type { Bot, GroupAction, Id, Project, Run } from "@touri/contracts"
+import type { Bot, ChannelPerson, GroupAction, Id, Project, Run } from "@touri/contracts"
 import { getApiModelProviderId } from "@touri/contracts"
 import { type ComponentProps, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
@@ -33,7 +33,9 @@ type ComposerProps = {
   onResumeBot?: (() => Promise<void>) | undefined
   autoFocus?: boolean | undefined
   mentionBots?: Bot[]
+  mentionPeople?: ChannelPerson[]
   groupName?: string | undefined
+  summaryBotId?: string | null | undefined
   bot: Bot | null
   threadId: Id
   parentId: Id | null
@@ -96,7 +98,9 @@ export const Composer = ({
   onResumeBot,
   autoFocus = false,
   mentionBots = [],
+  mentionPeople = [],
   groupName,
+  summaryBotId,
   bot,
   threadId,
   parentId,
@@ -136,16 +140,21 @@ export const Composer = ({
   const [mentionClosed, setMentionClosed] = useState(false)
   const mentionListId = useId()
   const mention = draft.slice(0, caret).match(/(?:^|\s)@([^@\n]*)$/u)
+  const mentionMembers = [
+    ...mentionBots.map((bot) => ({ id: `bot:${bot.id}`, name: bot.name, bot })),
+    ...mentionPeople.map((person) => ({ id: `person:${person.id}`, name: person.name, bot: null })),
+  ]
+  const selectedMentions = mentionMembers.filter((member) => draft.includes(getMentionToken(member.name)))
   const suggestions =
     !mentionClosed && focused && mention
-      ? mentionBots
+      ? mentionMembers
           .filter((b) => b.name.toLocaleLowerCase().startsWith((mention[1] ?? "").toLocaleLowerCase()))
           .slice(0, 8)
       : []
   const activeMention = suggestions[mentionIndex] ?? suggestions[0]
-  const insertMention = (bot: Bot) => {
+  const insertMention = (bot: { name: string }) => {
     const start = caret - (mention?.[1]?.length ?? 0) - 1
-    const token = `@${/\s/.test(bot.name) ? JSON.stringify(bot.name) : bot.name} `
+    const token = `${getMentionToken(bot.name)} `
     onDraft(draft.slice(0, start) + token + draft.slice(caret))
     setMentionClosed(true)
     requestAnimationFrame(() => {
@@ -332,9 +341,13 @@ export const Composer = ({
     setError(null)
     const text = draft
     const sentFiles = summary ? [] : files
-    const prompt = summary
+    const message = summary
       ? t("Resuma os resultados confirmados do último turno, com a autoria de cada membro.")
       : text.trim() || t("Review attached files")
+    const summaryBot = mentionBots.find((bot) => bot.id === summaryBotId) ?? mentionBots[0]
+    const targets = summary ? (summaryBot ? [summaryBot] : []) : mentionBots
+    const prefix = groupAction ? targets.map((bot) => getMentionToken(bot.name)).join(" ") : ""
+    const prompt = prefix ? `${prefix} ${message}` : message
     const attachmentIds = sentFiles.flatMap((file) => (file.id ? [file.id] : []))
     try {
       await (groupAction
@@ -494,6 +507,15 @@ export const Composer = ({
           </button>
         </fieldset>
       )}
+      {selectedMentions.length > 0 && (
+        <fieldset className="composer-mention-chips" aria-label={t("Mentioned members")}>
+          {selectedMentions.map((member) => (
+            <span className="composer-mention-chip" key={member.id}>
+              {getMentionToken(member.name)}
+            </span>
+          ))}
+        </fieldset>
+      )}
       <textarea
         disabled={cloudUnavailable}
         ref={inputRef}
@@ -501,7 +523,9 @@ export const Composer = ({
         rows={1}
         aria-label={t("Message to bot", { name: groupName ?? bot?.name ?? "touri" })}
         placeholder={
-          groupName ? t("Message in channel", { name: groupName }) : t("Message to bot", { name: bot?.name ?? "touri" })
+          groupName
+            ? t("Message in channel", { name: groupName }, locale)
+            : t("Message to bot", { name: bot?.name ?? "touri" })
         }
         aria-describedby={helpId}
         onFocus={() => {
@@ -571,7 +595,8 @@ export const Composer = ({
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => insertMention(bot)}
             >
-              <BotAvatar bot={bot} size={22} />@{bot.name}
+              {bot.bot ? <BotAvatar bot={bot.bot} size={22} /> : <span aria-hidden="true">@</span>}@{bot.name}
+              <small>{t(bot.bot ? "Bot" : "Person")}</small>
             </button>
           ))}
         </div>
@@ -714,3 +739,5 @@ export const Composer = ({
     </>
   )
 }
+
+const getMentionToken = (name: string) => `@${/\s/.test(name) ? JSON.stringify(name) : name}`

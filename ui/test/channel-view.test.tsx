@@ -59,15 +59,15 @@ describe("channel view", () => {
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     fireEvent.click(within(screen.getByRole("region", { name: "Canais" })).getByRole("button", { name: /^Equipe QA/ }))
     const composer = await screen.findByRole("textbox", { name: "Mensagem para Equipe QA" })
-    expect(composer).toHaveAttribute("placeholder", "Mensagem em #Equipe QA")
+    expect(composer).toHaveAttribute("placeholder", "Mensagem em #Equipe QA · @ chama um bot")
     expect(screen.getByRole("group", { name: "Ações do canal" })).toBeVisible()
     expect(screen.getByRole("heading", { name: "Comece a conversa em #Equipe QA" })).toBeVisible()
-    expect(screen.getByText("Envie uma mensagem para começar.")).toBeVisible()
+    expect(screen.getByText("Os bots só respondem quando você os chama com @nome.")).toBeVisible()
     expect(within(document.body).queryByText(/grupo/i)).toBeNull()
   })
 
   it("translates the channel copy in English", () => {
-    expect(t("Message in channel", { name: "QA" }, "en")).toBe("Message #QA")
+    expect(t("Message in channel", { name: "QA" }, "en")).toBe("Message #QA · @ calls a bot")
     expect(t("Invite to channel", {}, "en")).toBe("Invite to channel")
     expect(t("Channel composer actions", {}, "en")).toBe("Channel actions")
     expect(t("Channel summary with coordinator", { count: 2, name: "Alex" }, "en")).toBe("2 bots · Alex coordinates")
