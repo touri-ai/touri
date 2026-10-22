@@ -96,7 +96,8 @@ export const ThreadActionsMenu = ({
           setOpen,
           style,
           title,
-          portalRoot,
+          // Keep actions above their management dialog without inheriting the card's transform.
+          portalRoot: trigger.current?.closest(".modal-backdrop") ?? portalRoot,
           trigger,
         })}
     </div>

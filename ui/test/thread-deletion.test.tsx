@@ -76,6 +76,9 @@ it("closes a thread action menu with Escape while keeping management open", asyn
 
   fireEvent.click(trigger)
   const menu = screen.getByRole("menu")
+
+  expect(menu.closest(".modal-backdrop")).toBe(screen.getByRole("dialog").closest(".modal-backdrop"))
+
   fireEvent.keyDown(within(menu).getByRole("menuitem", { name: "Arquivar conversa" }), { key: "Escape" })
 
   expect(screen.getByRole("dialog", { name: "Conversas de mark" })).toBeVisible()

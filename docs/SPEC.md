@@ -1187,7 +1187,13 @@ Rules for every WP:
 - **Provides the screens:**
   - Onboarding: Doctor (CLIs found and logged in, shell env), import offer, launch at login.
   - Main layout:
-    - left: bots grouped by section, with unread and running badges
+    - left: bots grouped by section, with unread and running badges. In Bots and Work direct messages,
+      each bot has its name and one quiet preview line. Clicking the row, including repeated clicks,
+      Enter and Space, only opens its conversation; it never expands management controls.
+    - bot row actions: the ellipsis menu opens Conversations explicitly, without switching the current
+      conversation. History, selection, archive, deletion and new conversations remain available there;
+      Routines is a separate menu action. Closing management restores focus to its trigger, and Escape
+      from a nested conversation menu closes that menu first. Deletion retains confirmation and undo.
     - center: thread list + chat
     - right panel tabs: Preview | Processes | Browser
   - Chat:
