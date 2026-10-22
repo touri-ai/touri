@@ -67,6 +67,8 @@ test.describe("mermaid production and desktop CSP", () => {
       "src/components/WorkspaceScreens.tsx",
       "src/components/GroupModal.tsx",
       "src/components/GroupPanel.tsx",
+      "src/components/Groups.tsx",
+      "src/components/DeleteGroupDialog.tsx",
       "src/components/RoutineEditor.tsx",
     ].map((key) => manifest[key])
     expect(optionalModules.every((chunk) => chunk?.isDynamicEntry && !initialFiles.has(chunk.file))).toBe(true)

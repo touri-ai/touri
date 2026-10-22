@@ -80,7 +80,6 @@ import { ErrorNotice } from "./ErrorNotice"
 import { EvidenceContext } from "./EvidenceGallery"
 import { FailureActionContext } from "./FailureActionContext"
 import { GoalPanel } from "./GoalPanel"
-import { GroupConversationStart, GroupHeader } from "./Groups"
 import { MachineServiceButton } from "./MachineServiceButton"
 import { MachineStatus } from "./MachineStatus"
 import { MarkdownContent } from "./MarkdownContent"
@@ -96,6 +95,10 @@ import { approvalTools, assistantSegments } from "./turnActivityModel"
 import { type EditMessage, UserMessageEdit } from "./UserMessageEdit"
 import { usePhoneViewport } from "./usePhoneViewport"
 
+const GroupHeader = lazy(() => import("./Groups").then((module) => ({ default: module.GroupHeader })))
+const GroupConversationStart = lazy(() =>
+  import("./Groups").then((module) => ({ default: module.GroupConversationStart })),
+)
 const ChannelThreads = lazy(() => import("./ChannelThreads").then((module) => ({ default: module.ChannelThreads })))
 
 type ChatPanelProps = {
@@ -260,6 +263,7 @@ export const VirtualMessageList = ({
     messages.map((message) => message.id),
     messages[0]?.threadId ?? "",
   )
+  const runsById = useMemo(() => new Map(runs.map((run) => [run.id, run])), [runs])
   const routineRunHeaderByMessage = useMemo(() => {
     const routineRunsById = new Map(routineRuns.map((routineRun) => [routineRun.id, routineRun]))
     const routinesById = new Map(routines.map((routine) => [routine.id, routine]))
@@ -590,7 +594,7 @@ export const VirtualMessageList = ({
                               ["queued", "starting", "running"].includes(candidate.status)) ||
                             (candidate.threadId === run.threadId &&
                               candidate.botId === run.botId &&
-                              isSameChannelRequest(run, candidate, runs) &&
+                              isSameChannelRequest(run, candidate, runsById) &&
                               (candidate.queuedAt > run.queuedAt ||
                                 (candidate.queuedAt === run.queuedAt && candidate.id > run.id))),
                         ),
@@ -600,7 +604,7 @@ export const VirtualMessageList = ({
                         (later) =>
                           later.threadId === message.threadId &&
                           later.status === "succeeded" &&
-                          (!run?.groupTurnId || isSameChannelRequest(run, later, runs)) &&
+                          (!run?.groupTurnId || isSameChannelRequest(run, later, runsById)) &&
                           (later.finishedAt ?? later.startedAt ?? later.queuedAt) >
                             (run?.finishedAt ?? message.updatedAt),
                       ) ||
@@ -609,10 +613,7 @@ export const VirtualMessageList = ({
                           later.threadId === message.threadId &&
                           later.role === "assistant" &&
                           later.status === "complete" &&
-                          (!run?.groupTurnId ||
-                            runs.some(
-                              (candidate) => candidate.id === later.runId && isSameChannelRequest(run, candidate, runs),
-                            )) &&
+                          (!run?.groupTurnId || isSameChannelRequest(run, runsById.get(later.runId ?? ""), runsById)) &&
                           later.createdAt > (run?.finishedAt ?? message.updatedAt),
                       )
                     }
@@ -1455,16 +1456,18 @@ export const ChatPanel = ({
         <BrowserActivityControlsProvider>
           <section className="chat-panel" inert={chatIsCovered || undefined} aria-hidden={chatIsCovered || undefined}>
             {group ? (
-              <GroupHeader
-                group={group}
-                bots={groupMembers}
-                people={channelPeople}
-                channelMode={channelMode}
-                onEdit={onEditGroup}
-                onInvite={onInviteToGroup}
-                panelOpen={panelOpen}
-                onTogglePanel={onTogglePanel}
-              />
+              <Suspense fallback={null}>
+                <GroupHeader
+                  group={group}
+                  bots={groupMembers}
+                  people={channelPeople}
+                  channelMode={channelMode}
+                  onEdit={onEditGroup}
+                  onInvite={onInviteToGroup}
+                  panelOpen={panelOpen}
+                  onTogglePanel={onTogglePanel}
+                />
+              </Suspense>
             ) : (
               <header className="chat-header" data-tauri-drag-region="deep">
                 <span className="chat-header-crumb">{t(workspaceMode === "work" ? "Direct messages" : "Bots")}</span>
@@ -1569,13 +1572,15 @@ export const ChatPanel = ({
                   visibleRuns.length === 0 &&
                   !(isChannelRoot && sharedChannelThreads.length > 1) ? (
                     group ? (
-                      <GroupConversationStart
-                        group={group}
-                        bots={groupMembers}
-                        people={channelPeople}
-                        currentPersonId={currentPersonId}
-                        channelMode={channelMode}
-                      />
+                      <Suspense fallback={null}>
+                        <GroupConversationStart
+                          group={group}
+                          bots={groupMembers}
+                          people={channelPeople}
+                          currentPersonId={currentPersonId}
+                          channelMode={channelMode}
+                        />
+                      </Suspense>
                     ) : (
                       <ConversationStart
                         bot={bot}
@@ -1807,10 +1812,11 @@ const getRoutineRunPresentation = (run: Run, waitingApproval: boolean) => {
   return { label: t("Concluído"), className: "status-complete" }
 }
 
-const isSameChannelRequest = (run: Run, candidate: Run, runs: readonly Run[]): boolean => {
+const isSameChannelRequest = (run: Run, candidate: Run | undefined, runsById: ReadonlyMap<string, Run>): boolean => {
+  if (!candidate) return false
   if (run.requestMessageId && candidate.requestMessageId === run.requestMessageId) return true
-  const original = runs.find((root) => root.id === run.groupTurnId)
-  const continuation = runs.find((root) => root.id === candidate.groupTurnId)
+  const original = runsById.get(run.groupTurnId ?? "")
+  const continuation = runsById.get(candidate.groupTurnId ?? "")
 
   return Boolean(original?.requestMessageId && original.requestMessageId === continuation?.requestMessageId)
 }
