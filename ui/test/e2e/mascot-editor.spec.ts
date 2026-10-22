@@ -84,7 +84,10 @@ viewports.forEach((viewport) => {
       await expect(page.getByRole("textbox", { name: "Mensagem para Compact team", exact: true })).toBeVisible()
       await expect(page.locator(".channel-heading-name strong")).toHaveText("Compact team")
 
-      await page.getByRole("button", { name: "Ações do canal Compact team", exact: true }).click()
+      const channelActions = page
+        .locator("header.channel-mode")
+        .getByRole("button", { name: "Ações do canal Compact team", exact: true })
+      await channelActions.click()
       await page.getByRole("menuitem", { name: "Editar canal", exact: true }).click()
       const editing = page.getByRole("dialog", { name: "Editar canal", exact: true })
       await expectCompactPicker(editing)
@@ -97,7 +100,7 @@ viewports.forEach((viewport) => {
       await expectCompactPicker(editing)
       await editing.getByRole("button", { name: "Salvar canal", exact: true }).click()
       await expect(editing).toHaveCount(0)
-      await page.getByRole("button", { name: "Ações do canal Compact team", exact: true }).click()
+      await channelActions.click()
       await page.getByRole("menuitem", { name: "Editar canal", exact: true }).click()
 
       await expectCompactPicker(editing)
