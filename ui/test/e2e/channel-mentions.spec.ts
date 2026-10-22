@@ -9,7 +9,8 @@ import type { ApiRoutes, Bot, BotGroup, Message, Run, Thread } from "@touri/cont
 type Fixture = { port: number; bots: Bot[]; group: BotGroup; thread: Thread }
 type State = { messages: Message[]; runs: Run[] }
 const test = base.extend<{ channelServer: Fixture }>({
-  channelServer: async (_deps, use) => {
+  // biome-ignore lint/correctness/noEmptyPattern: The fixture runner discovers dependencies from this pattern.
+  channelServer: async ({}, use) => {
     const child = spawn(
       "bun",
       [resolve(import.meta.dirname, "../../../sidecar/test/fakes/channel-mentions-server.ts")],
