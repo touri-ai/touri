@@ -25,8 +25,14 @@ const exposed = async (page: Page, surface: Locator) => {
 const openWorkspace = async (page: Page) => {
   await page.goto("/test/e2e/r8-sidebar-harness.html?menus")
   await expect(page.getByRole("textbox", { name: "Mensagem para touri-qa" })).toBeVisible()
+  if ((page.viewportSize()?.width ?? 1440) <= 620) await page.getByRole("button", { name: "Abrir menu" }).click()
   await page.getByRole("tab", { name: /^Bots/ }).click()
   await page.evaluate(() => document.fonts.ready)
+}
+
+const clickSidebarActions = async (page: Page, trigger: Locator) => {
+  await page.locator(".sidebar-row").filter({ has: trigger }).hover()
+  await trigger.click()
 }
 
 const themeColor = (surface: Locator, token: string) =>
@@ -51,9 +57,16 @@ const borderlessRows = async (surface: Locator) => {
   }
 }
 
-for (const theme of ["light", "dark"]) {
-  test.describe(`portaled menu styles in ${theme}`, () => {
-    test.use({ viewport: { width: 1280, height: 800 }, reducedMotion: "reduce" })
+const menuStyleCases = ["light", "dark"].flatMap((theme) =>
+  [
+    { width: 1440, height: 900 },
+    { width: 390, height: 844 },
+  ].map((viewport) => ({ theme, viewport })),
+)
+
+for (const { theme, viewport } of menuStyleCases) {
+  test.describe(`portaled menu styles in ${theme} at ${viewport.width}px`, () => {
+    test.use({ viewport, reducedMotion: "reduce" })
 
     test("bot and project menus retain plain rows, theme colors and interaction states", async ({ page }, info) => {
       await page.addInitScript((value) => localStorage.setItem("touri.appearance.v1", value), theme)
@@ -61,11 +74,11 @@ for (const theme of ["light", "dark"]) {
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
       const trigger = page.getByRole("button", { name: "Ações de release", exact: true })
       await trigger.scrollIntoViewIfNeeded()
-      await trigger.click()
+      await clickSidebarActions(page, trigger)
       const menu = page.getByRole("menu", { name: "Ações de release", exact: true })
       await exposed(page, menu)
       await page.mouse.move(1100, 20)
-      const botScreenshot = info.outputPath(`${phase}-bot-menu-${theme}.png`)
+      const botScreenshot = info.outputPath(`${phase}-bot-menu-${theme}-${viewport.width}.png`)
       await page.screenshot({ path: botScreenshot, animations: "disabled" })
       await info.attach(`bot menu ${theme}`, { path: botScreenshot, contentType: "image/png" })
       expect(await menu.evaluate((element) => element.parentElement === document.body)).toBe(true)
@@ -96,13 +109,14 @@ for (const theme of ["light", "dark"]) {
       await expect(remove).toHaveCSS("color", danger)
       await expect(remove).toHaveCSS("background-color", await themeColor(menu, "--surface-notice"))
       await page.keyboard.press("Escape")
+      if (viewport.width === 390) await page.getByRole("button", { name: "Fechar menu" }).click()
 
       await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
       await page.getByRole("button", { name: /^Projeto do bot:/ }).click()
       const projects = page.getByRole("menu", { name: "Projeto do bot" })
       await exposed(page, projects)
       await page.mouse.move(1100, 20)
-      const projectScreenshot = info.outputPath(`${phase}-project-menu-${theme}.png`)
+      const projectScreenshot = info.outputPath(`${phase}-project-menu-${theme}-${viewport.width}.png`)
       await page.screenshot({ path: projectScreenshot, animations: "disabled" })
       await info.attach(`project menu ${theme}`, { path: projectScreenshot, contentType: "image/png" })
       expect(
@@ -147,7 +161,7 @@ for (const size of [
       await openWorkspace(page)
       const trigger = page.getByRole("button", { name: "Ações de release", exact: true })
       await trigger.scrollIntoViewIfNeeded()
-      await trigger.click()
+      await clickSidebarActions(page, trigger)
       const menu = page.getByRole("menu", { name: "Ações de release", exact: true })
       const botPanel = page.locator("#sidebar-mode-panel-bots")
       const split = await botPanel.boundingBox()
@@ -156,10 +170,10 @@ for (const size of [
       expect(split.y + split.height - anchor.y - anchor.height).toBeLessThan(60)
       await page.screenshot({ path: info.outputPath(`${phase}-bot-menu.png`) })
       await exposed(page, menu)
-      await trigger.click()
+      await clickSidebarActions(page, trigger)
       await expect(menu).toHaveCount(0)
       await expect(trigger).toBeFocused()
-      await trigger.click()
+      await clickSidebarActions(page, trigger)
       await expect(menu.getByRole("menuitem", { name: "Avançado", exact: true })).toBeFocused()
       await page.keyboard.press("End")
       await expect(menu.getByRole("menuitem", { name: "Excluir bot", exact: true })).toBeFocused()
@@ -177,13 +191,13 @@ for (const size of [
       await page.keyboard.press("ArrowDown")
       await page.keyboard.press("Enter")
       await expect(page.getByRole("heading", { name: "Rotinas", exact: true })).toBeVisible()
-      await trigger.click()
+      await clickSidebarActions(page, trigger)
       await menu.getByRole("menuitem", { name: "Excluir bot", exact: true }).click()
       const confirmation = page.getByRole("dialog", { name: "Excluir bot", exact: true })
       await expect(confirmation).toBeVisible()
       await confirmation.getByRole("button", { name: "Cancelar", exact: true }).click()
       await expect(trigger).toBeFocused()
-      await trigger.click()
+      await clickSidebarActions(page, trigger)
       await menu.getByRole("menuitem", { name: "Avançado", exact: true }).click()
       await expect(page.getByRole("dialog")).toBeVisible()
       await page.keyboard.press("Escape")
@@ -199,10 +213,11 @@ for (const size of [
       await exposed(page, page.getByRole("region", { name: "Central de notificações" }))
       await page.keyboard.press("Escape")
       await page.getByRole("tab", { name: /^Work/ }).click()
-      await page.getByRole("button", { name: "Ações do canal Planejamento" }).click()
+      await clickSidebarActions(page, page.getByRole("button", { name: "Ações do canal Planejamento" }))
       await page.getByRole("menuitem", { name: "Editar canal", exact: true }).click()
       await expect(page.getByRole("dialog")).toBeVisible()
       await page.keyboard.press("Escape")
+      await page.getByRole("tab", { name: /^Bots/ }).click()
       await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
       await page.getByRole("button", { name: "Fechar painel do bot", exact: true }).click()
       await expect(page.getByRole("button", { name: "Painel do bot", exact: true })).toHaveAttribute(
@@ -239,14 +254,14 @@ test("bot menu flips and shifts after resizing, tracks scrolling, and stays in t
   })
   // Activity groups determine the last row; the fixture's insertion order does not.
   const trigger = page
-    .locator(".bot-sidebar .bot-row")
+    .locator("#sidebar-mode-panel-bots .bot-row")
     .last()
     .getByRole("button", { name: /^Ações de / })
   const menuName = await trigger.getAttribute("aria-label")
   if (!menuName) throw new Error("Missing last bot menu label")
 
   await trigger.scrollIntoViewIfNeeded()
-  await trigger.click()
+  await clickSidebarActions(page, trigger)
   const menu = page.getByRole("menu", { name: menuName, exact: true })
   await exposed(page, menu)
   const rect = await menu.boundingBox()
@@ -284,7 +299,7 @@ test("bot menu flips and shifts after resizing, tracks scrolling, and stays in t
   await page.getByRole("button", { name: "Abrir menu" }).click()
   const mobileTrigger = page.getByRole("button", { name: menuName, exact: true })
   await mobileTrigger.scrollIntoViewIfNeeded()
-  await mobileTrigger.click()
+  await clickSidebarActions(page, mobileTrigger)
   await exposed(page, menu)
   await page.keyboard.press("Escape")
   await expect(mobileTrigger).toBeFocused()

@@ -2,7 +2,9 @@ import { expect, test } from "@playwright/test"
 
 test.use({ reducedMotion: "reduce" })
 for (const width of [1440, 390]) {
-  test(`a confirmation replaces the pending count while another request remains at ${width}px`, async ({ page }, info) => {
+  test(`a confirmation replaces the pending count while another request remains at ${width}px`, async ({
+    page,
+  }, info) => {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
     await page.goto("/test/e2e/approval-notice-harness.html?pending-question")
     const notice = page.locator(".approval-notice")
@@ -21,7 +23,7 @@ for (const width of [1440, 390]) {
 
     await expect(notice.filter({ hasText: "Autorizado. Retomando a tarefa." })).toBeVisible()
     await page.screenshot({ path: getScreenshotPath("confirmed"), animations: "disabled" })
-    await expect(notice).toHaveCount(1)
+    await expect(notice).toHaveCount(1, { timeout: 500 })
     await expect(notice).toHaveText("Você tem 1 solicitação pendente.", { timeout: 4500 })
     await page.screenshot({ path: getScreenshotPath("remaining"), animations: "disabled" })
     await notice.getByRole("button", { name: "Dispensar aviso" }).click()

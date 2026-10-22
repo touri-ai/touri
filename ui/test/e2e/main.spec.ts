@@ -160,7 +160,7 @@ test("avatar animations actually run when motion is allowed and stop when reduce
   await page.emulateMedia({ reducedMotion: "no-preference" })
   await page.goto("/")
   await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
-  const avatar = page.locator('.bot-sidebar .tb-avatar[data-bot-id="bot-onb"]')
+  const avatar = page.locator('#sidebar-mode-panel-bots .tb-avatar[data-bot-id="bot-onb"]')
   await expect(avatar).toHaveAttribute("data-avatar-mood", "working")
   await expect(avatar).toHaveAttribute("data-avatar-animated", "true")
   const head = avatar.locator(".tb-avatar-head")
@@ -224,7 +224,13 @@ test("r2 creates one bot/conversation/cron and refreshes Cron without changing s
   const bot = page.locator("#sidebar-mode-panel-bots .bot-entry").filter({ hasText: "seo-r2" })
   await expect(bot).toHaveCount(1)
   await expect(bot.locator(".bot-role")).toHaveText("SEO do site")
-  await expect(bot.locator(".thread-row")).toHaveCount(1)
+  const getSelectedThreadId = () =>
+    page.evaluate(() => {
+      const workspace: { threadId?: string } = JSON.parse(localStorage.getItem("touri.workspace.v1") ?? "{}")
+      return workspace.threadId
+    })
+  const threadId = await getSelectedThreadId()
+  expect(threadId).toBeTruthy()
   const botId = await bot.locator(".tb-avatar").first().getAttribute("data-bot-id")
   if (!(await page.getByRole("button", { name: "Preview do projeto" }).isVisible()))
     await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
@@ -258,7 +264,6 @@ test("r2 creates one bot/conversation/cron and refreshes Cron without changing s
   await expect(page.getByRole("heading", { name: "Rotinas" })).toBeVisible()
   await expect(page.locator(".routine-item").filter({ hasText: "SEO semanal r2" })).toHaveCount(1)
   await page.getByRole("tab", { name: /^Bots/ }).click()
-  await bot.locator(".bot-row-main").click()
   await expect(page.getByRole("textbox", { name: "Mensagem para seo-r2" })).toBeVisible()
-  await expect(bot.locator(".thread-row")).toHaveCount(1)
+  await expect.poll(getSelectedThreadId).toBe(threadId)
 })
