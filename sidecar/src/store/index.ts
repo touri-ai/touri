@@ -1970,7 +1970,8 @@ export const init = async (
           const thread = getThread({ threadId: parsed.input.threadId })
           if (database.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(parsed.input.threadId))
             return errorResponse(409, "THREAD_DELETING", "Esta conversa já está sendo excluída.")
-          if (thread && getBot({ botId: thread.botId })?.machine === "cloud") {
+          const isChannel = Boolean(thread?.groupId && !thread.groupThreadId)
+          if (thread && !isChannel && getBot({ botId: thread.botId })?.machine === "cloud") {
             const cloud = kernel.services.use("cloud.account")
             if (!cloud) return errorResponse(503, "TOURI-E9013", "Nuvem desativada")
             return jsonResponse(200, await cloud.send(input))
