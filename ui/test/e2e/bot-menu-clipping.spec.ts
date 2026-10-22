@@ -7,9 +7,6 @@ const screenshotOptions = {
   animations: "disabled" as const,
   maxDiffPixelRatio: process.platform === "darwin" ? 0.02 : 0,
 }
-// The Linux project-menu capture differs by three pixels on main; token and state checks stay exact.
-const projectMenuScreenshotOptions =
-  process.platform === "darwin" ? screenshotOptions : { animations: "disabled" as const, maxDiffPixels: 3 }
 
 const exposed = async (page: Page, surface: Locator) => {
   await expect(surface).toBeInViewport({ ratio: 1 })
@@ -136,7 +133,7 @@ for (const theme of ["light", "dark"]) {
       await expect(projectSurface).toHaveCSS("background-color", await themeColor(projectSurface, "--surface"))
       await expect(projectSurface).toHaveCSS("border-top-color", await themeColor(projectSurface, "--border-strong"))
       await borderlessRows(projects)
-      await expect.soft(projects).toHaveScreenshot(`project-menu-${theme}.png`, projectMenuScreenshotOptions)
+      await expect.soft(projects).toHaveScreenshot(`project-menu-${theme}.png`, screenshotOptions)
       for (const row of await projects.locator("button").all()) {
         await expect(row).toHaveCSS("color", primary)
         await expect(row).toHaveCSS(
