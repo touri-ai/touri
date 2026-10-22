@@ -291,6 +291,48 @@ it("pages the full conversation list instead of mounting all history", () => {
   expect(conversationTree.querySelectorAll(".thread-row")).toHaveLength(100)
 })
 
+it("hides pending deletions from compact history and restores them on undo", () => {
+  const { bots, threads } = fixture()
+  const bot = bots[0]
+  const main = threads[0]
+  if (!bot || !main) throw new Error("Missing conversation fixture")
+  const conversation = makeThread(main, "temporary-conversation", bot.id, {
+    kind: "chat",
+    title: "Conversa temporária",
+  })
+  const targets = [{ id: conversation.id, title: conversation.title, messageCount: 1 }]
+  const deletion = {
+    pending: { id: "pending-deletion", botId: bot.id, targets },
+    error: null,
+    queue: vi.fn(() => true),
+    undo: vi.fn(),
+    dismiss: vi.fn(),
+  }
+  const view = renderSidebar({
+    bots: [bot],
+    threads: [main, conversation],
+    selectedBotId: bot.id,
+    threadDeletion: deletion,
+  })
+
+  fireEvent.click(screen.getByRole("button", { name: "Conversas de alfa" }))
+
+  const compactHistory = screen.getByRole("region", { name: "Conversas recentes de alfa" })
+  expect(within(compactHistory).queryByText("Conversa temporária")).toBeNull()
+
+  view.update({
+    threadDeletion: {
+      pending: null,
+      error: null,
+      queue: deletion.queue,
+      undo: deletion.undo,
+      dismiss: deletion.dismiss,
+    },
+  })
+
+  expect(within(compactHistory).getByText("Conversa temporária")).toBeVisible()
+})
+
 it("shows active work as a clear navigation action in both languages", () => {
   const { bots, threads } = fixture()
   const running = run("run-active", "bot-alfa", "thread-alfa")

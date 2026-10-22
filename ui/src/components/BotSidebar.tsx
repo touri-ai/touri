@@ -1062,6 +1062,7 @@ const BotEntryView = ({
     isRoutineConversation({ thread, runs, routineRuns, routines: [...routinesById.values()] }),
   )
   const hiddenThreadIds = new Set(pendingDelete?.targets.map((target) => target.id) ?? [])
+  const compactSidebarThreads = sidebarThreads.filter(({ thread }) => !hiddenThreadIds.has(thread.id))
   const openDeletePrompt = async (thread: Thread): Promise<void> => {
     if (!onGetThreadDeletePreview || pendingDelete) return
     setActionError(null)
@@ -1332,7 +1333,7 @@ const BotEntryView = ({
           id={compactTreeId}
           aria-label={t("Recent conversations for {name}", { name: bot.name })}
         >
-          {sidebarThreads.slice(0, MAX_SIDEBAR_CONVERSATIONS).map(({ thread }) => (
+          {compactSidebarThreads.slice(0, MAX_SIDEBAR_CONVERSATIONS).map(({ thread }) => (
             <button
               key={thread.id}
               type="button"
@@ -1346,7 +1347,7 @@ const BotEntryView = ({
               </span>
             </button>
           ))}
-          {sidebarThreads.length > MAX_SIDEBAR_CONVERSATIONS && (
+          {compactSidebarThreads.length > MAX_SIDEBAR_CONVERSATIONS && (
             <button
               type="button"
               className="new-thread-row"
