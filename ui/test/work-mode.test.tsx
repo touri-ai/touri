@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest"
 import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
 import { getRoutineSidebarFixture } from "./routine-sidebar-fixture"
@@ -8,6 +8,10 @@ import { openConversations } from "./workspaceNavigation"
 
 const clearSidebarMode = (): void => window.localStorage.removeItem("touri.sidebar.mode")
 
+// Compile deferred surfaces before timing the navigation assertions.
+beforeAll(async () => {
+  await import("../src/components/Groups")
+}, 60_000)
 beforeEach(clearSidebarMode)
 afterEach(cleanup)
 
@@ -33,7 +37,6 @@ describe("sidebar work mode", () => {
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     await waitFor(() => expect(screen.getByRole("tab", { name: /^Work,/ })).toHaveAttribute("aria-selected", "true"))
-    await screen.findByRole("region", { name: "Canais" })
 
     expect(document.querySelectorAll(".sidebar-needs-you")).toHaveLength(1)
     const workPanel = document.getElementById("sidebar-mode-panel-work")
@@ -126,7 +129,7 @@ describe("sidebar work mode", () => {
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
     expect(screen.getByRole("tab", { name: /^Work,/ })).toHaveAttribute("aria-selected", "true")
-    expect(screen.getByRole("region", { name: "Canais" })).toBeVisible()
+    expect(await screen.findByRole("region", { name: "Canais" })).toBeVisible()
   })
 
   it("moves between tabs with the arrow keys and keeps the focused tab selected", async () => {
@@ -296,7 +299,7 @@ describe("sidebar design", () => {
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
-    const channels = screen.getByRole("region", { name: "Canais" })
+    const channels = await screen.findByRole("region", { name: "Canais" })
 
     expect(within(channels).getByRole("heading", { name: "Canais" })).toBeVisible()
     expect(within(channels).getByRole("button", { name: "Convidar pessoa" })).toHaveTextContent("+ Convidar")
@@ -310,7 +313,7 @@ describe("sidebar design", () => {
     render(<App kernel={{ services: { api: createMockApi() } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
-    const channels = screen.getByRole("region", { name: "Canais" })
+    const channels = await screen.findByRole("region", { name: "Canais" })
 
     expect(within(channels).getByText("Nenhum canal ainda")).toBeVisible()
     expect(within(channels).getByText("Canais reúnem bots e pessoas em torno de um assunto.")).toBeVisible()

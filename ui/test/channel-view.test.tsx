@@ -119,7 +119,9 @@ describe("channel view", () => {
     window.localStorage.setItem("touri.sidebar.mode", "work")
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    fireEvent.click(within(screen.getByRole("region", { name: "Canais" })).getByRole("button", { name: /^Equipe QA/ }))
+    fireEvent.click(
+      within(await screen.findByRole("region", { name: "Canais" })).getByRole("button", { name: /^Equipe QA/ }),
+    )
     const composer = await screen.findByRole("textbox", { name: "Mensagem para Equipe QA" })
     expect(composer).toHaveAttribute("placeholder", "Mensagem em #Equipe QA · @ chama um bot")
     expect(screen.getByRole("button", { name: "Ações do time" })).toBeVisible()
