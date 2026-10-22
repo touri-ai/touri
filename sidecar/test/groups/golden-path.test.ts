@@ -125,7 +125,9 @@ const fixture = async (onTurn?: (run: Run, complete: (text: string) => void) => 
   const runtime = createGroupRuntime(host.kernel, engine)
   const runtimes = new Set([runtime])
   cleanups.add(async () => {
-    runtimes.forEach((current) => current.shutdown())
+    runtimes.forEach((current) => {
+      current.shutdown()
+    })
     await Promise.all(Array.from(runtimes, (current) => current.waitForDrain()))
     await closeHost()
   })

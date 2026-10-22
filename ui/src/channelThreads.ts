@@ -16,12 +16,15 @@ export const getChannelThreads = (threads: readonly Thread[], groupId: string): 
 }
 
 export const getChannelThreadTitle = (thread: Thread, locale: Locale = "pt-BR"): string => {
+  const title = getSidebarThreadTitle(thread)
+  const routine = thread.kind === "routine" || thread.routineRunId || /[·•].*\d{1,2}:\d{2}/.test(thread.title)
+  if (!routine) return title
   const date = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" })
     .format(thread.createdAt)
     .replace(/ de |\./g, " ")
     .trim()
 
-  return `${getSidebarThreadTitle(thread)} · ${date}`
+  return `${title} · ${date}`
 }
 
 export const getChannelThreadCards = (threads: readonly Thread[], messages: readonly Message[], groupId: string) => {
