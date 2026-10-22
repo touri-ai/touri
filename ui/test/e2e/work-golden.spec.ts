@@ -37,6 +37,7 @@ test("Work channel golden path survives long turns and a server restart", async 
   )
   await dialog.getByRole("button", { name: "Criar canal", exact: true }).click()
   const { group, thread } = (await (await created).json()) as { group: BotGroup; thread: Thread }
+  const conversation = page.getByTestId("virtual-message-list")
   const input = page.getByRole("textbox", { name: /Mensagem (?:para |em #)Planejamento/ })
   const capture = async (name: string) => {
     const path = process.env.TOURI_WORK_EVIDENCE_DIR
@@ -74,12 +75,12 @@ test("Work channel golden path survives long turns and a server restart", async 
   await expect(input).toBeVisible()
   await capture("01-created-channel")
   await send("Bom dia, equipe.")
-  await expect(page.getByText("Bom dia, equipe.", { exact: true })).toBeVisible()
+  await expect(conversation.getByText("Bom dia, equipe.", { exact: true })).toBeVisible()
   expect(await getRuns()).toHaveLength(0)
   await capture("02-plain-message")
   await send("@Lia confira o plano.")
   await waitForSuccess()
-  await expect(page.getByText("Plano conferido. Podemos continuar.", { exact: true })).toBeVisible()
+  await expect(conversation.getByText("Plano conferido. Podemos continuar.", { exact: true })).toBeVisible()
   expect((await getRuns()).filter((run) => run.groupTurnId)).toHaveLength(1)
   await capture("03-channel-reply")
   await page.getByRole("button", { name: /^Membros do canal:/ }).click()
@@ -109,7 +110,7 @@ test("Work channel golden path survives long turns and a server restart", async 
   await expect(cards.getByText("Resumo da manhã concluído.", { exact: true })).toBeVisible({ timeout: 30_000 })
   await capture("05-routine-in-channel")
   await cards.getByRole("button").click()
-  await expect(page.getByText("Resumo da manhã concluído.", { exact: true }).first()).toBeVisible()
+  await expect(conversation.getByText("Resumo da manhã concluído.", { exact: true }).first()).toBeVisible()
   await capture("06-open-routine")
   await page
     .getByRole("region", { name: "Canais", exact: true })
@@ -122,37 +123,41 @@ test("Work channel golden path survives long turns and a server restart", async 
   await send("@Lia faça a verificação longa.")
   await waitForSuccess()
   expect(Date.now() - started).toBeGreaterThan(180_000)
-  await expect(page.getByText("Tarefa longa concluída.", { exact: true })).toBeVisible()
+  await expect(conversation.getByText("Tarefa longa concluída.", { exact: true })).toBeVisible()
   await capture("07-long-turn-complete")
 
   await current.setScenario({ deltas: ["Verificação em andamento…"], slowMs: 181_000 })
   await send("@Lia continue após uma interrupção.")
-  await expect(page.getByText("Verificação em andamento…", { exact: true })).toBeVisible({ timeout: 30_000 })
+  await expect(conversation.getByText("Verificação em andamento…", { exact: true })).toBeVisible({ timeout: 30_000 })
   await capture("08-before-restart")
   await current.setScenario({ deltas: ["Verificação retomada e concluída."] })
   await current.restart()
   await page.reload()
   await waitForSuccess()
-  await expect(page.getByText("Verificação retomada e concluída.", { exact: true })).toBeVisible({ timeout: 30_000 })
+  await expect(conversation.getByText("Verificação retomada e concluída.", { exact: true })).toBeVisible({
+    timeout: 30_000,
+  })
   await expect(page.getByRole("button", { name: "Retomar tarefa", exact: true })).toHaveCount(0)
   await capture("09-auto-resumed")
   await current.setScenario({ deltas: [] })
   await send("@Lia confira uma resposta vazia.")
-  await expect(page.getByText("O bot terminou sem responder. Tente novamente.", { exact: true }).first()).toBeVisible({
+  await expect(
+    conversation.getByText("O bot terminou sem responder. Tente novamente.", { exact: true }).first(),
+  ).toBeVisible({
     timeout: 30_000,
   })
   await capture("10-empty-answer-fails")
   await current.setScenario({ deltas: ["Resposta conferida após tentar novamente."] })
   await page.getByRole("button", { name: "Tentar novamente", exact: true }).first().click()
   await waitForSuccess()
-  await expect(page.getByText("Resposta conferida após tentar novamente.", { exact: true })).toBeVisible()
+  await expect(conversation.getByText("Resposta conferida após tentar novamente.", { exact: true })).toBeVisible()
   const { messages } = (await current.api(`/threads/${thread.id}/messages`)) as { messages: Message[] }
   expect(
     messages
       .filter((message) => message.role === "assistant")
       .every((message) => message.text.trim() || message.parts.length > 0),
   ).toBe(true)
-  const replies = await page.locator(".message-assistant").allTextContents()
+  const replies = await conversation.locator(".message-assistant").allTextContents()
   expect(replies.every((text) => text.trim().length > 0)).toBe(true)
   expect(replies.filter((text) => text.includes("Verificação retomada e concluída."))).toHaveLength(1)
 })

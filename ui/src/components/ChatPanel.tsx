@@ -1588,10 +1588,9 @@ export const ChatPanel = ({
                     ? [
                         {
                           id: `channel-threads-${group.id}`,
-                          createdAt: channelThreads.reduce(
-                            (latest, candidate) => Math.max(latest, candidate.updatedAt),
-                            0,
-                          ),
+                          createdAt: sharedChannelThreads
+                            .slice(1)
+                            .reduce((latest, candidate) => Math.max(latest, candidate.updatedAt), 0),
                           content: (
                             <Suspense fallback={null}>
                               <ChannelThreads
