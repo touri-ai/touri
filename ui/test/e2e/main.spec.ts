@@ -76,11 +76,7 @@ test("import wizard happy path against the mock adapter", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto("/")
   await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
-  await page.locator("button.sidebar-connect[aria-controls='sidebar-advanced-pages']").click()
-  await page
-    .getByRole("navigation", { name: "Opções avançadas" })
-    .getByRole("button", { name: "Importar", exact: true })
-    .click()
+  await openGlobalPage(page, "Importar")
   const dialog = page.getByRole("dialog", { name: "Importar seus bots" })
   await expect(dialog).toBeVisible()
 
