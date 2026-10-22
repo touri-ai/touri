@@ -297,13 +297,13 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = g
     continuationFromRunId?: string,
   ): Promise<string> => {
     turn.controller.signal.throwIfAborted()
+    await engine.ready
+    turn.controller.signal.throwIfAborted()
     if (!isCurrentTurn(turn)) throw new Error("A conversa foi removida.")
     if (!turn.group.memberIds.includes(botId)) throw new Error("Bot não pertence ao grupo")
     const bot = withServers(store.getBot({ botId }))
     if (!bot || bot.archivedAt || bot.paused) throw new Error("Bot indisponível ou pausado")
     const thread = groups.participant(turn.group, turn.run.threadId, botId)
-    await engine.ready
-    turn.controller.signal.throwIfAborted()
     const previousRow =
       turn.recovered && depth === 0
         ? db
