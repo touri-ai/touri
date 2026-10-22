@@ -200,8 +200,32 @@ const resumeInChannel = (): void => {
   }
 }
 
-const harnessWindow: Window & { completeChannelResume?: () => void } = window
+const harnessWindow: Window & { completeChannelResume?: () => void; expireChannelHandoff?: () => void } = window
 harnessWindow.completeChannelResume = () => finishResumedAnswer?.()
+harnessWindow.expireChannelHandoff = () => {
+  const run = channelRuns[0]
+  const reply = channelMessages.find((message) => message.id === run?.replyMessageId)
+  if (!run || !reply) return
+
+  base.emit({
+    type: "message.updated",
+    message: Object.assign({}, reply, {
+      parts: reply.parts.concat({
+        type: "notice",
+        level: "warning",
+        code: "run_failed",
+        text: "No one took over in time. Ask again when you can.",
+      }),
+    }),
+  })
+  emitRun(Object.assign({}, run, { browserWaitingForPerson: false }))
+  updateTakeover(false, false)
+  if (takeoverNotice)
+    base.emit({
+      type: "notification.resolved",
+      notification: Object.assign({}, takeoverNotice, { resolvedAt: getTimestamp(), resolution: "expired" }),
+    })
+}
 
 const request: ApiRequest = async <K extends keyof ApiRoutes>(
   route: K,
