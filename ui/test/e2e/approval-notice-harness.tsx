@@ -4,6 +4,15 @@ import { createMockApi } from "../../src/api/mock"
 import "../../src/styles.css"
 
 const api = createMockApi({ scenario: "approval-notice" })
+if (new URLSearchParams(location.search).has("pending-question"))
+  api.notify({
+    kind: "question",
+    botId: "bot-mark",
+    threadId: "thread-mark",
+    requestId: "question-review",
+    title: "Escolha uma opção",
+    body: "Qual tarefa deve continuar?",
+  })
 Object.assign(window, {
   approvalNoticeFixture: {
     resolve: () =>

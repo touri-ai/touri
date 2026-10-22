@@ -2,6 +2,32 @@ import { expect, test } from "@playwright/test"
 
 test.use({ reducedMotion: "reduce" })
 for (const width of [1440, 390]) {
+  test(`a confirmation replaces the pending count while another request remains at ${width}px`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+    await page.goto("/test/e2e/approval-notice-harness.html?pending-question")
+    const notice = page.locator(".approval-notice")
+    await expect(notice).toHaveCount(1)
+    await expect(notice).toContainText("pede sua aprovação:")
+    const getScreenshotPath = (state: string) =>
+      process.env.APPROVAL_NOTICE_CAPTURE
+        ? `${process.env.APPROVAL_NOTICE_CAPTURE}/${state}-${width}.png`
+        : info.outputPath(`${state}-${width}.png`)
+    await page.screenshot({ path: getScreenshotPath("pending"), animations: "disabled" })
+
+    await page.evaluate(() => {
+      const fixture = Reflect.get(window, "approvalNoticeFixture") as { resolve: () => Promise<unknown> }
+      return fixture.resolve()
+    })
+
+    await expect(notice.filter({ hasText: "Autorizado. Retomando a tarefa." })).toBeVisible()
+    await page.screenshot({ path: getScreenshotPath("confirmed"), animations: "disabled" })
+    await expect(notice).toHaveCount(1)
+    await expect(notice).toHaveText("Você tem 1 solicitação pendente.", { timeout: 4500 })
+    await page.screenshot({ path: getScreenshotPath("remaining"), animations: "disabled" })
+    await notice.getByRole("button", { name: "Dispensar aviso" }).click()
+    await expect(notice).toHaveCount(0)
+  })
+
   test(`an approval resolved elsewhere clears the banner and chat at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
     await page.goto("/test/e2e/approval-notice-harness.html")

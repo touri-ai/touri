@@ -188,6 +188,7 @@ Rules:
 - **Native clients without an Origin** (local companions, curl) must send `X-Touri-Client: <name>` together with the bearer token; browsers cannot set that header cross-origin, so the Origin check still protects the UI channel.
 - **Handshake file.** The sidecar writes `run/handshake.json` (`{port, token, pid, version}`, 0600) on boot and removes it on stop, so local companions (local companions) can find the current port and token.
 - **Desktop.** The sidebar bell shows the notification center. For attention kinds the sidecar asks the host to raise a macOS notification only while the main window is not focused (`notify` host call with `onlyWhenUnfocused`), gated by the `nativeNotifications` setting and the bot's `notifications` preference. Clicking the notification and focusing the app within 30s opens its thread.
+- **Approval status.** Show at most one approval notice above the workspace: an actionable approval reminder takes precedence over a four-second authorization confirmation, which takes precedence over the aggregate pending-request count shown on return. Opening a reminder navigates to and focuses the full approval card; only an explicit decision on that card grants or denies access. Do not repeat the aggregate count alongside an approval reminder or confirmation.
 - **Deep links.** `touri://open?bot=<id>&thread=<id>` (registered in `src-tauri/Info.plist`, handled on `RunEvent::Opened`, delivered to the UI as the `deep-link` event) and `/?bot=<id>&thread=<id>` in the web UI select the bot and thread on load.
 
 ---
