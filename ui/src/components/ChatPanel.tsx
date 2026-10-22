@@ -1813,7 +1813,7 @@ const getRoutineRunPresentation = (run: Run, waitingApproval: boolean) => {
 }
 
 const isSameChannelRequest = (run: Run, candidate: Run | undefined, runsById: ReadonlyMap<string, Run>): boolean => {
-  if (!candidate) return false
+  if (!candidate || candidate.botId !== run.botId) return false
   if (run.requestMessageId && candidate.requestMessageId === run.requestMessageId) return true
   const original = runsById.get(run.groupTurnId ?? "")
   const continuation = runsById.get(candidate.groupTurnId ?? "")
