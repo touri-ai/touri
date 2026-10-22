@@ -274,13 +274,15 @@ test("bot menu flips and shifts after resizing, tracks scrolling, and stays in t
   expect(rect.y + rect.height).toBeLessThanOrEqual(anchor.y)
   await page.setViewportSize({ width: 700, height: 500 })
   await exposed(page, menu)
-  // Check anchor tracking with room above the longer menu, after checking viewport clamping.
-  await page.setViewportSize({ width: 700, height: 800 })
+  // Give the longer menu room below a genuinely scrollable list after checking viewport clamping.
+  await page.setViewportSize({ width: 1200, height: 900 })
   const botPanel = page.locator("#sidebar-mode-panel-bots")
-  await page.addStyleTag({ content: "#sidebar-mode-panel-bots { padding-bottom: 60px !important; }" })
-  await botPanel.evaluate((element) => {
+  await page.addStyleTag({ content: "#sidebar-mode-panel-bots { max-height: 240px; }" })
+  const scrollTopBefore = await botPanel.evaluate((element) => {
     element.scrollTop = element.scrollHeight
+    return element.scrollTop
   })
+  expect(scrollTopBefore).toBeGreaterThan(20)
   await page.evaluate(
     () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
   )
@@ -288,9 +290,11 @@ test("bot menu flips and shifts after resizing, tracks scrolling, and stays in t
   const beforeScroll = await menu.boundingBox()
   if (!beforeScroll) throw new Error("Missing menu before scrolling")
 
-  await botPanel.evaluate((element) => {
+  const scrollTopAfter = await botPanel.evaluate((element) => {
     element.scrollTop -= 20
+    return element.scrollTop
   })
+  expect(scrollTopBefore - scrollTopAfter).toBe(20)
   await exposed(page, menu)
   await expect
     .poll(async () => {
