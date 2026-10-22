@@ -27,7 +27,10 @@ const until = async (check: () => boolean) => {
   }
 }
 
-const fixture = async (onTurn?: (run: Run, complete: (text: string) => void) => Promise<void>) => {
+const fixture = async (
+  onTurn?: (run: Run, complete: (text: string) => void) => Promise<void>,
+  ready = Promise.resolve(),
+) => {
   const root = await mkdtemp(join(tmpdir(), "touri-golden-unit-"))
   const host = createKernel({ appData: root })
   const closeHost = async () => {
@@ -68,6 +71,7 @@ const fixture = async (onTurn?: (run: Run, complete: (text: string) => void) => 
     host.kernel.publish({ type: "run.updated", run: updated })
   }
   const engine = {
+    ready,
     enqueue: (args: { threadId: string; requestMessageId: string; trigger: Run["trigger"] }) => {
       const run: Run = {
         id: host.kernel.newId(),
@@ -390,4 +394,20 @@ test("durable effects block automatic and explicit replay even without a reply p
   expect(f.order).toHaveLength(1)
   expect(retry).toMatchObject({ success: false, errorCode: "CONFLICT" })
   expect(f.db.query("SELECT COUNT(*) AS count FROM run_continuations").get()).toEqual({ count: 0 })
+})
+
+test("Stop while startup is waiting never starts a member when the engine becomes ready", async () => {
+  const startup = Promise.withResolvers<void>()
+  cleanups.add(async () => startup.resolve())
+  const f = await fixture(undefined, startup.promise)
+  const run = f.send("@Lia confira o plano")
+  await until(() => f.persistence.getRun(run.id)?.status === "running")
+
+  f.runtime.cancel(run.id)
+  startup.resolve()
+  await f.runtime.waitForDrain()
+
+  expect(f.persistence.getRun(run.id)?.status).toBe("canceled")
+  expect(f.order).toHaveLength(0)
+  expect(f.db.query("SELECT COUNT(*) AS count FROM group_run_links WHERE turn_id=?").get(run.id)).toEqual({ count: 0 })
 })

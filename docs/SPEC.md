@@ -434,7 +434,8 @@ browser control and pending turns unchanged; a browser leaf can still be cancele
 Parar cancels the active group turn, its delegated work and pending group turns. Editing members
 or the coordinator requires idle group conversations. Eligible unfinished channel turns resume after
 restart and provider interruption, up to two automatic attempts recorded durably per original member
-turn. Completed members are not repeated. Stop, pending approvals and unconfirmed effects prevent
+turn. Completed members are not repeated. Stop remains authoritative while startup is waiting;
+no member starts after cancellation when the engine becomes ready. Stop, pending approvals and unconfirmed effects prevent
 automatic execution. A managed effect recorded in the durable work journal requires human review
 even if no reply part was saved; neither automatic recovery nor a simple retry may replay it.
 The manual resume action appears only after automatic recovery is exhausted or needs human review.

@@ -303,6 +303,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = g
     if (!bot || bot.archivedAt || bot.paused) throw new Error("Bot indisponível ou pausado")
     const thread = groups.participant(turn.group, turn.run.threadId, botId)
     await engine.ready
+    turn.controller.signal.throwIfAborted()
     const previousRow =
       turn.recovered && depth === 0
         ? db
