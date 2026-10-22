@@ -78,6 +78,12 @@ export const SidebarActionsMenu = ({
           setOpen(!open)
         }}
         onKeyDown={(event) => {
+          if (event.key === "Escape" && open) {
+            event.preventDefault()
+            event.stopPropagation()
+            setOpen(false)
+            return
+          }
           if (event.key === "ArrowDown") {
             event.preventDefault()
             setOpen(true)
