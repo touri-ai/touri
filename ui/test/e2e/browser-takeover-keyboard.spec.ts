@@ -1,5 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process"
 import { randomUUID } from "node:crypto"
+import { mkdir } from "node:fs/promises"
 import { resolve } from "node:path"
 import { createInterface } from "node:readline"
 import { chromium, expect, type Page, test } from "@playwright/test"
@@ -42,7 +43,14 @@ test.beforeAll(async ({ baseURL }) => {
 test.afterAll(async () => {
   if (!child || child.exitCode !== null) return
   await new Promise<void>((done) => {
-    child.once("exit", () => done())
+    const timeout = setTimeout(() => {
+      child.kill("SIGKILL")
+      done()
+    }, 5_000)
+    child.once("exit", () => {
+      clearTimeout(timeout)
+      done()
+    })
     child.kill("SIGTERM")
   })
 })
@@ -53,87 +61,98 @@ const connectBrowserFixture = async (page: Page): Promise<void> => {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: route.request().postData() ?? "{}",
+      signal: AbortSignal.timeout(10_000),
     })
     await route.fulfill({ status: response.status, contentType: "application/json", body: await response.text() })
   })
 }
 
-test("remote keyboard input reaches the managed page without entering the conversation", async ({ page }) => {
-  test.setTimeout(90_000)
-  await connectBrowserFixture(page)
-  await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto("/test/e2e/browser-activity-harness.html?flow=live&holdAfterOpen=true")
-  await page.getByRole("button", { name: "Iniciar busca de viagem" }).click()
-  const takeOver = page.locator(".browser-activity-card").getByRole("button", { name: "Assumir", exact: true })
-  await expect(takeOver).toBeEnabled({ timeout: 40_000 })
-  await takeOver.click()
-  const control = page.getByRole("region", { name: "Controle remoto do navegador" })
-  await control.getByRole("button", { name: "Expandir navegador em tela cheia" }).click()
-  const screen = control.locator(".browser-takeover-screen")
-  await expect(screen.locator("canvas:visible, img").first()).toBeVisible()
-  await expect(control.getByRole("button", { name: "Digitar no navegador" })).toBeEnabled()
-  const target = await page.evaluate(async () => {
-    const response = await fetch("/__browser-activity-fixture", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ step: "private-target" }),
+for (const width of [1440, 390]) {
+  test(`remote keyboard input reaches the managed page without entering the conversation at ${width}px`, async ({
+    page,
+  }) => {
+    test.setTimeout(90_000)
+    await connectBrowserFixture(page)
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+    await page.goto("/test/e2e/browser-activity-harness.html?flow=live&holdAfterOpen=true")
+    await page.getByRole("button", { name: "Iniciar busca de viagem" }).click()
+    const takeOver = page.locator(".browser-activity-card").getByRole("button", { name: "Assumir", exact: true })
+    await expect(takeOver).toBeEnabled({ timeout: 40_000 })
+    await takeOver.click()
+    const control = page.getByRole("region", { name: "Controle remoto do navegador" })
+    await control.getByRole("button", { name: "Expandir navegador em tela cheia" }).click()
+    const screen = control.locator(".browser-takeover-screen")
+    await expect(screen.locator("canvas:visible, img").first()).toBeVisible()
+    await expect(control.getByRole("button", { name: "Digitar no navegador" })).toBeEnabled()
+    const target = await page.evaluate(async () => {
+      const response = await fetch("/__browser-activity-fixture", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ step: "private-target" }),
+      })
+      return response.json() as Promise<{ x: number; y: number; width: number; height: number } | null>
     })
-    return response.json() as Promise<{ x: number; y: number; width: number; height: number } | null>
-  })
-  const bounds = await screen.boundingBox()
-  if (!target || !bounds) throw new Error("The managed input fixture is missing")
-  const scale = Math.min(bounds.width / target.width, bounds.height / target.height)
+    const bounds = await screen.boundingBox()
+    if (!target || !bounds) throw new Error("The managed input fixture is missing")
+    const scale = Math.min(bounds.width / target.width, bounds.height / target.height)
 
-  await screen.click({
-    position: {
-      x: (bounds.width - target.width * scale) / 2 + target.x * scale,
-      y: (bounds.height - target.height * scale) / 2 + target.y * scale,
-    },
-  })
-  await control.getByRole("button", { name: "Digitar no navegador" }).click()
-  await expect(control.getByRole("textbox", { name: "Entrada de teclado para o navegador" })).toBeFocused()
-  const focusedPage = await page.evaluate(async () => {
-    const response = await fetch("/__browser-activity-fixture", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ step: "private-input-status" }),
+    await screen.click({
+      position: {
+        x: (bounds.width - target.width * scale) / 2 + target.x * scale,
+        y: (bounds.height - target.height * scale) / 2 + target.y * scale,
+      },
     })
-    return (await response.json()) as {
-      activeTag: string | null
-      activeLabel: string | null
-      activeId: string | null
+    await control.getByRole("button", { name: "Digitar no navegador" }).click()
+    const evidence = process.env.TOURI_E2E_EVIDENCE_DIR
+    if (evidence) {
+      await mkdir(evidence, { recursive: true })
+      await page.screenshot({ path: resolve(evidence, `browser-keyboard-${width}.png`), fullPage: true })
     }
+    await expect(control.getByRole("textbox", { name: "Entrada de teclado para o navegador" })).toBeFocused()
+    const focusedPage = await page.evaluate(async () => {
+      const response = await fetch("/__browser-activity-fixture", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ step: "private-input-status" }),
+      })
+      return (await response.json()) as {
+        activeTag: string | null
+        activeLabel: string | null
+        activeId: string | null
+      }
+    })
+    expect(focusedPage).toMatchObject({ activeTag: "INPUT", activeLabel: "Destination primary" })
+
+    await page.keyboard.insertText("entrada privada fictícia")
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const response = await fetch("/__browser-activity-fixture", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ step: "stats" }),
+          })
+          return (await response.json()) as { takeoverInputAttempts: number; takeoverInputCount: number }
+        }),
+      )
+      .toMatchObject({ takeoverInputAttempts: 2, takeoverInputCount: 2 })
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const response = await fetch("/__browser-activity-fixture", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ step: "private-input-status" }),
+          })
+          return ((await response.json()) as { received: boolean }).received
+        }),
+      )
+      .toBe(true)
+
+    await expect(page.getByTestId("virtual-message-list")).not.toContainText("entrada privada fictícia")
+    if (!evidence)
+      await page.screenshot({ path: test.info().outputPath(`browser-private-input-${width}.png`), fullPage: true })
+    await control.getByRole("button", { name: /Devolver para/ }).click()
+    await page.getByRole("button", { name: "Parar Lia" }).click()
   })
-  expect(focusedPage).toMatchObject({ activeTag: "INPUT", activeLabel: "Destination primary" })
-
-  await page.keyboard.insertText("entrada privada fictícia")
-  await expect
-    .poll(() =>
-      page.evaluate(async () => {
-        const response = await fetch("/__browser-activity-fixture", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ step: "stats" }),
-        })
-        return (await response.json()) as { takeoverInputAttempts: number; takeoverInputCount: number }
-      }),
-    )
-    .toMatchObject({ takeoverInputAttempts: 2, takeoverInputCount: 2 })
-  await expect
-    .poll(() =>
-      page.evaluate(async () => {
-        const response = await fetch("/__browser-activity-fixture", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ step: "private-input-status" }),
-        })
-        return ((await response.json()) as { received: boolean }).received
-      }),
-    )
-    .toBe(true)
-
-  await expect(page.getByTestId("virtual-message-list")).not.toContainText("entrada privada fictícia")
-  await page.screenshot({ path: test.info().outputPath("browser-private-input-phone.png"), fullPage: true })
-  await control.getByRole("button", { name: /Devolver para/ }).click()
-  await page.getByRole("button", { name: "Parar Lia" }).click()
-})
+}

@@ -14,6 +14,16 @@ legacy app bots, chats and routines so you can switch over.
 
 ## Decisions at a glance
 
+Optional channel navigation, channel headers, member panels, group dialogs and the routine editor
+load asynchronously outside the initial application bundle. Opening them preserves their existing
+actions and keyboard access; dialogs show a dismissible loading state while their module loads.
+The initial HTML, JavaScript and CSS remain limited to 400,000 bytes gzip.
+
+During browser takeover, choosing the keyboard control keeps focus in the remote input without
+scrolling the conversation. Keyboard, text input and paste events stay within that control; private
+input reaches only the managed page and never becomes conversation text. This applies to desktop
+and phone layouts. Existing takeover authorization, input bounds and the release control remain in force.
+
 | Topic | Decision | Why (short) |
 |---|---|---|
 | Shell | Tauri v2, Rust core | Small, native, signed. Rust holds the TCC grants and Keychain access. |

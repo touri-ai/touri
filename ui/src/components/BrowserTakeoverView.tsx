@@ -447,19 +447,19 @@ export const BrowserTakeoverView = ({
     sendInput({ kind: "wheel", ...point, deltaX: clamp(event.deltaX), deltaY: clamp(event.deltaY) })
   }
   const keyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    event.stopPropagation()
     if (event.nativeEvent.isComposing) return
     if (event.key.toLowerCase() === "v" && (event.ctrlKey || event.metaKey)) return
     event.preventDefault()
-    event.stopPropagation()
     const modifiers =
       Number(event.altKey) | (Number(event.ctrlKey) << 1) | (Number(event.metaKey) << 2) | (Number(event.shiftKey) << 3)
     sendInput({ kind: "key", phase: "down", key: event.key, code: event.code, modifiers })
   }
   const keyUp = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    event.stopPropagation()
     if (event.nativeEvent.isComposing) return
     if (event.key.toLowerCase() === "v" && (event.ctrlKey || event.metaKey)) return
     event.preventDefault()
-    event.stopPropagation()
     const modifiers =
       Number(event.altKey) | (Number(event.ctrlKey) << 1) | (Number(event.metaKey) << 2) | (Number(event.shiftKey) << 3)
     sendInput({ kind: "key", phase: "up", key: event.key, code: event.code, modifiers })

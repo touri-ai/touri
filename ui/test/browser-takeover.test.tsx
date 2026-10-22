@@ -25,6 +25,60 @@ const loadFirstBrowserFrame = async (): Promise<void> => {
   fireEvent.load(image)
 }
 
+test("keeps remote keyboard events inside the takeover control", async () => {
+  const request = vi.fn(async (route: string) => {
+    if (route === "POST /browser/tabs/:id/takeover/frame") return getBrowserFrame()
+    return {}
+  }) as ApiRequest
+  const api = Object.assign({}, createMockApi(), { request })
+  const onConversationInput = vi.fn()
+  render(
+    <form
+      onInput={onConversationInput}
+      onKeyDown={onConversationInput}
+      onKeyUp={onConversationInput}
+      onPaste={onConversationInput}
+    >
+      <BrowserTakeoverView
+        api={api}
+        tabId="synthetic-tab"
+        sessionId="synthetic-session"
+        controlEpoch="control-epoch"
+        botName="Lia"
+        locale="pt-BR"
+        reason={null}
+        actions={[]}
+        onHandback={vi.fn()}
+      />
+    </form>,
+  )
+  await loadFirstBrowserFrame()
+  const keyboard = screen.getByRole("textbox", { name: "Entrada de teclado para o navegador" })
+
+  fireEvent.pointerDown(screen.getByRole("button", { name: "Digitar no navegador" }))
+  expect(keyboard).toHaveFocus()
+  fireEvent.keyDown(keyboard, { key: "ArrowLeft", code: "ArrowLeft" })
+  fireEvent.keyUp(keyboard, { key: "ArrowLeft", code: "ArrowLeft" })
+  fireEvent.keyDown(keyboard, { key: "v", ctrlKey: true })
+  fireEvent.keyUp(keyboard, { key: "v", ctrlKey: true })
+  fireEvent.keyDown(keyboard, { key: "v", metaKey: true })
+  fireEvent.keyUp(keyboard, { key: "v", metaKey: true })
+  fireEvent.keyDown(keyboard, { key: "Process", isComposing: true })
+  fireEvent.keyUp(keyboard, { key: "Process", isComposing: true })
+  fireEvent.input(keyboard, { target: { value: "texto fictício" } })
+  fireEvent.paste(keyboard, { clipboardData: { getData: () => "colagem fictícia" } })
+
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith(
+      "POST /browser/tabs/:id/takeover/input",
+      expect.objectContaining({ input: { kind: "text", text: "colagem fictícia" } }),
+      { id: "synthetic-tab" },
+    ),
+  )
+  expect(onConversationInput).not.toHaveBeenCalled()
+  expect(keyboard).toHaveValue("")
+})
+
 test("sends private browser typing only to the remote input route and returns control", async () => {
   const api = createMockApi()
   const request = vi.fn(async (route: string) => {

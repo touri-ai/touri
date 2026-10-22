@@ -71,7 +71,7 @@ describe("sidebar work mode", () => {
     expect(screen.getByRole("tab", { name: "Work, 3 mensagens não lidas" })).toBeVisible()
     expect(screen.getByRole("tab", { name: "Bots, 0 aguardando" }).querySelector(".sidebar-unread")).toBeNull()
 
-    const channels = screen.getByRole("region", { name: "Canais" })
+    const channels = await screen.findByRole("region", { name: "Canais" })
     expect(within(channels).getByRole("button", { name: "Equipe QA, 3 mensagens não lidas" })).toBeVisible()
     expect(within(channels).getByRole("button", { name: "Novo canal" })).toBeVisible()
     expect(screen.getByRole("heading", { name: "Mensagens diretas" })).toBeVisible()
@@ -104,7 +104,7 @@ describe("sidebar work mode", () => {
     await screen.findByRole("textbox", { name: "Mensagem para Equipe QA" })
     expect(screen.getByText("Canais / Equipe QA")).toBeVisible()
     fireEvent.click(screen.getByRole("button", { name: "Editar canal" }))
-    const editChannel = screen.getByRole("dialog", { name: "Editar canal" })
+    const editChannel = await screen.findByRole("dialog", { name: "Editar canal" })
     expect(within(editChannel).getByRole("textbox", { name: "Nome do canal" })).toHaveValue("Equipe QA")
   })
 
@@ -290,7 +290,7 @@ describe("sidebar design", () => {
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
-    const channels = screen.getByRole("region", { name: "Canais" })
+    const channels = await screen.findByRole("region", { name: "Canais" })
 
     expect(channels.querySelector(".group-sidebar-heading")).toHaveTextContent(/^Canais\s*\+$/)
     expect(
@@ -303,7 +303,7 @@ describe("sidebar design", () => {
     render(<App kernel={{ services: { api: createMockApi() } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
-    const channels = screen.getByRole("region", { name: "Canais" })
+    const channels = await screen.findByRole("region", { name: "Canais" })
 
     expect(within(channels).getByText("Nenhum canal ainda")).toBeVisible()
     expect(within(channels).getByText("Canais reúnem bots e pessoas em torno de um assunto.")).toBeVisible()

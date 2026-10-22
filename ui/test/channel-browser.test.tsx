@@ -430,7 +430,7 @@ test("ChatPanel shares channel browser state with the group header, reply card, 
     />,
   )
 
-  expect(screen.getByRole("status", { name: "Léo no navegador · pedido de Ana" })).toBeVisible()
+  expect(await screen.findByRole("status", { name: "Léo no navegador · pedido de Ana" })).toBeVisible()
   expect(await screen.findByText("Todos no canal veem")).toBeVisible()
   expect(screen.getByText("Léo está trabalhando · No navegador · para Ana")).toBeVisible()
   expect(screen.getByText("Todos no canal veem").closest(".message-assistant")).toContainElement(

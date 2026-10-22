@@ -5,6 +5,7 @@ import { useChannelPeople } from "../features/channelBrowser/useChannelPeople"
 import { t } from "../i18n"
 import { BotAvatar } from "./BotAvatar"
 import { getGroupProjection, getIdleMemberState } from "./groupProjection"
+import "./groups.css"
 
 export const GroupPanel = ({
   group,

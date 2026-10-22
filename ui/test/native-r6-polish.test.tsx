@@ -123,7 +123,7 @@ it.each([false, true])(
     const schedule = await screen.findByRole("button", { name: "Agendar esta tarefa" }, { timeout: 15000 })
     expect(screen.queryByRole("button", { name: "Repetir esta tarefa" })).toBeNull()
     fireEvent.click(schedule)
-    const dialog = screen.getByRole("dialog", { name: "Quando?" })
+    const dialog = await screen.findByRole("dialog", { name: "Quando?" })
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }))
     expect(api.calls.some((call) => call.route === "POST /runs/:id/retry")).toBe(false)
     if (recordedActions) {

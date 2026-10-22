@@ -122,7 +122,7 @@ it("prefills a complementary job and offers a group draft with an explicit save"
 
   offer.focus()
   await user.keyboard("{Enter}")
-  const dialog = screen.getByRole("dialog", { name: "Criar grupo" })
+  const dialog = await screen.findByRole("dialog", { name: "Criar grupo" })
   expect(within(dialog).getByRole("textbox", { name: "Nome do grupo" })).toHaveValue("Equipe com Clara")
   expect(within(dialog).getByRole("checkbox", { name: "Clara" })).toBeChecked()
   expect(within(dialog).getByRole("checkbox", { name: "Bia" })).toBeChecked()
@@ -189,7 +189,7 @@ it("opens a prefilled routine draft for the new bot and requires review and an a
   screen.getByRole("button", { name: "Criar uma rotina?" }).focus()
   await user.keyboard("{Enter}")
 
-  const dialog = screen.getByRole("dialog", { name: "Quando?" })
+  const dialog = await screen.findByRole("dialog", { name: "Quando?" })
   expect(within(dialog).getByRole("combobox", { name: "Bot", exact: true })).toHaveValue(bot.id)
   expect(within(dialog).getByRole("textbox", { name: "Nome", exact: true })).toHaveValue(job.name)
   expect(within(dialog).getByRole("textbox", { name: "Tarefa" })).toHaveValue(job.instructions)
