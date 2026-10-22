@@ -14,7 +14,10 @@ import { init as initStore } from "../../src/store"
 
 const cleanups = new Set<() => Promise<void>>()
 afterEach(async () => {
-  for (const cleanup of cleanups) await cleanup()
+  await Array.from(cleanups).reduceRight(async (previous, cleanup) => {
+    await previous
+    await cleanup()
+  }, Promise.resolve())
   cleanups.clear()
 })
 
@@ -53,6 +56,11 @@ test.skipIf(!hasBrowser).each(["ana", "owner"])(
           { headers: { "content-type": "text/html; charset=utf-8" } },
         ),
     })
+    cleanups.add(async () => {
+      await runtime.stop()
+      server.stop(true)
+      await rm(root, { recursive: true, force: true })
+    })
     const profile = join(root, "chrome")
     await mkdir(profile, { recursive: true })
     const executable = Bun.which("google-chrome") ?? Bun.which("chromium") ?? Bun.which("chromium-browser")
@@ -76,13 +84,15 @@ test.skipIf(!hasBrowser).each(["ana", "owner"])(
       chrome.kill()
       await chrome.exited
     })
-    const getEndpoint = async (attempt = 0): Promise<string> => {
+    const startupDeadline = performance.now() + 30_000
+    const getEndpoint = async (): Promise<string> => {
       const text = await readFile(join(profile, "DevToolsActivePort"), "utf8").catch(() => "")
       const endpoint = parseDevToolsActivePort(text)
       if (endpoint) return `ws://127.0.0.1:${endpoint.port}${endpoint.path}`
-      if (attempt >= 200) throw new Error("Test browser did not start")
+      if (chrome.exitCode !== null || performance.now() >= startupDeadline)
+        throw new Error("Test browser did not start")
       await Bun.sleep(50)
-      return getEndpoint(attempt + 1)
+      return getEndpoint()
     }
     const client = await connectCdpWebSocket({ url: await getEndpoint(), timeoutMs: 30_000 })
     const engine = createBrowserEngine({
@@ -96,12 +106,7 @@ test.skipIf(!hasBrowser).each(["ana", "owner"])(
         },
       },
     })
-    cleanups.add(async () => {
-      await engine.shutdown()
-      await runtime.stop()
-      server.stop(true)
-      await rm(root, { recursive: true, force: true })
-    })
+    cleanups.add(() => engine.shutdown())
     await initStore(kernel)
     const database = kernel.db as Database
     await mkdir(join(root, "bots", "leo"), { recursive: true })
@@ -146,6 +151,20 @@ test.skipIf(!hasBrowser).each(["ana", "owner"])(
       targetId: target.targetId,
       flatten: true,
     })
+    const waitForLogin = async (deadline = performance.now() + 30_000): Promise<void> => {
+      const page = await client
+        .call<{ result: { value: boolean } }>(
+          "Runtime.evaluate",
+          { expression: "Boolean(document.querySelector('input'))", returnByValue: true },
+          observer.sessionId,
+        )
+        .catch(() => null)
+      if (page?.result.value) return
+      if (performance.now() >= deadline) throw new Error("The login fixture did not load")
+
+      await Bun.sleep(50)
+      return waitForLogin(deadline)
+    }
     const handoff = tools.find((tool) => tool.name === "browser_submit_secret")
     if (!handoff) throw new Error("Missing handoff tool")
     const signal = new AbortController().signal
@@ -209,7 +228,7 @@ test.skipIf(!hasBrowser).each(["ana", "owner"])(
       expect(engine.tabsForBot("leo")[0]?.heldByUser).toBe(false)
       if (attempt === 1) {
         await client.call("Page.navigate", { url: `http://127.0.0.1:${server.port}/` }, observer.sessionId)
-        await Bun.sleep(300)
+        await waitForLogin()
       }
     }
   },

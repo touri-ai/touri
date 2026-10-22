@@ -27,7 +27,7 @@ test("a channel browser handback resumes the bot and posts its answer in the sam
   }
 
   await expect(composer).toBeVisible()
-  await composer.fill("Confira o portal de demonstração e continue depois do login.")
+  await composer.fill("@Planejamento confira o portal de demonstração e continue depois do login.")
   await composer.press("Enter")
 
   await expect(messages.getByText("O portal de demonstração pediu login para continuar.")).toBeVisible()
@@ -74,7 +74,7 @@ test("a channel browser handback resumes the bot and posts its answer in the sam
 test("an expired channel handoff shows that the request did not finish", async ({ page }, info) => {
   await page.goto("/test/e2e/channel-takeover-harness.html")
   const composer = page.getByRole("textbox", { name: "Mensagem para Equipe de viagens" })
-  await composer.fill("Confira o portal de demonstração e me chame para entrar.")
+  await composer.fill("@Planejamento confira o portal de demonstração e me chame para entrar.")
   await composer.press("Enter")
   await expect(page.locator(".browser-activity-card")).toBeVisible()
 
