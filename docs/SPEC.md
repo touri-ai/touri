@@ -28,8 +28,8 @@ Standalone greetings (Portuguese and English) use a tool-free turn with low reas
 prompt preserving bot identity, SOUL and reviewed memory. Tasks, attachments, routines, continuations,
 active goals and pending tool summaries keep the bot's settings. Switching between chat and task
 capabilities replaces the native session with a history handoff, so a chat session cannot disable tools
-for a subsequent task. Claude uses a compact system prompt for tool-free turns; subscription login
-remains unchanged. Tool-free local sessions using the host login retain a CLI process for up to
+for a subsequent task. Tool-free turns use a compact system prompt when the CLI supports replacing
+its default prompt; subscription login remains unchanged. Tool-free local sessions using the host login retain a CLI process for up to
 60 seconds of inactivity, with at most four retained processes per provider and 100 turns per process.
 Vault logins keep their existing per-turn process and credential lifetime. Reuse requires matching bot configuration,
 working directory, instructions, environment and native session identity. Task turns always receive
