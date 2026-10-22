@@ -7,6 +7,7 @@ import { Sidebar } from "../src/components/BotSidebar"
 import { SettingsModal } from "../src/components/Modals"
 import { getRoutineRunSidebarDateLabel, t } from "../src/i18n"
 import { readWorkspaceState, saveWorkspaceState } from "../src/workspaceState"
+import { openConversations } from "./workspaceNavigation"
 
 afterEach(() => {
   cleanup()
@@ -165,7 +166,7 @@ it.each([30, 128])("keeps all %i grouped task conversations reachable in bounded
     selectedThreadId: main.id,
     onSelectThread,
   })
-  const conversations = screen.getByRole("region", { name: "Conversas de alfa" })
+  const conversations = openConversations("alfa")
   const toggle = within(conversations).getByRole("button", { name: "Histórico de tarefas de lead.reply" })
 
   expect(conversations.querySelectorAll(".thread-row")).toHaveLength(2)
@@ -186,11 +187,14 @@ it.each([30, 128])("keeps all %i grouped task conversations reachable in bounded
   if (!oldest) throw new Error("Missing oldest task conversation")
 
   fireEvent.click(oldest)
-  fireEvent.click(toggle)
+  const restoredConversations = openConversations("alfa")
+  const restoredToggle = within(restoredConversations).getByRole("button", {
+    name: "Histórico de tarefas de lead.reply",
+  })
 
   expect(onSelectThread).toHaveBeenCalledWith("task-0")
-  expect(toggle).toHaveAttribute("aria-expanded", "false")
-  expect(conversations.querySelectorAll(".thread-row")).toHaveLength(2)
+  expect(restoredToggle).toHaveAttribute("aria-expanded", "false")
+  expect(restoredConversations.querySelectorAll(".thread-row")).toHaveLength(2)
 })
 
 it("hides the work summary when no runs are active or queued", () => {
@@ -201,7 +205,7 @@ it("hides the work summary when no runs are active or queued", () => {
   expect(document.querySelector(".sidebar-work-badge")).toBeNull()
 })
 
-it("keeps only hidden unread messages on an expanded bot and restores its total when collapsed", () => {
+it("keeps bot unread totals separate from the explicitly opened conversation manager", () => {
   const { bots, threads } = fixture()
   const bot = bots[0]
   const baseThread = threads[0]
@@ -212,10 +216,13 @@ it("keeps only hidden unread messages on an expanded bot and restores its total 
 
   const view = renderSidebar({ bots: [bot], threads: [visible, archived, grouped], selectedBotId: bot.id })
 
-  expect(screen.getByRole("img", { name: "7 mensagens não lidas" })).toBeVisible()
+  openConversations("alfa")
+
+  expect(within(entry(bot.id)).getByRole("img", { name: "9 mensagens não lidas" })).toBeVisible()
   expect(screen.getByRole("img", { name: "2 mensagens não lidas" })).toBeVisible()
   expect(document.querySelectorAll(".thread-row")).toHaveLength(1)
 
+  fireEvent.click(screen.getByRole("button", { name: "Fechar diálogo" }))
   view.update({ selectedBotId: null })
 
   expect(screen.getByRole("img", { name: "9 mensagens não lidas" })).toBeVisible()
@@ -237,11 +244,13 @@ it("keeps unread counts visible when the conversation is beyond the first five r
 
   renderSidebar({ bots: [bot], threads: conversations, selectedBotId: bot.id, selectedThreadId })
 
+  openConversations("alfa")
+
   expect(within(entry(bot.id)).getByRole("img", { name: "1 mensagem não lida" })).toBeVisible()
   const showMore = screen.getByRole("button", { name: /^Mostrar mais 2/ })
   fireEvent.click(showMore)
 
-  const conversationTree = screen.getByRole("region", { name: "Conversas de alfa" })
+  const conversationTree = openConversations("alfa")
   expect(within(conversationTree).getByRole("img", { name: "1 mensagem não lida" })).toBeVisible()
 })
 
@@ -315,6 +324,8 @@ it.each([
           ]
         : [],
   })
+
+  openConversations(bot.name)
 
   const row =
     kind === "routine"

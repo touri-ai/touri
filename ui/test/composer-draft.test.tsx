@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, expect, test, vi } from "vitest"
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), convertFileSrc: (path: string) => path }))
@@ -10,6 +10,7 @@ vi.mock("@tauri-apps/api/webview", () => ({
 import App from "../src/App"
 import type { ApiRequest, TauriInvoke } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
+import { openConversations } from "./workspaceNavigation"
 
 afterEach(() => {
   cleanup()
@@ -57,7 +58,7 @@ test("drafts stay with each conversation and successful sending clears only the 
   const api = fixture()
   let view = mount(api)
   fireEvent.change(await composer(), { target: { value: "Primeiro rascunho" } })
-  fireEvent.click(screen.getByRole("button", { name: /Nova conversa/ }))
+  fireEvent.click(within(openConversations()).getByRole("button", { name: /Nova conversa/ }))
   await waitFor(() => expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toHaveValue(""))
   fireEvent.change(await composer(), { target: { value: "Segundo rascunho" } })
   const threads = api.getState().threads.filter((thread) => thread.botId === "bot-mark")
@@ -134,7 +135,7 @@ test("sending after navigation clears the old draft and keeps an identical new d
   fireEvent.change(input, { target: { value: "Texto igual" } })
   fireEvent.keyDown(input, { key: "Enter" })
   await waitFor(() => expect(finish).toBeDefined())
-  fireEvent.click(screen.getByRole("button", { name: /Nova conversa/ }))
+  fireEvent.click(within(openConversations()).getByRole("button", { name: /Nova conversa/ }))
   await waitFor(() => expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toHaveValue(""))
   fireEvent.change(await composer(), { target: { value: "Texto igual" } })
   await act(async () => finish?.())
@@ -166,9 +167,9 @@ test("an earlier send preserves edits made after reopening the same conversation
   fireEvent.change(await composer(), { target: { value: "Mensagem enviada" } })
   fireEvent.keyDown(await composer(), { key: "Enter" })
   await waitFor(() => expect(finish).toBeDefined())
-  fireEvent.click(screen.getByRole("button", { name: /Nova conversa/ }))
+  fireEvent.click(within(openConversations()).getByRole("button", { name: /Nova conversa/ }))
   await waitFor(() => expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toHaveValue(""))
-  fireEvent.click(screen.getByRole("button", { name: /Conversa original/ }))
+  fireEvent.click(within(openConversations()).getByRole("button", { name: /Conversa original/ }))
   await waitFor(() =>
     expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toHaveValue("Mensagem enviada"),
   )

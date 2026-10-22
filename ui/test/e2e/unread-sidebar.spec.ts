@@ -23,10 +23,10 @@ layouts.forEach(({ name, width, height }) => {
       const mark = sidebar.locator('[data-bot-entry="bot-mark"]')
       await page.evaluate(() => document.fonts.ready)
 
-      await expect(mark.locator(".bot-row .sidebar-unread")).toHaveCount(0)
+      await expect(mark.locator(".bot-row .sidebar-unread")).toHaveText("2")
       await expect(mark.getByRole("img", { name: "2 mensagens não lidas" })).toBeVisible()
       await mkdir(output, { recursive: true })
-      await sidebar.screenshot({ path: `${output}/expanded-${name}-${theme}.png` })
+      await sidebar.screenshot({ path: `${output}/selected-${name}-${theme}.png` })
 
       await sidebar.locator('[data-bot-entry="bot-onb"] .bot-row-main').click()
       await expect(page.getByRole("textbox", { name: "Mensagem para onb" })).toBeVisible()
@@ -34,7 +34,7 @@ layouts.forEach(({ name, width, height }) => {
 
       await expect(mark.locator(".bot-thread-tree")).toHaveCount(0)
       await expect(mark.getByRole("img", { name: "2 mensagens não lidas" })).toBeVisible()
-      await sidebar.screenshot({ path: `${output}/collapsed-${name}-${theme}.png` })
+      await sidebar.screenshot({ path: `${output}/other-selected-${name}-${theme}.png` })
     })
   })
 })

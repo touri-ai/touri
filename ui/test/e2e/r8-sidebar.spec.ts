@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises"
 import { expect, test } from "@playwright/test"
-import { openGlobalPage } from "./home-navigation"
+import { openGlobalPage, showBotConversations } from "./home-navigation"
 
 test.use({ channel: "chromium" })
 const phase = process.env.R8_SIDEBAR_PHASE ?? "after"
@@ -31,8 +31,11 @@ for (const width of [1440, 1100]) {
         await sidebar.locator("#sidebar-mode-panel-bots .bot-groups").evaluate((element) => {
           element.scrollTop = 0
         })
-        await expect(sidebar.locator(".thread-row.selected small")).toHaveText("hoje")
-        await expect(sidebar.locator(".thread-row small").nth(1)).toHaveText("ontem")
+        await expect(sidebar.locator(".thread-row")).toHaveCount(0)
+        const conversations = await showBotConversations(page, "touri-qa")
+        await expect(conversations.locator(".thread-row.selected small")).toHaveText("hoje")
+        await expect(conversations.locator(".thread-row small").nth(1)).toHaveText("ontem")
+        await page.getByRole("button", { name: "Fechar diálogo", exact: true }).click()
         await expect(
           sidebar
             .locator("#sidebar-mode-panel-bots .bot-entry")

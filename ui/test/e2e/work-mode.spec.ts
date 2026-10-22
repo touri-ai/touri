@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs"
 import { resolve } from "node:path"
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
+import { showBotConversations } from "./home-navigation"
 
 const evidence = resolve(import.meta.dirname, "../../test-results/work-mode")
 test.setTimeout(90_000)
@@ -32,11 +33,11 @@ test("switches and remembers Work mode, with channels and routine history", asyn
   await expect(workTab).toHaveAttribute("aria-selected", "true")
 
   await botsTab.click()
-  const botsPanel = page.locator("#sidebar-mode-panel-bots")
-  const routineRow = botsPanel.getByRole("button", { name: /^Rotinas/ })
+  const conversations = await showBotConversations(page)
+  const routineRow = conversations.getByRole("button", { name: /^Rotinas/ })
   await expect(routineRow).toContainText("Rotinas")
   await expect(routineRow).toContainText("30 hoje")
-  await expect(botsPanel.locator('[data-bot-entry="bot-mark"] .thread-row')).toHaveCount(2)
+  await expect(conversations.locator(".thread-row")).toHaveCount(2)
   await routineRow.click()
   const routineHistory = page.locator(".routine-run-history")
   await expect(routineHistory).toHaveAttribute("data-open", "true")
