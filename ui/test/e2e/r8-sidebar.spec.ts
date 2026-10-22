@@ -12,13 +12,28 @@ for (const width of [1440, 1100]) {
       await page.setViewportSize({ width, height: 900 })
       await page.emulateMedia({ reducedMotion: "reduce" })
       await page.clock.setFixedTime(new Date("2026-10-13T15:00:00Z"))
-      await page.addInitScript((value) => localStorage.setItem("touri.appearance.v1", value), theme)
-      await page.goto("/test/e2e/r8-sidebar-harness.html")
+      await page.addInitScript(
+        ({ theme, phase }) => {
+          localStorage.setItem("touri.appearance.v1", theme)
+          if (phase === "before") localStorage.setItem("touri.sidebar.mode", "bots")
+          else localStorage.removeItem("touri.sidebar.mode")
+        },
+        { theme, phase },
+      )
+      await page.goto(`/test/e2e/r8-sidebar-harness.html${phase === "after" ? "?menus" : ""}`)
       await expect(page.getByRole("textbox", { name: "Mensagem para touri-qa" })).toBeVisible()
-      await page.getByRole("tab", { name: /^Bots/ }).click()
+      const sidebar = page.locator(".bot-sidebar")
+      const initialMode = page.locator(`[data-sidebar-mode="${phase === "before" ? "bots" : "work"}"]`)
+      if (phase === "after") await expect(page.getByRole("region", { name: "Canais" })).toBeVisible()
+      await expect(initialMode).toHaveAttribute("aria-selected", "true")
       await page.evaluate(() => document.fonts.ready)
+      await mkdir(output, { recursive: true })
+      const panel = sidebar.locator(`#sidebar-mode-panel-${phase === "before" ? "bots" : "work"}`)
+      await panel.screenshot({
+        path: `${output}/${phase}-${phase === "before" ? "bots" : "work"}-${width}-${theme}.png`,
+      })
+      await page.getByRole("tab", { name: /^Bots/ }).click()
       if (phase === "after") {
-        const sidebar = page.locator(".bot-sidebar")
         expect(await sidebar.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0)
         await expect(sidebar.locator("#sidebar-mode-panel-bots .bot-status-heading")).toHaveCount(0)
         const lastBot = sidebar.locator(".bot-row-main").last()
@@ -46,7 +61,7 @@ for (const width of [1440, 1100]) {
         await expect(sidebar.getByRole("button", { name: "Abrir falha de mobile-qa" })).toBeVisible()
       }
       await mkdir(output, { recursive: true })
-      await page.screenshot({ path: `${output}/${phase}-bots-${width}-${theme}.png` })
+      await page.screenshot({ path: `${output}/${phase}-bots-content-${width}-${theme}.png` })
       await page.getByRole("button", { name: /^Notificações/ }).click()
       await expect(page.getByRole("region", { name: "Central de notificações" })).toBeVisible()
       await page.screenshot({ path: `${output}/${phase}-notifications-${width}-${theme}.png` })
@@ -95,7 +110,10 @@ for (const width of [1440, 1100]) {
           .locator(".bot-row-main")
           .click()
         await expect(page.getByRole("button", { name: "Voltar ao chat" })).toBeVisible()
-        await expect(page.locator(".bot-row.selected .tb-avatar")).toHaveAttribute("data-bot-id", "sidebar-bot-3")
+        await expect(page.locator("#sidebar-mode-panel-bots .bot-row.selected .tb-avatar")).toHaveAttribute(
+          "data-bot-id",
+          "sidebar-bot-3",
+        )
       }
     })
   }

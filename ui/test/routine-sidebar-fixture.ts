@@ -3,7 +3,19 @@ import { createMockApi } from "../src/api/mock"
 
 export const getRoutineSidebarFixture = async (
   runCount = 28,
-  { withOtherRoutines = false, unreadRuns = 0, withoutRoutineMetadata = false, todayRuns = false } = {},
+  {
+    withOtherRoutines = false,
+    unreadRuns = 0,
+    withoutRoutineMetadata = false,
+    todayRuns = false,
+    oldestRunMessage,
+  }: {
+    withOtherRoutines?: boolean
+    unreadRuns?: number
+    withoutRoutineMetadata?: boolean
+    todayRuns?: boolean
+    oldestRunMessage?: string
+  } = {},
 ) => {
   const api = createMockApi()
   const state = api.getState()
@@ -43,18 +55,21 @@ export const getRoutineSidebarFixture = async (
       activeLeafId: `sidebar-message-${run.id}`,
     })),
   ]
-  const messages: Message[] = routineRuns.map((run) => ({
-    ...baseMessage,
-    id: `sidebar-message-${run.id}`,
-    threadId: run.threadId ?? run.id,
-    parentId: null,
-    role: "assistant",
-    text: "Resumo pronto para conferir.",
-    parts: [{ type: "text", text: "Resumo pronto para conferir." }],
-    status: "complete",
-    createdAt: run.scheduledFor,
-    updatedAt: run.finishedAt ?? run.scheduledFor,
-  }))
+  const messages: Message[] = routineRuns.map((run, index) => {
+    const text = index === 0 && oldestRunMessage ? oldestRunMessage : "Resumo pronto para conferir."
+    return {
+      ...baseMessage,
+      id: `sidebar-message-${run.id}`,
+      threadId: run.threadId ?? run.id,
+      parentId: null,
+      role: "assistant",
+      text,
+      parts: [{ type: "text", text }],
+      status: "complete",
+      createdAt: run.scheduledFor,
+      updatedAt: run.finishedAt ?? run.scheduledFor,
+    }
+  })
   const request: typeof api.request = async (route, input, path) => {
     if (route === "GET /routines")
       return { routines: withoutRoutineMetadata ? [] : fixtureRoutines, host: "mac" } as never

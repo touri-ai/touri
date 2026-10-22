@@ -17,7 +17,10 @@ const exposed = async (page: Page, surface: Locator) => {
   expect(rect.y).toBeGreaterThanOrEqual(7)
   expect(rect.x + rect.width).toBeLessThanOrEqual(viewport.width - 7)
   expect(rect.y + rect.height).toBeLessThanOrEqual(viewport.height - 7)
-  for (const button of await surface.getByRole("button").all()) await button.click({ trial: true })
+  for (const button of await surface.getByRole("button").all()) {
+    if ((await button.getAttribute("aria-label")) === "Fechar notificações") continue
+    await button.click({ trial: true })
+  }
   for (const button of await surface.getByRole("menuitem").all()) await button.click({ trial: true })
   for (const button of await surface.getByRole("menuitemradio").all()) await button.click({ trial: true })
 }
@@ -25,6 +28,7 @@ const exposed = async (page: Page, surface: Locator) => {
 const openWorkspace = async (page: Page) => {
   await page.goto("/test/e2e/r8-sidebar-harness.html?menus")
   await expect(page.getByRole("textbox", { name: "Mensagem para touri-qa" })).toBeVisible()
+  await expect(page.getByRole("region", { name: "Canais" })).toBeVisible()
   await page.getByRole("tab", { name: /^Bots/ }).click()
   await page.evaluate(() => document.fonts.ready)
 }
@@ -212,8 +216,10 @@ for (const size of [
       await exposed(page, page.getByRole("navigation", { name: "Opções avançadas" }))
       await page.keyboard.press("Escape")
       await page.getByRole("button", { name: /^Notificações/ }).click()
-      await exposed(page, page.getByRole("region", { name: "Central de notificações" }))
-      await page.keyboard.press("Escape")
+      const notifications = page.getByRole("region", { name: "Central de notificações" })
+      await exposed(page, notifications)
+      await notifications.getByRole("button", { name: "Fechar notificações" }).click()
+      await expect(notifications).toHaveCount(0)
       await page.getByRole("tab", { name: /^Work/ }).click()
       await clickSidebarActions(page, "Ações do canal Planejamento")
       await page.getByRole("menuitem", { name: "Editar canal", exact: true }).click()
