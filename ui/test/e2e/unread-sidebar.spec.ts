@@ -16,7 +16,7 @@ layouts.forEach(({ name, width, height }) => {
       await page.setViewportSize({ width, height })
       await page.clock.setFixedTime(new Date("2026-10-19T12:00:00Z"))
       await page.addInitScript((value) => localStorage.setItem("touri.appearance.v1", value), theme)
-      await page.goto("/")
+      await page.goto("/test/e2e/home-harness.html?scenario=sidebar-unread")
       await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
       if (name === "mobile") await page.getByRole("button", { name: "Abrir menu" }).click()
       const sidebar = page.getByRole("navigation", { name: "Barra lateral" })
