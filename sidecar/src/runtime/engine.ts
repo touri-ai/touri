@@ -584,13 +584,15 @@ export const createRuntimeEngine = ({
   }
 
   const recordTiming = (run: Run, stage: keyof RunTimings): void => {
+    if (!["queued", "starting", "running"].includes(run.status)) return
+
     const state = getState(run.id)
     if (state.usage.timings?.[stage] !== undefined) return
 
     const at = Date.now()
     state.usage = { ...state.usage, timings: { queuedAt: run.queuedAt, ...state.usage.timings, [stage]: at } }
-    logTiming(run, stage, at)
-    updateRun(run, { usage: state.usage })
+    const updated = updateRun(run, { usage: state.usage })
+    if (updated.usage?.timings?.[stage] === at) logTiming(run, stage, at)
   }
 
   const isLive = (run: Run): boolean => {

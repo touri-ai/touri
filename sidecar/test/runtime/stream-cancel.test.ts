@@ -35,6 +35,23 @@ test("the first reply word flushes immediately while later chunks remain batched
   fixture.finish()
 })
 
+test("late provider text cannot add timing milestones after a turn finishes", async () => {
+  const fixture = await getFixture()
+  const turn = await fixture.ready
+  const log = spyOn(fixture.kernel, "log")
+  cleanups.add(() => log.mockRestore())
+  fixture.finish()
+  await getReady(() => fixture.engine.listRuns("thread")[0]?.status === "canceled")
+  const timings = structuredClone(fixture.engine.listRuns("thread")[0]?.usage?.timings)
+
+  turn.onEvent({ type: "text_delta", itemId: "late-reply", delta: "Texto tardio." })
+
+  expect(fixture.engine.listRuns("thread")[0]?.usage?.timings).toEqual(timings)
+  expect(log).not.toHaveBeenCalledWith(
+    expect.objectContaining({ msg: "Turn timing", data: expect.objectContaining({ stage: "firstTokenAt" }) }),
+  )
+})
+
 test("mid-stream cancellation preserves buffered text in live sockets, reconnect and journal replay", async () => {
   const fixture = await getFixture()
   const turn = await fixture.ready
