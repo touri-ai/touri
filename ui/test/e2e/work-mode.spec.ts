@@ -8,6 +8,8 @@ const evidence = resolve(import.meta.dirname, "../../test-results/work-mode")
 test.setTimeout(90_000)
 
 test("switches and remembers Work mode, with channels and routine history", async ({ page }) => {
+  // This matrix includes eight navigations, screenshots and accessibility audits.
+  test.setTimeout(300_000)
   mkdirSync(evidence, { recursive: true })
   await page.setViewportSize({ width: 1512, height: 982 })
   await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "dark" })

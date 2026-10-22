@@ -55,6 +55,8 @@ const getThreadFixture = (kind: Thread["kind"] = "chat", routineRunId: Thread["r
 const openConversationRegion = async () => {
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
+  await screen.findByRole("button", { name: "Ações de mark" })
+
   return openConversations()
 }
 
