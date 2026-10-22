@@ -25,7 +25,8 @@ parts.push({
   type: "text",
   text: "## Revisão concluída\n\nOs 40 passos foram concluídos. As notas estão prontas para revisão.\n\n```mermaid\nflowchart LR\n  A[Revisar] --> B[Concluir]\n```",
 })
-const waiting = params.get("scene") === "waiting"
+const streaming = params.get("scene") === "streaming"
+const waiting = params.get("scene") === "waiting" || streaming
 const initial: Message = {
   id: "activity-reply",
   threadId: "activity-thread",
@@ -35,7 +36,7 @@ const initial: Message = {
   status: waiting ? "streaming" : "complete",
   runId: "activity-run",
   text: "",
-  parts: waiting ? [{ type: "reasoning", text: "Conferindo o contexto da solicitação." }] : parts,
+  parts: streaming ? [] : waiting ? [{ type: "reasoning", text: "Conferindo o contexto da solicitação." }] : parts,
   sender: null,
   source: "local",
   createdAt: waiting ? now : now - 180_000,

@@ -245,6 +245,10 @@ const getActivityLabel = ({
   quietMs: number
   providerAt: number | null | undefined
 }): string => {
+  const lastContent = parts.filter((part) => part.type === "text" || part.type === "reasoning").at(-1)
+  if (state === "thinking" && lastContent?.type === "text" && lastContent.text)
+    return activityLabelFor("typing", parts, locale)
+
   if (run?.status === "queued") return getQueueLabel(run, locale)
   if (state === "waiting-approval") return activityLabelFor(state, parts, locale)
   if (slow) return t("A resposta está demorando. Você pode continuar esperando ou verificar a conexão.", {}, locale)

@@ -16,6 +16,7 @@ import type { PerformanceStageRunner } from "../../kernel/performance"
 import { redactStructured } from "../../kernel/redact"
 import { getSavedBotModel } from "../../store/model"
 import { touriVersion } from "../../version"
+import { storedProviderLoginSource } from "../../vm/provider-login"
 import { createCommandOutput } from "../command-output"
 import { spawnFolderProvider } from "../folder-access"
 import { loadTurnImages } from "../loadTurnImages"
@@ -26,6 +27,7 @@ import { type ChildProcess, readProviderStderr, startLineReader, writeLine } fro
 import { stopProviderChildren, trackProviderProcess } from "../provider-processes"
 import { resolveProviderExecutable } from "../resolveProviderExecutable"
 import { asRecord, classifyProviderError, resolveExecutable, stringValue } from "../utils"
+import { createWarmSessions } from "../warm-session"
 import { codexInputItems } from "./codexInputItems"
 import { codexAccessParams, outerFolderSandbox } from "./config"
 
@@ -242,6 +244,7 @@ export const createCodexAdapter = ({
   const commandName = command ?? process.env.TOURI_CODEX_BIN ?? "codex"
   const approvals = new Map<string, PendingApproval>()
   const children = new Set<ChildProcess>()
+  const warmSessions = createWarmSessions()
 
   const detect = async (): Promise<
     Result<{ path: string; version: string; loggedIn: boolean }, "cli_missing" | "cli_auth">
@@ -283,18 +286,35 @@ export const createCodexAdapter = ({
       ? { success: true as const, path: "codex", env }
       : await resolveProviderExecutable({ kernel, command: commandName, env })
     if (!resolved.success) return resolved
-    const spawned = spawnFolderProvider(kernel, args, {
-      cmd: resolved.path,
-      args: [...codexArgs({ args, mcp: args.mcp }), ...providerPrivacyConfig(cliTelemetryOff(kernel))],
-      cwd: args.fingerprint.cwd,
-      env: resolved.env,
-    })
-    if (!spawned.success)
+    const warmKey = storedProviderLoginSource(kernel, args.bot) === "vault" ? null : warmSessions.getKey(args)
+    const retained = warmSessions.getAvailable(warmKey, args.session?.externalSessionId)
+    const candidate = retained
+      ? null
+      : spawnFolderProvider(kernel, args, {
+          cmd: resolved.path,
+          args: [...codexArgs({ args, mcp: args.mcp }), ...providerPrivacyConfig(cliTelemetryOff(kernel))],
+          cwd: args.fingerprint.cwd,
+          env: resolved.env,
+        })
+    if (candidate && !candidate.success)
       return {
         success: false,
-        errorCode: spawned.errorCode === "ENOENT" ? "cli_missing" : "cli_crash",
-        error: spawned.error,
+        errorCode: candidate.errorCode === "ENOENT" ? "cli_missing" : "cli_crash",
+        error: candidate.error,
       }
+    const lease =
+      retained ??
+      warmSessions.acquire(
+        warmKey,
+        () => {
+          if (!candidate?.success) throw new Error("Provider process unavailable")
+          return candidate
+        },
+        args.env.TMPDIR,
+      )
+    const spawned = lease.child
+    if (lease.reused) args.onProcessReused?.()
+    else args.onProcessSpawned?.()
     children.add(spawned)
     const expireApprovals = () => {
       for (const [id, approval] of approvals)
@@ -311,7 +331,7 @@ export const createCodexAdapter = ({
       children.delete(spawned)
       expireApprovals()
     })
-    if (!args.execution) await trackProviderProcess(kernel, spawned)
+    if (!args.execution && !lease.reused) await trackProviderProcess(kernel, spawned)
     let mcpError: string | null = null
     let stopped = false
     let completed = false
@@ -372,7 +392,10 @@ export const createCodexAdapter = ({
       for (const waiter of responseWaiters.values()) waiter.reject(new Error("Codex turn ended"))
       responseWaiters.clear()
       stopReader()
-      spawned.kill("SIGTERM")
+      lease.release(
+        warmKey !== null && result.success && result.status === "succeeded",
+        result.success ? result.externalSessionId : undefined,
+      )
       finish(result.success ? result : { ...result, error: kernel.redact(result.error) })
     }
     const recoverSandbox = (message: string): boolean => {
@@ -594,7 +617,10 @@ export const createCodexAdapter = ({
     }).catch(() => "")
     void (async () => {
       try {
-        await sendRequest("initialize", { clientInfo: { name: "touri", version: touriVersion } })
+        if (!lease.reused) {
+          await sendRequest("initialize", { clientInfo: { name: "touri", version: touriVersion } })
+          await writeLine({ stdin: spawned.stdin, value: { method: "initialized", params: {} } })
+        }
         if (completed) return
         args.signal.throwIfAborted()
 
@@ -638,12 +664,14 @@ export const createCodexAdapter = ({
               ...turnConfig,
             }
         resuming = !!args.session
-        const sessionResponse = await sendRequest(resuming ? "thread/resume" : "thread/start", sessionRequest)
+        const details =
+          lease.reused && args.session
+            ? { id: args.session.externalSessionId, rolloutPath: args.session.rolloutPath }
+            : sessionDetails((await sendRequest(resuming ? "thread/resume" : "thread/start", sessionRequest)).result)
         if (completed) return
         resuming = false
         args.signal.throwIfAborted()
 
-        const details = sessionDetails(sessionResponse.result)
         externalSessionId = details.id
         rolloutPath =
           details.rolloutPath ??
@@ -739,30 +767,34 @@ export const createCodexAdapter = ({
     let canRetry = !args.execution
     let canRetryTools = true
     const invoke = () =>
-      withLocalTurnTemp(kernel, turnArgs, (turn) =>
-        startAttempt(
-          {
-            ...turn,
-            onEvent: (event) => {
-              // Never replay completed actions or an approval the user has already seen.
-              if (
-                event.type === "approval_request" ||
-                (event.type === "item" &&
-                  !(
-                    event.part.type === "command" &&
-                    (event.part.exitCode === null ||
-                      (event.part.exitCode !== 0 && sandboxStartupFailed(event.part.outputTail)))
-                  ))
-              )
-                canRetry = false
-              args.onEvent(event)
+      withLocalTurnTemp(
+        kernel,
+        turnArgs,
+        (turn) =>
+          startAttempt(
+            {
+              ...turn,
+              onEvent: (event) => {
+                // Never replay completed actions or an approval the user has already seen.
+                if (
+                  event.type === "approval_request" ||
+                  (event.type === "item" &&
+                    !(
+                      event.part.type === "command" &&
+                      (event.part.exitCode === null ||
+                        (event.part.exitCode !== 0 && sandboxStartupFailed(event.part.outputTail)))
+                    ))
+                )
+                  canRetry = false
+                args.onEvent(event)
+              },
             },
-          },
-          () => canRetry,
-          () => {
-            canRetryTools = false
-          },
-        ),
+            () => canRetry,
+            () => {
+              canRetryTools = false
+            },
+          ),
+        warmSessions.getLifetime,
       )
     const result = await invoke()
     if (result.success || args.signal.aborted) return result
@@ -799,6 +831,7 @@ export const createCodexAdapter = ({
   }
 
   const shutdown = async (): Promise<void> => {
+    warmSessions.stop()
     await stopProviderChildren(children)
   }
 

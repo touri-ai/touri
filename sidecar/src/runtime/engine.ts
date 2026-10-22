@@ -17,6 +17,7 @@ import type {
   Run,
   RunErrorClass,
   RunStatus,
+  RunTimings,
   RunTrigger,
   RunUsage,
   ServiceMap,
@@ -69,6 +70,7 @@ import {
 import { csvInput } from "./csv-input"
 import { type GoalDeadlineClock, startGoalDeadline } from "./goal-deadline"
 import { createGoalRuntime, getGoalPrompt } from "./goals"
+import { isGreetingTurn } from "./greeting"
 import { buildHandoffPacket } from "./handoff"
 import { composeDeveloperInstructions } from "./instructions"
 import { isMcpStartupError } from "./mcp-startup"
@@ -552,16 +554,43 @@ export const createRuntimeEngine = ({
 
   const updateRun = (run: Run, patch: Partial<Run>): Run => {
     const leftQueue = run.status === "queued" && patch.status !== undefined && patch.status !== "queued"
-    const next = { ...run, ...patch }
+    const usage = patch.usage ?? states.get(run.id)?.usage ?? run.usage
+    const next = {
+      ...run,
+      ...patch,
+      ...(patch.finishedAt && usage
+        ? { usage: { ...usage, timings: { queuedAt: run.queuedAt, ...usage.timings, finishedAt: patch.finishedAt } } }
+        : {}),
+    }
     if (!persistence.saveRun(next)) {
       const stored = persistence.getRun(run.id)
       if (stored) Object.assign(run, stored)
       return run
     }
     Object.assign(run, next)
+    if (patch.finishedAt) logTiming(run, "finishedAt", patch.finishedAt)
     publishRun(run)
     if (leftQueue) publishQueue()
     return run
+  }
+
+  const logTiming = (run: Run, stage: keyof RunTimings, at: number): void => {
+    kernel.log({
+      level: "info",
+      module: "runtime",
+      msg: "Turn timing",
+      data: { runId: run.id, provider: run.provider, stage, at, elapsedMs: at - run.queuedAt },
+    })
+  }
+
+  const recordTiming = (run: Run, stage: keyof RunTimings): void => {
+    const state = getState(run.id)
+    if (state.usage.timings?.[stage] !== undefined) return
+
+    const at = Date.now()
+    state.usage = { ...state.usage, timings: { queuedAt: run.queuedAt, ...state.usage.timings, [stage]: at } }
+    logTiming(run, stage, at)
+    updateRun(run, { usage: state.usage })
   }
 
   const isLive = (run: Run): boolean => {
@@ -655,7 +684,7 @@ export const createRuntimeEngine = ({
       turnStarted: false,
       externalSessionId: null,
       rolloutPath: null,
-      usage: initialUsage(),
+      usage: persistence.getRun(runId)?.usage ?? initialUsage(),
       contextTokens: null,
       contextWindow: null,
       completionError: null,
@@ -939,6 +968,7 @@ export const createRuntimeEngine = ({
       return
     }
     if (event.type === "session") {
+      recordTiming(run, "providerReadyAt")
       state.externalSessionId = event.externalSessionId
       state.rolloutPath = event.rolloutPath
       if (state.fingerprint) {
@@ -1007,6 +1037,8 @@ export const createRuntimeEngine = ({
           delta,
           ...(state.generation === null ? {} : { generation: state.generation }),
         })
+        // Send the first word to persistence immediately; later chunks keep the bounded batch cadence.
+        if (!hasText) store.flushWrites?.()
       }
       return
     }
@@ -1436,6 +1468,13 @@ export const createRuntimeEngine = ({
           ...requestParts.filter((part): part is Extract<MessagePart, { type: "image" }> => part.type === "image"),
         ]
       : [{ type: "text", text: inputText }]
+    const greeting =
+      !goal &&
+      !carryover &&
+      !toolSummary &&
+      !unacceptedRequest &&
+      isGreetingTurn(run.trigger, requestParts, requestText)
+    const toolsDisabled = conversationOnly || greeting
     const { cwd, projectDataDir } =
       bot.machine === "vm"
         ? { cwd: "/workspace", projectDataDir: "/workspace/.touri/data" }
@@ -1460,6 +1499,7 @@ export const createRuntimeEngine = ({
       cwd,
       mcpCommand: mcp.command,
       mcpArgs: mcp.args,
+      ...(toolsDisabled ? { conversationOnly: true } : {}),
     })
     // Older versions saved the first session only as a per-run resume point.
     // Adopt it for a manual follow-up as well as for automatic continuations.
@@ -1604,14 +1644,15 @@ export const createRuntimeEngine = ({
           signal?.throwIfAborted()
           const turnBot = delegatedBot(kernel, thread.id, {
             ...(prepared?.bot ?? bot),
-            mcpServers: conversationOnly ? [] : await resolveAttachedMcp(kernel, prepared?.bot ?? bot),
+            mcpServers: toolsDisabled ? [] : await resolveAttachedMcp(kernel, prepared?.bot ?? bot),
           })
           signal?.throwIfAborted()
           const turnInstructions = await composeDeveloperInstructions({
             kernel,
-            bot: turnBot,
+            bot: greeting ? { ...turnBot, reasoningEffort: "low" } : turnBot,
             thread,
             cwd,
+            ...(greeting ? { greetingOnly: true } : {}),
             ...(signal ? { signal } : {}),
           })
           return { turnBot, turnInstructions }
@@ -1636,8 +1677,11 @@ export const createRuntimeEngine = ({
         flushEvents = safeEvents.flush
         // VM preparation registers its credentials with the same live registry.
         // Keep a single stream boundary for native and guest turns, before storage.
-        const onEvent = (event: ProviderEvent) =>
-          runStage ? runStage("provider_event_redaction", safeEvents, event) : safeEvents(event)
+        const onEvent = (event: ProviderEvent): void => {
+          if (event.type === "text_delta" && event.delta) recordTiming(run, "firstTokenAt")
+          if (runStage) runStage("provider_event_redaction", safeEvents, event)
+          else safeEvents(event)
+        }
         const startTurn: ProviderAdapter["startTurn"] = prepared
           ? (args) => startVmTurn({ kernel, provider, args })
           : provider.startTurn
@@ -1648,9 +1692,9 @@ export const createRuntimeEngine = ({
           // Publish before invocation: startup and a silent provider are different waits.
           if (!run.providerStartedAt) updateRun(run, { providerStartedAt: Date.now() })
           return startTurn({
-            ...(conversationOnly ? { conversationOnly: true } : {}),
+            ...(toolsDisabled ? { conversationOnly: true } : {}),
             thread,
-            bot: turnBot,
+            bot: greeting ? { ...turnBot, reasoningEffort: "low" } : turnBot,
             session,
             fingerprint: mcpFingerprint.fingerprint,
             input,
@@ -1660,6 +1704,8 @@ export const createRuntimeEngine = ({
             env: turnEnv,
             ...(prepared ? { execution: prepared.execution } : {}),
             onEvent,
+            onProcessSpawned: () => recordTiming(run, "processSpawnedAt"),
+            onProcessReused: () => recordTiming(run, "processReusedAt"),
             signal: controller.signal,
           })
         }
@@ -2375,6 +2421,7 @@ export const createRuntimeEngine = ({
     const browserRequestId = continuationFromRunId
       ? (continuations.link(continuationFromRunId)?.originalRunId ?? continuationFromRunId)
       : undefined
+    const queuedAt = Date.now()
     const run: Run = {
       id: kernel.newId(),
       ...(browserRequestId ? { browserRequestId } : {}),
@@ -2389,13 +2436,14 @@ export const createRuntimeEngine = ({
       status: "queued",
       errorClass: null,
       errorMessage: null,
-      usage: null,
+      usage: { ...initialUsage(), timings: { queuedAt } },
       routineRunId: routineRunId ?? null,
-      queuedAt: Date.now(),
+      queuedAt,
       startedAt: null,
       finishedAt: null,
     }
     persistence.saveRun(run)
+    logTiming(run, "queuedAt", queuedAt)
     if (continuationFromRunId) {
       const previous = continuations.link(continuationFromRunId)
       continuations.record({

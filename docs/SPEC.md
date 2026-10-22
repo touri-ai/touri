@@ -12,6 +12,35 @@ legacy app bots, chats and routines so you can switch over.
 
 ---
 
+## Turn latency
+
+Runs publish and persist `usage.timings` in `usage_json`: `queuedAt`, `processSpawnedAt`,
+`providerReadyAt`, `firstTokenAt` and `finishedAt` are epoch milliseconds. Missing milestones
+mean the turn has not reached that stage (including cancellation before spawning). First token
+means a nonempty assistant text delta received from the provider, before streaming redaction;
+reasoning is not a reply token. Each milestone is logged once as `Turn timing`, with the run ID,
+provider, stage, timestamp and elapsed milliseconds from enqueue, never message content or credentials.
+The existing run endpoints and `run.updated` events expose milestones while a turn is active;
+older usage records remain readable without a migration. Provider retries retain the first observed
+milestone; finish includes final stream persistence and terminal state publication.
+
+Standalone greetings (Portuguese and English) use a tool-free turn with low reasoning and a compact
+prompt preserving bot identity, SOUL and reviewed memory. Tasks, attachments, routines, continuations,
+active goals and pending tool summaries keep the bot's settings. Switching between chat and task
+capabilities replaces the native session with a history handoff, so a chat session cannot disable tools
+for a subsequent task. Claude uses a compact system prompt for tool-free turns; subscription login
+remains unchanged. Tool-free local sessions using the host login retain a CLI process for up to
+60 seconds of inactivity, with at most four retained processes per provider and 100 turns per process.
+Vault logins keep their existing per-turn process and credential lifetime. Reuse requires matching bot configuration,
+working directory, instructions, environment and native session identity. Task turns always receive
+a fresh process and fresh credentials. Dead, canceled or failed processes are discarded; the next turn
+starts a new process and resumes native history. Private temporary directories live until the retained
+process exits. Shutdown stops retained processes. A reused process records `processReusedAt` instead
+of a new `processSpawnedAt`. The first text delta starts asynchronous persistence immediately;
+subsequent chunks keep the bounded batching interval.
+The UI renders partial assistant text before completion and changes its preparation status on the first
+text update, even when the avatar's activity snapshot is one render behind.
+
 ## Decisions at a glance
 
 Channel navigation and headers are available at startup so the first click opens a stable surface.

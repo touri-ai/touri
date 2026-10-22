@@ -8,6 +8,7 @@ export const withLocalTurnTemp = async <T>(
   kernel: Kernel,
   args: StartTurnArgs,
   run: (args: StartTurnArgs) => Promise<T>,
+  getLifetime?: (temporary: string) => Promise<unknown> | undefined,
 ): Promise<T> => {
   if (args.execution) return run(args)
   if (process.platform === "linux" || args.bot.anyFolderAccess || args.bot.folders?.length)
@@ -22,6 +23,8 @@ export const withLocalTurnTemp = async <T>(
       env: { ...args.env, TMPDIR: temporary, TMP: temporary, TEMP: temporary, TMPPREFIX: join(temporary, "zsh") },
     })
   } finally {
-    await rm(temporary, { recursive: true, force: true })
+    const lifetime = getLifetime?.(temporary)
+    if (lifetime) void lifetime.finally(() => rm(temporary, { recursive: true, force: true })).catch(() => undefined)
+    else await rm(temporary, { recursive: true, force: true })
   }
 }

@@ -19,6 +19,22 @@ afterEach(async () => {
   cleanups.clear()
 })
 
+test("the first reply word flushes immediately while later chunks remain batched", async () => {
+  const fixture = await getFixture()
+  const turn = await fixture.ready
+  const flush = spyOn(fixture.store, "flushWrites")
+  cleanups.add(() => flush.mockRestore())
+
+  turn.onEvent({ type: "text_delta", itemId: "reply", delta: "Olá!" })
+  turn.onEvent({ type: "text_delta", itemId: "reply", delta: " Como vai?" })
+
+  expect(flush).toHaveBeenCalledTimes(1)
+  await getReady(() => fixture.frames.some(({ event }) => event.type === "message.delta"))
+  expect(fixture.engine.listRuns("thread")[0]?.status).toBe("running")
+  expect(getReply(getMessages(fixture.frames))?.text).toContain("Olá!")
+  fixture.finish()
+})
+
 test("mid-stream cancellation preserves buffered text in live sockets, reconnect and journal replay", async () => {
   const fixture = await getFixture()
   const turn = await fixture.ready

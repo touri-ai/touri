@@ -246,3 +246,13 @@ it("keeps the next pending request actionable and removes activity when the repl
   view.rerender(<VirtualMessageList {...props} messages={[{ ...message, status: "complete" }]} />)
   expect(view.container.querySelector(".activity-mark")).toBeNull()
 })
+
+it("replaces preparation as soon as the first text arrives while the activity snapshot still says thinking", () => {
+  const view = render(<ActivityMark state="thinking" parts={[]} />)
+  expect(screen.getByRole("status")).toHaveTextContent("Preparando a resposta…")
+
+  view.rerender(<ActivityMark state="thinking" parts={[{ type: "text", text: "Olá!" }]} />)
+
+  expect(screen.queryByText("Preparando a resposta…")).toBeNull()
+  expect(screen.getByRole("status")).toHaveTextContent("Escrevendo")
+})

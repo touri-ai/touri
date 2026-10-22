@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite"
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test"
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import type { Bot, Message, StoreApi, Thread } from "@touri/contracts"
+import type { Bot, Kernel, Message, RunTimings, StoreApi, Thread } from "@touri/contracts"
 import { t } from "../../../ui/src/i18n"
 import { createStandingGrantStore } from "../../src/approvals/grants"
 import { mcpStartupChecks } from "../../src/doctor/mcp"
@@ -14,6 +14,7 @@ import { createCodexAdapter } from "../../src/runtime/codex/adapter"
 import { createRuntimeEngine } from "../../src/runtime/engine"
 import { MCP_STARTUP_MESSAGE } from "../../src/runtime/mcp-startup"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
+import type { ChildProcess } from "../../src/runtime/provider-io"
 import { createRoutineScheduler } from "../../src/runtime/routines/scheduler"
 import { init as initStore } from "../../src/store"
 import { fakeProviderSpawn } from "../fakes/provider-spawn"
@@ -3062,3 +3063,152 @@ runtimeTest.serial("first notes example completes in Portuguese without a connec
     await closeFixture(f)
   }
 })
+
+describe("turn latency milestones", () => {
+  let value: Fixture | undefined
+
+  afterEach(async () => {
+    if (value) await closeFixture(value)
+    value = undefined
+  })
+
+  test.each(["codex", "claude"] as const)("%s persists live timing before completion", async (provider) => {
+    const current = await fixture({
+      provider,
+      scenario: { slowMs: 200, events: [{ type: "delta", delta: "Olá!" }, { type: "complete" }] },
+    })
+    value = current
+    const snapshots: Array<RunTimings> = []
+    current.runtime.kernel.subscribe(({ event }) => {
+      if (event.type === "run.updated" && event.run.usage?.timings)
+        snapshots.push(structuredClone(event.run.usage.timings))
+    })
+    const request = addUser(current.store, current.thread, "oi")
+
+    const enqueued = current.engine.enqueue({
+      threadId: current.thread.id,
+      requestMessageId: request.id,
+      trigger: "user",
+    })
+    if (!enqueued.success) throw new Error(enqueued.error)
+    await waitFor(() => terminal(enqueued.run.status))
+
+    expect(enqueued.run.status).toBe("succeeded")
+    const timings = enqueued.run.usage?.timings
+    expect(timings).toBeDefined()
+    expect(timings?.queuedAt).toBe(enqueued.run.queuedAt)
+    expect(timings?.processSpawnedAt).toBeGreaterThanOrEqual(enqueued.run.queuedAt)
+    expect(timings?.providerReadyAt).toBeGreaterThanOrEqual(timings?.processSpawnedAt ?? 0)
+    expect(timings?.firstTokenAt).toBeGreaterThanOrEqual(timings?.providerReadyAt ?? 0)
+    expect(timings?.finishedAt).toBeGreaterThanOrEqual(timings?.firstTokenAt ?? 0)
+    expect(snapshots.some((sample) => sample.firstTokenAt && !sample.finishedAt)).toBe(true)
+    const persisted = createRuntimePersistence({ database: current.runtime.kernel.db as Database }).getRun(
+      enqueued.run.id,
+    )
+    expect(persisted?.usage?.timings).toEqual(timings)
+  })
+
+  test("a canceled waiting turn records finish without inventing provider milestones", async () => {
+    const current = await fixture({ maxConcurrentRuns: 1, scenario: { slowMs: 300, deltas: ["Olá!"] } })
+    value = current
+    const firstRequest = addUser(current.store, current.thread, "primeira tarefa")
+    current.engine.enqueue({ threadId: current.thread.id, requestMessageId: firstRequest.id, trigger: "user" })
+    const secondRequest = addUser(current.store, current.thread, "oi")
+    const enqueued = current.engine.enqueue({
+      threadId: current.thread.id,
+      requestMessageId: secondRequest.id,
+      trigger: "user",
+    })
+    if (!enqueued.success) throw new Error(enqueued.error)
+
+    current.engine.cancel(enqueued.run.id)
+    await waitFor(() => terminal(enqueued.run.status))
+
+    expect(enqueued.run.usage?.timings?.finishedAt).toBeDefined()
+    expect(enqueued.run.usage?.timings?.processSpawnedAt).toBeUndefined()
+    expect(enqueued.run.usage?.timings?.firstTokenAt).toBeUndefined()
+  })
+
+  test.each(["codex", "claude"] as const)(
+    "%s reuses a greeting process and recovers after it exits",
+    async (provider) => {
+      const current = await fixture({ provider, scenario: { deltas: ["Olá!"] } })
+      value = current
+      const children = recordProviderSpawns(current)
+
+      const first = await sendTurn(current, "oi")
+      const second = await sendTurn(current, "oi")
+
+      expect(first.usage?.timings?.processSpawnedAt).toBeDefined()
+      expect(second.usage?.timings?.processReusedAt).toBeDefined()
+      expect(second.usage?.timings?.processSpawnedAt).toBeUndefined()
+      expect(children).toHaveLength(1)
+      const child = children[0]
+      if (!child) throw new Error("Missing provider process")
+
+      child.kill("SIGKILL")
+      await child.exited
+      const recovered = await sendTurn(current, "oi")
+
+      expect(recovered.status).toBe("succeeded")
+      expect(recovered.usage?.timings?.processSpawnedAt).toBeDefined()
+      expect(recovered.usage?.timings?.processReusedAt).toBeUndefined()
+      expect(children).toHaveLength(2)
+    },
+  )
+
+  test.each(["codex", "claude"] as const)(
+    "%s restores tools when a greeting is followed by a task",
+    async (provider) => {
+      const current = await fixture({ provider, scenario: { deltas: ["Olá!"] } })
+      value = current
+      const children = recordProviderSpawns(current)
+      await sendTurn(current, "oi")
+      writeFileSync(
+        current.scenario,
+        JSON.stringify({
+          events: [
+            provider === "codex"
+              ? { type: "command", command: "pwd", output: "/workspace" }
+              : { type: "tool", name: "Read", input: { file_path: "/workspace/notes.md" } },
+            { type: "delta", delta: "Concluído." },
+            { type: "complete" },
+          ],
+        }),
+      )
+
+      const task = await sendTurn(current, "Mostre a pasta atual")
+
+      expect(task.status).toBe("succeeded")
+      expect(task.usage?.timings?.processSpawnedAt).toBeDefined()
+      expect(task.usage?.timings?.processReusedAt).toBeUndefined()
+      const reply = current.store.messages.get(task.replyMessageId ?? "")
+      expect(reply?.parts.some((part) => part.type === "command" || part.type === "tool_call")).toBe(true)
+      expect(children).toHaveLength(2)
+    },
+  )
+})
+
+const recordProviderSpawns = (current: Fixture): ChildProcess[] => {
+  const children: ChildProcess[] = []
+  const spawn: Kernel["spawnTree"] = current.runtime.kernel.spawnTree
+  current.runtime.kernel.spawnTree = (input) => {
+    const child = spawn(input)
+    if (child.success && (input.cmd === current.fakePath || input.args.includes(current.fakePath))) children.push(child)
+    return child
+  }
+  return children
+}
+
+const sendTurn = async (current: Fixture, text: string) => {
+  const request = addUser(current.store, current.thread, text)
+  const enqueued = current.engine.enqueue({
+    threadId: current.thread.id,
+    requestMessageId: request.id,
+    trigger: "user",
+  })
+  if (!enqueued.success) throw new Error(enqueued.error)
+
+  await waitFor(() => terminal(enqueued.run.status))
+  return enqueued.run
+}
