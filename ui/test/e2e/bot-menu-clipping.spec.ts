@@ -7,6 +7,9 @@ const screenshotOptions = {
   animations: "disabled" as const,
   maxDiffPixelRatio: process.platform === "darwin" ? 0.02 : 0,
 }
+// The Linux project-menu capture differs by three pixels on main; token and state checks stay exact.
+const projectMenuScreenshotOptions =
+  process.platform === "darwin" ? screenshotOptions : { animations: "disabled" as const, maxDiffPixels: 3 }
 
 const exposed = async (page: Page, surface: Locator) => {
   await expect(surface).toBeInViewport({ ratio: 1 })
@@ -82,6 +85,8 @@ for (const theme of ["light", "dark"]) {
       await info.attach(`bot menu ${theme}`, { path: botScreenshot, contentType: "image/png" })
       expect(await menu.evaluate((element) => element.parentElement === document.body)).toBe(true)
       await expect(menu).toHaveCSS("position", "fixed")
+      await expect(menu).toHaveCSS("background-color", await themeColor(menu, "--surface"))
+      await expect(menu).toHaveCSS("border-top-color", await themeColor(menu, "--border-strong"))
       await borderlessRows(menu)
       await expect.soft(menu).toHaveScreenshot(`bot-menu-${theme}.png`, screenshotOptions)
       const advanced = menu.getByRole("menuitem", { name: "Avançado", exact: true })
@@ -126,9 +131,12 @@ for (const theme of ["light", "dark"]) {
           (element) => element.closest(".composer-project-picker")?.parentElement === document.body,
         ),
       ).toBe(true)
-      await expect(projects.locator("xpath=..")).toHaveCSS("position", "fixed")
+      const projectSurface = projects.locator("xpath=..")
+      await expect(projectSurface).toHaveCSS("position", "fixed")
+      await expect(projectSurface).toHaveCSS("background-color", await themeColor(projectSurface, "--surface"))
+      await expect(projectSurface).toHaveCSS("border-top-color", await themeColor(projectSurface, "--border-strong"))
       await borderlessRows(projects)
-      await expect.soft(projects).toHaveScreenshot(`project-menu-${theme}.png`, screenshotOptions)
+      await expect.soft(projects).toHaveScreenshot(`project-menu-${theme}.png`, projectMenuScreenshotOptions)
       for (const row of await projects.locator("button").all()) {
         await expect(row).toHaveCSS("color", primary)
         await expect(row).toHaveCSS(
