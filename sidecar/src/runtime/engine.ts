@@ -28,7 +28,12 @@ import type {
 } from "@touri/contracts"
 import { publicError } from "@touri/contracts"
 import { redactToolText } from "@touri/contracts/redaction"
-import { hasRecordedActions, refineErrorClass, safeRunFailure } from "@touri/contracts/run-failure"
+import {
+  hasRecordedActions,
+  RUN_START_TIMEOUT_MESSAGE,
+  refineErrorClass,
+  safeRunFailure,
+} from "@touri/contracts/run-failure"
 import { createApprovalBridge } from "../approvals/bridge"
 import { approvalOutcome } from "../approvals/outcome"
 import { getRequesterPersonId } from "../browser/channel-runs"
@@ -219,6 +224,8 @@ type PendingApproval = { runId: Id; provider: ProviderAdapter; providerApprovalI
 
 const ROUTINE_TICK_GRACE_MS = 2 * 60_000
 const EVENT_LIVENESS_CHECK_INTERVAL_MS = 50
+const RUN_START_TIMEOUT_MS = 2 * 60_000
+const FAILURE_FINALIZATION_TIMEOUT_MS = 5_000
 const EXECUTION_FAILURE_CODES: ReadonlyArray<string> = [
   "EIO",
   "ENOSPC",
@@ -384,6 +391,7 @@ export const createRuntimeEngine = ({
   providerAdapters,
   getNow = Date.now,
   goalDeadlineClock,
+  startupDeadlineClock,
   runStage,
 }: {
   kernel: Kernel
@@ -398,6 +406,7 @@ export const createRuntimeEngine = ({
   providerAdapters?: Partial<Record<Bot["provider"], ProviderAdapter>>
   getNow?: () => number
   goalDeadlineClock?: GoalDeadlineClock
+  startupDeadlineClock?: GoalDeadlineClock
   runStage?: PerformanceStageRunner
 }): RuntimeEngine => {
   const runtimeStartedAt = getNow()
@@ -543,6 +552,8 @@ export const createRuntimeEngine = ({
     { timer: ReturnType<typeof setTimeout>; run: Run; plan: ContinuationPlan; summary: string }
   >()
   const goalDeadlines = new Map<Id, ReturnType<typeof startGoalDeadline>>()
+  const startupDeadlines = new Map<Id, ReturnType<typeof startGoalDeadline>>()
+  const routineDeadlines = new Map<Id, ReturnType<typeof setTimeout>>()
   const getGoalNow = goalDeadlineClock?.now ?? Date.now
   const goals = createGoalRuntime(
     kernel,
@@ -1070,7 +1081,9 @@ export const createRuntimeEngine = ({
     store: StoreApi
     state: RunState
   }): void => {
-    if (shuttingDown || state.cancelRequested) return
+    const controller = controllers.get(run.id)
+    if (shuttingDown || state.cancelRequested || !controller || (controller.signal.aborted && !state.turnStarted))
+      return
     // A newer runtime may have fenced this writer during restart recovery.
     if (!isLiveForEvent(run, state)) {
       controllers.get(run.id)?.abort()
@@ -1113,6 +1126,8 @@ export const createRuntimeEngine = ({
     }
     if (event.type === "turn_started") {
       state.turnStarted = true
+      startupDeadlines.get(run.id)?.stop()
+      startupDeadlines.delete(run.id)
       updateRun(run, {
         status: "running",
         externalTurnId: event.externalTurnId,
@@ -1428,7 +1443,8 @@ export const createRuntimeEngine = ({
         })
       : () => {}
 
-  const execute = async (run: Run): Promise<void> => {
+  const execute = async (run: Run, controller: AbortController): Promise<void> => {
+    controller.signal.throwIfAborted()
     recordTiming(run, "claimedAt")
     if (!isLive(run)) {
       active.delete(run.threadId)
@@ -1447,6 +1463,7 @@ export const createRuntimeEngine = ({
     await kernel.services.use("store.recovery")?.ensureThread(run.threadId)
     await kernel.services.use("store.recovery")?.ensureBot(run.botId)
     await tools.reconcilePending(store, run.threadId)
+    controller.signal.throwIfAborted()
     recordTiming(run, "reconciledAt")
     if (!isLive(run)) {
       active.delete(run.threadId)
@@ -1471,6 +1488,7 @@ export const createRuntimeEngine = ({
       candidateBot.access !== "full" &&
       (!!candidateBot.anyFolderAccess || !!candidateBot.folders?.length)
     if (grantsApply) await refreshHostFolderAccess()
+    controller.signal.throwIfAborted()
     recordTiming(run, "permissionsReadyAt")
     const conversationOnly = grantsApply && !!folderGrantProblem(candidateBot)
     const bot: Bot = conversationOnly
@@ -1526,7 +1544,9 @@ export const createRuntimeEngine = ({
       originalRun &&
       (resumedFrom === "permission_granted" ||
         resumedFrom === "browser_takeover" ||
-        (resumedFrom === "app_restart" && originalRun.externalTurnId === null && previousRun?.externalTurnId === null))
+        ((resumedFrom === "app_restart" || resumedFrom === "provider_crash") &&
+          originalRun.externalTurnId === null &&
+          previousRun?.externalTurnId === null))
         ? getActivePathMessage({ store, run: originalRun })
         : null
     const originalRequestText =
@@ -1566,15 +1586,9 @@ export const createRuntimeEngine = ({
       bot.machine !== "cloud" &&
       mem0.enabled(bot.id)
     let recalled: string | null = null
-    if (remembers && request) {
-      const recallController = new AbortController()
-      controllers.set(run.id, recallController)
-      try {
-        recalled = await mem0.recall({ botId: bot.id, query: request.text, signal: recallController.signal })
-      } finally {
-        controllers.delete(run.id)
-      }
-    }
+    if (remembers && request)
+      recalled = await mem0.recall({ botId: bot.id, query: request.text, signal: controller.signal })
+    controller.signal.throwIfAborted()
     recordTiming(run, "recallReadyAt")
     const inputText = [recalled, carryover, toolSummary, requestText, goal ? getGoalPrompt(goal) : null]
       .filter(Boolean)
@@ -1604,6 +1618,7 @@ export const createRuntimeEngine = ({
       bot.machine === "vm"
         ? { cwd: "/workspace", projectDataDir: "/workspace/.touri/data" }
         : await chooseCwd({ bot, thread })
+    controller.signal.throwIfAborted()
     recordTiming(run, "workspaceReadyAt")
     if (shuttingDown || !isLive(run)) {
       active.delete(run.threadId)
@@ -1616,6 +1631,7 @@ export const createRuntimeEngine = ({
       bot.machine === "vm"
         ? { command: "/usr/local/bin/node", args: ["/usr/local/lib/touri/mcp-stdio.cjs", thread.id], env: {} }
         : await prepareMcpConnection(thread.id, toolsDisabled)
+    controller.signal.throwIfAborted()
     recordTiming(run, "mcpReadyAt")
     const mcpFingerprint = sessionFingerprint({
       bot: {
@@ -1719,6 +1735,7 @@ export const createRuntimeEngine = ({
         ...(projectDataDir ? { TOURI_PROJECT_DATA_DIR: projectDataDir } : {}),
       },
     })
+    controller.signal.throwIfAborted()
     if (shuttingDown || !isLive(run)) {
       active.delete(run.threadId)
       if (!shuttingDown) void drain()
@@ -1729,8 +1746,6 @@ export const createRuntimeEngine = ({
     recordTiming(run, "startingPersistedAt")
     state.generation = store.getThread({ threadId: thread.id })?.generation ?? null
     state.fingerprint = mcpFingerprint.hash
-    const controller = new AbortController()
-    controllers.set(run.id, controller)
     const provider = adapters[bot.provider]
     providers.set(run.id, provider)
     active.set(run.threadId, run)
@@ -1750,6 +1765,7 @@ export const createRuntimeEngine = ({
           Math.max(1, routineBudget({ run, routine, routineRun })),
         )
       : null
+    if (deadline) routineDeadlines.set(run.id, deadline)
     const result = await (async (): Promise<Awaited<ReturnType<ProviderAdapter["startTurn"]>>> => {
       let prepared: Awaited<ReturnType<import("@touri/contracts").VmRuntime["prepareTurn"]>> | undefined
       let flushEvents: (() => void) | undefined
@@ -1774,8 +1790,9 @@ export const createRuntimeEngine = ({
           const login = await prepareLocalProviderLogin(kernel, bot, controller.signal, env.HOME, (stage) =>
             recordTiming(run, stage),
           )
-          Object.assign(env, login.env)
           releaseLogin = login.release
+          controller.signal.throwIfAborted()
+          Object.assign(env, login.env)
         }
         recordTiming(run, "loginReadyAt")
         if (bot.machine === "vm") {
@@ -1834,6 +1851,7 @@ export const createRuntimeEngine = ({
               action: prepareInstructions,
             })
           : await prepareInstructions(controller.signal)
+        controller.signal.throwIfAborted()
         recordTiming(run, "instructionsReadyAt")
         const turnEnv = prepared?.env ?? env
         const dispatchEvent = (event: ProviderEvent) => handleEvent({ run, event, store, state })
@@ -1938,6 +1956,7 @@ export const createRuntimeEngine = ({
         await prepared?.release()
         await releaseLogin?.()
         if (deadline) clearTimeout(deadline)
+        routineDeadlines.delete(run.id)
       }
     })()
     const finalizeProviderTurn = async (): Promise<void> => {
@@ -2102,8 +2121,7 @@ export const createRuntimeEngine = ({
           })
         }
       } finally {
-        controllers.delete(run.id)
-        providers.delete(run.id)
+        approvalBridge.cancelRun(run.id)
       }
     }
     if (runStage) await runStage("runtime_turn_finalization", finalizeProviderTurn)
@@ -2564,9 +2582,9 @@ export const createRuntimeEngine = ({
     if (committed && plan) scheduleContinuation({ run, plan })
   }
 
-  const executeGoalTurn = async (run: Run): Promise<void> => {
+  const executeGoalTurn = async (run: Run, controller: AbortController): Promise<void> => {
     const goal = goals.getForRun(run.id)
-    if (!goal) return execute(run)
+    if (!goal) return execute(run, controller)
     if (goal.status !== "active" || getGoalNow() >= goal.deadlineAt) {
       goals.expireRun(run.id)
       cancel(run.id)
@@ -2577,7 +2595,8 @@ export const createRuntimeEngine = ({
     const budgetTimer = startGoalDeadline(goal.deadlineAt, () => goals.expireRun(run.id), goalDeadlineClock)
     goalDeadlines.set(run.id, budgetTimer)
     try {
-      await execute(run)
+      await execute(run, controller)
+      if (controller.signal.aborted) return
       const finished = persistence.getRun(run.id)
       if (!finished) return
       const state = getState(run.id)
@@ -2610,14 +2629,16 @@ export const createRuntimeEngine = ({
       const store = kernel.services.use("store.api")
       const thread = store?.getThread({ threadId: run.threadId })
       if (store && thread)
-        await finalizeFailure({
-          run,
-          state,
-          store,
-          thread,
-          errorClass: "unknown",
-          errorMessage,
-        })
+        await finalizeBeforeDeadline(() =>
+          finalizeFailure({
+            run,
+            state,
+            store,
+            thread,
+            errorClass: "unknown",
+            errorMessage,
+          }),
+        )
     } catch {
       kernel.log({
         level: "error",
@@ -2644,6 +2665,7 @@ export const createRuntimeEngine = ({
     const finished = kernel.db instanceof Database ? await writeDatabaseAsync(kernel.db, finish) : finish()
     if (!finished) return
 
+    finalizations.delete(run.id)
     tools.clearPendingMemory(run.id)
     const canceled = finished.status === "canceled"
     finishRoutineRun({ run: finished, status: canceled ? "canceled" : "failed", summary: errorMessage })
@@ -2657,26 +2679,122 @@ export const createRuntimeEngine = ({
     })
   }
 
+  const finalizeBeforeDeadline = async (finalize: () => Promise<boolean>): Promise<boolean> => {
+    const expired = Promise.withResolvers<boolean>()
+    const clock = startupDeadlineClock
+    const deadline = startGoalDeadline(
+      (clock?.now() ?? Date.now()) + FAILURE_FINALIZATION_TIMEOUT_MS,
+      () => expired.resolve(false),
+      clock,
+    )
+    try {
+      return await Promise.race([finalize().catch(() => false), expired.promise])
+    } finally {
+      deadline.stop()
+    }
+  }
+
+  const finishInterruptedStartup = async (run: Run): Promise<void> => {
+    const state = getState(run.id)
+    const finish = () => {
+      if (!isLive(run)) return
+
+      const canceled = state.cancelRequested
+      updateRun(run, {
+        status: canceled ? "canceled" : "interrupted",
+        errorClass: canceled ? "canceled" : "app_restart",
+        errorMessage: canceled ? publicError("canceled").error : "touri restarted",
+        finishedAt: Date.now(),
+      })
+      finishRoutineRun({ run, status: "canceled", summary: run.errorMessage ?? "" })
+      goals.finishTurn(run, state.text, false, false)
+    }
+    if (kernel.db instanceof Database) await writeDatabaseAsync(kernel.db, finish)
+    else finish()
+    // Terminal status fences a stalled history writer before it can publish late output.
+    finalizations.delete(run.id)
+    tools.clearPendingMemory(run.id)
+  }
+
+  const finishStartupShutdown = async (run: Run): Promise<void> => {
+    if (!isLive(run)) return
+
+    const store = kernel.services.use("store.api")
+    const thread = store?.getThread({ threadId: run.threadId })
+    if (store && thread)
+      await finalizeBeforeDeadline(() =>
+        finalizeFailure({
+          run,
+          state: getState(run.id),
+          store,
+          thread,
+          errorClass: "app_restart",
+          errorMessage: "touri restarted",
+        }),
+      )
+    if (isLive(run)) await finishInterruptedStartup(run)
+  }
+
   const executeWithStateCleanup = async (run: Run): Promise<void> => {
+    const controller = new AbortController()
     const stopped = Promise.withResolvers<void>()
+    const onAbort = () => {
+      // Normal Stop waits for process termination; shutdown must also bound unaccepted preparation.
+      if (shuttingDown && !getState(run.id).turnStarted) stopped.resolve()
+    }
+    controllers.set(run.id, controller)
+    controller.signal.addEventListener("abort", onAbort, { once: true })
     stopSignals.set(run.id, stopped)
     providerStops.set(run.id, Promise.withResolvers<StartTurnResult>())
+    const clock = startupDeadlineClock
+    const startupDeadline = startGoalDeadline(
+      (clock?.now() ?? Date.now()) + RUN_START_TIMEOUT_MS,
+      () => {
+        if (getState(run.id).turnStarted || !isLive(run)) return
+
+        void requestRunStop(run, { errorClass: "timeout", errorMessage: RUN_START_TIMEOUT_MESSAGE }).catch(() => {})
+      },
+      clock,
+    )
+    startupDeadlines.set(run.id, startupDeadline)
     try {
-      // An adapter can miss both exit and abort. Its unresolved promise cannot own the execution slot forever.
-      await Promise.race([executeGoalTurn(run), stopped.promise])
+      const write = () => updateRun(run, { status: "starting", startedAt: Date.now() })
+      if (kernel.db instanceof Database) await writeDatabaseAsync(kernel.db, write)
+      else write()
+      await Promise.race([executeGoalTurn(run, controller), stopped.promise])
+      if (shuttingDown && !getState(run.id).turnStarted) await finishStartupShutdown(run)
     } catch (error) {
-      controllers.get(run.id)?.abort()
+      const stopping = stopOperations.get(run.id)
+      if (controller.signal.aborted && stopping) {
+        await stopping
+        return
+      }
+      if (shuttingDown && controller.signal.aborted) {
+        await finishStartupShutdown(run)
+        return
+      }
+      controller.abort()
       await finalizeUnexpectedFailure(run, error)
       const finished = persistence.getRun(run.id)
       if (finished) goals.finishTurn(finished, getState(run.id).text, false, true)
     } finally {
+      startupDeadline.stop()
+      startupDeadlines.delete(run.id)
+      goalDeadlines.get(run.id)?.stop()
+      goalDeadlines.delete(run.id)
+      const routineDeadline = routineDeadlines.get(run.id)
+      if (routineDeadline) clearTimeout(routineDeadline)
+      routineDeadlines.delete(run.id)
+      controller.signal.removeEventListener("abort", onAbort)
       if (active.get(run.threadId)?.id === run.id) active.delete(run.threadId)
       controllers.delete(run.id)
       providers.delete(run.id)
+      approvalBridge.cancelRun(run.id)
       stopSignals.delete(run.id)
       providerStops.delete(run.id)
       if (!stopOperations.has(run.id)) supervision.forgetRun(run.id)
       deleteRunState(run.id)
+      signalDrainChange()
       void drain()
     }
   }
@@ -2704,7 +2822,6 @@ export const createRuntimeEngine = ({
         return
       }
       active.set(run.threadId, run)
-      updateRun(run, { status: "starting", startedAt: Date.now() })
       const execution = executeWithStateCleanup(run)
       executions.set(run.id, execution)
       void execution
@@ -3046,6 +3163,7 @@ export const createRuntimeEngine = ({
     else finish()
     if (isLive(run)) return
 
+    finalizations.delete(run.id)
     tools.clearPendingMemory(run.id)
     finishRoutineRun({
       run,
@@ -3794,17 +3912,23 @@ export const createRuntimeEngine = ({
           reason: "app_restart",
           lastActivityAt: Math.max(run.startedAt ?? run.queuedAt, reply?.updatedAt ?? 0),
         })
-        const recovery = finalizeFailure({
-          run,
-          state,
-          store,
-          thread,
-          errorClass: "app_restart",
-          errorMessage: "touri restarted",
-          continuing: plan !== null,
-        })
-          .then((committed) => {
-            if (committed && plan) scheduleContinuation({ run, plan })
+        const recovery = finalizeBeforeDeadline(() =>
+          finalizeFailure({
+            run,
+            state,
+            store,
+            thread,
+            errorClass: "app_restart",
+            errorMessage: "touri restarted",
+            continuing: plan !== null,
+          }),
+        )
+          .then(async (committed) => {
+            if (!committed) {
+              await finishInterruptedStartup(run)
+              return
+            }
+            if (plan) scheduleContinuation({ run, plan })
           })
           .finally(() => deleteRunState(run.id))
         await recovery

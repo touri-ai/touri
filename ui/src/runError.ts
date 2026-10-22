@@ -1,5 +1,5 @@
 import type { Message, Run } from "@touri/contracts"
-import { apiModelErrors, errorRegistry, publicError } from "@touri/contracts"
+import { publicError } from "@touri/contracts"
 import {
   type FailureAction,
   failureRetryHint,
@@ -10,7 +10,7 @@ import {
   sanitizeDiagnostic,
 } from "@touri/contracts/run-failure"
 import { getAttachmentError } from "./attachmentError"
-import { type ErrorRecovery, errorRecovery } from "./errorRecovery"
+import { type ErrorRecovery, errorRecovery, getRetryMessage, REGISTRY_MESSAGES } from "./errorRecovery"
 import { t } from "./i18n"
 
 export type RunErrorView = Omit<RunFailureDetail, "hint"> & {
@@ -35,8 +35,6 @@ const TITLES: Record<string, string> = {
   group_context_missing: t("O grupo ou a conversa não existe mais"),
   app_restart: t("A resposta foi interrompida ao reiniciar o touri"),
 }
-
-const REGISTRY_MESSAGES: ReadonlyArray<string> = Object.values(errorRegistry).map((definition) => definition.message)
 
 const legacyDiagnostic = (raw: string): string | null => {
   const text = raw
@@ -85,17 +83,18 @@ export const runErrorFor = (message: Message, candidate?: Run, machineReady = fa
   const recoveryHint = modelIsAtCapacity
     ? t("Escolha outro modelo nas configurações do bot ou tente de novo em alguns minutos.")
     : hint
-  const apiMessage = Object.values(apiModelErrors).find((text) => (run?.errorMessage ?? raw).includes(text))
+  const retryMessage = getRetryMessage(`${run?.errorMessage ?? raw} ${detail}`)
   const getLocalizedDetail = (): string => {
     if (run?.errorMessage === "O bot terminou sem responder. Tente novamente.")
       return t("O bot terminou sem responder. Tente novamente.")
     if (run?.errorMessage === ORPHANED_GROUP_TURN_PT) return t(ORPHANED_GROUP_TURN_PT)
     const attachmentError = getAttachmentError(run?.errorMessage ?? raw)
     if (attachmentError) return attachmentError
-    if (apiMessage) return t(apiMessage)
+    if (retryMessage) return t(retryMessage)
 
     return detail
   }
+
   return {
     title: modelIsAtCapacity ? t("Modelo temporariamente sem capacidade") : (TITLES[errorClass] ?? FALLBACK_TITLE),
     ...rest,
