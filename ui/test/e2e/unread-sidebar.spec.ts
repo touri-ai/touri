@@ -20,6 +20,7 @@ layouts.forEach(({ name, width, height }) => {
       await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
       if (name === "mobile") await page.getByRole("button", { name: "Abrir menu" }).click()
       const sidebar = page.getByRole("navigation", { name: "Barra lateral" })
+      await sidebar.getByRole("tab", { name: /^Bots/ }).click()
       const mark = sidebar.locator('[data-bot-entry="bot-mark"]')
       await page.evaluate(() => document.fonts.ready)
 

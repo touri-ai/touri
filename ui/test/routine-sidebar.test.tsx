@@ -216,7 +216,7 @@ it("hides the zero-today suffix from an older task summary", async () => {
 })
 
 it("keeps routine conversations older than the first history page reachable", async () => {
-  const { api } = await getRoutineSidebarFixture(60)
+  const { api } = await getRoutineSidebarFixture(60, { oldestRunMessage: "A execução mais antiga continua acessível." })
 
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
@@ -237,14 +237,14 @@ it("keeps routine conversations older than the first history page reachable", as
   fireEvent.click(oldest)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
-  openConversations()
-
-  expect(document.querySelector(".thread-row.selected")).toHaveTextContent("05:00")
-  expect(await screen.findByText("Resumo pronto para conferir.", { selector: "p" })).toBeVisible()
+  expect(await screen.findByText("A execução mais antiga continua acessível.", { selector: "p" })).toBeVisible()
 })
 
 it("opens selected routine history across three bounded pages despite newer runs from other routines and bots", async () => {
-  const { api, routines } = await getRoutineSidebarFixture(128, { withOtherRoutines: true })
+  const { api, routines } = await getRoutineSidebarFixture(128, {
+    withOtherRoutines: true,
+    oldestRunMessage: "A execução mais antiga continua acessível.",
+  })
   const targetRoutine = routines[0]
   if (!targetRoutine) throw new Error("Missing target routine")
 
@@ -310,10 +310,7 @@ it("opens selected routine history across three bounded pages despite newer runs
   fireEvent.click(oldest)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
-  openConversations()
-
-  expect(document.querySelector(".thread-row.selected")).toHaveTextContent("05:00")
-  expect(await screen.findByText("Resumo pronto para conferir.", { selector: "p" })).toBeVisible()
+  expect(await screen.findByText("A execução mais antiga continua acessível.", { selector: "p" })).toBeVisible()
 })
 
 it("reopens history from the sidebar after it was manually collapsed", async () => {
