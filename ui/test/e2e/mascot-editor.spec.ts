@@ -127,6 +127,7 @@ const getPreview = async (dialog: Locator) => {
 
 const expectCompactPicker = async (dialog: Locator) => {
   const picker = dialog.locator(".avatar-picker")
+  await picker.waitFor({ state: "visible" })
 
   await expect(picker.getByRole("button")).toHaveCount(2)
   await expect(picker.getByRole("button", { name: "Sortear", exact: true })).toBeVisible()
