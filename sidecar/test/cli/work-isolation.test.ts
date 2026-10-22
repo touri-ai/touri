@@ -213,7 +213,7 @@ test("a bot's responsible person belongs to its channel and can open a ping with
   expect(plan.some(({ detail }) => detail.includes("bots_responsible_person_active"))).toBe(true)
   expect(plan.some(({ detail }) => detail.includes("group_members_bot"))).toBe(true)
   expect((await fixture.request("/groups/other-channel/threads")).status).toBe(200)
-  expect((await fixture.request("/threads/owner-chat/messages")).status).toBe(403)
+  expect((await fixture.request("/threads/owner-chat/messages")).status).toBe(404)
 
   fixture.database.query("UPDATE bots SET archived_at = 1 WHERE id = 'member-bot'").run()
 

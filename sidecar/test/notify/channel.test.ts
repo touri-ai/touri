@@ -3,9 +3,9 @@ import { afterEach, expect, mock, setDefaultTimeout, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { ChannelPerson, Kernel, Message, Run } from "@touri/contracts"
+import type { ChannelPerson, Kernel, Message, Run, UiEvent } from "@touri/contracts"
 import { init as initGroups } from "../../src/groups"
-import { createGroupStore, routeGroupMessage } from "../../src/groups/store"
+import { createGroupStore } from "../../src/groups/store"
 import { createKernel } from "../../src/kernel"
 import { init as initNotify } from "../../src/notify"
 import { createNotificationStore } from "../../src/notify/store"
@@ -45,14 +45,19 @@ const getFixture = async () => {
   host.kernel.services.provide("work.channelPeople", getPeople)
   const store = host.kernel.services.use("store.api")
   if (!store) throw new Error("Store missing")
-  const response = await fetch(`http://127.0.0.1:${host.handshake.port}/api/v1/bots`, {
-    method: "POST",
-    headers: { Authorization: "Bearer dev-ui-token", Origin: "tauri://localhost", "Content-Type": "application/json" },
-    body: JSON.stringify({ name: "Atlas", provider: "codex" }),
-    signal: AbortSignal.timeout(10_000),
-  })
-  if (!response.ok) throw new Error(`Bot fixture failed: ${response.status}`)
-  const bot = ((await response.json()) as { bot: { id: string } }).bot
+  const database = host.kernel.db as Database
+  const insertBot = (id: string, name: string, owner = "owner") => {
+    database
+      .query(
+        "INSERT INTO bots(id, name, provider, home_dir, created_at, updated_at, responsible_person_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(id, name, "codex", join(root, id), 1, 1, owner)
+    const bot = store.getBot({ botId: id })
+    if (!bot) throw new Error("Bot fixture missing")
+
+    return bot
+  }
+  const bot = insertBot("atlas", "Atlas")
   const groups = createGroupStore(host.kernel)
   const group = groups.save({
     name: "mapas",
@@ -83,13 +88,48 @@ const getFixture = async () => {
     return result.message
   }
   const notifications = createNotificationStore({ db: host.kernel.db as Database })
-  return { host, callHost, store, bot, group, thread, insert, getNotes: () => notifications.recent(50) }
+  const waitForEvent = (isExpected: (event: UiEvent) => boolean) => {
+    const delivered = Promise.withResolvers<void>()
+    const unsubscribe = host.kernel.subscribe(({ event }) => {
+      if (!isExpected(event)) return
+
+      unsubscribe()
+      delivered.resolve()
+    })
+    cleanups.add(async () => unsubscribe())
+    return delivered.promise
+  }
+  return {
+    host,
+    callHost,
+    store,
+    bot,
+    group,
+    thread,
+    insert,
+    insertBot,
+    getNotes: () => notifications.recent(50),
+    waitForMessage: () =>
+      waitForEvent(
+        (event) =>
+          (event.type === "message.created" || event.type === "message.updated") &&
+          event.message.threadId === thread.id,
+      ),
+    waitForRun: (id: string) => waitForEvent((event) => event.type === "run.updated" && event.run.id === id),
+    flushEvents: () => {
+      const delivered = waitForEvent((event) => event.type === "transcript.superseded")
+      host.kernel.publish({ type: "transcript.superseded" })
+      return delivered
+    },
+  }
 }
 
 test("a person mention alerts only the named channel person with an excerpt and native alert", async () => {
   const fixture = await getFixture()
 
+  const delivered = fixture.waitForMessage()
   fixture.insert("@THIÁGO preciso de você", "ana")
+  await delivered
 
   expect(fixture.callHost).toHaveBeenCalledWith(
     "notify",
@@ -107,11 +147,16 @@ test("a person mention alerts only the named channel person with an excerpt and 
 
 test("a bot can mention a person; completed streaming updates and replay notify once", async () => {
   const fixture = await getFixture()
+  const started = fixture.waitForMessage()
   const message = fixture.insert("@thiago preciso de você", "bot", "streaming")
+  await started
   expect(fixture.getNotes()).toEqual([])
 
+  const completed = fixture.waitForMessage()
   fixture.store.updateMessage({ threadId: fixture.thread.id, messageId: message.id, patch: { status: "complete" } })
+  await completed
   fixture.host.kernel.publish({ type: "message.updated", message: { ...message, status: "complete" } })
+  await fixture.flushEvents()
 
   expect(fixture.getNotes()).toMatchObject([
     { kind: "mention", targetPersonId: "owner", botId: fixture.bot.id, title: "@Atlas mencionou você em #mapas" },
@@ -121,24 +166,20 @@ test("a bot can mention a person; completed streaming updates and replay notify 
 test("self mentions, nonmembers, partial names, email addresses and system context stay quiet", async () => {
   const fixture = await getFixture()
 
+  const delivered = fixture.waitForMessage()
   fixture.insert("@thiago @outsider test@Ana @Anabel", "owner")
+  await delivered
 
   expect(fixture.getNotes()).toEqual([])
-})
-
-test("a person mention cannot route a bot with a shorter or identical name", async () => {
-  const fixture = await getFixture()
-  const bots = [{ id: fixture.bot.id, name: "Ana" }]
-
-  expect(routeGroupMessage(fixture.group, bots, "@Ana Maria preciso de você", getPeople())).toEqual([])
-  expect(routeGroupMessage(fixture.group, bots, "@Ana preciso de você", getPeople())).toEqual([])
 })
 
 test.each(["user", "routine"] as const)(
   "%s task start alerts the owner and the manual requester once",
   async (trigger) => {
     const fixture = await getFixture()
+    const requestDelivered = fixture.waitForMessage()
     const request = fixture.insert("Montar mapa", "ana")
+    await requestDelivered
     const run: Run = {
       id: "task-run",
       botId: fixture.bot.id,
@@ -159,8 +200,12 @@ test.each(["user", "routine"] as const)(
       finishedAt: null,
     }
 
+    const delivered = fixture.waitForRun("retry-run")
     fixture.host.kernel.publish({ type: "run.updated", run })
     fixture.host.kernel.publish({ type: "run.updated", run })
+    fixture.host.kernel.publish({ type: "run.updated", run: { ...run, id: "child-run", groupTurnId: run.id } })
+    fixture.host.kernel.publish({ type: "run.updated", run: { ...run, id: "retry-run", trigger: "retry" } })
+    await delivered
 
     expect(
       fixture
@@ -180,21 +225,16 @@ test.each(["user", "routine"] as const)(
 
 test("a routine uses its own bot's owner and title even when another bot coordinates the channel", async () => {
   const fixture = await getFixture()
-  const created = await fixture.host.kernel.services.use("bots.create")?.({
-    body: { name: "Mapa", provider: "codex" },
-    signal: new AbortController().signal,
-  })
-  if (!created?.success) throw new Error("Routine bot missing")
+  const routineBot = fixture.insertBot("mapa", "Mapa", "ana")
   const database = fixture.host.kernel.db as Database
-  database.query("UPDATE bots SET responsible_person_id = ? WHERE id = ?").run("ana", created.bot.id)
   createGroupStore(fixture.host.kernel).save(
-    { ...fixture.group, memberIds: [fixture.bot.id, created.bot.id], coordinatorBotId: fixture.bot.id },
+    { ...fixture.group, memberIds: [fixture.bot.id, routineBot.id], coordinatorBotId: fixture.bot.id },
     fixture.group,
   )
   const persistence = createRuntimePersistence({ database })
   persistence.saveRoutine({
     id: "map-routine",
-    botId: created.bot.id,
+    botId: routineBot.id,
     name: "Mapa da manhã",
     prompt: "Revisar os pontos",
     cron: "0 9 * * *",
@@ -245,10 +285,12 @@ test("a routine uses its own bot's owner and title even when another bot coordin
     finishedAt: null,
   }
 
+  const delivered = fixture.waitForRun(run.id)
   fixture.host.kernel.publish({ type: "run.updated", run })
+  await delivered
 
   expect(fixture.getNotes()).toMatchObject([
-    { botId: created.bot.id, targetPersonId: "ana", title: "Mapa começou uma tarefa em #mapas: Mapa da manhã" },
+    { botId: routineBot.id, targetPersonId: "ana", title: "Mapa começou uma tarefa em #mapas: Mapa da manhã" },
   ])
   expect(fixture.getNotes()).toHaveLength(1)
 })

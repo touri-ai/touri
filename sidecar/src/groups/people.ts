@@ -65,4 +65,4 @@ const getMentionMatch = <Person>(text: string, start: number, index: MentionInde
   return matched
 }
 
-const getNormalized = (value: string): string => value.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase()
+const getNormalized = (value: string): string => value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase()

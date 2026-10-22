@@ -62,6 +62,7 @@ test("a real channel bot ping reaches the owner's bell and attention sound", asy
     })
     expect(response.ok).toBe(true)
     await expect.poll(async () => (await getState()).runs.every((run) => run.status === "succeeded")).toBe(true)
+    await expect.poll(async () => (await getState()).notifications.some((note) => note.kind === "mention")).toBe(true)
     return { response: await response.json(), ...(await getState()) }
   })
   await page.addInitScript(() => {
