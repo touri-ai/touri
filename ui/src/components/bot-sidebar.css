@@ -822,8 +822,18 @@
   font-size: var(--fs-caption);
 }
 .r8-sidebar .bot-preview {
-  white-space: normal;
-  overflow-wrap: anywhere;
+  display: block;
+  max-width: 100%;
+  white-space: nowrap;
+}
+.r8-sidebar .bot-row-main .sidebar-row-label {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+  padding-block: var(--space-8);
+}
+.r8-sidebar .bot-row-main .sidebar-row-label strong {
+  flex-shrink: 0;
 }
 
 /* One count style (its accessible label describes the total); one state style (a dot). */
@@ -942,6 +952,27 @@
   margin: var(--space-2) var(--space-8) var(--space-8) var(--space-28);
   padding: 0 0 0 var(--space-8);
   border-left: 1px solid var(--border-subtle);
+}
+.bot-conversations-dialog.r8-sidebar .bot-thread-tree {
+  margin: 0;
+  padding: var(--space-8) var(--space-16) var(--space-16);
+  border: 0;
+  overflow: auto;
+  min-height: 0;
+}
+.bot-conversations-dialog.r8-sidebar .thread-copy {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+.bot-conversations-dialog .thread-selection-checkbox {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+}
+.bot-conversations-dialog .modal-close {
+  min-width: var(--touch-target-size);
+  min-height: var(--touch-target-size);
 }
 .r8-sidebar .thread-row {
   position: relative;

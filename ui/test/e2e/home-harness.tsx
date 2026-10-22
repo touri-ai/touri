@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client"
 import App from "../../src/App"
 import { createMockApi } from "../../src/api/mock"
 import { initializeTheme } from "../../src/design/theme"
+import { saveWorkspaceState } from "../../src/workspaceState"
 import "../../src/styles.css"
 
 initializeTheme()
@@ -9,6 +10,11 @@ const api = createMockApi()
 Object.assign(window, { workspaceQa: { api } })
 const state = api.getState()
 const scenario = new URLSearchParams(location.search).get("scenario")
+if (scenario === "sidebar-unread") {
+  await api.request("POST /threads", { botId: "bot-mark", title: "Próxima tarefa" })
+  await api.request("PATCH /threads/:id", { unread: 0 }, { id: "thread-mark" })
+  saveWorkspaceState({ botId: "bot-mark", threadId: "thread-mark" })
+}
 if (scenario === "thread-noise-before" || scenario === "thread-noise-main" || scenario === "thread-noise-grouped") {
   const bot = state.bots.find((item) => item.id === "bot-mark")
   if (!bot) throw new Error("Missing synthetic bot fixture")
@@ -76,7 +82,7 @@ else if (scenario === "failed") {
     state.messages.push(failed)
     thread.activeLeafId = failed.id
   }
-} else if (!scenario?.startsWith("thread-noise-")) {
+} else if (!scenario?.startsWith("thread-noise-") && scenario !== "sidebar-unread") {
   api.notify({
     kind: "question",
     botId: "bot-mark",

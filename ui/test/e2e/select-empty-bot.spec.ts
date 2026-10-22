@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test"
+import { showBotConversations } from "./home-navigation"
 
 test.use({ channel: "chromium", reducedMotion: "reduce", viewport: { width: 1440, height: 900 } })
 
@@ -28,7 +29,9 @@ test("a paused empty bot resumes into one focused conversation", async ({ page }
   await page.getByRole("button", { name: /^Panko / }).click()
   await expect(composer).toBeVisible()
 
-  const threads = page.locator('[data-bot-entry="bot-panko"] .thread-row')
+  await expect(page.locator('[data-bot-entry="bot-panko"] .thread-row')).toHaveCount(0)
+  const conversations = await showBotConversations(page, "Panko")
+  const threads = conversations.locator(".thread-row")
   await expect(threads).toHaveCount(1)
 })
 

@@ -96,7 +96,8 @@ export const ThreadActionsMenu = ({
           setOpen,
           style,
           title,
-          portalRoot,
+          // Keep actions above their management dialog without inheriting the card's transform.
+          portalRoot: trigger.current?.closest(".modal-backdrop") ?? portalRoot,
           trigger,
         })}
     </div>
@@ -135,6 +136,7 @@ const createMenu = ({
       style={style}
       ref={menu}
       role="menu"
+      data-escape-boundary
       aria-label={t("Thread actions for {title}", { title })}
       onMouseDown={(event) => event.preventDefault()}
       onKeyDown={(event) => {

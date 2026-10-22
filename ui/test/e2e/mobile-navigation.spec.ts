@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
+import { showBotConversations } from "./home-navigation"
 
 test.use({ channel: "chromium", viewport: { width: 390, height: 844 }, reducedMotion: "reduce" })
 
@@ -31,11 +32,13 @@ test("phone navigation traps focus and reaches conversations, search, creation a
   expect(accessibility.violations.filter((item) => ["serious", "critical"].includes(item.impact ?? ""))).toEqual([])
   await page.screenshot({ path: "test-results/mobile-navigation-drawer.png" })
 
-  await drawer.getByRole("button", { name: "Nova conversa", exact: true }).click()
+  const conversations = await showBotConversations(page)
+  await conversations.getByRole("button", { name: "Nova conversa", exact: true }).click()
   await expect(drawer).not.toBeVisible()
   await expect(page.locator('[data-message-id="m2"]')).toHaveCount(0)
   await menu.click()
-  await drawer.locator(".thread-row").filter({ hasText: "Campaign review" }).click()
+  await showBotConversations(page)
+  await conversations.locator(".thread-row").filter({ hasText: "Campaign review" }).click()
   await expect(drawer).not.toBeVisible()
   await expect(menu).toBeFocused()
   await expect(page.locator('[data-message-id="m2"]')).toBeVisible()

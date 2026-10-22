@@ -41,5 +41,12 @@ localStorage.setItem(
   "touri.workspace.v1",
   JSON.stringify({ botId: "bot-mark", threadId: "thread-mark", route: { section: "bots", screen: "chat" } }),
 )
-const root = document.getElementById("root")
-if (root) createRoot(root).render(<App kernel={{ services: { api } }} />)
+const start = async (): Promise<void> => {
+  await api.request("PATCH /bots/:id", { name: "Aurora de Produto" }, { id: "bot-onb" })
+  const root = document.getElementById("root")
+  if (!root) return
+
+  createRoot(root).render(<App kernel={{ services: { api } }} />)
+}
+
+void start()

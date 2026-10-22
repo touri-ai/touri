@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises"
 import { join } from "node:path"
 import { expect, type Page, test } from "@playwright/test"
+import { showBotConversations } from "./home-navigation"
 
 test.use({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" })
 
@@ -9,14 +10,9 @@ test.beforeEach(async ({ page }) => {
 })
 
 const openConversations = async (page: Page) => {
-  const menu = page.getByRole("button", { name: "Abrir menu", exact: true })
-  if (await menu.isVisible()) await menu.click()
-  const entry = page.locator('[data-bot-entry="bot-mark"]')
-  const rows = entry.locator(".thread-row:not(.routines-row)")
-  if ((await rows.count()) === 0) await entry.locator(".bot-row-main").click()
-  await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+  const conversations = await showBotConversations(page)
 
-  return rows
+  return conversations.locator(".thread-row:not(.routines-row)")
 }
 
 const capture = async (page: Page, name: string) => {
@@ -53,6 +49,8 @@ test("automatic task threads no longer flood the sidebar and task mode groups th
   const history = page.getByRole("region", { name: "Histórico de tarefas de lead.reply" })
   await expect(history.locator(".thread-row")).toHaveCount(30)
   await history.getByRole("button").last().click()
+  await showBotConversations(page)
+
   await expect(page.locator(".thread-row.selected").first()).toContainText("Tarefas lead.reply")
 })
 

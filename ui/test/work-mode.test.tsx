@@ -1,8 +1,10 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
 import { getRoutineSidebarFixture } from "./routine-sidebar-fixture"
+import { openConversations } from "./workspaceNavigation"
 
 const clearSidebarMode = (): void => window.localStorage.removeItem("touri.sidebar.mode")
 
@@ -146,7 +148,7 @@ describe("sidebar work mode", () => {
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
-    const conversations = screen.getByRole("region", { name: "Conversas de mark" })
+    const conversations = openConversations()
     const routineRow = within(conversations).getByRole("button", { name: /^Rotinas/ })
     expect(routineRow).toHaveTextContent(/Rotinas\s*30 hoje/)
     expect(conversations.querySelectorAll(".thread-row")).toHaveLength(2)
@@ -281,7 +283,7 @@ describe("sidebar design", () => {
     expect(channelRows[0]?.querySelectorAll(".channel-bot-avatar")).toHaveLength(2)
   })
 
-  it("shows direct messages as one line and keeps the channel header free of counts", async () => {
+  it("shows one quiet preview per direct message and keeps the channel header free of counts", async () => {
     const api = createMockApi()
     await createChannels(api, [2])
     window.localStorage.setItem("touri.sidebar.mode", "work")
@@ -293,7 +295,7 @@ describe("sidebar design", () => {
     expect(channels.querySelector(".group-sidebar-heading")).toHaveTextContent(/^Canais\s*\+$/)
     expect(
       document.querySelectorAll("#sidebar-mode-panel-work .bot-preview:not(.visually-hidden):not(.paused)"),
-    ).toHaveLength(0)
+    ).toHaveLength(api.getState().bots.filter((bot) => !bot.paused).length)
   })
 
   it("explains channels in the empty state and offers one way to create the first", async () => {
@@ -309,21 +311,65 @@ describe("sidebar design", () => {
     expect(await screen.findByRole("dialog", { name: "Criar canal" })).toBeVisible()
   })
 
-  it("collapses the selected bot's conversations when its row is clicked again", async () => {
+  it.each(["bots", "work"])("keeps %s rows compact through repeated pointer and keyboard selection", async (mode) => {
+    const user = userEvent.setup()
     const { api } = await getRoutineSidebarFixture(30, { todayRuns: true })
-    window.localStorage.setItem("touri.sidebar.mode", "bots")
+    window.localStorage.setItem("touri.sidebar.mode", mode)
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    const markRow = document.querySelector<HTMLButtonElement>('[data-bot-entry="bot-mark"] .bot-row-main')
-    if (!markRow) throw new Error("Missing mark row")
+    const panel = document.getElementById(`sidebar-mode-panel-${mode}`)
+    if (!panel) throw new Error("Missing bot navigation")
+    const markRow = panel.querySelector<HTMLButtonElement>('.bot-row-main:has([data-bot-id="bot-mark"])')
+    const otherRow = panel.querySelector<HTMLButtonElement>('.bot-row-main:has([data-bot-id="bot-onb"])')
+    if (!markRow || !otherRow) throw new Error("Missing bot rows")
 
-    expect(markRow).toHaveAttribute("aria-expanded", "true")
-    expect(screen.getByRole("region", { name: "Conversas de mark" })).toBeVisible()
+    await user.click(otherRow)
+    await screen.findByRole("textbox", { name: "Mensagem para onb" })
+    await user.click(markRow)
+    await user.click(markRow)
+    markRow.focus()
+    await user.keyboard("{Enter}")
 
-    fireEvent.click(markRow)
+    expect(panel.querySelectorAll(".bot-thread-tree, .thread-list-tools, .thread-row")).toHaveLength(0)
+    expect(markRow).not.toHaveAttribute("aria-expanded")
 
-    expect(markRow).toHaveAttribute("aria-expanded", "false")
+    await user.keyboard(" ")
+
+    expect(markRow).toHaveAttribute("aria-current", "page")
+    expect(markRow).not.toHaveAttribute("aria-expanded")
+    expect(markRow).not.toHaveAttribute("aria-haspopup")
+    expect(markRow.querySelectorAll(".bot-preview:not(.visually-hidden)")).toHaveLength(1)
+    expect(panel.querySelectorAll(".bot-thread-tree, .thread-list-tools, .thread-row")).toHaveLength(0)
     expect(screen.queryByRole("region", { name: "Conversas de mark" })).toBeNull()
+    expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+    expect(api.calls.some((call) => call.route === "POST /threads" || call.route === "POST /threads/delete")).toBe(
+      false,
+    )
+  })
+
+  it("opens management explicitly with the keyboard and returns focus without changing conversation", async () => {
+    const user = userEvent.setup()
+    render(<App kernel={{ services: { api: createMockApi() } }} />)
+    await screen.findByRole("textbox", { name: "Mensagem para mark" })
+    const actions = screen.getByRole("button", { name: "Ações de mark" })
+
+    actions.focus()
+    await user.keyboard("{ArrowDown}{Home}{ArrowDown}{ArrowDown}{Enter}")
+
+    const dialog = screen.getByRole("dialog", { name: "Conversas de mark" })
+    expect(dialog).toHaveAttribute("aria-modal", "true")
+    expect(within(dialog).getByRole("button", { name: "Selecionar", exact: true })).toBeVisible()
+    expect(within(dialog).getByRole("button", { name: "Nova conversa", exact: true })).toBeVisible()
+    expect(within(dialog).getByRole("button", { name: "Apagar conversas automáticas antigas…" })).toBeVisible()
+    expect(within(dialog).getByRole("button", { name: /Arquivadas/ })).toBeVisible()
+    expect(document.querySelector(".bot-row.selected .tb-avatar")).toHaveAttribute("data-bot-id", "bot-mark")
+    expect(within(dialog).getByRole("button", { name: "Fechar diálogo" })).toHaveFocus()
+
+    await user.keyboard("{Escape}")
+
+    expect(screen.queryByRole("dialog", { name: "Conversas de mark" })).toBeNull()
+    expect(actions).toHaveFocus()
+    expect(actions).toHaveAttribute("aria-expanded", "false")
   })
 
   it("shows the working summary only when nothing needs the user", async () => {
