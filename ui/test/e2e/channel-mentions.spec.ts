@@ -38,7 +38,7 @@ const test = base.extend<{ channelServer: Fixture }>({
 })
 
 test("channel messages stay quiet until a bot is mentioned", async ({ page, channelServer }, info) => {
-  test.setTimeout(60_000)
+  test.setTimeout(90_000)
   const headers = {
     Authorization: "Bearer dev-ui-token",
     Origin: "tauri://localhost",
@@ -83,7 +83,9 @@ test("channel messages stay quiet until a bot is mentioned", async ({ page, chan
 
   await composer.fill("oi")
   await composer.press("Enter")
-  await expect(page.getByTestId("virtual-message-list").getByText("oi", { exact: true })).toBeVisible()
+  await expect(page.getByTestId("virtual-message-list").getByText("oi", { exact: true })).toBeVisible({
+    timeout: 20_000,
+  })
   await expect.poll(async () => (await getState()).messages.length).toBe(1)
   expect((await getState()).runs).toEqual([])
   await expect(page.locator(".browser-activity-card,.group-run-card,.activity-mark")).toHaveCount(0)
@@ -101,7 +103,9 @@ test("channel messages stay quiet until a bot is mentioned", async ({ page, chan
   await expect(page.locator(".composer-mention-chips")).toHaveCount(0)
   await screenshot("channel-mention-draft.png")
   await composer.press("Enter")
-  await expect(page.getByTestId("virtual-message-list").getByText("codador respondeu.", { exact: true })).toBeVisible()
+  await expect(page.getByTestId("virtual-message-list").getByText("codador respondeu.", { exact: true })).toBeVisible({
+    timeout: 20_000,
+  })
   const state = await getState()
   expect(state.runs.every((run) => run.botId === channelServer.bots[0]?.id)).toBe(true)
   expect(

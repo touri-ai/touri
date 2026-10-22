@@ -61,9 +61,11 @@ test("a real channel bot ping reaches the owner's bell and attention sound", asy
       signal: AbortSignal.timeout(10_000),
     })
     expect(response.ok).toBe(true)
+    const posted = (await response.json()) as ApiRoutes["POST /threads/:id/messages"]["res"]
+    expect(posted.run).toBeTruthy()
     await expect.poll(async () => (await getState()).runs.every((run) => run.status === "succeeded")).toBe(true)
     await expect.poll(async () => (await getState()).notifications.some((note) => note.kind === "mention")).toBe(true)
-    return { response: await response.json(), ...(await getState()) }
+    return { response: posted, ...(await getState()) }
   })
   await page.addInitScript(() => {
     const original = AudioContext.prototype.createOscillator
