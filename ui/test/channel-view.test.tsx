@@ -28,6 +28,28 @@ const getChannel = () => {
 }
 
 describe("channel view", () => {
+  it("dismisses a team menu from its trigger when every action is disabled", () => {
+    const onOpenChange = vi.fn()
+    render(
+      <SidebarActionsMenu
+        label="Ações do time"
+        open
+        onOpenChange={onOpenChange}
+        actions={[
+          { label: "Perguntar a todos", onSelect: vi.fn(), disabled: true },
+          { label: "Pedir resumo do time", onSelect: vi.fn(), disabled: true },
+        ]}
+      />,
+    )
+    const trigger = screen.getByRole("button", { name: "Ações do time" })
+    trigger.focus()
+
+    fireEvent.keyDown(trigger, { key: "Escape" })
+
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(trigger).toHaveFocus()
+  })
+
   it("focuses an enabled team action when the empty composer disables asking everyone", () => {
     render(
       <SidebarActionsMenu
