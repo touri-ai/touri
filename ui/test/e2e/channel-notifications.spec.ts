@@ -94,6 +94,12 @@ test("a real channel bot ping reaches the owner's bell and attention sound", asy
   expect(state.notifications.filter((note) => note.kind === "mention")).toMatchObject([
     { targetPersonId: "owner", body: "@thiago preciso de você" },
   ])
+  await page.getByRole("button", { name: /^Work/ }).click()
+  await page
+    .getByRole("region", { name: "Canais" })
+    .getByRole("button", { name: /^produto/ })
+    .click()
+  await expect(page.getByRole("textbox", { name: "Mensagem para produto" })).toBeVisible()
   await page.getByRole("button", { name: /Notificações/ }).click()
   const center = page.getByRole("region", { name: "Central de notificações" })
   await expect(center.getByText("@codador mencionou você em #produto", { exact: true })).toBeVisible()

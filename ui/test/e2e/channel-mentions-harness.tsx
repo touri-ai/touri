@@ -1,11 +1,20 @@
-import type { ApiRoutes, Bot, BotGroup, Message, NotificationRecord, Run, Thread } from "@touri/contracts"
+import type {
+  ApiRoutes,
+  Bot,
+  BotGroup,
+  ChannelPerson,
+  Message,
+  NotificationRecord,
+  Run,
+  Thread,
+} from "@touri/contracts"
 import { createRoot } from "react-dom/client"
 import App from "../../src/App"
 import type { ApiRequest } from "../../src/api/client"
 import { createMockApi } from "../../src/api/mock"
 import "../../src/styles.css"
 
-type Fixture = { bots: Bot[]; group: BotGroup; thread: Thread }
+type Fixture = { bots: Bot[]; group: BotGroup; thread: Thread; people: ChannelPerson[] }
 type Send = ApiRoutes["POST /threads/:id/messages"]
 declare global {
   interface Window {
@@ -43,6 +52,7 @@ const created = await base.request("POST /groups", fixture.group)
 Object.assign(created.group, fixture.group)
 Object.assign(created.thread, fixture.thread)
 const request: ApiRequest = async (route, input, path) => {
+  if (route === "GET /groups/:id/people") return { people: fixture.people }
   if (route !== "POST /threads/:id/messages") return base.request(route, input, path)
 
   const result = await window.channelSend(input as Send["req"])

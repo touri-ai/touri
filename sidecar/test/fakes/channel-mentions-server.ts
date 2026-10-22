@@ -18,10 +18,9 @@ await initStore(host.kernel)
 await initGroups(host.kernel)
 await initNotify(host.kernel)
 const notifyFixture = process.env.TOURI_NOTIFY_FIXTURE === "1"
-if (notifyFixture)
-  host.kernel.services.provide("work.channelPeople", () => [
-    { id: "owner", name: "thiago", handle: "thiago", avatarSeed: "owner", role: "admin" },
-  ])
+host.kernel.services.provide("work.channelPeople", () => [
+  { id: "owner", name: "thiago", handle: "thiago", avatarSeed: "owner", role: "admin" },
+])
 const store = host.kernel.services.use("store.api")
 if (!store) throw new Error("Store missing")
 const database = host.kernel.db as Database
@@ -112,4 +111,5 @@ const stop = async () => {
 }
 process.once("SIGTERM", () => void stop())
 process.once("SIGINT", () => void stop())
-console.log(`CHANNEL_FIXTURE ${JSON.stringify({ port: host.handshake.port, bots, group, thread })}`)
+const people = host.kernel.services.use("work.channelPeople")?.(group.id) ?? []
+console.log(`CHANNEL_FIXTURE ${JSON.stringify({ port: host.handshake.port, bots, group, thread, people })}`)
