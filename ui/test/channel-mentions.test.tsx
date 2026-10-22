@@ -45,7 +45,7 @@ const getComposer = () => {
 }
 
 describe("channel mentions", () => {
-  it("offers bots and people, inserts a quoted mention chip with the keyboard and keeps typing", async () => {
+  it("offers bots and people, completes inline mentions with the keyboard and keeps typing", async () => {
     const user = userEvent.setup()
     const { input, send } = getComposer()
 
@@ -54,7 +54,7 @@ describe("channel mentions", () => {
     expect(within(screen.getByRole("listbox")).getAllByRole("option")).toHaveLength(3)
     await user.keyboard("{ArrowUp}{Enter}")
     expect(input).toHaveValue('@"Ana Silva" ')
-    expect(screen.getByRole("group", { name: "Membros mencionados" })).toHaveTextContent('@"Ana Silva"')
+    expect(screen.queryByRole("group", { name: "Membros mencionados" })).toBeNull()
     expect(send).not.toHaveBeenCalled()
 
     await user.type(input, "oi @cod")
@@ -62,6 +62,17 @@ describe("channel mentions", () => {
     await user.keyboard("{Tab}")
     expect(input).toHaveValue('@"Ana Silva" oi @Codador ')
     expect(input).toHaveFocus()
+  })
+
+  it("keeps names with a matching prefix as ordinary draft text", async () => {
+    const user = userEvent.setup()
+    const { input, send } = getComposer()
+
+    await user.type(input, "@CodadorExtra oi")
+
+    expect(input).toHaveValue("@CodadorExtra oi")
+    expect(screen.queryByRole("group", { name: "Membros mencionados" })).toBeNull()
+    expect(send).not.toHaveBeenCalled()
   })
 
   it("dismisses suggestions with Escape and preserves the draft", async () => {

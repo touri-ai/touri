@@ -144,7 +144,6 @@ export const Composer = ({
     ...mentionBots.map((bot) => ({ id: `bot:${bot.id}`, name: bot.name, bot })),
     ...mentionPeople.map((person) => ({ id: `person:${person.id}`, name: person.name, bot: null })),
   ]
-  const selectedMentions = mentionMembers.filter((member) => draft.includes(getMentionToken(member.name)))
   const suggestions =
     !mentionClosed && focused && mention
       ? mentionMembers
@@ -505,15 +504,6 @@ export const Composer = ({
           >
             {t("Pedir resumo do time")}
           </button>
-        </fieldset>
-      )}
-      {selectedMentions.length > 0 && (
-        <fieldset className="composer-mention-chips" aria-label={t("Mentioned members")}>
-          {selectedMentions.map((member) => (
-            <span className="composer-mention-chip" key={member.id}>
-              {getMentionToken(member.name)}
-            </span>
-          ))}
         </fieldset>
       )}
       <textarea
