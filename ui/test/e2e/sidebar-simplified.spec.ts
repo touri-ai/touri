@@ -5,7 +5,7 @@ import { expect, type Page, test } from "@playwright/test"
 
 const scenarios = [1440, 1024, 390].flatMap((width) => ["light", "dark"].map((theme) => ({ width, theme })))
 
-for (const { width, theme } of scenarios) {
+scenarios.forEach(({ width, theme }) => {
   test(`bot selection stays flat and channel controls fit at ${width}px in ${theme}`, async ({ page }) => {
     test.setTimeout(60_000)
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
@@ -76,7 +76,7 @@ for (const { width, theme } of scenarios) {
     )
     expect(targets.every(Boolean)).toBe(true)
   })
-}
+})
 
 const capture = async (page: Page, name: string): Promise<void> => {
   const directory = process.env.TOURI_E2E_EVIDENCE_DIR
