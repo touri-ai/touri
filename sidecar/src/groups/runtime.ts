@@ -63,7 +63,13 @@ const configuration = (bot: Bot) =>
 const terminal = (run: Run) => !["queued", "starting", "running"].includes(run.status)
 const fail = (errorCode: string, error: string): ToolResult => ({ success: false, errorCode, error })
 
-export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 120_000) => {
+// Channel turns get the same room as a direct conversation: a coding or browser task can take hours. The cap only catches a
+// turn that never ends. TOURI_GROUP_TURN_TIMEOUT_MS overrides it, never below one hour.
+export const DEFAULT_GROUP_TURN_TIMEOUT_MS = 6 * 60 * 60_000
+export const groupTurnTimeoutMs = (configured = Number(process.env.TOURI_GROUP_TURN_TIMEOUT_MS) || 0) =>
+  configured > 0 ? Math.max(configured, 60 * 60_000) : DEFAULT_GROUP_TURN_TIMEOUT_MS
+
+export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = groupTurnTimeoutMs()) => {
   const db = kernel.db as Database
   const store = kernel.services.use("store.api")
   if (!store) throw new Error("Store unavailable")
