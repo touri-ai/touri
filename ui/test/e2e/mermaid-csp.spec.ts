@@ -65,6 +65,9 @@ test.describe("mermaid production and desktop CSP", () => {
       "src/components/CronScreen.tsx",
       "src/features/work/WorkScreen.tsx",
       "src/components/WorkspaceScreens.tsx",
+      "src/components/GroupModal.tsx",
+      "src/components/GroupPanel.tsx",
+      "src/components/RoutineEditor.tsx",
     ].map((key) => manifest[key])
     expect(optionalModules.every((chunk) => chunk?.isDynamicEntry && !initialFiles.has(chunk.file))).toBe(true)
     const settings = Object.values(manifest).find((chunk) => chunk.name === "SettingsModal")

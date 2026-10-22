@@ -104,7 +104,7 @@ describe("sidebar work mode", () => {
     await screen.findByRole("textbox", { name: "Mensagem para Equipe QA" })
     expect(screen.getByText("Canais / Equipe QA")).toBeVisible()
     fireEvent.click(screen.getByRole("button", { name: "Editar canal" }))
-    const editChannel = screen.getByRole("dialog", { name: "Editar canal" })
+    const editChannel = await screen.findByRole("dialog", { name: "Editar canal" })
     expect(within(editChannel).getByRole("textbox", { name: "Nome do canal" })).toHaveValue("Equipe QA")
   })
 

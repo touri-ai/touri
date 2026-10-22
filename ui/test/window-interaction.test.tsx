@@ -44,5 +44,5 @@ test("all title bars drag through decorative children while navigation and heade
   const edit = screen.getByRole("button", { name: "Editar canal", exact: true })
   expect(edit).not.toHaveAttribute("data-tauri-drag-region")
   fireEvent.click(edit)
-  expect(screen.getByRole("dialog", { name: "Editar canal" })).toBeVisible()
+  expect(await screen.findByRole("dialog", { name: "Editar canal" })).toBeVisible()
 })
