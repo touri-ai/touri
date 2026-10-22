@@ -15,7 +15,10 @@ declare global {
 }
 const fixture = await window.channelFixture()
 const base = createMockApi()
+const { runs } = await base.request("GET /runs", {})
+await Promise.all(runs.map((run) => base.request("POST /runs/:id/cancel", {}, { id: run.id })))
 const state = base.getState()
+// The mock API keeps these fixture objects; seed their identities with the real server's IDs.
 fixture.bots.forEach((bot, index) => {
   const member = state.bots[index]
   if (member) Object.assign(member, bot)

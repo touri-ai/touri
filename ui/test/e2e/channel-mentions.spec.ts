@@ -88,6 +88,7 @@ test("channel messages stay quiet until a bot is mentioned", async ({ page, chan
   expect((await getState()).runs).toEqual([])
   await expect(page.locator(".browser-activity-card,.group-run-card,.activity-mark")).toHaveCount(0)
   await expect(page.getByText("Ainda aguardando a IA responder.")).toHaveCount(0)
+  await expect(page.getByText(/^Trabalhando/)).toHaveCount(0)
   await screenshot("channel-plain-message.png")
 
   await composer.fill("@")
