@@ -30,6 +30,7 @@ import {
   requiresBrowserKeyInspection,
   requiresBrowserTakeover,
 } from "./decision"
+import { reportBrowserHandoffExpiry } from "./handoff-expiry"
 import { createBrowserPreviewScopes } from "./preview-scopes"
 import type { BrowserEngine } from "./types"
 import { asArray, asBoolean, asNumber, asRecord, asString } from "./utils"
@@ -585,6 +586,8 @@ export const init = async (
   kernel.services.provide("browser.cancelRequest", ({ runId, reason }) => {
     const request = channelRuns.cancelRequest(runId, reason === "timeout" ? "failed" : "canceled")
     if (!request) return null
+    if (reason === "timeout")
+      reportBrowserHandoffExpiry({ kernel, runId: request.runId, originalRunId: request.requestId })
     engine
       .tabsForBot(request.botId)
       .filter(
@@ -642,6 +645,7 @@ export const init = async (
         const intent =
           args.target === undefined ? (asString(args.expression) ?? "") : getTargetIntent(target(args.target))
         const reasonCode = getBrowserTakeoverReasonCode({ error: result.error, intent, pageUrl })
+        const managedNeedsYou = channelRuns.needsYou(input.ctx.runId, reasonCode)
         return engine.requestTakeover({
           tabId,
           botId: input.ctx.botId,
@@ -649,6 +653,7 @@ export const init = async (
           reasonCode,
           timeoutMs: TAKEOVER_TIMEOUT_MS,
           signal: input.ctx.signal,
+          notify: !managedNeedsYou,
           threadId: input.ctx.threadId,
           runId: input.ctx.runId,
         })
