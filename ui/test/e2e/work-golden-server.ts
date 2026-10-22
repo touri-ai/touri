@@ -6,7 +6,6 @@ import type { Page } from "@playwright/test"
 
 const root = resolve(import.meta.dirname, "../../..")
 const serverUrl = "http://127.0.0.1:18795"
-const wait = (ms: number) => new Promise((done) => setTimeout(done, ms))
 
 export const createWorkGoldenServer = async () => {
   const directory = await mkdtemp(join(tmpdir(), "touri-work-golden-"))
@@ -127,17 +126,26 @@ const getPairingCode = async (data: string): Promise<string> => {
   return match[1]
 }
 
-const waitForServer = async (child: ChildProcess) => {
-  for (const _attempt of Array.from({ length: 300 })) {
-    if (child.exitCode !== null || child.signalCode !== null) throw new Error("Synthetic server exited")
-    const ready = await fetch(`${serverUrl}/pair`, { signal: AbortSignal.timeout(500) })
-      .then((response) => response.ok)
-      .catch(() => false)
-    if (ready) return
-    await wait(100)
-  }
-  throw new Error("Synthetic server startup timed out")
-}
+const waitForServer = (child: ChildProcess) =>
+  new Promise<void>((done, reject) => {
+    // Pairing is reachable before module initialization; wait for the CLI's completed startup instead.
+    const finish = (error?: Error) => {
+      clearTimeout(timeout)
+      child.stdout?.off("data", onOutput)
+      child.off("exit", onExit)
+      child.off("error", finish)
+      if (error) reject(error)
+      else done()
+    }
+    const onOutput = (chunk: Buffer) => {
+      if (chunk.toString().includes("listening on")) finish()
+    }
+    const onExit = () => finish(new Error("Synthetic server exited"))
+    const timeout = setTimeout(() => finish(new Error("Synthetic server startup timed out")), 60_000)
+    child.stdout?.on("data", onOutput)
+    child.once("exit", onExit)
+    child.once("error", finish)
+  })
 
 const stop = async (child: ChildProcess) => {
   if (child.exitCode !== null || child.signalCode !== null) return

@@ -1872,11 +1872,17 @@ test("restart resumes a group routine run and confirms its result", async () => 
   if (!started.success) throw new Error(started.error)
   await until(() => f.order.length === 1)
   f.runtime.shutdown({ appRestart: true })
-  f.db
-    .query(
-      "UPDATE runs SET status='interrupted',error_class='app_restart',finished_at=? WHERE id IN (SELECT run_id FROM group_run_links WHERE turn_id=?)",
-    )
-    .run(Date.now(), started.routineRun.runId)
+  const members = f.db.query("SELECT run_id FROM group_run_links WHERE turn_id=?").all(started.routineRun.runId) as {
+    run_id: string
+  }[]
+  members.forEach(({ run_id }) => {
+    const run = f.persistence.getRun(run_id)
+    if (!run) return
+
+    const interrupted: Run = { ...run, status: "interrupted", errorClass: "app_restart", finishedAt: Date.now() }
+    f.persistence.saveRun(interrupted)
+    f.host.kernel.publish({ type: "run.updated", run: interrupted })
+  })
   await until(() => f.persistence.getRun(started.routineRun.runId ?? "")?.status === "interrupted")
   // A restarted process starts with a fresh engine, so nothing is cached yet.
   const restartedEngine = routineEngine(f)
