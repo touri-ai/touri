@@ -273,7 +273,9 @@ test("bot menu flips and shifts after resizing, tracks scrolling, and stays in t
   expect(anchor.y + anchor.height).toBeGreaterThan(600 - rect.height)
   expect(rect.y + rect.height).toBeLessThanOrEqual(anchor.y)
   await page.setViewportSize({ width: 700, height: 500 })
-  // Leave room for the next scroll so viewport clamping cannot mask anchor tracking.
+  await exposed(page, menu)
+  // Check anchor tracking with room above the longer menu, after checking viewport clamping.
+  await page.setViewportSize({ width: 700, height: 800 })
   const botPanel = page.locator("#sidebar-mode-panel-bots")
   await page.addStyleTag({ content: "#sidebar-mode-panel-bots { padding-bottom: 60px !important; }" })
   await botPanel.evaluate((element) => {

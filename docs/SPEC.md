@@ -424,7 +424,7 @@ channel shows a short introduction and member avatars. The composer keeps team a
 
 Bot and direct-message rows show an avatar, name, activity time and one preview line. Selecting a bot
 opens its conversation without expanding management controls. In Bots, a separate chevron reveals
-at most five conversations, including the selected one, and appears only when there is more than one.
+at most five conversations and appears only when there is more than one.
 "Ver todas" opens history in pages of 100. The bot's ellipsis menu retains new conversations,
 selection, archive and automatic-history cleanup, alongside settings and routines. Deletion keeps
 confirmation and undo. Invite is beside the channel heading; interrupted tasks appear in the footer
