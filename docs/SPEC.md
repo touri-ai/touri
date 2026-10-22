@@ -408,9 +408,11 @@ Groups have a name, mascot shape/seed/color, an ordered roster and an optional c
 from that roster. Each group owns multiple conversations. Migration `0008.sql` is additive;
 existing bot conversations, permissions and provider sessions are preserved.
 
-Dispatch order: coordinator when configured, otherwise explicitly @mentioned members,
-otherwise all members in roster order. Multiword names can be quoted (`@"Dev Bot"`). A queue
-serializes user turns across all conversations in the same group. Each member uses an internal
+Human channel messages dispatch only to explicitly mentioned bots, in mention order.
+Mentioning a person never dispatches a bot. The explicit everyone and summary actions select
+their own recipients; routines retain the coordinator / mentioned-members / all-members order.
+Multiword names can be quoted (`@"Dev Bot"`). A queue serializes user turns across all conversations
+in the same group. Each member uses an internal
 conversation with its own native session, machine, instructions, history and approvals. Replies
 are persisted into the shared transcript with the actual member's identity. These internal
 conversations are excluded from the bot's ordinary conversation list.
