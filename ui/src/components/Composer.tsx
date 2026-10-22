@@ -139,6 +139,7 @@ export const Composer = ({
   const [mentionIndex, setMentionIndex] = useState(0)
   const [mentionClosed, setMentionClosed] = useState(false)
   const mentionListId = useId()
+  const mentionSelection = useRef<{ draft: string; position: number } | null>(null)
   const mention = draft.slice(0, caret).match(/(?:^|\s)@([^@\n]*)$/u)
   const mentionMembers = [
     ...mentionBots.map((bot) => ({ id: `bot:${bot.id}`, name: bot.name, bot })),
@@ -154,13 +155,23 @@ export const Composer = ({
   const insertMention = (bot: { name: string }) => {
     const start = caret - (mention?.[1]?.length ?? 0) - 1
     const token = `${getMentionToken(bot.name)} `
-    onDraft(draft.slice(0, start) + token + draft.slice(caret))
+    const nextDraft = draft.slice(0, start) + token + draft.slice(caret)
+
+    mentionSelection.current = { draft: nextDraft, position: start + token.length }
+    onDraft(nextDraft)
     setMentionClosed(true)
-    requestAnimationFrame(() => {
-      inputRef.current?.focus()
-      inputRef.current?.setSelectionRange(start + token.length, start + token.length)
-    })
   }
+  // Commit the caret with the mention so a later frame cannot rewind newly typed text.
+  useLayoutEffect(() => {
+    const selection = mentionSelection.current
+    if (!selection) return
+
+    mentionSelection.current = null
+    if (selection.draft !== draft) return
+
+    inputRef.current?.focus()
+    inputRef.current?.setSelectionRange(selection.position, selection.position)
+  }, [draft, inputRef])
   const [files, setFiles] = useState<Array<AttachedFile>>([])
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)

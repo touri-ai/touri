@@ -75,6 +75,20 @@ describe("channel mentions", () => {
     expect(send).not.toHaveBeenCalled()
   })
 
+  it("positions the caret after a completed mention before the next keyboard event", () => {
+    const { input, send } = getComposer()
+    if (!(input instanceof HTMLTextAreaElement)) throw new Error("Composer missing")
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: "@cod tarefa", selectionStart: 4, selectionEnd: 4 } })
+
+    fireEvent.keyDown(input, { key: "Enter" })
+
+    expect(input).toHaveValue("@Codador  tarefa")
+    expect(input.selectionStart).toBe(9)
+    expect(input.selectionEnd).toBe(9)
+    expect(send).not.toHaveBeenCalled()
+  })
+
   it("dismisses suggestions with Escape and preserves the draft", async () => {
     const user = userEvent.setup()
     const { input, send } = getComposer()
