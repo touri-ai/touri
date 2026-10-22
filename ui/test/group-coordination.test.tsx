@@ -249,7 +249,7 @@ describe("group coordination", () => {
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Perguntar a todos", exact: true })))
 
     expect(api.calls.find((call) => call.route === "POST /threads/:id/messages")?.input).toMatchObject({
-      text: "Revisem este plano",
+      text: "@mark @onb Revisem este plano",
       groupAction: "ask_all",
     })
     await screen.findByText(
@@ -259,6 +259,7 @@ describe("group coordination", () => {
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Pedir resumo do time", exact: true })))
     expect(api.calls.filter((call) => call.route === "POST /threads/:id/messages").at(-1)?.input).toMatchObject({
       groupAction: "summarize",
+      text: expect.stringMatching(/^@mark /),
     })
     expect(input).toHaveValue("Meu próximo pedido")
   })
