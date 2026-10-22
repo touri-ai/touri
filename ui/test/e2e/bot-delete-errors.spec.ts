@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test"
+import { openBotActions } from "./home-navigation"
 
 test.use({ channel: "chromium", reducedMotion: "reduce", viewport: { width: 1280, height: 900 } })
 
@@ -103,7 +104,7 @@ for (const locale of ["pt-BR", "en"] as const) {
 }
 
 const openDeletion = async (page: Page, entry: "sidebar" | "settings"): Promise<void> => {
-  await page.getByRole("button", { name: "Ações de mark" }).click()
+  await openBotActions(page, "mark")
   if (entry === "sidebar") {
     await page.getByRole("menuitem", { name: "Excluir bot" }).click()
     return

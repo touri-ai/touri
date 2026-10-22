@@ -5,7 +5,7 @@ import type { UiApi } from "../../src/api/client"
 
 const evidence = resolve(process.env.TOURI_GROUP_DELETE_EVIDENCE_DIR ?? "test-results/group-delete")
 
-test("deletes a group from its sidebar menu after explicit confirmation", async ({ page }) => {
+test("deletes a channel from its sidebar menu after explicit confirmation", async ({ page }) => {
   mkdirSync(evidence, { recursive: true })
   await page.setViewportSize({ width: 1280, height: 900 })
   await page.emulateMedia({ reducedMotion: "reduce" })
@@ -22,27 +22,28 @@ test("deletes a group from its sidebar menu after explicit confirmation", async 
       coordinatorBotId: "bot-mark",
     })
   })
-  const groups = page.getByRole("region", { name: "Grupos" })
+  await page.getByRole("tab", { name: /^Work,/ }).click()
+  const groups = page.getByRole("region", { name: "Canais" })
 
-  await groups.getByRole("button", { name: "Equipe QA", exact: true }).click()
+  await groups.getByRole("button", { name: /^Equipe QA/ }).click()
   await expect(page.getByRole("textbox", { name: "Mensagem para Equipe QA" })).toBeVisible()
-  await groups.getByRole("button", { name: "Ações do grupo Equipe QA" }).click()
-  await page.getByRole("menuitem", { name: "Apagar grupo" }).click()
+  await groups.getByRole("button", { name: "Ações do canal Equipe QA" }).click()
+  await page.getByRole("menuitem", { name: "Apagar canal" }).click()
 
-  const dialog = page.getByRole("dialog", { name: "Apagar grupo" })
-  const confirm = dialog.getByRole("button", { name: "Apagar grupo" })
+  const dialog = page.getByRole("dialog", { name: "Apagar canal" })
+  const confirm = dialog.getByRole("button", { name: "Apagar canal" })
   await expect(confirm).toBeDisabled()
   await expect(dialog).toContainText("Os bots e suas conversas individuais são preservados.")
-  await dialog.getByLabel("Digite o nome do grupo: Equipe QA").fill("Equipe QA")
+  await dialog.getByLabel("Digite o nome do canal: Equipe QA").fill("Equipe QA")
   await expect(confirm).toBeEnabled()
   await page.screenshot({ path: `${evidence}/group-delete-confirm.png` })
 
   await confirm.click()
 
   await expect(dialog).toHaveCount(0)
-  await expect(groups.getByRole("button", { name: "Equipe QA", exact: true })).toHaveCount(0)
+  await expect(groups.getByRole("button", { name: /^Equipe QA/ })).toHaveCount(0)
   await expect(page.getByRole("textbox", { name: "Mensagem para mark", exact: true })).toBeVisible()
-  await expect(page.locator('[data-bot-entry="bot-onb"]')).toBeVisible()
+  await expect(page.locator('[data-work-bot-entry="bot-onb"]')).toBeVisible()
   await page.screenshot({ path: `${evidence}/group-delete-complete.png` })
 })
 

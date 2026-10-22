@@ -20,9 +20,8 @@ describe("group coordination", () => {
     })
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    fireEvent.click(
-      within(screen.getByRole("region", { name: "Grupos" })).getByRole("button", { name: "Equipe", exact: true }),
-    )
+    fireEvent.click(screen.getByRole("tab", { name: /^Work,/ }))
+    fireEvent.click(within(screen.getByRole("region", { name: "Canais" })).getByRole("button", { name: /^Equipe/ }))
     await screen.findByRole("textbox", { name: "Mensagem para Equipe" })
     const thread = api.getState().threads.find((candidate) => candidate.groupId)
     if (!thread) throw new Error("Group thread missing")
@@ -242,9 +241,8 @@ describe("group coordination", () => {
     })
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    fireEvent.click(
-      within(screen.getByRole("region", { name: "Grupos" })).getByRole("button", { name: "Equipe", exact: true }),
-    )
+    fireEvent.click(screen.getByRole("tab", { name: /^Work,/ }))
+    fireEvent.click(within(screen.getByRole("region", { name: "Canais" })).getByRole("button", { name: /^Equipe/ }))
     const input = await screen.findByRole("textbox", { name: "Mensagem para Equipe" })
     fireEvent.change(input, { target: { value: "Revisem este plano" } })
 

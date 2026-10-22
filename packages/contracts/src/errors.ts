@@ -93,6 +93,14 @@ export const errorRegistry = {
     "Não foi possível apagar os logins do bot. Desbloqueie o cofre do sistema e tente excluir novamente.",
     409,
   ),
+  "TOURI-E1017": entry(
+    "kernel",
+    "public-address",
+    false,
+    "Para convidar pessoas, configure o endereço público HTTPS em Pessoas nas preferências.",
+    409,
+  ),
+  "TOURI-E1018": entry("kernel", "public-address", false, "Informe um endereço HTTPS válido, sem caminho.", 400),
   "TOURI-E1003": entry("kernel", "authentication", false, "Conecte este dispositivo ao touri novamente.", 401),
   "TOURI-E1004": entry("kernel", "authorization", false, "Esta ação não está autorizada.", 403),
   "TOURI-E1005": entry(
@@ -281,6 +289,8 @@ export const errorRegistry = {
 export type RegisteredErrorCode = keyof typeof errorRegistry
 
 const aliases: Record<string, RegisteredErrorCode> = {
+  PUBLIC_ADDRESS_REQUIRED: "TOURI-E1017",
+  PUBLIC_ADDRESS_INVALID: "TOURI-E1018",
   ATTACHMENT_TOO_LARGE: "TOURI-E2003",
   MCP_EXECUTABLE_NOT_FOUND: "TOURI-E1012",
   MCP_CONNECTION_FAILED: "TOURI-E1013",

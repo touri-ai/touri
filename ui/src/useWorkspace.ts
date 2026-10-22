@@ -2,6 +2,7 @@ import type {
   ApiRoutes,
   Bot,
   BotGroup,
+  BrowserChannelRun,
   BrowserTabInfo,
   DoctorReport,
   GroupAction,
@@ -64,6 +65,7 @@ export type WorkspaceData = {
   processes: Array<ProcessEntry>
   previews: Array<PreviewTarget>
   browserTabs: Array<BrowserTabInfo & { ownerBotId: Id | null }>
+  browserRuns?: Array<BrowserChannelRun>
   routineHost: HostKind
   routines: Array<Routine>
   routineRuns: Array<RoutineRun>
@@ -164,6 +166,7 @@ const emptyState = (): WorkspaceData => ({
   processes: [],
   previews: [],
   browserTabs: [],
+  browserRuns: [],
   routineHost: "computer",
   routines: [],
   routineRuns: [],
@@ -537,6 +540,23 @@ const lastActiveThread = (threads: Thread[], runs: Run[], botId: Id, rememberedI
   )
 }
 
+const getProcessScope = (bot: Bot | undefined): string | null => {
+  if (!bot) return null
+  if (bot.machine === "local") return "local"
+
+  return `${bot.machine}:${bot.id}`
+}
+
+/** Keep a process list only when both its project and computer scope still match the selected bot. */
+const getProcessesForBot = (current: WorkspaceData, bot: Bot | undefined): ProcessEntry[] => {
+  if (!bot?.projectId || current.activeProjectId !== bot.projectId) return []
+
+  const previousBot = current.bots.find((candidate) => candidate.id === current.selectedBotId)
+  if (getProcessScope(previousBot) !== getProcessScope(bot)) return []
+
+  return current.processes
+}
+
 const getDraftThread = (botId: Id, groupId?: Id): Thread => {
   const now = Date.now()
   return {
@@ -862,6 +882,7 @@ export const useWorkspace = (
           projects: projectResponse.projects,
           previews: previewResponse.previews,
           browserTabs: browserResponse.tabs,
+          browserRuns: activityResponse.browserRuns ?? [],
           routineHost: routinesResponse.hostKind ?? routinesResponse.host ?? "computer",
           routines: uniqueById(routinesResponse.routines),
           routineRuns: uniqueById(routineRunsResponse.routineRuns),
@@ -936,6 +957,17 @@ export const useWorkspace = (
     const unsubscribe = api.subscribe((envelope: UiEventEnvelope) => {
       const event = envelope.event
       localResponseTimings().observe(event)
+      if (event.type === "browser.channel_run") {
+        setData((current) =>
+          Object.assign({}, current, {
+            browserRuns: (current.browserRuns ?? [])
+              .filter((run) => run.runId !== event.run.runId)
+              .concat(event.run)
+              .slice(-200),
+          }),
+        )
+        return
+      }
       if (event.type === "thread.updated" && event.thread.groupThreadId) {
         privateThreads.current.add(event.thread.id)
         return
@@ -1144,6 +1176,7 @@ export const useWorkspace = (
               messages: reconcileApprovalMessages(current.messages, notifications, activity.messages),
               activityMessages: current.activityMessages.reduce(updateMessage, activity.messages.map(activityMessage)),
               pendingRequestsOnReturn: countPendingRequests(notifications, messages),
+              browserRuns: activity.browserRuns ?? [],
             }
           })
           const threadId = currentData.current.threadCreation ? null : currentData.current.selectedThreadId
@@ -1264,7 +1297,7 @@ export const useWorkspace = (
           composerKey,
           selectedThreadId: draftThread?.id ?? null,
           activeProjectId: bot?.projectId ?? null,
-          processes: [],
+          processes: getProcessesForBot(current, bot),
         }
       }
       return {
@@ -1274,7 +1307,7 @@ export const useWorkspace = (
         composerKey: null,
         selectedThreadId: thread.id,
         activeProjectId: bot?.projectId ?? null,
-        processes: [],
+        processes: getProcessesForBot(current, bot),
       }
     })
   }, [])

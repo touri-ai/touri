@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page, test } from "@playwright/test"
+import { openBotActions } from "./home-navigation"
 
 const sizes = [
   { width: 800, height: 600 },
@@ -15,7 +16,7 @@ const openWorkspace = async (page: Page, harness = "motion-app.html") => {
 
 const botMenu = async (page: Page, action: string) => {
   if ((page.viewportSize()?.width ?? 0) < 620) await page.getByRole("button", { name: "Abrir menu" }).click()
-  await page.getByRole("button", { name: "Ações de mark", exact: true }).click()
+  await openBotActions(page)
   // Keyboard activation also works with WebKit's native mouse-focus behavior.
   await page.getByRole("menuitem", { name: action, exact: true }).press("Enter")
 }

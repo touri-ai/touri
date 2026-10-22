@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
-import { showBotRoutines } from "./home-navigation"
+import { showBotChat, showBotRoutines } from "./home-navigation"
 
 const capture = process.env.DESIGN_CAPTURE
 test.use({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" })
@@ -14,13 +14,13 @@ test("design: stable workspace captures", async ({ page }) => {
     await page.evaluate((value) => {
       document.documentElement.dataset.theme = value
     }, theme)
-    await page.getByRole("button", { name: /^Bots/ }).click()
+    await showBotChat(page)
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (capture) await page.screenshot({ path: `../docs/qa/design/${capture}-chat-${theme}.png` })
     await showBotRoutines(page)
     await expect(page.getByRole("heading", { name: "Rotinas", exact: true })).toBeVisible()
     if (capture) await page.screenshot({ path: `../docs/qa/design/${capture}-cron-${theme}.png` })
-    await page.getByRole("button", { name: /^Bots/ }).click()
+    await showBotChat(page)
     if (!(await page.getByRole("button", { name: "Preview do projeto" }).isVisible()))
       await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
     await page.getByRole("button", { name: "Preview do projeto" }).click()
@@ -42,7 +42,7 @@ for (const theme of ["dark", "light"]) {
     for (const screen of ["chat", "cron", "preview"]) {
       if (screen === "cron") await showBotRoutines(page)
       if (screen === "preview") {
-        await page.getByRole("button", { name: /^Bots/ }).click()
+        await showBotChat(page)
         if (!(await page.getByRole("button", { name: "Preview do projeto" }).isVisible()))
           await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
         await page.getByRole("button", { name: "Preview do projeto" }).click()

@@ -97,6 +97,7 @@ export const InlineLivePreview = ({ parts, finished }: { parts: MessagePart[]; f
         setFailed(true)
       },
       setWaitingReason,
+      { onReset: () => setImage(undefined) },
     )
   }, [wanted, lease, api, botId, machineKind, tabId])
 

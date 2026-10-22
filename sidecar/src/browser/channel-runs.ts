@@ -121,6 +121,7 @@ export const createChannelBrowserRuns = ({
       .get(runId, runId, runId) as BrowserChannelRunRow | null) ?? null
   const toPublic = (row: BrowserChannelRunRow): BrowserChannelRun => ({
     runId: row.run_id,
+    activeRunId: row.current_run_id,
     groupId: row.group_id ?? "",
     threadId: row.thread_id,
     botId: row.bot_id,

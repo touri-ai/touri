@@ -3,7 +3,7 @@ import { AVATAR_COLOR_CHOICES, avatarColorFor } from "@touri/contracts/avatar"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigation"
 import { userFacingError } from "../errors"
-import { getRoutineSkipSummary, t } from "../i18n"
+import { getRoutineRunDateLabel, getRoutineSkipSummary, t } from "../i18n"
 import { draftFromRoutine, newRoutineDraft } from "../routineDraft"
 import type { WorkspaceActions } from "../useWorkspace"
 import type { RoutineHistoryTarget } from "../workspaceState"
@@ -35,6 +35,46 @@ type CronScreenProps = {
 
 type RoutineEditorState = { routine: Routine | null; botId: Id; isNew: boolean } | null
 const HISTORY_PAGE_SIZE = 50
+
+const getRoutineDayKey = (timestamp: number, timeZone: string): string => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(timestamp)
+  const year = parts.find((part) => part.type === "year")?.value ?? "0000"
+  const month = parts.find((part) => part.type === "month")?.value ?? "00"
+  const day = parts.find((part) => part.type === "day")?.value ?? "00"
+
+  return `${year}-${month}-${day}`
+}
+
+const getRoutineDayLabel = (timestamp: number, timeZone: string): string => {
+  const todayKey = getRoutineDayKey(Date.now(), timeZone)
+  const runDayKey = getRoutineDayKey(timestamp, timeZone)
+  if (runDayKey === todayKey) return t("Hoje")
+
+  const yesterdayKey = new Date(Date.parse(`${todayKey}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10)
+  if (runDayKey === yesterdayKey) return t("Ontem")
+
+  return new Intl.DateTimeFormat("pt-BR", { timeZone, dateStyle: "full" }).format(timestamp)
+}
+
+const getRoutineState = (
+  enabled: boolean,
+  awaiting: boolean,
+  busy: boolean,
+  latestRun: RoutineRun | undefined,
+): { label: string; tone: string } => {
+  if (!enabled) return { label: t("Routine paused"), tone: "" }
+  if (awaiting) return { label: t("Waiting for approval"), tone: "is-warning" }
+  if (busy) return { label: t("Em execução"), tone: "is-info" }
+  if (latestRun?.status === "failed") return { label: t("Falhou"), tone: "is-error" }
+  if (latestRun?.status === "succeeded") return { label: t("Routine completed"), tone: "is-success" }
+
+  return { label: t("Routine active"), tone: "is-success" }
+}
 
 export const calendarBotColors = (bots: Array<Bot>): Map<Id, string> => {
   const used = new Set<string>()
@@ -283,15 +323,7 @@ const CronScreen = ({
                   const awaiting =
                     latestRun?.status === "running" &&
                     pendingApprovals.some((target) => target.threadId === latestRun.threadId)
-                  const result = awaiting
-                    ? "Aguardando aprovação"
-                    : busy
-                      ? "Em execução"
-                      : latestRun?.status === "succeeded"
-                        ? "Concluída"
-                        : latestRun?.status === "failed"
-                          ? "Falhou"
-                          : null
+                  const state = getRoutineState(routine.enabled, awaiting, busy, latestRun)
                   return (
                     <article className={`routine-item ${routine.enabled ? "" : "is-paused"}`} key={routine.id}>
                       <BotAvatar bot={bot ?? { id: routine.botId, color: null }} size={32} />
@@ -301,16 +333,7 @@ const CronScreen = ({
                         <RoutineSchedule routine={routine} />
                       </span>
                       <span className="routine-status">
-                        <span className={`screen-status ${routine.enabled ? "is-success" : ""}`}>
-                          {routine.enabled ? "Ativa" : "Pausada"}
-                        </span>
-                        {result && (
-                          <span
-                            className={`screen-status ${awaiting ? "is-warning" : busy ? "is-info" : result === "Falhou" ? "is-error" : "is-success"}`}
-                          >
-                            {result}
-                          </span>
-                        )}
+                        <span className={`screen-status ${state.tone}`}>{state.label}</span>
                         <small>
                           {routine.enabled && routine.nextRunAt
                             ? `Próxima: ${formatNextRun(routine.nextRunAt)}`
@@ -409,27 +432,53 @@ const CronScreen = ({
                   total: historyRuns.length,
                 })}
               </p>
-              <ul>
-                {visibleHistoryRuns.map((run) => {
+              <ul className="routine-history-list">
+                {visibleHistoryRuns.map((run, index) => {
                   const routine = routines.find((routine) => routine.id === run.routineId)
                   const threadId = run.threadId
+                  const timeZone = routine?.timezone ?? "UTC"
+                  const dayKey = getRoutineDayKey(run.scheduledFor, timeZone)
+                  const previousRun = visibleHistoryRuns[index - 1]
+                  const previousRoutine = previousRun
+                    ? routines.find((item) => item.id === previousRun.routineId)
+                    : undefined
+                  const isNewDay =
+                    !previousRun ||
+                    dayKey !== getRoutineDayKey(previousRun.scheduledFor, previousRoutine?.timezone ?? "UTC")
+                  const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
 
                   return (
                     <li key={run.id}>
-                      <strong>{routine?.name}</strong> ·{" "}
-                      {new Date(run.scheduledFor).toLocaleString("pt-BR", { timeZone: routine?.timezone ?? "UTC" })} ·{" "}
-                      {routine?.timezone} · {t(run.status)}
+                      {isNewDay && (
+                        <h3 className="routine-history-day">{getRoutineDayLabel(run.scheduledFor, timeZone)}</h3>
+                      )}
+                      <div className="routine-history-run">
+                        <span className="routine-history-copy">
+                          <strong>{routine?.name}</strong>
+                          <time dateTime={new Date(run.scheduledFor).toISOString()}>
+                            {getRoutineRunDateLabel(run.scheduledFor, "pt-BR", timeZone)}
+                          </time>
+                          {routine?.timezone !== userTimeZone && routine?.timezone && <small>{routine.timezone}</small>}
+                        </span>
+                        <span className={`routine-history-status routine-history-status-${run.status}`}>
+                          {t(run.status)}
+                        </span>
+                        {threadId && onOpenThread ? (
+                          <button type="button" className="outline-button" onClick={() => onOpenThread(threadId)}>
+                            {t("Open routine conversation")}
+                          </button>
+                        ) : (
+                          <span />
+                        )}
+                      </div>
                       {run.status === "skipped" && (
-                        <p>
+                        <p className="routine-history-note">
                           {getRoutineSkipSummary(run.summary ?? "") ??
                             t("Disparo não executado: touri indisponível ou execução anterior em andamento.")}
                         </p>
                       )}
-                      {run.triggerSource === "catch-up" && <p>{t("Execução de recuperação")}</p>}
-                      {threadId && onOpenThread && (
-                        <button type="button" className="outline-button" onClick={() => onOpenThread(threadId)}>
-                          {t("Open routine conversation")}
-                        </button>
+                      {run.triggerSource === "catch-up" && (
+                        <p className="routine-history-note">{t("Execução de recuperação")}</p>
                       )}
                     </li>
                   )

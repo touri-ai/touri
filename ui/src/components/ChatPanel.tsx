@@ -1,6 +1,7 @@
 import type {
   Bot,
   BotGroup,
+  BrowserChannelRun,
   GroupAction,
   Id,
   MachineState,
@@ -27,7 +28,13 @@ import type { UiApi } from "../api/client"
 import type { ApprovalFocus } from "../approvalNavigation"
 import { getDocumentLocale } from "../documentLanguage"
 import { userFacingRunError } from "../errors"
-import { ChannelBrowserContext, type ChannelBrowserValue } from "../features/channelBrowser/ChannelBrowser"
+import {
+  ChannelBrowserContext,
+  ChannelBrowserRunsContext,
+  type ChannelBrowserValue,
+} from "../features/channelBrowser/ChannelBrowser"
+import { getChannelBrowserValue } from "../features/channelBrowser/channelBrowserModel"
+import { useChannelPeople } from "../features/channelBrowser/useChannelPeople"
 import { ComputerGrantCard } from "../features/computer"
 import { InlineLivePreview, InlinePreviewContext, screenTool } from "../features/desktop/InlineLivePreview"
 import { useIsServerMode } from "../features/server/serverMode"
@@ -58,6 +65,7 @@ import { withApprovalAnswers } from "./activityStatus"
 import { BotAvatar } from "./BotAvatar"
 import { BrowserActivityControlsProvider } from "./BrowserActivityControls"
 import { getBrowserActivityTools } from "./browserActivityPresentation"
+import { type BrowserContinuationActivity, getBrowserContinuationActivities } from "./browserContinuationActivity"
 import { getBrowserRequestMessages } from "./browserRequestMessages"
 import { ChatDisclosure } from "./ChatDisclosure"
 import { ConnectDataCard, connectDataMarker } from "./ConnectDataCard"
@@ -94,9 +102,12 @@ type ChatPanelProps = {
   onRepeatTask?: ((draft: RoutineDraft) => void) | undefined
   group?: BotGroup | null
   groupMembers?: Bot[]
+  channelMode?: boolean
+  workspaceMode?: "bots" | "work"
   onEditGroup?: () => void
-  onInviteToGroup?: (() => void) | undefined
   channelBrowser?: ChannelBrowserValue | null
+  browserRuns?: BrowserChannelRun[]
+  onInviteToGroup?: (() => void) | undefined
   focusApproval?: ApprovalFocus | undefined
   panelOpen?: boolean
   onTogglePanel?: () => void
@@ -152,7 +163,6 @@ type VirtualMessageListProps = {
   timelineCards?: Array<{ id: string; createdAt: number; content: ReactNode }>
 }
 const emptyTimelineCards: NonNullable<VirtualMessageListProps["timelineCards"]> = []
-const emptyRuns: Run[] = []
 
 export const activeMessagePath = (messages: Array<Message>, leafId: Id | null): Array<Message> => {
   if (!leafId) return messages
@@ -212,6 +222,8 @@ const scrollToEnd = (list: HTMLElement, programmaticTop: { current: number | nul
   programmaticTop.current = list.scrollTop
 }
 
+const emptyRuns: Run[] = []
+
 export const VirtualMessageList = ({
   vmBotId,
   currentPersonId = "owner",
@@ -234,6 +246,7 @@ export const VirtualMessageList = ({
 }: VirtualMessageListProps) => {
   const messages = useMemo(() => getBrowserRequestMessages(sourceMessages, runs), [sourceMessages, runs])
   const locale = getDocumentLocale(document.documentElement)
+  const browserContinuations = useMemo(() => getBrowserContinuationActivities(messages, runs), [messages, runs])
   // r8 motion: immutable IDs drive text entry, never streaming tokens or status/cards.
   const insertedMessages = useInsertedIds(
     messages.map((message) => message.id),
@@ -549,6 +562,8 @@ export const VirtualMessageList = ({
                     machine={machine}
                     message={message}
                     run={run}
+                    browserActivity={browserContinuations.activities.get(message.id)}
+                    hideBrowserActivity={browserContinuations.hidden.has(message.id)}
                     routineReply={getRoutineReplyRun(message, runs, allMessages) !== undefined}
                     routinePrompt={
                       !mainThread &&
@@ -637,8 +652,14 @@ const getResumeMarkerText = (message: Message, locale: Locale): string => {
 }
 
 const isGroupCoordinationPrompt = (message: Message): boolean => {
-  const marker = message.parts[0]
-  return message.role === "system" && marker?.type === "notice" && marker.code === "group_coordination_prompt"
+  return (
+    message.role === "system" &&
+    message.parts.some(
+      (part) =>
+        part.type === "notice" &&
+        ["group_coordination_prompt", "context_restored", "session_replaced"].includes(part.code),
+    )
+  )
 }
 
 const sameCalendarDay = (left: number, right: number): boolean => {
@@ -673,6 +694,8 @@ const MessageBubble = ({
   recovered,
   message,
   run,
+  browserActivity,
+  hideBrowserActivity,
   routineReply,
   routinePrompt,
   routineHeader,
@@ -693,6 +716,8 @@ const MessageBubble = ({
   recovered: boolean
   message: Message
   run?: Run | undefined
+  browserActivity?: BrowserContinuationActivity | undefined
+  hideBrowserActivity: boolean
   routineReply: boolean
   routinePrompt: boolean
   routineHeader?: string | undefined
@@ -749,7 +774,19 @@ const MessageBubble = ({
   const text = message.role === "assistant" ? markdown.replace(connectDataMarker, "") : markdown
   const segments = message.role === "assistant" ? assistantSegments({ ...message, parts }) : []
   const hasBrowserTools = message.role === "assistant" && getBrowserActivityTools(parts).length > 0
+  const browserHandoffExpired = parts.some(
+    (part) =>
+      part.type === "notice" &&
+      part.code === "run_failed" &&
+      part.text === "No one took over in time. Ask again when you can.",
+  )
   const quietBrowserNarration = hasBrowserTools && message.status === "streaming"
+  const getBrowserRunLabel = () => {
+    if (browserHandoffExpired) return t("incomplete", {}, locale)
+    if (quietBrowserNarration) return t("in progress", {}, locale)
+
+    return t("finished", {}, locale)
+  }
   const foldBrowserFlow = hasBrowserTools && message.status !== "streaming"
   const finalText = segments.filter((segment) => segment.type === "text").at(-1)
   const senderName = message.sender?.name ?? bot?.name ?? "touri"
@@ -962,7 +999,7 @@ const MessageBubble = ({
           </time>
           {hasBrowserTools && (
             <span className="browser-run-state" role="status">
-              {t(quietBrowserNarration ? "in progress" : "finished")}
+              {getBrowserRunLabel()}
             </span>
           )}
           {message.role === "user" && message.delivery && (
@@ -1017,26 +1054,14 @@ const MessageBubble = ({
               locale={locale}
               state={mascotState}
               run={run}
+              browserActivity={browserActivity}
+              hideBrowserActivity={hideBrowserActivity}
+              botName={messageRoleLabel}
               api={api}
               bot={bot}
               onCancel={onCancel}
               preparingEnvironment={Boolean(vmBotId)}
-              hideBrowserCard={quietBrowserNarration}
-              browserFlow={
-                foldBrowserFlow
-                  ? segments.map((flow) => {
-                      if (flow.type === "browser-steps") return renderBrowserSteps(flow.key, flow.count)
-                      if (flow.type !== "text" || flow === finalText) return null
-
-                      return (
-                        <div className="browser-narration" key={flow.key}>
-                          <strong>{senderName}:</strong>
-                          <MarkdownContent content={flow.text.replace(connectDataMarker, "")} />
-                        </div>
-                      )
-                    })
-                  : undefined
-              }
+              hideBrowserCard={hasBrowserTools}
               onFocusApproval={(approvalId) => {
                 const card = Array.from(root.current?.querySelectorAll<HTMLElement>("[data-approval-id]") ?? []).find(
                   (element) => element.dataset.approvalId === approvalId,
@@ -1063,7 +1088,34 @@ const MessageBubble = ({
           <MarkdownContent content={message.role === "system" ? localizeNotice(text) : text} />
         )
       ) : null}
-      {quietBrowserNarration && <BrowserTurnCard message={{ ...message, parts }} run={run} bot={bot} locale={locale} />}
+      {hasBrowserTools && !hideBrowserActivity && (
+        <BrowserTurnCard
+          message={Object.assign({}, message, { parts })}
+          run={run}
+          bot={bot}
+          activity={browserActivity}
+          locale={locale}
+        >
+          {foldBrowserFlow
+            ? segments.map((flow) => {
+                if (flow.type === "browser-steps") return renderBrowserSteps(flow.key, flow.count)
+                if (flow.type !== "text" || flow === finalText) return null
+
+                return (
+                  <div className="browser-narration" key={flow.key}>
+                    <strong>{senderName}:</strong>
+                    <MarkdownContent content={flow.text.replace(connectDataMarker, "")} />
+                  </div>
+                )
+              })
+            : undefined}
+        </BrowserTurnCard>
+      )}
+      {browserHandoffExpired && (
+        <p className="chat-terminal-status" role="status">
+          {t("No one took over in time. Ask again when you can.", {}, locale)}
+        </p>
+      )}
       {message.role !== "assistant" && !routinePrompt && (
         <MessageAttachments parts={parts.filter((part) => part.type === "image" || part.type === "file")} api={api} />
       )}
@@ -1156,9 +1208,12 @@ export const ChatPanel = ({
   onRepeatTask,
   group = null,
   groupMembers = [],
+  channelMode = false,
+  workspaceMode = "bots",
   onEditGroup = () => {},
-  onInviteToGroup,
   channelBrowser = null,
+  browserRuns = [],
+  onInviteToGroup,
   focusApproval,
   thread,
   activePath,
@@ -1191,6 +1246,14 @@ export const ChatPanel = ({
   routines = [],
   routineRuns = [],
 }: ChatPanelProps) => {
+  const channelBrowserValue =
+    channelBrowser ??
+    getChannelBrowserValue({
+      runs: browserRuns,
+      bots: groupMembers,
+      threadId: thread?.id ?? "",
+      viewerId: currentPersonId ?? "",
+    })
   const phone = usePhoneViewport()
   const chatIsCovered = panelOpen && phone
   const host = useHost(api)
@@ -1208,12 +1271,15 @@ export const ChatPanel = ({
     })
     return () => window.cancelAnimationFrame(frame)
   }, [chatIsCovered])
+  const channelPeople = useChannelPeople(api, group?.id ?? null)
   const activeRun = useMemo(
     () =>
       runs.find(
         (run) => thread && run.threadId === thread.id && ["queued", "starting", "running"].includes(run.status),
-      ) ?? null,
-    [runs, thread],
+      ) ??
+      runs.find((run) => run.id === channelBrowserValue?.state.runId) ??
+      null,
+    [runs, thread, channelBrowserValue?.state.runId],
   )
   const serviceRecovered = bot?.machine === "vm" && (machine?.status === "starting" || machine?.status === "running")
   const visibleRuns = useMemo(
@@ -1229,40 +1295,46 @@ export const ChatPanel = ({
 
   if (!thread)
     return (
-      <ChannelBrowserContext.Provider value={channelBrowser}>
-        <section className="chat-panel" inert={chatIsCovered || undefined} aria-hidden={chatIsCovered || undefined}>
-          <header className="chat-header" data-tauri-drag-region="deep">
-            <span className="chat-header-crumb">{t("Bots")}</span>
-            <div className="chat-bot-chip">
-              {bot && <BotAvatar bot={bot} size={20} />}
-              <h1 className="chat-page-heading">{bot?.name ?? "touri"}</h1>
-              {bot?.anyFolderAccess && (
-                <span className="any-folder-badge">{t("Any folder on this {host}", { host: getHostLabel(host) })}</span>
-              )}
+      <ChannelBrowserRunsContext.Provider
+        value={{ runs: browserRuns, bots: groupMembers, threadId: "", viewerId: currentPersonId ?? "" }}
+      >
+        <ChannelBrowserContext.Provider value={channelBrowserValue}>
+          <section className="chat-panel" inert={chatIsCovered || undefined} aria-hidden={chatIsCovered || undefined}>
+            <header className="chat-header" data-tauri-drag-region="deep">
+              <span className="chat-header-crumb">{t(workspaceMode === "work" ? "Direct messages" : "Bots")}</span>
+              <div className="chat-bot-chip">
+                {bot && <BotAvatar bot={bot} size={18} />}
+                <h1 className="chat-page-heading">{bot?.name ?? "touri"}</h1>
+                {bot?.anyFolderAccess && (
+                  <span className="any-folder-badge">
+                    {t("Any folder on this {host}", { host: getHostLabel(host) })}
+                  </span>
+                )}
+              </div>
+              <div className="chat-toolbar">
+                {onTogglePanel && (
+                  <button
+                    type="button"
+                    className="toolbar-icon bot-panel-toggle"
+                    aria-label={t("Bot panel")}
+                    title={t("Bot advanced")}
+                    aria-expanded={panelOpen}
+                    aria-controls="bot-panel"
+                    onClick={onTogglePanel}
+                  >
+                    <PanelIcon name="panel" />
+                  </button>
+                )}
+              </div>
+            </header>
+            <div className="empty-state">
+              <img className="empty-bull" src="/touri-bull.png" alt="" />
+              <h2>{t("Escolha uma conversa")}</h2>
+              <p>{t("Selecione um bot ou crie uma nova thread.")}</p>
             </div>
-            <div className="chat-toolbar">
-              {onTogglePanel && (
-                <button
-                  type="button"
-                  className="toolbar-icon bot-panel-toggle"
-                  aria-label={t("Bot panel")}
-                  title={t("Bot advanced")}
-                  aria-expanded={panelOpen}
-                  aria-controls="bot-panel"
-                  onClick={onTogglePanel}
-                >
-                  ◧
-                </button>
-              )}
-            </div>
-          </header>
-          <div className="empty-state">
-            <img className="empty-bull" src="/touri-bull.png" alt="" />
-            <h2>{t("Escolha uma conversa")}</h2>
-            <p>{t("Selecione um bot ou crie uma nova thread.")}</p>
-          </div>
-        </section>
-      </ChannelBrowserContext.Provider>
+          </section>
+        </ChannelBrowserContext.Provider>
+      </ChannelBrowserRunsContext.Provider>
     )
 
   const messagePath = group
@@ -1280,7 +1352,7 @@ export const ChatPanel = ({
         message.parts.some((part) => part.type === "approval" && part.decision === "pending")) &&
       !visibleMessageIds.has(message.id),
   )
-  const visibleMessages = [...messagePath, ...pendingMessages]
+  const visibleMessages = getBrowserRequestMessages(messagePath.concat(pendingMessages), runs)
   const routineConversation = isRoutineConversation({ thread, runs, routineRuns, routines })
   const repeatDraft =
     bot && !activeRun && !routineConversation
@@ -1325,266 +1397,279 @@ export const ChatPanel = ({
     .flatMap((message) => [...message.parts].reverse())
     .find((part) => screenTool(part) && part.type === "tool_call" && toolStatus(part) === "running")
   const browserWorking = Boolean(
-    latestReply?.status === "streaming" && getBrowserActivityTools(latestReply.parts).length > 0,
+    channelBrowserValue ||
+      (latestReply?.status === "streaming" && getBrowserActivityTools(latestReply.parts).length > 0),
   )
   return (
-    <ChannelBrowserContext.Provider value={channelBrowser}>
-      <BrowserActivityControlsProvider>
-        <section className="chat-panel" inert={chatIsCovered || undefined} aria-hidden={chatIsCovered || undefined}>
-          {group ? (
-            <GroupHeader
-              group={group}
-              bots={groupMembers}
-              onEdit={onEditGroup}
-              onInvite={onInviteToGroup}
-              panelOpen={panelOpen}
-              onTogglePanel={onTogglePanel}
-            />
-          ) : (
-            <header className="chat-header" data-tauri-drag-region="deep">
-              <span className="chat-header-crumb">{t("Bots")}</span>
-              <div className="chat-bot-chip">
-                {bot ? (
-                  <BotAvatar bot={bot} size={18} threadId={thread.id} state={activityState} />
-                ) : (
-                  <img src="/touri-bull.png" alt="" />
-                )}
-                <h1 className="chat-page-heading">{bot?.name ?? "touri"}</h1>
-                {bot?.anyFolderAccess && (
-                  <span className="any-folder-badge">
-                    {t("Any folder on this {host}", { host: getHostLabel(host) })}
-                  </span>
-                )}
-              </div>
-              <div className="chat-toolbar">
-                {onTogglePanel && (
-                  <button
-                    type="button"
-                    className="toolbar-icon bot-panel-toggle"
-                    aria-label={t("Bot panel")}
-                    title={t("Bot advanced")}
-                    aria-expanded={panelOpen}
-                    aria-controls="bot-panel"
-                    onClick={onTogglePanel}
-                  >
-                    <PanelIcon name="panel" />
-                  </button>
-                )}
-              </div>
-            </header>
-          )}
-          {!group && bot && !routineConversation && (
-            <GoalPanel
-              key={thread.id}
-              api={api}
-              threadId={thread.id}
-              bot={bot}
-              surface="chat"
-              refreshRequest={goalRefreshRequest}
-              onChange={onGoalChange}
-              busy={runs.some(
-                (run) => run.threadId === thread.id && ["queued", "starting", "running"].includes(run.status),
-              )}
-            />
-          )}
-          {!group && bot?.machine === "vm" && machine && (activeRun || machine.status === "starting") && (
-            <MachineStatus
-              key={bot.id}
-              machine={machine}
-              api={api}
-              turnFailed={!activeRun && latestReply?.status === "failed"}
-              activeTurns={runs.some(
-                (run) => run.botId === bot.id && ["queued", "starting", "running"].includes(run.status),
-              )}
-            />
-          )}
-          {computerGrant && computerGrant.threadId === thread.id && activeRun?.botId === computerGrant.botId && (
-            <ComputerGrantCard
-              api={api}
-              botId={computerGrant.botId}
-              threadId={computerGrant.threadId}
-              botName={computerGrant.botName}
-              onGranted={onComputerGrant}
-            />
-          )}
-          <InlinePreviewContext.Provider
-            value={{
-              api,
-              bot,
-              machine: rawMachine,
-              onOpenComputer: onOpenComputer ?? (() => onOpenTools("browser")),
-              activeCallId: activeScreenTool?.type === "tool_call" ? activeScreenTool.callId : undefined,
-            }}
-          >
-            <VirtualMessageList
-              vmBotId={bot?.machine === "vm" ? bot.id : undefined}
-              currentPersonId={currentPersonId}
-              machine={machine}
-              focusApproval={focusApproval}
-              key={composerKey ?? thread.id}
-              messages={visibleMessages}
-              api={api}
-              runs={runs}
-              mainThread={thread.kind === "main"}
-              routines={routines}
-              routineRuns={routineRuns}
-              allMessages={messages}
-              onSwitchBranch={(_message, siblings, index) => {
-                const next = siblings[index]
-                if (next) void onSwitchBranch(thread.id, next.id)
-              }}
-              onRetry={onRetry}
-              onCancel={onCancel}
-              // Group replies use a flat history, so sibling edits cannot be selected there.
-              onEdit={group ? undefined : onSend}
-              editDisabled={Boolean(activeRun)}
-              header={
-                visibleMessages.length === 0 && !activeRun && visibleRuns.length === 0 ? (
-                  group ? (
-                    <GroupConversationStart group={group} bots={groupMembers} />
+    <ChannelBrowserRunsContext.Provider
+      value={{ runs: browserRuns, bots: groupMembers, threadId: thread?.id ?? "", viewerId: currentPersonId ?? "" }}
+    >
+      <ChannelBrowserContext.Provider value={channelBrowserValue}>
+        <BrowserActivityControlsProvider>
+          <section className="chat-panel" inert={chatIsCovered || undefined} aria-hidden={chatIsCovered || undefined}>
+            {group ? (
+              <GroupHeader
+                group={group}
+                bots={groupMembers}
+                people={channelPeople}
+                channelMode={channelMode}
+                onEdit={onEditGroup}
+                onInvite={onInviteToGroup}
+                panelOpen={panelOpen}
+                onTogglePanel={onTogglePanel}
+              />
+            ) : (
+              <header className="chat-header" data-tauri-drag-region="deep">
+                <span className="chat-header-crumb">{t(workspaceMode === "work" ? "Direct messages" : "Bots")}</span>
+                <div className="chat-bot-chip">
+                  {bot ? (
+                    <BotAvatar bot={bot} size={18} threadId={thread.id} state={activityState} />
                   ) : (
-                    <ConversationStart
-                      bot={bot}
-                      onFolder={onOpenPermissions}
-                      onAttach={() => attachmentButtonRef.current?.click()}
-                      onChoose={(prompt) => {
-                        draftComposerRef.current?.setDraft(prompt)
-                        composerRef.current?.focus()
-                      }}
-                    />
-                  )
-                ) : null
-              }
-              timelineCards={[
-                ...(repeatDraft && onRepeatTask && !connectDataReply
-                  ? [
-                      {
-                        id: `repeat-${latestReply?.id}`,
-                        createdAt: (latestReply?.createdAt ?? 0) + 2,
-                        content: (
-                          <button
-                            type="button"
-                            className="outline-button repeat-task-button"
-                            onClick={() => onRepeatTask(repeatDraft)}
-                          >
-                            {t("Agendar esta tarefa")}
-                          </button>
-                        ),
-                      },
-                    ]
-                  : []),
-                ...(connectDataReply && onOpenToolCatalog
-                  ? [
-                      {
-                        id: `connect-data-${connectDataReply.id}`,
-                        createdAt: connectDataReply.createdAt + 1,
-                        content: (
-                          <ConnectDataCard
-                            desktop={!serverMode && "__TAURI_INTERNALS__" in window}
-                            onAttach={() => attachmentButtonRef.current?.click()}
-                            onFolder={bot?.machine === "cloud" ? undefined : onOpenPermissions}
-                            onCatalog={onOpenToolCatalog}
-                          />
-                        ),
-                      },
-                    ]
-                  : []),
-                ...(awaitingReply
-                  ? [
-                      {
-                        id: `activity-${activeRun.id}`,
-                        createdAt: activeRun.queuedAt,
-                        content: (
-                          <article className="message-bubble message-assistant" data-pending-run={activeRun.id}>
-                            <div className="message-meta">
-                              <span className="message-role">{bot?.name ?? "touri"}</span>
-                            </div>
-                            <ActivityMark
-                              state={activityState === "waiting-approval" ? activityState : "thinking"}
-                              bot={bot ?? undefined}
-                              threadId={thread.id}
-                              run={activeRun}
-                              api={api}
-                              onCancel={onCancel}
-                              preparingEnvironment={bot?.machine === "vm"}
-                            />
-                          </article>
-                        ),
-                      },
-                    ]
-                  : []),
-                ...visibleRuns.map((run) => {
-                  const routineRun = routineRuns.find((item) => item.id === run.routineRunId)
-                  const routine = routines.find((item) => item.id === routineRun?.routineId)
-
-                  return {
-                    id: `card-${run.id}`,
-                    createdAt: run.queuedAt,
-                    content: (
-                      <RunCard
-                        bot={bot}
-                        run={run}
-                        thread={thread}
-                        onRetry={onRetry}
-                        routineName={routine?.name}
-                        routineTimeZone={routine?.timezone}
-                        waitingApproval={messages.some(
-                          (message) =>
-                            message.runId === run.id &&
-                            message.parts.some((part) => part.type === "approval" && part.decision === "pending"),
-                        )}
-                      />
-                    ),
-                  }
-                }),
-              ]}
-            />
-          </InlinePreviewContext.Provider>
-          {/* r8 composer: notices and the input island stay isolated from transcript activity. */}
-          <DraftComposer
-            key={`composer-${composerKey ?? thread.id}`}
-            draftIdentity={composerKey ?? thread.id}
-            threadCreation={threadCreation}
-            onRetryCreateThread={onRetryCreateThread}
-            onResumeBot={onResumeBot}
-            autoFocus={autoFocusComposer}
-            draftRef={draftComposerRef}
-            notice={{
-              bot,
-              latestReply,
-              machine,
-              onOpenPermissions,
-              onOpenProviderLogin: group ? undefined : onOpenProviderLogin,
-            }}
-            bot={group ? null : bot}
-            groupName={group?.name}
-            mentionBots={groupMembers}
-            threadId={thread.id}
-            parentId={thread.activeLeafId}
-            api={api}
-            inputRef={composerRef}
-            attachmentButtonRef={attachmentButtonRef}
-            activeRun={activeRun}
-            browserWorking={browserWorking}
-            browserBotName={latestReply?.sender?.name ?? bot?.name ?? "touri"}
-            botActive={runs.some(
-              (run) => run.botId === bot?.id && ["queued", "starting", "running"].includes(run.status),
+                    <img src="/touri-bull.png" alt="" />
+                  )}
+                  <h1 className="chat-page-heading">{bot?.name ?? "touri"}</h1>
+                  {bot?.anyFolderAccess && (
+                    <span className="any-folder-badge">
+                      {t("Any folder on this {host}", { host: getHostLabel(host) })}
+                    </span>
+                  )}
+                </div>
+                <div className="chat-toolbar">
+                  {onTogglePanel && (
+                    <button
+                      type="button"
+                      className="toolbar-icon bot-panel-toggle"
+                      aria-label={t("Bot panel")}
+                      title={t("Bot advanced")}
+                      aria-expanded={panelOpen}
+                      aria-controls="bot-panel"
+                      onClick={onTogglePanel}
+                    >
+                      <PanelIcon name="panel" />
+                    </button>
+                  )}
+                </div>
+              </header>
             )}
-            projects={projects}
-            onSaveModel={onSaveModel}
-            onNotice={onNotice}
-            onSelectProject={onSelectProject}
-            onAddProject={onAddProject}
-            queuedCount={visibleMessages.filter((message) => message.delivery?.status === "queued").length}
-            onSend={onSend}
-            onCancel={onCancel}
-            onOpenPermissions={group ? undefined : onOpenPermissions}
-            onOpenProviderLogin={group ? undefined : onOpenProviderLogin}
-          />
-          {/* End r8 composer. */}
-        </section>
-      </BrowserActivityControlsProvider>
-    </ChannelBrowserContext.Provider>
+            {!group && bot && !routineConversation && (
+              <GoalPanel
+                key={thread.id}
+                api={api}
+                threadId={thread.id}
+                bot={bot}
+                surface="chat"
+                refreshRequest={goalRefreshRequest}
+                onChange={onGoalChange}
+                busy={runs.some(
+                  (run) => run.threadId === thread.id && ["queued", "starting", "running"].includes(run.status),
+                )}
+              />
+            )}
+            {!group && bot?.machine === "vm" && machine && (activeRun || machine.status === "starting") && (
+              <MachineStatus
+                key={bot.id}
+                machine={machine}
+                api={api}
+                turnFailed={!activeRun && latestReply?.status === "failed"}
+                activeTurns={runs.some(
+                  (run) => run.botId === bot.id && ["queued", "starting", "running"].includes(run.status),
+                )}
+              />
+            )}
+            {computerGrant && computerGrant.threadId === thread.id && activeRun?.botId === computerGrant.botId && (
+              <ComputerGrantCard
+                api={api}
+                botId={computerGrant.botId}
+                threadId={computerGrant.threadId}
+                botName={computerGrant.botName}
+                onGranted={onComputerGrant}
+              />
+            )}
+            <InlinePreviewContext.Provider
+              value={{
+                api,
+                bot,
+                machine: rawMachine,
+                onOpenComputer: onOpenComputer ?? (() => onOpenTools("browser")),
+                activeCallId: activeScreenTool?.type === "tool_call" ? activeScreenTool.callId : undefined,
+              }}
+            >
+              <VirtualMessageList
+                vmBotId={bot?.machine === "vm" ? bot.id : undefined}
+                currentPersonId={currentPersonId}
+                machine={machine}
+                focusApproval={focusApproval}
+                key={composerKey ?? thread.id}
+                messages={visibleMessages}
+                api={api}
+                runs={runs}
+                mainThread={thread.kind === "main"}
+                routines={routines}
+                routineRuns={routineRuns}
+                allMessages={messages}
+                onSwitchBranch={(_message, siblings, index) => {
+                  const next = siblings[index]
+                  if (next) void onSwitchBranch(thread.id, next.id)
+                }}
+                onRetry={onRetry}
+                onCancel={onCancel}
+                // Group replies use a flat history, so sibling edits cannot be selected there.
+                onEdit={group ? undefined : onSend}
+                editDisabled={Boolean(activeRun)}
+                header={
+                  visibleMessages.length === 0 && !activeRun && visibleRuns.length === 0 ? (
+                    group ? (
+                      <GroupConversationStart
+                        group={group}
+                        bots={groupMembers}
+                        people={channelPeople}
+                        currentPersonId={currentPersonId}
+                        channelMode={channelMode}
+                      />
+                    ) : (
+                      <ConversationStart
+                        bot={bot}
+                        onFolder={onOpenPermissions}
+                        onAttach={() => attachmentButtonRef.current?.click()}
+                        onChoose={(prompt) => {
+                          draftComposerRef.current?.setDraft(prompt)
+                          composerRef.current?.focus()
+                        }}
+                      />
+                    )
+                  ) : null
+                }
+                timelineCards={[
+                  ...(repeatDraft && onRepeatTask && !connectDataReply
+                    ? [
+                        {
+                          id: `repeat-${latestReply?.id}`,
+                          createdAt: (latestReply?.createdAt ?? 0) + 2,
+                          content: (
+                            <button
+                              type="button"
+                              className="outline-button repeat-task-button"
+                              onClick={() => onRepeatTask(repeatDraft)}
+                            >
+                              {t("Agendar esta tarefa")}
+                            </button>
+                          ),
+                        },
+                      ]
+                    : []),
+                  ...(connectDataReply && onOpenToolCatalog
+                    ? [
+                        {
+                          id: `connect-data-${connectDataReply.id}`,
+                          createdAt: connectDataReply.createdAt + 1,
+                          content: (
+                            <ConnectDataCard
+                              desktop={!serverMode && "__TAURI_INTERNALS__" in window}
+                              onAttach={() => attachmentButtonRef.current?.click()}
+                              onFolder={bot?.machine === "cloud" ? undefined : onOpenPermissions}
+                              onCatalog={onOpenToolCatalog}
+                            />
+                          ),
+                        },
+                      ]
+                    : []),
+                  ...(awaitingReply
+                    ? [
+                        {
+                          id: `activity-${activeRun.id}`,
+                          createdAt: activeRun.queuedAt,
+                          content: (
+                            <article className="message-bubble message-assistant" data-pending-run={activeRun.id}>
+                              <div className="message-meta">
+                                <span className="message-role">{bot?.name ?? "touri"}</span>
+                              </div>
+                              <ActivityMark
+                                state={activityState === "waiting-approval" ? activityState : "thinking"}
+                                bot={bot ?? undefined}
+                                threadId={thread.id}
+                                run={activeRun}
+                                api={api}
+                                onCancel={onCancel}
+                                preparingEnvironment={bot?.machine === "vm"}
+                              />
+                            </article>
+                          ),
+                        },
+                      ]
+                    : []),
+                  ...visibleRuns.map((run) => {
+                    const routineRun = routineRuns.find((item) => item.id === run.routineRunId)
+                    const routine = routines.find((item) => item.id === routineRun?.routineId)
+
+                    return {
+                      id: `card-${run.id}`,
+                      createdAt: run.queuedAt,
+                      content: (
+                        <RunCard
+                          bot={bot}
+                          run={run}
+                          thread={thread}
+                          onRetry={onRetry}
+                          routineName={routine?.name}
+                          routineTimeZone={routine?.timezone}
+                          waitingApproval={messages.some(
+                            (message) =>
+                              message.runId === run.id &&
+                              message.parts.some((part) => part.type === "approval" && part.decision === "pending"),
+                          )}
+                        />
+                      ),
+                    }
+                  }),
+                ]}
+              />
+            </InlinePreviewContext.Provider>
+            {/* r8 composer: notices and the input island stay isolated from transcript activity. */}
+            <DraftComposer
+              key={`composer-${composerKey ?? thread.id}`}
+              draftIdentity={composerKey ?? thread.id}
+              threadCreation={threadCreation}
+              onRetryCreateThread={onRetryCreateThread}
+              onResumeBot={onResumeBot}
+              autoFocus={autoFocusComposer}
+              draftRef={draftComposerRef}
+              notice={{
+                bot,
+                latestReply,
+                machine,
+                onOpenPermissions,
+                onOpenProviderLogin: group ? undefined : onOpenProviderLogin,
+              }}
+              bot={group ? null : bot}
+              groupName={group?.name}
+              mentionBots={groupMembers}
+              threadId={thread.id}
+              parentId={thread.activeLeafId}
+              api={api}
+              inputRef={composerRef}
+              attachmentButtonRef={attachmentButtonRef}
+              activeRun={activeRun}
+              browserWorking={browserWorking}
+              browserBotName={channelBrowserValue?.state.botName ?? latestReply?.sender?.name ?? bot?.name ?? "touri"}
+              botActive={runs.some(
+                (run) => run.botId === bot?.id && ["queued", "starting", "running"].includes(run.status),
+              )}
+              projects={projects}
+              onSaveModel={onSaveModel}
+              onNotice={onNotice}
+              onSelectProject={onSelectProject}
+              onAddProject={onAddProject}
+              queuedCount={visibleMessages.filter((message) => message.delivery?.status === "queued").length}
+              onSend={onSend}
+              onCancel={onCancel}
+              onOpenPermissions={group ? undefined : onOpenPermissions}
+              onOpenProviderLogin={group ? undefined : onOpenProviderLogin}
+            />
+            {/* End r8 composer. */}
+          </section>
+        </BrowserActivityControlsProvider>
+      </ChannelBrowserContext.Provider>
+    </ChannelBrowserRunsContext.Provider>
   )
 }
 

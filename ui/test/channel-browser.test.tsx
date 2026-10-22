@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import type { Bot, BotGroup, Message, Run, ToolCallPart } from "@touri/contracts"
 import { useEffect } from "react"
 import { afterEach, describe, expect, test, vi } from "vitest"
@@ -110,7 +110,7 @@ const renderCard = (state: ChannelBrowserState, viewerId: string) => {
   const api = createMockApi()
   const bot = api.getState().bots[0] ?? null
 
-  return render(
+  const view = render(
     <ChannelBrowserContext.Provider value={{ state, viewerId }}>
       <InlinePreviewContext.Provider
         value={{ api, bot, machine: undefined, activeCallId: undefined, onOpenComputer: vi.fn() }}
@@ -119,6 +119,8 @@ const renderCard = (state: ChannelBrowserState, viewerId: string) => {
       </InlinePreviewContext.Provider>
     </ChannelBrowserContext.Provider>,
   )
+
+  return { view, api, bot }
 }
 
 describe("getChannelBrowserView", () => {
@@ -137,12 +139,19 @@ describe("getChannelBrowserView", () => {
     expect(view.previewHidden).toBe(false)
   })
 
-  test("hides the preview for everyone but the controller during a take-over", () => {
+  test("hides the shared preview for everyone during a take-over", () => {
     const state = getState({ controllerId: "user-ana", controllerName: "Ana" })
 
     expect(getChannelBrowserView(state, "user-hugo").previewHidden).toBe(true)
     expect(getChannelBrowserView(state, "user-owner").previewHidden).toBe(true)
-    expect(getChannelBrowserView(state, "user-ana").previewHidden).toBe(false)
+    expect(getChannelBrowserView(state, "user-ana").previewHidden).toBe(true)
+  })
+
+  test("only the current controller keeps control actions during a handoff", () => {
+    const state = getState({ controllerId: "user-owner", controllerName: "Responsável" })
+
+    expect(getChannelBrowserView(state, "user-ana").canControl).toBe(false)
+    expect(getChannelBrowserView(state, "user-owner").canControl).toBe(true)
   })
 
   test("names the controller when someone took over", () => {
@@ -221,7 +230,7 @@ describe("browser card in a channel", () => {
     renderCard(getState(), "user-hugo")
 
     expect(screen.queryByRole("button", { name: /Assumir/ })).toBeNull()
-    expect(screen.getByText("Ana está no controle")).toBeVisible()
+    expect(screen.queryByText("Ana está no controle")).toBeNull()
   })
 
   test("keeps Assumir enabled for the requester", () => {
@@ -230,11 +239,31 @@ describe("browser card in a channel", () => {
     expect(screen.getByRole("button", { name: /Assumir/ })).toBeEnabled()
   })
 
-  test("hides the preview for the channel while someone has control", () => {
-    renderCard(getState({ controllerId: "user-ana", controllerName: "Ana" }), "user-hugo")
+  test("hides the preview for the channel while someone has control", async () => {
+    const { api, bot } = renderCard(getState({ controllerId: "user-ana", controllerName: "Ana" }), "user-hugo")
+    if (!bot) throw new Error("Missing fixture bot")
+
+    act(() =>
+      api.emit({
+        type: "browser.tab",
+        tab: {
+          tabId: "tab-1",
+          ownerBotId: bot.id,
+          url: "",
+          title: "",
+          state: "live",
+          openerTabId: null,
+          heldByUser: true,
+          takeoverReason: "requested",
+          lastUsedAt: 1,
+        },
+      }),
+    )
 
     expect(screen.queryByRole("img", { name: "Página atual do navegador" })).toBeNull()
     expect(screen.getByText("Prévia oculta para o canal enquanto Ana digita")).toBeVisible()
+    expect(screen.queryByText("Este navegador está sob seu controle.")).toBeNull()
+    expect(await screen.findAllByText("Uma pessoa está controlando esta aba; o bot está pausado.")).toHaveLength(1)
   })
 
   test("shows the queued request below the card", () => {
@@ -303,7 +332,7 @@ describe("channel chrome", () => {
       />,
     )
 
-    const row = screen.getByRole("button", { name: "viagens" }).closest(".group-sidebar-row") as HTMLElement
+    const row = screen.getByRole("button", { name: "viagens" }).closest(".sidebar-row") as HTMLElement
 
     expect(within(row).getByTitle("Léo trabalhando aqui")).toBeVisible()
   })
@@ -315,7 +344,7 @@ describe("channel chrome", () => {
       </ChannelBrowserContext.Provider>,
     )
 
-    expect(screen.getByRole("status")).toHaveTextContent("Ana está no controle")
+    expect(screen.getByRole("status")).toHaveTextContent("para Ana")
   })
 
   test("composer chip stops the active browser run", () => {
@@ -352,7 +381,7 @@ describe("channel chrome", () => {
     )
 
     expect(screen.queryByRole("button", { name: "Assumir" })).toBeNull()
-    expect(screen.getByRole("status")).toHaveTextContent("Ana está no controle")
+    expect(screen.getByRole("status")).toHaveTextContent("para Ana")
   })
 })
 

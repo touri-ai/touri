@@ -24,10 +24,11 @@ for (const theme of ["dark", "light"] as const) {
 
   test(`group name keeps a contrasting keyboard focus border in ${theme}`, async ({ page }, info) => {
     await openMock(page, theme)
-    await page.getByRole("button", { name: "Criar grupo", exact: true }).click()
-    const dialog = page.getByRole("dialog", { name: "Criar grupo", exact: true })
-    const field = dialog.getByLabel("Nome do grupo", { exact: true })
-    await dialog.getByRole("button", { name: "Fechar grupo", exact: true }).focus()
+    await page.getByRole("tab", { name: /^Work,/ }).click()
+    await page.getByRole("button", { name: "Novo canal", exact: true }).click()
+    const dialog = page.getByRole("dialog", { name: "Criar canal", exact: true })
+    const field = dialog.getByLabel("Nome do canal", { exact: true })
+    await dialog.getByRole("button", { name: "Fechar canal", exact: true }).focus()
     const unfocused = await getFieldStyle(field)
 
     await page.keyboard.press("Tab")
@@ -40,9 +41,10 @@ for (const theme of ["dark", "light"] as const) {
 
   test(`borderless composer and search keep focus on their containers in ${theme}`, async ({ page }) => {
     await openMock(page, theme)
+    await page.getByRole("tab", { name: /^Work,/ }).click()
     const composer = page.getByRole("textbox", { name: "Mensagem para mark", exact: true })
     const container = page.locator(".composer-island")
-    await page.getByRole("button", { name: "Criar grupo", exact: true }).focus()
+    await page.getByRole("button", { name: "Novo canal", exact: true }).focus()
     const unfocusedShadow = await container.evaluate((element) => getComputedStyle(element).boxShadow)
 
     await composer.press("Shift+Tab")

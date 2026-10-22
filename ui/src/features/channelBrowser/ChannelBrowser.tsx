@@ -1,10 +1,12 @@
-import { createContext, useContext } from "react"
+import type { Bot, BrowserChannelRun } from "@touri/contracts"
+import { createContext, type ReactNode, useContext } from "react"
 import { useBrowserActivityControls } from "../../components/BrowserActivityControls"
 import { type Locale, t } from "../../i18n"
 import { useBrowserHold } from "../desktop/browserHold"
 import {
   type ChannelBrowserState,
   type ChannelBrowserView,
+  getChannelBrowserValue,
   getChannelBrowserView,
   getChannelQueueLabel,
   getChannelWorkingTitle,
@@ -14,6 +16,23 @@ import "./channel-browser.css"
 export type ChannelBrowserValue = {
   state: ChannelBrowserState
   viewerId: string
+}
+
+const EMPTY_BROWSER_RUNS: BrowserChannelRun[] = []
+const EMPTY_BROWSER_BOTS: Bot[] = []
+export const ChannelBrowserRunsContext = createContext({
+  runs: EMPTY_BROWSER_RUNS,
+  bots: EMPTY_BROWSER_BOTS,
+  threadId: "",
+  viewerId: "",
+})
+
+export const ChannelBrowserScope = ({ runId, children }: { runId: string | null; children: ReactNode }) => {
+  const data = useContext(ChannelBrowserRunsContext)
+  const parent = useContext(ChannelBrowserContext)
+  const value = getChannelBrowserValue(Object.assign({}, data, { runId })) ?? parent
+
+  return <ChannelBrowserContext.Provider value={value}>{children}</ChannelBrowserContext.Provider>
 }
 
 export const ChannelBrowserContext = createContext<ChannelBrowserValue | null>(null)
@@ -50,7 +69,7 @@ export const ChannelVisibilityLabel = ({ locale = "pt-BR" }: { locale?: Locale }
 
 export const ChannelControlNote = ({ locale = "pt-BR" }: { locale?: Locale }) => {
   const channel = useChannelBrowserView()
-  if (!channel || channel.canControl) return null
+  if (!channel?.state.controllerId) return null
 
   return (
     <span className="channel-visibility" role="status">
@@ -75,6 +94,8 @@ export const ChannelCardFooter = ({ locale = "pt-BR" }: { locale?: Locale }) => 
   if (!channel) return null
 
   const queue = getChannelQueueLabel(channel.state.queue, locale)
+  const finished = ["succeeded", "failed", "canceled"].includes(channel.state.status ?? "")
+  if (finished && !queue) return null
 
   return (
     <div className="channel-card-footer">
@@ -141,12 +162,11 @@ export const ChannelComposerChip = ({
         disabled={stopping}
         onClick={onStop}
       >
-        {t(stopping ? "Stopping reply…" : "Stop browser work", {}, locale)}
-        <span aria-hidden="true">×</span>
+        <span aria-hidden="true">{stopping ? "…" : "×"}</span>
       </button>
     ) : null
   const controlButton =
-    canReturnControl && hold && !browserControls.canTakeOver ? (
+    canReturnControl && hold ? (
       <button type="button" onClick={hold.release}>
         {t("Hand back", {}, locale)}
       </button>
@@ -159,7 +179,7 @@ export const ChannelComposerChip = ({
         <span className="composer-browser-status-text">{text}</span>
       </span>
       {controlButton}
-      {browserControls.canTakeOver && (!channel || channel.canControl) && (
+      {browserControls.canTakeOver && !canReturnControl && (!channel || channel.canControl) && (
         <button
           type="button"
           className="composer-browser-takeover"
@@ -180,7 +200,7 @@ const getChannelComposerText = (
   locale: Locale,
 ): string => {
   if (!channel) return base
-  if (!channel.canControl) return t("{person} is in control", { person: channel.controlName }, locale)
+  if (channel.state.controllerId) return t("{person} is in control", { person: channel.controlName }, locale)
 
   return `${base} · ${t("for {person}", { person: channel.state.requesterName }, locale)}`
 }

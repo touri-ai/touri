@@ -17,9 +17,9 @@ it("lists every executing and queued turn, origins and engine positions, and ope
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para Planejamento" })
 
-  const badge = screen.getByRole("button", { name: "Trabalhando: 3, 2 na fila. Ver trabalho", exact: true })
+  const badge = screen.getByRole("button", { name: "Trabalhando · 3 2 na fila Ver trabalho", exact: true })
   expect(badge).toBeVisible()
-  expect(badge).toHaveTextContent("Trabalhando 3")
+  expect(badge).toHaveTextContent("Trabalhando · 3")
   expect(badge).toHaveTextContent("2 na fila")
 
   fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
@@ -79,7 +79,7 @@ it("keeps completion events newer than an in-flight global snapshot", async () =
     return response
   }
   render(<App kernel={{ services: { api: { ...api, request } } }} />)
-  await screen.findByRole("button", { name: "Bots 5" })
+  await screen.findByRole("tab", { name: /^Bots, \d+ aguardando$/ })
 
   act(() => {
     api.finishFirst()

@@ -1,4 +1,4 @@
-import type { Message, Thread } from "@touri/contracts"
+import type { Bot, BrowserChannelRun, BrowserChannelRunStatus, Message, Thread } from "@touri/contracts"
 import { type Locale, t } from "../../i18n"
 
 export type ChannelBrowserQueueEntry = {
@@ -8,6 +8,8 @@ export type ChannelBrowserQueueEntry = {
 
 // Field names follow the channel permission contract (requesterId, controllerId, queue).
 export type ChannelBrowserState = {
+  runId?: string
+  status?: BrowserChannelRunStatus
   botId: string
   botName: string
   requesterId: string
@@ -57,14 +59,14 @@ export const getChannelWorking = (
 }
 
 export const getChannelBrowserView = (state: ChannelBrowserState, viewerId: string): ChannelBrowserView => {
-  const canControl = viewerId === state.requesterId || viewerId === state.ownerId
+  const eligible = viewerId === state.requesterId || viewerId === state.ownerId
+  const canControl = eligible && (!state.controllerId || state.controllerId === viewerId)
   const tookOver = state.controllerId !== null
-  const isController = viewerId === state.controllerId
 
   return {
     canControl,
     controlName: tookOver ? (state.controllerName ?? state.requesterName) : state.requesterName,
-    previewHidden: tookOver && !isController,
+    previewHidden: tookOver,
   }
 }
 
@@ -80,3 +82,53 @@ export const getChannelQueueLabel = (queue: readonly ChannelBrowserQueueEntry[],
 
 export const getChannelWorkingTitle = (names: readonly string[], locale: Locale): string =>
   t("{names} working here", { names: names.join(", ") }, locale)
+
+export const getChannelBrowserValue = ({
+  runs,
+  bots,
+  threadId,
+  viewerId,
+  runId,
+}: {
+  runs: readonly BrowserChannelRun[]
+  bots: readonly Bot[]
+  threadId: string
+  viewerId: string
+  runId?: string | null
+}): { state: ChannelBrowserState; viewerId: string } | null => {
+  const run = runs.find(
+    (candidate) =>
+      candidate.threadId === threadId &&
+      candidate.groupId &&
+      (runId
+        ? (candidate.runIds ?? [candidate.runId, candidate.activeRunId]).includes(runId)
+        : ["running", "needs_you", "taken_over"].includes(candidate.status)),
+  )
+  if (!run) return null
+  const bot = bots.find((candidate) => candidate.id === run.botId)
+  if (!bot) return null
+  const queue = runs
+    .filter((candidate) => candidate.botId === run.botId && candidate.status === "queued")
+    // Sort only the new filtered array; shared activity stays unchanged.
+    .sort((first, second) => first.queuedAt - second.queuedAt || first.runId.localeCompare(second.runId))
+    .map((candidate) => ({
+      requesterId: candidate.requesterPersonId ?? "",
+      requesterName: candidate.requesterName ?? "",
+    }))
+
+  return {
+    viewerId,
+    state: {
+      runId: run.runId,
+      status: run.status,
+      botId: run.botId,
+      botName: bot.name,
+      requesterId: run.requesterPersonId ?? "",
+      requesterName: run.requesterName ?? "",
+      controllerId: run.controllerPersonId,
+      controllerName: run.controllerName,
+      ownerId: run.responsiblePersonId ?? "",
+      queue,
+    },
+  }
+}

@@ -4,6 +4,30 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  incomplete: "não concluído",
+  "No one took over in time. Ask again when you can.": "Ninguém assumiu a tempo. Peça de novo quando puder.",
+  "Este documento contém entrada privada. Continue a tarefa em uma nova aba.":
+    "Este documento contém entrada privada. Continue a tarefa em uma nova aba.",
+  "Capturas de tela ficam bloqueadas depois do controle privado do navegador.":
+    "Capturas de tela ficam bloqueadas depois do controle privado do navegador.",
+  "Informe um endereço HTTPS válido, sem caminho.": "Informe um endereço HTTPS válido, sem caminho.",
+  "The browser needs your help.": "O navegador precisa da sua ajuda.",
+  "You are in control of the browser.": "Você está no controle do navegador.",
+  "1 bot": "1 bot",
+  "{count} bots": "{count} bots",
+  "1 person": "1 pessoa",
+  "{count} people": "{count} pessoas",
+  "{name} coordinates": "{name} coordena",
+  Person: "Pessoa",
+  "Browser takeover": "Controle do navegador",
+  "This document contains private browser input. Continue the original task in a new tab; do not read this document.":
+    "Esta página contém dados digitados em privado. Continue a tarefa em outra aba, sem ler esta página.",
+  "Updating a choice": "Atualizando uma escolha",
+  "Scrolling the page": "Rolando a página",
+  "Asking for your help": "Pedindo sua ajuda",
+  "Filling a saved credential": "Preenchendo uma credencial salva",
+  "Pressing a key": "Pressionando uma tecla",
+  "Working in the browser": "Trabalhando no navegador",
   "Your last page stays private until a new safe page is ready.":
     "A página que você usou continua privada até uma nova página segura ficar pronta.",
   "Waiting for the other browser request to finish.": "Aguardando o outro pedido no navegador terminar.",
@@ -293,7 +317,7 @@ export const ptBR = {
   "Pergunte a no máximo 6 membros por turno.": "Pergunte a no máximo 6 membros por turno.",
   "Perguntar a todos": "Perguntar a todos",
   "Pedir resumo do time": "Pedir resumo do time",
-  "Ações do grupo": "Ações do grupo",
+  "Channel composer actions": "Ações do canal",
   "Resuma os resultados confirmados do último turno, com a autoria de cada membro.":
     "Resuma os resultados confirmados do último turno, com a autoria de cada membro.",
   Membro: "Membro",
@@ -840,6 +864,8 @@ export const ptBR = {
   "Browser activity": "Atividade do navegador",
   "See what the bot did": "Ver o que ele fez",
   "Showing the latest {count} browser actions": "Exibindo as últimas {count} ações do navegador",
+  "A person is controlling this browser tab; the bot is paused.":
+    "Uma pessoa está controlando esta aba; o bot está pausado.",
   "You have control of this browser tab.": "Você está no controle desta aba do navegador.",
   "Travel search fixture": "Busca de viagem de teste",
   "Local browser fixture": "Navegador de teste local",
@@ -1574,6 +1600,84 @@ export const ptBR = {
   "Bot access settings": "Ajustar permissões",
   "Project preview": "Preview do projeto",
   "Bot groups": "Grupos",
+  "Sidebar mode": "Modo da barra lateral",
+  "Work mode tab": "Work",
+  "Tab waiting count": "{count} aguardando",
+  "Tab attention count": "{count} itens precisam da sua atenção",
+  "Tab unread count": "{count} mensagens não lidas",
+  Channels: "Canais",
+  "New channel": "Novo canal",
+  "Direct messages": "Mensagens diretas",
+  "Routine row title": "Rotina “{name}”",
+  "Routine today count": " · {count} hoje",
+  "Routines today count": "{count} hoje",
+  "No channels yet": "Nenhum canal ainda",
+  "Channels explainer": "Canais reúnem bots e pessoas em torno de um assunto.",
+  "Show more conversations": "Mostrar mais {count}",
+  "Routine last run date": " · {date}",
+  "Open routine history for {name}": "Abrir histórico da rotina {name}",
+  "Channel attention count": "{count} itens precisam de você",
+  "Search channels and messages": "Buscar canais e mensagens",
+  "Channel actions for {name}": "Ações do canal {name}",
+  "Edit channel": "Editar canal",
+  "Delete channel": "Apagar canal",
+  "Delete channel dialog title": "Apagar canal",
+  "Channel panel for {name}": "Painel do canal {name}",
+  "Channel panel": "Painel do canal",
+  "Close channel panel": "Fechar painel do canal",
+  "Channel members": "Membros do canal",
+  "Channel member count": "{count} membros do canal",
+  "Your channel": "Seu canal",
+  "Channels / {name}": "Canais / {name}",
+  "Invite to channel": "Convidar para o canal",
+  "Channel summary with coordinator": "{count} bots · {name} coordena",
+  "Channel summary": "{count} bots",
+  "Start a conversation in channel {name}": "Comece a conversa em #{name}",
+  "Channel conversation hint": "Envie uma mensagem para começar.",
+  "Start a conversation with {name}": "Comece uma conversa com {name}",
+  "Tell the channel what to do to get started.": "Conte o que o canal deve fazer para começar.",
+  "Channel name": "Nome do canal",
+  "Channel mascot": "Mascote do canal",
+  "Customize your channel": "Personalize seu canal",
+  "Create channel": "Criar canal",
+  "Save channel": "Salvar canal",
+  "Close channel": "Fechar canal",
+  "Bots together": "Bots juntos",
+  "Group name": "Nome do grupo",
+  "Group mascot": "Mascote do grupo",
+  "Customize your group": "Personalize seu grupo",
+  "Group members · response order": "Membros · ordem das respostas",
+  "Group coordinator": "Coordenador",
+  "Salvar grupo": "Salvar grupo",
+  "Close group": "Fechar grupo",
+  "A shared group conversation. Each bot keeps its own computer and permissions.":
+    "Uma conversa compartilhada. Cada bot mantém seu computador e suas permissões.",
+  "A shared channel. Each bot keeps its own computer and permissions.":
+    "Um canal compartilhado. Cada bot mantém seu computador e suas permissões.",
+  "Example: Product": "Ex.: Produto",
+  "Channel members · response order": "Membros do canal · ordem das respostas",
+  "Channel coordinator": "Coordenador do canal",
+  "No channel coordinator": "Sem coordenador",
+  "Channel coordinator routing note": "{name} coordena este canal e pode encaminhar pedidos aos membros.",
+  "Channel member routing note":
+    "Mencione @nome para escolher quem responde. Sem menções, todos os membros respondem na ordem acima.",
+  "Group member routing note":
+    "Mencione @nome para escolher quem responde. Sem menções, todos respondem na ordem acima.",
+  "Deleting channel…": "Apagando canal…",
+  "Apagar {name} remove todas as conversas, mensagens e rotinas do canal. Esta ação não pode ser desfeita.":
+    "Apagar {name} remove todas as conversas, mensagens e rotinas do canal. Esta ação não pode ser desfeita.",
+  "Type channel name: {name}": "Digite o nome do canal: {name}",
+  "Aguarde as respostas do canal terminarem ou cancele os turnos antes de apagar o canal.":
+    "Aguarde as respostas do canal terminarem ou cancele os turnos antes de apagar o canal.",
+  "The channel coordinator receives the request and may delegate to members.":
+    "O coordenador do canal recebe o pedido e pode delegar aos membros.",
+  "The group coordinator receives the request and may delegate to members.":
+    "O coordenador recebe o pedido e pode delegar aos membros.",
+  "Mention @name to choose who replies. Without a mention, all members reply in order.":
+    "Mencione @nome para escolher quem responde. Sem menções, todos respondem na ordem acima.",
+  "The member was removed from the channel.": "O membro foi removido do canal.",
+  "Each bot keeps its own computer and permissions.": "Cada bot mantém seu computador e suas permissões.",
+  optional: "opcional",
   "Onde o bot responde": "Onde o bot responde",
   "Na conversa principal": "Na conversa principal",
   "Uma conversa nova por tarefa": "Uma conversa nova por tarefa",
@@ -1582,7 +1686,6 @@ export const ptBR = {
   "Segue o bot: uma conversa nova por tarefa": "Segue o bot: uma conversa nova por tarefa",
   "Automatic conversation mode help":
     "No modo principal, as rotinas ficam na conversa do bot. Cada execução mostra o gatilho e o horário; no outro modo, cada execução ganha uma conversa própria.",
-  "Routine row title": "Rotina {name}",
   "Task row title": "Tarefas {name}",
   "Task conversation history for {name}": "Histórico de tarefas de {name}",
   "Today count suffix": " · {count} hoje",
@@ -1600,6 +1703,8 @@ export const ptBR = {
   "Next routine time": "Próxima: {time} · {timezone}",
   "Waiting for the next schedule": "Aguardando próximo agendamento",
   "Routine paused": "Pausada",
+  "Routine active": "Ativa",
+  "Routine completed": "Concluída",
   "No scheduled routines": "Nenhuma rotina agendada",
   "Set a routine for recurring tasks.": "Configure uma rotina para este bot cuidar de tarefas recorrentes.",
   "Configure routines": "Configurar rotinas",
@@ -1632,7 +1737,7 @@ export const ptBR = {
   "Attaching…": "Anexando…",
   "Remove attached file": "Remover {name}",
   "Message to bot": "Mensagem para {name}",
-  "Message to group": "Mensagem para {name} · @nome escolhe um membro",
+  "Message in channel": "Mensagem em #{name}",
   "Mention member": "Mencionar membro",
   "Composer keyboard help":
     "Enter envia. Shift+Enter insere uma nova linha. Durante uma resposta, a mensagem entra na fila.",
@@ -3178,6 +3283,13 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  incomplete: "incomplete",
+  "No one took over in time. Ask again when you can.": "No one took over in time. Ask again when you can.",
+  "Este documento contém entrada privada. Continue a tarefa em uma nova aba.":
+    "This document contains private input. Continue the task in a new tab.",
+  "Capturas de tela ficam bloqueadas depois do controle privado do navegador.":
+    "Screenshots are blocked after private browser control.",
+  "Informe um endereço HTTPS válido, sem caminho.": "Enter a valid HTTPS address without a path.",
   "Your last page stays private until a new safe page is ready.":
     "Your last page stays private until a new safe page is ready.",
   "Waiting for the other browser request to finish.": "Waiting for the other browser request to finish.",
@@ -3623,7 +3735,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Pergunte a no máximo 6 membros por turno.": "Ask at most 6 members per turn.",
   "Perguntar a todos": "Ask everyone",
   "Pedir resumo do time": "Request team summary",
-  "Ações do grupo": "Group actions",
+  "Channel composer actions": "Channel actions",
   "Resuma os resultados confirmados do último turno, com a autoria de cada membro.":
     "Summarize the confirmed results of the last turn, with authorship for each member.",
   Membro: "Member",
@@ -4619,6 +4731,83 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Bot access settings": "Adjust permissions",
   "Project preview": "Project preview",
   "Bot groups": "Groups",
+  "Sidebar mode": "Sidebar mode",
+  "Work mode tab": "Work",
+  "Tab waiting count": "{count} waiting",
+  "Tab attention count": "{count} items need your attention",
+  "Tab unread count": "{count} unread messages",
+  Channels: "Channels",
+  "New channel": "New channel",
+  "Direct messages": "Direct messages",
+  "Routine row title": "Routine “{name}”",
+  "Routine today count": " · {count} today",
+  "Routines today count": "{count} today",
+  "No channels yet": "No channels yet",
+  "Channels explainer": "Channels bring bots and people together around one topic.",
+  "Show more conversations": "Show {count} more",
+  "Routine last run date": " · {date}",
+  "Open routine history for {name}": "Open history for routine {name}",
+  "Channel attention count": "{count} items need your attention",
+  "Search channels and messages": "Search channels and messages",
+  "Channel actions for {name}": "Channel actions for {name}",
+  "Edit channel": "Edit channel",
+  "Delete channel": "Delete channel",
+  "Delete channel dialog title": "Delete channel",
+  "Channel panel for {name}": "Channel panel for {name}",
+  "Channel panel": "Channel panel",
+  "Close channel panel": "Close channel panel",
+  "Channel members": "Channel members",
+  "Channel member count": "{count} channel members",
+  "Your channel": "Your channel",
+  "Channels / {name}": "Channels / {name}",
+  "Invite to channel": "Invite to channel",
+  "Channel summary with coordinator": "{count} bots · {name} coordinates",
+  "Channel summary": "{count} bots",
+  "Start a conversation in channel {name}": "Start the conversation in #{name}",
+  "Channel conversation hint": "Send a message to get started.",
+  "Start a conversation with {name}": "Start a conversation with {name}",
+  "Tell the channel what to do to get started.": "Tell the channel what to do to get started.",
+  "Channel name": "Channel name",
+  "Channel mascot": "Channel mascot",
+  "Customize your channel": "Customize your channel",
+  "Create channel": "Create channel",
+  "Save channel": "Save channel",
+  "Close channel": "Close channel",
+  "Bots together": "Bots together",
+  "Group name": "Group name",
+  "Group mascot": "Group mascot",
+  "Customize your group": "Customize your group",
+  "Group members · response order": "Members · reply order",
+  "Group coordinator": "Coordinator",
+  "Salvar grupo": "Save group",
+  "Close group": "Close group",
+  "A shared group conversation. Each bot keeps its own computer and permissions.":
+    "A shared group conversation. Each bot keeps its own computer and permissions.",
+  "A shared channel. Each bot keeps its own computer and permissions.":
+    "A shared channel. Each bot keeps its own computer and permissions.",
+  "Example: Product": "e.g. Product",
+  "Channel members · response order": "Channel members · reply order",
+  "Channel coordinator": "Channel coordinator",
+  "No channel coordinator": "No coordinator",
+  "Channel coordinator routing note": "{name} coordinates this channel and can route requests to its members.",
+  "Channel member routing note": "Mention @name to choose who replies. Without a mention, all members reply in order.",
+  "Group member routing note": "Mention @name to choose who replies. Without a mention, all members reply in order.",
+  "Deleting channel…": "Deleting channel…",
+  "Apagar {name} remove todas as conversas, mensagens e rotinas do canal. Esta ação não pode ser desfeita.":
+    "Deleting {name} removes all conversations, messages, and routines from the channel. This cannot be undone.",
+  "Type channel name: {name}": "Type the channel name: {name}",
+  "Aguarde as respostas do canal terminarem ou cancele os turnos antes de apagar o canal.":
+    "Wait for channel replies to finish or cancel the turns before deleting the channel.",
+  "The channel coordinator receives the request and may delegate to members.":
+    "The channel coordinator receives the request and may delegate to members.",
+  "The group coordinator receives the request and may delegate to members.":
+    "The group coordinator receives the request and may delegate to members.",
+  "Mention @name to choose who replies. Without a mention, all members reply in order.":
+    "Mention @name to choose who replies. Without a mention, all members reply in order.",
+  "The member was removed from the channel.": "The member was removed from the channel.",
+  "Each bot keeps its own computer and permissions.": "Each bot keeps its own computer and permissions.",
+  optional: "optional",
+  "Saving…": "Saving…",
   "Onde o bot responde": "Where the bot replies",
   "Na conversa principal": "In the main conversation",
   "Uma conversa nova por tarefa": "A new conversation for each task",
@@ -4627,7 +4816,6 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Segue o bot: uma conversa nova por tarefa": "Follows bot: a new conversation per task",
   "Automatic conversation mode help":
     "In main mode, routines stay in the bot's conversation. Each run shows its trigger and time; task mode gives every run its own conversation.",
-  "Routine row title": "Routine {name}",
   "Task row title": "Tasks {name}",
   "Task conversation history for {name}": "Task history for {name}",
   "Today count suffix": " · {count} today",
@@ -4645,6 +4833,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Next routine time": "Next: {time} · {timezone}",
   "Waiting for the next schedule": "Waiting for the next schedule",
   "Routine paused": "Paused",
+  "Routine active": "Active",
+  "Routine completed": "Completed",
   "No scheduled routines": "No scheduled routines",
   "Set a routine for recurring tasks.": "Set a routine for this bot to handle recurring tasks.",
   "Configure routines": "Configure routines",
@@ -4676,7 +4866,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Attaching…": "Attaching…",
   "Remove attached file": "Remove {name}",
   "Message to bot": "Message to {name}",
-  "Message to group": "Message to {name} · @name chooses a member",
+  "Message in channel": "Message #{name}",
   "Mention member": "Mention member",
   "Composer keyboard help": "Enter sends. Shift+Enter adds a new line. During a reply, your message joins the queue.",
   "Stop reply": "Stop reply",
@@ -5429,6 +5619,12 @@ export const plural = (count: number, one: string, other: string, locale: Locale
 const singular: Partial<Record<TranslationKey, [string, string]>> = {
   "Group member count": ["{count} membro", "{count} member"],
   "Group members label": ["{count} membro: {names}", "{count} member: {names}"],
+  "Tab attention count": ["1 item precisa da sua atenção", "1 item needs your attention"],
+  "Tab unread count": ["1 mensagem não lida", "1 unread message"],
+  "Channel attention count": ["1 item precisa de você", "1 item needs your attention"],
+  "Channel member count": ["{count} membro do canal", "{count} channel member"],
+  "Channel summary with coordinator": ["{count} bot · {name} coordena", "{count} bot · {name} coordinates"],
+  "Channel summary": ["{count} bot", "{count} bot"],
   "Conexão pronta: {count} ferramentas disponíveis. Salve para usá-las neste bot.": [
     "Conexão pronta: {count} ferramenta disponível. Salve para usá-la neste bot.",
     "Connection ready: {count} tool available. Save to use it with this bot.",
@@ -5513,27 +5709,108 @@ export const getRoutineRunDateLabel = (timestamp: number, locale: Locale = "pt-B
     ...(timeZone ? { timeZone } : {}),
   }).format(timestamp)
 
-export const getRoutineRunTimeLabel = (timestamp: number, locale: Locale = "pt-BR", timeZone?: string): string =>
-  new Intl.DateTimeFormat(locale, { timeStyle: "short", ...(timeZone ? { timeZone } : {}) }).format(timestamp)
+export type RoutineRunDayBounds = { start: number; end: number }
+export type RoutineRunDayBoundsReader = (now: number, timeZone?: string) => RoutineRunDayBounds
 
 export const getRoutineRunCountsToday = (
   routineRuns: readonly RoutineRun[],
   routines: ReadonlyMap<string, Routine>,
   now = Date.now(),
+  readDayBounds: RoutineRunDayBoundsReader = getRoutineRunDayBounds,
 ): ReadonlyMap<string, number> => {
-  const today = new Date(now).toDateString()
   const counts = new Map<string, number>()
+  const boundsByTimeZone = new Map<string | undefined, RoutineRunDayBounds>()
+  if (!routineRuns.length || !routines.size) return counts
+
   routineRuns.forEach((run) => {
+    if (!run.threadId) return
     const routine = routines.get(run.routineId)
     if (!routine) return
 
-    if (new Date(run.scheduledFor).toDateString() !== today) return
+    const timeZone = routine.timezone
+    const bounds = boundsByTimeZone.get(timeZone) ?? readDayBounds(now, timeZone)
+    if (!boundsByTimeZone.has(timeZone)) boundsByTimeZone.set(timeZone, bounds)
+    if (run.scheduledFor < bounds.start || run.scheduledFor >= bounds.end) return
 
     counts.set(run.routineId, (counts.get(run.routineId) ?? 0) + 1)
   })
 
   return counts
 }
+
+export const getNextRoutineRunDayBoundary = (
+  routines: ReadonlyMap<string, Routine>,
+  now = Date.now(),
+  readDayBounds: RoutineRunDayBoundsReader = getRoutineRunDayBounds,
+): number | undefined => {
+  if (!routines.size) return undefined
+
+  return [...new Set([...routines.values()].map((routine) => routine.timezone))].reduce<number | undefined>(
+    (nextBoundary, timeZone) => {
+      const boundary = readDayBounds(now, timeZone).end
+      return nextBoundary === undefined ? boundary : Math.min(nextBoundary, boundary)
+    },
+    undefined,
+  )
+}
+
+const getRoutineRunDayBounds: RoutineRunDayBoundsReader = (now, timeZone) => {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    ...(timeZone ? { timeZone } : {}),
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    second: "numeric",
+    hourCycle: "h23",
+  })
+  const readParts = (timestamp: number) => {
+    const parts = formatter.formatToParts(timestamp)
+    const readNumber = (type: "year" | "month" | "day" | "hour" | "minute" | "second"): number =>
+      Number(parts.find((part) => part.type === type)?.value ?? "0")
+
+    return {
+      year: readNumber("year"),
+      month: readNumber("month"),
+      day: readNumber("day"),
+      hour: readNumber("hour"),
+      minute: readNumber("minute"),
+      second: readNumber("second"),
+    }
+  }
+  const localToday = readParts(now)
+  const today = Date.UTC(localToday.year, localToday.month - 1, localToday.day)
+  const tomorrowDate = new Date(today + 86_400_000)
+  const nextDay = Date.UTC(tomorrowDate.getUTCFullYear(), tomorrowDate.getUTCMonth(), tomorrowDate.getUTCDate())
+  const getBoundary = (date: number): number => {
+    const dateParts = new Date(date)
+    const year = dateParts.getUTCFullYear()
+    const month = dateParts.getUTCMonth() + 1
+    const day = dateParts.getUTCDate()
+    let timestamp = date
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const local = readParts(timestamp)
+      const represented = Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute, local.second)
+      const epochSecond = Math.floor(timestamp / 1000) * 1000
+      const offset = represented - epochSecond
+      const nextTimestamp = date - offset
+      if (nextTimestamp === timestamp) return timestamp
+      timestamp = nextTimestamp
+      const adjusted = readParts(timestamp)
+      if (adjusted.year === year && adjusted.month === month && adjusted.day === day && adjusted.hour > 0)
+        return timestamp
+    }
+
+    return timestamp
+  }
+
+  return { start: getBoundary(today), end: getBoundary(nextDay) }
+}
+
+export const getRoutineRunTimeLabel = (timestamp: number, locale: Locale = "pt-BR", timeZone?: string): string =>
+  new Intl.DateTimeFormat(locale, { timeStyle: "short", ...(timeZone ? { timeZone } : {}) }).format(timestamp)
 
 export const getRoutineRunSidebarDateLabel = (
   timestamp: number,
@@ -5609,6 +5886,8 @@ export const statusLabel = (status: string): string => {
 
 /** Translate only application-authored notices, leaving bot/user content intact. */
 export const localizeNotice = (value: string): string => {
+  if (/^needs you in the browser:/iu.test(value)) return t("The browser needs your help.")
+  if (/^The user took over the browser:/u.test(value)) return t("You are in control of the browser.")
   const routineSkip = getRoutineSkipSummary(value)
   if (routineSkip) return routineSkip
   const toolCheck = /^Ferramentas do touri · (.+)$/.exec(value)

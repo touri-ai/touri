@@ -26,7 +26,6 @@ const renderSidebar = (locale: Locale = "pt-BR", onDelete = vi.fn().mockResolved
   render(
     <GroupSidebar
       groups={[getGroup()]}
-      bots={[]}
       threads={[]}
       selectedThreadId={null}
       onSelect={vi.fn()}
@@ -42,10 +41,10 @@ const renderSidebar = (locale: Locale = "pt-BR", onDelete = vi.fn().mockResolved
 }
 
 const openConfirmation = () => {
-  fireEvent.click(screen.getByRole("button", { name: "Ações do grupo Equipe QA" }))
-  fireEvent.click(screen.getByRole("menuitem", { name: "Apagar grupo" }))
+  fireEvent.click(screen.getByRole("button", { name: "Ações do canal Equipe QA" }))
+  fireEvent.click(screen.getByRole("menuitem", { name: "Apagar canal" }))
 
-  return screen.getByRole("dialog", { name: "Apagar grupo" })
+  return screen.getByRole("dialog", { name: "Apagar canal" })
 }
 
 const createGroup = (api: ReturnType<typeof createMockApi>) =>
@@ -70,15 +69,15 @@ describe("group deletion", () => {
   it("opens an accessible actions menu for an empty group and keeps editing available", async () => {
     const user = userEvent.setup()
     const { onEdit, onDelete } = renderSidebar()
-    const trigger = screen.getByRole("button", { name: "Ações do grupo Equipe QA" })
+    const trigger = screen.getByRole("button", { name: "Ações do canal Equipe QA" })
 
     trigger.focus()
     await user.keyboard("{ArrowDown}")
 
-    const menu = screen.getByRole("menu", { name: "Ações do grupo Equipe QA" })
+    const menu = screen.getByRole("menu", { name: "Ações do canal Equipe QA" })
     expect(menu.parentElement).toBe(document.body)
-    expect(within(menu).getByRole("menuitem", { name: "Editar grupo" })).toHaveFocus()
-    expect(within(menu).getByRole("menuitem", { name: "Apagar grupo" })).toBeVisible()
+    expect(within(menu).getByRole("menuitem", { name: "Editar canal" })).toHaveFocus()
+    expect(within(menu).getByRole("menuitem", { name: "Apagar canal" })).toBeVisible()
     expect(onEdit).not.toHaveBeenCalled()
 
     await user.keyboard("{Enter}")
@@ -91,12 +90,12 @@ describe("group deletion", () => {
   it("requires the exact group name and cancels without deleting", async () => {
     const { onDelete } = renderSidebar()
     const dialog = openConfirmation()
-    const name = within(dialog).getByLabelText("Digite o nome do grupo: Equipe QA")
-    const confirm = within(dialog).getByRole("button", { name: "Apagar grupo" })
+    const name = within(dialog).getByLabelText("Digite o nome do canal: Equipe QA")
+    const confirm = within(dialog).getByRole("button", { name: "Apagar canal" })
 
     expect(name).toHaveFocus()
     expect(confirm).toBeDisabled()
-    expect(dialog).toHaveTextContent("conversas, mensagens e rotinas")
+    expect(dialog).toHaveTextContent("conversas, mensagens e rotinas do canal")
     expect(dialog).toHaveTextContent("Os bots e suas conversas individuais são preservados.")
 
     fireEvent.change(name, { target: { value: "Equipe QA " } })
@@ -111,9 +110,9 @@ describe("group deletion", () => {
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }))
 
-    expect(screen.queryByRole("dialog", { name: "Apagar grupo" })).toBeNull()
+    expect(screen.queryByRole("dialog", { name: "Apagar canal" })).toBeNull()
     expect(onDelete).not.toHaveBeenCalled()
-    expect(screen.getByRole("button", { name: "Ações do grupo Equipe QA" })).toHaveFocus()
+    expect(screen.getByRole("button", { name: "Ações do canal Equipe QA" })).toHaveFocus()
   })
 
   it("keeps a failed deletion open with a clear error and allows another attempt", async () => {
@@ -123,20 +122,20 @@ describe("group deletion", () => {
       .mockResolvedValueOnce(undefined)
     renderSidebar("pt-BR", onDelete)
     const dialog = openConfirmation()
-    fireEvent.change(within(dialog).getByLabelText("Digite o nome do grupo: Equipe QA"), {
+    fireEvent.change(within(dialog).getByLabelText("Digite o nome do canal: Equipe QA"), {
       target: { value: "Equipe QA" },
     })
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Apagar grupo" }))
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apagar canal" }))
 
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
-      "Aguarde as respostas terminarem ou cancele os turnos antes de apagar o grupo.",
+      "Aguarde as respostas do canal terminarem ou cancele os turnos antes de apagar o canal.",
     )
-    expect(within(dialog).getByRole("button", { name: "Apagar grupo" })).toBeEnabled()
+    expect(within(dialog).getByRole("button", { name: "Apagar canal" })).toBeEnabled()
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Apagar grupo" }))
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apagar canal" }))
 
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Apagar grupo" })).toBeNull())
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Apagar canal" })).toBeNull())
     expect(onDelete).toHaveBeenCalledTimes(2)
     expect(onDelete).toHaveBeenLastCalledWith("group-qa")
   })
@@ -144,15 +143,17 @@ describe("group deletion", () => {
   it("translates the group menu and confirmation to English", () => {
     renderSidebar("en")
 
-    fireEvent.click(screen.getByRole("button", { name: "Actions for group Equipe QA" }))
+    fireEvent.click(screen.getByRole("button", { name: "Channel actions for Equipe QA" }))
 
-    expect(screen.getByRole("menuitem", { name: "Edit group" })).toBeVisible()
+    expect(screen.getByRole("menuitem", { name: "Edit channel" })).toBeVisible()
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "Delete group" }))
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete channel" }))
 
-    const dialog = screen.getByRole("dialog", { name: "Delete group" })
-    expect(within(dialog).getByLabelText("Type the group name: Equipe QA")).toBeVisible()
-    expect(dialog).toHaveTextContent("Deleting Equipe QA removes all conversations, messages and routines")
+    const dialog = screen.getByRole("dialog", { name: "Delete channel" })
+    expect(within(dialog).getByLabelText("Type the channel name: Equipe QA")).toBeVisible()
+    expect(dialog).toHaveTextContent(
+      "Deleting Equipe QA removes all conversations, messages, and routines from the channel",
+    )
     expect(dialog).toHaveTextContent("Bots and their individual conversations are kept.")
     expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeVisible()
   })

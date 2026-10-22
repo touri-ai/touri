@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
-import { openGlobalPage, showBotAdvanced, showBotRoutines } from "./home-navigation"
+import { openGlobalPage, showBotAdvanced, showBotChat, showBotRoutines } from "./home-navigation"
 
 test("cold search keeps keyboard focus inside its loading dialog", async ({ page }, info) => {
   await page.setViewportSize({ width: 1440, height: 900 })
@@ -61,7 +61,7 @@ test("cold routines keep navigation available and focus the loaded destination",
   await page.screenshot({ path: screenshot, animations: "disabled" })
   await info.attach("routines loading", { path: screenshot, contentType: "image/png" })
 
-  await page.getByRole("button", { name: /^Bots/ }).click()
+  await showBotChat(page)
 
   await expect(composer).toBeVisible()
   await expect(loading).toHaveCount(0)
@@ -113,7 +113,7 @@ test("approved navigation exposes Cron, integrations, MCP and preview", async ({
   await expect(page.getByRole("heading", { name: "Integrações" })).toBeVisible()
   await openGlobalPage(page, "MCP")
   await expect(page.getByRole("heading", { name: "MCP" })).toBeVisible()
-  await page.getByRole("button", { name: /^Bots/ }).click()
+  await showBotChat(page)
   if (!(await page.getByRole("button", { name: "Preview do projeto" }).isVisible()))
     await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
   await page.getByRole("button", { name: "Preview do projeto" }).click()
@@ -194,7 +194,7 @@ test("avatar choices survive settings reopening and appear on other surfaces", a
   await expect(page.getByRole("radio", { name: "Chifres Curtos" })).toBeChecked()
   await page.getByRole("radio", { name: "Cor Azul" }).check()
   await page.getByRole("dialog").getByRole("button", { name: "Criar bot", exact: true }).click()
-  const row = page.locator(".bot-entry").filter({ hasText: "Morpheus" })
+  const row = page.locator("#sidebar-mode-panel-bots .bot-entry").filter({ hasText: "Morpheus" })
   await expect(row.locator(".tb-avatar")).toHaveAttribute("data-avatar-shape", "short-flower")
   await showBotAdvanced(page, "Morpheus")
   await page.getByRole("button", { name: "Personalizar", exact: true }).click()
@@ -221,7 +221,7 @@ test("r2 creates one bot/conversation/cron and refreshes Cron without changing s
   await page.getByLabel("Função", { exact: true }).fill("SEO do site")
   await page.getByLabel("Título (opcional)").fill("Analista")
   await page.getByRole("dialog").getByRole("button", { name: "Criar bot", exact: true }).click()
-  const bot = page.locator(".bot-entry").filter({ hasText: "seo-r2" })
+  const bot = page.locator("#sidebar-mode-panel-bots .bot-entry").filter({ hasText: "seo-r2" })
   await expect(bot).toHaveCount(1)
   await expect(bot.locator(".bot-role")).toHaveText("SEO do site")
   await expect(bot.locator(".thread-row")).toHaveCount(1)
@@ -257,7 +257,8 @@ test("r2 creates one bot/conversation/cron and refreshes Cron without changing s
   await page.getByRole("button", { name: "Atualizar", exact: true }).click()
   await expect(page.getByRole("heading", { name: "Rotinas" })).toBeVisible()
   await expect(page.locator(".routine-item").filter({ hasText: "SEO semanal r2" })).toHaveCount(1)
-  await page.getByRole("button", { name: /^Bots/ }).click()
+  await page.getByRole("tab", { name: /^Bots/ }).click()
+  await bot.locator(".bot-row-main").click()
   await expect(page.getByRole("textbox", { name: "Mensagem para seo-r2" })).toBeVisible()
   await expect(bot.locator(".thread-row")).toHaveCount(1)
 })

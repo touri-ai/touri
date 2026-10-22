@@ -81,6 +81,7 @@ export const WORKSPACE_RUNS_SQL = `
 `
 
 type RawBrowserChannelRun = {
+  current_run_id: string
   run_id: string
   group_id: string
   thread_id: string
@@ -101,7 +102,7 @@ export const WORKSPACE_BROWSER_RUNS_SQL = `
   SELECT c.*,
     CASE WHEN c.status = 'queued' THEN 1 + (
       SELECT COUNT(*) FROM browser_channel_runs queued
-      WHERE queued.thread_id = c.thread_id AND queued.bot_id = c.bot_id AND queued.status = 'queued'
+      WHERE queued.bot_id = c.bot_id AND queued.status = 'queued'
         AND (queued.queued_at < c.queued_at OR (queued.queued_at = c.queued_at AND queued.run_id < c.run_id))
     ) ELSE NULL END AS queue_position
   FROM browser_channel_runs c
@@ -121,6 +122,7 @@ const asBrowserChannelRun = (
   personName: (personId: string) => string | null,
 ): BrowserChannelRun => ({
   runId: row.run_id,
+  activeRunId: row.current_run_id,
   groupId: row.group_id,
   threadId: row.thread_id,
   botId: row.bot_id,

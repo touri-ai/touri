@@ -17,10 +17,13 @@ themes.forEach((theme) => {
       if (width === 390) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
       const badge = page.locator(".sidebar-work-badge:visible")
       await expect(
-        page.getByRole("button", { name: "Trabalhando: 3, 2 na fila. Ver trabalho", exact: true }),
+        page.getByRole("button", { name: "Trabalhando · 3 2 na fila Ver trabalho", exact: true }),
       ).toBeVisible()
       const label = await badge.getAttribute("aria-label")
-      if (!label) throw new Error("Missing work summary label")
+      expect(label).toBeNull()
+      if (theme === "light" && width === 1440) {
+        await badge.screenshot({ path: info.outputPath("work-summary-before.png") })
+      }
 
       await badge.evaluate((element) => element.setAttribute("aria-label", "Ver trabalho: 3 em execução, 2 na fila"))
       const baseline = await getLabelAudit(page)
@@ -28,12 +31,12 @@ themes.forEach((theme) => {
       expect(baseline.violations.map((rule) => rule.id)).toEqual(["label-content-name-mismatch"])
       expect(baseline.incomplete).toEqual([])
 
-      await badge.evaluate((element, value) => element.setAttribute("aria-label", value), label)
+      await badge.evaluate((element) => element.removeAttribute("aria-label"))
       const fixed = await getLabelAudit(page)
 
       expect(fixed.violations).toEqual([])
       expect(fixed.incomplete).toEqual([])
-      expect(fixed.passes.map((rule) => rule.id)).toEqual(["label-content-name-mismatch"])
+      expect(fixed.passes).toEqual([])
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
       await badge.screenshot({ path: info.outputPath(`work-summary-${theme}-${width}.png`) })
 

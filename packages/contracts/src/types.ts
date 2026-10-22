@@ -195,6 +195,8 @@ export type ThreadUsage = {
   contextWindow: number | null
 }
 
+export type ChannelPerson = { id: Id; name: string; avatarSeed: string; role: 'member' | 'admin' }
+
 export type BotGroup = {
   id: Id
   name: string
@@ -384,6 +386,7 @@ export type TranscriptRejection = {
 export type DeliveryState = { clientNonce: string; deadline: EpochMs; status: 'queued' | 'sent' | 'acked' | 'failed' }
 
 export type ToolCallPart = {
+  browserRequestId?: Id
   startedAt?: EpochMs
   outputMode?: 'streaming' | 'on_completion'
   outputTail?: string
@@ -722,6 +725,9 @@ export type BrowserChannelRunStatus =
 /** Shared-channel browser work shown in workspace activity and live events. */
 export type BrowserChannelRun = {
   runId: Id
+  requestId?: Id
+  activeRunId?: Id
+  runIds?: Array<Id>
   groupId: Id
   threadId: Id
   botId: Id
@@ -1019,6 +1025,7 @@ export type ApiRoutes = {
   'PUT /public-address': { req: { address: string | null }; res: { address: string | null; reachability: 'public' | 'private' | 'localhost' | 'tailnet' | 'invalid' | 'unset' } }
   'POST /auth/email': { req: { email: string }; res: { ok: true } }
   'POST /auth/email/redeem': { req: { token: string; deviceName?: string }; res: { ok: true; deviceId: Id } }
+  'GET /groups/:id/people': { req: {}; res: { people: Array<ChannelPerson> } }
   'GET /groups': { req: {}; res: { groups: Array<BotGroup> } }
   'POST /groups': { req: GroupInput; res: { group: BotGroup; thread: Thread } }
   'PATCH /groups/:id': { req: GroupInput; res: { group: BotGroup } }
@@ -1647,6 +1654,8 @@ export type ServiceMap = {
   'runtime.cancelRun': (args: { runId: Id }) => boolean
   'runtime.shutdown': (options?: { appRestart?: boolean }) => Promise<void>
   'projects.info': (args: { projectId: Id; botId?: Id }) => Promise<ProjectInfo | null>
+  'browser.takeoverResolved': (args: { tabId: Id; resolution: 'replied' | 'expired' | 'canceled' }) => void
+  'browser.cancelRun': (args: { runId: Id; signal: AbortSignal }) => Promise<boolean>
   'browser.cancelRequest': (args: { runId: Id; reason?: 'timeout' }) => Id | null
   'browser.shutdown': () => Promise<void>
   'browser.tabsForBot': (args: { botId: Id }) => Array<BrowserTabInfo>

@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test"
 test.use({ channel: "chromium", locale: "pt-BR", timezoneId: "America/Sao_Paulo" })
 
 test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("touri.sidebar.mode", "bots"))
   await page.clock.setFixedTime(new Date("2026-10-18T18:00:00-03:00"))
 })
 
@@ -10,24 +11,27 @@ for (const [name, width, height] of [
   ["desktop", 1440, 900],
   ["phone", 390, 844],
 ] as const) {
-  test(`routine sidebar: ${name} clears grouped unread runs with one click`, async ({ page }) => {
+  test(`routine sidebar: ${name} clears grouped unread runs after opening a result from history`, async ({ page }) => {
     await page.setViewportSize({ width, height })
     await page.emulateMedia({ reducedMotion: "reduce" })
     await page.goto("/test/e2e/routine-sidebar-harness.html?unread")
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
     const conversations = page.getByRole("region", { name: "Conversas de mark" })
-    const routine = conversations.locator(".thread-row").filter({ hasText: "Resumo diário" })
+    const routine = conversations.getByRole("button", { name: /^Rotinas/ })
     const directory = process.env.TOURI_ROUTINE_SIDEBAR_SHOTS_DIR
 
     await expect(routine.locator(".sidebar-unread")).toHaveText("8")
     if (directory) await page.screenshot({ path: `${directory}/unread-group-${name}.png`, animations: "disabled" })
     await routine.click()
+    const history = page.locator(".routine-run-history")
+    await expect(history).toHaveAttribute("data-open", "true")
+    await history.getByRole("button", { name: "Abrir conversa" }).last().click()
     await expect(page.locator(".message-assistant")).toContainText("Resumo pronto para conferir.")
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
 
     await expect(routine.locator(".sidebar-unread")).toHaveCount(0)
-    await expect(page.locator(".thread-row.selected")).toContainText("14:45")
+    await expect(page.locator(".thread-row.selected")).toContainText("28 hoje")
     if (directory) await page.screenshot({ path: `${directory}/read-group-${name}.png`, animations: "disabled" })
   })
 
@@ -43,7 +47,7 @@ for (const [name, width, height] of [
     const routine = conversations.locator(".thread-row").filter({ hasText: "Rotina excluída" })
 
     await expect(conversations.locator(".thread-row")).toHaveCount(2)
-    await expect(conversations.getByRole("button", { name: "Histórico de rotinas" })).toHaveCount(0)
+    await expect(conversations.getByRole("button", { name: /^Rotinas/ })).toHaveCount(0)
     await expect(routine.locator(".sidebar-unread")).toHaveText("8")
     await routine.click()
     await expect(page.locator(".message-assistant")).toContainText("Resumo pronto para conferir.")
@@ -85,13 +89,11 @@ for (const [name, width, height] of [
 
     await expect(conversations.locator(".thread-row")).toHaveCount(2)
     await expect(conversations.locator(".thread-row").first()).toContainText("Planejamento da semana")
-    await expect(conversations.locator(".thread-row").last()).toContainText("hoje · 14:45")
-    await expect(conversations.locator(".thread-row strong").last()).toHaveAttribute(
-      "title",
-      "Rotina Resumo diário · 18/10/2026, 14:45",
-    )
+    await expect(conversations.locator(".thread-row").last()).toContainText("Rotinas")
+    await expect(conversations.locator(".thread-row").last()).toContainText("28 hoje")
+    await expect(conversations.locator(".thread-row").last()).not.toContainText("0 hoje")
 
-    await conversations.getByRole("button", { name: "Histórico de rotinas" }).click()
+    await conversations.getByRole("button", { name: /^Rotinas/ }).click()
     const history = page.locator(".routine-run-history")
     await expect(history).toHaveAttribute("data-open", "true")
     await expect(history.getByRole("button", { name: "Abrir conversa" })).toHaveCount(28)
@@ -103,7 +105,7 @@ for (const [name, width, height] of [
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
 
     await expect(conversations.locator(".thread-row")).toHaveCount(2)
-    await expect(conversations.locator(".thread-row.selected")).toContainText("hoje · 08:00")
+    await expect(conversations.locator(".thread-row.selected")).toContainText("28 hoje")
   })
 
   test(`routine sidebar: ${name} opens results beyond the first history page`, async ({ page }) => {
@@ -113,7 +115,7 @@ for (const [name, width, height] of [
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
 
-    await page.getByRole("button", { name: "Histórico de rotinas" }).click()
+    await page.getByRole("button", { name: /^Rotinas/ }).click()
     const history = page.locator(".routine-run-history")
     await expect(history).toHaveAttribute("data-open", "true")
     await expect(history.getByRole("button", { name: "Abrir conversa" })).toHaveCount(50)
@@ -123,7 +125,7 @@ for (const [name, width, height] of [
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
 
-    await expect(page.locator(".thread-row.selected")).toContainText("hoje · 08:00")
+    await expect(page.locator(".thread-row.selected")).toContainText("60 hoje")
   })
 
   test(`routine sidebar: ${name} filters a routine and reaches its oldest of 128 results`, async ({ page }) => {
@@ -133,20 +135,22 @@ for (const [name, width, height] of [
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
     const conversations = page.getByRole("region", { name: "Conversas de mark" })
-    await conversations.locator(".thread-row").filter({ hasText: "Resumo diário" }).click()
-    await expect(page.locator(".message-assistant")).toContainText("Resumo pronto para conferir.")
-    if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
-    await conversations.getByRole("button", { name: "Histórico de rotinas" }).click()
+    await conversations.getByRole("button", { name: /^Rotinas/ }).click()
     const history = page.locator(".routine-run-history")
 
     await expect(history).toHaveAttribute("data-open", "true")
-    await expect(history.getByRole("combobox", { name: "Filtrar histórico por rotina" })).not.toHaveValue("all")
+    const routineFilter = history.getByRole("combobox", { name: "Filtrar histórico por rotina" })
+    const dailyRoutine = routineFilter.locator("option").filter({ hasText: "Resumo diário" })
+    await routineFilter.selectOption((await dailyRoutine.getAttribute("value")) ?? "")
+    await expect(routineFilter).not.toHaveValue("all")
     await expect(history.getByRole("status")).toHaveText("Execuções 1–50 de 128")
     await expect(history.getByRole("listitem")).toHaveCount(50)
     await history.getByRole("button", { name: "Histórico de execuções" }).click()
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
-    await conversations.getByRole("button", { name: "Histórico de rotinas" }).click()
+    await conversations.getByRole("button", { name: /^Rotinas/ }).click()
     await expect(history).toHaveAttribute("data-open", "true")
+    await routineFilter.selectOption((await dailyRoutine.getAttribute("value")) ?? "")
+    await expect(routineFilter).not.toHaveValue("all")
     await expect(history.getByRole("status")).toHaveText("Execuções 1–50 de 128")
     const directory = process.env.TOURI_ROUTINE_SIDEBAR_SHOTS_DIR
     if (directory) {
@@ -168,6 +172,6 @@ for (const [name, width, height] of [
     await expect(page.locator(".message-assistant")).toContainText("Resumo pronto para conferir.")
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
 
-    await expect(conversations.locator(".thread-row.selected")).toContainText("hoje · 08:00")
+    await expect(conversations.locator(".thread-row.selected")).toContainText("64 hoje")
   })
 }

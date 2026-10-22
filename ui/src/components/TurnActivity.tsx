@@ -1,10 +1,12 @@
 import type { Bot, Message, Run } from "@touri/contracts"
 import { lazy, type ReactNode, Suspense, useContext, useEffect, useId, useState } from "react"
 import type { UiApi } from "../api/client"
+import { ChannelBrowserScope } from "../features/channelBrowser/ChannelBrowser"
 import { InlinePreviewContext } from "../features/desktop/InlineLivePreview"
 import { type Locale, t } from "../i18n"
 import { ActivityMark } from "./ActivityMark"
 import { getBrowserActivityTools } from "./browserActivityPresentation"
+import type { BrowserContinuationActivity } from "./browserContinuationActivity"
 import { MarkdownContent } from "./MarkdownContent"
 import type { MascotState } from "./mascotState"
 import { ToolCallCard } from "./ToolCallCard"
@@ -20,12 +22,14 @@ export const BrowserTurnCard = ({
   message,
   run,
   bot,
+  activity,
   locale = "pt-BR",
   children,
 }: {
   message: Message
   run?: Run | undefined
   bot?: Bot | undefined
+  activity?: BrowserContinuationActivity | undefined
   locale?: Locale
   children?: ReactNode
 }) => {
@@ -38,13 +42,21 @@ export const BrowserTurnCard = ({
   const card = (
     <Suspense fallback={<div className="browser-card-loading" aria-busy="true" />}>
       <BrowserActivityCard
-        parts={message.parts}
-        finished={message.status !== "streaming"}
-        createdAt={message.createdAt}
+        parts={activity?.parts ?? message.parts}
         threadId={message.threadId}
-        runId={message.runId}
-        waitingForPerson={run?.browserWaitingForPerson}
-        botName={message.sender?.name ?? bot?.name ?? inlinePreview?.bot?.name ?? "touri"}
+        runId={activity?.runId ?? message.runId}
+        waitingForPerson={
+          run?.browserWaitingForPerson &&
+          !message.parts.some(
+            (part) =>
+              part.type === "notice" &&
+              part.code === "run_failed" &&
+              part.text === "No one took over in time. Ask again when you can.",
+          )
+        }
+        finished={activity?.finished ?? message.status !== "streaming"}
+        createdAt={message.createdAt}
+        botName={message.sender?.name ?? bot?.name ?? "touri"}
         locale={locale}
       >
         {children}
@@ -52,12 +64,19 @@ export const BrowserTurnCard = ({
     </Suspense>
   )
 
-  return value ? <InlinePreviewContext.Provider value={value}>{card}</InlinePreviewContext.Provider> : card
+  return (
+    <ChannelBrowserScope runId={message.runId}>
+      {value ? <InlinePreviewContext.Provider value={value}>{card}</InlinePreviewContext.Provider> : card}
+    </ChannelBrowserScope>
+  )
 }
 
 export const TurnActivity = ({
   message,
   run,
+  browserActivity,
+  hideBrowserActivity = false,
+  botName: _botName,
   api,
   bot,
   state,
@@ -70,6 +89,9 @@ export const TurnActivity = ({
 }: {
   message: Message
   run?: Run | undefined
+  browserActivity?: BrowserContinuationActivity | undefined
+  hideBrowserActivity?: boolean | undefined
+  botName?: string
   api?: UiApi | undefined
   bot?: Bot | undefined
   state: MascotState
@@ -95,8 +117,8 @@ export const TurnActivity = ({
   const groups = activityGroups(tools.filter((part) => !approvals.has(part.callId) && !browserCallIds.has(part.callId)))
   const reasoning = message.parts.flatMap((part) => (part.type === "reasoning" && part.text.trim() ? [part.text] : []))
   const browserOnly = browserTools.length > 0 && groups.length === 0 && approvals.size === 0 && reasoning.length === 0
-  const browserCard = browserTools.length > 0 && !hideBrowserCard && (
-    <BrowserTurnCard message={message} run={run} bot={bot} locale={locale}>
+  const browserCard = browserTools.length > 0 && !hideBrowserCard && !hideBrowserActivity && (
+    <BrowserTurnCard message={message} run={run} bot={bot} activity={browserActivity} locale={locale}>
       {browserFlow}
     </BrowserTurnCard>
   )

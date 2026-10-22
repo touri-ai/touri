@@ -75,3 +75,18 @@ test("a changed target never starts a second capture while the first is pending"
   expect(extraCaptures).toBe(0)
   expect(await first).toBeNull()
 })
+
+test("a new public document refreshes immediately after the previous capture completed", async () => {
+  const source = createSharedPreviewSource<string>({ now: () => 1 })
+  const before = await source.capture({
+    target: "tab",
+    generation: 1,
+    isCurrent: () => true,
+    read: async () => "before",
+  })
+
+  const after = await source.capture({ target: "tab", generation: 2, isCurrent: () => true, read: async () => "after" })
+
+  expect(before).toBe("before")
+  expect(after).toBe("after")
+})

@@ -16,6 +16,8 @@ const locationIs = async (bot: string, thread: string) => {
   await waitFor(() => expect(parseDeepLink(window.location.href)).toEqual({ bot, thread }), { timeout: 2000 })
 }
 const selectBot = (id: string) => {
+  const botsTab = screen.getByRole("tab", { name: /^Bots,/ })
+  if (botsTab.getAttribute("aria-selected") !== "true") fireEvent.click(botsTab)
   const row = document.querySelector(`[data-bot-entry="${id}"] .bot-row-main`)
   if (!row) throw new Error("Missing bot row")
   fireEvent.click(row)
@@ -157,7 +159,8 @@ it("restores group conversations from their thread URL and through browser histo
   if (!thread) throw new Error("Missing group conversation")
   const first = render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
-  fireEvent.click(screen.getByRole("button", { name: "Equipe QA", exact: true }))
+  fireEvent.click(screen.getByRole("tab", { name: /^Work,/ }))
+  fireEvent.click(screen.getByRole("button", { name: /^Equipe QA/ }))
   await screen.findByRole("textbox", { name: "Mensagem para Equipe QA" })
   await locationIs(thread.botId, thread.id)
   selectBot("bot-onb")

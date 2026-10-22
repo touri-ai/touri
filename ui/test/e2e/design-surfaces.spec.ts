@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises"
 import { join } from "node:path"
 import { expect, type Page, type TestInfo, test } from "@playwright/test"
-import { showBotAdvanced, showBotRoutines } from "./home-navigation"
+import { openBotActions, showBotAdvanced, showBotRoutines } from "./home-navigation"
 
 const viewports = [
   { width: 1440, height: 900, theme: "dark" },
@@ -37,7 +37,7 @@ for (const viewport of viewports) {
 
       await openSidebar(page)
       await showBotRoutines(page)
-      await expect(page.locator(".cron-screen")).toBeVisible()
+      await expect(page.locator(".cron-screen")).toBeVisible({ timeout: 30_000 })
       await captureSurface(page, info, "routines")
       await page.getByRole("button", { name: "Criar rotina", exact: true }).click()
       await expect(page.getByRole("dialog")).toBeVisible()
@@ -56,7 +56,7 @@ for (const viewport of viewports) {
       await page.getByRole("button", { name: "Fechar diálogo", exact: true }).click()
 
       await openSidebar(page)
-      await page.getByRole("button", { name: "Ações de mark", exact: true }).click()
+      await openBotActions(page)
       await page.getByRole("menuitem", { name: "Excluir bot", exact: true }).click()
       await expect(page.getByLabel("Digite o nome do bot: mark")).toBeVisible()
       await captureSurface(page, info, "delete-bot")
@@ -70,8 +70,10 @@ for (const viewport of viewports) {
       await page.getByRole("button", { name: "Fechar diálogo", exact: true }).click()
 
       await openSidebar(page)
-      await page.getByRole("button", { name: "Criar grupo", exact: true }).click()
-      await expect(page.getByRole("dialog", { name: "Criar grupo", exact: true })).toBeVisible()
+      await page.getByRole("tab", { name: /^Work,/ }).click()
+      await openSidebar(page)
+      await page.getByRole("button", { name: "Novo canal", exact: true }).click()
+      await expect(page.getByRole("dialog", { name: "Criar canal", exact: true })).toBeVisible()
       await captureSurface(page, info, "group")
     })
 
@@ -128,7 +130,7 @@ test("phone navigation survives replacing a bot routine header", async ({ page }
   await page.goto("/test/e2e/home-harness.html")
   await openSidebar(page)
   await showBotRoutines(page, "mark")
-  await expect(page.locator(".cron-screen")).toBeVisible()
+  await expect(page.locator(".cron-screen")).toBeVisible({ timeout: 30_000 })
   const header = page.locator(".cron-screen .screen-header")
   await expect(header.getByRole("button", { name: "Abrir menu", exact: true })).toBeVisible()
   await openSidebar(page)

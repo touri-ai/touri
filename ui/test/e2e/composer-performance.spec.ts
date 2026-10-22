@@ -21,7 +21,7 @@ type Keystroke = {
   afterFrameMs: number
 }
 type Commit = { at: number; duration: number; renders: Record<string, number> }
-type Metrics = { enabled: boolean; samples: Keystroke[]; commits: Commit[] }
+type Metrics = { enabled: boolean; samples: Keystroke[]; commits: Commit[]; lastCommitAt: number }
 
 /** Installed before React starts. PerformedWork counts actual renders, including renders with no DOM mutation. */
 const installMeasurements = () => {
@@ -40,7 +40,7 @@ const installMeasurements = () => {
     alternate: Fiber | null
     actualDuration?: number
   }
-  const metrics: Metrics = { enabled: false, samples: [], commits: [] }
+  const metrics: Metrics = { enabled: false, samples: [], commits: [], lastCommitAt: 0 }
   const target = window as unknown as {
     composerPerformance: Metrics
     composerPerformanceComponents?: Map<unknown, string>
@@ -67,8 +67,10 @@ const installMeasurements = () => {
         visit(fiber.sibling)
       }
       visit(root.current)
+      const committedAt = performance.now()
+      metrics.lastCommitAt = committedAt
       if (metrics.enabled)
-        metrics.commits.push({ at: performance.now(), duration: root.current.actualDuration ?? 0, renders })
+        metrics.commits.push({ at: committedAt, duration: root.current.actualDuration ?? 0, renders })
     },
   }
   let keydownAt = 0
@@ -222,6 +224,15 @@ test("long history keeps typing independent of transcript work", async ({ page, 
     await input.fill("")
     await page.evaluate(
       () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
+    )
+    // Let asynchronous virtual-row measurements settle before measuring typing commits.
+    await page.waitForFunction(
+      (quietPeriodMs) => {
+        const metrics = (window as unknown as { composerPerformance: Metrics }).composerPerformance
+        return metrics.lastCommitAt > 0 && performance.now() - metrics.lastCommitAt >= quietPeriodMs
+      },
+      250,
+      { timeout: 15_000 },
     )
     const initialMetrics = await cdp.send("Performance.getMetrics")
     await page.evaluate(() => {

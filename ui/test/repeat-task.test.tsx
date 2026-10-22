@@ -240,6 +240,64 @@ describe("repeating work", () => {
     expect(screen.getByText("Execução de recuperação")).toBeVisible()
     expect(screen.queryByText(/skipped|catch-up/)).toBeNull()
   })
+
+  it("groups routine history by day, hides the local timezone, and shows one state chip", () => {
+    const f = fixture()
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    const now = new Date()
+    const yesterday = new Date(now)
+    yesterday.setDate(yesterday.getDate() - 1)
+    const paused = { ...f.created, enabled: false, timezone: timeZone }
+    const runs = [
+      {
+        id: "today-run",
+        routineId: paused.id,
+        scheduledFor: now.getTime(),
+        status: "succeeded" as const,
+        triggerSource: "cron" as const,
+        threadId: null,
+        runId: null,
+        summary: null,
+        startedAt: now.getTime(),
+        finishedAt: now.getTime(),
+      },
+      {
+        id: "yesterday-run",
+        routineId: paused.id,
+        scheduledFor: yesterday.getTime(),
+        status: "succeeded" as const,
+        triggerSource: "cron" as const,
+        threadId: null,
+        runId: null,
+        summary: null,
+        startedAt: yesterday.getTime(),
+        finishedAt: yesterday.getTime(),
+      },
+    ]
+
+    render(
+      <CronScreen
+        bots={[f.bot]}
+        selectedBotId={f.bot.id}
+        routines={[paused]}
+        routineRuns={runs}
+        messages={[]}
+        actions={f.actions as unknown as WorkspaceActions}
+        onNotice={vi.fn()}
+        onReviewApprovals={vi.fn()}
+      />,
+    )
+
+    const routineItem = document.querySelector(".routine-item")
+    expect(routineItem?.querySelectorAll(".routine-status .screen-status")).toHaveLength(1)
+    expect(routineItem?.querySelector(".routine-status")).toHaveTextContent("Pausada")
+    fireEvent.click(screen.getByText("Histórico de execuções"))
+
+    const history = document.querySelector(".routine-history-list")
+    expect(within(history as HTMLElement).getByText("Hoje")).toBeInTheDocument()
+    expect(within(history as HTMLElement).getByText("Ontem")).toBeInTheDocument()
+    expect(history).not.toHaveTextContent(timeZone)
+  })
 })
 
 it("previews three weekday dates in the chosen timezone and handles Sunday and daylight-saving transitions", () => {

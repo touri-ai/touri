@@ -415,34 +415,6 @@ a {
 .bot-entry {
   min-width: 0;
 }
-.bot-row {
-  min-height: 66px;
-  display: flex;
-  align-items: stretch;
-  border-radius: var(--radius-sm);
-  background: transparent;
-}
-.bot-row.selected,
-.bot-row:hover {
-  background: var(--surface-selected);
-}
-.bot-row-main {
-  min-width: 0;
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: var(--space-12);
-  padding: var(--space-8) var(--space-8);
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text);
-  text-align: left;
-  -webkit-app-region: no-drag;
-}
-.bot-row-main:hover {
-  background: transparent;
-}
 .tb-avatar {
   position: relative;
   display: grid;
@@ -513,18 +485,6 @@ a {
     animation: none;
   }
 }
-.bot-row-copy {
-  min-width: 0;
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.bot-row-copy strong {
-  color: var(--text);
-  font-size: var(--fs-body);
-  line-height: var(--leading-tight);
-}
 .bot-role,
 .bot-preview {
   overflow: hidden;
@@ -551,8 +511,6 @@ a {
   letter-spacing: 1px;
   opacity: 0;
 }
-.bot-row:hover .bot-settings,
-.bot-row.selected .bot-settings,
 .bot-settings:focus-visible {
   opacity: 1;
 }
@@ -3305,8 +3263,8 @@ a {
     z-index: 60;
     top: 6px;
     left: 12px;
-    width: 40px;
-    height: 40px;
+    width: var(--touch-target-size);
+    height: var(--touch-target-size);
   }
   .mobile-menu-button[hidden] {
     display: none;

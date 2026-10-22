@@ -39,7 +39,7 @@ export const getSidebarThreads = (
       countToday,
       deletedRoutine,
       running: runningThreadIds.has(thread.id),
-      unread: thread.unread,
+      unread: thread.id === selectedThreadId ? 0 : thread.unread,
     }
   })
   // This local index keeps grouping linear as frequent routines accumulate history.

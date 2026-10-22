@@ -66,7 +66,7 @@ const activeRun = (bot: Bot): Run => ({
 })
 
 describe("composer project picker", () => {
-  it("keeps selected names wrapping in the phone grid with separate send controls", async () => {
+  it("truncates selected names in the phone grid with separate send controls", async () => {
     await setup()
     const composerStyles = await readFile("src/components/Composer.css", "utf8")
     const { container } = render(<style>{composerStyles}</style>)

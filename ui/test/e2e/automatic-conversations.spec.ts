@@ -12,7 +12,7 @@ const openConversations = async (page: Page) => {
   const menu = page.getByRole("button", { name: "Abrir menu", exact: true })
   if (await menu.isVisible()) await menu.click()
   const entry = page.locator('[data-bot-entry="bot-mark"]')
-  const rows = entry.locator(".thread-row")
+  const rows = entry.locator(".thread-row:not(.routines-row)")
   if ((await rows.count()) === 0) await entry.locator(".bot-row-main").click()
   await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
 
@@ -30,6 +30,10 @@ test("automatic task threads no longer flood the sidebar and task mode groups th
   test.setTimeout(30_000)
   await page.goto("/test/e2e/home-harness.html?scenario=thread-noise-before")
   const before = await openConversations(page)
+  await expect(before.filter({ hasText: "lead.reply" })).toHaveCount(4)
+  const showMore = page.getByRole("button", { name: /^Mostrar mais \d+$/ })
+  await expect(showMore).toBeVisible()
+  await showMore.click()
   await expect(before.filter({ hasText: "lead.reply" })).toHaveCount(30)
   await capture(page, "automatic-conversations-before")
 
@@ -97,6 +101,7 @@ for (const view of [
     if (view.width === 390) await menu.click()
     const actions = sidebar.getByRole("button", { name: "Ações de mark", exact: true })
     await expect(actions).toBeVisible()
+    await sidebar.locator('[data-bot-entry="bot-mark"] .bot-row').hover()
     await actions.click()
     const advanced = page.getByRole("menuitem", { name: "Avançado", exact: true })
     await expect(advanced).toBeVisible()

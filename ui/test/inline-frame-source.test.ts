@@ -1,7 +1,6 @@
-import type { Bot } from "@touri/contracts"
+import type { Bot, UiEventEnvelope } from "@touri/contracts"
 import { afterEach, expect, test, vi } from "vitest"
-import type { ApiRequest, UiApi } from "../src/api/client"
-import { createMockApi } from "../src/api/mock"
+import type { UiApi } from "../src/api/client"
 import { startInlineFrameSource } from "../src/features/desktop/inlineFrameSource"
 
 const mock = vi.hoisted(() => ({
@@ -43,7 +42,7 @@ vi.mock("@novnc/novnc", () => ({
   },
 }))
 
-const installPreviewWorker = () => {
+const installPreviewWorker = (respond = true) => {
   class PreviewWorker extends EventTarget {
     sent: Array<{
       message: { id: number; title: string; url: string; image?: string; bitmap?: ImageBitmap }
@@ -52,6 +51,7 @@ const installPreviewWorker = () => {
     postMessage = vi.fn((message: PreviewWorker["sent"][number]["message"], transfer: Transferable[] = []) => {
       this.sent.push({ message, transfer })
       if (message.bitmap) message.bitmap.close()
+      if (!respond) return
       this.dispatchEvent(
         new MessageEvent("message", {
           data: { id: message.id, title: message.title, url: message.url, src: "data:image/jpeg;base64,cHJvY2Vzc2Vk" },
@@ -127,8 +127,8 @@ test("VM pipeline is always view-only, samples at 1 fps and releases its session
 })
 
 test("a session that resolves after stopping is immediately released", async () => {
-  installPreviewWorker()
   let resolve: (session: unknown) => void = () => {}
+  installPreviewWorker()
   const request = vi.fn((route: string) =>
     route === "POST /bots/:id/desktop"
       ? new Promise((done) => {
@@ -163,7 +163,12 @@ test("host browser polling sends images to the worker and stays serial", async (
   const frame = vi.fn()
   const stop = startInlineFrameSource(api, { id: "host", machine: "local" } as Bot, "tab", frame, vi.fn())
   await vi.advanceTimersByTimeAsync(0)
-  expect(request).toHaveBeenCalledWith("GET /bots/:id/browser-preview", { tabId: "tab" }, { id: "host" })
+  expect(request).toHaveBeenCalledWith(
+    "GET /bots/:id/browser-preview",
+    { tabId: "tab" },
+    { id: "host" },
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  )
   expect(mock.workers[0]?.sent[0]?.message.image).toBe("data:image/jpeg;base64,aGVsbG8=")
   expect(frame).toHaveBeenCalledTimes(1)
   // connect-src refuses fetch(data:) in the app; frames are decoded and emitted as data: images.
@@ -207,7 +212,12 @@ test("browser thumbnails are resized in a worker and use the CSP-safe JPEG sourc
 
   const stop = startInlineFrameSource(api, { id: "bot", machine: "local" } as Bot, "tab", frame, vi.fn())
   await vi.waitFor(() =>
-    expect(request).toHaveBeenCalledWith("GET /bots/:id/browser-preview", { tabId: "tab" }, { id: "bot" }),
+    expect(request).toHaveBeenCalledWith(
+      "GET /bots/:id/browser-preview",
+      { tabId: "tab" },
+      { id: "bot" },
+      { signal: expect.any(AbortSignal) },
+    ),
   )
 
   const worker = workers[0]
@@ -248,13 +258,16 @@ test("a local preview fails closed when the worker is unavailable for an oversiz
     },
   )
   const image = `data:image/png;base64,${"A".repeat(24_000_001)}`
-  const api = createMockApi()
   const request = vi.fn(async (route: string) =>
     route === "GET /bots/:id/browser-preview"
       ? { image, title: "Synthetic page", url: "https://example.test" }
       : { tabs: [] },
-  ) as ApiRequest
-  api.request = request
+  )
+  const api = {
+    request,
+    subscribe: () => () => {},
+    isMock: false,
+  } as UiApi
   const frame = vi.fn()
   const unavailable = vi.fn()
 
@@ -300,7 +313,12 @@ test("a local preview that keeps failing exposes the real reason while it keeps 
   const stop = startInlineFrameSource(api, { id: "bot", machine: "local" } as Bot, undefined, vi.fn(), vi.fn(), status)
   await vi.advanceTimersByTimeAsync(2_500)
   expect(status).toHaveBeenCalledWith("Nenhuma página disponível para prévia")
-  expect(api.request).toHaveBeenCalledWith("GET /bots/:id/browser-preview", {}, { id: "bot" })
+  expect(api.request).toHaveBeenCalledWith(
+    "GET /bots/:id/browser-preview",
+    {},
+    { id: "bot" },
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  )
   stop()
 })
 
@@ -310,4 +328,86 @@ test("data: frames are decoded locally instead of through fetch, which the deskt
   expect(blob.type).toBe("image/png")
   expect(blob.size).toBe(5)
   expect(() => dataUrlBlob("blob:https://tauri.localhost/1")).toThrow()
+})
+
+test("a VM browser card samples its authorized tab instead of the complete computer screen", async () => {
+  installPreviewWorker()
+  const request = vi.fn(async (route: string) =>
+    route === "GET /browser/tabs"
+      ? { tabs: [] }
+      : { image: "data:image/jpeg;base64,ZmFrZQ==", title: "Synthetic", url: "https://example.test" },
+  )
+  const api = { request, subscribe: () => () => {}, isMock: false } as UiApi
+  const frame = vi.fn()
+
+  const stop = startInlineFrameSource(api, { id: "leo", machine: "vm" }, "tab", frame, vi.fn())
+  await vi.waitFor(() => expect(frame).toHaveBeenCalledOnce())
+  stop()
+
+  expect(request).toHaveBeenCalledWith(
+    "GET /bots/:id/browser-preview",
+    { tabId: "tab" },
+    { id: "leo" },
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  )
+  expect(request).not.toHaveBeenCalledWith("POST /bots/:id/desktop", expect.anything(), expect.anything())
+})
+
+test("a worker frame from before takeover cannot return after public preview is purged", async () => {
+  installPreviewWorker(false)
+  let listener: (envelope: UiEventEnvelope) => void = () => {}
+  const api = {
+    request: vi.fn(async (route: string) =>
+      route === "GET /browser/tabs"
+        ? { tabs: [] }
+        : { image: "data:image/jpeg;base64,ZmFrZQ==", title: "Synthetic", url: "https://example.test" },
+    ),
+    subscribe: (next: typeof listener) => {
+      listener = next
+      return () => {}
+    },
+    isMock: false,
+  } as UiApi
+  const frame = vi.fn()
+  const reset = vi.fn()
+  const stop = startInlineFrameSource(api, { id: "leo", machine: "local" }, "tab", frame, vi.fn(), undefined, {
+    onReset: reset,
+  })
+  await vi.waitFor(() => expect(mock.workers[0]?.sent).toHaveLength(1))
+  const worker = mock.workers[0]
+  if (!worker) throw new Error("Missing preview processor")
+
+  listener({
+    seq: 1,
+    at: 1,
+    event: {
+      type: "browser.tab",
+      tab: {
+        tabId: "tab",
+        ownerBotId: "leo",
+        title: "",
+        url: "",
+        state: "live",
+        openerTabId: null,
+        heldByUser: true,
+        lastUsedAt: 1,
+      },
+    },
+  })
+  worker.dispatchEvent(
+    new MessageEvent("message", {
+      data: {
+        id: worker.sent[0]?.message.id,
+        title: "Private",
+        url: "https://example.test/private",
+        src: "data:image/jpeg;base64,ZmFrZQ==",
+      },
+    }),
+  )
+  await Promise.resolve()
+  await Promise.resolve()
+  stop()
+
+  expect(reset).toHaveBeenCalledOnce()
+  expect(frame).not.toHaveBeenCalled()
 })

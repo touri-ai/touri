@@ -138,7 +138,7 @@ it.each(["Cron", "notification", "sidebar", "banner"])(
     await waitFor(() => expect(card).toHaveFocus())
     expect(reveal.mock.contexts).toContain(card)
     expect(card).toHaveTextContent("date +%H:%M")
-    expect(document.querySelector(".thread-row.selected")).toHaveTextContent("teste-relogio")
+    expect(document.querySelector(".thread-row.selected")).toHaveTextContent("Rotinas")
   },
 )
 
@@ -146,8 +146,12 @@ it("a routine waits for its own pending approval, then resumes and finishes", as
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: () => {} })
   const { api, thread, reply, run } = await fixture()
   fireEvent.click(screen.getByRole("button", { name: /onb.*Operations/ }))
-  const threadButton = screen.getByRole("button", { name: /teste-relogio/ })
+  const threadButton = screen.getByRole("button", { name: /Rotinas/ })
   fireEvent.click(threadButton)
+  await screen.findByRole("heading", { name: "Rotinas", exact: true })
+  const history = document.querySelector(".routine-run-history")
+  if (!(history instanceof HTMLElement)) throw new Error("Missing routine history")
+  fireEvent.click(await within(history).findByRole("button", { name: "Abrir conversa" }))
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
   const card = document.querySelector(".run-card")
   await waitFor(() => expect(card).toHaveTextContent("Aguardando aprovação"))

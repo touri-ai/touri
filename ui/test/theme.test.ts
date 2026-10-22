@@ -125,7 +125,7 @@ test("light selected and raised surfaces keep visible borders", () => {
 test("errors use the danger role and inline code stays at least 12px", () => {
   expect(components).toMatch(/\.ds-badge-danger \{[^}]*--badge-role: var\(--danger\)/)
   expect(components).toMatch(/\.ds-badge \{[^}]*color: var\(--badge-role\)/)
-  expect(groups).toMatch(/\.group-thread-list button\[aria-current\] \{[^}]*color: var\(--danger\)/)
+  expect(groups).toMatch(/\.group-thread-list button\[aria-current\] \{[^}]*color: var\(--text\)/)
   expect(css).toMatch(/\.markdown-content :not\(pre\) > code \{[^}]*font-size: max\(0\.87em, var\(--fs-caption\)\)/)
 })
 

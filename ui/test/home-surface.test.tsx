@@ -19,6 +19,7 @@ it("keeps Home, create, chat and collapsed advanced settings free of technical j
   }
   expectPlainSurface()
   fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
+  await screen.findByRole("dialog", { name: t("Create a teammate") }, { timeout: 30_000 })
   await screen.findByText(/Usa o Codex/)
   expectPlainSurface()
   fireEvent.click(screen.getByRole("button", { name: "Fechar diálogo" }))
@@ -44,18 +45,23 @@ it("limits primary navigation to the bot list and Advanced, with chat and compos
   render(<App kernel={{ services: { api: createMockApi() } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   const sidebar = screen.getByRole("navigation", { name: "Barra lateral" })
-  const primary = sidebar.querySelectorAll(
-    ".traffic-light-row .sidebar-bots-link, .sidebar-list-heading button, .sidebar-advanced > button",
-  )
-  expect(Array.from(primary, (button) => button.textContent?.replace(/\d|⚙|›/g, "").trim())).toEqual([
-    "Bots",
-    "Avançado",
-  ])
-  expect(within(sidebar).queryAllByRole("tab")).toHaveLength(0)
+  const primary = sidebar.querySelectorAll(".sidebar-advanced > button")
+  expect(Array.from(primary, (button) => button.textContent?.replace(/\d|⚙|›/g, "").trim())).toEqual(["Avançado"])
+  expect(
+    within(sidebar)
+      .getAllByRole("tab")
+      .map((tab) => tab.textContent?.replace(/\d/g, "").trim()),
+  ).toEqual(["Bots", "Work"])
   expect(document.querySelector(".bot-panel")).toBeNull()
-  for (const name of ["Cron", "MCP", "Integrações", "Projetos", "Importar", "Verificar este servidor", "Rotinas"])
+  for (const name of ["Cron", "MCP", "Integrações", "Projetos", "Importar", "Verificar este servidor"])
     expect(within(sidebar).queryByRole("button", { name, exact: true })).toBeNull()
-  expect(sidebar.querySelectorAll("[data-bot-entry]")).toHaveLength(3)
+  // Routines are one line inside the selected bot's conversations, never a top-level destination.
+  within(sidebar)
+    .queryAllByRole("button", { name: /^Rotinas/ })
+    .forEach((row) => {
+      expect(row.closest(".bot-thread-tree")).not.toBeNull()
+    })
+  expect(sidebar.querySelectorAll("#sidebar-mode-panel-bots [data-bot-entry]")).toHaveLength(3)
   const advanced = within(sidebar).getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ })
   fireEvent.click(advanced)
   expect(
@@ -107,6 +113,7 @@ it("opens the full routines screen from the bot's Advanced settings", async () =
   render(<App kernel={{ services: { api: createMockApi() } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   showBotSettings()
+  await screen.findByRole("dialog", { name: "Configurações de mark" })
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("tab", { name: "Rotinas" }))
   expect(await screen.findByRole("heading", { name: "Rotinas" })).toBeVisible()
@@ -132,14 +139,17 @@ it("keeps project processes available after opening the active bot's routines", 
   render(<App kernel={{ services: { api: createMockApi() } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   openRoutines()
-  fireEvent.click(screen.getByRole("button", { name: /^Bots/ }))
+  const markButton = document.querySelector<HTMLButtonElement>('[data-bot-entry="bot-mark"] .bot-row-main')
+  if (!markButton) throw new Error("Missing mark bot row")
+  fireEvent.click(markButton)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
   expect(screen.queryByRole("complementary", { name: "Painel de mark" })).toBeNull()
   expect(screen.queryByRole("button", { name: "Preview do projeto" })).toBeNull()
   fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
   const panel = screen.getByRole("complementary", { name: "Painel de mark" })
   fireEvent.click(within(panel).getByRole("button", { name: "Preview do projeto" }))
   await waitFor(() => expect(screen.getByRole("button", { name: "Subir tudo" })).toBeEnabled())
-  expect(document.querySelectorAll(".preview-process-entry")).toHaveLength(2)
+  await waitFor(() => expect(document.querySelectorAll(".preview-process-entry")).toHaveLength(2), { timeout: 8000 })
 })
 
 it("names the server diagnostics consistently after onboarding and opens it", async () => {

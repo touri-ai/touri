@@ -208,7 +208,16 @@ export const createRoutedBrowserEngine = (
           args.ctx?.botId ??
           args.botId ??
           (args.tabId ? botIdForTab(args.tabId) : typeof input === "string" ? botIdForTab(input) : null)
-        if (key === "preview" && isGuest(botId)) return Promise.resolve(null)
+        if (key === "preview" && isGuest(botId)) {
+          const guest = guests.get(botId)
+          const running = kernel.services
+            .use("vm.runtime")
+            ?.states()
+            .some((machine) => machine.botId === botId && machine.status === "running")
+          if (!guest || !running) return Promise.resolve(null)
+
+          return guest.engine.preview(input as Parameters<BrowserEngine["preview"]>[0])
+        }
         if (isGuest(botId))
           return (async () => {
             const vm = kernel.services.use("vm.runtime")

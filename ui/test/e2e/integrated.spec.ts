@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs"
 import { mkdir } from "node:fs/promises"
 import { resolve } from "node:path"
 import { test as base, expect, type Page } from "@playwright/test"
-import { openGlobalPage, showBotAdvanced, showBotPanel, showBotRoutines } from "./home-navigation"
+import { openGlobalPage, showBotAdvanced, showBotChat, showBotPanel, showBotRoutines } from "./home-navigation"
 
 const evidence = resolve(import.meta.dirname, "../../../docs/qa/r8/integrated")
 const framebuffer = readFileSync(resolve(import.meta.dirname, "fixtures/r8-desktop.js"), "utf8")
@@ -90,7 +90,7 @@ for (const width of [1440, 1100]) {
       await openGlobalPage(page, "MCP")
       await expect(page.getByRole("table", { name: "Políticas de ferramentas de arquivos" })).toBeVisible()
       await shot("mcp")
-      await page.getByRole("button", { name: /^Bots/ }).click()
+      await showBotChat(page)
       if (!(await page.getByRole("button", { name: "Preview do projeto" }).isVisible()))
         await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
       await page.getByRole("button", { name: "Preview do projeto" }).click()

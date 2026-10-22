@@ -102,6 +102,7 @@ export type BrowserTabRow = {
   held_by_user: number
   private_after_takeover: number
   takeover_reason: BrowserTakeoverReason | null
+  private_document_ids_json: string
   private_input: number
   created_at: EpochMs
   last_used_at: EpochMs
@@ -120,6 +121,7 @@ export type TabState = {
   secretMode: boolean
   privateAfterTakeover: boolean
   takeoverReason: BrowserTakeoverReason | null
+  privateDocumentIds: ReadonlyArray<number>
   privateInput: boolean
   dialog: { type: "alert" | "confirm" | "prompt" | "beforeunload"; message: string } | null
   lastFailureKey: string | null

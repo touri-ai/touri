@@ -15,11 +15,12 @@ for (const width of [1440, 1100]) {
       await page.addInitScript((value) => localStorage.setItem("touri.appearance.v1", value), theme)
       await page.goto("/test/e2e/r8-sidebar-harness.html")
       await expect(page.getByRole("textbox", { name: "Mensagem para touri-qa" })).toBeVisible()
+      await page.getByRole("tab", { name: /^Bots/ }).click()
       await page.evaluate(() => document.fonts.ready)
       if (phase === "after") {
         const sidebar = page.locator(".bot-sidebar")
         expect(await sidebar.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0)
-        await expect(sidebar.locator(".bot-status-heading")).toHaveText(["Precisa de você", "Ociosos"])
+        await expect(sidebar.locator("#sidebar-mode-panel-bots .bot-status-heading")).toHaveCount(0)
         const lastBot = sidebar.locator(".bot-row-main").last()
         await lastBot.scrollIntoViewIfNeeded()
         await expect(lastBot).toBeInViewport()
@@ -27,14 +28,17 @@ for (const width of [1440, 1100]) {
         const footer = await sidebar.locator(".sidebar-footer").boundingBox()
         expect(lastRow && footer && lastRow.y + lastRow.height <= footer.y).toBeTruthy()
         expect(footer && footer.y + footer.height <= 900).toBeTruthy()
-        await sidebar.locator(".bot-groups").evaluate((element) => {
+        await sidebar.locator("#sidebar-mode-panel-bots .bot-groups").evaluate((element) => {
           element.scrollTop = 0
         })
         await expect(sidebar.locator(".thread-row.selected small")).toHaveText("hoje")
         await expect(sidebar.locator(".thread-row small").nth(1)).toHaveText("ontem")
-        await expect(sidebar.locator(".bot-entry").filter({ hasText: "touri-pm" }).locator(".bot-preview")).toHaveText(
-          "Digitar filtro · Conferir os resultados",
-        )
+        await expect(
+          sidebar
+            .locator("#sidebar-mode-panel-bots .bot-entry")
+            .filter({ hasText: "touri-pm" })
+            .locator(".bot-preview"),
+        ).toHaveText("Digitar filtro · Conferir os resultados")
         await expect(sidebar.getByRole("button", { name: "Revisar aprovação de seo" })).toBeVisible()
         await expect(sidebar.getByRole("button", { name: "Abrir falha de mobile-qa" })).toBeVisible()
       }
@@ -66,7 +70,11 @@ for (const width of [1440, 1100]) {
         await page.keyboard.press("Escape")
         await openGlobalPage(page, "Integrações")
         await expect(page.getByRole("heading", { name: "Integrações", exact: true })).toBeVisible()
-        await page.locator(".bot-entry").filter({ hasText: "touri-qa" }).locator(".bot-row-main").click()
+        await page
+          .locator("#sidebar-mode-panel-bots .bot-entry")
+          .filter({ hasText: "touri-qa" })
+          .locator(".bot-row-main")
+          .click()
         await expect(page.getByRole("textbox", { name: "Mensagem para touri-qa" })).toBeVisible()
         await page.getByRole("button", { name: "Criar bot", exact: true }).click()
         await expect(page.getByRole("dialog", { name: "Criar um bot" })).toBeVisible()
@@ -78,7 +86,11 @@ for (const width of [1440, 1100]) {
           await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
         await page.getByRole("button", { name: "Preview do projeto" }).click()
         await expect(page.getByRole("button", { name: "Voltar ao chat" })).toBeVisible()
-        await page.locator(".bot-entry").filter({ hasText: "touri-coder" }).locator(".bot-row-main").click()
+        await page
+          .locator("#sidebar-mode-panel-bots .bot-entry")
+          .filter({ hasText: "touri-coder" })
+          .locator(".bot-row-main")
+          .click()
         await expect(page.getByRole("button", { name: "Voltar ao chat" })).toBeVisible()
         await expect(page.locator(".bot-row.selected .tb-avatar")).toHaveAttribute("data-bot-id", "sidebar-bot-3")
       }

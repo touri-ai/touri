@@ -73,3 +73,11 @@
   font-size: var(--fs-emphasis);
   line-height: 1;
 }
+
+/* The single "needs you" surface: same gutter and rhythm as the rows below. */
+.r8-sidebar .sidebar-needs-you {
+  width: calc(100% - 2 * var(--sidebar-gutter));
+  min-height: var(--sidebar-target-size);
+  margin: 0 var(--sidebar-gutter) var(--space-8);
+  padding: var(--space-4) var(--space-12);
+}

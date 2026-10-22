@@ -137,7 +137,8 @@ describe("r2 regressions", () => {
     fireEvent.click(screen.getByRole("button", { name: /Criar rotina/ }))
     expect(screen.getByLabelText("Bot")).toHaveValue("bot-onb")
     fireEvent.click(screen.getByRole("button", { name: "Cancelar" }))
-    fireEvent.click(screen.getByRole("button", { name: /^Bots/ }))
+    fireEvent.click(screen.getByRole("tab", { name: /^Bots,/ }))
+    fireEvent.click(screen.getByRole("button", { name: /onb.*Operations/ }))
     expect(screen.getByRole("textbox", { name: "Mensagem para onb" })).toBeVisible()
   })
 
@@ -214,6 +215,39 @@ describe("r2 regressions", () => {
     expect(onOpenPreview).not.toHaveBeenCalled()
     act(() => fixture.mock.emit({ type: "preview.available", preview: { ...preview, vmBotId: "bot-onb" } }))
     expect(onOpenPreview).toHaveBeenCalledOnce()
+  })
+
+  it("clears host processes immediately while the same-project VM is loading", async () => {
+    const fixture = fixtureApi()
+    await fixture.api.request("PATCH /bots/:id", { machine: "vm" }, { id: "bot-onb" })
+    const host = (await fixture.api.request("GET /projects/:id/processes", {}, { id: "project-demo" })).processes
+    const guest = host.map((entry) => ({
+      ...entry,
+      spec: { ...entry.spec, id: `vm-${entry.spec.id}`, vmBotId: "bot-onb" },
+    }))
+    let finishVm: ((value: ApiRoutes["GET /projects/:id/processes"]["res"]) => void) | undefined
+    let vmRequestStarted = false
+    const vmResponse = new Promise<ApiRoutes["GET /projects/:id/processes"]["res"]>((resolve) => {
+      finishVm = resolve
+    })
+    const request: ApiRequest = async (route, input, path) => {
+      if (route !== "GET /projects/:id/processes") return fixture.api.request(route, input, path)
+
+      const scope = input as ApiRoutes["GET /projects/:id/processes"]["req"]
+      if (!scope.vmBotId) return { processes: host } as ApiRoutes[typeof route]["res"]
+      vmRequestStarted = true
+      return vmResponse
+    }
+    const api: UiApi = { ...fixture.api, request }
+    const hook = renderHook(() => useWorkspace(api))
+    await waitFor(() => expect(hook.result.current.data.processes).toEqual(host))
+
+    act(() => hook.result.current.actions.selectBot("bot-onb"))
+
+    expect(hook.result.current.data.processes).toEqual([])
+    await waitFor(() => expect(vmRequestStarted).toBe(true))
+    await act(async () => finishVm?.({ processes: guest }))
+    await waitFor(() => expect(hook.result.current.data.processes).toEqual(guest))
   })
 
   it.each(["event-first", "response-first"])(

@@ -30,6 +30,7 @@ import {
   requiresBrowserKeyInspection,
   requiresBrowserTakeover,
 } from "./decision"
+import { reportBrowserHandoffExpiry } from "./handoff-expiry"
 import { createBrowserPreviewScopes } from "./preview-scopes"
 import type { BrowserEngine } from "./types"
 import { asArray, asBoolean, asNumber, asRecord, asString } from "./utils"
@@ -585,6 +586,8 @@ export const init = async (
   kernel.services.provide("browser.cancelRequest", ({ runId, reason }) => {
     const request = channelRuns.cancelRequest(runId, reason === "timeout" ? "failed" : "canceled")
     if (!request) return null
+    if (reason === "timeout")
+      reportBrowserHandoffExpiry({ kernel, runId: request.runId, originalRunId: request.requestId })
     engine
       .tabsForBot(request.botId)
       .filter(
@@ -600,6 +603,14 @@ export const init = async (
     return request.runId
   })
   const previewScopes = createBrowserPreviewScopes()
+  const requestTakeover = async (input: Parameters<BrowserEngine["requestTakeover"]>[0]): Promise<ToolResult> => {
+    const status = input.runId ? channelRuns.get(input.runId)?.status : undefined
+    const managedNeedsYou = status === "running" || status === "needs_you"
+    const result = await engine.requestTakeover(Object.assign({}, input, { notify: !managedNeedsYou }))
+    if (result.success && managedNeedsYou) channelRuns.needsYou(input.runId ?? null, input.reason)
+
+    return result
+  }
   // The screen viewers show the real cause when a page never reached the display.
   const tool = (name: string, handler: ToolHandler): ToolRegistration => ({
     name,
@@ -642,7 +653,7 @@ export const init = async (
         const intent =
           args.target === undefined ? (asString(args.expression) ?? "") : getTargetIntent(target(args.target))
         const reasonCode = getBrowserTakeoverReasonCode({ error: result.error, intent, pageUrl })
-        return engine.requestTakeover({
+        return requestTakeover({
           tabId,
           botId: input.ctx.botId,
           reason: reasonCode,
@@ -979,15 +990,13 @@ export const init = async (
       const reasonCode = requestedReason
         ? getBrowserTakeoverReasonCode({ intent: requestedReason, pageUrl })
         : "requested"
-      const managedNeedsYou = channelRuns.needsYou(ctx.runId, reason)
-      return engine.requestTakeover({
+      return requestTakeover({
         tabId: asString(input.tabId) ?? "",
         botId: ctx.botId,
         reason,
         reasonCode,
         timeoutMs: timeout(input.timeoutMs, 600000, 1800000, TAKEOVER_MINIMUM_TIMEOUT_MS),
         signal: ctx.signal,
-        notify: !managedNeedsYou,
         threadId: ctx.threadId,
         runId: ctx.runId,
       })
@@ -1018,7 +1027,6 @@ export const init = async (
             return { status: 404, json: { error: "Bot não encontrado" } }
           if (Array.from(takeoverSessions.values()).some((session) => session.botId === botId))
             return { status: 409, json: { error: "A prévia fica oculta enquanto alguém controla o navegador." } }
-          if (bot.machine !== "local") return { status: 409, json: { error: "Use a tela da máquina virtual" } }
           const visibleTabs = visibleTabsFor(botId, person)
           if (person && query.tabId && !visibleTabs.some((tab) => tab.tabId === query.tabId))
             return { status: 404, json: { error: "Página não encontrada" } }

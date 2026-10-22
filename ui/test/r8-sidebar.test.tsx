@@ -70,10 +70,18 @@ describe("r8 sidebar: attention history", () => {
 
 it("shows one unread count for an expanded conversation and its aggregate when collapsed", async () => {
   const api = createMockApi()
+  const { thread } = await api.request("POST /threads", { botId: "bot-mark", title: "Campaign follow-up" })
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
   const mark = getBotEntry("bot-mark")
+  const otherConversation = Array.from(mark.querySelectorAll<HTMLButtonElement>(".thread-row")).find(
+    (row) => !row.classList.contains("selected"),
+  )
+  if (!otherConversation) throw new Error("Missing unselected conversation")
+  fireEvent.click(otherConversation)
+  await api.request("PATCH /threads/:id", { unread: 2 }, { id: thread.id })
+
   expect(mark.querySelector(".bot-row .sidebar-unread")).toBeNull()
   expect(mark.querySelectorAll(".thread-row .sidebar-unread")).toHaveLength(1)
   expect(mark.querySelector(".thread-row .sidebar-unread")).toHaveTextContent("2")
@@ -88,7 +96,7 @@ it("shows one unread count for an expanded conversation and its aggregate when c
   expect(mark.querySelector(".bot-thread-tree")).toBeNull()
 })
 
-it("keeps each unread count on its conversation when several are visible", async () => {
+it("keeps unread counts on unselected conversations when several are visible", async () => {
   const api = createMockApi()
   await api.request("POST /threads", { botId: "bot-mark", title: "Campaign follow-up" })
   render(<App kernel={{ services: { api } }} />)
@@ -96,10 +104,8 @@ it("keeps each unread count on its conversation when several are visible", async
 
   const mark = getBotEntry("bot-mark")
   expect(mark.querySelector(".bot-row .sidebar-unread")).toBeNull()
-  expect(Array.from(mark.querySelectorAll(".thread-row .sidebar-unread"), (badge) => badge.textContent)).toEqual([
-    "2",
-    "2",
-  ])
+  expect(mark.querySelector(".thread-row.selected .sidebar-unread")).toBeNull()
+  expect(Array.from(mark.querySelectorAll(".thread-row .sidebar-unread"), (badge) => badge.textContent)).toEqual(["2"])
 })
 
 it("keeps bots reachable beside global screens, footer integrations and creation", async () => {
@@ -109,7 +115,7 @@ it("keeps bots reachable beside global screens, footer integrations and creation
   const sidebar = screen.getByRole("navigation", { name: "Barra lateral" })
   openRoutines()
   expect(await screen.findByRole("heading", { name: "Rotinas" })).toBeVisible()
-  expect(sidebar.querySelectorAll(".bot-entry")).toHaveLength(api.getState().bots.length)
+  expect(sidebar.querySelectorAll("#sidebar-mode-panel-bots .bot-entry")).toHaveLength(api.getState().bots.length)
   fireEvent.click(sidebar.querySelector('[data-bot-id="bot-onb"]')?.closest("button") as HTMLElement)
   expect(await screen.findByRole("textbox", { name: "Mensagem para onb" })).toBeVisible()
   fireEvent.click(within(sidebar).getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
@@ -189,7 +195,7 @@ it("opening a question from the bot row focuses its response and keeps it pendin
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
-  fireEvent.click(screen.getByRole("button", { name: "Abrir pendência de onb" }))
+  fireEvent.click(within(getBotEntry("bot-onb")).getByRole("button", { name: "Abrir pendência de onb" }))
 
   const row = (await screen.findByText("Qual pasta devo revisar?")).closest("[data-notification-id]")
   await waitFor(() => expect(row).toHaveFocus())

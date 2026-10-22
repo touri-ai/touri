@@ -186,7 +186,15 @@ const AppContent = ({ kernel }: AppProps) => {
   const [libraryRequest, setLibraryRequest] = useState<{ botId: string; path: string; request: number } | null>(null)
   const [computerTabRequest, setComputerTabRequest] = useState<{ botId: string; request: number } | null>(null)
   const requestedComputer = new URLSearchParams(window.location.search).get("computer")
+  const [sidebarMode, setSidebarMode] = useState<"bots" | "work">(() => {
+    try {
+      return window.localStorage.getItem("touri.sidebar.mode") === "work" ? "work" : "bots"
+    } catch {
+      return "bots"
+    }
+  })
   const [editingGroup, setEditingGroup] = useState<BotGroup | null>(null)
+  const [groupModalChannelMode, setGroupModalChannelMode] = useState(false)
   const [groupDraft, setGroupDraft] = useState<Pick<GroupInput, "name" | "memberIds"> | null>(null)
   const [initialJob, setInitialJob] = useState<JobTemplate | null>(null)
   const [teamFollowup, setTeamFollowup] = useState<TeamFollowup | null>(null)
@@ -734,7 +742,10 @@ const AppContent = ({ kernel }: AppProps) => {
       return
     }
     if (command.kind === "action") {
-      if (command.action === "new-group") setEditingGroup(null)
+      if (command.action === "new-group") {
+        setEditingGroup(null)
+        setGroupModalChannelMode(sidebarMode === "work")
+      }
       if (command.action === "new-thread") {
         setRoute({ section: "bots", screen: "chat" })
         void actions.createThread()
@@ -1071,6 +1082,7 @@ const AppContent = ({ kernel }: AppProps) => {
         />
         <div className="app-grid">
           <SidebarDrawer
+            onSidebarModeChange={setSidebarMode}
             panelOpen={section === "bots" && screen === "chat" && panelOpen}
             workspaceHeader={workspaceHeader}
             serverMode={serverMode}
@@ -1080,10 +1092,12 @@ const AppContent = ({ kernel }: AppProps) => {
             onInvitePerson={canInvitePeople ? () => openModal("invite") : undefined}
             onNewGroup={() => {
               setEditingGroup(null)
+              setGroupModalChannelMode(true)
               openModal("group")
             }}
             onEditGroup={(g) => {
               setEditingGroup(g)
+              setGroupModalChannelMode(true)
               openModal("group")
             }}
             onNewGroupThread={(g) => {
@@ -1151,6 +1165,7 @@ const AppContent = ({ kernel }: AppProps) => {
                   }}
                   onGroup={(bot, partner) => {
                     setEditingGroup(null)
+                    setGroupModalChannelMode(false)
                     openModal("group")
                     setGroupDraft({
                       name: t("Team with {name}", { name: partner.name }).slice(0, 80),
@@ -1214,7 +1229,7 @@ const AppContent = ({ kernel }: AppProps) => {
                   onReviewApprovals={reviewApproval}
                   onNotice={showNotice}
                   onOpenThread={(threadId) => {
-                    actions.selectThread(threadId)
+                    actions.selectThread(threadId, { readRoutineGroup: true })
                     setRoute({ section: "bots", screen: "chat" })
                   }}
                 />
@@ -1248,12 +1263,16 @@ const AppContent = ({ kernel }: AppProps) => {
                       >
                         <RecoveryTasksContext.Provider value={interruptedWork.tasks}>
                           <ChatPanel
+                            channelMode={Boolean(selectedGroup)}
+                            workspaceMode={sidebarMode}
+                            browserRuns={data.browserRuns ?? []}
                             onRepeatTask={setRoutineDraft}
                             currentPersonId={currentPersonId}
                             group={selectedGroup}
                             groupMembers={groupMembers}
                             onEditGroup={() => {
                               setEditingGroup(selectedGroup)
+                              setGroupModalChannelMode(Boolean(selectedGroup))
                               openModal("group")
                             }}
                             onInviteToGroup={canInvitePeople ? () => openModal("invite") : undefined}
@@ -1328,14 +1347,18 @@ const AppContent = ({ kernel }: AppProps) => {
                       <MotionPresence show={panelOpen && Boolean(selectedGroup || selectedBot)} kind="panel">
                         {selectedGroup ? (
                           <GroupPanel
+                            api={api}
+                            currentPersonId={currentPersonId}
                             key={selectedGroup.id}
                             group={selectedGroup}
+                            channelMode={Boolean(selectedGroup)}
                             bots={groupMembers}
                             threadId={selectedThread?.id}
                             messages={selectedMessages}
                             runs={data.runs}
                             onEdit={() => {
                               setEditingGroup(selectedGroup)
+                              setGroupModalChannelMode(Boolean(selectedGroup))
                               openModal("group")
                             }}
                             onClose={() => {
@@ -1426,6 +1449,7 @@ const AppContent = ({ kernel }: AppProps) => {
             {modal === "group" && (
               <GroupModal
                 group={editingGroup}
+                channelMode={groupModalChannelMode}
                 initial={groupDraft}
                 bots={data.bots}
                 onClose={closeModal}

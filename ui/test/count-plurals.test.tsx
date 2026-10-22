@@ -54,6 +54,10 @@ describe.each(locales)("count labels in %s", (locale) => {
     expect(counts.map((count) => t(key, { count }, locale))).toEqual([`0 ${other}`, `1 ${one}`, `2 ${other}`])
   })
 
+  it("pluralizes the channel bot summary for zero, one and two", () => {
+    expect(counts.map((count) => t("Channel summary", { count }, locale))).toEqual(["0 bots", "1 bot", "2 bots"])
+  })
+
   it.each(counts)("pluralizes both independent import counts when there are %i messages", (messages) => {
     for (const threads of counts) {
       const expected =

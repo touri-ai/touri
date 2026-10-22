@@ -77,26 +77,29 @@ export const sanitizeHumanTakeoverSnapshot = (snapshot: BrowserSnapshot): Browse
   recommendImage: null,
 })
 
-export const sanitizeHumanTakeoverUrl = (value: string): string => {
-  try {
-    const url = new URL(value)
-    if (url.protocol !== "http:" && url.protocol !== "https:") return ""
-
-    return url.origin
-  } catch {
-    return ""
-  }
-}
+export const sanitizeHumanTakeoverUrl = (_value: string): string => ""
 
 export const canResumeAfterHumanTakeover = ({
   url,
   title,
   hasSensitiveEntry,
+  documentId,
+  privateDocumentIds = [],
 }: {
   url: string
   title: string
   hasSensitiveEntry: boolean
+  documentId?: number | undefined
+  privateDocumentIds?: ReadonlyArray<number>
 }): boolean => {
+  if (
+    privateDocumentIds.length > 0 &&
+    (documentId === undefined ||
+      !Number.isFinite(documentId) ||
+      privateDocumentIds.includes(0) ||
+      privateDocumentIds.includes(documentId))
+  )
+    return false
   if (hasSensitiveEntry) return false
   if (url.length > MAX_PREVIEW_URL_LENGTH || title.length > MAX_PREVIEW_TITLE_LENGTH) return false
   if (!getBrowserPreviewPath(url)) return false

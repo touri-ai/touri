@@ -43,7 +43,7 @@ test("human takeover snapshots omit typed field values, page images, and URL sec
   const safeSnapshot = sanitizeHumanTakeoverSnapshot(snapshot)
 
   expect(JSON.stringify(safeSnapshot)).not.toContain("fixture-secret")
-  expect(safeSnapshot.url).toBe("https://travel.example.test")
+  expect(safeSnapshot.url).toBe("")
   expect(safeSnapshot.title).toBe("")
   expect(safeSnapshot.text).toBe("")
   expect(safeSnapshot.recentActions).toEqual([])
@@ -159,7 +159,7 @@ test("takeover privacy can lift only after bounded metadata identifies a safe pa
   ).toBe(false)
 })
 
-test("safe pages can resume previews after handback", async () => {
+test("a document remains private until trusted provenance clears the hold", async () => {
   const page = {
     heldByUser: false,
     privateAfterTakeover: true,
@@ -173,7 +173,7 @@ test("safe pages can resume previews after handback", async () => {
     capture: async () => "fixture-image",
   })
 
-  expect(preview).toBe("fixture-image")
+  expect(preview).toBeNull()
 })
 
 test("post-takeover preview metadata omits page titles and URL values", () => {
@@ -183,7 +183,7 @@ test("post-takeover preview metadata omits page titles and URL values", () => {
   })
 
   expect(JSON.stringify(metadata)).not.toContain("fixture-secret")
-  expect(metadata).toEqual({ title: "", url: "https://travel.example.test" })
+  expect(metadata).toEqual({ title: "", url: "" })
 })
 
 test("a private frame captured before navigation cannot advertise the new target epoch", async () => {

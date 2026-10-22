@@ -168,6 +168,15 @@ const failure = (errorCode: BrowserErrorCode, error: string, covering?: Covering
 
 const success = <T>(value: T): OperationResult<T> => ({ success: true, value })
 
+const getPrivateDocumentFailure = (tab: TabState): BrowserFailure | null => {
+  if (!tab.privateInput || !tab.privateAfterTakeover) return null
+
+  return {
+    errorCode: "PRIVATE_TAKEOVER_ACTIVE",
+    error: "Este documento contém entrada privada. Continue a tarefa em uma nova aba.",
+  }
+}
+
 const toToolError = (item: BrowserFailure): ToolResult => ({
   success: false,
   errorCode: item.errorCode,
@@ -388,11 +397,13 @@ const fingerprintForNode = async ({
   sessionId,
   backendNodeId,
   accessibility = false,
+  hideValues = false,
 }: {
   client: CdpClient
   sessionId: string
   backendNodeId: number
   accessibility?: boolean
+  hideValues?: boolean
 }): Promise<Fingerprint> => {
   if (accessibility) {
     const [partial, descriptor] = await Promise.all([
@@ -426,10 +437,12 @@ const fingerprintForNode = async ({
       const element = this;
       if (!element.isConnected) return null;
       const role = element.getAttribute('role') || ({BUTTON:'button',A:'link',INPUT:(element.type === 'search' ? 'searchbox' : 'textbox'),SELECT:'combobox',TEXTAREA:'textbox',H1:'heading',H2:'heading',H3:'heading',H4:'heading',H5:'heading',H6:'heading'}[element.tagName] || 'generic');
-      const name = element.getAttribute('aria-label') || element.getAttribute('name') || element.innerText || element.value || '';
+      const privateField = ${hideValues} && (element.matches('input,textarea') || element.isContentEditable);
+      const visibleText = privateField ? '' : element.innerText || element.value || '';
+      const name = element.getAttribute('aria-label') || element.getAttribute('name') || visibleText;
       const formAssociated = Boolean(element.form);
       const formSubmit = formAssociated && ((element.tagName === 'BUTTON' && (element.type || 'submit').toLowerCase() === 'submit') || (element.tagName === 'INPUT' && ['submit', 'image'].includes(element.type)));
-      return { role, name: String(name).trim(), tag: element.tagName.toLowerCase(), textPrefix: String(element.innerText || element.textContent || '').trim().slice(0, 40), href: element.getAttribute('href') || '', formAssociated, formSubmit };
+      return { role, name: String(name).trim(), tag: element.tagName.toLowerCase(), textPrefix: privateField ? '' : String(element.innerText || element.textContent || '').trim().slice(0, 40), href: element.getAttribute('href') || '', formAssociated, formSubmit };
     }`,
         returnByValue: true,
       },
@@ -548,7 +561,12 @@ const collectDomCandidates = async ({ client, tab }: { client: CdpClient; tab: T
           const described = cdpResult(await cdpCall<unknown>(client, "DOM.describeNode", { nodeId }, sessionId))
           const backendNodeId = asNumber(asRecord(described.node)?.backendNodeId)
           if (!backendNodeId) continue
-          const fingerprint = await fingerprintForNode({ client, sessionId, backendNodeId })
+          const fingerprint = await fingerprintForNode({
+            client,
+            sessionId,
+            backendNodeId,
+            hideValues: tab.privateInput,
+          })
           if (!actionableRoles.has(fingerprint.role)) continue
           const bounds = await getBox(client, sessionId, backendNodeId)
           if (!bounds) continue
@@ -576,7 +594,7 @@ const addRing = <T>(ring: Array<T>, value: T, limit: number): void => {
 }
 
 const recordDiagnostic = (tab: TabState, diagnostic: BrowserDiagnostic): void => {
-  if (tab.secretMode || tab.privateAfterTakeover || tab.info.heldByUser) return
+  if (tab.secretMode || tab.privateInput) return
   addRing(tab.diagnostics, diagnostic, 100)
 }
 
@@ -882,7 +900,7 @@ const cdpLabelQualifies = async ({
 
 const pageState = async (client: CdpClient, tab: TabState): Promise<PageState> => {
   if (!tab.sessionId) throw new Error("Tab is not attached")
-  const hideFieldValues = tab.privateAfterTakeover || tab.secretMode
+  const hideFieldValues = tab.privateInput || tab.privateAfterTakeover || tab.secretMode
   const state = await runtimeValue<PageState>(
     client,
     `(() => {
@@ -1419,7 +1437,6 @@ export const createBrowserEngine = ({
   const contextOwners = new Map<string, string>()
   const savedSessions = new Map<string, SavedSession>()
   const sharedPreview = createSharedPreviewSource<{ title: string; url: string; image: string }>()
-  const privateDocuments = new WeakMap<TabState, number>()
   const pendingStorage = new Map<string, Record<string, Record<string, string>>>()
   let sessionTimer: ReturnType<typeof setInterval> | null = null
   let legacyMigration: Promise<void> | null = null
@@ -1443,8 +1460,8 @@ export const createBrowserEngine = ({
     if (info.heldByUser) return { ...info, url: "", title: "" }
     return {
       ...info,
-      url: kernel.redact(tab.privateAfterTakeover ? sanitizeHumanTakeoverUrl(info.url) : info.url),
-      title: kernel.redact(tab.privateAfterTakeover ? "" : info.title),
+      url: kernel.redact(tab.privateInput ? sanitizeHumanTakeoverUrl(info.url) : info.url),
+      title: kernel.redact(tab.privateInput ? "" : info.title),
     }
   }
 
@@ -1535,6 +1552,7 @@ export const createBrowserEngine = ({
     if (url !== null) tab.info.url = url
     const navigationType = asString(params.type)
     if (navigationType === "SameDocument") return
+    if (tab.privateInput) tab.privateAfterTakeover = true
     tab.navigationVersion += 1
     tab.generation += 1
     tab.refs.clear()
@@ -1642,6 +1660,7 @@ export const createBrowserEngine = ({
     if (event.method === "Page.frameNavigated") {
       if (event.sessionId !== tab.sessionId) return
       syncPageNavigation(tab, event.params)
+      if (tab.info.heldByUser) void protectTakeoverDocument(tab)
       return
     }
     if (event.method === "Page.loadEventFired") {
@@ -2266,9 +2285,14 @@ export const createBrowserEngine = ({
     return success(tab)
   }
 
-  const refForBackend = async (sessionId: string, backendNodeId: number, ref: string): Promise<NodeRef | null> => {
+  const refForBackend = async (
+    sessionId: string,
+    backendNodeId: number,
+    ref: string,
+    hideValues: boolean,
+  ): Promise<NodeRef | null> => {
     if (!client) return null
-    const fingerprint = await fingerprintForNode({ client, sessionId, backendNodeId })
+    const fingerprint = await fingerprintForNode({ client, sessionId, backendNodeId, hideValues })
     const bounds = await getBox(client, sessionId, backendNodeId)
     if (!bounds) return null
     return {
@@ -2298,6 +2322,7 @@ export const createBrowserEngine = ({
           sessionId: node.sessionId,
           backendNodeId: node.backendNodeId,
           accessibility: node.fingerprint.source === "ax",
+          hideValues: tab.privateInput,
         })
         if (JSON.stringify(current) !== JSON.stringify(node.fingerprint))
           return failure("TARGET_CHANGED", "The target changed; take a fresh snapshot and use its new ref.")
@@ -2361,7 +2386,12 @@ export const createBrowserEngine = ({
               const described = cdpResult(await cdpCall<unknown>(client, "DOM.describeNode", { nodeId }, sessionId))
               const backendNodeId = asNumber(asRecord(described.node)?.backendNodeId)
               if (backendNodeId === null) continue
-              const node = await refForBackend(sessionId, backendNodeId, `${tab.generation}.${candidates.length}`)
+              const node = await refForBackend(
+                sessionId,
+                backendNodeId,
+                `${tab.generation}.${candidates.length}`,
+                tab.privateInput,
+              )
               if (node) candidates.push(node)
             } catch {}
           }
@@ -2480,49 +2510,76 @@ export const createBrowserEngine = ({
     }
   }
 
+  const getDocumentId = async (tab: TabState): Promise<number | null> => {
+    if (!client || !tab.sessionId) return null
+    const document = cdpResult(
+      await cdpCall<unknown>(client, "DOM.getDocument", { depth: 0, pierce: false }, tab.sessionId),
+    )
+    const id = asNumber(asRecord(document.root)?.backendNodeId)
+
+    return id !== null && Number.isSafeInteger(id) && id > 0 ? id : null
+  }
+
+  const protectedDocumentVersions = new Map<Id, number>()
+  const protectTakeoverDocument = async (tab: TabState, force = false): Promise<void> => {
+    if (!force && protectedDocumentVersions.get(tab.info.tabId) === tab.navigationVersion) return
+    const version = tab.navigationVersion
+    const document =
+      client && tab.sessionId
+        ? await raceBudget({
+            work: getDocumentId(tab),
+            ms: 2_000,
+          }).catch(() => null)
+        : null
+    const documentId = document && !document.timedOut ? document.value : null
+    const protectedId =
+      typeof documentId === "number" &&
+      Number.isFinite(documentId) &&
+      documentId > 0 &&
+      version === tab.navigationVersion
+        ? documentId
+        : 0
+    const protectedIds = Array.from(new Set(tab.privateDocumentIds.concat(protectedId)))
+    tab.privateDocumentIds = protectedIds.length <= 32 ? protectedIds : [0]
+    protectedDocumentVersions.set(tab.info.tabId, version)
+    store.save(tab)
+  }
+
   const refreshTakeoverPrivacy = async (tab: TabState): Promise<boolean> => {
     if (!tab.privateAfterTakeover || tab.info.heldByUser || tab.secretMode || !client || !tab.sessionId) return false
-    const privateVersion = privateDocuments.get(tab) ?? tab.navigationVersion
-    if (tab.navigationVersion <= privateVersion) return false
 
-    let page: { url?: unknown; title?: unknown; hasSensitiveEntry?: unknown; text?: unknown; ready?: unknown } | null =
-      null
+    const navigationVersion = tab.navigationVersion
+    let documentId: number | null = null
+    let page: { url?: unknown; title?: unknown; hasSensitiveEntry?: unknown } | null = null
     try {
-      page = await runtimeValue<{
-        url?: unknown
-        title?: unknown
-        hasSensitiveEntry?: unknown
-        text?: unknown
-        ready?: unknown
-      }>(
-        client,
-        `({ url: location.href, title: document.title, text: (document.body?.innerText || "").slice(0, 20001), ready: document.readyState, hasSensitiveEntry: ${HAS_SENSITIVE_ENTRY_EXPRESSION} })`,
-        tab.sessionId,
-      )
+      const current = await Promise.all([
+        getDocumentId(tab),
+        runtimeValue<{ url?: unknown; title?: unknown; hasSensitiveEntry?: unknown }>(
+          client,
+          `({ url: location.href, title: document.title, hasSensitiveEntry: ${HAS_SENSITIVE_ENTRY_EXPRESSION} })`,
+          tab.sessionId,
+        ),
+      ])
+      documentId = current[0]
+      page = current[1]
     } catch {
       return false
     }
+    if (tab.navigationVersion !== navigationVersion || tab.info.heldByUser) return false
     if (typeof page?.url !== "string" || typeof page.title !== "string" || typeof page.hasSensitiveEntry !== "boolean")
-      return false
-    if (page.ready !== "complete" || typeof page.text !== "string" || page.text.length > 20_000) return false
-    if (
-      kernel.redact(page.text) !== page.text ||
-      kernel.redact(page.title) !== page.title ||
-      kernel.redact(page.url) !== page.url
-    )
       return false
     if (
       !canResumeAfterHumanTakeover({
         url: page.url,
         title: page.title,
         hasSensitiveEntry: page.hasSensitiveEntry,
+        documentId: documentId ?? undefined,
+        privateDocumentIds: tab.privateDocumentIds,
       })
     )
       return false
 
     tab.privateAfterTakeover = false
-    tab.privateInput = false
-    privateDocuments.delete(tab)
     tab.info.url = kernel.redact(page.url)
     tab.info.title = kernel.redact(page.title)
     tab.info.lastUsedAt = Date.now()
@@ -2664,7 +2721,7 @@ export const createBrowserEngine = ({
       dataUrl: string
       reason: "canvas-or-video" | "iframe" | "low-semantic-coverage" | "requested"
     } | null = null
-    const effectiveImage = tab.secretMode || tab.privateAfterTakeover ? "never" : image
+    const effectiveImage = tab.privateInput || tab.secretMode || tab.privateAfterTakeover ? "never" : image
     if (effectiveImage !== "never" && (effectiveImage === "always" || recommendImage !== null)) {
       try {
         const data = await boundedImage({ client, tab, fullPage: false, maxBytes: 80 * 1024 })
@@ -2702,9 +2759,23 @@ export const createBrowserEngine = ({
       heldByUser: tab.info.heldByUser,
       notes,
     }
-    const redactedSnapshot = boundSnapshot(redactSnapshot(snapshot, kernel.redact))
+    const publicSnapshot = tab.privateInput
+      ? Object.assign({}, snapshot, {
+          url: sanitizeHumanTakeoverUrl(snapshot.url),
+          title: "",
+          diagnostics: [],
+          recentActions: [],
+        })
+      : snapshot
+    const redactedSnapshot = boundSnapshot(redactSnapshot(publicSnapshot, kernel.redact))
     const safeSnapshot =
-      tab.privateAfterTakeover || tab.secretMode ? sanitizeHumanTakeoverSnapshot(redactedSnapshot) : redactedSnapshot
+      tab.privateAfterTakeover || tab.secretMode
+        ? Object.assign({}, sanitizeHumanTakeoverSnapshot(redactedSnapshot), {
+            notes: [
+              "This document contains private browser input. Continue the original task in a new tab; do not read this document.",
+            ],
+          })
+        : redactedSnapshot
     tab.lastSnapshot = safeSnapshot
     return success({ snapshot: safeSnapshot, text: renderSnapshot(safeSnapshot) })
   }
@@ -2821,6 +2892,12 @@ export const createBrowserEngine = ({
         const knownTabs = new Set(store.list(tab.info.ownerBotId).map((item) => item.info.tabId))
         const live = await ensureTab(tab, { signal: operationSignal, budgetMs: timeoutMs })
         if (!live.success) return toToolError(live.failure)
+        await refreshTakeoverPrivacy(tab)
+        if (tab.privateInput && tab.privateAfterTakeover && tool !== "browser_navigate")
+          return toToolError({
+            errorCode: "PRIVATE_TAKEOVER_ACTIVE",
+            error: "Este documento contém entrada privada. Continue a tarefa em uma nova aba.",
+          })
         let operationResult: OperationResult<unknown>
         try {
           operationResult = await withOneTransientRetry({
@@ -3081,6 +3158,11 @@ export const createBrowserEngine = ({
     const owned = getTab({ tabId, botId })
     if (!owned.success) return toToolError(owned.failure)
     const tab = owned.value
+    if (tab.privateInput)
+      return toToolError({
+        errorCode: "PRIVATE_TAKEOVER_ACTIVE",
+        error: "Capturas de tela ficam bloqueadas depois do controle privado do navegador.",
+      })
     return withTabQueue({
       tab,
       timeoutMs,
@@ -4009,7 +4091,12 @@ export const createBrowserEngine = ({
         while (Date.now() - started < timeoutMs) {
           if (operationSignal.aborted)
             return toToolError({ errorCode: "DEADLINE_EXCEEDED", error: "A espera passou do prazo." })
+          await refreshTakeoverPrivacy(tab)
+          const privateFailure = getPrivateDocumentFailure(tab)
+          if (privateFailure) return toToolError(privateFailure)
           const page = await pageState(client as CdpClient, tab)
+          const changedFailure = getPrivateDocumentFailure(tab)
+          if (changedFailure) return toToolError(changedFailure)
           let matched = false
           const targetCondition = asRecord(conditionRecord?.target)
           const wantedUrl = asString(conditionRecord?.url)
@@ -4395,6 +4482,7 @@ export const createBrowserEngine = ({
     if (takeover.timer) clearTimeout(takeover.timer)
     if (takeover.signal && takeover.onAbort) takeover.signal.removeEventListener("abort", takeover.onAbort)
     handoffs.resolve(tab.info.tabId, resolution)
+    kernel.services.use("browser.takeoverResolved")?.({ tabId: tab.info.tabId, resolution })
     tab.takeover = null
     tab.info.heldByUser = false
     tab.takeoverReason = null
@@ -4482,7 +4570,7 @@ export const createBrowserEngine = ({
     tab.privateAfterTakeover = true
     tab.takeoverReason = safeReasonCode
     tab.privateInput = true
-    privateDocuments.set(tab, tab.navigationVersion)
+    await protectTakeoverDocument(tab, true)
     tab.generation += 1
     tab.refs.clear()
     tab.lastSnapshot = null
@@ -4581,6 +4669,7 @@ export const createBrowserEngine = ({
     const tab = store.find(tabId)
     if (!tab) return false
     if (!tab.info.heldByUser) return true
+    await protectTakeoverDocument(tab, true)
     const takeover = clearTakeover({
       tab,
       resolution: "replied",
@@ -4620,7 +4709,7 @@ export const createBrowserEngine = ({
     tab.privateAfterTakeover = true
     tab.takeoverReason = "requested"
     tab.privateInput = true
-    privateDocuments.set(tab, tab.navigationVersion)
+    await protectTakeoverDocument(tab, true)
     tab.generation += 1
     tab.refs.clear()
     tab.lastSnapshot = null
@@ -4796,7 +4885,7 @@ export const createBrowserEngine = ({
           if (!tab.info.heldByUser) return false
 
           if (input.kind === "text") {
-            privateDocuments.set(tab, tab.navigationVersion)
+            await protectTakeoverDocument(tab, true)
             kernel.addRedactionValue(input.text)
             await cdp.call("Input.insertText", { text: input.text }, sessionId)
             return true
@@ -4918,7 +5007,6 @@ export const createBrowserEngine = ({
   })
 
   tabs.forEach((tab) => {
-    if (tab.privateAfterTakeover) privateDocuments.set(tab, tab.navigationVersion)
     const saved = handoffs.get(tab.info.tabId)
     if (!saved) return
     if (saved.state === "returned") {
@@ -4984,8 +5072,8 @@ export const createBrowserEngine = ({
           if (!data || data.length > 450_000 || !isCurrent()) return null
 
           return {
-            title: kernel.redact(tab.info.title),
-            url: sanitizeHumanTakeoverUrl(tab.info.url),
+            title: tab.privateInput ? "" : kernel.redact(tab.info.title),
+            url: tab.privateInput ? sanitizeHumanTakeoverUrl(tab.info.url) : kernel.redact(tab.info.url),
             image: `data:image/jpeg;base64,${data}`,
           }
         },

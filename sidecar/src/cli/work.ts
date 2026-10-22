@@ -184,6 +184,30 @@ export const initWorkMode = ({
     routes: [
       {
         method: "GET",
+        path: "/groups/:id/people",
+        handler: async ({ params, signal }) => {
+          const actor = getActor({ authStore, signal })
+          const groupId = params.id ?? ""
+          if (
+            !actor ||
+            !database.query("SELECT 1 FROM bot_groups WHERE id = ?").get(groupId) ||
+            !access.canAccessGroup({ personId: actor.id, role: actor.role, groupId })
+          )
+            return fail(404, "NOT_FOUND", "Canal não encontrado")
+
+          const people = authStore
+            .listPeople()
+            .filter(
+              (person) =>
+                person.removedAt === null &&
+                (person.role === "admin" || authStore.getPersonChannelIds(person.id).includes(groupId)),
+            )
+            .map(({ id, name, avatarSeed, role }) => ({ id, name, avatarSeed, role }))
+          return { status: 200, json: { people } }
+        },
+      },
+      {
+        method: "GET",
         path: "/people",
         handler: async ({ signal }) => {
           const actor = getActor({ authStore, signal })
@@ -242,7 +266,7 @@ export const initWorkMode = ({
           const input = isRecord(body) ? body.address : undefined
           const address = input === null || input === "" ? null : parsePublicAddress(input)
           if (address === null && input !== null && input !== "")
-            return fail(400, "INVALID_ARGS", "Informe um endereço HTTPS válido, sem caminho")
+            return fail(400, "PUBLIC_ADDRESS_INVALID", "Informe um endereço HTTPS válido, sem caminho")
           const saved = await authStore.savePublicAddress({ actorPersonId: actor.id, address })
           if (!saved) return fail(403, "FORBIDDEN", "Admin role required")
           const publicAddress = address || null

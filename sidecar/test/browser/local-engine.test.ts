@@ -154,6 +154,14 @@ test("routed local engine opens a default-context window, reads only owned pages
     expect(await f.engine.preview({ botId: f.bot.id, tabId: ownedTab.tabId, signal: f.ctx.signal })).toBeNull()
 
     expect(f.calls.filter((call) => call.method === "Page.captureScreenshot")).toHaveLength(captures)
+
+    expect(await f.engine.releaseTakeover(tabId)).toBe(true)
+    expect(await f.engine.holdTakeover({ tabId, reason: "Synthetic second handoff" })).toBe(true)
+    expect(await f.engine.close({ tabId, botId: f.bot.id, signal: f.ctx.signal })).toMatchObject({
+      errorCode: "TAB_HELD_BY_USER",
+    })
+    expect(f.engine.cancelTakeover({ tabId })).toBe(true)
+    expect((await f.engine.close({ tabId, botId: f.bot.id, signal: f.ctx.signal })).success).toBe(true)
     await f.engine.shutdown()
     expect(f.calls.filter((call) => call.method === "Target.closeTarget").map((call) => call.params.targetId)).toEqual([
       "owned-1",

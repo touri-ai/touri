@@ -663,7 +663,10 @@ test("live browser thumbnails sample every 700 ms and pause while the card is of
   act(() => visibilityUpdates[0]?.(true))
   await waitFor(() => expect(startInlineFrameSource).toHaveBeenCalledOnce())
 
-  expect(vi.mocked(startInlineFrameSource).mock.calls[0]?.[6]).toEqual({ intervalMs: 700 })
+  expect(vi.mocked(startInlineFrameSource).mock.calls[0]?.[6]).toEqual({
+    intervalMs: 700,
+    onReset: expect.any(Function),
+  })
 
   act(() => visibilityUpdates[0]?.(false))
   await waitFor(() => expect(stop).toHaveBeenCalledOnce())

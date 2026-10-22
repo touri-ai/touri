@@ -475,7 +475,7 @@ export const Composer = ({
         </aside>
       )}
       {groupName && (
-        <fieldset className="group-actions" aria-label={t("Ações do grupo")}>
+        <fieldset className="group-actions" aria-label={t("Channel composer actions")}>
           <button
             type="button"
             className="button button-quiet"
@@ -501,7 +501,7 @@ export const Composer = ({
         rows={1}
         aria-label={t("Message to bot", { name: groupName ?? bot?.name ?? "touri" })}
         placeholder={
-          groupName ? t("Message to group", { name: groupName }) : t("Message to bot", { name: bot?.name ?? "touri" })
+          groupName ? t("Message in channel", { name: groupName }) : t("Message to bot", { name: bot?.name ?? "touri" })
         }
         aria-describedby={helpId}
         onFocus={() => {
