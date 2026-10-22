@@ -9,7 +9,7 @@ test("first reply replaces preparation before the turn completes", async ({ page
 
   await expect(page.locator(".message-assistant")).toContainText("Olá!")
   await expect(page.getByText("Preparando a resposta…")).toHaveCount(0)
-  await expect(page.getByRole("status")).toHaveText("Escrevendo")
+  await expect(page.getByRole("status")).toHaveText("Trabalhando…")
   const screenshot = process.env.TOURI_LATENCY_SCREENSHOT
   if (screenshot) await page.screenshot({ path: screenshot })
 

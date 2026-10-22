@@ -254,7 +254,7 @@ it("replaces preparation as soon as the first text arrives while the activity sn
   view.rerender(<ActivityMark state="thinking" parts={[{ type: "text", text: "Olá!" }]} />)
 
   expect(screen.queryByText("Preparando a resposta…")).toBeNull()
-  expect(screen.getByRole("status")).toHaveTextContent("Escrevendo")
+  expect(screen.getByRole("status")).toHaveTextContent("Trabalhando…")
 })
 
 it("keeps the slow-response status when a partial reply stops arriving", () => {
