@@ -1122,6 +1122,13 @@
 .r8-sidebar .sidebar-row-main:has(.bot-row-text) {
   padding-block: var(--space-8);
 }
+.r8-sidebar .sidebar-row-main:has(.bot-row-text) .sidebar-row-label {
+  padding-block: 0;
+}
+.r8-sidebar .bot-row-main .bot-row-top strong {
+  min-width: 0;
+  flex-shrink: 1;
+}
 .r8-sidebar .bot-row .sidebar-row-leading,
 .r8-sidebar .group-select .sidebar-row-leading {
   flex: 0 0 32px;

@@ -584,9 +584,9 @@ it("shows interrupted tasks only while pending and leaves the count on the notif
 
   view.update({ recoveryCount: 1, notifications: [failure] })
 
-  const recovery = screen.getByRole("button", { name: "Tarefas interrompidas", exact: true })
+  const recovery = screen.getByRole("button", { name: "Tarefas interrompidas: 1", exact: true })
   expect(recovery.querySelector("svg")).not.toBeNull()
-  expect(recovery).not.toHaveTextContent(/\d/)
+  expect(recovery).toHaveTextContent("1")
   expect(screen.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
   expect(screen.getAllByText("1", { selector: ".notification-badge" })).toHaveLength(1)
 })

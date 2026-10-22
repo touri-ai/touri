@@ -113,6 +113,8 @@ it("keeps the Work sidebar footer to the person and Advanced, with invite beside
   const footer = sidebar.querySelector<HTMLElement>(".sidebar-footer")
   if (!footer) throw new Error("Missing sidebar footer")
 
+  expect(within(sidebar).queryByRole("button", { name: "Buscar conversas", exact: true })).toBeNull()
+  expect(within(sidebar).getByRole("button", { name: "Buscar canais e mensagens" })).toBeVisible()
   expect(sidebar.querySelector(".sidebar-invite")).toBeNull()
   expect(within(footer).queryByRole("button", { name: /Convidar/ })).toBeNull()
   expect(within(footer).queryByRole("button", { name: /Tarefas interrompidas/ })).toBeNull()

@@ -523,19 +523,21 @@ export const Sidebar = (props: SidebarProps) => {
           <span className="traffic-light-spacer" aria-hidden="true" />
         )}
         <div className="sidebar-top-actions">
-          <button
-            type="button"
-            className="sidebar-icon-button"
-            onClick={() => navigate(props.onSearch)}
-            aria-label={t("Search conversations")}
-            aria-keyshortcuts="Meta+K Control+K"
-            title={`${t("Search bots, conversations and settings")} (${paletteShortcutLabel()})`}
-          >
-            <SidebarIcon>
-              <circle cx="10.5" cy="10.5" r="6.5" />
-              <path d="m16 16 4 4" />
-            </SidebarIcon>
-          </button>
+          {sidebarMode === "bots" && (
+            <button
+              type="button"
+              className="sidebar-icon-button"
+              onClick={() => navigate(props.onSearch)}
+              aria-label={t("Search conversations")}
+              aria-keyshortcuts="Meta+K Control+K"
+              title={`${t("Search bots, conversations and settings")} (${paletteShortcutLabel()})`}
+            >
+              <SidebarIcon>
+                <circle cx="10.5" cy="10.5" r="6.5" />
+                <path d="m16 16 4 4" />
+              </SidebarIcon>
+            </button>
+          )}
           <button
             type="button"
             className="sidebar-icon-button"

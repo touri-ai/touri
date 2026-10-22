@@ -50,7 +50,8 @@ themes.forEach((theme) => {
         const sidebar = await page.locator(".bot-sidebar").boundingBox()
         const row = await page.locator(".bot-sidebar .traffic-light-row").boundingBox()
         expect(sidebar?.y).toBeGreaterThanOrEqual(0)
-        for (const name of ["Fechar menu", "Buscar conversas", "Criar bot"]) {
+        const names = ["Fechar menu", "Criar bot"].concat(mode === "bots" ? ["Buscar conversas"] : [])
+        for (const name of names) {
           const box = await page.locator(".bot-sidebar").getByRole("button", { name }).first().boundingBox()
           expect(box, name).not.toBeNull()
           expect(box?.y ?? -1, `${name} top`).toBeGreaterThanOrEqual(row?.y ?? 0)

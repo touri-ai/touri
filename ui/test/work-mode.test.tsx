@@ -102,7 +102,7 @@ describe("sidebar work mode", () => {
     expect(restoredChannel).toBeVisible()
     fireEvent.click(restoredChannel)
     await screen.findByRole("textbox", { name: "Mensagem para Equipe QA" })
-    expect(screen.getByText("Canais / Equipe QA")).toBeVisible()
+    expect(document.querySelector(".group-header .chat-header-crumb")).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "Editar canal" }))
     const editChannel = screen.getByRole("dialog", { name: "Editar canal" })
     expect(within(editChannel).getByRole("textbox", { name: "Nome do canal" })).toHaveValue("Equipe QA")
@@ -292,7 +292,8 @@ describe("sidebar design", () => {
 
     const channels = screen.getByRole("region", { name: "Canais" })
 
-    expect(channels.querySelector(".group-sidebar-heading")).toHaveTextContent(/^Canais\s*\+$/)
+    expect(within(channels).getByRole("heading", { name: "Canais" })).toBeVisible()
+    expect(within(channels).getByRole("button", { name: "Convidar pessoa" })).toHaveTextContent("+ Convidar")
     expect(
       document.querySelectorAll("#sidebar-mode-panel-work .bot-preview:not(.visually-hidden):not(.paused)"),
     ).toHaveLength(api.getState().bots.filter((bot) => !bot.paused).length)
@@ -354,7 +355,7 @@ describe("sidebar design", () => {
     const actions = screen.getByRole("button", { name: "Ações de mark" })
 
     actions.focus()
-    await user.keyboard("{ArrowDown}{Home}{ArrowDown}{ArrowDown}{Enter}")
+    await user.keyboard("{ArrowDown}{End}{ArrowUp}{Enter}")
 
     const dialog = screen.getByRole("dialog", { name: "Conversas de mark" })
     expect(dialog).toHaveAttribute("aria-modal", "true")

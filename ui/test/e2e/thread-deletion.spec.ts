@@ -60,6 +60,11 @@ for (const mode of ["bots", "work"]) {
     ).toBeTruthy()
 
     await page.keyboard.press("ArrowDown")
+    await expect(page.getByRole("menuitem", { name: "Nova conversa", exact: true })).toBeFocused()
+    await page.keyboard.press("End")
+    await page.keyboard.press("ArrowUp")
+    await page.keyboard.press("ArrowUp")
+    await page.keyboard.press("ArrowUp")
     await expect(page.getByRole("menuitem", { name: "Avançado", exact: true })).toBeFocused()
     await page.keyboard.press("ArrowDown")
     await expect(page.getByRole("menuitem", { name: "Rotinas", exact: true })).toBeFocused()
