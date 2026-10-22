@@ -4,6 +4,8 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  incomplete: "não concluído",
+  "No one took over in time. Ask again when you can.": "Ninguém assumiu a tempo. Peça de novo quando puder.",
   "Este documento contém entrada privada. Continue a tarefa em uma nova aba.":
     "Este documento contém entrada privada. Continue a tarefa em uma nova aba.",
   "Capturas de tela ficam bloqueadas depois do controle privado do navegador.":
@@ -3281,6 +3283,8 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  incomplete: "incomplete",
+  "No one took over in time. Ask again when you can.": "No one took over in time. Ask again when you can.",
   "Este documento contém entrada privada. Continue a tarefa em uma nova aba.":
     "This document contains private input. Continue the task in a new tab.",
   "Capturas de tela ficam bloqueadas depois do controle privado do navegador.":

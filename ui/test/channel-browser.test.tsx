@@ -147,6 +147,13 @@ describe("getChannelBrowserView", () => {
     expect(getChannelBrowserView(state, "user-ana").previewHidden).toBe(true)
   })
 
+  test("only the current controller keeps control actions during a handoff", () => {
+    const state = getState({ controllerId: "user-owner", controllerName: "Responsável" })
+
+    expect(getChannelBrowserView(state, "user-ana").canControl).toBe(false)
+    expect(getChannelBrowserView(state, "user-owner").canControl).toBe(true)
+  })
+
   test("names the controller when someone took over", () => {
     const state = getState({ controllerId: "user-owner", controllerName: "Bia" })
 
