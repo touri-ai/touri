@@ -16,10 +16,10 @@ export const getChannelThreadCards = (threads: readonly Thread[], messages: read
   const newest = getChannelThreads(threads, groupId)
     .slice(1)
     .reduce<Thread[]>((latest, thread) => {
-      const oldest = latest.at(-1)
-      if (latest.length === 50 && oldest && getThreadOrder(thread, oldest) >= 0) return latest
+      const index = latest.findIndex((candidate) => getThreadOrder(thread, candidate) < 0)
+      if (index < 0) return latest.length < 50 ? latest.concat(thread) : latest
 
-      return latest.concat(thread).toSorted(getThreadOrder).slice(0, 50)
+      return latest.slice(0, index).concat(thread, latest.slice(index, 49))
     }, [])
 
   return newest.map((thread) => ({ thread, reply: replies.get(thread.id) }))
