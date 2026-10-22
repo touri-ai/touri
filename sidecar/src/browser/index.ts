@@ -603,6 +603,14 @@ export const init = async (
     return request.runId
   })
   const previewScopes = createBrowserPreviewScopes()
+  const requestTakeover = async (input: Parameters<BrowserEngine["requestTakeover"]>[0]): Promise<ToolResult> => {
+    const status = input.runId ? channelRuns.get(input.runId)?.status : undefined
+    const managedNeedsYou = status === "running" || status === "needs_you"
+    const result = await engine.requestTakeover(Object.assign({}, input, { notify: !managedNeedsYou }))
+    if (result.success && managedNeedsYou) channelRuns.needsYou(input.runId ?? null, input.reason)
+
+    return result
+  }
   // The screen viewers show the real cause when a page never reached the display.
   const tool = (name: string, handler: ToolHandler): ToolRegistration => ({
     name,
@@ -645,15 +653,13 @@ export const init = async (
         const intent =
           args.target === undefined ? (asString(args.expression) ?? "") : getTargetIntent(target(args.target))
         const reasonCode = getBrowserTakeoverReasonCode({ error: result.error, intent, pageUrl })
-        const managedNeedsYou = channelRuns.needsYou(input.ctx.runId, reasonCode)
-        return engine.requestTakeover({
+        return requestTakeover({
           tabId,
           botId: input.ctx.botId,
           reason: reasonCode,
           reasonCode,
           timeoutMs: TAKEOVER_TIMEOUT_MS,
           signal: input.ctx.signal,
-          notify: !managedNeedsYou,
           threadId: input.ctx.threadId,
           runId: input.ctx.runId,
         })
@@ -984,15 +990,13 @@ export const init = async (
       const reasonCode = requestedReason
         ? getBrowserTakeoverReasonCode({ intent: requestedReason, pageUrl })
         : "requested"
-      const managedNeedsYou = channelRuns.needsYou(ctx.runId, reason)
-      return engine.requestTakeover({
+      return requestTakeover({
         tabId: asString(input.tabId) ?? "",
         botId: ctx.botId,
         reason,
         reasonCode,
         timeoutMs: timeout(input.timeoutMs, 600000, 1800000, TAKEOVER_MINIMUM_TIMEOUT_MS),
         signal: ctx.signal,
-        notify: !managedNeedsYou,
         threadId: ctx.threadId,
         runId: ctx.runId,
       })
