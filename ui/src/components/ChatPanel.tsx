@@ -1642,7 +1642,9 @@ export const ChatPanel = ({
               }}
               bot={group ? null : bot}
               groupName={group?.name}
+              summaryBotId={group?.coordinatorBotId}
               mentionBots={groupMembers}
+              mentionPeople={channelPeople}
               threadId={thread.id}
               parentId={thread.activeLeafId}
               api={api}

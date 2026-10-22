@@ -112,3 +112,32 @@ test("pending messages remain on their original server across mode switches and 
     remote.stop()
   }
 })
+
+test("a stored channel message without a bot run acknowledges delivery without publishing bot activity", async () => {
+  vi.useFakeTimers()
+  const emit = vi.fn()
+  const storage = { getItem: () => null, setItem: vi.fn() }
+  const request = vi.fn(async (_route, input) => ({
+    message: {
+      id: `send:${input.clientNonce}`,
+      threadId: input.threadId,
+      text: input.text,
+      delivery: { clientNonce: input.clientNonce, deadline: input.deadline, status: "acked" },
+    },
+    run: null,
+  }))
+  const journal = createSendJournal({ request, emit, storage })
+
+  await journal.enqueue({ threadId: "channel", parentId: null, text: "oi", attachmentIds: [] })
+  await vi.advanceTimersByTimeAsync(0)
+
+  expect(emit).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: "message.updated",
+      message: expect.objectContaining({ delivery: expect.objectContaining({ status: "acked" }) }),
+    }),
+  )
+  expect(emit.mock.calls.some(([event]) => event.type === "run.updated")).toBe(false)
+  expect(journal.messages()).toEqual([])
+  journal.stop()
+})

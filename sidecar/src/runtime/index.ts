@@ -229,7 +229,12 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
         path: "/threads/:id/runs",
         handler: async ({ params, query }) => {
           const thread = kernel.services.use("store.api")?.getThread({ threadId: params.id ?? "" })
-          if (thread && kernel.services.use("store.api")?.getBot({ botId: thread.botId })?.machine === "cloud") {
+          const isChannel = Boolean(thread?.groupId && !thread.groupThreadId)
+          if (
+            thread &&
+            !isChannel &&
+            kernel.services.use("store.api")?.getBot({ botId: thread.botId })?.machine === "cloud"
+          ) {
             const cloud = kernel.services.use("cloud.account")
             if (!cloud) return routeError("TOURI-E9013", "Nuvem desativada")
             return {

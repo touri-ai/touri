@@ -148,14 +148,30 @@ export const createGroupStore = (kernel: Kernel) => {
   return { get, list, validate, save, threads, createThread, participant, removeBot }
 }
 
-/** Coordinator takes precedence; explicit mentions use member order, never text order. */
-export const routeGroupMessage = (group: BotGroup, bots: { id: string; name: string }[], text: string): string[] => {
-  if (group.coordinatorBotId) return [group.coordinatorBotId]
-  const mentioned = group.memberIds.filter((id) => {
-    const name = bots.find((b) => b.id === id)?.name
-    if (!name) return false
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-    return new RegExp(`(?:^|\\s)@(?:"${escaped}"|${escaped})(?=$|[^\\p{L}\\p{N}_-])`, "iu").test(text)
-  })
-  return mentioned.length ? mentioned : [...group.memberIds]
+/** Only explicit bot mentions route human channel messages, in first-mention order. */
+export const routeGroupMessage = (group: BotGroup, bots: { id: string; name: string }[], text: string): string[] =>
+  group.memberIds
+    .flatMap((id) => {
+      const name = bots.find((bot) => bot.id === id)?.name
+      if (!name) return []
+
+      const position = getMentionPosition(name, text)
+      return position === undefined ? [] : [{ id, position }]
+    })
+    // Sort only this fresh, channel-sized collection; the configured members stay unchanged.
+    .sort((first, second) => first.position - second.position)
+    .map(({ id }) => id)
+
+export const getGroupActionText = (text: string, names: string[]) => {
+  const missing = names.filter((name) => getMentionPosition(name, text) === undefined)
+  if (!missing.length) return text
+
+  return `${missing.map((name) => `@${/\s/.test(name) ? JSON.stringify(name) : name}`).join(" ")} ${text}`
+}
+
+const getMentionPosition = (name: string, text: string) => {
+  const escaped = [JSON.stringify(name), name].map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")
+  const match = new RegExp(`(?:^|\\s)@(?:${escaped})(?=$|[^\\p{L}\\p{N}_-])`, "iu").exec(text)
+
+  return match?.index
 }

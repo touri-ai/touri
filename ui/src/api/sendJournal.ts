@@ -88,7 +88,7 @@ export const createSendJournal = ({
           )
           save()
           emit({ type: "message.updated", message: response.message })
-          emit({ type: "run.updated", run: response.run })
+          if (response.run) emit({ type: "run.updated", run: response.run })
           retryDelay = 500
         } catch (error) {
           if (error instanceof ApiError && error.status >= 400 && error.status < 500) status(entry, "failed")
