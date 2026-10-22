@@ -590,6 +590,7 @@ export const VirtualMessageList = ({
                               ["queued", "starting", "running"].includes(candidate.status)) ||
                             (candidate.threadId === run.threadId &&
                               candidate.botId === run.botId &&
+                              isSameChannelRequest(run, candidate, runs) &&
                               (candidate.queuedAt > run.queuedAt ||
                                 (candidate.queuedAt === run.queuedAt && candidate.id > run.id))),
                         ),
@@ -599,6 +600,7 @@ export const VirtualMessageList = ({
                         (later) =>
                           later.threadId === message.threadId &&
                           later.status === "succeeded" &&
+                          (!run?.groupTurnId || isSameChannelRequest(run, later, runs)) &&
                           (later.finishedAt ?? later.startedAt ?? later.queuedAt) >
                             (run?.finishedAt ?? message.updatedAt),
                       ) ||
@@ -607,6 +609,10 @@ export const VirtualMessageList = ({
                           later.threadId === message.threadId &&
                           later.role === "assistant" &&
                           later.status === "complete" &&
+                          (!run?.groupTurnId ||
+                            runs.some(
+                              (candidate) => candidate.id === later.runId && isSameChannelRequest(run, candidate, runs),
+                            )) &&
                           later.createdAt > (run?.finishedAt ?? message.updatedAt),
                       )
                     }
@@ -1799,4 +1805,12 @@ const getRoutineRunPresentation = (run: Run, waitingApproval: boolean) => {
     return { label: t("Falhou"), className: "status-failed", summary: userFacingRunError(run), failed: true }
 
   return { label: t("Concluído"), className: "status-complete" }
+}
+
+const isSameChannelRequest = (run: Run, candidate: Run, runs: readonly Run[]): boolean => {
+  if (run.requestMessageId && candidate.requestMessageId === run.requestMessageId) return true
+  const original = runs.find((root) => root.id === run.groupTurnId)
+  const continuation = runs.find((root) => root.id === candidate.groupTurnId)
+
+  return Boolean(original?.requestMessageId && original.requestMessageId === continuation?.requestMessageId)
 }

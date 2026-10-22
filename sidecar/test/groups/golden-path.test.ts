@@ -8,6 +8,7 @@ import { createGroupRuntime } from "../../src/groups/runtime"
 import { createGroupStore } from "../../src/groups/store"
 import { createKernel } from "../../src/kernel"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
+import { createWorkState } from "../../src/runtime/work-state"
 import { init as initStore } from "../../src/store"
 
 setDefaultTimeout(20_000)
@@ -366,4 +367,27 @@ test("retrying an empty answer starts one new attempt and is idempotent", async 
 
   expect(f.runtime.retry(run.id)).toMatchObject({ success: true, run: { id: retry.run.id } })
   expect(f.order).toHaveLength(2)
+})
+
+test("durable effects block automatic and explicit replay even without a reply part", async () => {
+  const f: Awaited<ReturnType<typeof fixture>> = await fixture(async (run) => {
+    const work = createWorkState({ database: f.db })
+    work.beginEffect({
+      turnId: run.id,
+      threadId: run.threadId,
+      key: "synthetic-process",
+      description: "Conferir o plano",
+      effectId: "synthetic-effect",
+    })
+    work.recover({ observe: () => ({ kind: "unobservable", reason: "Synthetic interrupted process" }) })
+    f.finish(run, { status: "failed", errorClass: "cli_crash", finishedAt: Date.now() })
+  })
+
+  const run = f.send("@Lia confira o plano")
+  await until(() => f.persistence.getRun(run.id)?.status === "failed")
+  const retry = f.runtime.retry(run.id)
+
+  expect(f.order).toHaveLength(1)
+  expect(retry).toMatchObject({ success: false, errorCode: "CONFLICT" })
+  expect(f.db.query("SELECT COUNT(*) AS count FROM run_continuations").get()).toEqual({ count: 0 })
 })

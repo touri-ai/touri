@@ -1,17 +1,20 @@
 import type { Bot, BotGroup, ChannelPerson, Message, Run, Thread } from "@touri/contracts"
 import { avatarColorFor } from "@touri/contracts/avatar"
-import { memo, useEffect, useMemo, useState } from "react"
+import { lazy, memo, Suspense, useEffect, useMemo, useState } from "react"
 import { latestPreview } from "../botPreview"
 import { getChannelThreads, getChannelThreadTitle } from "../channelThreads"
 import { ChannelHeaderChip, ChannelWorkingMarker } from "../features/channelBrowser/ChannelBrowser"
 import { type Locale, t } from "../i18n"
 import { getLastActivityAt, getSidebarRowTime } from "../sidebarAttention"
 import { BotAvatar } from "./BotAvatar"
-import { DeleteGroupDialog } from "./DeleteGroupDialog"
 import { PanelIcon } from "./PanelIcon"
 import { SidebarActionsMenu } from "./SidebarActionsMenu"
 import { SidebarCount, SidebarDot, SidebarRow } from "./SidebarRow"
 import "./groups.css"
+
+const DeleteGroupDialog = lazy(() =>
+  import("./DeleteGroupDialog").then((module) => ({ default: module.DeleteGroupDialog })),
+)
 
 const EMPTY_WORKING_BOTS: string[] = []
 const EMPTY_THREADS: Thread[] = []
@@ -307,13 +310,15 @@ const GroupSidebarEntry = memo(
           }}
         />
         {deleting && onDelete && (
-          <DeleteGroupDialog
-            group={group}
-            onDelete={onDelete}
-            onClose={() => setDeleting(false)}
-            locale={locale}
-            channelMode
-          />
+          <Suspense fallback={null}>
+            <DeleteGroupDialog
+              group={group}
+              onDelete={onDelete}
+              onClose={() => setDeleting(false)}
+              locale={locale}
+              channelMode
+            />
+          </Suspense>
         )}
         {selected && threads.length > 1 && (
           <div className="group-thread-list">

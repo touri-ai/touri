@@ -349,3 +349,25 @@ it("opens recorded actions from a notification for a restart-interrupted run", a
   expect(await screen.findByRole("region", { name: "Ações registradas" })).toBeVisible()
   expect(api.request).not.toHaveBeenCalledWith("POST /runs/:id/retry", expect.anything(), expect.anything())
 })
+
+it("keeps recovery actions after an unrelated channel request finishes", () => {
+  const diagnostic = "app_restart after confirmed write"
+  const message = failed(diagnostic)
+  const run = { ...runFor(diagnostic), groupTurnId: "old-channel-turn", errorClass: "app_restart" as const }
+  const unrelated: Run = {
+    ...run,
+    id: "unrelated-run",
+    groupTurnId: "new-channel-turn",
+    requestMessageId: "different-request",
+    status: "succeeded",
+    queuedAt: run.queuedAt + 10,
+    finishedAt: (run.finishedAt ?? 0) + 20,
+    errorClass: null,
+    errorMessage: null,
+  }
+
+  render(<VirtualMessageList messages={[message]} runs={[run, unrelated]} onRetry={vi.fn()} onSwitchBranch={vi.fn()} />)
+
+  expect(screen.getByRole("button", { name: "Retomar tarefa", exact: true })).toBeVisible()
+  expect(screen.getByRole("alert")).toBeVisible()
+})

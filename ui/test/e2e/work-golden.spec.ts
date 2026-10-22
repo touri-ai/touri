@@ -1,4 +1,5 @@
 import { join } from "node:path"
+import AxeBuilder from "@axe-core/playwright"
 import { expect as baseExpect, test } from "@playwright/test"
 import type { Bot, BotGroup, Message, Run, Thread } from "@touri/contracts"
 import { createWorkGoldenServer } from "./work-golden-server"
@@ -40,11 +41,38 @@ test("Work channel golden path survives long turns and a server restart", async 
   const conversation = page.getByTestId("virtual-message-list")
   const input = page.getByRole("textbox", { name: /Mensagem (?:para |em #)Planejamento/ })
   const capture = async (name: string) => {
-    const path = process.env.TOURI_WORK_EVIDENCE_DIR
-      ? join(process.env.TOURI_WORK_EVIDENCE_DIR, `${name}.png`)
-      : testInfo.outputPath(`${name}.png`)
-    await page.screenshot({ path })
-    await testInfo.attach(name, { path, contentType: "image/png" })
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+      await page.evaluate(() => document.fonts.ready)
+      const filename = `${name}-${width}`
+      const path = process.env.TOURI_WORK_EVIDENCE_DIR
+        ? join(process.env.TOURI_WORK_EVIDENCE_DIR, `${filename}.png`)
+        : testInfo.outputPath(`${filename}.png`)
+      await page.screenshot({ path, animations: "disabled" })
+      await testInfo.attach(filename, { path, contentType: "image/png" })
+      if (name !== "04-members" && name !== "05-routine-in-channel") continue
+
+      const scope = name === "04-members" ? ".group-panel" : ".channel-conversations"
+      for (const theme of ["light", "dark"]) {
+        await page.evaluate((value) => {
+          localStorage.setItem("touri.appearance.v1", value)
+          document.documentElement.dataset.theme = value
+          document.documentElement.classList.toggle("dark", value === "dark")
+        }, theme)
+        const audit = await new AxeBuilder({ page }).include(scope).analyze()
+        expect(
+          audit.violations.filter(
+            (issue) => issue.impact === "serious" || issue.impact === "critical" || issue.id === "color-contrast",
+          ),
+        ).toEqual([])
+      }
+      await page.evaluate(() => {
+        localStorage.setItem("touri.appearance.v1", "light")
+        document.documentElement.dataset.theme = "light"
+        document.documentElement.classList.remove("dark")
+      })
+    }
+    await page.setViewportSize({ width: 1440, height: 900 })
   }
   const send = async (text: string) => {
     await input.fill(text)

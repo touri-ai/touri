@@ -560,6 +560,3 @@ button.channel-members-button[aria-expanded="true"] {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.channel-conversation small {
-  color: var(--text-muted);
-}

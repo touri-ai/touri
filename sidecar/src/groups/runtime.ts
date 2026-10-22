@@ -273,6 +273,8 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = g
       value_json: string
     } | null
     if (setting?.value_json === "false") return false
+    // An effect can reach the journal before its reply part; require review rather than replaying it.
+    if (db.query("SELECT 1 FROM work_journal WHERE turn_id=? LIMIT 1").get(run.id)) return false
     const originalRunId = continuations.link(run.id)?.originalRunId ?? run.id
     if (continuations.count({ originalRunId }) >= MAX_AUTO_CONTINUATIONS) return false
     const reply = run.replyMessageId
@@ -1202,7 +1204,10 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = g
           "SELECT 1 FROM group_run_links l JOIN runs r ON r.id=l.run_id WHERE l.turn_id=? AND r.status='succeeded' LIMIT 1",
         )
         .get(id)
-      if (completedMember || hasRecordedActions(parts) || awaitingApproval)
+      const durableEffect = db
+        .query("SELECT 1 FROM group_run_links l JOIN work_journal w ON w.turn_id=l.run_id WHERE l.turn_id=? LIMIT 1")
+        .get(id)
+      if (completedMember || durableEffect || hasRecordedActions(parts) || awaitingApproval)
         return {
           success: false,
           errorCode: "CONFLICT",

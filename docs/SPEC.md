@@ -435,8 +435,11 @@ Parar cancels the active group turn, its delegated work and pending group turns.
 or the coordinator requires idle group conversations. Eligible unfinished channel turns resume after
 restart and provider interruption, up to two automatic attempts recorded durably per original member
 turn. Completed members are not repeated. Stop, pending approvals and unconfirmed effects prevent
-automatic execution. The manual resume action appears only after automatic recovery is exhausted
-or needs human review. An empty final response (no text or parts) fails visibly instead of succeeding.
+automatic execution. A managed effect recorded in the durable work journal requires human review
+even if no reply part was saved; neither automatic recovery nor a simple retry may replay it.
+The manual resume action appears only after automatic recovery is exhausted or needs human review.
+A later reply to another channel request does not hide that action. An empty final response (no text
+or parts) fails visibly instead of succeeding.
 One human message starts one group turn and one execution per addressed member, including a
 repeated delivery acknowledgement. The aggregate group record is not another provider execution.
 

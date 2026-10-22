@@ -20,7 +20,6 @@ export const ChannelThreads = ({
       <button type="button" className="channel-conversation" key={thread.id} onClick={() => onSelect(thread.id)}>
         <strong>{getChannelThreadTitle(thread, getDocumentLocale(document.documentElement))}</strong>
         <span>{reply?.text || t("Open conversation")}</span>
-        <small>{t("Open conversation")}</small>
       </button>
     ))}
   </section>

@@ -44,7 +44,7 @@ const openConfirmation = () => {
   fireEvent.click(screen.getByRole("button", { name: "Ações do canal Equipe QA" }))
   fireEvent.click(screen.getByRole("menuitem", { name: "Apagar canal" }))
 
-  return screen.getByRole("dialog", { name: "Apagar canal" })
+  return screen.findByRole("dialog", { name: "Apagar canal" })
 }
 
 const createGroup = (api: ReturnType<typeof createMockApi>) =>
@@ -89,7 +89,7 @@ describe("group deletion", () => {
 
   it("requires the exact group name and cancels without deleting", async () => {
     const { onDelete } = renderSidebar()
-    const dialog = openConfirmation()
+    const dialog = await openConfirmation()
     const name = within(dialog).getByLabelText("Digite o nome do canal: Equipe QA")
     const confirm = within(dialog).getByRole("button", { name: "Apagar canal" })
 
@@ -121,7 +121,7 @@ describe("group deletion", () => {
       .mockRejectedValueOnce(new ApiError(409, "", "GROUP_BUSY"))
       .mockResolvedValueOnce(undefined)
     renderSidebar("pt-BR", onDelete)
-    const dialog = openConfirmation()
+    const dialog = await openConfirmation()
     fireEvent.change(within(dialog).getByLabelText("Digite o nome do canal: Equipe QA"), {
       target: { value: "Equipe QA" },
     })
@@ -140,7 +140,7 @@ describe("group deletion", () => {
     expect(onDelete).toHaveBeenLastCalledWith("group-qa")
   })
 
-  it("translates the group menu and confirmation to English", () => {
+  it("translates the group menu and confirmation to English", async () => {
     renderSidebar("en")
 
     fireEvent.click(screen.getByRole("button", { name: "Channel actions for Equipe QA" }))
@@ -149,7 +149,7 @@ describe("group deletion", () => {
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete channel" }))
 
-    const dialog = screen.getByRole("dialog", { name: "Delete channel" })
+    const dialog = await screen.findByRole("dialog", { name: "Delete channel" })
     expect(within(dialog).getByLabelText("Type the channel name: Equipe QA")).toBeVisible()
     expect(dialog).toHaveTextContent(
       "Deleting Equipe QA removes all conversations, messages, and routines from the channel",
