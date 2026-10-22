@@ -1857,7 +1857,8 @@ export const init = async (
         path: "/threads/:id/transcript",
         handler: async ({ params, query, signal }) => {
           const cloudThread = getThread({ threadId: params.id ?? "" })
-          if (cloudThread && getBot({ botId: cloudThread.botId })?.machine === "cloud") {
+          const isChannel = Boolean(cloudThread?.groupId && !cloudThread.groupThreadId)
+          if (cloudThread && !isChannel && getBot({ botId: cloudThread.botId })?.machine === "cloud") {
             const cloud = kernel.services.use("cloud.account")
             if (!cloud) return errorResponse(503, "TOURI-E9013", "Nuvem desativada")
             const suffix = Object.keys(query).length ? `?${new URLSearchParams(query)}` : ""
@@ -1923,7 +1924,8 @@ export const init = async (
         path: "/threads/:id/messages",
         handler: async ({ params, query, signal }) => {
           const cloudThread = getThread({ threadId: params.id ?? "" })
-          if (cloudThread && getBot({ botId: cloudThread.botId })?.machine === "cloud") {
+          const isChannel = Boolean(cloudThread?.groupId && !cloudThread.groupThreadId)
+          if (cloudThread && !isChannel && getBot({ botId: cloudThread.botId })?.machine === "cloud") {
             const cloud = kernel.services.use("cloud.account")
             if (!cloud) return errorResponse(503, "TOURI-E9013", "Nuvem desativada")
             const suffix = Object.keys(query).length ? `?${new URLSearchParams(query)}` : ""

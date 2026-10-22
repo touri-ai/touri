@@ -2602,12 +2602,17 @@ test("the explicit everyone action addresses channels with more than six bots", 
 
 test("a channel whose first member is remote still stores plain messages locally and routes explicit mentions", async () => {
   const scenario = await fixture()
-  scenario.db.query("UPDATE bots SET machine='cloud' WHERE id=?").run(scenario.bots[0]?.id ?? "")
+  scenario.db.query("UPDATE bots SET cloud_target=1 WHERE id=?").run(scenario.bots[0]?.id ?? "")
 
   const plain = await postChannelMessage(scenario, "oi")
+  const history = await scenario.request(`/threads/${scenario.thread.id}/messages`, undefined, "GET")
+  const transcript = await scenario.request(`/threads/${scenario.thread.id}/transcript`, undefined, "GET")
   const mentioned = await postChannelMessage(scenario, "@dev oi")
   await until(() => Boolean(mentioned.run && scenario.persistence.getRun(mentioned.run.id)?.status === "succeeded"))
 
   expect(plain.run).toBeNull()
+  expect(history.status).toBe(200)
+  expect(transcript.status).toBe(200)
+  expect(((await history.json()) as { messages: Message[] }).messages.map((message) => message.text)).toEqual(["oi"])
   expect(scenario.order).toEqual([scenario.bots[1]?.id ?? ""])
 })
