@@ -1,0 +1,33 @@
+name: Menu snapshots
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/menu-snapshots.yml'
+      - 'ui/test/e2e/bot-menu-clipping.spec.ts*'
+      - 'ui/test/e2e/bot-menu-clipping.spec.ts-snapshots/**'
+permissions:
+  contents: read
+jobs:
+  menus:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: 1.4.3
+      - name: Install test browser
+        working-directory: ui
+        run: bunx playwright install --with-deps chromium
+      - name: Compare menu references
+        working-directory: ui
+        run: bunx playwright test test/e2e/bot-menu-clipping.spec.ts --workers=1
+      - name: Retain menu evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: menu-snapshots
+          path: |
+            ui/test-results/**/*.png
+            ui/test-results/**/error-context.md
+          retention-days: 7

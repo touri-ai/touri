@@ -168,6 +168,15 @@ jobs:
       - name: Check the complete browser suite
         working-directory: ui
         run: bunx playwright test --workers=1 --shard=${{ matrix.shard }}/3
+      - name: Retain browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-failures-${{ matrix.shard }}
+          path: |
+            ui/test-results/**/*.png
+            ui/test-results/**/error-context.md
+          retention-days: 7
 
   channel-takeover:
     runs-on: ubuntu-latest
