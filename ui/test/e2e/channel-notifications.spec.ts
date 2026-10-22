@@ -106,6 +106,12 @@ test("a real channel bot ping reaches the owner's bell and attention sound", asy
     await writeFile(join(process.env.TOURI_E2E_EVIDENCE_DIR, name), bytes)
   }
   await screenshot("channel-notification-1440.png")
+  await center.getByRole("button", { name: "Fechar notificações" }).click()
   await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole("button", { name: "Abrir menu" }).click()
+  await page.getByRole("button", { name: /Notificações/ }).click()
+  await expect(
+    center.locator('[data-kind="mention"]').getByText("@thiago preciso de você", { exact: true }),
+  ).toBeVisible()
   await screenshot("channel-notification-390.png")
 })
