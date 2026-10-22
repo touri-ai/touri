@@ -120,6 +120,7 @@ for (const { theme, viewport } of menuStyleCases) {
       await page.keyboard.press("Escape")
       if (viewport.width === 390) await page.getByRole("button", { name: "Fechar menu" }).click()
 
+      if (viewport.width > 620) await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
       await page.getByRole("button", { name: /^Projeto do bot:/ }).click()
       const projects = page.getByRole("menu", { name: "Projeto do bot" })
       await exposed(page, projects)
