@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite"
-import { afterEach, expect, test } from "bun:test"
+import { afterEach, expect, mock, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -13,7 +13,13 @@ afterEach(async () => {
   cleanups.clear()
 })
 
-const getFixture = async () => {
+const getFixture = async ({
+  privateInput = false,
+  localBrowser = true,
+  getUrl = (): string => "https://example.test/results",
+  getHasSensitiveEntry = (): boolean => false,
+  captureScreenshot = async () => ({ data: "ZmFrZQ==" }),
+} = {}) => {
   const root = await mkdtemp(join(tmpdir(), "touri-browser-private-document-"))
   const runtime = createKernel({ appData: root })
   const database = runtime.kernel.db as Database
@@ -22,15 +28,22 @@ const getFixture = async () => {
     INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES ('thread','leo','Synthetic',1,1);
   `)
   database
-    .query(`INSERT INTO browser_tabs(id,profile,owner_bot_id,owner_thread_id,cdp_target_id,url,state,created_at,last_used_at)
-    VALUES ('tab','default','leo','thread','owned','https://example.test/results','live',1,?)`)
-    .run(Date.now())
+    .query(`INSERT INTO browser_tabs(id,profile,owner_bot_id,owner_thread_id,cdp_target_id,url,state,
+      private_input,private_after_takeover,private_document_ids_json,created_at,last_used_at)
+    VALUES ('tab','default','leo','thread','owned',?,'live',?,0,?,1,?)`)
+    .run(
+      privateInput ? "" : "https://example.test/results",
+      privateInput ? 1 : 0,
+      privateInput ? "[1]" : "[]",
+      Date.now(),
+    )
   let documentId = 1
   let captures = 0
   const listeners = new Set<(event: CdpEvent) => void>()
+  const disconnectListeners = new Set<() => void>()
   const getPage = () => ({
-    url: "https://example.test/results",
-    href: "https://example.test/results",
+    url: getUrl(),
+    href: getUrl(),
     title: "Results",
     loading: false,
     readyState: "complete",
@@ -44,11 +57,11 @@ const getFixture = async () => {
     hasVideo: false,
     crossOriginIframe: false,
   })
-  const client: CdpClient = {
+  const getClient = (): CdpClient => ({
     call: async <T>(method: string, params: JsonObject = {}) => {
       if (method === "Target.getTargets")
         return {
-          targetInfos: [{ targetId: "owned", type: "page", title: "Results", url: "https://example.test/results" }],
+          targetInfos: [{ targetId: "owned", type: "page", title: "Results", url: getUrl() }],
         } as T
       if (method === "Target.attachToTarget") return { sessionId: "session" } as T
       if (method === "DOM.getDocument") return { root: { nodeId: 1, backendNodeId: documentId } } as T
@@ -58,14 +71,14 @@ const getFixture = async () => {
         return { cssVisualViewport: { pageX: 0, pageY: 0, clientWidth: 800, clientHeight: 500 } } as T
       if (method === "Page.captureScreenshot") {
         captures += 1
-        return { data: "ZmFrZQ==" } as T
+        return (await captureScreenshot()) as T
       }
       if (method === "Runtime.evaluate") {
         const metadata = String(params.expression).includes("hasSensitiveEntry:")
         return {
           result: {
             value: metadata
-              ? { url: "https://example.test/results", title: "Results", hasSensitiveEntry: false, documentId: 999 }
+              ? { url: getUrl(), title: "Results", hasSensitiveEntry: getHasSensitiveEntry(), documentId: 999 }
               : getPage(),
           },
         } as T
@@ -80,12 +93,19 @@ const getFixture = async () => {
     },
     isClosed: () => false,
     close: async () => {},
-  }
+    onDisconnect: (listener) => {
+      disconnectListeners.add(listener)
+
+      return () => {
+        disconnectListeners.delete(listener)
+      }
+    },
+  })
   const engine = createBrowserEngine({
     kernel: runtime.kernel,
-    localBrowser: true,
+    localBrowser,
     discoverBotId: "leo",
-    launcher: { start: async () => ({ client }), stop: async () => {} },
+    launcher: { start: async () => ({ client: getClient() }), stop: async () => {} },
   })
   cleanups.add(async () => {
     await engine.shutdown()
@@ -103,8 +123,202 @@ const getFixture = async () => {
     })
   }
 
-  return { engine, navigate, captures: () => captures }
+  const emit = (event: CdpEvent) =>
+    listeners.forEach((listener) => {
+      listener(event)
+    })
+  const disconnect = () =>
+    disconnectListeners.forEach((listener) => {
+      listener()
+    })
+
+  return { engine, navigate, emit, disconnect, captures: () => captures }
 }
+
+const getSameDocumentEvent = (method: string, url: string, frameId = "main"): CdpEvent => {
+  if (method === "Page.navigatedWithinDocument")
+    return {
+      method,
+      sessionId: "session",
+      params: { frameId, url, navigationType: url.includes("#") ? "fragment" : "historyApi" },
+    }
+
+  return { method, sessionId: "session", params: { frame: { id: frameId, url }, type: "SameDocument" } }
+}
+
+test("restored private-input tabs require fresh verification before shared previews resume", async () => {
+  const fixture = await getFixture({ privateInput: true })
+  const signal = new AbortController().signal
+  await fixture.engine.list({ botId: "leo" })
+
+  const restored = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
+
+  expect(restored).toBeNull()
+  expect(fixture.captures()).toBe(0)
+
+  fixture.navigate(2)
+
+  const safePage = await fixture.engine.snapshot({ botId: "leo", tabId: "tab", image: "always", signal })
+  const preview = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
+
+  expect(safePage).toMatchObject({ success: true, structured: { text: "Public results", image: null } })
+  expect(preview).toEqual({ title: "", url: "", image: "data:image/jpeg;base64,ZmFrZQ==" })
+  expect(fixture.captures()).toBe(1)
+})
+
+test("reconnecting retained private-input tabs requires fresh sensitive-entry verification", async () => {
+  const getHasSensitiveEntry = mock(() => false)
+  const fixture = await getFixture({ getHasSensitiveEntry })
+  const signal = new AbortController().signal
+  await fixture.engine.list({ botId: "leo" })
+  await fixture.engine.holdTakeover({ tabId: "tab", reason: "Synthetic handoff" })
+  await fixture.engine.releaseTakeover("tab")
+  fixture.navigate(2)
+  await fixture.engine.snapshot({ botId: "leo", tabId: "tab", image: "never", signal })
+  const initial = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
+
+  expect(initial?.image).toBe("data:image/jpeg;base64,ZmFrZQ==")
+
+  getHasSensitiveEntry.mockReturnValue(true)
+  fixture.disconnect()
+  await fixture.engine.snapshot({ botId: "leo", tabId: "tab", image: "never", signal })
+  const privatePreview = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
+
+  expect(privatePreview).toBeNull()
+  expect(fixture.captures()).toBe(1)
+
+  getHasSensitiveEntry.mockReturnValue(false)
+  await fixture.engine.snapshot({ botId: "leo", tabId: "tab", image: "never", signal })
+  const recovered = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
+
+  expect(recovered).toEqual({ title: "", url: "", image: "data:image/jpeg;base64,ZmFrZQ==" })
+  expect(fixture.captures()).toBe(2)
+})
+
+test.each([
+  { localBrowser: false, method: "Page.navigatedWithinDocument", path: "/login" },
+  { localBrowser: false, method: "Page.frameNavigated", path: "/payment" },
+  { localBrowser: true, method: "Page.navigatedWithinDocument", path: "/#/login" },
+  { localBrowser: true, method: "Page.frameNavigated", path: "/#/payment" },
+  { localBrowser: false, method: "Page.navigatedWithinDocument", path: "/%6cogin" },
+])("same-document route %p reapplies privacy after safe-document clearance", async ({ localBrowser, method, path }) => {
+  // The mock supplies changing CDP location state without mutating page fixtures.
+  const getUrl = mock(() => "https://example.test/results")
+  const fixture = await getFixture({ localBrowser, getUrl })
+  const signal = new AbortController().signal
+  await fixture.engine.list({ botId: "leo" })
+  await fixture.engine.holdTakeover({ tabId: "tab", reason: "Synthetic handoff" })
+  await fixture.engine.releaseTakeover("tab")
+  fixture.navigate(2)
+  const safePage = await fixture.engine.snapshot({ botId: "leo", tabId: "tab", image: "always", signal })
+  const initial = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
+
+  expect(safePage).toMatchObject({ success: true, structured: { text: "Public results", image: null } })
+  expect(initial).toEqual({ title: "", url: "", image: "data:image/jpeg;base64,ZmFrZQ==" })
+
+  getUrl.mockReturnValue(`https://example.test${path}`)
+  fixture.emit(getSameDocumentEvent(method, getUrl()))
+  const preview = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
+  const sensitivePage = await fixture.engine.snapshot({ botId: "leo", tabId: "tab", image: "always", signal })
+
+  expect(preview).toBeNull()
+  expect(sensitivePage).toMatchObject({ success: true, structured: { title: "", url: "", text: "", image: null } })
+  expect(await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })).toBeNull()
+  expect(fixture.captures()).toBe(1)
+
+  getUrl.mockReturnValue("https://example.test/results?next=/login")
+  fixture.emit(getSameDocumentEvent(method, getUrl()))
+  const recovered = await fixture.engine.snapshot({ botId: "leo", tabId: "tab", image: "always", signal })
+  const recoveredPreview = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
+
+  expect(recovered).toMatchObject({
+    success: true,
+    structured: { title: "", url: "", text: "Public results", image: null },
+  })
+  expect(recoveredPreview).toEqual({ title: "", url: "", image: "data:image/jpeg;base64,ZmFrZQ==" })
+  expect(fixture.captures()).toBe(2)
+})
+
+test.each(["Page.navigatedWithinDocument", "Page.frameNavigated"])(
+  "%s invalidates a cached preview for an ordinary query route",
+  async (method) => {
+    const fixture = await getFixture()
+    const signal = new AbortController().signal
+    await fixture.engine.list({ botId: "leo" })
+    const initial = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
+
+    fixture.emit(getSameDocumentEvent(method, "https://example.test/results?next=/login", "owned"))
+    const preview = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
+
+    expect(initial?.url).toBe("https://example.test/results")
+    expect(preview?.url).toBe("https://example.test/results?next=/login")
+    expect(fixture.captures()).toBe(2)
+  },
+)
+
+test.each(["Page.navigatedWithinDocument", "Page.frameNavigated"])(
+  "%s discards an in-flight preview without starting another capture",
+  async (method) => {
+    const started = Promise.withResolvers<void>()
+    const capture = Promise.withResolvers<{ data: string }>()
+    const fixture = await getFixture({
+      captureScreenshot: () => {
+        started.resolve()
+        return capture.promise
+      },
+    })
+    const signal = new AbortController().signal
+    await fixture.engine.list({ botId: "leo" })
+    const pending = fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
+    await started.promise
+
+    fixture.emit(getSameDocumentEvent(method, "https://example.test/results?sort=price", "owned"))
+    const overlapping = fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
+    capture.resolve({ data: "ZmFrZQ==" })
+    const [overlappingFrame, stale] = await Promise.all([overlapping, pending])
+
+    expect(overlappingFrame).toBeNull()
+    expect(stale).toBeNull()
+    expect(fixture.captures()).toBe(1)
+
+    const current = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
+
+    expect(current?.url).toBe("https://example.test/results?sort=price")
+    expect(fixture.captures()).toBe(2)
+  },
+)
+
+test("same-document iframe events cannot replace the main page metadata", async () => {
+  const fixture = await getFixture()
+  const signal = new AbortController().signal
+  await fixture.engine.list({ botId: "leo" })
+  fixture.emit(getSameDocumentEvent("Page.frameNavigated", "https://example.test/login", "owned"))
+
+  fixture.emit(getSameDocumentEvent("Page.navigatedWithinDocument", "https://example.test/results", "child"))
+  const preview = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
+
+  expect(preview).toBeNull()
+  expect(fixture.captures()).toBe(0)
+})
+
+test.each(["Page.navigatedWithinDocument", "Page.frameNavigated"])(
+  "%s cannot clear the original private document through a safe route",
+  async (method) => {
+    const fixture = await getFixture()
+    const signal = new AbortController().signal
+    await fixture.engine.list({ botId: "leo" })
+    await fixture.engine.holdTakeover({ tabId: "tab", reason: "Synthetic handoff" })
+    await fixture.engine.releaseTakeover("tab")
+
+    fixture.emit(getSameDocumentEvent(method, "https://example.test/results?sort=price", "owned"))
+    const snapshot = await fixture.engine.snapshot({ botId: "leo", tabId: "tab", image: "always", signal })
+    const preview = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
+
+    expect(snapshot).toMatchObject({ success: true, structured: { title: "", url: "", text: "", image: null } })
+    expect(preview).toBeNull()
+    expect(fixture.captures()).toBe(0)
+  },
+)
 
 test("handoff cannot reveal the original document through changed metadata or browser history", async () => {
   const fixture = await getFixture()

@@ -1437,6 +1437,7 @@ export const createBrowserEngine = ({
   const contextOwners = new Map<string, string>()
   const savedSessions = new Map<string, SavedSession>()
   const sharedPreview = createSharedPreviewSource<{ title: string; url: string; image: string }>()
+  const mainFrameIds = new WeakMap<TabState, string>()
   const pendingStorage = new Map<string, Record<string, Record<string, string>>>()
   let sessionTimer: ReturnType<typeof setInterval> | null = null
   let legacyMigration: Promise<void> | null = null
@@ -1515,6 +1516,9 @@ export const createBrowserEngine = ({
     targetSessions.clear()
     for (const tab of tabs) {
       if (tab.info.state !== "live") continue
+      // Disconnected pages can change outside CDP; invalidate captures and verify private entry again.
+      tab.generation += 1
+      if (tab.privateInput) tab.privateAfterTakeover = true
       tab.info.state = "unloaded"
       if (!localBrowser) tab.targetId = null
       tab.sessionId = null
@@ -1547,18 +1551,20 @@ export const createBrowserEngine = ({
   const syncPageNavigation = (tab: TabState, params: JsonObject): void => {
     const frame = asRecord(params.frame)
     if (!frame || frame.parentId !== undefined) return
+    // CDP owns navigation state; update the live tab in place so pending captures observe the new generation.
+    const frameId = asString(frame.id)
+    if (frameId !== null) mainFrameIds.set(tab, frameId)
     rememberRefs(tab)
     const url = asString(frame.url)
     if (url !== null) tab.info.url = url
     const navigationType = asString(params.type)
-    if (navigationType === "SameDocument") return
     if (tab.privateInput) tab.privateAfterTakeover = true
     tab.navigationVersion += 1
     tab.generation += 1
     tab.refs.clear()
-    tab.secretMode = false
+    if (navigationType !== "SameDocument") tab.secretMode = false
     enforceTabUrl(tab)
-    void restoreStorage(tab)
+    if (navigationType !== "SameDocument") void restoreStorage(tab)
     publishTab(tab)
   }
 
@@ -1660,6 +1666,15 @@ export const createBrowserEngine = ({
     if (event.method === "Page.frameNavigated") {
       if (event.sessionId !== tab.sessionId) return
       syncPageNavigation(tab, event.params)
+      if (tab.info.heldByUser) void protectTakeoverDocument(tab)
+      return
+    }
+    if (event.method === "Page.navigatedWithinDocument") {
+      if (event.sessionId !== tab.sessionId) return
+      const frameId = asString(event.params.frameId)
+      if (!frameId || frameId !== (mainFrameIds.get(tab) ?? tab.targetId)) return
+
+      syncPageNavigation(tab, { frame: { id: frameId, url: event.params.url }, type: "SameDocument" })
       if (tab.info.heldByUser) void protectTakeoverDocument(tab)
       return
     }

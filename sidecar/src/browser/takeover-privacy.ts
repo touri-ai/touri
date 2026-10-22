@@ -116,17 +116,25 @@ export const canResumeAfterHumanTakeover = ({
 
 const isSensitiveTakeoverPage = (value: string, title: string): boolean => {
   const path = getBrowserPreviewPath(value)
-  if (path === null) return false
+  if (path === null) return true
 
   return SENSITIVE_PREVIEW_PAGE.test(`${path} ${title.slice(0, MAX_PREVIEW_TITLE_LENGTH)}`)
 }
 
 const getBrowserPreviewPath = (value: string): string | null => {
+  if (value.length > MAX_PREVIEW_URL_LENGTH) return null
+
   try {
     const url = new URL(value)
-    if (url.protocol !== "http:" && url.protocol !== "https:") return null
+    // Non-web pages have no route to classify and cannot establish takeover clearance.
+    if (url.protocol !== "http:" && url.protocol !== "https:") return ""
+    const path = decodeURIComponent(url.pathname)
+    const fragment = url.hash.slice(1).replace(/^!/u, "")
+    const hasHashRoute = fragment.startsWith("/") || /^%2f/iu.test(fragment)
+    if (!hasHashRoute) return path
+    const hashPath = fragment.split(/[?#]/u, 1)[0] ?? ""
 
-    return url.pathname
+    return `${path} ${decodeURIComponent(hashPath)}`
   } catch {
     return null
   }

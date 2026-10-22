@@ -159,6 +159,76 @@ test("takeover privacy can lift only after bounded metadata identifies a safe pa
   ).toBe(false)
 })
 
+test.each([
+  "/%6cogin",
+  "/%70ayment",
+  "/%4Cogin",
+  "/account%2Fpayment",
+  "/#/login",
+  "/#/payment?next=/results",
+  "/#/%6cogin",
+  "/#%2Flogin",
+  "/#!%2Fpayment",
+  "/#!/payment",
+  "/#/payment#details",
+  "/#!/login#details",
+  "/%6cogin/%ZZ",
+  "/#/%E0%A4",
+])("route %s blocks preview capture and takeover clearance", async (path) => {
+  const page = {
+    heldByUser: false,
+    privateAfterTakeover: false,
+    secretMode: false,
+    url: `https://travel.example.test${path}`,
+    title: "Results",
+  }
+
+  const preview = await captureSafeBrowserPreview({
+    getPage: () => page,
+    capture: async () => {
+      throw new Error("Sensitive routes must be rejected before capture")
+    },
+  })
+  const canResume = canResumeAfterHumanTakeover({ url: page.url, title: page.title, hasSensitiveEntry: false })
+
+  expect(preview).toBeNull()
+  expect(canResume).toBe(false)
+})
+
+test.each([
+  "/results?next=/login&action=payment",
+  "/res%75lts?query=%70ayment",
+  "/results?query=%ZZ#details",
+  "/#/results?next=/login&action=payment",
+  "/#!/results?query=%ZZ",
+  "/results#login",
+  "/#/results#payment",
+])("ordinary route %s preserves shared previews and safe-page clearance", async (path) => {
+  const page = {
+    heldByUser: false,
+    privateAfterTakeover: false,
+    secretMode: false,
+    url: `https://travel.example.test${path}`,
+    title: "Results",
+  }
+
+  const preview = await captureSafeBrowserPreview({ getPage: () => page, capture: async () => "synthetic-frame" })
+  const canResume = canResumeAfterHumanTakeover({ url: page.url, title: page.title, hasSensitiveEntry: false })
+
+  expect(preview).toBe("synthetic-frame")
+  expect(canResume).toBe(true)
+})
+
+test("blank-page previews remain available without establishing takeover clearance", async () => {
+  const page = { heldByUser: false, privateAfterTakeover: false, secretMode: false, url: "about:blank", title: "" }
+
+  const preview = await captureSafeBrowserPreview({ getPage: () => page, capture: async () => "synthetic-frame" })
+  const canResume = canResumeAfterHumanTakeover({ url: page.url, title: page.title, hasSensitiveEntry: false })
+
+  expect(preview).toBe("synthetic-frame")
+  expect(canResume).toBe(false)
+})
+
 test("a document remains private until trusted provenance clears the hold", async () => {
   const page = {
     heldByUser: false,

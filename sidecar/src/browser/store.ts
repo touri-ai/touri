@@ -102,7 +102,8 @@ export const createBrowserStore = ({
         diagnostics: [],
         navigationVersion: 0,
         secretMode: false,
-        privateAfterTakeover: row.private_after_takeover === 1,
+        // A retained page may have changed while disconnected; previous clearance must be verified again.
+        privateAfterTakeover: row.private_after_takeover === 1 || row.private_input === 1,
         takeoverReason: row.takeover_reason,
         privateInput: row.private_input === 1,
         privateDocumentIds: getPrivateDocumentIds(row),
