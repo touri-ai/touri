@@ -6,7 +6,14 @@ import { createMockApi } from "../src/api/mock"
 import { VirtualMessageList } from "../src/components/ChatPanel"
 import { InlinePreviewContext } from "../src/features/desktop/InlineLivePreview"
 
-afterEach(cleanup)
+const languageCleanups = new Set<() => void>()
+afterEach(() => {
+  cleanup()
+  languageCleanups.forEach((restore) => {
+    restore()
+  })
+  languageCleanups.clear()
+})
 
 test("control and private input survive the assistant finishing its waiting reply", async () => {
   const api = createMockApi()
@@ -91,7 +98,11 @@ test("control and private input survive the assistant finishing its waiting repl
   )
 })
 
-test("an expired handoff is visibly incomplete when the saved reply is reopened", async () => {
+test.each([
+  ["pt-BR", "não concluído", "Ninguém assumiu a tempo. Peça de novo quando puder."],
+  ["en", "incomplete", "No one took over in time. Ask again when you can."],
+])("an expired handoff is visibly incomplete when reopened in %s", (locale, label, notice) => {
+  languageCleanups.add(setDocumentLanguage(locale))
   const message: Message = {
     id: "expired-reply",
     threadId: "thread",
@@ -127,7 +138,16 @@ test("an expired handoff is visibly incomplete when the saved reply is reopened"
 
   render(<VirtualMessageList messages={[message]} onSwitchBranch={vi.fn()} onRetry={async () => {}} />)
 
-  expect(screen.getByText("não concluído", { exact: true })).toBeVisible()
-  expect(screen.getByText("Ninguém assumiu a tempo. Peça de novo quando puder.")).toBeVisible()
+  expect(screen.getByText(label, { exact: true })).toBeVisible()
+  expect(screen.getByText(notice, { exact: true })).toBeVisible()
   expect(screen.queryByText("concluído", { exact: true })).toBeNull()
 })
+
+const setDocumentLanguage = (locale: string): (() => void) => {
+  const previous = document.documentElement.lang
+  document.documentElement.lang = locale
+
+  return () => {
+    document.documentElement.lang = previous
+  }
+}

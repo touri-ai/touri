@@ -782,10 +782,10 @@ const MessageBubble = ({
   )
   const quietBrowserNarration = hasBrowserTools && message.status === "streaming"
   const getBrowserRunLabel = () => {
-    if (browserHandoffExpired) return t("incomplete")
-    if (quietBrowserNarration) return t("in progress")
+    if (browserHandoffExpired) return t("incomplete", {}, locale)
+    if (quietBrowserNarration) return t("in progress", {}, locale)
 
-    return t("finished")
+    return t("finished", {}, locale)
   }
   const foldBrowserFlow = hasBrowserTools && message.status !== "streaming"
   const finalText = segments.filter((segment) => segment.type === "text").at(-1)
@@ -1113,7 +1113,7 @@ const MessageBubble = ({
       )}
       {browserHandoffExpired && (
         <p className="chat-terminal-status" role="status">
-          {t("No one took over in time. Ask again when you can.")}
+          {t("No one took over in time. Ask again when you can.", {}, locale)}
         </p>
       )}
       {message.role !== "assistant" && !routinePrompt && (
