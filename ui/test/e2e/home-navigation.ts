@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test"
+import type { Locator, Page } from "@playwright/test"
 
 export const showBotPanel = async (page: Page): Promise<void> => {
   const trigger = page.getByRole("button", { name: "Painel do bot", exact: true })
@@ -29,4 +29,26 @@ export const showBotRoutines = async (page: Page, name = "mark"): Promise<void> 
 export const showBotAdvanced = async (page: Page, name = "mark"): Promise<void> => {
   await openBotActions(page, name)
   await page.getByRole("menuitem", { name: "Avançado", exact: true }).click()
+}
+
+export const chooseBotAction = async (page: Page, action: string, name = "mark"): Promise<void> => {
+  await openBotActions(page, name)
+  await page.getByRole("menuitem", { name: action, exact: true }).click()
+}
+
+/** A bot row opens its latest conversation; the other conversations sit behind its chevron. */
+export const openConversations = async (page: Page, name = "mark"): Promise<Locator> => {
+  const region = page.getByRole("region", { name: `Conversas de ${name}`, exact: true })
+  const chevron = page.getByRole("button", { name: `Conversas de ${name}`, exact: true })
+  if ((await chevron.getAttribute("aria-expanded")) !== "true") await chevron.click()
+
+  return region
+}
+
+export const chooseChannelAction = async (page: Page, channel: string, action: string): Promise<void> => {
+  await page
+    .locator(".group-header")
+    .getByRole("button", { name: `Ações do canal ${channel}`, exact: true })
+    .click()
+  await page.getByRole("menuitem", { name: action, exact: true }).click()
 }

@@ -47,7 +47,7 @@ const channelTranslations = [
   ["New channel", "New channel"],
   ["Channel members", "Channel members"],
   ["Your channel", "Your channel"],
-  ["Channels / {name}", "Channels / {name}"],
+  ["Channel members summary", "Channel members: {summary}"],
   ["Tell the channel what to do to get started.", "Tell the channel what to do to get started."],
   ["Channel name", "Channel name"],
   ["Create channel", "Create channel"],

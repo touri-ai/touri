@@ -5,6 +5,7 @@ import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
 import { latestPreview } from "../src/botPreview"
 import { plural, t } from "../src/i18n"
+import { chooseBotAction } from "./workspaceNavigation"
 
 const message = (text: string): Message => ({
   id: "r7-markdown",
@@ -154,7 +155,7 @@ describe("R7: orientação de primeira mensagem", () => {
     await api.request("PATCH /bots/:id", { roleLine, description: null }, { id: "bot-mark" })
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    fireEvent.click(screen.getByRole("button", { name: /Nova conversa/ }))
+    chooseBotAction("Nova conversa")
     const hint = await screen.findByRole("region", { name: "Comece uma conversa com mark" })
     const examples = within(hint).getAllByRole("button")
     expect(examples.length).toBeGreaterThanOrEqual(2)

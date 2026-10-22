@@ -43,6 +43,7 @@ it.each([
 
   render(<App kernel={{ services: { api, invoke: invoke as TauriInvoke } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  fireEvent.click(screen.getByRole("tab", { name: /^Work,/ }))
 
   const invite = screen.queryByRole("button", { name: "Convidar pessoa", exact: true })
   if (!canInvite) {

@@ -27,21 +27,39 @@ const getChannel = () => {
 }
 
 describe("channel view", () => {
-  it("shows a channel summary and keeps invitations separate from editing the channel", () => {
+  it("shows only the channel name, a member group that opens the panel and one menu for the rest", () => {
     const { bots, group } = getChannel()
     const onEdit = vi.fn()
     const onInvite = vi.fn()
-    render(<GroupHeader group={group} bots={bots} onEdit={onEdit} onInvite={onInvite} channelMode />)
+    const onTogglePanel = vi.fn()
+    render(
+      <GroupHeader
+        group={group}
+        bots={bots}
+        onEdit={onEdit}
+        onInvite={onInvite}
+        panelOpen={false}
+        onTogglePanel={onTogglePanel}
+        channelMode
+      />,
+    )
+    const header = document.querySelector<HTMLElement>(".group-header")
+    if (!header) throw new Error("Missing channel header")
 
-    expect(screen.getByText("Canais / Equipe QA")).toBeVisible()
-    expect(screen.getByText("2 bots · mark coordena")).toBeVisible()
-    expect(document.querySelector(".channel-heading-hash")).toHaveTextContent("#")
-    expect(document.querySelector(".group-header-members")).toBeNull()
-    fireEvent.click(screen.getByRole("button", { name: "Convidar pessoa" }))
+    expect(within(header).queryByText(/Canais \//)).toBeNull()
+    expect(header.querySelector(".channel-heading-hash")).toHaveTextContent("#")
+    expect(within(header).getByText("Equipe QA")).toBeVisible()
+    expect(within(header).getAllByRole("button")).toHaveLength(2)
+    fireEvent.click(within(header).getByRole("button", { name: "Membros do canal: 2 bots" }))
+    expect(onTogglePanel).toHaveBeenCalledOnce()
+
+    fireEvent.click(within(header).getByRole("button", { name: "Ações do canal Equipe QA" }))
+    fireEvent.click(screen.getByRole("menuitem", { name: "Convidar pessoa" }))
     expect(onInvite).toHaveBeenCalledOnce()
     expect(onEdit).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole("button", { name: "Editar canal" }))
+    fireEvent.click(within(header).getByRole("button", { name: "Ações do canal Equipe QA" }))
+    fireEvent.click(screen.getByRole("menuitem", { name: "Editar canal" }))
     expect(onEdit).toHaveBeenCalledOnce()
   })
 
@@ -60,16 +78,22 @@ describe("channel view", () => {
     fireEvent.click(within(screen.getByRole("region", { name: "Canais" })).getByRole("button", { name: /^Equipe QA/ }))
     const composer = await screen.findByRole("textbox", { name: "Mensagem para Equipe QA" })
     expect(composer).toHaveAttribute("placeholder", "Mensagem em #Equipe QA · @ chama um bot")
-    expect(screen.getByRole("group", { name: "Ações do canal" })).toBeVisible()
-    expect(screen.getByRole("heading", { name: "Comece a conversa em #Equipe QA" })).toBeVisible()
-    expect(screen.getByText("Os bots só respondem quando você os chama com @nome.")).toBeVisible()
+    expect(screen.getByRole("button", { name: "Ações do time" })).toBeVisible()
+    expect(screen.queryByRole("button", { name: "Perguntar a todos" })).toBeNull()
+    const start = screen.getByRole("region", { name: "Comece a conversa em #Equipe QA" })
+    expect(within(start).getByRole("heading", { name: "Comece a conversa em #Equipe QA" })).toBeVisible()
+    expect(within(start).getByRole("list", { name: "Membros do canal" }).children).toHaveLength(2)
+    expect(within(start).getByText("Os bots só respondem quando você os chama com @nome.")).toBeVisible()
     expect(within(document.body).queryByText(/grupo/i)).toBeNull()
   })
 
   it("translates the channel copy in English", () => {
     expect(t("Message in channel", { name: "QA" }, "en")).toBe("Message #QA · @ calls a bot")
     expect(t("Invite to channel", {}, "en")).toBe("Invite to channel")
-    expect(t("Channel composer actions", {}, "en")).toBe("Channel actions")
+    expect(t("Team actions", {}, "en")).toBe("Team actions")
+    expect(t("Channel members summary", { summary: "1 person · 2 bots" }, "en")).toBe(
+      "Channel members: 1 person · 2 bots",
+    )
     expect(t("Channel summary with coordinator", { count: 2, name: "Alex" }, "en")).toBe("2 bots · Alex coordinates")
     expect(t("Start a conversation in channel {name}", { name: "qa" }, "en")).toBe("Start the conversation in #qa")
   })

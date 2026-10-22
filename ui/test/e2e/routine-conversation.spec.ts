@@ -57,7 +57,8 @@ for (const appearance of appearances) {
     await expect(page.locator(".routine-run-marker")).toContainText("Resumo da caixa de entrada")
     await expect(page.locator(".routine-run-marker")).toContainText("Concluído")
     await expect(page.locator(".routine-run-marker time")).toHaveText("16:04")
-    if (!mobile) await expect(page.locator(".thread-row.selected")).toContainText("Rotinas")
+    // Its only conversation opens from the bot row, so there is no list of other conversations.
+    if (!mobile) await expect(page.getByRole("button", { name: "Conversas de mark", exact: true })).toHaveCount(0)
 
     const marker = await page.locator(".routine-run-marker").boundingBox()
     const answer = await page.locator(".message-assistant").boundingBox()

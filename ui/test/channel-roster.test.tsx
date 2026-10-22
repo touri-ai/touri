@@ -59,7 +59,9 @@ test("the channel header counts people and bots in both languages", () => {
     />,
   )
 
-  expect(screen.getByText("1 pessoa · 0 bots")).toBeVisible()
+  const members = screen.getByRole("img", { name: "Membros do canal: 1 pessoa · 0 bots" })
+  expect(members).toHaveTextContent("A1")
+  expect(members).toHaveAttribute("aria-label", "Membros do canal: 1 pessoa · 0 bots")
   expect(t("1 person", {}, "en")).toBe("1 person")
   expect(t("{count} people", { count: 2 }, "en")).toBe("2 people")
 })

@@ -62,6 +62,8 @@ for (const theme of ["light", "dark"]) {
     test.use({ viewport: { width: 1280, height: 800 }, reducedMotion: "reduce" })
 
     test("bot and project menus retain plain rows, theme colors and interaction states", async ({ page }, info) => {
+      // Two menus, a reference image each and keyboard and pointer states in one flow.
+      test.setTimeout(40_000)
       await page.addInitScript((value) => localStorage.setItem("touri.appearance.v1", value), theme)
       await openWorkspace(page)
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
@@ -92,11 +94,13 @@ for (const theme of ["light", "dark"]) {
       await expect(routines).toHaveCSS("background-color", control)
       await page.mouse.move(1100, 20)
       await page.keyboard.press("Home")
-      await expect(advanced).toBeFocused()
-      await expect(advanced).toHaveCSS("outline-style", "solid")
-      await expect(advanced).toHaveCSS("outline-width", "2px")
-      await expect(advanced).toHaveCSS("outline-offset", "-2px")
-      await expect(advanced).toHaveCSS("background-color", control)
+      // Conversation housekeeping leads the bot menu, so Home lands on "Nova conversa".
+      const newThread = menu.getByRole("menuitem", { name: "Nova conversa", exact: true })
+      await expect(newThread).toBeFocused()
+      await expect(newThread).toHaveCSS("outline-style", "solid")
+      await expect(newThread).toHaveCSS("outline-width", "2px")
+      await expect(newThread).toHaveCSS("outline-offset", "-2px")
+      await expect(newThread).toHaveCSS("background-color", control)
       await page.keyboard.press("End")
       await expect(remove).toBeFocused()
       await expect(remove).toHaveCSS("color", danger)
@@ -166,21 +170,24 @@ for (const size of [
       await expect(menu).toHaveCount(0)
       await expect(trigger).toBeFocused()
       await clickSidebarActions(page, "Ações de release")
-      await expect(menu.getByRole("menuitem", { name: "Avançado", exact: true })).toBeFocused()
+      await expect(menu.getByRole("menuitem", { name: "Nova conversa", exact: true })).toBeFocused()
       await page.keyboard.press("End")
       await expect(menu.getByRole("menuitem", { name: "Excluir bot", exact: true })).toBeFocused()
       await page.keyboard.press("ArrowDown")
-      await expect(menu.getByRole("menuitem", { name: "Avançado", exact: true })).toBeFocused()
+      await expect(menu.getByRole("menuitem", { name: "Nova conversa", exact: true })).toBeFocused()
       await page.keyboard.press("ArrowUp")
       await expect(menu.getByRole("menuitem", { name: "Excluir bot", exact: true })).toBeFocused()
+      await page.keyboard.press("ArrowUp")
+      await expect(menu.getByRole("menuitem", { name: "Rotinas", exact: true })).toBeFocused()
       await page.keyboard.press("Home")
       await page.keyboard.press("ArrowDown")
-      await expect(menu.getByRole("menuitem", { name: "Rotinas", exact: true })).toBeFocused()
+      await expect(menu.getByRole("menuitem", { name: "Selecionar conversas…", exact: true })).toBeFocused()
       await page.keyboard.press("Escape")
       await expect(menu).toHaveCount(0)
       await expect(trigger).toBeFocused()
       await trigger.press("ArrowDown")
-      await page.keyboard.press("ArrowDown")
+      await page.keyboard.press("End")
+      await page.keyboard.press("ArrowUp")
       await page.keyboard.press("Enter")
       await expect(page.getByRole("heading", { name: "Rotinas", exact: true })).toBeVisible()
       await clickSidebarActions(page, "Ações de release")
@@ -242,7 +249,7 @@ test("bot menu flips and shifts after resizing, tracks scrolling, and stays in t
 
   // Let the list reach the viewport edge so the trigger cannot fit a menu below it.
   await page.addStyleTag({
-    content: ".group-sidebar, .sidebar-footer, .sidebar-recovery { display: none !important; }",
+    content: ".group-sidebar, .sidebar-footer { display: none !important; }",
   })
   // Activity groups determine the last row; the fixture's insertion order does not.
   const trigger = page

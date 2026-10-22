@@ -42,7 +42,7 @@ test("title bars leave bot rows, header actions and top-bar controls clickable",
   await pointerClick(page.getByRole("button", { name: /^Planejamento/ }))
   await expect(page.getByRole("textbox", { name: "Mensagem para Planejamento" })).toBeVisible()
   await expect(page.locator(".group-header")).toHaveAttribute("data-tauri-drag-region", "deep")
-  await pointerClick(page.getByRole("button", { name: "Painel do canal", exact: true }))
+  await pointerClick(page.locator(".group-header").getByRole("button", { name: /^Membros do canal:/ }))
   await pointerClick(
     page
       .getByRole("complementary", { name: "Painel do canal Planejamento", exact: true })

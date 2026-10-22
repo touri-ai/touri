@@ -227,6 +227,7 @@ test("r2 creates one bot/conversation/cron and refreshes Cron without changing s
     })
   const threadId = await getSelectedThreadId()
   expect(threadId).toBeTruthy()
+  await expect(page.getByRole("button", { name: "Conversas de seo-r2", exact: true })).toHaveCount(0)
   const botId = await bot.locator(".tb-avatar").first().getAttribute("data-bot-id")
   if (!(await page.getByRole("button", { name: "Preview do projeto" }).isVisible()))
     await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
@@ -262,4 +263,5 @@ test("r2 creates one bot/conversation/cron and refreshes Cron without changing s
   await page.getByRole("tab", { name: /^Bots/ }).click()
   await expect(page.getByRole("textbox", { name: "Mensagem para seo-r2" })).toBeVisible()
   await expect.poll(getSelectedThreadId).toBe(threadId)
+  await expect(page.getByRole("button", { name: "Conversas de seo-r2", exact: true })).toHaveCount(0)
 })

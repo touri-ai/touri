@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises"
 import { expect, test } from "@playwright/test"
-import { showBotPanel } from "./home-navigation"
+import { chooseChannelAction, showBotPanel } from "./home-navigation"
 
 const fixture = "/test/e2e/fixtures/mascot-parity.html"
 type AvatarMutationWindow = Window & { avatarMutations: number }
@@ -150,7 +150,7 @@ test("group automatic colour and previewed head survive restoring and saving", a
   await expect(page.locator(".group-heading-name strong")).toHaveText("Equipe QA")
   await expect(page.locator(".channel-heading-hash")).toBeVisible()
 
-  await page.locator(".group-header").getByRole("button", { name: "Editar canal", exact: true }).click()
+  await chooseChannelAction(page, "Equipe QA", "Editar canal")
 
   const settings = page.getByRole("dialog", { name: "Editar canal", exact: true })
   await expect(settings.locator(".avatar-picker-stage [data-avatar-body]")).toHaveAttribute("fill", automatic ?? "")

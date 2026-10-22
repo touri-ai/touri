@@ -321,7 +321,6 @@ describe("channel chrome", () => {
     render(
       <GroupSidebar
         groups={[group]}
-        bots={bots}
         threads={[]}
         selectedThreadId={null}
         onSelect={() => {}}

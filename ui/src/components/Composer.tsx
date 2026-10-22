@@ -20,8 +20,10 @@ import { ComposerNotice } from "./ComposerNotice"
 import { ComposerProjectChip } from "./ComposerProjectChip"
 import { ErrorText } from "./ErrorDetails"
 import { ModelPicker } from "./ModelPicker"
+import { PanelIcon } from "./PanelIcon"
 import { ProviderLoginFlow } from "./ProviderLoginFlow"
 import { useReveal } from "./Reveal"
+import { SidebarActionsMenu } from "./SidebarActionsMenu"
 import { VoiceInput } from "./VoiceInput"
 import "./Composer.css"
 
@@ -178,6 +180,7 @@ export const Composer = ({
   const [dictating, setDictating] = useState(false)
   const [stoppingRunId, setStoppingRunId] = useState<string | null>(null)
   const [picking, setPicking] = useState(false)
+  const [teamMenuOpen, setTeamMenuOpen] = useState(false)
   const [dragging, setDragging] = useState(false)
   const sendingRef = useRef(false)
   const pendingSend = useRef<{
@@ -497,26 +500,6 @@ export const Composer = ({
           <ProviderLoginFlow login={login} resumeMessage />
         </aside>
       )}
-      {groupName && (
-        <fieldset className="group-actions" aria-label={t("Channel composer actions")}>
-          <button
-            type="button"
-            className="button button-quiet"
-            disabled={blocked}
-            onClick={() => void submit("ask_all")}
-          >
-            {t("Perguntar a todos")}
-          </button>
-          <button
-            type="button"
-            className="button button-quiet"
-            disabled={sending || Boolean(activeRun) || Boolean(threadCreation)}
-            onClick={() => void submit("summarize")}
-          >
-            {t("Pedir resumo do time")}
-          </button>
-        </fieldset>
-      )}
       <textarea
         disabled={cloudUnavailable}
         ref={inputRef}
@@ -631,6 +614,23 @@ export const Composer = ({
           >
             <Icon kind="attach" />
           </button>
+          {groupName && (
+            <SidebarActionsMenu
+              label={t("Team actions")}
+              open={teamMenuOpen}
+              onOpenChange={setTeamMenuOpen}
+              triggerClassName="composer-icon composer-team-actions"
+              trigger={<PanelIcon name="people" />}
+              actions={[
+                { label: t("Perguntar a todos"), onSelect: () => void submit("ask_all"), disabled: blocked },
+                {
+                  label: t("Pedir resumo do time"),
+                  onSelect: () => void submit("summarize"),
+                  disabled: sending || Boolean(activeRun) || Boolean(threadCreation),
+                },
+              ]}
+            />
+          )}
           {bot && bot.machine !== "cloud" && (
             <>
               {onSaveModel && onNotice && (

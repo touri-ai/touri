@@ -57,9 +57,15 @@ themes.forEach((theme) => {
         element.classList.remove("visually-hidden")
         element.classList.add("paused")
         element.textContent =
-          "Descrição sintética longa para verificar que a prévia quebra dentro da barra lateral sem cortar o texto."
+          "Descrição sintética longa para verificar que a prévia fica em uma linha dentro da barra lateral."
       })
-      expect(await preview.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+      // One gray preview line: long text ends in an ellipsis inside the row instead of widening or wrapping it.
+      const sidebarWidth = await page.locator(".bot-sidebar").evaluate((element) => element.clientWidth)
+      expect(await preview.evaluate((element) => getComputedStyle(element).textOverflow)).toBe("ellipsis")
+      expect(await preview.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(24)
+      expect(await preview.evaluate((element) => element.getBoundingClientRect().right)).toBeLessThanOrEqual(
+        sidebarWidth,
+      )
       expect(await getSmallTargets(page, 28)).toEqual([])
       expect(await getTargetRules(page)).toEqual([])
     })

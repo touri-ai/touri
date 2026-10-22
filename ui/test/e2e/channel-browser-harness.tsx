@@ -122,7 +122,6 @@ const Fixture = () => {
       <div className="channel-demo">
         <GroupSidebar
           groups={[group]}
-          bots={bots}
           threads={[]}
           selectedThreadId={null}
           onSelect={() => {}}
