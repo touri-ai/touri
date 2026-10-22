@@ -88,6 +88,10 @@ test("an invited member can boot Work and use an authorized channel", async () =
   const messages = await fixture.request("/threads/member-chat/messages")
   expect(channelThreads.status).toBe(200)
   expect(messages.status).toBe(200)
+  const roster = (await (await fixture.request("/groups/member-channel/people")).json()) as {
+    people: Array<{ id: string; handle: string }>
+  }
+  expect(roster.people.find(({ id }) => id === fixture.personId)?.handle).toBe("Pessoa de teste")
 
   const upload = await fixture.request("/attachments", "POST", {
     name: "channel-file.txt",

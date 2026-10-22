@@ -6,12 +6,14 @@ import { createGroupStore } from "./store"
 export const name = "groups"
 export const init = async (kernel: Kernel): Promise<void> => {
   const groups = createGroupStore(kernel)
-  // Read the local account once at startup, before live message handlers run.
-  const accountName = userInfo().username
-  kernel.services.provide("work.defaultPersonId", () => "owner")
-  kernel.services.provide("work.channelPeople", () => [
-    { id: "owner", name: accountName, handle: accountName, avatarSeed: "owner", role: "admin" },
-  ])
+  if (!kernel.services.use("work.defaultPersonId")) kernel.services.provide("work.defaultPersonId", () => "owner")
+  if (!kernel.services.use("work.channelPeople")) {
+    // Native mode needs a local identity; preserve the authenticated roster installed by Work.
+    const accountName = userInfo().username
+    kernel.services.provide("work.channelPeople", () => [
+      { id: "owner", name: accountName, handle: accountName, avatarSeed: "owner", role: "admin" },
+    ])
+  }
   const invalid = {
     status: 400,
     json: {
