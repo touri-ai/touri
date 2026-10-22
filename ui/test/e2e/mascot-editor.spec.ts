@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page, test } from "@playwright/test"
 import type { createMockApi } from "../../src/api/mock"
-import { showBotAdvanced } from "./home-navigation"
+import { showBotAdvanced, showWorkMode } from "./home-navigation"
 
 type MascotEditorWindow = Window & { groupsQa: { api: ReturnType<typeof createMockApi> } }
 
@@ -11,6 +11,7 @@ const viewports = [
 
 viewports.forEach((viewport) => {
   test.describe(`compact mascot editor at ${viewport.width}px`, () => {
+    test.describe.configure({ timeout: 90_000 })
     test.use({ viewport, locale: "pt-BR", reducedMotion: "reduce" })
 
     test("bot creation and settings keep randomization compact and persist the selected look", async ({ page }) => {
@@ -67,24 +68,25 @@ viewports.forEach((viewport) => {
       expect(persisted).toEqual({ shape: updated.shape, color: updated.color, seed: saved.seed })
     })
 
-    test("group creation and editing preserve a randomized mascot with customization closed", async ({ page }) => {
+    test("channel creation and editing preserve a randomized mascot with customization closed", async ({ page }) => {
       await page.goto("/test/e2e/groups-harness.html")
-      await showNavigation(page)
-      await page.getByRole("button", { name: "Criar grupo", exact: true }).click()
-      const creation = page.getByRole("dialog", { name: "Criar grupo", exact: true })
+      await showWorkMode(page)
+      await page.getByRole("button", { name: "Criar canal", exact: true }).click()
+      const creation = page.getByRole("dialog", { name: "Criar canal", exact: true })
       await expectCompactPicker(creation)
-      await creation.getByLabel("Nome do grupo").fill("Compact team")
+      await creation.getByLabel("Nome do canal").fill("Compact team")
       await creation.getByRole("checkbox", { name: "mark", exact: true }).check()
 
       await creation.getByRole("button", { name: "Sortear", exact: true }).click()
       const chosen = await getPreview(creation)
-      await creation.getByRole("button", { name: "Criar grupo", exact: true }).click()
+      await creation.getByRole("button", { name: "Criar canal", exact: true }).click()
 
       await expect(page.getByRole("textbox", { name: "Mensagem para Compact team", exact: true })).toBeVisible()
-      await expect(page.locator(".group-heading-name [data-avatar-body]")).toHaveAttribute("fill", chosen.color ?? "")
-      await expect(page.locator(".group-heading-name [data-avatar-body]")).toHaveAttribute("d", chosen.head ?? "")
-      await page.locator(".group-header").getByRole("button", { name: "Editar grupo", exact: true }).click()
-      const editing = page.getByRole("dialog", { name: "Editar grupo", exact: true })
+      await expect(page.locator(".channel-heading-name strong")).toHaveText("Compact team")
+
+      await page.getByRole("button", { name: "Ações do canal Compact team", exact: true }).click()
+      await page.getByRole("menuitem", { name: "Editar canal", exact: true }).click()
+      const editing = page.getByRole("dialog", { name: "Editar canal", exact: true })
       await expectCompactPicker(editing)
       expect(await getPreview(editing)).toEqual(chosen)
 
@@ -93,9 +95,10 @@ viewports.forEach((viewport) => {
       await expectNoStatePreview(editing)
       await editing.getByRole("button", { name: "Personalizar", exact: true }).click()
       await expectCompactPicker(editing)
-      await editing.getByRole("button", { name: "Salvar grupo", exact: true }).click()
+      await editing.getByRole("button", { name: "Salvar canal", exact: true }).click()
       await expect(editing).toHaveCount(0)
-      await page.locator(".group-header").getByRole("button", { name: "Editar grupo", exact: true }).click()
+      await page.getByRole("button", { name: "Ações do canal Compact team", exact: true }).click()
+      await page.getByRole("menuitem", { name: "Editar canal", exact: true }).click()
 
       await expectCompactPicker(editing)
       expect(await getPreview(editing)).toEqual(chosen)

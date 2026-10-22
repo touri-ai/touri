@@ -81,6 +81,7 @@ for (const theme of ["light", "dark"]) {
       await page.screenshot({ path: botScreenshot, animations: "disabled" })
       await info.attach(`bot menu ${theme}`, { path: botScreenshot, contentType: "image/png" })
       expect(await menu.evaluate((element) => element.parentElement === document.body)).toBe(true)
+      await expect(menu).toHaveCSS("position", "fixed")
       await borderlessRows(menu)
       await expect.soft(menu).toHaveScreenshot(`bot-menu-${theme}.png`, screenshotOptions)
       const advanced = menu.getByRole("menuitem", { name: "Avançado", exact: true })
@@ -115,6 +116,7 @@ for (const theme of ["light", "dark"]) {
       await page.getByRole("button", { name: /^Projeto do bot:/ }).click()
       const projects = page.getByRole("menu", { name: "Projeto do bot" })
       await exposed(page, projects)
+      await expect(projects.getByRole("menuitemradio", { checked: true }).first()).toBeFocused()
       await page.mouse.move(1100, 20)
       const projectScreenshot = info.outputPath(`${phase}-project-menu-${theme}.png`)
       await page.screenshot({ path: projectScreenshot, animations: "disabled" })
@@ -124,6 +126,7 @@ for (const theme of ["light", "dark"]) {
           (element) => element.closest(".composer-project-picker")?.parentElement === document.body,
         ),
       ).toBe(true)
+      await expect(projects.locator("xpath=..")).toHaveCSS("position", "fixed")
       await borderlessRows(projects)
       await expect.soft(projects).toHaveScreenshot(`project-menu-${theme}.png`, screenshotOptions)
       for (const row of await projects.locator("button").all()) {

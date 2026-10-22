@@ -101,6 +101,7 @@ for (const width of [1440, 390]) {
     await expect(trigger).toHaveCount(0)
     if (width === 390) await page.getByRole("button", { name: "Abrir menu" }).click()
     await page.getByRole("tab", { name: /^Bots/ }).click()
+    if (width === 390) await page.getByRole("button", { name: "Abrir menu" }).click()
     await page.locator('[data-bot-entry="bot-mark"] .bot-row-main').click()
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
   })

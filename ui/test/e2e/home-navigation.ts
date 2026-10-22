@@ -29,6 +29,20 @@ export const showBotChat = async (page: Page, botId = "bot-mark"): Promise<void>
   await page.locator(`[data-bot-entry="${botId}"] .bot-row-main`).click()
 }
 
+export const showWorkMode = async (page: Page): Promise<void> => {
+  const workTab = page.getByRole("tab", { name: /^Work/ })
+  const openDrawer = page.getByRole("button", { name: "Abrir menu", exact: true })
+  if (!(await workTab.isVisible()) && (await openDrawer.isVisible())) await openDrawer.click()
+  await expect(workTab).toBeVisible()
+  if ((await workTab.getAttribute("aria-selected")) === "true") return
+
+  await workTab.click()
+  if (await workTab.isVisible()) return
+
+  if (await openDrawer.isVisible()) await openDrawer.click()
+  await expect(workTab).toBeVisible()
+}
+
 export const openBotActions = async (page: Page, name = "mark"): Promise<void> => {
   const trigger = page.getByRole("button", { name: `Ações de ${name}`, exact: true })
   await page.locator(".sidebar-row").filter({ has: trigger }).hover()
