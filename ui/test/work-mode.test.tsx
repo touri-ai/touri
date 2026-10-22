@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
@@ -101,14 +102,8 @@ describe("sidebar work mode", () => {
     expect(restoredChannel).toBeVisible()
     fireEvent.click(restoredChannel)
     await screen.findByRole("textbox", { name: "Mensagem para Equipe QA" })
-    expect(screen.queryByText("Canais / Equipe QA")).toBeNull()
-    expect(document.querySelector(".group-header")).toHaveTextContent(/^#Equipe QA/)
-    fireEvent.click(
-      within(document.querySelector<HTMLElement>(".group-header") ?? document.body).getByRole("button", {
-        name: "Ações do canal Equipe QA",
-      }),
-    )
-    fireEvent.click(screen.getByRole("menuitem", { name: "Editar canal" }))
+    expect(screen.getByText("Canais / Equipe QA")).toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: "Editar canal" }))
     const editChannel = screen.getByRole("dialog", { name: "Editar canal" })
     expect(within(editChannel).getByRole("textbox", { name: "Nome do canal" })).toHaveValue("Equipe QA")
   })
@@ -153,7 +148,7 @@ describe("sidebar work mode", () => {
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
-    const conversations = openConversations("mark")
+    const conversations = openConversations()
     const routineRow = within(conversations).getByRole("button", { name: /^Rotinas/ })
     expect(routineRow).toHaveTextContent(/Rotinas\s*30 hoje/)
     expect(conversations.querySelectorAll(".thread-row")).toHaveLength(2)
@@ -285,11 +280,10 @@ describe("sidebar design", () => {
     expect(channelRows[0]?.querySelector(".sidebar-unread")).toHaveTextContent("12")
     expect(channelRows[0]?.querySelector(".group-mascots")).toBeNull()
     expect(screen.getByRole("button", { name: "Buscar canais e mensagens" })).toBeVisible()
-    expect(channelRows[0]?.querySelector(".sidebar-row-leading")).toHaveTextContent(/^#$/)
-    expect(channelRows[0]?.querySelectorAll(".tb-avatar, .channel-bot-avatar")).toHaveLength(0)
+    expect(channelRows[0]?.querySelectorAll(".channel-bot-avatar")).toHaveLength(0)
   })
 
-  it("gives direct messages one gray preview line and keeps the channel heading free of counts", async () => {
+  it("shows one quiet preview per direct message and keeps the channel header free of counts", async () => {
     const api = createMockApi()
     await createChannels(api, [2])
     window.localStorage.setItem("touri.sidebar.mode", "work")
@@ -297,14 +291,11 @@ describe("sidebar design", () => {
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
     const channels = screen.getByRole("region", { name: "Canais" })
-    const directMessages = Array.from(document.querySelectorAll("#sidebar-mode-panel-work [data-work-bot-entry]"))
 
-    expect(channels.querySelector(".group-sidebar-heading")).not.toHaveTextContent(/\d/)
-    expect(directMessages.length).toBeGreaterThan(0)
-    for (const row of directMessages) {
-      expect(row.querySelectorAll(".bot-preview:not(.visually-hidden)")).toHaveLength(1)
-      expect(row.querySelector(".bot-row-main")).not.toHaveAttribute("aria-expanded")
-    }
+    expect(channels.querySelector(".group-sidebar-heading")).toHaveTextContent(/^Canais\s*\+$/)
+    expect(
+      document.querySelectorAll("#sidebar-mode-panel-work .bot-preview:not(.visually-hidden):not(.paused)"),
+    ).toHaveLength(api.getState().bots.filter((bot) => !bot.paused).length)
   })
 
   it("explains channels in the empty state and offers one way to create the first", async () => {
@@ -320,35 +311,65 @@ describe("sidebar design", () => {
     expect(await screen.findByRole("dialog", { name: "Criar canal" })).toBeVisible()
   })
 
-  it("opens a bot from its row and shows its other conversations only from the chevron", async () => {
+  it.each(["bots", "work"])("keeps %s rows compact through repeated pointer and keyboard selection", async (mode) => {
+    const user = userEvent.setup()
     const { api } = await getRoutineSidebarFixture(30, { todayRuns: true })
-    window.localStorage.setItem("touri.sidebar.mode", "bots")
+    window.localStorage.setItem("touri.sidebar.mode", mode)
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    const markRow = document.querySelector<HTMLButtonElement>('[data-bot-entry="bot-mark"] .bot-row-main')
-    if (!markRow) throw new Error("Missing mark row")
-    const chevron = screen.getByRole("button", { name: "Conversas de mark" })
+    const panel = document.getElementById(`sidebar-mode-panel-${mode}`)
+    if (!panel) throw new Error("Missing bot navigation")
+    const markRow = panel.querySelector<HTMLButtonElement>('.bot-row-main:has([data-bot-id="bot-mark"])')
+    const otherRow = panel.querySelector<HTMLButtonElement>('.bot-row-main:has([data-bot-id="bot-onb"])')
+    if (!markRow || !otherRow) throw new Error("Missing bot rows")
 
+    await user.click(otherRow)
+    await screen.findByRole("textbox", { name: "Mensagem para onb" })
+    await user.click(markRow)
+    await user.click(markRow)
+    markRow.focus()
+    await user.keyboard("{Enter}")
+
+    expect(panel.querySelectorAll(".bot-thread-tree, .thread-list-tools, .thread-row")).toHaveLength(0)
     expect(markRow).not.toHaveAttribute("aria-expanded")
-    expect(chevron).toHaveAttribute("aria-expanded", "false")
+
+    await user.keyboard(" ")
+
+    expect(markRow).toHaveAttribute("aria-current", "page")
+    expect(markRow).not.toHaveAttribute("aria-expanded")
+    expect(markRow).not.toHaveAttribute("aria-haspopup")
+    expect(markRow.querySelectorAll(".bot-preview:not(.visually-hidden)")).toHaveLength(1)
+    expect(panel.querySelectorAll(".bot-thread-tree, .thread-list-tools, .thread-row")).toHaveLength(0)
     expect(screen.queryByRole("region", { name: "Conversas de mark" })).toBeNull()
+    expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+    expect(api.calls.some((call) => call.route === "POST /threads" || call.route === "POST /threads/delete")).toBe(
+      false,
+    )
+  })
 
-    fireEvent.click(markRow)
+  it("opens management explicitly with the keyboard and returns focus without changing conversation", async () => {
+    const user = userEvent.setup()
+    render(<App kernel={{ services: { api: createMockApi() } }} />)
+    await screen.findByRole("textbox", { name: "Mensagem para mark" })
+    const actions = screen.getByRole("button", { name: "Ações de mark" })
 
-    expect(screen.queryByRole("region", { name: "Conversas de mark" })).toBeNull()
+    actions.focus()
+    await user.keyboard("{ArrowDown}{Home}{ArrowDown}{ArrowDown}{Enter}")
 
-    fireEvent.click(chevron)
+    const dialog = screen.getByRole("dialog", { name: "Conversas de mark" })
+    expect(dialog).toHaveAttribute("aria-modal", "true")
+    expect(within(dialog).getByRole("button", { name: "Selecionar", exact: true })).toBeVisible()
+    expect(within(dialog).getByRole("button", { name: "Nova conversa", exact: true })).toBeVisible()
+    expect(within(dialog).getByRole("button", { name: "Apagar conversas automáticas antigas…" })).toBeVisible()
+    expect(within(dialog).getByRole("button", { name: /Arquivadas/ })).toBeVisible()
+    expect(document.querySelector(".bot-row.selected .tb-avatar")).toHaveAttribute("data-bot-id", "bot-mark")
+    expect(within(dialog).getByRole("button", { name: "Fechar diálogo" })).toHaveFocus()
 
-    expect(chevron).toHaveAttribute("aria-expanded", "true")
-    expect(screen.getByRole("region", { name: "Conversas de mark" })).toBeVisible()
+    await user.keyboard("{Escape}")
 
-    fireEvent.click(markRow)
-
-    expect(screen.getByRole("region", { name: "Conversas de mark" })).toBeVisible()
-
-    fireEvent.click(chevron)
-
-    expect(screen.queryByRole("region", { name: "Conversas de mark" })).toBeNull()
+    expect(screen.queryByRole("dialog", { name: "Conversas de mark" })).toBeNull()
+    expect(actions).toHaveFocus()
+    expect(actions).toHaveAttribute("aria-expanded", "false")
   })
 
   it("shows the working summary only when nothing needs the user", async () => {

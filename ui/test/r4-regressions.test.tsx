@@ -339,7 +339,9 @@ describe("r4 P0/P1 recovery", () => {
     first.unmount()
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("tab", { name: "Logs" })
-    expect(within(openConversations("onb")).getByRole("button", { name: /^Última conversa/ })).toHaveClass("selected")
+    const conversations = openConversations("onb")
+
+    expect(within(conversations).getByRole("button", { name: /Última conversa/ })).toHaveClass("selected")
   })
 
   it("uses Portuguese plurals and localizes imported date titles", () => {

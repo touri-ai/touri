@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
+import { openConversations } from "./workspaceNavigation"
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -69,8 +70,8 @@ it("opens phone navigation and closes it when choosing a conversation", async ()
   expect(within(drawer).getByRole("button", { name: "Buscar conversas" })).toBeVisible()
   expect(within(drawer).getByRole("button", { name: "Criar bot" })).toBeVisible()
   expect(within(drawer).getByRole("button", { name: /Notificações/ })).toBeVisible()
-  fireEvent.click(within(drawer).getByRole("button", { name: "Conversas de mark" }))
-  fireEvent.click(within(drawer).getByRole("button", { name: /Next conversation/ }))
+  const conversations = openConversations()
+  fireEvent.click(within(conversations).getByRole("button", { name: /Next conversation/ }))
   await waitFor(() =>
     expect(
       api.calls.some((call) => call.route === "GET /threads/:id/messages" && call.pathValues.id === "thread-next"),

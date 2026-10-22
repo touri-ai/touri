@@ -66,6 +66,7 @@ it("keeps conversation housekeeping in the bot menu", async () => {
     "Arquivadas",
     "Avançado",
     "Rotinas",
+    "Conversas",
     "Excluir bot",
   ])
 })
@@ -93,7 +94,9 @@ it("opens selection and archived conversations from the bot menu", async () => {
   const conversations = screen.getByRole("region", { name: "Conversas de mark" })
   expect(within(conversations).getByRole("button", { name: "Sair da seleção" })).toBeVisible()
   fireEvent.click(within(conversations).getByRole("button", { name: "Sair da seleção" }))
-  expect(screen.queryByRole("region", { name: "Conversas de mark" })).toBeNull()
+  fireEvent.click(
+    within(screen.getByRole("dialog", { name: "Conversas de mark" })).getByRole("button", { name: "Fechar diálogo" }),
+  )
 
   chooseBotAction("Arquivadas")
   const archive = screen.getByRole("region", { name: "Conversas de mark" })

@@ -128,8 +128,7 @@ it("selects the bot and thread named by the page query on load", async () => {
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
   expect(screen.getByRole("tab", { name: /^Bots,/ })).toHaveAttribute("aria-selected", "true")
-  expect(document.querySelector('[data-bot-entry="bot-onb"] .bot-row')).toHaveClass("selected")
-  expect(screen.queryByRole("button", { name: "Conversas de onb" })).toBeNull()
+  expect(within(openConversations("onb")).getByRole("button", { name: /Welcome/ })).toHaveClass("selected")
   expect(parseDeepLink(window.location.href)).toEqual({ bot: "bot-onb", thread: "thread-onb" })
 })
 
@@ -140,7 +139,7 @@ it("selects the requested thread even when it is not the bot's default thread", 
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para onb" }, { timeout: 5000 })
   expect(screen.getByRole("tab", { name: /^Bots,/ })).toHaveAttribute("aria-selected", "true")
-  expect(within(openConversations("onb")).getByRole("button", { name: /^Web link target/ })).toHaveClass("selected")
+  expect(within(openConversations("onb")).getByRole("button", { name: /Web link target/ })).toHaveClass("selected")
   expect(parseDeepLink(window.location.href)).toEqual({ bot: "bot-onb", thread: thread.id })
 })
 
@@ -167,7 +166,7 @@ it("opens a notification's bot and thread from the touri tab", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Ver conversa" }))
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
   expect(screen.getByRole("tab", { name: /^Bots,/ })).toHaveAttribute("aria-selected", "true")
-  expect(within(openConversations("onb")).getByRole("button", { name: /^Notification target/ })).toHaveClass("selected")
+  expect(within(openConversations("onb")).getByRole("button", { name: /Notification target/ })).toHaveClass("selected")
 })
 
 it("shows one bot-row request action and focuses its pending card", async () => {
@@ -212,7 +211,7 @@ it("opens a native touri:// deep link from the touri tab", async () => {
   })
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
   expect(screen.getByRole("tab", { name: /^Bots,/ })).toHaveAttribute("aria-selected", "true")
-  expect(within(openConversations("onb")).getByRole("button", { name: /^Native link target/ })).toHaveClass("selected")
+  expect(within(openConversations("onb")).getByRole("button", { name: /Native link target/ })).toHaveClass("selected")
 })
 
 it("opens and focuses the exact card from a native notification click", async () => {

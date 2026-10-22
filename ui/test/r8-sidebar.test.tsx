@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest"
 import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
 import { pendingNotifications, relativeThreadDate } from "../src/sidebarAttention"
+import { saveWorkspaceState } from "../src/workspaceState"
 import { openConversations, openRoutines } from "./workspaceNavigation"
 
 const localDate = (day: number, hour = 12): number => new Date(2026, 9, day, hour).getTime()
@@ -68,49 +69,36 @@ describe("r8 sidebar: attention history", () => {
   })
 })
 
-it("shows one unread count for an expanded conversation and its aggregate when collapsed", async () => {
+it("keeps unread totals on compact bot rows while conversation counts stay in management", async () => {
   const api = createMockApi()
-  const { thread } = await api.request("POST /threads", { botId: "bot-mark", title: "Campaign follow-up" })
+  await api.request("POST /threads", { botId: "bot-mark", title: "Campaign follow-up" })
+  await api.request("PATCH /threads/:id", { unread: 0 }, { id: "thread-mark" })
+  saveWorkspaceState({ botId: "bot-mark", threadId: "thread-mark" })
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
-
   const mark = getBotEntry("bot-mark")
-  openConversations("mark")
-  const otherConversation = Array.from(mark.querySelectorAll<HTMLButtonElement>(".thread-row")).find(
-    (row) => !row.classList.contains("selected"),
-  )
-  if (!otherConversation) throw new Error("Missing unselected conversation")
-  fireEvent.click(otherConversation)
-  await api.request("PATCH /threads/:id", { unread: 2 }, { id: thread.id })
-
-  expect(mark.querySelector(".bot-row .sidebar-unread")).toBeNull()
-  expect(mark.querySelectorAll(".thread-row .sidebar-unread")).toHaveLength(1)
-  expect(mark.querySelector(".thread-row .sidebar-unread")).toHaveTextContent("2")
-  expect(within(mark).getByRole("img", { name: "2 mensagens não lidas" })).toBeVisible()
-
-  const onbButton = getBotEntry("bot-onb").querySelector(".bot-row-main")
-  if (!(onbButton instanceof HTMLButtonElement)) throw new Error("Missing bot row button")
-  fireEvent.click(onbButton)
-
-  await screen.findByRole("textbox", { name: "Mensagem para onb" })
-  expect(mark.querySelector(".bot-row .sidebar-unread")).toBeNull()
-  fireEvent.click(screen.getByRole("button", { name: "Conversas de mark" }))
 
   expect(mark.querySelector(".bot-row .sidebar-unread")).toHaveTextContent("2")
   expect(mark.querySelector(".bot-thread-tree")).toBeNull()
-})
 
-it("keeps unread counts on unselected conversations when several are visible", async () => {
-  const api = createMockApi()
-  await api.request("POST /threads", { botId: "bot-mark", title: "Campaign follow-up" })
-  render(<App kernel={{ services: { api } }} />)
-  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  const conversations = openConversations()
+  const unreadCounts = Array.from(
+    conversations.querySelectorAll(".thread-row .sidebar-unread"),
+    (badge) => badge.textContent,
+  )
 
-  const mark = getBotEntry("bot-mark")
-  openConversations("mark")
-  expect(mark.querySelector(".bot-row .sidebar-unread")).toBeNull()
-  expect(mark.querySelector(".thread-row.selected .sidebar-unread")).toBeNull()
-  expect(Array.from(mark.querySelectorAll(".thread-row .sidebar-unread"), (badge) => badge.textContent)).toEqual(["2"])
+  expect(conversations.querySelector(".thread-row.selected .sidebar-unread")).toBeNull()
+  expect(unreadCounts).toEqual(["2"])
+  expect(mark.querySelector(".bot-thread-tree")).toBeNull()
+
+  fireEvent.click(screen.getByRole("button", { name: "Fechar diálogo" }))
+  const otherBot = getBotEntry("bot-onb").querySelector<HTMLButtonElement>(".bot-row-main")
+  if (!otherBot) throw new Error("Missing bot row")
+  fireEvent.click(otherBot)
+  await screen.findByRole("textbox", { name: "Mensagem para onb" })
+
+  expect(mark.querySelector(".bot-row .sidebar-unread")).toHaveTextContent("2")
+  expect(screen.queryByRole("region", { name: "Conversas de mark" })).toBeNull()
 })
 
 it("keeps bots reachable beside global screens, footer integrations and creation", async () => {
@@ -140,15 +128,15 @@ it("cleans bot, thread and search previews and opens search with either shortcut
   message.createdAt = Date.now() + 1000
   const thread = state.threads.find((thread) => thread.id === "thread-mark")
   if (thread) thread.title = "**Teste** de busca"
-  await api.request("POST /threads", { botId: "bot-mark", title: "Outra conversa" })
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   expect(document.querySelector('[data-bot-entry="bot-mark"] .bot-preview')).toHaveTextContent(
     "21 arquivos page.tsx · Revisar busca",
   )
-  expect(
-    within(openConversations("mark")).getByText("Teste de busca", { selector: ".thread-copy strong" }),
-  ).toBeVisible()
+  openConversations()
+
+  expect(document.querySelector(".thread-copy strong")).toHaveTextContent("Teste de busca")
+  fireEvent.click(screen.getByRole("button", { name: "Fechar diálogo" }))
   fireEvent.keyDown(window, { key: "k", metaKey: true })
   const dialog = await screen.findByRole("dialog", { name: "Paleta de comandos" })
   const search = within(dialog).getByRole("combobox", { name: "Buscar bots, conversas e configurações" })

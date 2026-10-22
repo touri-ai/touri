@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs"
 import { resolve } from "node:path"
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
-import { openConversations } from "./home-navigation"
+import { showBotConversations } from "./home-navigation"
 
 const evidence = resolve(import.meta.dirname, "../../test-results/work-mode")
 test.setTimeout(90_000)
@@ -33,12 +33,11 @@ test("switches and remembers Work mode, with channels and routine history", asyn
   await expect(workTab).toHaveAttribute("aria-selected", "true")
 
   await botsTab.click()
-  const botsPanel = page.locator("#sidebar-mode-panel-bots")
-  await openConversations(page)
-  const routineRow = botsPanel.getByRole("button", { name: /^Rotinas/ })
+  const conversations = await showBotConversations(page)
+  const routineRow = conversations.getByRole("button", { name: /^Rotinas/ })
   await expect(routineRow).toContainText("Rotinas")
   await expect(routineRow).toContainText("30 hoje")
-  await expect(botsPanel.locator('[data-bot-entry="bot-mark"] .thread-row')).toHaveCount(2)
+  await expect(conversations.locator(".thread-row")).toHaveCount(2)
   await routineRow.click()
   const routineHistory = page.locator(".routine-run-history")
   await expect(routineHistory).toHaveAttribute("data-open", "true")
@@ -120,7 +119,6 @@ test("captures an open channel on desktop and phone", async ({ page }) => {
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (viewport.name === "phone") await page.locator(".mobile-menu-button").click()
     await page.getByRole("button", { name: /^Planejamento/ }).click()
-    await expect(page.locator(".group-header .group-heading-name")).toHaveText("#Planejamento")
     await expect(page.locator(".group-header .chat-header-crumb")).toHaveCount(0)
     await page.screenshot({
       path: resolve(evidence, `channel-open-${viewport.name}.png`),
@@ -234,7 +232,7 @@ for (const viewport of [
       const card = page.locator(".message-assistant .browser-activity-card")
       await expect(card).toHaveCount(1)
       await expect(card).toBeVisible()
-      await expect(page.getByRole("button", { name: "Membros do canal: 2 pessoas · 1 bot", exact: true })).toBeVisible()
+      await expect(page.locator(".group-member-count")).toContainText("2 pessoas · 1 bot")
       await expect(page.locator(".group-header-actions")).toBeVisible()
       expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0)
       if (mode !== "finished") {

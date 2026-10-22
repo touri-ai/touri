@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test"
-import { openConversations } from "./home-navigation"
+import { showBotConversations } from "./home-navigation"
 
 test.use({ channel: "chromium", reducedMotion: "reduce" })
 const entry = "/test/e2e/r8-sidebar-harness.html"
@@ -17,18 +17,17 @@ test("bot and conversation navigation survives copying, reload and browser back/
   await page.locator('[data-bot-entry="sidebar-bot-3"] .bot-row-main').click()
   await expectLocation(page, "sidebar-bot-3", "sidebar-thread-3")
   await page.locator('[data-bot-entry="sidebar-bot-2"] .bot-row-main').click()
-  await (await openConversations(page, "touri-qa"))
-    .locator(".thread-row")
-    .filter({ hasText: "Critérios de aceite" })
-    .click()
+  const conversations = await showBotConversations(page, "touri-qa")
+  await conversations.locator(".thread-row").filter({ hasText: "Critérios de aceite" }).click()
   await expectLocation(page, "sidebar-bot-2", "sidebar-qa-history-0")
+  await showBotConversations(page, "touri-qa")
   await expect(page.locator(".thread-row").filter({ hasText: "Critérios de aceite" })).toHaveClass(/selected/)
   const shared = page.url()
   expect(await page.evaluate(() => history.length)).toBe(initialLength + 3)
 
   await page.reload()
   await expectLocation(page, "sidebar-bot-2", "sidebar-qa-history-0")
-  await openConversations(page, "touri-qa")
+  await showBotConversations(page, "touri-qa")
   await expect(page.locator(".thread-row").filter({ hasText: "Critérios de aceite" })).toHaveClass(/selected/)
   expect(page.url()).toBe(shared)
   expect(await page.evaluate(() => history.length)).toBe(initialLength + 3)
@@ -49,7 +48,7 @@ test("bot and conversation navigation survives copying, reload and browser back/
   const copied = await page.context().newPage()
   await copied.goto(shared)
   await expectLocation(copied, "sidebar-bot-2", "sidebar-qa-history-0")
-  await openConversations(copied, "touri-qa")
+  await showBotConversations(copied, "touri-qa")
   await expect(copied.locator(".thread-row").filter({ hasText: "Critérios de aceite" })).toHaveClass(/selected/)
   await copied.close()
 })

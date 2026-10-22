@@ -1,11 +1,11 @@
-import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
 import type { ApiRequest, TauriInvoke } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { setStorageScope } from "../src/storageScope"
 import { useWorkspace } from "../src/useWorkspace"
-import { chooseBotAction } from "./workspaceNavigation"
+import { openConversations } from "./workspaceNavigation"
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }))
 
@@ -41,7 +41,7 @@ const setup = async (mode = "web", fail = false) => {
   render(<App kernel={{ services: { api: client, invoke } }} />)
   const input = await screen.findByRole("textbox", { name: "Mensagem para mark" })
   fireEvent.change(input, { target: { value: "Rascunho da conversa anterior" } })
-  chooseBotAction("Nova conversa")
+  fireEvent.click(within(openConversations()).getByRole("button", { name: "Nova conversa" }))
   return { api, release }
 }
 
@@ -192,7 +192,7 @@ it("recovers a failed creation's draft when returning to Nova conversa after nav
   fireEvent.click(screen.getByRole("button", { name: /^onb / }))
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
   fireEvent.click(screen.getByRole("button", { name: /^mark / }))
-  chooseBotAction("Nova conversa")
+  fireEvent.click(within(openConversations()).getByRole("button", { name: "Nova conversa" }))
   await waitFor(() => expect(screen.getByRole("button", { name: "Enviar" })).toBeEnabled())
   expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toHaveValue("Guardar esta nova tarefa")
 })

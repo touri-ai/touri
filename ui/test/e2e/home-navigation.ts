@@ -1,4 +1,18 @@
-import type { Locator, Page } from "@playwright/test"
+import { expect, type Page } from "@playwright/test"
+
+export const showBotConversations = async (page: Page, name = "mark") => {
+  const conversations = page.getByRole("region", { name: `Conversas de ${name}` })
+  if (await conversations.isVisible()) return conversations
+
+  const drawerButton = page.getByRole("button", { name: "Abrir menu", exact: true })
+  const drawer = page.getByRole("dialog", { name: "Barra lateral", exact: true })
+  if ((await drawerButton.isVisible()) && !(await drawer.isVisible())) await drawerButton.click()
+  await openBotActions(page, name)
+  await page.getByRole("menuitem", { name: "Conversas", exact: true }).click()
+  await expect(conversations).toBeVisible()
+
+  return conversations
+}
 
 export const showBotPanel = async (page: Page): Promise<void> => {
   const trigger = page.getByRole("button", { name: "Painel do bot", exact: true })
@@ -36,14 +50,7 @@ export const chooseBotAction = async (page: Page, action: string, name = "mark")
   await page.getByRole("menuitem", { name: action, exact: true }).click()
 }
 
-/** A bot row opens its latest conversation; the other conversations sit behind its chevron. */
-export const openConversations = async (page: Page, name = "mark"): Promise<Locator> => {
-  const region = page.getByRole("region", { name: `Conversas de ${name}`, exact: true })
-  const chevron = page.getByRole("button", { name: `Conversas de ${name}`, exact: true })
-  if ((await chevron.getAttribute("aria-expanded")) !== "true") await chevron.click()
-
-  return region
-}
+export const openConversations = showBotConversations
 
 export const chooseChannelAction = async (page: Page, channel: string, action: string): Promise<void> => {
   await page

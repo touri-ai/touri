@@ -16,18 +16,17 @@ layouts.forEach(({ name, width, height }) => {
       await page.setViewportSize({ width, height })
       await page.clock.setFixedTime(new Date("2026-10-19T12:00:00Z"))
       await page.addInitScript((value) => localStorage.setItem("touri.appearance.v1", value), theme)
-      await page.goto("/")
+      await page.goto("/test/e2e/home-harness.html?scenario=sidebar-unread")
       await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
       if (name === "mobile") await page.getByRole("button", { name: "Abrir menu" }).click()
       const sidebar = page.getByRole("navigation", { name: "Barra lateral" })
       const mark = sidebar.locator('[data-bot-entry="bot-mark"]')
       await page.evaluate(() => document.fonts.ready)
 
-      // Mark's only conversation is open, so its row shows no unread count and no list of other conversations.
-      await expect(mark.locator(".bot-row .sidebar-unread")).toHaveCount(0)
-      await expect(mark.getByRole("button", { name: "Conversas de mark", exact: true })).toHaveCount(0)
+      await expect(mark.locator(".bot-row .sidebar-unread")).toHaveText("2")
+      await expect(mark.getByRole("img", { name: "2 mensagens não lidas" })).toBeVisible()
       await mkdir(output, { recursive: true })
-      await sidebar.screenshot({ path: `${output}/expanded-${name}-${theme}.png` })
+      await sidebar.screenshot({ path: `${output}/selected-${name}-${theme}.png` })
 
       await sidebar.locator('[data-bot-entry="bot-onb"] .bot-row-main').click()
       await expect(page.getByRole("textbox", { name: "Mensagem para onb" })).toBeVisible()
@@ -35,7 +34,7 @@ layouts.forEach(({ name, width, height }) => {
 
       await expect(mark.locator(".bot-thread-tree")).toHaveCount(0)
       await expect(mark.getByRole("img", { name: "2 mensagens não lidas" })).toBeVisible()
-      await sidebar.screenshot({ path: `${output}/collapsed-${name}-${theme}.png` })
+      await sidebar.screenshot({ path: `${output}/other-selected-${name}-${theme}.png` })
     })
   })
 })

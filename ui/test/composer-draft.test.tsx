@@ -10,7 +10,7 @@ vi.mock("@tauri-apps/api/webview", () => ({
 import App from "../src/App"
 import type { ApiRequest, TauriInvoke } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
-import { chooseBotAction, openConversations } from "./workspaceNavigation"
+import { openConversations } from "./workspaceNavigation"
 
 afterEach(() => {
   cleanup()
@@ -58,7 +58,7 @@ test("drafts stay with each conversation and successful sending clears only the 
   const api = fixture()
   let view = mount(api)
   fireEvent.change(await composer(), { target: { value: "Primeiro rascunho" } })
-  chooseBotAction("Nova conversa")
+  fireEvent.click(within(openConversations()).getByRole("button", { name: /Nova conversa/ }))
   await waitFor(() => expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toHaveValue(""))
   fireEvent.change(await composer(), { target: { value: "Segundo rascunho" } })
   const threads = api.getState().threads.filter((thread) => thread.botId === "bot-mark")
@@ -135,7 +135,7 @@ test("sending after navigation clears the old draft and keeps an identical new d
   fireEvent.change(input, { target: { value: "Texto igual" } })
   fireEvent.keyDown(input, { key: "Enter" })
   await waitFor(() => expect(finish).toBeDefined())
-  chooseBotAction("Nova conversa")
+  fireEvent.click(within(openConversations()).getByRole("button", { name: /Nova conversa/ }))
   await waitFor(() => expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toHaveValue(""))
   fireEvent.change(await composer(), { target: { value: "Texto igual" } })
   await act(async () => finish?.())
@@ -167,10 +167,9 @@ test("an earlier send preserves edits made after reopening the same conversation
   fireEvent.change(await composer(), { target: { value: "Mensagem enviada" } })
   fireEvent.keyDown(await composer(), { key: "Enter" })
   await waitFor(() => expect(finish).toBeDefined())
-  chooseBotAction("Nova conversa")
+  fireEvent.click(within(openConversations()).getByRole("button", { name: /Nova conversa/ }))
   await waitFor(() => expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toHaveValue(""))
-  const conversations = await waitFor(() => openConversations("mark"))
-  fireEvent.click(within(conversations).getByRole("button", { name: /Conversa original/ }))
+  fireEvent.click(within(openConversations()).getByRole("button", { name: /Conversa original/ }))
   await waitFor(() =>
     expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toHaveValue("Mensagem enviada"),
   )

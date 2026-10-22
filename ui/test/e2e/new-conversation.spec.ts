@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/test"
-import { chooseBotAction } from "./home-navigation"
+import { showBotConversations } from "./home-navigation"
 
 test("new conversation: preserves a draft while creation is pending", async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 850 })
   await page.goto("/test/e2e/new-conversation-harness.html")
   await page.getByRole("textbox", { name: "Mensagem para mark" }).waitFor()
-  await chooseBotAction(page, "Nova conversa")
+  const conversations = await showBotConversations(page)
+  await conversations.getByRole("button", { name: "Nova conversa" }).click()
   await page.getByRole("textbox", { name: "Mensagem para mark" }).fill("Revise este novo assunto")
   const before = process.env.CONVERSATION_PHASE === "before"
   const output = process.env.CONVERSATION_CAPTURE ?? "../docs/qa/new-conversation"

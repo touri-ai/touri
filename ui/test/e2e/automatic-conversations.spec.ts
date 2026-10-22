@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises"
 import { join } from "node:path"
 import { expect, type Page, test } from "@playwright/test"
+import { showBotConversations } from "./home-navigation"
 
 test.use({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" })
 
@@ -8,16 +9,10 @@ test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(new Date("2026-10-20T12:00:00Z"))
 })
 
-// Mark opens with its latest conversation; its chevron, when it has other conversations, lists them.
 const openConversations = async (page: Page) => {
-  await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
-  const menu = page.getByRole("button", { name: "Abrir menu", exact: true })
-  if (await menu.isVisible()) await menu.click()
-  const entry = page.locator('[data-bot-entry="bot-mark"]')
-  const chevron = entry.getByRole("button", { name: "Conversas de mark", exact: true })
-  if ((await chevron.count()) && (await chevron.getAttribute("aria-expanded")) !== "true") await chevron.click()
+  const conversations = await showBotConversations(page)
 
-  return entry.locator(".thread-row:not(.routines-row)")
+  return conversations.locator(".thread-row:not(.routines-row)")
 }
 
 const capture = async (page: Page, name: string) => {
@@ -32,7 +27,7 @@ test("automatic task threads no longer flood the sidebar and task mode groups th
   await page.goto("/test/e2e/home-harness.html?scenario=thread-noise-before")
   const before = await openConversations(page)
   await expect(before.filter({ hasText: "lead.reply" })).toHaveCount(4)
-  const showMore = page.getByRole("button", { name: /^Ver todas as \d+ conversas$/ })
+  const showMore = page.getByRole("button", { name: /^Mostrar mais \d+$/ })
   await expect(showMore).toBeVisible()
   await showMore.click()
   await expect(before.filter({ hasText: "lead.reply" })).toHaveCount(30)
@@ -40,8 +35,8 @@ test("automatic task threads no longer flood the sidebar and task mode groups th
 
   await page.goto("/test/e2e/home-harness.html?scenario=thread-noise-main")
   const main = await openConversations(page)
-  await expect(page.getByRole("button", { name: "Conversas de mark", exact: true })).toHaveCount(0)
-  await expect(main).toHaveCount(0)
+  await expect(main).toHaveCount(1)
+  await expect(main.filter({ hasText: "lead.reply" })).toHaveCount(0)
   await capture(page, "automatic-conversations-main")
 
   await page.goto("/test/e2e/home-harness.html?scenario=thread-noise-grouped")
@@ -54,6 +49,8 @@ test("automatic task threads no longer flood the sidebar and task mode groups th
   const history = page.getByRole("region", { name: "Histórico de tarefas de lead.reply" })
   await expect(history.locator(".thread-row")).toHaveCount(30)
   await history.getByRole("button").last().click()
+  await showBotConversations(page)
+
   await expect(page.locator(".thread-row.selected").first()).toContainText("Tarefas lead.reply")
 })
 
@@ -71,8 +68,7 @@ for (const view of [
 
     await page.goto("/test/e2e/home-harness.html?scenario=thread-noise-main")
     const main = await openConversations(page)
-    await expect(page.getByRole("button", { name: "Conversas de mark", exact: true })).toHaveCount(0)
-    await expect(main).toHaveCount(0)
+    await expect(main).toHaveCount(1)
     await capture(page, `automatic-conversations-main-${view.name}`)
 
     await page.goto("/test/e2e/home-harness.html?scenario=thread-noise-grouped")

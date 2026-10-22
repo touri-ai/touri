@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
-import { openConversations, openGlobalPage, showBotAdvanced, showBotRoutines } from "./home-navigation"
+import { openGlobalPage, showBotAdvanced, showBotRoutines } from "./home-navigation"
 
 test.use({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" })
 
@@ -32,8 +32,9 @@ test("Home keeps advanced pages behind a single door and groups bots by their wo
   await expect(page.locator(".bot-panel")).toHaveCount(0)
   for (const name of ["MCP", "Integrações", "Projetos", "Importar"])
     await expect(sidebar.getByRole("button", { name, exact: true })).toHaveCount(0)
-  await openConversations(page)
-  await expect(sidebar.getByRole("button", { name: "Rotinas", exact: true })).toBeVisible()
+  await expect(sidebar.locator(".bot-thread-tree")).toHaveCount(0)
+  await showBotRoutines(page)
+  await expect(page.getByRole("heading", { name: "Rotinas", exact: true })).toBeVisible()
   await openGlobalPage(page, "MCP")
   await expect(page.getByRole("heading", { name: "MCP", exact: true })).toBeVisible()
   await openGlobalPage(page, "Integrações")
@@ -64,9 +65,8 @@ test("bot actions support keyboard access and routines keep their bot filter aft
   await expect(page.getByRole("menuitem", { name: "Nova conversa" })).toBeFocused()
   await page.keyboard.press("End")
   await page.keyboard.press("ArrowUp")
-  await expect(page.getByRole("menuitem", { name: "Rotinas" })).toBeFocused()
   await page.keyboard.press("ArrowUp")
-  await expect(page.getByRole("menuitem", { name: "Avançado" })).toBeFocused()
+  await expect(page.getByRole("menuitem", { name: "Rotinas" })).toBeFocused()
   await page.keyboard.press("Escape")
   await expect(trigger).toBeFocused()
   await showBotRoutines(page)

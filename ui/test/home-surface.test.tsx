@@ -55,12 +55,8 @@ it("limits primary navigation to the bot list and Advanced, with chat and compos
   expect(document.querySelector(".bot-panel")).toBeNull()
   for (const name of ["Cron", "MCP", "Integrações", "Projetos", "Importar", "Verificar este servidor"])
     expect(within(sidebar).queryByRole("button", { name, exact: true })).toBeNull()
-  // Routines are one line inside the selected bot's conversations, never a top-level destination.
-  within(sidebar)
-    .queryAllByRole("button", { name: /^Rotinas/ })
-    .forEach((row) => {
-      expect(row.closest(".bot-thread-tree")).not.toBeNull()
-    })
+  expect(within(sidebar).queryByRole("button", { name: /^Rotinas/ })).toBeNull()
+  expect(sidebar.querySelector(".bot-thread-tree")).toBeNull()
   expect(sidebar.querySelectorAll("#sidebar-mode-panel-bots [data-bot-entry]")).toHaveLength(3)
   const advanced = within(sidebar).getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ })
   fireEvent.click(advanced)

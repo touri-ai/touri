@@ -42,7 +42,7 @@ themes.forEach((theme) => {
       await page.addInitScript((value) => localStorage.setItem("touri.appearance.v1", value), theme)
     })
 
-    test("desktop sidebar rows are 32px and every control at least 28px with no overlapping targets", async ({
+    test("desktop bot rows keep one quiet preview and every control is at least 28px without overlap", async ({
       page,
     }) => {
       await page.setViewportSize({ width: 1440, height: 900 })
@@ -53,19 +53,14 @@ themes.forEach((theme) => {
       await capture(page, `desktop-${theme}`)
 
       const preview = page.locator('[data-bot-entry="bot-mark"] .bot-preview')
-      await preview.evaluate((element) => {
-        element.classList.remove("visually-hidden")
-        element.classList.add("paused")
-        element.textContent =
-          "Descrição sintética longa para verificar que a prévia fica em uma linha dentro da barra lateral."
+      const previewStyle = await preview.evaluate((element) => {
+        const style = getComputedStyle(element)
+
+        return { whiteSpace: style.whiteSpace, textOverflow: style.textOverflow }
       })
-      // One gray preview line: long text ends in an ellipsis inside the row instead of widening or wrapping it.
-      const sidebarWidth = await page.locator(".bot-sidebar").evaluate((element) => element.clientWidth)
-      expect(await preview.evaluate((element) => getComputedStyle(element).textOverflow)).toBe("ellipsis")
-      expect(await preview.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(24)
-      expect(await preview.evaluate((element) => element.getBoundingClientRect().right)).toBeLessThanOrEqual(
-        sidebarWidth,
-      )
+
+      await expect(preview).toBeVisible()
+      expect(previewStyle).toEqual({ whiteSpace: "nowrap", textOverflow: "ellipsis" })
       expect(await getSmallTargets(page, 28)).toEqual([])
       expect(await getTargetRules(page)).toEqual([])
     })

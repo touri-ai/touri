@@ -18,6 +18,7 @@ export const BotActionsMenu = ({
   onOpenChange: setOpen,
   onSettings,
   onRoutines,
+  onConversations,
   onDelete,
   conversations = {},
 }: {
@@ -26,6 +27,7 @@ export const BotActionsMenu = ({
   onOpenChange: (open: boolean) => void
   onSettings: () => void
   onRoutines: () => void
+  onConversations?: (() => void) | undefined
   onDelete?: (() => void) | undefined
   conversations?: BotConversationActions
 }) => {
@@ -140,6 +142,11 @@ export const BotActionsMenu = ({
               <PanelIcon name="clock" />
               <span>{t("Routines")}</span>
             </button>
+            {onConversations && (
+              <button type="button" role="menuitem" aria-haspopup="dialog" onClick={() => launch(onConversations)}>
+                <span>{t("Conversations")}</span>
+              </button>
+            )}
             {onDelete && (
               <>
                 <hr className="menu-separator" />
