@@ -291,6 +291,28 @@ it("pages the full conversation list instead of mounting all history", () => {
   expect(conversationTree.querySelectorAll(".thread-row")).toHaveLength(100)
 })
 
+it("hides expanded compact history when only one conversation remains", () => {
+  const { bots, threads } = fixture()
+  const bot = bots[0]
+  const main = threads[0]
+  if (!bot || !main) throw new Error("Missing conversation fixture")
+  const conversation = makeThread(main, "other-conversation", bot.id, { kind: "chat" })
+  const view = renderSidebar({
+    bots: [bot],
+    threads: [main, conversation],
+    selectedBotId: bot.id,
+    selectedThreadId: main.id,
+  })
+
+  fireEvent.click(screen.getByRole("button", { name: "Conversas de alfa" }))
+  expect(screen.getByRole("region", { name: "Conversas recentes de alfa" })).toBeVisible()
+
+  view.update({ threads: [main] })
+
+  expect(screen.queryByRole("button", { name: "Conversas de alfa" })).toBeNull()
+  expect(screen.queryByRole("region", { name: "Conversas recentes de alfa" })).toBeNull()
+})
+
 it("hides pending deletions from compact history and restores them on undo", () => {
   const { bots, threads } = fixture()
   const bot = bots[0]
@@ -300,6 +322,7 @@ it("hides pending deletions from compact history and restores them on undo", () 
     kind: "chat",
     title: "Conversa temporária",
   })
+  const other = makeThread(main, "other-conversation", bot.id, { kind: "chat" })
   const targets = [{ id: conversation.id, title: conversation.title, messageCount: 1 }]
   const deletion = {
     pending: { id: "pending-deletion", botId: bot.id, targets },
@@ -310,7 +333,7 @@ it("hides pending deletions from compact history and restores them on undo", () 
   }
   const view = renderSidebar({
     bots: [bot],
-    threads: [main, conversation],
+    threads: [main, other, conversation],
     selectedBotId: bot.id,
     threadDeletion: deletion,
   })

@@ -1063,6 +1063,12 @@ const BotEntryView = ({
   )
   const hiddenThreadIds = new Set(pendingDelete?.targets.map((target) => target.id) ?? [])
   const compactSidebarThreads = sidebarThreads.filter(({ thread }) => !hiddenThreadIds.has(thread.id))
+  const hasCompactHistory =
+    !compact &&
+    conversationThreads.filter(
+      (thread) =>
+        thread.archivedAt === null && !thread.groupId && !thread.groupThreadId && !hiddenThreadIds.has(thread.id),
+    ).length > 1
   const openDeletePrompt = async (thread: Thread): Promise<void> => {
     if (!onGetThreadDeletePreview || pendingDelete) return
     setActionError(null)
@@ -1275,23 +1281,20 @@ const BotEntryView = ({
                 <span className="sidebar-status-dot" />
               </button>
             ) : null}
-            {!compact &&
-              conversationThreads.filter(
-                (thread) => thread.archivedAt === null && !thread.groupId && !thread.groupThreadId,
-              ).length > 1 && (
-                <button
-                  type="button"
-                  className="bot-thread-toggle"
-                  aria-label={t("Conversations for {name}", { name: bot.name })}
-                  aria-expanded={compactOpen}
-                  aria-controls={compactOpen ? compactTreeId : undefined}
-                  onClick={() => setCompactOpen(!compactOpen)}
-                >
-                  <SidebarIcon>
-                    <path d="m9 6 6 6-6 6" />
-                  </SidebarIcon>
-                </button>
-              )}
+            {hasCompactHistory && (
+              <button
+                type="button"
+                className="bot-thread-toggle"
+                aria-label={t("Conversations for {name}", { name: bot.name })}
+                aria-expanded={compactOpen}
+                aria-controls={compactOpen ? compactTreeId : undefined}
+                onClick={() => setCompactOpen(!compactOpen)}
+              >
+                <SidebarIcon>
+                  <path d="m9 6 6 6-6 6" />
+                </SidebarIcon>
+              </button>
+            )}
             <BotActionsMenu
               name={bot.name}
               open={menuOpen}
@@ -1327,7 +1330,7 @@ const BotEntryView = ({
         }}
       />
       {deleting && onDelete && <DeleteBotDialog bot={bot} onDelete={onDelete} onClose={() => setDeleting(false)} />}
-      {compactOpen && !conversationsOpen && (
+      {hasCompactHistory && compactOpen && !conversationsOpen && (
         <section
           className="bot-thread-tree"
           id={compactTreeId}
