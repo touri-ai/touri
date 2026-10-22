@@ -22,7 +22,7 @@ const pointerClick = async (target: Locator): Promise<void> => {
   await page.mouse.up()
 }
 
-test("title bars leave bot rows, header actions and top-bar controls clickable", async ({ page }) => {
+test("title bars leave bot rows, header actions and sidebar search clickable", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto("/test/e2e/r8-sidebar-harness.html?menus")
   await expect(page.getByRole("textbox", { name: "Mensagem para touri-qa" })).toBeVisible()
@@ -52,6 +52,8 @@ test("title bars leave bot rows, header actions and top-bar controls clickable",
   await expect(dialog).toBeVisible()
   await dialog.getByRole("button", { name: "Fechar canal" }).click()
   await expect(dialog).not.toBeVisible()
-  await pointerClick(page.locator('.sidebar-top-actions button[aria-label="Buscar conversas"] svg'))
+  await pointerClick(
+    page.getByRole("button", { name: "Buscar canais e mensagens", exact: true }).locator('[aria-hidden="true"]'),
+  )
   await expect(page.getByRole("dialog", { name: "Paleta de comandos" })).toBeVisible()
 })
