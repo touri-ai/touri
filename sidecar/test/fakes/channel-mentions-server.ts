@@ -1,8 +1,8 @@
 import type { Database } from "bun:sqlite"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { Bot, ProviderAdapter } from "@touri/contracts"
+import type { ProviderAdapter } from "@touri/contracts"
 import { init as initGroups } from "../../src/groups"
 import { createGroupRuntime } from "../../src/groups/runtime"
 import { createGroupStore } from "../../src/groups/store"
@@ -24,25 +24,24 @@ if (notifyFixture)
   ])
 const store = host.kernel.services.use("store.api")
 if (!store) throw new Error("Store missing")
-const request = async (path: string, body: unknown) => {
-  const response = await fetch(`http://127.0.0.1:${host.handshake.port}/api/v1${path}`, {
-    method: "POST",
-    headers: { Authorization: "Bearer dev-ui-token", Origin: "tauri://localhost", "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(10_000),
-  })
-  if (!response.ok) throw new Error(`Fixture request failed: ${response.status}`)
-
-  return response.json()
-}
+const database = host.kernel.db as Database
+// This fixture exercises channel turns, not provider installation or bot-home generation.
 const bots = await Promise.all(
   ["codador", "revisor"].map(async (name) => {
-    const result = (await request("/bots", {
-      name,
-      provider: "codex",
-      instructions: "Responda somente com seu nome.",
-    })) as { bot: Bot }
-    return result.bot
+    const home = join(appData, name)
+    await mkdir(home)
+    database
+      .query(
+        "INSERT INTO bots(id,name,provider,home_dir,main_thread_id,created_at,updated_at) VALUES (?,?,'codex',?,?,1,1)",
+      )
+      .run(name, name, home, `${name}-main`)
+    database
+      .query("INSERT INTO threads(id,bot_id,kind,title,created_at,updated_at) VALUES (?,?,'main',?,1,1)")
+      .run(`${name}-main`, name, name)
+    const bot = store.getBot({ botId: name })
+    if (!bot) throw new Error("Channel fixture bot missing")
+
+    return bot
   }),
 )
 const provider: ProviderAdapter = {

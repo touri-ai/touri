@@ -18,12 +18,12 @@ type State = { messages: Message[]; runs: Run[]; notifications: NotificationReco
 test("a real channel bot ping reaches the owner's bell and attention sound", async ({ page }, info) => {
   test.setTimeout(90_000)
   const child = spawn("bun", [resolve(import.meta.dirname, "../../../sidecar/test/fakes/channel-mentions-server.ts")], {
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["ignore", "pipe", "inherit"],
     env: { ...process.env, NODE_ENV: "test", TOURI_UI_TOKEN: "dev-ui-token", TOURI_NOTIFY_FIXTURE: "1" },
   })
   const ready = Promise.withResolvers<Fixture>()
   const lines = createInterface({ input: child.stdout })
-  const timeout = setTimeout(() => ready.reject(new Error("Channel fixture startup timed out")), 30_000)
+  const timeout = setTimeout(() => ready.reject(new Error("Channel fixture startup timed out")), 60_000)
   lines.on("line", (line) => {
     if (line.startsWith("CHANNEL_FIXTURE ")) ready.resolve(JSON.parse(line.slice("CHANNEL_FIXTURE ".length)))
   })
@@ -37,7 +37,7 @@ test("a real channel bot ping reaches the owner's bell and attention sound", asy
     await exited
   })
   child.once("error", ready.reject)
-  child.stderr.resume()
+  child.once("exit", (code) => ready.reject(new Error(`Channel fixture exited: ${code}`)))
   const fixture = await ready.promise
   clearTimeout(timeout)
   const headers = {

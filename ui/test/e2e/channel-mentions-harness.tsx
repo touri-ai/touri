@@ -18,6 +18,9 @@ declare global {
 }
 const fixture = await window.channelFixture()
 const base = createMockApi()
+// Isolate the attention tone from the task-start tone in the ping scenario.
+if (new URLSearchParams(location.search).has("notifications"))
+  await base.request("PATCH /settings", { notificationPreferences: { sound: { task: false } } })
 const { runs } = await base.request("GET /runs", {})
 await Promise.all(runs.map((run) => base.request("POST /runs/:id/cancel", {}, { id: run.id })))
 const state = base.getState()
