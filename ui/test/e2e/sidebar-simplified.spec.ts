@@ -1,10 +1,16 @@
-import { expect, test } from "@playwright/test"
+import { mkdir } from "node:fs/promises"
+import { join } from "node:path"
+import AxeBuilder from "@axe-core/playwright"
+import { expect, type Page, test } from "@playwright/test"
 
-for (const width of [1440, 390]) {
-  test(`bot selection stays flat and channel controls fit at ${width}px`, async ({ page }) => {
+const scenarios = [1440, 1024, 390].flatMap((width) => ["light", "dark"].map((theme) => ({ width, theme })))
+
+for (const { width, theme } of scenarios) {
+  test(`bot selection stays flat and channel controls fit at ${width}px in ${theme}`, async ({ page }) => {
     test.setTimeout(60_000)
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
     await page.emulateMedia({ reducedMotion: "reduce" })
+    await page.addInitScript((appearance) => localStorage.setItem("touri.appearance.v1", appearance), theme)
     await page.addInitScript(() => localStorage.setItem("touri.sidebar.mode", "bots"))
     await page.goto("/test/e2e/work-mode-harness.html?rich")
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
@@ -18,6 +24,9 @@ for (const width of [1440, 390]) {
     if (width === 390) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
     await expect(sidebar.getByRole("button")).toHaveCount(controlsBefore)
     await expect(sidebar.locator(".bot-thread-tree")).toHaveCount(0)
+    const botRow = sidebar.locator('[data-bot-entry="bot-onb"] .bot-row')
+    expect((await botRow.boundingBox())?.height).toBeLessThanOrEqual(56)
+    await capture(page, `bots-${width}-${theme}`)
 
     await page.getByRole("tab", { name: /^Work,/ }).click()
     const channel = sidebar.getByRole("button", { name: /^Planejamento/ })
@@ -37,12 +46,25 @@ for (const width of [1440, 390]) {
     expect(geometry.centerDifference).toBeLessThanOrEqual(2)
     expect(geometry.nameWithinRow).toBe(true)
     await expect(sidebar.locator(".channel-bot-avatars")).toHaveCount(0)
+    const sidebarContrast = await new AxeBuilder({ page })
+      .include(".bot-sidebar")
+      .withRules(["color-contrast"])
+      .analyze()
+    expect(sidebarContrast.violations).toEqual([])
+    await capture(page, `work-${width}-${theme}`)
     await channel.click()
     const header = page.locator(".group-header")
 
     await expect(header.getByRole("button")).toHaveCount(2)
     await expect(header.locator(".chat-header-crumb")).toHaveCount(0)
     expect(await header.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0)
+    const channelContrast = await new AxeBuilder({ page })
+      .include(".group-header")
+      .include(".composer")
+      .withRules(["color-contrast"])
+      .analyze()
+    expect(channelContrast.violations).toEqual([])
+    await capture(page, `channel-${width}-${theme}`)
     if (width !== 390) return
 
     const targets = await header.getByRole("button").evaluateAll((buttons) =>
@@ -54,4 +76,13 @@ for (const width of [1440, 390]) {
     )
     expect(targets.every(Boolean)).toBe(true)
   })
+}
+
+const capture = async (page: Page, name: string): Promise<void> => {
+  const directory = process.env.TOURI_E2E_EVIDENCE_DIR
+  if (!directory) return
+
+  await mkdir(directory, { recursive: true })
+  await page.evaluate(() => document.fonts.ready)
+  await page.screenshot({ path: join(directory, `after-${name}.png`), animations: "disabled" })
 }

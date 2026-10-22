@@ -81,16 +81,7 @@ export const GroupSidebar = memo(
       () => getGroupThreadSummaries(threads, attentionThreadIds),
       [threads, attentionThreadIds],
     )
-    const previews = useMemo(
-      () =>
-        new Map(
-          [...threadSummaries].map(([groupId, summary]) => [
-            groupId,
-            latestPreview({ threadIds: summary.threads.map((thread) => thread.id), messages, runs }),
-          ]),
-        ),
-      [threadSummaries, messages, runs],
-    )
+    const previews = useMemo(() => getGroupPreviews(threadSummaries, messages, runs), [threadSummaries, messages, runs])
 
     return (
       <section className="group-sidebar" aria-label={t("Channels", {}, locale)}>
@@ -174,6 +165,34 @@ type GroupThreadSummary = {
   threads: Thread[]
   unread: number
   needsAttention: boolean
+}
+
+const getGroupPreviews = (summaries: ReadonlyMap<string, GroupThreadSummary>, messages: Message[], runs: Run[]) => {
+  const groupsByThread = new Map(
+    Array.from(summaries).flatMap(([groupId, summary]) => summary.threads.map((thread) => [thread.id, groupId])),
+  )
+  const messagesByGroup = messages.reduce((index, message) => {
+    const groupId = groupsByThread.get(message.threadId)
+    if (!groupId) return index
+
+    // A local index avoids copying and scanning workspace history for every channel on each update.
+    const groupMessages = index.get(groupId) ?? []
+    groupMessages.push(message)
+    index.set(groupId, groupMessages)
+
+    return index
+  }, new Map<string, Message[]>())
+
+  return new Map(
+    Array.from(summaries).map(([groupId, summary]) => [
+      groupId,
+      latestPreview({
+        threadIds: summary.threads.map((thread) => thread.id),
+        messages: messagesByGroup.get(groupId) ?? EMPTY_MESSAGES,
+        runs,
+      }),
+    ]),
+  )
 }
 
 const getGroupThreadSummaries = (threads: Thread[], attentionThreadIds: ReadonlySet<string>) =>
