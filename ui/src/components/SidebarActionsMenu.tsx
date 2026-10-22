@@ -30,7 +30,7 @@ export const SidebarActionsMenu = ({
   const menuId = useId()
   useEffect(() => {
     if (!open) return
-    menu.current?.querySelector<HTMLButtonElement>("button")?.focus()
+    menu.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus()
     const close = (event: MouseEvent) => {
       if (
         event.target instanceof Node &&
@@ -108,7 +108,9 @@ export const SidebarActionsMenu = ({
                 trigger.current?.focus()
                 setOpen(false)
               }
-              const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button"))
+              const buttons = Array.from(
+                event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"),
+              )
               const index =
                 document.activeElement instanceof HTMLButtonElement ? buttons.indexOf(document.activeElement) : -1
               const next = getNextActionIndex(event.key, index, buttons.length)

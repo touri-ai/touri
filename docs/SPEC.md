@@ -417,8 +417,18 @@ browser control and pending turns unchanged; a browser leaf can still be cancele
 
 Parar cancels the active group turn, its delegated work and pending group turns. Editing members
 or the coordinator requires idle group conversations. Restart interrupts unfinished group turns
-without replaying tasks. UI: Grupos in the sidebar, create/edit dialog, @mention completion,
-member header and memberships in each bot's Detalhes panel.
+without replaying tasks. Work lists channels as a hash, name, activity time and optional single-line
+message preview. Members appear in the channel header and panel, reached through the member count.
+The header has no repeated breadcrumb; edit and invite actions live in its ellipsis menu. The empty
+channel shows a short introduction and member avatars. The composer keeps team actions in one menu.
+
+Bot and direct-message rows show an avatar, name, activity time and one preview line. Selecting a bot
+opens its conversation without expanding management controls. In Bots, a separate chevron reveals
+at most five conversations, including the selected one, and appears only when there is more than one.
+"Ver todas" opens history in pages of 100. The bot's ellipsis menu retains new conversations,
+selection, archive and automatic-history cleanup, alongside settings and routines. Deletion keeps
+confirmation and undo. Invite is beside the channel heading; interrupted tasks appear in the footer
+only while there are any. Phone controls have targets of at least 44 pixels.
 
 
 ### 3.10 Telegram (optional, per bot)

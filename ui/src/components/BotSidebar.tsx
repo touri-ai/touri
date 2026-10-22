@@ -1154,9 +1154,13 @@ const FullBotEntry = ({
   const snapshot = useMascotSnapshot(bot)
   const ids = threads.map((thread) => thread.id)
   const botMessages = messages.filter((message) => ids.includes(message.threadId))
-  const latestAssistant = [...botMessages]
+  const latestAssistant = botMessages
     .filter((message) => message.role === "assistant")
-    .sort((a, b) => b.createdAt - a.createdAt)[0]
+    .reduce<Message | undefined>((latest, message) => {
+      if (!latest || message.createdAt > latest.createdAt) return message
+
+      return latest
+    }, undefined)
   const failureRead =
     latestAssistant &&
     notifications.some(
@@ -1257,13 +1261,22 @@ const FullBotEntry = ({
     [showTree, threads, routineRuns, selectedThreadId, runningThreadIds, routineIds, routineRunCountsToday],
   )
   const [showAllConversations, setShowAllConversations] = useState(false)
+  const [conversationPage, setConversationPage] = useState(0)
   const routineEntries = sidebarThreads.filter((entry) => entry.thread.kind === "routine" && !entry.deletedRoutine)
   const conversationEntries = sidebarThreads.filter((entry) => !routineEntries.includes(entry))
+  const recentConversations = conversationEntries.slice(0, MAX_SIDEBAR_CONVERSATIONS)
+  const selectedConversation = conversationEntries.find((entry) => entry.thread.id === selectedThreadId)
+  const compactConversations =
+    selectedConversation && !recentConversations.includes(selectedConversation)
+      ? recentConversations.slice(0, MAX_SIDEBAR_CONVERSATIONS - 1).concat(selectedConversation)
+      : recentConversations
+  const visibleConversationPage = Math.min(
+    conversationPage,
+    Math.max(0, Math.ceil(conversationEntries.length / 100) - 1),
+  )
   const shownConversations = showAllConversations
-    ? conversationEntries
-    : conversationEntries.filter(
-        (entry, index) => index < MAX_SIDEBAR_CONVERSATIONS || entry.thread.id === selectedThreadId,
-      )
+    ? conversationEntries.slice(visibleConversationPage * 100, (visibleConversationPage + 1) * 100)
+    : compactConversations
   const visibleUnread = showConversations
     ? shownConversations.concat(routineEntries).reduce((count, entry) => count + entry.unread, 0)
     : 0
@@ -1520,7 +1533,11 @@ const FullBotEntry = ({
                 aria-label={t("Conversations for {name}", { name: bot.name })}
                 aria-expanded={threadsOpen}
                 aria-controls={showTree ? treeId : undefined}
-                onClick={() => setThreadsOpen(!threadsOpen)}
+                onClick={() => {
+                  setThreadsOpen(!threadsOpen)
+                  setShowAllConversations(false)
+                  setConversationPage(0)
+                }}
               >
                 <SidebarIcon>
                   <path d="m9 6 6 6-6 6" />
@@ -1707,6 +1724,26 @@ const FullBotEntry = ({
             >
               {t("See all conversations")}
             </button>
+          )}
+          {showConversations && !selectionMode && showAllConversations && conversationEntries.length > 100 && (
+            <div className="thread-list-tools">
+              <button
+                type="button"
+                className="thread-list-tool"
+                disabled={visibleConversationPage === 0}
+                onClick={() => setConversationPage(visibleConversationPage - 1)}
+              >
+                {t("Previous conversations")}
+              </button>
+              <button
+                type="button"
+                className="thread-list-tool"
+                disabled={(visibleConversationPage + 1) * 100 >= conversationEntries.length}
+                onClick={() => setConversationPage(visibleConversationPage + 1)}
+              >
+                {t("Next conversations")}
+              </button>
+            </div>
           )}
           {showConversations && visibleRoutineIds.length > 0 && (
             <RoutinesRow

@@ -256,6 +256,43 @@ it("keeps unread counts visible when the conversation is beyond the first five r
   expect(within(conversationTree).getByRole("img", { name: "1 mensagem não lida" })).toBeVisible()
 })
 
+it("keeps an older selected conversation within the five compact rows", () => {
+  const { bots, threads } = fixture()
+  const bot = bots[0]
+  const baseThread = threads[0]
+  if (!bot || !baseThread) throw new Error("Missing conversation fixture")
+  const conversations = Array.from({ length: 7 }, (_, index) =>
+    makeThread(baseThread, `conversation-${index}`, bot.id, { updatedAt: T0 + 7 - index }),
+  )
+  const selectedThreadId = conversations.at(-1)?.id ?? null
+  renderSidebar({ bots: [bot], threads: conversations, selectedBotId: bot.id, selectedThreadId })
+
+  const conversationTree = openConversations("alfa")
+
+  expect(conversationTree.querySelectorAll(".thread-row")).toHaveLength(5)
+  expect(conversationTree.querySelectorAll(".thread-row.selected")).toHaveLength(1)
+})
+
+it("pages the full conversation list instead of mounting all history", () => {
+  const { bots, threads } = fixture()
+  const bot = bots[0]
+  const baseThread = threads[0]
+  if (!bot || !baseThread) throw new Error("Missing conversation fixture")
+  const conversations = Array.from({ length: 105 }, (_, index) =>
+    makeThread(baseThread, `conversation-${index}`, bot.id, { updatedAt: T0 + 105 - index }),
+  )
+  renderSidebar({ bots: [bot], threads: conversations, selectedBotId: bot.id })
+  const conversationTree = openConversations("alfa")
+
+  fireEvent.click(within(conversationTree).getByRole("button", { name: "Ver todas as 105 conversas" }))
+
+  expect(conversationTree.querySelectorAll(".thread-row")).toHaveLength(100)
+  fireEvent.click(within(conversationTree).getByRole("button", { name: "Próximas conversas" }))
+  expect(conversationTree.querySelectorAll(".thread-row")).toHaveLength(5)
+  fireEvent.click(within(conversationTree).getByRole("button", { name: "Conversas anteriores" }))
+  expect(conversationTree.querySelectorAll(".thread-row")).toHaveLength(100)
+})
+
 it("shows active work as a clear navigation action in both languages", () => {
   const { bots, threads } = fixture()
   const running = run("run-active", "bot-alfa", "thread-alfa")

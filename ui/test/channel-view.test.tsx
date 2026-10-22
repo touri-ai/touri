@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
 import { GroupHeader } from "../src/components/Groups"
+import { SidebarActionsMenu } from "../src/components/SidebarActionsMenu"
 import { t } from "../src/i18n"
 
 afterEach(cleanup)
@@ -27,6 +28,27 @@ const getChannel = () => {
 }
 
 describe("channel view", () => {
+  it("focuses an enabled team action when the empty composer disables asking everyone", () => {
+    render(
+      <SidebarActionsMenu
+        label="Ações do time"
+        open
+        onOpenChange={vi.fn()}
+        actions={[
+          { label: "Perguntar a todos", onSelect: vi.fn(), disabled: true },
+          { label: "Pedir resumo do time", onSelect: vi.fn() },
+        ]}
+      />,
+    )
+    const summary = screen.getByRole("menuitem", { name: "Pedir resumo do time" })
+
+    expect(summary).toHaveFocus()
+    fireEvent.keyDown(summary, { key: "Home" })
+    expect(summary).toHaveFocus()
+    fireEvent.keyDown(summary, { key: "ArrowDown" })
+    expect(summary).toHaveFocus()
+  })
+
   it("shows only the channel name, a member group that opens the panel and one menu for the rest", () => {
     const { bots, group } = getChannel()
     const onEdit = vi.fn()
