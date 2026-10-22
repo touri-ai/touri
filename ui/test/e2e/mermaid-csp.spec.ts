@@ -65,7 +65,6 @@ test.describe("mermaid production and desktop CSP", () => {
       "src/components/CronScreen.tsx",
       "src/features/work/WorkScreen.tsx",
       "src/components/WorkspaceScreens.tsx",
-      "src/components/Groups.tsx",
       "src/components/GroupModal.tsx",
       "src/components/GroupPanel.tsx",
       "src/components/RoutineEditor.tsx",

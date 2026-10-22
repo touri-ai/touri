@@ -14,9 +14,10 @@ legacy app bots, chats and routines so you can switch over.
 
 ## Decisions at a glance
 
-Optional channel navigation, channel headers, member panels, group dialogs and the routine editor
-load asynchronously outside the initial application bundle. Opening them preserves their existing
-actions and keyboard access; panels and dialogs keep their close control while their module loads.
+Channel navigation and headers are available at startup so the first click opens a stable surface.
+Optional member panels, group dialogs and the routine editor load asynchronously outside the initial
+application bundle. They preserve existing actions and keyboard access, including their close control
+while their module loads.
 Closing a loading channel panel restores focus to its trigger and leaves the conversation available.
 The initial HTML, JavaScript and CSS remain limited to 400,000 bytes gzip.
 

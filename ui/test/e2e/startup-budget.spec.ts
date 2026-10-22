@@ -8,7 +8,6 @@ import type { Manifest } from "vite"
 const compress = promisify(gzip)
 const output = resolve(import.meta.dirname, "../../dist")
 const optionalModules = [
-  "src/components/Groups.tsx",
   "src/components/GroupModal.tsx",
   "src/components/GroupPanel.tsx",
   "src/components/RoutineEditor.tsx",
