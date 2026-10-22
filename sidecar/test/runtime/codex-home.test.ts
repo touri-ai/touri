@@ -269,8 +269,10 @@ for (const error of ["rollout not found", "Unable to load session"])
     const requests = f.requests
     expect(requests.map((request) => request.method)).toEqual([
       "initialize",
+      "initialized",
       "thread/resume",
       "initialize",
+      "initialized",
       "thread/start",
       "turn/start",
     ])
@@ -301,7 +303,7 @@ test("a Codex authentication failure during resume still asks for login", async 
   const run = f.send("Continue the synthetic task")
   await waitForRun(run)
   expect(run.status).toBe("failed")
-  expect(f.requests.map((request) => request.method)).toEqual(["initialize", "thread/resume"])
+  expect(f.requests.map((request) => request.method)).toEqual(["initialize", "initialized", "thread/resume"])
 })
 
 test.each(["database is locked", "SQLITE_BUSY", "database table is locked"])(

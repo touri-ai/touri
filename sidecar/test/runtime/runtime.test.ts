@@ -3137,12 +3137,22 @@ describe("turn latency milestones", () => {
       const children = recordProviderSpawns(current)
 
       const first = await sendTurn(current, "oi")
+      const getSettingsVersions = () =>
+        provider === "claude"
+          ? ["mcp.json", "system.md", "settings.json"].map(
+              (suffix) =>
+                statSync(join(current.runtime.kernel.paths.runDir, "claude", `${current.thread.id}.${suffix}`)).mtimeMs,
+            )
+          : []
+      const settingsVersions = getSettingsVersions()
       const second = await sendTurn(current, "oi")
 
       expect(first.usage?.timings?.processSpawnedAt).toBeDefined()
       expect(second.usage?.timings?.processReusedAt).toBeDefined()
       expect(second.usage?.timings?.processSpawnedAt).toBeUndefined()
       expect(children).toHaveLength(1)
+      expect(getSettingsVersions()).toEqual(settingsVersions)
+      expect(existsSync(join(current.runtime.kernel.paths.runDir, "mcp-tokens", current.thread.id))).toBe(false)
       const child = children[0]
       if (!child) throw new Error("Missing provider process")
 

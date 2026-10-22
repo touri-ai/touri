@@ -924,11 +924,13 @@ export const createRuntimeEngine = ({
     return result.success ? result.message.id : null
   }
 
-  const makeMcpToken = async (
+  const prepareMcpConnection = async (
     threadId: Id,
+    toolsDisabled: boolean,
   ): Promise<{ command: string; args: Array<string>; env: Record<string, string> }> => {
     const tokenPath = `${kernel.paths.runDir}/mcp-tokens/${threadId}`
-    await writePrivateFileAsync({ root: kernel.paths.appData, path: tokenPath, content: `${randomHexToken()}\n` })
+    if (!toolsDisabled)
+      await writePrivateFileAsync({ root: kernel.paths.appData, path: tokenPath, content: `${randomHexToken()}\n` })
     return {
       command: kernel.paths.sidecarBinary,
       args: ["mcp-stdio", "--thread", threadId],
@@ -1489,7 +1491,7 @@ export const createRuntimeEngine = ({
     const mcp =
       bot.machine === "vm"
         ? { command: "/usr/local/bin/node", args: ["/usr/local/lib/touri/mcp-stdio.cjs", thread.id], env: {} }
-        : await makeMcpToken(thread.id)
+        : await prepareMcpConnection(thread.id, toolsDisabled)
     const mcpFingerprint = sessionFingerprint({
       bot: {
         ...bot,

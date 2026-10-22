@@ -138,17 +138,28 @@ export const createClaudeAdapter = ({
       if (typeof value === "string") kernel.addRedactionValue(value)
     Object.assign(env, userSettings.authEnv, args.env)
     Object.assign(env, applyProviderPrivacy(env, cliTelemetryOff(kernel)))
-    await claudeConfig({ args, root: kernel.paths.appData, path: configPath })
-    await (args.execution?.writeFile ?? writePrivateFileAsync)({
-      root: kernel.paths.appData,
-      path: settingsPath,
-      content: JSON.stringify(userSettings.settings),
-    })
-    await (args.execution?.writeFile ?? writePrivateFileAsync)({
-      root: kernel.paths.appData,
-      path: systemPath,
-      content: args.developerInstructions,
-    })
+    const warmKey =
+      storedProviderLoginSource(kernel, args.bot) === "vault"
+        ? null
+        : warmSessions.getKey({
+            ...args,
+            env,
+            developerInstructions: JSON.stringify([args.developerInstructions, userSettings.settings]),
+          })
+    const retained = warmSessions.getAvailable(warmKey, args.session?.externalSessionId)
+    if (!retained) {
+      await claudeConfig({ args, root: kernel.paths.appData, path: configPath })
+      await (args.execution?.writeFile ?? writePrivateFileAsync)({
+        root: kernel.paths.appData,
+        path: settingsPath,
+        content: JSON.stringify(userSettings.settings),
+      })
+      await (args.execution?.writeFile ?? writePrivateFileAsync)({
+        root: kernel.paths.appData,
+        path: systemPath,
+        content: args.developerInstructions,
+      })
+    }
     const sessionId = args.session?.externalSessionId ?? randomUUID()
     const commandArgs = [
       "-p",
@@ -187,20 +198,11 @@ export const createClaudeAdapter = ({
     if (projectDataDir) commandArgs.push("--add-dir", projectDataDir)
     if (!args.execution && env.TMPDIR) commandArgs.push("--add-dir", env.TMPDIR)
     for (const folder of turnFolders(args)) commandArgs.push("--add-dir", folder.path)
-    if (process.platform !== "darwin" && folderConfinementRequired(args))
+    if (!retained && process.platform !== "darwin" && folderConfinementRequired(args))
       await ensurePrivateDirectoryAsync({
         root: args.bot.homeDir,
         path: join(args.bot.homeDir, ".touri-claude"),
       })
-    const warmKey =
-      storedProviderLoginSource(kernel, args.bot) === "vault"
-        ? null
-        : warmSessions.getKey({
-            ...args,
-            env,
-            developerInstructions: JSON.stringify([args.developerInstructions, userSettings.settings]),
-          })
-    const retained = warmSessions.getAvailable(warmKey, args.session?.externalSessionId)
     const candidate = retained
       ? null
       : spawnFolderProvider(kernel, args, {
@@ -233,6 +235,7 @@ export const createClaudeAdapter = ({
     if (!args.execution && !lease.reused) await trackProviderProcess(kernel, spawned)
     let completed = false
     let stopped = false
+    let externalSessionId = sessionId
     const toolCalls = new Map<string, Extract<MessagePart, { type: "tool_call" }>>()
     const outputs = new Map<
       string,
@@ -289,6 +292,7 @@ export const createClaudeAdapter = ({
       finish(result.success ? result : { ...result, error: kernel.redact(result.error) })
     }
     if (lease.reused) {
+      turnStarted = true
       args.onEvent({ type: "session", externalSessionId: sessionId, rolloutPath: args.session?.rolloutPath ?? null })
       args.onEvent({ type: "turn_started", externalTurnId: `claude-turn-${sessionId}` })
     }
@@ -318,9 +322,10 @@ export const createClaudeAdapter = ({
       if (type === "system") {
         const subtype = stringValue(frame.subtype)
         if (subtype === "init" || frame.session_id) {
+          externalSessionId = stringValue(frame.session_id) ?? externalSessionId
           args.onEvent({
             type: "session",
-            externalSessionId: stringValue(frame.session_id) ?? sessionId,
+            externalSessionId,
             rolloutPath: null,
           })
           if (!turnStarted) {
@@ -473,7 +478,7 @@ export const createClaudeAdapter = ({
         })
         complete({
           success: true,
-          externalSessionId: sessionId,
+          externalSessionId,
           rolloutPath: null,
           status: isError ? "failed" : stopped ? "interrupted" : "succeeded",
         })

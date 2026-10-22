@@ -245,7 +245,7 @@ const getActivityLabel = ({
   quietMs: number
   providerAt: number | null | undefined
 }): string => {
-  const lastContent = parts.filter((part) => part.type === "text" || part.type === "reasoning").at(-1)
+  const lastContent = parts.findLast((part) => part.type === "text" || part.type === "reasoning")
   if (state === "thinking" && lastContent?.type === "text" && lastContent.text)
     return activityLabelFor("typing", parts, locale)
 

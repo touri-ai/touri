@@ -223,7 +223,7 @@ export const composeDeveloperInstructions = async ({
   if (greetingOnly) {
     return [
       `You are ${JSON.stringify(bot.name)}, the user's touri teammate.`,
-      `Bot SOUL:\n${bot.instructions.slice(0, 8_000)}`,
+      `Bot SOUL:\n${bot.instructions}`,
       bot.roleLine ? `Your current job: ${bot.roleLine.slice(0, 1_000)}` : "",
       referenceBlock(kernel, "MEMORY.md", memory, sha256(memory)),
       memory.startsWith("MEMORY_REVIEW_REQUIRED")
