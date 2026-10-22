@@ -14,12 +14,18 @@ for (const theme of ["light", "dark"] as const) {
       await mkdir(qa, { recursive: true })
       await page.setViewportSize({ width, height: 900 })
       await page.emulateMedia({ reducedMotion: "reduce" })
-      await page.addInitScript((theme) => {
-        localStorage.setItem("touri.appearance.v1", theme)
-        localStorage.removeItem("touri.workspace.v1")
-      }, theme)
+      await page.addInitScript(
+        ({ theme, phase }) => {
+          localStorage.setItem("touri.appearance.v1", theme)
+          localStorage.removeItem("touri.workspace.v1")
+          if (phase === "before") localStorage.setItem("touri.sidebar.mode", "bots")
+          else localStorage.removeItem("touri.sidebar.mode")
+        },
+        { theme, phase },
+      )
       await page.goto("/test/e2e/screens-harness.html", { waitUntil: "domcontentloaded" })
       await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+      if (phase === "after") await expect(page.getByRole("region", { name: "Canais" })).toBeVisible()
       await page.evaluate((theme) => {
         document.documentElement.dataset.theme = theme
       }, theme)
@@ -39,7 +45,8 @@ for (const theme of ["light", "dark"] as const) {
       await shot("cron")
       if (phase === "after") {
         await expect(page.getByRole("button", { name: "Rodar agora Resumo da manhã" })).toHaveText("Rodar agora")
-        await expect(page.getByRole("button", { name: "Retomar Resumo da manhã" })).toHaveText("Retomar")
+        await expect(page.getByRole("button", { name: "Rodar agora Resumo da manhã" })).toBeDisabled()
+        await expect(page.getByRole("button", { name: "Pausar Resumo da manhã" })).toHaveText("Pausar")
         await expect(page.getByText("Aguardando aprovação", { exact: true })).toBeVisible()
         if (width === 1100) {
           await page.locator(".calendar-card").scrollIntoViewIfNeeded()

@@ -20,11 +20,12 @@ layouts.forEach(({ name, width, height }) => {
       await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
       if (name === "mobile") await page.getByRole("button", { name: "Abrir menu" }).click()
       const sidebar = page.getByRole("navigation", { name: "Barra lateral" })
+      await sidebar.getByRole("tab", { name: /^Bots/ }).click()
       const mark = sidebar.locator('[data-bot-entry="bot-mark"]')
       await page.evaluate(() => document.fonts.ready)
 
       await expect(mark.locator(".bot-row .sidebar-unread")).toHaveCount(0)
-      await expect(mark.getByRole("img", { name: "2 mensagens não lidas" })).toBeVisible()
+      await expect(mark.getByRole("img", { name: "2 mensagens não lidas" })).toHaveCount(0)
       await mkdir(output, { recursive: true })
       await sidebar.screenshot({ path: `${output}/expanded-${name}-${theme}.png` })
 

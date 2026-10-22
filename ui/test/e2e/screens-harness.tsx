@@ -8,6 +8,13 @@ import "../../src/styles.css"
 const api = createMockApi()
 initializeTheme()
 const state = api.getState()
+await api.request("POST /groups", {
+  name: "Equipe",
+  color: "#d64bad",
+  avatarShape: "classic-none",
+  memberIds: ["bot-mark"],
+  coordinatorBotId: null,
+})
 const scenario = new URLSearchParams(location.search).get("scenario")
 const now = Date.now()
 for (const bot of state.bots) {
@@ -65,10 +72,13 @@ const messages: Message[] = [
 state.messages.splice(0, state.messages.length, ...messages)
 thread.activeLeafId = "screens-approval"
 const { routines } = await api.request("GET /routines", {})
-const routine = routines[0]
-if (!routine) throw new Error("Missing screens routine")
-routine.name = "Resumo da manhã"
-routine.prompt = "Resuma as tarefas do projeto."
+const routineTemplate = routines[0]
+if (!routineTemplate) throw new Error("Missing screens routine")
+const { routine } = await api.request(
+  "PATCH /routines/:id",
+  { name: "Resumo da manhã", prompt: "Resuma as tarefas do projeto.", enabled: true },
+  { id: routineTemplate.id },
+)
 const runs: RoutineRun[] = []
 for (const [index, name] of [
   "Revisão semanal",
@@ -94,6 +104,18 @@ for (const [index, name] of [
     startedAt: now,
     finishedAt: index > 1 ? now : null,
   })
+}
+const pendingApprovalRun: RoutineRun = {
+  id: "screens-pending-approval",
+  routineId: routine.id,
+  scheduledFor: now,
+  status: "running",
+  threadId: thread.id,
+  runId: null,
+  triggerSource: "cron",
+  summary: null,
+  startedAt: now,
+  finishedAt: null,
 }
 api.notify({
   kind: "routine-failed",
@@ -144,7 +166,7 @@ let failMcp = scenario === "mcp-error"
 let failLogs = scenario === "logs-error"
 let failConnections = scenario === "connections-error"
 api.request = async (route, input, path) => {
-  if (route === "GET /routine-runs") return { routineRuns: runs } as never
+  if (route === "GET /routine-runs") return { routineRuns: [...runs, pendingApprovalRun] } as never
   if (route === "GET /routines" && scenario === "empty") return { routines: [] } as never
   if (route === "GET /bots/:id/mcp") {
     if (scenario === "mcp-loading") return new Promise(() => {})
