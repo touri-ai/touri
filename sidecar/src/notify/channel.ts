@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite"
 import type { Kernel, Message, Run } from "@touri/contracts"
 import { getMentionedPeople } from "../groups/people"
+import { createStreamingRedactor } from "../kernel/redact"
 
 export const initChannelNotifications = (kernel: Kernel): void => {
   kernel.subscribe(({ event }) => {
@@ -40,7 +41,7 @@ const sendMentionNotifications = (kernel: Kernel, message: Message): void => {
         targetPersonId: person.id,
         requestId: `mention:${message.id}:${person.id}`,
         title: `@${author} mencionou você em #${channel}`,
-        body: kernel.redact(message.text).slice(0, 500),
+        body: getRedactedExcerpt(kernel, message.text, 500),
       })
     })
 }
@@ -70,8 +71,8 @@ const sendTaskNotification = (kernel: Kernel, run: Run): void => {
         .query("SELECT text FROM messages WHERE thread_id = ? AND id = ?")
         .get(thread.id, run.requestMessageId) as { text: string } | null)
     : null
-  const requestTitle = request ? kernel.redact(request.text).trim().split("\n")[0] : null
-  const title = kernel.redact(routine?.name || requestTitle || thread.title).slice(0, 120)
+  const requestTitle = request ? getRedactedExcerpt(kernel, request.text, 120).trim().split("\n")[0] : null
+  const title = getRedactedExcerpt(kernel, routine?.name || requestTitle || thread.title, 120)
 
   recipients
     .filter((id) => people.some((person) => person.id === id))
@@ -86,6 +87,12 @@ const sendTaskNotification = (kernel: Kernel, run: Run): void => {
         body: title,
       })
     })
+}
+
+const getRedactedExcerpt = (kernel: Kernel, text: string, limit: number): string => {
+  // Streaming masks also protect a known value cut by the bounded input window.
+  const redactor = createStreamingRedactor(kernel.redact)
+  return `${redactor.push(text.slice(0, limit))}${redactor.flush()}`.slice(0, limit)
 }
 
 const getChannelName = (kernel: Kernel, groupId: string): string | undefined =>

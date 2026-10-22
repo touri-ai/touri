@@ -100,6 +100,9 @@ test("a real channel bot ping reaches the owner's bell and attention sound", asy
     .getByRole("button", { name: /^produto/ })
     .click()
   await expect(page.getByRole("textbox", { name: "Mensagem para produto" })).toBeVisible()
+  await expect(
+    page.getByTestId("virtual-message-list").getByText("@thiago preciso de você", { exact: true }),
+  ).toBeVisible()
   await page.getByRole("button", { name: /Notificações/ }).click()
   const center = page.getByRole("region", { name: "Central de notificações" })
   await expect(center.getByText("@codador mencionou você em #produto", { exact: true })).toBeVisible()

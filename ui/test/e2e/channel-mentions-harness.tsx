@@ -51,14 +51,22 @@ fixture.bots.forEach((bot, index) => {
 const created = await base.request("POST /groups", fixture.group)
 Object.assign(created.group, fixture.group)
 Object.assign(created.thread, fixture.thread)
+// Retain the real server's snapshot when the mock workspace reopens this channel.
+const channelMessages = new Map<string, Message[]>()
 const request: ApiRequest = async (route, input, path) => {
   if (route === "GET /groups/:id/people") return { people: fixture.people }
+  if (route === "GET /threads/:id/messages" && path?.id === fixture.thread.id)
+    return { messages: channelMessages.get(fixture.thread.id) ?? [] }
   if (route !== "POST /threads/:id/messages") return base.request(route, input, path)
 
   const result = await window.channelSend(input as Send["req"])
+  channelMessages.set(fixture.thread.id, result.messages)
+  const leaf = result.messages.at(-1)
+  if (leaf) Object.assign(created.thread, { activeLeafId: leaf.id })
   result.messages.forEach((message) => {
     base.emit({ type: "message.created", message })
   })
+  base.emit({ type: "thread.updated", thread: created.thread })
   result.notifications?.forEach((notification) => {
     base.emit({ type: "notification.created", notification })
   })
