@@ -29,7 +29,9 @@ test("keeps the production startup payload below 400 KB gzip with optional chann
   })
   const dialogStyles = manifest["src/components/GroupModal.tsx"]?.css ?? []
   expect(dialogStyles.length).toBeGreaterThan(0)
-  dialogStyles.forEach((file) => expect(initialFiles).not.toContain(file))
+  dialogStyles.forEach((file) => {
+    expect(initialFiles).not.toContain(file)
+  })
 })
 
 const getInitialFiles = (manifest: Manifest, root: string): string[] => {
