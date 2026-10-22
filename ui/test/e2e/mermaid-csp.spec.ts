@@ -21,7 +21,7 @@ test.describe("mermaid production and desktop CSP", () => {
 
   test.beforeAll(async () => {
     // Compilation has its own allowance; the payload and interaction budgets below stay unchanged.
-    test.setTimeout(300_000)
+    test.setTimeout(600_000)
     const { build } = await import("vite")
     await build({
       root: uiRoot,
