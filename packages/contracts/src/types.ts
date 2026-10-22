@@ -287,7 +287,18 @@ export type RunErrorClass =
   | 'group_context_missing'
   | 'unknown'
 
+/** Wall-clock milestones, persisted inside usage_json and published with run.updated. */
+export type RunTimings = {
+  queuedAt: number
+  processSpawnedAt?: number
+  processReusedAt?: number
+  providerReadyAt?: number
+  firstTokenAt?: number
+  finishedAt?: number
+}
+
 export type RunUsage = {
+  timings?: RunTimings
   inputTokens: number
   outputTokens: number
   cachedInputTokens: number
@@ -837,6 +848,8 @@ export type StartTurnArgs = {
   mcp: { command: AbsolutePath; args: Array<string>; env: Record<string, string> }
   env: Record<string, string>
   onEvent: (event: ProviderEvent) => void
+  onProcessSpawned?: () => void
+  onProcessReused?: () => void
   signal: AbortSignal
 }
 

@@ -129,7 +129,7 @@ CREATE TABLE runs (
                        ('cli_missing','cli_auth','cli_crash','cli_protocol','rate_limit','context_overflow',
                         'timeout','canceled','oom','tool_error','app_restart','unknown')),
   error_message      TEXT,                         -- redacted, <= 2000 chars
-  usage_json         TEXT,                         -- RunUsage
+  usage_json         TEXT,                         -- RunUsage (optional timings milestones; no schema migration required)
   routine_run_id     TEXT,
   queued_at          INTEGER NOT NULL,
   started_at         INTEGER,
