@@ -40,7 +40,7 @@ const sendMentionNotifications = (kernel: Kernel, message: Message): void => {
         targetPersonId: person.id,
         requestId: `mention:${message.id}:${person.id}`,
         title: `@${author} mencionou você em #${channel}`,
-        body: message.text.slice(0, 500),
+        body: kernel.redact(message.text).slice(0, 500),
       })
     })
 }
@@ -70,7 +70,7 @@ const sendTaskNotification = (kernel: Kernel, run: Run): void => {
         .query("SELECT text FROM messages WHERE thread_id = ? AND id = ?")
         .get(thread.id, run.requestMessageId) as { text: string } | null)
     : null
-  const title = (routine?.name || request?.text.trim().split("\n")[0] || thread.title).slice(0, 120)
+  const title = kernel.redact(routine?.name || request?.text.trim().split("\n")[0] || thread.title).slice(0, 120)
 
   recipients
     .filter((id) => people.some((person) => person.id === id))

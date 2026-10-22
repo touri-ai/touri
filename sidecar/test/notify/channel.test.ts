@@ -145,6 +145,19 @@ test("a person mention alerts only the named channel person with an excerpt and 
   ])
 })
 
+test("a known sensitive value is redacted before the mention excerpt is clipped", async () => {
+  const fixture = await getFixture()
+  const prefix = `@thiago ${"x".repeat(480)}`
+  const sensitiveValue = "private-value-".repeat(4)
+  fixture.host.kernel.addRedactionValue(sensitiveValue)
+
+  const delivered = fixture.waitForMessage()
+  fixture.insert(`${prefix}${sensitiveValue}`, "ana")
+  await delivered
+
+  expect(fixture.getNotes()).toMatchObject([{ kind: "mention", body: `${prefix}[REDACTED]` }])
+})
+
 test("a bot can mention a person; completed streaming updates and replay notify once", async () => {
   const fixture = await getFixture()
   const started = fixture.waitForMessage()
@@ -177,8 +190,12 @@ test.each(["user", "routine"] as const)(
   "%s task start alerts the owner and the manual requester once",
   async (trigger) => {
     const fixture = await getFixture()
+    const titlePrefix = `Montar mapa ${"x".repeat(98)}`
+    const sensitiveValue = "private-value-".repeat(4)
+    fixture.host.kernel.addRedactionValue(sensitiveValue)
+
     const requestDelivered = fixture.waitForMessage()
-    const request = fixture.insert("Montar mapa", "ana")
+    const request = fixture.insert(`${titlePrefix}${sensitiveValue}`, "ana")
     await requestDelivered
     const run: Run = {
       id: "task-run",
@@ -217,7 +234,9 @@ test.each(["user", "routine"] as const)(
       fixture
         .getNotes()
         .every(
-          (note) => note.kind === "task-started" && note.title === "Atlas começou uma tarefa em #mapas: Montar mapa",
+          (note) =>
+            note.kind === "task-started" &&
+            note.title === `Atlas começou uma tarefa em #mapas: ${titlePrefix}[REDACTED]`,
         ),
     ).toBe(true)
   },
