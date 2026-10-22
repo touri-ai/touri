@@ -245,16 +245,16 @@ const getActivityLabel = ({
   quietMs: number
   providerAt: number | null | undefined
 }): string => {
-  const lastContent = parts.findLast((part) => part.type === "text" || part.type === "reasoning")
-  if (state === "thinking" && lastContent?.type === "text" && lastContent.text)
-    return activityLabelFor("typing", parts, locale)
-
   if (run?.status === "queued") return getQueueLabel(run, locale)
   if (state === "waiting-approval") return activityLabelFor(state, parts, locale)
   if (slow) return t("A resposta está demorando. Você pode continuar esperando ou verificar a conexão.", {}, locale)
   if (preparingComputer) return t("Ligando o computador do bot…", {}, locale)
   if (quietMs >= 10_000 && activeToolFor(parts)) return t("A tarefa continua em execução.", {}, locale)
   if (quietMs >= 10_000 && providerAt) return t("Ainda aguardando a IA responder.", {}, locale)
+
+  const lastContent = parts.at(-1)
+  if (state === "thinking" && lastContent?.type === "text" && lastContent.text)
+    return activityLabelFor("typing", parts, locale)
 
   return activityLabelFor(state, parts, locale)
 }

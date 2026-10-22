@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
-import type { ApprovalPart, Message, MessagePart, ToolCallPart } from "@touri/contracts"
+import type { ApprovalPart, Message, MessagePart, Run, ToolCallPart } from "@touri/contracts"
 import { afterEach, expect, it } from "vitest"
 import { createMockApi } from "../src/api/mock"
 import { ActivityMark } from "../src/components/ActivityMark"
@@ -255,4 +255,31 @@ it("replaces preparation as soon as the first text arrives while the activity sn
 
   expect(screen.queryByText("Preparando a resposta…")).toBeNull()
   expect(screen.getByRole("status")).toHaveTextContent("Escrevendo")
+})
+
+it("keeps the slow-response status when a partial reply stops arriving", () => {
+  const startedAt = Date.now() - 31_000
+  const run: Run = {
+    id: "slow-run",
+    threadId: "thread",
+    botId: "bot",
+    provider: "codex",
+    trigger: "user",
+    requestMessageId: "request",
+    replyMessageId: "reply",
+    externalTurnId: null,
+    status: "running",
+    errorClass: null,
+    errorMessage: null,
+    usage: null,
+    routineRunId: null,
+    queuedAt: startedAt,
+    startedAt,
+    providerStartedAt: startedAt,
+    finishedAt: null,
+  }
+
+  render(<ActivityMark state="thinking" run={run} parts={[{ type: "text", text: "Olá!" }]} />)
+
+  expect(screen.getByRole("status")).toHaveTextContent("A resposta está demorando.")
 })
