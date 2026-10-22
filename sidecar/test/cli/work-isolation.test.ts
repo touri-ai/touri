@@ -194,6 +194,32 @@ test("a channel roster exposes only display identities to its members", async ()
   expect((await fixture.request("/people")).status).toBe(403)
 })
 
+test("a bot's responsible person belongs to its channel and can open a ping without gaining private chats", async () => {
+  const fixture = await getFixture()
+  fixture.database
+    .query("INSERT INTO group_members(group_id, bot_id, position) VALUES (?, ?, ?)")
+    .run("other-channel", "member-bot", 0)
+
+  const response = await fixture.request("/groups/other-channel/people")
+  const payload = (await response.json()) as { people: Array<{ id: string; handle: string }> }
+
+  expect(response.status).toBe(200)
+  expect(payload.people.find(({ id }) => id === fixture.personId)?.handle).toBeTruthy()
+  const plan = fixture.database
+    .query(`EXPLAIN QUERY PLAN SELECT DISTINCT gm.group_id AS id FROM
+    (SELECT id FROM bots WHERE responsible_person_id = ? AND archived_at IS NULL LIMIT 500) b
+    JOIN group_members gm ON gm.bot_id = b.id LIMIT 500`)
+    .all(fixture.personId) as Array<{ detail: string }>
+  expect(plan.some(({ detail }) => detail.includes("bots_responsible_person_active"))).toBe(true)
+  expect(plan.some(({ detail }) => detail.includes("group_members_bot"))).toBe(true)
+  expect((await fixture.request("/groups/other-channel/threads")).status).toBe(200)
+  expect((await fixture.request("/threads/owner-chat/messages")).status).toBe(403)
+
+  fixture.database.query("UPDATE bots SET archived_at = 1 WHERE id = 'member-bot'").run()
+
+  expect((await fixture.request("/groups/other-channel/people")).status).toBe(404)
+}, 20_000)
+
 const getFixture = async ({ completeBoot = false }: { completeBoot?: boolean } = {}) => {
   const root = await mkdtemp(join(tmpdir(), "touri-work-isolation-"))
   const authStore = await openAuthStore({ filename: join(root, "auth.db") })

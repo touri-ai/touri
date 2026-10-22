@@ -13,7 +13,14 @@ const stringValue = (value: unknown): string => (typeof value === "string" ? val
 
 export const createWorkAccess = ({ database, authStore }: { database: Database; authStore: AuthStore }) => {
   const channelIdsFor = (personId: string): Array<string> => {
-    const configured = authStore.getPersonChannelIds(personId)
+    const owned = database
+      .query(
+        `SELECT DISTINCT gm.group_id AS id FROM
+        (SELECT id FROM bots WHERE responsible_person_id = ? AND archived_at IS NULL LIMIT 500) b
+        JOIN group_members gm ON gm.bot_id = b.id LIMIT 500`,
+      )
+      .all(personId) as Array<{ id: string }>
+    const configured = Array.from(new Set([...authStore.getPersonChannelIds(personId), ...owned.map(({ id }) => id)]))
     if (configured.length === 0) return []
     const placeholders = configured.map(() => "?").join(",")
     const active = new Set(
