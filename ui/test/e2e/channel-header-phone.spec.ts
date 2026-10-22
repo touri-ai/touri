@@ -41,7 +41,7 @@ for (const width of [360, 390, 430]) {
     await composer.press("Enter")
     await page.setViewportSize({ width, height: 844 })
     const header = page.locator(".group-header")
-    const members = header.locator(".group-member-count")
+    const members = header.locator(".channel-members-button")
     await expect(members).toBeVisible()
     await page.evaluate(() => document.fonts.ready)
     await page.screenshot({ path: `${evidence}/channel-header-${width}.png` })

@@ -43,7 +43,8 @@ test("group actions send a parallel request and show a confirmed board on deskto
   const input = page.getByRole("textbox", { name: "Mensagem para Equipe", exact: true })
   await input.fill("Revisem o plano")
 
-  await page.getByRole("button", { name: "Perguntar a todos", exact: true }).click()
+  await page.getByRole("button", { name: "Ações do time", exact: true }).click()
+  await page.getByRole("menuitem", { name: "Perguntar a todos", exact: true }).click()
 
   await expect(input).toHaveValue("")
   await expect(
@@ -142,7 +143,7 @@ test("group actions send a parallel request and show a confirmed board on deskto
     return root
   })
   const panel = page.getByRole("complementary", { name: "Painel do canal Equipe", exact: true })
-  if (!(await panel.isVisible())) await page.getByRole("button", { name: "Painel do canal", exact: true }).click()
+  if (!(await panel.isVisible())) await page.getByRole("button", { name: /^Membros do canal:/ }).click()
   const board = panel.getByRole("region", { name: "Resultados do turno", exact: true })
   await expect(board.getByText("Plano aprovado na revisão")).toBeVisible()
   await expect(board.getByText("Raciocínio privado")).toHaveCount(0)

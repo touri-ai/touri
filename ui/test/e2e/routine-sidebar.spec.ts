@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test"
+import { openConversations } from "./home-navigation"
 
 test.use({ channel: "chromium", locale: "pt-BR", timezoneId: "America/Sao_Paulo" })
 
@@ -17,7 +18,7 @@ for (const [name, width, height] of [
     await page.goto("/test/e2e/routine-sidebar-harness.html?unread")
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
-    const conversations = page.getByRole("region", { name: "Conversas de mark" })
+    const conversations = await openConversations(page)
     const routine = conversations.getByRole("button", { name: /^Rotinas/ })
     const directory = process.env.TOURI_ROUTINE_SIDEBAR_SHOTS_DIR
 
@@ -29,6 +30,7 @@ for (const [name, width, height] of [
     await history.getByRole("button", { name: "Abrir conversa" }).last().click()
     await expect(page.locator(".message-assistant")).toContainText("Resumo pronto para conferir.")
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+    await openConversations(page)
 
     await expect(routine.locator(".sidebar-unread")).toHaveCount(0)
     await expect(page.locator(".thread-row.selected")).toContainText("28 hoje")
@@ -43,7 +45,7 @@ for (const [name, width, height] of [
     await page.goto("/test/e2e/routine-sidebar-harness.html?deleted&unread&runs=128")
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
-    const conversations = page.getByRole("region", { name: "Conversas de mark" })
+    const conversations = await openConversations(page)
     const routine = conversations.locator(".thread-row").filter({ hasText: "Rotina excluída" })
 
     await expect(conversations.locator(".thread-row")).toHaveCount(2)
@@ -52,6 +54,7 @@ for (const [name, width, height] of [
     await routine.click()
     await expect(page.locator(".message-assistant")).toContainText("Resumo pronto para conferir.")
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+    await openConversations(page)
     await expect(routine.locator(".sidebar-unread")).toHaveCount(0)
     const toggle = conversations.getByRole("button", { name: "Conversas de rotinas excluídas" })
     await toggle.click()
@@ -70,6 +73,7 @@ for (const [name, width, height] of [
     await oldest.click()
     await expect(page.locator(".message-assistant")).toContainText("Resumo pronto para conferir.")
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+    await openConversations(page)
 
     if ((await toggle.getAttribute("aria-expanded")) === "true") await toggle.click()
     await expect(toggle).toHaveAttribute("aria-expanded", "false")
@@ -85,7 +89,7 @@ for (const [name, width, height] of [
     await page.goto("/test/e2e/routine-sidebar-harness.html")
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
-    const conversations = page.getByRole("region", { name: "Conversas de mark" })
+    const conversations = await openConversations(page)
 
     await expect(conversations.locator(".thread-row")).toHaveCount(2)
     await expect(conversations.locator(".thread-row").first()).toContainText("Planejamento da semana")
@@ -103,6 +107,7 @@ for (const [name, width, height] of [
       page.locator(".message-assistant").getByText("Resumo pronto para conferir.", { exact: true }),
     ).toBeVisible()
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+    await openConversations(page)
 
     await expect(conversations.locator(".thread-row")).toHaveCount(2)
     await expect(conversations.locator(".thread-row.selected")).toContainText("28 hoje")
@@ -114,6 +119,7 @@ for (const [name, width, height] of [
     await page.goto("/test/e2e/routine-sidebar-harness.html?runs=60")
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+    await openConversations(page)
 
     await page.getByRole("button", { name: /^Rotinas/ }).click()
     const history = page.locator(".routine-run-history")
@@ -124,6 +130,7 @@ for (const [name, width, height] of [
     await history.getByRole("button", { name: "Abrir conversa" }).last().click()
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+    await openConversations(page)
 
     await expect(page.locator(".thread-row.selected")).toContainText("60 hoje")
   })
@@ -134,7 +141,7 @@ for (const [name, width, height] of [
     await page.goto("/test/e2e/routine-sidebar-harness.html?runs=128&otherRoutines")
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
-    const conversations = page.getByRole("region", { name: "Conversas de mark" })
+    const conversations = await openConversations(page)
     await conversations.getByRole("button", { name: /^Rotinas/ }).click()
     const history = page.locator(".routine-run-history")
 
@@ -147,6 +154,7 @@ for (const [name, width, height] of [
     await expect(history.getByRole("listitem")).toHaveCount(50)
     await history.getByRole("button", { name: "Histórico de execuções" }).click()
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+    await openConversations(page)
     await conversations.getByRole("button", { name: /^Rotinas/ }).click()
     await expect(history).toHaveAttribute("data-open", "true")
     await routineFilter.selectOption((await dailyRoutine.getAttribute("value")) ?? "")
@@ -171,6 +179,7 @@ for (const [name, width, height] of [
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     await expect(page.locator(".message-assistant")).toContainText("Resumo pronto para conferir.")
     if (name === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+    await openConversations(page)
 
     await expect(conversations.locator(".thread-row.selected")).toContainText("64 hoje")
   })

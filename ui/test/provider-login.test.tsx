@@ -11,6 +11,7 @@ import { ApiError } from "../src/errors"
 import { t } from "../src/i18n"
 import { useProviderLogin } from "../src/useProviderLogin"
 import { useWorkspace, type WorkspaceActions } from "../src/useWorkspace"
+import { chooseTeamAction } from "./workspaceNavigation"
 
 afterEach(() => vi.useRealTimers())
 const fixture = (state: ProviderLoginFlow["state"] = "idle") => {
@@ -627,7 +628,7 @@ it.each([
   render(<Harness />)
   await act(async () => {})
 
-  fireEvent.click(screen.getByRole("button", { name: label, exact: true }))
+  chooseTeamAction(label)
   await act(async () => {})
   expect(send).not.toHaveBeenCalled()
   f.setFlow({ provider: bot.provider, state: "ready" })

@@ -11,6 +11,7 @@ import {
 } from "../src/i18n"
 import { getSidebarDataByBot, getSidebarReadThreadIds, getSidebarThreads } from "../src/sidebarThreads"
 import { getRoutineSidebarFixture } from "./routine-sidebar-fixture"
+import { openConversations, openRoutines } from "./workspaceNavigation"
 
 afterEach(() => {
   cleanup()
@@ -42,7 +43,7 @@ it("folds every routine into one Rotinas row with a single unread total that ope
 
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
-  const conversations = screen.getByRole("region", { name: "Conversas de mark" })
+  const conversations = openConversations("mark")
   const routines = within(conversations).getByRole("button", { name: /^Rotinas/ })
 
   expect(within(conversations).queryByRole("button", { name: /Resumo diário|Outras notícias/ })).toBeNull()
@@ -61,7 +62,7 @@ it("opening a history result clears its routine group without clearing another r
 
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
-  const conversations = screen.getByRole("region", { name: "Conversas de mark" })
+  const conversations = openConversations("mark")
   const row = within(conversations).getByRole("button", { name: /^Rotinas/ })
   expect(row.querySelector(".sidebar-unread")).toHaveTextContent("9")
 
@@ -88,7 +89,7 @@ it("groups 128 deleted routine conversations and keeps every result reachable in
 
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
-  const conversations = screen.getByRole("region", { name: "Conversas de mark" })
+  const conversations = openConversations("mark")
   const routine = within(conversations).getByRole("button", { name: /Rotina excluída/ })
 
   expect(conversations.querySelectorAll(".thread-row")).toHaveLength(2)
@@ -133,7 +134,7 @@ it("groups 28 routine executions without burying ordinary conversations and open
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
-  const conversations = screen.getByRole("region", { name: "Conversas de mark" })
+  const conversations = openConversations("mark")
   const rows = conversations.querySelectorAll(".thread-row")
   expect(rows).toHaveLength(2)
   expect(rows[0]).toHaveTextContent("Planejamento da semana")
@@ -177,7 +178,7 @@ it("shows the last run date instead of a zero-today count for an idle routine", 
   render(<App kernel={{ services: { api: fixture.api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
-  const conversations = screen.getByRole("region", { name: "Conversas de mark" })
+  const conversations = openConversations("mark")
   const routineRow = within(conversations).getByRole("button", { name: /^Rotinas/ })
   const lastRunLabel = getRoutineRunSidebarDateLabel(latestRun.scheduledFor, "pt-BR", routine.timezone)
 
@@ -199,7 +200,7 @@ it("hides the zero-today suffix from an older task summary", async () => {
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
-  const conversations = screen.getByRole("region", { name: "Conversas de mark" })
+  const conversations = openConversations("mark")
   const taskRow = within(conversations).getByRole("button", { name: /^Tarefas Resumo diário/ })
 
   expect(taskRow).not.toHaveTextContent("0 hoje")
@@ -211,7 +212,7 @@ it("keeps routine conversations older than the first history page reachable", as
 
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
-  fireEvent.click(screen.getByRole("button", { name: /^Rotinas/ }))
+  fireEvent.click(within(openConversations("mark")).getByRole("button", { name: /^Rotinas/ }))
   await screen.findByRole("heading", { name: "Rotinas", exact: true })
   const history = document.querySelector(".routine-run-history")
   if (!(history instanceof HTMLElement)) throw new Error("Missing run history")
@@ -239,7 +240,7 @@ it("opens selected routine history across three bounded pages despite newer runs
 
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
-  const conversations = screen.getByRole("region", { name: "Conversas de mark" })
+  const conversations = openConversations("mark")
   fireEvent.click(within(conversations).getByRole("button", { name: /^Rotinas/ }))
   await screen.findByRole("heading", { name: "Rotinas", exact: true })
   const history = document.querySelector(".routine-run-history")
@@ -309,10 +310,10 @@ it("reopens history from the sidebar after it was manually collapsed", async () 
 
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
-  fireEvent.click(screen.getByRole("button", { name: /^Rotinas/ }))
+  fireEvent.click(within(openConversations("mark")).getByRole("button", { name: /^Rotinas/ }))
   const summary = await screen.findByRole("button", { name: "Histórico de execuções" })
   fireEvent.click(summary)
-  fireEvent.click(screen.getByRole("button", { name: /^Rotinas/ }))
+  fireEvent.click(within(openConversations("mark")).getByRole("button", { name: /^Rotinas/ }))
 
   expect(summary.closest(".ds-disclosure")).toHaveAttribute("data-open", "true")
 })
@@ -463,20 +464,17 @@ it("keeps results grouped immediately after deletion while old run metadata is s
   expect(rows[1]?.thread.id).toBe("sidebar-thread-7")
 })
 
-it("shows routine run time in the routine timezone in the sidebar", async () => {
+it("shows routine run time in the routine timezone in the conversation and its history", async () => {
   const api = createMockApi({ scenario: "routine-conversation" })
 
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
-  const row = document.querySelector(".thread-row.selected")
 
-  expect(row).toHaveTextContent("16:04")
-  expect(row?.querySelector(".thread-meta")).toHaveTextContent("16:04")
+  expect(screen.queryByRole("button", { name: "Conversas de mark" })).toBeNull()
   expect(document.querySelector(".routine-run-marker time")).toHaveTextContent("16:04")
   expect(document.querySelector(".routine-run-marker time")?.getAttribute("title")).toContain("16:04")
 
-  const conversations = screen.getByRole("region", { name: "Conversas de mark" })
-  fireEvent.click(within(conversations).getByRole("button", { name: /^Rotinas/ }))
+  openRoutines("mark")
   await screen.findByRole("heading", { name: "Rotinas" })
   const history = document.querySelector(".routine-run-history")
 

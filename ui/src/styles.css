@@ -4079,6 +4079,10 @@ a {
   padding: var(--space-8) var(--space-8);
   text-align: start;
 }
+/* Text-only actions (channel and team menus) have no icon column to squeeze into. */
+.bot-context-menu button:not(:has(.panel-icon)) {
+  grid-template-columns: minmax(0, 1fr);
+}
 .bot-context-menu .panel-icon {
   width: 16px;
   height: 16px;

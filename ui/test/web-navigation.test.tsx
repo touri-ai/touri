@@ -1,8 +1,9 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
 import { parseDeepLink } from "../src/deepLink"
+import { openConversations } from "./workspaceNavigation"
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }))
 
@@ -41,7 +42,7 @@ it("replaces the initial entry, pushes bot/thread changes and ignores repeated s
   selectBot("bot-onb")
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
   await waitFor(() => expect(push).toHaveBeenCalledTimes(1))
-  fireEvent.click(screen.getByRole("button", { name: /Another conversation/ }))
+  fireEvent.click(within(openConversations("onb")).getByRole("button", { name: /^Another conversation/ }))
   await locationIs("bot-onb", thread.id)
   expect(push).toHaveBeenCalledTimes(2)
   selectBot("bot-onb")
@@ -62,7 +63,7 @@ it("restores a thread-only URL over saved state and keeps its canonical link on 
   const first = render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
   await locationIs("bot-onb", thread.id)
-  expect(screen.getByRole("button", { name: /Shared conversation/ })).toHaveClass("selected")
+  expect(within(openConversations("onb")).getByRole("button", { name: /^Shared conversation/ })).toHaveClass("selected")
   expect(window.location.hash).toBe("#chat")
   expect(new URLSearchParams(window.location.search).get("mode")).toBe("web")
   expect(window.history.state).toMatchObject({ custom: true })
@@ -70,7 +71,7 @@ it("restores a thread-only URL over saved state and keeps its canonical link on 
   first.unmount()
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
-  expect(screen.getByRole("button", { name: /Shared conversation/ })).toHaveClass("selected")
+  expect(within(openConversations("onb")).getByRole("button", { name: /^Shared conversation/ })).toHaveClass("selected")
   await locationIs("bot-onb", thread.id)
   expect(push).not.toHaveBeenCalled()
 })

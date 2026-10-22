@@ -106,10 +106,12 @@ describe("channel mentions", () => {
     const { input, send } = getComposer()
 
     await user.type(input, "revisem")
-    await user.click(screen.getByRole("button", { name: "Perguntar a todos" }))
+    await user.click(screen.getByRole("button", { name: "Ações do time" }))
+    await user.click(screen.getByRole("menuitem", { name: "Perguntar a todos" }))
 
     expect(send).toHaveBeenLastCalledWith("@Codador @Revisor revisem", null, [], "ask_all")
-    await user.click(screen.getByRole("button", { name: "Pedir resumo do time" }))
+    await user.click(screen.getByRole("button", { name: "Ações do time" }))
+    await user.click(screen.getByRole("menuitem", { name: "Pedir resumo do time" }))
     expect(send).toHaveBeenLastCalledWith(expect.stringMatching(/^@Revisor /), null, [], "summarize")
   })
 

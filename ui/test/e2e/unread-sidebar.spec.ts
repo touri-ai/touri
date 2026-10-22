@@ -23,8 +23,9 @@ layouts.forEach(({ name, width, height }) => {
       const mark = sidebar.locator('[data-bot-entry="bot-mark"]')
       await page.evaluate(() => document.fonts.ready)
 
+      // Mark's only conversation is open, so its row shows no unread count and no list of other conversations.
       await expect(mark.locator(".bot-row .sidebar-unread")).toHaveCount(0)
-      await expect(mark.getByRole("img", { name: "2 mensagens não lidas" })).toBeVisible()
+      await expect(mark.getByRole("button", { name: "Conversas de mark", exact: true })).toHaveCount(0)
       await mkdir(output, { recursive: true })
       await sidebar.screenshot({ path: `${output}/expanded-${name}-${theme}.png` })
 

@@ -7,6 +7,7 @@ import { Sidebar } from "../src/components/BotSidebar"
 import { SettingsModal } from "../src/components/Modals"
 import { getRoutineRunSidebarDateLabel, t } from "../src/i18n"
 import { readWorkspaceState, saveWorkspaceState } from "../src/workspaceState"
+import { openConversations } from "./workspaceNavigation"
 
 afterEach(() => {
   cleanup()
@@ -165,7 +166,7 @@ it.each([30, 128])("keeps all %i grouped task conversations reachable in bounded
     selectedThreadId: main.id,
     onSelectThread,
   })
-  const conversations = screen.getByRole("region", { name: "Conversas de alfa" })
+  const conversations = openConversations("alfa")
   const toggle = within(conversations).getByRole("button", { name: "Histórico de tarefas de lead.reply" })
 
   expect(conversations.querySelectorAll(".thread-row")).toHaveLength(2)
@@ -206,19 +207,24 @@ it("keeps only hidden unread messages on an expanded bot and restores its total 
   const bot = bots[0]
   const baseThread = threads[0]
   if (!bot || !baseThread) throw new Error("Missing unread fixture")
-  const visible = makeThread(baseThread, "visible-thread", bot.id, { unread: 2 })
+  const visible = makeThread(baseThread, "visible-thread", bot.id, { unread: 2, updatedAt: T0 + 1 })
+  const older = makeThread(baseThread, "older-thread", bot.id, { unread: 1 })
   const archived = makeThread(baseThread, "archived-thread", bot.id, { unread: 3, archivedAt: T0 })
   const grouped = makeThread(baseThread, "group-thread", bot.id, { unread: 4, groupId: "test-group" })
+  renderSidebar({ bots: [bot], threads: [visible, older, archived, grouped], selectedBotId: bot.id })
 
-  const view = renderSidebar({ bots: [bot], threads: [visible, archived, grouped], selectedBotId: bot.id })
+  expect(screen.getByRole("img", { name: "10 mensagens não lidas" })).toBeVisible()
+  expect(document.querySelector(".bot-thread-tree")).toBeNull()
+
+  const conversations = openConversations("alfa")
 
   expect(screen.getByRole("img", { name: "7 mensagens não lidas" })).toBeVisible()
-  expect(screen.getByRole("img", { name: "2 mensagens não lidas" })).toBeVisible()
-  expect(document.querySelectorAll(".thread-row")).toHaveLength(1)
+  expect(within(conversations).getByRole("img", { name: "2 mensagens não lidas" })).toBeVisible()
+  expect(conversations.querySelectorAll(".thread-row")).toHaveLength(2)
 
-  view.update({ selectedBotId: null })
+  fireEvent.click(screen.getByRole("button", { name: "Conversas de alfa" }))
 
-  expect(screen.getByRole("img", { name: "9 mensagens não lidas" })).toBeVisible()
+  expect(screen.getByRole("img", { name: "10 mensagens não lidas" })).toBeVisible()
   expect(document.querySelector(".bot-thread-tree")).toBeNull()
 })
 
@@ -238,10 +244,15 @@ it("keeps unread counts visible when the conversation is beyond the first five r
   renderSidebar({ bots: [bot], threads: conversations, selectedBotId: bot.id, selectedThreadId })
 
   expect(within(entry(bot.id)).getByRole("img", { name: "1 mensagem não lida" })).toBeVisible()
-  const showMore = screen.getByRole("button", { name: /^Mostrar mais 2/ })
-  fireEvent.click(showMore)
+  const conversationTree = openConversations("alfa")
 
-  const conversationTree = screen.getByRole("region", { name: "Conversas de alfa" })
+  expect(conversationTree.querySelectorAll(".thread-row")).toHaveLength(5)
+  expect(within(entry(bot.id)).getByRole("img", { name: "1 mensagem não lida" })).toBeVisible()
+  const showAll = within(conversationTree).getByRole("button", { name: "Ver todas as 7 conversas" })
+  expect(showAll).toHaveTextContent("Ver todas")
+  fireEvent.click(showAll)
+
+  expect(conversationTree.querySelectorAll(".thread-row")).toHaveLength(7)
   expect(within(conversationTree).getByRole("img", { name: "1 mensagem não lida" })).toBeVisible()
 })
 
@@ -293,9 +304,10 @@ it.each([
     updatedAt: timestamp,
   })
 
+  const older = makeThread(baseThread, "thread-older", bot.id, { createdAt: timestamp - 1, updatedAt: timestamp - 1 })
   renderSidebar({
     bots: [bot],
-    threads: [thread],
+    threads: [thread, older],
     selectedBotId: bot.id,
     routineRuns:
       kind === "routine"
@@ -316,10 +328,11 @@ it.each([
         : [],
   })
 
+  const conversations = openConversations("alfa")
   const row =
     kind === "routine"
-      ? screen.getByRole("button", { name: /^Rotinas/ })
-      : screen.getByRole("button", { name: /Novas mensagens/ })
+      ? within(conversations).getByRole("button", { name: /^Rotinas/ })
+      : within(conversations).getByRole("button", { name: /Novas mensagens/ })
   const titleElement = row.querySelector("strong")
   if (kind === "routine") {
     expect(titleElement).toHaveTextContent("Rotinas")
@@ -536,9 +549,10 @@ it("shows interrupted tasks only while pending and leaves the count on the notif
 
   view.update({ recoveryCount: 1, notifications: [failure] })
 
-  const recovery = screen.getByRole("button", { name: "Tarefas interrompidas", exact: true })
+  const recovery = screen.getByRole("button", { name: "Tarefas interrompidas: 1", exact: true })
   expect(recovery.querySelector("svg")).not.toBeNull()
-  expect(recovery).not.toHaveTextContent(/\d/)
+  expect(recovery).toHaveTextContent("1")
+  expect(recovery.closest(".sidebar-user-row")).not.toBeNull()
   expect(screen.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
   expect(screen.getAllByText("1", { selector: ".notification-badge" })).toHaveLength(1)
 })

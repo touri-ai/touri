@@ -31,10 +31,17 @@ test("phone navigation traps focus and reaches conversations, search, creation a
   expect(accessibility.violations.filter((item) => ["serious", "critical"].includes(item.impact ?? ""))).toEqual([])
   await page.screenshot({ path: "test-results/mobile-navigation-drawer.png" })
 
-  await drawer.getByRole("button", { name: "Nova conversa", exact: true }).click()
+  const markActions = drawer.getByRole("button", { name: "Ações de mark", exact: true })
+  await drawer
+    .locator(".sidebar-row")
+    .filter({ has: page.getByRole("button", { name: "Ações de mark", exact: true }) })
+    .hover()
+  await markActions.click()
+  await page.getByRole("menuitem", { name: "Nova conversa", exact: true }).click()
   await expect(drawer).not.toBeVisible()
   await expect(page.locator('[data-message-id="m2"]')).toHaveCount(0)
   await menu.click()
+  await drawer.getByRole("button", { name: "Conversas de mark", exact: true }).click()
   await drawer.locator(".thread-row").filter({ hasText: "Campaign review" }).click()
   await expect(drawer).not.toBeVisible()
   await expect(menu).toBeFocused()

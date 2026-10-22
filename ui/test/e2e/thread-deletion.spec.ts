@@ -3,6 +3,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
+import { chooseBotAction, openConversations } from "./home-navigation"
 
 test.use({ channel: "chromium" })
 test.describe.configure({ timeout: 90_000 })
@@ -20,7 +21,7 @@ for (const width of [1440, 390]) {
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
       await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
       if (width === 390) await page.getByRole("button", { name: "Abrir menu" }).click()
-      const conversations = page.getByRole("region", { name: "Conversas de mark" })
+      const conversations = await openConversations(page)
       const row = conversations.locator(".thread-row").filter({ hasText: "Eventos de leads" })
       const getEvidenceTarget = (name: string) => {
         if (name === "after-confirmation") return page.getByRole("alertdialog")
@@ -73,6 +74,8 @@ for (const width of [1440, 390]) {
       if (width === 390) await page.getByRole("button", { name: "Fechar menu", exact: true }).click()
       await page.getByRole("button", { name: "Desfazer", exact: true }).click()
       if (width === 390) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+      // The phone drawer remounts the sidebar, so its conversation list starts collapsed again.
+      if (width === 390) await openConversations(page)
       await expect(row).toBeVisible()
       await menuButton.click()
       await page.getByRole("menuitem", { name: "Apagar conversa…" }).click()
@@ -89,7 +92,7 @@ for (const width of [1440, 390]) {
 test("archived messages remain searchable and restore when opened", async ({ page }) => {
   await page.goto("/test/e2e/thread-deletion-harness.html?archived=1")
   await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
-  await page.getByRole("button", { name: /Arquivadas/ }).click()
+  await chooseBotAction(page, "Arquivadas")
   await expect(page.getByRole("button", { name: "Abrir conversa arquivada Eventos de leads" })).toBeVisible()
   await mkdir(evidenceDirectory, { recursive: true })
   await page.locator(".archived-thread-list").screenshot({ path: join(evidenceDirectory, "archive-list.png") })
@@ -103,8 +106,8 @@ test("archived messages remain searchable and restore when opened", async ({ pag
     .screenshot({ path: join(evidenceDirectory, "archive-search.png") })
   await result.click()
 
-  await expect(page.locator(".thread-row.selected")).toContainText("Eventos de leads")
   await expect(page.getByText("Uma atualização automática de exemplo.", { exact: true })).toBeVisible()
+  await expect((await openConversations(page)).locator(".thread-row.selected")).toContainText("Eventos de leads")
   await page
     .locator('[data-message-id="message-lead-event"]')
     .screenshot({ path: join(evidenceDirectory, "archive-restored.png") })
@@ -123,5 +126,6 @@ test("archived conversation titles remain searchable after reopening", async ({ 
     .screenshot({ path: join(evidenceDirectory, "archive-title-search.png") })
   await result.click()
 
-  await expect(page.locator(".thread-row.selected")).toContainText("Eventos de leads")
+  await expect(page.getByRole("button", { name: "Conversas de mark", exact: true })).toBeVisible()
+  await expect((await openConversations(page)).locator(".thread-row.selected")).toContainText("Eventos de leads")
 })

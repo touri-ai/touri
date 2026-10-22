@@ -66,7 +66,7 @@
 }
 .work-mode-dms .bot-entry {
   content-visibility: auto;
-  contain-intrinsic-size: auto 44px;
+  contain-intrinsic-size: auto 52px;
 }
 .r8-sidebar .sidebar-mode-panel .bot-groups {
   flex: initial;
@@ -548,28 +548,6 @@
     margin-left: auto;
   }
 }
-.sidebar-recovery {
-  display: flex;
-  align-items: center;
-  gap: var(--space-12);
-  width: calc(100% - 24px);
-  min-height: var(--menu-row-height);
-  margin: var(--space-4) var(--space-12) var(--space-8);
-  padding: var(--space-8) var(--space-8);
-  border: 0;
-  border-radius: var(--menu-corner);
-  background: transparent;
-  color: var(--text-2);
-  font-size: var(--fs-meta);
-  text-align: start;
-}
-.sidebar-recovery:hover {
-  background: var(--surface-control);
-  color: var(--text);
-}
-.sidebar-recovery > span {
-  flex: 1;
-}
 .r8-sidebar .bot-entry[data-reordering] {
   position: relative;
   z-index: 1;
@@ -640,7 +618,6 @@
 .r8-sidebar
   :is(
     .sidebar-icon-button,
-    .sidebar-invite,
     .notification-bell,
     .user-chip,
     .bot-settings,
@@ -656,7 +633,8 @@
     .thread-list-tool,
     .archived-threads-toggle,
     .sidebar-connect,
-    .sidebar-recovery,
+    .sidebar-recovery-badge,
+    .bot-thread-toggle,
     .sidebar-advanced > button
   ) {
   min-height: var(--sidebar-target-size);
@@ -1107,4 +1085,99 @@
     min-width: var(--touch-target-size);
     min-height: var(--touch-target-size);
   }
+}
+
+/* Row anatomy shared by bots, direct messages and channels: avatar, name, time, one gray preview line. */
+.r8-sidebar .sidebar-row-main:has(.bot-row-text) {
+  padding-block: var(--space-8);
+}
+.r8-sidebar .bot-row .sidebar-row-leading,
+.r8-sidebar .group-select .sidebar-row-leading {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+}
+.r8-sidebar .bot-row-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.r8-sidebar .bot-row-top {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  min-width: 0;
+}
+.r8-sidebar .bot-row-time {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--text-2);
+  font-size: var(--fs-caption);
+  font-variant-numeric: tabular-nums;
+}
+.r8-sidebar .bot-row-text .bot-preview {
+  display: block;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: var(--fs-caption);
+  line-height: 1.3;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+}
+
+/* The chevron is the only way to open a bot's other conversations; the row itself just opens the bot. */
+.r8-sidebar .bot-thread-toggle {
+  display: grid;
+  place-items: center;
+  width: var(--sidebar-row-height);
+  min-width: var(--sidebar-row-height);
+  height: var(--sidebar-row-height);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+}
+.r8-sidebar .bot-thread-toggle:hover,
+.r8-sidebar .bot-thread-toggle:focus-visible {
+  background: var(--surface-control-raised);
+  color: var(--text);
+}
+.r8-sidebar .bot-thread-toggle > svg {
+  width: 14px;
+  height: 14px;
+  transition: transform var(--motion-fast) ease;
+}
+.r8-sidebar .bot-thread-toggle[aria-expanded="true"] > svg {
+  transform: rotate(90deg);
+}
+
+/* Interrupted tasks: a small badge beside the bell, only while there are any. */
+.r8-sidebar .sidebar-recovery-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  min-width: var(--sidebar-target-size);
+  margin-left: auto;
+  padding: 0 var(--space-8);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--warning);
+  font-size: var(--fs-caption);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-semibold);
+}
+.r8-sidebar .sidebar-recovery-badge:hover,
+.r8-sidebar .sidebar-recovery-badge:focus-visible {
+  background: var(--surface-control);
+}
+.r8-sidebar .sidebar-recovery-badge > svg {
+  width: 14px;
+  height: 14px;
 }

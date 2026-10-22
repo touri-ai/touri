@@ -246,7 +246,8 @@ describe("group coordination", () => {
     const input = await screen.findByRole("textbox", { name: "Mensagem para Equipe" })
     fireEvent.change(input, { target: { value: "Revisem este plano" } })
 
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Perguntar a todos", exact: true })))
+    fireEvent.click(screen.getByRole("button", { name: "Ações do time" }))
+    await act(async () => fireEvent.click(screen.getByRole("menuitem", { name: "Perguntar a todos" })))
 
     expect(api.calls.find((call) => call.route === "POST /threads/:id/messages")?.input).toMatchObject({
       text: "@mark @onb Revisem este plano",
@@ -256,7 +257,8 @@ describe("group coordination", () => {
       "Coloquei sua solicitação na fila local. Vou manter o contexto da conversa, e o próximo passo está pronto.",
     )
     fireEvent.change(input, { target: { value: "Meu próximo pedido" } })
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Pedir resumo do time", exact: true })))
+    fireEvent.click(screen.getByRole("button", { name: "Ações do time" }))
+    await act(async () => fireEvent.click(screen.getByRole("menuitem", { name: "Pedir resumo do time" })))
     expect(api.calls.filter((call) => call.route === "POST /threads/:id/messages").at(-1)?.input).toMatchObject({
       groupAction: "summarize",
       text: expect.stringMatching(/^@mark /),

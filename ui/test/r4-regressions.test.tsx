@@ -10,6 +10,7 @@ import { BotCreateModal, BotSettingsModal } from "../src/components/Modals"
 import { ApiError, userFacingError } from "../src/errors"
 import { t, threadTitle } from "../src/i18n"
 import { useWorkspace, type WorkspaceActions } from "../src/useWorkspace"
+import { openConversations } from "./workspaceNavigation"
 
 afterEach(() => {
   cleanup()
@@ -338,7 +339,7 @@ describe("r4 P0/P1 recovery", () => {
     first.unmount()
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("tab", { name: "Logs" })
-    expect(screen.getByRole("button", { name: /Última conversa/ })).toHaveClass("selected")
+    expect(within(openConversations("onb")).getByRole("button", { name: /^Última conversa/ })).toHaveClass("selected")
   })
 
   it("uses Portuguese plurals and localizes imported date titles", () => {

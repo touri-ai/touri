@@ -1,4 +1,4 @@
-import type { Message, NotificationRecord, Run } from "@touri/contracts"
+import type { Message, NotificationRecord, Run, Thread } from "@touri/contracts"
 import { isResolvedNotification, reconcileApprovalNotifications } from "./approvalState"
 
 const ATTENTION_KINDS: ReadonlyArray<NotificationRecord["kind"]> = [
@@ -80,6 +80,20 @@ export const pendingNotifications = (
     .sort((left, right) => right.createdAt - left.createdAt || right.id - left.id)
 
 export const countAttention = (items: Array<NotificationRecord>): number => pendingNotifications(items).length
+
+/** Sidebar row time: the clock for today, then "ontem" or a short date. */
+export const getSidebarRowTime = (timestamp: number, now = Date.now()): string => {
+  if (!timestamp) return ""
+
+  const date = new Date(timestamp)
+  if (date.toDateString() !== new Date(now).toDateString()) return relativeThreadDate(timestamp, now)
+
+  return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+}
+
+/** The newest update among a bot's or channel's conversations; 0 when there is none. */
+export const getLastActivityAt = (threads: ReadonlyArray<Thread>): number =>
+  threads.reduce((latest, thread) => Math.max(latest, thread.updatedAt), 0)
 
 export const relativeThreadDate = (timestamp: number, now = Date.now()): string => {
   const date = new Date(timestamp)

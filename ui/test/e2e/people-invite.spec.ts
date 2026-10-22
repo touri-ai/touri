@@ -40,6 +40,8 @@ for (const theme of ["light", "dark"] as const) {
     )
 
     await page.goto(currentServer.serverUrl)
+    // Inviting people belongs to Work, next to the channels.
+    await page.getByRole("tab", { name: /^Work,/ }).click()
     await page.getByRole("button", { name: "Convidar pessoa", exact: true }).first().click()
     const dialog = page.getByRole("dialog", { name: "Convidar pessoa", exact: true })
     await dialog.getByLabel("Nome", { exact: true }).fill("Ana")

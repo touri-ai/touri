@@ -8,7 +8,7 @@ import groupE2eSource from "./e2e/groups.spec.ts?raw"
 
 const openGroupPanel = (name: string): HTMLElement => {
   if (!screen.queryByRole("complementary", { name: `Painel do canal ${name}` }))
-    fireEvent.click(screen.getByRole("button", { name: "Painel do canal" }))
+    fireEvent.click(screen.getByRole("button", { name: /^Membros do canal:/ }))
   return screen.getByRole("complementary", { name: `Painel do canal ${name}` })
 }
 
@@ -23,7 +23,7 @@ describe("Grupos", () => {
     const createGroup = within(groups).getByRole("button", { name: "Novo canal" })
     expect(createGroup).toBeVisible()
     expect(createGroup).toHaveTextContent("+")
-    expect(groups.querySelector(".group-sidebar-heading")).toHaveTextContent(/^Canais\s*\+$/)
+    expect(groups.querySelector(".group-sidebar-heading")).toHaveTextContent(/^Canais\s*(\+ Convidar)?\s*\+$/)
     expect(within(groups).getByText("Nenhum canal ainda")).toBeVisible()
     expect(within(groups).getByText("Canais reúnem bots e pessoas em torno de um assunto.")).toBeVisible()
     expect(within(groups).getByRole("button", { name: "Criar canal" })).toBeVisible()
@@ -97,7 +97,7 @@ describe("Grupos", () => {
     fireEvent.click(within(screen.getByRole("region", { name: "Canais" })).getByRole("button", { name: /^Produto/ }))
     await screen.findByRole("textbox", { name: "Mensagem para Produto" })
     if (!screen.queryByRole("complementary", { name: panelName, exact: true }))
-      fireEvent.click(screen.getByRole("button", { name: "Painel do canal" }))
+      fireEvent.click(screen.getByRole("button", { name: /^Membros do canal:/ }))
     const panel = screen.getByRole("complementary", { name: panelName, exact: true })
     expect(within(panel).getByRole("list", { name: "Membros do canal" })).toHaveTextContent("mark")
     expect(within(panel).getByText("Coordenador", { exact: true })).toBeVisible()
@@ -140,8 +140,10 @@ describe("Grupos", () => {
     expect(within(panel).queryByRole("button", { name: "Preview do projeto" })).toBeNull()
     expect(screen.queryByRole("complementary", { name: "Painel de mark" })).toBeNull()
     fireEvent.click(within(panel).getByRole("button", { name: "Fechar painel do canal" }))
-    fireEvent.click(screen.getByRole("button", { name: "Painel do canal" }))
-    expect(screen.getByRole("complementary", { name: "Painel do canal Equipe QA" })).toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: /^Membros do canal:/ }))
+    const channelPanel = screen.getByRole("complementary", { name: "Painel do canal Equipe QA" })
+    expect(channelPanel).toBeVisible()
+    expect(within(channelPanel).getByText("Os bots só respondem quando você os chama com @nome.")).toBeVisible()
   })
 
   it("creates a group, completes @mentions with keyboard, edits membership and opens own conversations", async () => {
@@ -158,7 +160,7 @@ describe("Grupos", () => {
     fireEvent.click(within(modal).getByRole("button", { name: "Criar canal" }))
     const composer = await screen.findByRole("textbox", { name: "Mensagem para Produto" })
     const header = within(document.querySelector(".group-header") as HTMLElement)
-    expect(header.getByText("2 bots · mark coordena", { exact: true })).toBeVisible()
+    expect(header.getByRole("button", { name: "Membros do canal: 2 bots" })).toBeVisible()
     const payload = api.calls.find((c) => c.route === "POST /groups")?.input
     expect(payload).toMatchObject({ name: "Produto", memberIds: ["bot-mark", "bot-onb"], coordinatorBotId: "bot-mark" })
     fireEvent.focus(composer)
@@ -167,18 +169,21 @@ describe("Grupos", () => {
     fireEvent.keyDown(composer, { key: "Enter" })
     expect(composer).toHaveValue("@onb ")
     expect(api.calls.filter((c) => c.route === "POST /threads/:id/messages")).toHaveLength(0)
-    fireEvent.click(screen.getByRole("button", { name: "Editar canal" }))
+    fireEvent.click(header.getByRole("button", { name: "Ações do canal Produto" }))
+    fireEvent.click(screen.getByRole("menuitem", { name: "Editar canal" }))
     const edit = screen.getByRole("dialog", { name: "Editar canal" })
     fireEvent.click(within(edit).getByLabelText("mark"))
     expect(within(edit).getByLabelText("Coordenador do canal")).toHaveValue("")
     fireEvent.click(within(edit).getByRole("button", { name: "Salvar canal" }))
     await screen.findByRole("textbox", { name: "Mensagem para Produto" })
-    expect(header.getByText("1 bot", { exact: true })).toBeVisible()
+    expect(header.getByRole("button", { name: "Membros do canal: 1 bot" })).toBeVisible()
     expect(api.calls.find((c) => c.route === "PATCH /groups/:id")?.input).toMatchObject({
       memberIds: ["bot-onb"],
       coordinatorBotId: null,
     })
-    fireEvent.click(screen.getByRole("button", { name: "Ações do canal Produto" }))
+    fireEvent.click(
+      within(screen.getByRole("region", { name: "Canais" })).getByRole("button", { name: "Ações do canal Produto" }),
+    )
     fireEvent.click(screen.getByRole("menuitem", { name: "Nova conversa" }))
     await within(screen.getByRole("region", { name: "Canais" })).findByRole("button", {
       name: "Nova conversa",
@@ -224,8 +229,7 @@ describe("Grupos", () => {
     })
     const deleted = await within(row as HTMLElement).findByRole("img", { name: "Membro excluído: onb" })
     const header = within(document.querySelector(".group-header") as HTMLElement)
-    expect(header.getByText("1 bot · mark coordena", { exact: true })).toBeVisible()
-    expect(header.getByText("1 bot · mark coordena", { exact: true })).toBeVisible()
+    expect(header.getByRole("button", { name: "Membros do canal: 1 bot" })).toBeVisible()
     expect(deleted.querySelector(".tb-avatar")).toHaveAttribute("data-bot-id", "bot-onb")
     expect(row?.querySelector('[data-bot-id="bot-mark"]')).toBeNull()
     expect(row?.querySelector(".message-role")).toHaveTextContent("onb")

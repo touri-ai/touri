@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs"
 import { resolve } from "node:path"
 import { expect, test } from "@playwright/test"
+import { chooseChannelAction } from "./home-navigation"
 
 const evidence =
   process.env.TOURI_GROUP_EVIDENCE_DIR ?? resolve(import.meta.dirname, "../../test-results/group-member-count")
@@ -37,25 +38,27 @@ test("group header updates its visible and accessible member count", async ({ pa
     .getByRole("button", { name: /^Equipe/ })
     .click()
   const header = page.locator(".group-header")
-  await expect(header.getByText("2 bots", { exact: true })).toBeVisible()
+  await expect(header.getByRole("button", { name: "Membros do canal: 2 bots", exact: true })).toBeVisible()
   await expect(header.locator(".group-header-members")).toHaveCount(0)
-  await expect(header.getByRole("button")).toHaveCount(3)
-  await expect(header.getByRole("button", { name: "Convidar pessoa", exact: true })).toBeVisible()
+  await expect(header.getByRole("button")).toHaveCount(2)
+  await header.getByRole("button", { name: "Ações do canal Equipe", exact: true }).click()
+  await expect(page.getByRole("menuitem", { name: "Convidar pessoa", exact: true })).toBeVisible()
+  await page.keyboard.press("Escape")
   await page.evaluate(() => document.fonts.ready)
   await header.screenshot({ path: `${evidence}/after-two.png`, animations: "disabled" })
-  await header.getByRole("button", { name: "Editar canal", exact: true }).click()
+  await chooseChannelAction(page, "Equipe", "Editar canal")
   const dialog = page.getByRole("dialog", { name: "Editar canal" })
   await dialog.getByRole("checkbox", { name: "Lia", exact: true }).uncheck()
   await dialog.getByRole("button", { name: "Salvar canal", exact: true }).click()
-  await expect(header.getByText("1 bot", { exact: true })).toBeVisible()
+  await expect(header.getByRole("button", { name: "Membros do canal: 1 bot", exact: true })).toBeVisible()
   await expect(header.locator(".group-header-members")).toHaveCount(0)
-  await expect(header.getByRole("button")).toHaveCount(3)
+  await expect(header.getByRole("button")).toHaveCount(2)
   await header.screenshot({ path: `${evidence}/after-one.png`, animations: "disabled" })
 
-  await header.getByRole("button", { name: "Editar canal", exact: true }).click()
+  await chooseChannelAction(page, "Equipe", "Editar canal")
   await dialog.getByLabel("Nome do canal").fill("Equipe de planejamento e atendimento para novos projetos")
   await dialog.getByRole("button", { name: "Salvar canal", exact: true }).click()
   await page.setViewportSize({ width: 375, height: 800 })
-  await expect(header.getByText("1 bot", { exact: true })).toBeVisible()
+  await expect(header.getByRole("button", { name: "Membros do canal: 1 bot", exact: true })).toBeVisible()
   expect(await header.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0)
 })

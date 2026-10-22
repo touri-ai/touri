@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises"
 import { expect, test } from "@playwright/test"
-import { openGlobalPage } from "./home-navigation"
+import { openConversations, openGlobalPage } from "./home-navigation"
 
 test.use({ channel: "chromium" })
 const phase = process.env.R8_SIDEBAR_PHASE ?? "after"
@@ -9,6 +9,8 @@ const output = "../docs/qa/r8/sidebar"
 for (const width of [1440, 1100]) {
   for (const theme of ["light", "dark"]) {
     test(`${phase}: sidebar ${theme} ${width}`, async ({ page }) => {
+      // Sidebar, notifications, search, global pages and bot switching run in one flow.
+      test.setTimeout(45_000)
       await page.setViewportSize({ width, height: 900 })
       await page.emulateMedia({ reducedMotion: "reduce" })
       await page.clock.setFixedTime(new Date("2026-10-13T15:00:00Z"))
@@ -31,6 +33,7 @@ for (const width of [1440, 1100]) {
         await sidebar.locator("#sidebar-mode-panel-bots .bot-groups").evaluate((element) => {
           element.scrollTop = 0
         })
+        await openConversations(page, "touri-qa")
         await expect(sidebar.locator(".thread-row.selected small")).toHaveText("hoje")
         await expect(sidebar.locator(".thread-row small").nth(1)).toHaveText("ontem")
         await expect(
@@ -92,7 +95,10 @@ for (const width of [1440, 1100]) {
           .locator(".bot-row-main")
           .click()
         await expect(page.getByRole("button", { name: "Voltar ao chat" })).toBeVisible()
-        await expect(page.locator(".bot-row.selected .tb-avatar")).toHaveAttribute("data-bot-id", "sidebar-bot-3")
+        await expect(page.locator("#sidebar-mode-panel-bots .bot-row.selected .tb-avatar")).toHaveAttribute(
+          "data-bot-id",
+          "sidebar-bot-3",
+        )
       }
     })
   }

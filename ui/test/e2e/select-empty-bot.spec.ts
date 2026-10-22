@@ -28,8 +28,8 @@ test("a paused empty bot resumes into one focused conversation", async ({ page }
   await page.getByRole("button", { name: /^Panko / }).click()
   await expect(composer).toBeVisible()
 
-  const threads = page.locator('[data-bot-entry="bot-panko"] .thread-row')
-  await expect(threads).toHaveCount(1)
+  // One conversation: the row opens it directly and there is no list of others to expand.
+  await expect(page.getByRole("button", { name: "Conversas de Panko", exact: true })).toHaveCount(0)
 })
 
 const locales = ["pt-BR", "en"] as const

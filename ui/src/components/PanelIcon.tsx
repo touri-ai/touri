@@ -1,4 +1,4 @@
-type Name =
+export type PanelIconName =
   | "close"
   | "folder"
   | "file"
@@ -20,8 +20,10 @@ type Name =
   | "chevron-left"
   | "chevron-right"
   | "arrow-right"
+  | "check"
+  | "people"
 
-const paths: Record<Name, string> = {
+const paths: Record<PanelIconName, string> = {
   close: "m6 6 12 12M18 6 6 18",
   folder: "M3 7V5h7l2 2h9v13H3V7Z",
   file: "M14 3H5v18h14V8l-5-5Zm0 0v5h5M8 12h8M8 16h6",
@@ -43,9 +45,11 @@ const paths: Record<Name, string> = {
   "chevron-left": "m15 18-6-6 6-6",
   "chevron-right": "m9 18 6-6-6-6",
   "arrow-right": "M5 12h14m-7-7 7 7-7 7",
+  check: "m5 12 5 5 9-10",
+  people: "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 10v-1a6 6 0 0 1 12 0v1m3-10a3 3 0 1 0 0-6m5 16v-1a5 5 0 0 0-3-4.6",
 }
 
-export const PanelIcon = ({ name }: { name: Name }) => (
+export const PanelIcon = ({ name }: { name: PanelIconName }) => (
   <svg
     className="panel-icon"
     viewBox="0 0 24 24"

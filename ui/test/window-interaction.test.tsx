@@ -41,8 +41,12 @@ test("all title bars drag through decorative children while navigation and heade
   fireEvent.click(within(screen.getByRole("region", { name: "Canais" })).getByRole("button", { name: /^Equipe/ }))
   await screen.findByRole("textbox", { name: "Mensagem para Equipe" })
   expect(container.querySelector(".group-header")).toHaveAttribute("data-tauri-drag-region", "deep")
-  const edit = screen.getByRole("button", { name: "Editar canal", exact: true })
-  expect(edit).not.toHaveAttribute("data-tauri-drag-region")
-  fireEvent.click(edit)
+  const actions = within(document.querySelector<HTMLElement>(".group-header") ?? document.body).getByRole("button", {
+    name: "Ações do canal Equipe",
+    exact: true,
+  })
+  expect(actions).not.toHaveAttribute("data-tauri-drag-region")
+  fireEvent.click(actions)
+  fireEvent.click(screen.getByRole("menuitem", { name: "Editar canal", exact: true }))
   expect(screen.getByRole("dialog", { name: "Editar canal" })).toBeVisible()
 })
