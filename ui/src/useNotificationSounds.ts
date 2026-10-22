@@ -1,7 +1,6 @@
 import type { Bot, Message, NotificationPreferences, NotificationRecord, Thread } from "@touri/contracts"
 import { useEffect, useMemo, useRef } from "react"
 import type { TauriInvoke } from "./api/client"
-import { createBellAudioSink } from "./notificationAudio"
 import {
   createNotificationSoundController,
   type NotificationSoundEvent,
@@ -28,11 +27,26 @@ type SoundIntent = {
 }
 
 export const useNotificationSounds = (snapshot: SoundSnapshot, invoke: TauriInvoke): void => {
-  const audio = useMemo(createBellAudioSink, [])
+  const mounted = useRef(false)
+  const audio = useMemo(() => {
+    // Keep synthesis outside the initial payload; a gesture unlocks the loaded context.
+    const sink = import("./notificationAudio")
+      .then(({ createBellAudioSink }) => createBellAudioSink())
+      .catch(() => null)
+    return {
+      unlock: () => void sink.then((audio) => mounted.current && audio?.unlock()),
+      play: (volume: number, kind?: NotificationSoundKind) =>
+        void sink.then((audio) => {
+          if (!mounted.current) return
+
+          if (kind) audio?.play(volume, kind)
+          else audio?.play(volume)
+        }),
+    }
+  }, [])
   const controller = useMemo(() => createNotificationSoundController({ sink: audio.play }), [audio])
   const latest = useRef(snapshot)
   latest.current = snapshot
-  const mounted = useRef(false)
   const seen = useRef<{ notificationIds: Set<number>; messageIds: Set<string> } | null>(null)
 
   useEffect(() => {
