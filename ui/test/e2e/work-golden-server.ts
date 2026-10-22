@@ -26,8 +26,7 @@ export const createWorkGoldenServer = async () => {
     const child = spawn(
       "bun",
       [
-        "run",
-        "touri",
+        "sidecar/src/cli/main.ts",
         "serve",
         "--host",
         "127.0.0.1",
@@ -111,7 +110,7 @@ export const createWorkGoldenServer = async () => {
 }
 
 const getPairingCode = async (data: string): Promise<string> => {
-  const child = spawn("bun", ["run", "touri", "pair", "--data-dir", data], {
+  const child = spawn("bun", ["sidecar/src/cli/main.ts", "pair", "--data-dir", data], {
     cwd: root,
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 30_000,

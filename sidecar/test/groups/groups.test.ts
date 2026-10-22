@@ -1861,27 +1861,32 @@ test("a member removed from the group cannot run its group routine and leaves no
   expect(f.order).toEqual([])
 })
 
-test("restart cancels a group routine run instead of leaving it running", async () => {
-  let f: Awaited<ReturnType<typeof fixture>>
-  f = await fixture(async () => {})
+test("restart resumes a group routine run and confirms its result", async () => {
+  const f: Awaited<ReturnType<typeof fixture>> = await fixture(async (_ctx, complete) => {
+    if (f.order.length > 1) complete("Verificação concluída")
+  })
   const engine = routineEngine(f)
   const created = engine.createRoutine({ input: groupRoutine(f, { prompt: "@dev verifique" }), forceDisabled: false })
   if (!created.success) throw new Error(created.error)
   const started = engine.runRoutine({ routineId: created.routine.id, triggerSource: "manual" })
   if (!started.success) throw new Error(started.error)
   await until(() => f.order.length === 1)
-  f.runtime.shutdown()
-  await until(() => engine.listRoutineRuns(created.routine.id)[0]?.status === "canceled")
-  f.db.query("UPDATE runs SET status='running',finished_at=NULL WHERE id=?").run(started.routineRun.runId)
-  f.db.query("UPDATE routine_runs SET status='running',finished_at=NULL WHERE id=?").run(started.routineRun.id)
+  f.runtime.shutdown({ appRestart: true })
+  f.db
+    .query(
+      "UPDATE runs SET status='interrupted',error_class='app_restart',finished_at=? WHERE id IN (SELECT run_id FROM group_run_links WHERE turn_id=?)",
+    )
+    .run(Date.now(), started.routineRun.runId)
+  await until(() => f.persistence.getRun(started.routineRun.runId ?? "")?.status === "interrupted")
   // A restarted process starts with a fresh engine, so nothing is cached yet.
-  routineEngine(f)
+  const restartedEngine = routineEngine(f)
   const recovered = createGroupRuntime(f.host.kernel, f.engine)
   cleanups.unshift(() => recovered.shutdown())
-  expect(f.db.query("SELECT status, summary FROM routine_runs WHERE id = ?").get(started.routineRun.id)).toEqual({
-    status: "canceled",
-    summary: "Interrupted because touri restarted",
-  })
+  await until(() => restartedEngine.listRoutineRuns(created.routine.id)[0]?.status === "succeeded")
+
+  expect(f.order).toHaveLength(2)
+  expect(restartedEngine.listRoutineRuns(created.routine.id)[0]?.summary).toContain("Verificação concluída")
+  expect(f.persistence.getRun(started.routineRun.runId ?? "")?.status).toBe("interrupted")
 })
 
 test("ask_all starts every peer before either finishes and preserves final authorship on reload", async () => {
