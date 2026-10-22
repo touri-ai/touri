@@ -45,6 +45,8 @@ export const isNotificationPreferences = (value: unknown): value is Notification
 }
 
 export const NOTIFICATION_KINDS: readonly NotifyKind[] = [
+  "mention",
+  "task-started",
   "approval",
   "question",
   "takeover",
@@ -98,8 +100,9 @@ const isSoundPreferences = (value: unknown): boolean => {
   const sound = getRecord(value)
   return (
     !!sound &&
-    Object.keys(sound).every((key) => ["attention", "replies", "volume"].includes(key)) &&
+    Object.keys(sound).every((key) => ["attention", "replies", "task", "volume"].includes(key)) &&
     (sound.attention === undefined || typeof sound.attention === "boolean") &&
+    (sound.task === undefined || typeof sound.task === "boolean") &&
     (sound.replies === undefined || typeof sound.replies === "boolean") &&
     (sound.volume === undefined || (typeof sound.volume === "number" && sound.volume >= 0 && sound.volume <= 100))
   )

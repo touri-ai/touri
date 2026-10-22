@@ -149,3 +149,13 @@ it("does not replay replies when the activity snapshot exceeds the remembered hi
   expect(invoke).not.toHaveBeenCalled()
   expect(audio.play).not.toHaveBeenCalled()
 })
+
+it("plays a new task notification through the softer sink without marking it as attention", async () => {
+  const { notification, snapshot } = getFixture()
+  const invoke = vi.fn(async () => false) as TauriInvoke
+  const view = renderHook((current) => useNotificationSounds(current, invoke), { initialProps: snapshot })
+
+  await act(async () => view.rerender({ ...snapshot, notifications: [{ ...notification, kind: "task-started" }] }))
+
+  expect(audio.play).toHaveBeenCalledExactlyOnceWith(0.45, "task")
+})

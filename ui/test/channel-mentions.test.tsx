@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
 import { Composer } from "../src/components/Composer"
 
-const getComposer = () => {
+const getComposer = (handle?: string) => {
   const api = createMockApi()
   const bots = api
     .getState()
@@ -24,7 +24,9 @@ const getComposer = () => {
         bot={null}
         groupName="produto"
         mentionBots={bots}
-        mentionPeople={[{ id: "ana", name: "Ana Silva", avatarSeed: "ana", role: "member" }]}
+        mentionPeople={[
+          { id: "ana", name: "Ana Silva", ...(handle ? { handle } : {}), avatarSeed: "ana", role: "member" },
+        ]}
         summaryBotId={bots[1]?.id}
         api={api}
         threadId="channel"
@@ -62,6 +64,17 @@ describe("channel mentions", () => {
     await user.keyboard("{Tab}")
     expect(input).toHaveValue('@"Ana Silva" oi @Codador ')
     expect(input).toHaveFocus()
+  })
+
+  it("offers the stable handle when the person's display name differs", async () => {
+    const user = userEvent.setup()
+    const { input, send } = getComposer("ana.silva")
+
+    await user.type(input, "@ana.")
+    await user.keyboard("{Enter}")
+
+    expect(input).toHaveValue("@ana.silva ")
+    expect(send).not.toHaveBeenCalled()
   })
 
   it("keeps names with a matching prefix as ordinary draft text", async () => {

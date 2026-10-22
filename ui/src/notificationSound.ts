@@ -6,7 +6,7 @@ import {
   type NotifyKind,
 } from "@touri/contracts"
 
-export type NotificationSoundKind = "attention" | "reply"
+export type NotificationSoundKind = "attention" | "reply" | "task"
 
 export type NotificationSoundEvent = {
   kind: NotificationSoundKind
@@ -29,9 +29,10 @@ export const shouldPlayNotificationSound = (event: NotificationSoundEvent): bool
   if (event.botId && event.preferences?.bots?.[event.botId]?.enabled === false) return false
   if (isWithinNotificationQuietHours(event.preferences?.quietHours, event.now)) return false
   if (event.kind === "attention" && event.preferences?.sound?.attention === false) return false
+  if (event.kind === "task" && event.preferences?.sound?.task === false) return false
   if (event.kind === "reply" && event.preferences?.sound?.replies !== true) return false
   if (getNotificationVolume(event.preferences) === 0) return false
-  if (event.kind !== "attention" || !event.notificationKind) return true
+  if (!event.notificationKind) return true
 
   return canDeliverNotification({
     notification: { kind: event.notificationKind, botId: event.botId },
@@ -46,7 +47,7 @@ export const createNotificationSoundController = ({
   sink,
   now = Date.now,
 }: {
-  sink: (volume: number) => void
+  sink: (volume: number, kind?: NotificationSoundKind) => void
   now?: () => number
 }) => {
   // The timestamp is controller-local state required to coalesce bursty event streams.
@@ -58,7 +59,8 @@ export const createNotificationSoundController = ({
     if (current - lastPlayedAt < 3000) return false
 
     lastPlayedAt = current
-    sink(getNotificationVolume(event.preferences))
+    if (event.kind === "task") sink(getNotificationVolume(event.preferences), "task")
+    else sink(getNotificationVolume(event.preferences))
     return true
   }
 

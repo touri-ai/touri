@@ -46,6 +46,8 @@ const readCleared = (key: string): Set<string> => {
 }
 
 const KIND_KEY: Record<NotificationRecord["kind"], TranslationKey> = {
+  mention: "Person mention",
+  "task-started": "Task started",
   approval: "Approval",
   question: "Question",
   takeover: "Needs you",
@@ -59,6 +61,8 @@ const KIND_KEY: Record<NotificationRecord["kind"], TranslationKey> = {
 }
 
 const KIND_TONE: Record<NotificationRecord["kind"], BadgeTone> = {
+  mention: "warning",
+  "task-started": "info",
   approval: "warning",
   question: "warning",
   takeover: "warning",

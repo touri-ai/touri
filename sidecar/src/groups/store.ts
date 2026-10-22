@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite"
-import type { BotGroup, GroupInput, Kernel, Thread } from "@touri/contracts"
+import type { BotGroup, ChannelPerson, GroupInput, Kernel, Thread } from "@touri/contracts"
 import { validAvatarColor, validAvatarShape } from "@touri/contracts/avatar"
+import { getMentionedPeople } from "./people"
 
 export const createGroupStore = (kernel: Kernel) => {
   const db = kernel.db as Database
@@ -149,18 +150,21 @@ export const createGroupStore = (kernel: Kernel) => {
 }
 
 /** Only explicit bot mentions route human channel messages, in first-mention order. */
-export const routeGroupMessage = (group: BotGroup, bots: { id: string; name: string }[], text: string): string[] =>
-  group.memberIds
-    .flatMap((id) => {
-      const name = bots.find((bot) => bot.id === id)?.name
-      if (!name) return []
+export const routeGroupMessage = (
+  group: BotGroup,
+  bots: { id: string; name: string }[],
+  text: string,
+  people: ChannelPerson[] = [],
+): string[] => {
+  const identities = [
+    ...people.map((person) => ({ ...person, id: `person:${person.id}` })),
+    ...bots.filter((bot) => group.memberIds.includes(bot.id)),
+  ]
 
-      const position = getMentionPosition(name, text)
-      return position === undefined ? [] : [{ id, position }]
-    })
-    // Sort only this fresh, channel-sized collection; the configured members stay unchanged.
-    .sort((first, second) => first.position - second.position)
+  return getMentionedPeople(text, identities)
+    .filter(({ id }) => !id.startsWith("person:"))
     .map(({ id }) => id)
+}
 
 export const getGroupActionText = (text: string, names: string[]) => {
   const missing = names.filter((name) => getMentionPosition(name, text) === undefined)

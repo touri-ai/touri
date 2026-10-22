@@ -1,3 +1,5 @@
+import type { NotificationSoundKind } from "./notificationSound"
+
 export const createBellAudioSink = () => {
   // AudioContext is created only after a user gesture, satisfying browser autoplay rules.
   let context: AudioContext | null = null
@@ -15,15 +17,18 @@ export const createBellAudioSink = () => {
     if (audio?.state === "suspended") void audio.resume().catch(() => undefined)
   }
 
-  const play = (volume: number): void => {
+  const play = (volume: number, kind?: NotificationSoundKind): void => {
     const audio = getContext()
     if (audio?.state !== "running" || volume <= 0) return
 
     const startedAt = audio.currentTime
-    const tones = [
-      { frequency: 880, gain: 0.16 },
-      { frequency: 1174.66, gain: 0.08 },
-    ]
+    const tones =
+      kind === "task"
+        ? [{ frequency: 659.25, gain: 0.06 }]
+        : [
+            { frequency: 880, gain: 0.16 },
+            { frequency: 1174.66, gain: 0.08 },
+          ]
     tones.forEach(({ frequency, gain: partialGain }) => {
       const oscillator = audio.createOscillator()
       const gain = audio.createGain()

@@ -85,3 +85,44 @@ it("debounces all notification sounds for three seconds", () => {
   expect(controller.play(getSoundEvent())).toBe(true)
   expect(sink).toHaveBeenCalledTimes(2)
 })
+
+it("plays the softer task kind by default and independently of reply and attention toggles", () => {
+  const sink = vi.fn()
+  const controller = createNotificationSoundController({ sink })
+
+  expect(
+    controller.play(
+      getSoundEvent({
+        kind: "task",
+        notificationKind: "task-started",
+        preferences: { sound: { attention: false, replies: false } },
+      }),
+    ),
+  ).toBe(true)
+
+  expect(sink).toHaveBeenCalledExactlyOnceWith(0.45, "task")
+})
+
+it.each([
+  { sound: { task: false } },
+  { types: { "task-started": false } },
+  { quietHours: { enabled: true, start: "00:00", end: "00:00" } },
+])("keeps task sounds quiet for saved preferences %j", (preferences) => {
+  const sink = vi.fn()
+  const controller = createNotificationSoundController({ sink })
+
+  expect(controller.play(getSoundEvent({ kind: "task", notificationKind: "task-started", preferences }))).toBe(false)
+
+  expect(sink).not.toHaveBeenCalled()
+})
+
+it("suppresses task sound in the active thread and shares attention debounce", () => {
+  const sink = vi.fn()
+  const controller = createNotificationSoundController({ sink })
+
+  expect(controller.play(getSoundEvent({ kind: "task", threadId: "thread-current" }))).toBe(false)
+  expect(controller.play(getSoundEvent())).toBe(true)
+  expect(controller.play(getSoundEvent({ kind: "task" }))).toBe(false)
+
+  expect(sink).toHaveBeenCalledTimes(1)
+})

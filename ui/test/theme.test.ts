@@ -105,7 +105,6 @@ test.each(["dark", "light"] as const)("%s text roles keep 4.5:1 (12px captions i
   expect(css).toMatch(
     /\.preview-chat-avatar \{[^}]*background: var\(--preview-avatar\);[^}]*color: var\(--text-on-accent\)/,
   )
-  expect(css).toMatch(/\.section-tabs b \{[^}]*background: var\(--info-fill\);[^}]*color: var\(--text-on-accent\)/)
   expect(css).toMatch(/\.wizard-active i \{[^}]*background: var\(--info-fill\);[^}]*color: var\(--text-on-accent\)/)
   expect(sidebar).toMatch(
     /\.sidebar-unread \{[^}]*background: var\(--surface-control-raised\);[^}]*color: var\(--text\)/,

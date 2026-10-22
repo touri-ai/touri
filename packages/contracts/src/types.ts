@@ -195,7 +195,7 @@ export type ThreadUsage = {
   contextWindow: number | null
 }
 
-export type ChannelPerson = { id: Id; name: string; avatarSeed: string; role: 'member' | 'admin' }
+export type ChannelPerson = { id: Id; name: string; handle?: string; avatarSeed: string; role: 'member' | 'admin' }
 
 export type BotGroup = {
   id: Id
@@ -1301,6 +1301,8 @@ export type UiEvent =
 
 /** Attention kinds need the user; message kinds (`done`, `delegation-settled`, `notice`) are informational and expire. */
 export type NotifyKind =
+  | 'mention'
+  | 'task-started'
   | 'approval'
   | 'question'
   | 'takeover'
@@ -1322,7 +1324,7 @@ export type NotificationPreferences = NotificationScopePreferences & {
   bots?: Record<Id, NotificationScopePreferences>
   /** Times use the local clock; an equal start and end silences the entire day. */
   quietHours?: { enabled: boolean; start: string; end: string; timeZone?: string }
-  sound?: { attention?: boolean; replies?: boolean; volume?: number }
+  sound?: { attention?: boolean; replies?: boolean; task?: boolean; volume?: number }
 }
 
 export type NotifyResolution = 'allow' | 'deny' | 'answer' | 'replied' | 'dismissed' | 'expired' | 'canceled'
@@ -1584,6 +1586,7 @@ export type ServiceMap = {
   }) => boolean
   'work.personChannelIds': (personId: Id) => Array<Id>
   'work.canApprove': (input: { personId: Id; approvalId: Id }) => boolean
+  'work.channelPeople': (groupId: Id) => Array<ChannelPerson>
   'work.defaultPersonId': () => Id
   'bots.validateCreation': (body: unknown) => Result<{ input: CreateBotInput }>
   'bots.create': (input: {

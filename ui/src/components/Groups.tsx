@@ -623,7 +623,9 @@ export const ChannelPeople = ({
       </span>
       <div>
         <strong>{person.id === currentPersonId ? t("Você") : person.name}</strong>
-        <small>{t("Person")}</small>
+        <small>
+          {t("Person")} · @{person.handle ?? person.name}
+        </small>
       </div>
     </li>
   ))

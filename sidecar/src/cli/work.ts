@@ -1,5 +1,7 @@
 import type { Database } from "bun:sqlite"
+import { userInfo } from "node:os"
 import type { Kernel, RouteModule, RouteResponse } from "@touri/contracts"
+import { getPersonHandle } from "../groups/people"
 import { deviceSession } from "../kernel/device-session"
 import { ownerPersonId } from "./auth/database"
 import { createActionLimiter } from "./auth/rateLimit"
@@ -109,6 +111,8 @@ export const initWorkMode = ({
   authorization: { authorize: MemberAuthorizer | null }
   emailDependencies?: EmailDependencies
 }): void => {
+  // Capture the account handle at startup rather than consulting the OS on each message.
+  const accountName = userInfo().username
   const database = kernel.db as Database
   const access = createWorkAccess({ database, authStore })
   const email = createEmailService({ secrets, ...(emailDependencies ? { dependencies: emailDependencies } : {}) })
@@ -135,6 +139,34 @@ export const initWorkMode = ({
   kernel.services.provide("work.personChannelIds", access.channelIdsFor)
   kernel.services.provide("work.personName", (personId) => authStore.getPerson(personId)?.name ?? null)
   kernel.services.provide("work.defaultPersonId", () => ownerPersonId)
+  kernel.services.provide("work.channelPeople", (groupId) => {
+    const owners = new Set(
+      (
+        database
+          .query(
+            "SELECT DISTINCT coalesce(b.responsible_person_id, 'owner') AS id FROM group_members gm JOIN bots b ON b.id = gm.bot_id WHERE gm.group_id = ? AND b.archived_at IS NULL",
+          )
+          .all(groupId) as Array<{ id: string }>
+      ).map(({ id }) => id),
+    )
+
+    return authStore
+      .listPeople()
+      .filter(
+        (person) =>
+          person.removedAt === null &&
+          (person.role === "admin" ||
+            owners.has(person.id) ||
+            authStore.getPersonChannelIds(person.id).includes(groupId)),
+      )
+      .map(({ id, name, avatarSeed, role }) => ({
+        id,
+        name,
+        handle: getPersonHandle(name, id === ownerPersonId ? accountName : id),
+        avatarSeed,
+        role,
+      }))
+  })
 
   const issueInvite = async ({
     invite,
@@ -195,15 +227,7 @@ export const initWorkMode = ({
           )
             return fail(404, "NOT_FOUND", "Canal não encontrado")
 
-          const people = authStore
-            .listPeople()
-            .filter(
-              (person) =>
-                person.removedAt === null &&
-                (person.role === "admin" || authStore.getPersonChannelIds(person.id).includes(groupId)),
-            )
-            .map(({ id, name, avatarSeed, role }) => ({ id, name, avatarSeed, role }))
-          return { status: 200, json: { people } }
+          return { status: 200, json: { people: kernel.services.use("work.channelPeople")?.(groupId) ?? [] } }
         },
       },
       {

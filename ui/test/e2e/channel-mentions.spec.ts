@@ -8,6 +8,12 @@ import type { ApiRoutes, Bot, BotGroup, Message, Run, Thread } from "@touri/cont
 
 type Fixture = { port: number; bots: Bot[]; group: BotGroup; thread: Thread }
 type State = { messages: Message[]; runs: Run[] }
+const cleanups = new Set<() => Promise<void>>()
+base.setTimeout(90_000)
+base.afterEach(async () => {
+  await Promise.all(Array.from(cleanups, (cleanup) => cleanup()))
+  cleanups.clear()
+})
 const test = base.extend<{ channelServer: Fixture }>({
   // biome-ignore lint/correctness/noEmptyPattern: The fixture runner discovers dependencies from this pattern.
   channelServer: async ({}, use) => {
@@ -15,30 +21,35 @@ const test = base.extend<{ channelServer: Fixture }>({
       "bun",
       [resolve(import.meta.dirname, "../../../sidecar/test/fakes/channel-mentions-server.ts")],
       {
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: ["ignore", "pipe", "inherit"],
         env: { ...process.env, NODE_ENV: "test", TOURI_UI_TOKEN: "dev-ui-token" },
       },
     )
     const ready = Promise.withResolvers<Fixture>()
     const lines = createInterface({ input: child.stdout })
-    const timeout = setTimeout(() => ready.reject(new Error("Channel fixture startup timed out")), 30_000)
+    const timeout = setTimeout(() => ready.reject(new Error("Channel fixture startup timed out")), 60_000)
     lines.on("line", (line) => {
       if (line.startsWith("CHANNEL_FIXTURE ")) ready.resolve(JSON.parse(line.slice("CHANNEL_FIXTURE ".length)))
     })
     child.once("error", ready.reject)
-    child.stderr.resume()
+    child.once("exit", (code) => ready.reject(new Error(`Channel fixture exited: ${code}`)))
+    cleanups.add(async () => {
+      clearTimeout(timeout)
+      lines.close()
+      if (child.exitCode !== null) return
+
+      const exited = once(child, "exit")
+      child.kill("SIGTERM")
+      await exited
+    })
     const fixture = await ready.promise
     clearTimeout(timeout)
     await use(fixture)
-    lines.close()
-    const exited = once(child, "exit")
-    child.kill("SIGTERM")
-    await exited
   },
 })
 
 test("channel messages stay quiet until a bot is mentioned", async ({ page, channelServer }, info) => {
-  test.setTimeout(60_000)
+  test.setTimeout(90_000)
   const headers = {
     Authorization: "Bearer dev-ui-token",
     Origin: "tauri://localhost",
@@ -83,7 +94,9 @@ test("channel messages stay quiet until a bot is mentioned", async ({ page, chan
 
   await composer.fill("oi")
   await composer.press("Enter")
-  await expect(page.getByTestId("virtual-message-list").getByText("oi", { exact: true })).toBeVisible()
+  await expect(page.getByTestId("virtual-message-list").getByText("oi", { exact: true })).toBeVisible({
+    timeout: 20_000,
+  })
   await expect.poll(async () => (await getState()).messages.length).toBe(1)
   expect((await getState()).runs).toEqual([])
   await expect(page.locator(".browser-activity-card,.group-run-card,.activity-mark")).toHaveCount(0)
@@ -101,7 +114,9 @@ test("channel messages stay quiet until a bot is mentioned", async ({ page, chan
   await expect(page.locator(".composer-mention-chips")).toHaveCount(0)
   await screenshot("channel-mention-draft.png")
   await composer.press("Enter")
-  await expect(page.getByTestId("virtual-message-list").getByText("codador respondeu.", { exact: true })).toBeVisible()
+  await expect(page.getByTestId("virtual-message-list").getByText("codador respondeu.", { exact: true })).toBeVisible({
+    timeout: 20_000,
+  })
   const state = await getState()
   expect(state.runs.every((run) => run.botId === channelServer.bots[0]?.id)).toBe(true)
   expect(

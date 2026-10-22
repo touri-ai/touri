@@ -36,6 +36,8 @@ it("saves global, per-bot, per-type and quiet-hour preferences from web settings
   fireEvent.change(screen.getByLabelText("Aviso do bot"), { target: { value: "off" } })
   fireEvent.click(screen.getByLabelText("Som para o que precisa de você"))
   fireEvent.click(screen.getByLabelText("Som para cada resposta"))
+  expect(screen.getByLabelText("Avisar quando um bot começar uma tarefa no canal")).toBeChecked()
+  fireEvent.click(screen.getByLabelText("Avisar quando um bot começar uma tarefa no canal"))
   fireEvent.change(screen.getByLabelText("Volume do som"), { target: { value: "80" } })
   fireEvent.change(screen.getByLabelText("Aplicar a"), { target: { value: "bot-mark" } })
   expect(screen.queryByLabelText("Som para o que precisa de você")).toBeNull()
@@ -51,7 +53,7 @@ it("saves global, per-bot, per-type and quiet-hour preferences from web settings
         types: { notice: false },
         bots: { "bot-mark": { types: { "turn-failed": false } } },
         quietHours: { enabled: true, start: "23:00", end: "08:00" },
-        sound: { attention: false, replies: true, volume: 80 },
+        sound: { attention: false, replies: true, task: false, volume: 80 },
       },
     }),
   )

@@ -2,6 +2,7 @@ import type { Message, NotificationRecord, Run, Thread } from "@touri/contracts"
 import { isResolvedNotification, reconcileApprovalNotifications } from "./approvalState"
 
 const ATTENTION_KINDS: ReadonlyArray<NotificationRecord["kind"]> = [
+  "mention",
   "approval",
   "question",
   "takeover",

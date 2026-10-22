@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite"
-import { afterEach, expect, test } from "bun:test"
+import { afterEach, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -15,6 +15,8 @@ import { createKernel } from "../../src/kernel"
 import { init as initNotify } from "../../src/notify"
 import { init as initRuntime } from "../../src/runtime"
 import { init as initStore } from "../../src/store"
+
+setDefaultTimeout(20_000)
 
 const cleanups = new Set<() => Promise<void>>()
 afterEach(async () => {
@@ -86,6 +88,10 @@ test("an invited member can boot Work and use an authorized channel", async () =
   const messages = await fixture.request("/threads/member-chat/messages")
   expect(channelThreads.status).toBe(200)
   expect(messages.status).toBe(200)
+  const roster = (await (await fixture.request("/groups/member-channel/people")).json()) as {
+    people: Array<{ id: string; handle: string }>
+  }
+  expect(roster.people.find(({ id }) => id === fixture.personId)?.handle).toBe("Pessoa de teste")
 
   const upload = await fixture.request("/attachments", "POST", {
     name: "channel-file.txt",
@@ -183,15 +189,46 @@ test("a channel roster exposes only display identities to its members", async ()
   expect(payload.people.some((person) => person.id === fixture.personId)).toBe(true)
   expect(payload.people.some((person) => person.id === "owner")).toBe(true)
   payload.people.forEach((person) => {
-    expect(Object.keys(person)).toHaveLength(4)
+    expect(Object.keys(person)).toHaveLength(5)
     expect(person).toHaveProperty("id")
     expect(person).toHaveProperty("name")
+    expect(person).toHaveProperty("handle")
     expect(person).toHaveProperty("avatarSeed")
     expect(person).toHaveProperty("role")
   })
   expect((await fixture.request("/groups/other-channel/people")).status).toBe(404)
   expect((await fixture.request("/people")).status).toBe(403)
 })
+
+test("a bot's responsible person belongs to its channel and can open a ping without gaining private chats", async () => {
+  const fixture = await getFixture()
+  fixture.database
+    .query("INSERT INTO group_members(group_id, bot_id, position) VALUES (?, ?, ?)")
+    .run("other-channel", "member-bot", 0)
+
+  const response = await fixture.request("/groups/other-channel/people")
+  const payload = (await response.json()) as { people: Array<{ id: string; handle: string }> }
+
+  expect(response.status).toBe(200)
+  expect(payload.people.find(({ id }) => id === fixture.personId)?.handle).toBeTruthy()
+  const plan = fixture.database
+    .query(`EXPLAIN QUERY PLAN SELECT DISTINCT gm.group_id AS id FROM
+    (SELECT id FROM bots WHERE responsible_person_id = ? AND archived_at IS NULL LIMIT 500) b
+    JOIN group_members gm ON gm.bot_id = b.id LIMIT 500`)
+    .all(fixture.personId) as Array<{ detail: string }>
+  expect(plan.some(({ detail }) => detail.includes("bots_responsible_person_active"))).toBe(true)
+  expect(plan.some(({ detail }) => detail.includes("group_members_bot"))).toBe(true)
+  expect((await fixture.request("/groups/other-channel/threads")).status).toBe(200)
+  expect((await fixture.request("/threads/owner-chat/messages")).status).toBe(404)
+
+  fixture.database.query("UPDATE bots SET archived_at = 1 WHERE id = 'member-bot'").run()
+
+  expect((await fixture.request("/groups/other-channel/people")).status).toBe(404)
+  const remaining = (await (await fixture.ownerRequest("/groups/other-channel/people")).json()) as {
+    people: Array<{ id: string }>
+  }
+  expect(remaining.people.some(({ id }) => id === fixture.personId)).toBe(false)
+}, 20_000)
 
 const getFixture = async ({ completeBoot = false }: { completeBoot?: boolean } = {}) => {
   const root = await mkdtemp(join(tmpdir(), "touri-work-isolation-"))
