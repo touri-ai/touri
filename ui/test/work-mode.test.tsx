@@ -107,7 +107,7 @@ describe("sidebar work mode", () => {
     if (!header) throw new Error("Missing channel header")
     fireEvent.click(within(header).getByRole("button", { name: "Ações do canal Equipe QA" }))
     fireEvent.click(screen.getByRole("menuitem", { name: "Editar canal" }))
-    const editChannel = screen.getByRole("dialog", { name: "Editar canal" })
+    const editChannel = await screen.findByRole("dialog", { name: "Editar canal" })
     expect(within(editChannel).getByRole("textbox", { name: "Nome do canal" })).toHaveValue("Equipe QA")
   })
 

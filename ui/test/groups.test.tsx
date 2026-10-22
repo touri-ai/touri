@@ -6,10 +6,10 @@ import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
 import groupE2eSource from "./e2e/groups.spec.ts?raw"
 
-const openGroupPanel = (name: string): HTMLElement => {
+const openGroupPanel = async (name: string): Promise<HTMLElement> => {
   if (!screen.queryByRole("complementary", { name: `Painel do canal ${name}` }))
     fireEvent.click(screen.getByRole("button", { name: /^Membros do canal:/ }))
-  return screen.getByRole("complementary", { name: `Painel do canal ${name}` })
+  return screen.findByRole("complementary", { name: `Painel do canal ${name}` })
 }
 
 describe("Grupos", () => {
@@ -19,7 +19,7 @@ describe("Grupos", () => {
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     fireEvent.click(screen.getByRole("tab", { name: /^Work,/ }))
 
-    const groups = screen.getByRole("region", { name: "Canais" })
+    const groups = await screen.findByRole("region", { name: "Canais" })
     const createGroup = within(groups).getByRole("button", { name: "Novo canal" })
     expect(createGroup).toBeVisible()
     expect(createGroup).toHaveTextContent("+")
@@ -31,7 +31,7 @@ describe("Grupos", () => {
 
     fireEvent.click(createGroup)
 
-    expect(screen.getByRole("dialog", { name: "Criar canal" })).toBeVisible()
+    expect(await screen.findByRole("dialog", { name: "Criar canal" })).toBeVisible()
   })
 
   it("F026: exposes every mention and announces arrow selection", async () => {
@@ -94,11 +94,13 @@ describe("Grupos", () => {
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     fireEvent.click(screen.getByRole("tab", { name: /^Work,/ }))
-    fireEvent.click(within(screen.getByRole("region", { name: "Canais" })).getByRole("button", { name: /^Produto/ }))
+    fireEvent.click(
+      within(await screen.findByRole("region", { name: "Canais" })).getByRole("button", { name: /^Produto/ }),
+    )
     await screen.findByRole("textbox", { name: "Mensagem para Produto" })
     if (!screen.queryByRole("complementary", { name: panelName, exact: true }))
       fireEvent.click(screen.getByRole("button", { name: /^Membros do canal:/ }))
-    const panel = screen.getByRole("complementary", { name: panelName, exact: true })
+    const panel = await screen.findByRole("complementary", { name: panelName, exact: true })
     expect(within(panel).getByRole("list", { name: "Membros do canal" })).toHaveTextContent("mark")
     expect(within(panel).getByText("Coordenador", { exact: true })).toBeVisible()
     expect(within(panel).getByText("Os bots só respondem quando você os chama com @nome.")).toBeVisible()
@@ -112,7 +114,7 @@ describe("Grupos", () => {
     expect(within(botPanel).getByRole("button", { name: "Preview do projeto" })).toBeVisible()
     fireEvent.click(within(botPanel).getByRole("button", { name: "Produto · coordenador" }))
     await screen.findByRole("textbox", { name: "Mensagem para Produto" })
-    expect(screen.getByRole("complementary", { name: panelName, exact: true })).toBeVisible()
+    expect(await screen.findByRole("complementary", { name: panelName, exact: true })).toBeVisible()
   })
 
   it("introduces every member and group routing without showing the first bot's settings", async () => {
@@ -127,7 +129,9 @@ describe("Grupos", () => {
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     fireEvent.click(screen.getByRole("tab", { name: /^Work,/ }))
-    fireEvent.click(within(screen.getByRole("region", { name: "Canais" })).getByRole("button", { name: /^Equipe QA/ }))
+    fireEvent.click(
+      within(await screen.findByRole("region", { name: "Canais" })).getByRole("button", { name: /^Equipe QA/ }),
+    )
     await screen.findByRole("textbox", { name: "Mensagem para Equipe QA" })
     const welcome = screen.getByRole("region", { name: "Comece a conversa em #Equipe QA" })
     expect(within(welcome).getByRole("heading", { name: "Comece a conversa em #Equipe QA" })).toBeVisible()
@@ -135,13 +139,13 @@ describe("Grupos", () => {
     expect(within(welcome).getByRole("list", { name: "Membros do canal" })).toHaveTextContent("mark")
     expect(within(welcome).getByRole("list", { name: "Membros do canal" })).toHaveTextContent("onb")
     expect(screen.queryByRole("heading", { name: "Comece uma conversa com mark" })).toBeNull()
-    const panel = openGroupPanel("Equipe QA")
+    const panel = await openGroupPanel("Equipe QA")
     expect(within(panel).getByText("Seu canal")).toBeVisible()
     expect(within(panel).queryByRole("button", { name: "Preview do projeto" })).toBeNull()
     expect(screen.queryByRole("complementary", { name: "Painel de mark" })).toBeNull()
     fireEvent.click(within(panel).getByRole("button", { name: "Fechar painel do canal" }))
     fireEvent.click(screen.getByRole("button", { name: /^Membros do canal:/ }))
-    const channelPanel = screen.getByRole("complementary", { name: "Painel do canal Equipe QA" })
+    const channelPanel = await screen.findByRole("complementary", { name: "Painel do canal Equipe QA" })
     expect(channelPanel).toBeVisible()
     expect(within(channelPanel).getByText("Os bots só respondem quando você os chama com @nome.")).toBeVisible()
   })
@@ -152,7 +156,7 @@ describe("Grupos", () => {
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     fireEvent.click(screen.getByRole("tab", { name: /^Work,/ }))
     fireEvent.click(screen.getByRole("button", { name: "Novo canal" }))
-    const modal = screen.getByRole("dialog", { name: "Criar canal" })
+    const modal = await screen.findByRole("dialog", { name: "Criar canal" })
     fireEvent.change(within(modal).getByLabelText("Nome do canal"), { target: { value: "Produto" } })
     fireEvent.click(within(modal).getByLabelText("mark"))
     fireEvent.click(within(modal).getByLabelText("onb"))
@@ -171,7 +175,7 @@ describe("Grupos", () => {
     expect(api.calls.filter((c) => c.route === "POST /threads/:id/messages")).toHaveLength(0)
     fireEvent.click(header.getByRole("button", { name: "Ações do canal Produto" }))
     fireEvent.click(screen.getByRole("menuitem", { name: "Editar canal" }))
-    const edit = screen.getByRole("dialog", { name: "Editar canal" })
+    const edit = await screen.findByRole("dialog", { name: "Editar canal" })
     fireEvent.click(within(edit).getByLabelText("mark"))
     expect(within(edit).getByLabelText("Coordenador do canal")).toHaveValue("")
     fireEvent.click(within(edit).getByRole("button", { name: "Salvar canal" }))
@@ -185,7 +189,7 @@ describe("Grupos", () => {
       within(screen.getByRole("region", { name: "Canais" })).getByRole("button", { name: "Ações do canal Produto" }),
     )
     fireEvent.click(screen.getByRole("menuitem", { name: "Nova conversa" }))
-    await within(screen.getByRole("region", { name: "Canais" })).findByRole("button", {
+    await within(await screen.findByRole("region", { name: "Canais" })).findByRole("button", {
       name: "Nova conversa",
     })
     expect(api.calls.some((c) => c.route === "POST /groups/:id/threads")).toBe(true)
@@ -233,7 +237,7 @@ describe("Grupos", () => {
     expect(deleted.querySelector(".tb-avatar")).toHaveAttribute("data-bot-id", "bot-onb")
     expect(row?.querySelector('[data-bot-id="bot-mark"]')).toBeNull()
     expect(row?.querySelector(".message-role")).toHaveTextContent("onb")
-    const groupPanel = openGroupPanel("Equipe")
+    const groupPanel = await openGroupPanel("Equipe")
     expect(within(groupPanel).getByText("Os bots só respondem quando você os chama com @nome.")).toBeVisible()
     expect(within(groupPanel).getByText("Coordenador")).toBeVisible()
     fireEvent.click(screen.getByRole("tab", { name: /^Bots,/ }))
@@ -243,7 +247,7 @@ describe("Grupos", () => {
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     if (!screen.queryByRole("complementary", { name: "Painel de mark" }))
       fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
-    const panel = screen.getByRole("complementary", { name: "Painel de mark" })
+    const panel = await screen.findByRole("complementary", { name: "Painel de mark" })
     expect(within(panel).getByRole("heading", { name: "Grupos" })).toBeVisible()
     expect(within(panel).getByRole("button", { name: "Equipe · coordenador" })).toBeVisible()
   })

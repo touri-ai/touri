@@ -3,7 +3,7 @@ import type { BotGroup } from "@touri/contracts"
 import { avatarColorFor, avatarProfileFor, avatarShapeFor } from "@touri/contracts/avatar"
 import { afterEach, expect, it, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
-import { GroupModal } from "../src/components/Groups"
+import { GroupModal } from "../src/components/GroupModal"
 
 const getGroup = (): BotGroup => ({
   id: "group-avatar",

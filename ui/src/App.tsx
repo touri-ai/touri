@@ -34,7 +34,6 @@ import { ErrorBoundary } from "./components/ErrorBoundary"
 import { ErrorNotice } from "./components/ErrorNotice"
 import { EvidenceContext } from "./components/EvidenceGallery"
 import { FailureActionContext } from "./components/FailureActionContext"
-import { GroupModal, GroupPanel } from "./components/Groups"
 import { InterruptedTasks } from "./components/InterruptedTasks"
 import {
   BotCreateModal,
@@ -48,7 +47,6 @@ import {
 import { MotionPresence, MotionSkeleton } from "./components/Motion"
 import { PageTransition } from "./components/PageTransition"
 import { PanelIcon } from "./components/PanelIcon"
-import { RoutineEditor } from "./components/RoutineEditor"
 import { SidebarDrawer } from "./components/SidebarDrawer"
 import { getWindowChrome, WindowFrame } from "./components/WindowFrame"
 import { installComputerKillSwitch } from "./computerKillSwitch"
@@ -98,6 +96,11 @@ const CommandPalette = lazy(() =>
   import("./features/commandPalette/CommandPalette").then((module) => ({ default: module.CommandPalette })),
 )
 const CronScreen = lazy(() => import("./components/CronScreen"))
+const GroupModal = lazy(() => import("./components/GroupModal").then((module) => ({ default: module.GroupModal })))
+const GroupPanel = lazy(() => import("./components/GroupPanel").then((module) => ({ default: module.GroupPanel })))
+const RoutineEditor = lazy(() =>
+  import("./components/RoutineEditor").then((module) => ({ default: module.RoutineEditor })),
+)
 const WorkScreen = lazy(() => import("./features/work/WorkScreen").then((module) => ({ default: module.WorkScreen })))
 const PerformanceScreen = lazy(() =>
   import("./features/work/WorkScreen").then((module) => ({ default: module.PerformanceScreen })),
@@ -647,6 +650,10 @@ const AppContent = ({ kernel }: AppProps) => {
     },
     [selectedBot],
   )
+  const closeGroupPanel = () => {
+    setPanelOpen(false)
+    window.requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".bot-panel-toggle")?.focus())
+  }
   const evidenceContext = useMemo(
     () =>
       selectedBot && api
@@ -1346,28 +1353,25 @@ const AppContent = ({ kernel }: AppProps) => {
                       {/* r8 motion: preserve the panel during its inert exit */}
                       <MotionPresence show={panelOpen && Boolean(selectedGroup || selectedBot)} kind="panel">
                         {selectedGroup ? (
-                          <GroupPanel
-                            api={api}
-                            currentPersonId={currentPersonId}
-                            key={selectedGroup.id}
-                            group={selectedGroup}
-                            channelMode={Boolean(selectedGroup)}
-                            bots={groupMembers}
-                            threadId={selectedThread?.id}
-                            messages={selectedMessages}
-                            runs={data.runs}
-                            onEdit={() => {
-                              setEditingGroup(selectedGroup)
-                              setGroupModalChannelMode(Boolean(selectedGroup))
-                              openModal("group")
-                            }}
-                            onClose={() => {
-                              setPanelOpen(false)
-                              window.requestAnimationFrame(() =>
-                                document.querySelector<HTMLButtonElement>(".bot-panel-toggle")?.focus(),
-                              )
-                            }}
-                          />
+                          <Suspense fallback={<GroupPanelLoading onClose={closeGroupPanel} />}>
+                            <GroupPanel
+                              api={api}
+                              currentPersonId={currentPersonId}
+                              key={selectedGroup.id}
+                              group={selectedGroup}
+                              channelMode={Boolean(selectedGroup)}
+                              bots={groupMembers}
+                              threadId={selectedThread?.id}
+                              messages={selectedMessages}
+                              runs={data.runs}
+                              onEdit={() => {
+                                setEditingGroup(selectedGroup)
+                                setGroupModalChannelMode(Boolean(selectedGroup))
+                                openModal("group")
+                              }}
+                              onClose={closeGroupPanel}
+                            />
+                          </Suspense>
                         ) : (
                           selectedBot && (
                             <ErrorBoundary key={selectedBot.id} area="o painel do bot" api={api}>
@@ -1447,18 +1451,20 @@ const AppContent = ({ kernel }: AppProps) => {
         <MotionPresence show={modal !== null && modal !== "bot"} kind="modal">
           <ErrorBoundary key={modal} area="o diálogo" dialog api={api} onClose={closeModal}>
             {modal === "group" && (
-              <GroupModal
-                group={editingGroup}
-                channelMode={groupModalChannelMode}
-                initial={groupDraft}
-                bots={data.bots}
-                onClose={closeModal}
-                onSave={async (input) => {
-                  await actions.createGroup(input, editingGroup?.id)
-                  if (groupDraft) setTeamFollowup(null)
-                  setRoute({ section: "bots", screen: "chat" })
-                }}
-              />
+              <Suspense fallback={<LoadingModal onClose={closeModal} />}>
+                <GroupModal
+                  group={editingGroup}
+                  channelMode={groupModalChannelMode}
+                  initial={groupDraft}
+                  bots={data.bots}
+                  onClose={closeModal}
+                  onSave={async (input) => {
+                    await actions.createGroup(input, editingGroup?.id)
+                    if (groupDraft) setTeamFollowup(null)
+                    setRoute({ section: "bots", screen: "chat" })
+                  }}
+                />
+              </Suspense>
             )}
             {modal === "invite" && (
               <Suspense fallback={<PageLoading />}>
@@ -1493,14 +1499,16 @@ const AppContent = ({ kernel }: AppProps) => {
         </MotionPresence>
       </main>
       {routineDraft && (
-        <RoutineEditor
-          initial={routineDraft}
-          bots={data.bots}
-          groups={data.groups}
-          host={data.routineHost}
-          actions={actions}
-          onClose={() => setRoutineDraft(null)}
-        />
+        <Suspense fallback={<LoadingModal onClose={() => setRoutineDraft(null)} />}>
+          <RoutineEditor
+            initial={routineDraft}
+            bots={data.bots}
+            groups={data.groups}
+            host={data.routineHost}
+            actions={actions}
+            onClose={() => setRoutineDraft(null)}
+          />
+        </Suspense>
       )}
     </AvatarRuntimeProvider>
   )
@@ -1510,6 +1518,26 @@ const PageLoading = () => (
   <div className="workspace-page" aria-busy="true">
     <p role="status">{t("Loading")}</p>
   </div>
+)
+
+const GroupPanelLoading = ({ onClose }: { onClose: () => void }) => (
+  <aside id="bot-panel" className="bot-panel group-panel" aria-busy="true" aria-label={t("Loading")}>
+    <div className="bot-panel-top">
+      <span role="status">{t("Loading")}</span>
+      <button type="button" className="toolbar-icon" aria-label={t("Close channel panel")} onClick={onClose}>
+        ×
+      </button>
+    </div>
+  </aside>
+)
+
+const LoadingModal = ({ onClose }: { onClose: () => void }) => (
+  <Modal title={t("Loading")} onClose={onClose}>
+    <p className="modal-intro" role="status">
+      {t("Loading")}
+    </p>
+    <MotionSkeleton />
+  </Modal>
 )
 
 const SearchLoading = ({ onClose }: { onClose: () => void }) => (

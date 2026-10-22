@@ -2,7 +2,8 @@ import { cleanup, render, screen } from "@testing-library/react"
 import type { BotGroup } from "@touri/contracts"
 import { afterEach, expect, test } from "vitest"
 import { createMockApi } from "../src/api/mock"
-import { GroupHeader, GroupPanel } from "../src/components/Groups"
+import { GroupPanel } from "../src/components/GroupPanel"
+import { GroupHeader } from "../src/components/Groups"
 import { localizeNotice, t } from "../src/i18n"
 
 afterEach(cleanup)

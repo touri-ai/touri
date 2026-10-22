@@ -114,7 +114,7 @@ describe("repeating work", () => {
     render(<App kernel={{ services: { api: f.api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" }, { timeout: 15000 })
     fireEvent.click(await screen.findByRole("button", { name: "Agendar esta tarefa" }, { timeout: 15000 }))
-    const dialog = screen.getByRole("dialog", { name: "Quando?" })
+    const dialog = await screen.findByRole("dialog", { name: "Quando?" })
     expect(within(dialog).getByRole("textbox", { name: "Tarefa" })).toHaveValue("Review the campaign")
     expect(within(dialog).getByRole("combobox", { name: "Bot" })).toHaveValue("bot-mark")
     expect(within(dialog).getByRole("combobox", { name: "Destino dos resultados" })).toHaveValue("results-thread")
