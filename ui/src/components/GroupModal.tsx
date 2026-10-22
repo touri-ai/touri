@@ -6,6 +6,7 @@ import { t } from "../i18n"
 import { AvatarPicker } from "./AvatarPicker"
 import { BotAvatar } from "./BotAvatar"
 import "./groups.css"
+import "./group-modal.css"
 
 export const GroupModal = ({
   group,

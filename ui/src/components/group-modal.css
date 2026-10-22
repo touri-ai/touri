@@ -1,0 +1,130 @@
+.group-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--surface-backdrop);
+  z-index: 100;
+  padding: var(--space-20);
+}
+.modal-card.group-modal {
+  width: min(560px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-24);
+  box-shadow: var(--elevation-modal);
+}
+.group-modal-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.group-modal-heading h2 {
+  margin: 4px 0;
+  font-size: var(--fs-title);
+}
+.group-modal-heading button {
+  background: transparent;
+  color: inherit;
+  border: 0;
+  font-size: var(--fs-title);
+  cursor: pointer;
+}
+.group-modal .muted-copy {
+  font-size: var(--fs-meta);
+  line-height: 1.6;
+}
+.group-field {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0;
+  font-size: var(--fs-meta);
+  font-weight: 600;
+}
+.group-field input,
+.group-field select {
+  flex-basis: 100%;
+  width: 100%;
+  padding: 11px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: inherit;
+  border-radius: var(--radius-sm);
+}
+.group-modal fieldset {
+  border: 0;
+  padding: 0;
+  margin: 20px 0;
+  min-width: 0;
+}
+.group-modal legend {
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.group-modal legend small {
+  font-weight: 400;
+  color: var(--text-2);
+}
+.group-member-picker {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  max-height: 170px;
+  overflow: auto;
+}
+.group-member-picker label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--border);
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--fs-meta);
+}
+.group-member-picker label small {
+  margin-left: auto;
+  color: var(--text-2);
+}
+
+.group-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.group-member-picker input {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  accent-color: var(--brand);
+}
+.group-modal .avatar-color-auto {
+  display: none;
+}
+
+.group-modal .group-member-picker input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  padding: 0;
+  margin: 0;
+}
+.group-modal .group-member-picker label {
+  min-width: 0;
+}
+.group-modal .group-member-picker .tb-avatar {
+  flex-shrink: 0;
+}
+.group-modal .group-member-picker label > span:not(.tb-avatar) {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
