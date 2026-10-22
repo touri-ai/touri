@@ -65,6 +65,24 @@ const openThreadMenu = (title: string) => {
   fireEvent.click(within(shell).getByRole("button", { name: "Ações da conversa" }))
 }
 
+it("closes a thread action menu with Escape while keeping management open", async () => {
+  const { api } = getThreadFixture()
+  render(<App kernel={{ services: { api } }} />)
+  const conversations = await openConversationRegion()
+  const row = within(conversations).getByRole("button", { name: /Eventos de leads/ })
+  const shell = row.closest<HTMLElement>(".thread-row-shell")
+  if (!shell) throw new Error("Missing thread actions")
+  const trigger = within(shell).getByRole("button", { name: "Ações da conversa" })
+
+  fireEvent.click(trigger)
+  const menu = screen.getByRole("menu")
+  fireEvent.keyDown(within(menu).getByRole("menuitem", { name: "Arquivar conversa" }), { key: "Escape" })
+
+  expect(screen.getByRole("dialog", { name: "Conversas de mark" })).toBeVisible()
+  expect(screen.queryByRole("menu")).toBeNull()
+  expect(trigger).toHaveFocus()
+})
+
 it("preserves the selected history conversation through repeated bot selection and management access", async () => {
   const { api, thread } = getThreadFixture()
   render(<App kernel={{ services: { api } }} />)

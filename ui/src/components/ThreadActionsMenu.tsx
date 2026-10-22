@@ -135,6 +135,7 @@ const createMenu = ({
       style={style}
       ref={menu}
       role="menu"
+      data-escape-boundary
       aria-label={t("Thread actions for {title}", { title })}
       onMouseDown={(event) => event.preventDefault()}
       onKeyDown={(event) => {
