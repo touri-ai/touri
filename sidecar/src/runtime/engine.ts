@@ -1767,6 +1767,7 @@ export const createRuntimeEngine = ({
           const emptyAnswer =
             result.status === "succeeded" &&
             !state.text.trim() &&
+            !state.pendingText.some((chunk) => chunk.trim()) &&
             state.parts.every((part) => part.type === "text" && !part.text.trim())
           if (emptyAnswer && !state.cancelRequested)
             state.completionError = {

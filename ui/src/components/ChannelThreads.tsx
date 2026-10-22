@@ -1,5 +1,6 @@
 import type { Message, Thread } from "@touri/contracts"
-import { getChannelThreadCards, getChannelThreadTitle } from "../channelThreads"
+import { getChannelThreadCards } from "../channelThreadCards"
+import { getChannelThreadTitle } from "../channelThreads"
 import { getDocumentLocale } from "../documentLanguage"
 import { t } from "../i18n"
 

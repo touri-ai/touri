@@ -216,7 +216,7 @@ test("a channel resumes its unfinished member after restart without repeating a 
     if (f.order.length === 2) return
     complete("Plano conferido")
   })
-  const run = f.send("@Bia @Lia confira o plano")
+  const run = f.send("@Lia @Bia confira o plano")
   await until(() => f.order.length === 2)
   f.runtime.shutdown({ appRestart: true })
   const activeMembers = f.db.query("SELECT run_id FROM group_run_links WHERE turn_id=?").all(run.id) as {

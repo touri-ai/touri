@@ -1,7 +1,8 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
-import { getChannelThreadCards, getChannelThreads, getChannelThreadTitle } from "../src/channelThreads"
+import { getChannelThreadCards } from "../src/channelThreadCards"
+import { getChannelThreads, getChannelThreadTitle } from "../src/channelThreads"
 import { ChannelThreads } from "../src/components/ChannelThreads"
 
 afterEach(cleanup)

@@ -15,7 +15,9 @@ import type {
 import { failureRetryHint, sanitizeDiagnostic } from "@touri/contracts/run-failure"
 import {
   Fragment,
+  lazy,
   type ReactNode,
+  Suspense,
   useCallback,
   useContext,
   useEffect,
@@ -68,7 +70,6 @@ import { BrowserActivityControlsProvider } from "./BrowserActivityControls"
 import { getBrowserActivityTools } from "./browserActivityPresentation"
 import { type BrowserContinuationActivity, getBrowserContinuationActivities } from "./browserContinuationActivity"
 import { getBrowserRequestMessages } from "./browserRequestMessages"
-import { ChannelThreads } from "./ChannelThreads"
 import { ChatDisclosure } from "./ChatDisclosure"
 import { ConnectDataCard, connectDataMarker } from "./ConnectDataCard"
 import { ConversationStart } from "./ConversationStart"
@@ -94,6 +95,8 @@ import { toolStatus } from "./toolPresentation"
 import { approvalTools, assistantSegments } from "./turnActivityModel"
 import { type EditMessage, UserMessageEdit } from "./UserMessageEdit"
 import { usePhoneViewport } from "./usePhoneViewport"
+
+const ChannelThreads = lazy(() => import("./ChannelThreads").then((module) => ({ default: module.ChannelThreads })))
 
 type ChatPanelProps = {
   channelThreads?: Thread[]
@@ -1581,7 +1584,7 @@ export const ChatPanel = ({
                   ) : null
                 }
                 timelineCards={[
-                  ...(group && onSelectChannelThread && isChannelRoot
+                  ...(group && onSelectChannelThread && isChannelRoot && sharedChannelThreads.length > 1
                     ? [
                         {
                           id: `channel-threads-${group.id}`,
@@ -1590,12 +1593,14 @@ export const ChatPanel = ({
                             0,
                           ),
                           content: (
-                            <ChannelThreads
-                              groupId={group.id}
-                              threads={channelThreads}
-                              messages={channelMessages}
-                              onSelect={onSelectChannelThread}
-                            />
+                            <Suspense fallback={null}>
+                              <ChannelThreads
+                                groupId={group.id}
+                                threads={channelThreads}
+                                messages={channelMessages}
+                                onSelect={onSelectChannelThread}
+                              />
+                            </Suspense>
                           ),
                         },
                       ]

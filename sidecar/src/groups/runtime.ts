@@ -1310,12 +1310,12 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = g
       JSON.parse(row.recipients_json),
       action?.type === "notice" ? action.code : undefined,
     )
-    if (resumedRun.id !== run.id || previousLink?.reason === "app_restart") {
-      turn.recovered = true
-      turn.recoveryRootId = originalRunId
-    }
-    turns.set(resumedRun.id, turn)
-    queues.set(group.id, [...(queues.get(group.id) ?? []), turn])
+    const restoredTurn =
+      resumedRun.id !== run.id || previousLink?.reason === "app_restart"
+        ? { ...turn, recovered: true, recoveryRootId: originalRunId, tail: thread.activeLeafId }
+        : turn
+    turns.set(resumedRun.id, restoredTurn)
+    queues.set(group.id, [...(queues.get(group.id) ?? []), restoredTurn])
   })
   queues.forEach((_, groupId) => {
     queueMicrotask(() => void drain(groupId))
