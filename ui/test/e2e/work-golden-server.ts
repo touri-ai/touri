@@ -109,7 +109,7 @@ export const createWorkGoldenServer = async () => {
 }
 
 const getPairingCode = async (data: string): Promise<string> => {
-  const child = spawn("bun", ["sidecar/src/cli/main.ts", "pair", "--data-dir", data], {
+  const child = spawn("bun", ["ui/test/e2e/work-golden-pair.ts", data], {
     cwd: root,
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 30_000,
