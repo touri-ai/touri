@@ -8,18 +8,23 @@ import { t } from "../../src/i18n"
 import "../../src/styles.css"
 
 const base = createMockApi()
+const params = new URLSearchParams(location.search)
+const direct = params.get("direct") === "true"
 const baseRequest = base.request
 const { bots } = base.getState()
 const bot = bots[0]
 if (!bot) throw new Error("Fixture bot is missing")
 Object.assign(bot, { name: "Planejamento", title: "Planejamento", mainThreadId: "thread-channel-bot" })
-const { thread } = await base.request("POST /groups", {
-  name: "Equipe de viagens",
-  color: "#2563eb",
-  avatarShape: "classic-none",
-  memberIds: [bot.id],
-  coordinatorBotId: null,
-})
+const { thread } = await (direct
+  ? base.request("POST /threads", { botId: bot.id, title: "Portal de demonstração" })
+  : base.request("POST /groups", {
+      name: "Equipe de viagens",
+      color: "#2563eb",
+      avatarShape: "classic-none",
+      memberIds: [bot.id],
+      coordinatorBotId: null,
+    }))
+if (direct) Object.assign(bot, { mainThreadId: thread.id })
 thread.title = "Planejar viagem"
 thread.activeLeafId = null
 const channel = thread
@@ -87,7 +92,7 @@ const getMessage = ({
   runId,
   text,
   parts,
-  sender: role === "assistant" ? { id: bot.id, name: bot.name } : null,
+  sender: role === "assistant" && !direct ? { id: bot.id, name: bot.name } : null,
   source: "local",
   createdAt: getTimestamp(),
   updatedAt: getTimestamp(),
@@ -185,6 +190,11 @@ const resumeInChannel = (): void => {
   channelRuns.push(run)
   base.emit({ type: "message.created", message: reply })
   emitRun(run)
+  if (direct)
+    base.emit({
+      type: "thread.updated",
+      thread: Object.assign({}, channel, { activeLeafId: reply.id, updatedAt: getTimestamp() }),
+    })
 
   finishResumedAnswer = () => {
     finishResumedAnswer = null
@@ -200,8 +210,45 @@ const resumeInChannel = (): void => {
   }
 }
 
-const harnessWindow: Window & { completeChannelResume?: () => void } = window
+const harnessWindow: Window & {
+  completeChannelResume?: () => void
+  completeWaitingReply?: () => void
+  expireChannelHandoff?: () => void
+} = window
 harnessWindow.completeChannelResume = () => finishResumedAnswer?.()
+harnessWindow.completeWaitingReply = () => {
+  const run = channelRuns[0]
+  const reply = channelMessages.find((message) => message.id === run?.replyMessageId)
+  if (!run || !reply) return
+
+  emitRun(Object.assign({}, run, { status: "succeeded", finishedAt: getTimestamp() }))
+  base.emit({ type: "message.updated", message: Object.assign({}, reply, { status: "complete" }) })
+}
+harnessWindow.expireChannelHandoff = () => {
+  const run = channelRuns[0]
+  const reply = channelMessages.find((message) => message.id === run?.replyMessageId)
+  if (!run || !reply) return
+
+  base.emit({
+    type: "message.updated",
+    message: Object.assign({}, reply, {
+      status: "complete",
+      parts: reply.parts.concat({
+        type: "notice",
+        level: "warning",
+        code: "run_failed",
+        text: "No one took over in time. Ask again when you can.",
+      }),
+    }),
+  })
+  emitRun(Object.assign({}, run, { status: "succeeded", finishedAt: getTimestamp(), browserWaitingForPerson: false }))
+  updateTakeover(false, false)
+  if (takeoverNotice)
+    base.emit({
+      type: "notification.resolved",
+      notification: Object.assign({}, takeoverNotice, { resolvedAt: getTimestamp(), resolution: "expired" }),
+    })
+}
 
 const request: ApiRequest = async <K extends keyof ApiRoutes>(
   route: K,
@@ -287,7 +334,7 @@ const request: ApiRequest = async <K extends keyof ApiRoutes>(
     updateTakeover(false, true)
     const pendingRun = channelRuns[0]
     const pendingReply = channelMessages.find((entry) => entry.id === pendingRun?.replyMessageId)
-    if (pendingRun && pendingReply) {
+    if (pendingRun && pendingReply && params.get("streaming") !== "true") {
       pendingRun.status = "succeeded"
       pendingRun.finishedAt = getTimestamp()
       pendingReply.status = "complete"
@@ -295,6 +342,14 @@ const request: ApiRequest = async <K extends keyof ApiRoutes>(
       emitRun(pendingRun)
       base.emit({ type: "message.updated", message: pendingReply })
     }
+    // A direct reply becomes the active branch after the send response has settled.
+    if (direct)
+      setTimeout(() => {
+        base.emit({
+          type: "thread.updated",
+          thread: Object.assign({}, channel, { activeLeafId: reply.id, updatedAt: getTimestamp() }),
+        })
+      }, 0)
     return { message: userMessage, run } as ApiRoutes[K]["res"]
   }
   if (key === "POST /browser/tabs/:id/takeover/session") {

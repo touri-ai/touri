@@ -467,6 +467,8 @@ test("deleting an idle group member waits for another member's child and the agg
   const f = await fixture()
   const history = await makeGroupHistory(f)
   const group = history.groups.save({ ...history.group, coordinatorBotId: null }, history.group)
+  const text = `@${JSON.stringify(history.owner.name)} @${JSON.stringify(history.participant.name)} Shared conversation`
+  f.db.query("UPDATE messages SET text = ? WHERE id = 'group-message'").run(text)
   const engine = makeDeferredGroupEngine(f.runtime.kernel, history.participant.id)
   const groups = createGroupRuntime(f.runtime.kernel, engine)
   f.runtime.kernel.services.provide("groups.runtime", groups)

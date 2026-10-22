@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite"
 import type { Kernel, Message, MessagePart, RouteResponse, SendMessageInput, StoreApi } from "@touri/contracts"
+import { createGroupStore, getGroupActionText, routeGroupMessage } from "../groups/store"
 import { errorResponse, TouriError } from "../kernel/errors"
 import { toRun } from "../runtime/persistence"
 
@@ -51,6 +52,21 @@ export const createSendJournal = ({
 
   const dispatch = (entry: Entry): void => {
     if (entry.status === "acked" || entry.status === "failed") return
+    const thread = store.getThread({ threadId: entry.thread_id })
+    const group = thread?.groupId && !thread.groupThreadId ? createGroupStore(kernel).get(thread.groupId) : null
+    const message = getMessage({ threadId: entry.thread_id, messageId: entry.message_id })
+    const hasAction = message?.parts.some(
+      (part) => part.type === "notice" && ["group_ask_all", "group_summary"].includes(part.code),
+    )
+    const bots =
+      group?.memberIds.flatMap((id) => {
+        const bot = store.getBot({ botId: id })
+        return bot ? [bot] : []
+      }) ?? []
+    if (group && !hasAction && !routeGroupMessage(group, bots, message?.text ?? "").length) {
+      database.transaction(() => setStatus(entry, "acked")).immediate()
+      return
+    }
     if (kernel.services.use("runtime.isDraining")?.()) return
     const enqueue = kernel.services.use("runtime.enqueue")
     if (entry.deadline <= Date.now()) {
@@ -86,6 +102,7 @@ export const createSendJournal = ({
     const rawRun = entry.run_id ? database.query("SELECT * FROM runs WHERE id = ?").get(entry.run_id) : null
     const run = toRun(rawRun)
     if (run) return { status: 200, json: { message, run } }
+    if (entry.status === "acked") return { status: 200, json: { message, run: null } }
     const code = entry.error_code ?? "RUNTIME_UNAVAILABLE"
     return {
       status: entry.status === "failed" ? 409 : 503,
@@ -133,8 +150,19 @@ export const createSendJournal = ({
       dispatch(previous)
       return reply(find(input.threadId, nonce) ?? previous)
     }
+    const thread = store.getThread({ threadId: input.threadId })
+    const group = thread?.groupId ? createGroupStore(kernel).get(thread.groupId) : null
+    const recipients =
+      input.groupAction === "summarize"
+        ? [group?.coordinatorBotId ?? group?.memberIds[0] ?? ""]
+        : (group?.memberIds ?? [])
+    const names = recipients.flatMap((id) => {
+      const bot = store.getBot({ botId: id })
+      return bot ? [bot.name] : []
+    })
+    const text = input.groupAction ? getGroupActionText(input.text, names) : input.text
     const parts: Array<MessagePart> = [
-      { type: "text", text: input.text },
+      { type: "text", text },
       ...(input.groupAction
         ? [
             {
@@ -193,7 +221,7 @@ export const createSendJournal = ({
             kind: "text",
             status: "complete",
             runId: null,
-            text: input.text,
+            text,
             parts,
             sender: input.sender ?? null,
             source: "local",

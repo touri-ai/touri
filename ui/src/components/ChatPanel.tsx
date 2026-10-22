@@ -774,7 +774,19 @@ const MessageBubble = ({
   const text = message.role === "assistant" ? markdown.replace(connectDataMarker, "") : markdown
   const segments = message.role === "assistant" ? assistantSegments({ ...message, parts }) : []
   const hasBrowserTools = message.role === "assistant" && getBrowserActivityTools(parts).length > 0
+  const browserHandoffExpired = parts.some(
+    (part) =>
+      part.type === "notice" &&
+      part.code === "run_failed" &&
+      part.text === "No one took over in time. Ask again when you can.",
+  )
   const quietBrowserNarration = hasBrowserTools && message.status === "streaming"
+  const getBrowserRunLabel = () => {
+    if (browserHandoffExpired) return t("incomplete", {}, locale)
+    if (quietBrowserNarration) return t("in progress", {}, locale)
+
+    return t("finished", {}, locale)
+  }
   const foldBrowserFlow = hasBrowserTools && message.status !== "streaming"
   const finalText = segments.filter((segment) => segment.type === "text").at(-1)
   const senderName = message.sender?.name ?? bot?.name ?? "touri"
@@ -987,7 +999,7 @@ const MessageBubble = ({
           </time>
           {hasBrowserTools && (
             <span className="browser-run-state" role="status">
-              {t(quietBrowserNarration ? "in progress" : "finished")}
+              {getBrowserRunLabel()}
             </span>
           )}
           {message.role === "user" && message.delivery && (
@@ -1049,22 +1061,7 @@ const MessageBubble = ({
               bot={bot}
               onCancel={onCancel}
               preparingEnvironment={Boolean(vmBotId)}
-              hideBrowserCard={quietBrowserNarration}
-              browserFlow={
-                foldBrowserFlow
-                  ? segments.map((flow) => {
-                      if (flow.type === "browser-steps") return renderBrowserSteps(flow.key, flow.count)
-                      if (flow.type !== "text" || flow === finalText) return null
-
-                      return (
-                        <div className="browser-narration" key={flow.key}>
-                          <strong>{senderName}:</strong>
-                          <MarkdownContent content={flow.text.replace(connectDataMarker, "")} />
-                        </div>
-                      )
-                    })
-                  : undefined
-              }
+              hideBrowserCard={hasBrowserTools}
               onFocusApproval={(approvalId) => {
                 const card = Array.from(root.current?.querySelectorAll<HTMLElement>("[data-approval-id]") ?? []).find(
                   (element) => element.dataset.approvalId === approvalId,
@@ -1091,14 +1088,33 @@ const MessageBubble = ({
           <MarkdownContent content={message.role === "system" ? localizeNotice(text) : text} />
         )
       ) : null}
-      {quietBrowserNarration && !hideBrowserActivity && (
+      {hasBrowserTools && !hideBrowserActivity && (
         <BrowserTurnCard
-          message={{ ...message, parts }}
+          message={Object.assign({}, message, { parts })}
           run={run}
           bot={bot}
           activity={browserActivity}
           locale={locale}
-        />
+        >
+          {foldBrowserFlow
+            ? segments.map((flow) => {
+                if (flow.type === "browser-steps") return renderBrowserSteps(flow.key, flow.count)
+                if (flow.type !== "text" || flow === finalText) return null
+
+                return (
+                  <div className="browser-narration" key={flow.key}>
+                    <strong>{senderName}:</strong>
+                    <MarkdownContent content={flow.text.replace(connectDataMarker, "")} />
+                  </div>
+                )
+              })
+            : undefined}
+        </BrowserTurnCard>
+      )}
+      {browserHandoffExpired && (
+        <p className="chat-terminal-status" role="status">
+          {t("No one took over in time. Ask again when you can.", {}, locale)}
+        </p>
       )}
       {message.role !== "assistant" && !routinePrompt && (
         <MessageAttachments parts={parts.filter((part) => part.type === "image" || part.type === "file")} api={api} />
@@ -1626,7 +1642,9 @@ export const ChatPanel = ({
               }}
               bot={group ? null : bot}
               groupName={group?.name}
+              summaryBotId={group?.coordinatorBotId}
               mentionBots={groupMembers}
+              mentionPeople={channelPeople}
               threadId={thread.id}
               parentId={thread.activeLeafId}
               api={api}

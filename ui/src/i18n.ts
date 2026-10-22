@@ -4,6 +4,8 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  incomplete: "não concluído",
+  "No one took over in time. Ask again when you can.": "Ninguém assumiu a tempo. Peça de novo quando puder.",
   "Este documento contém entrada privada. Continue a tarefa em uma nova aba.":
     "Este documento contém entrada privada. Continue a tarefa em uma nova aba.",
   "Capturas de tela ficam bloqueadas depois do controle privado do navegador.":
@@ -1459,9 +1461,9 @@ export const ptBR = {
   "Grupos / {name}": "Grupos / {name}",
   "Editar grupo": "Editar grupo",
   "Sem menções, todos os membros respondem na ordem da lista. Use @nome para escolher quem responde.":
-    "Sem menções, todos os membros respondem na ordem da lista. Use @nome para escolher quem responde.",
+    "Os bots só respondem quando você os chama com @nome.",
   "{name} coordena as respostas e pode delegar aos membros. Use @nome para falar com um membro.":
-    "{name} coordena as respostas e pode delegar aos membros. Use @nome para falar com um membro.",
+    "Os bots só respondem quando você os chama com @nome.",
   "Cada bot mantém seu computador e suas permissões.": "Cada bot mantém seu computador e suas permissões.",
   "Seu grupo": "Seu grupo",
   "Painel do grupo": "Painel do grupo",
@@ -1469,7 +1471,7 @@ export const ptBR = {
   "Fechar painel do grupo": "Fechar painel do grupo",
   "Editar membros": "Editar membros",
   Coordenador: "Coordenador",
-  "Conte o que o grupo deve fazer para começar.": "Conte o que o grupo deve fazer para começar.",
+  "Conte o que o grupo deve fazer para começar.": "Os bots só respondem quando você os chama com @nome.",
   "Vincular projeto": "Vincular projeto",
   "Vincular {name} ({path}) a este bot": "Vincular {name} ({path}) a este bot",
   "Substitui o projeto {name} ({path}).": "Substitui o projeto {name} ({path}).",
@@ -1631,7 +1633,7 @@ export const ptBR = {
   "Channel summary with coordinator": "{count} bots · {name} coordena",
   "Channel summary": "{count} bots",
   "Start a conversation in channel {name}": "Comece a conversa em #{name}",
-  "Channel conversation hint": "Envie uma mensagem para começar.",
+  "Channel conversation hint": "Os bots só respondem quando você os chama com @nome.",
   "Start a conversation with {name}": "Comece uma conversa com {name}",
   "Tell the channel what to do to get started.": "Conte o que o canal deve fazer para começar.",
   "Channel name": "Nome do canal",
@@ -1644,7 +1646,7 @@ export const ptBR = {
   "Group name": "Nome do grupo",
   "Group mascot": "Mascote do grupo",
   "Customize your group": "Personalize seu grupo",
-  "Group members · response order": "Membros · ordem das respostas",
+  "Group members · response order": "Bots do grupo",
   "Group coordinator": "Coordenador",
   "Salvar grupo": "Salvar grupo",
   "Close group": "Fechar grupo",
@@ -1653,14 +1655,12 @@ export const ptBR = {
   "A shared channel. Each bot keeps its own computer and permissions.":
     "Um canal compartilhado. Cada bot mantém seu computador e suas permissões.",
   "Example: Product": "Ex.: Produto",
-  "Channel members · response order": "Membros do canal · ordem das respostas",
+  "Channel members · response order": "Bots do canal",
   "Channel coordinator": "Coordenador do canal",
   "No channel coordinator": "Sem coordenador",
-  "Channel coordinator routing note": "{name} coordena este canal e pode encaminhar pedidos aos membros.",
-  "Channel member routing note":
-    "Mencione @nome para escolher quem responde. Sem menções, todos os membros respondem na ordem acima.",
-  "Group member routing note":
-    "Mencione @nome para escolher quem responde. Sem menções, todos respondem na ordem acima.",
+  "Channel coordinator routing note": "Os bots só respondem quando você os chama com @nome.",
+  "Channel member routing note": "Os bots só respondem quando você os chama com @nome.",
+  "Group member routing note": "Os bots só respondem quando você os chama com @nome.",
   "Deleting channel…": "Apagando canal…",
   "Apagar {name} remove todas as conversas, mensagens e rotinas do canal. Esta ação não pode ser desfeita.":
     "Apagar {name} remove todas as conversas, mensagens e rotinas do canal. Esta ação não pode ser desfeita.",
@@ -1668,11 +1668,11 @@ export const ptBR = {
   "Aguarde as respostas do canal terminarem ou cancele os turnos antes de apagar o canal.":
     "Aguarde as respostas do canal terminarem ou cancele os turnos antes de apagar o canal.",
   "The channel coordinator receives the request and may delegate to members.":
-    "O coordenador do canal recebe o pedido e pode delegar aos membros.",
+    "Os bots só respondem quando você os chama com @nome.",
   "The group coordinator receives the request and may delegate to members.":
-    "O coordenador recebe o pedido e pode delegar aos membros.",
+    "Os bots só respondem quando você os chama com @nome.",
   "Mention @name to choose who replies. Without a mention, all members reply in order.":
-    "Mencione @nome para escolher quem responde. Sem menções, todos respondem na ordem acima.",
+    "Os bots só respondem quando você os chama com @nome.",
   "The member was removed from the channel.": "O membro foi removido do canal.",
   "Each bot keeps its own computer and permissions.": "Cada bot mantém seu computador e suas permissões.",
   optional: "opcional",
@@ -1735,7 +1735,8 @@ export const ptBR = {
   "Attaching…": "Anexando…",
   "Remove attached file": "Remover {name}",
   "Message to bot": "Mensagem para {name}",
-  "Message in channel": "Mensagem em #{name}",
+  "Os bots só respondem quando você os chama com @nome.": "Os bots só respondem quando você os chama com @nome.",
+  "Message in channel": "Mensagem em #{name} · @ chama um bot",
   "Mention member": "Mencionar membro",
   "Composer keyboard help":
     "Enter envia. Shift+Enter insere uma nova linha. Durante uma resposta, a mensagem entra na fila.",
@@ -3281,6 +3282,8 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  incomplete: "incomplete",
+  "No one took over in time. Ask again when you can.": "No one took over in time. Ask again when you can.",
   "Este documento contém entrada privada. Continue a tarefa em uma nova aba.":
     "This document contains private input. Continue the task in a new tab.",
   "Capturas de tela ficam bloqueadas depois do controle privado do navegador.":
@@ -4639,9 +4642,9 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Grupos / {name}": "Groups / {name}",
   "Editar grupo": "Edit group",
   "Sem menções, todos os membros respondem na ordem da lista. Use @nome para escolher quem responde.":
-    "Without mentions, all members reply in list order. Use @name to choose who replies.",
+    "Bots only reply when you call them with @name.",
   "{name} coordena as respostas e pode delegar aos membros. Use @nome para falar com um membro.":
-    "{name} coordinates replies and can delegate to members. Use @name to talk to a member.",
+    "Bots only reply when you call them with @name.",
   "Cada bot mantém seu computador e suas permissões.": "Each bot keeps its own computer and permissions.",
   "Seu grupo": "Your group",
   "Painel do grupo": "Group panel",
@@ -4649,7 +4652,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Fechar painel do grupo": "Close group panel",
   "Editar membros": "Edit members",
   Coordenador: "Coordinator",
-  "Conte o que o grupo deve fazer para começar.": "Tell the group what to do to get started.",
+  "Conte o que o grupo deve fazer para começar.": "Bots only reply when you call them with @name.",
   "Vincular projeto": "Link project",
   "Vincular {name} ({path}) a este bot": "Link {name} ({path}) to this bot",
   "Substitui o projeto {name} ({path}).": "Replaces project {name} ({path}).",
@@ -4760,7 +4763,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Channel summary with coordinator": "{count} bots · {name} coordinates",
   "Channel summary": "{count} bots",
   "Start a conversation in channel {name}": "Start the conversation in #{name}",
-  "Channel conversation hint": "Send a message to get started.",
+  "Channel conversation hint": "Bots only reply when you call them with @name.",
   "Start a conversation with {name}": "Start a conversation with {name}",
   "Tell the channel what to do to get started.": "Tell the channel what to do to get started.",
   "Channel name": "Channel name",
@@ -4773,7 +4776,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Group name": "Group name",
   "Group mascot": "Group mascot",
   "Customize your group": "Customize your group",
-  "Group members · response order": "Members · reply order",
+  "Group members · response order": "Group bots",
   "Group coordinator": "Coordinator",
   "Salvar grupo": "Save group",
   "Close group": "Close group",
@@ -4782,12 +4785,12 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "A shared channel. Each bot keeps its own computer and permissions.":
     "A shared channel. Each bot keeps its own computer and permissions.",
   "Example: Product": "e.g. Product",
-  "Channel members · response order": "Channel members · reply order",
+  "Channel members · response order": "Channel bots",
   "Channel coordinator": "Channel coordinator",
   "No channel coordinator": "No coordinator",
-  "Channel coordinator routing note": "{name} coordinates this channel and can route requests to its members.",
-  "Channel member routing note": "Mention @name to choose who replies. Without a mention, all members reply in order.",
-  "Group member routing note": "Mention @name to choose who replies. Without a mention, all members reply in order.",
+  "Channel coordinator routing note": "Bots only reply when you call them with @name.",
+  "Channel member routing note": "Bots only reply when you call them with @name.",
+  "Group member routing note": "Bots only reply when you call them with @name.",
   "Deleting channel…": "Deleting channel…",
   "Apagar {name} remove todas as conversas, mensagens e rotinas do canal. Esta ação não pode ser desfeita.":
     "Deleting {name} removes all conversations, messages, and routines from the channel. This cannot be undone.",
@@ -4795,11 +4798,11 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Aguarde as respostas do canal terminarem ou cancele os turnos antes de apagar o canal.":
     "Wait for channel replies to finish or cancel the turns before deleting the channel.",
   "The channel coordinator receives the request and may delegate to members.":
-    "The channel coordinator receives the request and may delegate to members.",
+    "Bots only reply when you call them with @name.",
   "The group coordinator receives the request and may delegate to members.":
-    "The group coordinator receives the request and may delegate to members.",
+    "Bots only reply when you call them with @name.",
   "Mention @name to choose who replies. Without a mention, all members reply in order.":
-    "Mention @name to choose who replies. Without a mention, all members reply in order.",
+    "Bots only reply when you call them with @name.",
   "The member was removed from the channel.": "The member was removed from the channel.",
   "Each bot keeps its own computer and permissions.": "Each bot keeps its own computer and permissions.",
   optional: "optional",
@@ -4862,7 +4865,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Attaching…": "Attaching…",
   "Remove attached file": "Remove {name}",
   "Message to bot": "Message to {name}",
-  "Message in channel": "Message #{name}",
+  "Os bots só respondem quando você os chama com @nome.": "Bots only reply when you call them with @name.",
+  "Message in channel": "Message #{name} · @ calls a bot",
   "Mention member": "Mention member",
   "Composer keyboard help": "Enter sends. Shift+Enter adds a new line. During a reply, your message joins the queue.",
   "Stop reply": "Stop reply",

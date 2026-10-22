@@ -59,7 +59,8 @@ export const getChannelWorking = (
 }
 
 export const getChannelBrowserView = (state: ChannelBrowserState, viewerId: string): ChannelBrowserView => {
-  const canControl = viewerId === state.requesterId || viewerId === state.ownerId
+  const eligible = viewerId === state.requesterId || viewerId === state.ownerId
+  const canControl = eligible && (!state.controllerId || state.controllerId === viewerId)
   const tookOver = state.controllerId !== null
 
   return {

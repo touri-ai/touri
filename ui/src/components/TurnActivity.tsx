@@ -45,10 +45,18 @@ export const BrowserTurnCard = ({
         parts={activity?.parts ?? message.parts}
         threadId={message.threadId}
         runId={activity?.runId ?? message.runId}
-        waitingForPerson={run?.browserWaitingForPerson}
+        waitingForPerson={
+          run?.browserWaitingForPerson &&
+          !message.parts.some(
+            (part) =>
+              part.type === "notice" &&
+              part.code === "run_failed" &&
+              part.text === "No one took over in time. Ask again when you can.",
+          )
+        }
         finished={activity?.finished ?? message.status !== "streaming"}
         createdAt={message.createdAt}
-        botName={message.sender?.name ?? "touri"}
+        botName={message.sender?.name ?? bot?.name ?? "touri"}
         locale={locale}
       >
         {children}

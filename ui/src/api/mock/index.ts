@@ -1,6 +1,7 @@
 import type {
   ApiModel,
   ApiRoutes,
+  ApprovalPart,
   Bot,
   BotGroup,
   BotLearning,
@@ -278,6 +279,40 @@ export type MockScenario =
   | "interrupted-tasks"
   | "group-context-missing"
   | "message-edit-target"
+  | "approval-notice"
+
+const getApprovalNoticeFixture = (): { thread: Thread; message: Message; approval: ApprovalPart } => {
+  const approval: ApprovalPart = {
+    type: "approval",
+    approvalId: "folder-review",
+    request: "permission",
+    scope: { source: "mcp", server: "touri", tool: "folder_access_request" },
+    detail:
+      'folder_access_request: {"path":"/workspace/phase-a","requestedPath":"/workspace/alias","mode":"read-write","previousMode":null,"nextTurn":false}',
+    decision: "pending",
+  }
+  const createdAt = now()
+  const message: Message = {
+    ...createMessage({
+      id: "folder-review-message",
+      threadId: "thread-mark-approval",
+      role: "assistant",
+      text: "",
+      status: "streaming",
+    }),
+    kind: "tool",
+    parts: [approval],
+    createdAt,
+    updatedAt: createdAt,
+  }
+  const thread = {
+    ...createThread({ id: "thread-mark-approval", botId: "bot-mark", title: "Revisão pendente", running: false }),
+    activeLeafId: message.id,
+    createdAt: createdAt - 1,
+    updatedAt: createdAt - 1,
+  }
+  return { thread, message, approval }
+}
 
 export const getRoutineConversationFixture = (): {
   thread: Thread
@@ -512,23 +547,28 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
   const routineFixture = scenario === "routine-conversation" ? getRoutineConversationFixture() : null
   const interruptedFixture = scenario === "interrupted-tasks" ? getInterruptedTaskFixture() : null
   const groupContextMissingFixture = scenario === "group-context-missing" ? getGroupContextMissingFixture() : null
+  const approvalNoticeFixture = scenario === "approval-notice" ? getApprovalNoticeFixture() : null
   const project = createProject()
   const projects: Array<Project> = [project]
   // These local collections model server storage; deletion handlers replace them with the retained rows.
   let bots = seed.bots.map((bot, index) => createBot(bot, index, project.id))
-  let threads = seed.threads.map((thread) => {
-    if (thread.id === routineFixture?.thread.id) return routineFixture.thread
-    const saved = createThread(thread)
-    if (thread.id === "thread-mark" && groupContextMissingFixture)
-      return { ...saved, activeLeafId: groupContextMissingFixture.message.id }
-    if (thread.id !== "thread-mark" || !interruptedFixture) return saved
-    return { ...saved, activeLeafId: interruptedFixture.messages.at(-1)?.id ?? saved.activeLeafId }
-  })
+  let threads = [
+    ...seed.threads.map((thread) => {
+      if (thread.id === routineFixture?.thread.id) return routineFixture.thread
+      const saved = createThread(thread)
+      if (thread.id === "thread-mark" && groupContextMissingFixture)
+        return { ...saved, activeLeafId: groupContextMissingFixture.message.id }
+      if (thread.id !== "thread-mark" || !interruptedFixture) return saved
+      return { ...saved, activeLeafId: interruptedFixture.messages.at(-1)?.id ?? saved.activeLeafId }
+    }),
+    ...(approvalNoticeFixture ? [approvalNoticeFixture.thread] : []),
+  ]
   let messages = [
     ...seed.messages.filter((message) => message.threadId !== routineFixture?.thread.id).map(getSeedMessage),
     ...(routineFixture?.messages ?? []),
     ...(interruptedFixture?.messages ?? []),
     ...(groupContextMissingFixture ? [groupContextMissingFixture.message] : []),
+    ...(approvalNoticeFixture ? [approvalNoticeFixture.message] : []),
   ]
   const mem0Settings = new Map<string, import("@touri/contracts").Mem0Settings>()
   const goals = new Map<string, Goal>()
@@ -636,6 +676,17 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       listener(envelope)
     })
   }
+
+  if (approvalNoticeFixture)
+    notify({
+      kind: "approval",
+      botId: "bot-mark",
+      botName: "Café Ideias",
+      threadId: approvalNoticeFixture.thread.id,
+      requestId: approvalNoticeFixture.approval.approvalId,
+      title: "Ação pendente",
+      body: approvalNoticeFixture.approval.detail,
+    })
 
   const recoveryTasks = new Map<string, RecoveryTask>(
     scenario === "interrupted-tasks"

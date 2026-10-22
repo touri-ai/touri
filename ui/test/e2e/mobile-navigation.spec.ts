@@ -90,7 +90,7 @@ test("menu remains available on global pages and desktop keeps its sidebar", asy
   await expect(menu).toBeInViewport()
   await menu.click()
   await drawer.getByRole("tab", { name: /^Bots/ }).click()
-  await drawer.locator('[data-bot-entry="bot-mark"] .bot-row-main').click()
+  await expect(drawer).not.toBeVisible()
   await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
   await page.setViewportSize({ width: 1440, height: 900 })
   await expect(menu).toHaveCount(0)

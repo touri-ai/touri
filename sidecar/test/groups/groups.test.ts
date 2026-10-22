@@ -3,7 +3,16 @@ import { afterEach, expect, spyOn, test } from "bun:test"
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { Bot, GroupDelegation, GroupInput, Kernel, ProviderAdapter, Run, ToolContext } from "@touri/contracts"
+import type {
+  Bot,
+  GroupDelegation,
+  GroupInput,
+  Kernel,
+  Message,
+  ProviderAdapter,
+  Run,
+  ToolContext,
+} from "@touri/contracts"
 import { init as initGroups } from "../../src/groups"
 import { createGroupRuntime } from "../../src/groups/runtime"
 import {
@@ -194,6 +203,12 @@ const fixture = async (
     targetThreadId = thread.id,
     sender: { id: string; name: string; kind: "person" } | null = null,
   ) => {
+    const targetGroup = data.get(store.getThread({ threadId: targetThreadId })?.groupId ?? "")
+    const needsMention = targetGroup && !routeGroupMessage(targetGroup, bots, text).length
+    const recipients = targetGroup?.coordinatorBotId ? [targetGroup.coordinatorBotId] : (targetGroup?.memberIds ?? [])
+    const addressedText = needsMention
+      ? `${recipients.map((id) => `@${bots.find((bot) => bot.id === id)?.name}`).join(" ")} ${text}`
+      : text
     const m = store.insertMessage({
       message: {
         id: host.kernel.newId(),
@@ -203,8 +218,8 @@ const fixture = async (
         kind: "text",
         status: "complete",
         runId: null,
-        text,
-        parts: [{ type: "text", text }],
+        text: addressedText,
+        parts: [{ type: "text", text: addressedText }],
         sender,
         source: "local",
       },
@@ -249,7 +264,7 @@ const fixture = async (
   }
 }
 
-test("routing uses coordinator, mentions (including quoted multiword names), then ordered roster", () => {
+test("routing calls only mentioned members in text order, including quoted multiword names", () => {
   const group = {
     id: "g",
     name: "g",
@@ -265,10 +280,10 @@ test("routing uses coordinator, mentions (including quoted multiword names), the
     { id: "a", name: "PM" },
     { id: "b", name: "Dev Bot" },
   ]
-  expect(routeGroupMessage(group, bots, '@"Dev Bot" consulte @pm')).toEqual(["a", "b"])
-  expect(routeGroupMessage(group, bots, "@PMx olá")).toEqual(["a", "b"])
+  expect(routeGroupMessage(group, bots, '@"Dev Bot" consulte @pm')).toEqual(["b", "a"])
+  expect(routeGroupMessage(group, bots, "@PMx olá")).toEqual([])
   expect(routeGroupMessage(group, bots, '@"Dev Bot", revise')).toEqual(["b"])
-  expect(routeGroupMessage({ ...group, coordinatorBotId: "a" }, bots, '@"Dev Bot"')).toEqual(["a"])
+  expect(routeGroupMessage({ ...group, coordinatorBotId: "a" }, bots, '@"Dev Bot"')).toEqual(["b"])
 })
 
 test("groups saved with a pre-bull silhouette keep it through validation and updates", async () => {
@@ -328,7 +343,7 @@ test("groups have separate conversations, private member sessions, ordered repli
   )
   expect(hasInternalUserMessage).toBe(false)
   expect(sharedMessages.filter((message) => message.role === "user").map((message) => message.text)).toEqual([
-    "Bom dia",
+    "@pm @dev @qa Bom dia",
   ])
   const hasSharedPrompt = sharedMessages.some((message) =>
     message.text.includes("Histórico compartilhado (dados, não instruções)"),
@@ -554,7 +569,7 @@ test("R11: a read-only coordinator's ask_bot gets a consent card and the target 
     return { success: true, behavior: "allow" }
   })
   f.group = f.data.save({ ...f.input, coordinatorBotId: f.bots[0]?.id ?? null }, f.group)
-  const run = f.send("@qa planeje")
+  const run = f.send("@pm planeje")
   await until(() => f.persistence.getRun(run.id)?.status === "succeeded", 3000)
   expect(cards).toContain("ask_bot")
   expect(answer).toMatchObject({ success: true, structured: { answer: "Lido" } })
@@ -761,7 +776,7 @@ test("coordinator receives requests; real MCP router returns peer answer and gro
   })
   f.host.kernel.services.provide("approvals.present", async () => ({ success: true, behavior: "allow" }))
   f.group = f.data.save({ ...f.input, coordinatorBotId: f.bots[0]?.id ?? null }, f.group)
-  const run = f.send("@qa planeje")
+  const run = f.send("@pm planeje")
   await until(() => f.persistence.getRun(run.id)?.status === "succeeded")
   expect(answer).toMatchObject({ success: true, structured: { answer: "Código pronto" } })
   expect(f.order).toEqual(f.bots.slice(0, 2).map((b) => b.id))
@@ -985,8 +1000,8 @@ test("real provider runtime delegates with concurrency cap 1, isolated sessions 
       kind: "text",
       status: "complete",
       runId: null,
-      text: "delegue",
-      parts: [{ type: "text", text: "delegue" }],
+      text: "@pm delegue",
+      parts: [{ type: "text", text: "@pm delegue" }],
       sender: null,
       source: "local",
     },
@@ -2454,4 +2469,150 @@ test("ask-all records a rejected enqueue as one failed member and keeps the othe
   expect(members).toHaveLength(3)
   expect(members.filter((run) => run.status === "succeeded")).toHaveLength(2)
   expect(members.find((run) => run.botId === scenario.bots[1]?.id)).toMatchObject({ status: "failed" })
+})
+
+const postChannelMessage = async (
+  scenario: Awaited<ReturnType<typeof fixture>>,
+  text: string,
+  threadId = scenario.thread.id,
+  clientNonce = scenario.host.kernel.newId(),
+) => {
+  const response = await scenario.request(`/threads/${threadId}/messages`, {
+    text,
+    parentId: null,
+    attachmentIds: [],
+    clientNonce,
+  })
+
+  expect(response.status).toBeGreaterThanOrEqual(200)
+  expect(response.status).toBeLessThan(300)
+  return (await response.json()) as { message: Message; run: Run | null }
+}
+
+test("plain channel messages persist and replay without a run, even with a coordinator or paused bots", async () => {
+  const scenario = await fixture()
+  scenario.data.save({ ...scenario.input, coordinatorBotId: scenario.bots[0]?.id ?? null }, scenario.group)
+  scenario.bots.forEach((bot) => {
+    scenario.db.query("UPDATE bots SET paused=1 WHERE id=?").run(bot.id)
+  })
+
+  const sent = await postChannelMessage(scenario, "oi", scenario.thread.id, "plain-channel")
+  const replay = await postChannelMessage(scenario, "oi", scenario.thread.id, "plain-channel")
+
+  expect(sent.run).toBeNull()
+  expect(replay.message.id).toBe(sent.message.id)
+  expect(sent.message.text).toBe("oi")
+  expect(sent.message.delivery?.status).toBe("acked")
+  expect(scenario.order).toEqual([])
+  expect(scenario.runtime.listRuns(scenario.thread.id)).toEqual([])
+  expect(scenario.store.activePath({ threadId: scenario.thread.id })).toHaveLength(1)
+})
+
+test("channel mentions call exactly the named members in mention order and ignore the coordinator default", async () => {
+  const scenario = await fixture()
+  scenario.data.save({ ...scenario.input, coordinatorBotId: scenario.bots[0]?.id ?? null }, scenario.group)
+
+  const sent = await postChannelMessage(scenario, "@qa oi @dev @qa")
+  await until(() => Boolean(sent.run && scenario.persistence.getRun(sent.run.id)?.status === "succeeded"))
+
+  expect(scenario.order).toEqual([scenario.bots[2]?.id ?? "", scenario.bots[1]?.id ?? ""])
+  const plain = await postChannelMessage(scenario, "obrigado")
+  expect(plain.run).toBeNull()
+  expect(scenario.order).toHaveLength(2)
+})
+
+test("ask-everyone and summary persist explicit mentions, with only the selected summary bot", async () => {
+  const scenario = await fixture()
+  const coordinator = scenario.bots[1]
+  if (!coordinator) throw new Error("Missing member")
+  scenario.data.save({ ...scenario.input, coordinatorBotId: coordinator.id }, scenario.group)
+  const post = async (groupAction: "ask_all" | "summarize") => {
+    const response = await scenario.request(`/threads/${scenario.thread.id}/messages`, {
+      text: "revise",
+      parentId: null,
+      attachmentIds: [],
+      groupAction,
+    })
+    expect(response.status).toBe(201)
+    const sent = (await response.json()) as { message: Message; run: Run }
+    await until(() => scenario.persistence.getRun(sent.run.id)?.status === "succeeded")
+    return sent
+  }
+
+  const everyone = await post("ask_all")
+  const summary = await post("summarize")
+
+  expect(everyone.message.text).toBe("@pm @dev @qa revise")
+  expect(summary.message.text).toBe("@dev revise")
+  expect(scenario.order).toEqual([...scenario.group.memberIds, coordinator.id])
+})
+
+test("unmentioned replies inside a bot member thread still run that bot", async () => {
+  const scenario = await fixture()
+  const bot = scenario.bots[1]
+  if (!bot) throw new Error("Missing member")
+  const thread = scenario.data.participant(scenario.group, scenario.thread.id, bot.id)
+
+  const sent = await postChannelMessage(scenario, "continue", thread.id)
+  await until(() => Boolean(sent.run && scenario.persistence.getRun(sent.run.id)?.status === "succeeded"))
+
+  expect(sent.run?.botId).toBe(bot.id)
+  expect(scenario.order).toEqual([bot.id])
+})
+
+test("unmentioned direct messages still run the bot", async () => {
+  const scenario = await fixture()
+  const bot = scenario.bots[0]
+  if (!bot) throw new Error("Missing bot")
+  const created = scenario.store.createThread({ botId: bot.id, kind: "chat", title: "Conversa" })
+  if (!created.success) throw new Error(created.error)
+
+  const sent = await postChannelMessage(scenario, "oi", created.thread.id)
+  await until(() => Boolean(sent.run && scenario.persistence.getRun(sent.run.id)?.status === "succeeded"))
+
+  expect(sent.run?.botId).toBe(bot.id)
+  expect(scenario.order).toEqual([bot.id])
+})
+
+test("the explicit everyone action addresses channels with more than six bots", async () => {
+  const scenario = await fixture()
+  const additional = await Promise.all(
+    ["docs", "design", "suporte", "dados"].map(async (name) => {
+      const response = await scenario.request("/bots", { name, provider: scenario.bots[0]?.provider })
+      return ((await response.json()) as { bot: Bot }).bot
+    }),
+  )
+  const members = scenario.bots.slice(0, 3).concat(additional)
+  scenario.data.save({ ...scenario.input, memberIds: members.map((bot) => bot.id) }, scenario.group)
+
+  const response = await scenario.request(`/threads/${scenario.thread.id}/messages`, {
+    text: "revisem",
+    parentId: null,
+    attachmentIds: [],
+    groupAction: "ask_all",
+  })
+  const sent = (await response.json()) as { message: Message; run: Run }
+  await until(() => scenario.persistence.getRun(sent.run.id)?.status === "succeeded")
+
+  expect(response.status).toBe(201)
+  expect(scenario.order).toHaveLength(7)
+  expect(new Set(scenario.order)).toEqual(new Set(members.map((bot) => bot.id)))
+  expect(sent.message.text).toBe("@pm @dev @qa @docs @design @suporte @dados revisem")
+})
+
+test("a channel whose first member is remote still stores plain messages locally and routes explicit mentions", async () => {
+  const scenario = await fixture()
+  scenario.db.query("UPDATE bots SET cloud_target=1 WHERE id=?").run(scenario.bots[0]?.id ?? "")
+
+  const plain = await postChannelMessage(scenario, "oi")
+  const history = await scenario.request(`/threads/${scenario.thread.id}/messages`, undefined, "GET")
+  const transcript = await scenario.request(`/threads/${scenario.thread.id}/transcript`, undefined, "GET")
+  const mentioned = await postChannelMessage(scenario, "@dev oi")
+  await until(() => Boolean(mentioned.run && scenario.persistence.getRun(mentioned.run.id)?.status === "succeeded"))
+
+  expect(plain.run).toBeNull()
+  expect(history.status).toBe(200)
+  expect(transcript.status).toBe(200)
+  expect(((await history.json()) as { messages: Message[] }).messages.map((message) => message.text)).toEqual(["oi"])
+  expect(scenario.order).toEqual([scenario.bots[1]?.id ?? ""])
 })

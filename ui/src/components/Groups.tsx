@@ -309,30 +309,9 @@ const GroupSidebarEntry = memo(
   },
 )
 
-export const GroupRoutingNote = ({
-  group,
-  bots,
-  channelMode = false,
-}: {
-  group: BotGroup
-  bots: Bot[]
-  channelMode?: boolean
-}) => {
-  const coordinator = bots.find((bot) => bot.id === group.coordinatorBotId)
-  return (
-    <p className="group-routing-note">
-      {channelMode
-        ? coordinator
-          ? t("Channel coordinator routing note", { name: coordinator.name })
-          : t("Channel member routing note")
-        : coordinator
-          ? t("{name} coordena as respostas e pode delegar aos membros. Use @nome para falar com um membro.", {
-              name: coordinator.name,
-            })
-          : t("Sem menções, todos os membros respondem na ordem da lista. Use @nome para escolher quem responde.")}
-    </p>
-  )
-}
+export const GroupRoutingNote = (_props: { group: BotGroup; bots: Bot[]; channelMode?: boolean }) => (
+  <p className="group-routing-note">{t("Os bots só respondem quando você os chama com @nome.")}</p>
+)
 
 const GroupMembers = ({
   group,
@@ -378,7 +357,7 @@ export const GroupConversationStart = ({
   const startTitle = channelMode
     ? t("Start a conversation in channel {name}", { name: group.name })
     : t("Comece uma conversa com {name}", { name: group.name })
-  const startHint = channelMode ? t("Channel conversation hint") : t("Conte o que o grupo deve fazer para começar.")
+  const startHint = t("Os bots só respondem quando você os chama com @nome.")
 
   return (
     <section
@@ -404,7 +383,6 @@ export const GroupConversationStart = ({
         currentPersonId={currentPersonId}
         channelMode={channelMode}
       />
-      <GroupRoutingNote group={group} bots={bots} channelMode={channelMode} />
     </section>
   )
 }
@@ -779,19 +757,7 @@ export const GroupModal = ({
               ))}
             </select>
           </label>
-          <p className="group-routing-note">
-            {coordinatorBotId
-              ? t(
-                  channelMode
-                    ? "The channel coordinator receives the request and may delegate to members."
-                    : "The group coordinator receives the request and may delegate to members.",
-                )
-              : t(
-                  channelMode
-                    ? "Mention @name to choose who replies. Without a mention, all members reply in order."
-                    : "Group member routing note",
-                )}
-          </p>
+          <p className="group-routing-note">{t("Os bots só respondem quando você os chama com @nome.")}</p>
           {error && <p role="alert">{error}</p>}
           <div className="group-modal-actions">
             <button type="button" className="button button-quiet" onClick={onClose} disabled={saving}>

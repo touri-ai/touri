@@ -32,14 +32,7 @@ const translations = [
   ],
   ["Comece uma conversa com {name}", "Start a conversation with {name}"],
   ["Membros do grupo", "Group members"],
-  [
-    "Sem menções, todos os membros respondem na ordem da lista. Use @nome para escolher quem responde.",
-    "Without mentions, all members reply in list order. Use @name to choose who replies.",
-  ],
-  [
-    "{name} coordena as respostas e pode delegar aos membros. Use @nome para falar com um membro.",
-    "{name} coordinates replies and can delegate to members. Use @name to talk to a member.",
-  ],
+  ["Os bots só respondem quando você os chama com @nome.", "Bots only reply when you call them with @name."],
   ["Cada bot mantém seu computador e suas permissões.", "Each bot keeps its own computer and permissions."],
   ["Seu grupo", "Your group"],
   ["Painel do grupo", "Group panel"],
@@ -47,7 +40,6 @@ const translations = [
   ["Fechar painel do grupo", "Close group panel"],
   ["Editar membros", "Edit members"],
   ["Coordenador", "Coordinator"],
-  ["Conte o que o grupo deve fazer para começar.", "Tell the group what to do to get started."],
 ] satisfies [TranslationKey, string][]
 
 const channelTranslations = [

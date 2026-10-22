@@ -27,7 +27,7 @@ test("a channel browser handback resumes the bot and posts its answer in the sam
   }
 
   await expect(composer).toBeVisible()
-  await composer.fill("Confira o portal de demonstração e continue depois do login.")
+  await composer.fill("@Planejamento confira o portal de demonstração e continue depois do login.")
   await composer.press("Enter")
 
   await expect(messages.getByText("O portal de demonstração pediu login para continuar.")).toBeVisible()
@@ -69,4 +69,24 @@ test("a channel browser handback resumes the bot and posts its answer in the sam
   await expect(page.locator(".browser-activity-card")).toHaveCount(1)
   await expect(browserCard).toContainText("Usou o navegador · 3 ações")
   await saveScreenshot("channel-takeover-resumed.png")
+})
+
+test("an expired channel handoff shows that the request did not finish", async ({ page }, info) => {
+  await page.goto("/test/e2e/channel-takeover-harness.html")
+  const composer = page.getByRole("textbox", { name: "Mensagem para Equipe de viagens" })
+  await composer.fill("@Planejamento confira o portal de demonstração e me chame para entrar.")
+  await composer.press("Enter")
+  await expect(page.locator(".browser-activity-card")).toBeVisible()
+
+  await page.evaluate(() => (window as Window & { expireChannelHandoff?: () => void }).expireChannelHandoff?.())
+
+  await expect(page.getByText("Ninguém assumiu a tempo. Peça de novo quando puder.", { exact: true })).toBeVisible()
+  await expect(page.locator(".browser-run-state")).toHaveText("não concluído")
+  const screenshot = await page.screenshot({ fullPage: true, animations: "disabled" })
+  await writeFile(info.outputPath("channel-takeover-expired.png"), screenshot)
+  const evidenceDirectory = process.env.TOURI_E2E_EVIDENCE_DIR
+  if (!evidenceDirectory) return
+
+  await mkdir(evidenceDirectory, { recursive: true })
+  await writeFile(join(evidenceDirectory, "channel-takeover-expired.png"), screenshot)
 })

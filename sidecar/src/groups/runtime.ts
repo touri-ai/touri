@@ -696,9 +696,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       const bot = store.getBot({ botId: id })
       return bot ? [bot] : []
     })
-    const recipients = getRecipients(group, bots, text, action)
-    if (action === "group_ask_all" && recipients.length > 6)
-      return { success: false, errorCode: "DELEGATION_LIMIT", error: "Pergunte a no máximo 6 membros por turno." }
+    const recipients = getRecipients(group, bots, text, action, args.trigger === "routine")
     if (recipients.some((id) => !bots.some((b) => b.id === id && !b.paused && !b.archivedAt)))
       return { success: false, errorCode: "BOT_PAUSED", error: "Um membro está indisponível ou pausado" }
     const bot = bots.find((b) => b.id === recipients[0])
@@ -1178,9 +1176,11 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
   }
 }
 
-const getRecipients = (group: BotGroup, bots: Bot[], text: string, action: string | undefined) => {
+const getRecipients = (group: BotGroup, bots: Bot[], text: string, action: string | undefined, routine = false) => {
+  if (routine && group.coordinatorBotId) return [group.coordinatorBotId]
   if (action === "group_ask_all") return group.memberIds
   if (action === "group_summary") return [group.coordinatorBotId ?? group.memberIds[0] ?? ""]
 
-  return routeGroupMessage(group, bots, text)
+  const mentioned = routeGroupMessage(group, bots, text)
+  return routine && !mentioned.length ? group.memberIds : mentioned
 }

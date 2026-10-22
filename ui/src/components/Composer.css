@@ -502,3 +502,8 @@
 .composer-paused button {
   flex: 0 0 auto;
 }
+
+.group-mentions [aria-selected="true"] {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}

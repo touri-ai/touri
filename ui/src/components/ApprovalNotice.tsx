@@ -13,11 +13,15 @@ export const ApprovalNotice = ({
   messages,
   onReview,
   activeThreadId = null,
+  pendingReturnCount = 0,
+  onDismissPending,
 }: {
   notifications: NotificationRecord[]
   messages: Message[]
   onReview: (target: ApprovalTarget) => void
   activeThreadId?: string | null
+  pendingReturnCount?: number
+  onDismissPending?: (() => void) | undefined
 }) => {
   const [hidden, setHidden] = useState<Set<string>>(() => new Set())
   const [confirmed, setConfirmed] = useState<number | null>(null)
@@ -49,12 +53,22 @@ export const ApprovalNotice = ({
         item.requestId,
     )
     .sort((a, b) => b.createdAt - a.createdAt || b.id - a.id)[0]
-  if (!item)
-    return confirmed !== null ? (
+  if (!item && confirmed !== null)
+    return (
       <div className="notice-bar approval-notice" role="status">
         {t("Autorizado. Retomando a tarefa.")}
       </div>
-    ) : null
+    )
+  if (!item && pendingReturnCount > 0)
+    return (
+      <div className="notice-bar approval-notice" role="status">
+        {t("Você tem {n} solicitações pendentes.", { n: pendingReturnCount })}
+        <button type="button" onClick={onDismissPending} aria-label={t("Dismiss notice")}>
+          <PanelIcon name="close" />
+        </button>
+      </div>
+    )
+  if (!item) return null
   const summary = approvalBarSummary(approvalNotificationSummary(item, messages))
   return (
     <div className="notice-bar approval-notice" role="status">
