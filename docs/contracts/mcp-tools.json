@@ -409,19 +409,19 @@
     },
     {
       "name": "coordinate_bots",
-      "description": "Ask a member of the same touri group to complete a task and return its final answer into your turn. Use ask_bot({bot, message}) (coordinate_bots is an alias). Target keeps its own machine, permissions and history; user approvals are respected. Maximum depth 2, 6 calls per group turn; cycles blocked; 120s timeout. Only available in group participant sessions.",
+      "description": "Ask a member of the same touri group to complete a task and return its final answer into your turn. Use ask_bot({bot, message}) (coordinate_bots is an alias). Target keeps its own machine, permissions and history; user approvals are respected. Maximum depth 2, 6 calls per group turn; cycles blocked; 10-minute timeout. Only available in group participant sessions.",
       "inputSchema": { "type": "object", "required": ["bot", "message"], "additionalProperties": false,
         "properties": { "bot": { "type": "string", "description": "Exact member name or ID" },
           "message": { "type": "string", "minLength": 1, "maxLength": 8000 } } },
-      "x-touri": { "group": "core", "mvp": true, "mutates": true, "deadlineMs": 125000 }
+      "x-touri": { "group": "core", "mvp": true, "mutates": true, "deadlineMs": 605000 }
     },
     {
       "name": "ask_bot",
-      "description": "Ask a member of the same touri group to complete a task and return its final answer into your turn. Use ask_bot({bot, message}) (coordinate_bots is an alias). Target keeps its own machine, permissions and history; user approvals are respected. Maximum depth 2, 6 calls per group turn; cycles blocked; 120s timeout. Only available in group participant sessions.",
+      "description": "Ask a member of the same touri group to complete a task and return its final answer into your turn. Use ask_bot({bot, message}) (coordinate_bots is an alias). Target keeps its own machine, permissions and history; user approvals are respected. Maximum depth 2, 6 calls per group turn; cycles blocked; 10-minute timeout. Only available in group participant sessions.",
       "inputSchema": { "type": "object", "required": ["bot", "message"], "additionalProperties": false,
         "properties": { "bot": { "type": "string", "description": "Exact member name or ID" },
           "message": { "type": "string", "minLength": 1, "maxLength": 8000 } } },
-      "x-touri": { "group": "core", "mvp": true, "mutates": true, "deadlineMs": 125000 }
+      "x-touri": { "group": "core", "mvp": true, "mutates": true, "deadlineMs": 605000 }
     }
   ]
 }

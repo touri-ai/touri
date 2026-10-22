@@ -72,9 +72,13 @@ test("ask_all validates a bounded task without accepting extra recipients", () =
 
 test("ask_all documents each member's execution budget from its start time", () => {
   const description = toolCatalog.tools.find((tool) => tool.name === "ask_all")?.description ?? ""
+  const memberDeadlines = toolCatalog.tools
+    .filter((tool) => ["coordinate_bots", "ask_all", "ask_bot"].includes(tool.name))
+    .map((tool) => tool["x-touri"].deadlineMs)
 
-  expect(description).toContain("Each member has its own 120-second execution budget")
+  expect(description).toContain("Each member has its own 10-minute execution budget")
   expect(description).toContain("starting when that member's run starts")
   expect(description).toContain("time waiting in the queue does not count")
   expect(description).not.toContain("shares the group turn deadline")
+  expect(memberDeadlines).toEqual([605_000, 605_000, 605_000])
 })

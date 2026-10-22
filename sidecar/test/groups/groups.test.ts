@@ -47,7 +47,7 @@ const until = async (check: () => boolean, attempts = 300) => {
 }
 const fixture = async (
   hook?: (ctx: ToolContext, complete: (text: string) => void) => Promise<void>,
-  timeout = 1000,
+  timeout?: number,
   getStartDelay: (botId: string) => number = () => 0,
 ) => {
   const root = mkdtempSync(join(tmpdir(), "touri-groups-"))
@@ -762,7 +762,7 @@ test("coordinator receives requests; real MCP router returns peer answer and gro
       })
       expect(instructions).toContain("with the coordinator role")
       expect(instructions).toContain(
-        "each member has its own 120-second execution budget, starting when that member's run starts, and time waiting in the queue does not count",
+        "each member has its own 10-minute execution budget, starting when that member's run starts, and time waiting in the queue does not count",
       )
       answer = await router.call({
         id: 1,
@@ -2187,6 +2187,18 @@ test("ordinary mentions keep a fresh per-bot budget across a long group turn", a
 
   expect(scenario.order).toEqual(scenario.group.memberIds.slice(0, 2))
   expect(scenario.runtime.listRuns(scenario.thread.id).filter((run) => run.groupTurnId === turn.id)).toHaveLength(2)
+})
+
+test("group member tasks use a ten-minute execution deadline", async () => {
+  const scenario = await fixture()
+  const timeout = spyOn(globalThis, "setTimeout")
+  cleanups.unshift(() => timeout.mockRestore())
+
+  const turn = scenario.send("@pm revise")
+  await until(() => scenario.persistence.getRun(turn.id)?.status === "succeeded")
+
+  const scheduledDelays = timeout.mock.calls.map(([, delay]) => Number(delay))
+  expect(scheduledDelays.some((delay) => delay >= 9 * 60_000 && delay <= 10 * 60_000)).toBe(true)
 })
 
 test("ask_bot keeps its own budget after an earlier member used most of the turn's first budget", async () => {

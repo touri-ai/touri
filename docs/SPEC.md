@@ -395,7 +395,7 @@ env: CLAUDE_CODE_ENABLE_TODO_TOOLS=1, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
   - On finish, `routine_runs.summary` gets the first 500 chars of the reply.
   - A notification goes out per `bots.notifications`.
 - **Who can change routines.** The user (UI) can create, edit, enable and run now. Agents use `routine_list`, `routine_create` (always disabled) and `routine_update` (cannot enable).
-- **Group routines (schema 24).** A routine with `group_id` posts its prompt into a conversation of that group instead of the bot's own. The group routes it like a user message: to the coordinator when there is one, otherwise to the @mentioned members, otherwise to every member. The routine's bot must be a member of the group; it stays the owner shown in the bot's routine list. `results-thread` reuses one group conversation (created on the first run when none is set) and `new-thread` opens a group conversation per run; `main-thread` is rejected. The turn shares the routine's `timeout_minutes` instead of the 120-second per-recipient chat deadline. The routine run closes when the group turn ends, and its summary lists each member's reply. A run whose bot has left the group fails before any slot is recorded. Only the user sets or changes `group_id`; agents cannot. "Agendar esta tarefa" in a group conversation drafts a routine for that same conversation.
+- **Group routines (schema 24).** A routine with `group_id` posts its prompt into a conversation of that group instead of the bot's own. The group routes it like a user message: to the coordinator when there is one, otherwise to the @mentioned members, otherwise to every member. The routine's bot must be a member of the group; it stays the owner shown in the bot's routine list. `results-thread` reuses one group conversation (created on the first run when none is set) and `new-thread` opens a group conversation per run; `main-thread` is rejected. The turn shares the routine's `timeout_minutes` instead of the 10-minute per-recipient chat deadline. The routine run closes when the group turn ends, and its summary lists each member's reply. A run whose bot has left the group fails before any slot is recorded. Only the user sets or changes `group_id`; agents cannot. "Agendar esta tarefa" in a group conversation drafts a routine for that same conversation.
 - Routines run only while touri is running. Tray mode plus launch-at-login keep it running. This is stated in the UI.
 
 ---
@@ -416,7 +416,7 @@ conversations are excluded from the bot's ordinary conversation list.
 The touri MCP server exposes `ask_bot({bot, message})` and its `coordinate_bots` alias to group
 participant sessions. The final answer returns into the calling turn. Only current members can
 be addressed; cycles are rejected, depth is at most 2 and a group turn may make at most 6 calls.
-Each recipient has a 120-second deadline, including approval wait; a turn started by a group
+Each recipient has a 10-minute deadline, including approval wait; a turn started by a group
 routine uses the routine's timeout instead (§3.8). Delegated work may use a
 bounded extra runtime slot so a caller occupying the last normal slot cannot deadlock its peer.
 Approvals remain with the recipient; notifications point to the shared conversation.

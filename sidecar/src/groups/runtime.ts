@@ -48,6 +48,7 @@ type Frame = {
   delegations: Set<string>
 }
 const RESTART_ABORT_REASON = "app_restart"
+const GROUP_MEMBER_TIMEOUT_MS = 10 * 60_000
 const configuration = (bot: Bot) =>
   JSON.stringify([
     bot.access,
@@ -63,7 +64,7 @@ const configuration = (bot: Bot) =>
 const terminal = (run: Run) => !["queued", "starting", "running"].includes(run.status)
 const fail = (errorCode: string, error: string): ToolResult => ({ success: false, errorCode, error })
 
-export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 120_000) => {
+export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = GROUP_MEMBER_TIMEOUT_MS) => {
   const db = kernel.db as Database
   const store = kernel.services.use("store.api")
   if (!store) throw new Error("Store unavailable")
