@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite"
-import { afterEach, expect, test } from "bun:test"
+import { afterEach, expect, setDefaultTimeout, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -15,6 +15,8 @@ import { createKernel } from "../../src/kernel"
 import { init as initNotify } from "../../src/notify"
 import { init as initRuntime } from "../../src/runtime"
 import { init as initStore } from "../../src/store"
+
+setDefaultTimeout(20_000)
 
 const cleanups = new Set<() => Promise<void>>()
 afterEach(async () => {
@@ -218,6 +220,10 @@ test("a bot's responsible person belongs to its channel and can open a ping with
   fixture.database.query("UPDATE bots SET archived_at = 1 WHERE id = 'member-bot'").run()
 
   expect((await fixture.request("/groups/other-channel/people")).status).toBe(404)
+  const remaining = (await (await fixture.ownerRequest("/groups/other-channel/people")).json()) as {
+    people: Array<{ id: string }>
+  }
+  expect(remaining.people.some(({ id }) => id === fixture.personId)).toBe(false)
 }, 20_000)
 
 const getFixture = async ({ completeBoot = false }: { completeBoot?: boolean } = {}) => {

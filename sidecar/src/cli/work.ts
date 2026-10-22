@@ -144,7 +144,7 @@ export const initWorkMode = ({
       (
         database
           .query(
-            "SELECT DISTINCT coalesce(b.responsible_person_id, 'owner') AS id FROM group_members gm JOIN bots b ON b.id = gm.bot_id WHERE gm.group_id = ?",
+            "SELECT DISTINCT coalesce(b.responsible_person_id, 'owner') AS id FROM group_members gm JOIN bots b ON b.id = gm.bot_id WHERE gm.group_id = ? AND b.archived_at IS NULL",
           )
           .all(groupId) as Array<{ id: string }>
       ).map(({ id }) => id),
