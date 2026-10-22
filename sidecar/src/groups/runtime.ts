@@ -11,7 +11,7 @@ import type {
   ToolResult,
 } from "@touri/contracts"
 import { hasRecordedActions } from "@touri/contracts/run-failure"
-import { getRequesterPersonId } from "../browser/channel-runs"
+import { getBrowserCancellationTarget, getRequesterPersonId } from "../browser/channel-runs"
 import { attachedServers } from "../mcp/attached"
 import { continuationPrompt } from "../runtime/continuations"
 import type { createRuntimeEngine } from "../runtime/engine"
@@ -38,7 +38,15 @@ type Turn = {
   /** Routine turns share the routine's timeout instead of the per-bot chat limit. */
   deadline: number | null
 }
-type Frame = { turn: Turn; stack: string[]; depth: number; bot: Bot; configuration: string; secrets: boolean }
+type Frame = {
+  turn: Turn
+  stack: string[]
+  depth: number
+  bot: Bot
+  configuration: string
+  secrets: boolean
+  delegations: Set<string>
+}
 const RESTART_ABORT_REASON = "app_restart"
 const configuration = (bot: Bot) =>
   JSON.stringify([
@@ -276,6 +284,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       bot: ceiling,
       configuration: configuration(bot),
       secrets: allowedSecrets,
+      delegations: new Set(),
     })
     // Each native session keeps its own history. The shared context is explicit input, bounded to 16k.
     const contextRows = db
@@ -815,22 +824,56 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
 
     return true
   }
+  const getGroupCancellation = (id: string) => {
+    const link = db.query("SELECT turn_id FROM group_run_links WHERE run_id=?").get(id) as { turn_id: string } | null
+    const root = link?.turn_id ?? id
+    const turn = turns.get(root)
+    const affected = turn ? Array.from(turns.values()).filter((candidate) => candidate.group.id === turn.group.id) : []
+
+    return { root, affected }
+  }
+  const getBrowserCancellationRunIds = (runId: string): string[] => {
+    const run = readRun(runId)
+    if (!run || terminal(run)) return [runId]
+    const frame = frames.get(run.threadId)
+    if (!frame) return [runId]
+    const isRecipient = frame.turn.action !== "ask_all" && frame.turn.recipients.includes(run.botId)
+    if (!isRecipient && frame.delegations.size === 0) return [runId]
+
+    // A recipient failure or a caller's abort listener propagates cancellation to its turn's children.
+    return [frame.turn.run.id].concat(Array.from(frame.turn.children))
+  }
   const cancel = (id: string): boolean => {
     const browserRunId = kernel.services.use("browser.cancelRequest")?.({ runId: id })
     if (browserRunId) {
       engine.cancel(browserRunId)
       return true
     }
-    const link = db.query("SELECT turn_id FROM group_run_links WHERE run_id=?").get(id) as { turn_id: string } | null
-    const root = link?.turn_id ?? id
-    const turn = turns.get(root)
-    if (!turn) return !!db.query("SELECT run_id FROM group_turns WHERE run_id=?").get(root)
+    const { root, affected } = getGroupCancellation(id)
+    if (affected.length === 0) return !!db.query("SELECT run_id FROM group_turns WHERE run_id=?").get(root)
     // Parar ends the active turn and pending messages for this group, across all its conversations.
-    for (const candidate of turns.values())
-      if (candidate.group.id === turn.group.id) {
-        cancelTurn(candidate)
-      }
+    affected.forEach(cancelTurn)
     return true
+  }
+  const cancelAuthorized = (
+    id: string,
+    getDecision: (runId: string) => ReturnType<ServiceMap["work.authorizeHttp"]>,
+  ) => {
+    const browser = kernel.services.use("browser.cancelRequest") ? getBrowserCancellationTarget(db, id) : null
+    const targets = browser
+      ? getBrowserCancellationRunIds(browser.runId)
+      : [id].concat(
+          getGroupCancellation(id).affected.flatMap((turn) => [turn.run.id].concat(Array.from(turn.children))),
+        )
+    // Keep preflight and execution synchronous: aborting even an ordinary child can stop its browser peers.
+    for (const runId of new Set(targets)) {
+      const denial = getDecision(runId)
+      if (denial) return { canceled: false, denial, run: null }
+    }
+
+    const canceled = cancel(id)
+    // Repeating a root cancellation after the short circuit could select another browser child.
+    return { canceled, denial: null, run: browser ? readRun(id) : null }
   }
   const cancelBotTurns = async ({ botId }: { botId: string }): Promise<void> => {
     const affected = [...turns.values()].filter((turn) => isBotTurn(turn, botId))
@@ -957,6 +1000,8 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
     frame.turn.reservations.add(target)
     // Tool cancellation must stop the target as well. A canceled/expired tool ends the group turn.
     const abort = () => frame.turn.controller.abort()
+    // Match each live abort listener, including approval waits and overlapping delegations.
+    frame.delegations.add(target)
     ctx.signal.addEventListener("abort", abort, { once: true })
     try {
       ctx.signal.throwIfAborted()
@@ -1018,6 +1063,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
       return fail(frame.turn.controller.signal.aborted ? "CANCELED" : "DELEGATION_FAILED", kernel.redact(String(error)))
     } finally {
       frame.turn.reservations.delete(target)
+      frame.delegations.delete(target)
       ctx.signal.removeEventListener("abort", abort)
     }
   }
@@ -1123,6 +1169,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
   return {
     enqueue,
     cancel,
+    cancelAuthorized,
     cancelBotTurns,
     cancelThreadTurns,
     cancelGroupTurns,
