@@ -67,9 +67,13 @@ export const useNotificationSounds = (snapshot: SoundSnapshot, invoke: TauriInvo
 
     const intents: SoundIntent[] = [
       ...freshNotifications
-        .filter((item) => item.resolvedAt === null && isAttention(item) && !isInformationalNotice(item))
+        .filter(
+          (item) =>
+            item.resolvedAt === null &&
+            ((isAttention(item) && !isInformationalNotice(item)) || item.kind === "task-started"),
+        )
         .map((item) => ({
-          kind: "attention" as const,
+          kind: item.kind === "task-started" ? ("task" as const) : ("attention" as const),
           threadId: item.threadId,
           botId: item.botId,
           notificationKind: item.kind,

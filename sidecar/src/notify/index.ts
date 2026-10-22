@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite"
 import type { Kernel, NotifyKind } from "@touri/contracts"
 import { deviceSession } from "../kernel/device-session"
 import type { PerformanceStageRunner } from "../kernel/performance"
+import { initChannelNotifications } from "./channel"
 import { createNotifier } from "./notifier"
 import { createRecoverySync } from "./recovery"
 import { createNotifyRoutes } from "./routes"
@@ -24,7 +25,11 @@ export const init = async (
     store,
     canRead: (notification, signal) => {
       const person = deviceSession(signal)?.person
-      if (notification.targetPersonId && person?.id !== notification.targetPersonId) return false
+      if (
+        notification.targetPersonId &&
+        (person?.id ?? (!kernel.services.use("work.authorizeHttp") ? "owner" : null)) !== notification.targetPersonId
+      )
+        return false
       if (!person || person.role === "admin") return true
       return Boolean(
         kernel.services.use("work.canAccessNotification")?.({
@@ -44,6 +49,8 @@ export const init = async (
   kernel.services.provide("notify.resolve", ({ requestId, resolution }) => {
     notifier.resolveRequest({ requestId, resolution })
   })
+
+  initChannelNotifications(kernel)
 
   const syncRecoveryTasks = createRecoverySync(kernel, store, notifier, runStage)
   syncRecoveryTasks({ silent: true })

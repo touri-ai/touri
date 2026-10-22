@@ -1,3 +1,4 @@
+import { userInfo } from "node:os"
 import type { Kernel } from "@touri/contracts"
 import { deviceSession } from "../kernel/device-session"
 import { deleteGroupRoute } from "./delete-group"
@@ -5,6 +6,12 @@ import { createGroupStore } from "./store"
 export const name = "groups"
 export const init = async (kernel: Kernel): Promise<void> => {
   const groups = createGroupStore(kernel)
+  // Read the local account once at startup, before live message handlers run.
+  const accountName = userInfo().username
+  kernel.services.provide("work.defaultPersonId", () => "owner")
+  kernel.services.provide("work.channelPeople", () => [
+    { id: "owner", name: accountName, handle: accountName, avatarSeed: "owner", role: "admin" },
+  ])
   const invalid = {
     status: 400,
     json: {
@@ -17,6 +24,22 @@ export const init = async (kernel: Kernel): Promise<void> => {
     name,
     routes: [
       deleteGroupRoute(kernel),
+      {
+        method: "GET",
+        path: "/groups/:id/people",
+        handler: async ({ params, signal }) => {
+          const groupId = params.id ?? ""
+          const actor = deviceSession(signal)?.person
+          const canAccess = kernel.services.use("work.canAccessGroup")
+          if (
+            !groups.get(groupId) ||
+            (canAccess && (!actor || !canAccess({ personId: actor.id, role: actor.role, groupId })))
+          )
+            return { status: 404, json: { errorCode: "NOT_FOUND", error: "Canal não encontrado" } }
+
+          return { status: 200, json: { people: kernel.services.use("work.channelPeople")?.(groupId) ?? [] } }
+        },
+      },
       {
         method: "GET",
         path: "/groups",

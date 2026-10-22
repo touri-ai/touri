@@ -63,7 +63,12 @@ export const createSendJournal = ({
         const bot = store.getBot({ botId: id })
         return bot ? [bot] : []
       }) ?? []
-    if (group && !hasAction && !routeGroupMessage(group, bots, message?.text ?? "").length) {
+    if (
+      group &&
+      !hasAction &&
+      !routeGroupMessage(group, bots, message?.text ?? "", kernel.services.use("work.channelPeople")?.(group.id) ?? [])
+        .length
+    ) {
       database.transaction(() => setStatus(entry, "acked")).immediate()
       return
     }

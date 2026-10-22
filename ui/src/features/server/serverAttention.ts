@@ -51,7 +51,7 @@ export const installServerAttention = (
         if (oldest !== undefined) seenIds.delete(oldest)
       }
       if (note.resolvedAt !== null) return
-      if (!options.preferences && !isAttention(note) && note.kind !== "notice") return
+      if (!options.preferences && !isAttention(note) && note.kind !== "notice" && note.kind !== "task-started") return
       if (
         !canDeliverNotification({
           notification: note,

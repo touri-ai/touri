@@ -4,6 +4,11 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "Person mention": "Menção a você",
+  "Task started": "Tarefa iniciada",
+  "Avisar quando um bot começar uma tarefa no canal": "Avisar quando um bot começar uma tarefa no canal",
+  "@{author} mencionou você em #{channel}": "@{author} mencionou você em #{channel}",
+  "{bot} começou uma tarefa em #{channel}: {title}": "{bot} começou uma tarefa em #{channel}: {title}",
   incomplete: "não concluído",
   "No one took over in time. Ask again when you can.": "Ninguém assumiu a tempo. Peça de novo quando puder.",
   "Este documento contém entrada privada. Continue a tarefa em uma nova aba.":
@@ -3286,6 +3291,11 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Person mention": "Mentioned you",
+  "Task started": "Task started",
+  "Avisar quando um bot começar uma tarefa no canal": "Notify when a bot starts a task in a channel",
+  "@{author} mencionou você em #{channel}": "@{author} mentioned you in #{channel}",
+  "{bot} começou uma tarefa em #{channel}: {title}": "{bot} started a task in #{channel}: {title}",
   incomplete: "incomplete",
   "No one took over in time. Ask again when you can.": "No one took over in time. Ask again when you can.",
   "Este documento contém entrada privada. Continue a tarefa em uma nova aba.":
@@ -5895,6 +5905,16 @@ export const statusLabel = (status: string): string => {
 
 /** Translate only application-authored notices, leaving bot/user content intact. */
 export const localizeNotice = (value: string): string => {
+  const mention = /^@(.+) mencionou você em #(.+)$/.exec(value)
+  if (mention)
+    return t("@{author} mencionou você em #{channel}", { author: mention[1] ?? "", channel: mention[2] ?? "" })
+  const task = /^(.+) começou uma tarefa em #([^:]+): (.+)$/.exec(value)
+  if (task)
+    return t("{bot} começou uma tarefa em #{channel}: {title}", {
+      bot: task[1] ?? "",
+      channel: task[2] ?? "",
+      title: task[3] ?? "",
+    })
   if (/^needs you in the browser:/iu.test(value)) return t("The browser needs your help.")
   if (/^The user took over the browser:/u.test(value)) return t("You are in control of the browser.")
   const routineSkip = getRoutineSkipSummary(value)

@@ -165,6 +165,14 @@ export const NotificationPreferencesSettings = ({
               onChange={(event) => saveSound({ replies: event.target.checked })}
             />
           </label>
+          <label className="notification-preference-row" htmlFor={`${controlsId}-task-sound`}>
+            <span>{t("Avisar quando um bot começar uma tarefa no canal")}</span>
+            <SettingsSwitch
+              id={`${controlsId}-task-sound`}
+              checked={sound.task !== false}
+              onChange={(event) => saveSound({ task: event.target.checked })}
+            />
+          </label>
           <label className="notification-sound-volume" htmlFor={`${controlsId}-sound-volume`}>
             <span>{t("Volume do som")}</span>
             <input
@@ -228,6 +236,8 @@ export const NotificationPreferencesSettings = ({
 }
 
 const KIND_LABELS: Record<NotifyKind, TranslationKey> = {
+  mention: "Person mention",
+  "task-started": "Task started",
   approval: "Approval",
   question: "Question",
   takeover: "Needs you",

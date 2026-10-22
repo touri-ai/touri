@@ -22,7 +22,7 @@ const clip = ({ value, max }: { value: string; max: number }): string =>
 export const createNotifier = ({ kernel, store, hub }: { kernel: Kernel; store: NotificationStore; hub: SseHub }) => {
   const sendNative = (notification: NotificationRecord): void => {
     const localPersonId = kernel.services.use("work.defaultPersonId")?.()
-    if (notification.targetPersonId && notification.targetPersonId !== localPersonId) return
+    if (notification.targetPersonId && notification.targetPersonId !== (localPersonId ?? "owner")) return
     const bot = notification.botId
       ? (kernel.services.use("store.api")?.getBot({ botId: notification.botId }) ?? null)
       : null

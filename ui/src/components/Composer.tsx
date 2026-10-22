@@ -145,7 +145,7 @@ export const Composer = ({
   const mention = draft.slice(0, caret).match(/(?:^|\s)@([^@\n]*)$/u)
   const mentionMembers = [
     ...mentionBots.map((bot) => ({ id: `bot:${bot.id}`, name: bot.name, bot })),
-    ...mentionPeople.map((person) => ({ id: `person:${person.id}`, name: person.name, bot: null })),
+    ...mentionPeople.map((person) => ({ id: `person:${person.id}`, name: person.handle ?? person.name, bot: null })),
   ]
   const suggestions =
     !mentionClosed && focused && mention
