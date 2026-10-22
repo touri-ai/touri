@@ -130,6 +130,8 @@ for (const theme of ["light", "dark"]) {
         ),
       ).toBe(true)
       const fontSession = await page.context().newCDPSession(page)
+      await fontSession.send("DOM.enable")
+      await fontSession.send("CSS.enable")
       const { root } = await fontSession.send("DOM.getDocument")
       const { nodeId } = await fontSession.send("DOM.querySelector", {
         nodeId: root.nodeId,
