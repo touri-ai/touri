@@ -1276,6 +1276,9 @@ const AppContent = ({ kernel }: AppProps) => {
                             onRepeatTask={setRoutineDraft}
                             currentPersonId={currentPersonId}
                             group={selectedGroup}
+                            channelThreads={data.threads}
+                            channelMessages={data.activityMessages}
+                            onSelectChannelThread={actions.selectThread}
                             groupMembers={groupMembers}
                             onEditGroup={() => {
                               setEditingGroup(selectedGroup)

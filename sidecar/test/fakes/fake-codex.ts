@@ -119,6 +119,7 @@ let turnCount = 0
 let waitingForApproval = false
 
 const emitTurn = async (): Promise<void> => {
+  const scenario = loadScenario()
   const turnId = `fake-turn-${++turnCount}`
   if (scenario.authError) {
     output({ method: "error", params: { message: "login required" } })

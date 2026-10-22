@@ -1,0 +1,367 @@
+import type { Database } from "bun:sqlite"
+import { afterEach, expect, setDefaultTimeout, test } from "bun:test"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import type { Run } from "@touri/contracts"
+import { createGroupRuntime } from "../../src/groups/runtime"
+import { createGroupStore } from "../../src/groups/store"
+import { createKernel } from "../../src/kernel"
+import { createRuntimePersistence } from "../../src/runtime/persistence"
+import { init as initStore } from "../../src/store"
+
+setDefaultTimeout(20_000)
+
+const cleanups = new Set<() => Promise<void>>()
+afterEach(async () => {
+  for (const cleanup of cleanups) await cleanup()
+  cleanups.clear()
+})
+
+const until = async (check: () => boolean) => {
+  const deadline = Date.now() + 15_000
+  while (!check()) {
+    if (Date.now() >= deadline) throw new Error("Synthetic turn did not finish")
+    await Bun.sleep(10)
+  }
+}
+
+const fixture = async (onTurn?: (run: Run, complete: (text: string) => void) => Promise<void>) => {
+  const root = await mkdtemp(join(tmpdir(), "touri-golden-unit-"))
+  const host = createKernel({ appData: root })
+  const closeHost = async () => {
+    await host.stop()
+    await rm(root, { recursive: true, force: true })
+  }
+  cleanups.add(closeHost)
+  await initStore(host.kernel)
+  const db = host.kernel.db as Database
+  const store = host.kernel.services.use("store.api")
+  if (!store) throw new Error("Store missing")
+  const bots = ["Lia", "Bia"].map((name) => {
+    const id = host.kernel.newId()
+    db.query("INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES (?,?,'codex',?,1,1)").run(
+      id,
+      name,
+      root,
+    )
+    const bot = store.getBot({ botId: id })
+    if (!bot) throw new Error("Synthetic bot missing")
+    return bot
+  })
+  const data = createGroupStore(host.kernel)
+  const group = data.save({
+    name: "Planejamento",
+    color: "#dc2626",
+    avatarShape: "classic-none",
+    memberIds: bots.map((bot) => bot.id),
+    coordinatorBotId: null,
+  })
+  const thread = data.createThread(group)
+  const persistence = createRuntimePersistence({ database: db })
+  // Recording is local to the fake provider, never shared by tests.
+  const order: string[] = []
+  const finish = (run: Run, patch: Partial<Run>) => {
+    const updated = { ...run, ...patch }
+    persistence.saveRun(updated)
+    host.kernel.publish({ type: "run.updated", run: updated })
+  }
+  const engine = {
+    enqueue: (args: { threadId: string; requestMessageId: string; trigger: Run["trigger"] }) => {
+      const run: Run = {
+        id: host.kernel.newId(),
+        threadId: args.threadId,
+        requestMessageId: args.requestMessageId,
+        botId: store.getThread({ threadId: args.threadId })?.botId ?? "",
+        provider: "codex",
+        trigger: args.trigger,
+        status: "queued",
+        replyMessageId: null,
+        externalTurnId: null,
+        errorClass: null,
+        errorMessage: null,
+        usage: null,
+        routineRunId: null,
+        queuedAt: Date.now(),
+        startedAt: null,
+        finishedAt: null,
+      }
+      persistence.saveRun(run)
+      queueMicrotask(async () => {
+        finish(run, { status: "running", startedAt: Date.now() })
+        order.push(run.botId)
+        const complete = (text: string) => {
+          const reply = store.insertMessage({
+            message: {
+              id: host.kernel.newId(),
+              threadId: run.threadId,
+              parentId: args.requestMessageId,
+              role: "assistant",
+              kind: "text",
+              status: "complete",
+              runId: run.id,
+              text,
+              parts: [{ type: "text", text }],
+              sender: null,
+              source: "local",
+            },
+          })
+          if (!reply.success) throw new Error(reply.error)
+          finish(run, { status: "succeeded", replyMessageId: reply.message.id, finishedAt: Date.now() })
+        }
+        if (onTurn) await onTurn(run, complete)
+        else complete("Plano conferido")
+      })
+      return { success: true as const, run }
+    },
+    cancel: (id: string) => {
+      const run = persistence.getRun(id)
+      if (!run) return { success: false as const, errorCode: "NOT_FOUND" as const, error: "Missing run" }
+      if (["queued", "starting", "running"].includes(run.status))
+        finish(run, { status: "canceled", errorClass: "canceled", finishedAt: Date.now() })
+      return { success: true as const, run }
+    },
+  }
+  const runtime = createGroupRuntime(host.kernel, engine)
+  const runtimes = new Set([runtime])
+  cleanups.add(async () => {
+    runtimes.forEach((current) => current.shutdown())
+    await Promise.all(Array.from(runtimes, (current) => current.waitForDrain()))
+    await closeHost()
+  })
+  cleanups.delete(closeHost)
+  const send = (text: string) => {
+    const request = store.insertMessage({
+      message: {
+        id: host.kernel.newId(),
+        threadId: thread.id,
+        parentId: store.getThread({ threadId: thread.id })?.activeLeafId ?? null,
+        role: "user",
+        kind: "text",
+        status: "complete",
+        runId: null,
+        text,
+        parts: [{ type: "text", text }],
+        sender: null,
+        source: "local",
+      },
+    })
+    if (!request.success) throw new Error(request.error)
+    const result = runtime.enqueue({ threadId: thread.id, requestMessageId: request.message.id, trigger: "user" })
+    if (!result.success) throw new Error(result.error)
+    return result.run
+  }
+  const restart = () => {
+    const resumed = createGroupRuntime(host.kernel, engine)
+    runtimes.add(resumed)
+    return resumed
+  }
+  return {
+    root,
+    host,
+    db,
+    store,
+    bots,
+    group,
+    thread,
+    data,
+    persistence,
+    runtime,
+    send,
+    order,
+    engine,
+    finish,
+    restart,
+  }
+}
+
+test("one channel mention starts one provider execution even if enqueue is repeated", async () => {
+  const f = await fixture()
+  const run = f.send("@Lia confira o plano")
+
+  const repeated = f.runtime.enqueue({
+    threadId: run.threadId,
+    requestMessageId: run.requestMessageId ?? "",
+    trigger: "user",
+  })
+  await until(() => f.persistence.getRun(run.id)?.status === "succeeded")
+
+  expect(repeated.success && repeated.run.id).toBe(run.id)
+  expect(f.order).toEqual([f.bots[0]?.id ?? ""])
+  expect(f.store.activePath({ threadId: f.thread.id }).filter((message) => message.role === "assistant")).toHaveLength(
+    1,
+  )
+})
+
+test("a channel resumes a crashed provider twice then stops", async () => {
+  const f: Awaited<ReturnType<typeof fixture>> = await fixture(async (run) => {
+    const previous = f.persistence.getRun(run.id)
+    if (!previous) throw new Error("Missing fixture run")
+    const failed: Run = { ...previous, status: "failed", errorClass: "cli_crash", finishedAt: Date.now() }
+    f.persistence.saveRun(failed)
+    f.host.kernel.publish({ type: "run.updated", run: failed })
+  })
+
+  const run = f.send("@Lia confira o plano")
+  await until(() => f.persistence.getRun(run.id)?.status === "failed")
+
+  expect(f.order).toHaveLength(3)
+  expect(f.db.query("SELECT COUNT(*) AS count FROM run_continuations").get()).toEqual({ count: 2 })
+})
+
+test("a channel resumes its unfinished member after restart without repeating a completed member", async () => {
+  const f: Awaited<ReturnType<typeof fixture>> = await fixture(async (_run, complete) => {
+    if (f.order.length === 2) return
+    complete("Plano conferido")
+  })
+  const run = f.send("@Bia @Lia confira o plano")
+  await until(() => f.order.length === 2)
+  f.runtime.shutdown({ appRestart: true })
+  const activeMembers = f.db.query("SELECT run_id FROM group_run_links WHERE turn_id=?").all(run.id) as {
+    run_id: string
+  }[]
+  activeMembers.forEach(({ run_id }) => {
+    const member = f.persistence.getRun(run_id)
+    if (member?.status === "running")
+      f.finish(member, { status: "interrupted", errorClass: "app_restart", finishedAt: Date.now() })
+  })
+  await until(() => f.persistence.getRun(run.id)?.status === "interrupted")
+
+  f.restart()
+  await until(() =>
+    f.persistence
+      .listRuns(f.thread.id)
+      .some((candidate) => candidate.id !== run.id && candidate.status === "succeeded"),
+  )
+  expect(f.persistence.getRun(run.id)?.status).toBe("interrupted")
+
+  expect(f.order).toEqual([f.bots[0]?.id ?? "", f.bots[1]?.id ?? "", f.bots[1]?.id ?? ""])
+  expect(
+    f.store
+      .activePath({ threadId: f.thread.id })
+      .filter((message) => message.role === "assistant" && message.status === "complete"),
+  ).toHaveLength(2)
+})
+
+test("pressing Stop prevents automatic channel recovery", async () => {
+  const f = await fixture(async () => {})
+  const run = f.send("@Lia confira o plano")
+  await until(() => f.order.length === 1)
+
+  f.runtime.cancel(run.id)
+  await until(() => f.persistence.getRun(run.id)?.status === "canceled")
+
+  expect(f.order).toHaveLength(1)
+  expect(f.db.query("SELECT COUNT(*) AS count FROM run_continuations").get()).toEqual({ count: 0 })
+})
+
+test("a channel waiting for approval never resumes by itself", async () => {
+  const f: Awaited<ReturnType<typeof fixture>> = await fixture(async (run) => {
+    const reply = f.store.insertMessage({
+      message: {
+        id: f.host.kernel.newId(),
+        threadId: run.threadId,
+        parentId: run.requestMessageId,
+        role: "assistant",
+        kind: "approval",
+        status: "failed",
+        runId: run.id,
+        text: "",
+        parts: [
+          {
+            type: "approval",
+            approvalId: "synthetic-approval",
+            request: "permission",
+            decision: "pending",
+            detail: "Conferir o plano",
+          },
+        ],
+        sender: null,
+        source: "local",
+      },
+    })
+    if (!reply.success) throw new Error(reply.error)
+    f.finish(run, {
+      status: "interrupted",
+      errorClass: "app_restart",
+      replyMessageId: reply.message.id,
+      finishedAt: Date.now(),
+    })
+  })
+
+  const run = f.send("@Lia confira o plano")
+  await until(() => f.persistence.getRun(run.id)?.status === "failed")
+
+  expect(f.order).toHaveLength(1)
+  expect(f.db.query("SELECT COUNT(*) AS count FROM run_continuations").get()).toEqual({ count: 0 })
+})
+
+test("a confirmed action stays in history while the same task continues", async () => {
+  const f: Awaited<ReturnType<typeof fixture>> = await fixture(async (run, complete) => {
+    if (f.order.length > 1) return complete("Plano conferido")
+    const reply = f.store.insertMessage({
+      message: {
+        id: f.host.kernel.newId(),
+        threadId: run.threadId,
+        parentId: run.requestMessageId,
+        role: "assistant",
+        kind: "text",
+        status: "failed",
+        runId: run.id,
+        text: "",
+        parts: [
+          {
+            type: "command",
+            callId: "observed-command",
+            command: "echo conferido",
+            cwd: "/workspace",
+            exitCode: 0,
+            outputTail: "conferido",
+            resolution: "succeeded",
+          },
+        ],
+        sender: null,
+        source: "local",
+      },
+    })
+    if (!reply.success) throw new Error(reply.error)
+    f.finish(run, {
+      status: "failed",
+      errorClass: "cli_crash",
+      replyMessageId: reply.message.id,
+      finishedAt: Date.now(),
+    })
+  })
+
+  const run = f.send("@Lia confira o plano")
+  await until(() => f.persistence.getRun(run.id)?.status === "succeeded")
+
+  expect(f.order).toHaveLength(2)
+  expect(
+    f.store
+      .activePath({ threadId: f.thread.id })
+      .flatMap((message) => message.parts)
+      .filter((part) => part.type === "command"),
+  ).toHaveLength(1)
+})
+
+test("retrying an empty answer starts one new attempt and is idempotent", async () => {
+  const f: Awaited<ReturnType<typeof fixture>> = await fixture(async (run, complete) => {
+    if (f.order.length > 1) return complete("Plano conferido")
+    f.finish(run, {
+      status: "failed",
+      errorClass: "cli_protocol",
+      errorMessage: "O bot terminou sem responder. Tente novamente.",
+      finishedAt: Date.now(),
+    })
+  })
+  const run = f.send("@Lia confira o plano")
+  await until(() => f.persistence.getRun(run.id)?.status === "failed")
+
+  const retry = f.runtime.retry(run.id)
+  if (!retry?.success) throw new Error("Synthetic retry failed")
+  await until(() => f.persistence.getRun(retry.run.id)?.status === "succeeded")
+
+  expect(f.runtime.retry(run.id)).toMatchObject({ success: true, run: { id: retry.run.id } })
+  expect(f.order).toHaveLength(2)
+})

@@ -74,42 +74,52 @@ export const GroupPanel = ({
                 <BotAvatar bot={bot} size={28} />
                 <div>
                   <strong>{bot.name}</strong>
-                  <small>{t(bot.id === group.coordinatorBotId ? "Coordenador" : "Membro")}</small>
+                  <small>{t(channelMode ? "Bot" : getMemberRole(bot.id, group.coordinatorBotId))}</small>
                   {bot.roleLine && <small>{bot.roleLine}</small>}
                   <span className={`group-member-state group-member-state-${member.state}`}>{t(member.label)}</span>
-                  <p className="group-member-result">{member.result || t("Sem resultado confirmado.")}</p>
+                  {!channelMode && (
+                    <p className="group-member-result">{member.result || t("Sem resultado confirmado.")}</p>
+                  )}
                 </div>
               </li>
             )
           })}
         </ol>
-        <section className="group-board" aria-label={t("Resultados do turno")}>
-          <h3>{t("Resultados do turno")}</h3>
-          <p className="muted-copy">{t("Somente respostas finais confirmadas. Este quadro é apenas para leitura.")}</p>
-          {board.map((result) => (
-            <article key={result.id}>
-              <strong>{result.sender?.name}</strong>
-              <p>{result.text}</p>
-            </article>
-          ))}
-          {removed.map((message) => (
-            <article key={message.id}>
-              <strong>{message.sender?.name}</strong>
-              <p>{t(channelMode ? "The member was removed from the channel." : "O membro foi removido do grupo.")}</p>
-            </article>
-          ))}
-          {board.length === 0 && removed.length === 0 && (
-            <p className="muted-copy">{t("Sem resultados confirmados neste turno.")}</p>
-          )}
-        </section>
-        <p className="group-routing-note">{t("Os bots só respondem quando você os chama com @nome.")}</p>
-        <p className="muted-copy">
-          {t(
-            channelMode
-              ? "Each bot keeps its own computer and permissions."
-              : "Cada bot mantém seu computador e suas permissões.",
-          )}
-        </p>
+        {!channelMode && (
+          <>
+            <section className="group-board" aria-label={t("Resultados do turno")}>
+              <h3>{t("Resultados do turno")}</h3>
+              <p className="muted-copy">
+                {t("Somente respostas finais confirmadas. Este quadro é apenas para leitura.")}
+              </p>
+              {board.map((result) => (
+                <article key={result.id}>
+                  <strong>{result.sender?.name}</strong>
+                  <p>{result.text}</p>
+                </article>
+              ))}
+              {removed.map((message) => (
+                <article key={message.id}>
+                  <strong>{message.sender?.name}</strong>
+                  <p>
+                    {t(channelMode ? "The member was removed from the channel." : "O membro foi removido do grupo.")}
+                  </p>
+                </article>
+              ))}
+              {board.length === 0 && removed.length === 0 && (
+                <p className="muted-copy">{t("Sem resultados confirmados neste turno.")}</p>
+              )}
+            </section>
+            <p className="group-routing-note">{t("Os bots só respondem quando você os chama com @nome.")}</p>
+            <p className="muted-copy">
+              {t(
+                channelMode
+                  ? "Each bot keeps its own computer and permissions."
+                  : "Cada bot mantém seu computador e suas permissões.",
+              )}
+            </p>
+          </>
+        )}
         <button type="button" className="button button-quiet" onClick={onEdit}>
           {t(channelMode ? "Edit channel" : "Editar membros")}
         </button>
@@ -132,7 +142,13 @@ const ChannelPeople = ({
       </span>
       <div>
         <strong>{person.id === currentPersonId ? t("Você") : person.name}</strong>
-        <small>{t("Person")}</small>
+        <small>{t("Disponível")}</small>
       </div>
     </li>
   ))
+
+const getMemberRole = (botId: string, coordinatorId: string | null) => {
+  if (botId === coordinatorId) return "Coordenador"
+
+  return "Membro"
+}

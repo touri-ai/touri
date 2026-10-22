@@ -290,7 +290,13 @@ test.each(["runtime_part_finalization", "runtime_output_preparation"] as const)(
 test("finalization yields while another connection holds the writer instead of blocking timers", async () => {
   const blocker = getWriterBlocker()
   cleanups.add(blocker.close)
-  const f = await fixture(async () => {}, "Conclua a tarefa.", { beforeFinalization: blocker.hold })
+  const f = await fixture(
+    async ({ onEvent }) => {
+      onEvent({ type: "text_delta", itemId: "answer", delta: "Tarefa concluída." })
+    },
+    "Conclua a tarefa.",
+    { beforeFinalization: blocker.hold },
+  )
   cleanups.add(f.close)
 
   const reply = await f.finish()
@@ -572,4 +578,21 @@ test("buffered redaction tails stay before tools and before new text items", () 
   ])
   expect(providerEvents[1]).toEqual({ type: "text_delta", itemId: "intro", delta: "f" })
   expect(providerEvents[4]).toEqual({ type: "text_delta", itemId: "closing", delta: "f" })
+})
+
+test.each(["", "   "])("an empty successful provider response is a visible failure: %j", async (text) => {
+  const f = await fixture(async ({ onEvent }) => {
+    if (text) onEvent({ type: "text_delta", itemId: "empty", delta: text })
+  })
+  cleanups.add(f.close)
+
+  const reply = await f.finish()
+
+  expect(f.engine.listRuns("t")[0]).toMatchObject({
+    status: "failed",
+    errorClass: "cli_protocol",
+    errorMessage: "O bot terminou sem responder. Tente novamente.",
+  })
+  expect(reply.status).toBe("failed")
+  expect(reply.parts.some((part) => part.type === "notice" && part.level === "error")).toBe(true)
 })

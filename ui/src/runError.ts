@@ -86,6 +86,8 @@ export const runErrorFor = (message: Message, candidate?: Run, machineReady = fa
     : hint
   const apiMessage = Object.values(apiModelErrors).find((text) => (run?.errorMessage ?? raw).includes(text))
   const getLocalizedDetail = (): string => {
+    if (run?.errorMessage === "O bot terminou sem responder. Tente novamente.")
+      return t("O bot terminou sem responder. Tente novamente.")
     if (run?.errorMessage === ORPHANED_GROUP_TURN_PT) return t(ORPHANED_GROUP_TURN_PT)
     if (apiMessage) return t(apiMessage)
 

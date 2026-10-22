@@ -2,6 +2,7 @@ import type { Bot, BotGroup, ChannelPerson, Message, Run, Thread } from "@touri/
 import { avatarColorFor } from "@touri/contracts/avatar"
 import { memo, useEffect, useMemo, useState } from "react"
 import { latestPreview } from "../botPreview"
+import { getChannelThreads, getChannelThreadTitle } from "../channelThreads"
 import { ChannelHeaderChip, ChannelWorkingMarker } from "../features/channelBrowser/ChannelBrowser"
 import { type Locale, t } from "../i18n"
 import { getLastActivityAt, getSidebarRowTime } from "../sidebarAttention"
@@ -139,7 +140,7 @@ export const GroupSidebar = memo(
               key={group.id}
               group={group}
               threads={isSelected ? groupThreads : EMPTY_THREADS}
-              firstThreadId={groupThreads[0]?.id ?? null}
+              firstThreadId={getChannelThreads(groupThreads, group.id)[0]?.id ?? null}
               preview={previews.get(group.id) ?? ""}
               time={getSidebarRowTime(getLastActivityAt(groupThreads))}
               unread={summary?.unread ?? 0}
@@ -316,16 +317,18 @@ const GroupSidebarEntry = memo(
         )}
         {selected && threads.length > 1 && (
           <div className="group-thread-list">
-            {threads.map((thread) => (
-              <button
-                type="button"
-                key={thread.id}
-                aria-current={thread.id === selectedThreadId ? "page" : undefined}
-                onClick={() => onSelect(thread.id)}
-              >
-                {thread.title}
-              </button>
-            ))}
+            {getChannelThreads(threads, group.id)
+              .slice(1)
+              .map((thread) => (
+                <button
+                  type="button"
+                  key={thread.id}
+                  aria-current={thread.id === selectedThreadId ? "page" : undefined}
+                  onClick={() => onSelect(thread.id)}
+                >
+                  {getChannelThreadTitle(thread, locale)}
+                </button>
+              ))}
           </div>
         )}
       </div>

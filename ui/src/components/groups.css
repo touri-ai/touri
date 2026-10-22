@@ -538,3 +538,28 @@ button.channel-members-button[aria-expanded="true"] {
   color: var(--text-secondary);
   font-size: var(--fs-caption);
 }
+
+.channel-conversations {
+  display: grid;
+  gap: 12px;
+  padding: 12px 0;
+}
+.channel-conversation {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  padding: 16px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: inherit;
+  background: var(--surface);
+  cursor: pointer;
+}
+.channel-conversation span {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.channel-conversation small {
+  color: var(--text-muted);
+}

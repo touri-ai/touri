@@ -26,6 +26,7 @@ import {
 } from "react"
 import type { UiApi } from "../api/client"
 import type { ApprovalFocus } from "../approvalNavigation"
+import { getChannelThreads } from "../channelThreads"
 import { getDocumentLocale } from "../documentLanguage"
 import { userFacingRunError } from "../errors"
 import {
@@ -67,6 +68,7 @@ import { BrowserActivityControlsProvider } from "./BrowserActivityControls"
 import { getBrowserActivityTools } from "./browserActivityPresentation"
 import { type BrowserContinuationActivity, getBrowserContinuationActivities } from "./browserContinuationActivity"
 import { getBrowserRequestMessages } from "./browserRequestMessages"
+import { ChannelThreads } from "./ChannelThreads"
 import { ChatDisclosure } from "./ChatDisclosure"
 import { ConnectDataCard, connectDataMarker } from "./ConnectDataCard"
 import { ConversationStart } from "./ConversationStart"
@@ -94,6 +96,9 @@ import { type EditMessage, UserMessageEdit } from "./UserMessageEdit"
 import { usePhoneViewport } from "./usePhoneViewport"
 
 type ChatPanelProps = {
+  channelThreads?: Thread[]
+  channelMessages?: Message[]
+  onSelectChannelThread?: ((threadId: string) => void) | undefined
   composerKey?: string | undefined
   threadCreation?: ThreadCreationStatus | undefined
   onRetryCreateThread?: (() => void) | undefined
@@ -571,6 +576,21 @@ export const VirtualMessageList = ({
                       runs.some((candidate) => isRoutineRun(candidate) && candidate.requestMessageId === message.id)
                     }
                     routineHeader={routineRunHeaderByMessage.get(message.id)}
+                    automaticRecovery={Boolean(
+                      run?.groupTurnId &&
+                        ["cli_crash", "oom", "machine_service_unavailable", "app_restart"].includes(
+                          run.errorClass ?? "",
+                        ) &&
+                        runs.some(
+                          (candidate) =>
+                            (candidate.id === run.groupTurnId &&
+                              ["queued", "starting", "running"].includes(candidate.status)) ||
+                            (candidate.threadId === run.threadId &&
+                              candidate.botId === run.botId &&
+                              (candidate.queuedAt > run.queuedAt ||
+                                (candidate.queuedAt === run.queuedAt && candidate.id > run.id))),
+                        ),
+                    )}
                     recovered={
                       runs.some(
                         (later) =>
@@ -692,6 +712,7 @@ const MessageBubble = ({
   currentPersonId,
   machine,
   recovered,
+  automaticRecovery = false,
   message,
   run,
   browserActivity,
@@ -714,6 +735,7 @@ const MessageBubble = ({
   currentPersonId: string | null
   machine?: MachineState | undefined
   recovered: boolean
+  automaticRecovery?: boolean
   message: Message
   run?: Run | undefined
   browserActivity?: BrowserContinuationActivity | undefined
@@ -868,97 +890,105 @@ const MessageBubble = ({
         : []),
     ].map((action) => (action.kind === "retry" ? { ...action, label: t("Tentar novamente") } : action)),
   }
-  const failureContent = runError && (
-    <div className="message-error" role="alert">
-      {runError.recovery.classified ||
-      (runError.stage === "turn" && !/^TOURI-E800[12]$/.test(runError.code)) ||
-      runError.stage === "provider_protocol" ? (
-        <>
-          <ErrorNotice
-            recovery={failureRecovery ?? runError.recovery}
-            onAction={async (action) => {
-              if (action === "retry") await onRetry(message.runId ?? "")
-              else if (action === "review") setReviewingActions(true)
-              else if (action === "resume") {
-                setReviewingActions(true)
-                requestTaskResume(message.threadId)
-              } else
-                onFailureAction(
-                  action === "login"
-                    ? { kind: "setting", settingId: "providerLogin", label: "" }
-                    : { kind: "doctor", label: "" },
-                )
-            }}
-          />
-          {vmBotId && !runError.recovery.classified && <p>{failureRetryHint(runError.stage)}</p>}
-          {reviewingActions && (
-            <section aria-label={t("Ações registradas")} tabIndex={-1}>
-              <p>{t("Revise as ações registradas antes de continuar. Nenhuma ação será repetida automaticamente.")}</p>
-              <ul>
-                {message.parts.flatMap((part, index) => {
-                  const summary =
-                    part.type === "tool_call"
-                      ? part.summary
-                      : part.type === "command"
-                        ? part.command
-                        : part.type === "file_change"
-                          ? part.paths.join(", ")
-                          : null
-                  return summary
-                    ? [
-                        <li key={"callId" in part ? part.callId : part.type}>
-                          <Disclosure summary={`${t("Ações registradas")} ${index + 1}`}>
-                            <pre>{sanitizeDiagnostic(summary)}</pre>
-                          </Disclosure>
-                        </li>,
-                      ]
-                    : []
-                })}
-              </ul>
-              {!message.parts.some((part) => ["tool_call", "command", "file_change"].includes(part.type)) && (
-                <p>{t("Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.")}</p>
+  const failureContent =
+    runError && automaticRecovery ? (
+      <p role="status">{t(recovered ? "A reply followed this error" : "Retomando a resposta automaticamente…")}</p>
+    ) : (
+      runError && (
+        <div className="message-error" role="alert">
+          {runError.recovery.classified ||
+          (runError.stage === "turn" && !/^TOURI-E800[12]$/.test(runError.code)) ||
+          runError.stage === "provider_protocol" ? (
+            <>
+              <ErrorNotice
+                recovery={failureRecovery ?? runError.recovery}
+                onAction={async (action) => {
+                  if (action === "retry") await onRetry(message.runId ?? "")
+                  else if (action === "review") setReviewingActions(true)
+                  else if (action === "resume") {
+                    setReviewingActions(true)
+                    requestTaskResume(message.threadId)
+                  } else
+                    onFailureAction(
+                      action === "login"
+                        ? { kind: "setting", settingId: "providerLogin", label: "" }
+                        : { kind: "doctor", label: "" },
+                    )
+                }}
+              />
+              {vmBotId && !runError.recovery.classified && <p>{failureRetryHint(runError.stage)}</p>}
+              {reviewingActions && (
+                <section aria-label={t("Ações registradas")} tabIndex={-1}>
+                  <p>
+                    {t("Revise as ações registradas antes de continuar. Nenhuma ação será repetida automaticamente.")}
+                  </p>
+                  <ul>
+                    {message.parts.flatMap((part, index) => {
+                      const summary =
+                        part.type === "tool_call"
+                          ? part.summary
+                          : part.type === "command"
+                            ? part.command
+                            : part.type === "file_change"
+                              ? part.paths.join(", ")
+                              : null
+                      return summary
+                        ? [
+                            <li key={"callId" in part ? part.callId : part.type}>
+                              <Disclosure summary={`${t("Ações registradas")} ${index + 1}`}>
+                                <pre>{sanitizeDiagnostic(summary)}</pre>
+                              </Disclosure>
+                            </li>,
+                          ]
+                        : []
+                    })}
+                  </ul>
+                  {!message.parts.some((part) => ["tool_call", "command", "file_change"].includes(part.type)) && (
+                    <p>{t("Nenhuma ação confirmada no histórico. Confira o estado atual antes de continuar.")}</p>
+                  )}
+                </section>
               )}
-            </section>
+            </>
+          ) : (
+            <>
+              <strong>{runError.title}</strong>
+              <p>
+                {runError.stageLabel} · {runError.detail}
+              </p>
+              <time className="message-error-meta" dateTime={new Date(failedAt).toISOString()}>
+                {failureTime}
+              </time>
+              <ErrorDetails code={runError.code} />
+              {(vmBotId || runError.specificHint) && <p>{runError.hint}</p>}
+              {failureAction && failureAction.kind !== "machine_service" && (
+                <button type="button" className="text-button" onClick={() => onFailureAction(failureAction)}>
+                  {failureAction.label}
+                </button>
+              )}
+              {vmBotId &&
+                api &&
+                (runError.action?.kind === "machine_service" ||
+                  message.parts.some(
+                    (part) =>
+                      part.type === "notice" && /^machine_service_(?:unavailable|start_failed):/.test(part.text),
+                  )) && <MachineServiceButton api={api} botId={vmBotId} />}
+              {message.runId &&
+                (!vmBotId ||
+                  machine?.status === "running" ||
+                  (machine?.status === "error" && !/^TOURI-E800[12]$/.test(runError.code))) && (
+                  <button
+                    type="button"
+                    className="text-button retry-button"
+                    onClick={() => void onRetry(message.runId ?? "")}
+                  >
+                    {t("Tentar novamente")}
+                  </button>
+                )}
+            </>
           )}
-        </>
-      ) : (
-        <>
-          <strong>{runError.title}</strong>
-          <p>
-            {runError.stageLabel} · {runError.detail}
-          </p>
-          <time className="message-error-meta" dateTime={new Date(failedAt).toISOString()}>
-            {failureTime}
-          </time>
-          <ErrorDetails code={runError.code} />
-          {(vmBotId || runError.specificHint) && <p>{runError.hint}</p>}
-          {failureAction && failureAction.kind !== "machine_service" && (
-            <button type="button" className="text-button" onClick={() => onFailureAction(failureAction)}>
-              {failureAction.label}
-            </button>
-          )}
-          {vmBotId &&
-            api &&
-            (runError.action?.kind === "machine_service" ||
-              message.parts.some(
-                (part) => part.type === "notice" && /^machine_service_(?:unavailable|start_failed):/.test(part.text),
-              )) && <MachineServiceButton api={api} botId={vmBotId} />}
-          {message.runId &&
-            (!vmBotId ||
-              machine?.status === "running" ||
-              (machine?.status === "error" && !/^TOURI-E800[12]$/.test(runError.code))) && (
-              <button
-                type="button"
-                className="text-button retry-button"
-                onClick={() => void onRetry(message.runId ?? "")}
-              >
-                {t("Tentar novamente")}
-              </button>
-            )}
-        </>
-      )}
-    </div>
-  )
+        </div>
+      )
+    )
   return (
     <article
       ref={root}
@@ -1200,6 +1230,9 @@ const MessageBubble = ({
 
 export const ChatPanel = ({
   currentPersonId = "owner",
+  channelThreads = [],
+  channelMessages = [],
+  onSelectChannelThread,
   composerKey,
   threadCreation,
   onRetryCreateThread,
@@ -1272,6 +1305,11 @@ export const ChatPanel = ({
     return () => window.cancelAnimationFrame(frame)
   }, [chatIsCovered])
   const channelPeople = useChannelPeople(api, group?.id ?? null)
+  const sharedChannelThreads = useMemo(
+    () => (group ? getChannelThreads(channelThreads, group.id) : []),
+    [group, channelThreads],
+  )
+  const isChannelRoot = sharedChannelThreads[0]?.id === thread?.id
   const activeRun = useMemo(
     () =>
       runs.find(
@@ -1517,7 +1555,10 @@ export const ChatPanel = ({
                 onEdit={group ? undefined : onSend}
                 editDisabled={Boolean(activeRun)}
                 header={
-                  visibleMessages.length === 0 && !activeRun && visibleRuns.length === 0 ? (
+                  visibleMessages.length === 0 &&
+                  !activeRun &&
+                  visibleRuns.length === 0 &&
+                  !(isChannelRoot && sharedChannelThreads.length > 1) ? (
                     group ? (
                       <GroupConversationStart
                         group={group}
@@ -1540,6 +1581,25 @@ export const ChatPanel = ({
                   ) : null
                 }
                 timelineCards={[
+                  ...(group && onSelectChannelThread && isChannelRoot
+                    ? [
+                        {
+                          id: `channel-threads-${group.id}`,
+                          createdAt: channelThreads.reduce(
+                            (latest, candidate) => Math.max(latest, candidate.updatedAt),
+                            0,
+                          ),
+                          content: (
+                            <ChannelThreads
+                              groupId={group.id}
+                              threads={channelThreads}
+                              messages={channelMessages}
+                              onSelect={onSelectChannelThread}
+                            />
+                          ),
+                        },
+                      ]
+                    : []),
                   ...(repeatDraft && onRepeatTask && !connectDataReply
                     ? [
                         {

@@ -1764,6 +1764,15 @@ export const createRuntimeEngine = ({
           const write = () => measureStage("runtime_turn_finalization", saveSessionAndRoot)
           // Pending stream writes must yield on contention instead of entering SQLite's synchronous busy wait.
           const workRoot = database instanceof Database ? await writeDatabaseAsync(database, write) : write()
+          const emptyAnswer =
+            result.status === "succeeded" &&
+            !state.text.trim() &&
+            state.parts.every((part) => part.type === "text" && !part.text.trim())
+          if (emptyAnswer && !state.cancelRequested)
+            state.completionError = {
+              errorClass: "cli_protocol",
+              errorMessage: "O bot terminou sem responder. Tente novamente.",
+            }
           const providerErrorClass = state.cancelRequested
             ? "canceled"
             : (state.completionError?.errorClass ?? (result.status === "succeeded" ? null : "cli_crash"))

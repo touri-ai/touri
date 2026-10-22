@@ -38,6 +38,8 @@ export const errorRecovery = (error: unknown, context: RecoveryContext = {}): Er
     actions,
     classified,
   })
+  if (raw === "O bot terminou sem responder. Tente novamente.")
+    return view(tr("O bot terminou sem responder. Tente novamente."), [action("retry", "Tentar novamente")])
   if (context.errorClass === "group_context_missing")
     return view(tr("O grupo ou a conversa não existe mais. Este turno não foi executado."), [])
   // A recorded tool invocation may have committed even when its acknowledgement is absent.
