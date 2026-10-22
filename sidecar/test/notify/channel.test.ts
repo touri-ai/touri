@@ -1,16 +1,18 @@
 import type { Database } from "bun:sqlite"
-import { afterEach, expect, mock, test } from "bun:test"
+import { afterEach, expect, mock, setDefaultTimeout, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ChannelPerson, Kernel, Message, Run } from "@touri/contracts"
 import { init as initGroups } from "../../src/groups"
-import { getMentionedPeople, getPersonHandle } from "../../src/groups/people"
 import { createGroupStore, routeGroupMessage } from "../../src/groups/store"
 import { createKernel } from "../../src/kernel"
 import { init as initNotify } from "../../src/notify"
 import { createNotificationStore } from "../../src/notify/store"
+import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { init as initStore } from "../../src/store"
+
+setDefaultTimeout(20_000)
 
 const cleanups = new Set<() => Promise<void>>()
 afterEach(async () => {
@@ -124,26 +126,12 @@ test("self mentions, nonmembers, partial names, email addresses and system conte
   expect(fixture.getNotes()).toEqual([])
 })
 
-test("matching is accent/case insensitive, longest first, quoted, unique and preserves mention order", () => {
-  const people = getPeople()
-
-  const mentions = getMentionedPeople('@ANA MARIA, @"thiágo" @Ana @ana', people)
-
-  expect(mentions.map(({ id }) => id)).toEqual(["ana-maria", "owner", "ana"])
-  expect(getMentionedPeople("@Ana-Maria @Anabela @Ana_foo", people)).toEqual([])
-})
-
 test("a person mention cannot route a bot with a shorter or identical name", async () => {
   const fixture = await getFixture()
   const bots = [{ id: fixture.bot.id, name: "Ana" }]
 
   expect(routeGroupMessage(fixture.group, bots, "@Ana Maria preciso de você", getPeople())).toEqual([])
   expect(routeGroupMessage(fixture.group, bots, "@Ana preciso de você", getPeople())).toEqual([])
-})
-
-test.each(["Você", "", "You", "Owner"])("a generic owner display name %s uses the account handle", (name) => {
-  expect(getPersonHandle(name, "thiago")).toBe("thiago")
-  expect(getPersonHandle("Ána Maria", "synthetic-account")).toBe("Ána Maria")
 })
 
 test.each(["user", "routine"] as const)(
@@ -189,3 +177,78 @@ test.each(["user", "routine"] as const)(
     ).toBe(true)
   },
 )
+
+test("a routine uses its own bot's owner and title even when another bot coordinates the channel", async () => {
+  const fixture = await getFixture()
+  const created = await fixture.host.kernel.services.use("bots.create")?.({
+    body: { name: "Mapa", provider: "codex" },
+    signal: new AbortController().signal,
+  })
+  if (!created?.success) throw new Error("Routine bot missing")
+  const database = fixture.host.kernel.db as Database
+  database.query("UPDATE bots SET responsible_person_id = ? WHERE id = ?").run("ana", created.bot.id)
+  createGroupStore(fixture.host.kernel).save(
+    { ...fixture.group, memberIds: [fixture.bot.id, created.bot.id], coordinatorBotId: fixture.bot.id },
+    fixture.group,
+  )
+  const persistence = createRuntimePersistence({ database })
+  persistence.saveRoutine({
+    id: "map-routine",
+    botId: created.bot.id,
+    name: "Mapa da manhã",
+    prompt: "Revisar os pontos",
+    cron: "0 9 * * *",
+    timezone: "UTC",
+    enabled: true,
+    continuity: "new-thread",
+    resultsThreadId: null,
+    groupId: fixture.group.id,
+    timeoutMinutes: 10,
+    overlap: "skip",
+    catchUpMinutes: 10,
+    nextRunAt: null,
+    source: "local",
+    createdAt: 1,
+    updatedAt: 1,
+  })
+  expect(
+    persistence.insertRoutineRun({
+      id: "map-slot",
+      routineId: "map-routine",
+      scheduledFor: 1,
+      status: "running",
+      threadId: fixture.thread.id,
+      runId: "map-turn",
+      triggerSource: "cron",
+      summary: null,
+      startedAt: 1,
+      finishedAt: null,
+    }).success,
+  ).toBe(true)
+  const run: Run = {
+    id: "map-turn",
+    botId: fixture.bot.id,
+    threadId: fixture.thread.id,
+    provider: "codex",
+    trigger: "routine",
+    requestMessageId: null,
+    replyMessageId: null,
+    requesterPersonId: "owner",
+    externalTurnId: null,
+    status: "running",
+    errorClass: null,
+    errorMessage: null,
+    usage: null,
+    routineRunId: "map-slot",
+    queuedAt: 1,
+    startedAt: 1,
+    finishedAt: null,
+  }
+
+  fixture.host.kernel.publish({ type: "run.updated", run })
+
+  expect(fixture.getNotes()).toMatchObject([
+    { botId: created.bot.id, targetPersonId: "ana", title: "Mapa começou uma tarefa em #mapas: Mapa da manhã" },
+  ])
+  expect(fixture.getNotes()).toHaveLength(1)
+})

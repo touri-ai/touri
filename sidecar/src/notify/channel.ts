@@ -51,7 +51,13 @@ const sendTaskNotification = (kernel: Kernel, run: Run): void => {
   const store = kernel.services.use("store.api")
   const thread = store?.getThread({ threadId: run.threadId })
   if (!thread?.groupId || thread.groupThreadId) return
-  const bot = store?.getBot({ botId: run.botId })
+  const database = kernel.db as Database
+  const routine = run.routineRunId
+    ? (database
+        .query("SELECT r.bot_id, r.name FROM routine_runs rr JOIN routines r ON r.id = rr.routine_id WHERE rr.id = ?")
+        .get(run.routineRunId) as { bot_id: string; name: string } | null)
+    : null
+  const bot = store?.getBot({ botId: routine?.bot_id ?? run.botId })
   const channel = getChannelName(kernel, thread.groupId)
   if (!bot || !channel) return
   const owner = bot.responsiblePersonId ?? kernel.services.use("work.defaultPersonId")?.() ?? "owner"
@@ -64,7 +70,7 @@ const sendTaskNotification = (kernel: Kernel, run: Run): void => {
         .query("SELECT text FROM messages WHERE thread_id = ? AND id = ?")
         .get(thread.id, run.requestMessageId) as { text: string } | null)
     : null
-  const title = (request?.text.trim().split("\n")[0] || thread.title).slice(0, 120)
+  const title = (routine?.name || request?.text.trim().split("\n")[0] || thread.title).slice(0, 120)
 
   recipients
     .filter((id) => people.some((person) => person.id === id))

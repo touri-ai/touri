@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -6,6 +7,8 @@ import { init as initGroups } from "../../src/groups"
 import { createGroupRuntime } from "../../src/groups/runtime"
 import { createGroupStore } from "../../src/groups/store"
 import { createKernel } from "../../src/kernel"
+import { init as initNotify } from "../../src/notify"
+import { createNotificationStore } from "../../src/notify/store"
 import { createRuntimeEngine } from "../../src/runtime/engine"
 import { init as initStore } from "../../src/store"
 
@@ -13,6 +16,12 @@ const appData = await mkdtemp(join(tmpdir(), "touri-channel-mentions-"))
 const host = createKernel({ appData })
 await initStore(host.kernel)
 await initGroups(host.kernel)
+await initNotify(host.kernel)
+const notifyFixture = process.env.TOURI_NOTIFY_FIXTURE === "1"
+if (notifyFixture)
+  host.kernel.services.provide("work.channelPeople", () => [
+    { id: "owner", name: "thiago", handle: "thiago", avatarSeed: "owner", role: "admin" },
+  ])
 const store = host.kernel.services.use("store.api")
 if (!store) throw new Error("Store missing")
 const request = async (path: string, body: unknown) => {
@@ -40,9 +49,21 @@ const provider: ProviderAdapter = {
   provider: "codex",
   detect: async () => ({ success: true, path: "/fixtures/provider", version: "1", loggedIn: true }),
   startTurn: async ({ thread, onEvent }) => {
+    if (notifyFixture) {
+      const prompt = store.activePath({ threadId: thread.id }).find((message) => message.role === "system")?.text ?? ""
+      if (
+        !prompt.includes('"handle":"thiago"') ||
+        !prompt.includes("Para chamar uma pessoa, escreva @nome; use só quando precisar dela.")
+      )
+        throw new Error("Channel people context missing")
+    }
     const name = store.getBot({ botId: thread.botId })?.name ?? "bot"
     onEvent({ type: "turn_started", externalTurnId: thread.id })
-    onEvent({ type: "text_delta", itemId: thread.id, delta: `${name} respondeu.` })
+    onEvent({
+      type: "text_delta",
+      itemId: thread.id,
+      delta: notifyFixture ? "@thiago preciso de você" : `${name} respondeu.`,
+    })
     return { success: true, externalSessionId: thread.id, rolloutPath: null, status: "succeeded" }
   },
   answerApproval: async () => ({ success: true }),
@@ -74,7 +95,11 @@ host.kernel.registerRoutes({
       path: "/channel-mentions-state",
       handler: async () => ({
         status: 200,
-        json: { messages: store.activePath({ threadId: thread.id }), runs: runtime.listRuns(thread.id) },
+        json: {
+          messages: store.activePath({ threadId: thread.id }),
+          runs: runtime.listRuns(thread.id),
+          notifications: createNotificationStore({ db: host.kernel.db as Database }).recent(50),
+        },
       }),
     },
   ],

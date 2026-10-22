@@ -1,4 +1,4 @@
-import type { ApiRoutes, Bot, BotGroup, Message, Run, Thread } from "@touri/contracts"
+import type { ApiRoutes, Bot, BotGroup, Message, NotificationRecord, Run, Thread } from "@touri/contracts"
 import { createRoot } from "react-dom/client"
 import App from "../../src/App"
 import type { ApiRequest } from "../../src/api/client"
@@ -10,7 +10,10 @@ type Send = ApiRoutes["POST /threads/:id/messages"]
 declare global {
   interface Window {
     channelFixture: () => Promise<Fixture>
-    channelSend: (input: Send["req"]) => Promise<{ response: Send["res"]; messages: Message[]; runs: Run[] }>
+    channelSend: (
+      input: Send["req"],
+    ) => Promise<{ response: Send["res"]; messages: Message[]; runs: Run[]; notifications?: NotificationRecord[] }>
+    channelPost: (input: Send["req"]) => Promise<void>
   }
 }
 const fixture = await window.channelFixture()
@@ -21,7 +24,17 @@ const state = base.getState()
 // The mock API keeps these fixture objects; seed their identities with the real server's IDs.
 fixture.bots.forEach((bot, index) => {
   const member = state.bots[index]
-  if (member) Object.assign(member, bot)
+  if (!member) return
+  if (new URLSearchParams(location.search).has("notifications")) {
+    const main = state.threads.find((thread) => thread.id === member.mainThreadId)
+    state.threads
+      .filter((thread) => thread.botId === member.id)
+      .forEach((thread) => {
+        Object.assign(thread, { botId: bot.id })
+      })
+    if (main) Object.assign(main, { id: bot.mainThreadId })
+  }
+  Object.assign(member, bot)
 })
 const created = await base.request("POST /groups", fixture.group)
 Object.assign(created.group, fixture.group)
@@ -33,11 +46,17 @@ const request: ApiRequest = async (route, input, path) => {
   result.messages.forEach((message) => {
     base.emit({ type: "message.created", message })
   })
+  result.notifications?.forEach((notification) => {
+    base.emit({ type: "notification.created", notification })
+  })
   result.runs.forEach((run) => {
     base.emit({ type: "run.updated", run })
   })
   return result.response as ApiRoutes[typeof route]["res"]
 }
-localStorage.setItem("touri.sidebar.mode", "work")
+window.channelPost = async (input) => {
+  await request("POST /threads/:id/messages", input, { id: fixture.thread.id })
+}
+localStorage.setItem("touri.sidebar.mode", new URLSearchParams(location.search).has("notifications") ? "bots" : "work")
 const root = document.getElementById("root")
 if (root) createRoot(root).render(<App kernel={{ services: { api: { ...base, request } } }} />)

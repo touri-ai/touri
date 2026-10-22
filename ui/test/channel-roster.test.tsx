@@ -26,7 +26,9 @@ test("the channel panel lists human members without exposing administrative fiel
   const rosterApi = Object.assign({}, api, {
     request: ((route, body, params, transport) => {
       if (route === "GET /groups/:id/people")
-        return Promise.resolve({ people: [{ id: "ana", name: "Ana", avatarSeed: "ana", role: "member" }] })
+        return Promise.resolve({
+          people: [{ id: "ana", name: "Ana", handle: "ana.silva", avatarSeed: "ana", role: "member" }],
+        })
 
       return request(route, body, params, transport)
     }) as typeof request,
@@ -46,7 +48,7 @@ test("the channel panel lists human members without exposing administrative fiel
   )
 
   expect(await screen.findByText("Ana")).toBeVisible()
-  expect(screen.getByText("Pessoa")).toBeVisible()
+  expect(screen.getByText("Pessoa · @ana.silva")).toBeVisible()
 })
 
 test("the channel header counts people and bots in both languages", () => {
