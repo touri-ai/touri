@@ -525,6 +525,7 @@ export const createRuntimeEngine = ({
 
     return {
       ...cloneRun(run),
+      ...(metadata.groupTurnId ? { groupTurnId: metadata.groupTurnId } : {}),
       groupThreadId,
       origin: getRunOrigin(metadata),
       browserTakeoverFromRunId: metadata.browserTakeoverFromRunId ?? null,

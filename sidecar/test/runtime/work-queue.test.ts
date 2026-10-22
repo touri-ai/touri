@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ProviderAdapter, Run, StartTurnArgs, StartTurnResult } from "@touri/contracts"
+import { createGroupRuntime } from "../../src/groups/runtime"
 import { createGroupStore } from "../../src/groups/store"
 import { createKernel } from "../../src/kernel"
 import { authenticatedSender, bindDeviceSession } from "../../src/kernel/device-session"
@@ -292,6 +293,64 @@ test("group work preserves execution thread IDs in every event and keeps learnin
   )
   expect(fixture.engine.listRuns(worker.id)[0]?.threadId).toBe(worker.id)
   expect(readLearningState(kernel, "bot-0").turns).toBe(1)
+})
+
+test("one channel message starts one provider and preserves its parent turn in live snapshots", async () => {
+  const fixture = await getFixture()
+  const startTurn = spyOn(fixture.adapter, "startTurn")
+  fixture.addCleanup(async () => startTurn.mockRestore())
+  const kernel = fixture.runtime.kernel
+  const store = kernel.services.use("store.api")
+  if (!store) throw new Error("Store unavailable")
+  const groups = createGroupStore(kernel)
+  const group = groups.save({
+    name: "Demo team",
+    color: "#dc2626",
+    avatarShape: "classic-none",
+    memberIds: ["bot-0"],
+    coordinatorBotId: null,
+  })
+  const channel = groups.createThread(group)
+  const request = store.insertMessage({
+    message: {
+      id: kernel.newId(),
+      threadId: channel.id,
+      parentId: null,
+      role: "user",
+      kind: "text",
+      status: "complete",
+      runId: null,
+      text: '@"Equipe 0" Demo task',
+      parts: [],
+      sender: null,
+      source: "local",
+    },
+  })
+  if (!request.success) throw new Error(request.error)
+  const runtime = createGroupRuntime(kernel, fixture.engine)
+  fixture.addCleanup(async () => {
+    runtime.shutdown()
+    await runtime.waitForDrain()
+  })
+
+  const result = runtime.enqueue({ threadId: channel.id, requestMessageId: request.message.id, trigger: "user" })
+  if (!result.success) throw new Error(result.error)
+  await waitFor(() => startTurn.mock.calls.length === 1)
+  const work = fixture.engine.getWorkRuns()
+  const execution = work[0]
+  if (!execution) throw new Error("Missing member execution")
+
+  expect(work).toHaveLength(1)
+  expect(execution).toMatchObject({ groupTurnId: result.run.id, groupThreadId: channel.id })
+  expect(execution.threadId).not.toBe(channel.id)
+  expect(runtime.listRuns(channel.id)).toHaveLength(2)
+  expect(fixture.getEvent(execution.id)).toMatchObject({ groupTurnId: result.run.id })
+  fixture.finish(execution.threadId)
+  await waitFor(() => fixture.getEvent(execution.id)?.status === "succeeded")
+  expect(
+    fixture.getEvents().some((run) => run.id === execution.id && run.threadId === channel.id && run.groupTurnId),
+  ).toBe(true)
+  expect(startTurn).toHaveBeenCalledTimes(1)
 })
 
 test("queue publication batches database reads regardless of the number of waiting turns", async () => {

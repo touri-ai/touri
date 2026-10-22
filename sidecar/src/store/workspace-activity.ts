@@ -69,7 +69,7 @@ export const WORKSPACE_RUNS_SQL = `
       ORDER BY queued_at DESC, rowid DESC LIMIT 1) AS row_id FROM threads t
     UNION SELECT rowid FROM runs INDEXED BY runs_active_workspace WHERE status IN ('queued', 'starting', 'running')
   )
-  SELECT r.*, coalesce(root.thread_id, r.thread_id) AS thread_id FROM runs r
+  SELECT r.*, coalesce(root.thread_id, r.thread_id) AS thread_id, link.turn_id AS group_turn_id FROM runs r
   LEFT JOIN group_run_links link ON link.run_id = r.id
   LEFT JOIN runs root ON root.id = link.turn_id
   JOIN threads t ON t.id = coalesce(root.thread_id, r.thread_id)
