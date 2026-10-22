@@ -70,7 +70,8 @@ const sendTaskNotification = (kernel: Kernel, run: Run): void => {
         .query("SELECT text FROM messages WHERE thread_id = ? AND id = ?")
         .get(thread.id, run.requestMessageId) as { text: string } | null)
     : null
-  const title = kernel.redact(routine?.name || request?.text.trim().split("\n")[0] || thread.title).slice(0, 120)
+  const requestTitle = request ? kernel.redact(request.text).trim().split("\n")[0] : null
+  const title = kernel.redact(routine?.name || requestTitle || thread.title).slice(0, 120)
 
   recipients
     .filter((id) => people.some((person) => person.id === id))

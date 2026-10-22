@@ -191,7 +191,7 @@ test.each(["user", "routine"] as const)(
   async (trigger) => {
     const fixture = await getFixture()
     const titlePrefix = `Montar mapa ${"x".repeat(98)}`
-    const sensitiveValue = "private-value-".repeat(4)
+    const sensitiveValue = "private-\nvalue-".repeat(4)
     fixture.host.kernel.addRedactionValue(sensitiveValue)
 
     const requestDelivered = fixture.waitForMessage()
