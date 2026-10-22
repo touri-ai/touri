@@ -14,7 +14,7 @@ import type {
   ToolContext,
 } from "@touri/contracts"
 import { init as initGroups } from "../../src/groups"
-import { createGroupRuntime } from "../../src/groups/runtime"
+import { createGroupRuntime, type GroupRuntimeClock } from "../../src/groups/runtime"
 import {
   delegatedBot,
   delegationCeiling,
@@ -47,8 +47,9 @@ const until = async (check: () => boolean, attempts = 300) => {
 }
 const fixture = async (
   hook?: (ctx: ToolContext, complete: (text: string) => void) => Promise<void>,
-  timeout = 1000,
+  timeout: number | null = 1000,
   getStartDelay: (botId: string) => number = () => 0,
+  clock?: GroupRuntimeClock,
 ) => {
   const root = mkdtempSync(join(tmpdir(), "touri-groups-"))
   const host = createKernel({ appData: root })
@@ -137,7 +138,7 @@ const fixture = async (
       queueMicrotask(async () => {
         await Bun.sleep(getStartDelay(botId))
         if (persistence.getRun(run.id)?.status !== "queued") return
-        Object.assign(run, { status: "running", startedAt: Date.now() })
+        Object.assign(run, { status: "running", startedAt: clock?.now() ?? Date.now() })
         persistence.saveRun(run)
         host.kernel.publish({ type: "run.updated", run: { ...run } })
         running.set(run.id, { run, ctx })
@@ -195,7 +196,7 @@ const fixture = async (
         (v) => v.run.threadId === threadId && persistence.getRun(v.run.id)?.status === "running",
       )?.run ?? null,
   )
-  const runtime = createGroupRuntime(host.kernel, engine, timeout)
+  const runtime = createGroupRuntime(host.kernel, engine, timeout ?? undefined, clock)
   host.kernel.services.provide("groups.runtime", runtime)
   host.kernel.services.provide("runtime.enqueue", runtime.enqueue)
   const send = (
@@ -762,7 +763,7 @@ test("coordinator receives requests; real MCP router returns peer answer and gro
       })
       expect(instructions).toContain("with the coordinator role")
       expect(instructions).toContain(
-        "each member has its own 120-second execution budget, starting when that member's run starts, and time waiting in the queue does not count",
+        "each member has its own 10-minute execution budget, starting when that member's run starts, and time waiting in the queue does not count",
       )
       answer = await router.call({
         id: 1,
@@ -822,6 +823,81 @@ test("ask_bot enforces membership, cycle, depth 2 and six calls across the whole
   expect(calls).toBe(2)
   expect(f.db.query("SELECT COUNT(*) AS n FROM group_run_links WHERE depth>0").get()).toEqual({ n: 6 })
 })
+
+test("the default channel budget lets a member finish after two minutes", async () => {
+  const clock = getControlledGroupClock()
+  const answer = Promise.withResolvers<(text: string) => void>()
+  const scenario = await fixture(async (_ctx, complete) => answer.resolve(complete), null, () => 0, clock)
+
+  const turn = scenario.send("@dev confira o relatório")
+  const complete = await answer.promise
+  clock.advanceBy(120_001)
+
+  expect(scenario.persistence.getRun(turn.id)?.status).toBe("running")
+  complete("Relatório conferido")
+  await until(() => scenario.persistence.getRun(turn.id)?.status === "succeeded")
+  expect(clock.getTimerCount()).toBe(0)
+})
+
+test("the default channel budget still cancels a member at ten minutes", async () => {
+  const clock = getControlledGroupClock()
+  const started = Promise.withResolvers<ToolContext>()
+  const scenario = await fixture(async (ctx) => started.resolve(ctx), null, () => 0, clock)
+
+  const turn = scenario.send("@dev confira o relatório")
+  const ctx = await started.promise
+  clock.advanceBy(600_000 - 1)
+
+  expect(scenario.persistence.getRun(ctx.runId)?.status).toBe("running")
+  clock.advanceBy(1)
+  await until(() => scenario.persistence.getRun(turn.id)?.status === "failed")
+  expect(scenario.persistence.getRun(ctx.runId)).toMatchObject({ status: "failed", errorClass: "timeout" })
+  expect(ctx.signal.aborted).toBe(true)
+  expect(clock.getTimerCount()).toBe(0)
+})
+
+test("Parar cancels a long default channel turn and removes its deadline", async () => {
+  const clock = getControlledGroupClock()
+  const started = Promise.withResolvers<ToolContext>()
+  const scenario = await fixture(async (ctx) => started.resolve(ctx), null, () => 0, clock)
+
+  const turn = scenario.send("@dev confira o relatório")
+  const ctx = await started.promise
+  clock.advanceBy(120_001)
+  expect(scenario.runtime.cancel(turn.id)).toBe(true)
+  await until(() => scenario.persistence.getRun(turn.id)?.status === "canceled")
+
+  expect(scenario.persistence.getRun(ctx.runId)?.status).toBe("canceled")
+  expect(ctx.signal.aborted).toBe(true)
+  expect(clock.getTimerCount()).toBe(0)
+})
+
+const getControlledGroupClock = () => {
+  // The manual scheduler owns its mutable state; no global clock or timers are replaced.
+  let now = Date.now()
+  let timers: { id: symbol; expiresAt: number; callback: () => void }[] = []
+
+  return {
+    now: () => now,
+    schedule: (callback: () => void, delayMs: number) => {
+      const id = Symbol()
+      timers = timers.concat({ id, expiresAt: now + delayMs, callback })
+
+      return () => {
+        timers = timers.filter((timer) => timer.id !== id)
+      }
+    },
+    advanceBy: (milliseconds: number) => {
+      now += milliseconds
+      const due = timers.filter((timer) => timer.expiresAt <= now)
+      timers = timers.filter((timer) => timer.expiresAt > now)
+      due.forEach((timer) => {
+        timer.callback()
+      })
+    },
+    getTimerCount: () => timers.length,
+  }
+}
 
 test("target approval stays pending until user decision; timeout cancels a stalled bot", async () => {
   let finish: ((text: string) => void) | undefined

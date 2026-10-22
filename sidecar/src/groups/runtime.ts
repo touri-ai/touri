@@ -63,7 +63,17 @@ const configuration = (bot: Bot) =>
 const terminal = (run: Run) => !["queued", "starting", "running"].includes(run.status)
 const fail = (errorCode: string, error: string): ToolResult => ({ success: false, errorCode, error })
 
-export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 120_000) => {
+export type GroupRuntimeClock = {
+  now: () => number
+  schedule: (callback: () => void, delayMs: number) => () => void
+}
+
+export const createGroupRuntime = (
+  kernel: Kernel,
+  engine: Engine,
+  timeoutMs = 10 * 60_000,
+  clock: GroupRuntimeClock = getGroupRuntimeClock(),
+) => {
   const db = kernel.db as Database
   const store = kernel.services.use("store.api")
   if (!store) throw new Error("Store unavailable")
@@ -177,12 +187,12 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
   const waitRun = (id: string, turn: Turn, deadline: number | null): Promise<Run> =>
     new Promise((resolve, reject) => {
       const signal = turn.controller.signal
-      let timer: ReturnType<typeof setTimeout> | undefined
+      let cancelTimer: (() => void) | undefined
       let timedOut = false
       let dispose = () => {}
       const cleanup = () => {
         dispose()
-        if (timer) clearTimeout(timer)
+        cancelTimer?.()
         signal.removeEventListener("abort", abort)
       }
       const abort = () => {
@@ -202,7 +212,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
           return
         }
         // Queue time must not consume a member's chat budget. Routines retain their absolute deadline.
-        if (timedOut || timer || (deadline === null && run.startedAt === null)) return
+        if (timedOut || cancelTimer || (deadline === null && run.startedAt === null)) return
         const browserActive = Boolean(
           db
             .query(
@@ -211,11 +221,11 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
             .get(id),
         )
         const budget = browserActive ? Math.max(timeoutMs, 10 * 60_000) : timeoutMs
-        const expiresAt = deadline ?? (run.startedAt ?? Date.now()) + budget
-        timer = setTimeout(
+        const expiresAt = deadline ?? (run.startedAt ?? clock.now()) + budget
+        cancelTimer = clock.schedule(
           () => {
-            timer = undefined
-            if (Date.now() < expiresAt) {
+            cancelTimer = undefined
+            if (clock.now() < expiresAt) {
               check()
               return
             }
@@ -236,7 +246,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = 1
             engine.cancel(id, turn.timeoutError)
             check()
           },
-          Math.max(1, expiresAt - Date.now()),
+          Math.max(1, expiresAt - clock.now()),
         )
       }
       dispose = kernel.subscribe(({ event }) => {
@@ -1193,3 +1203,12 @@ const getRecipients = (group: BotGroup, bots: Bot[], text: string, action: strin
   const mentioned = routeGroupMessage(group, bots, text)
   return routine && !mentioned.length ? group.memberIds : mentioned
 }
+
+const getGroupRuntimeClock = (): GroupRuntimeClock => ({
+  now: () => Date.now(),
+  schedule: (callback, delayMs) => {
+    const timer = setTimeout(callback, delayMs)
+
+    return () => clearTimeout(timer)
+  },
+})
