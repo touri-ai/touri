@@ -64,6 +64,7 @@ const ctx = {
 }
 let decisionCount = 0
 let takeoverInputCount = 0
+let takeoverInputAttempts = 0
 await init(kernel, undefined, {
   engine,
   getDecisionApiKey: async () => "synthetic-decision-key",
@@ -203,7 +204,8 @@ const server = Bun.serve({
       const tab = await getTab()
       return Response.json({ tabs: tab ? [tab] : [] })
     }
-    if (step === "stats") return Response.json({ decisionCount, failedSteps, takeoverInputCount })
+    if (step === "stats")
+      return Response.json({ decisionCount, failedSteps, takeoverInputCount, takeoverInputAttempts })
     if (step === "private-target")
       return Response.json(
         await getFixturePageValue(`(() => {
@@ -212,11 +214,23 @@ const server = Bun.serve({
         })()`),
       )
     if (step === "private-input-status")
-      return Response.json({
-        received: await getFixturePageValue<boolean>(
-          `document.querySelector('[aria-label="Destination primary"]')?.value === "entrada privada fictícia"`,
-        ),
-      })
+      return Response.json(
+        await getFixturePageValue<{
+          received: boolean
+          activeTag: string | null
+          activeLabel: string | null
+          activeId: string | null
+        }>(`(() => {
+          const primary = document.querySelector('[aria-label="Destination primary"]')
+          const active = document.activeElement
+          return {
+            received: primary?.value === "entrada privada fictícia",
+            activeTag: active?.tagName ?? null,
+            activeLabel: active?.getAttribute("aria-label") ?? null,
+            activeId: active?.id ?? null,
+          }
+        })()`),
+      )
     if (step === "preview") {
       const preview = await engine.preview({ botId: ctx.botId, tabId, signal: ctx.signal })
       return Response.json(preview ? { ...preview, url: "https://travel.example.test" } : { image: "" })
@@ -228,6 +242,7 @@ const server = Bun.serve({
     if (step === "takeover-frame")
       return dispatchControl("POST", "/browser/tabs/:id/takeover/frame", takeoverTabId, body)
     if (step === "takeover-input") {
+      takeoverInputAttempts += 1
       const response = await dispatchControl("POST", "/browser/tabs/:id/takeover/input", takeoverTabId, body)
       if (response.ok) takeoverInputCount += 1
       return response
@@ -238,6 +253,7 @@ const server = Bun.serve({
       if (tabId) await engine.close({ tabId, botId: ctx.botId, signal: ctx.signal })
       decisionCount = 0
       takeoverInputCount = 0
+      takeoverInputAttempts = 0
       finalImage = ""
       shouldRefreshPublicPage = false
       failedSteps.length = 0

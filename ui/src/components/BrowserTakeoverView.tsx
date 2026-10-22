@@ -81,6 +81,10 @@ export const BrowserTakeoverView = ({
   const [fullView, setFullView] = useState(false)
   localeRef.current = locale
 
+  const focusKeyboard = (): void => {
+    keyboard.current?.focus({ preventScroll: true })
+  }
+
   useEffect(() => {
     let active = true
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -446,6 +450,7 @@ export const BrowserTakeoverView = ({
     if (event.nativeEvent.isComposing) return
     if (event.key.toLowerCase() === "v" && (event.ctrlKey || event.metaKey)) return
     event.preventDefault()
+    event.stopPropagation()
     const modifiers =
       Number(event.altKey) | (Number(event.ctrlKey) << 1) | (Number(event.metaKey) << 2) | (Number(event.shiftKey) << 3)
     sendInput({ kind: "key", phase: "down", key: event.key, code: event.code, modifiers })
@@ -454,6 +459,7 @@ export const BrowserTakeoverView = ({
     if (event.nativeEvent.isComposing) return
     if (event.key.toLowerCase() === "v" && (event.ctrlKey || event.metaKey)) return
     event.preventDefault()
+    event.stopPropagation()
     const modifiers =
       Number(event.altKey) | (Number(event.ctrlKey) << 1) | (Number(event.metaKey) << 2) | (Number(event.shiftKey) << 3)
     sendInput({ kind: "key", phase: "up", key: event.key, code: event.code, modifiers })
@@ -569,7 +575,11 @@ export const BrowserTakeoverView = ({
               type="button"
               className="button button-quiet"
               disabled={!frameReady}
-              onClick={() => keyboard.current?.focus()}
+              onPointerDown={(event) => {
+                event.preventDefault()
+                focusKeyboard()
+              }}
+              onClick={focusKeyboard}
             >
               {t("Type in the browser", {}, locale)}
             </button>
@@ -591,12 +601,14 @@ export const BrowserTakeoverView = ({
           composing.current = true
         }}
         onInput={(event) => {
+          event.stopPropagation()
           if (composing.current) return
           sendText(event.currentTarget.value)
           event.currentTarget.value = ""
         }}
         onPaste={(event) => {
           event.preventDefault()
+          event.stopPropagation()
           sendText(event.clipboardData.getData("text/plain"))
           event.currentTarget.value = ""
         }}

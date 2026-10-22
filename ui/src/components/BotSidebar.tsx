@@ -14,8 +14,10 @@ import type {
 import {
   Fragment,
   type KeyboardEvent,
+  lazy,
   memo,
   type ReactNode,
+  Suspense,
   useCallback,
   useEffect,
   useId,
@@ -50,7 +52,6 @@ import { DeleteBotDialog } from "./DeleteBotDialog"
 import { DeleteOldAutomaticThreadsDialog } from "./DeleteOldAutomaticThreadsDialog"
 import { DeleteThreadDialog, type ThreadDeleteTarget } from "./DeleteThreadDialog"
 import { GlobalAdvancedMenu } from "./GlobalAdvancedMenu"
-import { GroupSidebar } from "./Groups"
 import { Modal } from "./Modal"
 import { useInsertedIds } from "./Motion"
 import { mascotIsBusy } from "./mascotState"
@@ -62,6 +63,8 @@ import { ThreadGroupHistory } from "./ThreadGroupHistory"
 import { type HoldReason, useSidebarOrder } from "./useSidebarOrder"
 import { getThreadDeletionError, type ThreadDeletion } from "./useThreadDeletion"
 import "./bot-sidebar.css"
+
+const GroupSidebar = lazy(() => import("./Groups").then((module) => ({ default: module.GroupSidebar })))
 
 type SidebarProps = {
   deletedThreadIds?: ReadonlySet<string> | undefined
@@ -646,20 +649,28 @@ export const Sidebar = (props: SidebarProps) => {
           inert={sidebarMode !== "work" || undefined}
         >
           {props.onNewGroup && (
-            <GroupSidebar
-              groups={props.groups ?? EMPTY_GROUPS}
-              bots={props.bots}
-              threads={props.threads}
-              attentionThreadIds={attentionThreadIds}
-              channelWorking={channelWorking}
-              selectedThreadId={props.selectedThreadId}
-              onSelect={selectThread}
-              onCreate={createChannel}
-              onSearch={openSearch}
-              onEdit={editChannel}
-              onDelete={props.onDeleteGroup ? deleteChannel : undefined}
-              onNewThread={createChannelThread}
-            />
+            <Suspense
+              fallback={
+                <section className="group-sidebar" aria-busy="true" aria-label={t("Loading")}>
+                  <p role="status">{t("Loading")}</p>
+                </section>
+              }
+            >
+              <GroupSidebar
+                groups={props.groups ?? EMPTY_GROUPS}
+                bots={props.bots}
+                threads={props.threads}
+                attentionThreadIds={attentionThreadIds}
+                channelWorking={channelWorking}
+                selectedThreadId={props.selectedThreadId}
+                onSelect={selectThread}
+                onCreate={createChannel}
+                onSearch={openSearch}
+                onEdit={editChannel}
+                onDelete={props.onDeleteGroup ? deleteChannel : undefined}
+                onNewThread={createChannelThread}
+              />
+            </Suspense>
           )}
           <div className="bot-groups work-mode-dms">{renderBotEntries("work")}</div>
         </div>

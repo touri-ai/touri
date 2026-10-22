@@ -15,7 +15,9 @@ import type {
 import { failureRetryHint, sanitizeDiagnostic } from "@touri/contracts/run-failure"
 import {
   Fragment,
+  lazy,
   type ReactNode,
+  Suspense,
   useCallback,
   useContext,
   useEffect,
@@ -77,7 +79,6 @@ import { ErrorNotice } from "./ErrorNotice"
 import { EvidenceContext } from "./EvidenceGallery"
 import { FailureActionContext } from "./FailureActionContext"
 import { GoalPanel } from "./GoalPanel"
-import { GroupConversationStart, GroupHeader } from "./Groups"
 import { MachineServiceButton } from "./MachineServiceButton"
 import { MachineStatus } from "./MachineStatus"
 import { MarkdownContent } from "./MarkdownContent"
@@ -92,6 +93,11 @@ import { toolStatus } from "./toolPresentation"
 import { approvalTools, assistantSegments } from "./turnActivityModel"
 import { type EditMessage, UserMessageEdit } from "./UserMessageEdit"
 import { usePhoneViewport } from "./usePhoneViewport"
+
+const GroupConversationStart = lazy(() =>
+  import("./Groups").then((module) => ({ default: module.GroupConversationStart })),
+)
+const GroupHeader = lazy(() => import("./Groups").then((module) => ({ default: module.GroupHeader })))
 
 type ChatPanelProps = {
   composerKey?: string | undefined
@@ -1408,16 +1414,18 @@ export const ChatPanel = ({
         <BrowserActivityControlsProvider>
           <section className="chat-panel" inert={chatIsCovered || undefined} aria-hidden={chatIsCovered || undefined}>
             {group ? (
-              <GroupHeader
-                group={group}
-                bots={groupMembers}
-                people={channelPeople}
-                channelMode={channelMode}
-                onEdit={onEditGroup}
-                onInvite={onInviteToGroup}
-                panelOpen={panelOpen}
-                onTogglePanel={onTogglePanel}
-              />
+              <Suspense fallback={null}>
+                <GroupHeader
+                  group={group}
+                  bots={groupMembers}
+                  people={channelPeople}
+                  channelMode={channelMode}
+                  onEdit={onEditGroup}
+                  onInvite={onInviteToGroup}
+                  panelOpen={panelOpen}
+                  onTogglePanel={onTogglePanel}
+                />
+              </Suspense>
             ) : (
               <header className="chat-header" data-tauri-drag-region="deep">
                 <span className="chat-header-crumb">{t(workspaceMode === "work" ? "Direct messages" : "Bots")}</span>
@@ -1519,13 +1527,15 @@ export const ChatPanel = ({
                 header={
                   visibleMessages.length === 0 && !activeRun && visibleRuns.length === 0 ? (
                     group ? (
-                      <GroupConversationStart
-                        group={group}
-                        bots={groupMembers}
-                        people={channelPeople}
-                        currentPersonId={currentPersonId}
-                        channelMode={channelMode}
-                      />
+                      <Suspense fallback={null}>
+                        <GroupConversationStart
+                          group={group}
+                          bots={groupMembers}
+                          people={channelPeople}
+                          currentPersonId={currentPersonId}
+                          channelMode={channelMode}
+                        />
+                      </Suspense>
                     ) : (
                       <ConversationStart
                         bot={bot}

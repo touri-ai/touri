@@ -1,7 +1,7 @@
 import type { BotGroup, Message, Run } from "@touri/contracts"
 import { createRoot } from "react-dom/client"
 import { createMockApi } from "../../src/api/mock"
-import { GroupPanel } from "../../src/components/Groups"
+import { GroupPanel } from "../../src/components/GroupPanel"
 import "../../src/styles.css"
 import "../../src/components/bot-panel.css"
 
