@@ -35,10 +35,11 @@ database.exec(`
   );
   CREATE TABLE group_run_links (run_id TEXT NOT NULL, turn_id TEXT NOT NULL);
   CREATE TABLE browser_channel_runs (
-    run_id TEXT PRIMARY KEY, group_id TEXT NOT NULL, thread_id TEXT NOT NULL, bot_id TEXT NOT NULL,
+    run_id TEXT PRIMARY KEY, current_run_id TEXT NOT NULL, group_id TEXT NOT NULL, thread_id TEXT NOT NULL, bot_id TEXT NOT NULL,
     requester_person_id TEXT, responsible_person_id TEXT, controller_person_id TEXT, status TEXT NOT NULL,
     queued_at INTEGER DEFAULT 1
   );
+  CREATE TABLE browser_takeover_continuations (run_id TEXT PRIMARY KEY, original_run_id TEXT NOT NULL);
   CREATE TABLE browser_tabs (id TEXT PRIMARY KEY, owner_bot_id TEXT, owner_thread_id TEXT);
   INSERT INTO bots(id, archived_at, responsible_person_id) VALUES ('legacy-bot', NULL, NULL), ('member-bot', NULL, 'member'),
     ('other-bot', NULL, 'owner'), ('team-bot', NULL, 'owner'), ('deleted-channel-bot', NULL, 'owner');
@@ -391,7 +392,7 @@ test("only the requester and the responsible person can stop or take over a chan
   database.query(`INSERT INTO runs VALUES ('channel-browser-run', 'team-bot-session', 'request')`).run()
   database
     .query(`INSERT INTO browser_channel_runs VALUES
-      ('channel-browser-run', 'team-a', 'team-chat', 'team-bot', 'member', 'owner', 'owner', 'taken_over', 1)`)
+      ('channel-browser-run', 'channel-browser-run', 'team-a', 'team-chat', 'team-bot', 'member', 'owner', 'owner', 'taken_over', 1)`)
     .run()
   database.query("INSERT OR REPLACE INTO browser_tabs VALUES ('channel-tab', 'team-bot', 'team-bot-session')").run()
 

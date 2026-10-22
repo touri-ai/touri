@@ -46,6 +46,29 @@ export const getBrowserRunControlError = (controllerName: string | null): string
     ? `${controllerName} está no controle do navegador. Só quem pediu ou a pessoa responsável pelo bot pode alterar o controle.`
     : "Só quem pediu este trabalho ou a pessoa responsável pelo bot pode controlar este navegador."
 
+/** Resolve the coordinator's single-request short circuit without changing control or queue state. */
+export const getBrowserCancellationTarget = (database: Database, runId: string) => {
+  const fields = "run_id, current_run_id, bot_id, status"
+  const row = (database
+    .query(`SELECT ${fields} FROM browser_channel_runs
+      WHERE run_id = ? OR current_run_id = ? OR run_id = (
+        SELECT original_run_id FROM browser_takeover_continuations WHERE run_id = ?)`)
+    .get(runId, runId, runId) ??
+    database
+      .query(`SELECT ${fields} FROM browser_channel_runs
+        WHERE current_run_id IN (SELECT run_id FROM group_run_links WHERE turn_id = ?)
+          AND status IN ('queued','running','needs_you','taken_over') LIMIT 1`)
+      .get(runId)) as Pick<BrowserChannelRunRow, "run_id" | "current_run_id" | "bot_id" | "status"> | null
+  if (!row || !VISIBLE_STATUSES.includes(row.status)) return null
+
+  return {
+    runId: row.current_run_id,
+    requestId: row.run_id,
+    botId: row.bot_id,
+    ownsControl: LIVE_STATUSES.includes(row.status),
+  }
+}
+
 export const getNeedsYouEscalationMs = (value: unknown): number => {
   const parsed = typeof value === "string" && value.trim() !== "" ? Number(value) : value
   if (
@@ -342,21 +365,10 @@ export const createChannelBrowserRuns = ({
     runId: string,
     status: "failed" | "canceled" = "canceled",
   ): { runId: string; requestId: string; botId: string; ownsControl: boolean } | null => {
-    const row =
-      getRaw(runId) ??
-      (database
-        .query(`${selectRunSql}
-      WHERE c.current_run_id IN (SELECT run_id FROM group_run_links WHERE turn_id = ?)
-        AND c.status IN ('queued','running','needs_you','taken_over') LIMIT 1`)
-        .get(runId) as BrowserChannelRunRow | null)
-    if (!row || !VISIBLE_STATUSES.includes(row.status)) return null
-    updateTerminal(row.run_id, status)
-    return {
-      runId: row.current_run_id,
-      requestId: row.run_id,
-      botId: row.bot_id,
-      ownsControl: LIVE_STATUSES.includes(row.status),
-    }
+    const request = getBrowserCancellationTarget(database, runId)
+    if (!request) return null
+    updateTerminal(request.requestId, status)
+    return request
   }
 
   const enter = async (

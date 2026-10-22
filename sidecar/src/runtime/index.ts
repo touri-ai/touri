@@ -89,8 +89,12 @@ const routineInput = ({
   catchUpMinutes: numberField(args, "catchUpMinutes", 30),
 })
 
-export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): Promise<void> => {
-  const engine = createRuntimeEngine({ kernel, ...(runStage ? { runStage } : {}) })
+export const init = async (
+  kernel: Kernel,
+  runStage?: PerformanceStageRunner,
+  dependencies: Pick<Parameters<typeof createRuntimeEngine>[0], "providerAdapters"> = {},
+): Promise<void> => {
+  const engine = createRuntimeEngine(Object.assign({ kernel }, dependencies, runStage ? { runStage } : {}))
   let draining = false
   let drainPromise: Promise<void> | null = null
   kernel.services.provide("runtime.isDraining", () => draining)
@@ -249,20 +253,37 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
       {
         method: "POST",
         path: "/runs/:id/cancel",
-        handler: async ({ params }) => {
-          const remote = (kernel.db as Database)
-            .query("SELECT bot_id FROM cloud_runs WHERE run_id = ?")
-            .get(params.id ?? "")
+        handler: async ({ params, signal }) => {
+          const runId = params.id ?? ""
+          const person = deviceSession(signal)?.person
+          const getCancellationDecision = (targetId: string) =>
+            person
+              ? (kernel.services.use("work.authorizeHttp")?.({
+                  personId: person.id,
+                  role: person.role,
+                  method: "POST",
+                  pathname: `/runs/${targetId}/cancel`,
+                  body: null,
+                }) ?? null)
+              : null
+          const remote = (kernel.db as Database).query("SELECT bot_id FROM cloud_runs WHERE run_id = ?").get(runId)
           if (remote) {
+            const denial = getCancellationDecision(runId)
+            if (denial) return denial
             const cloud = kernel.services.use("cloud.account")
             if (!cloud) return routeError("TOURI-E9013", "Nuvem desativada")
             return {
               status: 200,
-              json: await cloud.request("POST", `/v1/runs/${encodeURIComponent(params.id ?? "")}/cancel`, {}),
+              json: await cloud.request("POST", `/v1/runs/${encodeURIComponent(runId)}/cancel`, {}),
             }
           }
-          groups.cancel(params.id ?? "")
-          const result = engine.cancel(params.id ?? "")
+          const canAccess = kernel.services.use("work.canAccessRun")
+          if (person && canAccess && !canAccess({ personId: person.id, role: person.role, runId }))
+            return routeError("NOT_FOUND", "Run not found")
+          const cancellation = groups.cancelAuthorized(runId, getCancellationDecision)
+          if (cancellation.denial) return cancellation.denial
+          if (cancellation.run) return { status: 200, json: { run: engine.getRunSnapshot(cancellation.run) } }
+          const result = engine.cancel(runId)
           return result.success
             ? { status: 200, json: { run: engine.getRunSnapshot(result.run) } }
             : routeError(result.errorCode, result.error)

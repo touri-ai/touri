@@ -355,14 +355,18 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
     body: unknown
   }): RouteDecision | null => {
     const verb = method.toUpperCase()
-    const browserRunForRun = (runId: string) =>
+    // Keep aliases outermost so ownership checks seek indexes instead of scanning browser history.
+    const getBrowserRunForRun = (runId: string) =>
       database
-        .query(`SELECT requester_person_id, responsible_person_id, controller_person_id
-          FROM browser_channel_runs WHERE run_id = ? AND status IN ('queued','running','needs_you','taken_over')
-          UNION ALL
+        .query(`WITH candidates(run_id) AS (
+          SELECT ? UNION ALL SELECT run_id FROM group_run_links WHERE turn_id = ?
+        )
           SELECT browser.requester_person_id, browser.responsible_person_id, browser.controller_person_id
-          FROM group_run_links link JOIN browser_channel_runs browser ON browser.run_id = link.run_id
-          WHERE link.turn_id = ? AND browser.status IN ('queued','running','needs_you','taken_over')
+          FROM candidates CROSS JOIN browser_channel_runs browser
+          WHERE (browser.run_id = candidates.run_id OR browser.current_run_id = candidates.run_id
+            OR browser.run_id = (SELECT original_run_id FROM browser_takeover_continuations
+              WHERE run_id = candidates.run_id))
+            AND browser.status IN ('queued','running','needs_you','taken_over')
           LIMIT 1`)
         .get(runId, runId) as {
         requester_person_id: string | null
@@ -410,7 +414,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
     const runAction = /^\/runs\/([^/]+)\/(cancel|retry)$/u.exec(pathname)
     if (verb === "POST" && runAction?.[2] === "cancel") {
       const runId = runAction[1] ?? ""
-      const run = browserRunForRun(runId)
+      const run = getBrowserRunForRun(runId)
       if (run && !canAccessRun({ personId, role, runId })) return notFound
       const decision = browserControlDecision(run)
       if (decision) return decision
