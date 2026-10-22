@@ -674,6 +674,14 @@ Launch:
 - While a tab is held, every agent tool on it returns `TAB_HELD_BY_USER`.
 - "Hand back" (UI button or tray) releases it. The generation bumps, the blocked `request_takeover` call returns a fresh snapshot, and its notes include "User handed back the tab; the page may have changed."
 - Take-over times out after `timeoutMs` (default 10 min), and the tool then returns the current snapshot with a note.
+- Shared previews are withheld during human control and secret entry. Cached and in-flight frames are
+  invalidated on disconnect and main-frame navigation, including history and hash-route changes;
+  iframe navigation cannot replace the main page's metadata. Same-document navigation preserves secret mode.
+- After handback, restore or reconnect, a tab with private input requires fresh verification of a safe
+  document before shared previews resume. Changing the original private document's route does not clear
+  its protection. Decoded paths and hash routes for login/payment pages remain private, malformed routes
+  fail closed, and ordinary query values and anchor names do not classify a page as sensitive.
+- Post-takeover title and URL metadata remain blank, including after safe shared previews resume.
 
 **R9. Secure secret entry.**
 1. `browser_submit_secret(tabId, fields[], secretName?, submit)`. If `secretName` exists with `usage.browser = true` and `browser_origin` matches the tab's origin, the value is fetched from the Keychain. Otherwise the sidecar asks Rust (`secret.prompt`), which opens the native secret-card window for the user to type it.
