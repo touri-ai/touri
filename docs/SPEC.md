@@ -32,7 +32,7 @@ for a subsequent task. Tool-free turns use a compact system prompt when the CLI 
 its default prompt; subscription login remains unchanged. Tool-free local sessions using the host login retain a CLI process for up to
 60 seconds of inactivity, with at most four retained processes per provider and 100 turns per process.
 Vault logins keep their existing per-turn process and credential lifetime. Reuse requires matching bot configuration,
-working directory, instructions, environment and native session identity. Task turns always receive
+working directory, instructions, environment and native session identity. Tool-enabled turns receive
 a fresh process and fresh credentials. Dead, canceled or failed processes are discarded; the next turn
 starts a new process and resumes native history. Private temporary directories live until the retained
 process exits. Shutdown stops retained processes. A reused process records `processReusedAt` instead
