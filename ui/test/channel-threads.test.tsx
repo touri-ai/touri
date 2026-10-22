@@ -58,3 +58,15 @@ it("keeps the canonical channel stable and hides private provider threads", () =
   expect(cards[0]?.reply?.text).toBe(reply.text)
   expect(getChannelThreadTitle(routine)).not.toContain("10:26")
 })
+
+it("keeps a newly appended routine visible when the channel already has fifty conversations", () => {
+  const { channel, routine } = getFixture()
+  const older = Array.from({ length: 50 }, (_, index) => ({ ...routine, id: `older-${index}`, updatedAt: index + 1 }))
+  const newest = { ...routine, id: "newest-routine", updatedAt: 100 }
+
+  const cards = getChannelThreadCards([channel, ...older, newest], [], "team")
+
+  expect(cards).toHaveLength(50)
+  expect(cards[0]?.thread.id).toBe(newest.id)
+  expect(cards.some(({ thread }) => thread.id === "older-0")).toBe(false)
+})

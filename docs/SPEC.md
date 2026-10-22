@@ -445,7 +445,8 @@ repeated delivery acknowledgement. The aggregate group record is not another pro
 
 Opening a channel always opens its original conversation. Other shared conversations, including
 routine runs, appear as cards with their latest reply in that channel; selecting a card opens the
-conversation. Private provider conversations never appear as channel cards or sidebar rows. The
+conversation. Cards retain the 50 most recently updated shared conversations, including newly
+arriving routine runs regardless of snapshot order. Private provider conversations never appear as channel cards or sidebar rows. The
 original channel conversation is not repeated beneath its own sidebar row. Routine conversations
 show their routine name and a localized short date, without an internal timestamp. Work lists channels as a hash, name, activity time and optional single-line
 message preview. Members appear in the channel header and panel, reached through the member count.
