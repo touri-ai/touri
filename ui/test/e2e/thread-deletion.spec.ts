@@ -101,7 +101,7 @@ for (const width of [1440, 390]) {
         if (name === "after-confirmation") return page.getByRole("alertdialog")
         if (name === "after-menu") return page.getByRole("menu")
         if (name === "after-undo-toast") return page.locator(".thread-delete-toast")
-        return page.locator("nav.bot-sidebar")
+        return page.getByRole("dialog", { name: "Conversas de mark", exact: true })
       }
       const screenshot = (name: string) =>
         getEvidenceTarget(name).screenshot({ path: join(evidenceDirectory, `${name}-${width}-${theme}.png`) })
