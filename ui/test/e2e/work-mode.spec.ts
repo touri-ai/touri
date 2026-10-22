@@ -95,6 +95,7 @@ test("switches and remembers Work mode, with channels and routine history", asyn
   await page.reload()
   await page.locator(".mobile-menu-button").click()
   await expect(page.getByRole("tab", { name: /^Work,/ })).toHaveAttribute("aria-selected", "true")
+  await expect(page.getByRole("region", { name: "Canais" })).toBeVisible()
   const touchTargetHeights = await page
     .locator(".sidebar-mode-tabs [role=tab], .group-select, .channel-create")
     .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height))
@@ -132,6 +133,7 @@ test("preserves each mode's independent scroll position when switching", async (
   await page.addInitScript(() => localStorage.setItem("touri.sidebar.mode", "work"))
   await page.goto("/test/e2e/work-mode-harness.html")
   await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+  await expect(page.getByRole("region", { name: "Canais" })).toBeVisible()
 
   const botsTab = page.getByRole("tab", { name: /^Bots,/ })
   const workTab = page.getByRole("tab", { name: /^Work,/ })

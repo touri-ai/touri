@@ -194,6 +194,7 @@ export const Sidebar = (props: SidebarProps) => {
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>(
     () => savedSidebarMode ?? ((props.groups?.length ?? 0) > 0 ? "work" : "bots"),
   )
+  const [hasOpenedWork, setHasOpenedWork] = useState(sidebarMode === "work")
   const [hasUserSelectedMode, setHasUserSelectedMode] = useState(false)
   const propsRef = useRef(props)
   const routineRuns = props.routineRuns ?? EMPTY_ROUTINE_RUNS
@@ -434,10 +435,12 @@ export const Sidebar = (props: SidebarProps) => {
     if (savedSidebarMode !== null || hasUserSelectedMode || !(props.groups?.length ?? 0)) return
 
     setSidebarMode("work")
+    setHasOpenedWork(true)
     props.onSidebarModeChange?.("work")
   }, [savedSidebarMode, hasUserSelectedMode, props.groups?.length, props.onSidebarModeChange])
   const selectMode = (mode: SidebarMode): void => {
     setSidebarMode(mode)
+    if (mode === "work") setHasOpenedWork(true)
     setHasUserSelectedMode(true)
     props.onSidebarModeChange?.(mode)
     if (props.section !== "bots") navigate(props.onChat)
@@ -669,8 +672,8 @@ export const Sidebar = (props: SidebarProps) => {
           aria-hidden={sidebarMode !== "work" || undefined}
           inert={sidebarMode !== "work" || undefined}
         >
-          {props.onNewGroup && sidebarMode === "work" && (
-            <Suspense fallback={null}>
+          <Suspense fallback={null}>
+            {props.onNewGroup && hasOpenedWork && (
               <GroupSidebar
                 groups={props.groups ?? EMPTY_GROUPS}
                 threads={props.threads}
@@ -687,9 +690,9 @@ export const Sidebar = (props: SidebarProps) => {
                 onDelete={props.onDeleteGroup ? deleteChannel : undefined}
                 onNewThread={createChannelThread}
               />
-            </Suspense>
-          )}
-          <div className="bot-groups work-mode-dms">{renderBotEntries("work")}</div>
+            )}
+            <div className="bot-groups work-mode-dms">{renderBotEntries("work")}</div>
+          </Suspense>
         </div>
       </div>
       <div className="sidebar-footer">

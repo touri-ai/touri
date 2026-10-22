@@ -33,6 +33,7 @@ describe("sidebar work mode", () => {
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     await waitFor(() => expect(screen.getByRole("tab", { name: /^Work,/ })).toHaveAttribute("aria-selected", "true"))
+    await screen.findByRole("region", { name: "Canais" })
 
     expect(document.querySelectorAll(".sidebar-needs-you")).toHaveLength(1)
     const workPanel = document.getElementById("sidebar-mode-panel-work")
@@ -62,6 +63,7 @@ describe("sidebar work mode", () => {
 
     const workPanel = document.getElementById("sidebar-mode-panel-work")
     const botsPanel = document.getElementById("sidebar-mode-panel-bots")
+    const channels = await screen.findByRole("region", { name: "Canais" })
     if (!workPanel || !botsPanel) throw new Error("Missing persistent sidebar mode panels")
     const botEntry = document.querySelector('[data-bot-entry="bot-mark"]')
     const dmEntry = document.querySelector('[data-work-bot-entry="bot-mark"]')
@@ -71,7 +73,6 @@ describe("sidebar work mode", () => {
     expect(screen.getByRole("tab", { name: "Work, 3 mensagens não lidas" })).toBeVisible()
     expect(screen.getByRole("tab", { name: "Bots, 0 aguardando" }).querySelector(".sidebar-unread")).toBeNull()
 
-    const channels = screen.getByRole("region", { name: "Canais" })
     expect(within(channels).getByRole("button", { name: "Equipe QA, 3 mensagens não lidas" })).toBeVisible()
     expect(within(channels).getByRole("button", { name: "Novo canal" })).toBeVisible()
     expect(screen.getByRole("heading", { name: "Mensagens diretas" })).toBeVisible()
@@ -89,6 +90,7 @@ describe("sidebar work mode", () => {
     expect(botsPanel).not.toHaveAttribute("hidden")
     expect(document.querySelector('[data-bot-entry="bot-mark"]')).toBe(botEntry)
     expect(document.querySelector('[data-work-bot-entry="bot-mark"]')).toBe(dmEntry)
+    expect(channels.isConnected).toBe(true)
     expect(screen.getByRole("tab", { name: /^Bots,/ })).toHaveAttribute("aria-selected", "true")
 
     fireEvent.click(screen.getByRole("tab", { name: /^Work,/ }))
@@ -100,6 +102,7 @@ describe("sidebar work mode", () => {
       name: /^Equipe QA/,
     })
     expect(restoredChannel).toBeVisible()
+    expect(screen.getByRole("region", { name: "Canais" })).toBe(channels)
     fireEvent.click(restoredChannel)
     await screen.findByRole("textbox", { name: "Mensagem para Equipe QA" })
     expect(document.querySelector(".group-header .chat-header-crumb")).toBeNull()
