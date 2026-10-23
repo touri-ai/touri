@@ -3,7 +3,15 @@ import { constants, readdirSync, readFileSync } from "node:fs"
 import { open } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
-import { type Bot, getHostNoun, type HostKind, type Kernel, type ProjectInfo, type Thread } from "@touri/contracts"
+import {
+  type Bot,
+  getHostNoun,
+  type HostKind,
+  type Kernel,
+  type ProjectInfo,
+  type RunTimings,
+  type Thread,
+} from "@touri/contracts"
 import { PRIVATE_BOT_TOOLS } from "../groups/privacy"
 import { getDelegation } from "../groups/security"
 import { excludedBotFolders, folderGuestPath } from "../kernel/bot-folders"
@@ -176,6 +184,7 @@ export const composeDeveloperInstructions = async ({
   signal,
   greetingOnly = false,
   allowMemoryReview = true,
+  onPreparationStage,
   host = getHost(),
 }: {
   kernel: Kernel
@@ -185,11 +194,13 @@ export const composeDeveloperInstructions = async ({
   signal?: AbortSignal
   greetingOnly?: boolean
   allowMemoryReview?: boolean
+  onPreparationStage?: (stage: keyof RunTimings) => void
   host?: HostKind
 }): Promise<string> => {
   const projectService = !greetingOnly && bot.projectId ? kernel.services.use("projects.info") : null
   const project =
     projectService && bot.projectId ? await projectService({ projectId: bot.projectId, botId: bot.id }) : null
+  onPreparationStage?.("projectReadyAt")
   const grouped = !!thread.groupId
   const delegation = getDelegation(kernel, thread.id)
   const guest = bot.machine === "vm"
@@ -232,6 +243,7 @@ export const composeDeveloperInstructions = async ({
   const memory = grouped
     ? "Group memory is limited to this group's shared conversation; private bot memory is unavailable."
     : await reviewedMemory(kernel, bot, thread, rawMemory, signal, rawUserProfile, allowMemoryReview)
+  onPreparationStage?.("memoryReadyAt")
   if (greetingOnly) {
     return [
       `You are ${JSON.stringify(bot.name)}, the user's touri teammate.`,

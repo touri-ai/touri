@@ -296,6 +296,30 @@ export type RunErrorClass =
 /** Wall-clock milestones, persisted inside usage_json and published with run.updated. */
 export type RunTimings = {
   queuedAt: number
+  claimedAt?: number
+  reconciledAt?: number
+  permissionsReadyAt?: number
+  requestReadyAt?: number
+  toolSummaryReadyAt?: number
+  recallReadyAt?: number
+  inputReadyAt?: number
+  workspaceReadyAt?: number
+  mcpReadyAt?: number
+  sessionReadyAt?: number
+  environmentReadyAt?: number
+  providerHomeReadyAt?: number
+  providerConfigReadAt?: number
+  providerConfigWrittenAt?: number
+  providerAuthReadyAt?: number
+  loginReadyAt?: number
+  attachedMcpReadyAt?: number
+  projectReadyAt?: number
+  memoryReadyAt?: number
+  instructionsReadyAt?: number
+  sandboxReadyAt?: number
+  temporaryReadyAt?: number
+  executableReadyAt?: number
+  attachmentsReadyAt?: number
   processSpawnedAt?: number
   processReusedAt?: number
   providerReadyAt?: number
@@ -865,6 +889,7 @@ export type StartTurnArgs = {
   mcp: { command: AbsolutePath; args: Array<string>; env: Record<string, string> }
   env: Record<string, string>
   onEvent: (event: ProviderEvent) => void
+  onPreparationStage?: (stage: keyof RunTimings) => void
   onProcessSpawned?: () => void
   onProcessReused?: () => void
   signal: AbortSignal

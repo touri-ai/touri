@@ -1,5 +1,6 @@
 import { existsSync, realpathSync } from "node:fs"
 import { dirname, join } from "node:path"
+import type { RunTimings } from "@touri/contracts"
 import {
   ensurePrivateDirectoryAsync,
   replacePrivateSymlinkAsync,
@@ -90,12 +91,22 @@ const hostConfig = (hostHome: string): string => {
 }
 
 /** Keep host login refreshes shared without importing the host's sessions or executable configuration. */
-export const prepareHostCodexHome = async (appData: string, botId: string, hostHome: string): Promise<string> => {
+export const prepareHostCodexHome = async (
+  appData: string,
+  botId: string,
+  hostHome: string,
+  onPreparationStage?: (stage: keyof RunTimings) => void,
+): Promise<string> => {
   const home = join(appData, "provider-homes/codex", botId)
   await ensurePrivateDirectoryAsync({ root: appData, path: home })
-  await writePrivateFileAsync({ root: appData, path: join(home, "config.toml"), content: hostConfig(hostHome) })
+  onPreparationStage?.("providerHomeReadyAt")
+  const content = hostConfig(hostHome)
+  onPreparationStage?.("providerConfigReadAt")
+  await writePrivateFileAsync({ root: appData, path: join(home, "config.toml"), content })
+  onPreparationStage?.("providerConfigWrittenAt")
   const auth = join(home, "auth.json")
   const source = join(hostHome, ".codex/auth.json")
   await replacePrivateSymlinkAsync({ root: appData, path: auth, target: source })
+  onPreparationStage?.("providerAuthReadyAt")
   return home
 }

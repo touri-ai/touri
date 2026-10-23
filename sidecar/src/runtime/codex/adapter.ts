@@ -288,6 +288,7 @@ export const createCodexAdapter = ({
       ? { success: true as const, path: "codex", env }
       : await resolveProviderExecutable({ kernel, command: commandName, env })
     if (!resolved.success) return resolved
+    args.onPreparationStage?.("executableReadyAt")
     const warmKey =
       args.conversationOnly && !args.execution && storedProviderLoginSource(kernel, args.bot) !== "vault"
         ? warmSessions.getKey(args)
@@ -701,6 +702,7 @@ export const createCodexAdapter = ({
         }
         args.onEvent({ type: "session", externalSessionId, rolloutPath })
         const loaded = loadTurnImages({ kernel, input: args.input })
+        args.onPreparationStage?.("attachmentsReadyAt")
         if (!loaded.success) {
           complete({ success: false, errorCode: loaded.errorCode, error: loaded.error })
           return

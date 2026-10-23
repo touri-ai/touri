@@ -677,6 +677,8 @@ export const createRuntimeEngine = ({
 
     const at = Date.now()
     state.usage = { ...state.usage, timings: { queuedAt: run.queuedAt, ...state.usage.timings, [stage]: at } }
+    if (!["processSpawnedAt", "processReusedAt", "providerReadyAt", "firstTokenAt"].includes(stage)) return
+
     const updated = updateRun(run, { usage: state.usage })
     if (updated.usage?.timings?.[stage] === at) logTiming(run, stage, at)
   }
@@ -1409,6 +1411,7 @@ export const createRuntimeEngine = ({
       : () => {}
 
   const execute = async (run: Run): Promise<void> => {
+    recordTiming(run, "claimedAt")
     if (!isLive(run)) {
       active.delete(run.threadId)
       return
@@ -1426,6 +1429,7 @@ export const createRuntimeEngine = ({
     await kernel.services.use("store.recovery")?.ensureThread(run.threadId)
     await kernel.services.use("store.recovery")?.ensureBot(run.botId)
     await tools.reconcilePending(store, run.threadId)
+    recordTiming(run, "reconciledAt")
     if (!isLive(run)) {
       active.delete(run.threadId)
       return
@@ -1449,6 +1453,7 @@ export const createRuntimeEngine = ({
       candidateBot.access !== "full" &&
       (!!candidateBot.anyFolderAccess || !!candidateBot.folders?.length)
     if (grantsApply) await refreshHostFolderAccess()
+    recordTiming(run, "permissionsReadyAt")
     const conversationOnly = grantsApply && !!folderGrantProblem(candidateBot)
     const bot: Bot = conversationOnly
       ? {
@@ -1520,7 +1525,12 @@ export const createRuntimeEngine = ({
           .join("\n\n")
     const carryover = thread.carryoverNote
     if (carryover) store.updateThread({ threadId: thread.id, patch: { carryoverNote: null } })
-    const toolSummary = tools.summary(store, thread.id, request?.id)
+    recordTiming(run, "requestReadyAt")
+    const goal = goals.getForRun(run.id)
+    const standaloneGreeting =
+      !goal && !carryover && !unacceptedRequest && isGreetingTurn(run.trigger, request?.parts ?? [], requestText)
+    const toolSummary = standaloneGreeting ? null : tools.summary(store, thread.id, request?.id)
+    recordTiming(run, "toolSummaryReadyAt")
     // Optional Mem0 recall rides on this turn's input only: the stored message stays as the user wrote it.
     // Private memories never reach group or delegated sessions, routines, retries or continuations.
     const mem0 = kernel.services.use("mem0.api")
@@ -1543,7 +1553,7 @@ export const createRuntimeEngine = ({
         controllers.delete(run.id)
       }
     }
-    const goal = goals.getForRun(run.id)
+    recordTiming(run, "recallReadyAt")
     const inputText = [recalled, carryover, toolSummary, requestText, goal ? getGoalPrompt(goal) : null]
       .filter(Boolean)
       .join("\n\n")
@@ -1567,10 +1577,12 @@ export const createRuntimeEngine = ({
       !unacceptedRequest &&
       isConversationTurn(run.trigger, requestParts, requestText)
     const toolsDisabled = conversationOnly || greeting
+    recordTiming(run, "inputReadyAt")
     const { cwd, projectDataDir } =
       bot.machine === "vm"
         ? { cwd: "/workspace", projectDataDir: "/workspace/.touri/data" }
         : await chooseCwd({ bot, thread })
+    recordTiming(run, "workspaceReadyAt")
     if (shuttingDown || !isLive(run)) {
       active.delete(run.threadId)
       if (!shuttingDown) void drain()
@@ -1582,6 +1594,7 @@ export const createRuntimeEngine = ({
       bot.machine === "vm"
         ? { command: "/usr/local/bin/node", args: ["/usr/local/lib/touri/mcp-stdio.cjs", thread.id], env: {} }
         : await prepareMcpConnection(thread.id, toolsDisabled)
+    recordTiming(run, "mcpReadyAt")
     const mcpFingerprint = sessionFingerprint({
       bot: {
         ...bot,
@@ -1606,6 +1619,9 @@ export const createRuntimeEngine = ({
       reason: string,
       text = "O contexto da conversa foi recuperado do histórico salvo.",
     ): void => {
+      // Standalone greetings keep task history durable for the next task.
+      if (greeting) return
+
       if (!handoffPacket || text === SESSION_RECOVERY_MESSAGE) {
         const part: Extract<MessagePart, { type: "notice" }> = {
           type: "notice",
@@ -1651,21 +1667,23 @@ export const createRuntimeEngine = ({
     if (session && session.fingerprint !== mcpFingerprint.hash && session.fingerprint !== "imported") {
       persistence.markSession({ id: session.id, state: "replaced" })
       restoreContext("session fingerprint changed")
-      notice({
-        store,
-        run,
-        parentId: run.requestMessageId ?? thread.activeLeafId ?? run.id,
-        part: {
-          type: "notice",
-          level: "info",
-          code: "session_replaced",
-          text: "The native provider session was replaced and a handoff was supplied.",
-        },
-      })
+      if (!greeting)
+        notice({
+          store,
+          run,
+          parentId: run.requestMessageId ?? thread.activeLeafId ?? run.id,
+          part: {
+            type: "notice",
+            level: "info",
+            code: "session_replaced",
+            text: "The native provider session was replaced and a handoff was supplied.",
+          },
+        })
       session = null
     }
-    if (!session && !handoffPacket && hasPreviousMessages(store, thread, request?.id ?? null))
+    if (!greeting && !session && !handoffPacket && hasPreviousMessages(store, thread, request?.id ?? null))
       restoreContext("native session unavailable")
+    recordTiming(run, "sessionReadyAt")
     const baseEnvironment = bot.machine === "vm" ? {} : environment?.PATH ? environment : await kernel.shellEnv()
     const env = buildChildEnv({
       base: baseEnvironment,
@@ -1683,6 +1701,7 @@ export const createRuntimeEngine = ({
       if (!shuttingDown) void drain()
       return
     }
+    recordTiming(run, "environmentReadyAt")
     updateRun(run, { status: "starting", startedAt: run.startedAt ?? Date.now() })
     state.generation = store.getThread({ threadId: thread.id })?.generation ?? null
     state.fingerprint = mcpFingerprint.hash
@@ -1727,10 +1746,13 @@ export const createRuntimeEngine = ({
         controller.signal.throwIfAborted()
 
         if (bot.machine !== "vm" && bot.machine !== "cloud") {
-          const login = await prepareLocalProviderLogin(kernel, bot, controller.signal, env.HOME)
+          const login = await prepareLocalProviderLogin(kernel, bot, controller.signal, env.HOME, (stage) =>
+            recordTiming(run, stage),
+          )
           Object.assign(env, login.env)
           releaseLogin = login.release
         }
+        recordTiming(run, "loginReadyAt")
         if (bot.machine === "vm") {
           const vm = kernel.services.use("vm.runtime")
           if (!vm) return { success: false, errorCode: "cli_crash", error: "VM runtime indisponível" }
@@ -1762,12 +1784,14 @@ export const createRuntimeEngine = ({
             mcpServers: toolsDisabled ? [] : await resolveAttachedMcp(kernel, prepared?.bot ?? bot),
           })
           signal?.throwIfAborted()
+          recordTiming(run, "attachedMcpReadyAt")
           const turnInstructions = await composeDeveloperInstructions({
             kernel,
             bot: greeting ? { ...turnBot, reasoningEffort: "low" } : turnBot,
             thread,
             cwd,
             ...(greeting ? { greetingOnly: true } : {}),
+            onPreparationStage: (stage) => recordTiming(run, stage),
             ...(signal ? { signal } : {}),
           })
           return { turnBot, turnInstructions }
@@ -1784,6 +1808,7 @@ export const createRuntimeEngine = ({
               action: prepareInstructions,
             })
           : await prepareInstructions()
+        recordTiming(run, "instructionsReadyAt")
         const turnEnv = prepared?.env ?? env
         const dispatchEvent = (event: ProviderEvent) => handleEvent({ run, event, store, state })
         const emit = (event: ProviderEvent) =>
@@ -1819,6 +1844,7 @@ export const createRuntimeEngine = ({
             env: turnEnv,
             ...(prepared ? { execution: prepared.execution } : {}),
             onEvent,
+            onPreparationStage: (stage) => recordTiming(run, stage),
             onProcessSpawned: () => recordTiming(run, "processSpawnedAt"),
             onProcessReused: () => recordTiming(run, "processReusedAt"),
             signal: controller.signal,

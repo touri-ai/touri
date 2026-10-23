@@ -3217,6 +3217,40 @@ describe("turn latency milestones", () => {
     expect(persisted?.usage?.timings).toEqual(timings)
   })
 
+  test("standalone greetings stay inside the dispatch budget without hydrating task history", async () => {
+    const current = await fixture({ scenario: { deltas: ["Olá!"] } })
+    value = current
+    await sendTurn(current, "Mostre a pasta atual")
+    const request = addUser(current.store, current.thread, "oi")
+    const store: StoreApi = {
+      ...current.store,
+      getPathMessage: ({ messageId }) => (messageId === request.id ? request : null),
+      activePath: () => {
+        throw new Error("A standalone greeting must not hydrate historical task bodies")
+      },
+    }
+    current.runtime.kernel.services.provide("store.api", store)
+
+    const enqueued = current.engine.enqueue({
+      threadId: current.thread.id,
+      requestMessageId: request.id,
+      trigger: "user",
+    })
+    if (!enqueued.success) throw new Error(enqueued.error)
+    await waitFor(() => terminal(enqueued.run.status))
+
+    expect(enqueued.run.status).toBe("succeeded")
+    const timings = enqueued.run.usage?.timings
+    expect(timings?.claimedAt).toBeGreaterThanOrEqual(enqueued.run.queuedAt)
+    expect(timings?.sessionReadyAt).toBeDefined()
+    expect(timings?.memoryReadyAt).toBeDefined()
+    expect(timings?.sandboxReadyAt).toBeDefined()
+    expect(timings?.temporaryReadyAt).toBeDefined()
+    expect(timings?.executableReadyAt).toBeDefined()
+    expect((timings?.processSpawnedAt ?? Infinity) - enqueued.run.queuedAt).toBeLessThan(300)
+    expect((timings?.firstTokenAt ?? Infinity) - enqueued.run.queuedAt).toBeLessThan(1_000)
+  })
+
   test("a canceled waiting turn records finish without inventing provider milestones", async () => {
     const current = await fixture({ maxConcurrentRuns: 1, scenario: { slowMs: 300, deltas: ["Olá!"] } })
     value = current
@@ -3343,6 +3377,8 @@ describe("turn latency milestones", () => {
       expect(first.usage?.timings?.processSpawnedAt).toBeDefined()
       expect(second.usage?.timings?.processReusedAt).toBeDefined()
       expect(second.usage?.timings?.processSpawnedAt).toBeUndefined()
+      expect((second.usage?.timings?.processReusedAt ?? Infinity) - second.queuedAt).toBeLessThan(300)
+      expect((second.usage?.timings?.firstTokenAt ?? Infinity) - second.queuedAt).toBeLessThan(1_000)
       expect(children).toHaveLength(1)
       expect(getSettingsVersions()).toEqual(settingsVersions)
       expect(existsSync(join(current.runtime.kernel.paths.runDir, "mcp-tokens", current.thread.id))).toBe(false)
