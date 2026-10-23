@@ -6,6 +6,7 @@ import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { pendingApprovalTargets } from "../src/approvalNavigation"
 import { latestPreview } from "../src/botPreview"
+import { ApiError } from "../src/errors"
 import { useWorkspace } from "../src/useWorkspace"
 import { TranscriptBuffer } from "../src/workspaceMemory"
 
@@ -587,4 +588,257 @@ test("search finds an older message in an unopened thread without loading its hi
       .filter((call) => call.route === "GET /threads/:id/messages")
       .every((call) => call.pathValues.id === "thread-mark"),
   ).toBe(true)
+})
+
+test("selected messages become readable while the independent run snapshot is still pending", async () => {
+  const api = createMockApi()
+  const barrier = deferred()
+  const request: ApiRequest = async (route, input, path) => {
+    const response = await api.request(route, input, path)
+    if (route === "GET /threads/:id/runs") await barrier.promise
+    return response
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe("thread-mark"))
+
+  expect(hook.result.current.data.messages.some((message) => message.threadId === "thread-mark")).toBe(true)
+  expect(hook.result.current.data.historyNotice).toBeNull()
+  await act(async () => barrier.resolve())
+})
+
+test("a failed run snapshot cannot hide the successfully loaded transcript", async () => {
+  const api = createMockApi()
+  const messages = deferred()
+  const failure = new ApiError(502, "Synthetic run read failure")
+  const request: ApiRequest = async (route, input, path) => {
+    if (route === "GET /threads/:id/messages") await messages.promise
+    if (route === "GET /threads/:id/runs") throw failure
+    return api.request(route, input, path)
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+
+  await waitFor(() => expect(hook.result.current.data.notice).toContain(failure.message))
+  await act(async () => messages.resolve())
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe("thread-mark"))
+
+  expect(hook.result.current.data.messages.some((message) => message.threadId === "thread-mark")).toBe(true)
+  expect(hook.result.current.data.historyNotice).toBeNull()
+  expect(hook.result.current.data.notice).toContain("Synthetic run read failure")
+})
+
+test("a streaming gap can reload readable messages while the old run snapshot is pending", async () => {
+  const api = createMockApi()
+  const stored = api
+    .getState()
+    .messages.find((message) => message.role === "assistant" && message.threadId === "thread-mark")
+  if (!stored) throw new Error("Missing message fixture")
+  Object.assign(stored, { status: "streaming", text: "Oi", parts: [{ type: "text", text: "Oi" }], updatedSeq: 1 })
+  const barrier = deferred()
+  const request: ApiRequest = async (route, input, path) => {
+    const response = structuredClone(await api.request(route, input, path))
+    if (route === "GET /threads/:id/runs") await barrier.promise
+    return response
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe("thread-mark"))
+  Object.assign(stored, { text: "Oi mundo", parts: [{ type: "text", text: "Oi mundo" }], updatedSeq: 2 })
+
+  act(() =>
+    api.emit({
+      type: "message.delta",
+      threadId: stored.threadId,
+      messageId: stored.id,
+      partIndex: 0,
+      offset: 8,
+      delta: "!",
+      updatedSeq: 3,
+    }),
+  )
+
+  await waitFor(() =>
+    expect(hook.result.current.data.messages.find((message) => message.id === stored.id)?.text).toBe("Oi mundo!"),
+  )
+  await act(async () => barrier.resolve())
+  expect(hook.result.current.data.messages.find((message) => message.id === stored.id)?.text).toBe("Oi mundo!")
+})
+
+test.each(["events", "bytes"])("%s overflow recovers messages while runs remain held", async (limit) => {
+  const api = createMockApi()
+  const stored = api
+    .getState()
+    .messages.find((message) => message.role === "assistant" && message.threadId === "thread-mark")
+  if (!stored) throw new Error("Missing message fixture")
+  Object.assign(stored, { status: "streaming", text: "", parts: [{ type: "text", text: "" }], updatedSeq: 1 })
+  const messages = deferred()
+  const runs = deferred()
+  let reads = 0
+  const request: ApiRequest = async (route, input, path) => {
+    const response = structuredClone(await api.request(route, input, path))
+    if (route === "GET /threads/:id/runs") await runs.promise
+    if (route === "GET /threads/:id/messages" && ++reads === 1) await messages.promise
+    return response
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(reads).toBe(1))
+
+  act(() => {
+    Array.from({ length: limit === "events" ? 513 : 1 }, (_, index) =>
+      api.emit({
+        type: "message.delta",
+        threadId: stored.threadId,
+        messageId: stored.id,
+        partIndex: 0,
+        offset: index,
+        delta: limit === "bytes" ? "x".repeat(140_000) : "x",
+        updatedSeq: index + 2,
+      }),
+    )
+  })
+  Object.assign(stored, {
+    text: "Revisão atual",
+    parts: [{ type: "text", text: "Revisão atual" }],
+    updatedSeq: 1000,
+  })
+  await act(async () => messages.resolve())
+
+  await waitFor(() => expect(reads).toBe(2))
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe(stored.threadId))
+  expect(hook.result.current.data.messages.find((message) => message.id === stored.id)?.text).toBe("Revisão atual")
+  await act(async () => runs.resolve())
+  expect(hook.result.current.data.messages.find((message) => message.id === stored.id)?.text).toBe("Revisão atual")
+})
+
+test("a held run snapshot cannot revive a terminal run after its row is pruned", async () => {
+  const api = createMockApi()
+  const barrier = deferred()
+  let reads = 0
+  let storedRuns: Run[] | null = null
+  const request: ApiRequest = async (route, input, path) => {
+    const response = structuredClone(await api.request(route, input, path))
+    if (route === "GET /threads/:id/runs" && path?.id === "thread-onb") {
+      reads++
+      if (storedRuns) return { runs: storedRuns } as never
+      await barrier.promise
+    }
+    return response
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe("thread-mark"))
+  const active = hook.result.current.data.runs.find((run) => run.threadId === "thread-onb" && run.status === "running")
+  if (!active) throw new Error("Missing active run fixture")
+
+  act(() => hook.result.current.actions.selectThread(active.threadId))
+  await waitFor(() => expect(reads).toBe(1))
+  const completed: Run = { ...active, status: "succeeded", finishedAt: Date.now() }
+  const newer: Run = { ...completed, id: "newer-completed-run", queuedAt: active.queuedAt + 1 }
+  act(() => {
+    api.emit({ type: "run.updated", run: completed })
+    api.emit({ type: "run.updated", run: newer })
+  })
+  // Batched navigation prunes the terminal row before selection effects abandon the pending read.
+  act(() => {
+    hook.result.current.actions.selectThread("thread-mark")
+    hook.result.current.actions.selectThread(active.threadId)
+  })
+  expect(hook.result.current.data.runs.some((run) => run.id === active.id)).toBe(false)
+  storedRuns = [completed, newer]
+  await act(async () => barrier.resolve())
+
+  await waitFor(() => expect(reads).toBe(2))
+  expect(hook.result.current.data.runs.some((run) => run.id === active.id && run.status === "running")).toBe(false)
+  expect(hook.result.current.data.runs.find((run) => run.id === newer.id)?.status).toBe("succeeded")
+})
+
+test("a late run failure cannot replace the new selection's notice or transcript", async () => {
+  const api = createMockApi()
+  const barrier = deferred()
+  const request: ApiRequest = async (route, input, path) => {
+    if (route === "GET /threads/:id/runs" && path?.id === "thread-mark") {
+      await barrier.promise
+      throw new Error("Synthetic old selection failure")
+    }
+    return api.request(route, input, path)
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe("thread-mark"))
+
+  act(() => hook.result.current.actions.selectThread("thread-onb"))
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe("thread-onb"))
+  await act(async () => barrier.resolve())
+
+  expect(hook.result.current.data.messages.every((message) => message.threadId === "thread-onb")).toBe(true)
+  expect(hook.result.current.data.historyNotice).toBeNull()
+  expect(hook.result.current.data.notice).toBeNull()
+})
+
+test("run metadata publishes while the independent message snapshot is still pending", async () => {
+  const api = createMockApi()
+  const active = (await api.request("GET /threads/:id/runs", {}, { id: "thread-onb" })).runs[0]
+  if (!active) throw new Error("Missing run fixture")
+  const run: Run = { ...active, id: "selected-snapshot-run", threadId: "thread-mark", botId: "bot-mark" }
+  const messages = deferred()
+  const request: ApiRequest = async (route, input, path) => {
+    if (route === "GET /threads/:id/messages") await messages.promise
+    if (route === "GET /threads/:id/runs") return { runs: [run] } as never
+    return api.request(route, input, path)
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+
+  await waitFor(() => expect(hook.result.current.data.runs.some((row) => row.id === run.id)).toBe(true))
+
+  expect(hook.result.current.data.historyThreadId).not.toBe("thread-mark")
+  await act(async () => messages.resolve())
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe("thread-mark"))
+})
+
+test("a message repair preserves a previous run failure until run metadata recovers", async () => {
+  const api = createMockApi()
+  const stored = api
+    .getState()
+    .messages.find((message) => message.role === "assistant" && message.threadId === "thread-mark")
+  if (!stored) throw new Error("Missing message fixture")
+  Object.assign(stored, { status: "streaming", text: "Oi", parts: [{ type: "text", text: "Oi" }], updatedSeq: 1 })
+  const runs = deferred()
+  const failure = new ApiError(502, "Synthetic run read failure")
+  let runReads = 0
+  const request: ApiRequest = async (route, input, path) => {
+    const response = structuredClone(await api.request(route, input, path))
+    if (route === "GET /threads/:id/runs") {
+      if (++runReads === 1) throw failure
+      await runs.promise
+    }
+    return response
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe(stored.threadId))
+  await waitFor(() => expect(hook.result.current.data.notice).toContain(failure.message))
+  Object.assign(stored, { text: "Oi mundo", parts: [{ type: "text", text: "Oi mundo" }], updatedSeq: 2 })
+
+  act(() =>
+    api.emit({
+      type: "message.delta",
+      threadId: stored.threadId,
+      messageId: stored.id,
+      partIndex: 0,
+      offset: 8,
+      delta: "!",
+      updatedSeq: 3,
+    }),
+  )
+
+  await waitFor(() =>
+    expect(hook.result.current.data.messages.find((message) => message.id === stored.id)?.text).toBe("Oi mundo!"),
+  )
+  expect(hook.result.current.data.notice).toContain(failure.message)
+  await act(async () => runs.resolve())
+  expect(hook.result.current.data.notice).toBeNull()
 })
