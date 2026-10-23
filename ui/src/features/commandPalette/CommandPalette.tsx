@@ -97,7 +97,12 @@ export const CommandPalette = ({
           group: "messages",
           label: markdownSummary(hit.snippet),
           detail: markdownSummary(threadTitle(thread.title, thread.createdAt)),
-          command: { kind: "thread", threadId: thread.id, archived: thread.archivedAt !== null },
+          command: {
+            kind: "thread",
+            threadId: thread.id,
+            messageId: hit.messageId,
+            archived: thread.archivedAt !== null,
+          },
         })
     }
     return items.size

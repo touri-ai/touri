@@ -126,6 +126,7 @@ type ChatPanelProps = {
   channelBrowser?: ChannelBrowserValue | null
   browserRuns?: BrowserChannelRun[]
   onInviteToGroup?: (() => void) | undefined
+  focusMessage?: { messageId: Id; request: number } | undefined
   focusApproval?: ApprovalFocus | undefined
   panelOpen?: boolean
   onTogglePanel?: () => void
@@ -164,6 +165,7 @@ type VirtualMessageListProps = {
   vmBotId?: string | undefined
   currentPersonId?: string | null | undefined
   machine?: MachineState | undefined
+  focusMessage?: { messageId: Id; request: number } | undefined
   focusApproval?: ApprovalFocus | undefined
   messages: Array<Message>
   api?: UiApi
@@ -247,6 +249,7 @@ export const VirtualMessageList = ({
   currentPersonId = "owner",
   machine,
   focusApproval,
+  focusMessage,
   messages: sourceMessages,
   api,
   runs = emptyRuns,
@@ -310,6 +313,7 @@ export const VirtualMessageList = ({
   const observedMessages = useRef(messages)
   const lastUser = useRef<Id | undefined>(undefined)
   const focusedRequest = useRef<number | undefined>(undefined)
+  const focusedMessage = useRef<typeof focusMessage>(undefined)
   const latestUserId = [...messages].reverse().find((message) => message.role === "user")?.id
   const timeline = useMemo(() => {
     // This disposable list is sorted because the TypeScript target does not include toSorted.
@@ -372,6 +376,7 @@ export const VirtualMessageList = ({
     if (
       !list ||
       (focusApproval && focusApproval.request !== focusedRequest.current) ||
+      (focusMessage && focusMessage !== focusedMessage.current) ||
       (!newTurn && !followBottom.current)
     )
       return
@@ -382,7 +387,7 @@ export const VirtualMessageList = ({
     scrollToEnd(list, programmaticTop)
     // Updating the virtual window explicitly also works before the browser fires its scroll event.
     setScrollTop(list.scrollTop)
-  }, [latestUserId, messages, timelineCards.length, focusApproval?.request])
+  }, [latestUserId, messages, timelineCards.length, focusApproval?.request, focusMessage])
   useLayoutEffect(() => {
     const previous = observedMessages.current
     observedMessages.current = messages
@@ -442,15 +447,16 @@ export const VirtualMessageList = ({
         entry.message?.parts.some((part) => part.type === "approval" && part.approvalId === focusApproval.approvalId),
       )
     : -1
+  const messageTargetIndex =
+    focusMessage && focusMessage !== focusedMessage.current
+      ? timeline.findIndex((entry) => entry.id === focusMessage.messageId)
+      : -1
   const revealTarget = targetIndex >= 0 && focusApproval?.request !== focusedRequest.current
   const firstVisibleIndex = getTimelineIndex(rowOffsets, Math.max(0, scrollTop - estimatedRowHeight * 4))
+  const selectedIndex = messageTargetIndex >= 0 ? messageTargetIndex : targetIndex
+  const revealIndex = messageTargetIndex >= 0 || revealTarget ? selectedIndex : firstVisibleIndex
   const start =
-    timeline.length > 100
-      ? Math.min(
-          Math.max(0, timeline.length - visibleCount),
-          Math.max(0, (revealTarget ? targetIndex : firstVisibleIndex) - 4),
-        )
-      : 0
+    timeline.length > 100 ? Math.min(Math.max(0, timeline.length - visibleCount), Math.max(0, revealIndex - 4)) : 0
   const end = timeline.length > 100 ? Math.min(timeline.length, start + visibleCount) : timeline.length
   const visible = timeline.slice(start, end)
 
@@ -470,6 +476,28 @@ export const VirtualMessageList = ({
     card.focus({ preventScroll: true })
     setScrollTop(list.scrollTop)
   }, [focusApproval, targetIndex, timeline.length, rowOffsets])
+
+  useLayoutEffect(() => {
+    if (!focusMessage || messageTargetIndex < 0) return
+    const list = scrollRef.current
+    const row = Array.from(list?.querySelectorAll<HTMLElement>("[data-message-row]") ?? []).find(
+      (element) => element.dataset.messageRow === focusMessage.messageId,
+    )
+    if (!list || !row) return
+
+    focusedMessage.current = focusMessage
+    followBottom.current = false
+    setAwayFromBottom(true)
+    if (isVirtualized) list.scrollTop = rowOffsets[messageTargetIndex] ?? 0
+    row.scrollIntoView?.({ block: "start", behavior: "instant" })
+    programmaticTop.current = list.scrollTop
+    readingAnchor.current = {
+      element: row,
+      top: row.getBoundingClientRect().top - list.getBoundingClientRect().top,
+      scrollTop: list.scrollTop,
+    }
+    setScrollTop(list.scrollTop)
+  }, [focusMessage, messageTargetIndex, isVirtualized, rowOffsets])
 
   return (
     <div className="chat-message-list">
@@ -1300,6 +1328,7 @@ export const ChatPanel = ({
   browserRuns = [],
   onInviteToGroup,
   focusApproval,
+  focusMessage,
   thread,
   activePath,
   goalRefreshRequest = 0,
@@ -1607,6 +1636,7 @@ export const ChatPanel = ({
                       currentPersonId={currentPersonId}
                       machine={machine}
                       focusApproval={focusApproval}
+                      focusMessage={focusMessage}
                       key={composerKey ?? thread.id}
                       messages={visibleMessages}
                       api={api}

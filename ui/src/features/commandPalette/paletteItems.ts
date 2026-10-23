@@ -9,7 +9,7 @@ export type PaletteActionId = "new-bot" | "new-group" | "new-thread" | "connect-
 /** Palette commands only navigate or open creation dialogs. Approvals are never commands. */
 export type PaletteCommand =
   | { kind: "bot"; botId: Id }
-  | { kind: "thread"; threadId: Id; archived?: boolean }
+  | { kind: "thread"; threadId: Id; messageId?: Id; archived?: boolean }
   | { kind: "setting"; destination: PaletteDestination }
   | { kind: "action"; action: PaletteActionId }
 
@@ -155,7 +155,7 @@ const messageHits = (tokens: ReadonlyArray<string>, messages: MessageIndex): Arr
       group: "messages",
       label: markdownSummary(message.text),
       detail: markdownSummary(threadTitle(thread.title, thread.createdAt)),
-      command: { kind: "thread", threadId: thread.id, archived: thread.archivedAt !== null },
+      command: { kind: "thread", threadId: thread.id, messageId: message.id, archived: thread.archivedAt !== null },
     }))
 
 const ORDER: ReadonlyArray<PaletteGroupId> = ["bots", "threads", "messages", "settings", "actions"]
