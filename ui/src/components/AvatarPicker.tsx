@@ -12,6 +12,7 @@ import {
 import { memo, useId, useState } from "react"
 import { type Locale, type TranslationKey, t } from "../i18n"
 import { BotAvatar } from "./BotAvatar"
+import "./avatar-picker.css"
 
 const HORN_LABEL: Record<AvatarHorns, TranslationKey> = {
   classic: "avatar.horns.classic",

@@ -14,7 +14,7 @@ const optionalModules = [
   "src/components/RoutineEditor.tsx",
 ]
 
-test("keeps the production startup payload below 400 KB gzip with optional channel modules deferred", async () => {
+test("keeps the production startup payload below 400 KB gzip with optional modules deferred", async () => {
   const manifest = JSON.parse(await readFile(resolve(output, ".vite/manifest.json"), "utf8")) as Manifest
   const initialFiles = Array.from(new Set(["index.html"].concat(getInitialFiles(manifest, "index.html"))))
   const sizes = await Promise.all(initialFiles.map((file) => getGzipBytes(resolve(output, file))))
@@ -33,6 +33,13 @@ test("keeps the production startup payload below 400 KB gzip with optional chann
     .filter((file) => file.includes("/conversation-start-"))
   expect(welcomeStyles.length).toBeGreaterThan(0)
   welcomeStyles.forEach((file) => {
+    expect(initialFiles).not.toContain(file)
+  })
+  const avatarStyles = Object.values(manifest)
+    .flatMap((chunk) => chunk.css ?? [])
+    .filter((file) => /\/(?:AvatarPicker|avatar-picker)-/.test(file))
+  expect(avatarStyles.length).toBeGreaterThan(0)
+  avatarStyles.forEach((file) => {
     expect(initialFiles).not.toContain(file)
   })
   const dialogStyles = manifest["src/components/GroupModal.tsx"]?.css ?? []
