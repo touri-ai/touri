@@ -117,8 +117,10 @@ if (view === "conversation") {
   add("assistant", "Retomei a conferência. O relatório mensal está concluído e os totais foram verificados.")
 } else if (view === "session-recovery") {
   bot.machine = "local"
+  bot.provider = "claude"
+  bot.model = "claude-opus-5-5"
   add("user", "Prepare o relatório de demonstração.")
-  add("assistant", "Etapa inicial salva.", { status: "canceled" })
+  add("assistant", "Etapa inicial salva.", { status: "failed" })
   const text = "A sessão anterior não pôde ser retomada. Vou continuar com o histórico salvo em uma nova sessão."
   add("system", text, {
     kind: "notice",

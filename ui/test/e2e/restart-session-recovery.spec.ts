@@ -7,14 +7,17 @@ for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 })
 
     await page.goto("/test/e2e/r8-chat-harness.html?view=session-recovery&theme=light")
+    const transcript = page.getByTestId("virtual-message-list")
 
     await expect(
-      page.getByText(
+      transcript.getByText(
         "A sessão anterior não pôde ser retomada. Vou continuar com o histórico salvo em uma nova sessão.",
       ),
     ).toBeVisible()
-    await expect(page.getByText("Relatório concluído. Conferi o trabalho salvo antes de continuar.")).toBeVisible()
-    await expect(page.getByText("Etapa inicial salva.")).toBeVisible()
+    await expect(
+      transcript.getByText("Relatório concluído. Conferi o trabalho salvo antes de continuar."),
+    ).toBeVisible()
+    await expect(transcript.getByText("Etapa inicial salva.")).toBeVisible()
     await page.evaluate(() => document.fonts.ready)
     const directory = resolve(import.meta.dirname, "../../../docs/evidence/restart-session")
     await mkdir(directory, { recursive: true })
