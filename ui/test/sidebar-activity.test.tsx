@@ -786,3 +786,24 @@ it("the setting is on by default and saving it off persists through the settings
   await act(async () => fireEvent.click(screen.getByRole("button", { name: "Salvar preferências" })))
   expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ sidebarFloatUpdates: false }))
 })
+
+it.each([
+  { handle: "", name: "Pessoa fictícia", expected: "Pessoa fictícia" },
+  { handle: "   ", name: "", expected: "Você" },
+  { handle: "@revisora", name: "Pessoa fictícia", expected: "@revisora" },
+])("keeps the settings entry named when the person handle is '$handle'", ({ handle, name, expected }) => {
+  const { bots, threads } = fixture()
+  const onSettings = vi.fn()
+  renderSidebar({
+    bots,
+    threads,
+    currentPerson: { id: "person-qa", avatarSeed: "person-qa", role: "admin", handle, name },
+    onSettings,
+  })
+
+  const profile = screen.getByRole("button", { name: expected, exact: true })
+  fireEvent.click(profile)
+
+  expect(profile).toHaveTextContent(expected)
+  expect(onSettings).toHaveBeenCalledOnce()
+})

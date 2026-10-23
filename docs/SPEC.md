@@ -1745,7 +1745,8 @@ Clicking a bot opens its conversation; conversation management lives in its menu
 the composer keeps attachment, text, voice and send controls. The panel shows the job once and a
 plain access summary before Adjust is opened. Secondary routine and approval actions keep their
 confirmation steps behind menus. Message actions appear on hover or keyboard focus and stay visible
-on touch devices, so scheduling a useful result remains discoverable on a phone. If routines finish
+on touch devices, so scheduling a useful result remains discoverable on a phone, including completed
+channel replies. The draft retains its channel destination and requires review before activation. If routines finish
 loading while a menu is in use, that menu keeps keyboard focus. Opening routines intentionally
 still focuses the routine list. Native connection settings remain reachable through Diagnostics →
 Use a touri server, with a destination label that describes what opens.
@@ -1757,7 +1758,8 @@ the destination. The card opens a pending approval before a question; resolving 
 the card to the remaining request. Ready-review notices identify themselves as Review ready and
 open their originating conversation, preserving unread state until explicitly marked read.
 Redundant per-bot action buttons and activity-group counts stay
-hidden; Work retains its unread-message count.
+hidden; Work retains its unread-message count. Empty profile handles fall back to the person’s name
+or You, keeping the settings entry visible and named.
 
 ### Dependency graph and order
 

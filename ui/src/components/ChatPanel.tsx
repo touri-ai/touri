@@ -1836,7 +1836,6 @@ export const ChatPanel = ({
                           : []),
                         ...(repeatDraft &&
                         onRepeatTask &&
-                        !group &&
                         !connectDataReply &&
                         !latestReply?.parts.some((part) => part.type === "approval" && part.decision === "pending")
                           ? [

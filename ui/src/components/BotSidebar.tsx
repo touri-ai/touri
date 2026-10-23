@@ -349,6 +349,7 @@ export const Sidebar = (props: SidebarProps) => {
   )
   const attention = useMemo(() => pendingNotifications(notifications, messages), [notifications, messages])
   const needsYou = useMemo(() => attention.filter((item) => !isInformationalNotice(item)), [attention])
+  const personName = props.currentPerson?.handle?.trim() || props.currentPerson?.name?.trim() || t("Você")
   const ordered = useSidebarOrder({ ...props, messages, notifications, attention })
   const botsWaitingCount = [...ordered.activity.values()].filter((activity) => activity.kind === "needs-you").length
   const attentionThreadIds = useMemo(
@@ -683,9 +684,7 @@ export const Sidebar = (props: SidebarProps) => {
           <button type="button" className="user-chip" onClick={() => navigate(props.onSettings)}>
             <PersonAvatar person={props.currentPerson ?? { id: "owner", avatarSeed: "owner" }} />
             <span>
-              <strong title={props.currentPerson?.handle ?? props.currentPerson?.name}>
-                {props.currentPerson?.handle ?? props.currentPerson?.name ?? t("Você")}
-              </strong>
+              <strong title={personName}>{personName}</strong>
             </span>
           </button>
           {props.onRecovery && (props.recoveryCount ?? 0) > 0 && (

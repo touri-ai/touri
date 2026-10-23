@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test"
 import { openMessageActions } from "./home-navigation"
+import { prepareChannelResult } from "./repeat-task-fixture"
 
 test.setTimeout(90_000)
 test.use({ actionTimeout: 30_000, hasTouch: true })
@@ -56,4 +57,35 @@ for (const viewport of [
       routines.find((routine) => routine.prompt === "Organize as notas desta conversa em uma lista.")?.enabled,
     ).toBe(true)
   })
+}
+
+for (const width of [1440, 1024, 390]) {
+  for (const theme of ["light", "dark"]) {
+    test(`schedule a completed channel result at ${width}px in ${theme}`, async ({ page }, info) => {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+      await page.emulateMedia({ reducedMotion: "reduce" })
+      await page.addInitScript((appearance) => localStorage.setItem("touri.appearance.v1", appearance), theme)
+      await prepareChannelResult(page)
+
+      const actions = page.getByRole("button", { name: "Ações da mensagem", exact: true }).last()
+      await expect(actions).toHaveCSS("opacity", "1")
+      await openMessageActions(page)
+      const menu = info.outputPath(`channel-actions-${width}-${theme}.png`)
+      await page.screenshot({ path: menu, animations: "disabled" })
+      await info.attach("channel message actions", { path: menu, contentType: "image/png" })
+      await page.getByRole("menuitem", { name: "Agendar esta tarefa", exact: true }).click()
+
+      const editor = page.getByRole("dialog", { name: "Quando?", exact: true })
+      await expect(editor.getByRole("textbox", { name: "Tarefa", exact: true })).toHaveValue(
+        "@mark Organize minhas notas",
+      )
+      await expect(
+        editor.getByRole("combobox", { name: "Destino dos resultados" }).locator("option:checked"),
+      ).toHaveText("Conversa do grupo Notas fictícias")
+      const image = info.outputPath(`channel-routine-${width}-${theme}.png`)
+      await page.screenshot({ path: image, animations: "disabled" })
+      await info.attach("channel routine draft", { path: image, contentType: "image/png" })
+      await editor.getByRole("button", { name: "Cancelar", exact: true }).click()
+    })
+  }
 }
