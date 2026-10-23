@@ -82,6 +82,58 @@ it("creates globally for an eligible channel and refreshes destinations when swi
   expect(saved?.input).not.toMatchObject({ botId: bot.id })
 })
 
+it.each(["channel", "bot"])(
+  "clears the old conversation when moving a saved routine to a %s destination",
+  async (target) => {
+    const { api, eligibleGroup, routine } = await getRoutineChannelFixture()
+    const routines = await openRoutineScreen(api)
+
+    fireEvent.click(within(routines).getByRole("button", { name: `Editar ${routine.name}` }))
+
+    const editor = screen.getByRole("dialog")
+    const destination = within(editor).getByRole("combobox", { name: "Destino dos resultados" })
+    fireEvent.change(destination, {
+      target: { value: target === "channel" ? `group:${eligibleGroup.id}` : "results-thread" },
+    })
+    fireEvent.click(within(editor).getByRole("button", { name: "Revisar rotina" }))
+    fireEvent.click(within(editor).getByRole("button", { name: "Ativar rotina" }))
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    const saved = (await api.request("GET /routines", {})).routines.find((item) => item.id === routine.id)
+    expect(saved).toMatchObject({
+      groupId: target === "channel" ? eligibleGroup.id : null,
+      resultsThreadId: null,
+      continuity: "results-thread",
+    })
+  },
+)
+
+it("keeps the test run conversation when activating a routine moved to another channel", async () => {
+  const { api, eligibleGroup, routine } = await getRoutineChannelFixture()
+  const routines = await openRoutineScreen(api)
+
+  fireEvent.click(within(routines).getByRole("button", { name: `Editar ${routine.name}` }))
+
+  const editor = screen.getByRole("dialog")
+  fireEvent.change(within(editor).getByRole("combobox", { name: "Destino dos resultados" }), {
+    target: { value: `group:${eligibleGroup.id}` },
+  })
+  fireEvent.click(within(editor).getByRole("button", { name: "Revisar rotina" }))
+  fireEvent.click(within(editor).getByRole("button", { name: "Testar agora" }))
+  await within(editor).findByRole("status")
+  await api.request("PATCH /routines/:id", { resultsThreadId: "tested-channel-conversation" }, { id: routine.id })
+
+  fireEvent.click(within(editor).getByRole("button", { name: "Ativar rotina" }))
+
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+  const saved = (await api.request("GET /routines", {})).routines.find((item) => item.id === routine.id)
+  expect(saved).toMatchObject({
+    groupId: eligibleGroup.id,
+    resultsThreadId: "tested-channel-conversation",
+    enabled: true,
+  })
+})
+
 it.each(["missing", "not-member"])(
   "keeps an unavailable %s channel explicit until the user changes it",
   async (state) => {

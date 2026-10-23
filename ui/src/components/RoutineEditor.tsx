@@ -83,6 +83,7 @@ export const RoutineEditor = ({
   const [draft, setDraft] = useState(initial)
   const [savedId, setSavedId] = useState(routineId)
   const [savedName, setSavedName] = useState(initial.name)
+  const [savedGroupId, setSavedGroupId] = useState(initial.groupId)
   const [deleting, setDeleting] = useState(false)
   const [simple, setSimple] = useState(() => simpleSchedule(initial.cron))
   const [reviewed, setReview] = useState<string | null>(null)
@@ -133,16 +134,17 @@ export const RoutineEditor = ({
     setBusy(true)
     setError(null)
     try {
-      const { botId: _botId, ...fields } = draft
-      const patch: Partial<typeof fields> = fields
-      // The test run may already have created its dedicated results conversation.
-      if (savedId && patch.continuity === "results-thread" && patch.resultsThreadId === null)
-        delete patch.resultsThreadId
+      const { botId: _botId, resultsThreadId, ...fields } = draft
+      // Reuse a conversation created by a test run only while its destination stays the same.
+      const canReuseConversation =
+        savedId && fields.continuity === "results-thread" && resultsThreadId === null && fields.groupId === savedGroupId
+      const patch = canReuseConversation ? fields : Object.assign({}, fields, { resultsThreadId })
       const saved: Routine = savedId
         ? await actions.updateRoutine(savedId, { ...patch, enabled: activate })
         : await actions.createRoutine({ ...draft, enabled: activate })
       setSavedId(saved.id)
       setSavedName(saved.name)
+      setSavedGroupId(saved.groupId)
       if (activate) onClose()
       else {
         await actions.runRoutine(saved.id)
