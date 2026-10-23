@@ -4,6 +4,11 @@ import { expect, type Page, test } from "@playwright/test"
 import { showBotAdvanced, showWorkMode } from "./home-navigation"
 
 const output = process.env.TOURI_QA_SCREENSHOT_DIR
+const dialogNames = {
+  "bot-create": "Criar um bot",
+  "channel-create": "Criar canal",
+  "bot-settings": "Configurações de mark",
+} as const
 const cases = [390, 1440].flatMap((width) => ["dark", "light"].map((theme) => ({ width, theme })))
 
 cases.forEach(({ width, theme }) => {
@@ -42,8 +47,8 @@ const openNavigation = async (page: Page) => {
   await trigger.click()
 }
 
-const captureSurface = async (page: Page, surface: string, width: number, theme: string) => {
-  const dialog = page.getByRole("dialog").last()
+const captureSurface = async (page: Page, surface: keyof typeof dialogNames, width: number, theme: string) => {
+  const dialog = page.getByRole("dialog", { name: dialogNames[surface], exact: true })
   await expect(dialog).toBeVisible()
   if (!(await dialog.locator(".avatar-picker").isVisible()))
     await dialog.getByRole("button", { name: "Avançado", exact: true }).click()
@@ -65,7 +70,7 @@ const captureSurface = async (page: Page, surface: string, width: number, theme:
     .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
     .analyze()
   expect(audit.violations.map(({ id, nodes }) => ({ id, targets: nodes.map((node) => node.target) }))).toEqual([])
-  if (output && surface === "group-create" && width === 390) {
+  if (output && surface === "channel-create" && width === 390) {
     await picker.screenshot({ path: `${output}/after-group-expanded-${width}-${theme}.png` })
   }
   await customize.focus()

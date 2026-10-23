@@ -18,7 +18,7 @@ viewports.forEach((viewport) => {
       await page.goto("/test/e2e/groups-harness.html")
       await showNavigation(page)
       await page.getByRole("button", { name: "Criar bot", exact: true }).click()
-      const creation = page.getByRole("dialog")
+      const creation = page.getByRole("dialog", { name: "Criar um bot", exact: true })
       await expectCompactPicker(creation)
       await creation.getByLabel("Nome", { exact: true }).fill("Compact bot")
 

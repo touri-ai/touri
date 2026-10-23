@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test"
-import { showBotDetails, showBotPanel } from "./home-navigation"
+import { showBotDetails } from "./home-navigation"
 
 const evidence = "../docs/qa/r4-shots"
 test.beforeEach(async ({ page }) => {
@@ -71,7 +71,7 @@ test("r4 short numbers stay on one line and multiline composer grows", async ({ 
 })
 
 test("r4 permissions focus, integration guidance and preset setup are available", async ({ page }) => {
-  await showBotPanel(page)
+  await showBotDetails(page)
   await page.getByRole("button", { name: "Ajustar permissões" }).click()
   const dialog = page.getByRole("dialog", { name: "Permissões do bot" })
   await expect(dialog.getByRole("combobox", { name: "Acesso", exact: true })).toBeFocused()
