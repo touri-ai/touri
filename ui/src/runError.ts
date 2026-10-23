@@ -5,6 +5,8 @@ import {
   failureRetryHint,
   failureStageLabel,
   isModelAtCapacity,
+  PROVIDER_MEMORY_DETAIL,
+  PROVIDER_MEMORY_HINT,
   type RunFailureDetail,
   safeRunFailure,
   sanitizeDiagnostic,
@@ -91,6 +93,7 @@ export const runErrorFor = (message: Message, candidate?: Run, machineReady = fa
     const attachmentError = getAttachmentError(run?.errorMessage ?? raw)
     if (attachmentError) return attachmentError
     if (retryMessage) return t(retryMessage)
+    if (failure.stage === "provider_memory") return t(PROVIDER_MEMORY_DETAIL)
 
     return detail
   }
@@ -104,7 +107,9 @@ export const runErrorFor = (message: Message, candidate?: Run, machineReady = fa
     hint:
       machineReady && /^(?:machine_boot|sealed_connection)$/.test(failure.stage)
         ? failureRetryHint(failure.stage, true)
-        : (recoveryHint ?? failureRetryHint(failure.stage, machineReady)),
+        : failure.stage === "provider_memory"
+          ? t(PROVIDER_MEMORY_HINT)
+          : (recoveryHint ?? failureRetryHint(failure.stage, machineReady)),
     specificHint: recoveryHint !== undefined,
     recovery: errorRecovery(run?.errorMessage ?? raw, {
       errorClass,

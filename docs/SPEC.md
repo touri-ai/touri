@@ -506,6 +506,8 @@ interrupted | failed(cli_crash, oom) ─► automatic continuation run (see belo
 | `oom` | exit by SIGKILL with no Stop and macOS memory-pressure log, best effort |
 | `unknown` | anything else |
 
+- **Failure copy.** The first line people see stays in plain words; exit codes and provider names stay out of it. An `oom` stop reads "O bot parou antes de terminar, talvez por falta de memória." with "Envie a mensagem de novo para continuar. Se repetir, aumente a memória da máquina." (English in `ui/src/i18n.ts`). The raw diagnostic, such as `Codex exited (137)`, and the error code remain under "Detalhes do erro" and in the run history.
+
 - **Cancellation.**
   - Codex: `turn/interrupt {threadId, turnId}`.
   - Claude: write `{"type":"control_request","request_id":…,"request":{"subtype":"interrupt"}}` to stdin, falling back to SIGINT.

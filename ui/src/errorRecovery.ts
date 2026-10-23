@@ -2,6 +2,8 @@ import { apiModelErrors, errorRegistry, type MessagePart, type Provider, publicE
 import {
   hasRecordedActions,
   isModelAtCapacity,
+  PROVIDER_MEMORY_DETAIL,
+  PROVIDER_MEMORY_HINT,
   RUN_START_TIMEOUT_MESSAGE,
   safeRunFailure,
   sanitizeDiagnostic,
@@ -139,6 +141,11 @@ export const errorRecovery = (error: unknown, context: RecoveryContext = {}): Er
     )
   const known = REGISTRY_MESSAGES.find((message) => raw.includes(message))
   const projected = safeRunFailure(context.errorClass ?? null, raw)
+  if (projected.stage === "provider_memory")
+    return view(`${tr(PROVIDER_MEMORY_DETAIL)} ${tr(PROVIDER_MEMORY_HINT)}`, [
+      ...(context.errorClass && publicError(context.errorClass).retryable ? [action("retry", "Tentar novamente")] : []),
+      action("doctor", "Verificar ambiente"),
+    ])
   const safeKnown = !["turn", "provider_protocol", "provider_install"].includes(projected.stage)
   return view(
     known ?? (safeKnown ? projected.detail : tr("Não foi possível concluir esta ação. Confira os detalhes do erro.")),
