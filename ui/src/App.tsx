@@ -94,7 +94,7 @@ import { getModeSelection, type ModeSelection, type WorkspaceMode } from "./work
 import { type AppRoute, type RoutineHistoryTarget, readWorkspaceState, saveWorkspaceState } from "./workspaceState"
 
 const InterruptedTasks = lazy(() =>
-  import("./components/InterruptedTasks").then((module) => ({ default: module.InterruptedTasks })),
+  import("./components/InterruptedTasks").then((module) => ({ default: module.InterruptedTasksContent })),
 )
 const BotComputer = lazy(() => import("./components/BotComputer").then((module) => ({ default: module.BotComputer })))
 const CommandPalette = lazy(() =>
@@ -1121,15 +1121,17 @@ const AppContent = ({ kernel }: AppProps) => {
     <AvatarRuntimeProvider value={{ ...data, messages: data.activityMessages }}>
       {botModal}
       {recoveryOpen && (
-        <Suspense fallback={<LoadingModal onClose={() => setRecoveryOpen(false)} />}>
-          <InterruptedTasks
-            {...interruptedWork}
-            onClose={() => setRecoveryOpen(false)}
-            onReview={reviewRecoveryTask}
-            onResume={(task) => reviewRecoveryTask(task, true)}
-            onDismiss={interruptedWork.dismiss}
-          />
-        </Suspense>
+        <Modal title={t("Interrupted tasks")} onClose={() => setRecoveryOpen(false)} className="interrupted-tasks">
+          <Suspense fallback={<LoadingModalContent />}>
+            <InterruptedTasks
+              {...interruptedWork}
+              onClose={() => setRecoveryOpen(false)}
+              onReview={reviewRecoveryTask}
+              onResume={(task) => reviewRecoveryTask(task, true)}
+              onDismiss={interruptedWork.dismiss}
+            />
+          </Suspense>
+        </Modal>
       )}
       <main className="app-shell">
         <HistoryMigrationStatus api={api} />
@@ -1603,11 +1605,17 @@ const GroupPanelLoading = ({ onClose }: { onClose: () => void }) => (
 
 const LoadingModal = ({ onClose }: { onClose: () => void }) => (
   <Modal title={t("Loading")} onClose={onClose}>
+    <LoadingModalContent />
+  </Modal>
+)
+
+const LoadingModalContent = () => (
+  <>
     <p className="modal-intro" role="status">
       {t("Loading")}
     </p>
     <MotionSkeleton />
-  </Modal>
+  </>
 )
 
 const SearchLoading = ({ onClose }: { onClose: () => void }) => (

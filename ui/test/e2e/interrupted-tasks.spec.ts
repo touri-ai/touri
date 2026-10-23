@@ -1,5 +1,26 @@
 import { expect, test } from "@playwright/test"
 
+test("the first interrupted-task dialog returns focus after its details load", async ({ page }) => {
+  const release = Promise.withResolvers<void>()
+  await page.route("**/src/components/InterruptedTasks.tsx", async (route) => {
+    await release.promise
+    await route.continue()
+  })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto("/?mockScenario=interrupted-tasks")
+  const opener = page.getByRole("button", { name: /^Tarefas interrompidas/ })
+
+  await opener.click()
+  await expect(page.getByRole("dialog").getByRole("status")).toBeVisible()
+  release.resolve()
+  const center = page.getByRole("dialog", { name: "Tarefas interrompidas", exact: true })
+  await expect(center.getByTestId("interrupted-task")).toHaveCount(3)
+  await page.keyboard.press("Escape")
+
+  await expect(center).toHaveCount(0)
+  await expect(opener).toBeFocused()
+})
+
 for (const viewport of [
   { width: 1440, height: 900 },
   { width: 390, height: 844 },

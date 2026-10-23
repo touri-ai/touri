@@ -1668,3 +1668,4 @@ When a stored message belongs to a grouped browser or automatic recovery respons
 - Finalization yields while acquiring the SQLite writer. Fixture teardown awaits asynchronous kernel shutdown before deleting or reopening its database.
 - A successful channel index replaces cached membership: cached threads from removed channels must not keep the conversation in a loading state. Failed channel reads retain cached metadata until recovery.
 - Interrupted-task details load when opened; the initial UI payload retains the 400,000-byte gzip limit. Contrast remains at least 4.5:1 in both themes, including the extracted preview stylesheet.
+- The interrupted-task dialog remains mounted while its details load, so Escape and closing preserve focus return to the opening control on desktop and the menu on phone.
