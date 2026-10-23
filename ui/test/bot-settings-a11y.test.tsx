@@ -270,8 +270,11 @@ it("opens the bot routines list directly from the tab by pointer or keyboard", a
   expect(tab).toHaveFocus()
 }, 30_000)
 
-it("offers fast conversation by default and saves an explicit opt-out", async () => {
+it("keeps fast conversation in advanced model settings and saves an explicit opt-out", async () => {
   const { bot, actions } = await botSettings()
+  expect(screen.queryByRole("switch", { name: "Resposta rápida para conversa" })).toBeNull()
+
+  fireEvent.click(screen.getByRole("button", { name: "Avançado Ajustes deste bot" }))
   const setting = screen.getByRole("switch", { name: "Resposta rápida para conversa" })
 
   expect(setting).toBeChecked()
