@@ -2899,6 +2899,21 @@ test("channel mentions call exactly the named members in mention order and ignor
   expect(scenario.order).toHaveLength(2)
 })
 
+test("a channel resume request runs only the named interrupted member, not the latest one", async () => {
+  const scenario = await fixture()
+  const resume =
+    "Conferi as ações registradas. Quero continuar a tarefa a partir do estado atual, sem repetir ações já concluídas."
+  const other = await postChannelMessage(scenario, "@qa oi")
+  await until(() => Boolean(other.run && scenario.persistence.getRun(other.run.id)?.status === "succeeded"))
+
+  const plain = await postChannelMessage(scenario, resume)
+  const named = await postChannelMessage(scenario, `@dev ${resume}`)
+  await until(() => Boolean(named.run && scenario.persistence.getRun(named.run.id)?.status === "succeeded"))
+
+  expect(plain.run).toBeNull()
+  expect(scenario.order).toEqual([scenario.bots[2]?.id ?? "", scenario.bots[1]?.id ?? ""])
+})
+
 test("ask-everyone and summary persist explicit mentions, with only the selected summary bot", async () => {
   const scenario = await fixture()
   const coordinator = scenario.bots[1]

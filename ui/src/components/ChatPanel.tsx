@@ -988,7 +988,7 @@ const MessageBubble = ({
                   else if (action === "review") setReviewingActions(true)
                   else if (action === "resume") {
                     setReviewingActions(true)
-                    requestTaskResume(message.threadId)
+                    requestTaskResume(message.threadId, message.sender?.id ?? run?.botId ?? null)
                   } else
                     onFailureAction(
                       action === "login"

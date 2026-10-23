@@ -268,7 +268,8 @@ const AppContent = ({ kernel }: AppProps) => {
     actions.selectLocation({ bot: task.notification.botId, thread: task.notification.threadId })
     setRoute({ section: "bots", screen: "chat" })
     if (task.runId) requestTaskReview(task.runId)
-    if (resume && task.notification.threadId) requestTaskResume(task.notification.threadId)
+    if (resume && task.notification.threadId)
+      requestTaskResume(task.notification.threadId, task.notification.botId ?? null)
     setRecoveryOpen(false)
   }
   useServerAttention({ api, invoke: invokeCommand, enabled: isNativeDesktop() && serverMode, data })
@@ -585,7 +586,7 @@ const AppContent = ({ kernel }: AppProps) => {
         if (run && action === "retry") await actions.retryRun(run.id)
         else {
           if (run) requestTaskReview(run.id)
-          if (action === "resume" && item.threadId) requestTaskResume(item.threadId)
+          if (action === "resume" && item.threadId) requestTaskResume(item.threadId, item.botId ?? run?.botId ?? null)
         }
       }
     },
