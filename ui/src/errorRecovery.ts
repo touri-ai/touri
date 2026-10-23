@@ -53,6 +53,8 @@ export const errorRecovery = (error: unknown, context: RecoveryContext = {}): Er
       action("review", "Ver ações realizadas"),
       action("resume", "Retomar tarefa"),
     ])
+  if (raw === "O provedor terminou sem responder. Tente de novo.")
+    return view(tr("O provedor terminou sem responder. Tente de novo."), [action("retry", "Tentar novamente")])
   if (
     (error instanceof ApiError && error.status === 507) ||
     /ENOSPC|no space left|disk full|TOURI-E2002|espaço.*disco|não há espaço/i.test(text)

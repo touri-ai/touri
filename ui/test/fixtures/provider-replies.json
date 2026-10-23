@@ -1,0 +1,63 @@
+{
+  "before": {
+    "runStatus": "failed",
+    "errorClass": "cli_protocol",
+    "errorMessage": "O bot terminou sem responder. Tente novamente.",
+    "replyStatus": "failed",
+    "text": "",
+    "parts": [
+      {
+        "type": "notice",
+        "level": "error",
+        "code": "run_failed",
+        "failure": {
+          "stage": "turn",
+          "detail": "Detalhe do provedor: O bot terminou sem responder. Tente novamente.",
+          "hint": "Tente de novo; se repetir, abra o Doctor.",
+          "action": {
+            "kind": "doctor",
+            "label": "Abrir o Doctor"
+          }
+        },
+        "text": "cli_protocol: Detalhe do provedor: O bot terminou sem responder. Tente novamente. [TOURI-E3003]"
+      }
+    ]
+  },
+  "recovered": {
+    "runStatus": "succeeded",
+    "errorClass": null,
+    "errorMessage": null,
+    "replyStatus": "complete",
+    "text": "Resposta preservada.",
+    "parts": [
+      {
+        "type": "text",
+        "text": "Resposta preservada."
+      }
+    ]
+  },
+  "empty": {
+    "runStatus": "failed",
+    "errorClass": "cli_protocol",
+    "errorMessage": "O provedor terminou sem responder. Tente de novo.",
+    "replyStatus": "failed",
+    "text": "",
+    "parts": [
+      {
+        "type": "notice",
+        "level": "error",
+        "code": "run_failed",
+        "failure": {
+          "stage": "turn",
+          "detail": "Detalhe do provedor: O provedor terminou sem responder. Tente de novo.",
+          "hint": "Tente de novo; se repetir, abra o Doctor.",
+          "action": {
+            "kind": "doctor",
+            "label": "Abrir o Doctor"
+          }
+        },
+        "text": "cli_protocol: Detalhe do provedor: O provedor terminou sem responder. Tente de novo. [TOURI-E3003]"
+      }
+    ]
+  }
+}

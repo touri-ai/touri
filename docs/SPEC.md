@@ -274,6 +274,7 @@ interrupted | failed(cli_crash, oom) ─► automatic continuation run (see belo
 ```
 
 - **The user message is persisted before anything is spawned.** A run is never deleted. The assistant reply message is created on the first delta with status `streaming`.
+- **Complete reply recovery.** Complete assistant text blocks from the main session supply text missing from partial events, without repeating the streamed prefix. Nested reports never become main-session reply text or reset its stream cursor. A successful result with no meaningful text, tool calls or approval becomes a protocol failure with a visible, localized explanation; it never completes a blank reply or repeats actions automatically. Result-only replies, explicit failures, cancellation and action-only conclusions keep their existing behavior.
 - **Failed, canceled or interrupted turns stay in history.** The reply message keeps its partial text and gets status `failed`/`canceled` plus a `NoticePart{code:"run_failed"}` with the class and a redacted message (≤ 2000 chars). The UI shows a Retry button: a new run with `trigger:"retry"` and the same request message.
 - **Carryover.** When a run ends in anything other than `succeeded`, `threads.carryover_note` is set. The next turn prepends it to the user input and then clears it.
   - If the CLI never reached `turn_started`, the note is: `[touri: your previous turn did not run (<class>: <msg>). The user's message was: "<text>"]`.

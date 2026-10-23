@@ -230,6 +230,22 @@ export const createClaudeAdapter = ({
     let sawText = false
     let streamedTextLength = 0
     let sawApproval = false
+    const emitAssistantText = (frame: Record<string, unknown>, content: ReadonlyArray<unknown>): void => {
+      // Nested reports have no matching main-session deltas and must not become its reply.
+      if (frame.parent_tool_use_id) return
+
+      const text = content
+        .map(asRecord)
+        .flatMap((block) => (block?.type === "text" && typeof block.text === "string" ? [block.text] : []))
+        .join("")
+      // Complete blocks repeat text already delivered by their partial events.
+      const unstreamedText = text.slice(streamedTextLength)
+      streamedTextLength = 0
+      if (!unstreamedText) return
+
+      sawText ||= unstreamedText.trim().length > 0
+      args.onEvent({ type: "text_delta", itemId: "assistant", delta: unstreamedText })
+    }
     const thinkingBlocks = new Map<number, string>()
     let estimatedThinkingTokens = 0
     const emitThinking = (index: number, text: string): void => {
@@ -372,17 +388,7 @@ export const createClaudeAdapter = ({
       } else if (type === "assistant") {
         const message = asRecord(frame.message) ?? {}
         const content = Array.isArray(message.content) ? message.content : []
-        const text = content
-          .map(asRecord)
-          .flatMap((block) => (block?.type === "text" && typeof block.text === "string" ? [block.text] : []))
-          .join("")
-        // Complete messages include text already delivered by this message's partial events.
-        const unstreamedText = text.slice(streamedTextLength)
-        streamedTextLength = 0
-        if (unstreamedText) {
-          sawText ||= unstreamedText.trim().length > 0
-          args.onEvent({ type: "text_delta", itemId: "assistant", delta: unstreamedText })
-        }
+        emitAssistantText(frame, content)
         for (const [index, item] of content.entries()) {
           const block = asRecord(item)
           if (block?.type === "thinking") {

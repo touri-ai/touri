@@ -53,6 +53,24 @@ test("preserves result-only text", async () => {
   expect(getText(fixture.events)).toBe("Resposta final.")
 })
 
+test("keeps nested assistant text out of the visible reply", async () => {
+  const nested = Object.assign(getAssistant("Relatório interno sintético."), { parent_tool_use_id: "nested-task" })
+  const fixture = getFixture([nested, getAssistant("Resposta principal.")])
+
+  await fixture.adapter.startTurn(fixture.args)
+
+  expect(getText(fixture.events)).toBe("Resposta principal.")
+})
+
+test("nested assistant frames do not reset the main stream cursor", async () => {
+  const nested = Object.assign(getAssistant("Texto interno."), { parent_tool_use_id: "nested-task" })
+  const fixture = getFixture([getDelta("Olá"), nested, getAssistant("Olá, mundo!")])
+
+  await fixture.adapter.startTurn(fixture.args)
+
+  expect(getText(fixture.events)).toBe("Olá, mundo!")
+})
+
 test.each([{ frames: [] }, { frames: [getDelta(" \n")] }, { frames: [getAssistant(" \t")] }])(
   "rejects an empty successful result instead of completing a blank reply: %j",
   async (scenario) => {
