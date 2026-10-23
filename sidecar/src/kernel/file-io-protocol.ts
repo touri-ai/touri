@@ -8,6 +8,7 @@ export type FileIoTask =
   | { operation: "remove"; args: { root: string; path: string } }
   | { operation: "move"; args: { root: string; from: string; to: string } }
   | { operation: "exists"; args: { root: string; path: string } }
+  | { operation: "read-bounded"; args: { root: string; path: string; maxBytes: number } }
   | { operation: "read-private"; args: { root: string; path: string; maxBytes: number } }
   | { operation: "prepare-database"; args: { root: string; path: string } }
   | {

@@ -67,7 +67,7 @@ import {
   MAX_AUTO_CONTINUATIONS,
   MAX_CRASH_CONTINUATIONS,
 } from "./continuations"
-import { csvInput } from "./csv-input"
+import { getDocumentInput } from "./document-input"
 import { type GoalDeadlineClock, startGoalDeadline } from "./goal-deadline"
 import { createGoalRuntime, getGoalPrompt } from "./goals"
 import { isGreetingTurn } from "./greeting"
@@ -1485,7 +1485,6 @@ export const createRuntimeEngine = ({
     const input: Array<TextPart | Extract<MessagePart, { type: "image" }>> = request
       ? [
           { type: "text", text: inputText },
-          ...csvInput({ kernel, parts: requestParts }),
           ...requestParts.filter((part): part is Extract<MessagePart, { type: "image" }> => part.type === "image"),
         ]
       : [{ type: "text", text: inputText }]
@@ -1641,6 +1640,20 @@ export const createRuntimeEngine = ({
       let flushEvents: (() => void) | undefined
       let releaseLogin: (() => Promise<void> | void) | undefined
       try {
+        const documentMessages = unacceptedRequest
+          ? [unacceptedRequest, ...(request ? [request] : [])]
+          : [goalRequest ?? originalRequest ?? request].filter((message): message is Message => message !== null)
+        const documents = await getDocumentInput({
+          kernel,
+          botId: bot.id,
+          thread,
+          messages: documentMessages,
+          signal: controller.signal,
+        })
+        if (!documents.success) return documents
+        const providerInput = [...input, ...documents.input]
+        controller.signal.throwIfAborted()
+
         if (bot.machine !== "vm" && bot.machine !== "cloud") {
           const login = await prepareLocalProviderLogin(kernel, bot, controller.signal, env.HOME)
           Object.assign(env, login.env)
@@ -1727,7 +1740,7 @@ export const createRuntimeEngine = ({
             bot: greeting ? { ...turnBot, reasoningEffort: "low" } : turnBot,
             session,
             fingerprint: mcpFingerprint.fingerprint,
-            input,
+            input: providerInput,
             developerInstructions: turnInstructions,
             handoffPacket,
             mcp: prepared?.mcp ?? mcp,

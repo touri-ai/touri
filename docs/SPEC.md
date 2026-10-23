@@ -611,6 +611,14 @@ returns fixed messages for every reported field in `errorMessages["pt-BR"]` and
 `errorMessages.en`. `error` uses the Portuguese message. Submitted values are never
 echoed, and invalid requests do not create a group or conversation.
 
+### 3.11 Uploaded documents in a turn
+
+- A selected request (including its explicit retry, continuation or goal request) supplies its managed attachments to that turn only. Documents from other messages or bots are not searched or added. Existing upload/person authorization and active-path selection remain authoritative.
+- UTF-8 TXT, Markdown (`.md`, `.markdown`), JSON, CSV, TSV and LOG are delivered as inline user data to every provider adapter, including restricted local and VM turns. Generic binary upload MIME does not discard a supported filename. No parser executes file content or follows embedded references.
+- At most ten documents, 256 KiB of total original bytes and 512 KiB of serialized context are accepted. Invalid UTF-8, binary controls, unsupported extensions, missing/expired files and unreadable or oversized documents fail the turn before provider dispatch with localized guidance. Nothing is silently omitted or truncated.
+- Reads run in a disposable file I/O worker with a ten-second deadline and turn cancellation that terminates outstanding work. Managed paths must stay inside attachments; pinned no-follow directory descriptors guard the application root, attachment directories and regular files. Display names are bounded, stripped of path components and encoded with the content as JSON.
+- Each document is explicitly identified as user-uploaded, untrusted data. A fixed developer rule remains inside the 24,000-character instruction budget, including later turns that retain the document in native history. Embedded role labels, commands and claims of approval confer no authority; sandbox, tool permissions and approvals are unchanged. No app-data access grant, temporary document copy or new retention store is created. Original attachments follow existing history/deletion retention; accepted content can remain in that bot's native conversation, like other user input.
+
 ## 4. Projects, processes, secrets, preview (WP5; Preview pane UI in WP9, webview in WP1)
 
 ### 4.1 Connect a project

@@ -9,6 +9,7 @@ import {
   safeRunFailure,
   sanitizeDiagnostic,
 } from "@touri/contracts/run-failure"
+import { getAttachmentError } from "./attachmentError"
 import { type ErrorRecovery, errorRecovery } from "./errorRecovery"
 import { t } from "./i18n"
 
@@ -89,6 +90,8 @@ export const runErrorFor = (message: Message, candidate?: Run, machineReady = fa
     if (run?.errorMessage === "O bot terminou sem responder. Tente novamente.")
       return t("O bot terminou sem responder. Tente novamente.")
     if (run?.errorMessage === ORPHANED_GROUP_TURN_PT) return t(ORPHANED_GROUP_TURN_PT)
+    const attachmentError = getAttachmentError(run?.errorMessage ?? raw)
+    if (attachmentError) return attachmentError
     if (apiMessage) return t(apiMessage)
 
     return detail
