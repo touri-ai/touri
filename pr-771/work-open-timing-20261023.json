@@ -1,0 +1,2947 @@
+{
+  "before": {
+    "latencyMs": 60,
+    "cold": {
+      "sidebarMs": 9070.869531000004,
+      "messagesMs": 11312.043632
+    },
+    "warm": {
+      "sidebarMs": 280.591969000001,
+      "messagesMs": 1435.355717999999
+    },
+    "events": [
+      {
+        "ms": 172.43366199999582,
+        "kind": "request",
+        "path": "/"
+      },
+      {
+        "ms": 602.5843699999969,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 602.726361999994,
+        "kind": "request",
+        "path": "/static/:asset.css"
+      },
+      {
+        "ms": 603.5061139999962,
+        "kind": "response",
+        "path": "/"
+      },
+      {
+        "ms": 821.2282619999969,
+        "kind": "response",
+        "path": "/static/:asset.css"
+      },
+      {
+        "ms": 871.6347899999964,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 1323.682670999995,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 1459.4694170000002,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 1463.2407759999987,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 1552.2048809999978,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 1585.819488999994,
+        "kind": "request",
+        "path": "/api/v1/session"
+      },
+      {
+        "ms": 1585.956072999994,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 1589.4908759999962,
+        "kind": "request",
+        "path": "/api/v1/ws-ticket"
+      },
+      {
+        "ms": 1589.7166429999997,
+        "kind": "request",
+        "path": "/api/v1/recovery"
+      },
+      {
+        "ms": 1632.6993319999965,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 1632.9748889999973,
+        "kind": "response",
+        "path": "/api/v1/session"
+      },
+      {
+        "ms": 1636.0671559999973,
+        "kind": "request",
+        "path": "/api/v1/doctor"
+      },
+      {
+        "ms": 1668.570842999994,
+        "kind": "response",
+        "path": "/api/v1/ws-ticket"
+      },
+      {
+        "ms": 1707.3405619999976,
+        "kind": "response",
+        "path": "/api/v1/recovery"
+      },
+      {
+        "ms": 1734.4088909999991,
+        "kind": "response",
+        "path": "/api/v1/doctor"
+      },
+      {
+        "ms": 1809.739275,
+        "kind": "ws",
+        "bytes": 34,
+        "type": "resync"
+      },
+      {
+        "ms": 1809.9394109999994,
+        "kind": "request",
+        "path": "/api/v1/groups"
+      },
+      {
+        "ms": 1810.1338609999948,
+        "kind": "request",
+        "path": "/api/v1/bots"
+      },
+      {
+        "ms": 1810.2797009999995,
+        "kind": "request",
+        "path": "/api/v1/projects"
+      },
+      {
+        "ms": 1810.462010999996,
+        "kind": "request",
+        "path": "/api/v1/settings"
+      },
+      {
+        "ms": 1810.649569000001,
+        "kind": "request",
+        "path": "/api/v1/previews"
+      },
+      {
+        "ms": 1810.776555999997,
+        "kind": "request",
+        "path": "/api/v1/browser/tabs"
+      },
+      {
+        "ms": 1810.889599999995,
+        "kind": "request",
+        "path": "/api/v1/routines"
+      },
+      {
+        "ms": 1811.0100479999965,
+        "kind": "request",
+        "path": "/api/v1/routine-runs"
+      },
+      {
+        "ms": 1811.141144000001,
+        "kind": "request",
+        "path": "/api/v1/notifications"
+      },
+      {
+        "ms": 1811.2581910000008,
+        "kind": "request",
+        "path": "/api/v1/machines"
+      },
+      {
+        "ms": 1812.6581430000006,
+        "kind": "request",
+        "path": "/api/v1/workspace/activity"
+      },
+      {
+        "ms": 1812.771836,
+        "kind": "request",
+        "path": "/api/v1/runs"
+      },
+      {
+        "ms": 1864.195869999996,
+        "kind": "response",
+        "path": "/api/v1/groups"
+      },
+      {
+        "ms": 1875.6863989999983,
+        "kind": "response",
+        "path": "/api/v1/bots"
+      },
+      {
+        "ms": 1875.9544739999983,
+        "kind": "response",
+        "path": "/api/v1/projects"
+      },
+      {
+        "ms": 1876.2255619999996,
+        "kind": "response",
+        "path": "/api/v1/settings"
+      },
+      {
+        "ms": 2097.087096999996,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 2097.6649629999956,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 2097.756966000001,
+        "kind": "request",
+        "path": "/static/:asset.png"
+      },
+      {
+        "ms": 2629.7304779999977,
+        "kind": "response",
+        "path": "/api/v1/previews"
+      },
+      {
+        "ms": 2630.326218999995,
+        "kind": "response",
+        "path": "/api/v1/browser/tabs"
+      },
+      {
+        "ms": 2685.0796310000005,
+        "kind": "response",
+        "path": "/api/v1/routines"
+      },
+      {
+        "ms": 2686.8351059999986,
+        "kind": "response",
+        "path": "/api/v1/routine-runs"
+      },
+      {
+        "ms": 2706.305862999994,
+        "kind": "response",
+        "path": "/api/v1/notifications"
+      },
+      {
+        "ms": 2706.680247999997,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 2726.2577170000004,
+        "kind": "response",
+        "path": "/api/v1/machines"
+      },
+      {
+        "ms": 6996.510058,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 6996.605686999996,
+        "kind": "request",
+        "path": "/static/:asset.css"
+      },
+      {
+        "ms": 8434.369178,
+        "kind": "response",
+        "path": "/api/v1/workspace/activity"
+      },
+      {
+        "ms": 8450.736248000001,
+        "kind": "response",
+        "path": "/static/:asset.png"
+      },
+      {
+        "ms": 8453.160150999996,
+        "kind": "response",
+        "path": "/api/v1/runs"
+      },
+      {
+        "ms": 8515.040249999998,
+        "kind": "response",
+        "path": "/static/:asset.css"
+      },
+      {
+        "ms": 8524.355016999994,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 8524.457503999998,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 8531.515467999998,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 8531.753655,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 8532.007138,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 8532.271494,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 8532.478621999995,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 8532.653187999997,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 8532.841574999999,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 8532.994862,
+        "kind": "request",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 8533.198763,
+        "kind": "request",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 8533.362023999995,
+        "kind": "request",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 8555.244661999997,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 8556.828047999996,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 8796.734422999994,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 8797.054535999996,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 8797.321809999994,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 8797.505581999998,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 8797.805588999996,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 8798.078445,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 8798.37831,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 8800.787743999994,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 8801.070643,
+        "kind": "response",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 8807.318595999997,
+        "kind": "response",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 8809.069473999996,
+        "kind": "response",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 8809.281911999999,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 11690.32791,
+        "kind": "request",
+        "path": "/api/v1/threads/:id/goal"
+      },
+      {
+        "ms": 11691.329807999995,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/provider-login/flow"
+      },
+      {
+        "ms": 11691.440816999995,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 11692.995192999995,
+        "kind": "request",
+        "path": "/api/v1/threads/:id/messages"
+      },
+      {
+        "ms": 11693.110213,
+        "kind": "request",
+        "path": "/api/v1/threads/:id/runs"
+      },
+      {
+        "ms": 11806.925024999997,
+        "kind": "response",
+        "path": "/api/v1/threads/:id/goal"
+      },
+      {
+        "ms": 11807.264973999998,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/provider-login/flow"
+      },
+      {
+        "ms": 11817.810875999996,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 12369.579009000001,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 12374.356921999999,
+        "kind": "request",
+        "path": "/api/v1/groups/:id/people"
+      },
+      {
+        "ms": 12374.648749,
+        "kind": "request",
+        "path": "/api/v1/threads/:id/messages"
+      },
+      {
+        "ms": 12374.828759999997,
+        "kind": "request",
+        "path": "/api/v1/threads/:id/runs"
+      },
+      {
+        "ms": 12430.735136999996,
+        "kind": "response",
+        "path": "/api/v1/threads/:id/runs"
+      },
+      {
+        "ms": 12451.399069,
+        "kind": "response",
+        "path": "/api/v1/threads/:id/messages"
+      },
+      {
+        "ms": 12455.587277999999,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 12470.821331,
+        "kind": "response",
+        "path": "/api/v1/groups/:id/people"
+      },
+      {
+        "ms": 12776.611368999998,
+        "kind": "response",
+        "path": "/api/v1/threads/:id/runs"
+      },
+      {
+        "ms": 13021.255141999995,
+        "kind": "response",
+        "path": "/api/v1/threads/:id/messages"
+      },
+      {
+        "ms": 13584.624477999998,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 13585.810805000001,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 13586.015638999997,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 13586.193547999996,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 13586.323294999995,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 13586.482973999999,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 13586.728803999998,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 13586.948125999996,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 13587.196528,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 13587.352873999997,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 13870.470397999998,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 13871.521291999998,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 13872.383631999997,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 13873.085562,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 13873.664538999998,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 13874.431749999996,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 13875.088673999999,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 13884.216353999996,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 13884.976818999996,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 13885.712955999996,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 14565.425401,
+        "kind": "request",
+        "path": "/"
+      },
+      {
+        "ms": 15100.363170999997,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 15103.554789999995,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 15103.722983,
+        "kind": "request",
+        "path": "/static/:asset.css"
+      },
+      {
+        "ms": 15103.868885999997,
+        "kind": "response",
+        "path": "/static/:asset.css"
+      },
+      {
+        "ms": 15104.471417,
+        "kind": "response",
+        "path": "/"
+      },
+      {
+        "ms": 15205.756195999995,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 15205.908909999998,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 15206.818646,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 15270.53714,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 15273.472958999999,
+        "kind": "request",
+        "path": "/api/v1/session"
+      },
+      {
+        "ms": 15274.647727999996,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 15274.758509,
+        "kind": "request",
+        "path": "/api/v1/ws-ticket"
+      },
+      {
+        "ms": 15274.847464999999,
+        "kind": "request",
+        "path": "/api/v1/recovery"
+      },
+      {
+        "ms": 15337.339504999996,
+        "kind": "response",
+        "path": "/api/v1/session"
+      },
+      {
+        "ms": 15337.436933999998,
+        "kind": "response",
+        "path": "/api/v1/ws-ticket"
+      },
+      {
+        "ms": 15337.526206999995,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 15339.917364999994,
+        "kind": "request",
+        "path": "/api/v1/doctor"
+      },
+      {
+        "ms": 15341.030297999998,
+        "kind": "response",
+        "path": "/api/v1/recovery"
+      },
+      {
+        "ms": 15404.219873999995,
+        "kind": "ws",
+        "bytes": 34,
+        "type": "resync"
+      },
+      {
+        "ms": 15404.321807,
+        "kind": "request",
+        "path": "/api/v1/groups"
+      },
+      {
+        "ms": 15406.919888999997,
+        "kind": "request",
+        "path": "/api/v1/bots"
+      },
+      {
+        "ms": 15407.010456999997,
+        "kind": "request",
+        "path": "/api/v1/projects"
+      },
+      {
+        "ms": 15407.108149,
+        "kind": "request",
+        "path": "/api/v1/settings"
+      },
+      {
+        "ms": 15407.19775,
+        "kind": "request",
+        "path": "/api/v1/previews"
+      },
+      {
+        "ms": 15407.281517999996,
+        "kind": "request",
+        "path": "/api/v1/browser/tabs"
+      },
+      {
+        "ms": 15407.413598,
+        "kind": "request",
+        "path": "/api/v1/routines"
+      },
+      {
+        "ms": 15407.504918999999,
+        "kind": "request",
+        "path": "/api/v1/routine-runs"
+      },
+      {
+        "ms": 15407.635938,
+        "kind": "request",
+        "path": "/api/v1/notifications"
+      },
+      {
+        "ms": 15407.728518999997,
+        "kind": "request",
+        "path": "/api/v1/machines"
+      },
+      {
+        "ms": 15407.816357999996,
+        "kind": "request",
+        "path": "/api/v1/workspace/activity"
+      },
+      {
+        "ms": 15407.902952999997,
+        "kind": "request",
+        "path": "/api/v1/runs"
+      },
+      {
+        "ms": 15409.252107,
+        "kind": "response",
+        "path": "/api/v1/doctor"
+      },
+      {
+        "ms": 15467.442840999996,
+        "kind": "response",
+        "path": "/api/v1/projects"
+      },
+      {
+        "ms": 15467.564198,
+        "kind": "response",
+        "path": "/api/v1/groups"
+      },
+      {
+        "ms": 15469.514196999997,
+        "kind": "response",
+        "path": "/api/v1/bots"
+      },
+      {
+        "ms": 15469.609528,
+        "kind": "response",
+        "path": "/api/v1/previews"
+      },
+      {
+        "ms": 15469.698035999994,
+        "kind": "response",
+        "path": "/api/v1/settings"
+      },
+      {
+        "ms": 15469.914249999994,
+        "kind": "response",
+        "path": "/api/v1/browser/tabs"
+      },
+      {
+        "ms": 15505.23719,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 15508.210693999994,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 15508.303433999994,
+        "kind": "request",
+        "path": "/static/:asset.css"
+      },
+      {
+        "ms": 15508.426766999997,
+        "kind": "response",
+        "path": "/static/:asset.css"
+      },
+      {
+        "ms": 15508.511118999995,
+        "kind": "request",
+        "path": "/static/:asset.png"
+      },
+      {
+        "ms": 15508.590390999998,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 15508.668043999998,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 15575.861055999994,
+        "kind": "response",
+        "path": "/api/v1/routine-runs"
+      },
+      {
+        "ms": 15578.403685999998,
+        "kind": "response",
+        "path": "/api/v1/notifications"
+      },
+      {
+        "ms": 15578.843257,
+        "kind": "response",
+        "path": "/api/v1/routines"
+      },
+      {
+        "ms": 15581.836057,
+        "kind": "response",
+        "path": "/api/v1/workspace/activity"
+      },
+      {
+        "ms": 15582.683753999998,
+        "kind": "response",
+        "path": "/api/v1/machines"
+      },
+      {
+        "ms": 15582.764759999998,
+        "kind": "response",
+        "path": "/api/v1/runs"
+      },
+      {
+        "ms": 15595.605122,
+        "kind": "response",
+        "path": "/static/:asset.png"
+      },
+      {
+        "ms": 15605.705188,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 15605.799979999996,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 15605.880507999995,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 15605.959766,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 15606.040032999997,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 15606.132211999997,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 15606.211994999998,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 15606.290043999994,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 15608.016929999998,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 15608.114998999998,
+        "kind": "request",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 15608.197354999997,
+        "kind": "request",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 15608.276101999996,
+        "kind": "request",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 15650.209696999998,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 15664.995195999996,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 15669.543461999994,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 15669.643481,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 15669.712389,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 15669.779540999996,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 15669.846192999998,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 15727.562504999994,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 15759.161665,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 15760.016838999996,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 15762.359125999996,
+        "kind": "response",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 15762.496985999998,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 15762.612269999998,
+        "kind": "response",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 15792.071972999998,
+        "kind": "response",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 15849.587574999998,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 15850.392656999997,
+        "kind": "request",
+        "path": "/api/v1/groups/:id/people"
+      },
+      {
+        "ms": 15850.485322,
+        "kind": "request",
+        "path": "/api/v1/threads/:id/messages"
+      },
+      {
+        "ms": 15851.009706999997,
+        "kind": "request",
+        "path": "/api/v1/threads/:id/runs"
+      },
+      {
+        "ms": 15928.995891999999,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 15929.077027,
+        "kind": "response",
+        "path": "/api/v1/groups/:id/people"
+      },
+      {
+        "ms": 15929.744777,
+        "kind": "response",
+        "path": "/api/v1/threads/:id/runs"
+      },
+      {
+        "ms": 15982.019538,
+        "kind": "response",
+        "path": "/api/v1/threads/:id/messages"
+      },
+      {
+        "ms": 16212.490849999995,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 16212.691350000001,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 16212.782875999997,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 16222.398733999995,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 16222.507138999994,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 16222.659316999998,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 16222.751875999995,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 16222.887968999996,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 16222.978568999999,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 16223.126555999996,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 16223.222562999996,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 16223.366270999999,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 16223.457236999995,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 16223.594147999996,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 16223.683559999998,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 16223.824874999998,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 16223.916387999998,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 16224.143468999995,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 16224.236000999997,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 16224.371180999995,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      }
+    ]
+  },
+  "after": {
+    "latencyMs": 60,
+    "activityHeldUntilMessages": false,
+    "cold": {
+      "sidebarMs": 270.86299899998994,
+      "messagesMs": 1046.6321229999885
+    },
+    "warm": {
+      "sidebarMs": 40.00212000000465,
+      "messagesMs": 646.7834980000043
+    },
+    "events": [
+      {
+        "ms": 15.093525999996928,
+        "kind": "request",
+        "path": "/"
+      },
+      {
+        "ms": 95.64494099999138,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 95.81710499999463,
+        "kind": "request",
+        "path": "/static/:asset.css"
+      },
+      {
+        "ms": 97.30098999998881,
+        "kind": "response",
+        "path": "/"
+      },
+      {
+        "ms": 282.7333799999906,
+        "kind": "response",
+        "path": "/static/:asset.css"
+      },
+      {
+        "ms": 398.2982439999905,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 518.8675809999986,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 560.5915029999887,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 584.4549669999979,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 622.8705999999947,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 629.6273279999878,
+        "kind": "request",
+        "path": "/api/v1/session"
+      },
+      {
+        "ms": 633.0411800000002,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 633.320704999991,
+        "kind": "request",
+        "path": "/api/v1/ws-ticket"
+      },
+      {
+        "ms": 633.5824659999926,
+        "kind": "request",
+        "path": "/api/v1/recovery"
+      },
+      {
+        "ms": 690.7038839999877,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 691.2584809999971,
+        "kind": "response",
+        "path": "/api/v1/session"
+      },
+      {
+        "ms": 693.8045129999955,
+        "kind": "response",
+        "path": "/api/v1/recovery"
+      },
+      {
+        "ms": 694.4182839999994,
+        "kind": "response",
+        "path": "/api/v1/ws-ticket"
+      },
+      {
+        "ms": 696.5083669999876,
+        "kind": "request",
+        "path": "/api/v1/doctor"
+      },
+      {
+        "ms": 759.9613889999891,
+        "kind": "response",
+        "path": "/api/v1/doctor"
+      },
+      {
+        "ms": 767.6033709999901,
+        "kind": "ws",
+        "bytes": 34,
+        "type": "resync"
+      },
+      {
+        "ms": 768.4784689999942,
+        "kind": "request",
+        "path": "/api/v1/groups"
+      },
+      {
+        "ms": 770.2197759999981,
+        "kind": "request",
+        "path": "/api/v1/bots"
+      },
+      {
+        "ms": 774.3367270000017,
+        "kind": "request",
+        "path": "/api/v1/projects"
+      },
+      {
+        "ms": 774.5493049999932,
+        "kind": "request",
+        "path": "/api/v1/settings"
+      },
+      {
+        "ms": 774.7357709999924,
+        "kind": "request",
+        "path": "/api/v1/previews"
+      },
+      {
+        "ms": 774.9261619999888,
+        "kind": "request",
+        "path": "/api/v1/browser/tabs"
+      },
+      {
+        "ms": 775.1034979999968,
+        "kind": "request",
+        "path": "/api/v1/routines"
+      },
+      {
+        "ms": 775.2949729999964,
+        "kind": "request",
+        "path": "/api/v1/routine-runs"
+      },
+      {
+        "ms": 775.4751629999955,
+        "kind": "request",
+        "path": "/api/v1/notifications"
+      },
+      {
+        "ms": 775.6537319999916,
+        "kind": "request",
+        "path": "/api/v1/machines"
+      },
+      {
+        "ms": 775.8351289999991,
+        "kind": "request",
+        "path": "/api/v1/workspace/activity"
+      },
+      {
+        "ms": 776.0129659999948,
+        "kind": "request",
+        "path": "/api/v1/runs"
+      },
+      {
+        "ms": 827.9140469999984,
+        "kind": "response",
+        "path": "/api/v1/groups"
+      },
+      {
+        "ms": 830.732302999997,
+        "kind": "request",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 830.941783000002,
+        "kind": "request",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 831.1346899999917,
+        "kind": "request",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 833.3617010000016,
+        "kind": "response",
+        "path": "/api/v1/projects"
+      },
+      {
+        "ms": 858.7294809999876,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 858.8841209999955,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 859.9702709999983,
+        "kind": "response",
+        "path": "/api/v1/bots"
+      },
+      {
+        "ms": 884.6245609999896,
+        "kind": "response",
+        "path": "/api/v1/settings"
+      },
+      {
+        "ms": 892.4982109999983,
+        "kind": "response",
+        "path": "/api/v1/browser/tabs"
+      },
+      {
+        "ms": 892.6406149999966,
+        "kind": "response",
+        "path": "/api/v1/previews"
+      },
+      {
+        "ms": 962.0215489999973,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 967.8698900000018,
+        "kind": "work-open"
+      },
+      {
+        "ms": 990.8891949999961,
+        "kind": "response",
+        "path": "/api/v1/routines"
+      },
+      {
+        "ms": 993.7775379999948,
+        "kind": "response",
+        "path": "/api/v1/notifications"
+      },
+      {
+        "ms": 994.640698999996,
+        "kind": "response",
+        "path": "/api/v1/routine-runs"
+      },
+      {
+        "ms": 995.1976789999899,
+        "kind": "response",
+        "path": "/api/v1/machines"
+      },
+      {
+        "ms": 1194.4878190000018,
+        "kind": "response",
+        "path": "/api/v1/workspace/activity"
+      },
+      {
+        "ms": 1195.1734369999904,
+        "kind": "response",
+        "path": "/api/v1/runs"
+      },
+      {
+        "ms": 1201.4195699999982,
+        "kind": "response",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 1202.1888899999904,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 1202.3100489999924,
+        "kind": "response",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 1202.4639779999998,
+        "kind": "response",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 1205.0882249999995,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 1206.7749839999888,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 1206.9010839999974,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 1207.0036899999977,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 1207.1024599999946,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 1207.2181409999903,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 1207.3173509999906,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 1207.4128689999925,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 1207.5119249999989,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 1238.5321209999966,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 1238.7437930000015,
+        "kind": "sidebar-visible"
+      },
+      {
+        "ms": 1301.0435099999886,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 1301.295597999997,
+        "kind": "request",
+        "path": "/api/v1/groups/:id/people"
+      },
+      {
+        "ms": 1301.4842910000007,
+        "kind": "request",
+        "path": "/api/v1/threads/:id/messages"
+      },
+      {
+        "ms": 1301.6587169999984,
+        "kind": "request",
+        "path": "/api/v1/threads/:id/runs"
+      },
+      {
+        "ms": 1311.2198300000018,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 1311.3631279999972,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 1311.4544219999952,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 1311.5438799999974,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 1312.0035139999964,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 1312.0968799999973,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 1349.023378999991,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 1349.1975929999899,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 1349.3284500000009,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 1349.4413169999898,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 1508.4645339999988,
+        "kind": "response",
+        "path": "/api/v1/groups/:id/people"
+      },
+      {
+        "ms": 1543.3913459999894,
+        "kind": "response",
+        "path": "/api/v1/threads/:id/messages"
+      },
+      {
+        "ms": 1569.5565979999956,
+        "kind": "response",
+        "path": "/api/v1/threads/:id/runs"
+      },
+      {
+        "ms": 1569.6950099999958,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 1826.7199509999919,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 1828.5122109999938,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 1828.6072199999908,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 1828.698264999999,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 1828.7900870000012,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 1828.8812439999892,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 1828.9713069999998,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 1829.0624069999903,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 1829.1726449999987,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 1829.3194089999888,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 1925.3792790000007,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 1925.5945669999928,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 1925.7843979999889,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 1929.1865959999996,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 1929.3966789999977,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 1929.5828089999995,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 1929.7784759999922,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 1929.9605509999965,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 1930.1691189999983,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 1930.4200189999974,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2014.4753019999916,
+        "kind": "messages-visible"
+      },
+      {
+        "ms": 2271.5830559999886,
+        "kind": "request",
+        "path": "/"
+      },
+      {
+        "ms": 2381.3777869999903,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2381.565883999996,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2382.9227059999976,
+        "kind": "request",
+        "path": "/static/:asset.css"
+      },
+      {
+        "ms": 2383.0576259999943,
+        "kind": "response",
+        "path": "/static/:asset.css"
+      },
+      {
+        "ms": 2383.4296919999906,
+        "kind": "response",
+        "path": "/"
+      },
+      {
+        "ms": 2447.6658259999967,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2448.522425999996,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2467.675449999995,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 2530.283116999999,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 2536.460250999997,
+        "kind": "request",
+        "path": "/api/v1/session"
+      },
+      {
+        "ms": 2537.823151999997,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 2538.0040670000017,
+        "kind": "request",
+        "path": "/api/v1/ws-ticket"
+      },
+      {
+        "ms": 2538.1754109999893,
+        "kind": "request",
+        "path": "/api/v1/recovery"
+      },
+      {
+        "ms": 2599.1449900000007,
+        "kind": "response",
+        "path": "/api/v1/session"
+      },
+      {
+        "ms": 2599.423278000002,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 2619.432305999988,
+        "kind": "request",
+        "path": "/api/v1/doctor"
+      },
+      {
+        "ms": 2621.0149729999976,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 2621.199424999999,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 2621.3526999999885,
+        "kind": "request",
+        "path": "/api/v1/groups/:id/people"
+      },
+      {
+        "ms": 2627.9967079999915,
+        "kind": "response",
+        "path": "/api/v1/ws-ticket"
+      },
+      {
+        "ms": 2628.2222550000006,
+        "kind": "response",
+        "path": "/api/v1/recovery"
+      },
+      {
+        "ms": 2654.3294729999907,
+        "kind": "work-open"
+      },
+      {
+        "ms": 2665.627259000001,
+        "kind": "response",
+        "path": "/api/v1/doctor"
+      },
+      {
+        "ms": 2684.4659939999983,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 2684.6655459999893,
+        "kind": "response",
+        "path": "/api/v1/groups/:id/people"
+      },
+      {
+        "ms": 2694.343593999991,
+        "kind": "sidebar-visible"
+      },
+      {
+        "ms": 2702.649093999993,
+        "kind": "ws",
+        "bytes": 34,
+        "type": "resync"
+      },
+      {
+        "ms": 2704.0859819999896,
+        "kind": "request",
+        "path": "/api/v1/groups"
+      },
+      {
+        "ms": 2704.297894999996,
+        "kind": "request",
+        "path": "/api/v1/bots"
+      },
+      {
+        "ms": 2704.462155999994,
+        "kind": "request",
+        "path": "/api/v1/projects"
+      },
+      {
+        "ms": 2704.62954899999,
+        "kind": "request",
+        "path": "/api/v1/settings"
+      },
+      {
+        "ms": 2706.9032069999957,
+        "kind": "request",
+        "path": "/api/v1/previews"
+      },
+      {
+        "ms": 2707.03646399999,
+        "kind": "request",
+        "path": "/api/v1/browser/tabs"
+      },
+      {
+        "ms": 2709.832945000002,
+        "kind": "request",
+        "path": "/api/v1/routines"
+      },
+      {
+        "ms": 2710.0108150000015,
+        "kind": "request",
+        "path": "/api/v1/routine-runs"
+      },
+      {
+        "ms": 2710.173075999992,
+        "kind": "request",
+        "path": "/api/v1/notifications"
+      },
+      {
+        "ms": 2710.280276999998,
+        "kind": "request",
+        "path": "/api/v1/machines"
+      },
+      {
+        "ms": 2710.3851339999965,
+        "kind": "request",
+        "path": "/api/v1/workspace/activity"
+      },
+      {
+        "ms": 2710.4931989999895,
+        "kind": "request",
+        "path": "/api/v1/runs"
+      },
+      {
+        "ms": 2738.8400599999877,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 2769.779706000001,
+        "kind": "response",
+        "path": "/api/v1/groups"
+      },
+      {
+        "ms": 2773.347142999992,
+        "kind": "response",
+        "path": "/api/v1/bots"
+      },
+      {
+        "ms": 2773.616651999997,
+        "kind": "response",
+        "path": "/api/v1/projects"
+      },
+      {
+        "ms": 2773.755263999992,
+        "kind": "response",
+        "path": "/api/v1/settings"
+      },
+      {
+        "ms": 2773.887057,
+        "kind": "response",
+        "path": "/api/v1/previews"
+      },
+      {
+        "ms": 2777.318748999998,
+        "kind": "request",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 2777.491894999999,
+        "kind": "request",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 2778.20707199999,
+        "kind": "request",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 2881.334241999997,
+        "kind": "response",
+        "path": "/api/v1/browser/tabs"
+      },
+      {
+        "ms": 2881.584495999996,
+        "kind": "response",
+        "path": "/api/v1/routines"
+      },
+      {
+        "ms": 2881.677641000002,
+        "kind": "response",
+        "path": "/api/v1/notifications"
+      },
+      {
+        "ms": 2882.1888039999903,
+        "kind": "response",
+        "path": "/api/v1/machines"
+      },
+      {
+        "ms": 2882.3244299999933,
+        "kind": "response",
+        "path": "/api/v1/routine-runs"
+      },
+      {
+        "ms": 2883.782447999998,
+        "kind": "response",
+        "path": "/api/v1/workspace/activity"
+      },
+      {
+        "ms": 2887.6987139999983,
+        "kind": "response",
+        "path": "/api/v1/runs"
+      },
+      {
+        "ms": 2890.5281169999944,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 2890.7413709999964,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 2893.8448859999917,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 2894.06350199999,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 2894.2414369999897,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 2894.4198939999915,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 2894.5888459999987,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 2894.880825,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 2895.054569999993,
+        "kind": "request",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 2908.664223999993,
+        "kind": "response",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 2908.8099939999956,
+        "kind": "response",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 2908.911435999995,
+        "kind": "response",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 2911.927728999988,
+        "kind": "request",
+        "path": "/api/v1/threads/:id/messages"
+      },
+      {
+        "ms": 2912.548060999994,
+        "kind": "request",
+        "path": "/api/v1/threads/:id/runs"
+      },
+      {
+        "ms": 2952.0532160000002,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 2954.9349159999983,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 2955.382442000002,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 2957.0256579999987,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 2958.4256289999903,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 2959.390048999994,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 3019.8209919999936,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 3020.1538569999975,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 3020.232183,
+        "kind": "response",
+        "path": "/api/v1/bots/:id/threads"
+      },
+      {
+        "ms": 3020.877564999988,
+        "kind": "response",
+        "path": "/api/v1/threads/:id/runs"
+      },
+      {
+        "ms": 3107.5064839999977,
+        "kind": "response",
+        "path": "/api/v1/threads/:id/messages"
+      },
+      {
+        "ms": 3251.622608999998,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3251.892989999993,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3256.640625,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3256.828615999999,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3256.9207159999933,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3257.0521020000015,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3257.1517840000015,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3257.277743999992,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3257.3612389999907,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3257.484475999998,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3257.5678259999986,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3257.694598000002,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3257.7781079999986,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3257.901635000002,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3257.983076999997,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3258.1076170000015,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3258.2032769999932,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3258.328564999989,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3260.7900089999894,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3260.9418250000017,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3301.100272999989,
+        "kind": "messages-visible"
+      }
+    ]
+  },
+  "syntheticActivityHeld": {
+    "latencyMs": 60,
+    "activityHeldUntilMessages": true,
+    "cold": {
+      "sidebarMs": 126.49289099999987,
+      "messagesMs": 385.22691600000053
+    },
+    "warm": {
+      "sidebarMs": 45.208975000000464,
+      "messagesMs": 231.5899929999996
+    },
+    "events": [
+      {
+        "ms": 52.45863499999996,
+        "kind": "request",
+        "path": "/"
+      },
+      {
+        "ms": 140.7218499999999,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 140.95448699999997,
+        "kind": "request",
+        "path": "/static/:asset.css"
+      },
+      {
+        "ms": 142.96525100000008,
+        "kind": "response",
+        "path": "/"
+      },
+      {
+        "ms": 414.3351499999999,
+        "kind": "response",
+        "path": "/static/:asset.css"
+      },
+      {
+        "ms": 675.859132,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 792.038916,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 828.049497,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 857.5216260000002,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 892.3122510000003,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 898.811134,
+        "kind": "request",
+        "path": "/api/v1/session"
+      },
+      {
+        "ms": 901.0681589999999,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 901.2670389999998,
+        "kind": "request",
+        "path": "/api/v1/ws-ticket"
+      },
+      {
+        "ms": 902.9138889999999,
+        "kind": "request",
+        "path": "/api/v1/recovery"
+      },
+      {
+        "ms": 963.459355,
+        "kind": "response",
+        "path": "/api/v1/session"
+      },
+      {
+        "ms": 964.3398110000003,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 967.7830159999999,
+        "kind": "request",
+        "path": "/api/v1/doctor"
+      },
+      {
+        "ms": 970.6396760000002,
+        "kind": "response",
+        "path": "/api/v1/recovery"
+      },
+      {
+        "ms": 970.807468,
+        "kind": "response",
+        "path": "/api/v1/ws-ticket"
+      },
+      {
+        "ms": 1116.513398,
+        "kind": "ws",
+        "bytes": 29,
+        "type": "resync"
+      },
+      {
+        "ms": 1120.960939,
+        "kind": "request",
+        "path": "/api/v1/groups"
+      },
+      {
+        "ms": 1121.1146250000002,
+        "kind": "request",
+        "path": "/api/v1/bots"
+      },
+      {
+        "ms": 1121.2491960000002,
+        "kind": "request",
+        "path": "/api/v1/projects"
+      },
+      {
+        "ms": 1121.3725,
+        "kind": "request",
+        "path": "/api/v1/settings"
+      },
+      {
+        "ms": 1121.494063,
+        "kind": "request",
+        "path": "/api/v1/previews"
+      },
+      {
+        "ms": 1121.6233540000003,
+        "kind": "request",
+        "path": "/api/v1/browser/tabs"
+      },
+      {
+        "ms": 1170.433466,
+        "kind": "request",
+        "path": "/api/v1/routines"
+      },
+      {
+        "ms": 1170.5657860000001,
+        "kind": "request",
+        "path": "/api/v1/routine-runs"
+      },
+      {
+        "ms": 1170.669152,
+        "kind": "request",
+        "path": "/api/v1/notifications"
+      },
+      {
+        "ms": 1170.771314,
+        "kind": "request",
+        "path": "/api/v1/machines"
+      },
+      {
+        "ms": 1170.8929000000003,
+        "kind": "request",
+        "path": "/api/v1/workspace/activity"
+      },
+      {
+        "ms": 1172.4331280000001,
+        "kind": "response",
+        "path": "/api/v1/doctor"
+      },
+      {
+        "ms": 1172.598963,
+        "kind": "request",
+        "path": "/api/v1/runs"
+      },
+      {
+        "ms": 1182.612565,
+        "kind": "response",
+        "path": "/api/v1/bots"
+      },
+      {
+        "ms": 1252.7822449999999,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 1253.8845019999999,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 1254.0600480000003,
+        "kind": "response",
+        "path": "/api/v1/groups"
+      },
+      {
+        "ms": 1366.7914280000005,
+        "kind": "response",
+        "path": "/api/v1/projects"
+      },
+      {
+        "ms": 1367.0334030000004,
+        "kind": "request",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 1368.3668239999997,
+        "kind": "response",
+        "path": "/api/v1/settings"
+      },
+      {
+        "ms": 1368.5658240000002,
+        "kind": "response",
+        "path": "/api/v1/browser/tabs"
+      },
+      {
+        "ms": 1369.3003660000004,
+        "kind": "response",
+        "path": "/api/v1/previews"
+      },
+      {
+        "ms": 1372.6530519999997,
+        "kind": "response",
+        "path": "/api/v1/routines"
+      },
+      {
+        "ms": 1372.8592980000003,
+        "kind": "response",
+        "path": "/api/v1/routine-runs"
+      },
+      {
+        "ms": 1373.009277,
+        "kind": "response",
+        "path": "/api/v1/machines"
+      },
+      {
+        "ms": 1373.9843920000003,
+        "kind": "response",
+        "path": "/api/v1/notifications"
+      },
+      {
+        "ms": 1374.0848969999997,
+        "kind": "response",
+        "path": "/api/v1/runs"
+      },
+      {
+        "ms": 1381.8723259999997,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 1382.1362010000003,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 1438.9278890000005,
+        "kind": "response",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 1684.7828799999997,
+        "kind": "work-open"
+      },
+      {
+        "ms": 1811.2850150000004,
+        "kind": "sidebar-visible"
+      },
+      {
+        "ms": 1907.3286040000003,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 1907.4538380000004,
+        "kind": "request",
+        "path": "/api/v1/groups/:id/people"
+      },
+      {
+        "ms": 1907.5688060000002,
+        "kind": "request",
+        "path": "/api/v1/threads/:id/messages"
+      },
+      {
+        "ms": 1907.677573,
+        "kind": "request",
+        "path": "/api/v1/threads/:id/runs"
+      },
+      {
+        "ms": 1971.2766000000001,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 1972.5212700000002,
+        "kind": "response",
+        "path": "/api/v1/threads/:id/messages"
+      },
+      {
+        "ms": 1973.4023399999996,
+        "kind": "response",
+        "path": "/api/v1/groups/:id/people"
+      },
+      {
+        "ms": 1973.4987549999996,
+        "kind": "response",
+        "path": "/api/v1/threads/:id/runs"
+      },
+      {
+        "ms": 2018.0874560000002,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2018.2139969999998,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2018.3147280000003,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2018.4190230000004,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2021.2694739999997,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2021.3861809999999,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2021.4930599999998,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2021.5930550000003,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2021.6916179999998,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2021.7931580000004,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2069.984064,
+        "kind": "messages-visible"
+      },
+      {
+        "ms": 2086.5306309999996,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2086.80594,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2088.8281239999997,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2089.0865400000002,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2089.3051400000004,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2106.412037,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2149.2308249999996,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2150.9779399999998,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2151.1907979999996,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2151.40172,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2328.4977980000003,
+        "kind": "request",
+        "path": "/"
+      },
+      {
+        "ms": 2507.46536,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 2507.6056099999996,
+        "kind": "request",
+        "path": "/static/:asset.css"
+      },
+      {
+        "ms": 2508.0853660000002,
+        "kind": "response",
+        "path": "/"
+      },
+      {
+        "ms": 3154.120959,
+        "kind": "response",
+        "path": "/static/:asset.css"
+      },
+      {
+        "ms": 3358.42523,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3381.019319,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3388.514438,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 3452.936081,
+        "kind": "response",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3453.51159,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 3456.015552,
+        "kind": "request",
+        "path": "/api/v1/session"
+      },
+      {
+        "ms": 3457.135324,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 3457.2610029999996,
+        "kind": "request",
+        "path": "/api/v1/ws-ticket"
+      },
+      {
+        "ms": 3458.153598,
+        "kind": "request",
+        "path": "/api/v1/recovery"
+      },
+      {
+        "ms": 3522.250409,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 3523.237715,
+        "kind": "response",
+        "path": "/api/v1/ws-ticket"
+      },
+      {
+        "ms": 3524.053906,
+        "kind": "response",
+        "path": "/api/v1/session"
+      },
+      {
+        "ms": 3524.62942,
+        "kind": "response",
+        "path": "/api/v1/recovery"
+      },
+      {
+        "ms": 3534.5755520000002,
+        "kind": "request",
+        "path": "/api/v1/doctor"
+      },
+      {
+        "ms": 3535.9315509999997,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 3536.0357599999998,
+        "kind": "request",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 3536.1345819999997,
+        "kind": "request",
+        "path": "/api/v1/groups/:id/people"
+      },
+      {
+        "ms": 3590.8610610000005,
+        "kind": "ws",
+        "bytes": 29,
+        "type": "resync"
+      },
+      {
+        "ms": 3590.976979,
+        "kind": "request",
+        "path": "/api/v1/groups"
+      },
+      {
+        "ms": 3591.099029,
+        "kind": "request",
+        "path": "/api/v1/bots"
+      },
+      {
+        "ms": 3595.1749010000003,
+        "kind": "request",
+        "path": "/api/v1/projects"
+      },
+      {
+        "ms": 3595.289643,
+        "kind": "request",
+        "path": "/api/v1/settings"
+      },
+      {
+        "ms": 3595.3885579999996,
+        "kind": "request",
+        "path": "/api/v1/previews"
+      },
+      {
+        "ms": 3595.485321,
+        "kind": "request",
+        "path": "/api/v1/browser/tabs"
+      },
+      {
+        "ms": 3595.581548,
+        "kind": "request",
+        "path": "/api/v1/routines"
+      },
+      {
+        "ms": 3595.6771770000005,
+        "kind": "request",
+        "path": "/api/v1/routine-runs"
+      },
+      {
+        "ms": 3595.7989589999997,
+        "kind": "request",
+        "path": "/api/v1/notifications"
+      },
+      {
+        "ms": 3595.9098910000002,
+        "kind": "request",
+        "path": "/api/v1/machines"
+      },
+      {
+        "ms": 3596.006241,
+        "kind": "request",
+        "path": "/api/v1/workspace/activity"
+      },
+      {
+        "ms": 3596.356052,
+        "kind": "request",
+        "path": "/api/v1/runs"
+      },
+      {
+        "ms": 3599.272132,
+        "kind": "work-open"
+      },
+      {
+        "ms": 3605.4421009999996,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 3605.537131,
+        "kind": "response",
+        "path": "/api/v1/doctor"
+      },
+      {
+        "ms": 3605.8162030000003,
+        "kind": "response",
+        "path": "/api/v1/health"
+      },
+      {
+        "ms": 3606.6940379999996,
+        "kind": "response",
+        "path": "/api/v1/groups/:id/people"
+      },
+      {
+        "ms": 3644.4897339999998,
+        "kind": "sidebar-visible"
+      },
+      {
+        "ms": 3656.5799589999997,
+        "kind": "response",
+        "path": "/api/v1/groups"
+      },
+      {
+        "ms": 3656.6925010000004,
+        "kind": "response",
+        "path": "/api/v1/bots"
+      },
+      {
+        "ms": 3657.4632110000002,
+        "kind": "request",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 3675.2247239999997,
+        "kind": "response",
+        "path": "/api/v1/projects"
+      },
+      {
+        "ms": 3675.336881,
+        "kind": "response",
+        "path": "/api/v1/settings"
+      },
+      {
+        "ms": 3675.4224000000004,
+        "kind": "response",
+        "path": "/api/v1/browser/tabs"
+      },
+      {
+        "ms": 3675.537179,
+        "kind": "response",
+        "path": "/api/v1/previews"
+      },
+      {
+        "ms": 3720.587872,
+        "kind": "response",
+        "path": "/api/v1/routine-runs"
+      },
+      {
+        "ms": 3720.780057,
+        "kind": "response",
+        "path": "/api/v1/routines"
+      },
+      {
+        "ms": 3722.273011,
+        "kind": "response",
+        "path": "/api/v1/machines"
+      },
+      {
+        "ms": 3723.60703,
+        "kind": "response",
+        "path": "/api/v1/notifications"
+      },
+      {
+        "ms": 3725.0412560000004,
+        "kind": "response",
+        "path": "/api/v1/runs"
+      },
+      {
+        "ms": 3725.3947390000003,
+        "kind": "response",
+        "path": "/api/v1/groups/:id/threads"
+      },
+      {
+        "ms": 3729.5279490000003,
+        "kind": "request",
+        "path": "/api/v1/threads/:id/messages"
+      },
+      {
+        "ms": 3730.668648,
+        "kind": "request",
+        "path": "/api/v1/threads/:id/runs"
+      },
+      {
+        "ms": 3793.789087,
+        "kind": "response",
+        "path": "/api/v1/threads/:id/messages"
+      },
+      {
+        "ms": 3794.4207930000002,
+        "kind": "response",
+        "path": "/api/v1/threads/:id/runs"
+      },
+      {
+        "ms": 3816.1733910000003,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3816.3257949999997,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3816.4902250000005,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3816.661196,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3820.4969499999997,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3820.6224469999997,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3820.7946680000005,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3820.920069,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3821.0272270000005,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3821.248805,
+        "kind": "request",
+        "path": "/static/:asset.js"
+      },
+      {
+        "ms": 3830.8548950000004,
+        "kind": "messages-visible"
+      }
+    ]
+  }
+}
