@@ -52,10 +52,12 @@ the provider misses the text target.
 
 Standalone greetings (Portuguese and English) use a tool-free turn with low reasoning and a compact
 prompt preserving bot identity, SOUL and reviewed memory. Tasks, attachments, routines, continuations,
-active goals keep the bot's settings. A standalone greeting defers prior tool summaries to the next
-task, where recorded partial effects and interrupted actions remain available. Switching between chat and task
-capabilities replaces the native session. A standalone greeting does not hydrate task-history bodies
-or construct a handoff; subsequent tasks receive the durable history handoff and their tools. Tool-free turns use a compact system prompt when the CLI supports replacing
+active goals keep the bot's settings. With fast conversation enabled, a standalone greeting defers prior
+tool summaries to the next task, where recorded partial effects and interrupted actions remain available.
+Opting out keeps those summaries in the greeting as well as the configured reasoning effort and tools.
+Switching between chat and task capabilities replaces the native session. A fast standalone greeting
+does not hydrate task-history bodies or construct a handoff; subsequent tasks receive the durable
+history handoff and their tools. Tool-free turns use a compact system prompt when the CLI supports replacing
 its default prompt; subscription login remains unchanged. Tool-free local sessions using the host login retain a CLI process for up to
 60 seconds of inactivity, with at most four retained processes per provider and 100 turns per process.
 The managed provider config is compared through the bounded private-file reader on each turn.

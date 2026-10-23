@@ -71,7 +71,7 @@ import { prepareConversationSession } from "./conversation-preparation"
 import { getDocumentInput } from "./document-input"
 import { type GoalDeadlineClock, startGoalDeadline } from "./goal-deadline"
 import { createGoalRuntime, getGoalPrompt } from "./goals"
-import { isConversationTurn } from "./greeting"
+import { isConversationTurn, isGreetingTurn } from "./greeting"
 import { buildHandoffPacket } from "./handoff"
 import { composeDeveloperInstructions } from "./instructions"
 import { isMcpStartupError } from "./mcp-startup"
@@ -1528,7 +1528,11 @@ export const createRuntimeEngine = ({
     recordTiming(run, "requestReadyAt")
     const goal = goals.getForRun(run.id)
     const standaloneGreeting =
-      !goal && !carryover && !unacceptedRequest && isGreetingTurn(run.trigger, request?.parts ?? [], requestText)
+      bot.fastConversation !== false &&
+      !goal &&
+      !carryover &&
+      !unacceptedRequest &&
+      isGreetingTurn(run.trigger, request?.parts ?? [], requestText)
     const toolSummary = standaloneGreeting ? null : tools.summary(store, thread.id, request?.id)
     recordTiming(run, "toolSummaryReadyAt")
     // Optional Mem0 recall rides on this turn's input only: the stored message stays as the user wrote it.

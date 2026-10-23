@@ -3385,6 +3385,46 @@ describe("turn latency milestones", () => {
     expect(Math.max(...firstText)).toBeLessThan(5000)
   })
 
+  test.each([true, false])("fast conversation %s preserves partial effects for the next task", async (enabled) => {
+    const current = await fixture({ fastConversation: enabled, scenario: { deltas: ["Olá!"] } })
+    value = current
+    const requestLogPath = join(current.assets, "requests.jsonl")
+    await Bun.write(current.scenario, JSON.stringify({ requestLogPath, deltas: ["Olá!"] }))
+    const previous = await sendTurn(current, "Prepare o relatório")
+    const database = current.runtime.kernel.db as Database
+    database
+      .query(`INSERT INTO tool_resolutions(run_id, call_id, thread_id, part_json, resolution, resolved_at)
+        VALUES (?, ?, ?, ?, 'completed_unobserved', 1)`)
+      .run(
+        previous.id,
+        "synthetic-partial-write",
+        current.thread.id,
+        JSON.stringify({
+          type: "command",
+          callId: "synthetic-partial-write",
+          command: "write report.txt",
+          outputTail: "Synthetic partial report was saved",
+          exitCode: 0,
+        }),
+      )
+
+    const greeting = await sendTurn(current, "oi")
+    const task = await sendTurn(current, "Confira o relatório")
+    const requests = (await Bun.file(requestLogPath).text())
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
+    const turns = requests.filter((request) => request.method === "turn/start")
+    const greetingInput = JSON.stringify(turns[1]?.params.input)
+    const taskInput = JSON.stringify(turns[2]?.params.input)
+
+    expect(greeting.status).toBe("succeeded")
+    expect(task.status).toBe("succeeded")
+    expect(greetingInput.includes("Synthetic partial report was saved")).toBe(!enabled)
+    expect(taskInput).toContain("Synthetic partial report was saved")
+    expect(taskInput).toContain("completed_unobserved")
+  })
+
   test("cancellation during instruction review never spawns a provider", async () => {
     const spawns: Array<Parameters<Kernel["spawnTree"]>[0]> = []
     const current = await fixture({ onProviderSpawn: (input) => spawns.push(input) })

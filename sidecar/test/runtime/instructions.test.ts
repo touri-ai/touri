@@ -349,7 +349,7 @@ test("greeting instructions do not wait for connected project discovery", async 
     greetingOnly: true,
   })
 
-  expect(instructions).toContain("standalone greeting without tools")
+  expect(instructions).toContain("brief conversation without tools")
 })
 
 test("B10: raising access quarantines lower-mode memory until exact-content human review", async () => {
