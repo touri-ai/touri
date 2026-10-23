@@ -672,12 +672,18 @@ test("unchanged logical recovery snapshots do not rewrite member ownership", asy
   saveGroupRecovery(h.database)
   await h.getTasks()
   await h.getTasks()
-  const before = h.database.query("SELECT total_changes() AS count").get()
+  h.database.exec(`CREATE TEMP TABLE recovery_ownership_writes (task_id TEXT NOT NULL);
+    CREATE TEMP TRIGGER record_recovery_insert AFTER INSERT ON recovery_tasks
+    BEGIN INSERT INTO recovery_ownership_writes VALUES (NEW.id); END;
+    CREATE TEMP TRIGGER record_recovery_update AFTER UPDATE ON recovery_tasks
+    BEGIN INSERT INTO recovery_ownership_writes VALUES (NEW.id); END;`)
 
+  // Background maintenance can write other tables while recovery reads are in flight.
+  h.database.query("UPDATE settings SET updated_at=updated_at+1 WHERE key='nativeNotifications'").run()
   await h.getTasks()
   await h.getTasks()
 
-  expect(h.database.query("SELECT total_changes() AS count").get()).toEqual(before)
+  expect(h.database.query("SELECT COUNT(*) AS count FROM recovery_ownership_writes").get()).toEqual({ count: 0 })
 })
 
 test.each(["channel", "all"])("archiving %s preserves one logical task with every uncertain effect", async (scope) => {
