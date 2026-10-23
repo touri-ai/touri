@@ -30,6 +30,7 @@ const inputText = (input: StartTurnArgs["input"]): string =>
 
 const errorText = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 const shellTool = (name: string): boolean => name === "Bash" || name === "PowerShell"
+const EMPTY_RESPONSE_ERROR = "O provedor terminou sem responder. Tente de novo."
 
 const partFromContent = (value: unknown): MessagePart | null => {
   const content = asRecord(value)
@@ -121,6 +122,8 @@ export const createClaudeAdapter = ({
 
   const startAttempt = async (
     args: StartTurnArgs,
+    retriedEmptyResponse = false,
+    resumeSessionId?: string,
   ): Promise<ReturnType<ProviderAdapter["startTurn"]> extends Promise<infer T> ? T : never> => {
     const env = args.execution ? { ...args.env } : buildChildEnv({ base: process.env, overrides: args.env })
     const resolved = args.execution
@@ -147,7 +150,7 @@ export const createClaudeAdapter = ({
             developerInstructions: JSON.stringify([args.developerInstructions, userSettings.settings]),
           })
         : null
-    const retained = warmSessions.getAvailable(warmKey, args.session?.externalSessionId)
+    const retained = warmSessions.getAvailable(warmKey, resumeSessionId ?? args.session?.externalSessionId)
     if (!retained) {
       await claudeConfig({ args, root: kernel.paths.appData, path: configPath })
       await (args.execution?.writeFile ?? writePrivateFileAsync)({
@@ -161,7 +164,8 @@ export const createClaudeAdapter = ({
         content: args.developerInstructions,
       })
     }
-    const sessionId = args.session?.externalSessionId ?? randomUUID()
+    const sessionId = resumeSessionId ?? args.session?.externalSessionId ?? randomUUID()
+    const hasSession = args.session !== null || resumeSessionId !== undefined
     const commandArgs = [
       "-p",
       ...(args.conversationOnly ? ["--tools", ""] : []),
@@ -171,7 +175,7 @@ export const createClaudeAdapter = ({
       "stream-json",
       "--verbose",
       "--include-partial-messages",
-      args.session ? "--resume" : "--session-id",
+      hasSession ? "--resume" : "--session-id",
       sessionId,
       "--mcp-config",
       configPath,
@@ -499,7 +503,7 @@ export const createClaudeAdapter = ({
           complete({
             success: false,
             errorCode: "cli_protocol",
-            error: "O provedor terminou sem responder. Tente de novo.",
+            error: EMPTY_RESPONSE_ERROR,
           })
           return
         }
@@ -549,7 +553,7 @@ export const createClaudeAdapter = ({
         mcpError = mcpStartupError({ diagnostic: text })
         complete({ success: false, errorCode: "cli_protocol", error: mcpError })
       }
-      if (args.session && hasResumeDiagnostic(text)) {
+      if (hasSession && hasResumeDiagnostic(text)) {
         const classified = classifyProviderError(text)
         complete({
           success: false,
@@ -591,7 +595,7 @@ export const createClaudeAdapter = ({
     // Process exit can arrive before the final stderr chunk. Classify only after that drain too.
     if (!output.success && output.errorCode === "cli_crash" && !stopped) {
       const errorCode = classifyProviderError(stderr)
-      if (errorCode === "cli_auth" || (args.session && hasResumeDiagnostic(stderr)))
+      if (errorCode === "cli_auth" || (hasSession && hasResumeDiagnostic(stderr)))
         return {
           success: false,
           errorCode: errorCode === "unknown" ? "cli_protocol" : errorCode,
@@ -599,6 +603,15 @@ export const createClaudeAdapter = ({
         }
     }
     if (!completed) spawned.kill("SIGTERM")
+    if (
+      !retriedEmptyResponse &&
+      !args.signal.aborted &&
+      !output.success &&
+      output.errorCode === "cli_protocol" &&
+      output.error === EMPTY_RESPONSE_ERROR
+    )
+      return startAttempt(args, true, externalSessionId)
+
     return output
   }
 
