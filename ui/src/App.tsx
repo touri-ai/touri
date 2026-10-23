@@ -1229,6 +1229,7 @@ const AppContent = ({ kernel }: AppProps) => {
                   loading={data.loading}
                   loadError={data.bots.length === 0 ? data.notice : null}
                   bots={data.bots}
+                  groups={data.groups}
                   selectedBotId={data.selectedBotId}
                   routines={data.routines}
                   routineRuns={data.routineRuns}

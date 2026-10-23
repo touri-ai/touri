@@ -1,4 +1,4 @@
-import type { Bot, HostKind, Id, Message, Routine, RoutineRun } from "@touri/contracts"
+import type { Bot, BotGroup, HostKind, Id, Message, Routine, RoutineRun } from "@touri/contracts"
 import { AVATAR_COLOR_CHOICES, avatarColorFor } from "@touri/contracts/avatar"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigation"
@@ -23,6 +23,7 @@ type CronScreenProps = {
   loading?: boolean
   loadError?: string | null
   selectedBotId: Id | null
+  groups?: Array<BotGroup>
   bots: Array<Bot>
   routines: Array<Routine>
   routineRuns: Array<RoutineRun>
@@ -92,6 +93,7 @@ export const calendarBotColors = (bots: Array<Bot>): Map<Id, string> => {
 
 const CronScreen = ({
   bots,
+  groups = [],
   host = "computer",
   initialBotFilter,
   history,
@@ -589,6 +591,7 @@ const CronScreen = ({
           initial={editor.routine ? draftFromRoutine(editor.routine) : newRoutineDraft(editor.botId)}
           routineId={editor.routine?.id}
           bots={bots}
+          groups={groups}
           host={host}
           actions={actions}
           onClose={() => {
