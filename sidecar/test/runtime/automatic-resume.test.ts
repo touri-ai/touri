@@ -130,8 +130,8 @@ const send = (engine: ReturnType<typeof createRuntimeEngine>) => {
   return result.run
 }
 
-const makeChannelFixture = async () => {
-  const fixture = await makeFixture(["timeout", "timeout"], undefined, 1_500)
+const makeChannelFixture = async (backoff = 1_500) => {
+  const fixture = await makeFixture(["timeout", "timeout"], undefined, backoff)
   await fixture.engine.ready
   const data = createGroupStore(fixture.kernel)
   const group = data.save({
@@ -159,7 +159,7 @@ const makeChannelFixture = async () => {
   })
   if (!request.success) throw new Error(request.error)
   const openGroups = (engine: ReturnType<typeof createRuntimeEngine>) => {
-    const groups = createGroupRuntime(fixture.kernel, engine, undefined, 1_500)
+    const groups = createGroupRuntime(fixture.kernel, engine, undefined, backoff)
     fixture.kernel.services.provide("groups.runtime", groups)
     cleanups.add(async () => {
       groups.shutdown()
@@ -432,6 +432,47 @@ test.each(["restart", "stop"] as const)("channel backoff survives %s without dup
   expect(fixture.startTurn).toHaveBeenCalledTimes(2)
   expect(fixture.db.query("SELECT state FROM automatic_resume_jobs WHERE run_id=?").get(pending.run_id)).toEqual({
     state: "abandoned",
+  })
+})
+
+test("a new channel request starts without waiting for an older recovery deadline", async () => {
+  const fixture = await makeChannelFixture(60_000)
+  await waitFor(
+    () =>
+      fixture.startTurn.mock.calls.length === 2 &&
+      !!fixture.db.query("SELECT 1 FROM automatic_resume_jobs WHERE state='pending'").get(),
+  )
+  const request = fixture.store.insertMessage({
+    message: {
+      id: "new-channel-request",
+      threadId: fixture.thread.id,
+      parentId: fixture.store.getThread({ threadId: fixture.thread.id })?.activeLeafId ?? null,
+      role: "user",
+      kind: "text",
+      status: "complete",
+      runId: null,
+      text: "@Demo prepare o novo resumo",
+      parts: [],
+      sender: { id: "demo-person", name: "Pessoa Demo", kind: "person" },
+      source: "local",
+    },
+  })
+  if (!request.success) throw new Error(request.error)
+
+  const next = fixture.groups.enqueue({
+    threadId: fixture.thread.id,
+    requestMessageId: request.message.id,
+    trigger: "user",
+  })
+  if (!next.success) throw new Error(next.error)
+  await waitFor(
+    () => fixture.groups.listRuns(fixture.thread.id).find((run) => run.id === next.run.id)?.status === "succeeded",
+  )
+
+  expect(fixture.startTurn).toHaveBeenCalledTimes(3)
+  expect(JSON.stringify(fixture.startTurn.mock.calls[2]?.[0].input)).toContain("novo resumo")
+  expect(fixture.db.query("SELECT COUNT(*) AS count FROM automatic_resume_jobs WHERE state='pending'").get()).toEqual({
+    count: 0,
   })
 })
 

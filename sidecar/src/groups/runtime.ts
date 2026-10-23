@@ -338,14 +338,28 @@ export const createGroupRuntime = (
         run: getGroupRun(engine.getRunSnapshot?.(run) ?? run, turn.run.threadId, turn.run.id),
       })
     publishRecovery()
+    const superseded = new AbortController()
+    const dispose = kernel.subscribe(({ event }) => {
+      if (
+        event.type === "run.updated" &&
+        event.run.threadId === turn.run.threadId &&
+        event.run.id !== turn.run.id &&
+        event.run.groupTurnId !== turn.run.id &&
+        event.run.status === "queued"
+      )
+        superseded.abort()
+    })
     try {
       const deadline = turn.deadline ?? job.dueAt
-      await delay(Math.max(0, Math.min(job.dueAt, deadline) - Date.now()), undefined, {
-        signal: turn.controller.signal,
-      })
+      if (canResumeMember(run, turn))
+        await delay(Math.max(0, Math.min(job.dueAt, deadline) - Date.now()), undefined, {
+          signal: AbortSignal.any([turn.controller.signal, superseded.signal]),
+        })
       if (canResumeMember(run, turn)) return true
     } catch (error) {
       if (turn.controller.signal.reason === RESTART_ABORT_REASON) throw error
+    } finally {
+      dispose()
     }
     await writeDatabaseAsync(db, () => automaticResumes.saveJob({ ...job, state: "abandoned" }))
     publishRecovery()

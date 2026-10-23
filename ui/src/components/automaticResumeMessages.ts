@@ -5,21 +5,27 @@ export const getAutomaticResumeMessages = (messages: Message[], runs: Run[]): Me
   if (!runs.some((run) => run.automaticResumeFromRunId)) return messages
 
   const runsById = new Map(runs.map((run) => [run.id, run]))
-  const getRoot = (runId: string): string => {
+  const getLineage = (runId: string): { root: string; depth: number } => {
     const visited = new Set<string>()
     let current = runId
     while (!visited.has(current) && visited.size < 32) {
       visited.add(current)
       const previous = runsById.get(current)?.automaticResumeFromRunId
-      if (!previous) return current
+      if (!previous) return { root: current, depth: visited.size - 1 }
       current = previous
     }
-    return runId
+    return { root: runId, depth: 0 }
   }
+  const lineages = new Map(runs.map((run) => [run.id, getLineage(run.id)]))
+  const getRoot = (runId: string): string => lineages.get(runId)?.root ?? runId
+  const getDepth = (runId: string): number => lineages.get(runId)?.depth ?? 0
   const latestRuns = runs.reduce((latest, run) => {
     const root = getRoot(run.id)
     const previous = latest.get(root)
-    if (!previous || run.queuedAt >= previous.queuedAt) latest.set(root, run)
+    const depth = getDepth(run.id)
+    const previousDepth = previous ? getDepth(previous.id) : -1
+    if (depth > previousDepth || (depth === previousDepth && run.queuedAt >= (previous?.queuedAt ?? 0)))
+      latest.set(root, run)
     return latest
   }, new Map<string, Run>())
   const chains = new Map<string, Message[]>()
@@ -34,13 +40,23 @@ export const getAutomaticResumeMessages = (messages: Message[], runs: Run[]): Me
     if (!latestRuns.get(root)?.automaticResumeFromRunId) return
     chains.set(root, [...(chains.get(root) ?? []), message])
   })
+  // Sort disposable chains by ancestry: shared-channel reloads can deliver replies newest first.
+  const orderedChains = new Map<string, Message[]>(
+    [...chains].map(([root, chain]) => [
+      root,
+      Array.from(chain).sort(
+        (first, second) =>
+          getDepth(first.runId ?? "") - getDepth(second.runId ?? "") || first.createdAt - second.createdAt,
+      ),
+    ]),
+  )
   return messages.flatMap((message) => {
     if (markers.has(message.id) && message.role === "system") return []
     if (message.role !== "assistant" || !message.runId) return [message]
     const root = getRoot(message.runId)
     const latestRun = latestRuns.get(root)
     if (!latestRun?.automaticResumeFromRunId) return [message]
-    const chain = chains.get(root) ?? [message]
+    const chain = orderedChains.get(root) ?? [message]
     if (chain[0]?.id !== message.id) return []
     const latest = chain.at(-1)
     if (!latest) return [message]

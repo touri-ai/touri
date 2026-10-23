@@ -208,6 +208,33 @@ it("combines partial output and the recovered answer in one original card", () =
   expect(screen.queryByRole("alert")).not.toBeInTheDocument()
 })
 
+it.each([1, 3])("orders a reversed recovery chain by ancestry with retry time %s", (queuedAt) => {
+  const messages = [
+    message({ id: "answer", runId: "retry", text: "Pronto.", parts: [{ type: "text", text: "Pronto." }] }),
+    getInterruptedMessage(),
+  ]
+  const runs = [
+    getInterruptedRun({
+      id: "retry",
+      status: "succeeded",
+      errorClass: null,
+      queuedAt,
+      automaticResumeFromRunId: "original",
+    }),
+    getInterruptedRun(),
+  ]
+
+  const visible = getAutomaticResumeMessages(messages, runs)
+  render(<VirtualMessageList messages={messages} runs={runs} onSwitchBranch={vi.fn()} onRetry={vi.fn()} />)
+
+  expect(visible).toHaveLength(1)
+  expect(visible[0]).toMatchObject({ id: "partial", runId: "retry", status: "complete" })
+  expect(visible[0]?.text).toBe("Preparei a tabela.\n\nPronto.")
+  expect(visible[0]?.parts.some((part) => part.type === "notice" && part.code === "run_failed")).toBe(false)
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  expect(document.querySelectorAll('.message-bubble[data-message-id="partial"]')).toHaveLength(1)
+})
+
 it("restores visible failure controls when automatic attempts are exhausted", () => {
   render(
     <VirtualMessageList
