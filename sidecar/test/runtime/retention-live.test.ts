@@ -48,7 +48,9 @@ test("retention keeps five streamed runs, concurrent history/work readers and St
   }).map(async ([key, path]) => {
     while (performance.now() - started < 3000) {
       const before = performance.now()
-      expect((await fixture.request(path)).status).toBe(200)
+      const response = await fixture.request(path)
+      await response.arrayBuffer()
+      expect(response.status).toBe(200)
       durations[key]?.push(performance.now() - before)
     }
   })
