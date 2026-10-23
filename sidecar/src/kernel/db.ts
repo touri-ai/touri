@@ -100,8 +100,12 @@ export const openDatabase = ({
     : null
   // A committed version is the migration checkpoint. Replaying old writes delays every current-store restart.
   if (current?.value === String(SCHEMA_VERSION)) return database
-  if (current?.value === "47") {
-    database.transaction(() => database.exec(hotReadIndexesSql))()
+  if (current?.value === "47" || current?.value === "48") {
+    database.transaction(() => {
+      if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'hot_read_indexes_version'").get())
+        database.exec(hotReadIndexesSql)
+      database.exec(requestRunsSql)
+    })()
     return database
   }
 
