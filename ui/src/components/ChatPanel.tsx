@@ -182,6 +182,7 @@ type VirtualMessageListProps = {
   showActivityStop?: boolean
   header?: ReactNode
   allMessages?: Array<Message>
+  flatHistory?: boolean
   timelineCards?: Array<{ id: string; createdAt: number; content: ReactNode }>
 }
 const emptyTimelineCards: NonNullable<VirtualMessageListProps["timelineCards"]> = []
@@ -258,6 +259,7 @@ export const VirtualMessageList = ({
   routines = [],
   routineRuns = [],
   allMessages = sourceMessages,
+  flatHistory = false,
   onSwitchBranch,
   onRetry,
   onEdit,
@@ -604,14 +606,16 @@ export const VirtualMessageList = ({
                           : saved.parts,
                     }
                   : saved
-              const siblings = allMessages.filter(
-                (candidate) =>
-                  candidate.threadId === message.threadId &&
-                  candidate.parentId === message.parentId &&
-                  candidate.role === message.role &&
-                  candidate.kind !== "notice",
-              )
-              const branchIndex = siblings.findIndex((candidate) => candidate.id === message.id)
+              const siblings = flatHistory
+                ? []
+                : allMessages.filter(
+                    (candidate) =>
+                      candidate.threadId === message.threadId &&
+                      candidate.parentId === message.parentId &&
+                      candidate.role === message.role &&
+                      candidate.kind !== "notice",
+                  )
+              const branchIndex = flatHistory ? 0 : siblings.findIndex((candidate) => candidate.id === message.id)
               return (
                 <div key={message.id} className="message-row" data-message-row={message.id}>
                   {(index === 0 || !sameCalendarDay(visible[index - 1]?.createdAt ?? 0, message.createdAt)) && (
@@ -1660,6 +1664,7 @@ export const ChatPanel = ({
                       routines={routines}
                       routineRuns={routineRuns}
                       allMessages={messages}
+                      flatHistory={Boolean(group)}
                       onSwitchBranch={(_message, siblings, index) => {
                         const next = siblings[index]
                         if (next) void onSwitchBranch(thread.id, next.id)
