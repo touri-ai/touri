@@ -85,6 +85,7 @@ const fixture = async ({
   interruptGraceMs,
   routineTimeoutMs,
   automaticConversationMode = "main",
+  resumeInterruptedTurns = true,
 }: {
   provider?: Bot["provider"]
   scenario?: Record<string, unknown>
@@ -92,6 +93,7 @@ const fixture = async ({
   interruptGraceMs?: number
   routineTimeoutMs?: number
   automaticConversationMode?: Bot["automaticConversationMode"]
+  resumeInterruptedTurns?: boolean
 } = {}): Promise<Fixture> => {
   // Keep runtime data and provider logs under a disposable repository fixture.
   const root = mkdtempSync(join(repoRoot, "sidecar", "test", ".runtime-fixture-"))
@@ -186,6 +188,9 @@ const fixture = async ({
   writeFileSync(join(bot.homeDir, "MEMORY.md"), "Memory fixture\n")
   seedDatabase({ database: runtime.kernel.db as Database, bot, thread })
   const database = runtime.kernel.db as Database
+  database
+    .query("INSERT INTO settings(key, value_json, updated_at) VALUES ('resumeInterruptedTurns', ?, 1)")
+    .run(JSON.stringify(resumeInterruptedTurns))
   const store = createTestStore({
     bot,
     thread,
@@ -954,7 +959,7 @@ test.serial("tool publications persist only changed parts and preserve completed
 })
 
 test.serial("crash classifies, retains partial output, carries over, and clears on the next turn", async () => {
-  const value = await fixture({ scenario: { crashAt: 2, deltas: ["partial ", "lost"] } })
+  const value = await fixture({ scenario: { crashAt: 2, deltas: ["partial ", "lost"] }, resumeInterruptedTurns: false })
   try {
     const request = addUser(value.store, value.thread, "first request")
     const first = value.engine.enqueue({ threadId: value.thread.id, requestMessageId: request.id, trigger: "user" })
@@ -2173,12 +2178,12 @@ test.serial("a Codex approval notifies with its request id and the decision reso
 })
 
 test.serial("a failed turn notifies turn-failed, a canceled turn notifies nothing", async () => {
-  const value = await fixture({ scenario: { crashAt: 2, deltas: ["partial ", "lost"] } })
+  const value = await fixture({ scenario: { crashAt: 2, deltas: ["partial ", "lost"] }, resumeInterruptedTurns: false })
   try {
     await initNotify(value.runtime.kernel)
     // With automatic resume on, a crash is continued instead of reported (resume-interrupted.test.ts).
     ;(value.runtime.kernel.db as Database).exec(
-      "INSERT INTO settings (key, value_json, updated_at) VALUES ('resumeInterruptedTurns', 'false', 1)",
+      "INSERT OR REPLACE INTO settings (key, value_json, updated_at) VALUES ('resumeInterruptedTurns', 'false', 1)",
     )
     const request = addUser(value.store, value.thread, "fail please")
     const run = value.engine.enqueue({ threadId: value.thread.id, requestMessageId: request.id, trigger: "user" })
@@ -2755,7 +2760,10 @@ test.serial("local Claude profiles follow grant-free and full-access bookkeeping
 })
 
 test("retry acknowledgements identify one persisted attempt, including after the attempt finishes", async () => {
-  const f = await fixture({ scenario: { crashAt: 1, events: [{ type: "delta", delta: "unused" }] } })
+  const f = await fixture({
+    scenario: { crashAt: 1, events: [{ type: "delta", delta: "unused" }] },
+    resumeInterruptedTurns: false,
+  })
   try {
     const request = addUser(f.store, f.thread, "Mensagem salva")
     const initial = f.engine.enqueue({ threadId: f.thread.id, requestMessageId: request.id, trigger: "user" })

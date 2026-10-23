@@ -127,7 +127,7 @@ const fixture = async (
       return { success: true as const, run }
     },
   }
-  const runtime = createGroupRuntime(host.kernel, engine)
+  const runtime = createGroupRuntime(host.kernel, engine, undefined, 1)
   const runtimes = new Set([runtime])
   cleanups.add(async () => {
     runtimes.forEach((current) => {
@@ -159,7 +159,7 @@ const fixture = async (
     return result.run
   }
   const restart = () => {
-    const resumed = createGroupRuntime(host.kernel, engine)
+    const resumed = createGroupRuntime(host.kernel, engine, undefined, 1)
     runtimes.add(resumed)
     return resumed
   }
@@ -323,7 +323,7 @@ test("a channel waiting for approval never resumes by itself", async () => {
   expect(f.db.query("SELECT COUNT(*) AS count FROM run_continuations").get()).toEqual({ count: 0 })
 })
 
-test("a confirmed action stays in history while the same task continues", async () => {
+test("a recorded command stays in history and blocks automatic replay", async () => {
   const f: Awaited<ReturnType<typeof fixture>> = await fixture(async (run, complete) => {
     if (f.order.length > 1) return complete("Plano conferido")
     const reply = f.store.insertMessage({
@@ -361,9 +361,9 @@ test("a confirmed action stays in history while the same task continues", async 
   })
 
   const run = f.send("@Lia confira o plano")
-  await until(() => f.persistence.getRun(run.id)?.status === "succeeded")
+  await until(() => f.persistence.getRun(run.id)?.status === "failed")
 
-  expect(f.order).toHaveLength(2)
+  expect(f.order).toHaveLength(1)
   expect(
     f.store
       .activePath({ threadId: f.thread.id })

@@ -10,14 +10,19 @@ export type ContinuationReason = "app_restart" | "provider_crash" | "permission_
 
 /** At most this many interrupted-turn continuations per original turn. */
 export const MAX_AUTO_CONTINUATIONS = 2
-/** A provider or bot computer that dies mid-turn is resumed once per original turn. */
-export const MAX_CRASH_CONTINUATIONS = 1
+/** A provider or bot computer that dies mid-turn is resumed at most twice per original turn. */
+export const MAX_CRASH_CONTINUATIONS = 2
 /** Only turns that were still active this recently are continued after a restart. */
 export const CONTINUATION_WINDOW_MS = 6 * 60 * 60_000
 /** Delay before resuming after the provider process or the bot computer died. */
-export const CRASH_RESUME_BACKOFF_MS = 3_000
+export const CRASH_RESUME_BACKOFF_MS = 60_000
 /** Provider failures that mean the process ended without a result, not that the request failed. */
-export const CRASH_ERROR_CLASSES: ReadonlyArray<RunErrorClass> = ["cli_crash", "oom", "machine_service_unavailable"]
+export const CRASH_ERROR_CLASSES: ReadonlyArray<RunErrorClass> = [
+  "cli_crash",
+  "oom",
+  "machine_service_unavailable",
+  "timeout",
+]
 
 export const continuationMarkers: Record<ContinuationReason, string> = {
   app_restart: "Retomado após reinício do touri",

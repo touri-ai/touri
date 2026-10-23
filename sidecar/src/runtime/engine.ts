@@ -51,6 +51,7 @@ import { ProviderLoginError } from "../vm/provider-login"
 import { redactVmEvents } from "../vm/redact-events"
 import { MachineServiceError } from "../vm/service-error"
 import { VmStageError, vmStage } from "../vm/stage"
+import { canAutomaticallyResumeFailure, createAutomaticResumeStore, hasUnsafeResumeActions } from "./automatic-resume"
 import { createClaudeAdapter } from "./claude/adapter"
 import { createCodexAdapter } from "./codex/adapter"
 import { COMMAND_OUTPUT_INTERVAL_MS, commandOutputTail } from "./command-output"
@@ -58,7 +59,6 @@ import { getDefaultMaxConcurrentRuns } from "./concurrency"
 import {
   CONTINUATION_WINDOW_MS,
   type ContinuationReason,
-  CRASH_ERROR_CLASSES,
   CRASH_RESUME_BACKOFF_MS,
   continuationMarkers,
   continuationPrompt,
@@ -242,6 +242,7 @@ type RuntimeEngine = {
     delegated?: boolean
     continuing?: boolean
     continuationFromRunId?: Id
+    continuationReason?: ContinuationReason
   }) => Result<{ run: Run }, "THREAD_NOT_FOUND" | "BOT_PAUSED" | "RUNTIME_DRAINING">
   getRunSnapshot: (run: Run) => Run
   getWorkRuns: () => Array<Run>
@@ -446,6 +447,9 @@ export const createRuntimeEngine = ({
   const notices = createRuntimeNotices({ kernel })
   const work: WorkState = createWorkState({ database: kernel.db as Database })
   const continuations = createRunContinuations({ database: kernel.db })
+  const automaticResumes = createAutomaticResumeStore(kernel.db)
+  const abandonedContinuations = new Set<Id>()
+  const pendingAbandonments = new Map<Id, Promise<void>>()
   const pendingContinuations = new Map<
     Id,
     { timer: ReturnType<typeof setTimeout>; run: Run; plan: ContinuationPlan; summary: string }
@@ -529,12 +533,19 @@ export const createRuntimeEngine = ({
       ...cloneRun(run),
       kind: metadata.kind ?? "execution",
       ...(metadata.groupTurnId ? { groupTurnId: metadata.groupTurnId } : {}),
+      automaticResumePending:
+        !abandonedContinuations.has(run.id) && automaticResumes.getJob(run.id)?.state === "pending",
+      automaticResumeFromRunId: getAutomaticPreviousRunId(run.id),
       groupThreadId,
       origin: getRunOrigin(metadata),
       browserTakeoverFromRunId: metadata.browserTakeoverFromRunId ?? null,
       queuePosition: position ?? null,
       queueTotal: position === undefined ? null : queue.waiting.length,
     }
+  }
+  const getAutomaticPreviousRunId = (runId: Id): Id | null => {
+    const link = continuations.link(runId)
+    return link?.reason === "app_restart" || link?.reason === "provider_crash" ? link.previousRunId : null
   }
   const getRunSnapshot = (run: Run): Run => getSnapshot(run, getQueueSnapshot())
   const publishRun = (run: Run): void => {
@@ -1291,7 +1302,7 @@ export const createRuntimeEngine = ({
       return
     const routineRun = persistence.getRoutineRun(run.routineRunId)
     const routine = routineRun ? persistence.getRoutine(routineRun.routineId) : null
-    if (!routineRun || !routine || routineRun.status !== "running") return
+    if (!routineRun || !routine || routineRun.status !== "running" || routineRun.runId !== run.id) return
     const store = kernel.services.use("store.api")
     const path = store?.activePath({ threadId: run.threadId }) ?? []
     const replies = path
@@ -2000,6 +2011,20 @@ export const createRuntimeEngine = ({
           ? `[touri: your previous turn ended with ${errorClass}. Partial output: "${bounded({ value: state.text, max: 1_500 })}"]`
           : `[touri: your previous turn did not run (${errorClass}: ${safeError}). The user's message was: "${bounded({ value: getActivePathMessage({ store, run })?.text ?? "", max: 1_500 })}"]`
         store.updateThread({ threadId: thread.id, patch: { carryoverNote: carryover } })
+        if (continuing && (errorClass === "app_restart" || canAutomaticallyResumeFailure(errorClass, safeError))) {
+          const previous = continuations.link(run.id)
+          const originalRunId = previous?.originalRunId ?? run.id
+          const attempts =
+            continuations.count({ originalRunId, reason: "app_restart" }) +
+            continuations.count({ originalRunId, reason: "provider_crash" })
+          automaticResumes.saveJob({
+            runId: run.id,
+            originalRunId,
+            reason: errorClass === "app_restart" ? "app_restart" : "provider_crash",
+            dueAt: Date.now() + (attempts === 0 ? 0 : resumeBackoffMs),
+            state: "pending",
+          })
+        }
         updateRun(run, {
           status: statusForError(errorClass),
           errorClass,
@@ -2081,8 +2106,15 @@ export const createRuntimeEngine = ({
     lastActivityAt: number
   }): ContinuationPlan | null => {
     if (shuttingDown || Date.now() - lastActivityAt > CONTINUATION_WINDOW_MS) return null
+    if (run.errorClass === "canceled" || run.errorClass === "cli_auth") return null
+    if (
+      (reason === "app_restart" || reason === "provider_crash") &&
+      (abandonedContinuations.has(run.id) || automaticResumes.getJob(run.id)?.state === "abandoned")
+    )
+      return null
     if (reason !== "permission_granted" && reason !== "browser_takeover" && !resumeEnabled()) return null
-    if (!run.requestMessageId || (continuations.isGroupRun(run.id) && reason !== "browser_takeover")) return null
+    if (!run.requestMessageId) return null
+    if (continuations.isGroupRun(run.id) && reason !== "browser_takeover") return null
     const originalRunId = continuations.link(run.id)?.originalRunId ?? run.id
     const interruptedContinuations =
       continuations.count({ originalRunId, reason: "app_restart" }) +
@@ -2097,26 +2129,27 @@ export const createRuntimeEngine = ({
       return null
     // Effects whose outcome is unknown wait for the user; the work notice already explains them.
     if (hasUncertainWork(run.id)) return null
-    if (reason !== "permission_granted" && reason !== "browser_takeover") {
-      const parts =
-        kernel.services
-          .use("store.api")
-          ?.activePath({ threadId: run.threadId })
-          .filter((message) => message.runId === run.id)
-          .flatMap((message) => message.parts) ?? []
-      if (hasRecordedActions(parts)) return null
-    }
-    const session =
-      continuations.resumePoint(run.id) ??
-      persistence.getActiveSession({ threadId: run.threadId, provider: run.provider })
-    const bot = kernel.services.use("store.api")?.getBot({ botId: run.botId })
+    const parts =
+      kernel.services
+        .use("store.api")
+        ?.activePath({ threadId: run.threadId })
+        .filter((message) => message.runId === run.id)
+        .flatMap((message) => message.parts) ?? []
+    if ((reason === "app_restart" || reason === "provider_crash") && hasUnsafeResumeActions(parts)) return null
+    // An interruption cannot grant consent or return browser control on the person's behalf.
+    if (parts.some((part) => part.type === "approval" && part.decision !== "approved")) return null
+    if (run.browserWaitingForPerson) return null
     if (
-      (!session && reason !== "permission_granted" && reason !== "browser_takeover") ||
-      !bot ||
-      bot.paused ||
-      bot.machine === "cloud"
+      kernel.db instanceof Database &&
+      kernel.db
+        .query(
+          "SELECT 1 FROM browser_channel_runs WHERE current_run_id = ? AND status IN ('needs_you', 'taken_over') LIMIT 1",
+        )
+        .get(run.id)
     )
       return null
+    const bot = kernel.services.use("store.api")?.getBot({ botId: run.botId })
+    if (!bot || bot.paused || bot.archivedAt || bot.machine === "cloud") return null
     return routineAllowsContinuation(run) ? { reason, originalRunId } : null
   }
 
@@ -2142,7 +2175,13 @@ export const createRuntimeEngine = ({
     })
   }
 
-  const startContinuation = ({ run, plan }: { run: Run; plan: ContinuationPlan }): boolean => {
+  const startContinuation = (args: { run: Run; plan: ContinuationPlan }): boolean => {
+    if (!ownsRuntime()) return false
+    return startContinuationNow(args)
+  }
+
+  const startContinuationNow = ({ run, plan }: { run: Run; plan: ContinuationPlan }): boolean => {
+    if (continuations.hasPrevious({ previousRunId: run.id, reason: plan.reason })) return true
     if (!routineAllowsContinuation(run)) return false
     const goal = goals.getForRun(run.id)
     if (goal && !goals.prepareContinuation(goal)) return false
@@ -2177,7 +2216,9 @@ export const createRuntimeEngine = ({
       requestMessageId: marker.message.id,
       trigger: run.routineRunId ? "routine" : "retry",
       continuing: true,
-      ...(plan.reason === "browser_takeover" ? { continuationFromRunId: run.id } : {}),
+      continuationFromRunId: run.id,
+      continuationReason: plan.reason,
+      ...(run.requesterPersonId ? { requesterPersonId: run.requesterPersonId } : {}),
       ...(run.routineRunId ? { routineRunId: run.routineRunId } : {}),
     })
     if (!next.success) return false
@@ -2217,6 +2258,9 @@ export const createRuntimeEngine = ({
         reason: plan.reason,
       },
     })
+    const job = automaticResumes.getJob(run.id)
+    if (job) automaticResumes.saveJob({ ...job, state: "started" })
+    publishRun(run)
     return true
   }
 
@@ -2230,21 +2274,68 @@ export const createRuntimeEngine = ({
     status: RoutineRun["status"]
     summary: string
   }): void => {
-    const goal = goals.getForRun(run.id)
-    if (!shuttingDown && goal?.status === "active") goals.saveGoal({ ...goal, status: "paused" })
-    finishRoutineRun({ run, status, summary: summary || "Turno interrompido" })
+    if (abandonedContinuations.has(run.id)) return
+
+    // Stop takes effect before waiting for the writer, including during a retry's lock acquisition.
+    abandonedContinuations.add(run.id)
+    publishRun(run)
+    const shouldPauseGoal = !shuttingDown
+    const abandon = (): void => {
+      const job = automaticResumes.getJob(run.id)
+      if (job) automaticResumes.saveJob({ ...job, state: "abandoned" })
+      const goal = goals.getForRun(run.id)
+      if (shouldPauseGoal && goal?.status === "active") goals.saveGoal({ ...goal, status: "paused" })
+      finishRoutineRun({ run, status, summary: summary || "Turno interrompido" })
+    }
+    const database = kernel.db
+    const operation =
+      database instanceof Database ? writeDatabaseAsync(database, abandon) : Promise.resolve().then(abandon)
+    pendingAbandonments.set(run.id, operation)
+    void operation.then(
+      () => {
+        pendingAbandonments.delete(run.id)
+        signalDrainChange()
+      },
+      () => {
+        // Keep failed persistence observable to drain and shutdown.
+        signalDrainChange()
+        try {
+          kernel.log({ level: "error", module: "runtime", msg: "Could not persist stopped recovery" })
+        } catch {
+          // A failed writer can also prevent its diagnostic; the in-memory stop remains in force.
+        }
+      },
+    )
   }
 
   const scheduleContinuation = ({ run, plan }: { run: Run; plan: ContinuationPlan }): void => {
+    if (pendingContinuations.has(run.id)) return
     const summary = bounded({ value: getState(run.id).text, max: 500 })
+    const job = automaticResumes.getJob(run.id)
     const timer = setTimeout(
       () => {
-        pendingContinuations.delete(run.id)
-        signalDrainChange()
-        const ready = !shuttingDown && canStartContinuation(run, plan)
-        if (!ready || !startContinuation({ run, plan })) abandonContinuation({ run, status: "failed", summary })
+        void ready
+          .then(async () => {
+            if (!pendingContinuations.has(run.id)) return
+            const start = () =>
+              pendingContinuations.has(run.id) &&
+              !shuttingDown &&
+              canStartContinuation(run, plan) &&
+              planContinuation({ run, reason: plan.reason, lastActivityAt: run.finishedAt ?? run.queuedAt }) !== null &&
+              startContinuation({ run, plan })
+            const started = kernel.db instanceof Database ? await writeDatabaseAsync(kernel.db, start) : start()
+            if (!pendingContinuations.has(run.id)) return
+            pendingContinuations.delete(run.id)
+            signalDrainChange()
+            if (!started && ownsRuntime() && !shuttingDown) abandonContinuation({ run, status: "failed", summary })
+          })
+          .catch(() => {
+            pendingContinuations.delete(run.id)
+            signalDrainChange()
+            if (ownsRuntime() && !shuttingDown) abandonContinuation({ run, status: "failed", summary })
+          })
       },
-      plan.reason === "permission_granted" || plan.reason === "browser_takeover" ? 0 : resumeBackoffMs,
+      job ? Math.max(0, job.dueAt - Date.now()) : 0,
     )
     pendingContinuations.set(run.id, { timer, run, plan, summary })
   }
@@ -2293,8 +2384,7 @@ export const createRuntimeEngine = ({
     errorMessage: string
   }): Promise<void> => {
     const errorClass = refineErrorClass(reportedErrorClass, errorMessage)
-    const crashed =
-      CRASH_ERROR_CLASSES.includes(errorClass) && state.turnStarted && !state.cancelRequested && isLive(run)
+    const crashed = canAutomaticallyResumeFailure(errorClass, errorMessage) && !state.cancelRequested && isLive(run)
     const plan = crashed ? planContinuation({ run, reason: "provider_crash", lastActivityAt: Date.now() }) : null
     const committed = await finalizeFailure({
       run,
@@ -2386,6 +2476,7 @@ export const createRuntimeEngine = ({
     delegated = false,
     continuing = false,
     continuationFromRunId,
+    continuationReason,
   }: {
     threadId: Id
     requestMessageId: Id
@@ -2395,9 +2486,17 @@ export const createRuntimeEngine = ({
     delegated?: boolean
     continuing?: boolean
     continuationFromRunId?: Id
+    continuationReason?: ContinuationReason
   }): Result<{ run: Run }, "THREAD_NOT_FOUND" | "BOT_PAUSED" | "RUNTIME_DRAINING"> => {
     if (shuttingDown || (draining && !delegated && !continuing))
       return { success: false, errorCode: "RUNTIME_DRAINING", error: "O servidor está encerrando." }
+    if (
+      continuationFromRunId &&
+      (continuationReason === "app_restart" || continuationReason === "provider_crash") &&
+      (abandonedContinuations.has(continuationFromRunId) ||
+        automaticResumes.getJob(continuationFromRunId)?.state === "abandoned")
+    )
+      return { success: false, errorCode: "RUNTIME_DRAINING", error: "Cancelado por você" }
 
     const store = kernel.services.use("store.api")
     const thread = store?.getThread({ threadId })
@@ -2423,9 +2522,10 @@ export const createRuntimeEngine = ({
           .activePath({ threadId, leafId: requestMessageId, limit: 1 })
           .find((message) => message.id === requestMessageId)
     const requester = requesterPersonId ?? getRequesterPersonId(request?.sender) ?? undefined
-    const browserRequestId = continuationFromRunId
-      ? (continuations.link(continuationFromRunId)?.originalRunId ?? continuationFromRunId)
-      : undefined
+    const browserRequestId =
+      continuationFromRunId && (!continuationReason || continuationReason === "browser_takeover")
+        ? (continuations.link(continuationFromRunId)?.originalRunId ?? continuationFromRunId)
+        : undefined
     const queuedAt = Date.now()
     const run: Run = {
       id: kernel.newId(),
@@ -2447,18 +2547,24 @@ export const createRuntimeEngine = ({
       startedAt: null,
       finishedAt: null,
     }
-    persistence.saveRun(run)
-    logTiming(run, "queuedAt", queuedAt)
-    if (continuationFromRunId) {
-      const previous = continuations.link(continuationFromRunId)
-      continuations.record({
-        runId: run.id,
-        originalRunId: previous?.originalRunId ?? continuationFromRunId,
-        previousRunId: continuationFromRunId,
-        reason: "browser_takeover",
-        createdAt: Date.now(),
-      })
+    const saveQueuedRun = () => {
+      persistence.saveRun(run)
+      if (continuationFromRunId) {
+        const previous = continuations.link(continuationFromRunId)
+        continuations.record({
+          runId: run.id,
+          originalRunId: previous?.originalRunId ?? continuationFromRunId,
+          previousRunId: continuationFromRunId,
+          reason: continuationReason ?? "browser_takeover",
+          createdAt: Date.now(),
+        })
+        const job = automaticResumes.getJob(continuationFromRunId)
+        if (job) automaticResumes.saveJob({ ...job, state: "started" })
+      }
     }
+    if (kernel.db instanceof Database) kernel.db.transaction(saveQueuedRun)()
+    else saveQueuedRun()
+    logTiming(run, "queuedAt", queuedAt)
     if (delegated) {
       publishRun(run)
       // A synchronous peer request cannot wait behind its caller's occupied slot.
@@ -2570,6 +2676,28 @@ export const createRuntimeEngine = ({
     if (browserRunId && browserRunId !== id) return cancel(browserRunId, reason)
     const run = persistence.getRun(id)
     if (!run) return { success: false, errorCode: "NOT_FOUND", error: "Run not found" }
+    const pending = pendingContinuations.get(id)
+    if (!reason && (pending || automaticResumes.getJob(id)?.state === "pending")) {
+      if (pending) clearTimeout(pending.timer)
+      pendingContinuations.delete(id)
+      abandonContinuation({ run, status: "canceled", summary: "Cancelado por você" })
+      signalDrainChange()
+      return { success: true, run }
+    }
+    if (!reason && !["queued", "starting", "running"].includes(run.status)) {
+      const originalRunId = continuations.link(id)?.originalRunId ?? id
+      const descendant = persistence.listRuns(run.threadId).find((candidate) => {
+        const link = continuations.link(candidate.id)
+        return (
+          candidate.id !== id &&
+          link?.originalRunId === originalRunId &&
+          (link.reason === "app_restart" || link.reason === "provider_crash") &&
+          (["queued", "starting", "running"].includes(candidate.status) ||
+            automaticResumes.getJob(candidate.id)?.state === "pending")
+        )
+      })
+      if (descendant) return cancel(descendant.id)
+    }
     if (!["queued", "starting", "running"].includes(run.status)) return { success: true, run }
     if (reason) {
       const state = getState(id)
@@ -2640,6 +2768,9 @@ export const createRuntimeEngine = ({
   }
 
   const cancelBotTurns = async ({ botId }: { botId: Id }): Promise<void> => {
+    pendingContinuations.forEach((pending, id) => {
+      if (pending.run.botId === botId) cancel(id)
+    })
     const runs = [...persistence.listActiveRuns(), ...queued.map((id) => persistence.getRun(id))].filter(
       (run): run is Run => !!run && run.botId === botId && ["queued", "starting", "running"].includes(run.status),
     )
@@ -2651,6 +2782,7 @@ export const createRuntimeEngine = ({
       cancel(runId)
     })
     await Promise.all(runIds.map((runId) => executions.get(runId)))
+    await Promise.all(runIds.map((runId) => pendingAbandonments.get(runId)))
   }
 
   const retry: RuntimeEngine["retry"] = (id) => {
@@ -3159,7 +3291,8 @@ export const createRuntimeEngine = ({
   }
 
   const canDrainRun = (runId: Id): boolean => continuations.link(runId) !== null || continuations.isGroupRun(runId)
-  const hasDrainWork = (): boolean => executions.size > 0 || pendingContinuations.size > 0 || queued.some(canDrainRun)
+  const hasDrainWork = (): boolean =>
+    executions.size > 0 || pendingContinuations.size > 0 || pendingAbandonments.size > 0 || queued.some(canDrainRun)
   const waitForDrainChange = (changed: Promise<void>): Promise<boolean> =>
     new Promise((resolve) => {
       const timeout = setTimeout(() => resolve(false), DRAIN_CHANGE_TIMEOUT_MS)
@@ -3175,6 +3308,7 @@ export const createRuntimeEngine = ({
       const changed = drainChange.promise
       await drain()
       await Promise.all([...executions.values()])
+      await Promise.all(pendingAbandonments.values())
       if (!hasDrainWork()) return
       if (pendingContinuations.size > 0) {
         await changed
@@ -3195,7 +3329,9 @@ export const createRuntimeEngine = ({
     for (const [id, pending] of pendingContinuations) {
       clearTimeout(pending.timer)
       pendingContinuations.delete(id)
-      // Save the next run before stopping so a backoff or approval cannot disappear.
+      // Automatic retries retain their durable deadline across a restart.
+      if (automaticResumes.getJob(id)?.state === "pending") continue
+      // Save approval and browser continuations before stopping.
       if (!canStartContinuation(pending.run, pending.plan) || !startContinuation(pending))
         abandonContinuation({ run: pending.run, status: "failed", summary: pending.summary })
     }
@@ -3213,6 +3349,7 @@ export const createRuntimeEngine = ({
       await Promise.all(executions.values())
       // Queued cancellations can have a terminal write without an execution promise.
       await Promise.all(finalizations.values())
+      await Promise.all(pendingAbandonments.values())
     })()
     return shutdownPromise
   }
@@ -3265,8 +3402,7 @@ export const createRuntimeEngine = ({
         continuing: plan !== null,
       })
         .then((committed) => {
-          if (committed && plan && !startContinuation({ run, plan }))
-            abandonContinuation({ run, status: "canceled", summary: state.text })
+          if (committed && plan) scheduleContinuation({ run, plan })
         })
         .finally(() => deleteRunState(run.id))
       startupRecoveries.push(recovery)
@@ -3291,11 +3427,34 @@ export const createRuntimeEngine = ({
     }
   }
 
+  const restoreAutomaticResumes = async (): Promise<void> => {
+    let cursor = ""
+    while (true) {
+      const page = automaticResumes.getPending(cursor)
+      if (page.length === 0) return
+      page.forEach((job) => {
+        // Shared-channel turns own their member retries and preserve the remaining recipients.
+        if (recovered.has(job.runId) || continuations.isGroupRun(job.runId)) return
+        const run = persistence.getRun(job.runId)
+        if (!run || !canStartContinuation(run, job)) {
+          automaticResumes.saveJob({ ...job, state: "abandoned" })
+          return
+        }
+        const plan = planContinuation({ run, reason: job.reason, lastActivityAt: run.finishedAt ?? run.queuedAt })
+        if (plan) scheduleContinuation({ run, plan })
+        else abandonContinuation({ run, status: "failed", summary: run.errorMessage ?? "" })
+      })
+      cursor = page.at(-1)?.runId ?? cursor
+      await new Promise<void>((resolve) => setImmediate(resolve))
+    }
+  }
+  startupRecoveries.push(restoreAutomaticResumes())
+
   for (const runId of continuations.recentlyInterrupted(Date.now() - CONTINUATION_WINDOW_MS)) {
     const run = persistence.getRun(runId)
     if (!run || recovered.has(run.id) || persistence.listRuns(run.threadId)[0]?.id !== run.id) continue
     const plan = planContinuation({ run, reason: "app_restart", lastActivityAt: run.finishedAt ?? run.queuedAt })
-    if (plan) startContinuation({ run, plan })
+    if (plan && !pendingContinuations.has(run.id)) scheduleContinuation({ run, plan })
   }
 
   goals.getActive().forEach((goal) => {
@@ -3306,7 +3465,10 @@ export const createRuntimeEngine = ({
     const plan = isLatest
       ? planContinuation({ run, reason: "app_restart", lastActivityAt: run.finishedAt ?? run.queuedAt })
       : null
-    if (run && plan && startContinuation({ run, plan })) return
+    if (run && plan) {
+      scheduleContinuation({ run, plan })
+      return
+    }
 
     const current = goals.getGoal(goal.threadId)
     if (current?.status === "active") goals.saveGoal({ ...current, status: "paused" })

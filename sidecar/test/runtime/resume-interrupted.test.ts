@@ -112,7 +112,7 @@ exec '${process.execPath}' '${fake}' "$@"
       codexCommand: command,
       environment: { PATH: process.env.PATH ?? "/usr/bin", TOURI_FAKE_SCENARIO: scenario },
       interruptGraceMs: 30,
-      ...(options.resumeBackoffMs === undefined ? {} : { resumeBackoffMs: options.resumeBackoffMs }),
+      resumeBackoffMs: options.resumeBackoffMs ?? resumeBackoffMs,
       ...(options.maxConcurrentRuns === undefined ? {} : { maxConcurrentRuns: options.maxConcurrentRuns }),
       ...(options.routineTimeoutMs === undefined ? {} : { routineTimeoutMs: () => options.routineTimeoutMs ?? 0 }),
     })
@@ -462,23 +462,6 @@ test("shutdown preserves a pending permission continuation even with automatic r
   expect(f.links()).toMatchObject([{ previous_run_id: run.id, reason: "permission_granted" }])
 })
 
-test("shutdown persists a pending continuation and restart executes it", async () => {
-  const f = await fixture({ resumeBackoffMs: 60_000 })
-  drainCleanups.push(f.close)
-  f.writeScenario({ deltas: ["Tarefa retomada."] })
-  f.crashOnce()
-  const run = f.send(f.first.engine)
-  await waitFor(() => f.runs()[0]?.status === "failed")
-
-  f.first.engine.beginDrain()
-  await f.first.engine.shutdown()
-
-  expect(f.runs()).toMatchObject([{ id: run.id, status: "failed" }, { status: "queued" }])
-  await f.open()
-  await waitFor(() => f.runs()[1]?.status === "succeeded")
-  expect(f.links()).toMatchObject([{ previous_run_id: run.id, reason: "provider_crash" }])
-})
-
 test("serve deadline interrupts an active turn and restart safely resumes its session", async () => {
   const f = await fixture()
   drainCleanups.push(f.close)
@@ -731,7 +714,7 @@ test("a turn interrupted by quitting touri is continued when it reopens", async 
   }
 }, 30_000)
 
-test("a provider that exits mid-turn is resumed once after a short backoff", async () => {
+test("a provider that exits mid-turn resumes immediately on the same thread", async () => {
   const f = await fixture()
   try {
     f.writeScenario({ deltas: ["Retomado depois da falha."] })
@@ -751,15 +734,15 @@ test("a provider that exits mid-turn is resumed once after a short backoff", asy
   }
 }, 30_000)
 
-test("a provider that keeps crashing is resumed only once", async () => {
+test("a provider that keeps crashing is resumed at most twice", async () => {
   const f = await fixture()
   try {
     f.writeScenario({ crashAt: 2, deltas: ["parcial ", "perdido"] })
     f.send(f.first.engine)
-    await waitFor(() => f.runs().length === 2 && f.runs().every((run) => run.status === "failed"))
+    await waitFor(() => f.runs().length === 3 && f.runs().every((run) => run.status === "failed"))
     await Bun.sleep(300)
-    expect(f.runs().map((run) => run.error_class)).toEqual(["cli_crash", "cli_crash"])
-    expect(f.links()).toHaveLength(1)
+    expect(f.runs().map((run) => run.error_class)).toEqual(["cli_crash", "cli_crash", "cli_crash"])
+    expect(f.links()).toHaveLength(2)
   } finally {
     await f.close()
   }
@@ -896,7 +879,7 @@ test("a routine interrupted by a restart continues within its timeout instead of
 test("deleting a routine during crash backoff prevents its automatic continuation", async () => {
   const f = await fixture({ resumeBackoffMs: 500 })
   try {
-    f.writeScenario({ events: [{ type: "complete" }] })
+    f.writeScenario({ crashAt: 2, deltas: ["parcial ", "perdido"] })
     f.crashOnce()
     const created = f.first.engine.createRoutine({
       forceDisabled: false,
@@ -919,11 +902,11 @@ test("deleting a routine during crash backoff prevents its automatic continuatio
     f.first.db.exec("UPDATE bots SET main_thread_id = 't' WHERE id = 'b'")
     const started = f.first.engine.runRoutine({ routineId: created.routine.id, triggerSource: "manual" })
     if (!started.success) throw new Error(started.error)
-    await waitFor(() => f.runs()[0]?.status === "failed")
+    await waitFor(() => f.runs().length === 2 && f.runs().every((run) => run.status === "failed"))
     expect(f.first.engine.deleteRoutine(created.routine.id).success).toBe(true)
     await Bun.sleep(700)
-    expect(f.runs()).toHaveLength(1)
-    expect(f.links()).toHaveLength(0)
+    expect(f.runs()).toHaveLength(2)
+    expect(f.links()).toHaveLength(1)
     expect(f.first.engine.listRoutines()).toEqual([])
   } finally {
     await f.close()

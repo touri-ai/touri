@@ -8,7 +8,7 @@ test("computer-use channel migration stores requester, controller and queue stat
   const root = mkdtempSync(join(tmpdir(), "touri-computer-use-channel-"))
   const db = openDatabase({ filename: join(root, "test.db") })
   try {
-    expect(SCHEMA_VERSION).toBe(46)
+    expect(SCHEMA_VERSION).toBe(47)
     expect(db.query("SELECT value FROM schema_meta WHERE key = 'browser_channel_runs_version'").get()).toEqual({
       value: "1",
     })

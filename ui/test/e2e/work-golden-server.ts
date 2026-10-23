@@ -1,11 +1,12 @@
 import { type ChildProcess, spawn } from "node:child_process"
+import { once } from "node:events"
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import type { Page } from "@playwright/test"
 
 const root = resolve(import.meta.dirname, "../../..")
-const serverUrl = "http://127.0.0.1:18795"
 
 export const createWorkGoldenServer = async () => {
   const directory = await mkdtemp(join(tmpdir(), "touri-work-golden-"))
@@ -21,6 +22,8 @@ export const createWorkGoldenServer = async () => {
   const setScenario = (value: unknown) => writeFile(scenario, JSON.stringify(value))
   await setScenario({ deltas: ["Plano conferido. Podemos continuar."] })
   const pairing = await getPairingCode(data)
+  const port = String(await allocateServerPort())
+  const serverUrl = `http://127.0.0.1:${port}`
   const start = () => {
     const child = spawn(
       "bun",
@@ -30,7 +33,7 @@ export const createWorkGoldenServer = async () => {
         "--host",
         "127.0.0.1",
         "--port",
-        "18795",
+        port,
         "--data-dir",
         data,
         "--ui-dir",
@@ -105,6 +108,24 @@ export const createWorkGoldenServer = async () => {
     await stop(child)
     await rm(directory, { recursive: true, force: true })
     throw error
+  }
+}
+
+const allocateServerPort = async (): Promise<number> => {
+  const server = createServer((socket) => socket.destroy())
+  try {
+    const listening = once(server, "listening", { signal: AbortSignal.timeout(5_000) })
+    server.listen(0, "127.0.0.1")
+    await listening
+    const address = server.address()
+    const closed = once(server, "close", { signal: AbortSignal.timeout(5_000) })
+    server.close()
+    await closed
+    if (!address || typeof address === "string") throw new Error("Missing synthetic server port")
+
+    return address.port
+  } finally {
+    if (server.listening) server.close()
   }
 }
 

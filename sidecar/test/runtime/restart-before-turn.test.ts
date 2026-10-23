@@ -58,6 +58,7 @@ for (const provider of ["codex", "claude"] as const) {
           const engine = createRuntimeEngine({
             kernel: f.kernel,
             providerAdapters: { [provider]: adapter },
+            resumeBackoffMs: 1,
             environment: { PATH: "/usr/bin:/bin", HOME: f.kernel.paths.appData },
           })
           engines.push(engine)

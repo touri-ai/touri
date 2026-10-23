@@ -1098,6 +1098,10 @@ test.each(["status", "image", "start", "ready"])(
 test.each([false, true])("service timeout reaches the turn as E8001 with prewarming=%s", async (prewarm) => {
   const f = await fixture(true, { service: 200 })
   const bot = await f.bot()
+  const database = f.runtime.kernel.db as Database
+  database
+    .query("INSERT OR REPLACE INTO settings(key, value_json, updated_at) VALUES ('resumeInterruptedTurns', 'false', 1)")
+    .run()
   let startRequests = 0
   f.fake.provider.startService = async () => {
     startRequests++

@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite"
+import { setTimeout as delay } from "node:timers/promises"
 import type {
   Bot,
   BotGroup,
@@ -13,9 +14,16 @@ import type {
 } from "@touri/contracts"
 import { hasRecordedActions } from "@touri/contracts/run-failure"
 import { getBrowserCancellationTarget, getRequesterPersonId } from "../browser/channel-runs"
+import { writeDatabaseAsync } from "../kernel/database-write"
 import { attachedServers } from "../mcp/attached"
 import {
+  canAutomaticallyResumeFailure,
+  createAutomaticResumeStore,
+  hasUnsafeResumeActions,
+} from "../runtime/automatic-resume"
+import {
   CONTINUATION_WINDOW_MS,
+  CRASH_RESUME_BACKOFF_MS,
   continuationPrompt,
   createRunContinuations,
   MAX_AUTO_CONTINUATIONS,
@@ -26,7 +34,7 @@ import { crossesBoundary, delegatedBot, delegationCeiling, delegationSecrets, se
 import { createGroupStore, routeGroupMessage } from "./store"
 
 type Engine = Pick<ReturnType<typeof createRuntimeEngine>, "enqueue" | "cancel"> &
-  Partial<Pick<ReturnType<typeof createRuntimeEngine>, "cancelBotTurns" | "cancelRuns" | "ready">>
+  Partial<Pick<ReturnType<typeof createRuntimeEngine>, "cancelBotTurns" | "cancelRuns" | "ready" | "getRunSnapshot">>
 type Turn = {
   run: Run
   group: BotGroup
@@ -77,7 +85,12 @@ export const DEFAULT_GROUP_TURN_TIMEOUT_MS = 6 * 60 * 60_000
 export const groupTurnTimeoutMs = (configured = Number(process.env.TOURI_GROUP_TURN_TIMEOUT_MS) || 0) =>
   configured > 0 ? Math.max(configured, 60 * 60_000) : DEFAULT_GROUP_TURN_TIMEOUT_MS
 
-export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = groupTurnTimeoutMs()) => {
+export const createGroupRuntime = (
+  kernel: Kernel,
+  engine: Engine,
+  timeoutMs = groupTurnTimeoutMs(),
+  resumeBackoffMs = CRASH_RESUME_BACKOFF_MS,
+) => {
   const db = kernel.db as Database
   const store = kernel.services.use("store.api")
   if (!store) throw new Error("Store unavailable")
@@ -86,6 +99,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = g
     bot ? { ...bot, mcpServers: attachedServers(kernel, bot.id) } : null
   const persistence = createRuntimePersistence({ database: db })
   const continuations = createRunContinuations({ database: db })
+  const automaticResumes = createAutomaticResumeStore(db)
   const turns = new Map<string, Turn>()
   const browserTakeoverContinuations = new Set<string>()
   const frames = new Map<string, Frame>()
@@ -270,7 +284,17 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = g
     })
   const canResumeMember = (run: Run, turn: Turn): boolean => {
     if (stopped || turn.controller.signal.aborted || turn.timeoutError) return false
-    if (!["cli_crash", "oom", "machine_service_unavailable", "app_restart"].includes(run.errorClass ?? "")) return false
+    if (turn.deadline !== null && Date.now() >= turn.deadline) return false
+    if (
+      run.errorClass !== "app_restart" &&
+      !canAutomaticallyResumeFailure(run.errorClass ?? "unknown", run.errorMessage ?? "")
+    )
+      return false
+    const job = automaticResumes.getJob(run.id)
+    if (job && job.state !== "pending") return false
+    const bot = store.getBot({ botId: run.botId })
+    if (!bot || bot.paused || bot.archivedAt) return false
+    if (persistence.listRuns(turn.run.threadId)[0]?.id !== turn.run.id) return false
     const setting = db.query("SELECT value_json FROM settings WHERE key='resumeInterruptedTurns'").get() as {
       value_json: string
     } | null
@@ -284,8 +308,63 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = g
       : null
     if (reply?.parts.some((part) => part.type === "approval" && part.decision !== "approved")) return false
     if (reply?.parts.some(hasUnconfirmedEffect)) return false
+    if (hasUnsafeResumeActions(reply?.parts ?? [])) return false
+    if (
+      db
+        .query(
+          "SELECT 1 FROM browser_channel_runs WHERE current_run_id=? AND status IN ('needs_you','taken_over') LIMIT 1",
+        )
+        .get(run.id)
+    )
+      return false
 
     return Date.now() - (run.finishedAt ?? run.startedAt ?? run.queuedAt) <= CONTINUATION_WINDOW_MS
+  }
+  const waitForMemberResume = async (run: Run, turn: Turn): Promise<boolean> => {
+    if (!canResumeMember(run, turn)) return false
+
+    const originalRunId = continuations.link(run.id)?.originalRunId ?? run.id
+    const job = automaticResumes.getJob(run.id) ?? {
+      runId: run.id,
+      originalRunId,
+      reason: getMemberContinuationReason(run),
+      dueAt: Date.now() + (continuations.count({ originalRunId }) === 0 ? 0 : resumeBackoffMs),
+      state: "pending" as const,
+    }
+    await writeDatabaseAsync(db, () => automaticResumes.saveJob(job))
+    const publishRecovery = () =>
+      kernel.publish({
+        type: "run.updated",
+        run: getGroupRun(engine.getRunSnapshot?.(run) ?? run, turn.run.threadId, turn.run.id),
+      })
+    publishRecovery()
+    const superseded = new AbortController()
+    const dispose = kernel.subscribe(({ event }) => {
+      if (
+        event.type === "run.updated" &&
+        event.run.threadId === turn.run.threadId &&
+        event.run.id !== turn.run.id &&
+        event.run.groupTurnId !== turn.run.id &&
+        event.run.status === "queued"
+      )
+        superseded.abort()
+    })
+    try {
+      const deadline = turn.deadline ?? job.dueAt
+      if (canResumeMember(run, turn))
+        await delay(Math.max(0, Math.min(job.dueAt, deadline) - Date.now()), undefined, {
+          signal: AbortSignal.any([turn.controller.signal, superseded.signal]),
+        })
+      if (canResumeMember(run, turn)) return true
+    } catch (error) {
+      if (turn.controller.signal.reason === RESTART_ABORT_REASON) throw error
+    } finally {
+      dispose()
+    }
+    await writeDatabaseAsync(db, () => automaticResumes.saveJob({ ...job, state: "abandoned" }))
+    publishRecovery()
+    turn.controller.signal.throwIfAborted()
+    return false
   }
   const runBot = async (
     turn: Turn,
@@ -392,58 +471,67 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = g
     })
     if (!request.success) throw new Error(request.error)
     const executeMember = async (previousRun?: Run): Promise<Run> => {
-      const result = engine.enqueue({
-        threadId: thread.id,
-        requestMessageId: request.message.id,
-        trigger: previousRun || continuationFromRunId ? "retry" : "user",
-        ...(turn.run.requesterPersonId ? { requesterPersonId: turn.run.requesterPersonId } : {}),
-        delegated,
-        continuing: true,
-        ...(continuationFromRunId ? { continuationFromRunId } : {}),
-      })
-      const memberRun: Run = result.success
-        ? result.run
-        : {
-            ...turn.run,
-            kind: "execution",
-            id: kernel.newId(),
-            threadId: thread.id,
-            botId,
-            provider: bot.provider,
-            requestMessageId: request.message.id,
-            replyMessageId: null,
-            status: "failed",
-            errorClass: "unknown",
-            errorMessage: kernel.redact(result.error),
-            routineRunId: null,
-            queuedAt: Date.now(),
-            startedAt: null,
-            finishedAt: Date.now(),
-          }
-      if (!result.success) persistence.saveRun(memberRun)
-      if (continuationFromRunId) browserTakeoverContinuations.delete(continuationFromRunId)
-      turn.children.add(memberRun.id)
-      db.query("INSERT INTO group_run_links VALUES(?,?,?)").run(memberRun.id, turn.run.id, depth)
-      if (previousRun)
-        continuations.record({
-          runId: memberRun.id,
-          originalRunId: continuations.link(previousRun.id)?.originalRunId ?? previousRun.id,
-          previousRunId: previousRun.id,
-          reason: previousRun.errorClass === "app_restart" ? "app_restart" : "provider_crash",
-          createdAt: Date.now(),
+      const memberRun = await writeDatabaseAsync(db, () => {
+        const previousId = previousRun?.id ?? continuationFromRunId
+        const continuationReason = previousRun ? getMemberContinuationReason(previousRun) : "browser_takeover"
+        const result = engine.enqueue({
+          threadId: thread.id,
+          requestMessageId: request.message.id,
+          trigger: previousRun || continuationFromRunId ? "retry" : "user",
+          ...(turn.run.requesterPersonId ? { requesterPersonId: turn.run.requesterPersonId } : {}),
+          delegated,
+          continuing: true,
+          ...(previousId ? { continuationFromRunId: previousId, continuationReason } : {}),
         })
-      kernel.publish({
-        type: "run.updated",
-        run: { ...memberRun, kind: "execution", threadId: turn.run.threadId, groupTurnId: turn.run.id },
+        const memberRun: Run = result.success
+          ? result.run
+          : {
+              ...turn.run,
+              kind: "execution",
+              id: kernel.newId(),
+              threadId: thread.id,
+              botId,
+              provider: bot.provider,
+              requestMessageId: request.message.id,
+              replyMessageId: null,
+              status: "failed",
+              errorClass: "unknown",
+              errorMessage: kernel.redact(result.error),
+              routineRunId: null,
+              queuedAt: Date.now(),
+              startedAt: null,
+              finishedAt: Date.now(),
+            }
+        if (!result.success) persistence.saveRun(memberRun)
+        if (continuationFromRunId) browserTakeoverContinuations.delete(continuationFromRunId)
+        turn.children.add(memberRun.id)
+        db.query("INSERT INTO group_run_links VALUES(?,?,?)").run(memberRun.id, turn.run.id, depth)
+        if (previousRun)
+          continuations.record({
+            runId: memberRun.id,
+            originalRunId: continuations.link(previousRun.id)?.originalRunId ?? previousRun.id,
+            previousRunId: previousRun.id,
+            reason: previousRun.errorClass === "app_restart" ? "app_restart" : "provider_crash",
+            createdAt: Date.now(),
+          })
+        const job = previousRun ? automaticResumes.getJob(previousRun.id) : null
+        if (job) automaticResumes.saveJob({ ...job, state: "started" })
+        kernel.publish({
+          type: "run.updated",
+          run: getGroupRun(engine.getRunSnapshot?.(memberRun) ?? memberRun, turn.run.threadId, turn.run.id),
+        })
+        return memberRun
       })
-
-      if (!result.success) return memberRun
+      if (terminal(memberRun)) return memberRun
 
       return waitRun(memberRun.id, turn, turn.deadline)
     }
     try {
+      if (previous && !(await waitForMemberResume(previous, turn)))
+        throw new Error(previous.errorMessage ?? "O bot não concluiu o pedido")
       let run = await executeMember(previous ?? undefined)
       while (canResumeMember(run, turn)) {
+        if (!(await waitForMemberResume(run, turn))) break
         turn.controller.signal.throwIfAborted()
         const resumed = store.insertMessage({
           message: {
@@ -922,6 +1010,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = g
       errorMessage: null,
       usage: null,
       routineRunId: null,
+      requesterPersonId: source.requesterPersonId ?? previousTurn.requesterPersonId ?? null,
       queuedAt: Date.now(),
       startedAt: null,
       finishedAt: null,
@@ -1385,3 +1474,6 @@ const hasUnconfirmedEffect = (part: MessagePart): boolean => {
 
   return part.resolution !== undefined && !["succeeded", "failed"].includes(part.resolution)
 }
+
+const getMemberContinuationReason = (run: Run): "app_restart" | "provider_crash" =>
+  run.errorClass === "app_restart" ? "app_restart" : "provider_crash"
