@@ -15,7 +15,11 @@ const FAILURE_KINDS: ReadonlyArray<NotificationRecord["kind"]> = ["routine-defer
 
 /** Notices that inform without asking for anything: they never put a bot under "needs you". */
 export const isInformationalNotice = (item: NotificationRecord): boolean => item.kind === "routine-deferred"
-export const isAttention = (item: NotificationRecord): boolean => ATTENTION_KINDS.includes(item.kind)
+// The channel notice route persists this marker; titles and message text are not review state.
+export const isReadyReviewNotice = (item: NotificationRecord): boolean =>
+  item.kind === "notice" && Boolean(item.threadId) && item.requestId?.startsWith("pr-ready:") === true
+export const isAttention = (item: NotificationRecord): boolean =>
+  ATTENTION_KINDS.includes(item.kind) || isReadyReviewNotice(item)
 export const isFailureNotice = (item: NotificationRecord): boolean => FAILURE_KINDS.includes(item.kind)
 
 /** A new run handles the previous failure, even before its resolution arrives over the event stream. */

@@ -23,6 +23,7 @@ export const ptBR = {
     "Escolha se a resposta rápida para conversa fica ativada.",
   "Automatic notice": "Aviso automático",
   "PR ready": "Revisão pronta",
+  "Conversa de origem: {conversation}": "Conversa de origem: {conversation}",
   "Ative avisos neste aparelho para receber novidades mesmo com o touri fechado. O serviço de push do navegador recebe avisos criptografados. No celular, adicione o touri à tela de início e abra pelo ícone usando HTTPS.":
     "Ative avisos neste aparelho para receber novidades mesmo com o touri fechado. O serviço de push do navegador recebe avisos criptografados. No celular, adicione o touri à tela de início e abra pelo ícone usando HTTPS.",
   "Este navegador ainda não permite avisos aqui. Abra o touri instalado pela tela de início usando HTTPS.":
@@ -3422,6 +3423,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Escolha se a resposta rápida para conversa fica ativada.": "Choose whether fast conversational replies are enabled.",
   "Automatic notice": "Automatic notice",
   "PR ready": "Review ready",
+  "Conversa de origem: {conversation}": "Originating conversation: {conversation}",
   "Ative avisos neste aparelho para receber novidades mesmo com o touri fechado. O serviço de push do navegador recebe avisos criptografados. No celular, adicione o touri à tela de início e abra pelo ícone usando HTTPS.":
     "Enable notifications on this device to hear about updates even when touri is closed. Your browser push service receives encrypted notifications. On your phone, add touri to your Home Screen and open its icon using HTTPS.",
   "Este navegador ainda não permite avisos aqui. Abra o touri instalado pela tela de início usando HTTPS.":

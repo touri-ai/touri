@@ -695,6 +695,13 @@
   -webkit-line-clamp: 3;
   overflow-wrap: anywhere;
 }
+.r8-notifications .notification-origin {
+  margin: var(--space-4) 0 0;
+  color: var(--text-2);
+  font-size: var(--fs-meta);
+  line-height: var(--leading-body);
+  overflow-wrap: anywhere;
+}
 .r8-notifications .notification-technical {
   margin-top: var(--space-8);
   font-size: var(--fs-meta);

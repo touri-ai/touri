@@ -1,12 +1,14 @@
 import {
+  type BotGroup,
   getNotificationBody,
   type Message,
   type NotificationRecord,
   type RespondBehavior,
   type Run,
+  type Thread,
 } from "@touri/contracts"
 import { isTeamCreateApprovalNotice } from "@touri/contracts/approval-summary"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { type ApprovalTarget, pendingApprovalTargets } from "../approvalNavigation"
 import { approvalNotificationSummary } from "../approvalNotice"
@@ -21,7 +23,7 @@ import type { RecoveryAction } from "../errorRecovery"
 import { dictionaries, localizeNotice, type TranslationKey, t } from "../i18n"
 import { markdownSummary } from "../markdownSummary"
 // r8-sidebar: shared attention projection; resolved and superseded failures stay in history.
-import { isFailureNotice, pendingNotifications } from "../sidebarAttention"
+import { isFailureNotice, isReadyReviewNotice, pendingNotifications } from "../sidebarAttention"
 import { scopedStorageKey } from "../storageScope"
 import { useAvatarBot } from "./AvatarRuntime"
 import { BotAvatar } from "./BotAvatar"
@@ -107,7 +109,8 @@ type OpenAction = { label: string; variant: "primary" | "secondary" | "quiet"; r
 
 // One main action per item; approvals only open the full card and are never decided from the list.
 const getOpenAction = (item: NotificationRecord, resolved: boolean, run: () => void): OpenAction | null => {
-  if (item.kind === "approval" && !resolved) return { label: t("Abrir e revisar"), variant: "primary", run }
+  if ((item.kind === "approval" || isReadyReviewNotice(item)) && !resolved)
+    return { label: t("Abrir e revisar"), variant: "primary", run }
   if (!item.threadId) return null
   if (hasReplyBox(item)) return { label: t("Ver conversa"), variant: "quiet", run }
 
@@ -122,11 +125,13 @@ const NotificationRow = ({
   messages,
   runs,
   unread,
+  origin,
   onReviewApproval,
 }: {
   item: NotificationRecord
   now: number
   unread: boolean
+  origin: string | undefined
   actions: NotificationActions
   inserted: boolean
   messages: Message[]
@@ -137,7 +142,8 @@ const NotificationRow = ({
   const [text, setText] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>(null)
-  const kindLabel = item.kind === "notice" && item.botId === null ? t("Notice") : t(KIND_KEY[item.kind])
+  const readyReview = isReadyReviewNotice(item)
+  const kindLabel = getNotificationKindLabel(item)
   const resolved = isResolvedNotification(item)
   const teamProposal = isTeamCreateApprovalNotice(item)
   const approval = item.kind === "approval" ? approvalNotificationSummary(item, messages) : null
@@ -210,7 +216,8 @@ const NotificationRow = ({
       <div className="notification-main">
         <div className="notification-head">
           <strong>{item.botName ?? "touri"}</strong>
-          <Badge tone={KIND_TONE[item.kind]}>{kindLabel}</Badge>
+          <Badge tone={readyReview && !resolved ? "warning" : KIND_TONE[item.kind]}>{kindLabel}</Badge>
+          {readyReview && resolved && <span>{t("Resolvido")}</span>}
           {resolved && isFailureNotice(item) && <span>{t("Interrupção anterior · resolvida")}</span>}
           <time
             dateTime={new Date(item.createdAt).toISOString()}
@@ -220,9 +227,12 @@ const NotificationRow = ({
           </time>
         </div>
         {!failed &&
-          ![t(KIND_KEY[item.kind]), dictionaries.en[KIND_KEY[item.kind]], item.kind].some(
+          ![kindLabel, t(KIND_KEY[item.kind]), dictionaries.en[KIND_KEY[item.kind]], item.kind].some(
             (label) => label.toLowerCase() === title.toLowerCase(),
           ) && <p className="notification-title">{title}</p>}
+        {readyReview && origin && (
+          <p className="notification-origin">{t("Conversa de origem: {conversation}", { conversation: origin })}</p>
+        )}
         {item.resolvedAt !== null && item.kind === "approval" && (
           <time dateTime={new Date(item.resolvedAt).toISOString()}>
             {new Date(item.resolvedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
@@ -299,6 +309,8 @@ export const NotificationBell = ({
   notifications,
   messages = [],
   runs = [],
+  threads,
+  groups: channels,
   actions,
   now = Date.now(),
   focusNotification = null,
@@ -308,6 +320,8 @@ export const NotificationBell = ({
   notifications: Array<NotificationRecord>
   messages?: Array<Message>
   runs?: Array<Run>
+  threads?: ReadonlyArray<Thread>
+  groups?: ReadonlyArray<BotGroup> | undefined
   actions: NotificationActions
   now?: number
   focusNotification?: { id: number; request: number } | null
@@ -315,6 +329,7 @@ export const NotificationBell = ({
   onReviewApproval?: ((target: ApprovalTarget) => void) | undefined
 }) => {
   const [open, setOpen] = useState(false)
+  const origins = useMemo(() => getNotificationOrigins(threads ?? [], channels ?? []), [threads, channels])
   const inserted = useInsertedIds(notifications.map((item) => String(item.id)))
   // Native mode changes restart the workspace. Retain this destination for late dismiss responses.
   const [clearedStorageKey] = useState(() => scopedStorageKey(CLEARED_KEY))
@@ -531,6 +546,7 @@ export const NotificationBell = ({
                         actions={navigationActions}
                         inserted={inserted.has(String(item.id))}
                         unread={pending.includes(item)}
+                        origin={item.threadId ? origins.get(item.threadId) : undefined}
                         messages={messages}
                         runs={runs}
                         onReviewApproval={
@@ -551,5 +567,29 @@ export const NotificationBell = ({
         container.current?.closest("dialog") ?? document.body,
       )}
     </div>
+  )
+}
+
+const getNotificationKindLabel = (item: NotificationRecord): string => {
+  if (isReadyReviewNotice(item)) return t("PR ready")
+  if (item.kind === "notice" && item.botId === null) return t("Notice")
+
+  return t(KIND_KEY[item.kind])
+}
+
+const getNotificationOrigins = (
+  threads: ReadonlyArray<Thread>,
+  groups: ReadonlyArray<BotGroup>,
+): Map<string, string> => {
+  const channels = new Map(groups.map((group) => [group.id, group.name]))
+
+  return new Map(
+    threads.map((thread): [string, string] => {
+      const channel = thread.groupId ? channels.get(thread.groupId) : undefined
+      if (!channel) return [thread.id, thread.title]
+      if (thread.title === channel) return [thread.id, `#${channel}`]
+
+      return [thread.id, `#${channel} · ${thread.title}`]
+    }),
   )
 }

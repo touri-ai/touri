@@ -83,7 +83,7 @@ import { type DeepLinkRequest, installNativeDeepLinks } from "./nativeDeepLinks"
 import { requestTaskResume, requestTaskReview } from "./recoveryEvents"
 import { isRoutineConversation } from "./routineConversation"
 import { getTeamRoutineDraft, type RoutineDraft } from "./routineDraft"
-import { isFailureNotice } from "./sidebarAttention"
+import { isFailureNotice, isReadyReviewNotice } from "./sidebarAttention"
 import { useCurrentPerson } from "./useCurrentPersonId"
 import { useHost } from "./useHost"
 import { useNotificationSounds } from "./useNotificationSounds"
@@ -536,12 +536,17 @@ const AppContent = ({ kernel }: AppProps) => {
         reviewApproval({ threadId: item.threadId, approvalId: item.requestId })
         return
       }
+      if (isReadyReviewNotice(item) && item.threadId) {
+        actions.selectThread(item.threadId)
+        setRoute({ section: "bots", screen: "chat" })
+        return
+      }
 
       actions.selectLocation({ bot: item.botId, thread: item.threadId })
       setRoute({ section: "bots", screen: "chat" })
       setNotificationFocus((current) => ({ id: item.id, request: (current?.request ?? 0) + 1 }))
     },
-    [reviewApproval, actions.selectLocation, setRoute],
+    [reviewApproval, actions.selectLocation, actions.selectThread, setRoute],
   )
   useEffect(() => {
     if (!pendingLink || !data.loaded || data.bots.length === 0) return
@@ -593,6 +598,12 @@ const AppContent = ({ kernel }: AppProps) => {
         reviewApproval({ threadId: item.threadId, approvalId: item.requestId })
         return
       }
+      if (isReadyReviewNotice(item) && item.threadId) {
+        actions.selectThread(item.threadId)
+        setRoute({ section: "bots", screen: "chat" })
+        return
+      }
+
       actions.selectLocation({ bot: item.botId, thread: item.threadId })
       setRoute({ section: "bots", screen: "chat" })
     },
