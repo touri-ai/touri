@@ -33,7 +33,7 @@ test("schema 48 gains the ordered request index and preserves existing history i
     .all("demo-thread", "demo-request")
 
   expect(upgraded.query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get()).toEqual({
-    value: "49",
+    value: "50",
   })
   expect(JSON.stringify(plan)).toContain("runs_request")
   expect(JSON.stringify(plan)).not.toContain("TEMP B-TREE")

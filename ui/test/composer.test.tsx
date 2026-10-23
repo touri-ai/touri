@@ -72,6 +72,30 @@ const setup = ({
 const run = { id: "active", status: "running" } as Run
 
 describe("composer island", () => {
+  it("shows typing before HTTP delivery with a 100 ms response budget", async () => {
+    const deliveries = Array.from({ length: 10 }, () => Promise.withResolvers<void>())
+    const send = deliveries.reduce((mock, delivery) => mock.mockReturnValueOnce(delivery.promise), vi.fn())
+    const { box } = setup({ send })
+    const samples = await deliveries.reduce(async (pending, delivery) => {
+      const previous = await pending
+      fireEvent.change(box, { target: { value: "oi" } })
+      await waitFor(() => expect(screen.getByRole("button", { name: "Enviar" })).toBeEnabled())
+      const started = performance.now()
+
+      fireEvent.keyDown(box, { key: "Enter", code: "Enter" })
+
+      expect(screen.getByText("mark digitando…")).toBeVisible()
+      const elapsed = performance.now() - started
+      await act(async () => delivery.resolve())
+      expect(screen.queryByText("mark digitando…")).not.toBeInTheDocument()
+      return previous.concat(elapsed)
+    }, Promise.resolve<number[]>([]))
+
+    expect(samples.toSorted((first, second) => first - second)[8]).toBeLessThan(100)
+    expect(Math.max(...samples)).toBeLessThan(500)
+    expect(send).toHaveBeenCalledTimes(10)
+  })
+
   it("explicitly accepts common documents and images in the desktop picker and registers each one", async () => {
     Object.assign(window, { __TAURI_INTERNALS__: {} })
     const { api } = setup()

@@ -1,6 +1,14 @@
 import { randomUUID } from "node:crypto"
 import { join } from "node:path"
-import type { Kernel, MessagePart, ProviderAdapter, Result, RunErrorClass, StartTurnArgs } from "@touri/contracts"
+import type {
+  Kernel,
+  MessagePart,
+  ProviderAdapter,
+  Result,
+  RunErrorClass,
+  StartTurnArgs,
+  StartTurnResult,
+} from "@touri/contracts"
 import { approvalOutcome } from "../../approvals/outcome"
 import { claudeApprovalKind, claudeApprovalPayload } from "../../approvals/payload"
 import { buildChildEnv } from "../../kernel"
@@ -124,6 +132,7 @@ export const createClaudeAdapter = ({
     args: StartTurnArgs,
     retriedEmptyResponse = false,
     resumeSessionId?: string,
+    prepareOnly = false,
   ): Promise<ReturnType<ProviderAdapter["startTurn"]> extends Promise<infer T> ? T : never> => {
     const env = args.execution ? { ...args.env } : buildChildEnv({ base: process.env, overrides: args.env })
     const resolved = args.execution
@@ -134,9 +143,11 @@ export const createClaudeAdapter = ({
     const loaded = loadTurnImages({ kernel, input: args.input })
     if (!loaded.success) return loaded
     const runDir = env.TOURI_RUN_DIR ?? kernel.paths.runDir
-    const configPath = `${runDir}/claude/${args.thread.id}.mcp.json`
-    const systemPath = `${runDir}/claude/${args.thread.id}.system.md`
-    const settingsPath = `${runDir}/claude/${args.thread.id}.settings.json`
+    // A new turn may replace thread configuration while a canceled preparation is still exiting.
+    const configDirectory = prepareOnly && env.TMPDIR ? env.TMPDIR : `${runDir}/claude`
+    const configPath = `${configDirectory}/${args.thread.id}.mcp.json`
+    const systemPath = `${configDirectory}/${args.thread.id}.system.md`
+    const settingsPath = `${configDirectory}/${args.thread.id}.settings.json`
     const userSettings = await claudeSettings(args, env)
     for (const value of Object.values(userSettings.authEnv))
       if (typeof value === "string") kernel.addRedactionValue(value)
@@ -150,6 +161,13 @@ export const createClaudeAdapter = ({
             developerInstructions: JSON.stringify([args.developerInstructions, userSettings.settings]),
           })
         : null
+    if (prepareOnly && (!warmKey || warmSessions.hasAvailable(warmKey, args.session?.externalSessionId)))
+      return {
+        success: true,
+        externalSessionId: args.session?.externalSessionId ?? "",
+        rolloutPath: null,
+        status: "succeeded",
+      }
     const retained = warmSessions.getAvailable(warmKey, resumeSessionId ?? args.session?.externalSessionId)
     if (!retained) {
       await claudeConfig({ args, root: kernel.paths.appData, path: configPath })
@@ -164,7 +182,8 @@ export const createClaudeAdapter = ({
         content: args.developerInstructions,
       })
     }
-    const sessionId = resumeSessionId ?? args.session?.externalSessionId ?? randomUUID()
+    const sessionId =
+      resumeSessionId ?? retained?.preparedSession?.externalSessionId ?? args.session?.externalSessionId ?? randomUUID()
     const hasSession = args.session !== null || resumeSessionId !== undefined
     const commandArgs = [
       "-p",
@@ -311,6 +330,7 @@ export const createClaudeAdapter = ({
       lease.release(
         warmKey !== null && result.success && result.status === "succeeded",
         result.success ? result.externalSessionId : undefined,
+        prepareOnly && result.success ? { externalSessionId: result.externalSessionId, rolloutPath: null } : undefined,
       )
       finish(result.success ? result : { ...result, error: kernel.redact(result.error) })
     }
@@ -334,6 +354,13 @@ export const createClaudeAdapter = ({
         return
       }
       const type = stringValue(frame.type)
+      if (prepareOnly && type === "control_response") {
+        const response = asRecord(frame.response)
+        if (response?.subtype === "success")
+          complete({ success: true, externalSessionId, rolloutPath: null, status: "succeeded" })
+        else complete({ success: false, errorCode: "cli_protocol", error: "Provider initialization failed" })
+        return
+      }
       if ((type === "system" || type === "error") && touriMcpStartupFailed(frame)) {
         complete({
           success: false,
@@ -542,10 +569,12 @@ export const createClaudeAdapter = ({
     })
     void writeLine({
       stdin: spawned.stdin,
-      value: {
-        type: "user",
-        message: { role: "user", content: claudeUserContent({ text: input, images: loaded.images }) },
-      },
+      value: prepareOnly
+        ? { type: "control_request", request_id: "prepare", request: { subtype: "initialize" } }
+        : {
+            type: "user",
+            message: { role: "user", content: claudeUserContent({ text: input, images: loaded.images }) },
+          },
     }).catch((error) => complete({ success: false, errorCode: "cli_crash", error: errorText(error) }))
     let mcpError: string | null = null
     const stderrPromise = readProviderStderr(spawned.stderr, (text) => {
@@ -615,12 +644,12 @@ export const createClaudeAdapter = ({
     return output
   }
 
-  const startTurn: ProviderAdapter["startTurn"] = async (args) => {
+  const startTurn = async (args: StartTurnArgs, prepareOnly = false): Promise<StartTurnResult> => {
     const model = getSavedBotModel(args.bot.model)
     if (!model.success) return model
 
     const turnArgs = Object.assign({}, args, { bot: Object.assign({}, args.bot, { model: model.model }) })
-    return withLocalTurnTemp(kernel, turnArgs, startAttempt, warmSessions.getLifetime)
+    return withLocalTurnTemp(kernel, turnArgs, (turn) => startAttempt(turn, prepareOnly), warmSessions.getLifetime)
   }
 
   const answerApproval = async ({
@@ -660,5 +689,12 @@ export const createClaudeAdapter = ({
     await stopProviderChildren(children)
   }
 
-  return { provider: "claude", detect, startTurn, answerApproval, shutdown }
+  return {
+    provider: "claude",
+    detect,
+    startTurn,
+    prepareSession: (args) => startTurn(args, true),
+    answerApproval,
+    shutdown,
+  }
 }

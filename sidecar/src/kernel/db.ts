@@ -52,12 +52,13 @@ import browserDocumentPrivacySql from "./migrations/0046.sql" with { type: "text
 import automaticResumeSql from "./migrations/0047.sql" with { type: "text" }
 import hotReadIndexesSql from "./migrations/0048.sql" with { type: "text" }
 import requestRunsSql from "./migrations/0049.sql" with { type: "text" }
+import fastConversationSql from "./migrations/0050.sql" with { type: "text" }
 import type { PerformanceStageRunner } from "./performance"
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 49
+export const SCHEMA_VERSION = 50
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -100,11 +101,16 @@ export const openDatabase = ({
     : null
   // A committed version is the migration checkpoint. Replaying old writes delays every current-store restart.
   if (current?.value === String(SCHEMA_VERSION)) return database
+  if (current?.value === "49") {
+    database.transaction(() => applyFastConversationSchema(database))()
+    return database
+  }
   if (current?.value === "47" || current?.value === "48") {
     database.transaction(() => {
       if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'hot_read_indexes_version'").get())
         database.exec(hotReadIndexesSql)
       database.exec(requestRunsSql)
+      applyFastConversationSchema(database)
     })()
     return database
   }
@@ -375,5 +381,15 @@ export const openDatabase = ({
   database.transaction(() => {
     database.exec(requestRunsSql)
   })()
+  database.transaction(() => applyFastConversationSchema(database))()
   return database
+}
+
+const applyFastConversationSchema = (database: Database): void => {
+  const columns = database.query("PRAGMA table_info(bots)").all() as Array<{ name: string }>
+  if (columns.some((column) => column.name === "fast_conversation")) {
+    database.exec("UPDATE schema_meta SET value = '50' WHERE key = 'schema_version'")
+    return
+  }
+  database.exec(fastConversationSql)
 }

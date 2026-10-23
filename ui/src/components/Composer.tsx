@@ -137,6 +137,13 @@ export const Composer = ({
     false,
   )
   const { account: cloudAccount } = useCloudAccount(api, bot?.machine === "cloud")
+  const canPrepareConversation =
+    !!bot && bot.fastConversation !== false && bot.machine === "local" && !botActive && !activeRun && !login.blocked
+  const preparationBotVersion = bot?.updatedAt
+  useEffect(() => {
+    if (!canPrepareConversation || preparationBotVersion === undefined) return
+    void api.request("POST /threads/:id/prepare", {}, { id: threadId }).catch(() => undefined)
+  }, [api, threadId, canPrepareConversation, preparationBotVersion])
   const cloudUnavailable = bot?.machine === "cloud" && cloudAccount?.runtimeAvailable !== true
   const [focused, setFocused] = useState(false)
   const [caret, setCaret] = useState(draft.length)
@@ -445,6 +452,11 @@ export const Composer = ({
         if (serverMode || !("__TAURI_INTERNALS__" in window)) addBrowserFiles(event.dataTransfer.files)
       }}
     >
+      {sending && !activeRun && bot && (
+        <div className="composer-status" role="status" aria-live="polite">
+          {t("Bot typing", { name: bot.name })}
+        </div>
+      )}
       {dragging && (
         <div className="composer-drop-hint" role="status">
           {t("Drop to attach")}

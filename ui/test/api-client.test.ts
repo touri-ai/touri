@@ -92,6 +92,7 @@ const contractRouteKeys: Array<keyof ApiRoutes> = [
   "POST /threads/:id/goal",
   "PATCH /threads/:id/goal",
   "POST /threads/:id/messages",
+  "POST /threads/:id/prepare",
   "POST /runs/:id/cancel",
   "POST /runs/:id/retry",
   "POST /approvals/:id",

@@ -147,6 +147,14 @@ Boot handshake:
 
 Tokens are never written to disk, except the per-thread MCP token files (rewritten each boot).
 
+### Fast conversational replies (schema 50)
+
+- Each bot has **Resposta rápida para conversa** / **Fast conversational replies** (`fastConversation`, default `true`). An explicit allowlist recognizes text-only user greetings, thanks and short questions about the bot. Mixed requests, attachments, confirmations, continuations, routines and retries keep the configured reasoning effort and tools. Conversation turns use `low` effort, no reasoning summary and a brief tool-free prompt; identity and reviewed memory retain their trust boundaries.
+- Opening an idle local private conversation after selecting the host login calls authenticated `POST /threads/:id/prepare`. The provider initializes a tool-free native session without submitting a user message or requesting model output. A ready session is retained for five minutes, at most one idle connection per bot and four per provider. Connections recycle on exit, failure, configuration/session changes, 100 uses or idle expiry. Temporary folders live only as long as their process. VM/cloud sessions, unselected login sources and vault-sourced authentication are excluded; preparation never retains per-turn MCP credentials or approvals.
+- Preparation has a 15-second deadline, deduplicates concurrent requests per bot and is canceled on a new turn or runtime shutdown. Task turns keep their own tools, permissions and reasoning, restoring history when switching native session fingerprints. Background preparation cannot make a user turn wait on the model.
+- Enter immediately shows **{name} digitando…** / **{name} is typing…** while HTTP delivery is pending. Errors clear the indicator and keep the draft. Existing frame-batched streaming renders text deltas as they arrive, preserving transcript virtualization and cancellation.
+- Regression budgets: a prepared provider reaches readiness within 500 ms of enqueue and first text within 1.5 seconds with deterministic provider fixtures; local send feedback appears within 100 ms without an HTTP response. Live provider latency is measured separately on isolated staging, including warm-up and task turns, and reported in PR evidence rather than guaranteed by a fixture.
+
 ### 2.3 Why Bun (and the risks)
 - `bun build --compile --target=bun-darwin-arm64` gives one executable. Codesigning works on Bun ≥ 1.2.4 (we pin 1.2.21+). The entitlements need the JIT keys (section 9).
 - `bun:sqlite` is built in and synchronous. The main WAL database uses `synchronous=NORMAL`: commits remain atomic across application crashes, while an OS crash or power loss can lose recent commits. Authentication state keeps `synchronous=FULL` on its own database connection. FTS queries are bounded (`LIMIT`).
