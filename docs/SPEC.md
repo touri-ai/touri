@@ -18,19 +18,58 @@ Runs publish and persist `usage.timings` in `usage_json`: `queuedAt`, `processSp
 `providerReadyAt`, `firstTokenAt` and `finishedAt` are epoch milliseconds. Missing milestones
 mean the turn has not reached that stage (including cancellation before spawning). First token
 means a nonempty assistant text delta received from the provider, before streaming redaction;
-reasoning is not a reply token. Each milestone is logged once as `Turn timing`, with the run ID,
+reasoning is not a reply token. Provider milestones are logged once as `Turn timing`, with the run ID,
 provider, stage, timestamp and elapsed milliseconds from enqueue, never message content or credentials.
 The existing run endpoints and `run.updated` events expose milestones while a turn is active;
 older usage records remain readable without a migration. Provider retries retain the first observed
 milestone; finish includes final stream persistence and terminal state publication.
 
+Preparation also records optional epoch-millisecond checkpoints: `queuedPersistedAt`, `claimedAt`, `reconciledAt`,
+`permissionsReadyAt`, `requestReadyAt`, `toolSummaryReadyAt`, `recallReadyAt`, `inputReadyAt`,
+`workspaceReadyAt`, `mcpReadyAt`, `fingerprintReadyAt`, `sessionReadyAt`, `environmentReadyAt`,
+`startingPersistedAt`, `documentsReadyAt`, `providerHomeReadyAt`,
+`providerConfigReadAt`, `providerConfigWrittenAt`, `providerAuthReadyAt`, `loginReadyAt`,
+`attachedMcpReadyAt`, `projectReadyAt`, `memoryReadyAt`, `instructionsReadyAt`, `dispatchReadyAt`, `sandboxReadyAt`,
+`temporaryReadyAt`, `executableReadyAt` and `attachmentsReadyAt`. Consecutive timestamps attribute
+claim/recovery, folder permissions, request and tool-history lookup, optional memory recall, attachment
+input preparation, cwd/project discovery, MCP credentials, session fingerprint/handoff, shell environment,
+home/config/auth synchronization, attached MCP resolution, SOUL/project/memory composition, sandbox
+preflight, temporary storage and executable discovery. Image bytes are staged after provider readiness.
+The local adapter also records `providerInitializedAt`, `providerSessionRequestedAt`, `turnSubmittedAt`
+and `turnAcceptedAt`, separating process initialization, native session setup, submission and acknowledgement
+from the wait for generated text. Acknowledgement is not a visible reply. Persistence checkpoints separate
+database commit time from execution-slot waiting and preparation; they add no extra commit.
+Absent checkpoints mean that path did not run. These bounded scalar records contain no paths, prompts,
+credentials or filesystem listings; they are persisted with provider milestones or final failure usage,
+without an extra database write or event per preparation step. Bot-home reconciliation happens during
+store startup, before the runtime accepts turns. Queue-to-claim includes waiting for recovery or an
+execution slot; retries keep the first observed checkpoints. No fixed preparation sleep is required.
+The local dispatch budget is 300 ms; warm first-visible-text target is one second. Provider/network
+latency is measured separately and cannot be inferred from dispatch time. Controlled-provider regression
+tests assert both budgets across three sequential greetings (median dispatch <300 ms, median text
+<1 s, with absolute stall guards of 1 s dispatch and 5 s text); live measurements must state when
+the provider misses the text target.
+
 Standalone greetings (Portuguese and English) use a tool-free turn with low reasoning and a compact
 prompt preserving bot identity, SOUL and reviewed memory. Tasks, attachments, routines, continuations,
-active goals and pending tool summaries keep the bot's settings. Switching between chat and task
-capabilities replaces the native session with a history handoff, so a chat session cannot disable tools
-for a subsequent task. Tool-free turns use a compact system prompt when the CLI supports replacing
+active goals keep the bot's settings. With fast conversation enabled, a standalone greeting defers prior
+tool summaries to the next task, where recorded partial effects and interrupted actions remain available.
+Opting out keeps those summaries in the greeting as well as the configured reasoning effort and tools.
+Switching between chat and task capabilities replaces the native session. A fast standalone greeting
+does not hydrate task-history bodies or construct a handoff; subsequent tasks receive the durable
+history handoff and their tools. Tool-free turns use a compact system prompt when the CLI supports replacing
 its default prompt; subscription login remains unchanged. Tool-free local sessions using the host login retain a CLI process for up to
 60 seconds of inactivity, with at most four retained processes per provider and 100 turns per process.
+The managed provider config is compared through the bounded private-file reader on each turn.
+Identical bytes keep the existing file; a changed host config is written atomically as before.
+Host configuration reads run through the bounded asynchronous file reader. Symlinks and unsafe managed
+file targets still fail closed; no path or content cache bypasses validation. Local memory and user-profile
+references read bounded UTF-8 prefixes asynchronously and independently, preserving the existing 3,500/2,000
+character limits and exact-content approval snapshot. Unchanged reviewed memory does not rewrite its trust
+setting; changed content, access or machine still updates provenance and preserves quarantine. Greeting
+instruction composition does not request project discovery.
+Folder-sandbox preflight runs only when the turn needs folder confinement; full-access and tool-free
+turns do not wait for an unused probe. Restricted turns still validate before dispatch.
 Vault logins keep their existing per-turn process and credential lifetime. Reuse requires matching bot configuration,
 working directory, instructions, environment and native session identity. Tool-enabled turns receive
 a fresh process and fresh credentials. Dead, canceled or failed processes are discarded; the next turn

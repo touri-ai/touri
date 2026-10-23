@@ -318,6 +318,40 @@ test("B10: writable memory and skill descriptions are delimited untrusted data",
   expect(text).not.toContain(`MEMORY.md:\n${attack}`)
 })
 
+test("unchanged reviewed memory does not write settings before a warm turn", async () => {
+  const current = await fixture()
+  const memoryPath = join(current.bot.homeDir, "MEMORY.md")
+  writeFileSync(memoryPath, "Synthetic remembered preference")
+  await current.compose()
+  current.db.exec(`CREATE TEMP TRIGGER reject_redundant_memory_write BEFORE UPDATE ON settings
+    WHEN NEW.key LIKE 'memory-trust:%'
+    BEGIN SELECT RAISE(ABORT, 'Unchanged memory must not write settings'); END`)
+
+  const instructions = await current.compose()
+
+  expect(instructions).toContain("Synthetic remembered preference")
+  current.db.exec("DROP TRIGGER reject_redundant_memory_write")
+  writeFileSync(memoryPath, "Updated synthetic preference")
+  expect(await current.compose()).toContain("Updated synthetic preference")
+})
+
+test("greeting instructions do not wait for connected project discovery", async () => {
+  const current = await fixture()
+  current.runtime.kernel.services.provide("projects.info", async () => {
+    throw new Error("A greeting must not request project discovery")
+  })
+
+  const instructions = await composeDeveloperInstructions({
+    kernel: current.runtime.kernel,
+    bot: { ...current.bot, projectId: "synthetic-project" },
+    thread: current.thread,
+    cwd: current.bot.homeDir,
+    greetingOnly: true,
+  })
+
+  expect(instructions).toContain("brief conversation without tools")
+})
+
 test("B10: raising access quarantines lower-mode memory until exact-content human review", async () => {
   const f = await fixture()
   f.db.query("UPDATE bots SET access='read-only' WHERE id=?").run(f.bot.id)

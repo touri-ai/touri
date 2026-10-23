@@ -288,6 +288,7 @@ export const createCodexAdapter = ({
       ? { success: true as const, path: "codex", env }
       : await resolveProviderExecutable({ kernel, command: commandName, env })
     if (!resolved.success) return resolved
+    args.onPreparationStage?.("executableReadyAt")
     const warmKey =
       args.conversationOnly && !args.execution && storedProviderLoginSource(kernel, args.bot) !== "vault"
         ? warmSessions.getKey(args)
@@ -458,6 +459,7 @@ export const createCodexAdapter = ({
         return
       }
       if (method === "turn/started") {
+        args.onPreparationStage?.("turnAcceptedAt")
         turnId = stringValue(params.turnId) ?? stringValue(asRecord(params.turn)?.id) ?? stringValue(params.id)
         if (turnId) args.onEvent({ type: "turn_started", externalTurnId: turnId })
         if (stopped) interrupt()
@@ -639,6 +641,7 @@ export const createCodexAdapter = ({
         if (completed) return
         args.signal.throwIfAborted()
 
+        args.onPreparationStage?.("providerInitializedAt")
         const access = codexAccessParams(args)
         // Native resumes can carry a previous run's MCP arguments. Always override
         // the persisted configuration with this turn's credential before turn/start.
@@ -682,6 +685,7 @@ export const createCodexAdapter = ({
               ephemeral: false,
               ...turnConfig,
             }
+        args.onPreparationStage?.("providerSessionRequestedAt")
         resuming = !!args.session
         const retainedSession = lease.preparedSession ?? (lease.reused ? args.session : null)
         const details = retainedSession
@@ -701,11 +705,13 @@ export const createCodexAdapter = ({
         }
         args.onEvent({ type: "session", externalSessionId, rolloutPath })
         const loaded = loadTurnImages({ kernel, input: args.input })
+        args.onPreparationStage?.("attachmentsReadyAt")
         if (!loaded.success) {
           complete({ success: false, errorCode: loaded.errorCode, error: loaded.error })
           return
         }
         // Once submitted, the task may have effects even before its acknowledgement arrives.
+        args.onPreparationStage?.("turnSubmittedAt")
         onTurnSubmitted()
         const turnResponse = await sendRequest("turn/start", {
           threadId: externalSessionId,
@@ -718,6 +724,7 @@ export const createCodexAdapter = ({
           summary: args.conversationOnly ? "none" : "auto",
           ...(args.bot.reasoningEffort ? { effort: args.bot.reasoningEffort } : {}),
         })
+        args.onPreparationStage?.("turnAcceptedAt")
         turnId ??= stringValue(asRecord(asRecord(turnResponse.result)?.turn)?.id)
         if (stopped) interrupt()
       } catch (error) {
