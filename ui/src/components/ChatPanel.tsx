@@ -772,7 +772,10 @@ const MessageBubble = ({
   const runtimeState = useMessageMascotState(message, run)
   const threadBot = useThreadBot(message.threadId)
   const senderBot = useAvatarBot(message.sender?.id ?? null)
-  const personSender = message.role === "user" && message.sender?.kind === "person" ? message.sender : null
+  const personSender =
+    message.role === "user" && (message.sender?.kind === "person" || message.sender?.kind === "integration")
+      ? message.sender
+      : null
   const messageFromOtherPerson = Boolean(personSender && personSender.id !== currentPersonId)
   const personMessageClass = messageFromOtherPerson ? "message-user message-other-person" : "message-user"
   const messageClass = message.role === "user" ? personMessageClass : "message-assistant"
@@ -1037,6 +1040,9 @@ const MessageBubble = ({
               </span>
             ))}
           <span className="message-role">{messageRoleLabel}</span>
+          {message.sender?.kind === "integration" && (
+            <span className="message-sender-kind">{t("Integração", {}, locale)}</span>
+          )}
           <time dateTime={new Date(message.createdAt).toISOString()}>
             {new Date(message.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
           </time>

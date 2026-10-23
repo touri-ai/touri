@@ -221,7 +221,7 @@ export const RUN_SNAPSHOT_SELECT = `SELECT r.*, link.turn_id AS group_turn_id,
     WHEN continuation.run_id IS NOT NULL OR browser_continuation.run_id IS NOT NULL THEN 'resume'
     WHEN EXISTS(SELECT 1 FROM json_each(request.parts_json)
       WHERE json_extract(value, '$.type') = 'notice' AND json_extract(value, '$.code') = 'run_resumed') THEN 'resume'
-    WHEN request.sender_json IS NOT NULL AND coalesce(json_extract(request.sender_json, '$.kind'), '') <> 'person' THEN 'delegation'
+    WHEN request.sender_json IS NOT NULL AND coalesce(json_extract(request.sender_json, '$.kind'), '') NOT IN ('person', 'integration') THEN 'delegation'
     WHEN r.trigger = 'routine' THEN 'routine'
     ELSE 'message'
   END AS origin

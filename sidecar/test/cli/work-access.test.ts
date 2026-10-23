@@ -67,6 +67,8 @@ database.exec(`
 `)
 
 afterEach(() => {
+  database.query("DELETE FROM runs WHERE id = 'integration-run'").run()
+  database.query("DELETE FROM messages WHERE id = 'integration-request'").run()
   database.exec("DELETE FROM group_run_links; DELETE FROM notifications; DELETE FROM workspace_attention_backfill")
   database.query("DELETE FROM threads WHERE id = 'member-channel-thread'").run()
   database.query("UPDATE threads SET archived_at = NULL WHERE id = 'member-dm'").run()
@@ -365,6 +367,16 @@ test("pending approval notifications remain available while the workspace projec
   database.query("UPDATE notifications SET resolved_at = 1 WHERE request_id = 'catchup-approval'").run()
 
   expect(access.canApprove({ personId: "member", approvalId: "catchup-approval" })).toBe(false)
+})
+
+test("an integration cannot confer administrator authority through its sender ID", () => {
+  database
+    .query("INSERT INTO messages(thread_id,id,sender_json) VALUES(?,?,?)")
+    .run("other-dm", "integration-request", JSON.stringify({ id: "owner", kind: "integration", name: "Automation" }))
+  database.query("INSERT INTO runs VALUES(?,?,?)").run("integration-run", "other-dm", "integration-request")
+
+  expect(access.personForRun("integration-run")).toBeNull()
+  expect(access.isAdminRun("integration-run")).toBe(false)
 })
 
 test("members cannot inspect or stop another person's runs", () => {

@@ -497,7 +497,7 @@ export const createRuntimeEngine = ({
       kernel.db instanceof Database
         ? (kernel.db
             .query(`
-      SELECT sender_json IS NOT NULL AND coalesce(json_extract(sender_json, '$.kind'), '') <> 'person' AS delegated,
+      SELECT sender_json IS NOT NULL AND coalesce(json_extract(sender_json, '$.kind'), '') NOT IN ('person', 'integration') AS delegated,
         EXISTS(SELECT 1 FROM json_each(parts_json)
           WHERE json_extract(value, '$.type') = 'notice'
             AND json_extract(value, '$.code') = 'run_resumed') AS resumed
@@ -516,7 +516,8 @@ export const createRuntimeEngine = ({
       })
       .find((message) => message.id === run.requestMessageId)
     if (request?.parts.some((part) => part.type === "notice" && part.code === "run_resumed")) return "resume"
-    if (request?.sender && request.sender.kind !== "person") return "delegation"
+    if (request?.sender && request.sender.kind !== "person" && request.sender.kind !== "integration")
+      return "delegation"
     if (run.trigger === "routine") return "routine"
     return "message"
   }

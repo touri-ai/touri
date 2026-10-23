@@ -127,6 +127,7 @@ export const init = async (
           notifier.finish({ id: item.id, resolution: "expired" })
     }
     if (event.type !== "message.created" || event.message.role !== "user") return
+    if (event.message.sender?.kind === "integration") return
     for (const item of store.unresolvedForThread({ threadId: event.message.threadId, kinds: RESOLVED_BY_USER_REPLY }))
       notifier.finish({ id: item.id, resolution: "replied" })
   })

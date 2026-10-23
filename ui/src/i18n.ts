@@ -4,6 +4,11 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "Integration write scope required": "Este envio exige um token de administrador com permissão para integrações.",
+  "Integrations can post only ordinary channel messages": "Integrações só podem enviar mensagens comuns em canais.",
+  "Use a distinct integration name of 1 to 80 letters, numbers, spaces, dots, underscores or hyphens":
+    "Escolha um nome diferente de pessoas e bots, com até 80 letras, números, espaços, pontos, sublinhados ou hífens.",
+  Integração: "Integração",
   "body: envie um objeto JSON com os dados do grupo.": "body: envie um objeto JSON com os dados do grupo.",
   "name: informe um nome não vazio com até 80 caracteres.": "name: informe um nome não vazio com até 80 caracteres.",
   "color: informe uma cor hexadecimal válida, como #dc2626.":
@@ -3327,6 +3332,11 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Integration write scope required": "This send requires an administrator token with integration write permission.",
+  "Integrations can post only ordinary channel messages": "Integrations can post only ordinary channel messages.",
+  "Use a distinct integration name of 1 to 80 letters, numbers, spaces, dots, underscores or hyphens":
+    "Choose a name different from people and bots, using up to 80 letters, numbers, spaces, dots, underscores or hyphens.",
+  Integração: "Integration",
   "body: envie um objeto JSON com os dados do grupo.": "body: send a JSON object containing the group details.",
   "name: informe um nome não vazio com até 80 caracteres.": "name: enter a non-empty name with at most 80 characters.",
   "color: informe uma cor hexadecimal válida, como #dc2626.":
