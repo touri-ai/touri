@@ -31,7 +31,7 @@ export const WORKSPACE_MESSAGES_SQL = `
       AND NOT EXISTS (SELECT 1 FROM bot_deletions d WHERE d.bot_id = b.id)
       AND (/* scope */ 1 = 1)
   ), selected AS (
-    SELECT (SELECT rowid FROM messages WHERE thread_id = t.id
+    SELECT (SELECT rowid FROM messages INDEXED BY messages_visible_created WHERE thread_id = t.id
       AND (trim(text) <> '' OR status IN ('failed', 'canceled') OR parts_json LIKE '%"type":"approval"%' OR parts_json LIKE '%"type":"notice"%')
       ORDER BY created_at DESC, rowid DESC LIMIT 1) AS row_id FROM visible t
     UNION SELECT (SELECT rowid FROM messages WHERE thread_id = t.id AND role = 'assistant'

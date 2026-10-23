@@ -210,7 +210,7 @@ const canUseDatabase = (value: unknown): value is Database => {
   }
 }
 
-const RUN_SNAPSHOT_SELECT = `SELECT r.*, link.turn_id AS group_turn_id,
+export const RUN_SNAPSHOT_SELECT = `SELECT r.*, link.turn_id AS group_turn_id,
   CASE WHEN EXISTS(SELECT 1 FROM group_turns coordination WHERE coordination.run_id = r.id)
     THEN 'coordination' ELSE 'execution' END AS run_kind,
   COALESCE(root.thread_id, t.group_thread_id) AS group_thread_id,
@@ -232,6 +232,15 @@ const RUN_SNAPSHOT_SELECT = `SELECT r.*, link.turn_id AS group_turn_id,
   LEFT JOIN run_continuations continuation ON continuation.run_id = r.id
   LEFT JOIN browser_takeover_continuations browser_continuation ON browser_continuation.run_id = r.id
   LEFT JOIN messages request ON request.id = r.request_message_id AND request.thread_id = r.thread_id`
+
+// Drive enrichment from the partial active index, independent of completed history.
+export const WORK_RUNS_SQL = `${RUN_SNAPSHOT_SELECT.replace("FROM runs r", "FROM runs r INDEXED BY runs_active_order")}
+  JOIN bots b ON b.id = r.bot_id
+  JOIN threads visible_thread ON visible_thread.id = COALESCE(root.thread_id, t.group_thread_id, r.thread_id)
+  WHERE r.status IN ('queued', 'starting', 'running')
+    AND r.id NOT IN (SELECT run_id FROM group_turns)
+    AND b.archived_at IS NULL AND visible_thread.archived_at IS NULL
+  ORDER BY r.queued_at, r.rowid`
 
 export const createRuntimePersistence = ({ database }: { database: unknown }): RuntimePersistence => {
   const db = canUseDatabase(database) ? database : null
@@ -349,13 +358,7 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
     if (!db) return [...runs.values()].filter((run) => ["queued", "starting", "running"].includes(run.status))
 
     return db
-      .query(`${RUN_SNAPSHOT_SELECT}
-      JOIN bots b ON b.id = r.bot_id
-      JOIN threads visible_thread ON visible_thread.id = COALESCE(root.thread_id, t.group_thread_id, r.thread_id)
-      WHERE r.status IN ('queued', 'starting', 'running')
-        AND r.id NOT IN (SELECT run_id FROM group_turns)
-        AND b.archived_at IS NULL AND visible_thread.archived_at IS NULL
-      ORDER BY r.queued_at, r.rowid`)
+      .query(WORK_RUNS_SQL)
       .all()
       .flatMap((row) => {
         const run = toRun(row)

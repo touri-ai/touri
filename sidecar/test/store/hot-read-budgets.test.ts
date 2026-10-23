@@ -1,0 +1,393 @@
+import { Database, type SQLQueryBindings } from "bun:sqlite"
+import { afterEach, expect, test } from "bun:test"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { dirname, join } from "node:path"
+import { getGroupRunsSql } from "../../src/groups/run-queries"
+import { createKernel } from "../../src/kernel"
+import { openDatabase } from "../../src/kernel/db"
+import { JOURNAL_RECOVERY_SQL, RUN_PARTS_SQL } from "../../src/notify/recovery-candidates"
+import { WORK_RUNS_SQL } from "../../src/runtime/persistence"
+import { getThreadRunsQuery } from "../../src/runtime/thread-runs-query"
+import { createWorkState } from "../../src/runtime/work-state"
+import { init as initStore } from "../../src/store"
+import { getHistoryQuery, THREAD_MESSAGES_SQL } from "../../src/store/history-query"
+import { getMessageFromRow } from "../../src/store/message-row"
+import { createStoreReader } from "../../src/store/reader"
+import { getSearchQuery } from "../../src/store/search-query"
+import type { RawMessage } from "../../src/store/workspace-activity"
+
+// This registry owns fixture resources; numeric sorts mutate only fresh local arrays.
+const cleanups = new Set<() => void | Promise<void>>()
+
+afterEach(async () => {
+  await Array.from(cleanups).reduceRight(async (previous, cleanup) => {
+    await previous
+    await cleanup()
+  }, Promise.resolve())
+  cleanups.clear()
+})
+
+test("hot reads seek indexes and avoid historical sorts with five active runs", async () => {
+  const db = await getFixture()
+  const queries = [
+    { name: "active runs", sql: WORK_RUNS_SQL, bindings: [], index: "runs_active_order", rows: 5 },
+    { name: "channel runs", sql: getGroupRunsSql(), bindings: ["thread-0"], index: "group_run_links_turn", rows: 50 },
+    {
+      name: "messages",
+      sql: `${THREAD_MESSAGES_SQL} LIMIT 50`,
+      bindings: ["thread-0"],
+      index: "messages_thread_created",
+      rows: 50,
+    },
+    {
+      name: "groups",
+      sql: "SELECT id FROM bot_groups ORDER BY created_at,rowid",
+      bindings: [],
+      index: "bot_groups_created",
+      rows: 1,
+    },
+    {
+      name: "channel threads",
+      sql: "SELECT id FROM threads WHERE group_id=? AND group_thread_id IS NULL AND archived_at IS NULL ORDER BY updated_at DESC",
+      bindings: ["channel"],
+      index: "threads_channel_updated",
+      rows: 1,
+    },
+    {
+      name: "unread projection",
+      sql: "SELECT unread FROM threads WHERE bot_id=? AND archived_at IS NULL ORDER BY updated_at DESC",
+      bindings: ["bot-0"],
+      index: "threads_bot",
+      rows: 1,
+    },
+    {
+      name: "visible reply",
+      sql: "SELECT visible_message_id FROM group_message_links WHERE message_id=?",
+      bindings: ["reply-1"],
+      index: "group_message_links_message",
+      rows: 1,
+    },
+    { name: "run message recovery", sql: RUN_PARTS_SQL, bindings: ["root-1"], index: "messages_run_created", rows: 1 },
+    { name: "journal recovery", sql: JOURNAL_RECOVERY_SQL, bindings: [100], index: "work_journal_uncertain", rows: 1 },
+    { name: "search", ...getSearchQuery({ q: "fixture", limit: 50 }), index: "VIRTUAL TABLE INDEX", rows: 50 },
+  ]
+
+  queries.forEach((query) => {
+    const plan = getPlan(db, query.sql, query.bindings)
+    expect(plan).toContain(query.index)
+    if (query.name === "journal recovery") expect(plan).toContain("work_journal_effect_state")
+    if (!["channel runs", "journal recovery"].includes(query.name)) expect(plan).not.toContain("USE TEMP B-TREE")
+    expect(plan).not.toMatch(/SCAN (?:messages|group_message_links)\b/)
+    const durations = Array.from({ length: 7 }, () => {
+      const started = performance.now()
+      const rows = db.query(query.sql).all(...query.bindings)
+      expect(rows).toHaveLength(query.rows)
+
+      return performance.now() - started
+    }).sort((left, right) => left - right)
+    const median = durations[3] ?? Number.POSITIVE_INFINITY
+
+    console.info(`${query.name}: median ${median.toFixed(3)} ms; budget 50 ms`)
+    expect(median).toBeLessThan(50)
+  })
+
+  const filename = db.filename
+  db.close()
+  const unindexed = new Database(filename)
+  cleanups.add(() => unindexed.close())
+  unindexed.exec("DROP INDEX messages_thread_created; DROP INDEX group_message_links_message")
+
+  expect(getPlan(unindexed, THREAD_MESSAGES_SQL, ["thread-0"])).toContain("USE TEMP B-TREE")
+  expect(
+    getPlan(unindexed, "SELECT visible_message_id FROM group_message_links WHERE message_id=?", ["reply-1"]),
+  ).toContain("SCAN group_message_links")
+})
+
+test("channel windows retain member executions and explicit all retains older turns", async () => {
+  const db = await getFixture()
+
+  const recent = db.query(getGroupRunsSql()).all("thread-0") as Array<{ id: string }>
+  const all = db.query(getGroupRunsSql(true)).all("thread-0")
+
+  expect(recent).toHaveLength(50)
+  expect(recent[0]?.id).toBe("member-8000")
+  expect(all).toHaveLength(8000)
+})
+
+test("thread snapshots enrich only selected roots and preserve member identity", async () => {
+  const db = await getFixture()
+  db.exec("UPDATE runs SET reply_message_id='reply-8000' WHERE id='member-8000'")
+  const query = getThreadRunsQuery("thread-0")
+
+  const rows = db.query(query.sql).all(...query.bindings) as Array<Record<string, unknown>>
+  const plan = getPlan(db, query.sql, query.bindings)
+
+  expect(rows).toHaveLength(100)
+  expect(rows[0]?.id).toBe("root-8000")
+  expect(rows[50]).toMatchObject({
+    id: "member-8000",
+    thread_id: "thread-1",
+    group_thread_id: "thread-0",
+    group_turn_id: "root-8000",
+    visible_reply_message_id: "visible-8000",
+    origin: "message",
+  })
+  expect(plan).toContain("runs_thread")
+  expect(plan).toContain("group_run_links_turn")
+  expect(plan).not.toMatch(/SCAN r\b/)
+})
+
+test("background snapshots preserve message JSON, ancestry and attachment references", async () => {
+  const db = await getFixture()
+  const reader = createStoreReader(db.filename)
+  cleanups.add(reader.dispose)
+  const signal = new AbortController().signal
+  const expected = (db.query(THREAD_MESSAGES_SQL).all("thread-0") as RawMessage[]).map(getMessageFromRow)
+
+  const result = await reader.getMessages(getHistoryQuery("thread-0", "message-2000", true), signal)
+  const actual = JSON.parse(new TextDecoder().decode(result.body))
+  const path = await reader.getMessages(getHistoryQuery("thread-0", "message-2"), signal)
+
+  expect(actual).toEqual({ messages: expected, activeLeafId: "message-2000" })
+  expect(JSON.parse(new TextDecoder().decode(path.body)).messages.map((message: { id: string }) => message.id)).toEqual(
+    ["message-1", "message-2"],
+  )
+  expect(result.references[0]).toEqual({
+    threadId: "thread-0",
+    messageId: "message-1",
+    attachmentIds: ["fixture-file"],
+  })
+})
+
+test("large snapshot building keeps event-loop p99 below 50 ms with five active runs", async () => {
+  const db = await getFixture()
+  const reader = createStoreReader(db.filename)
+  cleanups.add(reader.dispose)
+  const parts = JSON.stringify([{ type: "text", text: "fixture ".repeat(32_768) }])
+  db.query("UPDATE messages SET parts_json=? WHERE thread_id='thread-0' AND created_at <= 32").run(parts)
+  const signal = new AbortController().signal
+  const filename = db.filename
+  db.close()
+  const runtime = createKernel({ appData: dirname(filename) })
+  const database = runtime.kernel.db as Database
+  cleanups.add(() => runtime.stop())
+  await initStore(runtime.kernel)
+  const store = runtime.kernel.services.use("store.api")
+  if (!store) throw new Error("STORE_UNAVAILABLE")
+  const active = Array.from({ length: 5 }, (_, index) => index + 1)
+  active.forEach((index) => {
+    const inserted = store.insertMessage({
+      message: {
+        id: `stream-${index}`,
+        threadId: `thread-${index}`,
+        parentId: null,
+        role: "assistant",
+        kind: "text",
+        status: "streaming",
+        runId: `active-${index}`,
+        text: "",
+        parts: [{ type: "text", text: "" }],
+        sender: null,
+        source: "local",
+      },
+    })
+    expect(inserted.success).toBe(true)
+  })
+  const streaming = setInterval(() => {
+    active.forEach((index) => {
+      store.appendDelta({
+        threadId: `thread-${index}`,
+        messageId: `stream-${index}`,
+        partIndex: 0,
+        delta: "fixture ".repeat(32),
+      })
+    })
+  }, 20)
+  cleanups.add(() => clearInterval(streaming))
+
+  const before = await getLagBudget(async () => {
+    const rows = database.query(THREAD_MESSAGES_SQL).all("thread-0") as RawMessage[]
+    const body = new TextEncoder().encode(JSON.stringify({ messages: rows.map(getMessageFromRow) }))
+    return body.byteLength
+  })
+  const after = await getLagBudget(async () => {
+    const result = await reader.getMessages(getHistoryQuery("thread-0", "message-2000", true), signal)
+    return result.body.byteLength
+  })
+  console.info(
+    `five active runs; 5 ms sampling; event-loop before ${JSON.stringify(before)}; after ${JSON.stringify(after)}`,
+  )
+
+  clearInterval(streaming)
+  await store.flushWritesAsync?.()
+  active.forEach((index) => {
+    expect(
+      store.activePath({ threadId: `thread-${index}`, leafId: `stream-${index}` })[0]?.text.length,
+    ).toBeGreaterThan(0)
+  })
+  expect(after.samples).toBeGreaterThan(50)
+  expect(after.p99).toBeLessThan(50)
+  expect(after.maximum).toBeLessThan(500)
+}, 60_000)
+
+const getLagBudget = async (read: () => Promise<number>) => {
+  const lags: number[] = []
+  // Only this measurement owns its timer, expected tick and sample accumulator.
+  let expected = performance.now() + 5
+  const timer = setInterval(() => {
+    const now = performance.now()
+    lags.push(Math.max(0, now - expected))
+    expected = now + 5
+  }, 5)
+  cleanups.add(() => clearInterval(timer))
+
+  for (const _ of Array.from({ length: 12 })) {
+    expect(await read()).toBeGreaterThan(8 * 1024 * 1024)
+    await new Promise<void>((resolve) => setTimeout(resolve, 10))
+  }
+  await new Promise<void>((resolve) => setTimeout(resolve, 300))
+  clearInterval(timer)
+  const sorted = lags.slice().sort((left, right) => left - right)
+
+  return {
+    samples: lags.length,
+    p99: sorted[Math.ceil(sorted.length * 0.99) - 1] ?? Number.POSITIVE_INFINITY,
+    maximum: sorted.at(-1) ?? Number.POSITIVE_INFINITY,
+  }
+}
+
+test("concurrent history reads wait for capacity and canceled waiters release their slot", async () => {
+  const db = await getFixture()
+  const reader = createStoreReader(db.filename)
+  cleanups.add(reader.dispose)
+  const query = { sql: "SELECT 1 AS value", bindings: [] }
+  const controller = new AbortController()
+
+  const reads = Array.from({ length: 5 }, () => reader.getRows(query, new AbortController().signal))
+  const canceled = reader.getRows(query, controller.signal)
+  controller.abort()
+
+  await expect(canceled).rejects.toThrow()
+  expect(await Promise.all(reads)).toEqual(Array.from({ length: 5 }, () => [{ value: 1 }]))
+})
+
+test("cancellation and disposal stop SQL processes and reject reads", async () => {
+  const db = await getFixture()
+  const ready = Promise.withResolvers<void>()
+  const reader = createStoreReader(db.filename, () => ready.resolve())
+  cleanups.add(reader.dispose)
+  const controller = new AbortController()
+  const query = {
+    sql: "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n) SELECT sum(x) FROM n",
+    bindings: [],
+  }
+
+  const result = reader.getRows(query, controller.signal)
+  await ready.promise
+  controller.abort()
+
+  await expect(result).rejects.toThrow("STORE_READ_ABORTED")
+  reader.dispose()
+  await expect(reader.getRows({ sql: "SELECT 1", bindings: [] }, new AbortController().signal)).rejects.toThrow(
+    "STORE_READ_CAPACITY",
+  )
+})
+
+test("concurrent history reads wait for capacity and a waiting read can be canceled", async () => {
+  const db = await getFixture()
+  const ready = Promise.withResolvers<void>()
+  // This counter only tracks the two deliberately blocked fixture processes.
+  let started = 0
+  const reader = createStoreReader(db.filename, () => {
+    started++
+    if (started === 2) ready.resolve()
+  })
+  cleanups.add(reader.dispose)
+  const signal = new AbortController().signal
+  const query = {
+    sql: "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n) SELECT sum(x) FROM n",
+    bindings: [],
+  }
+  const running = Promise.allSettled([reader.getRows(query, signal), reader.getRows(query, signal)])
+  await ready.promise
+  const controller = new AbortController()
+
+  const waiting = reader.getRows({ sql: "SELECT 1", bindings: [] }, controller.signal)
+  controller.abort()
+
+  await expect(waiting).rejects.toThrow("STORE_READ_ABORTED")
+  reader.dispose()
+  expect((await running).every((result) => result.status === "rejected")).toBe(true)
+  const available = createStoreReader(db.filename)
+  cleanups.add(available.dispose)
+  const results = await Promise.all(
+    Array.from({ length: 8 }, (_, index) => available.getRows({ sql: "SELECT ? AS id", bindings: [index] }, signal)),
+  )
+
+  expect(results).toEqual(Array.from({ length: 8 }, (_, id) => [{ id }]))
+})
+
+const getPlan = (db: Database, sql: string, bindings: SQLQueryBindings[]): string =>
+  (db.query(`EXPLAIN QUERY PLAN ${sql}`).all(...bindings) as Array<{ detail: string }>)
+    .map(({ detail }) => detail)
+    .join("\n")
+
+const getFixture = async (): Promise<Database> => {
+  const root = await mkdtemp(join(tmpdir(), "touri-hot-reads-"))
+  cleanups.add(() => rm(root, { recursive: true, force: true }))
+  const db = openDatabase({ filename: join(root, "touri.db") })
+  cleanups.add(() => db.close())
+  const fixture = (await Bun.file(new URL("../fixtures/ui-seed.json", import.meta.url)).json()) as {
+    bots: Array<{ provider: string }>
+  }
+  const provider = fixture.bots[0]?.provider ?? "fixture"
+  db.transaction(() => {
+    Array.from({ length: 6 }, (_, index) => index).forEach((index) => {
+      db.query("INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES (?,?,?,?,1,1)").run(
+        `bot-${index}`,
+        `Fixture ${index}`,
+        provider,
+        join(root, "bots", `bot-${index}`),
+      )
+      db.query("INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES (?,?,'Fixture',1,1)").run(
+        `thread-${index}`,
+        `bot-${index}`,
+      )
+    })
+    db.exec(`INSERT INTO bot_groups(id,name,color,avatar_shape,avatar_seed,created_at,updated_at)
+      VALUES('channel','Fixture','#000000','circle','fixture',1,1);
+      UPDATE threads SET group_id='channel' WHERE id='thread-0';
+      WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<8000)
+      INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at)
+      SELECT 'root-'||x,'thread-0','bot-0','fixture','user','succeeded',x FROM n;
+      INSERT INTO group_turns SELECT id,'channel','[]' FROM runs;
+      WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<8000)
+      INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at)
+      SELECT 'member-'||x,'thread-1','bot-1','fixture','user','succeeded',x FROM n;
+      INSERT INTO group_run_links SELECT 'member-'||queued_at,id,0 FROM runs WHERE thread_id='thread-0';
+      WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<5)
+      INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at)
+      SELECT 'active-'||x,'thread-'||x,'bot-'||x,'fixture','user','running',9000+x FROM n;
+      WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<2000)
+      INSERT INTO messages(id,thread_id,parent_id,role,kind,status,run_id,text,parts_json,created_at,updated_at)
+      SELECT 'message-'||x,'thread-0',CASE WHEN x=1 THEN NULL ELSE 'message-'||(x-1) END,
+        'assistant','text','complete','root-'||x,'fixture searchable',
+        '[{"type":"file","attachmentId":"fixture-file","name":"fixture.txt"}]',x,x FROM n;
+      WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<8000)
+      INSERT INTO group_message_links SELECT 'reply-'||x,'thread-1','visible-'||x FROM n;
+      INSERT INTO messages_fts(text,thread_id,message_id) SELECT text,thread_id,id FROM messages;`)
+  })()
+
+  const work = createWorkState({ database: db, now: () => 1 })
+  work.beginEffect({
+    turnId: "root-1",
+    threadId: "thread-0",
+    key: "fixture",
+    description: "Fixture",
+    effectId: "effect",
+  })
+  work.recover({ observe: () => ({ kind: "unobservable", reason: "Fixture" }) })
+
+  return db
+}

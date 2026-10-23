@@ -446,6 +446,12 @@ export const createWebGate = (options: GateOptions): ((args: WebInterceptArgs) =
       })
     if (url.searchParams.has("token") || url.searchParams.has("invite"))
       return json(401, { errorCode: "UNAUTHORIZED", error: "Credenciais não são aceitas na URL" })
+    // Public liveness contains no version, identity or store diagnostics and never opens SQLite.
+    if (url.pathname === "/healthz") {
+      if (request.method === "GET") return json(200, { ok: true })
+      if (request.method === "HEAD") return new Response(null, { status: 200 })
+      return json(405, { errorCode: "METHOD_NOT_ALLOWED" })
+    }
     if (url.pathname === "/api/v1/auth/email") {
       try {
         return await handleEmailSignInRequest({ args, options, limiter: emailSignInLimiter })

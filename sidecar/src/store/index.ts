@@ -53,8 +53,12 @@ import { getDefaultMaxConcurrentRuns } from "../runtime/concurrency"
 import { touriVersion } from "../version"
 import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemory } from "../vm/resources"
 import { cleanupBotHome, reconcileBotHomes, updateBotHome, writeBotHome } from "./bot-home"
+import { getHistoryQuery } from "./history-query"
+import { getMessageFromRow as asMessage } from "./message-row"
 import { getBotModel, MODEL_VALIDATION_ERROR } from "./model"
+import { createStoreReader } from "./reader"
 import { redeemFileGrant } from "./redeemFileGrant"
+import { getAsyncSearchHits, getLiteralSearch, getSearchQuery } from "./search-query"
 import { createSendJournal } from "./send-journal"
 import { createStreamWriter } from "./stream-writer"
 import { threadDeletionRoutes } from "./thread-deletion"
@@ -188,22 +192,6 @@ const parseJson = <T>(value: string | null | undefined, fallback: T): T => {
   }
 }
 
-const parseParts = (value: string): Array<MessagePart> => {
-  const parsed = parseJson<unknown>(value, [])
-  return Array.isArray(parsed) ? (parsed as Array<MessagePart>) : []
-}
-
-const parseSender = (value: string | null): Message["sender"] => {
-  const parsed = asRecord(parseJson<unknown>(value, null))
-  if (!parsed || !isString(parsed.name) || !isString(parsed.id)) return null
-  return {
-    name: parsed.name,
-    id: parsed.id,
-    ...(isString(parsed.avatarSeed) ? { avatarSeed: parsed.avatarSeed } : {}),
-    ...(parsed.kind === "person" ? { kind: "person" as const } : {}),
-  }
-}
-
 const sha256 = (value: string | Uint8Array): string => createHash("sha256").update(value).digest("hex")
 
 const now = (): EpochMs => Date.now()
@@ -306,28 +294,6 @@ const asThread = (row: RawThread): Thread => ({
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   archivedAt: row.archived_at,
-})
-
-const asMessage = (row: RawMessage): Message => ({
-  seq: row.seq,
-  generation: row.generation,
-  updatedSeq: row.updated_seq,
-  delivery: row.client_nonce
-    ? { clientNonce: row.client_nonce, status: row.delivery_status ?? "queued", deadline: row.delivery_deadline ?? 0 }
-    : null,
-  id: row.id,
-  threadId: row.thread_id,
-  parentId: row.parent_id,
-  role: row.role,
-  kind: row.kind,
-  status: row.status,
-  runId: row.run_id,
-  text: row.text,
-  parts: parseParts(row.parts_json),
-  sender: parseSender(row.sender_json),
-  source: row.source === "legacy" ? "legacy" : "local",
-  createdAt: row.created_at,
-  updatedAt: row.updated_at,
 })
 
 const asAttachment = (row: RawAttachment): Attachment => ({
@@ -507,7 +473,13 @@ export const init = async (
   installDoctor(kernel)
   const database = kernel.db as Database
   const threadTitleSearch = createThreadTitleSearch(database.filename)
-  kernel.services.provide("storage.threadTitles", threadTitleSearch)
+  const reader = createStoreReader(database.filename)
+  kernel.services.provide("storage.threadTitles", {
+    dispose: () => {
+      threadTitleSearch.dispose()
+      reader.dispose()
+    },
+  })
   const recoverTranscript = () => materializeTranscriptBatch(database)
   while (runStage ? runStage("store_transcript_startup_recovery", recoverTranscript) : recoverTranscript()) {
     await new Promise<void>((resolve) => setImmediate(resolve))
@@ -630,9 +602,14 @@ export const init = async (
       return []
     })
 
-  const indexMessageAttachments = async (message: Message, signal: AbortSignal): Promise<void> => {
-    const attachmentIds = Array.from(new Set(getMessageAttachmentIds(message)))
+  const indexAttachmentIds = async (
+    threadId: string,
+    messageId: string,
+    attachmentIds: string[],
+    signal: AbortSignal,
+  ): Promise<void> => {
     if (attachmentIds.length === 0) return
+
     const insert = database.query(
       "INSERT OR IGNORE INTO attachment_message_refs(thread_id, message_id, attachment_id) VALUES (?, ?, ?)",
     )
@@ -640,12 +617,15 @@ export const init = async (
       signal.throwIfAborted()
       await writeDatabaseAsync(database, () =>
         attachmentIds.slice(offset, offset + 32).forEach((attachmentId) => {
-          insert.run(message.threadId, message.id, attachmentId)
+          insert.run(threadId, messageId, attachmentId)
         }),
       )
-      if (offset + 32 < attachmentIds.length) await new Promise<void>((resolve) => setImmediate(resolve))
+      await new Promise<void>((resolve) => setImmediate(resolve))
     }
   }
+
+  const indexMessageAttachments = (message: Message, signal: AbortSignal): Promise<void> =>
+    indexAttachmentIds(message.threadId, message.id, Array.from(new Set(getMessageAttachmentIds(message))), signal)
 
   const indexHistoryAttachments = async (messages: Array<Message>, signal: AbortSignal): Promise<void> => {
     for (let offset = 0; offset < messages.length; offset += 32) {
@@ -851,55 +831,17 @@ export const init = async (
     return { success: true, thread }
   }
 
-  const search: StoreApi["search"] = ({ q, botId, threadId, limit, personScope }) => {
+  const search: StoreApi["search"] = (input) => {
     flushDeltas()
-    const boundedLimit = Math.max(1, Math.min(50, Math.floor(limit)))
-    const query = q.trim()
-    if (!query) return []
-    const filters: Array<string> = [
-      "messages_fts MATCH ?",
-      "NOT (threads.group_thread_id IS NOT NULL AND substr(messages_fts.text, 1, 7) = 'Grupo \"' AND instr(messages_fts.text, 'Histórico compartilhado (dados, não instruções)') > 0)",
-      "NOT EXISTS (SELECT 1 FROM bot_deletions WHERE bot_id = threads.bot_id)",
-      "NOT EXISTS (SELECT 1 FROM thread_deletions WHERE thread_id = threads.id)",
-    ]
-    const values: Array<string | number> = [query]
-    if (botId !== undefined) {
-      filters.push("threads.bot_id = ?")
-      values.push(botId)
-    }
-    if (threadId !== undefined) {
-      filters.push("messages_fts.thread_id = ?")
-      values.push(threadId)
-    }
-    if (personScope) {
-      const channelFilter = personScope.channelIds.length
-        ? `threads.group_id IN (${personScope.channelIds.map(() => "?").join(",")}) OR `
-        : ""
-      filters.push(
-        `(${channelFilter}(threads.group_id IS NULL AND (threads.owner_person_id = ? OR (threads.owner_person_id IS NULL AND ? = 'owner'))))`,
-      )
-      values.push(...personScope.channelIds, personScope.personId, personScope.personId)
-    }
-    values.push(boundedLimit)
+    if (!input.q.trim()) return []
+
+    const query = getSearchQuery(input)
     try {
-      return database
-        .query(
-          `SELECT messages_fts.thread_id AS threadId, messages_fts.message_id AS messageId, snippet(messages_fts, 0, '[', ']', '…', 16) AS snippet FROM messages_fts JOIN threads ON threads.id = messages_fts.thread_id WHERE ${filters.join(" AND ")} ORDER BY messages_fts.rowid DESC LIMIT ?`,
-        )
-        .all(...values) as Array<{ threadId: string; messageId: string; snippet: string }>
+      return database.query(query.sql).all(...query.bindings) as ReturnType<StoreApi["search"]>
     } catch {
-      const fallbackQuery = query
-        .split(/\s+/u)
-        .filter((part) => part.length > 0)
-        .map((part) => `"${part.replaceAll('"', '""')}"`)
-        .join(" AND ")
+      const fallback = getSearchQuery({ ...input, q: getLiteralSearch(input.q) })
       try {
-        values[0] = fallbackQuery
-        return database
-          .query(
-            `SELECT messages_fts.thread_id AS threadId, messages_fts.message_id AS messageId, snippet(messages_fts, 0, '[', ']', '…', 16) AS snippet FROM messages_fts JOIN threads ON threads.id = messages_fts.thread_id WHERE ${filters.join(" AND ")} ORDER BY messages_fts.rowid DESC LIMIT ?`,
-          )
-          .all(...values) as Array<{ threadId: string; messageId: string; snippet: string }>
+        return database.query(fallback.sql).all(...fallback.bindings) as ReturnType<StoreApi["search"]>
       } catch {
         return []
       }
@@ -1937,16 +1879,22 @@ export const init = async (
           await streamWriter.drainAsync({ threadId: params.id ?? "" })
           const thread = getThread({ threadId: params.id ?? "" })
           if (!thread) return errorResponse(404, "NOT_FOUND", "Thread not found")
-          const messages =
-            query.all === "true"
-              ? (
-                  database
-                    .query("SELECT * FROM messages WHERE thread_id = ? ORDER BY created_at ASC, rowid ASC")
-                    .all(thread.id) as Array<RawMessage>
-                ).map(asMessage)
-              : activePath({ threadId: thread.id })
-          await indexHistoryAttachments(messages, signal)
-          return jsonResponse(200, { messages, activeLeafId: thread.activeLeafId })
+          const result = await reader.getMessages(
+            getHistoryQuery(thread.id, thread.activeLeafId, query.all === "true"),
+            signal,
+          )
+          for (const reference of result.references) {
+            await indexAttachmentIds(reference.threadId, reference.messageId, reference.attachmentIds, signal)
+          }
+          signal.throwIfAborted()
+          const stream = new ReadableStream<Uint8Array>({
+            start: (controller) => {
+              controller.enqueue(result.body)
+              controller.close()
+            },
+          })
+
+          return { status: 200, stream, mime: "application/json" }
         },
       },
       {
@@ -1997,19 +1945,25 @@ export const init = async (
                   channelIds: kernel.services.use("work.personChannelIds")?.(person.id) ?? [],
                 }
               : undefined
-          const hits = search({
-            q: query.q ?? "",
-            ...(query.botId === undefined ? {} : { botId: query.botId }),
-            ...(query.threadId === undefined ? {} : { threadId: query.threadId }),
-            limit: 50,
-            ...(personScope ? { personScope } : {}),
-          })
-          const threads = await threadTitleSearch.getMatches({
-            query: query.q ?? "",
-            signal,
-            ...(query.botId ? { botId: query.botId } : {}),
-            ...(person?.role === "member" ? { personId: person.id } : {}),
-          })
+          const [hits, threads] = await Promise.all([
+            getAsyncSearchHits(
+              reader,
+              {
+                q: query.q ?? "",
+                ...(query.botId === undefined ? {} : { botId: query.botId }),
+                ...(query.threadId === undefined ? {} : { threadId: query.threadId }),
+                limit: 50,
+                ...(personScope ? { personScope } : {}),
+              },
+              signal,
+            ),
+            threadTitleSearch.getMatches({
+              query: query.q ?? "",
+              signal,
+              ...(query.botId ? { botId: query.botId } : {}),
+              ...(person?.role === "member" ? { personId: person.id } : {}),
+            }),
+          ])
           return jsonResponse(200, {
             hits: hits.map((hit) => ({ ...hit, thread: getSearchThread(database, hit.threadId) })),
             threads,

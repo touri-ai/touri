@@ -15,11 +15,14 @@ import { deviceSession } from "../kernel/device-session"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import { buildChildEnv } from "../kernel/shell-env"
 import { getHostIdentity } from "../platform/host"
+import { createStoreReader } from "../store/reader"
 import { createTeamTools } from "../teams/tools"
 import { createRuntimeEngine } from "./engine"
 import { listOpenCodeModels } from "./opencode/models"
+import { toRun, WORK_RUNS_SQL } from "./persistence"
 import { listProviderProfiles } from "./provider-profiles"
 import { createRoutineScheduler } from "./routines/scheduler"
+import { getThreadRunsQuery } from "./thread-runs-query"
 import { asRecord } from "./utils"
 
 export const name = "runtime"
@@ -95,6 +98,7 @@ export const init = async (
   dependencies: Pick<Parameters<typeof createRuntimeEngine>[0], "providerAdapters"> = {},
 ): Promise<void> => {
   const engine = createRuntimeEngine(Object.assign({ kernel }, dependencies, runStage ? { runStage } : {}))
+  const reader = createStoreReader((kernel.db as Database).filename)
   let draining = false
   let drainPromise: Promise<void> | null = null
   kernel.services.provide("runtime.isDraining", () => draining)
@@ -147,6 +151,7 @@ export const init = async (
   })
   kernel.services.provide("runtime.shutdown", async (options) => {
     draining = true
+    reader.dispose()
     scheduler.stop()
     groups.shutdown(options)
     await engine.shutdown()
@@ -183,7 +188,13 @@ export const init = async (
         method: "GET",
         path: "/runs",
         handler: async ({ signal }) => {
-          const runs = engine.getWorkRuns()
+          const rows = await reader.getRows<unknown>({ sql: WORK_RUNS_SQL, bindings: [] }, signal)
+          const runs = engine.getWorkRuns(
+            rows.flatMap((row) => {
+              const run = toRun(row)
+              return run ? [run] : []
+            }),
+          )
           const person = deviceSession(signal)?.person
           const visibleRuns =
             !person || person.role === "admin"
@@ -231,7 +242,7 @@ export const init = async (
       {
         method: "GET",
         path: "/threads/:id/runs",
-        handler: async ({ params, query }) => {
+        handler: async ({ params, query, signal }) => {
           const thread = kernel.services.use("store.api")?.getThread({ threadId: params.id ?? "" })
           const isChannel = Boolean(thread?.groupId && !thread.groupThreadId)
           if (
@@ -249,10 +260,22 @@ export const init = async (
               ),
             }
           }
-          return {
-            status: 200,
-            json: { runs: groups.listRuns(params.id ?? "", { all: query.all === "true" }).map(engine.getRunSnapshot) },
-          }
+          const threadId = params.id ?? ""
+          const rows = await reader.getRows<Record<string, unknown>>(
+            getThreadRunsQuery(threadId, query.all === "true"),
+            signal,
+          )
+          const runs = rows.flatMap((row) => {
+            const run = toRun(row)
+            if (!run) return []
+            if (run.threadId === threadId) return [run]
+
+            const replyMessageId =
+              typeof row.visible_reply_message_id === "string" ? row.visible_reply_message_id : null
+            return [{ ...run, threadId, replyMessageId }]
+          })
+
+          return { status: 200, json: { runs: engine.getRunSnapshots(runs) } }
         },
       },
       {
@@ -498,6 +521,7 @@ export const init = async (
 
   kernel.onHostNotification((notification) => {
     if (notification.method === "app.willQuit") {
+      reader.dispose()
       scheduler.stop()
       groups.shutdown()
       void engine.shutdown()
