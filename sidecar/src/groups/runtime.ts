@@ -1101,7 +1101,13 @@ export const createGroupRuntime = (
 
     const canceled = cancel(id)
     // Repeating a root cancellation after the short circuit could select another browser child.
-    return { canceled, denial: null, run: browser ? readRun(id) : null }
+    return {
+      canceled,
+      denial: null,
+      run: browser ? readRun(id) : null,
+      canceledRunId: browser?.runId,
+      canceledRunIds: Array.from(new Set(targets)),
+    }
   }
   const cancelBotTurns = async ({ botId }: { botId: string }): Promise<void> => {
     const affected = [...turns.values()].filter((turn) => isBotTurn(turn, botId))

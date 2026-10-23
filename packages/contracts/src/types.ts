@@ -346,7 +346,17 @@ export type RunUsage = {
   toolCalls: number
 }
 
+export type RunActivity = {
+  active: boolean
+  processAlive: boolean | null
+  lastEventAt: EpochMs | null
+  staleReason: 'process_exited' | 'event_timeout' | null
+}
+
 export type Run = {
+  /** Live observation from the owning runtime; absent on older servers. Never persisted. */
+  activity?: RunActivity
+
   /** Coordination tracks a channel request; only execution invokes a provider. Derived from group_turns. */
   kind?: "execution" | "coordination"
   /** Automatic interruption recovery, projected from the durable continuation ledger. */
@@ -898,6 +908,8 @@ export type StartTurnArgs = {
   mcp: { command: AbsolutePath; args: Array<string>; env: Record<string, string> }
   env: Record<string, string>
   onEvent: (event: ProviderEvent) => void
+  /** The actual provider child, including reused and remote sessions; never a PID supplied by a client. */
+  onProcess?: (child: Extract<ReturnType<Kernel['spawnTree']>, { success: true }>) => void
   onPreparationStage?: (stage: keyof RunTimings) => void
   onProcessSpawned?: () => void
   onProcessReused?: () => void

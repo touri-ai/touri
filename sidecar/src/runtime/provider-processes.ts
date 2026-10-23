@@ -1,4 +1,5 @@
-import { readdirSync, readFileSync } from "node:fs"
+import { readdirSync } from "node:fs"
+import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import type { Kernel } from "@touri/contracts"
 import {
@@ -13,18 +14,18 @@ import type { ChildProcess } from "./provider-io"
 
 // The CLI children have their own process groups and can outlive a crashed sidecar.
 // Persist their birth identity before reading output; a reused PID must never be killed.
-const identity = async (pid: number): Promise<{ birth: string; alive: boolean } | null> => {
+const identity = async (pid: number, timeoutMs = 5_000): Promise<{ birth: string; alive: boolean } | null> => {
   if (process.platform === "win32") return windowsProviderIdentity(pid)
   if (process.platform === "linux") {
     try {
-      const stat = readFileSync(`/proc/${pid}/stat`, "utf8")
+      const stat = await readFile(`/proc/${pid}/stat`, "utf8")
       const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ")
       return { birth: `${fields[2]} ${fields[19]}`, alive: fields[0] !== "Z" && fields[0] !== "X" }
     } catch {
       return null
     }
   }
-  const result = await runPs(["-o", "stat=,pgid=,lstart=", "-p", String(pid)], 5_000)
+  const result = await runPs(["-o", "stat=,pgid=,lstart=", "-p", String(pid)], timeoutMs)
   const value = result?.stdout.trim() ?? ""
   const split = value.indexOf(" ")
   return result?.exitCode === 0 && split > 0 ? { birth: value.slice(split).trim(), alive: !/^[ZX]/.test(value) } : null
@@ -32,14 +33,15 @@ const identity = async (pid: number): Promise<{ birth: string; alive: boolean } 
 
 const directory = (kernel: Kernel): string => join(kernel.paths.runDir, "provider-processes")
 
-const isAlive = async (pid: number): Promise<boolean> => {
-  const current = await identity(pid)
+export const getProviderProcessAlive = async (pid: number): Promise<boolean> => {
+  const current = await identity(pid, 500)
   if (current) return current.alive
   try {
     process.kill(pid, 0)
     return true
-  } catch {
-    return false
+  } catch (error) {
+    // EPERM proves that the process exists; lack of permission is not evidence of a zombie.
+    return error instanceof Error && "code" in error && error.code === "EPERM"
   }
 }
 
@@ -154,7 +156,7 @@ export const stopProviderChildren = async (children: Set<ChildProcess>): Promise
         })
         // Bun can miss an exit notification under load. A zombie cannot write any more
         // output, and must not leave shutdown waiting on the missed notification.
-        while (!exited && (await isAlive(child.pid))) await Promise.race([observed, Bun.sleep(100)])
+        while (!exited && (await getProviderProcessAlive(child.pid))) await Promise.race([observed, Bun.sleep(100)])
         children.delete(child)
       }),
     )

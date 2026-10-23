@@ -42,7 +42,7 @@ const getRouteErrorStatus = (errorCode: string): number => {
   if (errorCode === "NOT_FOUND" || errorCode === "THREAD_NOT_FOUND") return 404
   if (errorCode === "BOT_PAUSED") return 409
   if (errorCode === "DENIED") return 403
-  if (errorCode === "RUNTIME_DRAINING") return 503
+  if (errorCode === "RUNTIME_DRAINING" || errorCode === "TIMEOUT") return 503
 
   return 400
 }
@@ -187,6 +187,7 @@ export const init = async (
         method: "GET",
         path: "/runs",
         handler: async ({ signal }) => {
+          await engine.reconcileRuns()
           const rows = await reader.getRows<unknown>({ sql: WORK_RUNS_SQL, bindings: [] }, signal)
           const runs = engine.getWorkRuns(
             rows.flatMap((row) => {
@@ -209,7 +210,10 @@ export const init = async (
                 })()
           return {
             status: 200,
-            json: { runs: visibleRuns, draining: kernel.services.use("runtime.isDraining")?.() ?? false },
+            json: {
+              runs: await engine.getRunActivities(visibleRuns),
+              draining: kernel.services.use("runtime.isDraining")?.() ?? false,
+            },
           }
         },
       },
@@ -317,8 +321,12 @@ export const init = async (
             return routeError("NOT_FOUND", "Run not found")
           const cancellation = groups.cancelAuthorized(runId, getCancellationDecision)
           if (cancellation.denial) return cancellation.denial
-          if (cancellation.run) return { status: 200, json: { run: engine.getRunSnapshot(cancellation.run) } }
-          const result = engine.cancel(runId)
+          const relatedRuns = Promise.all(cancellation.canceledRunIds.map((id) => engine.waitForRunEnd(id)))
+          const requested = cancellation.run
+            ? await engine.waitForRunEnd(cancellation.canceledRunId ?? cancellation.run.id)
+            : await engine.cancelAndWait(runId)
+          const stoppedRuns = await relatedRuns
+          const result = stoppedRuns.find((run) => !run.success) ?? requested
           return result.success
             ? { status: 200, json: { run: engine.getRunSnapshot(result.run) } }
             : routeError(result.errorCode, result.error)

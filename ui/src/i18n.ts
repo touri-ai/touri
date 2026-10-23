@@ -4,6 +4,20 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "Não foi possível parar o processo do bot. Verifique as permissões e tente novamente.":
+    "Não foi possível parar o processo do bot. Verifique as permissões e tente novamente.",
+  "Não foi possível salvar o encerramento da tarefa. Tente novamente.":
+    "Não foi possível salvar o encerramento da tarefa. Tente novamente.",
+  "O encerramento da tarefa não foi confirmado a tempo. Tente novamente.":
+    "O encerramento da tarefa não foi confirmado a tempo. Tente novamente.",
+
+  "O processo do bot foi encerrado sem concluir a tarefa. Você pode tentar novamente.":
+    "O processo do bot foi encerrado sem concluir a tarefa. Você pode tentar novamente.",
+  "O bot ficou 10 minutos sem enviar eventos. A tarefa foi encerrada. Você pode tentar novamente.":
+    "O bot ficou 10 minutos sem enviar eventos. A tarefa foi encerrada. Você pode tentar novamente.",
+  "Não foi possível encerrar a tarefa. Tente novamente.": "Não foi possível encerrar a tarefa. Tente novamente.",
+  "Não foi possível verificar as tarefas em andamento.": "Não foi possível verificar as tarefas em andamento.",
+
   "Escolha se a resposta rápida para conversa fica ativada.":
     "Escolha se a resposta rápida para conversa fica ativada.",
   "Automatic notice": "Aviso automático",
@@ -3385,6 +3399,20 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Não foi possível parar o processo do bot. Verifique as permissões e tente novamente.":
+    "The bot process could not be stopped. Check permissions and try again.",
+  "Não foi possível salvar o encerramento da tarefa. Tente novamente.":
+    "The task could not be saved as stopped. Try again.",
+  "O encerramento da tarefa não foi confirmado a tempo. Tente novamente.":
+    "The task could not be confirmed as stopped in time. Try again.",
+
+  "O processo do bot foi encerrado sem concluir a tarefa. Você pode tentar novamente.":
+    "The bot process exited before completing the task. You can try again.",
+  "O bot ficou 10 minutos sem enviar eventos. A tarefa foi encerrada. Você pode tentar novamente.":
+    "The bot sent no events for 10 minutes. The task was stopped. You can try again.",
+  "Não foi possível encerrar a tarefa. Tente novamente.": "The task could not be stopped. Try again.",
+  "Não foi possível verificar as tarefas em andamento.": "Could not check the tasks in progress.",
+
   "Escolha se a resposta rápida para conversa fica ativada.": "Choose whether fast conversational replies are enabled.",
   "Automatic notice": "Automatic notice",
   "PR ready": "Review ready",

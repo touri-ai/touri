@@ -240,6 +240,27 @@ test.each([
   expect(fixture.released).toEqual([browser.runId])
 })
 
+test("a queued group stop reports a child process signal failure", async () => {
+  const fixture = await getFixture()
+  fixture.coordinator.onProcess?.({
+    success: true,
+    pid: process.pid,
+    pgid: process.pid,
+    stdout: new ReadableStream<Uint8Array>(),
+    stderr: new ReadableStream<Uint8Array>(),
+    stdin: new WritableStream<Uint8Array>(),
+    extra: [],
+    exited: new Promise(() => {}),
+    kill: () => {
+      throw new Error("Synthetic signal failure")
+    },
+  })
+
+  const response = await fixture.cancel(fixture.waiting.id, getPerson("requester"))
+
+  expect(response).toMatchObject({ status: 503, json: { errorCode: "TIMEOUT" } })
+})
+
 test.each([getPerson("requester"), getPerson("responsible"), getPerson("responsible", "admin")])(
   "$id ($role) can stop one browser request while an unrelated protected request in the same group survives",
   async (person) => {
@@ -298,7 +319,7 @@ test("a browser group-root short circuit cancels only the authorized request onc
   expect(fixture.channelRuns.get(surviving.runId)?.status).toBe("running")
   expect(fixture.getRun(fixture.waiting.id)?.status).toBe("queued")
   expect(fixture.released).toEqual([target.requestId])
-  expect(response).toMatchObject({ status: 200, json: { run: { id: fixture.active.id } } })
+  expect(response).toMatchObject({ status: 200, json: { run: { id: target.runId, status: "canceled" } } })
 })
 
 test("the responsible person can cancel a delegated continuation through its original alias in isolation", async () => {

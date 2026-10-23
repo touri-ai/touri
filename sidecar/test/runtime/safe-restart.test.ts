@@ -18,6 +18,34 @@ test.each(["queued", "starting", "running"])("a %s turn defers a timed-out deplo
   expect(result.stderr).toContain("ainda há tarefas em andamento")
 })
 
+test.each(["process_exited", "event_timeout"])("confirmed %s zombies do not block deployment", async (staleReason) => {
+  const runs = [{ status: "running", activity: { active: false, processAlive: false, lastEventAt: 1, staleReason } }]
+
+  const result = await getRestartResult(JSON.stringify({ runs }))
+
+  expect(result.code).toBe(0)
+  expect(result.stdout).toBe("RESTARTED\n")
+})
+
+test("a live turn still blocks deployment beside a zombie", async () => {
+  const runs = [
+    { status: "running", activity: { active: false } },
+    { status: "running", activity: { active: true } },
+  ]
+
+  const result = await getRestartResult(JSON.stringify({ runs }))
+
+  expect(result.code).toBe(75)
+  expect(result.stdout).not.toContain("RESTARTED")
+})
+
+test.each([{}, { active: "false" }, false])("malformed activity defers safely: %j", async (activity) => {
+  const result = await getRestartResult(JSON.stringify({ runs: [{ status: "running", activity }] }))
+
+  expect(result.code).toBe(75)
+  expect(result.stderr).toContain("não foi possível verificar")
+})
+
 test("terminal turns do not consume the deployment wait", async () => {
   const runs = ["succeeded", "failed", "canceled", "interrupted"].map((status) => ({ status }))
 

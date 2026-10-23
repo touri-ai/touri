@@ -157,6 +157,7 @@ export const createOpenCodeAdapter = ({
           errorCode: spawned.errorCode === "ENOENT" ? "cli_missing" : "cli_crash",
           error: kernel.redact(spawned.error),
         }
+      args.onProcess?.(spawned)
       child = spawned
       children.add(child)
       if (!args.execution) await trackProviderProcess(kernel, child)
