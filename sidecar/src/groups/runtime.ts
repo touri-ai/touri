@@ -487,6 +487,7 @@ export const createGroupRuntime = (
           ? result.run
           : {
               ...turn.run,
+              kind: "execution",
               id: kernel.newId(),
               threadId: thread.id,
               botId,
