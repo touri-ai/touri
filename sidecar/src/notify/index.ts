@@ -11,7 +11,7 @@ import { createNotificationStore } from "./store"
 
 export const name = "notify"
 
-const RESOLVED_BY_USER_REPLY: ReadonlyArray<NotifyKind> = ["question", "turn-failed", "routine-failed"]
+const RESOLVED_BY_USER_REPLY: ReadonlyArray<NotifyKind> = ["question"]
 const STARTED_STATUSES: ReadonlyArray<string> = ["queued", "starting", "running", "succeeded"]
 const RESOLVED_BY_NEW_RUN: ReadonlyArray<NotifyKind> = ["turn-failed", "routine-failed", "routine-deferred"]
 
@@ -128,8 +128,12 @@ export const init = async (
     }
     if (event.type !== "message.created" || event.message.role !== "user") return
     if (event.message.sender?.kind === "integration") return
-    for (const item of store.unresolvedForThread({ threadId: event.message.threadId, kinds: RESOLVED_BY_USER_REPLY }))
+    const personId = event.message.sender?.id ?? kernel.services.use("work.defaultPersonId")?.() ?? "owner"
+    for (const item of store.unresolvedForThread({ threadId: event.message.threadId, kinds: RESOLVED_BY_USER_REPLY })) {
+      if (item.targetPersonId && item.targetPersonId !== personId) continue
+
       notifier.finish({ id: item.id, resolution: "replied" })
+    }
   })
 
   kernel.registerRoutes(createNotifyRoutes({ kernel, store, notifier, hub, syncRecoveryTasks }))

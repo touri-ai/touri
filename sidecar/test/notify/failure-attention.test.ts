@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite"
-import { expect, test } from "bun:test"
+import { afterEach, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -258,4 +258,99 @@ test("repeated routine deferrals collapse into one and a later run of that routi
   } finally {
     await h.close()
   }
+})
+
+let replyFixture: Awaited<ReturnType<typeof fixture>> | undefined
+const getReplyFixture = async () => {
+  const current = await fixture()
+  replyFixture = current
+  return current
+}
+afterEach(async () => {
+  await replyFixture?.close()
+  replyFixture = undefined
+})
+
+test.each(["Mensagem comum", "@Oceano outro pedido", "@Brisa novo pedido"])(
+  "a human message (%s) without a new run preserves failure attention",
+  async (text) => {
+    const h = await getReplyFixture()
+    const store = createNotificationStore({ db: h.kernel.db as Database })
+    const failure = h.send({
+      kind: "turn-failed",
+      botId: "brisa",
+      threadId: "channel",
+      title: "Interrompida",
+      body: "Revisar efeitos",
+      requestId: "recovery:interrupted",
+    })
+    const routine = h.send({
+      kind: "routine-failed",
+      botId: "brisa",
+      threadId: "channel",
+      title: "Rotina",
+      body: "Revisar",
+    })
+
+    h.kernel.publish({
+      type: "message.created",
+      message: {
+        id: "human",
+        threadId: "channel",
+        parentId: null,
+        role: "user",
+        kind: "text",
+        status: "complete",
+        runId: null,
+        text,
+        parts: [],
+        sender: { id: "person-a", name: "Pessoa A", kind: "person" },
+        source: "local",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      },
+    })
+
+    expect(store.get(failure.id)?.resolvedAt).toBeNull()
+    expect(store.get(routine.id)?.resolvedAt).toBeNull()
+    expect(store.logSince({ since: 0 }).filter((entry) => entry.type === "resolved")).toHaveLength(0)
+  },
+)
+
+test.each([
+  ["person-a", "person", false],
+  ["person-b", "person", true],
+  ["person-b", "integration", false],
+] as const)("question for person-b with sender %s (%s) resolves: %s", async (personId, kind, resolves) => {
+  const h = await getReplyFixture()
+  const store = createNotificationStore({ db: h.kernel.db as Database })
+  const question = h.send({
+    kind: "question",
+    botId: "brisa",
+    threadId: "dm",
+    targetPersonId: "person-b",
+    title: "Pergunta",
+    body: "Confirmar?",
+  })
+
+  h.kernel.publish({
+    type: "message.created",
+    message: {
+      id: "human",
+      threadId: "dm",
+      parentId: null,
+      role: "user",
+      kind: "text",
+      status: "complete",
+      runId: null,
+      text: "Resposta",
+      parts: [],
+      sender: { id: personId, name: "Pessoa fictícia", kind },
+      source: "local",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    },
+  })
+
+  expect(store.get(question.id)?.resolution).toBe(resolves ? "replied" : null)
 })
