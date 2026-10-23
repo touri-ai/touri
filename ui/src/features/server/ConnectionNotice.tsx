@@ -25,7 +25,7 @@ export const ConnectionNotice = ({ incompatible = false, invoke }: { incompatibl
 
   return (
     <div
-      className="notice-bar"
+      className={`notice-bar${incompatible ? "" : " notice-info"}`}
       role="status"
       aria-live="polite"
       data-connection-state={incompatible ? "incompatible" : "reconnecting"}

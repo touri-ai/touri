@@ -23,14 +23,20 @@ test("server mode recovers a failed history read without another server event", 
   await initialHistory
   await expect(page.getByRole("textbox", { name: "Mensagem para Assistente de teste" })).toBeVisible()
   await server.api("/bots", "POST", { name: "Outro assistente", provider: settings.settings.defaultProvider })
-  await page.locator(".bot-row-main").filter({ hasText: "Outro assistente" }).click()
+  await page
+    .getByRole("tabpanel", { name: /^Bots/ })
+    .getByRole("button", { name: /^Outro assistente/ })
+    .click()
   await expect(page.getByRole("textbox", { name: "Mensagem para Outro assistente" })).toBeVisible()
   const historyRoute = "**/api/v1/threads/*/messages**"
   await page.route(historyRoute, (route) =>
     route.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ code: "TOURI-E1009" }) }),
   )
 
-  await page.locator(".bot-row-main").filter({ hasText: "Assistente de teste" }).click()
+  await page
+    .getByRole("tabpanel", { name: /^Bots/ })
+    .getByRole("button", { name: /^Assistente de teste/ })
+    .click()
 
   const notice = page.locator(".notice-bar").filter({ hasText: "O serviço do touri está indisponível" })
   await expect(notice).toBeVisible()
