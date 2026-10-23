@@ -285,6 +285,12 @@ export const createGroupRuntime = (
       if (signal.aborted) abort()
       else check()
     })
+  const isAutomaticResumeEnabled = (): boolean => {
+    const setting = db.query("SELECT value_json FROM settings WHERE key='resumeInterruptedTurns'").get() as {
+      value_json: string
+    } | null
+    return setting?.value_json !== "false"
+  }
   const canResumeMember = (run: Run, turn: Turn): boolean => {
     if (stopped || turn.controller.signal.aborted || turn.timeoutError) return false
     if (turn.deadline !== null && Date.now() >= turn.deadline) return false
@@ -299,10 +305,7 @@ export const createGroupRuntime = (
     if (!bot || bot.paused || bot.archivedAt) return false
     // Independent channel recipients use separate sessions; only this member's newer work supersedes it.
     if (persistence.listRuns(run.threadId)[0]?.id !== run.id) return false
-    const setting = db.query("SELECT value_json FROM settings WHERE key='resumeInterruptedTurns'").get() as {
-      value_json: string
-    } | null
-    if (setting?.value_json === "false") return false
+    if (!isAutomaticResumeEnabled()) return false
     // An effect can reach the journal before its reply part; require review rather than replaying it.
     if (db.query("SELECT 1 FROM work_journal WHERE turn_id=? LIMIT 1").get(run.id)) return false
     const originalRunId = continuations.link(run.id)?.originalRunId ?? run.id
@@ -1422,6 +1425,8 @@ export const createGroupRuntime = (
     const run = toRun(row)
     const group = groups.get(row.group_id)
     if (!run) return
+    // A fresh queued request was accepted but never started; only interrupted work needs consent to resume.
+    if (run.status === "interrupted" && !isAutomaticResumeEnabled()) return
 
     const thread = store.getThread({ threadId: run.threadId })
     if (!group || !thread || thread.groupId !== group.id) {
