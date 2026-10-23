@@ -184,7 +184,7 @@ test("WebSocket reconnection resumes from the last seq and rejects duplicates an
   vi.stubGlobal("WebSocket", Socket)
   const api = createApiClient({
     endpoint: { baseUrl: "http://127.0.0.1:1", wsUrl: "ws://127.0.0.1:1/events", token: "token" },
-    fetchImpl: async () => Response.json({ ticket: "single-use-test" }),
+    fetchImpl: async () => Response.json({ schemaVersion: 46, ticket: "single-use-test" }),
   })
   const events: UiEventEnvelope[] = []
   const stop = api.subscribe((event) => events.push(event))
@@ -387,7 +387,7 @@ test("an expired WebSocket cursor signals resync and resumes without reconnectin
   vi.stubGlobal("WebSocket", Socket)
   const api = createApiClient({
     endpoint: { baseUrl: "http://127.0.0.1:1", wsUrl: "ws://127.0.0.1:1/events", token: "token" },
-    fetchImpl: async () => Response.json({ ticket: "single-use-test" }),
+    fetchImpl: async () => Response.json({ schemaVersion: 46, ticket: "single-use-test" }),
   })
   const received: UiEventEnvelope[] = []
   const stop = api.subscribe((event) => received.push(event))
@@ -419,7 +419,7 @@ test("a cold start waits for the stream head and loads once instead of replaying
   vi.stubGlobal("WebSocket", Socket)
   const api = createApiClient({
     endpoint: { baseUrl: "http://127.0.0.1:1", wsUrl: "ws://127.0.0.1:1/events", token: "token" },
-    fetchImpl: async () => Response.json({ ticket: "single-use-test" }),
+    fetchImpl: async () => Response.json({ schemaVersion: 46, ticket: "single-use-test" }),
   })
   const received: UiEventEnvelope[] = []
   const stop = api.subscribe((event) => received.push(event))
@@ -457,7 +457,7 @@ test("the first load does not wait forever for an event socket that never opens"
   )
   const api = createApiClient({
     endpoint: { baseUrl: "http://127.0.0.1:1", wsUrl: "ws://127.0.0.1:1/events", token: "token" },
-    fetchImpl: async () => Response.json({ ticket: "single-use-test" }),
+    fetchImpl: async () => Response.json({ schemaVersion: 46, ticket: "single-use-test" }),
   })
   const stop = api.subscribe(() => undefined)
   let ready = false
@@ -601,7 +601,7 @@ test("an interrupted event consumer resumes from the last applied revision", asy
   vi.stubGlobal("WebSocket", Socket)
   const api = createApiClient({
     endpoint: { baseUrl: "http://127.0.0.1:1", wsUrl: "ws://127.0.0.1:1/events", token: "token" },
-    fetchImpl: async () => Response.json({ ticket: "single-use-test" }),
+    fetchImpl: async () => Response.json({ schemaVersion: 46, ticket: "single-use-test" }),
   })
   let interrupted = true
   const applied: number[] = []

@@ -347,7 +347,7 @@ describe("sidecar failure blocking state", () => {
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
   })
 
-  it("blocks on a dropped backend connection even when conversations are already loaded", async () => {
+  it("keeps the loaded conversation and draft mounted while a dropped backend reconnects", async () => {
     const connection = makeConnectionEvents()
     const api: UiApi = {
       ...createMockApi(),
@@ -358,12 +358,19 @@ describe("sidecar failure blocking state", () => {
       throw reason
     })
     render(<App kernel={{ services: { api, invoke: invoke as TauriInvoke } }} />)
-    await screen.findByRole("textbox", { name: "Mensagem para mark" })
+    const composer = await screen.findByRole("textbox", { name: "Mensagem para mark" })
+    fireEvent.change(composer, { target: { value: "Rascunho preservado" } })
+
     act(() => connection.emitConnection(false))
-    expect(await screen.findByText(reason)).not.toBeVisible()
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
-    act(() => connection.emitConnection(true))
-    await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+    expect(await screen.findByText("Reconectando…")).toBeVisible()
+    expect(composer).toHaveValue("Rascunho preservado")
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+
+    act(() => connection.emitConnection(true))
+
+    expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toBe(composer)
+    expect(composer).toHaveValue("Rascunho preservado")
+    expect(screen.queryByText("Reconectando…")).not.toBeInTheDocument()
   })
 })

@@ -865,7 +865,8 @@ const AppContent = ({ kernel }: AppProps) => {
       {settingsModal}
     </>
   )
-  if (connectionState === "error" && !data.loaded) return recovery(connectionError ?? t("Unknown connection error"))
+  if (connectionState === "error" && (!api || !data.loaded))
+    return recovery(connectionError ?? t("Unknown connection error"))
   if (!api && connectionState === "loading") return loading()
   if (!api) return recovery(t("The sidecar connection is not available."))
   if (data.loading && !data.botsLoaded) return loading()
