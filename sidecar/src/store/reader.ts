@@ -92,7 +92,18 @@ const getProcessReply = async (stdout: ReadableStream<Uint8Array>, messages: boo
   if (bytes.byteLength < 4) throw new Error("STORE_READ_FAILED")
   const headerLength = new DataView(bytes.buffer, bytes.byteOffset, 4).getUint32(0)
   if (headerLength > 8 * 1024 * 1024 || headerLength + 4 > bytes.byteLength) throw new Error("STORE_READ_FAILED")
-  const references = JSON.parse(new TextDecoder().decode(bytes.subarray(4, headerLength + 4))) as MessageReferences[]
+  // Decode reference frames in small chunks too; a large attachment list is still historical JSON.
+  let offset = 4
+  const header = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (offset >= headerLength + 4) return controller.close()
+
+      const end = Math.min(offset + 16_384, headerLength + 4)
+      controller.enqueue(bytes.subarray(offset, end))
+      offset = end
+    },
+  })
+  const references = (await getRowsFromStream(header)) as MessageReferences[]
 
   return { references, body: bytes.subarray(headerLength + 4) }
 }
@@ -107,7 +118,7 @@ const getRowsFromStream = async (stream: ReadableStream<Uint8Array>): Promise<un
     const next = await reader.read()
     if (next.done) break
 
-    bytes += next.value.length
+    bytes += Buffer.byteLength(next.value)
     if (bytes > 64 * 1024 * 1024) throw new Error("STORE_READ_LIMIT")
     const lines = (tail + next.value).split("\n")
     tail = lines.pop() ?? ""

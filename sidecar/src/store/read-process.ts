@@ -49,7 +49,8 @@ export const runStoreRead = async (): Promise<void> => {
     const body = new TextEncoder().encode(
       `{"messages":[${ordered.join(",")}],"activeLeafId":${JSON.stringify(input.query.activeLeafId ?? null)}}`,
     )
-    const header = new TextEncoder().encode(JSON.stringify(references))
+    const referenceLines = references.map((reference) => JSON.stringify(reference))
+    const header = new TextEncoder().encode(referenceLines.length ? `${referenceLines.join("\n")}\n` : "")
     if (header.byteLength > 8 * 1024 * 1024) throw new Error("STORE_READ_LIMIT")
     const prefix = new Uint8Array(4)
     new DataView(prefix.buffer).setUint32(0, header.byteLength)
