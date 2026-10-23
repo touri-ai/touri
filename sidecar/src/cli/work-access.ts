@@ -268,7 +268,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
     if (!row?.sender_json) return null
     try {
       const sender: unknown = JSON.parse(row.sender_json)
-      if (!isRecord(sender) || typeof sender.id !== "string") return null
+      if (!isRecord(sender) || sender.kind === "integration" || typeof sender.id !== "string") return null
       return authStore.getPerson(sender.id)?.role === "admin" ? sender.id : null
     } catch {
       return null

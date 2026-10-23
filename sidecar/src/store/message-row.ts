@@ -46,6 +46,6 @@ const getRowSender = (value: string | null): Message["sender"] => {
     name: sender.name,
     id: sender.id,
     ...("avatarSeed" in sender && typeof sender.avatarSeed === "string" ? { avatarSeed: sender.avatarSeed } : {}),
-    ...("kind" in sender && sender.kind === "person" ? { kind: "person" as const } : {}),
+    ...("kind" in sender && (sender.kind === "person" || sender.kind === "integration") ? { kind: sender.kind } : {}),
   }
 }

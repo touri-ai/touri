@@ -9,7 +9,14 @@ export type DevicePerson = {
   avatarSeed: string
   role: "member" | "admin"
 }
-export type DeviceSession = { deviceId: string; active: () => boolean; person?: DevicePerson; origin?: string }
+export type DeviceSession = {
+  deviceId: string
+  active: () => boolean
+  person?: DevicePerson
+  origin?: string
+  clientName?: string
+  scopes?: readonly "integration:write"[]
+}
 const sessions = new WeakMap<AbortSignal, DeviceSession>()
 export const socketDeviceContext = new AsyncLocalStorage<DeviceSession | undefined>()
 export const bindDeviceSession = (signal: AbortSignal, session: DeviceSession): void => {

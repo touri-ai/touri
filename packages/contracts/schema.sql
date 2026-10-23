@@ -148,7 +148,7 @@ CREATE TABLE messages (
   run_id       TEXT REFERENCES runs(id) ON DELETE SET NULL,
   text         TEXT NOT NULL DEFAULT '',           -- plain text for search and handoff
   parts_json   TEXT NOT NULL DEFAULT '[]',         -- MessagePart[]; reasoning may include optional estimatedTokens with empty text
-  sender_json  TEXT,                               -- {name, id} for routine / peer / import senders
+  sender_json  TEXT,                               -- {name, id, avatarSeed?, kind?: person|integration}; server-authenticated identity
   source       TEXT NOT NULL DEFAULT 'local' CHECK (source IN ('local','legacy')),
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL,

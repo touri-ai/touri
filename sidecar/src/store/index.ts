@@ -54,6 +54,7 @@ import { touriVersion } from "../version"
 import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemory } from "../vm/resources"
 import { cleanupBotHome, reconcileBotHomes, updateBotHome, writeBotHome } from "./bot-home"
 import { getHistoryQuery } from "./history-query"
+import { getIntegrationSender } from "./integration-sender"
 import { getMessageFromRow as asMessage } from "./message-row"
 import { getBotModel, MODEL_VALIDATION_ERROR } from "./model"
 import { createStoreReader } from "./reader"
@@ -637,7 +638,8 @@ export const init = async (
   }
 
   const insertMessage: StoreApi["insertMessage"] = ({ message }) => {
-    if (!getThread({ threadId: message.threadId }))
+    const thread = getThread({ threadId: message.threadId })
+    if (!thread)
       return { success: false, errorCode: "THREAD_NOT_FOUND", error: `Thread ${message.threadId} was not found` }
     if (
       database.query("SELECT 1 FROM thread_deletions WHERE thread_id = ? AND phase <> 'stopping'").get(message.threadId)
@@ -672,7 +674,13 @@ export const init = async (
     if (!stored)
       return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Message could not be read after insert" }
     refreshFts({ message: stored })
-    updateThreadRow({ threadId: message.threadId, patch: { activeLeafId: message.id } })
+    updateThreadRow({
+      threadId: message.threadId,
+      patch: {
+        activeLeafId: message.id,
+        ...(message.role === "user" && message.sender?.kind === "integration" ? { unread: thread.unread + 1 } : {}),
+      },
+    })
     kernel.publish({ type: "message.created", message: stored })
     return { success: true, message: stored }
   }
@@ -1906,6 +1914,14 @@ export const init = async (
           const parsed = messageFromRequest({ threadId: params.id ?? "", body: record })
           if (!parsed.input || parsed.error)
             return errorResponse(400, "INVALID_ARGS", parsed.error ?? "Invalid message")
+          const authenticatedInput = withAuthenticatedSender(signal, parsed.input)
+          const thread = getThread({ threadId: parsed.input.threadId })
+          const integration =
+            record.as === undefined ? null : getIntegrationSender(signal, record.as, kernel, thread?.groupId ?? null)
+          if (integration && !integration.success)
+            return errorResponse(integration.status, integration.errorCode, integration.error)
+          if (integration && (!thread?.groupId || thread.groupThreadId || parsed.input.groupAction))
+            return errorResponse(400, "INVALID_INTEGRATION", "Integrations can post only ordinary channel messages")
           const person = deviceSession(signal)?.person
           if (
             person?.role === "member" &&
@@ -1916,8 +1932,9 @@ export const init = async (
             })
           )
             return errorResponse(404, "NOT_FOUND", "Attachment not found")
-          const input = withAuthenticatedSender(signal, parsed.input)
-          const thread = getThread({ threadId: parsed.input.threadId })
+          const input = integration?.success
+            ? { ...authenticatedInput, sender: integration.sender }
+            : authenticatedInput
           if (database.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(parsed.input.threadId))
             return errorResponse(409, "THREAD_DELETING", "Esta conversa já está sendo excluída.")
           const isChannel = Boolean(thread?.groupId && !thread.groupThreadId)

@@ -395,7 +395,7 @@ export type Message = {
   runId: Id | null
   text: string
   parts: Array<MessagePart>
-  sender: { name: string; id: string } | null
+  sender: { name: string; id: string; avatarSeed?: string; kind?: 'person' | 'integration' } | null
   source: RowSource
   createdAt: EpochMs
   updatedAt: EpochMs
@@ -711,6 +711,7 @@ export type ProviderLoginFlow = {
 }
 
 export type SendMessageInput = {
+  as?: { kind: 'integration'; name?: string }
   clientNonce?: string
   deadline?: EpochMs
   threadId: Id
@@ -792,7 +793,7 @@ export type ApiRoutes = {
   'POST /threads/delete': { req: { ids: Array<Id> }; res: { threadIds: Array<Id>; phase: string } }
   'GET /threads/:id/transcript': { req: { since?: number; limit?: number }; res: { entries: Array<{ seq: number; generation: number; event: UiEvent }>; rejections: Array<TranscriptRejection>; lastSeq: number; generation: number; hasMore: boolean; resync: boolean } }
   'GET /threads/:id/messages': { req: { all?: boolean }; res: { messages: Array<Message>; activeLeafId: Id | null } }
-  'POST /threads/:id/messages': { req: SendMessageInput; res: { message: Message; run: Run } }
+  'POST /threads/:id/messages': { req: SendMessageInput; res: { message: Message; run: Run | null } }
   'GET /runs': { req: Record<string, never>; res: { runs: Array<Run> } }
   'GET /threads/:id/runs': { req: { all?: boolean }; res: { runs: Array<Run> } }
   /** Compact sidebar messages and latest/active runs; never a transcript snapshot. */

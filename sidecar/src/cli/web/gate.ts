@@ -111,6 +111,8 @@ const authenticate = ({
     const origin = requestOrigin({ args, options })
     bindDeviceSession(args.request.signal, {
       deviceId: device.id,
+      ...(bearer && person.role === "admin" ? { scopes: ["integration:write"] as const } : {}),
+      clientName: args.request.headers.get("x-touri-client") ?? "",
       person: {
         id: person.id,
         name: person.name,
