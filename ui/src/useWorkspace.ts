@@ -795,6 +795,7 @@ export const useWorkspace = (
     const threadsAtStart = new Map(currentData.current.threads.map((thread) => [thread.id, thread]))
     const attempt = ++generation.current
     const channelCacheIdentity = { scope: getStorageScope(), personId }
+    setData((current) => ({ ...current, groupsLoaded: false, readyGroupIds: [] }))
     // Pending callbacks share these request-owned arrays, so clear them before abandoning the loads.
     for (const load of threadLoads.current.values()) load.deltas.length = 0
     threadLoads.current.clear()

@@ -89,6 +89,7 @@ describe("user prompt editing", () => {
       }),
     )
     const send = vi.fn(async () => {})
+
     render(
       <ChatPanel
         group={group}
@@ -107,7 +108,8 @@ describe("user prompt editing", () => {
         onOpenTools={vi.fn()}
       />,
     )
-    expect(screen.getByText("Pergunta original")).toBeVisible()
+
+    expect(await screen.findByText("Pergunta original")).toBeVisible()
     expect(screen.getByText("Resposta de mark")).toBeVisible()
     expect(screen.getByText("Resposta de onb")).toBeVisible()
     expect(screen.queryByRole("button", { name: "Editar", exact: true })).toBeNull()

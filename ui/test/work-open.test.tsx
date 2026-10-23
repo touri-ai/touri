@@ -157,6 +157,53 @@ test("an early channel click opens its original conversation once the index arri
   expect(onNewThread).not.toHaveBeenCalled()
 })
 
+test("a newly discovered channel opens its saved conversation when a refresh finishes", async () => {
+  const { api, group } = await getChannelFixture()
+  const { group: discovered, thread } = await api.request("POST /groups", {
+    name: "Novo canal",
+    color: "#558866",
+    avatarShape: "cercle",
+    memberIds: ["bot-mark"],
+    coordinatorBotId: null,
+  })
+  const barrier = getBarrier()
+  let refreshing = false
+  const request: ApiRequest = async (route, input, path) => {
+    if (route === "GET /groups") return { groups: refreshing ? [group, discovered] : [group] } as never
+    if (route === "GET /groups/:id/threads" && path?.id === discovered.id) await barrier.promise
+    return api.request(route, input, path)
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(hook.result.current.data.groupsLoaded).toBe(true))
+  const onSelect = vi.fn()
+  const onNewThread = vi.fn()
+  const getSidebar = () => (
+    <GroupSidebar
+      groups={hook.result.current.data.groups}
+      threads={hook.result.current.data.threads}
+      loading={!hook.result.current.data.groupsLoaded}
+      selectedThreadId={null}
+      onSelect={onSelect}
+      onNewThread={onNewThread}
+      onCreate={vi.fn()}
+      onEdit={vi.fn()}
+    />
+  )
+
+  refreshing = true
+  act(() => void hook.result.current.actions.refresh())
+  await waitFor(() => expect(hook.result.current.data.groups).toContainEqual(discovered))
+  const view = render(getSidebar())
+  fireEvent.click(screen.getByText(discovered.name, { exact: true }))
+  await act(async () => barrier.resolve())
+  await waitFor(() => expect(hook.result.current.data.groupsLoaded).toBe(true))
+  view.rerender(getSidebar())
+
+  expect(onNewThread).not.toHaveBeenCalled()
+  expect(onSelect).toHaveBeenCalledWith(thread.id)
+})
+
 test("the selected history starts before an unrelated channel index finishes", async () => {
   const { api, thread } = await getChannelFixture()
   const { group: unrelated } = await api.request("POST /groups", {
