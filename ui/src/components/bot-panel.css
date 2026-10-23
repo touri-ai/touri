@@ -818,3 +818,7 @@
   padding: var(--space-8) 0;
   user-select: text;
 }
+
+.bot-project-settings .model-picker-trigger {
+  font-size: var(--fs-caption);
+}
