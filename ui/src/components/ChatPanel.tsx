@@ -74,6 +74,7 @@ import { getBrowserRequestMessages } from "./browserRequestMessages"
 import { ChatDisclosure } from "./ChatDisclosure"
 import { ConnectDataCard, connectDataMarker } from "./ConnectDataCard"
 import { ConversationLoading } from "./ConversationLoading"
+import { getChannelMessages } from "./channelCancelEchoes"
 import { DeferredGoalPanel as GoalPanel } from "./DeferredGoalPanel"
 import { Disclosure } from "./Disclosure"
 import { DraftComposer, type DraftComposerHandle } from "./DraftComposer"
@@ -1482,7 +1483,10 @@ export const ChatPanel = ({
     )
 
   const messagePath = group
-    ? messages.filter((message) => message.threadId === thread.id && !isGroupCoordinationPrompt(message))
+    ? getChannelMessages(
+        messages.filter((message) => message.threadId === thread.id && !isGroupCoordinationPrompt(message)),
+        runs,
+      )
     : (activePath ??
       activeMessagePath(
         messages.filter((message) => message.threadId === thread.id),
