@@ -1,0 +1,23 @@
+{
+  "head": "bff0222fe15c5e0ccee70d303a32817a8cecfba5",
+  "base": "418eeef23ec3184b3a3bd61d9f1eb8eea9426e84",
+  "measurement": "single observations, not a latency distribution",
+  "fixture": {
+    "bots": 9,
+    "channels": 3,
+    "conversations": 135,
+    "messages": 1295
+  },
+  "latencyMs": 60,
+  "cold": {
+    "sidebarMs": 190.25496600000042,
+    "messagesMs": 842.6705040000015
+  },
+  "warm": {
+    "sidebarMs": 33.219285000002856,
+    "messagesMs": 587.6081660000018
+  },
+  "initialGzipBytes": 398241,
+  "limitBytes": 400000,
+  "browserCasesPassed": 4
+}
