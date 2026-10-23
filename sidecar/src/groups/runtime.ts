@@ -316,6 +316,24 @@ export const createGroupRuntime = (
 
     return Date.now() - (run.finishedAt ?? run.startedAt ?? run.queuedAt) <= CONTINUATION_WINDOW_MS
   }
+  const isMemberSuperseded = (candidate: Run, run: Run, turn: Turn): boolean => {
+    if (
+      candidate.status !== "queued" ||
+      candidate.id === run.id ||
+      candidate.id === turn.run.id ||
+      candidate.groupTurnId === turn.run.id
+    )
+      return false
+    if (candidate.threadId === run.threadId) return candidate.botId === run.botId
+    if (candidate.threadId !== turn.run.threadId) return false
+    if (candidate.kind === "execution") return candidate.botId === run.botId
+    if (run.errorClass === "app_restart") return false
+
+    const request = db.query("SELECT recipients_json FROM group_turns WHERE run_id=?").get(candidate.id) as {
+      recipients_json: string
+    } | null
+    return request ? (JSON.parse(request.recipients_json) as string[]).includes(run.botId) : false
+  }
   const waitForMemberResume = async (run: Run, turn: Turn): Promise<boolean> => {
     if (!canResumeMember(run, turn)) return false
 
@@ -327,27 +345,18 @@ export const createGroupRuntime = (
       dueAt: Date.now() + (continuations.count({ originalRunId }) === 0 ? 0 : resumeBackoffMs),
       state: "pending" as const,
     }
-    await writeDatabaseAsync(db, () => automaticResumes.saveJob(job))
     const publishRecovery = () =>
       kernel.publish({
         type: "run.updated",
         run: getGroupRun(engine.getRunSnapshot?.(run) ?? run, turn.run.threadId, turn.run.id),
       })
-    publishRecovery()
     const superseded = new AbortController()
     const dispose = kernel.subscribe(({ event }) => {
-      if (
-        event.type === "run.updated" &&
-        event.run.botId === run.botId &&
-        (event.run.threadId === run.threadId ||
-          (event.run.threadId === turn.run.threadId && event.run.kind === "execution")) &&
-        event.run.id !== run.id &&
-        event.run.groupTurnId !== turn.run.id &&
-        event.run.status === "queued"
-      )
-        superseded.abort()
+      if (event.type === "run.updated" && isMemberSuperseded(event.run, run, turn)) superseded.abort()
     })
     try {
+      await writeDatabaseAsync(db, () => automaticResumes.saveJob(job))
+      publishRecovery()
       const deadline = turn.deadline ?? job.dueAt
       if (canResumeMember(run, turn))
         await delay(Math.max(0, Math.min(job.dueAt, deadline) - Date.now()), undefined, {

@@ -567,6 +567,8 @@ interrupted request ahead of waiting requests, preserving its requester and cont
 Independent interrupted recipients are restored together, even if another member has already
 finished a later request. Supersession and session checks are scoped to the affected members;
 a later executed request to the same member still prevents recovery of its older request.
+During provider-retry backoff, a fresh request to that member releases the older recovery wait
+immediately; requests to independent members do not cancel it.
 Completed members are not repeated. Stop remains authoritative while startup is waiting;
 no member starts after cancellation when the engine becomes ready. Stop, pending approvals, recorded writes,
 tools without a trusted read-only definition and unconfirmed effects prevent automatic execution.

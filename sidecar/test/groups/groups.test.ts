@@ -799,6 +799,14 @@ test("restart continues an interrupted request before a queued request to the sa
   f.host.kernel.publish({ type: "transcript.resync" })
   await until(() => f.persistence.getRun(first.id)?.status === "interrupted")
   restarting = true
+  // A waiting request's notification can arrive after startup recovery has begun.
+  const dispose = f.host.kernel.subscribe(({ event }) => {
+    if (event.type !== "run.updated" || event.run.kind !== "execution" || event.run.status !== "interrupted") return
+    if (!f.db.query("SELECT 1 FROM automatic_resume_jobs WHERE run_id=? AND state='pending'").get(event.run.id)) return
+
+    f.host.kernel.publish({ type: "run.updated", run: second })
+  })
+  cleanups.unshift(dispose)
 
   const restarted = createGroupRuntime(f.host.kernel, f.engine, 30_000)
   cleanups.unshift(() => restarted.shutdown())
