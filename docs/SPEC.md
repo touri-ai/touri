@@ -573,6 +573,17 @@ show their routine name and a localized short date, without an internal timestam
 message preview. Members appear in the channel header and panel, reached through the member count.
 The channel panel contains the channel name, people and bots with status, and Edit channel;
 it does not contain an internal turn-results board.
+Work restores its last channel index from a local cache scoped to the server and signed-in person,
+then refreshes it at app startup. The cache holds only channel/sidebar metadata (at most 64 KiB,
+200 channels and 500 visible conversations, expiring after seven days); it never stores messages,
+tool output, working paths or approval state. Channel names and each channel index render as their
+requests finish, independently of machine, routine and activity initialization. The selected channel's
+history starts as soon as its own index is available, even while another channel index is pending.
+A failed channel-list read does not prevent direct conversations from loading. Empty channel and conversation invitations appear
+only after the corresponding first read succeeds; pending reads show an accessible skeleton.
+The conversation history accepts keyboard focus so saved messages can be scrolled without a pointer.
+With 60 ms added network latency, reopening Work targets a visible cached channel list within
+300 ms and the selected channel's stored messages within one second.
 The header has no repeated breadcrumb; edit and invite actions live in its ellipsis menu. The empty
 channel shows a short introduction and member avatars. The composer keeps team actions in one menu.
 

@@ -51,6 +51,17 @@ it("scrolling does not rebuild an unchanged transcript when runs are omitted", (
   expect(getMessages).toHaveBeenCalledTimes(initialCalls)
 })
 
+it("the conversation history accepts keyboard focus for scrolling", () => {
+  const view = render(
+    <VirtualMessageList messages={[]} onSwitchBranch={() => undefined} onRetry={async () => undefined} />,
+  )
+  const history = view.getByRole("region", { name: "Histórico da conversa" })
+
+  history.focus()
+
+  expect(history).toHaveFocus()
+})
+
 it.each([false, true])("updates virtual offsets when a row grows and collapses (strict: %s)", async (strict) => {
   const notifyResize = installMeasurements()
   const getList = (height: number) => (

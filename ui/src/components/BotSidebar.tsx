@@ -15,7 +15,6 @@ import type {
 import {
   Fragment,
   type KeyboardEvent,
-  lazy,
   memo,
   type ReactNode,
   Suspense,
@@ -51,10 +50,12 @@ import { useRoutineRunCountsToday } from "../useRoutineRunCountsToday"
 import { useMascotSnapshot } from "./AvatarRuntime"
 import { BotActionsMenu } from "./BotActionsMenu"
 import { BotAvatar } from "./BotAvatar"
+import { ConversationLoading } from "./ConversationLoading"
 import { DeleteBotDialog } from "./DeleteBotDialog"
 import { DeleteOldAutomaticThreadsDialog } from "./DeleteOldAutomaticThreadsDialog"
 import { DeleteThreadDialog, type ThreadDeleteTarget } from "./DeleteThreadDialog"
 import { GlobalAdvancedMenu } from "./GlobalAdvancedMenu"
+import { GroupSidebar } from "./Groups"
 import { Modal } from "./Modal"
 import { useInsertedIds } from "./Motion"
 import { mascotIsBusy } from "./mascotState"
@@ -68,10 +69,9 @@ import { type HoldReason, useSidebarOrder } from "./useSidebarOrder"
 import { getThreadDeletionError, type ThreadDeletion } from "./useThreadDeletion"
 import "./bot-sidebar.css"
 
-const GroupSidebar = lazy(() => import("./Groups").then((module) => ({ default: module.GroupSidebar })))
-
 type SidebarProps = {
   currentPerson?: ChannelPerson | undefined
+  groupsLoading?: boolean
   deletedThreadIds?: ReadonlySet<string> | undefined
   threadDeletion?: ThreadDeletion | undefined
   serverMode?: boolean
@@ -675,9 +675,10 @@ export const Sidebar = (props: SidebarProps) => {
           aria-hidden={sidebarMode !== "work" || undefined}
           inert={sidebarMode !== "work" || undefined}
         >
-          <Suspense fallback={null}>
+          <Suspense fallback={<ConversationLoading />}>
             {props.onNewGroup && hasOpenedWork && (
               <GroupSidebar
+                loading={props.groupsLoading}
                 groups={props.groups ?? EMPTY_GROUPS}
                 threads={props.threads}
                 attentionThreadIds={attentionThreadIds}

@@ -73,6 +73,7 @@ import { type BrowserContinuationActivity, getBrowserContinuationActivities } fr
 import { getBrowserRequestMessages } from "./browserRequestMessages"
 import { ChatDisclosure } from "./ChatDisclosure"
 import { ConnectDataCard, connectDataMarker } from "./ConnectDataCard"
+import { ConversationLoading } from "./ConversationLoading"
 import { ConversationStart } from "./ConversationStart"
 import { DeferredGoalPanel as GoalPanel } from "./DeferredGoalPanel"
 import { Disclosure } from "./Disclosure"
@@ -98,13 +99,10 @@ import { approvalTools, assistantSegments } from "./turnActivityModel"
 import { type EditMessage, UserMessageEdit } from "./UserMessageEdit"
 import { usePhoneViewport } from "./usePhoneViewport"
 
-const GroupHeader = lazy(() => import("./Groups").then((module) => ({ default: module.GroupHeader })))
-const GroupConversationStart = lazy(() =>
-  import("./Groups").then((module) => ({ default: module.GroupConversationStart })),
-)
 const ChannelThreads = lazy(() => import("./ChannelThreads").then((module) => ({ default: module.ChannelThreads })))
 
 type ChatPanelProps = {
+  historyLoading?: boolean
   channelThreads?: Thread[]
   channelMessages?: Message[]
   onSelectChannelThread?: ((threadId: string) => void) | undefined
@@ -293,7 +291,7 @@ export const VirtualMessageList = ({
   }, [runs, routineRuns, routines])
   const [scrollTop, setScrollTop] = useState(0)
   const [rowHeights, setRowHeights] = useState<Record<string, number>>({})
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLElement>(null)
   const spacerRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const pendingRowMeasurements = useRef(new Set<string>())
@@ -469,10 +467,13 @@ export const VirtualMessageList = ({
 
   return (
     <div className="chat-message-list">
-      <div
+      <section
         className="message-scroll"
         ref={scrollRef}
         data-testid="virtual-message-list"
+        aria-label={t("Conversation history")}
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: the scrollable history needs keyboard access without interactive messages.
+        tabIndex={0}
         onClickCapture={(event) => {
           if (!(event.target instanceof Element)) return
           const control = event.target.closest<HTMLElement>(
@@ -640,7 +641,7 @@ export const VirtualMessageList = ({
             })}
           </div>
         </div>
-      </div>
+      </section>
       {awayFromBottom && (
         <button
           type="button"
@@ -1286,6 +1287,7 @@ export const ChatPanel = ({
   group = null,
   groupMembers = [],
   channelMode = false,
+  historyLoading = false,
   workspaceMode = "bots",
   onEditGroup = () => {},
   channelBrowser = null,
@@ -1380,6 +1382,7 @@ export const ChatPanel = ({
     [runs, thread?.id, serviceRecovered],
   )
 
+  if (!thread && historyLoading) return <ConversationLoading />
   if (!thread)
     return (
       <ChannelBrowserRunsContext.Provider
@@ -1440,6 +1443,7 @@ export const ChatPanel = ({
       !visibleMessageIds.has(message.id),
   )
   const visibleMessages = getBrowserRequestMessages(messagePath.concat(pendingMessages), runs)
+  if (historyLoading && visibleMessages.length === 0) return <ConversationLoading />
   const routineConversation = isRoutineConversation({ thread, runs, routineRuns, routines })
   const repeatDraft =
     bot && !activeRun && !routineConversation

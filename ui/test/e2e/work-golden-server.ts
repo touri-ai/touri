@@ -1,5 +1,4 @@
 import { type ChildProcess, spawn } from "node:child_process"
-import { once } from "node:events"
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { createServer } from "node:net"
 import { tmpdir } from "node:os"
@@ -9,11 +8,13 @@ import type { Page } from "@playwright/test"
 const root = resolve(import.meta.dirname, "../../..")
 
 export const createWorkGoldenServer = async () => {
+  const port = await getAvailablePort()
+  const serverUrl = `http://127.0.0.1:${port}`
   const directory = await mkdtemp(join(tmpdir(), "touri-work-golden-"))
   const data = join(directory, "data")
   const scenario = join(directory, "scenario.json")
   const provider = join(directory, "fixture-provider")
-  await mkdir(data)
+  await mkdir(data, { recursive: true })
   await writeFile(
     provider,
     `#!/usr/bin/env bun\nawait import(${JSON.stringify(join(root, "sidecar/test/fakes/fake-codex.ts"))})\n`,
@@ -21,9 +22,10 @@ export const createWorkGoldenServer = async () => {
   await chmod(provider, 0o700)
   const setScenario = (value: unknown) => writeFile(scenario, JSON.stringify(value))
   await setScenario({ deltas: ["Plano conferido. Podemos continuar."] })
-  const pairing = await getPairingCode(data)
-  const port = String(await allocateServerPort())
-  const serverUrl = `http://127.0.0.1:${port}`
+  const pairing = await getPairingCode(data).catch(async (error: unknown) => {
+    await rm(directory, { recursive: true, force: true })
+    throw error
+  })
   const start = () => {
     const child = spawn(
       "bun",
@@ -33,7 +35,7 @@ export const createWorkGoldenServer = async () => {
         "--host",
         "127.0.0.1",
         "--port",
-        port,
+        String(port),
         "--data-dir",
         data,
         "--ui-dir",
@@ -111,29 +113,28 @@ export const createWorkGoldenServer = async () => {
   }
 }
 
-const allocateServerPort = async (): Promise<number> => {
-  const server = createServer((socket) => socket.destroy())
-  try {
-    const listening = once(server, "listening", { signal: AbortSignal.timeout(5_000) })
-    server.listen(0, "127.0.0.1")
-    await listening
-    const address = server.address()
-    const closed = once(server, "close", { signal: AbortSignal.timeout(5_000) })
-    server.close()
-    await closed
-    if (!address || typeof address === "string") throw new Error("Missing synthetic server port")
+const getAvailablePort = async (offset = Math.floor(Math.random() * 100), remaining = 100): Promise<number> => {
+  if (remaining === 0) throw new Error("No synthetic server port available")
+  const port = 18800 + offset
+  const listener = createServer()
+  const available = await new Promise<boolean>((done, reject) => {
+    listener.once("error", (error: NodeJS.ErrnoException) => {
+      if (error.code === "EADDRINUSE") return done(false)
+      reject(error)
+    })
+    listener.listen(port, "127.0.0.1", () => done(true))
+  })
+  if (!available) return getAvailablePort((offset + 1) % 100, remaining - 1)
+  await new Promise<void>((done, reject) => listener.close((error) => (error ? reject(error) : done())))
 
-    return address.port
-  } finally {
-    if (server.listening) server.close()
-  }
+  return port
 }
 
 const getPairingCode = async (data: string): Promise<string> => {
   const child = spawn("bun", ["ui/test/e2e/work-golden-pair.ts", data], {
     cwd: root,
     stdio: ["ignore", "pipe", "pipe"],
-    timeout: 30_000,
+    timeout: 60_000,
   })
   const chunks: string[] = []
   child.stdout.on("data", (chunk) => chunks.push(String(chunk)))
@@ -143,7 +144,7 @@ const getPairingCode = async (data: string): Promise<string> => {
     child.once("error", reject)
   })
   const match = /Pairing code: ([A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4})/.exec(chunks.join(""))
-  if (code !== 0 || !match?.[1]) throw new Error("Synthetic pairing code failed")
+  if (code !== 0 || !match?.[1]) throw new Error(`Synthetic pairing code failed (${code ?? child.signalCode})`)
   return match[1]
 }
 

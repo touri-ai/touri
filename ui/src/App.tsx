@@ -250,6 +250,7 @@ const AppContent = ({ kernel }: AppProps) => {
     api !== null,
     route.section === "bots" && route.screen === "chat",
     currentPerson?.role ?? null,
+    currentPersonId ?? "owner",
   )
   const { data, actions } = workspace
   const interruptedWork = useRecoveryTasks(api)
@@ -872,7 +873,7 @@ const AppContent = ({ kernel }: AppProps) => {
     return recovery(connectionError ?? t("Unknown connection error"))
   if (!api && connectionState === "loading") return loading()
   if (!api) return recovery(t("The sidecar connection is not available."))
-  if (data.loading && !data.botsLoaded) return loading()
+  if (data.loading && !data.botsLoaded && data.groups.length === 0) return loading()
   if (!api.isMock && data.bots.length === 0 && data.notice) return recovery(data.notice)
   // Doctor and import are reachable from onboarding, before any bot exists, so they render outside the main layout too.
   const setupModal =
@@ -908,7 +909,7 @@ const AppContent = ({ kernel }: AppProps) => {
                     return
                   }
                   // A provider notice must not restart the local service or replay a mutation.
-                  await api.request("GET /health", {})
+                  await actions.refresh()
                   setLocalNotice(null)
                   actions.dismissNotice()
                 } else if (action === "login")
@@ -1008,7 +1009,7 @@ const AppContent = ({ kernel }: AppProps) => {
         onNotice={showNotice}
       />
     )
-  if (data.bots.length === 0)
+  if (data.bots.length === 0 && data.groups.length === 0)
     return (
       <AvatarRuntimeProvider value={{ ...data, messages: data.activityMessages }}>
         {botModal}
@@ -1097,6 +1098,7 @@ const AppContent = ({ kernel }: AppProps) => {
             serverUrl={serverState.status?.url ?? null}
             host={data.routineHost}
             groups={data.groups}
+            groupsLoading={!data.groupsLoaded}
             onInvitePerson={canInvitePeople ? () => openModal("invite") : undefined}
             onNewGroup={() => {
               setEditingGroup(null)
@@ -1272,6 +1274,10 @@ const AppContent = ({ kernel }: AppProps) => {
                       >
                         <RecoveryTasksContext.Provider value={interruptedWork.tasks}>
                           <ChatPanel
+                            historyLoading={
+                              !data.threadCreation &&
+                              (selectedThread ? data.historyThreadId !== selectedThread.id : !data.loaded)
+                            }
                             channelMode={Boolean(selectedGroup)}
                             workspaceMode={sidebarMode}
                             browserRuns={data.browserRuns ?? []}
