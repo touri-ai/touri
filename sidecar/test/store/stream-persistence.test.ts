@@ -409,6 +409,7 @@ test("busy worker startup releases readiness after a bound and keeps retrying", 
   blocker?.exec("ROLLBACK")
   const committed = await f.persistence.submit([getDelta()])
 
+  expect(f.errors).toHaveLength(0)
   expect(committed.events).toHaveLength(1)
 })
 
