@@ -55,7 +55,9 @@ An adapter that never settles cannot retain the slot. After a one-second grace p
 provider is stopped through its owned process-group handle; no PID from an HTTP request is used.
 The owned group is also signaled after its leader exits, so surviving helpers cannot keep running
 when an exit notification is missed.
-Late output cannot change a terminal run. Normal finalization preserves the partial reply; if
+Cancellation immediately publishes stopped tool states and buffered partial text to live clients
+and reconnect replay while terminal persistence completes. Late output cannot change a terminal run.
+Normal finalization preserves the partial reply; if
 output preparation stalls, a bounded fallback still persists terminal state and retains the
 already stored history.
 

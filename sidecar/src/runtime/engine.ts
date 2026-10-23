@@ -2932,6 +2932,7 @@ export const createRuntimeEngine = ({
     })
     controllers.get(run.id)?.abort()
     approvalBridge.cancelRun(run.id)
+    if (state.cancelRequested) publishCanceledParts(run, state)
     const operation = stopRun(run, state, failure).finally(() => {
       stopOperations.delete(run.id)
       if (!isLive(run)) {
@@ -2945,6 +2946,19 @@ export const createRuntimeEngine = ({
       kernel.log({ level: "error", module: "runtime", msg: "Não foi possível encerrar a tarefa. Tente novamente." })
     })
     return operation
+  }
+
+  const publishCanceledParts = (run: Run, state: RunState): void => {
+    try {
+      finishParts({ run, state, reason: "cancelled_by_user", persist: false })
+      state.parts.forEach((part, index) => {
+        if (part.type === "text" || part.type === "reasoning") state.dirtyParts.add(index)
+      })
+      const store = kernel.services.use("store.api")
+      if (store) publishMessage({ store, state, run, status: "streaming" })
+    } catch {
+      // A failed interim publication must still reach the bounded terminal finalization.
+    }
   }
 
   const stopRun = async (
