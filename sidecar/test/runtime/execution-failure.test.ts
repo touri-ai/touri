@@ -68,13 +68,14 @@ test.each([false, true])(
       }),
     )
     expect(JSON.stringify(fixture.logs)).not.toContain("Synthetic output write failure")
-    if (persistent) return
 
     const reply = fixture.store.getPathMessage?.({ threadId: member.threadId, messageId: member.replyMessageId ?? "" })
-    expect(reply).toMatchObject({ status: "failed" })
     expect(reply?.text).toContain("Resultado preservado.")
     expect(reply?.text).toContain("Conferência concluída.")
     expect(reply?.parts).toContainEqual(expect.objectContaining({ callId: "completed-tool", resolution: "succeeded" }))
+    if (persistent) return
+
+    expect(reply).toMatchObject({ status: "failed" })
     expect(reply?.parts).toContainEqual(expect.objectContaining({ type: "notice", code: "run_failed" }))
   },
 )
