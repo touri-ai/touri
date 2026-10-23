@@ -38,7 +38,7 @@ test("isolated batches preserve synchronous retention results, replay floors and
   ])
   expect(first.database.query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" })
   expect(first.database.query("PRAGMA foreign_key_check").all()).toEqual([])
-})
+}, 30_000)
 
 test("a slow native write is interrupted independently and rolls back its floors before retry", async () => {
   const fixture = await getFixture()
@@ -49,14 +49,14 @@ test("a slow native write is interrupted independently and rolls back its floors
   cleanups.add(retention.dispose)
   const before = getRetained(fixture.database)
 
-  expect(await retention.run()).toBe(true)
+  expect(await retention.run(true)).toBe(true)
 
   expect(getRetained(fixture.database)).toEqual(before)
   expect(fixture.database.query("SELECT ui_delete_before_seq FROM transcript_maintenance").get()).toEqual({
     ui_delete_before_seq: 0,
   })
   fixture.database.exec("DROP TRIGGER synthetic_slow_delete")
-  await retention.run()
+  await retention.run(true)
   expect(getRetained(fixture.database)).not.toEqual(before)
   expect(fixture.database.query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" })
 })

@@ -78,6 +78,9 @@ const processEvents = (job) => {
   database.transaction(() => {
     saveAttachments(job.thread_id, attachments);
     if (deleted.length) {
+      // The replay floor can already exceed every row in this deletion batch.
+      database.exec(\`INSERT INTO schema_meta(key,value) VALUES('event_retention_revision','1')
+        ON CONFLICT(key) DO UPDATE SET value=CAST(value AS INTEGER)+1\`);
       const placeholders = deleted.map(() => "?").join(",");
       database.query("UPDATE transcript_maintenance SET ui_delete_before_seq = ? WHERE id = 1").run(Math.max(...deleted));
       database.query("DELETE FROM ui_event_log WHERE seq IN (" + placeholders + ")").run(...deleted);
