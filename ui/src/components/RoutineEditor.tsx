@@ -83,6 +83,7 @@ export const RoutineEditor = ({
   const [draft, setDraft] = useState(initial)
   const [savedId, setSavedId] = useState(routineId)
   const [savedName, setSavedName] = useState(initial.name)
+  const [savedGroupId, setSavedGroupId] = useState(initial.groupId)
   const [deleting, setDeleting] = useState(false)
   const [simple, setSimple] = useState(() => simpleSchedule(initial.cron))
   const [reviewed, setReview] = useState<string | null>(null)
@@ -95,6 +96,10 @@ export const RoutineEditor = ({
   const bot = bots.find((bot) => bot.id === draft.botId)
   const botGroups = groups.filter((group) => group.memberIds.includes(draft.botId))
   const group = groups.find((group) => group.id === draft.groupId)
+  const isGroupUnavailable = !!draft.groupId && !botGroups.some((candidate) => candidate.id === draft.groupId)
+  const unavailableGroupLabel = group
+    ? t("Canal {group} (bot fora do canal)", { group: group.name })
+    : t("Canal indisponível")
   const signature = JSON.stringify({ draft, bot, group })
   const review = reviewed === signature
   useEffect(() => {
@@ -105,7 +110,7 @@ export const RoutineEditor = ({
   const dates = useMemo(() => nextRoutineDates(draft.cron, draft.timezone, Date.now()), [draft.cron, draft.timezone])
   const valid =
     !!bot &&
-    (!draft.groupId || botGroups.some((candidate) => candidate.id === draft.groupId)) &&
+    !isGroupUnavailable &&
     !!draft.name.trim() &&
     draft.name.length <= 80 &&
     !!draft.prompt.trim() &&
@@ -129,16 +134,17 @@ export const RoutineEditor = ({
     setBusy(true)
     setError(null)
     try {
-      const { botId: _botId, ...fields } = draft
-      const patch: Partial<typeof fields> = fields
-      // The test run may already have created its dedicated results conversation.
-      if (savedId && patch.continuity === "results-thread" && patch.resultsThreadId === null)
-        delete patch.resultsThreadId
+      const { botId: _botId, resultsThreadId, ...fields } = draft
+      // Reuse a conversation created by a test run only while its destination stays the same.
+      const canReuseConversation =
+        savedId && fields.continuity === "results-thread" && resultsThreadId === null && fields.groupId === savedGroupId
+      const patch = canReuseConversation ? fields : Object.assign({}, fields, { resultsThreadId })
       const saved: Routine = savedId
         ? await actions.updateRoutine(savedId, { ...patch, enabled: activate })
         : await actions.createRoutine({ ...draft, enabled: activate })
       setSavedId(saved.id)
       setSavedName(saved.name)
+      setSavedGroupId(saved.groupId)
       if (activate) onClose()
       else {
         await actions.runRoutine(saved.id)
@@ -337,6 +343,11 @@ export const RoutineEditor = ({
                     <option value="results-thread">
                       {draft.resultsThreadId && !draft.groupId ? t("Nesta conversa") : t("Conversa de resultados")}
                     </option>
+                    {isGroupUnavailable && (
+                      <option value={`group:${draft.groupId}`} disabled>
+                        {unavailableGroupLabel}
+                      </option>
+                    )}
                     {botGroups.map((candidate) => (
                       <option key={candidate.id} value={`group:${candidate.id}`}>
                         {t("Conversa do grupo {group}", { group: candidate.name })}

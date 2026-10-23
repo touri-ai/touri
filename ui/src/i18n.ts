@@ -1117,6 +1117,8 @@ export const ptBR = {
   "Histórico desta conversa e permissões atuais do bot.": "Histórico desta conversa e permissões atuais do bot.",
   "Permissões atuais do bot.": "Permissões atuais do bot.",
   "Conversa do grupo {group}": "Conversa do grupo {group}",
+  "Canal indisponível": "Canal indisponível",
+  "Canal {group} (bot fora do canal)": "Canal {group} (bot fora do canal)",
   "A tarefa {task} será enviada ao grupo {group}, {schedule}.":
     "A tarefa {task} será enviada ao grupo {group}, {schedule}.",
   "O grupo recebe a tarefa como uma mensagem sua. Cada membro responde com as próprias permissões; com coordenador, só ele recebe e chama os outros.":
@@ -4334,6 +4336,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "This conversation’s history and the bot’s current permissions.",
   "Permissões atuais do bot.": "The bot’s current permissions.",
   "Conversa do grupo {group}": "Group conversation {group}",
+  "Canal indisponível": "Channel unavailable",
+  "Canal {group} (bot fora do canal)": "Channel {group} (bot is not a member)",
   "A tarefa {task} será enviada ao grupo {group}, {schedule}.":
     "The task {task} will be sent to the group {group}, {schedule}.",
   "O grupo recebe a tarefa como uma mensagem sua. Cada membro responde com as próprias permissões; com coordenador, só ele recebe e chama os outros.":
