@@ -15,7 +15,7 @@ test.each(["queued", "starting", "running"])("a %s turn defers a timed-out deplo
 
   expect(result.code).toBe(75)
   expect(result.stdout).not.toContain("RESTARTED")
-  expect(result.stderr).toContain("work is still active")
+  expect(result.stderr).toContain("ainda há tarefas em andamento")
 })
 
 test("terminal turns do not consume the deployment wait", async () => {
@@ -34,7 +34,7 @@ test.each(["", "{}", '{"runs":[{"status":"unexpected"}]}', '{"runs":null}'])(
 
     expect(result.code).toBe(75)
     expect(result.stdout).not.toContain("RESTARTED")
-    expect(result.stderr).toContain("could not verify")
+    expect(result.stderr).toContain("não foi possível verificar")
   },
 )
 

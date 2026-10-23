@@ -4,13 +4,13 @@
 set -euo pipefail
 
 max_wait=${1:-30}
-[[ $max_wait =~ ^[0-9]+$ ]] || { echo "Invalid wait duration" >&2; exit 2; }
+[[ $max_wait =~ ^[0-9]+$ ]] || { echo "Informe um prazo de espera válido." >&2; exit 2; }
 shift
 [[ ${1:-} == -- ]] && shift
-(($#)) || { echo "A restart command is required" >&2; exit 2; }
-cookie_file=${TOURI_DEVICE_COOKIE_FILE:?A device cookie file is required}
+(($#)) || { echo "Informe o comando de reinício." >&2; exit 2; }
+cookie_file=${TOURI_DEVICE_COOKIE_FILE:?Informe o arquivo do cookie do dispositivo.}
 cookie=$(cat "$cookie_file")
-[[ $cookie =~ ^[A-Za-z0-9_-]+$ ]] || { echo "Invalid device cookie" >&2; exit 2; }
+[[ $cookie =~ ^[A-Za-z0-9_-]+$ ]] || { echo "Cookie do dispositivo inválido." >&2; exit 2; }
 server_url=${TOURI_RUNS_URL:-http://127.0.0.1:8795/api/v1/runs}
 origin=${TOURI_ORIGIN:-http://127.0.0.1:8795}
 deadline=$(( $(date +%s) + max_wait * 60 ))
@@ -33,16 +33,16 @@ print(sum(run["status"] in {"queued", "starting", "running"} for run in runs))
 
 while :; do
   if ! active_count=$(get_active_count); then
-    echo "Restart deferred: could not verify active work." >&2
+    echo "Reinício adiado: não foi possível verificar as tarefas em andamento." >&2
     exit 75
   fi
   if [[ $active_count == 0 ]]; then
     exec "$@"
   fi
   if (( $(date +%s) >= deadline )); then
-    echo "Restart deferred: work is still active." >&2
+    echo "Reinício adiado: ainda há tarefas em andamento." >&2
     exit 75
   fi
-  echo "Waiting for active work to finish."
+  echo "Aguardando as tarefas em andamento terminarem."
   sleep 30
 done
