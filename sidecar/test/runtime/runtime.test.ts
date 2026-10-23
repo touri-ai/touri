@@ -3242,15 +3242,16 @@ describe("turn latency milestones", () => {
       expect(run.usage?.timings?.temporaryReadyAt).toBeDefined()
       expect(run.usage?.timings?.executableReadyAt).toBeDefined()
     })
+    // ES2022 lacks toSorted; only these fresh timing samples are sorted in place.
     const dispatchMs = runs
       .map(
         (run) =>
           (run.usage?.timings?.processSpawnedAt ?? run.usage?.timings?.processReusedAt ?? Infinity) - run.queuedAt,
       )
-      .toSorted((first, second) => first - second)
+      .sort((first, second) => first - second)
     const textMs = runs
       .map((run) => (run.usage?.timings?.firstTokenAt ?? Infinity) - run.queuedAt)
-      .toSorted((first, second) => first - second)
+      .sort((first, second) => first - second)
     expect(runs[1]?.usage?.timings?.processReusedAt).toBeDefined()
     expect(dispatchMs[1]).toBeLessThan(300)
     expect(dispatchMs[2]).toBeLessThan(1_000)
