@@ -22,7 +22,11 @@ for (const width of [1440, 390]) {
       "window.feedback.provider(); window.feedback.parts([{type:'reasoning',text:'Checking the available context before replying',estimatedTokens:120}])",
     )
     await mkdir(directory, { recursive: true })
-    await page.screenshot({ path: `${directory}/${phase}-${width}.png` })
+    await page.screenshot({
+      path: `${directory}/${phase}-${width}.png`,
+      mask: [page.locator(".composer-model")],
+      maskColor: "#222",
+    })
     if (phase === "before") return
     await expect(page.locator(".activity-label")).toHaveText("Preparando a resposta…")
     await expect(page.locator(".turn-activity-toggle")).toHaveAttribute("aria-expanded", "false")
@@ -37,7 +41,11 @@ for (const width of [1440, 390]) {
     await expect(page.locator(".activity-mascot")).toHaveCount(1)
     await expect(page.getByText("Ainda aguardando a IA responder.", { exact: true })).toHaveCount(0)
     await expect(page.getByRole("button", { name: "Verificar conexão", exact: true })).toBeVisible()
-    await page.screenshot({ path: `${directory}/long-wait-${width}.png` })
+    await page.screenshot({
+      path: `${directory}/long-wait-${width}.png`,
+      mask: [page.locator(".composer-model")],
+      maskColor: "#222",
+    })
     const warning = page.locator(".activity-mark")
     expect(await warning.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
     await page.getByRole("button", { name: "Verificar conexão", exact: true }).click()

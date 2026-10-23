@@ -1,6 +1,8 @@
 import { publicError } from "./errors"
 import type { MessagePart, RunErrorClass } from "./types"
 
+export const RUN_START_TIMEOUT_MESSAGE = "Sem resposta após 2 minutos."
+
 /** Unknown tool outcomes are effects too: a missing acknowledgement is not proof of rollback. */
 export const hasRecordedActions = (parts: ReadonlyArray<MessagePart>): boolean =>
   parts.some((part) => part.type === "tool_call" || part.type === "command" || part.type === "file_change")
@@ -262,6 +264,7 @@ export const refineErrorClass = (errorClass: RunErrorClass, diagnostic: string |
 /** Project diagnostics onto known public phrases. Unknown provider errors show the sanitized message, never raw stderr. */
 export const safeRunFailure = (errorClass: string | null, diagnostic: string | null): RunFailureDetail => {
   const text = diagnostic ?? ""
+  if (text.includes(RUN_START_TIMEOUT_MESSAGE)) return { stage: "turn", detail: RUN_START_TIMEOUT_MESSAGE }
   const rule = matchRule(text)
   if (rule) return rule.build(text, secondsOf(text))
   const message = sanitizeDiagnostic(text)

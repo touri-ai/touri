@@ -1,9 +1,15 @@
 import { apiModelErrors, errorRegistry, type MessagePart, type Provider, publicError } from "@touri/contracts"
-import { hasRecordedActions, isModelAtCapacity, safeRunFailure, sanitizeDiagnostic } from "@touri/contracts/run-failure"
+import {
+  hasRecordedActions,
+  isModelAtCapacity,
+  RUN_START_TIMEOUT_MESSAGE,
+  safeRunFailure,
+  sanitizeDiagnostic,
+} from "@touri/contracts/run-failure"
 import { getAttachmentError } from "./attachmentError"
 import { providerName } from "./components/ProviderMark"
 import { ApiError, isServiceUnavailable } from "./errors"
-import { type Locale, t } from "./i18n"
+import { type Locale, type TranslationKey, t } from "./i18n"
 
 export type RecoveryAction = "retry" | "login" | "storage" | "review" | "resume" | "doctor"
 export type RecoveryContext = {
@@ -68,8 +74,8 @@ export const errorRecovery = (error: unknown, context: RecoveryContext = {}): Er
     return view(tr("Não há espaço para salvar {arquivo}.", { arquivo: context.file ?? tr("o arquivo") }), [
       action("storage", "Verificar armazenamento"),
     ])
-  const apiMessage = Object.values(apiModelErrors).find((message) => raw.includes(message))
-  if (apiMessage) return view(tr(apiMessage), [action("retry", "Tentar novamente")])
+  const retryMessage = getRetryMessage(raw)
+  if (retryMessage) return view(tr(retryMessage), [action("retry", "Tentar novamente")])
   const invalidModelMessage = "The saved model name is invalid. Choose another model in the bot settings."
   if (raw.includes(invalidModelMessage)) return view(tr(invalidModelMessage), [])
 
@@ -131,12 +137,11 @@ export const errorRecovery = (error: unknown, context: RecoveryContext = {}): Er
         : tr("Não consegui conectar à sua IA. Verifique a conexão e tente novamente."),
       [action("retry", "Tentar novamente")],
     )
-  const known = Object.values(errorRegistry).find((entry) => raw.includes(entry.message))
+  const known = REGISTRY_MESSAGES.find((message) => raw.includes(message))
   const projected = safeRunFailure(context.errorClass ?? null, raw)
-  const safeKnown = projected.stage !== "turn" && !/provider_protocol|provider_install/.test(projected.stage)
+  const safeKnown = !["turn", "provider_protocol", "provider_install"].includes(projected.stage)
   return view(
-    known?.message ??
-      (safeKnown ? projected.detail : tr("Não foi possível concluir esta ação. Confira os detalhes do erro.")),
+    known ?? (safeKnown ? projected.detail : tr("Não foi possível concluir esta ação. Confira os detalhes do erro.")),
     [
       ...(context.errorClass && publicError(context.errorClass).retryable ? [action("retry", "Tentar novamente")] : []),
       action("doctor", "Verificar ambiente"),
@@ -144,3 +149,10 @@ export const errorRecovery = (error: unknown, context: RecoveryContext = {}): Er
     false,
   )
 }
+
+export const getRetryMessage = (raw: string): TranslationKey | undefined => {
+  if (raw.includes(RUN_START_TIMEOUT_MESSAGE)) return RUN_START_TIMEOUT_MESSAGE
+  return Object.values(apiModelErrors).find((message) => raw.includes(message))
+}
+
+export const REGISTRY_MESSAGES: ReadonlyArray<string> = Object.values(errorRegistry).map((entry) => entry.message)

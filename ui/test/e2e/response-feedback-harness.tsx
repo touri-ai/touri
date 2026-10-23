@@ -1,4 +1,5 @@
 import type { Message, MessagePart, Run, SendMessageInput } from "@touri/contracts"
+import { RUN_START_TIMEOUT_MESSAGE, safeRunFailure } from "@touri/contracts/run-failure"
 import { createRoot } from "react-dom/client"
 import App from "../../src/App"
 import type { ApiRequest } from "../../src/api/client"
@@ -31,6 +32,8 @@ let acceptedAt = 0
 const originalRequest = api.request
 const request: ApiRequest = async (route, input, path) => {
   if (route === "GET /health") return { ok: true, version: "test", schemaVersion: 19 } as never
+  if (route === "GET /runs")
+    return { runs: run && ["queued", "starting", "running"].includes(run.status) ? [run] : [] } as never
   if (route === "POST /threads/:id/messages") {
     sends++
     const sent = input as SendMessageInput
@@ -63,6 +66,7 @@ const request: ApiRequest = async (route, input, path) => {
       botId: bot.id,
       provider: bot.provider,
       trigger: "user",
+      origin: "message",
       requestMessageId: message.id,
       replyMessageId: null,
       externalTurnId: null,
@@ -126,6 +130,38 @@ Object.assign(window, {
       thread.activeLeafId = reply.id
       api.emit({ type: "message.updated", message: reply })
       api.emit({ type: "thread.updated", thread: { ...thread } })
+    },
+    timeout: () => {
+      if (!run) throw new Error("Missing run")
+      const failure = safeRunFailure("timeout", RUN_START_TIMEOUT_MESSAGE)
+      const message: Message = {
+        id: `startup-failure-${sends}`,
+        threadId: thread.id,
+        parentId: run.requestMessageId,
+        role: "assistant",
+        kind: "text",
+        status: "failed",
+        runId: run.id,
+        text: "",
+        parts: [{ type: "notice", level: "error", code: "run_failed", text: RUN_START_TIMEOUT_MESSAGE, failure }],
+        sender: null,
+        source: "local",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+      run = Object.assign({}, run, {
+        status: "failed" as const,
+        errorClass: "timeout" as const,
+        errorMessage: RUN_START_TIMEOUT_MESSAGE,
+        replyMessageId: message.id,
+        finishedAt: Date.now(),
+      })
+      // Mock routes share these collections, so update their exposed state in place.
+      state.messages.push(message)
+      thread.activeLeafId = message.id
+      api.emit({ type: "message.updated", message })
+      api.emit({ type: "run.updated", run })
+      api.emit({ type: "thread.updated", thread: Object.assign({}, thread) })
     },
     finish: () => {
       if (!run) throw new Error("Missing run")
