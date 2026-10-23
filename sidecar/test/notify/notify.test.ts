@@ -310,7 +310,7 @@ test("respond marks the request expired when the runtime no longer holds it", as
   }
 })
 
-test("a user reply in the thread resolves open questions and failures", async () => {
+test("a user reply resolves questions but preserves interrupted failures", async () => {
   const h = await harness()
   try {
     const send = emitter(h)
@@ -338,7 +338,7 @@ test("a user reply in the thread resolves open questions and failures", async ()
     const pending = (await (await h.call("GET", "/api/notifications/pending")).json()) as {
       notifications: Array<NotificationRecord>
     }
-    expect(pending.notifications.map((item) => item.kind)).toEqual(["incident"])
+    expect(pending.notifications.map((item) => item.kind)).toEqual(["turn-failed", "incident"])
   } finally {
     h.close()
   }
