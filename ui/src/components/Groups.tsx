@@ -12,6 +12,7 @@ import { PanelIcon } from "./PanelIcon"
 import { PersonAvatar } from "./PersonAvatar"
 import { SidebarActionsMenu } from "./SidebarActionsMenu"
 import { SidebarCount, SidebarDot, SidebarRow } from "./SidebarRow"
+import "./conversation-start.css"
 import "./groups.css"
 
 const DeleteGroupDialog = lazy(() =>

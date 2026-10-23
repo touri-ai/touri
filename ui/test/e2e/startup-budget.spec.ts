@@ -28,6 +28,13 @@ test("keeps the production startup payload below 400 KB gzip with optional chann
     expect(chunk?.isDynamicEntry).toBe(true)
     expect(initialFiles).not.toContain(chunk?.file)
   })
+  const welcomeStyles = Object.values(manifest)
+    .flatMap((chunk) => chunk.css ?? [])
+    .filter((file) => file.includes("/conversation-start-"))
+  expect(welcomeStyles.length).toBeGreaterThan(0)
+  welcomeStyles.forEach((file) => {
+    expect(initialFiles).not.toContain(file)
+  })
   const dialogStyles = manifest["src/components/GroupModal.tsx"]?.css ?? []
   expect(dialogStyles.length).toBeGreaterThan(0)
   dialogStyles.forEach((file) => {

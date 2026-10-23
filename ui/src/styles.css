@@ -835,28 +835,6 @@ a {
 .markdown-compact pre {
   padding: var(--space-8);
 }
-.conversation-start {
-  max-width: 520px;
-  margin: var(--space-32) auto;
-  color: var(--text);
-}
-.conversation-start h2 {
-  font-size: var(--fs-emphasis);
-}
-.conversation-start p {
-  color: var(--text-2);
-  font-size: var(--fs-meta);
-  line-height: var(--leading-body);
-}
-.conversation-examples {
-  display: grid;
-  gap: var(--space-8);
-  margin-top: var(--space-16);
-}
-.conversation-examples .button {
-  white-space: normal;
-  text-align: left;
-}
 .message-error {
   margin: var(--space-8) 0;
   padding: var(--space-8) var(--space-12);
@@ -4738,49 +4716,6 @@ a {
 }
 .markdown-compact :is(p, ul, ol, blockquote) {
   margin-block: var(--space-8);
-}
-.chat-panel .conversation-start {
-  width: min(440px, 100%);
-  margin: clamp(32px, 10vh, 100px) auto var(--space-32);
-}
-.conversation-start-avatar {
-  margin-bottom: var(--space-20);
-}
-.chat-panel .conversation-start h2 {
-  margin: 0 0 var(--space-12);
-  font-size: var(--fs-title);
-  font-weight: var(--weight-medium);
-  line-height: 1.35;
-  letter-spacing: -0.02em;
-}
-.chat-panel .conversation-start p {
-  margin: 0;
-  font-size: var(--fs-body);
-  line-height: 1.65;
-}
-.chat-panel .conversation-examples {
-  margin-top: var(--space-24);
-}
-.chat-panel .conversation-examples .button {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-16);
-  padding: var(--space-12) var(--space-12);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface-chat-prompt);
-  color: var(--text);
-  font-size: var(--fs-meta);
-  line-height: var(--leading-body);
-}
-.conversation-examples svg {
-  flex-shrink: 0;
-  color: var(--text-2);
-}
-.chat-panel .conversation-examples .button:hover {
-  background: var(--surface-control);
-  border-color: var(--border-strong);
 }
 @media (max-width: 1100px) {
   .chat-panel .chat-header-crumb {
