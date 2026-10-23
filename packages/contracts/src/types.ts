@@ -309,7 +309,11 @@ export type RunUsage = {
 
 export type Run = {
   /** Coordination tracks a channel request; only execution invokes a provider. Derived from group_turns. */
-  kind?: 'execution' | 'coordination'
+  kind?: "execution" | "coordination"
+  /** Automatic interruption recovery, projected from the durable continuation ledger. */
+  automaticResumePending?: boolean
+  automaticResumeFromRunId?: Id | null
+
   /** Stable browser request across private handback continuations. Derived from the continuation ledger. */
   browserRequestId?: Id | null
   browserWaitingForPerson?: boolean

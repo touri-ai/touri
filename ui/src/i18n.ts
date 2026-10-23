@@ -975,6 +975,7 @@ export const ptBR = {
     "A resposta foi interrompida. Algumas ações podem ter sido concluídas.",
   "Ver ações realizadas": "Ver ações realizadas",
   "Retomar tarefa": "Retomar tarefa",
+  "Retomando automaticamente…": "Retomando automaticamente…",
   "Ver tarefa": "Ver tarefa",
   "Verificar ambiente": "Verificar ambiente",
   "Não foi possível concluir esta ação. Confira os detalhes do erro.":
@@ -4151,6 +4152,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "The response was interrupted. Some actions may have completed.",
   "Ver ações realizadas": "View recorded actions",
   "Retomar tarefa": "Resume task",
+  "Retomando automaticamente…": "Resuming automatically…",
   "Ver tarefa": "View task",
   "Verificar ambiente": "Check environment",
   "Não foi possível concluir esta ação. Confira os detalhes do erro.":

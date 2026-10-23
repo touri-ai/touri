@@ -204,12 +204,17 @@ test("work snapshots identify routine, delegated and resumed turns and restore q
   })
   fixture.addCleanup(() => replacement.shutdown())
 
+  await replacement.ready
+  await waitFor(
+    () => replacement.getWorkRuns().length === 5 && replacement.getWorkRuns().some((run) => run.status === "running"),
+  )
   const restored = replacement.getWorkRuns().filter((run) => run.status === "queued")
 
-  expect(restored.slice(0, 2).map((run) => run.id)).toEqual(waitingIds)
-  expect(restored.map((run) => run.queuePosition)).toEqual([1, 2, 3, 4, 5])
-  expect(restored.every((run) => run.queueTotal === 5)).toBe(true)
-  expect(restored.slice(2).map((run) => run.origin)).toEqual(["resume", "resume", "resume"])
+  expect(replacement.getWorkRuns().find((run) => run.status === "running")?.id).toBe(waitingIds[0])
+  expect(restored[0]?.id).toBe(waitingIds[1])
+  expect(restored.map((run) => run.queuePosition)).toEqual([1, 2, 3, 4])
+  expect(restored.every((run) => run.queueTotal === 4)).toBe(true)
+  expect(restored.slice(1).map((run) => run.origin)).toEqual(["resume", "resume", "resume"])
 })
 
 test("authenticated people keep message origin in live and persisted work snapshots", async () => {

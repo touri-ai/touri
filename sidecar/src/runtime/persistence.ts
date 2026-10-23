@@ -368,7 +368,7 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
     try {
       const rows = db
         .query(
-          "SELECT * FROM runs WHERE status IN ('starting', 'running') AND id NOT IN (SELECT run_id FROM group_turns)",
+          "SELECT * FROM runs WHERE status IN ('queued', 'starting', 'running') AND id NOT IN (SELECT run_id FROM group_turns) AND (status <> 'queued' OR id IN (SELECT run_id FROM group_run_links))",
         )
         .all()
       return rows.map(toRun).filter((run): run is Run => run !== null)
@@ -603,15 +603,14 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
   }
 
   const getRoutineRun = (id: Id): RoutineRun | null => {
-    const memory = routineRuns.get(id)
-    if (memory) return memory
-    if (!db) return null
+    if (!db) return routineRuns.get(id) ?? null
     try {
+      // Group recovery and the engine share the database, but not this projection cache.
       const found = toRoutineRun(db.query("SELECT * FROM routine_runs WHERE id = ?").get(id))
       if (found) routineRuns.set(found.id, found)
       return found
     } catch {
-      return null
+      return routineRuns.get(id) ?? null
     }
   }
 

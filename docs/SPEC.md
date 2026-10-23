@@ -309,11 +309,14 @@ interrupted | failed(cli_crash, oom) ─► automatic continuation run (see belo
 - **Carryover.** When a run ends in anything other than `succeeded`, `threads.carryover_note` is set. The next turn prepends it to the user input and then clears it.
   - If the CLI never reached `turn_started`, the note is: `[touri: your previous turn did not run (<class>: <msg>). The user's message was: "<text>"]`.
   - Otherwise: `[touri: your previous turn ended with <class>. Partial output: "<last 1500 chars>"]`.
-- **Automatic continuation** (setting `resumeInterruptedTurns`, default on). A turn cut off by an app restart (crash or quit), by the provider process exiting without a result (`cli_crash`, `oom`) or by the bot computer stopping mid-turn is continued without the user pressing Retry:
+- **Automatic continuation** (setting `resumeInterruptedTurns`, default on). A turn cut off by an app restart (crash or quit), by the provider process exiting without a result (`cli_crash`, `oom`, `timeout`) or by the bot computer stopping mid-turn is continued without the user pressing Retry:
   - The runtime inserts a system notice (`NoticePart{code:"run_resumed"}`, "Retomado após reinício do touri" or "Retomado após falha do provedor") after the partial reply and queues a run whose request is that notice. The provider receives an instruction to check the current state before repeating anything, plus the carryover, in the same native session (`run_resume_points` keeps the session id as soon as the provider reports it).
-  - After a restart this happens on boot for turns active in the last 6 hours; after a provider or VM death it happens once, after a short backoff, unless the user wrote meanwhile.
-  - Never more than 2 continuations per original turn (`run_continuations` links each continuation to the turn it continues). Not for canceled turns, group turns, paused bots, or turns with unacknowledged `uncertain` work effects (the work notice waits for the user).
+  - After a restart this happens on boot for turns active in the last 6 hours; after a timeout, provider failure or network interruption, the first retry is immediate and the second waits one minute, unless the user wrote meanwhile. Pending deadlines survive a restart in `automatic_resume_jobs`.
+  - Never more than 2 continuations per original turn (`run_continuations` links each continuation to the turn it continues). The chat projects the chain into the original card and displays “Retomando automaticamente…” while retrying; manual recovery appears after exhaustion. Shared-channel continuations target only the interrupted member in the same channel and preserve the initiating person for browser control. Not for user-canceled turns, pending approvals, browser handoffs, credential/permission errors, paused bots, delegated turns without their caller, recorded writes or tools without a trusted read-only definition, or turns with unacknowledged `uncertain` work effects (the work notice waits for the user).
   - A routine run is continued within its original timeout instead of being marked canceled.
+  - Shared-channel turns own their member retries, using the same durable deadlines as direct conversations. Recovery completes the interrupted member before proceeding to other explicitly requested members; completed members are never replayed after restart.
+  - Stopping a pending recovery takes effect immediately; cancellation waits asynchronously for a competing database writer and finishes persisting before graceful shutdown.
+  - Optional goal controls load separately from the initial chat assets, preserving the 400 KB compressed startup budget.
 
   This fixes the touri web bug where "sim, nesse ambiente" was lost.
 - **Error classification** (`RunErrorClass`), in priority order:
@@ -472,8 +475,10 @@ Parar cancels the active group turn, its delegated work and pending group turns.
 or the coordinator requires idle group conversations. Eligible unfinished channel turns resume after
 restart and provider interruption, up to two automatic attempts recorded durably per original member
 turn. Completed members are not repeated. Stop remains authoritative while startup is waiting;
-no member starts after cancellation when the engine becomes ready. Stop, pending approvals and unconfirmed effects prevent
-automatic execution. A managed effect recorded in the durable work journal requires human review
+no member starts after cancellation when the engine becomes ready. Stop, pending approvals, recorded writes,
+tools without a trusted read-only definition and unconfirmed effects prevent automatic execution.
+The first retry is immediate; the second waits one minute, retaining its deadline across restart.
+A managed effect recorded in the durable work journal requires human review
 even if no reply part was saved; neither automatic recovery nor a simple retry may replay it.
 The manual resume action appears only after automatic recovery is exhausted or needs human review.
 A later reply to another channel request or from another member does not hide that action.

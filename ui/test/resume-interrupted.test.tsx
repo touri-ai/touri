@@ -1,7 +1,8 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
-import type { Message } from "@touri/contracts"
+import type { Message, Run } from "@touri/contracts"
 import { afterEach, expect, it, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
+import { getAutomaticResumeMessages } from "../src/components/automaticResumeMessages"
 import { VirtualMessageList } from "../src/components/ChatPanel"
 import { SettingsModal } from "../src/components/Modals"
 import { setDocumentLanguage } from "../src/documentLanguage"
@@ -101,4 +102,194 @@ it("the mock scenario seeds an interrupted turn followed by its continuation", a
   expect(marker?.text).toBe("Retomado após reinício do touri")
   expect(messages.at(-1)).toMatchObject({ parentId: marker?.id, role: "assistant", status: "complete" })
   expect((await api.request("GET /settings", {})).settings.resumeInterruptedTurns).toBe(true)
+})
+
+const getInterruptedRun = (overrides: Partial<Run> = {}): Run => ({
+  id: "original",
+  threadId: "t1",
+  botId: "b",
+  provider: "codex",
+  trigger: "user",
+  requestMessageId: "request",
+  replyMessageId: "partial",
+  externalTurnId: "turn",
+  status: "failed",
+  errorClass: "timeout",
+  errorMessage: "Interrupted",
+  usage: null,
+  routineRunId: null,
+  queuedAt: 1,
+  startedAt: 1,
+  finishedAt: 2,
+  ...overrides,
+})
+
+const getInterruptedMessage = () =>
+  message({
+    id: "partial",
+    runId: "original",
+    status: "failed",
+    text: "Preparei a tabela.",
+    parts: [
+      { type: "text", text: "Preparei a tabela." },
+      { type: "notice", code: "run_failed", level: "error", text: "timeout: Interrupted" },
+    ],
+  })
+
+it("shows automatic recovery instead of an error or manual resume while waiting", () => {
+  render(
+    <VirtualMessageList
+      messages={[getInterruptedMessage()]}
+      runs={[getInterruptedRun({ automaticResumePending: true })]}
+      onSwitchBranch={async () => {}}
+      onRetry={async () => {}}
+    />,
+  )
+
+  expect(screen.getByText("Retomando automaticamente…")).toHaveAttribute("role", "status")
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "Retomar tarefa" })).not.toBeInTheDocument()
+})
+
+it("keeps a running continuation in the original card before its first response", () => {
+  render(
+    <VirtualMessageList
+      messages={[getInterruptedMessage()]}
+      runs={[
+        getInterruptedRun(),
+        getInterruptedRun({
+          id: "retry",
+          status: "running",
+          queuedAt: 3,
+          automaticResumeFromRunId: "original",
+          replyMessageId: null,
+        }),
+      ]}
+      onSwitchBranch={async () => {}}
+      onRetry={async () => {}}
+    />,
+  )
+
+  expect(screen.getByText("Retomando automaticamente…")).toHaveAttribute("role", "status")
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  expect(document.querySelectorAll(".message-bubble")).toHaveLength(1)
+})
+
+it("combines partial output and the recovered answer in one original card", () => {
+  render(
+    <VirtualMessageList
+      messages={[
+        getInterruptedMessage(),
+        message({
+          id: "answer",
+          runId: "retry",
+          text: "Relatório concluído.",
+          parts: [{ type: "text", text: "Relatório concluído." }],
+        }),
+      ]}
+      runs={[
+        getInterruptedRun(),
+        getInterruptedRun({
+          id: "retry",
+          status: "succeeded",
+          errorClass: null,
+          queuedAt: 3,
+          automaticResumeFromRunId: "original",
+        }),
+      ]}
+      onSwitchBranch={async () => {}}
+      onRetry={async () => {}}
+    />,
+  )
+
+  expect(screen.getByText(/Preparei a tabela/)).toHaveTextContent("Relatório concluído.")
+  expect(screen.getByText(/Relatório concluído/)).toHaveTextContent("Preparei a tabela.")
+  expect(document.querySelectorAll(".message-bubble")).toHaveLength(1)
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+})
+
+it("restores visible failure controls when automatic attempts are exhausted", () => {
+  render(
+    <VirtualMessageList
+      messages={[getInterruptedMessage()]}
+      runs={[getInterruptedRun({ automaticResumePending: false })]}
+      onSwitchBranch={async () => {}}
+      onRetry={async () => {}}
+    />,
+  )
+
+  expect(screen.getByRole("alert")).toBeInTheDocument()
+  expect(screen.queryByText("Retomando automaticamente…")).not.toBeInTheDocument()
+})
+
+it("lets the person stop a task while automatic recovery is waiting", () => {
+  const onCancel = vi.fn(async () => {})
+  render(
+    <VirtualMessageList
+      messages={[getInterruptedMessage()]}
+      runs={[getInterruptedRun({ automaticResumePending: true })]}
+      onSwitchBranch={async () => {}}
+      onRetry={async () => {}}
+      onCancel={onCancel}
+    />,
+  )
+
+  fireEvent.click(screen.getByRole("button", { name: "Parar" }))
+
+  expect(onCancel).toHaveBeenCalledExactlyOnceWith("original")
+})
+
+it("leaves unrelated messages separate when another task has an automatic continuation", () => {
+  const earlier = [
+    message({ id: "earlier-first", runId: "earlier", text: "Primeira parte." }),
+    message({ id: "earlier-second", runId: "earlier", text: "Segunda parte." }),
+  ]
+  const messages = [...earlier, getInterruptedMessage(), message({ id: "answer", runId: "retry", text: "Pronto." })]
+  const runs = [
+    getInterruptedRun({ id: "earlier", status: "succeeded", queuedAt: 0 }),
+    getInterruptedRun(),
+    getInterruptedRun({ id: "retry", status: "succeeded", queuedAt: 3, automaticResumeFromRunId: "original" }),
+  ]
+
+  const visible = getAutomaticResumeMessages(messages, runs)
+
+  expect(visible.slice(0, 2)).toEqual(earlier)
+  expect(visible.map((item) => item.id)).toEqual(["earlier-first", "earlier-second", "partial"])
+  expect(visible[2]?.text).toBe("Preparei a tabela.\n\nPronto.")
+})
+
+it("folds a shared-channel continuation and its coordination marker into the original card", () => {
+  const messages = [
+    getInterruptedMessage(),
+    message({
+      id: "visible-marker",
+      role: "system",
+      kind: "notice",
+      text: "Retomado após falha do provedor",
+      parts: [{ type: "notice", code: "run_resumed", level: "info", text: "Retomado após falha do provedor" }],
+    }),
+    message({ id: "answer", runId: "retry", text: "Pronto.", parts: [{ type: "text", text: "Pronto." }] }),
+  ]
+  const runs = [
+    getInterruptedRun(),
+    getInterruptedRun({
+      id: "channel-continuation",
+      requestMessageId: "visible-marker",
+      status: "succeeded",
+      queuedAt: 3,
+    }),
+    getInterruptedRun({
+      id: "retry",
+      requestMessageId: "hidden-member-request",
+      groupTurnId: "channel-continuation",
+      status: "succeeded",
+      queuedAt: 4,
+      automaticResumeFromRunId: "original",
+    }),
+  ]
+
+  const visible = getAutomaticResumeMessages(messages, runs)
+
+  expect(visible.map((item) => item.id)).toEqual(["partial"])
+  expect(visible[0]?.text).toBe("Preparei a tabela.\n\nPronto.")
 })

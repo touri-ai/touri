@@ -3,6 +3,7 @@ import type { Message } from "@touri/contracts"
 import { afterEach, expect, test, vi } from "vitest"
 import App, { getGoalSelection } from "../src/App"
 import { createMockApi } from "../src/api/mock"
+import { DeferredGoalPanel } from "../src/components/DeferredGoalPanel"
 import { GoalPanel } from "../src/components/GoalPanel"
 import { localizeToolText, t } from "../src/i18n"
 
@@ -11,13 +12,13 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-const makeFixture = (hasProject = true, api = createMockApi()) => {
+const makeFixture = (hasProject = true, api = createMockApi(), Panel = GoalPanel) => {
   const bot = api.getState().bots[0]
   const request = api.getState().messages.find((message) => message.role === "user")
   if (!bot || !request) throw new Error("Missing mock conversation")
 
   const view = render(
-    <GoalPanel
+    <Panel
       api={api}
       threadId={request.threadId}
       bot={{ ...bot, projectId: hasProject ? bot.projectId : null }}
@@ -490,4 +491,18 @@ test.each(["other bot", "group", "routine"])("goal setup excludes a conversation
   expect(selection.goalThread).toBeNull()
   expect(selection.goalRequest).toBeUndefined()
   expect(selection.goalBusy).toBe(false)
+})
+
+test("deferred goal controls retain explicit creation and pause actions", async () => {
+  const { api } = makeFixture(true, createMockApi(), DeferredGoalPanel)
+  await screen.findByRole("button", { name: "Definir objetivo" })
+
+  await startGoal()
+  fireEvent.click(screen.getByRole("button", { name: "Pausar" }))
+  await screen.findByRole("button", { name: "Retomar" })
+
+  expect(api.calls.some((call) => call.route === "POST /threads/:id/goal")).toBe(true)
+  expect(api.calls).toContainEqual(
+    expect.objectContaining({ route: "PATCH /threads/:id/goal", input: { action: "pause" } }),
+  )
 })

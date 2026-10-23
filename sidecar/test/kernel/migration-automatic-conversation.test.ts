@@ -46,7 +46,7 @@ describe("automatic conversation migration", () => {
 
     database = openDatabase({ filename: join(root, "touri.db") })
 
-    expect(SCHEMA_VERSION).toBe(46)
+    expect(SCHEMA_VERSION).toBe(47)
     expect(database.query("SELECT id,automatic_conversation_mode FROM bots ORDER BY id").all()).toEqual([
       { id: "main", automatic_conversation_mode: "main" },
       { id: "per-run", automatic_conversation_mode: "task" },

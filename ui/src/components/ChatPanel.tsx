@@ -65,6 +65,7 @@ import { ActivityMark } from "./ActivityMark"
 import { ApprovalCard } from "./ApprovalCard"
 import { useAvatarBot, useMascotSnapshot, useMessageMascotState, useThreadBot } from "./AvatarRuntime"
 import { withApprovalAnswers } from "./activityStatus"
+import { getAutomaticResumeMessages } from "./automaticResumeMessages"
 import { BotAvatar } from "./BotAvatar"
 import { BrowserActivityControlsProvider } from "./BrowserActivityControls"
 import { getBrowserActivityTools } from "./browserActivityPresentation"
@@ -73,13 +74,13 @@ import { getBrowserRequestMessages } from "./browserRequestMessages"
 import { ChatDisclosure } from "./ChatDisclosure"
 import { ConnectDataCard, connectDataMarker } from "./ConnectDataCard"
 import { ConversationStart } from "./ConversationStart"
+import { DeferredGoalPanel as GoalPanel } from "./DeferredGoalPanel"
 import { Disclosure } from "./Disclosure"
 import { DraftComposer, type DraftComposerHandle } from "./DraftComposer"
 import { ErrorDetails, ErrorText } from "./ErrorDetails"
 import { ErrorNotice } from "./ErrorNotice"
 import { EvidenceContext } from "./EvidenceGallery"
 import { FailureActionContext } from "./FailureActionContext"
-import { GoalPanel } from "./GoalPanel"
 import { MachineServiceButton } from "./MachineServiceButton"
 import { MachineStatus } from "./MachineStatus"
 import { MarkdownContent } from "./MarkdownContent"
@@ -255,7 +256,10 @@ export const VirtualMessageList = ({
   header,
   timelineCards = emptyTimelineCards,
 }: VirtualMessageListProps) => {
-  const messages = useMemo(() => getBrowserRequestMessages(sourceMessages, runs), [sourceMessages, runs])
+  const messages = useMemo(
+    () => getAutomaticResumeMessages(getBrowserRequestMessages(sourceMessages, runs), runs),
+    [sourceMessages, runs],
+  )
   const locale = getDocumentLocale(document.documentElement)
   const browserContinuations = useMemo(() => getBrowserContinuationActivities(messages, runs), [messages, runs])
   // r8 motion: immutable IDs drive text entry, never streaming tokens or status/cards.
@@ -862,7 +866,7 @@ const MessageBubble = ({
     )
   }
   const matchedApprovals = approvalTools(parts)
-  const failure = runErrorFor(message, run, machine?.status === "running")
+  const failure = run?.automaticResumePending ? null : runErrorFor(message, run, machine?.status === "running")
   const runError =
     vmBotId &&
     (machine?.status === "running" || machine?.status === "starting") &&
@@ -1202,6 +1206,17 @@ const MessageBubble = ({
             <PanelIcon name="chevron-right" />
           </button>
         </fieldset>
+      )}
+      {(run?.automaticResumePending ||
+        (run?.automaticResumeFromRunId && ["queued", "starting", "running"].includes(run.status))) && (
+        <p className="run-resumed-marker" role="status">
+          {t("Retomando automaticamente…")}
+        </p>
+      )}
+      {run?.automaticResumePending && onCancel && (
+        <button type="button" className="text-button" onClick={() => void onCancel(run.id)}>
+          {t("Stop reply button")}
+        </button>
       )}
       {resolvedInterruption && (
         <p className="run-resumed-marker" role="note">
