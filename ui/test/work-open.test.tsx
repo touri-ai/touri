@@ -157,6 +157,30 @@ test("an early channel click opens its original conversation once the index arri
   expect(onNewThread).not.toHaveBeenCalled()
 })
 
+test("a pending channel click does not override switching between saved conversations", async () => {
+  const { group, thread } = await getChannelFixture()
+  const previous = { ...thread, id: "previous-conversation", groupId: null }
+  const next = { ...previous, id: "next-conversation" }
+  const threads = [previous, next]
+  const onSelect = vi.fn()
+  const props = {
+    groups: [group],
+    threads,
+    selectedThreadId: previous.id,
+    onSelect,
+    onNewThread: vi.fn(),
+    onCreate: vi.fn(),
+    onEdit: vi.fn(),
+  }
+  const view = render(<GroupSidebar {...props} loading />)
+
+  fireEvent.click(screen.getByText(group.name, { exact: true }))
+  view.rerender(<GroupSidebar {...props} selectedThreadId={next.id} loading />)
+  view.rerender(<GroupSidebar {...props} selectedThreadId={next.id} threads={[...threads, thread]} />)
+
+  expect(onSelect).not.toHaveBeenCalled()
+})
+
 test("a newly discovered channel opens its saved conversation when a refresh finishes", async () => {
   const { api, group } = await getChannelFixture()
   const { group: discovered, thread } = await api.request("POST /groups", {

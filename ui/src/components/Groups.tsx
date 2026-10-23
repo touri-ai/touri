@@ -91,19 +91,29 @@ export const GroupSidebar = memo(
       [threads, attentionThreadIds],
     )
     const previews = useMemo(() => getGroupPreviews(threadSummaries, messages, runs), [threadSummaries, messages, runs])
-    const [pendingGroupId, setPendingGroupId] = useState<string | null>(null)
+    const [pendingGroup, setPendingGroup] = useState<{ id: string; previousThreadId: string | null } | null>(null)
+    const selectPendingGroup = useCallback(
+      (id: string) => setPendingGroup({ id, previousThreadId: selectedThreadId }),
+      [selectedThreadId],
+    )
     const selectThread = useCallback(
       (id: string) => {
-        setPendingGroupId(null)
+        setPendingGroup(null)
         onSelect(id)
       },
       [onSelect],
     )
     useEffect(() => {
-      if (!pendingGroupId) return
-      const thread = getChannelThreads(threads, pendingGroupId)[0]
+      if (!pendingGroup) return
+      // Initial index hydration can choose a default without superseding the person's channel click.
+      const hasNewSelection =
+        pendingGroup.previousThreadId !== null &&
+        pendingGroup.previousThreadId !== selectedThreadId &&
+        threads.some((thread) => thread.id === pendingGroup.previousThreadId)
+      if (hasNewSelection) return setPendingGroup(null)
+      const thread = getChannelThreads(threads, pendingGroup.id)[0]
       if (thread) selectThread(thread.id)
-    }, [pendingGroupId, threads, selectThread])
+    }, [pendingGroup, selectedThreadId, threads, selectThread])
 
     return (
       <section className="group-sidebar" aria-label={t("Channels", {}, locale)}>
@@ -160,7 +170,7 @@ export const GroupSidebar = memo(
           return (
             <GroupSidebarEntry
               loading={loading}
-              onPendingSelect={setPendingGroupId}
+              onPendingSelect={selectPendingGroup}
               key={group.id}
               group={group}
               threads={isSelected ? groupThreads : EMPTY_THREADS}
