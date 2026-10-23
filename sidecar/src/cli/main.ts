@@ -1,10 +1,14 @@
 import { parseCli, usageText } from "./args"
-import { runCommandLine } from "./commands"
 
 const main = async (): Promise<void> => {
   if (process.argv[2] === "transcript-retention") {
     const { runTranscriptRetention } = await import("../kernel/transcript-retention-process")
     await runTranscriptRetention()
+    return
+  }
+  if (process.argv[2] === "prepare-store") {
+    const { prepareDatabase } = await import("../kernel/database-startup")
+    await prepareDatabase()
     return
   }
   if (process.argv[2] === "store-read") {
@@ -28,6 +32,12 @@ const main = async (): Promise<void> => {
     process.exitCode = 2
     return
   }
+  if (parsed.command.name === "serve") {
+    const { runServeCommand } = await import("./serve")
+    await runServeCommand(parsed.command.options)
+    return
+  }
+  const { runCommandLine } = await import("./commands")
   const code = await runCommandLine(parsed.command)
   if (code >= 0) process.exit(code)
 }

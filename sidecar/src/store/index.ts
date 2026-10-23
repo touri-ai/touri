@@ -45,14 +45,13 @@ import {
 } from "../kernel/output-blobs"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import { isProfileProvider, validProviderProfileName } from "../kernel/provider-profiles"
-import { materializeTranscriptBatch } from "../kernel/transcript-storage"
 import { getLocalNotificationPreferences } from "../notify/preferences"
 import { hostComputerSupported } from "../platform"
 import { getHostIdentity } from "../platform/host"
 import { getDefaultMaxConcurrentRuns } from "../runtime/concurrency"
 import { touriVersion } from "../version"
 import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemory } from "../vm/resources"
-import { cleanupBotHome, reconcileBotHomes, updateBotHome, writeBotHome } from "./bot-home"
+import { cleanupBotHome, updateBotHome, writeBotHome } from "./bot-home"
 import { getHistoryQuery } from "./history-query"
 import { getIntegrationSender } from "./integration-sender"
 import { getMessageFromRow as asMessage } from "./message-row"
@@ -61,6 +60,7 @@ import { createStoreReader } from "./reader"
 import { redeemFileGrant } from "./redeemFileGrant"
 import { getAsyncSearchHits, getLiteralSearch, getSearchQuery } from "./search-query"
 import { createSendJournal } from "./send-journal"
+import { createStartupRecovery } from "./startup-recovery"
 import { createStreamWriter } from "./stream-writer"
 import { threadDeletionRoutes } from "./thread-deletion"
 import { createThreadTitleSearch } from "./thread-title-search"
@@ -470,9 +470,6 @@ export const init = async (
   writeEditedHome = updateBotHome,
 ): Promise<void> => {
   await refreshHostFolderAccess()
-  const reconcileHomes = () => reconcileBotHomes(kernel)
-  if (runStage) await runStage("store_bot_home_startup_recovery", reconcileHomes)
-  else await reconcileHomes()
   installDoctor(kernel)
   const database = kernel.db as Database
   const threadTitleSearch = createThreadTitleSearch(database.filename)
@@ -483,10 +480,8 @@ export const init = async (
       reader.dispose()
     },
   })
-  const recoverTranscript = () => materializeTranscriptBatch(database)
-  while (runStage ? runStage("store_transcript_startup_recovery", recoverTranscript) : recoverTranscript()) {
-    await new Promise<void>((resolve) => setImmediate(resolve))
-  }
+  const recovery = createStartupRecovery(kernel, runStage)
+  kernel.services.provide("store.recovery", recovery)
 
   const getBot = ({ botId }: { botId: string }): Bot | null => {
     const row = database
@@ -738,6 +733,7 @@ export const init = async (
   }
 
   const updateMessageAsync: NonNullable<StoreApi["updateMessageAsync"]> = async (input) => {
+    await recovery.ensureThread(input.threadId)
     await streamWriter.drainAsync({ threadId: input.threadId, messageId: input.messageId })
     const parts = input.patch.parts
       ? await externalizeMessagePartsAsync({ database, appData: kernel.paths.appData, parts: input.patch.parts })
@@ -1635,6 +1631,7 @@ export const init = async (
         path: "/bots/:id",
         handler: async ({ params, body, signal }) => {
           await refreshHostFolderAccess()
+          await recovery.ensureBot(params.id ?? "")
           const bot = getBot({ botId: params.id ?? "" })
           if (!bot) return errorResponse(404, "NOT_FOUND", "Bot not found")
           const record = requestRecord(body)
@@ -1824,6 +1821,7 @@ export const init = async (
               await cloud.request("GET", `/v1/threads/${encodeURIComponent(cloudThread.id)}/transcript${suffix}`),
             )
           }
+          await recovery.ensureThread(params.id ?? "")
           await streamWriter.drainAsync({ threadId: params.id ?? "" })
           const thread = getThread({ threadId: params.id ?? "" })
           if (!thread) return errorResponse(404, "NOT_FOUND", "Conversa não encontrada")
@@ -1891,6 +1889,7 @@ export const init = async (
               await cloud.request("GET", `/v1/threads/${encodeURIComponent(cloudThread.id)}/messages${suffix}`),
             )
           }
+          await recovery.ensureThread(params.id ?? "")
           await streamWriter.drainAsync({ threadId: params.id ?? "" })
           const thread = getThread({ threadId: params.id ?? "" })
           if (!thread) return errorResponse(404, "NOT_FOUND", "Thread not found")
@@ -1961,6 +1960,7 @@ export const init = async (
             if (!cloud) return errorResponse(503, "TOURI-E9013", "Nuvem desativada")
             return jsonResponse(200, await cloud.send(input))
           }
+          await recovery.ensureThread(input.threadId)
           return (
             storeApi.sendMessage?.(input) ?? errorResponse(503, "RUNTIME_UNAVAILABLE", "Serviço de envio indisponível")
           )

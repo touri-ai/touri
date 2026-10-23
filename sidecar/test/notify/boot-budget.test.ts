@@ -13,6 +13,7 @@ import { createKernel } from "../../src/kernel"
 import { openDatabase } from "../../src/kernel/db"
 import { init as initNotify } from "../../src/notify"
 import { init as initStore } from "../../src/store"
+import { getMaximum, getPercentile } from "../fakes/latency"
 
 // Only this registry owns these disposable fixtures and their blocked background work.
 const cleanups = new Set<() => void | Promise<void>>()
@@ -94,7 +95,7 @@ test("health and the UI serve within two seconds while restart recovery is still
   expect((runtime.kernel.db as Database).query("SELECT COUNT(*) AS n FROM recovery_tasks").get()).toEqual({ n: 100 })
 }, 30_000)
 
-test("the complete server command serves health and the paired UI within two seconds", async () => {
+test("the complete server stays responsive during migration and serves the workspace within two seconds", async () => {
   const root = await mkdtemp(join(tmpdir(), "touri-command-boot-"))
   cleanups.add(() => rm(root, { recursive: true, force: true }))
   const db = openDatabase({ filename: join(root, "touri.db") })
@@ -102,16 +103,40 @@ test("the complete server command serves health and the paired UI within two sec
     bots: Array<{ provider: string }>
   }
   seedRecovery(db, fixture.bots[0]?.provider ?? "fixture")
-  db.close()
+  db.exec(`WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<256)
+    INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at)
+    SELECT 'fixture-'||x,'Fixture',provider,'fixture',1,1 FROM n CROSS JOIN bots WHERE bots.id='bot';
+    UPDATE schema_meta SET value='48' WHERE key='schema_version';
+    BEGIN IMMEDIATE;`)
   const auth = await openAuthStore({ filename: join(root, "auth.db") })
   const { code } = await auth.createPairingCode()
   await auth.close()
   await Bun.write(join(root, "index.html"), "<html>fixture command workspace</html>")
   const port = await getFreePort()
+  const probePath = join(root, "loop-probe.json")
+  const preload = join(root, "loop-probe.ts")
+  await Bun.write(
+    preload,
+    `
+    const samples: number[] = []
+    let expected = performance.now() + 5
+    const timer = setInterval(() => {
+      const now = performance.now()
+      samples.push(Math.max(0, now - expected))
+      expected = now + 5
+    }, 5)
+    setTimeout(async () => {
+      clearInterval(timer)
+      await Bun.write(${JSON.stringify(probePath)}, JSON.stringify(samples))
+    }, 2500)
+  `,
+  )
   const started = performance.now()
   const child = Bun.spawn(
     [
       process.execPath,
+      "--preload",
+      preload,
       "sidecar/src/cli/main.ts",
       "serve",
       "--host",
@@ -133,9 +158,21 @@ test("the complete server command serves health and the paired UI within two sec
     child.kill("SIGTERM")
     await child.exited
   })
+  cleanups.add(() => db.close())
   const base = `http://127.0.0.1:${port}`
 
   const healthMs = await getHealthTime(base, started)
+  expect(healthMs).toBeLessThan(500)
+  const pulses = await Promise.all(
+    Array.from({ length: 20 }, async () => {
+      const before = performance.now()
+      const response = await fetch(`${base}/healthz`)
+      expect(response.status).toBe(200)
+      return performance.now() - before
+    }),
+  )
+  expect(Math.max(...pulses)).toBeLessThan(200)
+  db.exec("COMMIT")
   const paired = await fetch(`${base}/pair`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -143,13 +180,34 @@ test("the complete server command serves health and the paired UI within two sec
   })
   const { token } = (await paired.json()) as { token: string }
   const ui = await fetch(base, { headers: { Authorization: `Bearer ${token}` } })
+  const headers = { Authorization: `Bearer ${token}`, "X-Touri-Client": "boot-fixture" }
+  const bots = await getReadyResponse(`${base}/api/v1/bots`, headers)
+  const groups = await fetch(`${base}/api/v1/groups`, { headers })
+  const activity = await fetch(`${base}/api/v1/workspace/activity`, { headers })
+  const runs = await fetch(`${base}/api/v1/runs`, { headers })
   const uiMs = performance.now() - started
 
+  expect(((await bots.json()) as { bots: unknown[] }).bots).toHaveLength(257)
+  expect(groups.status).toBe(200)
+  expect(activity.status).toBe(200)
+  expect(runs.status).toBe(200)
   expect(await ui.text()).toContain("fixture command workspace")
   expect(healthMs).toBeLessThan(2000)
   expect(uiMs).toBeLessThan(2000)
+  const samples = await getLoopSamples(probePath)
+  expect(samples.length).toBeGreaterThan(30)
+  expect(getPercentile(samples, 0.99)).toBeLessThan(50)
+  expect(getMaximum(samples)).toBeLessThan(200)
   console.info(
-    JSON.stringify({ probe: "server-command-restart", healthMs, uiMs, interruptedRuns: 100, historyBytes: 26_214_400 }),
+    JSON.stringify({
+      probe: "server-command-restart",
+      healthMs,
+      uiMs,
+      loopMaxMs: getMaximum(samples),
+      loopP99Ms: getPercentile(samples, 0.99),
+      interruptedRuns: 100,
+      historyBytes: 26_214_400,
+    }),
   )
 }, 30_000)
 
@@ -191,4 +249,24 @@ const getFreePort = async (): Promise<number> => {
     if (available) return port
   }
   throw new Error("FIXTURE_PORT_UNAVAILABLE")
+}
+
+const getReadyResponse = async (url: string, headers: Record<string, string>): Promise<Response> => {
+  const deadline = performance.now() + 2000
+  while (performance.now() < deadline) {
+    const response = await fetch(url, { headers })
+    if (response.ok) return response
+    expect(response.status).toBe(503)
+    await new Promise<void>((resolve) => setTimeout(resolve, 10))
+  }
+  throw new Error("WORKSPACE_BOOT_BUDGET_EXCEEDED")
+}
+
+const getLoopSamples = async (path: string): Promise<number[]> => {
+  const deadline = performance.now() + 5000
+  while (performance.now() < deadline) {
+    if (await Bun.file(path).exists()) return Bun.file(path).json()
+    await new Promise<void>((resolve) => setTimeout(resolve, 20))
+  }
+  throw new Error("LOOP_PROBE_TIMEOUT")
 }

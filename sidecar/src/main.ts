@@ -54,13 +54,21 @@ const isContained = ({ root, candidate }: { root: string; candidate: string }): 
 }
 
 export const initModules = async (runtime: KernelRuntime): Promise<void> => {
-  for (const module of moduleLoaders) {
+  // The fixed module list bounds import concurrency; registration retains dependency order.
+  const pendingModules = moduleLoaders.map((module) => {
     const started = performance.now()
-    const imported = await module.load().then(
+    const imported = module.load().then(
       (value: unknown) => ({ ok: true as const, value }),
       (error: unknown) => ({ ok: false as const, error }),
     )
-    const loadedAt = performance.now()
+    return {
+      path: module.path,
+      started,
+      imported: imported.then((result) => ({ result, loadedAt: performance.now() })),
+    }
+  })
+  for (const module of pendingModules) {
+    const { result: imported, loadedAt } = await module.imported
     if (!imported.ok) {
       runtime.kernel.log({
         level: "info",
@@ -75,13 +83,14 @@ export const initModules = async (runtime: KernelRuntime): Promise<void> => {
       runtime.kernel.log({ level: "info", module: "main", msg: `skipping missing module ${module.path}` })
       continue
     }
+    const initStarted = performance.now()
     try {
       await loaded.init(runtime.kernel, runtime.runStage)
       runtime.kernel.log({
         level: "info",
         module: "main",
         msg: `initialized module ${module.path}`,
-        data: { loadMs: Math.round(loadedAt - started), initMs: Math.round(performance.now() - loadedAt) },
+        data: { loadMs: Math.round(loadedAt - module.started), initMs: Math.round(performance.now() - initStarted) },
       })
     } catch (error) {
       runtime.kernel.log({
@@ -90,8 +99,8 @@ export const initModules = async (runtime: KernelRuntime): Promise<void> => {
         msg: `module init failed ${module.path}`,
         data: {
           error: error instanceof Error ? error.message : String(error),
-          loadMs: Math.round(loadedAt - started),
-          initMs: Math.round(performance.now() - loadedAt),
+          loadMs: Math.round(loadedAt - module.started),
+          initMs: Math.round(performance.now() - initStarted),
         },
       })
     }
@@ -263,6 +272,11 @@ const main = async (): Promise<void> => {
   if (mode === "transcript-retention") {
     const { runTranscriptRetention } = await import("./kernel/transcript-retention-process")
     await runTranscriptRetention()
+    return
+  }
+  if (mode === "prepare-store") {
+    const { prepareDatabase } = await import("./kernel/database-startup")
+    await prepareDatabase()
     return
   }
   if (mode === "store-read") {

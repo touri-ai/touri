@@ -57,6 +57,7 @@ export type WebMode = {
   port: number
   intercept: (args: WebInterceptArgs) => Promise<Response | null>
   host: (deps: { publish: Kernel["publish"]; log: Kernel["log"] }) => Kernel["callHost"]
+  listen?: (options: Bun.Serve.Options<KernelSocketData>) => Bun.Server<KernelSocketData>
 }
 
 export type KernelRuntime = {
@@ -67,7 +68,7 @@ export type KernelRuntime = {
   emitHostNotification: (notification: HostNotification) => void
 }
 
-type KernelSocketData = (
+export type KernelSocketData = (
   | EventSocketData
   | { channel: "desktop"; id: string }
   | { channel: "machine-presence"; release: () => void }
@@ -361,7 +362,8 @@ export const createKernel = ({
   }, 250)
   revocationTimer.unref()
   const uiToken = process.env.TOURI_UI_TOKEN || developmentUiToken()
-  const server = Bun.serve<KernelSocketData>({
+  const listen = web?.listen ?? Bun.serve<KernelSocketData>
+  const server = listen({
     hostname: web?.hostname ?? "127.0.0.1",
     port: web?.port ?? 0,
     // Login source discovery and credential reads each have a five-second vault deadline.
@@ -679,7 +681,9 @@ export const createKernel = ({
   const stop = (): Promise<void> => {
     if (stopPromise) return stopPromise
     stopPromise = (async () => {
+      await services.use("runtime.shutdown")?.({ appRestart: true })
       await services.use("notify.recovery")?.dispose()
+      await services.use("store.recovery")?.dispose()
       diagnostics.stop()
       clearInterval(revocationTimer)
       revocationTask.dispose()
