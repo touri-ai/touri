@@ -212,10 +212,10 @@ const reconcileHistoryBatch = async ({
     const rows = database
       .query(`SELECT n.id,
         (EXISTS(SELECT 1 FROM threads t JOIN runs r ON r.thread_id=t.id
-          WHERE t.id=n.thread_id AND t.group_thread_id IS NULL AND t.bot_id=n.bot_id
+          WHERE t.id=n.thread_id AND t.group_thread_id IS NULL AND r.bot_id=n.bot_id
             AND r.status='succeeded' AND r.finished_at>n.created_at)
          OR EXISTS(SELECT 1 FROM threads t JOIN runs r ON r.thread_id=t.id
-          WHERE t.group_thread_id=n.thread_id AND t.bot_id=n.bot_id
+          WHERE t.group_thread_id=n.thread_id AND r.bot_id=n.bot_id
             AND r.status='succeeded' AND r.finished_at>n.created_at)) AS expired
         FROM notifications n
         WHERE n.id>? AND n.id<=? AND n.resolved_at IS NULL
