@@ -1,7 +1,11 @@
-import { existsSync, realpathSync } from "node:fs"
+import { existsSync } from "node:fs"
+import { realpath } from "node:fs/promises"
 import { dirname, join } from "node:path"
+import type { RunTimings } from "@touri/contracts"
 import {
   ensurePrivateDirectoryAsync,
+  getBoundedFileAsync,
+  readPrivateFileAsync,
   replacePrivateSymlinkAsync,
   writePrivateFileAsync,
 } from "../../kernel/async-files"
@@ -51,24 +55,20 @@ const tomlValue = (value: unknown): string => {
   throw new Error("Configuração de autenticação do Codex inválida. Revise config.toml no seu terminal.")
 }
 
-const hostConfig = (hostHome: string): string => {
+const getHostConfig = async (hostHome: string): Promise<string> => {
   let config: Record<string, unknown> = {}
-  if (existsSync(join(hostHome, ".codex/config.toml"))) {
-    try {
-      const source = realpathSync(join(hostHome, ".codex/config.toml"))
-      config =
-        asRecord(
-          Bun.TOML.parse(
-            readBoundedFile({
-              root: dirname(source),
-              path: source,
-              maxBytes: 1024 * 1024,
-            }).toString("utf8"),
-          ),
-        ) ?? {}
-    } catch {
-      throw new Error("Não foi possível ler a configuração do Codex. Revise config.toml no seu terminal.")
+  try {
+    const source = await realpath(join(hostHome, ".codex/config.toml")).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null
+
+      throw error
+    })
+    if (source) {
+      const bytes = await getBoundedFileAsync({ root: dirname(source), path: source, maxBytes: 1024 * 1024 })
+      config = asRecord(Bun.TOML.parse(bytes.toString("utf8"))) ?? {}
     }
+  } catch {
+    throw new Error("Não foi possível ler a configuração do Codex. Revise config.toml no seu terminal.")
   }
   // File storage follows the shared auth link; keyring identities depend on CODEX_HOME.
   const lines = ['cli_auth_credentials_store = "file"']
@@ -90,12 +90,25 @@ const hostConfig = (hostHome: string): string => {
 }
 
 /** Keep host login refreshes shared without importing the host's sessions or executable configuration. */
-export const prepareHostCodexHome = async (appData: string, botId: string, hostHome: string): Promise<string> => {
+export const prepareHostCodexHome = async (
+  appData: string,
+  botId: string,
+  hostHome: string,
+  onPreparationStage?: (stage: keyof RunTimings) => void,
+): Promise<string> => {
   const home = join(appData, "provider-homes/codex", botId)
   await ensurePrivateDirectoryAsync({ root: appData, path: home })
-  await writePrivateFileAsync({ root: appData, path: join(home, "config.toml"), content: hostConfig(hostHome) })
+  onPreparationStage?.("providerHomeReadyAt")
+  const content = await getHostConfig(hostHome)
+  onPreparationStage?.("providerConfigReadAt")
+  const configPath = join(home, "config.toml")
+  const expected = Buffer.from(content)
+  const previous = await readPrivateFileAsync({ root: appData, path: configPath, maxBytes: expected.byteLength + 1 })
+  if (!previous?.equals(expected)) await writePrivateFileAsync({ root: appData, path: configPath, content })
+  onPreparationStage?.("providerConfigWrittenAt")
   const auth = join(home, "auth.json")
   const source = join(hostHome, ".codex/auth.json")
   await replacePrivateSymlinkAsync({ root: appData, path: auth, target: source })
+  onPreparationStage?.("providerAuthReadyAt")
   return home
 }

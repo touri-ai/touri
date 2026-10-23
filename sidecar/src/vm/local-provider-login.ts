@@ -1,7 +1,7 @@
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
-import type { Bot, Kernel } from "@touri/contracts"
+import type { Bot, Kernel, RunTimings } from "@touri/contracts"
 import { ensurePrivateDirectoryAsync, removePrivateFileAsync, writePrivateFileAsync } from "../kernel/async-files"
 import { prepareHostCodexHome } from "../runtime/codex/home"
 import { loginTarget, readProviderLogin, redactProviderLogin, storedProviderLoginSource } from "./provider-login"
@@ -44,13 +44,14 @@ export const prepareLocalProviderLogin = async (
   bot: Bot,
   signal: AbortSignal,
   hostHome = homedir(),
+  onPreparationStage?: (stage: keyof RunTimings) => void,
 ): Promise<{ env: Record<string, string>; release: () => Promise<void> | void }> => {
   signal.throwIfAborted()
   if (bot.provider === "opencode" && bot.model?.startsWith("touri-api-")) return { env: {}, release: () => {} }
   if (storedProviderLoginSource(kernel, bot) !== "vault") {
     if (bot.provider === "codex" && bot.machine === "local" && !bot.providerProfile)
       return {
-        env: { CODEX_HOME: await prepareHostCodexHome(kernel.paths.appData, bot.id, hostHome) },
+        env: { CODEX_HOME: await prepareHostCodexHome(kernel.paths.appData, bot.id, hostHome, onPreparationStage) },
         release: () => {},
       }
     return { env: {}, release: () => {} }

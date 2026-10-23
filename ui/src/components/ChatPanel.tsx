@@ -90,6 +90,7 @@ import { useInsertedIds } from "./Motion"
 import { mascotSignalFor } from "./mascotState"
 import { PanelIcon } from "./PanelIcon"
 import { PersonAvatar } from "./PersonAvatar"
+import { getSessionRecoveryPresentation } from "./sessionRecoveryPresentation"
 import { ToolCallList } from "./ToolCallList"
 import { ToolText } from "./ToolOutput"
 import { BrowserTurnCard, TurnActivity } from "./TurnActivity"
@@ -126,6 +127,7 @@ type ChatPanelProps = {
   channelBrowser?: ChannelBrowserValue | null
   browserRuns?: BrowserChannelRun[]
   onInviteToGroup?: (() => void) | undefined
+  focusMessage?: { messageId: Id; request: number } | undefined
   focusApproval?: ApprovalFocus | undefined
   panelOpen?: boolean
   onTogglePanel?: () => void
@@ -164,6 +166,7 @@ type VirtualMessageListProps = {
   vmBotId?: string | undefined
   currentPersonId?: string | null | undefined
   machine?: MachineState | undefined
+  focusMessage?: { messageId: Id; request: number } | undefined
   focusApproval?: ApprovalFocus | undefined
   messages: Array<Message>
   api?: UiApi
@@ -247,6 +250,7 @@ export const VirtualMessageList = ({
   currentPersonId = "owner",
   machine,
   focusApproval,
+  focusMessage,
   messages: sourceMessages,
   api,
   runs = emptyRuns,
@@ -264,8 +268,13 @@ export const VirtualMessageList = ({
   timelineCards = emptyTimelineCards,
 }: VirtualMessageListProps) => {
   const messages = useMemo(
-    () => getAutomaticResumeMessages(getBrowserRequestMessages(sourceMessages, runs), runs),
-    [sourceMessages, runs],
+    () =>
+      getAutomaticResumeMessages(
+        getBrowserRequestMessages(sourceMessages, runs, focusMessage?.messageId),
+        runs,
+        focusMessage?.messageId,
+      ),
+    [sourceMessages, runs, focusMessage?.messageId],
   )
   const locale = getDocumentLocale(document.documentElement)
   const browserContinuations = useMemo(() => getBrowserContinuationActivities(messages, runs), [messages, runs])
@@ -310,6 +319,7 @@ export const VirtualMessageList = ({
   const observedMessages = useRef(messages)
   const lastUser = useRef<Id | undefined>(undefined)
   const focusedRequest = useRef<number | undefined>(undefined)
+  const focusedMessage = useRef<typeof focusMessage>(undefined)
   const latestUserId = [...messages].reverse().find((message) => message.role === "user")?.id
   const timeline = useMemo(() => {
     // This disposable list is sorted because the TypeScript target does not include toSorted.
@@ -325,6 +335,10 @@ export const VirtualMessageList = ({
     return Array.from(entries).sort((a, b) => a.createdAt - b.createdAt)
   }, [messages, timelineCards])
   const isVirtualized = timeline.length > 100
+  const messageTargetIndex =
+    focusMessage && focusMessage !== focusedMessage.current
+      ? timeline.findIndex((entry) => entry.id === focusMessage.messageId)
+      : -1
   const rowOffsets = useMemo(
     () => (isVirtualized ? getTimelineOffsets(timeline, rowHeights) : [0]),
     [timeline, rowHeights, isVirtualized],
@@ -372,6 +386,7 @@ export const VirtualMessageList = ({
     if (
       !list ||
       (focusApproval && focusApproval.request !== focusedRequest.current) ||
+      messageTargetIndex >= 0 ||
       (!newTurn && !followBottom.current)
     )
       return
@@ -382,7 +397,7 @@ export const VirtualMessageList = ({
     scrollToEnd(list, programmaticTop)
     // Updating the virtual window explicitly also works before the browser fires its scroll event.
     setScrollTop(list.scrollTop)
-  }, [latestUserId, messages, timelineCards.length, focusApproval?.request])
+  }, [latestUserId, messages, timelineCards.length, focusApproval?.request, focusMessage, messageTargetIndex])
   useLayoutEffect(() => {
     const previous = observedMessages.current
     observedMessages.current = messages
@@ -444,13 +459,10 @@ export const VirtualMessageList = ({
     : -1
   const revealTarget = targetIndex >= 0 && focusApproval?.request !== focusedRequest.current
   const firstVisibleIndex = getTimelineIndex(rowOffsets, Math.max(0, scrollTop - estimatedRowHeight * 4))
+  const selectedIndex = messageTargetIndex >= 0 ? messageTargetIndex : targetIndex
+  const revealIndex = messageTargetIndex >= 0 || revealTarget ? selectedIndex : firstVisibleIndex
   const start =
-    timeline.length > 100
-      ? Math.min(
-          Math.max(0, timeline.length - visibleCount),
-          Math.max(0, (revealTarget ? targetIndex : firstVisibleIndex) - 4),
-        )
-      : 0
+    timeline.length > 100 ? Math.min(Math.max(0, timeline.length - visibleCount), Math.max(0, revealIndex - 4)) : 0
   const end = timeline.length > 100 ? Math.min(timeline.length, start + visibleCount) : timeline.length
   const visible = timeline.slice(start, end)
 
@@ -470,6 +482,28 @@ export const VirtualMessageList = ({
     card.focus({ preventScroll: true })
     setScrollTop(list.scrollTop)
   }, [focusApproval, targetIndex, timeline.length, rowOffsets])
+
+  useLayoutEffect(() => {
+    if (!focusMessage || messageTargetIndex < 0) return
+    const list = scrollRef.current
+    const row = Array.from(list?.querySelectorAll<HTMLElement>("[data-message-row]") ?? []).find(
+      (element) => element.dataset.messageRow === focusMessage.messageId,
+    )
+    if (!list || !row) return
+
+    focusedMessage.current = focusMessage
+    followBottom.current = false
+    setAwayFromBottom(true)
+    if (isVirtualized) list.scrollTop = rowOffsets[messageTargetIndex] ?? 0
+    row.scrollIntoView?.({ block: "start", behavior: "instant" })
+    programmaticTop.current = list.scrollTop
+    readingAnchor.current = {
+      element: row,
+      top: row.getBoundingClientRect().top - list.getBoundingClientRect().top,
+      scrollTop: list.scrollTop,
+    }
+    setScrollTop(list.scrollTop)
+  }, [focusMessage, messageTargetIndex, isVirtualized, rowOffsets])
 
   return (
     <div className="chat-message-list">
@@ -534,7 +568,11 @@ export const VirtualMessageList = ({
                     {entry.content}
                   </div>
                 )
-              const saved = entry.message
+              const neighbors = timeline
+                .slice(Math.max(0, start + index - 32), start + index + 33)
+                .flatMap((neighbor) => (neighbor.message ? [neighbor.message] : []))
+              const saved = getSessionRecoveryPresentation(entry.message, neighbors, runsById)
+              if (!saved) return <div key={entry.id} className="message-row" data-message-row={entry.id} />
               if (isResumeMarker(saved))
                 return (
                   <div key={saved.id} className="message-row" data-message-row={saved.id}>
@@ -587,6 +625,7 @@ export const VirtualMessageList = ({
                     currentPersonId={currentPersonId}
                     machine={machine}
                     message={message}
+                    searchFocused={focusMessage?.messageId === message.id}
                     run={run}
                     browserActivity={browserContinuations.activities.get(message.id)}
                     hideBrowserActivity={browserContinuations.hidden.has(message.id)}
@@ -742,6 +781,7 @@ const MessageBubble = ({
   recovered,
   automaticRecovery = false,
   message,
+  searchFocused = false,
   run,
   browserActivity,
   hideBrowserActivity,
@@ -766,6 +806,7 @@ const MessageBubble = ({
   recovered: boolean
   automaticRecovery?: boolean
   message: Message
+  searchFocused?: boolean
   run?: Run | undefined
   browserActivity?: BrowserContinuationActivity | undefined
   hideBrowserActivity: boolean
@@ -827,7 +868,7 @@ const MessageBubble = ({
   }, [answeredId])
   const markdown = messageMarkdown(message)
   const text = message.role === "assistant" ? markdown.replace(connectDataMarker, "") : markdown
-  const segments = message.role === "assistant" ? assistantSegments({ ...message, parts }) : []
+  const segments = message.role === "assistant" ? assistantSegments(Object.assign({}, message, { parts }), run) : []
   const hasBrowserTools = message.role === "assistant" && getBrowserActivityTools(parts).length > 0
   const browserHandoffExpired = parts.some(
     (part) =>
@@ -842,7 +883,7 @@ const MessageBubble = ({
 
     return t("finished", {}, locale)
   }
-  const foldBrowserFlow = hasBrowserTools && message.status !== "streaming"
+  const foldBrowserFlow = hasBrowserTools && message.status !== "streaming" && !searchFocused
   const finalText = segments.filter((segment) => segment.type === "text").at(-1)
   const senderName = message.sender?.name ?? bot?.name ?? "touri"
   const renderBrowserSteps = (key: string, count: number) => (
@@ -870,7 +911,9 @@ const MessageBubble = ({
     if (final && message.status === "complete" && routineReply && isRoutineEmptyResult(answer))
       return <p className="routine-empty-result">{t("Sem novidades nesta execução")}</p>
 
-    return message.status !== "streaming" && (answer.length > 4000 || answer.split("\n").length > 40) ? (
+    return !searchFocused &&
+      message.status !== "streaming" &&
+      (answer.length > 4000 || answer.split("\n").length > 40) ? (
       <ChatDisclosure
         className="chat-long-content"
         label={t("Mostrar mais")}
@@ -1300,6 +1343,7 @@ export const ChatPanel = ({
   browserRuns = [],
   onInviteToGroup,
   focusApproval,
+  focusMessage,
   thread,
   activePath,
   goalRefreshRequest = 0,
@@ -1448,7 +1492,7 @@ export const ChatPanel = ({
         message.parts.some((part) => part.type === "approval" && part.decision === "pending")) &&
       !visibleMessageIds.has(message.id),
   )
-  const visibleMessages = getBrowserRequestMessages(messagePath.concat(pendingMessages), runs)
+  const visibleMessages = getBrowserRequestMessages(messagePath.concat(pendingMessages), runs, focusMessage?.messageId)
   const routineConversation = isRoutineConversation({ thread, runs, routineRuns, routines })
   const repeatDraft =
     bot && !activeRun && !routineConversation
@@ -1607,6 +1651,7 @@ export const ChatPanel = ({
                       currentPersonId={currentPersonId}
                       machine={machine}
                       focusApproval={focusApproval}
+                      focusMessage={focusMessage}
                       key={composerKey ?? thread.id}
                       messages={visibleMessages}
                       api={api}

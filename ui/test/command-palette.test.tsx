@@ -380,3 +380,21 @@ it("opens the localized diagnostics dialog from the palette", async () => {
 
   expect(await screen.findByRole("dialog", { name: "Verificar suas ferramentas" })).toBeVisible()
 })
+
+it("keeps the exact message identifier in a local search result command", () => {
+  const state = createMockApi().getState()
+  const thread = state.threads.find((item) => item.id === "thread-mark")
+  const message = state.messages.find((item) => item.threadId === thread?.id && item.role === "assistant")
+  if (!thread || !message) throw new Error("Missing synthetic message")
+  const index = buildPaletteIndex({ bots: state.bots, threads: state.threads, settings: [], hasBot: true })
+  const messages = paletteItems.buildMessageIndex([message], [thread])
+
+  const groups = searchPalette({ index, query: message.text, messages, recentIds: [] })
+
+  expect(groups.find((group) => group.id === "messages")?.items[0]?.command).toEqual({
+    kind: "thread",
+    threadId: thread.id,
+    messageId: message.id,
+    archived: false,
+  })
+})

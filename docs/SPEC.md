@@ -18,19 +18,58 @@ Runs publish and persist `usage.timings` in `usage_json`: `queuedAt`, `processSp
 `providerReadyAt`, `firstTokenAt` and `finishedAt` are epoch milliseconds. Missing milestones
 mean the turn has not reached that stage (including cancellation before spawning). First token
 means a nonempty assistant text delta received from the provider, before streaming redaction;
-reasoning is not a reply token. Each milestone is logged once as `Turn timing`, with the run ID,
+reasoning is not a reply token. Provider milestones are logged once as `Turn timing`, with the run ID,
 provider, stage, timestamp and elapsed milliseconds from enqueue, never message content or credentials.
 The existing run endpoints and `run.updated` events expose milestones while a turn is active;
 older usage records remain readable without a migration. Provider retries retain the first observed
 milestone; finish includes final stream persistence and terminal state publication.
 
+Preparation also records optional epoch-millisecond checkpoints: `queuedPersistedAt`, `claimedAt`, `reconciledAt`,
+`permissionsReadyAt`, `requestReadyAt`, `toolSummaryReadyAt`, `recallReadyAt`, `inputReadyAt`,
+`workspaceReadyAt`, `mcpReadyAt`, `fingerprintReadyAt`, `sessionReadyAt`, `environmentReadyAt`,
+`startingPersistedAt`, `documentsReadyAt`, `providerHomeReadyAt`,
+`providerConfigReadAt`, `providerConfigWrittenAt`, `providerAuthReadyAt`, `loginReadyAt`,
+`attachedMcpReadyAt`, `projectReadyAt`, `memoryReadyAt`, `instructionsReadyAt`, `dispatchReadyAt`, `sandboxReadyAt`,
+`temporaryReadyAt`, `executableReadyAt` and `attachmentsReadyAt`. Consecutive timestamps attribute
+claim/recovery, folder permissions, request and tool-history lookup, optional memory recall, attachment
+input preparation, cwd/project discovery, MCP credentials, session fingerprint/handoff, shell environment,
+home/config/auth synchronization, attached MCP resolution, SOUL/project/memory composition, sandbox
+preflight, temporary storage and executable discovery. Image bytes are staged after provider readiness.
+The local adapter also records `providerInitializedAt`, `providerSessionRequestedAt`, `turnSubmittedAt`
+and `turnAcceptedAt`, separating process initialization, native session setup, submission and acknowledgement
+from the wait for generated text. Acknowledgement is not a visible reply. Persistence checkpoints separate
+database commit time from execution-slot waiting and preparation; they add no extra commit.
+Absent checkpoints mean that path did not run. These bounded scalar records contain no paths, prompts,
+credentials or filesystem listings; they are persisted with provider milestones or final failure usage,
+without an extra database write or event per preparation step. Bot-home reconciliation happens during
+store startup, before the runtime accepts turns. Queue-to-claim includes waiting for recovery or an
+execution slot; retries keep the first observed checkpoints. No fixed preparation sleep is required.
+The local dispatch budget is 300 ms; warm first-visible-text target is one second. Provider/network
+latency is measured separately and cannot be inferred from dispatch time. Controlled-provider regression
+tests assert both budgets across three sequential greetings (median dispatch <300 ms, median text
+<1 s, with absolute stall guards of 1 s dispatch and 5 s text); live measurements must state when
+the provider misses the text target.
+
 Standalone greetings (Portuguese and English) use a tool-free turn with low reasoning and a compact
 prompt preserving bot identity, SOUL and reviewed memory. Tasks, attachments, routines, continuations,
-active goals and pending tool summaries keep the bot's settings. Switching between chat and task
-capabilities replaces the native session with a history handoff, so a chat session cannot disable tools
-for a subsequent task. Tool-free turns use a compact system prompt when the CLI supports replacing
+active goals keep the bot's settings. With fast conversation enabled, a standalone greeting defers prior
+tool summaries to the next task, where recorded partial effects and interrupted actions remain available.
+Opting out keeps those summaries in the greeting as well as the configured reasoning effort and tools.
+Switching between chat and task capabilities replaces the native session. A fast standalone greeting
+does not hydrate task-history bodies or construct a handoff; subsequent tasks receive the durable
+history handoff and their tools. Tool-free turns use a compact system prompt when the CLI supports replacing
 its default prompt; subscription login remains unchanged. Tool-free local sessions using the host login retain a CLI process for up to
 60 seconds of inactivity, with at most four retained processes per provider and 100 turns per process.
+The managed provider config is compared through the bounded private-file reader on each turn.
+Identical bytes keep the existing file; a changed host config is written atomically as before.
+Host configuration reads run through the bounded asynchronous file reader. Symlinks and unsafe managed
+file targets still fail closed; no path or content cache bypasses validation. Local memory and user-profile
+references read bounded UTF-8 prefixes asynchronously and independently, preserving the existing 3,500/2,000
+character limits and exact-content approval snapshot. Unchanged reviewed memory does not rewrite its trust
+setting; changed content, access or machine still updates provenance and preserves quarantine. Greeting
+instruction composition does not request project discovery.
+Folder-sandbox preflight runs only when the turn needs folder confinement; full-access and tool-free
+turns do not wait for an unused probe. Restricted turns still validate before dispatch.
 Vault logins keep their existing per-turn process and credential lifetime. Reuse requires matching bot configuration,
 working directory, instructions, environment and native session identity. Tool-enabled turns receive
 a fresh process and fresh credentials. Dead, canceled or failed processes are discarded; the next turn
@@ -232,6 +271,7 @@ Hot store reads and compaction (#791):
 Transcript retention (#818):
 
 - Event delivery and scheduled/manual storage maintenance share one isolated retention helper per application connection. Historical age/count boundary reads and deletion SQL never run on the live event loop. Discovery finishes before acquiring the writer lock; the helper rechecks upgrade state, publication checkpoints and pending projections inside the transaction. Dirty projections are materialized before their source entries can be removed. A small `schema_meta` marker commits the projection scan cursor with its snapshot version/generation, so new helper connections resume through long gaps of unrelated entries. A changed snapshot invalidates that marker; completed scans remove it. This adds no DDL or schema-version change.
+- Event-count discovery seeks backward through at most 1,024 sequence keys per invocation, counting actual rows rather than assuming contiguous sequences. Its cursor and remaining count commit in `schema_meta` with the maintenance batch, so a fresh helper resumes instead of repeating a 10,000-row `OFFSET` scan. A completed boundary stays cached while its deletion prefix drains and while the event head is unchanged. New events remain above that boundary and start a fresh scan after its prefix drains; a changed retention policy or replay floor invalidates the scan. Every explicit replay purge, including each bot and conversation deletion batch, also advances a revision atomically with deletion, invalidating partial scans and stale plans even when it removes rows below an already higher replay floor. Interrupted transactions roll back both deletion and discovery progress. The existing age policy still applies after count discovery completes.
 - Each helper invocation deletes at most 32 rows and 256 KiB per journal, with an eight-millisecond cooperative deletion budget per journal. A single indivisible legacy row can exceed the byte target; a separate watchdog thread enforces a 40 ms writer deadline by terminating the helper, allowing SQLite to roll back an interrupted batch. Scheduling and kernel I/O can add latency to termination; the deadline is not a hard real-time guarantee. Busy acquisition uses zero SQLite wait. Discovery has a 14-second independent deadline and the owner imposes a 15-second overall deadline. Failed batches retry the unchanged cursor; committed floors move atomically with deletion.
 - Helpers receive only a bounded private stdin request for the owned database identity and fixed normal/manual policy. They accept no SQL, reject symlinks/changed file identities, use READWRITE/NOFOLLOW without CREATE, require WAL and retain NORMAL durability and foreign keys. Replies contain only a boolean and cursor (256 bytes maximum); diagnostics are suppressed. No listener, live VACUUM, schema change, dependency or external service is added. Concurrent callers coalesce without a waiting list. Final owner disposal kills and awaits the child before the live database closes; an independent parent/deadline watcher also stops orphaned native work.
 - Synthetic regressions cover five active streamed runs, concurrent history/work/activity reads, Stop, timer-lag p99 and maximum, retained suffixes/replay floors, pending acknowledgements, dirty-projection revalidation, write contention, forced native-write interruption/rollback, shutdown, symlink refusal and both compiled entry-point dispatchers. UI screenshots are not applicable to this internal performance change; the measured response and control behavior are the user evidence.
@@ -435,7 +475,7 @@ interrupted | failed(cli_crash, oom) ─► automatic continuation run (see belo
   - Optional goal controls load separately from the initial chat assets, preserving the 400 KB compressed startup budget.
   - Goal reads recover from transient startup/connection failures with at most four delayed retries (500 ms, 1 s, 2 s, 4 s), including a temporary missing route. Reconnection and relevant thread/run events start a fresh read; superseded reads and unmount cancel pending requests and retries. A successful read, including `goal: null`, clears the old load error and stops retrying. Goal setup reports load errors separately from failed goal actions. An ordinary conversation with no known goal shows no optional goal-load banner; a known goal and its controls remain visible during a failed refresh. Message drafts, history, turn recovery and authorization checks are unchanged.
 
-- **Restart-safe conversations.** Provider initialization alone does not prove that the next request ran. If resuming a saved session produces a protocol rejection or a successful completion with only thinking/notices and no answer, tool activity or approval, retry once in a fresh native session within the same run. Show “A sessão anterior não pôde ser retomada. Vou continuar com o histórico salvo em uma nova sessão.” in the conversation. Supply at most 32,000 characters of same-conversation history, treating it as untrusted reference data; inspect recorded work and current state before repeating an interrupted action. If initialization already created a reasoning-only assistant reply, keep its recovery explanation visible and localized in that same reply before the recovered answer. Persist the replacement session for later messages. If this attempt also ends empty, fail visibly as `cli_protocol`, never as empty success. Authentication failures, cancellation, new tool effects and approvals do not trigger this fallback.
+- **Restart-safe conversations.** Provider initialization alone does not prove that the next request ran. If resuming a saved session produces a protocol rejection or a successful completion with only thinking/notices and no answer, tool activity or approval, retry once in a fresh native session within the same run. While recovery is unresolved, show “A sessão anterior não pôde ser retomada. Vou continuar com o histórico salvo em uma nova sessão.” in the conversation. After that execution (or an explicitly linked automatic continuation) succeeds, keep this diagnostic inside the answer’s existing collapsed activity or browser details; do not add another status card or control. Preserve persisted notices, text history, recovery actions, active approvals and failed turns. The display inspects only 32 neighboring timeline entries on each side of a mounted row and at most 32 recovery ancestors; unmatched or distant notices remain visible. Supply at most 32,000 characters of same-conversation history, treating it as untrusted reference data; inspect recorded work and current state before repeating an interrupted action. If initialization already created a reasoning-only assistant reply, keep its recovery explanation localized in that same reply, visible until success and then available in activity details. Persist the replacement session for later messages. If this attempt also ends empty, fail visibly as `cli_protocol`, never as empty success. Authentication failures, cancellation, new tool effects and approvals do not trigger this fallback.
   - Native tool activity from the interrupted turn does not itself prevent boot recovery. Pending approvals and unacknowledged uncertain effects in the work journal still require human review. Channel coordination preserves the provider member's error class rather than replacing it with `unknown`, including when a recovered member becomes ineligible while awaiting automatic continuation. Disabling automatic resume preserves the original failure and starts no new provider execution; Stop, restart and timeout retain precedence.
   - One human message starts one provider execution. Channel coordination has a separate aggregate run linked by `groupTurnId`; it is not a second provider invocation. Repeated user dispatches reuse the existing run even after it finishes; an explicit Retry remains a new attempt. The request lookup uses the `runs_request` index.
   - `scripts/safe-restart.sh` waits for `queued`, `starting` and `running` work. Successful, failed, canceled and interrupted runs are terminal. When active work outlasts the deployment wait, or its authenticated status cannot be verified, defer the deployment (exit 75). Never turn a polling timeout into permission to kill long work. If a shutdown still cuts a turn, the next boot uses the recovery behavior above.
@@ -551,6 +591,7 @@ env: CLAUDE_CODE_ENABLE_TODO_TOOLS=1, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
   - `new-thread`: a new thread (`kind 'routine'`, parent = main thread, title `"<routine name> · <local date time>"`).
   - `results-thread`: append to `results_thread_id` (created on first run).
   - `main-thread`: append to the main thread.
+- **Search presentation.** Search results, recent conversations and message-result details display verified automatic routine titles in the app language (Portuguese or English), using the scheduled instant and the routine timezone. The palette reads the document language unless explicitly overridden. Both the saved title and the localized date remain searchable in loaded conversations. Authorized conversation/search responses expose only the verified title's name, scheduled instant, timezone and source title; never the routine prompt or settings. Ordinary conversation lists without automatic date-title candidates do not start a metadata reader. New routine conversations publish that presentation immediately. Ordinary live updates preserve it while the source title matches; manual renames and legacy records without trustworthy metadata keep their saved names. No stored title or conversation identity is rewritten.
 - **Run.** The prompt goes in as a user message with `sender {name:"routine", id: routineId}` and `trigger:'routine'`.
   - On finish, `routine_runs.summary` gets the first 500 chars of the reply.
   - A notification goes out per `bots.notifications`.
@@ -574,10 +615,14 @@ existing bot conversations, permissions and provider sessions are preserved.
 Human channel messages dispatch only to explicitly mentioned bots, in mention order.
 Mentioning a person never dispatches a bot. The explicit everyone and summary actions select
 their own recipients; routines retain the coordinator / mentioned-members / all-members order.
-Multiword names can be quoted (`@"Dev Bot"`). A queue serializes user turns across all conversations
-in the same group. Each member uses an internal
+Multiword names can be quoted (`@"Dev Bot"`). Turns addressed to different members may run
+concurrently within a group, subject to the runtime concurrency limit. Requests sharing a recipient
+retain their order across group conversations, including requests naming several members. Delegated
+recipients stay reserved during approval and execution; delegation into another active turn is refused.
+Each member uses an internal
 conversation with its own native session, machine, instructions, history and approvals. Replies
-are persisted into the shared transcript with the actual member's identity. These internal
+are appended to the current shared history path with the actual member's identity, preserving
+concurrent replies and newer user messages. These internal
 conversations are excluded from the bot's ordinary conversation list.
 
 The touri MCP server exposes `ask_bot({bot, message})` and its `coordinate_bots` alias to group
@@ -594,7 +639,7 @@ canceling a group or a delegating caller, the server checks every browser reques
 affect, including work reached while delegation approval is still pending. A denial leaves all runs,
 browser control and pending turns unchanged; a browser leaf can still be canceled in isolation.
 
-Parar cancels the active group turn, its delegated work and pending group turns. Editing members
+Parar cancels the active group turns, their delegated work and pending group turns. Editing members
 or the coordinator requires idle group conversations. Eligible unfinished channel turns resume after
 restart and provider interruption, up to two automatic attempts recorded durably per original member
 turn. Completed members are not repeated. Stop remains authoritative while startup is waiting;
@@ -1579,3 +1624,9 @@ WP4 ⇢ WP3 (runtime.activeRun), WP3 ⇢ WP5/WP6 (optional services), WP7 ⇢ WP
 - Se o sistema falhar ao exibir um aviso, a marca de deduplicação é liberada para permitir uma nova tentativa. Um aviso exibido com sucesso continua deduplicado mesmo depois de dispensado.
 - Um publicador autenticado como administrador pode registrar uma revisão pronta por `POST /api/v1/threads/:id/notices` com `{ "kind": "pr-ready", "eventId": "review:42:ready", "text": "Revisão fictícia pronta" }`. `eventId` é estável entre tentativas. O aviso permanece no histórico do canal e recebe notificação com link para essa conversa; não inicia uma execução de bot nem concede autorização.
 - Compatibilidade com publicadores existentes: um token de aparelho administrador com `X-Touri-Client: touri-notify` pode enviar para `/api/v1/threads/:id/messages`. A mensagem é registrada como aviso automático, sem personificar uma mensagem humana e sem iniciar bots. Conteúdo idêntico no mesmo canal é deduplicado. A combinação de `READY` e um link de revisão produz o aviso de revisão pronta; outros textos produzem avisos genéricos. O cabeçalho sozinho não autentica nem concede privilégios. Clientes comuns mantêm o envio normal de mensagens. Envios com `as` explícito seguem a validação e a proveniência da API de integrações.
+
+## 13. Message search navigation
+
+Selecting a message result, by click or keyboard, carries its message ID through conversation navigation. The selected conversation uses its existing authorized history load; other conversations are not fetched. Once history is ready, the virtual transcript mounts its bounded window around that exact message and reveals it, preserving full text and composer drafts. Active-path results do not change the saved leaf. An inactive DM branch uses the existing branch-selection operation; archived conversations use the existing restore operation. Missing or inaccessible messages produce a localized notice rather than selecting a substitute. Normal conversation results retain their existing navigation behavior.
+
+When a stored message belongs to a grouped browser or automatic recovery response, search reveals that response using the selected message's identity while preserving one card. The selected response's text is shown in full, including narration or long text normally collapsed. Missing results do not prevent subsequent messages from scrolling into view.

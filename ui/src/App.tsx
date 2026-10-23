@@ -637,6 +637,37 @@ const AppContent = ({ kernel }: AppProps) => {
     routineRuns: data.routineRuns,
     routines: data.routines,
   })
+  const handledMessageFocus = useRef<typeof data.messageFocus>(null)
+  useEffect(() => {
+    const focus = data.messageFocus
+    if (!focus || focus === handledMessageFocus.current || data.historyThreadId !== focus.threadId) return
+    handledMessageFocus.current = focus
+    const target = data.messages.find(
+      (message) => message.id === focus.messageId && message.threadId === focus.threadId,
+    )
+    if (!target) {
+      setLocalNotice(t("This message is no longer available."))
+      return
+    }
+    if (
+      selectedGroup ||
+      activeMessagePath(data.messages, selectedThread?.activeLeafId ?? null).some(
+        (message) => message.id === focus.messageId,
+      )
+    )
+      return
+
+    void actions
+      .switchBranch(focus.threadId, focus.messageId)
+      .catch(() => setLocalNotice(t("Could not open this message. Try again.")))
+  }, [
+    data.messageFocus,
+    data.historyThreadId,
+    data.messages,
+    selectedGroup,
+    selectedThread?.activeLeafId,
+    actions.switchBranch,
+  ])
   const selectedPreview =
     data.previews.find(
       (preview) =>
@@ -750,13 +781,13 @@ const AppContent = ({ kernel }: AppProps) => {
         void actions
           .archiveThread(command.threadId, false)
           .then(() => {
-            actions.selectThread(command.threadId)
+            actions.selectThread(command.threadId, { messageId: command.messageId })
             setRoute({ section: "bots", screen: "chat" })
           })
           .catch(() => showNotice(t("Could not update this conversation. Try again.")))
         return
       }
-      actions.selectThread(command.threadId)
+      actions.selectThread(command.threadId, { messageId: command.messageId })
       setRoute({ section: "bots", screen: "chat" })
       return
     }
@@ -1299,6 +1330,9 @@ const AppContent = ({ kernel }: AppProps) => {
                             onInviteToGroup={canInvitePeople ? () => openModal("invite") : undefined}
                             focusApproval={
                               approvalFocus?.threadId === selectedThread?.id ? (approvalFocus ?? undefined) : undefined
+                            }
+                            focusMessage={
+                              data.historyThreadId === selectedThread?.id ? (data.messageFocus ?? undefined) : undefined
                             }
                             panelOpen={panelOpen}
                             onTogglePanel={() => setPanelOpen(!panelOpen)}
