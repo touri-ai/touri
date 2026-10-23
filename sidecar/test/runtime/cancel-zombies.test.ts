@@ -188,6 +188,42 @@ test("dead provider reconciliation uses the existing automatic retry path", asyn
   expect(fixture.engine.listRuns("thread").filter((run) => run.trigger === "retry")).toHaveLength(1)
 })
 
+test.each(["runtime", "shared"] as const)(
+  "a %s bridge approval starts a fresh provider silence deadline",
+  async (source) => {
+    const fixture = await getFixture("live")
+    const prompt = fixture.engine.approvalPrompt({
+      ctx: { botId: "bot", threadId: "thread", runId: fixture.run.id, signal: fixture.turn.signal },
+      toolName: "Read",
+      input: { file_path: "/synthetic/example.txt" },
+    })
+    const approval = fixture.store
+      .activePath({ threadId: "thread" })
+      .flatMap((message) => message.parts)
+      .find((part) => part.type === "approval" && part.decision === "pending")
+    if (approval?.type !== "approval") throw new Error("Missing synthetic approval")
+    fixture.advanceTime(RUN_EVENT_TIMEOUT_MS * 2)
+
+    const answer = source === "runtime" ? fixture.engine.answerApproval : fixture.engine.approvalBridge.approve
+    const result = await answer({ approvalId: approval.approvalId, decision: "approved" })
+    await prompt
+    const observed = await fixture.engine.getRunActivities([fixture.getRunOrThrow()])
+
+    expect(result).toEqual({ success: true })
+    expect(observed[0]?.activity).toMatchObject({
+      active: true,
+      processAlive: true,
+      staleReason: null,
+      lastEventAt: fixture.getNow(),
+    })
+
+    fixture.advanceTime(RUN_EVENT_TIMEOUT_MS)
+    await fixture.engine.reconcileRuns()
+
+    expect(fixture.getRun()).toMatchObject({ status: "failed", errorClass: "cli_crash" })
+  },
+)
+
 const getFixture = async (
   mode: "live" | "dead" | "missed-exit" | "cooperative",
   resume = false,

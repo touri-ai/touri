@@ -3210,6 +3210,7 @@ export const createRuntimeEngine = ({
       const run = ctx.runId ? persistence.getRun(ctx.runId) : null
       if (!store || !run || run.botId !== ctx.botId || run.threadId !== ctx.threadId) return false
       if (!["starting", "running"].includes(run.status)) return false
+      supervision.recordEvent(run.id, getNow())
       const state = getState(run.id)
       const existing = state.parts.findIndex(
         (value) => value.type === "approval" && value.approvalId === part.approvalId,

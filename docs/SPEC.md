@@ -58,8 +58,10 @@ already stored history.
 The runtime checks owned executions every 15 seconds and before listing active work. A provider
 that has exited (including an OS zombie with a missed exit notification), or a turn with no provider
 event for ten minutes, fails with an explanation in Portuguese and English. A pending human approval
-suspends the silence deadline, but does not hide an exited provider. Reconciliation uses the existing
-safe automatic continuation policy, including its limits and refusal to repeat uncertain actions.
+suspends the silence deadline, but does not hide an exited provider. Answering or expiring an approval
+starts a fresh ten-minute silence deadline, including decisions through the shared approval service.
+Reconciliation uses the existing safe automatic continuation policy, including its limits and refusal
+to repeat uncertain actions.
 Local liveness checks use asynchronous process inspection; remote process liveness remains unknown
 until the execution handle reports its exit.
 
@@ -67,7 +69,7 @@ until the execution handle reports its exit.
 
 - `active`: whether this run still represents work to wait for.
 - `processAlive`: `true` or `false` for an observed local provider, `null` before spawning or when remote liveness is unknown.
-- `lastEventAt`: epoch milliseconds of its last observed provider event, or `null` before any event.
+- `lastEventAt`: epoch milliseconds of its last observed provider or approval activity, or `null` before any activity.
 - `staleReason`: `process_exited`, `event_timeout`, or `null`.
 
 These observations are transient and contain no process identifiers or conversation content.
