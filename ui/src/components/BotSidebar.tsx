@@ -703,7 +703,9 @@ export const Sidebar = (props: SidebarProps) => {
           <button type="button" className="user-chip" onClick={() => navigate(props.onSettings)}>
             <PersonAvatar person={props.currentPerson ?? { id: "owner", avatarSeed: "owner" }} />
             <span>
-              <strong>{props.currentPerson?.handle ?? props.currentPerson?.name ?? t("Você")}</strong>
+              <strong title={props.currentPerson?.handle ?? props.currentPerson?.name}>
+                {props.currentPerson?.handle ?? props.currentPerson?.name ?? t("Você")}
+              </strong>
               <small title={props.serverUrl ?? undefined}>
                 {props.serverMode ? t("Modo servidor") : t("Local · grátis")}
               </small>

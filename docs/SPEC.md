@@ -1291,6 +1291,7 @@ Rules for every WP:
       Turn results, copied replies, member role descriptions and person labels stay out of this panel.
     - People use their account handle and the same avatar seed as their messages, including the header
       member pill and sidebar footer. Bots show their name and one short Available/Working status.
+      Long footer handles truncate visually without covering notifications; their full text remains accessible.
     - The sidebar omits a child conversation whose name repeats the channel name. Routine children
       use localized short dates: `<routine> · 22 out` in Portuguese, without stored US date/time suffixes.
     - A delivered message shows its sender and time without a delivery confirmation label. Pending

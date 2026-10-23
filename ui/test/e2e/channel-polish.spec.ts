@@ -38,6 +38,7 @@ test("channel polish keeps identities, messages and the member panel clear", asy
       return runs.some((run) => run.groupTurnId && run.status === "succeeded")
     })
     .toBe(true)
+  const { runs: mentionedRuns } = (await current.api(`/threads/${thread.id}/runs?all=true`)) as { runs: Run[] }
   const { routine } = (await current.api("/routines", "POST", {
     botId: bot.id,
     name: "slot manha",
@@ -64,6 +65,9 @@ test("channel polish keeps identities, messages and the member panel clear", asy
       text: `Anotação de demonstração ${index + 1}. ${"A equipe vai conferir o roteiro e os mapas. ".repeat(8)}`,
     })
   }
+  const { runs: unmentionedRuns } = (await current.api(`/threads/${thread.id}/runs?all=true`)) as { runs: Run[] }
+
+  expect(unmentionedRuns).toHaveLength(mentionedRuns.length)
   await current.install(page)
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.setViewportSize({ width: 1440, height: 900 })
@@ -140,7 +144,14 @@ test("channel polish keeps identities, messages and the member panel clear", asy
         await messages.evaluate((element) => Number.parseFloat(getComputedStyle(element).paddingBottom)),
       ).toBeGreaterThanOrEqual(64)
     }
+    if (width === 390) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+    const sidebarPath = join(directory, `${phase}-sidebar-${width}.png`)
+    await page.screenshot({ path: sidebarPath, animations: "disabled" })
+    await testInfo.attach(`${phase}-sidebar-${width}`, { path: sidebarPath, contentType: "image/png" })
+    if (width === 390) await page.getByRole("button", { name: "Fechar menu", exact: true }).click()
   }
+  if (phase === "before") return
+
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.getByRole("button", { name: "Voltar ao fim", exact: true }).click()
   await input.fill("Mensagem de demonstração entregue.")
@@ -153,4 +164,34 @@ test("channel polish keeps identities, messages and the member panel clear", asy
   await expect(page.locator(".group-thread-list button").filter({ hasText: /^fazendomapas$/ })).toHaveCount(0)
   await expect(page.locator(".group-thread-list")).toContainText(/slot manha · \d{1,2} [a-z]{3}/)
   await expect(page.locator(".sidebar-footer .user-chip strong")).toHaveText("Pessoa demo")
+
+  const longHandle = "pessoa.demonstracao.com.identificador.muito.longo"
+  await page.route("**/api/v1/groups/*/people", async (route) => {
+    const response = await route.fetch()
+    const { people } = (await response.json()) as { people: Array<{ id: string; handle?: string }> }
+
+    await route.fulfill({
+      response,
+      json: { people: people.map((person) => (person.id === "owner" ? { ...person, handle: longHandle } : person)) },
+    })
+  })
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")))
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+    if (width === 390) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+    const footer = page.locator(".sidebar-footer")
+    await expect(footer.locator(".user-chip strong")).toHaveText(longHandle)
+    const longHandlePath = join(directory, `${phase}-long-handle-${width}.png`)
+    await page.screenshot({ path: longHandlePath, animations: "disabled" })
+    await testInfo.attach(`${phase}-long-handle-${width}`, { path: longHandlePath, contentType: "image/png" })
+
+    const footerSize = await footer.evaluate((element) => ({
+      content: element.scrollWidth,
+      available: element.clientWidth,
+    }))
+
+    expect(footerSize.content).toBeLessThanOrEqual(footerSize.available)
+    await expect(footer.locator(".user-chip strong")).toHaveAttribute("title", longHandle)
+    if (width === 390) await page.getByRole("button", { name: "Fechar menu", exact: true }).click()
+  }
 })
