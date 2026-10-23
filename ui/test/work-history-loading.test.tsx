@@ -33,6 +33,8 @@ test("opening an existing channel never shows the empty invitation while its fir
   expect(await screen.findByRole("status", { name: "Carregando conversas…" })).toBeVisible()
   expect(screen.queryByRole("region", { name: "Comece a conversa em #Demonstração" })).not.toBeInTheDocument()
   await act(async () => release())
+  await screen.findByRole("textbox", { name: "Mensagem para Demonstração", exact: true })
+  expect(document.querySelector(".group-header")).toBeVisible()
   await waitFor(() => expect(screen.queryByRole("status", { name: "Carregando conversas…" })).not.toBeInTheDocument())
 })
 
