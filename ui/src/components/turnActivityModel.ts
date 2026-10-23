@@ -76,6 +76,7 @@ export const activitySummary = (
 export type AssistantSegment =
   | { type: "activity"; key: string }
   | { type: "text"; key: string; text: string }
+  | { type: "resume"; key: string; text: string }
   | { type: "browser-steps"; key: string; count: number }
   | { type: "approval"; key: string; part: ApprovalPart }
   | { type: "attachments"; key: string; parts: Extract<MessagePart, { type: "image" | "file" }>[] }
@@ -112,7 +113,9 @@ export const assistantSegments = (message: Message): AssistantSegment[] => {
       browserCalls = new Set([...browserCalls, part.callId])
       stepCount += 1
     }
-    if (part.type === "approval") segments.push({ type: "approval", key: part.approvalId, part })
+    if (part.type === "notice" && part.code === "run_resumed")
+      segments.push({ type: "resume", key: `resume-${index}`, text: part.text })
+    else if (part.type === "approval") segments.push({ type: "approval", key: part.approvalId, part })
     else if (part.type === "image" || part.type === "file")
       segments.push({ type: "attachments", key: `attachment-${index}`, parts: [part] })
     else if (!activity && (isActivityTool(part) || (part.type === "reasoning" && part.text.trim()))) {

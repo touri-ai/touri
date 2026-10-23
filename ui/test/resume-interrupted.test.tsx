@@ -107,6 +107,37 @@ it.each([
   expect(screen.getByRole("note")).toHaveTextContent(expected)
 })
 
+it.each([
+  {
+    locale: "pt-BR" as const,
+    expected: "A sessão anterior não pôde ser retomada. Vou continuar com o histórico salvo em uma nova sessão.",
+  },
+  {
+    locale: "en" as const,
+    expected: "The previous session could not be resumed. I will continue with the saved history in a new session.",
+  },
+])("keeps recovery visible after reasoning in the same reply in $locale", async ({ locale, expected }) => {
+  setDocumentLanguage(locale, document.documentElement)
+  const text = "A sessão anterior não pôde ser retomada. Vou continuar com o histórico salvo em uma nova sessão."
+  const answer = "Relatório concluído."
+  const reply = message({
+    text: answer,
+    parts: [
+      { type: "reasoning", text: "Conferindo o histórico salvo." },
+      { type: "notice", level: "info", code: "run_resumed", text },
+      { type: "text", text: answer },
+    ],
+  })
+
+  render(<VirtualMessageList messages={[reply]} onSwitchBranch={vi.fn()} onRetry={vi.fn()} />)
+
+  const marker = screen.getByRole("note")
+  expect(marker).toHaveTextContent(expected)
+  expect(screen.getAllByRole("note")).toHaveLength(1)
+  const response = await screen.findByText(answer)
+  expect(marker.compareDocumentPosition(response) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+})
+
 it("the resume setting is on by default and saving it off persists through the settings API", async () => {
   const onSave = vi.fn(async () => undefined)
   render(<SettingsModal settings={null} initialSection="general" onClose={() => undefined} onSave={onSave} />)
@@ -226,8 +257,9 @@ it("combines partial output and the recovered answer in one original card", () =
     />,
   )
 
-  expect(screen.getByText(/Preparei a tabela/)).toHaveTextContent("Relatório concluído.")
-  expect(screen.getByText(/Relatório concluído/)).toHaveTextContent("Preparei a tabela.")
+  const card = screen.getByText(/Preparei a tabela/).closest(".message-bubble")
+  expect(card).toHaveTextContent("Preparei a tabela.")
+  expect(card).toHaveTextContent("Relatório concluído.")
   expect(document.querySelectorAll(".message-bubble")).toHaveLength(1)
   expect(screen.queryByRole("alert")).not.toBeInTheDocument()
 })

@@ -529,7 +529,7 @@ export const VirtualMessageList = ({
                 return (
                   <div key={saved.id} className="message-row" data-message-row={saved.id}>
                     <p className="run-resumed-marker" role="note" data-message-id={saved.id}>
-                      <span>{getResumeMarkerText(saved, locale)}</span>
+                      <span>{getResumeMarkerText(saved.text, locale)}</span>
                     </p>
                   </div>
                 )
@@ -678,16 +678,14 @@ export const VirtualMessageList = ({
 const isResumeMarker = (message: Message): boolean =>
   message.role === "system" && message.parts.some((part) => part.type === "notice" && part.code === "run_resumed")
 
-const getResumeMarkerText = (message: Message, locale: Locale): string => {
-  if (message.text === "Retomando a resposta automaticamente…") return t(message.text, {}, locale)
-  if (message.text === "Retomado após aprovação de acesso") return t(message.text, {}, locale)
-  if (message.text === "Retomado após a devolução do navegador") return t(message.text, {}, locale)
-  if (
-    message.text === "A sessão anterior não pôde ser retomada. Vou continuar com o histórico salvo em uma nova sessão."
-  )
-    return t(message.text, {}, locale)
+const getResumeMarkerText = (text: string, locale: Locale): string => {
+  if (text === "Retomando a resposta automaticamente…") return t(text, {}, locale)
+  if (text === "Retomado após aprovação de acesso") return t(text, {}, locale)
+  if (text === "Retomado após a devolução do navegador") return t(text, {}, locale)
+  if (text === "A sessão anterior não pôde ser retomada. Vou continuar com o histórico salvo em uma nova sessão.")
+    return t(text, {}, locale)
 
-  return message.text
+  return text
 }
 
 const isGroupCoordinationPrompt = (message: Message): boolean => {
@@ -1078,6 +1076,12 @@ const MessageBubble = ({
               </div>
             )
           }
+          if (segment.type === "resume")
+            return (
+              <p key={segment.key} className="run-resumed-marker" role="note">
+                <span>{getResumeMarkerText(segment.text, locale)}</span>
+              </p>
+            )
           if (segment.type === "approval")
             return (
               <ApprovalCard
