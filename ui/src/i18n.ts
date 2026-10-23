@@ -2786,6 +2786,8 @@ export const ptBR = {
   "Selected: {count}": "Selecionadas: {count}",
   Undo: "Desfazer",
   "Could not delete this conversation. Try again.": "Não foi possível apagar esta conversa. Tente novamente.",
+  "This message is no longer available.": "Esta mensagem não está mais disponível.",
+  "Could not open this message. Try again.": "Não foi possível abrir esta mensagem. Tente novamente.",
   "Could not update this conversation. Try again.": "Não foi possível atualizar esta conversa. Tente novamente.",
   "Could not update these conversations. Try again.": "Não foi possível atualizar estas conversas. Tente novamente.",
   "Finish the active run before deleting this conversation.": "Encerre a execução antes de apagar esta conversa.",
@@ -3532,6 +3534,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Selected: {count}": "Selected: {count}",
   Undo: "Undo",
   "Could not delete this conversation. Try again.": "Could not delete this conversation. Try again.",
+  "This message is no longer available.": "This message is no longer available.",
+  "Could not open this message. Try again.": "Could not open this message. Try again.",
   "Could not update this conversation. Try again.": "Could not update this conversation. Try again.",
   "Could not update these conversations. Try again.": "Could not update these conversations. Try again.",
   "Finish the active run before deleting this conversation.":

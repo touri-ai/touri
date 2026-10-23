@@ -96,8 +96,9 @@ export const createWorkGoldenServer = async () => {
           localStorage.setItem("touri.locale", "pt-BR")
         })
       },
-      restart: async () => {
+      restart: async (prepare?: (data: string) => Promise<void>) => {
         await stop(child)
+        await prepare?.(data)
         child = start()
         await waitForServer(child)
       },

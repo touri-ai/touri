@@ -55,6 +55,7 @@ type ProcessEntry = { spec: ProcessSpec; run: ProcessRunState | null }
 export type WorkspaceData = {
   groupsLoaded?: boolean
   readyGroupIds?: Id[]
+  messageFocus?: { threadId: Id; messageId: Id; request: number } | null
   historyThreadId?: Id | null
   historyNotice?: string | null
   channelNotice?: string | null
@@ -101,7 +102,7 @@ export type WorkspaceActions = {
   refresh: () => Promise<void>
   refreshDoctor: () => Promise<void>
   selectBot: (botId: Id) => void
-  selectThread: (threadId: Id, options?: { readRoutineGroup: boolean }) => void
+  selectThread: (threadId: Id, options?: { readRoutineGroup?: boolean; messageId?: Id | undefined }) => void
   createGroup: (input: GroupInput, id?: string) => Promise<void>
   createGroupThread: (id: string) => Promise<void>
   deleteGroup: (id: string) => Promise<void>
@@ -612,7 +613,10 @@ export const useWorkspace = (
       const selectionChanged = next.selectedThreadId !== current.selectedThreadId
       const resetHistory = selectionChanged && next.historyThreadId !== next.selectedThreadId
 
-      return retainWorkspace(resetHistory ? { ...next, historyThreadId: null } : next, current)
+      const selected = resetHistory ? { ...next, historyThreadId: null } : next
+      const focused = selected.messageFocus?.threadId === selected.selectedThreadId
+
+      return retainWorkspace(focused ? selected : { ...selected, messageFocus: null }, current)
     },
     undefined,
     emptyState,
@@ -1433,27 +1437,33 @@ export const useWorkspace = (
     })
   }, [])
 
-  const selectThread = useCallback((threadId: Id, options?: { readRoutineGroup: boolean }): void => {
-    setData((current) => {
-      const readIds = options?.readRoutineGroup
-        ? getSidebarReadThreadIds(
-            current.threads,
-            current.routineRuns,
-            threadId,
-            new Set(current.routines.map((routine) => routine.id)),
-          )
-        : new Set([threadId])
+  const selectThread = useCallback(
+    (threadId: Id, options?: { readRoutineGroup?: boolean; messageId?: Id | undefined }): void => {
+      setData((current) => {
+        const readIds = options?.readRoutineGroup
+          ? getSidebarReadThreadIds(
+              current.threads,
+              current.routineRuns,
+              threadId,
+              new Set(current.routines.map((routine) => routine.id)),
+            )
+          : new Set([threadId])
 
-      return {
-        ...current,
-        selectedBotId: current.threads.find((thread) => thread.id === threadId)?.botId ?? current.selectedBotId,
-        selectedThreadId: threadId,
-        threadCreation: null,
-        composerKey: null,
-        threads: current.threads.map((thread) => (readIds.has(thread.id) ? { ...thread, unread: 0 } : thread)),
-      }
-    })
-  }, [])
+        return {
+          ...current,
+          selectedBotId: current.threads.find((thread) => thread.id === threadId)?.botId ?? current.selectedBotId,
+          selectedThreadId: threadId,
+          messageFocus: options?.messageId
+            ? { threadId, messageId: options.messageId, request: (current.messageFocus?.request ?? 0) + 1 }
+            : null,
+          threadCreation: null,
+          composerKey: null,
+          threads: current.threads.map((thread) => (readIds.has(thread.id) ? { ...thread, unread: 0 } : thread)),
+        }
+      })
+    },
+    [],
+  )
 
   const createGroup = useCallback(
     async (input: GroupInput, id?: string) => {
