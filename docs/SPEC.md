@@ -1682,3 +1682,11 @@ When a stored message belongs to a grouped browser or automatic recovery respons
 - A successful channel index replaces cached membership: cached threads from removed channels must not keep the conversation in a loading state. Failed channel reads retain cached metadata until recovery.
 - Interrupted-task details load when opened; the initial UI payload retains the 400,000-byte gzip limit. Contrast remains at least 4.5:1 in both themes, including the extracted preview stylesheet.
 - The interrupted-task dialog remains mounted while its details load, so Escape and closing preserve focus return to the opening control on desktop and the menu on phone.
+
+### Interrupted action projections
+
+Recovery counts a channel message and its source as one set of actions only when the persisted
+`group_message_links` provenance connects both messages in the same execution. Command text is
+never an identity: independent calls and executions remain separate even with identical descriptions.
+A surviving projection remains available if its source is missing. This changes only recovery's
+read projection; saved messages and every uncertain journal acknowledgement remain intact.

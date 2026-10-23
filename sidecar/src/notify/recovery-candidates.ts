@@ -27,7 +27,9 @@ export const RECENT_TASK_LIMIT = 100
 
 export type RecoveryCursor = { runRowid: number; routineRowid: number; runIds: string[]; routineIds: string[] }
 
-export const RUN_PARTS_SQL = "SELECT parts_json FROM messages WHERE run_id = ? ORDER BY created_at"
+export const RUN_PARTS_SQL = `SELECT m.id, m.parts_json, l.visible_message_id
+  FROM messages m LEFT JOIN group_message_links l ON l.message_id = m.id AND l.source_thread_id = m.thread_id
+  WHERE m.run_id = ? ORDER BY m.created_at`
 
 export const JOURNAL_RECOVERY_SQL = `SELECT DISTINCT j.turn_id FROM work_journal j WHERE j.kind = 'uncertain'
       AND NOT EXISTS (SELECT 1 FROM work_journal later WHERE later.turn_id = j.turn_id
@@ -88,8 +90,15 @@ const getRunCandidates = (database: Database, changedRunIds: string[], sinceRowi
 }
 
 const getRunParts = (database: Database, runId: string): MessagePart[] => {
-  const rows = database.query(RUN_PARTS_SQL).all(runId) as Array<{ parts_json: string }>
-  return rows.flatMap((row) => JSON.parse(row.parts_json) as MessagePart[])
+  const rows = database.query(RUN_PARTS_SQL).all(runId) as Array<{
+    id: string
+    parts_json: string
+    visible_message_id: string | null
+  }>
+  const mirroredIds = new Set(rows.flatMap((row) => (row.visible_message_id ? [row.visible_message_id] : [])))
+
+  // A persisted source link proves projection identity within this execution; text never does.
+  return rows.filter((row) => !mirroredIds.has(row.id)).flatMap((row) => JSON.parse(row.parts_json) as MessagePart[])
 }
 
 const getPartEffects = (parts: MessagePart[]): RecoveryTask["effects"] =>
