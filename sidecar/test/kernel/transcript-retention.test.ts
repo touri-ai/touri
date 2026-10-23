@@ -27,6 +27,12 @@ test("isolated batches preserve synchronous retention results, replay floors and
   while (await retention.run()) await Bun.sleep(0)
 
   expect(getRetained(first.database)).toEqual(getRetained(second.database))
+  expect(getRetained(first.database)).toEqual({
+    entries: { count: 2000, first: 51, last: 2050 },
+    events: { count: 10000, first: 101, last: 10100 },
+    floors: [{ thread_id: "thread", through_seq: 50 }],
+    eventFloor: { value: "100" },
+  })
   expect(first.database.query("SELECT status,request_json FROM send_journal").all()).toEqual([
     { status: "sent", request_json: '{"text":"Synthetic acknowledgement"}' },
   ])
