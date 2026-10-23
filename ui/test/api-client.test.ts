@@ -355,3 +355,25 @@ test("attachment uploads preserve the server's rejection reason", async () => {
     status: 413,
   })
 })
+
+test("group validation fields survive API parsing without trusting remote error text", async () => {
+  const api = createApiClient({
+    endpoint: { baseUrl: "http://localhost:1", wsUrl: "ws://localhost:1", token: "ui-token" },
+    fetchImpl: async () =>
+      Response.json(
+        { errorCode: "INVALID_ARGS", code: "TOURI-E1001", field: "avatarShape", error: "private-value" },
+        { status: 400 },
+      ),
+  })
+
+  const response = api.request("POST /groups", {
+    name: "Example",
+    color: "#dc2626",
+    memberIds: ["example-bot"],
+    coordinatorBotId: null,
+  })
+
+  await expect(response).rejects.toThrow(
+    "avatarShape: informe um formato de mascote válido, como classic-none. [TOURI-E1001]",
+  )
+})

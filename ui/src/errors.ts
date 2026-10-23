@@ -1,4 +1,4 @@
-import type { Run } from "@touri/contracts"
+import { getGroupValidationError, type Run } from "@touri/contracts"
 import { errorRegistry, isErrorCode, publicError, type RegisteredErrorCode } from "@touri/contracts/errors"
 
 /** Keep transport metadata for control flow and present the friendly public message. */
@@ -27,10 +27,14 @@ export class ApiError extends Error {
     readonly errorCode?: string,
     code?: RegisteredErrorCode,
     readonly retryAt?: number,
+    field?: unknown,
   ) {
     const publicCode = code ?? (isErrorCode(errorCode) ? errorCode : undefined)
     const definition = publicCode ? errorRegistry[publicCode] : undefined
-    super(definition ? `${definition.message} [${publicCode}]` : userFacingError(message))
+    const validation =
+      publicCode === "TOURI-E1001" && errorCode === "INVALID_ARGS" ? getGroupValidationError(field) : undefined
+    const publicMessage = validation?.error ?? definition?.message
+    super(publicMessage ? `${publicMessage} [${publicCode}]` : userFacingError(message))
     this.name = "ApiError"
     this.diagnostic = message || this.message
     this.code = publicCode

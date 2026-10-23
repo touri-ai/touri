@@ -1,4 +1,10 @@
-import { errorRegistry, isErrorCode, publicError, type RegisteredErrorCode } from "@touri/contracts"
+import {
+  errorRegistry,
+  getGroupValidationError,
+  isErrorCode,
+  publicError,
+  type RegisteredErrorCode,
+} from "@touri/contracts"
 
 export class TouriError extends Error {
   constructor(
@@ -26,5 +32,10 @@ export const normalizeErrorBody = (body: unknown, status: number): unknown => {
     typeof record.errorCode === "string" && /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(record.errorCode)
       ? record.errorCode
       : detail.code
-  return { errorCode, ...detail }
+  const validation =
+    status === 400 && errorCode === "INVALID_ARGS" && detail.code === "TOURI-E1001"
+      ? getGroupValidationError(record.field)
+      : undefined
+
+  return { errorCode, ...detail, ...validation }
 }

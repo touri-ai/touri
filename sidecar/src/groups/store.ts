@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite"
-import type { BotGroup, ChannelPerson, GroupInput, Kernel, Thread } from "@touri/contracts"
+import type { BotGroup, ChannelPerson, GroupInput, GroupValidationField, Kernel, Thread } from "@touri/contracts"
 import { validAvatarColor, validAvatarShape } from "@touri/contracts/avatar"
 import { getMentionedPeople } from "./people"
 
@@ -39,27 +39,28 @@ export const createGroupStore = (kernel: Kernel) => {
       const group = get(id)
       return group ? [group] : []
     })
-  const validate = (input: unknown): input is GroupInput => {
-    if (!input || typeof input !== "object") return false
-    const v = input as GroupInput
-    return (
-      typeof v.name === "string" &&
-      v.name.trim().length > 0 &&
-      v.name.length <= 80 &&
-      validAvatarColor(v.color) &&
-      validAvatarShape(v.avatarShape) &&
-      Array.isArray(v.memberIds) &&
-      v.memberIds.length > 0 &&
-      v.memberIds.length <= 20 &&
-      new Set(v.memberIds).size === v.memberIds.length &&
-      v.memberIds.every(
-        (id) => typeof id === "string" && !!store.getBot({ botId: id }) && !store.getBot({ botId: id })?.archivedAt,
-      ) &&
-      (v.coordinatorBotId === null || v.memberIds.includes(v.coordinatorBotId)) &&
-      new Set(v.memberIds.map((id) => store.getBot({ botId: id })?.name.toLocaleLowerCase())).size ===
-        v.memberIds.length
+  const getValidationField = (input: unknown): GroupValidationField | undefined => {
+    if (!input || typeof input !== "object" || Array.isArray(input)) return "body"
+    const value = input as Partial<GroupInput>
+    if (typeof value.name !== "string" || !value.name.trim() || value.name.length > 80) return "name"
+    if (!validAvatarColor(value.color)) return "color"
+    if (!validAvatarShape(value.avatarShape)) return "avatarShape"
+    const memberIds = value.memberIds
+    if (
+      !Array.isArray(memberIds) ||
+      memberIds.length < 1 ||
+      memberIds.length > 20 ||
+      new Set(memberIds).size !== memberIds.length
     )
+      return "memberIds"
+    const members = memberIds.map((id) => (typeof id === "string" ? store.getBot({ botId: id }) : null))
+    if (members.some((bot) => !bot || bot.archivedAt)) return "memberIds"
+    if (new Set(members.map((bot) => bot?.name.toLocaleLowerCase())).size !== memberIds.length) return "memberIds"
+    if (value.coordinatorBotId !== null && !memberIds.includes(value.coordinatorBotId ?? "")) return "coordinatorBotId"
+
+    return undefined
   }
+  const validate = (input: unknown): input is GroupInput => getValidationField(input) === undefined
   const save = (input: GroupInput, existing?: BotGroup): BotGroup =>
     db
       .transaction(() => {
@@ -146,7 +147,7 @@ export const createGroupStore = (kernel: Kernel) => {
       return group ? [group] : []
     })
   }
-  return { get, list, validate, save, threads, createThread, participant, removeBot }
+  return { get, list, getValidationField, validate, save, threads, createThread, participant, removeBot }
 }
 
 /** Only explicit bot mentions route human channel messages, in first-mention order. */

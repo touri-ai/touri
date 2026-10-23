@@ -8,7 +8,7 @@ import type {
   BrowserTabInfo,
   DoctorReport,
   Goal,
-  GroupInput,
+  GroupCreateInput,
   Id,
   ImportReport,
   McpServer,
@@ -1117,11 +1117,12 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
         threads: threads.filter((t) => t.groupId === pathValues.id && !t.groupThreadId),
       } as ApiRoutes[typeof route]["res"]
     if (key === "POST /groups" || key === "PATCH /groups/:id") {
-      const values = input as GroupInput
+      const values = input as GroupCreateInput
       const existing = groups.find((g) => g.id === pathValues.id)
       const group: BotGroup = {
         ...existing,
         ...values,
+        avatarShape: values.avatarShape ?? existing?.avatarShape ?? "classic-none",
         id: existing?.id ?? crypto.randomUUID(),
         avatarSeed: existing?.avatarSeed ?? crypto.randomUUID(),
         createdAt: existing?.createdAt ?? now(),

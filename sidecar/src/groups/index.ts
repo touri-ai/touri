@@ -1,5 +1,6 @@
+import type { Database } from "bun:sqlite"
 import { userInfo } from "node:os"
-import type { Kernel } from "@touri/contracts"
+import type { GroupValidationField, Kernel } from "@touri/contracts"
 import { deviceSession } from "../kernel/device-session"
 import { deleteGroupRoute } from "./delete-group"
 import { createGroupStore } from "./store"
@@ -14,14 +15,10 @@ export const init = async (kernel: Kernel): Promise<void> => {
       { id: "owner", name: accountName, handle: accountName, avatarSeed: "owner", role: "admin" },
     ])
   }
-  const invalid = {
+  const getInvalidResponse = (field: GroupValidationField) => ({
     status: 400,
-    json: {
-      errorCode: "INVALID_ARGS",
-      error:
-        "Informe um nome, mascote e membros válidos; o coordenador deve pertencer ao grupo. Nomes dos membros devem ser únicos.",
-    },
-  }
+    json: { errorCode: "INVALID_ARGS", field },
+  })
   kernel.registerRoutes({
     name,
     routes: [
@@ -60,10 +57,11 @@ export const init = async (kernel: Kernel): Promise<void> => {
         method: "POST",
         path: "/groups",
         handler: async ({ body }) => {
-          if (!groups.validate(body)) return invalid
-          const result = (kernel.db as import("bun:sqlite").Database)
+          const input = getCreateInput(body)
+          if (!groups.validate(input)) return getInvalidResponse(groups.getValidationField(input) ?? "body")
+          const result = (kernel.db as Database)
             .transaction(() => {
-              const group = groups.save(body)
+              const group = groups.save(input)
               return { group, thread: groups.createThread(group) }
             })
             .immediate()
@@ -77,9 +75,9 @@ export const init = async (kernel: Kernel): Promise<void> => {
         handler: async ({ params, body }) => {
           const existing = groups.get(params.id ?? "")
           if (!existing) return { status: 404, json: { errorCode: "NOT_FOUND", error: "Grupo não encontrado" } }
-          if (!groups.validate(body)) return invalid
+          if (!groups.validate(body)) return getInvalidResponse(groups.getValidationField(body) ?? "body")
           if (
-            (kernel.db as import("bun:sqlite").Database)
+            (kernel.db as Database)
               .query(
                 "SELECT 1 FROM group_turns t JOIN runs r ON r.id=t.run_id WHERE t.group_id=? AND r.status IN ('queued','starting','running') LIMIT 1",
               )
@@ -104,10 +102,16 @@ export const init = async (kernel: Kernel): Promise<void> => {
           const group = groups.get(params.id ?? "")
           if (!group) return { status: 404, json: { errorCode: "NOT_FOUND", error: "Grupo não encontrado" } }
           const title = (body as { title?: unknown })?.title
-          if (typeof title !== "string" || !title.trim() || title.length > 200) return invalid
+          if (typeof title !== "string" || !title.trim() || title.length > 200) return getInvalidResponse("title")
           return { status: 201, json: { thread: groups.createThread(group, title.trim()) } }
         },
       },
     ],
   })
+}
+
+const getCreateInput = (body: unknown): unknown => {
+  if (!body || typeof body !== "object" || Array.isArray(body) || Object.hasOwn(body, "avatarShape")) return body
+
+  return { ...body, avatarShape: "classic-none" }
 }

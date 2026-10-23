@@ -209,6 +209,8 @@ export type BotGroup = {
   updatedAt: EpochMs
 }
 export type GroupInput = Pick<BotGroup, 'name' | 'color' | 'avatarShape' | 'memberIds' | 'coordinatorBotId'>
+/** Creation defaults an omitted avatarShape to classic-none; updates require the full GroupInput. */
+export type GroupCreateInput = Omit<GroupInput, 'avatarShape'> & { avatarShape?: AvatarShape }
 
 export type Thread = {
   ownerPersonId?: Id | null
@@ -1027,7 +1029,7 @@ export type ApiRoutes = {
   'POST /auth/email/redeem': { req: { token: string; deviceName?: string }; res: { ok: true; deviceId: Id } }
   'GET /groups/:id/people': { req: {}; res: { people: Array<ChannelPerson> } }
   'GET /groups': { req: {}; res: { groups: Array<BotGroup> } }
-  'POST /groups': { req: GroupInput; res: { group: BotGroup; thread: Thread } }
+  'POST /groups': { req: GroupCreateInput; res: { group: BotGroup; thread: Thread } }
   'PATCH /groups/:id': { req: GroupInput; res: { group: BotGroup } }
   'DELETE /groups/:id': { req: {}; res: {} }
   'GET /groups/:id/threads': { req: {}; res: { threads: Array<Thread> } }

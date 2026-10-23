@@ -4,6 +4,18 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "body: envie um objeto JSON com os dados do grupo.": "body: envie um objeto JSON com os dados do grupo.",
+  "name: informe um nome não vazio com até 80 caracteres.": "name: informe um nome não vazio com até 80 caracteres.",
+  "color: informe uma cor hexadecimal válida, como #dc2626.":
+    "color: informe uma cor hexadecimal válida, como #dc2626.",
+  "avatarShape: informe um formato de mascote válido, como classic-none.":
+    "avatarShape: informe um formato de mascote válido, como classic-none.",
+  "memberIds: informe de 1 a 20 bots ativos, sem IDs ou nomes repetidos.":
+    "memberIds: informe de 1 a 20 bots ativos, sem IDs ou nomes repetidos.",
+  "coordinatorBotId: informe null ou o ID de um membro do grupo.":
+    "coordinatorBotId: informe null ou o ID de um membro do grupo.",
+  "title: informe um título não vazio com até 200 caracteres.":
+    "title: informe um título não vazio com até 200 caracteres.",
   "Person mention": "Menção a você",
   "Task started": "Tarefa iniciada",
   "Avisar quando um bot começar uma tarefa no canal": "Avisar quando um bot começar uma tarefa no canal",
@@ -3291,6 +3303,18 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "body: envie um objeto JSON com os dados do grupo.": "body: send a JSON object containing the group details.",
+  "name: informe um nome não vazio com até 80 caracteres.": "name: enter a non-empty name with at most 80 characters.",
+  "color: informe uma cor hexadecimal válida, como #dc2626.":
+    "color: enter a valid hexadecimal color, such as #dc2626.",
+  "avatarShape: informe um formato de mascote válido, como classic-none.":
+    "avatarShape: enter a valid avatar shape, such as classic-none.",
+  "memberIds: informe de 1 a 20 bots ativos, sem IDs ou nomes repetidos.":
+    "memberIds: provide 1 to 20 active bots, without duplicate IDs or names.",
+  "coordinatorBotId: informe null ou o ID de um membro do grupo.":
+    "coordinatorBotId: provide null or the ID of a group member.",
+  "title: informe um título não vazio com até 200 caracteres.":
+    "title: enter a non-empty title with at most 200 characters.",
   "Person mention": "Mentioned you",
   "Task started": "Task started",
   "Avisar quando um bot começar uma tarefa no canal": "Notify when a bot starts a task in a channel",

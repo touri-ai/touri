@@ -130,3 +130,22 @@ test("public address errors retain actionable guidance without raw diagnostics",
   expect(invalid).toMatchObject({ code: "TOURI-E1018", error: "Informe um endereço HTTPS válido, sem caminho." })
   expect(JSON.stringify([required, invalid])).not.toContain("private diagnostic")
 })
+
+test("group field errors use only fixed messages and remain safe across repeated normalization", () => {
+  const supplied = {
+    errorCode: "INVALID_ARGS",
+    field: "avatarShape",
+    error: "private-value",
+    errorMessages: { en: "private-value" },
+  }
+
+  const normalized = normalizeErrorBody(supplied, 400)
+
+  expect(normalized).toMatchObject({ field: "avatarShape", code: "TOURI-E1001" })
+  expect(JSON.stringify(normalized)).not.toContain("private-value")
+  expect(normalizeErrorBody(normalized, 400)).toEqual(normalized)
+  expect(normalizeErrorBody({ ...supplied, field: "__proto__" }, 400)).not.toHaveProperty("field")
+  expect(normalizeErrorBody({ ...supplied, field: "private-value" }, 400)).not.toHaveProperty("field")
+  expect(normalizeErrorBody({ ...supplied, errorCode: "UNAUTHORIZED" }, 401)).not.toHaveProperty("field")
+  expect(normalizeErrorBody(supplied, 500)).not.toHaveProperty("field")
+})
