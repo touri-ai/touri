@@ -1,6 +1,9 @@
 import type { SQLQueryBindings } from "bun:sqlite"
 import { dirname } from "node:path"
 import { fileURLToPath } from "node:url"
+import type { UiEvent } from "@touri/contracts"
+import type { TranscriptRef } from "../kernel/transcript-events"
+import { deferWorkerReply } from "../kernel/worker-reply"
 import type { Candidate, RecoveryCursor } from "../notify/recovery-candidates"
 
 type ReadQuery = { sql: string; bindings: SQLQueryBindings[] }
@@ -15,11 +18,17 @@ export const createStoreReader = (filename: string, onReady?: (pid: number) => v
   let disposed = false
 
   const getResult = async <Value>(
-    input: { query: ReadQuery } | { recovery: RecoveryCursor },
+    input:
+      | { query: ReadQuery }
+      | { recovery: RecoveryCursor }
+      | { references: TranscriptRef[]; maxBytes?: number | undefined },
     signal: AbortSignal,
     messages = false,
   ): Promise<Value> => {
     signal.throwIfAborted()
+    // Reference reads can originate in a persistence worker inbox; spawn on a timer turn.
+    await new Promise<void>(deferWorkerReply)
+    if (signal.aborted) throw new Error("STORE_READ_ABORTED")
     if (disposed) throw new Error("STORE_READ_CAPACITY")
 
     const release = await slots.acquire(signal)
@@ -48,7 +57,7 @@ export const createStoreReader = (filename: string, onReady?: (pid: number) => v
     try {
       child.stdin.write(JSON.stringify({ filename, ...input, messages }))
       await child.stdin.end()
-      const response = getProcessReply(child.stdout, messages, () => onReady?.(child.pid))
+      const response = getProcessReply(child.stdout, messages, () => onReady?.(child.pid), "references" in input)
       const [value, code] = await Promise.all([response, child.exited])
       if (abortReason) throw abortReason
       if (code !== 0) throw new Error("STORE_READ_FAILED")
@@ -82,11 +91,18 @@ export const createStoreReader = (filename: string, onReady?: (pid: number) => v
     ): Promise<MessageReply> => getResult<MessageReply>({ query }, signal, true),
     getRecoveryCandidates: (recovery: RecoveryCursor, signal: AbortSignal): Promise<Candidate[]> =>
       getResult<Candidate[]>({ recovery }, signal),
+    getReferenceEvents: (references: TranscriptRef[], signal: AbortSignal, maxBytes?: number): Promise<UiEvent[]> =>
+      getResult<UiEvent[]>({ references, maxBytes }, signal),
     dispose,
   }
 }
 
-const getProcessReply = async (stdout: ReadableStream<Uint8Array>, messages: boolean, onReady: () => void) => {
+const getProcessReply = async (
+  stdout: ReadableStream<Uint8Array>,
+  messages: boolean,
+  onReady: () => void,
+  eventReferences = false,
+) => {
   const reader = stdout.getReader()
   const first = await reader.read()
   if (first.done || first.value[0] !== 82) throw new Error("STORE_READ_FAILED")
@@ -103,7 +119,7 @@ const getProcessReply = async (stdout: ReadableStream<Uint8Array>, messages: boo
     },
     cancel: () => reader.cancel(),
   })
-  if (!messages) return getRowsFromStream(remaining)
+  if (!messages) return getRowsFromStream(remaining, eventReferences ? 64 * 1024 * 1024 : undefined)
 
   const bytes = new Uint8Array(await new Response(remaining).arrayBuffer())
   if (bytes.byteLength < 4) throw new Error("STORE_READ_FAILED")
@@ -125,7 +141,7 @@ const getProcessReply = async (stdout: ReadableStream<Uint8Array>, messages: boo
   return { references, body: bytes.subarray(headerLength + 4) }
 }
 
-const getRowsFromStream = async (stream: ReadableStream<Uint8Array>): Promise<unknown[]> => {
+const getRowsFromStream = async (stream: ReadableStream<Uint8Array>, lineLimit = 512 * 1024): Promise<unknown[]> => {
   const reader = stream.getReader()
   const decoder = new TextDecoder()
   // Framing and rows are request-local; each parse is bounded and batches yield to live I/O.
@@ -140,10 +156,10 @@ const getRowsFromStream = async (stream: ReadableStream<Uint8Array>): Promise<un
     if (bytes > 64 * 1024 * 1024) throw new Error("STORE_READ_LIMIT")
     const lines = (tail + decoder.decode(next.value, { stream: true })).split("\n")
     tail = lines.pop() ?? ""
-    if (tail.length > 512 * 1024) throw new Error("STORE_READ_LIMIT")
+    if (tail.length > lineLimit) throw new Error("STORE_READ_LIMIT")
     for (let offset = 0; offset < lines.length; offset += 32) {
       lines.slice(offset, offset + 32).forEach((line) => {
-        if (!line || line.length > 512 * 1024) throw new Error("STORE_READ_LIMIT")
+        if (!line || line.length > lineLimit) throw new Error("STORE_READ_LIMIT")
         rows.push(JSON.parse(line))
       })
       await new Promise<void>((resolve) => setImmediate(resolve))
