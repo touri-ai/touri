@@ -581,6 +581,7 @@ requests finish, independently of machine, routine and activity initialization. 
 history starts as soon as its own index is available, even while another channel index is pending.
 A failed channel-list read does not prevent direct conversations from loading. Empty channel and conversation invitations appear
 only after the corresponding first read succeeds; pending reads show an accessible skeleton.
+A failed history read offers Retry, which reloads saved state without replaying a message or restarting the service.
 The conversation history accepts keyboard focus so saved messages can be scrolled without a pointer.
 With 60 ms added network latency, reopening Work targets a visible cached channel list within
 300 ms and the selected channel's stored messages within one second.

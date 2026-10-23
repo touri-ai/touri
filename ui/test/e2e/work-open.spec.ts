@@ -8,11 +8,13 @@ import { createWorkGoldenServer } from "./work-golden-server"
 
 let server: Awaited<ReturnType<typeof createWorkGoldenServer>> | null = null
 let releaseActivity: () => void = () => undefined
+let releaseHistory: () => void = () => undefined
 test.setTimeout(180_000)
 test.use({ trace: "off" })
 
 test.afterEach(async () => {
   releaseActivity()
+  releaseHistory()
   await server?.dispose()
   server = null
 })
@@ -218,7 +220,14 @@ test("an existing conversation shows honest loading while history is pending", a
   await current.install(page)
   await page.emulateMedia({ reducedMotion: "reduce" })
   const history = new Promise<void>((done) => {
+    releaseHistory = done
+  })
+  const activity = new Promise<void>((done) => {
     releaseActivity = done
+  })
+  await page.route("**/workspace/activity", async (route) => {
+    await activity
+    await route.continue().catch(() => undefined)
   })
   await page.route(`**/threads/${thread.id}/messages?*`, async (route) => {
     await history
@@ -240,6 +249,60 @@ test("an existing conversation shows honest loading while history is pending", a
 
   await expect(page.getByRole("status", { name: "Carregando conversas…" })).toBeVisible()
   await expect(page.getByRole("region", { name: "Comece a conversa em #Planejamento" })).toHaveCount(0)
-  releaseActivity()
+  releaseHistory()
   await expect(page.getByTestId("virtual-message-list").getByText("O plano de demonstração está salvo.")).toBeVisible()
+  releaseActivity()
+})
+
+test("history recovery remains available after repeated read failures", async ({ page }) => {
+  const current = await createWorkGoldenServer()
+  server = current
+  const { bot } = (await current.api("/bots", "POST", {
+    name: "Lia",
+    provider: seed.bots[0]?.provider,
+    access: "read-only",
+    approvals: "on-request",
+  })) as { bot: Bot }
+  const { group, thread } = (await current.api("/groups", "POST", {
+    name: "Planejamento",
+    color: "#558866",
+    avatarShape: "cercle",
+    memberIds: [bot.id],
+    coordinatorBotId: null,
+  })) as { group: BotGroup; thread: Thread }
+  await current.api(`/threads/${thread.id}/messages`, "POST", {
+    text: "O plano de demonstração está salvo.",
+    parentId: null,
+    attachmentIds: [],
+    sendId: crypto.randomUUID(),
+  })
+  await current.install(page)
+  let failures = 0
+  await page.route(`**/threads/${thread.id}/messages?*`, async (route) => {
+    if (failures >= 2) return route.continue()
+    failures += 1
+    await route.fulfill({ status: 500, contentType: "application/json", body: '{"error":"Synthetic history failure"}' })
+  })
+  await page.goto(current.serverUrl)
+  await page.getByRole("tab", { name: /^Work,/ }).click()
+  await page.getByRole("region", { name: "Canais", exact: true }).getByText(group.name, { exact: true }).click()
+  const retry = page.getByRole("button", { name: "Tentar novamente", exact: true })
+  await expect(retry).toBeVisible()
+  if (process.env.TOURI_WORK_OPEN_EVIDENCE) {
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+      await page.screenshot({
+        path: join(process.env.TOURI_WORK_OPEN_EVIDENCE, `work-retry-${width}.png`),
+        animations: "disabled",
+      })
+    }
+  }
+  await retry.click()
+  await expect.poll(() => failures).toBe(2)
+  await expect(retry).toBeEnabled()
+  await expect(page.getByText("Não foi possível carregar a conversa. Tente novamente.", { exact: true })).toBeVisible()
+  await retry.click()
+
+  await expect(page.getByTestId("virtual-message-list").getByText("O plano de demonstração está salvo.")).toBeVisible()
+  await expect(retry).toHaveCount(0)
 })

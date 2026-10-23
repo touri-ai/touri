@@ -7,6 +7,7 @@ import { type Locale, t } from "./i18n"
 
 export type RecoveryAction = "retry" | "login" | "storage" | "review" | "resume" | "doctor"
 export type RecoveryContext = {
+  historyRead?: boolean | undefined
   provider?: Provider | undefined
   errorClass?: string | null | undefined
   parts?: MessagePart[] | undefined
@@ -39,6 +40,8 @@ export const errorRecovery = (error: unknown, context: RecoveryContext = {}): Er
     actions,
     classified,
   })
+  if (context.historyRead)
+    return view(tr("Could not load the conversation. Try again."), [action("retry", "Tentar novamente")])
   const attachmentError = getAttachmentError(raw, locale)
   if (attachmentError) return view(attachmentError, [])
   if (raw === "O bot terminou sem responder. Tente novamente.")

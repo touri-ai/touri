@@ -37,7 +37,7 @@ test("channel metadata renders and history starts while unrelated startup reads 
   const { api, group, thread } = await getChannelFixture()
   const barrier = getBarrier()
   const request: ApiRequest = async (route, input, path) => {
-    if (route === "GET /machines") await barrier.promise
+    if (route === "GET /machines" || route === "GET /workspace/activity") await barrier.promise
     return api.request(route, input, path)
   }
   const client = { ...api, request }
@@ -195,4 +195,17 @@ test("a failed channel read does not prevent direct conversation startup", async
   await waitFor(() => expect(hook.result.current.data.loaded).toBe(true))
   await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe(hook.result.current.data.selectedThreadId))
   expect(hook.result.current.data.messages.length).toBeGreaterThan(0)
+})
+
+test("a successful server index removes a cached conversation that no longer exists", async () => {
+  const { group, thread } = await getChannelFixture()
+  saveWorkChannelCache({ groups: [group], threads: [thread], selectedThreadId: thread.id }, "owner")
+  const api = createMockApi()
+
+  const hook = renderHook(() => useWorkspace(api))
+
+  await waitFor(() => expect(hook.result.current.data.loaded).toBe(true))
+  expect(hook.result.current.data.groups).toEqual([])
+  expect(hook.result.current.data.threads.some((candidate) => candidate.id === thread.id)).toBe(false)
+  expect(hook.result.current.data.selectedThreadId).not.toBe(thread.id)
 })

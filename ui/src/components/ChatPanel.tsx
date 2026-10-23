@@ -99,6 +99,10 @@ import { approvalTools, assistantSegments } from "./turnActivityModel"
 import { type EditMessage, UserMessageEdit } from "./UserMessageEdit"
 import { usePhoneViewport } from "./usePhoneViewport"
 
+const GroupHeader = lazy(() => import("./Groups").then((module) => ({ default: module.GroupHeader })))
+const GroupConversationStart = lazy(() =>
+  import("./Groups").then((module) => ({ default: module.GroupConversationStart })),
+)
 const ChannelThreads = lazy(() => import("./ChannelThreads").then((module) => ({ default: module.ChannelThreads })))
 
 type ChatPanelProps = {

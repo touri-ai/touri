@@ -709,6 +709,7 @@ const AppContent = ({ kernel }: AppProps) => {
         .sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0))[0]
     : undefined
   const noticeContext = {
+    historyRead: !!data.historyNotice && notice === data.historyNotice,
     provider: noticeRun?.provider,
     errorClass: noticeRun?.errorClass,
     parts: data.activityMessages.find((message) => message.id === noticeRun?.replyMessageId)?.parts,
@@ -911,7 +912,6 @@ const AppContent = ({ kernel }: AppProps) => {
                   // A provider notice must not restart the local service or replay a mutation.
                   await actions.refresh()
                   setLocalNotice(null)
-                  actions.dismissNotice()
                 } else if (action === "login")
                   runFailureAction({ kind: "setting", settingId: "providerLogin", label: "" })
                 else if (action === "storage" || action === "doctor") openModal("doctor")

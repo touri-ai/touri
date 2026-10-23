@@ -56,6 +56,7 @@ export type WorkspaceData = {
   groupsLoaded?: boolean
   readyGroupIds?: Id[]
   historyThreadId?: Id | null
+  historyNotice?: string | null
   channelCacheIdentity?: { scope: string | null; personId: string }
   groups: Array<BotGroup>
   bots: Array<Bot>
@@ -749,6 +750,7 @@ export const useWorkspace = (
             return {
               ...current,
               historyThreadId: threadId,
+              historyNotice: null,
               messages: (api.pendingMessages?.() ?? [])
                 .filter((message) => message.threadId === threadId)
                 .reduce(
@@ -759,7 +761,10 @@ export const useWorkspace = (
                 current.runs,
                 runs.runs.filter((run) => (liveRuns.current.get(run.id) ?? 0) <= runsAtStart),
               ),
-              notice: current.notice === serviceNotice.current ? null : current.notice,
+              notice:
+                current.notice === serviceNotice.current || current.notice === current.historyNotice
+                  ? null
+                  : current.notice,
             }
           })
         })
@@ -768,7 +773,7 @@ export const useWorkspace = (
 
           const notice = t("Service request failed", { error: getServiceErrorMessage(error) })
           if (isServiceUnavailable(error)) serviceNotice.current = notice
-          setData((current) => ({ ...current, notice }))
+          setData((current) => ({ ...current, notice, historyNotice: notice }))
         })
         .finally(() => {
           const load = threadLoads.current.get(threadId)
