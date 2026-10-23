@@ -135,6 +135,7 @@ export const BrowserActivityCard = ({
   const [showAllActions, setShowAllActions] = useState(false)
   const [fullView, setFullView] = useState(false)
   const [waitedTooLong, setWaitedTooLong] = useState(false)
+  const [previewAttempt, setPreviewAttempt] = useState(0)
   const contentId = useId()
   const section = useRef<HTMLElement>(null)
   const logList = useRef<HTMLDivElement>(null)
@@ -292,6 +293,7 @@ export const BrowserActivityCard = ({
     resuming,
   ])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: an explicit retry restarts the source
   useEffect(() => {
     setPreviewError(null)
     if (
@@ -307,7 +309,8 @@ export const BrowserActivityCard = ({
       held ||
       finished ||
       channel?.previewHidden ||
-      takeoverSession
+      takeoverSession ||
+      waitedTooLong
     )
       return
 
@@ -345,6 +348,8 @@ export const BrowserActivityCard = ({
     previewEnabled,
     takeoverSession,
     visible,
+    waitedTooLong,
+    previewAttempt,
   ])
 
   useEffect(() => {
@@ -360,13 +365,14 @@ export const BrowserActivityCard = ({
     frameSource.current?.refresh?.()
   }, [completedCount])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: an explicit retry starts a new first-frame deadline
   useEffect(() => {
     setWaitedTooLong(false)
     if (finished || held || preview || !expanded) return
     const timer = window.setTimeout(() => setWaitedTooLong(true), WAITING_TIMEOUT_MS)
 
     return () => window.clearTimeout(timer)
-  }, [expanded, finished, held, preview])
+  }, [expanded, finished, held, preview, previewAttempt])
 
   // Preserve a user's scroll position when they inspect earlier browser actions.
   // biome-ignore lint/correctness/useExhaustiveDependencies: row count changes trigger this check
@@ -651,7 +657,7 @@ export const BrowserActivityCard = ({
                     {previewNotice ??
                       t(
                         waitedTooLong
-                          ? "The browser is taking longer than expected. Trying to reconnect…"
+                          ? "The browser did not send a preview in time. Retry the preview or stop the task."
                           : activeTabId
                             ? "Waiting for the browser page…"
                             : "Preparing the browser…",
@@ -660,6 +666,18 @@ export const BrowserActivityCard = ({
                       )}
                   </p>
                 ) : null}
+                {waitedTooLong && !preview?.src && (
+                  <button
+                    type="button"
+                    className="button button-quiet"
+                    onClick={() => {
+                      setWaitedTooLong(false)
+                      setPreviewAttempt((attempt) => attempt + 1)
+                    }}
+                  >
+                    {t("Retry preview", {}, locale)}
+                  </button>
+                )}
                 {preview?.src && previewError && <small role="status">{previewError}</small>}
               </div>
             )}

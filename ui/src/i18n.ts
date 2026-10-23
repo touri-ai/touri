@@ -745,6 +745,23 @@ export const ptBR = {
   "Preparing the browser…": "Preparando o navegador…",
   "The browser is taking longer than expected. Trying to reconnect…":
     "O navegador está demorando mais que o esperado. Tentando reconectar…",
+  "The browser did not send a preview in time. Retry the preview or stop the task.":
+    "O navegador não enviou a prévia no prazo. Tente carregar a prévia novamente ou pare a tarefa.",
+  "Retry preview": "Tentar carregar prévia novamente",
+  "O navegador encerrou por possível falta de memória. Feche abas ou libere memória no servidor e tente novamente.":
+    "O navegador encerrou por possível falta de memória. Feche abas ou libere memória no servidor e tente novamente.",
+  "O processo do navegador encerrou inesperadamente. Tente abrir a página novamente.":
+    "O processo do navegador encerrou inesperadamente. Tente abrir a página novamente.",
+  "A página encerrou por falta de memória. Tente novamente com menos abas abertas.":
+    "A página encerrou por falta de memória. Tente novamente com menos abas abertas.",
+  "A página do navegador encerrou inesperadamente. Tente abrir novamente.":
+    "A página do navegador encerrou inesperadamente. Tente abrir novamente.",
+  "Partial page: reading was bounded. Use a fresh snapshot or scroll for more content.":
+    "Página parcial: a leitura atingiu o limite de tempo. Leia novamente ou role para ver mais conteúdo.",
+  "This bot already has the maximum of 8 browser tabs. Close a tab before opening another.":
+    "Este bot já tem o máximo de 8 abas. Feche uma aba antes de abrir outra.",
+  "Browser page crashed: out of memory": "A página encerrou por falta de memória",
+  "Browser page crashed": "A página encerrou inesperadamente",
   "Why {name} stopped": "Por que {name} parou",
   "{name} paused so you can handle this step in the browser.":
     "{name} pausou para você cuidar deste passo no navegador.",
@@ -3967,6 +3984,23 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "The bot works on the selected server without accessing this device.",
   "Neste servidor": "On this server",
   "Modo servidor": "Server mode",
+  "The browser did not send a preview in time. Retry the preview or stop the task.":
+    "The browser did not send a preview in time. Retry the preview or stop the task.",
+  "Retry preview": "Retry preview",
+  "O navegador encerrou por possível falta de memória. Feche abas ou libere memória no servidor e tente novamente.":
+    "The browser stopped, possibly because it ran out of memory. Close tabs or free server memory and retry.",
+  "O processo do navegador encerrou inesperadamente. Tente abrir a página novamente.":
+    "The browser process stopped unexpectedly. Try opening the page again.",
+  "A página encerrou por falta de memória. Tente novamente com menos abas abertas.":
+    "The page ran out of memory. Try again with fewer tabs open.",
+  "A página do navegador encerrou inesperadamente. Tente abrir novamente.":
+    "The browser page stopped unexpectedly. Try opening it again.",
+  "Partial page: reading was bounded. Use a fresh snapshot or scroll for more content.":
+    "Partial page: reading was bounded. Use a fresh snapshot or scroll for more content.",
+  "This bot already has the maximum of 8 browser tabs. Close a tab before opening another.":
+    "This bot already has the maximum of 8 browser tabs. Close a tab before opening another.",
+  "Browser page crashed: out of memory": "Browser page crashed: out of memory",
+  "Browser page crashed": "Browser page crashed",
   "Servidor offline. Tentando reconectar…": "Server offline. Trying to reconnect…",
   "Servidor offline. Suas mensagens ficam na fila e serão enviadas ao reconectar.":
     "Server offline. Your messages are queued and will be sent when the connection returns.",

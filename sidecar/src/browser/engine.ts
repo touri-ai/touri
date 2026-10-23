@@ -140,6 +140,9 @@ const actionableRoles = new Set([
 ])
 const MAX_SNAPSHOT_NODES = 200
 const AX_NODE_INSPECTION_BATCH_SIZE = 32
+const SNAPSHOT_BUDGET_MS = 4000
+const MAX_BOT_TABS = 8
+const BROWSER_IDLE_MS = 5 * 60_000
 
 type PageState = {
   url: string
@@ -279,7 +282,20 @@ const isSideEffectMethod = (method: string): boolean =>
 const cdpCall = async <T>(client: CdpClient, method: string, params: JsonObject, sessionId: string): Promise<T> => {
   const signal = operationSignals.getStore()
   if (signal?.aborted && isSideEffectMethod(method)) throw new Error("A operação do navegador foi cancelada.")
-  return client.call<T>(method, params, sessionId)
+  return callUntilAborted(() => client.call<T>(method, params, sessionId), signal)
+}
+
+const callUntilAborted = async <T>(operation: () => Promise<T>, signal?: AbortSignal): Promise<T> => {
+  signal?.throwIfAborted()
+  if (!signal) return operation()
+  const cancelled = Promise.withResolvers<never>()
+  const abort = () => cancelled.reject(new Error("Operation aborted"))
+  signal.addEventListener("abort", abort, { once: true })
+  try {
+    return await Promise.race([operation(), cancelled.promise])
+  } finally {
+    signal.removeEventListener("abort", abort)
+  }
 }
 
 const responseText = (value: unknown): string => {
@@ -630,6 +646,17 @@ const causeHint = (message: string): string => {
 const browserError = (error: unknown): BrowserFailure => {
   if (error instanceof LocalBrowserUnavailableError) return { errorCode: error.errorCode, error: error.message }
   const message = errorMessage(error)
+  if (/out of memory|oom/i.test(message))
+    return {
+      errorCode: "ENGINE_UNAVAILABLE",
+      error:
+        "O navegador encerrou por possível falta de memória. Feche abas ou libere memória no servidor e tente novamente.",
+    }
+  if (/crash|process terminated|debugging pipe.*closed/i.test(message))
+    return {
+      errorCode: "ENGINE_UNAVAILABLE",
+      error: "O processo do navegador encerrou inesperadamente. Tente abrir a página novamente.",
+    }
   if (isDeadlineError(message)) {
     return {
       errorCode: "DEADLINE_EXCEEDED",
@@ -693,26 +720,29 @@ const withDeadline = async <T>({
 }): Promise<T> => {
   if (signal.aborted) throw new Error("A operação do navegador foi cancelada antes de começar.")
   const controller = new AbortController()
-  const forwardAbort = (): void => controller.abort()
-  signal.addEventListener("abort", forwardAbort, { once: true })
-  let timedOut = false
   let cleanup: Promise<void> | null = null
+  const cancelled = Promise.withResolvers<never>()
+  const forwardAbort = (): void => {
+    controller.abort()
+    cleanup = Promise.race([onTimeout().catch(() => undefined), sleep(500).catch(() => undefined)])
+    cancelled.reject(new Error("Operation aborted"))
+  }
+  signal.addEventListener("abort", forwardAbort, { once: true })
   let timer: ReturnType<typeof setTimeout> | null = null
   const work = operationSignals.run(controller.signal, () => operation(controller.signal))
   const deadline = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
-      timedOut = true
       controller.abort()
       cleanup = Promise.race([onTimeout().catch(() => undefined), sleep(500).catch(() => undefined)])
       reject(new Error("Operation deadline exceeded"))
     }, timeoutMs)
   })
   try {
-    return await Promise.race([work, deadline])
+    return await Promise.race([work, deadline, cancelled.promise])
   } finally {
     if (timer) clearTimeout(timer)
     signal.removeEventListener("abort", forwardAbort)
-    if (timedOut) await (cleanup ?? Promise.resolve())
+    if (cleanup) await cleanup
   }
 }
 
@@ -905,9 +935,9 @@ const pageState = async (client: CdpClient, tab: TabState): Promise<PageState> =
     client,
     `(() => {
     const body = document.body;
-    const text = body ? (body.innerText || '') : (document.documentElement?.innerText || '');
-    const childFrameText = Array.from(document.querySelectorAll('iframe')).map((frame) => {
-      try { return frame.contentDocument?.body?.innerText || ''; } catch { return ''; }
+    const text = (body ? (body.innerText || '') : (document.documentElement?.innerText || '')).slice(0, 20001);
+    const childFrameText = Array.from(document.querySelectorAll('iframe')).slice(0, 16).map((frame) => {
+      try { return (frame.contentDocument?.body?.innerText || '').slice(0, 20001); } catch { return ''; }
     }).filter((value) => value.length > 0).join('\\n');
     const active = document.activeElement;
     const name = active ? String(active.getAttribute('aria-label') || active.getAttribute('name') || ${hideFieldValues ? "''" : "active.innerText || active.value || ''"}).trim() : '';
@@ -915,7 +945,7 @@ const pageState = async (client: CdpClient, tab: TabState): Promise<PageState> =
     return { url: location.href, title: document.title, loading: document.readyState !== 'complete', readyState: document.readyState,
       viewport: { width: innerWidth, height: innerHeight, scrollY: scrollY, scrollHeight: Math.max(document.body?.scrollHeight || 0, document.documentElement?.scrollHeight || 0) },
       text: childFrameText ? text + '\\n' + childFrameText : text, hasCanvas: !!document.querySelector('canvas'), hasVideo: !!document.querySelector('video'),
-      crossOriginIframe: Array.from(document.querySelectorAll('iframe')).some((frame) => { try { return new URL(frame.src, location.href).origin !== location.origin; } catch { return false; } }),
+      crossOriginIframe: Array.from(document.querySelectorAll('iframe')).slice(0, 16).some((frame) => { try { return new URL(frame.src, location.href).origin !== location.origin; } catch { return false; } }),
       active: { role, name, backendNodeId: null }, mutationVersion: Number(window.__touriMutationVersion || 0) };
   })()`,
     tab.sessionId,
@@ -1091,7 +1121,7 @@ const collectElements = async ({
   let candidates: Array<NodeRef> = []
   let inspected = 0
   let dropped = false
-  for (const sessionId of tabSessions(tab)) {
+  for (const sessionId of tabSessions(tab).slice(0, 16)) {
     let nodes: Array<AxNode> = []
     try {
       nodes = await axNodes(client, sessionId)
@@ -1108,6 +1138,9 @@ const collectElements = async ({
       nodes: batch,
       index: candidates.length,
       hideValues: tab.privateInput,
+    }).catch((error: unknown) => {
+      if (!operationSignals.getStore()?.aborted) throw error
+      return []
     })
     candidates = candidates.concat(nodeRefs)
     inspected += batch.length
@@ -1116,7 +1149,8 @@ const collectElements = async ({
     dropped = true
     break
   }
-  const domCandidates = dropped ? [] : await collectDomCandidates({ client, tab })
+  const interrupted = operationSignals.getStore()?.aborted === true
+  const domCandidates = dropped || interrupted ? [] : await collectDomCandidates({ client, tab })
   for (const candidate of domCandidates) {
     if (
       candidates.some(
@@ -1126,14 +1160,15 @@ const collectElements = async ({
       continue
     candidates.push({ ...candidate, ref: `${tab.generation}.${candidates.length}` })
   }
-  for (const sessionId of tabSessions(tab).slice(1)) {
+  for (const sessionId of tabSessions(tab).slice(1, 16)) {
+    if (operationSignals.getStore()?.aborted) break
     try {
       const frameText = await runtimeValue<string>(
         client,
-        "document.body ? (document.body.innerText || '') : (document.documentElement?.innerText || '')",
+        "(document.body ? (document.body.innerText || '') : (document.documentElement?.innerText || '')).slice(0, 20001)",
         sessionId,
       )
-      if (frameText) page.text = `${page.text}\n${frameText}`
+      if (frameText) page.text = `${page.text}\n${frameText}`.slice(0, 20001)
     } catch {}
   }
   candidates.sort((left, right) => {
@@ -1153,7 +1188,7 @@ const collectElements = async ({
   return {
     nodes: candidates.slice(0, MAX_SNAPSHOT_NODES),
     page,
-    dropped: dropped || candidates.length > MAX_SNAPSHOT_NODES,
+    dropped: dropped || operationSignals.getStore()?.aborted === true || candidates.length > MAX_SNAPSHOT_NODES,
   }
 }
 
@@ -1402,6 +1437,8 @@ export const createBrowserEngine = ({
   discoverBotId,
   localBrowser = false,
   runStage,
+  idleMs = BROWSER_IDLE_MS,
+  snapshotBudgetMs = SNAPSHOT_BUDGET_MS,
 }: {
   kernel: Kernel
   mode?: "system-chrome" | "chrome-for-testing"
@@ -1410,6 +1447,8 @@ export const createBrowserEngine = ({
   discoverBotId?: string
   localBrowser?: boolean
   runStage?: PerformanceStageRunner
+  idleMs?: number
+  snapshotBudgetMs?: number
 }): BrowserEngine => {
   const refHistory = new WeakMap<TabState, Map<string, { node: NodeRef; url: string }>>()
   const rememberRefs = (tab: TabState) => {
@@ -1426,6 +1465,9 @@ export const createBrowserEngine = ({
   const handbackRetries = new Map<string, ReturnType<typeof setTimeout>>()
   let shutdownPromise: Promise<void> | undefined
   let client: CdpClient | null = null
+  let starting: Promise<boolean> | null = null
+  let activeOperations = 0
+  let lastActivityAt = Date.now()
   let unsubscribe: (() => void) | null = null
   let retired = false
   const pendingPopups = new WeakMap<TabState, number>()
@@ -1438,6 +1480,8 @@ export const createBrowserEngine = ({
   const savedSessions = new Map<string, SavedSession>()
   const sharedPreview = createSharedPreviewSource<{ title: string; url: string; image: string }>()
   const mainFrameIds = new WeakMap<TabState, string>()
+  const mainDocumentRequests = new WeakMap<TabState, string>()
+  const mainDocumentErrors = new WeakMap<TabState, string>()
   const pendingStorage = new Map<string, Record<string, Record<string, string>>>()
   let sessionTimer: ReturnType<typeof setInterval> | null = null
   let legacyMigration: Promise<void> | null = null
@@ -1548,6 +1592,17 @@ export const createBrowserEngine = ({
     }
   }
 
+  const idleTimer = setInterval(
+    () => {
+      if (retired || localBrowser || discoverBotId || !client || activeOperations > 0) return
+      if (Date.now() - lastActivityAt < idleMs || tabs.some((tab) => tab.info.heldByUser || tab.takeover)) return
+      markEngineUnavailable()
+      void launcher.stop().catch(() => undefined)
+    },
+    Math.min(idleMs, 30_000),
+  )
+  idleTimer.unref()
+
   const syncPageNavigation = (tab: TabState, params: JsonObject): void => {
     const frame = asRecord(params.frame)
     if (!frame || frame.parentId !== undefined) return
@@ -1570,7 +1625,7 @@ export const createBrowserEngine = ({
 
   const onEvent = (event: CdpEvent): void => {
     if (retired) return
-    const targetId = asString(asRecord(eventValue(event, "targetInfo"))?.targetId)
+    const targetId = asString(asRecord(eventValue(event, "targetInfo"))?.targetId) ?? asString(event.params.targetId)
     const tab = event.sessionId
       ? (tabs.find(
           (item) =>
@@ -1653,6 +1708,19 @@ export const createBrowserEngine = ({
       return
     }
     if (!tab) return
+    if (event.method === "Target.targetCrashed" || event.method === "Inspector.targetCrashed") {
+      const outOfMemory = /oom|out.of.memory/i.test(asString(event.params.status) ?? "")
+      recordDiagnostic(tab, {
+        at: Date.now(),
+        kind: "load",
+        level: "error",
+        text: outOfMemory ? "Browser page crashed: out of memory" : "Browser page crashed",
+      })
+      tab.sessionId = null
+      tab.info.state = "unloaded"
+      publishTab(tab)
+      return
+    }
     if (event.method === "Target.targetInfoChanged" && localBrowser) {
       const info = targetInfo(event.params.targetInfo)
       if (info) {
@@ -1726,7 +1794,22 @@ export const createBrowserEngine = ({
         })
       return
     }
+    if (event.method === "Network.requestWillBeSent") {
+      if (event.params.type === "Document" && event.params.frameId === (mainFrameIds.get(tab) ?? tab.targetId)) {
+        const requestId = asString(event.params.requestId)
+        if (requestId) mainDocumentRequests.set(tab, requestId)
+      }
+      return
+    }
     if (event.method === "Network.loadingFailed") {
+      if (
+        mainDocumentRequests.has(tab) &&
+        event.params.requestId === mainDocumentRequests.get(tab) &&
+        event.params.canceled !== true
+      ) {
+        const code = networkErrorCode(asString(event.params.errorText) ?? "")
+        if (code) mainDocumentErrors.set(tab, code)
+      }
       recordDiagnostic(tab, {
         at: Date.now(),
         kind: "network",
@@ -1824,7 +1907,8 @@ export const createBrowserEngine = ({
 
   const adoptPopupTab = async ({ info, opener }: { info: CdpTargetInfo; opener: TabState }): Promise<void> => {
     unloadIdleTabs()
-    if (store.list(opener.info.ownerBotId).length >= 25) {
+    if (store.list(opener.info.ownerBotId).length >= MAX_BOT_TABS) {
+      if (client) void client.call("Target.closeTarget", { targetId: info.targetId }).catch(() => undefined)
       recordDiagnostic(opener, {
         at: Date.now(),
         kind: "popup",
@@ -1852,22 +1936,33 @@ export const createBrowserEngine = ({
     publishTab(opener)
   }
 
-  const ensureClient = async (runningOnly = false): Promise<boolean> => {
+  const startClient = async (runningOnly = false): Promise<boolean> => {
+    const signal = operationSignals.getStore()
+    signal?.throwIfAborted()
     if (retired) return false
     if (client && !client.isClosed()) return true
     client = null
     let started = await launcher.start({ runningOnly })
+    signal?.throwIfAborted()
     if (!started && !runningOnly && !retired) {
       await Bun.sleep(250)
+      signal?.throwIfAborted()
       if (!retired) started = await launcher.start()
     }
-    if (retired) return false
+    if (retired) {
+      await launcher.stop()
+      return false
+    }
     if (!started) {
       // A running-only probe (tab listing, viewers) finds no browser until a page is opened; that is not a failure.
       if (!runningOnly) kernel.log({ level: "warn", module: "browser", msg: "Chrome launcher returned no client" })
       return false
     }
-    client = started.client
+    const transport = started.client
+    client = Object.assign({}, transport, {
+      call: <T>(method: string, params?: JsonObject, sessionId?: string) =>
+        callUntilAborted(() => transport.call<T>(method, params, sessionId), operationSignals.getStore()),
+    })
     browserContexts.clear()
     contextOwners.clear()
     legacyMigration = null
@@ -1877,7 +1972,10 @@ export const createBrowserEngine = ({
       if (!localBrowser)
         await client.call("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: false, flatten: true })
       else client.onDisconnect?.(() => markEngineUnavailable())
-      void started.process?.exited.then(() => markEngineUnavailable())
+      const connectedClient = client
+      void started.process?.exited.then(() => {
+        if (client === connectedClient) markEngineUnavailable()
+      })
       return !retired
     } catch (error) {
       kernel.log({
@@ -1893,6 +1991,18 @@ export const createBrowserEngine = ({
       if (localBrowser) throw new LocalBrowserUnavailableError()
       return false
     }
+  }
+
+  const ensureClient = (runningOnly = false): Promise<boolean> => {
+    if (starting) return starting
+    const signal = operationSignals.getStore()
+    const cancel = () => void launcher.stop().catch(() => undefined)
+    signal?.addEventListener("abort", cancel, { once: true })
+    starting = startClient(runningOnly).finally(() => {
+      signal?.removeEventListener("abort", cancel)
+      starting = null
+    })
+    return starting
   }
 
   const focusManagedChrome = async (): Promise<void> => {
@@ -2155,7 +2265,7 @@ export const createBrowserEngine = ({
     return failure("SITE_BLOCKED", describeBlockedPage({ blocked, url: page.href }))
   }
 
-  type EnsureOptions = { signal?: AbortSignal; budgetMs?: number }
+  type EnsureOptions = { signal?: AbortSignal; budgetMs?: number; retry?: boolean }
 
   const pageLocation = async (tab: TabState): Promise<{ href: string; readyState: string; text: string } | null> => {
     if (!client || !tab.sessionId) return null
@@ -2166,7 +2276,7 @@ export const createBrowserEngine = ({
     )
   }
 
-  const waitForInitialNavigation = async ({
+  const pollInitialNavigation = async ({
     tab,
     url,
     signal,
@@ -2176,6 +2286,14 @@ export const createBrowserEngine = ({
     const endsAt = Date.now() + budgetMs
     while (Date.now() < endsAt) {
       signal?.throwIfAborted()
+      const crash = tab.diagnostics.find((item) => item.text.startsWith("Browser page crashed"))
+      if (crash)
+        return failure(
+          "ENGINE_UNAVAILABLE",
+          crash.text.includes("memory")
+            ? "A página encerrou por falta de memória. Tente novamente com menos abas abertas."
+            : "A página do navegador encerrou inesperadamente. Tente abrir novamente.",
+        )
       const state = await pageLocation(tab).catch((error: unknown) => {
         if (isSessionLost(error)) throw error
         return null
@@ -2183,7 +2301,10 @@ export const createBrowserEngine = ({
       if (state && isChromeErrorPage(state.href))
         return failure(
           "NAVIGATION_FAILED",
-          describeNavigationFailure({ code: networkErrorCode(state.text), url: kernel.redact(url) }),
+          describeNavigationFailure({
+            code: networkErrorCode(state.text) ?? mainDocumentErrors.get(tab) ?? null,
+            url: kernel.redact(url),
+          }),
         )
       if (state && state.href !== "about:blank" && state.readyState !== "loading") return success(undefined)
       await sleep(NAVIGATION_POLL_MS, signal)
@@ -2192,6 +2313,20 @@ export const createBrowserEngine = ({
       "DEADLINE_EXCEEDED",
       `A página ${kernel.redact(url)} não abriu em ${Math.round(budgetMs / 1000)} s (o servidor não respondeu ou a rede está bloqueada).`,
     )
+  }
+
+  const waitForInitialNavigation = async (
+    options: { tab: TabState; url: string } & EnsureOptions,
+  ): Promise<OperationResult<void>> => {
+    return withDeadline({
+      operation: (signal) => pollInitialNavigation(Object.assign({}, options, { signal })),
+      timeoutMs: options.budgetMs ?? DEFAULT_NAVIGATION_BUDGET_MS,
+      signal: options.signal ?? new AbortController().signal,
+      onTimeout: async () => {
+        if (client && options.tab.sessionId)
+          void client.call("Page.stopLoading", {}, options.tab.sessionId).catch(() => undefined)
+      },
+    }).catch((error: unknown) => ({ success: false, failure: browserError(error) }))
   }
 
   const pageUrlBlocked = async (tab: TabState): Promise<boolean> => {
@@ -2224,6 +2359,14 @@ export const createBrowserEngine = ({
       tab.targetId = null
     }
     const wanted = normalizeBrowserUrl(tab.info.url || "about:blank") ?? "about:blank"
+    if (tab.targetId && !localBrowser) {
+      const staleTarget = tab.targetId
+      targetToTab.delete(staleTarget)
+      await client.call("Target.closeTarget", { targetId: staleTarget }).catch(() => undefined)
+      tab.targetId = null
+    }
+    tab.diagnostics = tab.diagnostics.filter((item) => !item.text.startsWith("Browser page crashed"))
+    mainDocumentErrors.delete(tab)
     let contextId: string | null
     try {
       contextId = await browserContextFor(tab.info.ownerBotId)
@@ -2253,7 +2396,41 @@ export const createBrowserEngine = ({
     }
     if (!targetId || !(await attach(tab, targetId)))
       return failure("ENGINE_UNAVAILABLE", "O Chrome não conseguiu criar a aba. Tente novamente.")
-    return waitForInitialNavigation({ tab, url: wanted, ...options })
+    const attemptBudget = Math.max(1, Math.min(6000, ((options.budgetMs ?? DEFAULT_NAVIGATION_BUDGET_MS) - 500) / 2))
+    const first = await waitForInitialNavigation(
+      Object.assign({}, options, { tab, url: wanted, budgetMs: attemptBudget }),
+    )
+    if (first.success || options.signal?.aborted || options.retry === false) return first
+    if (!tab.sessionId && !localBrowser)
+      return ensureTab(tab, Object.assign({}, options, { budgetMs: attemptBudget, retry: false }))
+    if (!client || !tab.sessionId) return first
+    await cdpCall(client, "Page.stopLoading", {}, tab.sessionId).catch(() => undefined)
+    return retryInitialNavigation(tab, wanted, attemptBudget, options.signal)
+  }
+
+  const retryInitialNavigation = async (
+    tab: TabState,
+    url: string,
+    budgetMs: number,
+    signal?: AbortSignal,
+  ): Promise<OperationResult<void>> => {
+    const endsAt = Date.now() + budgetMs
+    mainDocumentErrors.delete(tab)
+    return withDeadline({
+      operation: async (operationSignal) => {
+        if (!client || !tab.sessionId) return failure("ENGINE_UNAVAILABLE", "A aba não está conectada ao Chrome.")
+        const result = cdpResult(await cdpCall<unknown>(client, "Page.navigate", { url }, tab.sessionId))
+        const code = networkErrorCode(asString(result.errorText) ?? "")
+        if (code && code !== "ERR_ABORTED")
+          return failure("NAVIGATION_FAILED", describeNavigationFailure({ code, url: kernel.redact(url) }))
+        return pollInitialNavigation({ tab, url, signal: operationSignal, budgetMs: Math.max(1, endsAt - Date.now()) })
+      },
+      timeoutMs: budgetMs,
+      signal: signal ?? new AbortController().signal,
+      onTimeout: async () => {
+        if (client && tab.sessionId) void client.call("Page.stopLoading", {}, tab.sessionId).catch(() => undefined)
+      },
+    }).catch((error: unknown) => ({ success: false, failure: browserError(error) }))
   }
 
   const recoverTab = async (tab: TabState, signal?: AbortSignal): Promise<void> => {
@@ -2656,9 +2833,22 @@ export const createBrowserEngine = ({
     const navigationBefore = tab.navigationVersion
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        collected = await collectElements({ client, tab })
+        const budget = new AbortController()
+        const timer = setTimeout(() => budget.abort(), snapshotBudgetMs)
+        const boundedSignal = AbortSignal.any([signal, budget.signal])
+        try {
+          collected = await operationSignals.run(boundedSignal, () =>
+            collectElements({ client: client as CdpClient, tab }),
+          )
+        } finally {
+          clearTimeout(timer)
+          if (budget.signal.aborted && client && tab.sessionId) {
+            void client.call("Page.stopLoading", {}, tab.sessionId).catch(() => undefined)
+            void client.call("Runtime.terminateExecution", {}, tab.sessionId).catch(() => undefined)
+          }
+        }
         if (tab.navigationVersion !== navigationBefore) throw new Error("Navigation started during snapshot")
-        if (collected.nodes.length === 0 && collected.page.text.length > 0 && attempt === 0) {
+        if (collected.nodes.length === 0 && collected.page.text.length > 0 && attempt === 0 && !collected.dropped) {
           await sleep(100, signal)
           continue
         }
@@ -2698,11 +2888,7 @@ export const createBrowserEngine = ({
       tab.refs.set(ref, updated)
       return updated
     })
-    const page = await pageState(client, tab)
-    page.text = collected.page.text
-    page.hasCanvas = page.hasCanvas || collected.page.hasCanvas
-    page.hasVideo = page.hasVideo || collected.page.hasVideo
-    page.crossOriginIframe = page.crossOriginIframe || collected.page.crossOriginIframe
+    const page = collected.page
     if (tab.navigationVersion !== navigationBefore)
       return failure(
         "NAVIGATED_DURING_SNAPSHOT",
@@ -2715,6 +2901,8 @@ export const createBrowserEngine = ({
     store.save(tab)
     const textWasTruncated = page.text.length > 20000
     const notes: Array<string> = []
+    if (collected.dropped)
+      notes.push("Partial page: reading was bounded. Use a fresh snapshot or scroll for more content.")
     if (collected.dropped || textWasTruncated) notes.push("Scroll, or wait_for text, to read more")
     if (tab.dialog)
       notes.push(
@@ -2736,7 +2924,8 @@ export const createBrowserEngine = ({
       dataUrl: string
       reason: "canvas-or-video" | "iframe" | "low-semantic-coverage" | "requested"
     } | null = null
-    const effectiveImage = tab.privateInput || tab.secretMode || tab.privateAfterTakeover ? "never" : image
+    const effectiveImage =
+      tab.privateInput || tab.secretMode || tab.privateAfterTakeover || collected.dropped ? "never" : image
     if (effectiveImage !== "never" && (effectiveImage === "always" || recommendImage !== null)) {
       try {
         const data = await boundedImage({ client, tab, fullPage: false, maxBytes: 80 * 1024 })
@@ -2805,18 +2994,35 @@ export const createBrowserEngine = ({
     timeoutMs: number
     signal: AbortSignal
     operation: (operationSignal: AbortSignal) => Promise<T>
-  }): Promise<T> =>
-    queueTab(tab, () =>
-      withDeadline({
-        operation,
-        timeoutMs: timeoutMs + DEADLINE_SLACK_MS,
-        signal,
-        onTimeout: async () => {
-          if (client && tab.sessionId)
-            await cdpCall(client, "Page.stopLoading", {}, tab.sessionId).catch(() => undefined)
-        },
-      }),
-    ).catch((error: unknown) => toToolError(browserError(error)) as T)
+  }): Promise<T> => {
+    // Cleanup belongs to the operation holding the tab, never to a waiting caller.
+    let ownsTab = false
+    return withDeadline({
+      operation: (operationSignal) =>
+        queueTab(tab, async () => {
+          operationSignal.throwIfAborted()
+          ownsTab = true
+          activeOperations += 1
+          lastActivityAt = Date.now()
+          try {
+            return await operation(operationSignal)
+          } finally {
+            ownsTab = false
+            activeOperations -= 1
+            lastActivityAt = Date.now()
+          }
+        }),
+      timeoutMs: timeoutMs + DEADLINE_SLACK_MS,
+      signal,
+      onTimeout: async () => {
+        if (!ownsTab || !client || !tab.sessionId) return
+        await Promise.all([
+          client.call("Page.stopLoading", {}, tab.sessionId).catch(() => undefined),
+          client.call("Runtime.terminateExecution", {}, tab.sessionId).catch(() => undefined),
+        ])
+      },
+    }).catch((error: unknown) => toToolError(browserError(error)) as T)
+  }
 
   const recordFailure = ({
     tab,
@@ -2981,8 +3187,11 @@ export const createBrowserEngine = ({
     const allowedUrl = normalizeBrowserUrl(url)
     if (allowedUrl === null)
       return toToolError({ errorCode: "URL_NOT_ALLOWED", error: BROWSER_URL_NOT_ALLOWED_MESSAGE })
-    if (store.list(ctx.botId).length >= 25)
-      return toToolError({ errorCode: "TAB_LIMIT", error: "This bot already has the maximum of 25 browser tabs." })
+    if (store.list(ctx.botId).length >= MAX_BOT_TABS)
+      return toToolError({
+        errorCode: "TAB_LIMIT",
+        error: `This bot already has the maximum of ${MAX_BOT_TABS} browser tabs. Close a tab before opening another.`,
+      })
     const tab = store.create({
       botId: ctx.botId,
       threadId: ctx.threadId,
@@ -3052,7 +3261,7 @@ export const createBrowserEngine = ({
         let tab = tabs.find((candidate) => candidate.targetId === info.targetId)
         tab ??= tabs.find((candidate) => candidate.info.state === "unloaded" && candidate.info.url === info.url)
         if (!tab) {
-          if (store.list(discoverBotId).length >= 25) continue
+          if (store.list(discoverBotId).length >= MAX_BOT_TABS) continue
           tab = store.create({
             botId: discoverBotId,
             threadId: kernel.services.use("store.api")?.getBot({ botId: discoverBotId })?.mainThreadId ?? "",
@@ -3139,7 +3348,7 @@ export const createBrowserEngine = ({
     const tab = owned.value
     return withTabQueue({
       tab,
-      timeoutMs,
+      timeoutMs: Math.min(timeoutMs, 20_000),
       signal,
       operation: async (operationSignal) => {
         const live = await ensureTab(tab, { signal: operationSignal, budgetMs: timeoutMs })
@@ -3339,9 +3548,33 @@ export const createBrowserEngine = ({
       args: { url, action },
       timeoutMs,
       signal,
-      operation: (operationSignal) => navigatePage(owned.value, url, action, timeoutMs, operationSignal),
+      operation: async (operationSignal) => {
+        const attemptMs = Math.max(1, Math.min(6000, (timeoutMs - 500) / 2))
+        const attempt = () => navigateWithinBudget(owned.value, url, action, attemptMs, operationSignal)
+        const first = await attempt()
+        if (first.success || operationSignal.aborted || action === "back" || action === "forward") return first
+        if (!["NAVIGATION_FAILED", "DEADLINE_EXCEEDED", "ENGINE_UNAVAILABLE"].includes(first.failure.errorCode))
+          return first
+        return attempt()
+      },
     })
   }
+
+  const navigateWithinBudget = (
+    tab: TabState,
+    url: string | undefined,
+    action: string,
+    timeoutMs: number,
+    signal: AbortSignal,
+  ): Promise<OperationResult<string>> =>
+    withDeadline({
+      operation: (operationSignal) => navigatePage(tab, url, action, timeoutMs, operationSignal),
+      timeoutMs,
+      signal,
+      onTimeout: async () => {
+        if (client && tab.sessionId) void client.call("Page.stopLoading", {}, tab.sessionId).catch(() => undefined)
+      },
+    }).catch((error: unknown) => ({ success: false, failure: browserError(error) }))
 
   const resolveWithRetry = async (tab: TabState, target: BrowserTarget): Promise<ResolveResult> => {
     try {
@@ -4974,6 +5207,7 @@ export const createBrowserEngine = ({
   const performShutdown = async (): Promise<void> => {
     if (retired) return
     retired = true
+    clearInterval(idleTimer)
     sharedPreview.clear()
     unhost()
     handbackRetries.forEach(clearTimeout)

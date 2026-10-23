@@ -45,6 +45,7 @@ vi.mock("../src/features/desktop/inlineFrameSource", () => ({
 
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
   clearBrowserHold("bot-mark", "browser-tab")
   setInlinePreviewPreference(true)
   vi.unstubAllGlobals()
@@ -766,7 +767,9 @@ test("take-over waits for the browser tab and reports a stalled connection", asy
     await act(async () => {
       await vi.advanceTimersByTimeAsync(15_000)
     })
-    expect(screen.getByText("O navegador está demorando mais que o esperado. Tentando reconectar…")).toBeVisible()
+    expect(
+      screen.getByText("O navegador não enviou a prévia no prazo. Tente carregar a prévia novamente ou pare a tarefa."),
+    ).toBeVisible()
   } finally {
     vi.useRealTimers()
   }
@@ -972,3 +975,30 @@ test.each(["live", "unloaded", "closed"] as const)(
     })
   },
 )
+
+test("a stalled preview stops reconnecting and offers an explicit retry", async () => {
+  const stop = vi.fn()
+  vi.mocked(startInlineFrameSource).mockImplementation(() => stop)
+  const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
+  vi.useFakeTimers()
+  renderCard(parts, false)
+  await act(async () => {
+    await Promise.resolve()
+  })
+  expect(startInlineFrameSource).toHaveBeenCalled()
+
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(15_100)
+  })
+
+  expect(screen.queryByText(/Tentando reconectar/)).toBeNull()
+  expect(screen.getByText(/O navegador não enviou a prévia no prazo/)).toBeVisible()
+  expect(stop).toHaveBeenCalled()
+  const attempts = vi.mocked(startInlineFrameSource).mock.calls.length
+
+  fireEvent.click(screen.getByRole("button", { name: "Tentar carregar prévia novamente" }))
+
+  expect(startInlineFrameSource).toHaveBeenCalledTimes(attempts + 1)
+  vi.useRealTimers()
+  vi.mocked(startInlineFrameSource).mockReset()
+})

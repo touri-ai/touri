@@ -27,7 +27,5 @@ export const capabilitySupport = (
     ? which(env.TOURI_CHROME_BIN)
     : which("chromium") || which("chromium-browser") || which("google-chrome")
   if (!executable) return "O navegador não está instalado neste servidor. Peça à pessoa responsável para instalá-lo."
-  if (platform === "linux" && env.TOURI_BROWSER_HEADLESS !== "1" && !env.DISPLAY && !env.WAYLAND_DISPLAY)
-    return "O navegador precisa de uma sessão gráfica ou do modo sem janela neste servidor."
   return null
 }

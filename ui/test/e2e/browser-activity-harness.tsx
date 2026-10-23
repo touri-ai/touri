@@ -131,6 +131,7 @@ const getFixtureApi = ({
     }
     if (route === "GET /bots/:id/browser-preview") {
       onPreviewRequested()
+      if (params.get("previewStall") === "true") return new Promise<never>(() => {})
       return { image, title: currentPage.current.title, url: currentPage.current.url }
     }
     if (route === "POST /browser/tabs/:id/takeover/session") {
