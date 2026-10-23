@@ -38,3 +38,26 @@ export const getGroupValidationError = (field: unknown) => {
 
   return { field: field as GroupValidationField, error: errorMessages["pt-BR"], errorMessages }
 }
+
+export const getGroupValidationErrors = (fields: unknown) => {
+  if (!Array.isArray(fields) || fields.length > Object.keys(messages).length) return undefined
+  const errors = fields
+    .flatMap((field) => {
+      const error = getGroupValidationError(field)
+      return error ? [error] : []
+    })
+    .filter((error, index, all) => all.findIndex((item) => item.field === error.field) === index)
+  const first = errors[0]
+  if (!first) return undefined
+  const errorMessages = {
+    "pt-BR": errors.map((error) => error.errorMessages["pt-BR"]).join(" "),
+    en: errors.map((error) => error.errorMessages.en).join(" "),
+  }
+
+  return {
+    field: first.field,
+    fields: errors.map((error) => error.field),
+    error: errorMessages["pt-BR"],
+    errorMessages,
+  }
+}

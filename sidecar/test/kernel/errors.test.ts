@@ -149,3 +149,21 @@ test("group field errors use only fixed messages and remain safe across repeated
   expect(normalizeErrorBody({ ...supplied, errorCode: "UNAUTHORIZED" }, 401)).not.toHaveProperty("field")
   expect(normalizeErrorBody(supplied, 500)).not.toHaveProperty("field")
 })
+
+test("group fields are bounded, allowlisted, deduplicated and rebuilt as bilingual public messages", () => {
+  const supplied = {
+    errorCode: "INVALID_ARGS",
+    fields: ["name", "__proto__", "color", "name", "private-value"],
+    error: "private-value",
+    errorMessages: { en: "private-value" },
+  }
+
+  const normalized = normalizeErrorBody(supplied, 400)
+
+  expect(normalized).toMatchObject({ field: "name", fields: ["name", "color"] })
+  expect(JSON.stringify(normalized)).not.toContain("private-value")
+  expect(normalizeErrorBody(normalized, 400)).toEqual(normalized)
+  expect(normalizeErrorBody({ ...supplied, fields: ["__proto__"] }, 400)).not.toHaveProperty("fields")
+  expect(normalizeErrorBody({ ...supplied, fields: Array(100).fill("name") }, 400)).not.toHaveProperty("fields")
+  expect(normalizeErrorBody(supplied, 500)).not.toHaveProperty("fields")
+})

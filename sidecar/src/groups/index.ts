@@ -15,9 +15,9 @@ export const init = async (kernel: Kernel): Promise<void> => {
       { id: "owner", name: accountName, handle: accountName, avatarSeed: "owner", role: "admin" },
     ])
   }
-  const getInvalidResponse = (field: GroupValidationField) => ({
+  const getInvalidResponse = (fields: GroupValidationField[]) => ({
     status: 400,
-    json: { errorCode: "INVALID_ARGS", field },
+    json: { errorCode: "INVALID_ARGS", fields },
   })
   kernel.registerRoutes({
     name,
@@ -58,7 +58,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
         path: "/groups",
         handler: async ({ body }) => {
           const input = getCreateInput(body)
-          if (!groups.validate(input)) return getInvalidResponse(groups.getValidationField(input) ?? "body")
+          if (!groups.validate(input)) return getInvalidResponse(groups.getValidationFields(input))
           const result = (kernel.db as Database)
             .transaction(() => {
               const group = groups.save(input)
@@ -75,7 +75,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
         handler: async ({ params, body }) => {
           const existing = groups.get(params.id ?? "")
           if (!existing) return { status: 404, json: { errorCode: "NOT_FOUND", error: "Grupo não encontrado" } }
-          if (!groups.validate(body)) return getInvalidResponse(groups.getValidationField(body) ?? "body")
+          if (!groups.validate(body)) return getInvalidResponse(groups.getValidationFields(body))
           if (
             (kernel.db as Database)
               .query(
@@ -102,7 +102,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
           const group = groups.get(params.id ?? "")
           if (!group) return { status: 404, json: { errorCode: "NOT_FOUND", error: "Grupo não encontrado" } }
           const title = (body as { title?: unknown })?.title
-          if (typeof title !== "string" || !title.trim() || title.length > 200) return getInvalidResponse("title")
+          if (typeof title !== "string" || !title.trim() || title.length > 200) return getInvalidResponse(["title"])
           return { status: 201, json: { thread: groups.createThread(group, title.trim()) } }
         },
       },
@@ -111,7 +111,7 @@ export const init = async (kernel: Kernel): Promise<void> => {
 }
 
 const getCreateInput = (body: unknown): unknown => {
-  if (!body || typeof body !== "object" || Array.isArray(body) || Object.hasOwn(body, "avatarShape")) return body
+  if (!body || typeof body !== "object" || Array.isArray(body)) return body
 
-  return { ...body, avatarShape: "classic-none" }
+  return { color: "#dc2626", avatarShape: "classic-none", coordinatorBotId: null, ...body }
 }

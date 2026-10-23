@@ -541,6 +541,17 @@ Explicit rate-limit rejections retry the rejected message up to twice for waits 
 seconds, rechecking access each time. Command effects are acknowledged independently of their
 outgoing replies, so a delayed reply cannot block `/stop`.
 
+
+### Channel creation validation
+
+`POST /groups` defaults omitted `color` to `#dc2626`, `avatarShape` to
+`classic-none`, and `coordinatorBotId` to `null`. Explicit invalid values are
+rejected. Updates still require the full group input. Validation reports all invalid
+field names in `fields`, retains the first name in `field` for compatibility, and
+returns fixed messages for every reported field in `errorMessages["pt-BR"]` and
+`errorMessages.en`. `error` uses the Portuguese message. Submitted values are never
+echoed, and invalid requests do not create a group or conversation.
+
 ## 4. Projects, processes, secrets, preview (WP5; Preview pane UI in WP9, webview in WP1)
 
 ### 4.1 Connect a project
