@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { openDatabase } from "../../src/kernel/db"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
-import { readWorkspaceActivity } from "../../src/store/workspace-activity"
+import { readWorkspaceActivity, WORKSPACE_RUNS_SQL } from "../../src/store/workspace-activity"
 
 const cleanups = new Set<() => void>()
 afterEach(() => {
@@ -20,11 +20,15 @@ test.each(["running", "succeeded"] as const)("%s channel activity retains the me
   const activity = readWorkspaceActivity(db, { personId: "member", channelIds: ["team"] })
 
   expect(activity.runs).toHaveLength(2)
-  expect(activity.runs.find((run) => run.id === "turn")).toMatchObject({ threadId: "channel" })
+  expect(activity.runs.find((run) => run.id === "turn")).toMatchObject({
+    threadId: "channel",
+    kind: "coordination",
+  })
   expect(activity.runs.find((run) => run.id === "turn")?.groupTurnId).toBeUndefined()
   expect(activity.runs.find((run) => run.id === "execution")).toMatchObject({
     threadId: "channel",
     groupTurnId: "turn",
+    kind: "execution",
     status,
   })
   expect(readWorkspaceActivity(db, { personId: "outsider", channelIds: [] }).runs).toEqual([])
@@ -37,14 +41,28 @@ test("persisted work snapshots identify one execution under its channel turn", (
   const snapshots = persistence.getRunSnapshots(["turn", "execution"])
   const work = persistence.listWorkRuns()
 
+  expect(snapshots.find((run) => run.id === "turn")).toMatchObject({ kind: "coordination" })
   expect(snapshots.find((run) => run.id === "turn")?.groupTurnId).toBeUndefined()
   expect(snapshots.find((run) => run.id === "execution")).toMatchObject({
     threadId: "participant",
     groupThreadId: "channel",
     groupTurnId: "turn",
+    kind: "execution",
   })
   expect(work).toHaveLength(1)
-  expect(work[0]).toMatchObject({ id: "execution", groupTurnId: "turn" })
+  expect(work[0]).toMatchObject({ id: "execution", groupTurnId: "turn", kind: "execution" })
+  expect(persistence.getRun("turn")).toMatchObject({ kind: "coordination" })
+  expect(persistence.listRuns("channel")[0]).toMatchObject({ kind: "coordination" })
+  expect(persistence.listRuns("participant")[0]).toMatchObject({ kind: "execution" })
+})
+
+test("workspace run kinds use the coordination primary key instead of scanning history", () => {
+  const db = getDatabase("running")
+
+  const plan = db.query(`EXPLAIN QUERY PLAN ${WORKSPACE_RUNS_SQL}`).all() as { detail: string }[]
+
+  expect(plan.some(({ detail }) => /SEARCH coordination .*\(run_id=\?\)/.test(detail))).toBe(true)
+  expect(plan.some(({ detail }) => /SCAN coordination/.test(detail))).toBe(false)
 })
 
 const getDatabase = (status: "running" | "succeeded") => {

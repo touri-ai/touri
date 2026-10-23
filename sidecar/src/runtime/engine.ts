@@ -527,6 +527,7 @@ export const createRuntimeEngine = ({
 
     return {
       ...cloneRun(run),
+      kind: metadata.kind ?? "execution",
       ...(metadata.groupTurnId ? { groupTurnId: metadata.groupTurnId } : {}),
       groupThreadId,
       origin: getRunOrigin(metadata),

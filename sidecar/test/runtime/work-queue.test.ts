@@ -341,10 +341,11 @@ test("one channel message starts one provider and preserves its parent turn in l
   if (!execution) throw new Error("Missing member execution")
 
   expect(work).toHaveLength(1)
-  expect(execution).toMatchObject({ groupTurnId: result.run.id, groupThreadId: channel.id })
+  expect(execution).toMatchObject({ kind: "execution", groupTurnId: result.run.id, groupThreadId: channel.id })
+  expect(fixture.engine.getRunSnapshot(result.run)).toMatchObject({ kind: "coordination" })
   expect(execution.threadId).not.toBe(channel.id)
   expect(runtime.listRuns(channel.id)).toHaveLength(2)
-  expect(fixture.getEvent(execution.id)).toMatchObject({ groupTurnId: result.run.id })
+  expect(fixture.getEvent(execution.id)).toMatchObject({ kind: "execution", groupTurnId: result.run.id })
   fixture.finish(execution.threadId)
   await waitFor(() => fixture.getEvent(execution.id)?.status === "succeeded")
   expect(

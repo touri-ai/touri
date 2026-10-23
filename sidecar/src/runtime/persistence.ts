@@ -82,8 +82,12 @@ const getRunError = (row: DbRow): Pick<Run, "errorClass" | "errorMessage"> => {
 export const toRun = (value: unknown): Run | null => {
   const row = asRow(value)
   if (!row) return null
+
+  const kind: Run["kind"] = row.run_kind === "coordination" ? "coordination" : "execution"
+
   return {
     id: text(row, "id"),
+    ...("run_kind" in row ? { kind } : {}),
     requesterPersonId: nullableText(row, "requester_person_id"),
     ...("browser_request_id" in row ? { browserRequestId: nullableText(row, "browser_request_id") } : {}),
     ...(row.browser_waiting_for_person ? { browserWaitingForPerson: true } : {}),
@@ -207,6 +211,8 @@ const canUseDatabase = (value: unknown): value is Database => {
 }
 
 const RUN_SNAPSHOT_SELECT = `SELECT r.*, link.turn_id AS group_turn_id,
+  CASE WHEN EXISTS(SELECT 1 FROM group_turns coordination WHERE coordination.run_id = r.id)
+    THEN 'coordination' ELSE 'execution' END AS run_kind,
   COALESCE(root.thread_id, t.group_thread_id) AS group_thread_id,
   COALESCE(browser_continuation.original_run_id, r.id) AS browser_request_id,
   EXISTS(SELECT 1 FROM browser_pending_handoffs handoff WHERE handoff.run_id IN (r.id, browser_continuation.original_run_id) AND handoff.state = 'waiting') AS browser_waiting_for_person,
@@ -237,7 +243,14 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
   const getRun = (id: Id): Run | null => {
     if (!db) return runs.get(id) ?? null
     try {
-      const found = toRun(db.query("SELECT * FROM runs WHERE id = ?").get(id))
+      const found = toRun(
+        db
+          .query(`SELECT r.*,
+            CASE WHEN EXISTS(SELECT 1 FROM group_turns coordination WHERE coordination.run_id = r.id)
+              THEN 'coordination' ELSE 'execution' END AS run_kind
+            FROM runs r WHERE r.id = ?`)
+          .get(id),
+      )
       if (!found) {
         runs.delete(id)
         return null
@@ -307,7 +320,10 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
     if (db) {
       const rows = db
         .query(
-          `SELECT * FROM runs WHERE thread_id = ? ORDER BY queued_at DESC, rowid DESC${options?.all ? "" : " LIMIT 50"}`,
+          `SELECT r.*,
+            CASE WHEN EXISTS(SELECT 1 FROM group_turns coordination WHERE coordination.run_id = r.id)
+              THEN 'coordination' ELSE 'execution' END AS run_kind
+            FROM runs r WHERE r.thread_id = ? ORDER BY r.queued_at DESC, r.rowid DESC${options?.all ? "" : " LIMIT 50"}`,
         )
         .all(threadId)
       return rows.map(toRun).filter((run): run is Run => run !== null)
