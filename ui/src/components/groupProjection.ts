@@ -53,6 +53,18 @@ export const getGroupProjection = (threadId: string | undefined, messages: Messa
   return { board, members, removed }
 }
 
+/** Coordination is a placeholder until an execution attaches, never a second provider task. */
+export const getGroupProgress = (threadId: string | undefined, runs: Run[]) => {
+  const threadRuns = runs.filter((run) => run.threadId === threadId)
+  const attachedTurns = new Set(threadRuns.flatMap((run) => (run.groupTurnId ? [run.groupTurnId] : [])))
+  const active = threadRuns.filter((run) => ["queued", "starting", "running"].includes(run.status))
+  const executions = active.filter((run) => run.kind !== "coordination")
+  const progress = active.filter((run) => run.kind !== "coordination" || !attachedTurns.has(run.id))
+  const control = active.find((run) => run.kind === "coordination") ?? active[0] ?? null
+
+  return { progress, executions, control }
+}
+
 export const getGroupBoard = (threadId: string | undefined, messages: Message[], runs: Run[]) =>
   getGroupProjection(threadId, messages, runs).board
 
