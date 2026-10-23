@@ -78,10 +78,33 @@ test.each([{ frames: [] }, { frames: [getDelta(" \n")] }, { frames: [getAssistan
 
     const result = await fixture.adapter.startTurn(fixture.args)
 
-    expect(result).toMatchObject({ success: false, errorCode: "cli_protocol" })
+    expect(result).toMatchObject({
+      success: false,
+      errorCode: "cli_protocol",
+      error: "O provedor terminou sem responder. Tente de novo.",
+    })
+    expect(fixture.commandRuns).toHaveLength(2)
+    expect(fixture.commandRuns[1]).toContain("--resume")
+    expect(getSessionId(fixture.commandRuns[0] ?? [])).toBe(getSessionId(fixture.commandRuns[1] ?? []))
     expect(fixture.events.some((event) => event.type === "turn_completed" && event.status === "succeeded")).toBe(false)
   },
 )
+
+test("retries one empty successful response in the same provider session", async () => {
+  const fixture = getFixture([], undefined, {
+    frames: [getAssistant("Resposta recuperada.")],
+    result: { type: "result", subtype: "success", is_error: false, result: "" },
+  })
+
+  const result = await fixture.adapter.startTurn(fixture.args)
+
+  expect(result).toMatchObject({ success: true, status: "succeeded" })
+  expect(getText(fixture.events)).toBe("Resposta recuperada.")
+  expect(fixture.commandRuns).toHaveLength(2)
+  expect(fixture.commandRuns[0]).toContain("--session-id")
+  expect(fixture.commandRuns[1]).toContain("--resume")
+  expect(getSessionId(fixture.commandRuns[0] ?? [])).toBe(getSessionId(fixture.commandRuns[1] ?? []))
+})
 
 test("keeps a tool-only result eligible for the runtime action conclusion", async () => {
   const fixture = getFixture([
@@ -94,6 +117,7 @@ test("keeps a tool-only result eligible for the runtime action conclusion", asyn
   const result = await fixture.adapter.startTurn(fixture.args)
 
   expect(result).toMatchObject({ success: true, status: "succeeded" })
+  expect(fixture.commandRuns).toHaveLength(1)
   expect(fixture.events.some((event) => event.type === "item" && event.part.type === "tool_call")).toBe(true)
 })
 
@@ -163,12 +187,28 @@ test.each([
 const getText = (events: ReadonlyArray<ProviderEvent>) =>
   events.flatMap((event) => (event.type === "text_delta" ? [event.delta] : [])).join("")
 
+const getSessionId = (args: ReadonlyArray<string>): string | undefined => {
+  const flag = args.includes("--resume") ? "--resume" : "--session-id"
+  return args[args.indexOf(flag) + 1]
+}
+
+type ProviderScenario = { frames: ReadonlyArray<object>; result: object }
+
 const getFixture = (
   frames: ReadonlyArray<object>,
   result: object = { type: "result", subtype: "success", is_error: false, result: "" },
+  secondAttempt?: ProviderScenario,
 ) => {
   const fixture = testKernel()
-  const spawn: Kernel["spawnTree"] = () => {
+  let attemptIndex = 0
+  const commandRuns: ReadonlyArray<string>[] = []
+  const spawn: Kernel["spawnTree"] = ({ args: commandArgs }) => {
+    const attempt = attemptIndex === 0 ? { frames, result } : (secondAttempt ?? { frames, result })
+    const sessionFlag = commandArgs.find((argument) => argument === "--session-id" || argument === "--resume")
+    const externalSessionId = sessionFlag ? commandArgs[commandArgs.indexOf(sessionFlag) + 1] : "synthetic-session"
+    attemptIndex += 1
+    commandRuns.push(commandArgs)
+
     // Stream controllers and process completion belong to this synthetic child only.
     let output: ReadableStreamDefaultController<Uint8Array>
     let finish: (value: { code: number; signal: null }) => void = () => undefined
@@ -186,8 +226,8 @@ const getFixture = (
           const wireFrames = Array.of<object>({
             type: "system",
             subtype: "init",
-            session_id: "synthetic-session",
-          }).concat(frames, result)
+            session_id: externalSessionId,
+          }).concat(attempt.frames, attempt.result)
           const wireText = wireFrames.map((frame) => JSON.stringify(frame)).join("\n")
           output.enqueue(new TextEncoder().encode(`${wireText}\n`))
         },
@@ -222,5 +262,5 @@ const getFixture = (
     onEvent: (event) => events.push(event),
   }
 
-  return { fixture, kernel, adapter, args, events }
+  return { fixture, kernel, adapter, args, events, commandRuns }
 }
