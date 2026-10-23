@@ -90,6 +90,7 @@ import { useInsertedIds } from "./Motion"
 import { mascotSignalFor } from "./mascotState"
 import { PanelIcon } from "./PanelIcon"
 import { PersonAvatar } from "./PersonAvatar"
+import { getSessionRecoveryPresentation } from "./sessionRecoveryPresentation"
 import { ToolCallList } from "./ToolCallList"
 import { ToolText } from "./ToolOutput"
 import { BrowserTurnCard, TurnActivity } from "./TurnActivity"
@@ -534,7 +535,11 @@ export const VirtualMessageList = ({
                     {entry.content}
                   </div>
                 )
-              const saved = entry.message
+              const neighbors = timeline
+                .slice(Math.max(0, start + index - 32), start + index + 33)
+                .flatMap((neighbor) => (neighbor.message ? [neighbor.message] : []))
+              const saved = getSessionRecoveryPresentation(entry.message, neighbors, runsById)
+              if (!saved) return <div key={entry.id} className="message-row" data-message-row={entry.id} />
               if (isResumeMarker(saved))
                 return (
                   <div key={saved.id} className="message-row" data-message-row={saved.id}>
@@ -827,7 +832,7 @@ const MessageBubble = ({
   }, [answeredId])
   const markdown = messageMarkdown(message)
   const text = message.role === "assistant" ? markdown.replace(connectDataMarker, "") : markdown
-  const segments = message.role === "assistant" ? assistantSegments({ ...message, parts }) : []
+  const segments = message.role === "assistant" ? assistantSegments(Object.assign({}, message, { parts }), run) : []
   const hasBrowserTools = message.role === "assistant" && getBrowserActivityTools(parts).length > 0
   const browserHandoffExpired = parts.some(
     (part) =>
