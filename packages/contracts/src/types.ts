@@ -1649,6 +1649,7 @@ export type ServiceMap = {
   'doctor': { start: () => void; dispose: () => void; snapshot: (refresh?: boolean) => DoctorReport; settled: () => Promise<void> }
   'storage.maintenance': { scheduleSessionKeyRetry: () => void; start: (vacuum?: boolean) => boolean; snapshot: () => StorageMaintenanceStatus; dispose: (options?: { closing?: boolean }) => void }
   'storage.botDeletion': { dispose: () => void }
+  'notify.recovery': { ready: Promise<void>; dispose: () => Promise<void> }
   'storage.threadTitles': { dispose: () => void }
   'storage.threadDeletion': { dispose: () => void }
   'mcp.botTools': (bot: Bot) => Array<string>

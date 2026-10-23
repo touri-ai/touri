@@ -53,7 +53,6 @@ export const init = async (
   initChannelNotifications(kernel)
 
   const syncRecoveryTasks = createRecoverySync(kernel, store, notifier, runStage)
-  syncRecoveryTasks({ silent: true })
 
   // Heal history written by an older runtime or a completion missed while restarting.
   const database = kernel.db as Database
@@ -69,10 +68,37 @@ export const init = async (
       progress,
       runStage,
       yieldHistoryBatch,
+      signal: controller.signal,
     })
+    controller.signal.throwIfAborted()
     deleteHistoryReconcileProgress(database)
   }
-  await reconcileHistory()
+  const controller = new AbortController()
+  const ready = (async () => {
+    // Register live routes first; recovery never holds module initialization or the health/UI listener.
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    controller.signal.throwIfAborted()
+    await syncRecoveryTasks({ silent: true })
+    controller.signal.throwIfAborted()
+    await reconcileHistory()
+  })().catch(() => {
+    if (controller.signal.aborted) return
+
+    kernel.log({
+      level: "error",
+      module: "notify",
+      msg: "Falha ao recuperar notificações",
+      data: { code: "NOTIFICATION_RECOVERY_FAILED" },
+    })
+  })
+  kernel.services.provide("notify.recovery", {
+    ready,
+    dispose: async () => {
+      controller.abort()
+      await syncRecoveryTasks.dispose()
+      await ready
+    },
+  })
 
   kernel.subscribe(({ event }) => {
     if (event.type === "run.updated" && event.run.routineRunId && STARTED_STATUSES.includes(event.run.status)) {
@@ -115,6 +141,7 @@ type HistoryReconcileBatchOptions = {
   progress: HistoryReconcileProgress
   runStage?: PerformanceStageRunner | undefined
   yieldHistoryBatch: () => Promise<void>
+  signal: AbortSignal
 }
 
 const HISTORY_RECONCILE_KEY = "notification.history-reconcile"
@@ -170,7 +197,9 @@ const reconcileHistoryBatch = async ({
   progress,
   runStage,
   yieldHistoryBatch,
+  signal,
 }: HistoryReconcileBatchOptions): Promise<void> => {
+  signal.throwIfAborted()
   if (progress.cursor >= progress.upper) return
 
   const upper = Math.min(progress.cursor + 50, progress.upper)
@@ -202,5 +231,5 @@ const reconcileHistoryBatch = async ({
   if (next.cursor >= next.upper) return
 
   await yieldHistoryBatch()
-  return reconcileHistoryBatch({ database, finishNotification, progress: next, runStage, yieldHistoryBatch })
+  return reconcileHistoryBatch({ database, finishNotification, progress: next, runStage, yieldHistoryBatch, signal })
 }

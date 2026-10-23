@@ -31,6 +31,7 @@ import {
 } from "../runtime/continuations"
 import type { createRuntimeEngine } from "../runtime/engine"
 import { createRuntimePersistence, toRun } from "../runtime/persistence"
+import { getGroupRunsSql } from "./run-queries"
 import { crossesBoundary, delegatedBot, delegationCeiling, delegationSecrets, setDelegation } from "./security"
 import { createGroupStore, routeGroupMessage } from "./store"
 
@@ -1142,11 +1143,7 @@ export const createGroupRuntime = (
   }
   const listRuns = (threadId: string, options?: { all?: boolean }): Run[] => {
     const roots = persistence.listRuns(threadId, options)
-    const children = db
-      .query(
-        "SELECT r.*, l.turn_id AS group_turn_id, continuation.previous_run_id AS browser_takeover_from_run_id FROM runs r JOIN group_run_links l ON l.run_id=r.id JOIN runs root ON root.id=l.turn_id LEFT JOIN browser_takeover_continuations continuation ON continuation.run_id=r.id WHERE root.thread_id=? ORDER BY r.queued_at DESC",
-      )
-      .all(threadId)
+    const children = db.query(getGroupRunsSql(options?.all)).all(threadId)
     return [
       ...roots,
       ...children.flatMap((raw) => {

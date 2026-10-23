@@ -246,7 +246,8 @@ type RuntimeEngine = {
     continuationReason?: ContinuationReason
   }) => Result<{ run: Run }, "THREAD_NOT_FOUND" | "BOT_PAUSED" | "RUNTIME_DRAINING">
   getRunSnapshot: (run: Run) => Run
-  getWorkRuns: () => Array<Run>
+  getRunSnapshots: (runs: ReadonlyArray<Run>) => Array<Run>
+  getWorkRuns: (runs?: ReadonlyArray<Run>) => Array<Run>
   getRetainedRunStateCount: () => number
   settingsChanged: () => void
   listRuns: (threadId: Id, options?: { all?: boolean }) => Array<Run>
@@ -549,6 +550,11 @@ export const createRuntimeEngine = ({
     return link?.reason === "app_restart" || link?.reason === "provider_crash" ? link.previousRunId : null
   }
   const getRunSnapshot = (run: Run): Run => getSnapshot(run, getQueueSnapshot())
+  const getRunSnapshots = (runs: ReadonlyArray<Run>): Run[] => {
+    const queue = getQueueSnapshot()
+
+    return runs.map((run) => getSnapshot(run, queue))
+  }
   const publishRun = (run: Run): void => {
     signalDrainChange()
     kernel.publish({ type: "run.updated", run: getRunSnapshot(run) })
@@ -560,10 +566,7 @@ export const createRuntimeEngine = ({
       kernel.publish({ type: "run.updated", run: getSnapshot(run, queue) })
     })
   }
-  const getWorkRuns = (): Run[] => {
-    const queue = getQueueSnapshot()
-    return persistence.listWorkRuns().map((run) => getSnapshot(run, queue))
-  }
+  const getWorkRuns = (runs: ReadonlyArray<Run> = persistence.listWorkRuns()): Run[] => getRunSnapshots(runs)
 
   const updateRun = (run: Run, patch: Partial<Run>): Run => {
     const leftQueue = run.status === "queued" && patch.status !== undefined && patch.status !== "queued"
@@ -3517,6 +3520,7 @@ export const createRuntimeEngine = ({
     resumeAfterBrowserTakeover,
     canReturnBrowserTakeover,
     getRunSnapshot,
+    getRunSnapshots,
     getWorkRuns,
     settingsChanged: () => {
       void drain()

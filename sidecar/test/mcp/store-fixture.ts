@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import type { Bot, Message, StoreApi, Thread } from "@touri/contracts"
@@ -173,4 +174,16 @@ export const createFixtureStore = ({
         .map((message) => ({ threadId: message.threadId, messageId: message.id, snippet: message.text }))
     },
   }
+}
+
+export const seedHistorySearch = (database: Database): void => {
+  seed.messages.forEach((message) => {
+    database
+      .query(`INSERT OR IGNORE INTO messages(id,thread_id,role,kind,text,parts_json,created_at,updated_at)
+      VALUES (?, ?, ?, 'text', ?, '[]', 1, 1)`)
+      .run(message.id, message.threadId, message.role, message.text)
+    database
+      .query("INSERT INTO messages_fts(text,thread_id,message_id) VALUES (?,?,?)")
+      .run(message.text, message.threadId, message.id)
+  })
 }
