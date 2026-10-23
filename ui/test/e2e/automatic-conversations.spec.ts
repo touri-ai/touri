@@ -105,6 +105,8 @@ for (const view of [
     await expect(advanced).toBeVisible()
     await advanced.click()
     const settings = page.getByRole("dialog", { name: "Configurações de mark" })
+    await settings.getByRole("button", { name: /^Avançado/ }).click()
+    await settings.getByRole("tab", { name: "Rotinas", exact: true }).click()
     const setting = settings.getByRole("radiogroup", { name: "Onde o bot responde" })
     await expect(setting.getByRole("radio")).toHaveCount(2)
     await expect(setting.getByRole("radio", { name: "Uma conversa nova por tarefa" })).toBeVisible()

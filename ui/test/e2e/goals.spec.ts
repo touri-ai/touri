@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test"
+import { showBotDetails } from "./home-navigation"
 
 test.use({ channel: "chromium" })
 
@@ -15,7 +16,7 @@ viewports.forEach((viewport) => {
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     await expect(page.locator(".goal-panel")).toHaveCount(0)
 
-    await page.getByRole("button", { name: "Painel do bot" }).click()
+    await showBotDetails(page)
     const botPanel = page.getByRole("complementary", { name: "Painel de mark" })
     const goalEntry = botPanel.getByRole("button", { name: "Definir objetivo", exact: true })
     await expect(goalEntry).toBeVisible()
@@ -42,7 +43,7 @@ viewports.forEach((viewport) => {
     await panel.getByRole("button", { name: "Concluir agora", exact: true }).click()
     await expect(panel).toHaveCount(0)
 
-    await page.getByRole("button", { name: "Painel do bot" }).click()
+    await showBotDetails(page)
     const reopenedBotPanel = page.getByRole("complementary", { name: "Painel de mark" })
     const newGoal = reopenedBotPanel.getByRole("button", { name: "Novo objetivo", exact: true })
     await expect(newGoal).toHaveAttribute("aria-expanded", "false")

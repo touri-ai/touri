@@ -45,7 +45,7 @@ for (const viewport of viewports) {
       await page.getByRole("button", { name: "Fechar diálogo", exact: true }).click()
 
       await openSidebar(page)
-      await page.getByRole("button", { name: /Você Local/ }).click()
+      await page.getByRole("button", { name: "Você", exact: true }).click()
       await expect(page.locator(".settings-nav")).toBeVisible()
       await captureSurface(page, info, "preferences")
       await page.getByRole("button", { name: "Fechar diálogo", exact: true }).click()
@@ -88,7 +88,8 @@ for (const viewport of viewports) {
       await expect(page.locator(".message-error").first()).toBeVisible()
       await captureSurface(page, info, "error-recovery")
       await page.goto("/test/e2e/approval-notice-harness.html")
-      await expect(page.locator(".approval-notice")).toBeVisible()
+      await openSidebar(page)
+      await expect(page.locator(".sidebar-needs-you")).toBeVisible()
       await captureSurface(page, info, "approval-notice")
       await page.goto("/test/e2e/approval-harness.html?scene=read")
       await page.evaluate((theme) => {

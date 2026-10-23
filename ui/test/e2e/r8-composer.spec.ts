@@ -1,5 +1,7 @@
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
+import type { createMockApi } from "../../src/api/mock"
+import { showBotDetails } from "./home-navigation"
 
 const phase = process.env.R8_CAPTURE_PHASE ?? "after"
 test.setTimeout(60_000)
@@ -39,16 +41,20 @@ for (const theme of ["light", "dark"] as const) {
         ["running", "queued"].includes(view) ? 2 : 1,
       )
       if (phase === "after") {
-        const composer = page.getByRole("form", { name: "Compor mensagem" })
+        if (["draft", "narrow"].includes(view)) {
+          await input.focus()
+          await expect(page.locator(".chat-bot-chip [data-mascot-state]")).toHaveAttribute(
+            "data-mascot-state",
+            "listening",
+          )
+        }
+        await showBotDetails(page)
+        const composer = page.locator("form.composer")
         await expect(composer).toBeInViewport()
         expect(await composer.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
         if (["draft", "narrow"].includes(view)) {
           await expect(composer.getByRole("button", { name: "Enviar", exact: true })).toBeEnabled()
           await expect(composer.locator(".attachment-chip")).toHaveCount(2)
-          await expect(page.locator(".chat-bot-chip [data-mascot-state]")).toHaveAttribute(
-            "data-mascot-state",
-            "listening",
-          )
         }
         if (["running", "queued"].includes(view))
           await expect(composer.getByRole("button", { name: "Parar", exact: true })).toBeVisible()
@@ -81,31 +87,29 @@ if (phase === "after") {
     await expect(page.getByRole("button", { name: "Enviar", exact: true })).toBeEnabled()
     await input.press("Enter")
     await expect(input).toHaveValue("")
-    const sent = await page.evaluate(() =>
-      (
-        window as unknown as {
-          r8ComposerApi: { calls: Array<{ route: string; input: { text?: string; attachmentIds?: Array<string> } }> }
-        }
-      ).r8ComposerApi.calls.find((call) => call.route === "POST /threads/:id/messages"),
-    )
+    const sent = await page.evaluate(() => {
+      const api: ReturnType<typeof createMockApi> = Reflect.get(window, "r8ComposerApi")
+      return api.calls.find((call) => call.route === "POST /threads/:id/messages")
+    })
     expect(sent?.input.text).toBe("Confira o plano")
     expect(sent?.input.attachmentIds).toEqual(["attachment:/mock/plano.md"])
-    const composer = page.getByRole("form", { name: "Compor mensagem" })
-    await expect(composer.getByRole("button", { name: /^Projeto do bot:/ })).toBeVisible()
-    await composer.getByRole("button", { name: /^Escolher modelo:/ }).click()
+    await showBotDetails(page)
+    const panel = page.getByRole("complementary", { name: "Painel de mark" })
+    await expect(panel.getByRole("button", { name: /^Projeto do bot:/ })).toBeVisible()
+    await panel.getByRole("button", { name: /^Escolher modelo:/ }).click()
     const modelList = page.getByRole("listbox", { name: "Modelos de Codex" })
     await expect(modelList).toBeVisible()
     await expect(modelList.getByRole("option", { name: "gpt-6.1-sol" })).toHaveAttribute("aria-selected", "true")
     await modelList.getByRole("option", { name: "gpt-6-luna" }).click()
-    await expect(composer.getByRole("button", { name: "Escolher modelo: Codex · gpt-6-luna" })).toBeVisible()
-    await composer.getByRole("button", { name: /^Escolher modelo:/ }).click()
+    await expect(panel.getByRole("button", { name: "Escolher modelo: Codex · gpt-6-luna" })).toBeVisible()
+    await panel.getByRole("button", { name: /^Escolher modelo:/ }).click()
     await page.getByRole("option", { name: "Outro modelo…" }).click()
     const customModel = page.getByRole("textbox", { name: "Nome do modelo" })
     await customModel.fill(" custom-model ")
     await customModel.press("Enter")
-    await expect(composer.getByRole("button", { name: "Escolher modelo: Codex · custom-model" })).toBeVisible()
+    await expect(panel.getByRole("button", { name: "Escolher modelo: Codex · custom-model" })).toBeVisible()
 
-    await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
+    await showBotDetails(page)
     await page.getByRole("button", { name: /^Modelo:/ }).click()
     const settings = page.getByRole("dialog", { name: "Configurações de mark" })
     await expect(settings).toBeVisible()
@@ -123,8 +127,9 @@ if (phase === "after") {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.emulateMedia({ reducedMotion: "reduce" })
     await page.goto("/test/e2e/r8-composer-harness.html")
-    const composer = page.getByRole("form", { name: "Compor mensagem" })
-    const chip = composer.getByRole("button", { name: "Escolher modelo: Codex · gpt-6.1-sol" })
+    await showBotDetails(page)
+    const panel = page.getByRole("complementary", { name: "Painel de mark" })
+    const chip = panel.getByRole("button", { name: "Escolher modelo: Codex · gpt-6.1-sol" })
     await chip.click()
     const listbox = page.getByRole("listbox", { name: "Modelos de Codex" })
     await expect(listbox).toBeVisible()
@@ -143,15 +148,15 @@ if (phase === "after") {
     const nextModel = listbox.getByRole("option", { name: "gpt-6-luna" })
     await expect(nextModel).toBeFocused()
     await nextModel.press("Enter")
-    await expect(composer.getByRole("button", { name: "Escolher modelo: Codex · gpt-6-luna" })).toBeVisible()
+    await expect(panel.getByRole("button", { name: "Escolher modelo: Codex · gpt-6-luna" })).toBeVisible()
 
-    await composer.getByRole("button", { name: /^Escolher modelo:/ }).click()
+    await panel.getByRole("button", { name: /^Escolher modelo:/ }).click()
     await page.getByRole("option", { name: "Outro modelo…" }).click()
     const custom = page.getByRole("textbox", { name: "Nome do modelo" })
     await expect(custom).toBeFocused()
     await custom.fill(" modelo-avancado ")
     await custom.press("Enter")
-    await expect(composer.getByRole("button", { name: "Escolher modelo: Codex · modelo-avancado" })).toBeVisible()
+    await expect(panel.getByRole("button", { name: "Escolher modelo: Codex · modelo-avancado" })).toBeVisible()
   })
 
   for (const theme of ["light", "dark"] as const) {

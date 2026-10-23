@@ -4,7 +4,7 @@ import App from "../src/App"
 import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { dictionaries, getHostLabel, t } from "../src/i18n"
-import { openRoutines, showBotSettings } from "./workspaceNavigation"
+import { openBotDetails, openRoutines, showBotSettings } from "./workspaceNavigation"
 
 afterEach(cleanup)
 
@@ -33,7 +33,7 @@ it("keeps Home, create, chat and collapsed advanced settings free of technical j
   await waitFor(() => expect(screen.getByRole("dialog").querySelector(".bot-settings-overview")).toBeVisible())
   expectPlainSurface()
   fireEvent.click(screen.getByRole("button", { name: "Fechar diálogo" }))
-  fireEvent.click(screen.getByRole("button", { name: /Você Local/ }))
+  fireEvent.click(screen.getByRole("button", { name: "Você", exact: true }))
   const settings = await screen.findByRole("dialog", { name: "Configurações" })
   for (const section of ["Aparência", "Privacidade", "Atualizações", "Notificações", "Diagnóstico"]) {
     fireEvent.click(within(settings).getByRole("tab", { name: section }))
@@ -64,16 +64,7 @@ it("limits primary navigation to the bot list and Advanced, with chat and compos
     within(screen.getByRole("navigation", { name: "Opções avançadas" }))
       .getAllByRole("button")
       .map((button) => button.textContent),
-  ).toEqual([
-    "Trabalho",
-    "Desempenho",
-    "MCP",
-    "Integrações",
-    "Projetos",
-    "Verificar este Mac",
-    "Importar",
-    "Reportar problema",
-  ])
+  ).toEqual(["Trabalho", "Ferramentas", "Projetos", "Diagnóstico", "Importar"])
   fireEvent.keyDown(window, { key: "Escape" })
   expect(advanced).toHaveFocus()
   expect(screen.queryByRole("navigation", { name: "Opções avançadas" })).toBeNull()
@@ -112,14 +103,10 @@ it("opens the full routines screen from the bot's Advanced settings", async () =
   await screen.findByRole("dialog", { name: "Configurações de mark" })
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("tab", { name: "Rotinas" }))
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Gerenciar rotinas", exact: true }))
   expect(await screen.findByRole("heading", { name: "Rotinas" })).toBeVisible()
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
-  expect(
-    within(screen.getByRole("group", { name: "Filtros de rotinas" })).getByRole("button", {
-      name: "mark",
-      exact: true,
-    }),
-  ).toHaveAttribute("aria-pressed", "true")
+  expect(screen.getByRole("combobox", { name: "Bot", exact: true })).toHaveValue("bot-mark")
 })
 
 it("returns focus to the bot actions button when Advanced closes", async () => {
@@ -144,6 +131,8 @@ it("keeps project processes available after opening the active bot's routines", 
   fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
   await screen.findByRole("complementary", { name: /^Painel de / })
   const panel = screen.getByRole("complementary", { name: "Painel de mark" })
+  fireEvent.click(within(panel).getByRole("button", { name: "Ajustar", exact: true }))
+  await openBotDetails()
   fireEvent.click(within(panel).getByRole("button", { name: "Preview do projeto" }))
   await waitFor(() => expect(screen.getByRole("button", { name: "Subir tudo" })).toBeEnabled())
   await waitFor(() => expect(document.querySelectorAll(".preview-process-entry")).toHaveLength(2), { timeout: 8000 })
@@ -160,6 +149,7 @@ it("names the server diagnostics consistently after onboarding and opens it", as
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   const menu = screen.getByRole("navigation", { name: "Opções avançadas" })
+  fireEvent.click(within(menu).getByRole("button", { name: "Diagnóstico", exact: true }))
   const action = within(menu).getByRole("button", { name: "Verificar este servidor", exact: true })
   expect(within(menu).queryByRole("button", { name: "Verificar este Mac" })).toBeNull()
   fireEvent.click(action)

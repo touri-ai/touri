@@ -1,18 +1,22 @@
-import type { Bot, BotGroup, Id, MachineState, Message, Routine } from "@touri/contracts"
+import type { Bot, BotGroup, Id, MachineState, Message, Project, Routine } from "@touri/contracts"
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import { userFacingError } from "../errors"
 import { t } from "../i18n"
 import { machineStateForDisplay } from "../machineState"
 import { useHost } from "../useHost"
+import { BotAccessSummary } from "./BotAccessSummary"
 import { BotAvatar } from "./BotAvatar"
 import { BotDetails } from "./BotDetails"
+import { ComposerProjectChip } from "./ComposerProjectChip"
 import { DeferredGoalPanel as GoalPanel } from "./DeferredGoalPanel"
+import { Disclosure } from "./Disclosure"
 import { ErrorText } from "./ErrorDetails"
 import { MotionSkeleton, useSegmentedControl } from "./Motion"
 import { PanelIcon } from "./PanelIcon"
 import { usePhoneViewport } from "./usePhoneViewport"
 
+const ModelPicker = lazy(() => import("./ModelPicker").then((module) => ({ default: module.ModelPicker })))
 const BotComputer = lazy(() => import("./BotComputer").then((module) => ({ default: module.BotComputer })))
 const BotLibrary = lazy(() => import("./BotLibrary").then((module) => ({ default: module.BotLibrary })))
 
@@ -34,6 +38,11 @@ export const BotPanel = ({
   onSettings,
   onRoutines,
   onModel,
+  projects = [],
+  onSaveModel,
+  onSelectProject,
+  onAddProject,
+  onNotice,
   onPermissions,
   onRole,
   onPreview,
@@ -60,6 +69,11 @@ export const BotPanel = ({
   onClose: () => void
   onSettings: () => void
   onRoutines: () => void
+  projects?: Project[]
+  onSaveModel?: (model: string | null) => Promise<void>
+  onSelectProject?: (projectId: Id | null) => Promise<void>
+  onAddProject?: () => void
+  onNotice?: (message: string) => void
   onModel?: () => void
   onPermissions: () => void
   onRole: (roleLine: string | null) => Promise<void>
@@ -78,6 +92,7 @@ export const BotPanel = ({
     if (phone) closeButton.current?.focus({ preventScroll: true })
   }, [phone])
   const [tab, setTab] = useState<(typeof tabs)[number]>("details")
+  const [adjustOpen, setAdjustOpen] = useState(false)
   useEffect(() => {
     if (computerTabRequest) setTab("computer")
   }, [computerTabRequest])
@@ -212,82 +227,136 @@ export const BotPanel = ({
       >
         {tab === "details" && (
           <div className="bot-details">
-            <BotDetails bot={bot} host={host} onSettings={onSettings} onModel={onModel} onPermissions={onPermissions}>
-              {onPreview && (
-                <button className="button button-quiet" type="button" onClick={onPreview}>
-                  {t("Project preview")}
-                </button>
-              )}
-            </BotDetails>
-            {goalThreadId && (
-              <GoalPanel
-                key={goalThreadId}
-                api={api}
-                threadId={goalThreadId}
-                bot={bot}
-                request={goalRequest}
-                busy={goalBusy}
-                surface="entry"
-                refreshRequest={goalRefreshRequest}
-                onChange={onGoalChange}
+            {!adjustOpen && (
+              <BotAccessSummary
+                machine={bot.machine}
+                access={bot.access}
+                approvals={bot.approvals}
+                anyFolderAccess={bot.anyFolderAccess ?? false}
+                folders={bot.folders ?? []}
+                host={host}
               />
             )}
-            <section className="bot-details-section">
-              <h3>{t("Bot groups")}</h3>
-              {groups.length ? (
-                groups.map((group) => (
-                  <button type="button" key={group.id} className="button button-quiet" onClick={() => onGroup?.(group)}>
-                    {group.name}
-                    {group.coordinatorBotId === bot.id ? t("Group coordinator suffix") : ""}
-                  </button>
-                ))
-              ) : (
-                <p className="muted-copy">{t("This bot has no groups yet.")}</p>
-              )}
-            </section>
-            <section className="bot-details-section" aria-labelledby={`bot-routines-${bot.id}`}>
-              <div className="library-heading">
-                <h3 id={`bot-routines-${bot.id}`}>{t("Bot routines")}</h3>
-                <span className="count-pill" title={t("Bot routine count", { count: routines.length })}>
-                  {routines.length}
-                </span>
-              </div>
-              {routines.length ? (
-                <ul className="bot-routines">
-                  {routines.map((routine) => (
-                    <li key={routine.id}>
-                      <PanelIcon name="clock" />
-                      <div>
-                        <strong>{routine.name}</strong>
-                        <small>
-                          {routine.enabled
-                            ? routine.nextRunAt
-                              ? t("Next routine time", {
-                                  time: new Date(routine.nextRunAt).toLocaleString("pt-BR", {
-                                    timeZone: routine.timezone,
-                                    dateStyle: "short",
-                                    timeStyle: "short",
-                                  }),
-                                  timezone: routine.timezone,
-                                })
-                              : t("Waiting for the next schedule")
-                            : t("Routine paused")}
-                        </small>
+            <Disclosure summary={t("Adjust bot")} open={adjustOpen} onOpenChange={setAdjustOpen}>
+              {adjustOpen && (
+                <>
+                  {bot.machine !== "cloud" && (
+                    <div className="bot-project-settings">
+                      {onSaveModel && onNotice && (
+                        <Suspense fallback={<MotionSkeleton lines={1} />}>
+                          <ModelPicker
+                            key={bot.id}
+                            api={api}
+                            botId={bot.id}
+                            provider={bot.provider}
+                            value={bot.model}
+                            onSave={onSaveModel}
+                            onNotice={onNotice}
+                            showProvider
+                          />
+                        </Suspense>
+                      )}
+                      {onSelectProject && (
+                        <ComposerProjectChip
+                          bot={bot}
+                          projects={projects}
+                          active={activeTurns}
+                          onSelect={onSelectProject}
+                          onAdd={onAddProject}
+                        />
+                      )}
+                    </div>
+                  )}
+                  <BotDetails
+                    bot={bot}
+                    host={host}
+                    onSettings={onSettings}
+                    onModel={onModel}
+                    onPermissions={onPermissions}
+                  >
+                    {onPreview && (
+                      <button className="button button-quiet" type="button" onClick={onPreview}>
+                        {t("Project preview")}
+                      </button>
+                    )}
+                  </BotDetails>
+                  {goalThreadId && (
+                    <GoalPanel
+                      key={goalThreadId}
+                      api={api}
+                      threadId={goalThreadId}
+                      bot={bot}
+                      request={goalRequest}
+                      busy={goalBusy}
+                      surface="entry"
+                      refreshRequest={goalRefreshRequest}
+                      onChange={onGoalChange}
+                    />
+                  )}
+                  <section className="bot-details-section">
+                    <h3>{t("Bot groups")}</h3>
+                    {groups.length ? (
+                      groups.map((group) => (
+                        <button
+                          type="button"
+                          key={group.id}
+                          className="button button-quiet"
+                          onClick={() => onGroup?.(group)}
+                        >
+                          {group.name}
+                          {group.coordinatorBotId === bot.id ? t("Group coordinator suffix") : ""}
+                        </button>
+                      ))
+                    ) : (
+                      <p className="muted-copy">{t("This bot has no groups yet.")}</p>
+                    )}
+                  </section>
+                  <section className="bot-details-section" aria-labelledby={`bot-routines-${bot.id}`}>
+                    <div className="library-heading">
+                      <h3 id={`bot-routines-${bot.id}`}>{t("Bot routines")}</h3>
+                      <span className="count-pill" title={t("Bot routine count", { count: routines.length })}>
+                        {routines.length}
+                      </span>
+                    </div>
+                    {routines.length ? (
+                      <ul className="bot-routines">
+                        {routines.map((routine) => (
+                          <li key={routine.id}>
+                            <PanelIcon name="clock" />
+                            <div>
+                              <strong>{routine.name}</strong>
+                              <small>
+                                {routine.enabled
+                                  ? routine.nextRunAt
+                                    ? t("Next routine time", {
+                                        time: new Date(routine.nextRunAt).toLocaleString("pt-BR", {
+                                          timeZone: routine.timezone,
+                                          dateStyle: "short",
+                                          timeStyle: "short",
+                                        }),
+                                        timezone: routine.timezone,
+                                      })
+                                    : t("Waiting for the next schedule")
+                                  : t("Routine paused")}
+                              </small>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="bot-panel-empty">
+                        <PanelIcon name="clock" />
+                        <strong>{t("No scheduled routines")}</strong>
+                        <p>{t("Set a routine for recurring tasks.")}</p>
+                        <button className="button button-quiet" type="button" onClick={onRoutines}>
+                          {t("Configure routines")}
+                        </button>
                       </div>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="bot-panel-empty">
-                  <PanelIcon name="clock" />
-                  <strong>{t("No scheduled routines")}</strong>
-                  <p>{t("Set a routine for recurring tasks.")}</p>
-                  <button className="button button-quiet" type="button" onClick={onRoutines}>
-                    {t("Configure routines")}
-                  </button>
-                </div>
+                    )}
+                  </section>
+                </>
               )}
-            </section>
+            </Disclosure>
           </div>
         )}
         {tab === "library" && (

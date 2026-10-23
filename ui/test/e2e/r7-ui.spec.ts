@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test"
-import { openGlobalPage } from "./home-navigation"
+import { openGlobalPage, showBotDetails } from "./home-navigation"
 
 test.use({ channel: "chromium", viewport: { width: 1440, height: 900 } })
 test.beforeEach(async ({ page }) => {
@@ -16,8 +16,7 @@ test("GFM task lists show checkboxes without bullet markers in the chat and comp
   const linkColor = await chat
     .getByRole("link", { name: "Documentação" })
     .evaluate((element) => getComputedStyle(element).color)
-  if (!(await page.getByRole("button", { name: "Preview do projeto" }).isVisible()))
-    await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
+  await showBotDetails(page)
   await page.getByRole("button", { name: "Preview do projeto" }).click()
   const preview = page.locator(".preview-chat-feed")
   await expect(preview.getByRole("heading", { name: "Resultado" })).toBeVisible()
@@ -53,7 +52,7 @@ test("bot MCP settings keep the name and close button visible after scrolling", 
 })
 
 test("preferences visually separate shortcut and browser labels from their values", async ({ page }) => {
-  await page.getByRole("button", { name: /Você Local/ }).click()
+  await page.getByRole("button", { name: "Você", exact: true }).click()
   const settings = page.getByRole("dialog", { name: "Configurações" })
   await expect(settings.getByText("preferências locais", { exact: true })).toBeVisible()
   for (const [section, disclosure] of [

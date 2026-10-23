@@ -1169,12 +1169,11 @@ export const BotSettingsModal = ({
     <Modal
       onClose={onClose}
       title={permissionsOnly ? t("Permissões do bot") : t("Bot settings", { name: bot.name })}
-      eyebrow={t("configuração do bot")}
       className="settings-modal"
     >
       <div className="bot-settings-overview" hidden={advanced}>
         <SettingsGroup>
-          <SettingsRow title={t("Name")} description={t("Como você chama este bot.")} htmlFor="settings-name">
+          <SettingsRow title={t("Name")} description="" htmlFor="settings-name">
             <input
               id="settings-name"
               data-initial-focus
@@ -1182,43 +1181,8 @@ export const BotSettingsModal = ({
               onChange={(event) => setName(event.target.value)}
             />
           </SettingsRow>
-          <SettingsRow
-            title={t("O que ele faz")}
-            description={t("Um resumo do trabalho do bot na equipe.")}
-            htmlFor="settings-role"
-          >
+          <SettingsRow title={t("O que ele faz")} description="" htmlFor="settings-role">
             <input id="settings-role" value={roleLine} onChange={(event) => setRoleLine(event.target.value)} />
-          </SettingsRow>
-        </SettingsGroup>
-        <SettingsGroup>
-          <SettingsRow title={t("Onde o bot responde")} description={t("Automatic conversation mode help")}>
-            <div
-              className="bot-conversation-mode-options"
-              role="radiogroup"
-              aria-label={t("Onde o bot responde")}
-              data-setting-id="automaticConversationMode"
-            >
-              {(
-                [
-                  ["main", t("Na conversa principal")],
-                  ["task", t("Uma conversa nova por tarefa")],
-                ] as const
-              ).map(([mode, label]) => (
-                <label key={mode}>
-                  <input
-                    type="radio"
-                    name={`automatic-conversation-${bot.id}`}
-                    value={mode}
-                    checked={automaticConversationMode === mode}
-                    disabled={updating || saving}
-                    onChange={() =>
-                      void immediateAction(() => actions.updateBot(bot.id, { automaticConversationMode: mode }))
-                    }
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
           </SettingsRow>
         </SettingsGroup>
         <div className="settings-avatar-field">
@@ -1277,7 +1241,7 @@ export const BotSettingsModal = ({
           <SettingsLayout
             sections={sections}
             active={section}
-            onChange={(next) => (next === "routines" && onOpenRoutines ? onOpenRoutines() : setSection(next))}
+            onChange={setSection}
             label={t("Seções das configurações do bot")}
           >
             <SettingsPane {...botPane("model")}>
@@ -1715,6 +1679,38 @@ export const BotSettingsModal = ({
               )}
             </SettingsPane>
             <SettingsPane {...botPane("routines")}>
+              <SettingsGroup>
+                <SettingsRow title={t("Onde o bot responde")} description={t("Automatic conversation mode help")}>
+                  <div
+                    className="bot-conversation-mode-options"
+                    role="radiogroup"
+                    aria-label={t("Onde o bot responde")}
+                    data-setting-id="automaticConversationMode"
+                  >
+                    {(
+                      [
+                        ["main", t("Na conversa principal")],
+                        ["task", t("Uma conversa nova por tarefa")],
+                      ] as const
+                    ).map(([mode, label]) => (
+                      <label key={mode}>
+                        <input
+                          type="radio"
+                          name={`automatic-conversation-${bot.id}`}
+                          value={mode}
+                          checked={automaticConversationMode === mode}
+                          disabled={updating || saving}
+                          onChange={() =>
+                            void immediateAction(() => actions.updateBot(bot.id, { automaticConversationMode: mode }))
+                          }
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                </SettingsRow>
+              </SettingsGroup>
+
               {onOpenRoutines && (
                 <button type="button" className="text-button" onClick={onOpenRoutines}>
                   {t("Manage routines")}

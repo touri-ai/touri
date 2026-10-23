@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test"
+import { openMessageActions } from "./home-navigation"
 
 test.setTimeout(90_000)
-test.use({ actionTimeout: 30_000 })
+test.use({ actionTimeout: 30_000, hasTouch: true })
 
 for (const viewport of [
   { width: 1440, height: 900 },
@@ -10,7 +11,10 @@ for (const viewport of [
   test(`repeat a useful result with explicit review at ${viewport.width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport)
     await page.goto("/test/e2e/home-harness.html", { waitUntil: "domcontentloaded" })
-    await page.getByRole("button", { name: "Agendar esta tarefa" }).click()
+    const messageActions = page.getByRole("button", { name: "Ações da mensagem", exact: true }).last()
+    await expect(messageActions).toHaveCSS("opacity", "1")
+    await openMessageActions(page)
+    await page.getByRole("menuitem", { name: "Agendar esta tarefa", exact: true }).click()
     const dialog = page.getByRole("dialog", { name: "Quando?" })
     await expect(dialog.getByRole("textbox", { name: "Tarefa", exact: true })).toHaveValue("Review the campaign")
     await dialog.getByLabel("Nome", { exact: true }).fill("Organizar notas")

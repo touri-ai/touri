@@ -7,6 +7,7 @@ import { latestPreview } from "../src/botPreview"
 import { VirtualMessageList } from "../src/components/ChatPanel"
 import { composerKeyAction } from "../src/composerKeys"
 import { runErrorFor } from "../src/runError"
+import { openBotDetails } from "./workspaceNavigation"
 
 const key = (overrides: Partial<Parameters<typeof composerKeyAction>[0]>): Parameters<typeof composerKeyAction>[0] => ({
   key: "Enter",
@@ -72,6 +73,7 @@ describe("tool screenshots", () => {
     (data) => {
       renderResult(data)
       fireEvent.click(screen.getByRole("button", { name: /1 ação/ }))
+      fireEvent.click(screen.getByText("Detalhes técnicos"))
       fireEvent.click(screen.getByRole("button", { name: "Resultado" }))
       const output = screen.getByText(/Display da VM/, { selector: "code" })
       expect(output).toHaveTextContent("Display da VM")
@@ -141,7 +143,7 @@ it("shows the active bot name once while keeping bot navigation visible", async 
   const botNameAppearances = botName ? (header.textContent?.split(botName).length ?? 1) - 1 : 0
 
   expect(botNameAppearances).toBe(1)
-  expect(within(header).getByText("Bots")).toBeVisible()
+  expect(within(header).queryByText("Bots")).toBeNull()
   const sidebar = screen.getByRole("navigation", { name: "Barra lateral" })
   expect(within(sidebar).getByRole("tab", { name: /^Bots,/ })).toBeVisible()
 })
@@ -217,8 +219,7 @@ describe("window chrome", () => {
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     expect(document.querySelector(".model-pill")).toBeNull()
     expect(screen.queryByRole("button", { name: /^Modelo:/ })).toBeNull()
-    fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
-    await screen.findByRole("complementary", { name: /^Painel de / })
+    await openBotDetails()
     expect(screen.getByRole("button", { name: /^Modelo: Codex ·/ })).toBeVisible()
   })
 })

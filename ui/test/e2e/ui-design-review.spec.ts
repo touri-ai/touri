@@ -12,10 +12,9 @@ test.describe("phone layout review", () => {
   test("approval notice and composer keep touch controls reachable", async ({ page }) => {
     await page.goto("/test/e2e/approval-notice-harness.html")
 
-    const notice = page.locator(".approval-notice")
-    const review = notice.getByRole("button", { name: "Revisar", exact: true })
-    const dismiss = notice.getByRole("button", { name: "Dispensar aviso", exact: true })
-    for (const control of [review, dismiss]) {
+    await page.getByRole("button", { name: "Abrir menu" }).click()
+    const review = page.locator(".sidebar-needs-you")
+    for (const control of [review]) {
       const bounds = await control.boundingBox()
       expect(bounds).not.toBeNull()
       if (!bounds) throw new Error("Missing approval notice control")
@@ -31,31 +30,14 @@ test.describe("phone layout review", () => {
     expect(textBounds).not.toBeNull()
     if (!textBounds) throw new Error("Missing composer input")
     expect(textBounds.height).toBeGreaterThanOrEqual(44)
-    const controlSelectors = [
-      ".composer-tools-left",
-      ".model-picker-trigger.composer-model",
-      ".composer-project",
-      ".composer-actions",
-    ]
-    const controlCenters = await Promise.all(
-      controlSelectors.map((selector) =>
-        composer.locator(selector).evaluate((element) => {
-          const bounds = element.getBoundingClientRect()
-          return bounds.top + bounds.height / 2
-        }),
-      ),
-    )
-    expect(Math.max(...controlCenters) - Math.min(...controlCenters)).toBeLessThanOrEqual(4)
-    const bounds = await Promise.all(
-      [".model-picker-trigger.composer-model", ".composer-project-chip", ".composer-actions"].map((selector) =>
-        composer.locator(selector).boundingBox(),
-      ),
-    )
-    const [model, project, actions] = bounds
-    if (!model || !project || !actions) throw new Error("Missing composer selection bounds")
-
-    expect(model.x + model.width).toBeLessThanOrEqual(project.x)
-    expect(project.x + project.width).toBeLessThanOrEqual(actions.x)
+    await expect(composer.getByRole("button", { name: /^Escolher modelo:/ })).toHaveCount(0)
+    await expect(composer.getByRole("button", { name: /^Projeto do bot:/ })).toHaveCount(0)
+    const attach = composer.getByRole("button", { name: "Anexar arquivo", exact: true })
+    const send = composer.getByRole("button", { name: "Enviar", exact: true })
+    const [attachment, actions] = await Promise.all([attach.boundingBox(), send.boundingBox()])
+    if (!attachment || !actions) throw new Error("Missing composer controls")
+    expect(attachment.x + attachment.width).toBeLessThanOrEqual(actions.x)
+    expect(Math.abs(attachment.y + attachment.height / 2 - actions.y - actions.height / 2)).toBeLessThanOrEqual(4)
   })
 
   test("wrapped approval status starts at the tool card content edge", async ({ page }) => {

@@ -108,7 +108,7 @@ it.each(["Cron", "notification", "sidebar", "banner"])(
     const { api, reveal } = await fixture()
     if (source === "Cron") {
       openRoutines("onb")
-      fireEvent.click(await screen.findByRole("button", { name: /1 aprovação pendente/ }))
+      fireEvent.click(await screen.findByRole("button", { name: "Revisar aprovação de onb" }))
     } else if (source === "sidebar") {
       fireEvent.click(screen.getByRole("button", { name: "Revisar aprovação de onb" }))
     } else {

@@ -51,6 +51,7 @@ test.describe("mermaid production and desktop CSP", () => {
     visit("index.html")
     const optionalModules = [
       "src/components/BrowserActivityCard.tsx",
+      "src/components/ModelPicker.tsx",
       "src/components/BotComputer.tsx",
       "src/components/Modals.tsx",
       "src/components/InterruptedTasks.tsx",

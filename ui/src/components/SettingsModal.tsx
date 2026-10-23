@@ -4,6 +4,7 @@ import type { TauriInvoke, UiApi } from "../api/client"
 import { readTheme, setTheme, type ThemePreference } from "../design/theme"
 import { userFacingError } from "../errors"
 import {
+  API_MODELS_SETTINGS_SECTION,
   APP_SETTINGS_SECTIONS,
   type AppSettingsSectionId,
   SERVER_SETTINGS_SECTION,
@@ -148,13 +149,13 @@ export const SettingsModal = ({
       setSaving(false)
     }
   }
-  const sections = [
-    ...APP_SETTINGS_SECTIONS,
-    ...(serverMode || (api && !api.isMock && !isNativeDesktop()) ? [WORK_SETTINGS_SECTION] : []),
-    ...(isNativeDesktop() ? [SERVER_SETTINGS_SECTION] : []),
-  ]
+  const extraSection = [API_MODELS_SETTINGS_SECTION, WORK_SETTINGS_SECTION, SERVER_SETTINGS_SECTION].find(
+    (entry) => entry.id === section,
+  )
+  const sections = [...APP_SETTINGS_SECTIONS, ...(extraSection ? [extraSection] : [])]
+
   const pane = (id: AppSettingsSectionId) => {
-    const entry = sections.find((candidate) => candidate.id === id)
+    const entry = [...sections, WORK_SETTINGS_SECTION, SERVER_SETTINGS_SECTION].find((candidate) => candidate.id === id)
     return { active: section, id, title: entry?.label ?? id, description: entry?.description ?? "" }
   }
   return (
@@ -373,6 +374,11 @@ export const SettingsModal = ({
           </SettingsDisclosure>
         </SettingsPane>
         <SettingsPane {...pane("diagnostics")}>
+          {isNativeDesktop() && (
+            <button type="button" className="text-button" onClick={() => setSection("advanced")}>
+              {SERVER_SETTINGS_SECTION.label}
+            </button>
+          )}
           <SettingsDisclosure
             title={t("Verificar e cuidar deste computador")}
             description={t("Verificações, armazenamento e funcionamento em segundo plano.")}
@@ -458,6 +464,11 @@ export const SettingsModal = ({
                     />
                   </SettingsRow>
                 </SettingsGroup>
+                {isNativeDesktop() && (
+                  <button className="button button-quiet" type="button" onClick={() => setSection("advanced")}>
+                    {t("Usar um servidor touri")}
+                  </button>
+                )}
                 {onImport && (
                   <button className="button button-quiet" type="button" onClick={onImport}>
                     {t("Import legacy app bots")}

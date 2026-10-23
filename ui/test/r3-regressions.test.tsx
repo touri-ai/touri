@@ -14,6 +14,7 @@ import { SETTINGS } from "../src/features/commandPalette/settingsRegistry"
 import { focusSetting } from "../src/features/commandPalette/useSettingFocus"
 import { localizeNotice, localizeToolText, mcpGroupLabel, t } from "../src/i18n"
 import { applyDelta, useWorkspace, type WorkspaceActions } from "../src/useWorkspace"
+import { chooseRoutineAction, openBotDetails } from "./workspaceNavigation"
 
 afterEach(() => {
   cleanup()
@@ -134,6 +135,7 @@ describe("r3 P2 chat and navigation", () => {
     )
     fireEvent.click(screen.getByRole("button", { name: /1 ação/ }))
     expect(screen.getByText("Encerrado")).toBeVisible()
+    fireEvent.click(screen.getByText("Detalhes técnicos"))
     expect(screen.getByText("Resultado histórico indisponível.")).toBeVisible()
     expect(screen.queryByText("Aguardando resultado.")).toBeNull()
     expect(screen.getByText("Mostrar a hora atual", { selector: ".tool-summary" })).toBeVisible()
@@ -177,8 +179,7 @@ describe("r3 P2 chat and navigation", () => {
     const { api } = fixture()
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
-    await screen.findByRole("complementary", { name: /^Painel de / })
+    await openBotDetails()
     fireEvent.click(screen.getByRole("button", { name: "Ajustar permissões" }))
     const panel = await screen.findByRole("dialog", { name: "Permissões do bot" })
     expect(within(panel).queryByRole("option", { name: "Acesso total com aprovação" })).toBeNull()
@@ -326,7 +327,7 @@ describe("r3 login and MCP settings", () => {
 })
 
 describe("r3 P1-4 and P3 routines", () => {
-  it("disables and spins run-now immediately so Enter + Space can't start twice", async () => {
+  it("disables run-now immediately so Enter + Space can't start twice", async () => {
     const { api, bot } = fixture()
     const routine = (await api.request("GET /routines", {})).routines[0]
     if (!routine) throw new Error("missing routine")
@@ -349,12 +350,13 @@ describe("r3 P1-4 and P3 routines", () => {
         onNotice={vi.fn()}
       />,
     )
-    const button = screen.getByRole("button", { name: `Rodar agora ${routine.name}` })
-    fireEvent.click(button)
-    fireEvent.click(button)
+    await chooseRoutineAction(routine.name, "Rodar agora")
+    fireEvent.click(screen.getByRole("button", { name: `Ações da rotina ${routine.name}` }))
+    const button = screen.getByRole("menuitem", { name: "Rodar agora" })
     expect(button).toBeDisabled()
-    expect(button).toHaveAttribute("aria-busy", "true")
-    expect(within(button).getByRole("status")).toHaveAttribute("aria-label", "Iniciando…")
+    fireEvent.click(button)
+    fireEvent.keyDown(button, { key: "Enter" })
+    fireEvent.keyDown(button, { key: " " })
     expect(runRoutine).toHaveBeenCalledOnce()
     await act(async () => finish?.())
   })
@@ -414,7 +416,7 @@ describe("r3 P1-4 and P3 routines", () => {
     const dots = [...container.querySelectorAll<HTMLElement>("[data-run-id]")]
     expect(dots).toHaveLength(2)
     expect(dots[0]?.style.background).not.toBe(dots[1]?.style.background)
-    fireEvent.click(screen.getByRole("button", { name: bots[0]?.name ?? "" }))
+    fireEvent.change(screen.getByRole("combobox", { name: "Bot", exact: true }), { target: { value: bots[0]?.id } })
     expect(container.querySelectorAll("[data-run-id]")).toHaveLength(1)
     expect(container.querySelector(".calendar-legend")?.textContent).not.toContain(bots[1]?.name)
   })
@@ -452,9 +454,7 @@ describe("r3 P3 integrity", () => {
     const { api } = fixture()
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    if (!screen.queryByRole("button", { name: "Preview do projeto" }))
-      fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
-    await screen.findByRole("complementary", { name: /^Painel de / })
+    await openBotDetails()
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
     await screen.findByRole("heading", { name: "Preview", exact: true })
 

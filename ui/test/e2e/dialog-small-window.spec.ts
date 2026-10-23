@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from "@playwright/test"
-import { openBotActions } from "./home-navigation"
+import { chooseRoutineAction, openBotActions } from "./home-navigation"
 
 const sizes = [
   { width: 800, height: 600 },
@@ -87,7 +87,7 @@ for (const size of sizes) {
     test("routine fields, native selects, review and nested confirmation", async ({ page }, info) => {
       await openWorkspace(page)
       await botMenu(page, "Rotinas")
-      await page.getByRole("button", { name: "Editar Resumo do dia", exact: true }).click()
+      await chooseRoutineAction(page, "Resumo do dia", "Editar")
       const dialog = page.getByRole("dialog", { name: "Quando?", exact: true })
       await page.screenshot({ path: info.outputPath("routine-open.png") })
       await checkLayer(page, dialog)

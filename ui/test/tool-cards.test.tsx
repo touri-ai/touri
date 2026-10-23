@@ -101,7 +101,7 @@ it("shows only the Bash command, a human description, one friendly title and opt
   const technical = view.container.querySelector(".tool-technical")
   const technicalTrigger = technical?.querySelector(".ds-disclosure-trigger")
   expect(technicalTrigger).toHaveAttribute("aria-expanded", "false")
-  await user.click(screen.getByText("Detalhes técnicos"))
+  await user.click(screen.getByRole("button", { name: "Mais opções de aprovação", exact: true }))
   expect(technicalTrigger).toHaveAttribute("aria-expanded", "true")
   expect(technical).toHaveTextContent('"command": "printf QA_R7_APROVADO"')
   expect(view.container.querySelector(".tool-kind-icon svg")).toHaveAttribute("aria-hidden", "true")
@@ -311,7 +311,7 @@ it("preserves Enter on action buttons and disclosure summaries instead of approv
   const user = userEvent.setup()
   const api = createMockApi()
   render(<ApprovalCard part={approval} api={api} />)
-  screen.getByText("Detalhes técnicos").focus()
+  screen.getByRole("button", { name: "Mais opções de aprovação" }).focus()
   await user.keyboard("{Enter}")
   expect(api.calls).toHaveLength(0)
   screen.getByRole("button", { name: "Negar" }).focus()
@@ -339,7 +339,7 @@ it("disables all decisions while sending, prevents duplicate answers, and recove
     .getAllByRole("button")
     .filter((button) => !button.classList.contains("ds-disclosure-trigger"))
   for (const button of decisionButtons) expect(button).toBeDisabled()
-  expect(screen.getByRole("button", { name: "Detalhes técnicos" })).toBeEnabled()
+  expect(screen.getByRole("button", { name: "Mais opções de aprovação" })).toBeEnabled()
   await act(async () => reject(new Error("Falha de conexão")))
   expect(screen.getByRole("alert")).toHaveTextContent("Falha de conexão")
   expect(screen.getByRole("button", { name: "Aprovar" })).toBeEnabled()
@@ -353,6 +353,7 @@ it("shows the standing grant scope after a separate confirmation step", () => {
       api={createMockApi()}
     />,
   )
+  fireEvent.click(screen.getByRole("button", { name: "Mais opções de aprovação" }))
   fireEvent.click(screen.getByRole("button", { name: "Permitir sempre nesta ferramenta" }))
   expect(screen.getByText(/A ferramenta docs · save poderá agir neste bot/)).toBeVisible()
   expect(screen.getByRole("button", { name: /Sim, permitir .* neste bot sem perguntar de novo/ })).toBeVisible()
@@ -596,6 +597,7 @@ it("never approves on Enter on the card or either approval button", async () => 
   card.focus()
   fireEvent.keyDown(card, { key: "Enter" })
   fireEvent.keyDown(card, { key: "Enter", repeat: true })
+  fireEvent.click(screen.getByRole("button", { name: "Mais opções de aprovação" }))
   for (const name of ["Aprovar", "Permitir sempre nesta ferramenta"]) {
     screen.getByRole("button", { name }).focus()
     await user.keyboard("{Enter}")

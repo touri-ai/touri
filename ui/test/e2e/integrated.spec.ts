@@ -2,7 +2,14 @@ import { readFileSync } from "node:fs"
 import { mkdir } from "node:fs/promises"
 import { resolve } from "node:path"
 import { test as base, expect, type Page } from "@playwright/test"
-import { openGlobalPage, showBotAdvanced, showBotChat, showBotPanel, showBotRoutines } from "./home-navigation"
+import {
+  openGlobalPage,
+  showBotAdvanced,
+  showBotChat,
+  showBotDetails,
+  showBotPanel,
+  showBotRoutines,
+} from "./home-navigation"
 
 const evidence = resolve(import.meta.dirname, "../../../docs/qa/r8/integrated")
 const framebuffer = readFileSync(resolve(import.meta.dirname, "fixtures/r8-desktop.js"), "utf8")
@@ -91,8 +98,7 @@ for (const width of [1440, 1100]) {
       await expect(page.getByRole("table", { name: "Políticas de ferramentas de arquivos" })).toBeVisible()
       await shot("mcp")
       await showBotChat(page)
-      if (!(await page.getByRole("button", { name: "Preview do projeto" }).isVisible()))
-        await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
+      await showBotDetails(page)
       await page.getByRole("button", { name: "Preview do projeto" }).click()
       await expect(page.getByRole("heading", { name: "Preview", exact: true })).toHaveCount(1)
       await shot("preview")
@@ -149,11 +155,12 @@ for (const width of [1440, 1100]) {
         }
       }
       await dialog.getByRole("tab", { name: "Rotinas", exact: true }).click()
+      await dialog.getByRole("button", { name: "Gerenciar rotinas", exact: true }).click()
 
       await expect(dialog).toHaveCount(0)
       await expect(page.getByRole("region", { name: "Rotinas", exact: true })).toBeFocused()
       await shot("bot-settings-routines")
-      await page.getByRole("button", { name: /Você Local/ }).click()
+      await page.getByRole("button", { name: "Você", exact: true }).click()
       await expect(dialog.getByText("preferências locais", { exact: true })).toBeVisible()
       await shot("preferences")
       await dialog.getByRole("tab", { name: "Privacidade", exact: true }).click()

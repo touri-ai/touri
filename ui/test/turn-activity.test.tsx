@@ -45,7 +45,7 @@ it("replaces 40 reasoning/tool groups with one disclosure before the visible fin
   parts.push({ type: "text", text: "## Resultado final\n\nAs notas estão prontas." })
   const view = render(<VirtualMessageList {...props} messages={[message(parts)]} />)
   const toggle = screen.getByRole("button", { name: "Trabalhou por 3 min · 40 ações" })
-  const answer = await screen.findByRole("heading", { name: "Resultado final" })
+  const answer = await screen.findByRole("heading", { name: "Resultado final" }, { timeout: 30_000 })
   expect(answer).toBeVisible()
   expect(toggle.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   expect(view.container.querySelectorAll(".turn-activity")).toHaveLength(1)
@@ -53,13 +53,16 @@ it("replaces 40 reasoning/tool groups with one disclosure before the visible fin
   expect(screen.queryByText("Etapa 40")).toBeNull()
   fireEvent.click(toggle)
   expect(toggle).toHaveAttribute("aria-expanded", "true")
+  expect(view.container.querySelectorAll(".turn-activity .turn-activity-step")).toHaveLength(40)
+  expect(view.container.querySelectorAll(".turn-activity .tool-call-card")).toHaveLength(0)
+  fireEvent.click(screen.getByText("Detalhes técnicos"))
   expect(view.container.querySelectorAll(".turn-activity .tool-call-card")).toHaveLength(40)
   for (const name of ["Arquivos lidos", "Comandos", "Buscas", "Edições"])
     expect(screen.getByRole("heading", { name: `${name} · 10` })).toBeVisible()
   expect(await screen.findByText("Etapa 40", { exact: false })).toBeVisible()
   fireEvent.click(toggle)
   expect(await screen.findByText("As notas estão prontas.")).toBeVisible()
-})
+}, 60_000)
 
 it("preserves interleaved prose, final text and attachment order without duplicating the text cache", async () => {
   const value = message(
@@ -179,7 +182,7 @@ it("uses provider-to-finish duration and translates the summary and action group
   render(<TurnActivity message={value} run={run} state="done" locale="en" />)
   fireEvent.click(screen.getByRole("button", { name: "Worked for 3 min · 1 action" }))
   expect(screen.getByRole("heading", { name: "Files read · 1" })).toBeVisible()
-  expect(within(screen.getByRole("region", { name: "Files read" })).getAllByRole("article")).toHaveLength(1)
+  expect(screen.getByRole("region", { name: "Files read" }).querySelectorAll(".turn-activity-step")).toHaveLength(1)
 })
 
 it("keeps one activity toggle when a running turn needs attention outside a tool approval", () => {

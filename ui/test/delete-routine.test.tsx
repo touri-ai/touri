@@ -5,7 +5,7 @@ import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
 import { DeleteRoutineDialog } from "../src/components/DeleteRoutineDialog"
 import { t } from "../src/i18n"
-import { openRoutines, showBotSettings } from "./workspaceNavigation"
+import { chooseRoutineAction, openRoutines, showBotSettings } from "./workspaceNavigation"
 
 const fixture = async () => {
   const api = createMockApi()
@@ -22,10 +22,7 @@ it("confirms card deletion, cancels without writing and removes the routine whil
   const { api, routine } = await fixture()
   const messages = api.getState().messages.map((message) => message.id)
   openRoutines()
-  const actions = await screen.findByRole("group", { name: `Ações da rotina ${routine.name}` })
-  const trigger = within(actions).getByRole("button", { name: "Excluir rotina" })
-  trigger.focus()
-  fireEvent.click(trigger)
+  const trigger = await chooseRoutineAction(routine.name, "Excluir rotina")
   const confirmation = screen.getByRole("alertdialog", { name: `Excluir a rotina ${routine.name}?` })
   expect(confirmation).toHaveAccessibleDescription(
     "Ela não vai mais rodar. O histórico de execuções continua nas conversas.",
@@ -35,7 +32,7 @@ it("confirms card deletion, cancels without writing and removes the routine whil
   expect(screen.queryByRole("alertdialog")).toBeNull()
   expect(trigger).toHaveFocus()
   expect(deletes(api)).toHaveLength(0)
-  fireEvent.click(trigger)
+  await chooseRoutineAction(routine.name, "Excluir rotina")
   fireEvent.click(screen.getByRole("button", { name: "Excluir", exact: true }))
   await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull())
   expect(deletes(api)).toEqual([{ route: "DELETE /routines/:id", input: {}, pathValues: { id: routine.id } }])
@@ -47,7 +44,7 @@ it("confirms card deletion, cancels without writing and removes the routine whil
 it("deletes from the end of the editor and identifies the saved name even with unsaved edits", async () => {
   const { api, routine } = await fixture()
   openRoutines()
-  fireEvent.click(await screen.findByRole("button", { name: `Editar ${routine.name}` }))
+  await chooseRoutineAction(routine.name, "Editar")
   const editor = screen.getByRole("dialog", { name: "Quando?" })
   expect(within(editor).getAllByRole("button").at(-1)).toHaveTextContent("Excluir rotina")
   fireEvent.change(within(editor).getByRole("textbox", { name: "Nome", exact: true }), {
@@ -76,12 +73,9 @@ it("deletes from the routines list reached directly through Advanced → Routine
   const settings = await screen.findByRole("dialog", { name: "Configurações de mark" })
   fireEvent.click(within(settings).getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(within(settings).getByRole("tab", { name: "Rotinas" }))
+  fireEvent.click(within(settings).getByRole("button", { name: "Gerenciar rotinas", exact: true }))
   await waitFor(() => expect(settings).not.toBeInTheDocument())
-  fireEvent.click(
-    within(await screen.findByRole("group", { name: `Ações da rotina ${routine.name}` })).getByRole("button", {
-      name: "Excluir rotina",
-    }),
-  )
+  await chooseRoutineAction(routine.name, "Excluir rotina")
   fireEvent.click(screen.getByRole("button", { name: "Excluir", exact: true }))
   await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull())
   expect(screen.getByRole("region", { name: "Rotinas", exact: true })).toBeVisible()

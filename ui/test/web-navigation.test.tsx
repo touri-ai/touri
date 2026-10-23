@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
 import { parseDeepLink } from "../src/deepLink"
-import { openConversations } from "./workspaceNavigation"
+import { openConversations, openGlobalPage } from "./workspaceNavigation"
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }))
 
@@ -89,7 +89,7 @@ it("restores back/forward without creating entries, including when leaving a glo
   selectBot("bot-onb")
   await locationIs("bot-onb", "thread-onb")
   fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
-  fireEvent.click(screen.getByRole("button", { name: "Integrações", exact: true }))
+  openGlobalPage("Integrações")
   await screen.findByRole("heading", { name: "Integrações", exact: true })
   push.mockClear()
   act(() => window.history.back())
@@ -125,7 +125,7 @@ it("browser traversal supersedes a pending animated page navigation", async () =
     },
   })
   fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
-  fireEvent.click(screen.getByRole("button", { name: "Integrações", exact: true }))
+  openGlobalPage("Integrações")
   expect(snapshot).toBeDefined()
   act(() => window.history.back())
   await screen.findByRole("textbox", { name: "Mensagem para mark" })

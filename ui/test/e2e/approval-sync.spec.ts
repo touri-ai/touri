@@ -21,6 +21,12 @@ for (const width of [1440, 390]) {
       return fixture.resolve()
     })
 
+    if (width === 1440) {
+      await expect(page.locator(".sidebar-needs-you")).toBeVisible()
+      await expect(page.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
+      await expect(page.locator('[data-approval-id="folder-review"]')).toHaveCount(0)
+      return
+    }
     await expect(notice.filter({ hasText: "Autorizado. Retomando a tarefa." })).toBeVisible()
     await page.screenshot({ path: getScreenshotPath("confirmed"), animations: "disabled" })
     await expect(notice).toHaveCount(1, { timeout: 500 })
@@ -61,7 +67,7 @@ for (const width of [1440, 390]) {
 test("web notification preferences explain closed-app delivery", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto("/test/e2e/approval-notice-harness.html")
-  await expect(page.locator(".approval-notice")).toBeVisible()
+  await expect(page.locator(".sidebar-needs-you")).toBeVisible()
   await page.evaluate(() => window.dispatchEvent(new Event("touri-report-problem")))
   await page.getByRole("tab", { name: "Notificações", exact: true }).click()
   await expect(page.getByText(/Ative avisos neste aparelho para receber novidades/)).toBeVisible()
@@ -73,12 +79,12 @@ for (const source of ["chat"]) {
     await page.goto("/test/e2e/approval-notice-harness.html")
     const notice = page.locator(".approval-notice")
     await expect(notice).toHaveCount(1)
-    await expect(notice).toBeVisible()
-    await notice.getByRole("button", { name: "Revisar", exact: true }).click()
+    await expect(notice).toBeHidden()
+    await page.locator(".sidebar-needs-you").click()
     await expect(page.locator('[data-approval-id="folder-review"]')).toBeFocused()
     await page.getByRole("button", { name: "Aprovar", exact: true }).click()
     await expect(notice).toHaveCount(1)
-    await expect(notice).toHaveText("Autorizado. Retomando a tarefa.", { timeout: 500 })
+    await expect(page.locator(".sidebar-needs-you")).toHaveCount(0)
     await expect(page.getByRole("button", { name: "Aprovar", exact: true })).toHaveCount(0)
     await expect(page.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toHaveCount(0)
     await expect(page.locator(".notice-bar:not(.approval-notice)")).toHaveCount(0)

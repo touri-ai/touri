@@ -5,21 +5,13 @@ test.use({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce" })
 test("phone settings navigation scrolls every tab into view for touch and keyboard", async ({ page }) => {
   await page.goto("/test/e2e/r8-settings-harness.html")
   await page.getByRole("button", { name: "Abrir menu" }).click()
-  await page.getByRole("button", { name: /Você Local/ }).click()
+  await page.getByRole("button", { name: "Você", exact: true }).click()
 
   const dialog = page.getByRole("dialog")
   const tablist = dialog.getByRole("tablist")
   const tabs = tablist.getByRole("tab")
-  await expect(tabs).toHaveCount(7)
-  await expect(tabs).toContainText([
-    "Modelos por API",
-    "Aparência",
-    "Privacidade",
-    "Atualizações",
-    "Notificações",
-    "Diagnóstico",
-    "Avançado",
-  ])
+  await expect(tabs).toHaveCount(5)
+  await expect(tabs).toContainText(["Aparência", "Privacidade", "Atualizações", "Notificações", "Diagnóstico"])
 
   const layout = await tablist.evaluate((element) => {
     const bounds = element.getBoundingClientRect()

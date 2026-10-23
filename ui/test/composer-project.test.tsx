@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises"
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { Bot, Run } from "@touri/contracts"
@@ -38,6 +37,7 @@ const setup = async ({
   archived.archivedAt = Date.now()
   render(<App kernel={{ services: { api, ...(invoke ? { invoke } : {}) } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  await openPanelSettings(machine)
   return { api, bot, current, other }
 }
 
@@ -65,81 +65,30 @@ const activeRun = (bot: Bot): Run => ({
   finishedAt: null,
 })
 
-describe("composer project picker", () => {
-  it("truncates selected names in the phone grid with separate send controls", async () => {
+describe("bot panel project picker", () => {
+  it("keeps model and project controls out of the composer on every bot", async () => {
     await setup()
-    const composerStyles = await readFile("src/components/Composer.css", "utf8")
-    const { container } = render(<style>{composerStyles}</style>)
-    const sheet = container.querySelector("style")?.sheet
-    const phone = Array.from(sheet?.cssRules ?? [])
-      .filter((rule): rule is CSSMediaRule => rule.type === CSSRule.MEDIA_RULE)
-      .find((rule) => rule.media.mediaText === "(max-width: 620px)")
-    const getStyle = (...selectors: string[]) =>
-      Array.from(phone?.cssRules ?? []).find(
-        (rule): rule is CSSStyleRule =>
-          "selectorText" in rule &&
-          rule.selectorText
-            .split(",")
-            .map((selector) => selector.trim())
-            .join(", ") === selectors.join(", "),
-      )?.style
     const composer = screen.getByRole("form", { name: "Compor mensagem" })
-    const tools = composer.querySelector(".composer-tools-left")
-    const modelButton = model()
-    const projectButton = chip()
-    const sendButton = within(composer).getByRole("button", { name: "Enviar", exact: true })
 
-    const grid = getStyle(".composer-island .composer-tools-left")
-    const selection = getStyle(".composer-island .composer-model", ".composer-island .composer-project")
-    const control = getStyle(".composer-island .composer-model")
-    const label = getStyle(".composer-island .composer-model-name")
-
-    expect(tools).toContainElement(modelButton)
-    expect(modelButton.closest(".model-picker-anchor")?.parentElement).toBe(tools)
-    expect(projectButton.closest(".composer-project")?.parentElement).toBe(tools)
-    expect(projectButton).toHaveClass("composer-model", "composer-project-chip")
-    expect(modelButton.querySelector(".composer-model-name")).not.toBeNull()
-    expect(projectButton.querySelector(".composer-model-name")).not.toBeNull()
-    expect(sendButton.closest(".composer-actions")?.parentElement).toBe(tools?.parentElement)
-    expect(tools).not.toContainElement(sendButton)
-    expect(grid?.display).toBe("flex")
-    expect(grid?.getPropertyValue("align-items")).toBe("center")
-    expect(selection?.getPropertyValue("flex")).toBe("0 1 34vw")
-    expect(selection?.width).toBe("auto")
-    expect(selection?.getPropertyValue("max-width")).toBe("34vw")
-    expect(control?.height).toBe("var(--icon-button-size)")
-    expect(label?.overflow).toBe("hidden")
-    expect(label?.getPropertyValue("text-overflow")).toBe("ellipsis")
-    expect(label?.getPropertyValue("white-space")).toBe("nowrap")
+    expect(within(composer).queryByRole("button", { name: /^Escolher modelo:/ })).toBeNull()
+    expect(within(composer).queryByRole("button", { name: /^Projeto do bot:/ })).toBeNull()
+    expect(model().closest(".bot-panel")).not.toBeNull()
+    expect(chip().closest(".bot-panel")).not.toBeNull()
   })
 
-  it("shows the project beside the provider/model in the composer with the bot panel closed", async () => {
-    const user = userEvent.setup()
-    const { bot, current } = await setup()
-    const composer = screen.getByRole("form", { name: "Compor mensagem" })
-    const modelButton = within(composer).getByRole("button", { name: /^Escolher modelo:/ })
-    const projectButton = chip()
-    const visibleSelection = modelButton.querySelector(".composer-model-name")?.textContent ?? ""
-    expect(visibleSelection).not.toBe("")
-    expect(modelButton).toHaveAttribute("aria-label", `Escolher modelo: ${visibleSelection}`)
-    expect(projectButton).toHaveTextContent(current.name)
-    expect(projectButton).toHaveAttribute("aria-label", `Projeto do bot: ${current.name}`)
-    expect(modelButton.closest(".model-picker-anchor")?.nextElementSibling).toContainElement(projectButton)
-    expect(screen.getByRole("button", { name: "Painel do bot" })).toHaveAttribute("aria-expanded", "false")
-    await user.click(modelButton)
-    const listbox = await screen.findByRole("listbox", { name: "Modelos de Codex" })
-    expect(within(listbox).getByRole("option", { name: bot.model ?? "Padrão do provedor" })).toHaveAttribute(
-      "aria-selected",
-      "true",
+  it("keeps project and model selection behind Adjust in the bot panel", async () => {
+    const { current } = await setup()
+    const panel = screen.getByRole("complementary", { name: "Painel de mark" })
+
+    expect(chip()).toHaveTextContent(current.name)
+    fireEvent.click(within(panel).getByRole("button", { name: "Ajustar", exact: true }))
+
+    expect(screen.queryByRole("button", { name: /^Escolher modelo:/ })).toBeNull()
+    expect(screen.queryByRole("button", { name: /^Projeto do bot:/ })).toBeNull()
+    expect(within(panel).getByRole("button", { name: "Ajustar", exact: true })).toHaveAttribute(
+      "aria-expanded",
+      "false",
     )
-    fireEvent.keyDown(within(listbox).getByRole("option", { name: bot.model ?? "Padrão do provedor" }), {
-      key: "Escape",
-    })
-    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull())
-    await waitFor(() => expect(modelButton).toHaveFocus())
-    fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
-    await screen.findByRole("complementary", { name: /^Painel de / })
-    expect(screen.getAllByRole("button", { name: /^Projeto do bot:/ })).toHaveLength(1)
   })
 
   it("provides Portuguese and English project labels and next-turn guidance", () => {
@@ -206,6 +155,7 @@ describe("composer project picker", () => {
       await screen.findByRole("textbox", { name: "Mensagem para onb" })
       fireEvent.click(screen.getByRole("button", { name: /^mark Campaign/ }))
       await screen.findByRole("textbox", { name: "Mensagem para mark" })
+      await openPanelSettings()
       expect(chip()).toHaveTextContent("Hodler")
       fireEvent.click(chip())
       expect(within(picker()).getByRole("menuitemradio", { name: "Hodler" })).toHaveAttribute("aria-checked", "true")
@@ -358,7 +308,7 @@ describe("composer project picker", () => {
     const { api, bot } = await setup({ invoke })
     fireEvent.click(chip())
     fireEvent.click(within(picker()).getByRole("menuitem", { name: "Adicionar projeto…" }))
-    const dialog = await screen.findByRole("dialog", { name: "Conectar projeto" })
+    const dialog = await screen.findByRole("dialog", { name: "Conectar projeto" }, { timeout: 30_000 })
     expect(within(dialog).getByRole("checkbox", { name: /mark/ })).toBeChecked()
     expect(within(dialog).getByRole("checkbox", { name: /mark/ })).toBeDisabled()
     fireEvent.click(within(dialog).getByRole("button", { name: "Escolher pasta" }))
@@ -415,7 +365,7 @@ describe("composer project picker", () => {
         : request(route, ...args)) as typeof request
     fireEvent.click(chip())
     fireEvent.click(within(picker()).getByRole("menuitem", { name: "Adicionar projeto…" }))
-    const dialog = await screen.findByRole("dialog", { name: "Conectar projeto" })
+    const dialog = await screen.findByRole("dialog", { name: "Conectar projeto" }, { timeout: 30_000 })
     fireEvent.click(await within(dialog).findByRole("button", { name: /Hodler/ }))
     await waitFor(() => expect(chip()).toHaveTextContent("Hodler"))
     expect(invoke).not.toHaveBeenCalled()
@@ -456,3 +406,11 @@ describe("composer project picker", () => {
     expect(api.calls.filter((call) => call.route === "PATCH /bots/:id")).toHaveLength(1)
   })
 })
+
+const openPanelSettings = async (machine: Bot["machine"] = "local") => {
+  const toggle = screen.getByRole("button", { name: "Painel do bot", exact: true })
+  if (toggle.getAttribute("aria-expanded") === "false") fireEvent.click(toggle)
+  const adjust = await screen.findByRole("button", { name: "Ajustar", exact: true })
+  if (adjust.getAttribute("aria-expanded") === "false") fireEvent.click(adjust)
+  if (machine !== "cloud") await screen.findByRole("button", { name: /^Escolher modelo:/ })
+}

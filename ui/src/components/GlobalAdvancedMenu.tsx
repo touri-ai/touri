@@ -1,6 +1,7 @@
 import type { HostKind } from "@touri/contracts"
 import { useEffect, useRef, useState } from "react"
 import { getHostLabel, t } from "../i18n"
+import { Disclosure } from "./Disclosure"
 import { PanelIcon } from "./PanelIcon"
 
 type GlobalAdvancedMenuProps = {
@@ -10,6 +11,7 @@ type GlobalAdvancedMenuProps = {
   onProject: () => void
   onDoctor: () => void
   onImport: () => void
+  onSettings?: ((section: "work" | "api-models") => void) | undefined
 }
 
 export const GlobalAdvancedMenu = ({
@@ -19,6 +21,7 @@ export const GlobalAdvancedMenu = ({
   onProject,
   onDoctor,
   onImport,
+  onSettings,
 }: GlobalAdvancedMenuProps) => {
   const [open, setOpen] = useState(false)
   const container = useRef<HTMLDivElement>(null)
@@ -63,48 +66,65 @@ export const GlobalAdvancedMenu = ({
       </button>
       {open && (
         <nav id="sidebar-advanced-pages" className="sidebar-advanced-pages" aria-label={t("Advanced pages")}>
-          {(["work", "performance"] as const).map((destination) => (
+          <Disclosure summary={t("Work")}>
             <button
-              key={destination}
               type="button"
               className="sidebar-nav-item"
-              aria-current={page === destination ? "page" : undefined}
-              onClick={() => launch(() => onPage(destination))}
+              onClick={() => launch(() => onPage("work"))}
+              aria-current={page === "work" ? "page" : undefined}
             >
-              {t(destination === "work" ? "Work" : "Performance")}
+              {t("Work")}
             </button>
-          ))}
-          <button
-            type="button"
-            className="sidebar-nav-item"
-            aria-current={page === "mcp" ? "page" : undefined}
-            onClick={() => launch(() => onPage("mcp"))}
-          >
-            {t("MCP")}
-          </button>
-          <button
-            type="button"
-            className="sidebar-nav-item"
-            aria-current={page === "integracoes" ? "page" : undefined}
-            onClick={() => launch(() => onPage("integracoes"))}
-          >
-            {t("Integrations")}
-          </button>
+            <button type="button" className="sidebar-nav-item" onClick={() => launch(() => onSettings?.("work"))}>
+              {t("People")}
+            </button>
+          </Disclosure>
+          <Disclosure summary={t("Ferramentas")}>
+            <button
+              type="button"
+              className="sidebar-nav-item"
+              onClick={() => launch(() => onPage("mcp"))}
+              aria-current={page === "mcp" ? "page" : undefined}
+            >
+              {t("MCP")}
+            </button>
+            <button
+              type="button"
+              className="sidebar-nav-item"
+              onClick={() => launch(() => onPage("integracoes"))}
+              aria-current={page === "integracoes" ? "page" : undefined}
+            >
+              {t("Integrations")}
+            </button>
+            <button type="button" className="sidebar-nav-item" onClick={() => launch(() => onSettings?.("api-models"))}>
+              {t("API models")}
+            </button>
+          </Disclosure>
           <button type="button" className="sidebar-nav-item" onClick={() => launch(onProject)}>
             {t("Projects")}
           </button>
-          <button type="button" className="sidebar-nav-item" onClick={() => launch(onDoctor)}>
-            {t("Check this {host}", { host: getHostLabel(host) })}
-          </button>
+          <Disclosure summary={t("Diagnóstico")}>
+            <button
+              type="button"
+              className="sidebar-nav-item"
+              onClick={() => launch(() => onPage("performance"))}
+              aria-current={page === "performance" ? "page" : undefined}
+            >
+              {t("Performance")}
+            </button>
+            <button type="button" className="sidebar-nav-item" onClick={() => launch(onDoctor)}>
+              {t("Check this {host}", { host: getHostLabel(host) })}
+            </button>
+            <button
+              type="button"
+              className="sidebar-nav-item"
+              onClick={() => launch(() => window.dispatchEvent(new Event("touri-report-problem")))}
+            >
+              {t("Report a problem")}
+            </button>
+          </Disclosure>
           <button type="button" className="sidebar-nav-item" onClick={() => launch(onImport)}>
             {t("Import")}
-          </button>
-          <button
-            type="button"
-            className="sidebar-nav-item"
-            onClick={() => launch(() => window.dispatchEvent(new Event("touri-report-problem")))}
-          >
-            {t("Report a problem")}
           </button>
         </nav>
       )}

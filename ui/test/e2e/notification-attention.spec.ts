@@ -18,10 +18,10 @@ for (const theme of ["dark", "light"] as const) {
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
 
       if (viewport.name === "phone") await page.getByRole("button", { name: "Abrir menu" }).click()
-      const bar = page.getByRole("button", { name: "Abrir pendência de onb", exact: true })
+      const bar = page.getByRole("button", { name: /^Precisa de você.*onb/ })
       await expect(bar).toBeVisible()
       await expect(bar).toHaveCount(1)
-      await expect(page.locator(".sidebar-needs-you")).toHaveCount(0)
+      await expect(page.locator(".sidebar-needs-you")).toHaveCount(1)
 
       const output = process.env.NOTIFICATION_ATTENTION_CAPTURE ?? testInfo.outputDir
       mkdirSync(output, { recursive: true })
@@ -45,7 +45,7 @@ test("closes phone navigation and focuses the pending approval", async ({ page }
   await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
   await page.getByRole("button", { name: "Abrir menu" }).click()
 
-  await page.getByRole("button", { name: "Revisar aprovação de onb", exact: true }).click()
+  await page.getByRole("button", { name: /^Precisa de você.*onb/ }).click()
 
   await expect(page.getByRole("dialog", { name: "Barra lateral", exact: true })).not.toBeVisible()
   await expect(page.locator('[data-approval-id="preview-approval"]')).toBeFocused()
@@ -56,13 +56,13 @@ test("closes phone navigation and focuses the pending approval", async ({ page }
   await testInfo.attach("focused phone approval", { path: screenshot, contentType: "image/png" })
 })
 
-test("a phone bot-row question keeps its response reachable inside the drawer", async ({ page }, testInfo) => {
+test("a phone central question keeps its response reachable inside the drawer", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto("/test/e2e/notification-attention-harness.html")
   await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
   await page.getByRole("button", { name: "Abrir menu" }).click()
 
-  await page.locator('[data-bot-entry="bot-onb"]').getByRole("button", { name: "Abrir pendência de onb" }).click()
+  await page.locator(".sidebar-needs-you").click()
 
   await expect(page.getByRole("dialog", { name: "Barra lateral", exact: true })).toBeVisible()
   const row = page.getByTestId("notification-row").filter({ hasText: "Qual canal deve receber a campanha?" })

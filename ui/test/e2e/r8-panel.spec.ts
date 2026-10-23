@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import AxeBuilder from "@axe-core/playwright"
 import { expect, type Page, test } from "@playwright/test"
-import { showBotPanel } from "./home-navigation"
+import { showBotDetails, showBotPanel } from "./home-navigation"
 
 test.use({ channel: "chromium" })
 test.setTimeout(60_000)
@@ -163,7 +163,7 @@ if (phase === "after") {
         await expect(panel.getByText("/Users/demo/javascript/touri-demo")).toBeVisible()
         await shot("library-project")
         await page.goto(`${fixture}?empty-routines=true`)
-        await showBotPanel(page)
+        await showBotDetails(page)
         await expect(panel.getByText("Nenhuma rotina agendada", { exact: true })).toBeVisible()
         await shot("details-empty-routines")
         await page.goto(`${fixture}?connecting=true`)

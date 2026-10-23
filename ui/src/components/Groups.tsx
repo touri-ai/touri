@@ -60,7 +60,6 @@ export const GroupSidebar = memo(
     selectedThreadId,
     onSelect,
     onCreate,
-    onInvite,
     onSearch,
     onEdit,
     onNewThread,
@@ -130,17 +129,6 @@ export const GroupSidebar = memo(
         )}
         <div className="group-sidebar-heading">
           <h2>{t("Channels", {}, locale)}</h2>
-          {onInvite && (
-            <button
-              type="button"
-              className="channel-invite-link"
-              aria-label={t("Convidar pessoa", {}, locale)}
-              title={t("Convidar pessoa", {}, locale)}
-              onClick={onInvite}
-            >
-              <span aria-hidden="true">+</span> {t("Invite short", {}, locale)}
-            </button>
-          )}
           <button
             type="button"
             className="channel-create"
@@ -251,7 +239,6 @@ const GroupSidebarEntry = memo(
     group,
     threads,
     firstThreadId,
-    preview,
     time,
     unread,
     selectedUnread,
@@ -302,6 +289,7 @@ const GroupSidebarEntry = memo(
           selected={selected}
           rowAttention={needsAttention ? "waiting" : undefined}
           className="group-select"
+          rowClassName="channel-row"
           ariaLabel={[group.name, ...stateLabels].join(", ")}
           leading={<span className="channel-hash">#</span>}
           label={
@@ -311,11 +299,6 @@ const GroupSidebarEntry = memo(
                 <ChannelWorkingMarker names={workingBots} locale={locale} />
                 {time && <small className="bot-row-time">{time}</small>}
               </span>
-              {preview && (
-                <small className="bot-preview" title={preview}>
-                  {preview}
-                </small>
-              )}
             </span>
           }
           trailing={

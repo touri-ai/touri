@@ -139,27 +139,28 @@ it.each(["approved", "denied", "expired"] as const)(
   },
 )
 
-it.each([true, false])("keeps technical details collapsed in the notification center (card loaded: %s)", (loaded) => {
-  const open = vi.fn()
-  render(
-    <NotificationBell
-      notifications={[notification]}
-      messages={loaded ? [message(folder)] : []}
-      actions={{ open, dismiss: vi.fn(), dismissAll: vi.fn(), respond: vi.fn(), reply: vi.fn() }}
-    />,
-  )
-  fireEvent.click(screen.getByRole("button", { name: /Notificações/ }))
-  const row = screen.getByTestId("notification-row")
-  expect(row.querySelector(".notification-title")).toHaveTextContent("Conceder acesso à pasta")
-  expect(row.querySelector(".notification-body")).toHaveTextContent(
-    "Permitir Leitura e escrita em /workspace/phase-a para este bot",
-  )
-  const technical = within(row).getByText("Detalhes técnicos").closest(".ds-disclosure")
-  expect(technical).toHaveAttribute("data-open", "false")
-  expect(technical?.querySelector("pre")).toHaveTextContent("folder_access_request")
-  fireEvent.click(within(row).getByRole("button", { name: "Abrir e revisar" }))
-  expect(open).toHaveBeenCalledWith(notification)
-})
+it.each([true, false])(
+  "keeps technical details in the full review instead of the notification center (card loaded: %s)",
+  (loaded) => {
+    const open = vi.fn()
+    render(
+      <NotificationBell
+        notifications={[notification]}
+        messages={loaded ? [message(folder)] : []}
+        actions={{ open, dismiss: vi.fn(), dismissAll: vi.fn(), respond: vi.fn(), reply: vi.fn() }}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: /Notificações/ }))
+    const row = screen.getByTestId("notification-row")
+    expect(row.querySelector(".notification-title")).toHaveTextContent("Conceder acesso à pasta")
+    expect(row.querySelector(".notification-body")).toHaveTextContent(
+      "Permitir Leitura e escrita em /workspace/phase-a para este bot",
+    )
+    expect(within(row).queryByRole("button", { name: "Detalhes técnicos", exact: true })).toBeNull()
+    fireEvent.click(within(row).getByRole("button", { name: "Abrir e revisar" }))
+    expect(open).toHaveBeenCalledWith(notification)
+  },
+)
 
 it("opens a team proposal card without notification approval actions", () => {
   const teamApproval: ApprovalPart = {

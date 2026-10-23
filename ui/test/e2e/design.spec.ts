@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
-import { showBotChat, showBotRoutines } from "./home-navigation"
+import { showBotChat, showBotDetails, showBotRoutines } from "./home-navigation"
 
 const capture = process.env.DESIGN_CAPTURE
 test.use({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" })
@@ -21,8 +21,7 @@ test("design: stable workspace captures", async ({ page }) => {
     await expect(page.getByRole("heading", { name: "Rotinas", exact: true })).toBeVisible()
     if (capture) await page.screenshot({ path: `../docs/qa/design/${capture}-cron-${theme}.png` })
     await showBotChat(page)
-    if (!(await page.getByRole("button", { name: "Preview do projeto" }).isVisible()))
-      await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
+    await showBotDetails(page)
     await page.getByRole("button", { name: "Preview do projeto" }).click()
     await expect(page.getByRole("button", { name: "Voltar ao chat" })).toBeVisible()
     if (capture) await page.screenshot({ path: `../docs/qa/design/${capture}-preview-${theme}.png` })
@@ -43,8 +42,7 @@ for (const theme of ["dark", "light"]) {
       if (screen === "cron") await showBotRoutines(page)
       if (screen === "preview") {
         await showBotChat(page)
-        if (!(await page.getByRole("button", { name: "Preview do projeto" }).isVisible()))
-          await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
+        await showBotDetails(page)
         await page.getByRole("button", { name: "Preview do projeto" }).click()
       }
       const results = await new AxeBuilder({ page }).analyze()
@@ -56,7 +54,7 @@ for (const theme of ["dark", "light"]) {
 test("design: theme choice is saved through settings and survives reload", async ({ page }) => {
   test.skip(capture === "before")
   await page.goto("/")
-  await page.getByRole("button", { name: "Você Local · grátis", exact: true }).click()
+  await page.getByRole("button", { name: "Você", exact: true }).click()
   await page.getByLabel("Tema", { exact: true }).selectOption("light")
   await page.getByRole("button", { name: "Salvar preferências" }).click()
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light")

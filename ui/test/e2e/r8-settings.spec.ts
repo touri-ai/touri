@@ -14,7 +14,7 @@ for (const width of [1440, 1100]) {
       await page.addInitScript((theme) => localStorage.setItem("touri.appearance.v1", theme), theme)
       await page.goto("/test/e2e/r8-settings-harness.html")
       await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
-      await expect(page.getByRole("button", { name: "Você Local · grátis", exact: true })).toBeVisible()
+      await expect(page.getByRole("button", { name: "Você", exact: true })).toBeVisible()
       const shot = async (view: string) => {
         await page.screenshot({ path: `${evidence}/${phase}-${view}${width === 1100 ? "-narrow" : ""}-${theme}.png` })
         if (phase === "after") {
@@ -52,6 +52,7 @@ for (const width of [1440, 1100]) {
       }
       if (phase === "after") {
         await page.getByRole("dialog").getByRole("tab", { name: "Rotinas", exact: true }).click()
+        await page.getByRole("dialog").getByRole("button", { name: "Gerenciar rotinas", exact: true }).click()
         await expect(page.getByRole("dialog")).toHaveCount(0)
         const routines = page.getByRole("region", { name: "Rotinas", exact: true })
         await expect(routines).toBeFocused()
@@ -60,7 +61,7 @@ for (const width of [1440, 1100]) {
           path: `${evidence}/${phase}-bot-routines${width === 1100 ? "-narrow" : ""}-${theme}.png`,
         })
       } else await page.getByRole("button", { name: "Fechar diálogo" }).click()
-      await page.getByRole("button", { name: /Você Local/ }).click()
+      await page.getByRole("button", { name: "Você", exact: true }).click()
       await shot("preferences")
       if (phase === "after") {
         await expect(page.getByRole("dialog")).not.toContainText("LOCAL PREFERENCES")

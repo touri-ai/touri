@@ -4050,6 +4050,8 @@ a {
   box-decoration-break: clone;
 }
 .markdown-content .markdown-table {
+  scrollbar-width: auto;
+  scrollbar-color: var(--border-strong) var(--surface);
   overflow-x: auto;
   max-width: 100%;
   margin-block: var(--space-12);
@@ -4240,4 +4242,34 @@ a {
 .onboarding-secondary .text-button {
   padding: 0;
   font-size: inherit;
+}
+
+.message-more,
+.notification-mark-read {
+  opacity: 0;
+}
+.message-row:hover .message-more,
+.message-more:hover,
+.message-more:focus-visible,
+.notification-row:hover .notification-mark-read,
+.notification-row[data-secondary-actions="true"] .notification-mark-read,
+.notification-mark-read:focus-visible {
+  opacity: 1;
+}
+.approval-notice {
+  display: none;
+}
+@media (max-width: 600px) {
+  .approval-notice {
+    display: flex;
+  }
+  body:has(.sidebar-drawer[open]) .approval-notice {
+    display: none;
+  }
+}
+
+@media (hover: none) {
+  .message-more {
+    opacity: 1;
+  }
 }

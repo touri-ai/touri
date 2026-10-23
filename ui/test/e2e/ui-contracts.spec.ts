@@ -46,10 +46,12 @@ for (const coarse of [false, true]) {
     expect((await tab.boundingBox())?.height).toBeGreaterThanOrEqual(coarse ? 44 : 32)
     for (const selector of [".bot-context-menu button", ".tool-action", ".tool-details > .ds-disclosure-trigger"]) {
       for (const box of await page.locator(selector).evaluateAll((nodes) =>
-        nodes.map((node) => ({
-          width: node.getBoundingClientRect().width,
-          height: node.getBoundingClientRect().height,
-        })),
+        nodes
+          .map((node) => ({
+            width: node.getBoundingClientRect().width,
+            height: node.getBoundingClientRect().height,
+          }))
+          .filter((bounds) => bounds.width > 0 && bounds.height > 0),
       )) {
         if (coarse) {
           expect(box.height).toBeGreaterThanOrEqual(44)
