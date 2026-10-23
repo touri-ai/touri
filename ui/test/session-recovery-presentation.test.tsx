@@ -197,6 +197,39 @@ it("never treats an unrelated later success as resolution", () => {
   expect(screen.getByRole("note")).toHaveTextContent(sessionRecoveryDiagnosticText)
 })
 
+it("moves an inline ancestor diagnostic into the successful continuation details", () => {
+  const original = getRun({ id: "original", status: "interrupted", replyMessageId: "partial" })
+  const recovered = getRun({ automaticResumeFromRunId: original.id })
+  const partial = getMessage({
+    id: "partial",
+    runId: original.id,
+    status: "failed",
+    text: "Conferência iniciada.",
+    parts: [getDiagnostic(), { type: "text", text: "Conferência iniciada." }],
+  })
+  const messages = [partial, getMessage()]
+  const persisted = JSON.stringify(messages)
+
+  render(getView(messages, [original, recovered]))
+
+  expect(screen.queryByText(sessionRecoveryDiagnosticText)).toBeNull()
+  expect(screen.getByText(/Conferência iniciada/)).toBeVisible()
+  expect(screen.getByText(/Relatório concluído/)).toBeVisible()
+  fireEvent.click(screen.getByRole("button", { name: /Atividade/ }))
+  expect(screen.getByText(sessionRecoveryDiagnosticText)).toBeVisible()
+  expect(JSON.stringify(messages)).toBe(persisted)
+})
+
+it("keeps an inline ancestor diagnostic visible while its continuation is running", () => {
+  const original = getRun({ id: "original", status: "interrupted", replyMessageId: "partial" })
+  const recovered = getRun({ automaticResumeFromRunId: original.id, status: "running", finishedAt: null })
+  const partial = getMessage({ id: "partial", runId: original.id, parts: [getDiagnostic()] })
+
+  render(getView([partial, getMessage({ status: "streaming" })], [original, recovered]))
+
+  expect(screen.getByRole("note")).toHaveTextContent(sessionRecoveryDiagnosticText)
+})
+
 it("leaves distant diagnostics visible instead of traversing growing history", () => {
   const intervening = Array.from({ length: 33 }, (_, index) =>
     getMessage({ id: `user-${index}`, role: "user", runId: null, text: `Nota ${index}`, parts: [], createdAt: 2 }),
