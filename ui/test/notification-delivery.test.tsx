@@ -12,16 +12,15 @@ afterEach(() => {
 })
 const native = () => Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, configurable: true })
 
-it("explains closed-app delivery on web in one hint without calling desktop APIs", () => {
+it("explains opt-in closed-app web delivery without calling desktop APIs", async () => {
   const { container } = render(<NotificationDeliverySettings enabled />)
 
-  const hint = screen.getByText(
-    "Com o touri fechado, você não recebe avisos. Ao abrir, as solicitações pendentes aparecem.",
-  )
+  const hint = screen.getByText(/Ative avisos neste aparelho para receber novidades/)
+  await screen.findByText(/Este navegador ainda não permite avisos aqui/)
 
   expect(hint).toBeVisible()
   expect(hint).toHaveClass("field-help")
-  expect(container.querySelectorAll("p")).toHaveLength(1)
+  expect(container.querySelectorAll("p")).toHaveLength(2)
   expect(host.invoke).not.toHaveBeenCalled()
   expect(screen.queryByRole("button")).toBeNull()
 })

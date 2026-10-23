@@ -36,7 +36,7 @@ test("schema 49 enables fast conversation without replaying earlier migrations a
     name: "Fixture",
     fast_conversation: 1,
   })
-  expect(migrated.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({ value: "50" })
+  expect(migrated.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({ value: "51" })
   migrated.exec("UPDATE bots SET fast_conversation=0")
   migrated.close()
   databases.delete(migrated)

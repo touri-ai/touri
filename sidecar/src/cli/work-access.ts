@@ -457,6 +457,8 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
       return canAccessBot({ personId, role, botId: tab.owner_bot_id }) ? null : notFound
     }
     if (role === "admin") return null
+    if (pathname === "/push" && ["GET", "PUT", "DELETE"].includes(verb)) return null
+    if (pathname === "/push/test" && verb === "POST") return null
     if (verb === "POST" && pathname === "/ws-ticket") return null
     // The browser handler verifies the original requester or bot owner for each control change.
     if (

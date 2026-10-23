@@ -1918,6 +1918,17 @@ export const init = async (
         handler: async ({ params, body, signal }) => {
           const record = requestRecord(body)
           if (!record) return errorResponse(400, "INVALID_ARGS", "Request body must be an object")
+          const session = deviceSession(signal)
+          if (
+            record.as === undefined &&
+            session?.automation === "notices" &&
+            session.person?.role === "admin" &&
+            session.active()
+          ) {
+            const announce = kernel.services.use("notify.channelNotice")
+            if (announce && typeof record.text === "string")
+              return announce({ threadId: params.id ?? "", text: record.text })
+          }
           const parsed = messageFromRequest({ threadId: params.id ?? "", body: record })
           if (!parsed.input || parsed.error)
             return errorResponse(400, "INVALID_ARGS", parsed.error ?? "Invalid message")

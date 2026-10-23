@@ -26,11 +26,23 @@ export const buildDeepLink = ({
   return `touri://open?${params.toString()}`
 }
 
-export const nativeNotificationTitle = (notification: NotificationRecord): string => {
+export const nativeNotificationTitle = (
+  notification: NotificationRecord,
+  locale = Intl.DateTimeFormat().resolvedOptions().locale,
+): string => {
   if (notification.kind !== "approval")
-    return notification.botName ? `${notification.botName}: ${notification.title}` : notification.title
+    return notification.botName
+      ? `${notification.botName}: ${getNativeNoticeTitle(notification.title, locale)}`
+      : getNativeNoticeTitle(notification.title, locale)
   const action = (notification.body.trim() || notification.title).replace(/\.$/, "")
   return `${notification.botName ?? "touri"} precisa de você: autorizar ${action.charAt(0).toLocaleLowerCase()}${action.slice(1)}.`
+}
+
+const getNativeNoticeTitle = (title: string, locale: string): string => {
+  if (title === "PR ready") return locale.startsWith("pt") ? "Revisão pronta" : "Review ready"
+  if (title === "Automatic notice") return locale.startsWith("pt") ? "Aviso automático" : "Automatic notice"
+
+  return title
 }
 
 /** Only application-authored keys are translated; bot content keeps its original language. */

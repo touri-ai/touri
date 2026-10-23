@@ -8,6 +8,9 @@ for (const viewport of [
 ]) {
   test(`notification preferences save on ${viewport.width}px web screens`, async ({ page }) => {
     await page.setViewportSize(viewport)
+    await page.route("**/api/v1/push", (route) =>
+      route.fulfill({ json: { publicKey: "synthetic-public-key", subscribed: false } }),
+    )
     await page.goto("/test/e2e/home-harness.html")
     if (viewport.width < 500) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
     await page.getByRole("button", { name: /Você Local/ }).click()
@@ -15,7 +18,7 @@ for (const viewport of [
     await dialog.getByRole("tab", { name: "Notificações", exact: true }).click()
     await dialog.getByText("Escolher avisos e horário silencioso", { exact: true }).click()
 
-    await expect(dialog).toContainText("Com o touri fechado, você não recebe avisos.")
+    await expect(dialog).toContainText("Ative avisos neste aparelho para receber novidades")
     await expect(dialog.getByRole("combobox", { name: "Aprovação", exact: true })).toHaveCount(0)
     await expect(dialog.getByRole("combobox", { name: "Pergunta", exact: true })).toHaveCount(0)
     await expect(dialog.getByRole("combobox", { name: "Precisa de você", exact: true })).toHaveCount(0)

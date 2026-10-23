@@ -63,7 +63,10 @@ export const createNotifier = ({ kernel, store, hub }: { kernel: Kernel; store: 
     })
     kernel.publish({ type: "notification.created", notification })
     hub.broadcast({ seq, type: "notify", notification })
-    if (!options.silent) sendNative(notification)
+    if (!options.silent) {
+      sendNative(notification)
+      kernel.services.use("notify.push")?.(notification)
+    }
     return notification
   }
 

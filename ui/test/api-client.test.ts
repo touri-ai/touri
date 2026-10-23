@@ -4,6 +4,11 @@ import { apiRouteKeys, createApiClient, resolveSidecarEndpoint, type TauriInvoke
 
 const contractRouteKeys: Array<keyof ApiRoutes> = [
   "GET /session",
+  "GET /push",
+  "PUT /push",
+  "DELETE /push",
+  "POST /push/test",
+  "POST /threads/:id/notices",
   "GET /people",
   "POST /pairing-codes",
   "GET /invites",
