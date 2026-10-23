@@ -4,7 +4,7 @@ import { openGlobalPage } from "./home-navigation"
 
 for (const theme of ["light", "dark"] as const) {
   for (const width of [1440, 390] as const) {
-    test(`work stays reachable without a duplicate summary: ${theme}, ${width}px`, async ({ page }) => {
+    test(`work stays reachable without a duplicate summary: ${theme}, ${width}px`, async ({ page }, info) => {
       test.setTimeout(45_000)
       await page.setViewportSize({ width, height: 900 })
       await page.emulateMedia({ reducedMotion: "reduce" })
@@ -22,6 +22,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
       const audit = await new AxeBuilder({ page }).withRules(["label-content-name-mismatch"]).analyze()
       expect(audit.violations).toEqual([])
+      await page.screenshot({ path: info.outputPath(`work-summary-${theme}-${width}.png`), animations: "disabled" })
     })
   }
 }

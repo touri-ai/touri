@@ -52,16 +52,16 @@ it.each([
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   fireEvent.click(screen.getByRole("tab", { name: /^Work,/ }))
 
-  fireEvent.click(screen.getByRole("button", { name: /^Equipe QA/ }))
-  fireEvent.click(await screen.findByRole("button", { name: /Membros do canal/ }))
-  await screen.findByRole("complementary", { name: "Painel do canal Equipe QA" })
-  const invite = screen.queryByRole("button", { name: "Convidar pessoa", exact: true })
+  fireEvent.click(await screen.findByRole("button", { name: /^Equipe QA/ }))
+  await screen.findByRole("textbox", { name: "Mensagem para Equipe QA" })
+  fireEvent.click(screen.getByRole("button", { name: "Ações do canal Equipe QA", exact: true }))
+  const invite = screen.queryByRole("menuitem", { name: "Convidar pessoa", exact: true })
   if (!canInvite) {
     expect(invite).not.toBeInTheDocument()
     return
   }
 
-  expect(await screen.findByRole("button", { name: "Convidar pessoa" })).toBeVisible()
+  expect(await screen.findByRole("menuitem", { name: "Convidar pessoa", exact: true })).toBeVisible()
 })
 
 it("keeps the advanced native server setting out of the browser app", () => {
