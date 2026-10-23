@@ -100,7 +100,11 @@ test("large history keeps the trust boundary within the bounded carry-over", asy
   }))
   spyOn(store, "activePath").mockImplementation(() => messages)
 
-  const packet = buildHandoffPacket({ kernel: fixture.kernel, thread: getThread(), reason: "session rejected" })
+  const packet = buildHandoffPacket({
+    kernel: fixture.kernel,
+    thread: getThread("Demo ".repeat(10_000)),
+    reason: "session rejected",
+  })
 
   expect(packet.length).toBeLessThanOrEqual(32_000)
   expect(packet.startsWith("[touri handoff]")).toBe(true)
@@ -111,12 +115,12 @@ test("large history keeps the trust boundary within the bounded carry-over", asy
   expect(packet).toContain("Older excerpts:")
 })
 
-const getThread = (): Thread => ({
+const getThread = (title = "Conversa"): Thread => ({
   id: "thread",
   botId: "bot",
   parentThreadId: null,
   kind: "main",
-  title: "Conversa",
+  title,
   activeLeafId: null,
   routineRunId: null,
   cwdOverride: null,
