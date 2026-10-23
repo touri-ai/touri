@@ -183,14 +183,14 @@ test("large snapshot building keeps event-loop p99 below 50 ms with five active 
     expect(inserted.success).toBe(true)
   })
   const streaming = setInterval(() => {
-    active.forEach((index) =>
+    active.forEach((index) => {
       store.appendDelta({
         threadId: `thread-${index}`,
         messageId: `stream-${index}`,
         partIndex: 0,
         delta: "fixture ".repeat(32),
-      }),
-    )
+      })
+    })
   }, 20)
   cleanups.add(() => clearInterval(streaming))
 
