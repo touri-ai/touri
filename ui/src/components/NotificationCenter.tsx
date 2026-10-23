@@ -137,6 +137,7 @@ const NotificationRow = ({
   const [text, setText] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>(null)
+  const kindLabel = item.kind === "notice" && item.botId === null ? t("Notice") : t(KIND_KEY[item.kind])
   const resolved = isResolvedNotification(item)
   const teamProposal = isTeamCreateApprovalNotice(item)
   const approval = item.kind === "approval" ? approvalNotificationSummary(item, messages) : null
@@ -209,7 +210,7 @@ const NotificationRow = ({
       <div className="notification-main">
         <div className="notification-head">
           <strong>{item.botName ?? "touri"}</strong>
-          <Badge tone={KIND_TONE[item.kind]}>{t(KIND_KEY[item.kind])}</Badge>
+          <Badge tone={KIND_TONE[item.kind]}>{kindLabel}</Badge>
           {resolved && isFailureNotice(item) && <span>{t("Interrupção anterior · resolvida")}</span>}
           <time
             dateTime={new Date(item.createdAt).toISOString()}

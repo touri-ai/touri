@@ -270,6 +270,7 @@ export const ptBR = {
     "Apagar {name} remove todas as conversas, mensagens e rotinas do grupo. Esta ação não pode ser desfeita.",
   "Os bots e suas conversas individuais são preservados.": "Os bots e suas conversas individuais são preservados.",
   "Digite o nome do grupo: {name}": "Digite o nome do grupo: {name}",
+  Notice: "Aviso",
   "Aviso do bot": "Aviso do bot",
   "Sempre avisar": "Sempre avisar",
   "Aprovações, perguntas e pedidos para você assumir continuam alertando durante o horário silencioso.":
@@ -3732,6 +3733,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "Deleting {name} removes all conversations, messages and routines in the group. This action cannot be undone.",
   "Os bots e suas conversas individuais são preservados.": "Bots and their individual conversations are kept.",
   "Digite o nome do grupo: {name}": "Type the group name: {name}",
+  Notice: "Notice",
   "Aviso do bot": "Bot notice",
   "Sempre avisar": "Always alert",
   Som: "Sound",
