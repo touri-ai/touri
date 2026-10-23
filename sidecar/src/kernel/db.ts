@@ -102,8 +102,15 @@ export const openDatabase = ({
     : null
   // A committed version is the migration checkpoint. Replaying old writes delays every current-store restart.
   if (current?.value === String(SCHEMA_VERSION)) return database
+  if (current?.value === "50") {
+    database.transaction(() => database.exec(webPushSql))()
+    return database
+  }
   if (current?.value === "49") {
-    database.transaction(() => applyFastConversationSchema(database))()
+    database.transaction(() => {
+      applyFastConversationSchema(database)
+      database.exec(webPushSql)
+    })()
     return database
   }
   if (current?.value === "47" || current?.value === "48") {
@@ -112,6 +119,7 @@ export const openDatabase = ({
         database.exec(hotReadIndexesSql)
       database.exec(requestRunsSql)
       applyFastConversationSchema(database)
+      database.exec(webPushSql)
     })()
     return database
   }

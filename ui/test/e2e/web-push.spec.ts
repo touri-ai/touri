@@ -52,12 +52,38 @@ test("a repeated push stays deduplicated without an active OS notification", asy
   expect(repeated).toBe(1)
 })
 
-const installDeliveryProbe = async (worker: Worker) => {
+test("a failed display can be retried and only a successful display stays deduplicated", async ({ page, context }) => {
+  await context.grantPermissions(["notifications"])
+  await page.goto("/test/e2e/home-harness.html")
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.register("/push-worker.js", { scope: "/" })
+    await navigator.serviceWorker.ready
+  })
+  const worker = context.serviceWorkers()[0]
+  expect(worker).toBeDefined()
+  if (!worker) return
+  const probe = await installDeliveryProbe(worker, true)
+  cleanups.add(probe.restore)
+
+  const failed = await worker.evaluate(
+    'showPushOnce({ id: 4243 }, { body: "Aviso fictício", tag: "touri-4243" }).catch(() => "failed")',
+  )
+  await worker.evaluate('showPushOnce({ id: 4243 }, { body: "Aviso fictício", tag: "touri-4243" })')
+  await worker.evaluate('showPushOnce({ id: 4243 }, { body: "Aviso fictício", tag: "touri-4243" })')
+
+  expect(failed).toBe("failed")
+  expect(await probe.getCount()).toBe(2)
+})
+
+const installDeliveryProbe = async (worker: Worker, failFirst = false) => {
   // Headless OS delivery is inconsistent; keep real IndexedDB and replace only the external display API.
   await worker.evaluate(`(() => {
     const original = self.registration.showNotification.bind(self.registration)
     const count = { value: 0 }
-    self.registration.showNotification = async () => { count.value += 1 }
+    self.registration.showNotification = async () => {
+      count.value += 1
+      if (${failFirst} && count.value === 1) throw new Error("Synthetic display failure")
+    }
     self.touriPushProbe = {
       getCount: () => count.value,
       restore: () => { self.registration.showNotification = original },

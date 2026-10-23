@@ -64,9 +64,7 @@ test("web notification preferences explain closed-app delivery", async ({ page }
   await expect(page.locator(".approval-notice")).toBeVisible()
   await page.evaluate(() => window.dispatchEvent(new Event("touri-report-problem")))
   await page.getByRole("tab", { name: "Notificações", exact: true }).click()
-  await expect(
-    page.getByText("Com o touri fechado, você não recebe avisos. Ao abrir, as solicitações pendentes aparecem."),
-  ).toBeVisible()
+  await expect(page.getByText(/Ative avisos neste aparelho para receber novidades/)).toBeVisible()
 })
 
 for (const source of ["chat"]) {

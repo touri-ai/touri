@@ -53,11 +53,29 @@ const showPushOnce = async (notification, options) => {
     return self.registration.showNotification("touri", options)
   const database = await openSeenDatabase()
   const fresh = await claimNotification(database, notification.id)
-  database.close()
-  if (!fresh) return
-
-  return self.registration.showNotification("touri", options)
+  if (!fresh) {
+    database.close()
+    return
+  }
+  try {
+    await self.registration.showNotification("touri", options)
+  } catch (error) {
+    // A failed system display must not suppress a later delivery attempt.
+    await releaseNotification(database, notification.id)
+    throw error
+  } finally {
+    database.close()
+  }
 }
+
+const releaseNotification = (database, id) =>
+  new Promise((resolve, reject) => {
+    const transaction = database.transaction("seen", "readwrite")
+    transaction.objectStore("seen").delete(id)
+    transaction.oncomplete = () => resolve()
+    transaction.onabort = () => reject(transaction.error)
+    transaction.onerror = () => reject(transaction.error)
+  })
 
 const openSeenDatabase = () =>
   new Promise((resolve, reject) => {

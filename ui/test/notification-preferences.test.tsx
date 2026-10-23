@@ -57,9 +57,7 @@ it("saves global, per-bot, per-type and quiet-hour preferences from web settings
       },
     }),
   )
-  expect(
-    screen.getByText("Com o touri fechado, você não recebe avisos. Ao abrir, as solicitações pendentes aparecem."),
-  ).toBeVisible()
+  expect(screen.getByText(/Ative avisos neste aparelho para receber novidades/)).toBeVisible()
 })
 
 it("summarizes requests without review context and lists them in the notification center", async () => {
