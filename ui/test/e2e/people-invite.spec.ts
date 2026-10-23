@@ -92,13 +92,13 @@ test("an owner invites a person who joins in a second browser context", async ({
   if (await workTab.count()) await workTab.click()
   await page.getByRole("button", { name: "Vendas", exact: true }).click()
   await expect(page.getByRole("textbox", { name: /Mensagem (?:para |em #)Vendas/ })).toBeVisible()
-  await page.locator(".channel-members-button").click()
-  await expect(page.getByRole("button", { name: "Convidar pessoa", exact: true }).first()).toBeVisible()
+  await page.locator(".group-header-actions button[aria-haspopup='menu']").click()
+  await expect(page.getByRole("menuitem", { name: "Convidar pessoa", exact: true })).toBeVisible()
   const beforePath = getImagePath(testInfo, "people-invite-before.png")
   await page.screenshot({ path: beforePath })
   await testInfo.attach("people-invite-before", { path: beforePath, contentType: "image/png" })
 
-  await page.getByRole("button", { name: "Convidar pessoa", exact: true }).first().click()
+  await page.getByRole("menuitem", { name: "Convidar pessoa", exact: true }).click()
   const inviteDialog = page.getByRole("dialog", { name: "Convidar pessoa", exact: true })
   await inviteDialog.getByLabel("Nome", { exact: true }).fill("Ana Lima")
 

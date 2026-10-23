@@ -183,6 +183,7 @@ const openScreen = async (page: Page, screen: Screen, width: number): Promise<Lo
   if (screen === "work-sidebar" || screen === "channel-row-menu") {
     await page.getByRole("tab", { name: /^Work,/ }).click()
     const rows = getSidebar(page).locator(".sidebar-row.channel-row")
+    await expect(rows).toHaveCount(2)
     const geometry = await rows.evaluateAll((elements) =>
       elements.map((element) => {
         const bounds = element.getBoundingClientRect()
@@ -209,7 +210,7 @@ const openScreen = async (page: Page, screen: Screen, width: number): Promise<Lo
     if (screen === "channel-members" || screen === "invite") {
       await page.locator(".channel-members-button").click()
       if (screen === "channel-members") return page.locator(".group-panel")
-      await page.locator(".group-panel .bot-panel-close").click()
+      await page.locator(".group-panel").getByRole("button", { name: "Fechar painel do canal", exact: true }).click()
       await page.locator(".group-header-actions button[aria-haspopup='menu']").click()
       await page.getByRole("menuitem", { name: "Convidar pessoa", exact: true }).click()
       return page.getByRole("dialog").last()

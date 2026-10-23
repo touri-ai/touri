@@ -3,6 +3,7 @@ import { expect, it } from "vitest"
 import App from "../src/App"
 import { t } from "../src/i18n"
 import { getRoutineChannelFixture } from "./fixtures/routine-channel"
+import { chooseRoutineAction } from "./workspaceNavigation"
 
 const openRoutineScreen = async (api: Awaited<ReturnType<typeof getRoutineChannelFixture>>["api"]) => {
   render(<App kernel={{ services: { api } }} />)
@@ -15,9 +16,9 @@ const openRoutineScreen = async (api: Awaited<ReturnType<typeof getRoutineChanne
 
 it("edits a channel routine globally and saves its existing channel conversation", async () => {
   const { api, group, eligibleGroup, otherGroup, thread, routine } = await getRoutineChannelFixture()
-  const routines = await openRoutineScreen(api)
+  await openRoutineScreen(api)
 
-  fireEvent.click(within(routines).getByRole("button", { name: `Editar ${routine.name}` }))
+  await chooseRoutineAction(routine.name, "Editar")
 
   const editor = screen.getByRole("dialog", { name: "Quando?" })
   const destination = within(editor).getByRole("combobox", { name: "Destino dos resultados" })
@@ -86,9 +87,9 @@ it.each(["channel", "bot"])(
   "clears the old conversation when moving a saved routine to a %s destination",
   async (target) => {
     const { api, eligibleGroup, routine } = await getRoutineChannelFixture()
-    const routines = await openRoutineScreen(api)
+    await openRoutineScreen(api)
 
-    fireEvent.click(within(routines).getByRole("button", { name: `Editar ${routine.name}` }))
+    await chooseRoutineAction(routine.name, "Editar")
 
     const editor = screen.getByRole("dialog")
     const destination = within(editor).getByRole("combobox", { name: "Destino dos resultados" })
@@ -110,9 +111,9 @@ it.each(["channel", "bot"])(
 
 it("keeps the test run conversation when activating a routine moved to another channel", async () => {
   const { api, eligibleGroup, routine } = await getRoutineChannelFixture()
-  const routines = await openRoutineScreen(api)
+  await openRoutineScreen(api)
 
-  fireEvent.click(within(routines).getByRole("button", { name: `Editar ${routine.name}` }))
+  await chooseRoutineAction(routine.name, "Editar")
 
   const editor = screen.getByRole("dialog")
   fireEvent.change(within(editor).getByRole("combobox", { name: "Destino dos resultados" }), {
@@ -143,9 +144,9 @@ it.each(["missing", "not-member"])(
       await api.request("PATCH /routines/:id", { groupId, resultsThreadId: null }, { id: routine.id })
     if (state === "not-member") await api.request("PATCH /groups/:id", { memberIds: [otherBot.id] }, { id: group.id })
     const writes = api.calls.filter((call) => call.route === "PATCH /routines/:id").length
-    const routines = await openRoutineScreen(api)
+    await openRoutineScreen(api)
 
-    fireEvent.click(within(routines).getByRole("button", { name: `Editar ${routine.name}` }))
+    await chooseRoutineAction(routine.name, "Editar")
 
     const editor = screen.getByRole("dialog")
     const destination = within(editor).getByRole("combobox", { name: "Destino dos resultados" })
