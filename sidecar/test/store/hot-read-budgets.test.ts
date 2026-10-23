@@ -2,11 +2,13 @@ import type { Database, SQLQueryBindings } from "bun:sqlite"
 import { afterEach, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { getGroupRunsSql } from "../../src/groups/run-queries"
+import { createKernel } from "../../src/kernel"
 import { openDatabase } from "../../src/kernel/db"
 import { WORK_RUNS_SQL } from "../../src/runtime/persistence"
 import { getThreadRunsQuery } from "../../src/runtime/thread-runs-query"
+import { init as initStore } from "../../src/store"
 import { getHistoryQuery, THREAD_MESSAGES_SQL } from "../../src/store/history-query"
 import { getMessageFromRow } from "../../src/store/message-row"
 import { createStoreReader } from "../../src/store/reader"
@@ -156,6 +158,42 @@ test("large snapshot building keeps event-loop p99 below 50 ms with five active 
   const parts = JSON.stringify([{ type: "text", text: "fixture ".repeat(32_768) }])
   db.query("UPDATE messages SET parts_json=? WHERE thread_id='thread-0' AND created_at <= 32").run(parts)
   const signal = new AbortController().signal
+  const runtime = createKernel({ appData: dirname(db.filename) })
+  cleanups.add(() => runtime.stop())
+  await initStore(runtime.kernel)
+  const store = runtime.kernel.services.use("store.api")
+  if (!store) throw new Error("STORE_UNAVAILABLE")
+  const active = Array.from({ length: 5 }, (_, index) => index + 1)
+  active.forEach((index) => {
+    const inserted = store.insertMessage({
+      message: {
+        id: `stream-${index}`,
+        threadId: `thread-${index}`,
+        parentId: null,
+        role: "assistant",
+        kind: "text",
+        status: "streaming",
+        runId: `active-${index}`,
+        text: "",
+        parts: [{ type: "text", text: "" }],
+        sender: null,
+        source: "local",
+      },
+    })
+    expect(inserted.success).toBe(true)
+  })
+  const streaming = setInterval(() => {
+    active.forEach((index) =>
+      store.appendDelta({
+        threadId: `thread-${index}`,
+        messageId: `stream-${index}`,
+        partIndex: 0,
+        delta: "fixture ".repeat(32),
+      }),
+    )
+  }, 20)
+  cleanups.add(() => clearInterval(streaming))
+
   const before = await getLagBudget(async () => {
     const rows = db.query(THREAD_MESSAGES_SQL).all("thread-0") as RawMessage[]
     const body = new TextEncoder().encode(JSON.stringify({ messages: rows.map(getMessageFromRow) }))
@@ -169,6 +207,13 @@ test("large snapshot building keeps event-loop p99 below 50 ms with five active 
     `five active runs; 5 ms sampling; event-loop before ${JSON.stringify(before)}; after ${JSON.stringify(after)}`,
   )
 
+  clearInterval(streaming)
+  await store.flushWritesAsync?.()
+  active.forEach((index) => {
+    expect(
+      store.activePath({ threadId: `thread-${index}`, leafId: `stream-${index}` })[0]?.text.length,
+    ).toBeGreaterThan(0)
+  })
   expect(after.samples).toBeGreaterThan(50)
   expect(after.p99).toBeLessThan(50)
   expect(after.maximum).toBeLessThan(500)
@@ -238,9 +283,12 @@ const getFixture = async (): Promise<Database> => {
   const provider = fixture.bots[0]?.provider ?? "fixture"
   db.transaction(() => {
     Array.from({ length: 6 }, (_, index) => index).forEach((index) => {
-      db.query(
-        "INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES (?,?,?,'/tmp/fixture-bot',1,1)",
-      ).run(`bot-${index}`, `Fixture ${index}`, provider)
+      db.query("INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES (?,?,?,?,1,1)").run(
+        `bot-${index}`,
+        `Fixture ${index}`,
+        provider,
+        join(root, "bots", `bot-${index}`),
+      )
       db.query("INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES (?,?,'Fixture',1,1)").run(
         `thread-${index}`,
         `bot-${index}`,
