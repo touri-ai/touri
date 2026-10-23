@@ -6,7 +6,7 @@ import { join } from "node:path"
 import type { MessagePart, RecoveryTask, Run } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
 import { createPerformanceStageTracker } from "../../src/kernel/performance"
-import { init as initNotify } from "../../src/notify"
+import { init as initNotify, NOTIFICATION_HISTORY_RECONCILE_SQL } from "../../src/notify"
 import { createNotifier } from "../../src/notify/notifier"
 import { createRecoverySync } from "../../src/notify/recovery"
 import { createSseHub } from "../../src/notify/sse"
@@ -177,6 +177,135 @@ test("restart history reconcile uses bounded reads and a persisted stage marker"
     null,
   )
 })
+
+test("historical reconciliation looks up runs by conversation instead of unrelated successful history", async () => {
+  const h = await getFixture({
+    beforeNotify: (database) => {
+      database.exec(`WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<200)
+        INSERT INTO threads(id,bot_id,title,created_at,updated_at)
+        SELECT 'other-'||x,'bot-a','Notas fictícias',1,1 FROM n;
+        WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<20000)
+        INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at,finished_at)
+        SELECT 'other-run-'||x,'other-'||(1+x%200),'bot-a','codex','user','succeeded',1,2 FROM n;
+        WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<50)
+        INSERT INTO notifications(kind,level,bot_id,thread_id,title,body,created_at)
+        SELECT 'turn-failed','error','bot-a','thread-a','Brisa fictícia parou','Revise a tarefa fictícia',3 FROM n;`)
+    },
+  })
+
+  const plan = h.database.query(`EXPLAIN QUERY PLAN ${NOTIFICATION_HISTORY_RECONCILE_SQL}`).all(0, 50) as Array<{
+    detail: string
+  }>
+  const runLookups = plan.map((step) => step.detail).filter((detail) => detail.startsWith("SEARCH r "))
+  const samples = Array.from({ length: 10 }, () => {
+    const start = performance.now()
+    h.database.query(NOTIFICATION_HISTORY_RECONCILE_SQL).all(0, 50)
+    return performance.now() - start
+  })
+
+  console.info(
+    JSON.stringify({
+      probe: "notification-history",
+      unrelatedRuns: 20000,
+      conversations: 200,
+      notifications: 50,
+      runLookups,
+      samples,
+    }),
+  )
+  expect(runLookups).toHaveLength(2)
+  expect(runLookups.every((detail) => detail.includes("runs_thread (thread_id=?)"))).toBe(true)
+  expect(plan.some((step) => step.detail.startsWith("SCAN r"))).toBe(false)
+})
+
+test.each(["root", "member", "direct", "routine"])(
+  "restart keeps %s failure attention when only another bot succeeded",
+  async (scope) => {
+    const h = await getFixture({
+      beforeNotify: (database) => saveHistoricalBotFailure(database, scope, "bot-b"),
+    })
+
+    const store = createNotificationStore({ db: h.database })
+    const notification = store.byRequestId("recovery:run:failed-original")
+
+    expect(notification?.resolvedAt).toBeNull()
+    expect(h.database.query("SELECT status FROM runs WHERE id = 'failed-original'").get()).toEqual({ status: "failed" })
+    expect(h.database.query("SELECT COUNT(*) AS count FROM runs").get()).toEqual({ count: 2 })
+  },
+)
+
+test.each(["root", "member", "direct", "routine"])(
+  "restart resolves %s failure attention after the same bot succeeded",
+  async (scope) => {
+    const h = await getFixture({
+      beforeNotify: (database) => saveHistoricalBotFailure(database, scope, "bot-a"),
+    })
+
+    const notification = createNotificationStore({ db: h.database }).byRequestId("recovery:run:failed-original")
+
+    expect(notification?.resolution).toBe("expired")
+    expect(notification?.resolvedAt).not.toBeNull()
+    expect(h.database.query("SELECT status FROM runs WHERE id = 'failed-original'").get()).toEqual({ status: "failed" })
+  },
+)
+
+test("restart resolves a member's successful retry on a root owned by another bot", async () => {
+  const h = await getFixture({
+    beforeNotify: (database) => {
+      saveHistoricalBotFailure(database, "root", "bot-a")
+      database.query("UPDATE threads SET bot_id = 'bot-b' WHERE id = 'thread-a'").run()
+    },
+  })
+
+  const notification = createNotificationStore({ db: h.database }).byRequestId("recovery:run:failed-original")
+
+  expect(notification?.resolution).toBe("expired")
+})
+
+test.each(["bot-a", "bot-b"])("restart preserves uncertain effects after success by %s", async (botId) => {
+  const h = await getFixture({
+    beforeNotify: (database) => {
+      saveHistoricalBotFailure(database, "root", botId)
+      const work = createWorkState({ database, now: () => 100 })
+      saveUncertainEffect(work, "failed-original")
+    },
+  })
+
+  const notification = createNotificationStore({ db: h.database }).byRequestId("recovery:run:failed-original")
+  const work = h.work.rebuild({ turnId: "failed-original" })
+
+  expect(notification?.resolvedAt).toBeNull()
+  expect(work).toHaveLength(1)
+})
+
+const saveHistoricalBotFailure = (database: Database, scope: string, laterBotId: string) => {
+  if (scope === "root" || scope === "member")
+    database.exec(`INSERT INTO bot_groups(id,name,color,avatar_shape,avatar_seed,coordinator_bot_id,created_at,updated_at)
+      VALUES ('group-a','Caderno fictício','#2563eb','classic-none','fixture','bot-a',1,1);
+      UPDATE threads SET group_id = 'group-a' WHERE id = 'thread-a'`)
+  if (scope === "member")
+    database.exec(`INSERT INTO threads(id,bot_id,title,group_thread_id,created_at,updated_at)
+      VALUES ('member-a','bot-a','Brisa fictícia','thread-a',1,1)`)
+  if (scope === "routine")
+    database.exec(`INSERT INTO routines(id,bot_id,name,prompt,cron,timezone,created_at,updated_at)
+      VALUES ('routine-a','bot-a','Resumo fictício','Organize notas fictícias','0 9 * * *','UTC',1,1)`)
+
+  const executionThreadId = scope === "member" ? "member-a" : "thread-a"
+  const kind = scope === "routine" ? "routine-failed" : "turn-failed"
+  database
+    .query(`INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at,finished_at)
+    VALUES ('failed-original',?,'bot-a','codex','user','failed',1,2),
+      ('later-success',?,?,'codex','user','succeeded',4,5)`)
+    .run(executionThreadId, executionThreadId, laterBotId)
+  if (scope === "routine")
+    database.exec(`INSERT INTO routine_runs(id,routine_id,thread_id,run_id,scheduled_for,status,trigger_source,finished_at)
+      VALUES ('routine-original','routine-a','thread-a','failed-original',1,'failed','cron',2);
+      UPDATE runs SET routine_run_id = 'routine-original' WHERE id = 'failed-original'`)
+  database
+    .query(`INSERT INTO notifications(kind,level,bot_id,thread_id,request_id,title,body,created_at)
+    VALUES (?,'error','bot-a','thread-a','recovery:run:failed-original','Brisa fictícia parou','Revise a tarefa fictícia',3)`)
+    .run(kind)
+}
 
 test("uncertain effects require their existing journal key on every dismissal surface and preserve history", async () => {
   const h = await getFixture()

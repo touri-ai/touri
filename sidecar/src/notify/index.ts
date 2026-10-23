@@ -149,6 +149,19 @@ type HistoryReconcileBatchOptions = {
   signal: AbortSignal
 }
 
+// Keep member threads outermost so unrelated successful runs never enter their lookup.
+export const NOTIFICATION_HISTORY_RECONCILE_SQL = `SELECT n.id,
+  (EXISTS(SELECT 1 FROM threads t JOIN runs r ON r.thread_id=t.id
+    WHERE t.id=n.thread_id AND t.group_thread_id IS NULL AND r.bot_id=n.bot_id
+      AND r.status='succeeded' AND r.finished_at>n.created_at)
+   OR EXISTS(SELECT 1 FROM threads t CROSS JOIN runs r INDEXED BY runs_thread ON r.thread_id=t.id
+    WHERE t.group_thread_id=n.thread_id AND r.bot_id=n.bot_id
+      AND r.status='succeeded' AND r.finished_at>n.created_at)) AS expired
+  FROM notifications n
+  WHERE n.id>? AND n.id<=? AND n.resolved_at IS NULL
+    AND n.kind IN ('turn-failed','routine-failed','routine-deferred')
+  ORDER BY n.id LIMIT 50`
+
 const HISTORY_RECONCILE_KEY = "notification.history-reconcile"
 
 const getNewHistoryReconcileProgress = (database: Database): HistoryReconcileProgress => {
@@ -209,19 +222,10 @@ const reconcileHistoryBatch = async ({
 
   const upper = Math.min(progress.cursor + 50, progress.upper)
   const batch = () => {
-    const rows = database
-      .query(`SELECT n.id,
-        (EXISTS(SELECT 1 FROM threads t JOIN runs r ON r.thread_id=t.id
-          WHERE t.id=n.thread_id AND t.group_thread_id IS NULL AND t.bot_id=n.bot_id
-            AND r.status='succeeded' AND r.finished_at>n.created_at)
-         OR EXISTS(SELECT 1 FROM threads t JOIN runs r ON r.thread_id=t.id
-          WHERE t.group_thread_id=n.thread_id AND t.bot_id=n.bot_id
-            AND r.status='succeeded' AND r.finished_at>n.created_at)) AS expired
-        FROM notifications n
-        WHERE n.id>? AND n.id<=? AND n.resolved_at IS NULL
-          AND n.kind IN ('turn-failed','routine-failed','routine-deferred')
-        ORDER BY n.id LIMIT 50`)
-      .all(progress.cursor, upper) as Array<{ id: number; expired: number }>
+    const rows = database.query(NOTIFICATION_HISTORY_RECONCILE_SQL).all(progress.cursor, upper) as Array<{
+      id: number
+      expired: number
+    }>
     rows
       .filter((item) => item.expired === 1)
       .forEach((item) => {
