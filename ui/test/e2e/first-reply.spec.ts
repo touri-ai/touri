@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test"
 
-[1440, 390].forEach((width) => {
-  ["dark", "light"].forEach((theme) => {
+const widths = [1440, 390]
+const themes = ["dark", "light"]
+
+widths.forEach((width) => {
+  themes.forEach((theme) => {
     test(`first reply replaces preparation before completion at ${width}px in ${theme}`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 })
       await page.goto(`/test/e2e/chat-activity-harness.html?scene=streaming&theme=${theme}`)
