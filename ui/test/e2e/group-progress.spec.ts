@@ -6,6 +6,8 @@ for (const viewport of [
   { width: 390, height: 844 },
 ]) {
   test(`channel progress: one execution and global stop at ${viewport.width}`, async ({ page }, testInfo) => {
+    // Cold module loading shares this deadline with the control and cancellation assertions.
+    test.setTimeout(60_000)
     await page.setViewportSize(viewport)
     await page.emulateMedia({ reducedMotion: "reduce" })
     await page.goto("/test/e2e/group-progress-harness.html")

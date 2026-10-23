@@ -81,7 +81,7 @@ import { ErrorDetails, ErrorText } from "./ErrorDetails"
 import { ErrorNotice } from "./ErrorNotice"
 import { EvidenceContext } from "./EvidenceGallery"
 import { FailureActionContext } from "./FailureActionContext"
-import { getGroupProgress } from "./groupProjection"
+import { getGroupProgress } from "./groupProgress"
 import { MachineServiceButton } from "./MachineServiceButton"
 import { MachineStatus } from "./MachineStatus"
 import { MarkdownContent } from "./MarkdownContent"
@@ -1480,7 +1480,7 @@ export const ChatPanel = ({
       : mascotSnapshot.state
   // Index once for all active executions instead of rescanning history for each bot.
   const replyRunIds = new Set(
-    visibleMessages.flatMap((message) => (message.role === "assistant" && message.runId ? [message.runId] : [])),
+    visibleMessages.filter((message) => message.role === "assistant").map((message) => message.runId),
   )
   const progressRuns = groupProgress?.progress ?? (activeRun ? [activeRun] : [])
   const pendingRuns = progressRuns.filter((run) => !replyRunIds.has(run.id))

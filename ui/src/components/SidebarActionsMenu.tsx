@@ -3,6 +3,7 @@ import { createPortal } from "react-dom"
 import { useAnchoredPopover } from "./useAnchoredPopover"
 
 type SidebarAction = {
+  id?: string
   label: string
   onSelect: () => void
   destructive?: boolean
@@ -28,9 +29,15 @@ export const SidebarActionsMenu = ({
   const trigger = useRef<HTMLButtonElement>(null)
   const { surface: menu, style, portalRoot } = useAnchoredPopover(open, trigger)
   const menuId = useId()
+  // A completed execution can remove the focused button while its menu stays open.
+  useEffect(() => {
+    if (!open || menu.current?.contains(document.activeElement)) return
+    const focusTarget = menu.current?.querySelector<HTMLButtonElement>("button:not(:disabled)") ?? trigger.current
+
+    focusTarget?.focus()
+  })
   useEffect(() => {
     if (!open) return
-    menu.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus()
     const close = (event: MouseEvent) => {
       if (
         event.target instanceof Node &&
@@ -128,7 +135,7 @@ export const SidebarActionsMenu = ({
           >
             {actions.map((action) => (
               <button
-                key={action.label}
+                key={action.id ?? action.label}
                 type="button"
                 role="menuitem"
                 className={action.destructive ? "tool-action-deny" : undefined}

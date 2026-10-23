@@ -47,6 +47,7 @@ Channel navigation and headers are available at startup so the first click opens
 Optional member panels, group dialogs and the routine editor load asynchronously outside the initial
 application bundle. They preserve existing actions and keyboard access, including their close control
 while their module loads.
+Channel progress does not load the optional member-panel projection or its result-history helpers.
 Closing a loading channel panel restores focus to its trigger and leaves the conversation available.
 Empty-conversation welcome content and its styles load separately without holding back the composer.
 Avatar customization styles load with their existing deferred dialogs.
@@ -566,6 +567,8 @@ finishing a child does not bring back the coordination placeholder. Streamed tex
 history remain intact. The composer keeps one global Stop targeting the active coordination record,
 regardless of execution arrival order. Per-member Stop actions live in the existing team actions
 menu instead of repeating Stop beside each delay warning.
+Stop menu actions retain their execution identity when runs finish, including distinct runs by the same bot.
+Finishing the focused execution keeps keyboard focus on a remaining action, or on the menu trigger if none is enabled.
 
 Opening a channel always opens its original conversation. Other shared conversations, including
 routine runs, appear as cards with their latest reply in that channel; selecting a card opens the
