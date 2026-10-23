@@ -1,0 +1,49 @@
+import { expect, test } from "@playwright/test"
+
+test.use({ locale: "pt-BR", reducedMotion: "reduce" })
+
+const viewports = [
+  { device: "desktop", width: 1440, height: 900 },
+  { device: "mobile", width: 390, height: 844 },
+]
+
+viewports.forEach(({ device, width, height }) => {
+  test(`ready review opens its channel conversation and stays in history on ${device}`, async ({ page }) => {
+    await page.setViewportSize({ width, height })
+    await page.goto("/test/e2e/ready-review-notifications-harness.html")
+    await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+    if (device === "mobile") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+
+    await page.getByRole("button", { name: "Notificações, 1 precisa de atenção", exact: true }).click()
+    const center = page.getByRole("region", { name: "Central de notificações" })
+    const pending = center.locator('[data-unread="true"]')
+    await expect(pending.getByText("Revisão pronta", { exact: true })).toBeVisible()
+    await expect(pending.getByText("Conversa de origem: #avisos · Revisão da alteração fictícia")).toBeVisible()
+    await expect(center.locator(".notification-row.resolved")).toHaveCount(1)
+    await expect(center.locator(".notification-row.resolved").getByText("Resolvido", { exact: true })).toBeVisible()
+    expect(await center.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
+
+    const open = pending.getByRole("button", { name: "Abrir e revisar", exact: true })
+    await open.focus()
+    await page.keyboard.press("Enter")
+
+    await expect(center).not.toBeVisible()
+    await expect(page.getByRole("textbox", { name: "Mensagem para avisos" })).toBeVisible()
+    await expect(
+      page
+        .getByTestId("virtual-message-list")
+        .getByText("A alteração fictícia está pronta para conferir.", { exact: true }),
+    ).toBeVisible()
+    if (device === "mobile") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+    await page.getByRole("button", { name: "Notificações, 1 precisa de atenção", exact: true }).click()
+    await pending.getByRole("button", { name: "Marcar como lida", exact: true }).click()
+
+    await expect(center.locator('[data-unread="true"]')).toHaveCount(0)
+    await expect(center.locator(".notification-row.resolved")).toHaveCount(2)
+    await expect(center.getByRole("button", { name: "Abrir e revisar", exact: true })).toHaveCount(0)
+    await expect(center.getByRole("button", { name: "Ver conversa", exact: true })).toHaveCount(2)
+    await center.getByRole("button", { name: "Fechar notificações" }).click()
+    await page.getByRole("button", { name: "Notificações", exact: true }).click()
+    await expect(center.locator(".notification-row.resolved")).toHaveCount(2)
+  })
+})

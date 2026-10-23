@@ -733,6 +733,8 @@ export const Sidebar = (props: SidebarProps) => {
             notifications={notifications}
             messages={messages}
             runs={runs}
+            threads={props.threads}
+            groups={props.groups}
             {...(props.notificationFocus ? { focusNotification: props.notificationFocus } : {})}
             actions={{
               ...props.notificationActions,
