@@ -1,4 +1,6 @@
 import { constants, Database, type SQLQueryBindings } from "bun:sqlite"
+import { getRefEvent } from "../kernel/event-reference"
+import type { TranscriptRef } from "../kernel/transcript-events"
 import { getRecoveryCandidates, type RecoveryCursor } from "../notify/recovery-candidates"
 import { getMessageFromRow } from "./message-row"
 import type { MessageReferences } from "./reader"
@@ -9,6 +11,7 @@ type ReadInput = {
   messages: boolean
 } & (
   | { recovery: RecoveryCursor }
+  | { references: TranscriptRef[]; maxBytes?: number }
   | { query: { sql: string; bindings: SQLQueryBindings[]; activeLeafId?: string | null; reverse?: boolean } }
 )
 
@@ -20,6 +23,19 @@ export const runStoreRead = async (): Promise<void> => {
     database = new Database(input.filename, constants.SQLITE_OPEN_READONLY | constants.SQLITE_OPEN_NOFOLLOW)
     database.exec("PRAGMA busy_timeout = 0; PRAGMA query_only = ON; PRAGMA cache_size = -8192")
     await writeReply(new Uint8Array([82]))
+    if ("references" in input) {
+      let bytes = 0
+      for (const reference of input.references) {
+        const serialized = JSON.stringify(getRefEvent(database, reference))
+        bytes += Buffer.byteLength(serialized)
+        if (input.maxBytes !== undefined && bytes > input.maxBytes) {
+          await writeReply(`${JSON.stringify({ type: "transcript.resync" })}\n`)
+          return
+        }
+        await writeReply(`${serialized}\n`)
+      }
+      return
+    }
     if ("recovery" in input) {
       for (const candidate of getRecoveryCandidates(database, input.recovery))
         await writeReply(`${JSON.stringify(candidate)}\n`)

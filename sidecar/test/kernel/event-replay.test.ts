@@ -112,7 +112,7 @@ test("a reconnect gets each message once, in its latest revision, with contiguou
     f.store.appendDelta({ threadId: "t", messageId: "reply", partIndex: 20, delta: "Pronto" })
     await f.store.flushWritesAsync?.()
     const bus = createEventBus(f.db)
-    const caughtUp = bus.catchUp(1)
+    const caughtUp = await bus.catchUp(1)
     expect(caughtUp.map(({ seq }) => seq)).toEqual(bus.replay(1).map(({ seq }) => seq))
     const messages = caughtUp.filter(
       ({ event }) => event.type === "message.created" || event.type === "message.updated",
@@ -139,11 +139,13 @@ test("cold clients and oversized gaps get one resync frame instead of the whole 
     publish()
     const bus = createEventBus(f.db)
     const head = () => (bus.replay(0).at(-1) as UiEventEnvelope).seq
-    expect(bus.catchUp(0)).toMatchObject([{ seq: head(), event: { type: "transcript.resync" } }])
-    expect(bus.catchUp(head() - 1)).toHaveLength(1)
+    expect(await bus.catchUp(0)).toMatchObject([{ seq: head(), event: { type: "transcript.resync" } }])
+    expect(await bus.catchUp(head() - 1)).toHaveLength(1)
     const backlog = Math.ceil(REPLAY_LIMITS.bytes / line.length) + 1
     for (let index = 0; index < backlog; index++) publish()
-    expect(bus.catchUp(1)).toEqual([{ seq: head(), at: expect.any(Number), event: { type: "transcript.resync" } }])
+    expect(await bus.catchUp(1)).toEqual([
+      { seq: head(), at: expect.any(Number), event: { type: "transcript.resync" } },
+    ])
     bus.stop()
   } finally {
     await f.close()
@@ -165,7 +167,7 @@ test("a gap with more events than the cap resyncs without reading the stored bod
       reads.push(sql)
       return query(sql)
     }) as typeof f.db.query
-    expect(bus.catchUp(since)).toMatchObject([{ event: { type: "transcript.resync" } }])
+    expect(await bus.catchUp(since)).toMatchObject([{ event: { type: "transcript.resync" } }])
     expect(reads.some((sql) => sql.includes("event_json"))).toBe(false)
     f.db.query = query
     bus.stop()

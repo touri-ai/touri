@@ -92,6 +92,7 @@ test("one worker commit publishes the message projection, journal and tool resol
     expect(createRuntimePersistence({ database: f.database }).saveRun(run)).toBe(true)
     f.database.query("UPDATE messages SET run_id = 'run' WHERE thread_id = 't' AND id = 'a'").run()
     const observed: Array<{ type: string; committedTogether: boolean }> = []
+    const published = Promise.withResolvers<void>()
     const unsubscribe = f.runtime.kernel.subscribe(({ event }) => {
       if (event.type !== "message.delta" && event.type !== "message.parts") return
       const journalRows = (
@@ -101,6 +102,7 @@ test("one worker commit publishes the message projection, journal and tool resol
       ).count
       const resolution = f.database.query("SELECT resolution FROM tool_resolutions WHERE run_id = 'run'").get()
       observed.push({ type: event.type, committedTogether: journalRows >= 4 && Boolean(resolution) })
+      if (observed.length === 2) published.resolve()
     })
 
     f.store.appendDelta({ threadId: "t", messageId: "a", partIndex: 0, delta: "Resposta" })
@@ -125,6 +127,9 @@ test("one worker commit publishes the message projection, journal and tool resol
       ],
     })
     await f.store.flushWritesAsync?.()
+
+    // The direct run-id update above leaves a snapshot that must hydrate before these patches.
+    await published.promise
 
     expect(observed.map(({ type }) => type)).toEqual(["message.delta", "message.parts"])
     expect(observed.every(({ committedTogether }) => committedTogether)).toBe(true)
@@ -729,7 +734,7 @@ test("retention of a referenced patch requests resync rather than silently dropp
     expect(checkpoint).toBe(latestEntry)
     expect([null, "done"]).toContain(storageUpgrade)
     compactTranscript({ database: f.database, entriesPerThread: 2, events: 100, maxAgeMs: Number.MAX_SAFE_INTEGER })
-    expect(bus.catchUp(cursor)).toMatchObject([{ event: { type: "transcript.resync" } }])
+    expect(await bus.catchUp(cursor)).toMatchObject([{ event: { type: "transcript.resync" } }])
     expect(f.store.activePath({ threadId: "t", leafId: "a" })[0]?.parts[1]).toMatchObject({ text: "4" })
     bus.stop()
   } finally {

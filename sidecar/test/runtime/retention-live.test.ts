@@ -129,8 +129,8 @@ test("retention keeps five streamed runs, concurrent history/work readers and St
   const head = (
     fixture.database.query("SELECT seq FROM sqlite_sequence WHERE name='ui_event_log'").get() as { seq: number }
   ).seq
-  expect(replayBus.catchUp(head)).toEqual([])
-  expect(replayBus.catchUp(head - 1).map(({ seq }) => seq)).toEqual([head])
+  expect(await replayBus.catchUp(head)).toEqual([])
+  expect((await replayBus.catchUp(head - 1)).map(({ seq }) => seq)).toEqual([head])
 }, 30_000)
 
 const getFixture = async () => {

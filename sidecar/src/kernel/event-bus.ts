@@ -1,6 +1,8 @@
 import type { Database } from "bun:sqlite"
 import type { UiEvent, UiEventEnvelope } from "@touri/contracts"
 import type { ServerWebSocket } from "bun"
+import { createStoreReader } from "../store/reader"
+import { getRefEvent, isMessageRef } from "./event-reference"
 import { boundedProcessLog } from "./output-blobs"
 import type { PerformanceStage, PerformanceStageRunner } from "./performance"
 import { captureTranscript as captureEntries, type TranscriptRef } from "./transcript-events"
@@ -21,8 +23,6 @@ const isSqliteBusy = (error: unknown): boolean =>
   (error.code.startsWith("SQLITE_BUSY") || error.code.startsWith("SQLITE_LOCKED"))
 
 type MessageRef = TranscriptRef
-const isMessageRef = (value: unknown): value is MessageRef =>
-  typeof value === "object" && value !== null && (value as { ref?: unknown }).ref === true
 const messageKey = (event: UiEvent): string | null =>
   event.type === "message.created" || event.type === "message.updated"
     ? JSON.stringify([event.message.threadId, event.message.id])
@@ -37,13 +37,24 @@ export const createEventBus = (
     now = performance.now.bind(performance),
     schedule = scheduleDelivery,
     deferRecovery = false,
+    getReferenceEvents,
   }: DeliveryScheduling = {},
 ) => {
   const measureStage = <Value, Input>(stage: PerformanceStage, action: (input: Input) => Value, input: Input): Value =>
     runStage ? runStage(stage, action, input) : action(input)
   let sequence = 0
   const listeners = new Set<(envelope: UiEventEnvelope) => void>()
-  let sockets: Array<{ socket: EventSocket; since: number; filter?: EventFilter }> = []
+  let sockets: SocketEntry[] = []
+  const reader = database ? createStoreReader(database.filename) : undefined
+  const shutdown = new AbortController()
+  const readReferences = getReferenceEvents ?? reader?.getReferenceEvents
+  const getReferences = readReferences
+    ? (references: TranscriptRef[], signal: AbortSignal, maxBytes?: number) =>
+        measureStage("workspace_snapshot", () => readReferences(references, signal, maxBytes), undefined)
+    : undefined
+  let liveRead: { key: string | undefined; abort: AbortController } | undefined
+  let publications: Array<{ key: string; event: UiEvent; bytes: number; through: number }> = []
+  let readRetryTimer: ReturnType<typeof setTimeout> | undefined
   let delivered = Number(
     (database?.query("SELECT seq FROM sqlite_sequence WHERE name = 'ui_event_log'").get() as { seq: number } | null)
       ?.seq ?? 0,
@@ -64,15 +75,33 @@ export const createEventBus = (
     measureStage("workspace_event_serialization", serialize, envelope)
 
   const removeSocket = (socket: EventSocket): void => {
+    sockets
+      .filter((entry) => entry.socket === socket)
+      .forEach((entry) => {
+        entry.replay?.abort.abort()
+      })
     sockets = sockets.filter((entry) => entry.socket !== socket)
   }
 
   const broadcast = ({ payload, seq, event }: { payload: string; seq: number; event: UiEvent }): void => {
-    sockets.forEach(({ socket, since, filter }) => {
+    sockets.forEach(({ socket, since, filter, replay }) => {
       if (seq <= since) return
       // Keep the cursor contiguous without exposing an event denied to this viewer.
       const visiblePayload =
         filter && !filter(event) ? payloadFor({ seq, at: 0, event: { type: "transcript.superseded" } }) : payload
+
+      // The per-socket streaming buffer is bounded while its historical read is in flight.
+      if (replay) {
+        if (replay.overflow) return
+        replay.bytes += Buffer.byteLength(payload)
+        if (replay.payloads.length >= REPLAY_LIMITS.events || replay.bytes > REPLAY_LIMITS.bytes) {
+          replay.overflow = true
+          replay.payloads = []
+          return
+        }
+        replay.payloads = replay.payloads.concat({ payload: visiblePayload, seq, event })
+        return
+      }
 
       try {
         if (socket.readyState !== 1 || socket.sendText(visiblePayload) === 0) {
@@ -155,36 +184,54 @@ export const createEventBus = (
     }
   }
 
-  const getRefEvent = (event: MessageRef): UiEvent => {
-    if (!database) return { type: "transcript.superseded" }
-    const entry = database
-      .query("SELECT event_json FROM transcript_entries WHERE thread_id = ? AND seq = ?")
-      .get(event.threadId, event.seq) as { event_json: string } | null
-    const revision = entry ? (JSON.parse(entry.event_json) as UiEvent | MessageRef) : null
-    if (
-      !isMessageRef(revision) &&
-      (revision?.type === "message.created" || revision?.type === "message.updated") &&
-      revision.message.id === event.messageId
-    )
-      return revision
-    if (event.type === "message.delta" || event.type === "message.parts") {
-      if (
-        !isMessageRef(revision) &&
-        (revision?.type === "message.delta" || revision?.type === "message.parts") &&
-        revision.messageId === event.messageId
-      )
-        return revision
-      return { type: "transcript.resync" }
+  const getPublicationKey = (event: UiEvent | MessageRef): string | undefined => {
+    if (isMessageRef(event)) return JSON.stringify([event.threadId, event.messageId, event.seq])
+    if (event.type === "message.created" || event.type === "message.updated") {
+      if (event.message.updatedSeq === undefined) return undefined
+      return JSON.stringify([event.message.threadId, event.message.id, event.message.updatedSeq])
     }
-    // Retention removed that revision: the current projection is newer and supersedes it.
-    const current = database
-      .query("SELECT payload FROM transcript_message_events WHERE thread_id = ? AND id = ?")
-      .get(event.threadId, event.messageId) as { payload: string } | null
-    return current
-      ? ({ type: event.type, ...JSON.parse(current.payload) } as UiEvent)
-      : { type: "transcript.superseded" }
+    if (event.type === "message.delta" || event.type === "message.parts") {
+      if (event.updatedSeq === undefined) return undefined
+      return JSON.stringify([event.threadId, event.messageId, event.updatedSeq])
+    }
+    return undefined
   }
-  const getHydratedRef = (event: MessageRef): UiEvent => measureStage("workspace_snapshot", getRefEvent, event)
+
+  const rememberPublication = (event: UiEvent): void => {
+    if (database?.inTransaction) return
+    const key = getPublicationKey(event)
+    if (!key) return
+    const bytes = Buffer.byteLength(JSON.stringify(event))
+    if (bytes > REPLAY_LIMITS.bytes) return
+    const previous = publications.filter((publication) => publication.key !== key)
+    const fits =
+      previous.length < LIVE_DELIVERY_LIMITS.events &&
+      previous.reduce((total, publication) => total + publication.bytes, bytes) <= REPLAY_LIMITS.bytes
+    // Only committed publishers hand off payloads; discard them once their captured cursor is delivered.
+    const next = { key, event: structuredClone(event), bytes, through: head() }
+    publications = fits ? previous.concat(next) : [next]
+    if (liveRead?.key !== key) return
+    const previousRead = liveRead
+    liveRead = undefined
+    previousRead.abort.abort()
+    flushing = false
+  }
+
+  const getPublishedReference = (reference: MessageRef, seq: number): UiEvent | undefined => {
+    const event = publications.find(
+      (publication) => publication.key === getPublicationKey(reference) && publication.through >= seq,
+    )?.event
+    if (event?.type === "message.created" || event?.type === "message.updated")
+      return { type: reference.type as "message.created" | "message.updated", message: event.message }
+    return event
+  }
+
+  const getHydratedRef = (event: MessageRef): UiEvent =>
+    measureStage(
+      "workspace_snapshot",
+      (reference) => (database ? getRefEvent(database, reference) : { type: "transcript.superseded" }),
+      event,
+    )
 
   const hydrate = (raw: string): UiEvent => {
     const event = JSON.parse(raw) as UiEvent | MessageRef
@@ -214,6 +261,7 @@ export const createEventBus = (
       .all(since, limit) as Array<Row>
   }
 
+  /** Synchronous inspection helper; transport delivery uses the asynchronous reference reader. */
   const replay = (since: number): Array<UiEventEnvelope> => {
     const rows = getRowsAfter(since)
     if (!rows) return [{ seq: head(), at: Date.now(), event: { type: "transcript.resync" } }]
@@ -229,8 +277,11 @@ export const createEventBus = (
    * revision is read back from the transcript, and an oversized gap is refused before its
    * bodies are read.
    */
-  const catchUp = (since: number): Array<UiEventEnvelope> => {
-    const resync = (): Array<UiEventEnvelope> => [{ seq: head(), at: Date.now(), event: { type: "transcript.resync" } }]
+  const getCatchUp = (since: number, signal: AbortSignal): Array<UiEventEnvelope> | Promise<Array<UiEventEnvelope>> => {
+    const through = head()
+    const resync = (): Array<UiEventEnvelope> => [
+      { seq: through, at: Date.now(), event: { type: "transcript.resync" } },
+    ]
     if (!database || since === 0) return resync()
     const pending = database
       .query("SELECT seq FROM ui_event_log WHERE seq > ? ORDER BY seq LIMIT ?")
@@ -250,31 +301,49 @@ export const createEventBus = (
       const key = keyOf(event)
       if (key) latest.set(key, index)
     })
-    const sent = new Set<string>()
-    const coalesced: Array<UiEventEnvelope> = []
-    let bytes = 0
-    for (const [index, row] of rows.entries()) {
-      const value = stored[index] as UiEvent | MessageRef
-      const key = keyOf(value)
-      let event: UiEvent
-      if (!key) event = isMessageRef(value) ? getHydratedRef(value) : (value as UiEvent)
-      else if (sent.has(key)) event = { type: "transcript.superseded" }
-      else {
-        sent.add(key)
-        const newest = stored[latest.get(key) ?? index] as UiEvent | MessageRef
-        const revision = isMessageRef(newest) ? getHydratedRef(newest) : newest
-        event =
-          revision.type === "message.created" || revision.type === "message.updated"
-            ? { type: value.type as "message.created" | "message.updated", message: revision.message }
-            : { type: "transcript.superseded" }
+    const getCoalesced = (references: Map<MessageRef, UiEvent>): Array<UiEventEnvelope> => {
+      const sent = new Set<string>()
+      const coalesced: Array<UiEventEnvelope> = []
+      let bytes = 0
+      for (const [index, row] of rows.entries()) {
+        const value = stored[index] as UiEvent | MessageRef
+        const key = keyOf(value)
+        let event: UiEvent
+        if (!key)
+          event = isMessageRef(value)
+            ? (references.get(value) ?? { type: "transcript.superseded" })
+            : (value as UiEvent)
+        else if (sent.has(key)) event = { type: "transcript.superseded" }
+        else {
+          sent.add(key)
+          const newest = stored[latest.get(key) ?? index] as UiEvent | MessageRef
+          const revision = isMessageRef(newest) ? (references.get(newest) ?? { type: "transcript.superseded" }) : newest
+          event =
+            revision.type === "message.created" || revision.type === "message.updated"
+              ? { type: value.type as "message.created" | "message.updated", message: revision.message }
+              : { type: "transcript.superseded" }
+        }
+        if (event.type === "transcript.resync") return resync()
+        const envelope = { seq: row.seq, at: row.at, event }
+        bytes += Buffer.byteLength(payloadFor(envelope))
+        if (bytes > REPLAY_LIMITS.bytes) return resync()
+        coalesced.push(envelope)
       }
-      if (event.type === "transcript.resync") return resync()
-      const envelope = { seq: row.seq, at: row.at, event }
-      bytes += payloadFor(envelope).length
-      if (bytes > REPLAY_LIMITS.bytes) return resync()
-      coalesced.push(envelope)
+      return coalesced
     }
-    return coalesced
+    const references = stored.filter((event, index): event is MessageRef => {
+      if (!isMessageRef(event)) return false
+      const key = keyOf(event)
+      return !key || latest.get(key) === index
+    })
+    if (!references.length || !getReferences) return getCoalesced(new Map())
+
+    return getReferences(references, signal, REPLAY_LIMITS.bytes).then((events) => {
+      if (events.some((event) => event.type === "transcript.resync")) return resync()
+      return getCoalesced(
+        new Map(references.map((reference, index) => [reference, events[index] ?? { type: "transcript.superseded" }])),
+      )
+    })
   }
   const scheduleFlush = (initial = false): void => {
     if (scheduled || stopped) return
@@ -283,13 +352,66 @@ export const createEventBus = (
     cancelContinuation = initial ? scheduleCommittedDelivery(flush) : schedule(flush)
   }
 
+  const finishFlush = (retry = false): void => {
+    flushing = false
+    if (stopped) return
+    if (retry) {
+      readRetryTimer = setTimeout(() => {
+        readRetryTimer = undefined
+        scheduleFlush()
+      }, 100)
+      readRetryTimer.unref()
+      return
+    }
+    if (delivered < head()) scheduleFlush()
+    else void runRetentionMaintenance()
+  }
+
+  const flushReferences = async (rows: Row[]): Promise<void> => {
+    const stored = rows.map((row) => JSON.parse(row.event_json) as UiEvent | MessageRef)
+    const references = stored.filter(isMessageRef)
+    const read = { key: stored[0] ? getPublicationKey(stored[0]) : undefined, abort: new AbortController() }
+    liveRead = read
+    let ownsDelivery = false
+    try {
+      const events = await getReferences?.(references, read.abort.signal, REPLAY_LIMITS.bytes)
+      if (stopped || liveRead !== read) return
+      ownsDelivery = true
+      liveRead = undefined
+      const hydrated = new Map(references.map((reference, index) => [reference, events?.[index]]))
+      const startedAt = now()
+      for (const [index, row] of rows.entries()) {
+        if (stopped) break
+        const value = stored[index]
+        if (!value) break
+        const event = isMessageRef(value) ? hydrated.get(value) : value
+        if (!event) {
+          // A bounded reply ends at its resync marker; continue its durable suffix on another turn.
+          if (events?.at(-1)?.type === "transcript.resync") break
+          throw new Error("EVENT_READ_FAILED")
+        }
+        delivered = row.seq
+        publications = publications.filter((publication) => publication.through > delivered)
+        deliver({ seq: row.seq, at: row.at, event })
+        if (now() - startedAt >= LIVE_DELIVERY_LIMITS.budgetMs) break
+      }
+      finishFlush()
+    } catch {
+      if (!ownsDelivery && liveRead !== read) return
+      liveRead = undefined
+      // Retry the durable cursor; a failed reader must not skip a committed event.
+      finishFlush(true)
+    }
+  }
+
   const flush = (): void => {
     scheduled = false
     cancelContinuation = undefined
-    if (!database || stopped || flushing) return
+    if (!database || stopped || flushing || readRetryTimer) return
 
     flushing = true
     const startedAt = now()
+    let deferred = false
     try {
       // Reentrant control notifications share this same bounded budget.
       let deliveredCount = 0
@@ -306,12 +428,23 @@ export const createEventBus = (
           break
         }
         if (!pending.length) break
-
-        for (const row of pending) {
+        for (const [index, row] of pending.entries()) {
           if (stopped) break
 
-          const envelope = { seq: row.seq, at: row.at, event: hydrate(row.event_json) }
+          const value = JSON.parse(row.event_json) as UiEvent | MessageRef
+          const event = isMessageRef(value) ? getPublishedReference(value, row.seq) : value
+          if (!event) {
+            if (deliveredCount > 0) {
+              scheduleFlush(true)
+              return
+            }
+            deferred = true
+            void flushReferences(pending.slice(index))
+            return
+          }
+          const envelope = { seq: row.seq, at: row.at, event }
           delivered = envelope.seq
+          publications = publications.filter((publication) => publication.through > delivered)
           deliveredCount += 1
           deliver(envelope)
           if (now() - startedAt >= LIVE_DELIVERY_LIMITS.budgetMs) break
@@ -319,8 +452,7 @@ export const createEventBus = (
         if (now() - startedAt >= LIVE_DELIVERY_LIMITS.budgetMs) break
       }
     } finally {
-      flushing = false
-      if (!stopped && delivered < head()) scheduleFlush()
+      if (!deferred) finishFlush()
     }
     if (stopped || delivered < head() || delivered - compactedAt < 256) return
 
@@ -338,6 +470,7 @@ export const createEventBus = (
       return
     }
     captureTranscript()
+    rememberPublication(event)
     if (
       !(
         (event.type === "message.created" || event.type === "message.updated") &&
@@ -358,6 +491,38 @@ export const createEventBus = (
     if (database) materializeTranscript(database)
   }
 
+  const sendReplay = (entry: SocketEntry, envelopes: UiEventEnvelope[]): void => {
+    const { socket, filter, replay } = entry
+    if (!replay) return
+    const { abort } = replay
+    if (stopped || abort.signal.aborted) return
+    const sinceHead = replay.overflow ? head() : entry.since
+    const payloads = replay.overflow
+      ? [payloadFor({ seq: sinceHead, at: Date.now(), event: { type: "transcript.resync" } })]
+      : envelopes
+          .map((envelope) => {
+            const visible =
+              filter && envelope.event.type !== "transcript.resync" && !filter(envelope.event)
+                ? { seq: envelope.seq, at: 0, event: { type: "transcript.superseded" as const } }
+                : envelope
+            return payloadFor(visible)
+          })
+          .concat(
+            replay.payloads.map(({ payload, seq, event }) =>
+              filter && !filter(event) ? payloadFor({ seq, at: 0, event: { type: "transcript.superseded" } }) : payload,
+            ),
+          )
+    for (const payload of payloads) {
+      if (stopped || abort.signal.aborted) return
+      if (socket.readyState !== 1 || socket.sendText(payload) === 0) {
+        removeSocket(socket)
+        socket.close?.(1013, "Tente reconectar")
+        return
+      }
+    }
+    sockets = sockets.map((current) => (current === entry ? { socket, since: sinceHead, filter } : current))
+  }
+
   return {
     publish,
     subscribe: (listener: (envelope: UiEventEnvelope) => void): (() => void) => {
@@ -365,43 +530,72 @@ export const createEventBus = (
       return () => listeners.delete(listener)
     },
     add: (socket: EventSocket, since = 0, filter?: EventFilter): void => {
+      if (stopped) return
       captureTranscript()
       if (!scheduled) flush()
-      if (database) {
-        void runRetentionMaintenance(true)
-        for (const envelope of catchUp(since)) {
-          const visible =
-            filter && envelope.event.type !== "transcript.resync" && !filter(envelope.event)
-              ? { seq: envelope.seq, at: 0, event: { type: "transcript.superseded" as const } }
-              : envelope
-          if (socket.sendText(payloadFor(visible)) === 0) {
-            socket.close?.(1013, "Tente reconectar")
-            return
-          }
-        }
+      if (!database) {
+        sockets = sockets.concat({ socket, since: sequence, filter })
+        return
       }
-      const sinceHead = database ? head() : sequence
-      sockets = sockets.concat({ socket, since: sinceHead, ...(filter ? { filter } : {}) })
+      void runRetentionMaintenance(true)
+      const abort = new AbortController()
+      const replay: SocketReplay = { abort, payloads: [], bytes: 0, overflow: false }
+      const entry: SocketEntry = { socket, since: head(), filter, replay }
+      sockets = sockets.concat(entry)
+      try {
+        const result = getCatchUp(since, abort.signal)
+        if (result instanceof Promise) {
+          void result
+            .then((envelopes) => sendReplay(entry, envelopes))
+            .catch(() => {
+              removeSocket(socket)
+              socket.close?.(1013, "Tente reconectar")
+            })
+          return
+        }
+        sendReplay(entry, result)
+      } catch {
+        removeSocket(socket)
+        socket.close?.(1013, "Tente reconectar")
+      }
     },
     remove: (socket: EventSocket): void => {
       removeSocket(socket)
     },
     replay,
-    catchUp,
+    catchUp: (since: number): Promise<UiEventEnvelope[]> => Promise.resolve(getCatchUp(since, shutdown.signal)),
     stop: async (): Promise<void> => {
       stopped = true
+      shutdown.abort()
+      liveRead?.abort.abort()
+      liveRead = undefined
+      sockets.forEach((entry) => {
+        entry.replay?.abort.abort()
+      })
+      reader?.dispose()
+      clearTimeout(readRetryTimer)
       cancelContinuation?.()
       clearTimeout(retentionTimer)
       clearTimeout(captureRetryTimer)
       sockets = []
+      publications = []
       await retention?.dispose()
     },
   }
 }
 
+type SocketReplay = {
+  abort: AbortController
+  payloads: Array<{ payload: string; seq: number; event: UiEvent }>
+  bytes: number
+  overflow: boolean
+}
+type SocketEntry = { socket: EventSocket; since: number; filter?: EventFilter | undefined; replay?: SocketReplay }
+
 type DeliveryScheduling = {
   now?: () => number
   schedule?: (action: () => void) => () => void
+  getReferenceEvents?: (references: TranscriptRef[], signal: AbortSignal, maxBytes?: number) => Promise<UiEvent[]>
   deferRecovery?: boolean
 }
 
