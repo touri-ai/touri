@@ -35,6 +35,13 @@ viewports.forEach((viewport) => {
             expect(layout.copy.width).toBeCloseTo(layout.contentWidth, 0)
             expect(layout.control.width).toBeCloseTo(layout.contentWidth, 0)
             expect(layout.control.y).toBeGreaterThanOrEqual(layout.copy.bottom)
+            if (layout.isSwitch) {
+              expect(layout.field.width).toBeGreaterThanOrEqual(24)
+              expect(layout.field.height).toBeGreaterThanOrEqual(24)
+              expect(layout.field.x).toBeGreaterThanOrEqual(layout.control.x)
+              expect(layout.field.right).toBeLessThanOrEqual(layout.control.right)
+              continue
+            }
             expect(layout.field.width).toBeCloseTo(layout.contentWidth, 0)
             continue
           }
@@ -62,6 +69,7 @@ const getRowLayout = (row: Element) => {
 
   return {
     contentWidth,
+    isSwitch: field.getAttribute("role") === "switch",
     copy: copy.getBoundingClientRect().toJSON(),
     control: control.getBoundingClientRect().toJSON(),
     field: field.getBoundingClientRect().toJSON(),

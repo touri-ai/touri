@@ -1,6 +1,16 @@
 import type { Bot, ChannelPerson, GroupAction, Id, Project, Run } from "@touri/contracts"
 import { getApiModelProviderId } from "@touri/contracts"
-import { type ComponentProps, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
+import {
+  type ComponentProps,
+  lazy,
+  type RefObject,
+  Suspense,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react"
 import type { UiApi } from "../api/client"
 import { attachmentAccept, maxAttachmentBytes } from "../attachmentFiles"
 import { composerKeyAction } from "../composerKeys"
@@ -21,11 +31,14 @@ import { ComposerProjectChip } from "./ComposerProjectChip"
 import { ErrorText } from "./ErrorDetails"
 import { ModelPicker } from "./ModelPicker"
 import { PanelIcon } from "./PanelIcon"
-import { ProviderLoginFlow } from "./ProviderLoginFlow"
 import { useReveal } from "./Reveal"
 import { SidebarActionsMenu } from "./SidebarActionsMenu"
 import { VoiceInput } from "./VoiceInput"
 import "./Composer.css"
+
+const ProviderLoginFlow = lazy(() =>
+  import("./ProviderLoginFlow").then((module) => ({ default: module.ProviderLoginFlow })),
+)
 
 type AttachedFile = { key: string; name: string; id: Id | null; status: "loading" | "ready" | "failed" }
 type ComposerProps = {
@@ -525,7 +538,9 @@ export const Composer = ({
       {login.blocked && (
         <aside className="composer-login-card" aria-label={t("Authentication required")}>
           <p>{t("Sua mensagem fica como rascunho até o login estar pronto.")}</p>
-          <ProviderLoginFlow login={login} resumeMessage />
+          <Suspense fallback={<p role="status">{t("Verificando login…")}</p>}>
+            <ProviderLoginFlow login={login} resumeMessage />
+          </Suspense>
         </aside>
       )}
       <textarea
