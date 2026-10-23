@@ -3,6 +3,7 @@ import { dirname, join } from "node:path"
 import type { RunTimings } from "@touri/contracts"
 import {
   ensurePrivateDirectoryAsync,
+  readPrivateFileAsync,
   replacePrivateSymlinkAsync,
   writePrivateFileAsync,
 } from "../../kernel/async-files"
@@ -102,7 +103,10 @@ export const prepareHostCodexHome = async (
   onPreparationStage?.("providerHomeReadyAt")
   const content = hostConfig(hostHome)
   onPreparationStage?.("providerConfigReadAt")
-  await writePrivateFileAsync({ root: appData, path: join(home, "config.toml"), content })
+  const configPath = join(home, "config.toml")
+  const expected = Buffer.from(content)
+  const previous = await readPrivateFileAsync({ root: appData, path: configPath, maxBytes: expected.byteLength + 1 })
+  if (!previous?.equals(expected)) await writePrivateFileAsync({ root: appData, path: configPath, content })
   onPreparationStage?.("providerConfigWrittenAt")
   const auth = join(home, "auth.json")
   const source = join(hostHome, ".codex/auth.json")

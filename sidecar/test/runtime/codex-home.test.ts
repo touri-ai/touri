@@ -1,12 +1,24 @@
 import { afterEach, expect, test } from "bun:test"
 import { randomUUID } from "node:crypto"
-import { mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync, writeFileSync } from "node:fs"
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readlinkSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Bot, Kernel, Thread, UiEvent } from "@touri/contracts"
 import { openDatabase } from "../../src/kernel/db"
 import { createAppPaths } from "../../src/kernel/paths"
 import { createServices } from "../../src/kernel/services"
+import { prepareHostCodexHome } from "../../src/runtime/codex/home"
 import { createRuntimeEngine } from "../../src/runtime/engine"
 import { localFolderProfile } from "../../src/runtime/folder-access"
 import { providerLoginSourceKey } from "../../src/vm/provider-login"
@@ -225,6 +237,41 @@ const waitForRun = async (run: { status: string }, timeout = 5000) => {
     await Bun.sleep(10)
   }
 }
+
+test("unchanged host configuration avoids durable rewrites while changed configuration still refreshes", async () => {
+  const current = getFixture()
+  const home = await prepareHostCodexHome(current.paths.appData, current.bot.id, current.host)
+  const config = join(home, "config.toml")
+  const originalInode = statSync(config).ino
+
+  await prepareHostCodexHome(current.paths.appData, current.bot.id, current.host)
+
+  expect(statSync(config).ino).toBe(originalInode)
+  expect(statSync(config).mode & 0o777).toBe(0o600)
+  writeFileSync(join(current.host, ".codex/config.toml"), 'model = "fixture-model"\n')
+
+  await prepareHostCodexHome(current.paths.appData, current.bot.id, current.host)
+
+  expect(Bun.TOML.parse(readFileSync(config, "utf8"))).toEqual({
+    cli_auth_credentials_store: "file",
+    model: "fixture-model",
+  })
+})
+
+test("configuration comparison refuses a symlink outside the managed home", async () => {
+  const current = getFixture()
+  const home = await prepareHostCodexHome(current.paths.appData, current.bot.id, current.host)
+  const config = join(home, "config.toml")
+  const outside = join(current.root, "outside.toml")
+  writeFileSync(outside, 'model = "outside-fixture"\n')
+  unlinkSync(config)
+  symlinkSync(outside, config)
+
+  const preparation = prepareHostCodexHome(current.paths.appData, current.bot.id, current.host)
+
+  await expect(preparation).rejects.toThrow()
+  expect(readFileSync(outside, "utf8")).toBe('model = "outside-fixture"\n')
+})
 
 test("a host-login local turn overrides the inherited Codex home with linked auth and minimal config", async () => {
   const f = getFixture()

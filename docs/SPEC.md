@@ -53,6 +53,9 @@ capabilities replaces the native session. A standalone greeting does not hydrate
 or construct a handoff; subsequent tasks receive the durable history handoff and their tools. Tool-free turns use a compact system prompt when the CLI supports replacing
 its default prompt; subscription login remains unchanged. Tool-free local sessions using the host login retain a CLI process for up to
 60 seconds of inactivity, with at most four retained processes per provider and 100 turns per process.
+The managed provider config is compared through the bounded private-file reader on each turn.
+Identical bytes keep the existing file; a changed host config is written atomically as before.
+Symlinks and unsafe file targets still fail closed; no path or content cache bypasses validation.
 Folder-sandbox preflight runs only when the turn needs folder confinement; full-access and tool-free
 turns do not wait for an unused probe. Restricted turns still validate before dispatch.
 Vault logins keep their existing per-turn process and credential lifetime. Reuse requires matching bot configuration,
