@@ -47,6 +47,7 @@ type ComposerProps = {
   inputRef: RefObject<HTMLTextAreaElement | null>
   attachmentButtonRef?: RefObject<HTMLButtonElement | null> | undefined
   activeRun: Run | null
+  memberRuns?: Run[] | undefined
   botActive?: boolean
   browserWorking?: boolean
   browserBotName?: string | undefined
@@ -112,6 +113,7 @@ export const Composer = ({
   inputRef,
   attachmentButtonRef,
   activeRun,
+  memberRuns = [],
   botActive = false,
   browserWorking = false,
   browserBotName,
@@ -400,9 +402,8 @@ export const Composer = ({
       void submitRef.current(pending.groupAction)
     }
   }, [api, bot?.id, bot?.provider, threadId, parentId, draft, files, login.blocked])
-  const stop = async () => {
-    if (!activeRun || stoppingRef.current === activeRun.id) return
-    const runId = activeRun.id
+  const stop = async (runId = activeRun?.id) => {
+    if (!runId || stoppingRef.current === runId) return
     stoppingRef.current = runId
     setStoppingRunId(runId)
     setError(null)
@@ -628,6 +629,15 @@ export const Composer = ({
                   onSelect: () => void submit("summarize"),
                   disabled: sending || Boolean(activeRun) || Boolean(threadCreation),
                 },
+                ...memberRuns.map((run) => ({
+                  label: t(
+                    "Parar {name}",
+                    { name: mentionBots.find((member) => member.id === run.botId)?.name ?? "touri" },
+                    locale,
+                  ),
+                  onSelect: () => void stop(run.id),
+                  disabled: stoppingRunId === run.id,
+                })),
               ]}
             />
           )}

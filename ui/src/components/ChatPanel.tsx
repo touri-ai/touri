@@ -81,6 +81,7 @@ import { ErrorDetails, ErrorText } from "./ErrorDetails"
 import { ErrorNotice } from "./ErrorNotice"
 import { EvidenceContext } from "./EvidenceGallery"
 import { FailureActionContext } from "./FailureActionContext"
+import { getGroupProgress } from "./groupProjection"
 import { MachineServiceButton } from "./MachineServiceButton"
 import { MachineStatus } from "./MachineStatus"
 import { MarkdownContent } from "./MarkdownContent"
@@ -171,6 +172,7 @@ type VirtualMessageListProps = {
   onEdit?: EditMessage | undefined
   onCancel?: ((runId: Id) => Promise<void>) | undefined
   editDisabled?: boolean
+  showActivityStop?: boolean
   header?: ReactNode
   allMessages?: Array<Message>
   timelineCards?: Array<{ id: string; createdAt: number; content: ReactNode }>
@@ -253,6 +255,7 @@ export const VirtualMessageList = ({
   onEdit,
   onCancel,
   editDisabled = false,
+  showActivityStop = true,
   header,
   timelineCards = emptyTimelineCards,
 }: VirtualMessageListProps) => {
@@ -629,6 +632,7 @@ export const VirtualMessageList = ({
                     onEdit={onEdit}
                     onCancel={onCancel}
                     editDisabled={editDisabled}
+                    showActivityStop={showActivityStop}
                     onImageLoad={measureRowOnNextFrame}
                   />
                 </div>
@@ -745,6 +749,7 @@ const MessageBubble = ({
   onEdit,
   onCancel,
   editDisabled,
+  showActivityStop,
   onImageLoad,
 }: {
   inserted: boolean
@@ -768,6 +773,7 @@ const MessageBubble = ({
   onEdit?: EditMessage | undefined
   onCancel?: ((runId: Id) => Promise<void>) | undefined
   editDisabled: boolean
+  showActivityStop: boolean
   onImageLoad: (messageId: string) => void
 }) => {
   const locale = getDocumentLocale(document.documentElement)
@@ -1116,7 +1122,7 @@ const MessageBubble = ({
               botName={messageRoleLabel}
               api={api}
               bot={bot}
-              onCancel={onCancel}
+              onCancel={showActivityStop ? onCancel : undefined}
               preparingEnvironment={Boolean(vmBotId)}
               hideBrowserCard={hasBrowserTools}
               onFocusApproval={(approvalId) => {
@@ -1348,14 +1354,19 @@ export const ChatPanel = ({
     [group, channelThreads],
   )
   const isChannelRoot = sharedChannelThreads[0]?.id === thread?.id
+  const groupProgress = useMemo(
+    () => (group ? getGroupProgress(thread?.id, runs) : undefined),
+    [group, thread?.id, runs],
+  )
   const activeRun = useMemo(
     () =>
+      groupProgress?.control ??
       runs.find(
         (run) => thread && run.threadId === thread.id && ["queued", "starting", "running"].includes(run.status),
       ) ??
       runs.find((run) => run.id === channelBrowserValue?.state.runId) ??
       null,
-    [runs, thread, channelBrowserValue?.state.runId],
+    [runs, thread, groupProgress?.control, channelBrowserValue?.state.runId],
   )
   const serviceRecovered = bot?.machine === "vm" && (machine?.status === "starting" || machine?.status === "running")
   const visibleRuns = useMemo(
@@ -1458,8 +1469,13 @@ export const ChatPanel = ({
           waiting: computerGrant?.threadId === thread.id,
         }).state
       : mascotSnapshot.state
-  const awaitingReply =
-    activeRun && !visibleMessages.some((message) => message.role === "assistant" && message.runId === activeRun.id)
+  // Index once for all active executions instead of rescanning history for each bot.
+  const replyRunIds = new Set(
+    visibleMessages.flatMap((message) => (message.role === "assistant" && message.runId ? [message.runId] : [])),
+  )
+  const progressRuns = groupProgress?.progress ?? (activeRun ? [activeRun] : [])
+  const pendingRuns = progressRuns.filter((run) => !replyRunIds.has(run.id))
+  const groupBotsById = new Map(groupMembers.map((member) => [member.id, member]))
 
   const activeScreenTool = [...visibleMessages]
     .reverse()
@@ -1594,6 +1610,7 @@ export const ChatPanel = ({
                 // Group replies use a flat history, so sibling edits cannot be selected there.
                 onEdit={group ? undefined : onSend}
                 editDisabled={Boolean(activeRun)}
+                showActivityStop={!group}
                 header={
                   visibleMessages.length === 0 &&
                   !activeRun &&
@@ -1676,30 +1693,30 @@ export const ChatPanel = ({
                         },
                       ]
                     : []),
-                  ...(awaitingReply
-                    ? [
-                        {
-                          id: `activity-${activeRun.id}`,
-                          createdAt: activeRun.queuedAt,
-                          content: (
-                            <article className="message-bubble message-assistant" data-pending-run={activeRun.id}>
-                              <div className="message-meta">
-                                <span className="message-role">{bot?.name ?? "touri"}</span>
-                              </div>
-                              <ActivityMark
-                                state={activityState === "waiting-approval" ? activityState : "thinking"}
-                                bot={bot ?? undefined}
-                                threadId={thread.id}
-                                run={activeRun}
-                                api={api}
-                                onCancel={onCancel}
-                                preparingEnvironment={bot?.machine === "vm"}
-                              />
-                            </article>
-                          ),
-                        },
-                      ]
-                    : []),
+                  ...pendingRuns.map((run) => {
+                    const member = group ? groupBotsById.get(run.botId) : bot
+
+                    return {
+                      id: `activity-${run.id}`,
+                      createdAt: run.queuedAt,
+                      content: (
+                        <article className="message-bubble message-assistant" data-pending-run={run.id}>
+                          <div className="message-meta">
+                            <span className="message-role">{member?.name ?? "touri"}</span>
+                          </div>
+                          <ActivityMark
+                            state={!group && activityState === "waiting-approval" ? activityState : "thinking"}
+                            bot={member ?? undefined}
+                            threadId={thread.id}
+                            run={run}
+                            api={api}
+                            onCancel={group ? undefined : onCancel}
+                            preparingEnvironment={member?.machine === "vm"}
+                          />
+                        </article>
+                      ),
+                    }
+                  }),
                   ...visibleRuns.map((run) => {
                     const routineRun = routineRuns.find((item) => item.id === run.routineRunId)
                     const routine = routines.find((item) => item.id === routineRun?.routineId)
@@ -1754,6 +1771,7 @@ export const ChatPanel = ({
               inputRef={composerRef}
               attachmentButtonRef={attachmentButtonRef}
               activeRun={activeRun}
+              memberRuns={groupProgress?.executions}
               browserWorking={browserWorking}
               browserBotName={channelBrowserValue?.state.botName ?? latestReply?.sender?.name ?? bot?.name ?? "touri"}
               botActive={runs.some(

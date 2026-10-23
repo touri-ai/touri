@@ -541,6 +541,12 @@ Automatic recovery markers follow the selected interface language. An empty fina
 or parts) fails visibly instead of succeeding.
 One human message starts one group turn and one execution per addressed member, including a
 repeated delivery acknowledgement. The aggregate group record is not another provider execution.
+The shared transcript shows coordination progress only until its first child execution attaches.
+Each distinct execution then owns its live progress, including while waiting for its first message;
+finishing a child does not bring back the coordination placeholder. Streamed text and terminal
+history remain intact. The composer keeps one global Stop targeting the active coordination record,
+regardless of execution arrival order. Per-member Stop actions live in the existing team actions
+menu instead of repeating Stop beside each delay warning.
 
 Opening a channel always opens its original conversation. Other shared conversations, including
 routine runs, appear as cards with their latest reply in that channel; selecting a card opens the
