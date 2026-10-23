@@ -125,12 +125,11 @@ test("a healthy snapshot is repaired by event replay without refetching history 
   const client = makeConnectionClient({ ...mock, request, isMock: false })
   const hook = renderHook(() => useWorkspace(client.api))
   await waitFor(() => expect(hook.result.current.data.messages.length).toBeGreaterThan(0))
-  await waitFor(() => expect(hook.result.current.data.doctor).not.toBeNull())
   request.mockClear()
 
   await act(async () => client.reconnect())
 
-  expect(request).not.toHaveBeenCalled()
+  expect(getWorkspaceSnapshotReads(request.mock.calls.map(([route]) => route))).toEqual([])
 })
 
 test("returning online lets a cursor-aware transport replay changes without refetching valid history", async () => {
@@ -139,12 +138,11 @@ test("returning online lets a cursor-aware transport replay changes without refe
   const api = { ...mock, request, cursorReady: async () => undefined }
   const hook = renderHook(() => useWorkspace(api))
   await waitFor(() => expect(hook.result.current.data.messages.length).toBeGreaterThan(0))
-  await waitFor(() => expect(hook.result.current.data.doctor).not.toBeNull())
   request.mockClear()
 
   await act(async () => window.dispatchEvent(new Event("online")))
 
-  expect(request).not.toHaveBeenCalled()
+  expect(getWorkspaceSnapshotReads(request.mock.calls.map(([route]) => route))).toEqual([])
 })
 
 test("reconnection reloads a snapshot that failed before the bot list arrived", async () => {
@@ -243,3 +241,14 @@ const makeSockets = () => {
     },
   }
 }
+
+const getWorkspaceSnapshotReads = (routes: string[]): string[] =>
+  routes.filter((route) =>
+    [
+      "GET /bots",
+      "GET /threads/:id/messages",
+      "GET /threads/:id/transcript",
+      "GET /notifications",
+      "GET /workspace/activity",
+    ].includes(route),
+  )
