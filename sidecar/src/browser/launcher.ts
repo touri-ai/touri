@@ -12,6 +12,14 @@ import type { CdpClient } from "./types"
 
 type SpawnedChrome = Extract<ReturnType<Kernel["spawnTree"]>, { success: true }>
 
+export const getChromeExitCause = (
+  exit: { code: number | null; signal: string | null } | null,
+): "memory" | "crash" | null => {
+  if (!exit) return null
+  if (exit.code === 137 || exit.signal === "SIGKILL") return "memory"
+  return exit.code === 0 ? null : "crash"
+}
+
 export type ChromeLauncher = {
   start: (input?: { runningOnly?: boolean }) => Promise<{ client: CdpClient; process?: SpawnedChrome } | null>
   stop: () => Promise<void>
@@ -46,8 +54,10 @@ const integerPair = (value: string | undefined, { positive }: { positive: boolea
 
 export const deriveChromeWindowConfig = ({
   env = process.env,
+  platform = process.platform,
 }: {
   env?: Record<string, string | undefined>
+  platform?: string
 } = {}): ChromeWindowConfig => {
   const size = integerPair(env.TOURI_BROWSER_WINDOW_SIZE, { positive: true }) ?? [1280, 860]
   const position = integerPair(env.TOURI_BROWSER_WINDOW_POSITION, { positive: false })
@@ -56,7 +66,10 @@ export const deriveChromeWindowConfig = ({
     height: size[1],
     left: position?.[0] ?? null,
     top: position?.[1] ?? null,
-    headless: env.TOURI_BROWSER_HEADLESS === "1",
+    headless:
+      env.TOURI_BROWSER_HEADLESS === "1" ||
+      env.TOURI_HEADLESS === "1" ||
+      (platform === "linux" && !env.DISPLAY && !env.WAYLAND_DISPLAY),
   }
 }
 
@@ -241,6 +254,8 @@ export const createChromeLauncher = ({
   createClient?: typeof createCdpClient
 }): ChromeLauncher => {
   let active: { client: CdpClient; process: SpawnedChrome } | null = null
+  let pending: ReturnType<ChromeLauncher["start"]> | null = null
+  let generation = 0
 
   const environment = async (): Promise<Record<string, string>> => {
     return buildChildEnv({ base: await kernel.shellEnv(), overrides: process.env })
@@ -260,7 +275,7 @@ export const createChromeLauncher = ({
   const waitForActivePort = async (profile: string): Promise<{ port: number; path: string } | null> => {
     const activePortPath = join(profile, "DevToolsActivePort")
     return poll({
-      timeoutMs: 30_000,
+      timeoutMs: 5000,
       intervalMs: 50,
       probe: async () => {
         try {
@@ -277,7 +292,13 @@ export const createChromeLauncher = ({
     spawned: SpawnedChrome,
     client: CdpClient,
   ): Promise<{ client: CdpClient; process: SpawnedChrome }> => {
-    await client.call("Browser.getVersion")
+    // Bound startup without shortening later navigation, screenshots or evaluations.
+    const timer = setTimeout(() => void client.close().catch(() => undefined), 3000)
+    try {
+      await client.call("Browser.getVersion")
+    } finally {
+      clearTimeout(timer)
+    }
     active = { client, process: spawned }
     void spawned.exited.then(async () => {
       if (active?.process === spawned) {
@@ -305,9 +326,11 @@ export const createChromeLauncher = ({
     void discardStream(spawned.stderr)
     let client: CdpClient | null = null
     try {
-      const activePort = await waitForActivePort(profile)
+      const activePort = await Promise.race([waitForActivePort(profile), spawned.exited.then(() => null)])
       if (!activePort) throw new Error("Chrome did not create DevToolsActivePort")
-      const response = await fetch(`http://127.0.0.1:${activePort.port}/json/version`)
+      const response = await fetch(`http://127.0.0.1:${activePort.port}/json/version`, {
+        signal: AbortSignal.timeout(3000),
+      })
       if (!response.ok) throw new Error(`Chrome DevTools endpoint returned ${response.status}`)
       const version = record(await response.json())
       const websocket = stringValue(version?.webSocketDebuggerUrl)
@@ -315,16 +338,19 @@ export const createChromeLauncher = ({
       const parsed = new URL(websocketUrl)
       if (parsed.hostname !== "127.0.0.1" || parsed.port !== String(activePort.port))
         throw new Error("Chrome DevTools endpoint was not loopback-only")
-      client = await connectCdpWebSocket({ url: parsed.toString() })
+      client = await connectCdpWebSocket({ url: parsed.toString(), connectTimeoutMs: 3000 })
       return await activate(spawned, client)
     } catch {
+      const exit = await Promise.race([spawned.exited, Bun.sleep(0).then(() => null)])
       await client?.close()
       await stopSpawned(spawned)
+      if (getChromeExitCause(exit) === "memory") throw new Error("Browser process terminated: possible out of memory")
+      if (getChromeExitCause(exit) === "crash") throw new Error(`Browser process crashed (exit ${exit?.code})`)
       return null
     }
   }
 
-  const start = async (): Promise<{ client: CdpClient; process: SpawnedChrome } | null> => {
+  const launch = async (): Promise<{ client: CdpClient; process: SpawnedChrome } | null> => {
     if (active && !active.client.isClosed()) return active
     if (active) {
       const stale = active
@@ -362,18 +388,40 @@ export const createChromeLauncher = ({
       client = createClient({ pipe: { read: output, write: input } })
       return await activate(spawned, client)
     } catch {
+      const exit = await Promise.race([spawned.exited, Bun.sleep(0).then(() => null)])
       await client?.close()
       await stopSpawned(spawned)
+      if (getChromeExitCause(exit) === "memory") throw new Error("Browser process terminated: possible out of memory")
       return startPortFallback({ executable, profile, env })
     }
   }
 
   const stop = async (): Promise<void> => {
+    generation += 1
     const current = active
     active = null
-    if (!current) return
-    await current.client.close()
-    await stopSpawned(current.process)
+    if (current) {
+      await Promise.all([current.client.close(), stopSpawned(current.process)])
+    }
+  }
+
+  const start: ChromeLauncher["start"] = () => {
+    if (pending) return pending
+    const epoch = generation
+    // One launch owns the profile, including fallback and cancellation cleanup.
+    pending = launch()
+      .then(async (started) => {
+        if (epoch === generation) return started
+        if (started) {
+          if (active?.process === started.process) active = null
+          await Promise.all([started.client.close(), stopSpawned(started.process)])
+        }
+        return null
+      })
+      .finally(() => {
+        pending = null
+      })
+    return pending
   }
 
   return { start, stop }

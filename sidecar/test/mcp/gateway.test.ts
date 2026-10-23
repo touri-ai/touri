@@ -299,6 +299,7 @@ test("experimental, provider, project, browser, and computer filters follow the 
     computerUse: 1,
     provider: "claude",
   })
+  await initStore(runtime.kernel)
   const database = runtime.kernel.db as Database
   database
     .query("INSERT INTO settings (key, value_json, updated_at) VALUES (?, ?, ?)")
@@ -319,7 +320,9 @@ test("experimental, provider, project, browser, and computer filters follow the 
       const listed = await client.request("tools/list", {})
       const tools = (listed.result as { tools: Array<{ name: string }> }).tools.map((tool) => tool.name)
       expect(tools).toContain("browser_hover")
-      expect(tools).toContain("computer_frontmost")
+      expect(tools.includes("computer_frontmost")).toBe(
+        process.platform === "darwin" && process.env.TOURI_HEADLESS !== "1",
+      )
       expect(tools).toContain("process_start")
       expect(tools).toContain("secret_list")
       expect(tools).toContain("preview_open")

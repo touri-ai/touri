@@ -636,6 +636,37 @@ outgoing replies, so a delayed reply cannot block `/stop`.
 
 ### 5.1 Engine choice: direct CDP to a headed Chrome
 
+On a Linux server without a display, or in `touri serve`, the managed browser automatically runs
+headless. Host screen capture and input tools are neither advertised nor callable when the host
+cannot implement them, even if an imported bot has computer control enabled. The UI offers host
+screen control only in a supported native desktop; a supported isolated machine keeps its own
+screen capability and approvals.
+
+Managed tabs share one Chromium process and startup promise, with a separate browser context per
+bot. Each bot can keep at most eight tabs, including popups; excess popups are closed immediately.
+Cancelling one caller does not interrupt another caller sharing startup; startup is cancelled when
+all waiting callers leave.
+After five minutes without a browser operation, the managed process is terminated and tab metadata
+is retained for reopening. Active operations and human takeover prevent idle shutdown. Attached
+personal browsers and visible isolated desktops retain their own lifecycle.
+
+Initial navigation and repeatable navigation commands get at most one retry within the caller's
+budget. A disconnected tab session is reattached before navigation is retried. The three-second
+startup handshake deadline does not shorten the normal CDP request budget. DNS and network
+failures retain their specific cause; deadline and renderer crash failures
+explain what stopped loading. Accessibility inspection has a four-second budget, at most 200 nodes
+and 16 frame sessions. When inspection runs out of time, the current page text is returned with
+`truncated: true`, without inventing element references. A snapshot, including the wait behind an
+earlier tab operation, has a maximum 20-second engine budget. Private takeover documents remain
+redacted in partial results. Cancellation stops new CDP work and interrupts loading/evaluation.
+
+If a live preview has not arrived within 15 seconds, the viewer stops automatic reconnection and
+shows a clear failure with **Retry preview**. Retrying starts a fresh first-frame deadline; the
+task's stop control remains available. A preview hidden for privacy or disabled in preferences does
+not start this deadline or offer a retry. Background tabs and offscreen cards pause the deadline
+until the reader returns. Failure status is announced to assistive technology.
+All recovery copy is available in Portuguese and English.
+
 `Bot.browser` selects the launcher per bot: `touri` (**Chrome do touri**, default), `local`
 (**Meu Chrome**, opt-in), or `machine` (**Chrome da máquina**, Linux VM). Migration 0019 keeps
 existing host bots on `touri` and maps existing Linux VM bots to `machine`, preserving routing.

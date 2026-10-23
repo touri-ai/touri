@@ -1101,7 +1101,9 @@ test("Chrome window flags are derived from environment without hardcoded placeme
   expect(
     deriveChromeLaunchArgs({ profile: "/tmp/touri-browser-test", env: { TOURI_BROWSER_HEADLESS: "1" } }),
   ).toContain("--headless=new")
-  expect(deriveChromeLaunchArgs({ profile: "/tmp/touri-browser-test", env: {} })).not.toContain("--headless=new")
+  expect(deriveChromeLaunchArgs({ profile: "/tmp/touri-browser-test", env: { DISPLAY: ":1" } })).not.toContain(
+    "--headless=new",
+  )
   expect(
     deriveChromeWindowConfig({
       env: {

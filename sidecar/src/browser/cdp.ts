@@ -172,10 +172,12 @@ export const createCdpClient = ({ pipe, timeoutMs = 30000 }: { pipe: CdpPipe; ti
 export const connectCdpWebSocket = async ({
   url,
   timeoutMs = 30000,
+  connectTimeoutMs = timeoutMs,
   signal,
 }: {
   url: string
   timeoutMs?: number
+  connectTimeoutMs?: number
   signal?: AbortSignal
 }): Promise<CdpClient> => {
   signal?.throwIfAborted()
@@ -199,7 +201,7 @@ export const connectCdpWebSocket = async ({
     }
     const failed = () => fail(new Error("Chrome WebSocket connection failed"))
     const abort = () => fail(signal?.reason)
-    const timer = setTimeout(() => fail(new Error("Chrome WebSocket connection timed out")), timeoutMs)
+    const timer = setTimeout(() => fail(new Error("Chrome WebSocket connection timed out")), connectTimeoutMs)
     socket.addEventListener("open", open, { once: true })
     socket.addEventListener("error", failed, { once: true })
     socket.addEventListener("close", failed, { once: true })
