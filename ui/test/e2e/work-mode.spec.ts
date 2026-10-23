@@ -122,6 +122,7 @@ test("captures an open channel on desktop and phone", async ({ page }) => {
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (viewport.name === "phone") await page.locator(".mobile-menu-button").click()
     await page.getByRole("button", { name: /^Planejamento/ }).click()
+    await expect(page.getByRole("textbox", { name: "Mensagem para Planejamento" })).toBeVisible()
     await expect(page.locator(".group-header .chat-header-crumb")).toHaveCount(0)
     await page.screenshot({
       path: resolve(evidence, `channel-open-${viewport.name}.png`),

@@ -18,7 +18,7 @@ type Harness = {
   runtime: ReturnType<typeof createKernel>
   base: string
   call: (method: string, path: string, body?: unknown, auth?: boolean) => Promise<Response>
-  close: () => void
+  close: () => Promise<void>
 }
 
 const harness = async ({ withStore = false } = {}): Promise<Harness> => {
@@ -46,8 +46,8 @@ const harness = async ({ withStore = false } = {}): Promise<Harness> => {
     runtime,
     base,
     call,
-    close: () => {
-      runtime.stop()
+    close: async () => {
+      await runtime.stop()
       rmSync(root, { recursive: true, force: true })
     },
   }
@@ -98,7 +98,7 @@ test("events stream resumes after the last seen id and ends the backlog with rea
     expect(text).toContain('"requestId":"req-3"')
     expect(text).toContain("id: 3\nevent: ready")
   } finally {
-    h.close()
+    await h.close()
   }
 })
 
@@ -127,7 +127,7 @@ test("a fresh stream hydrates unresolved attention items from the last 48 hours 
     }
     expect(pending.notifications.map((item) => item.title)).toEqual(["recent"])
   } finally {
-    h.close()
+    await h.close()
   }
 })
 
@@ -154,7 +154,7 @@ test("live notifications and resolutions are pushed on an open stream and heartb
     await pump
     expect(hub.size()).toBe(0)
   } finally {
-    h.close()
+    await h.close()
   }
 })
 
@@ -172,7 +172,7 @@ test("a live subscriber over HTTP receives notify then resolved frames", async (
     expect(text).toContain('event: resolved\ndata: {"type":"resolved"')
     expect(text).toContain('"resolution":"dismissed"')
   } finally {
-    h.close()
+    await h.close()
   }
 })
 
@@ -203,7 +203,7 @@ test("aborting an SSE connection closes the reader and removes its heartbeat and
     expect(await alreadyAborted.read()).toEqual({ done: true, value: undefined })
     expect(hub.size()).toBe(0)
   } finally {
-    h.close()
+    await h.close()
   }
 })
 
@@ -279,7 +279,7 @@ test("respond requires the bearer token, the owning thread, a valid behavior and
     }
     expect(pending.notifications).toEqual([expect.objectContaining({ requestId: "req-team" })])
   } finally {
-    h.close()
+    await h.close()
   }
 })
 
@@ -306,7 +306,7 @@ test("respond marks the request expired when the runtime no longer holds it", as
       .get(record.id)
     expect(row).toEqual({ resolution: "expired" })
   } finally {
-    h.close()
+    await h.close()
   }
 })
 
@@ -340,7 +340,7 @@ test("a user reply resolves questions but preserves interrupted failures", async
     }
     expect(pending.notifications.map((item) => item.kind)).toEqual(["turn-failed", "incident"])
   } finally {
-    h.close()
+    await h.close()
   }
 })
 
@@ -393,7 +393,7 @@ test("bot messages enqueue a run on the main thread and replay the same result f
     expect((await h.call("POST", url, { text: "x", threadId: "nope" })).status).toBe(404)
     expect((await h.call("POST", "/api/bots/missing/messages", { text: "x" })).status).toBe(404)
   } finally {
-    h.close()
+    await h.close()
   }
 })
 
@@ -403,7 +403,7 @@ test("the handshake file is private and removed on stop", async () => {
   const parsed = JSON.parse(await Bun.file(file).text()) as { port: number; token: string }
   expect(statSync(file).mode & 0o777).toBe(0o600)
   expect(parsed).toMatchObject({ port: h.runtime.handshake.port, token: TOKEN })
-  h.close()
+  await h.close()
   expect(await Bun.file(file).exists()).toBe(false)
 })
 
@@ -429,7 +429,7 @@ test("an AskUserQuestion prompt becomes a question notification and other tools 
       { kind: "approval", body: "Executar comando no terminal", request_id: "r2" },
     ])
   } finally {
-    h.close()
+    await h.close()
   }
 })
 
@@ -456,7 +456,7 @@ test("a repeated request emits once and resolution clears older duplicate record
     expect(rows).toEqual([{ resolution: "allow" }, { resolution: "allow" }])
     expect((await (await h.call("GET", "/api/notifications/pending")).json()).notifications).toEqual([])
   } finally {
-    h.close()
+    await h.close()
   }
 })
 
@@ -479,6 +479,6 @@ test("dismissing an approval reminder never answers the runtime request", async 
     expect((await h.call("POST", `/api/notifications/${record.id}/dismiss`)).status).toBe(200)
     expect(decisions).toEqual([])
   } finally {
-    h.close()
+    await h.close()
   }
 })

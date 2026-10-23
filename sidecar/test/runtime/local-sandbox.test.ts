@@ -69,7 +69,12 @@ const fixture = (provider: "codex" | "claude" = "codex", scenarios: Array<Record
         emit(
           provider === "codex"
             ? { method: "turn/completed", params: { status: "succeeded" } }
-            : { type: "result", subtype: "success", session_id: "session-sandbox" },
+            : {
+                type: "result",
+                subtype: "success",
+                session_id: "session-sandbox",
+                result: "Sandbox fixture complete.",
+              },
         )
       return {
         success: true,

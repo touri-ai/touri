@@ -18,7 +18,13 @@ type Props = {
   onDismiss: (task: RecoveryTask, acknowledgeKeys: string[]) => Promise<void>
 }
 
-export const InterruptedTasks = (props: Props) => {
+export const InterruptedTasks = (props: Props) => (
+  <Modal title={t("Interrupted tasks")} onClose={props.onClose} className="interrupted-tasks">
+    <InterruptedTasksContent {...props} />
+  </Modal>
+)
+
+export const InterruptedTasksContent = (props: Props) => {
   const pending = props.tasks.filter((task) => task.notification.resolvedAt === null)
   const history = props.tasks.filter((task) => task.notification.resolvedAt !== null)
   const groups = [...new Set(pending.map((task) => task.notification.botId))].map((botId) => ({
@@ -27,44 +33,42 @@ export const InterruptedTasks = (props: Props) => {
   }))
 
   return (
-    <Modal title={t("Interrupted tasks")} onClose={props.onClose} className="interrupted-tasks">
-      <div className="interrupted-content">
-        <p>{t("Revise o que ficou pendente antes de continuar. O histórico será preservado.")}</p>
-        {props.loading && <p role="status">{t("Loading")}</p>}
-        {props.error !== null && (
-          <div role="alert">
-            <ErrorNotice error={props.error} showActions={false} />
-            {props.reload && (
-              <button type="button" className="text-button" onClick={props.reload}>
-                {t("Tentar novamente")}
-              </button>
-            )}
-          </div>
-        )}
-        {!props.loading && props.error === null && pending.length === 0 && (
-          <p>{t("Nenhuma tarefa interrompida pendente.")}</p>
-        )}
-        {groups.map((group) => (
-          <section key={group.botId ?? "touri"} aria-label={group.tasks[0]?.notification.botName ?? "touri"}>
-            <h3>{group.tasks[0]?.notification.botName ?? "touri"}</h3>
-            <ul className="interrupted-task-list">
-              {group.tasks.map((task) => (
-                <TaskRow key={task.id} task={task} {...props} />
-              ))}
-            </ul>
-          </section>
-        ))}
-        {history.length > 0 && (
-          <Disclosure className="interrupted-history" summary={`${t("Interrupções resolvidas")} (${history.length})`}>
-            <ul className="interrupted-task-list">
-              {history.map((task) => (
-                <TaskRow key={task.id} task={task} {...props} />
-              ))}
-            </ul>
-          </Disclosure>
-        )}
-      </div>
-    </Modal>
+    <div className="interrupted-content">
+      <p>{t("Revise o que ficou pendente antes de continuar. O histórico será preservado.")}</p>
+      {props.loading && <p role="status">{t("Loading")}</p>}
+      {props.error !== null && (
+        <div role="alert">
+          <ErrorNotice error={props.error} showActions={false} />
+          {props.reload && (
+            <button type="button" className="text-button" onClick={props.reload}>
+              {t("Tentar novamente")}
+            </button>
+          )}
+        </div>
+      )}
+      {!props.loading && props.error === null && pending.length === 0 && (
+        <p>{t("Nenhuma tarefa interrompida pendente.")}</p>
+      )}
+      {groups.map((group) => (
+        <section key={group.botId ?? "touri"} aria-label={group.tasks[0]?.notification.botName ?? "touri"}>
+          <h3>{group.tasks[0]?.notification.botName ?? "touri"}</h3>
+          <ul className="interrupted-task-list">
+            {group.tasks.map((task) => (
+              <TaskRow key={task.id} task={task} {...props} />
+            ))}
+          </ul>
+        </section>
+      ))}
+      {history.length > 0 && (
+        <Disclosure className="interrupted-history" summary={`${t("Interrupções resolvidas")} (${history.length})`}>
+          <ul className="interrupted-task-list">
+            {history.map((task) => (
+              <TaskRow key={task.id} task={task} {...props} />
+            ))}
+          </ul>
+        </Disclosure>
+      )}
+    </div>
   )
 }
 

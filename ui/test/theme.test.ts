@@ -4,6 +4,7 @@ import { initializeTheme, readTheme, setTheme } from "../src/design/theme"
 
 const tokens = readFileSync("src/design/tokens.css", "utf8")
 const css = readFileSync("src/styles.css", "utf8")
+const preview = readFileSync("src/components/preview-screen.css", "utf8")
 const motion = readFileSync("src/design/motion.css", "utf8")
 const groups = readFileSync("src/components/groups.css", "utf8")
 const sidebar = readFileSync("src/components/bot-sidebar.css", "utf8")
@@ -102,7 +103,7 @@ test.each(["dark", "light"] as const)("%s text roles keep 4.5:1 (12px captions i
     /\.button-brand,\s*\.brand-button \{[^}]*background: var\(--brand\);[^}]*color: var\(--text-on-accent\)/,
   )
   expect(components).toMatch(/\.ds-count \{[^}]*background: var\(--brand\);[^}]*color: var\(--text-on-accent\)/)
-  expect(css).toMatch(
+  expect(preview).toMatch(
     /\.preview-chat-avatar \{[^}]*background: var\(--preview-avatar\);[^}]*color: var\(--text-on-accent\)/,
   )
   expect(css).toMatch(/\.wizard-active i \{[^}]*background: var\(--info-fill\);[^}]*color: var\(--text-on-accent\)/)

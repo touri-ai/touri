@@ -34,7 +34,6 @@ import { ErrorBoundary } from "./components/ErrorBoundary"
 import { ErrorNotice } from "./components/ErrorNotice"
 import { EvidenceContext } from "./components/EvidenceGallery"
 import { FailureActionContext } from "./components/FailureActionContext"
-import { InterruptedTasks } from "./components/InterruptedTasks"
 import {
   BotCreateModal,
   BotSettingsModal,
@@ -94,6 +93,9 @@ import { useWorkspace } from "./useWorkspace"
 import { getModeSelection, type ModeSelection, type WorkspaceMode } from "./workspaceModes"
 import { type AppRoute, type RoutineHistoryTarget, readWorkspaceState, saveWorkspaceState } from "./workspaceState"
 
+const InterruptedTasks = lazy(() =>
+  import("./components/InterruptedTasks").then((module) => ({ default: module.InterruptedTasksContent })),
+)
 const BotComputer = lazy(() => import("./components/BotComputer").then((module) => ({ default: module.BotComputer })))
 const CommandPalette = lazy(() =>
   import("./features/commandPalette/CommandPalette").then((module) => ({ default: module.CommandPalette })),
@@ -1119,13 +1121,17 @@ const AppContent = ({ kernel }: AppProps) => {
     <AvatarRuntimeProvider value={{ ...data, messages: data.activityMessages }}>
       {botModal}
       {recoveryOpen && (
-        <InterruptedTasks
-          {...interruptedWork}
-          onClose={() => setRecoveryOpen(false)}
-          onReview={reviewRecoveryTask}
-          onResume={(task) => reviewRecoveryTask(task, true)}
-          onDismiss={interruptedWork.dismiss}
-        />
+        <Modal title={t("Interrupted tasks")} onClose={() => setRecoveryOpen(false)} className="interrupted-tasks">
+          <Suspense fallback={<LoadingModalContent />}>
+            <InterruptedTasks
+              {...interruptedWork}
+              onClose={() => setRecoveryOpen(false)}
+              onReview={reviewRecoveryTask}
+              onResume={(task) => reviewRecoveryTask(task, true)}
+              onDismiss={interruptedWork.dismiss}
+            />
+          </Suspense>
+        </Modal>
       )}
       <main className="app-shell">
         <HistoryMigrationStatus api={api} />
@@ -1599,11 +1605,17 @@ const GroupPanelLoading = ({ onClose }: { onClose: () => void }) => (
 
 const LoadingModal = ({ onClose }: { onClose: () => void }) => (
   <Modal title={t("Loading")} onClose={onClose}>
+    <LoadingModalContent />
+  </Modal>
+)
+
+const LoadingModalContent = () => (
+  <>
     <p className="modal-intro" role="status">
       {t("Loading")}
     </p>
     <MotionSkeleton />
-  </Modal>
+  </>
 )
 
 const SearchLoading = ({ onClose }: { onClose: () => void }) => (

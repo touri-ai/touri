@@ -135,7 +135,7 @@ describe("channel mentions", () => {
     fireEvent.change(input, { target: { value: "@", selectionStart: 1 } })
     fireEvent.keyDown(input, { key: "Enter", isComposing: true, keyCode: 229 })
 
-    expect(input).toHaveAttribute("placeholder", "Mensagem em #produto · @ chama um bot")
+    expect(input).toHaveAttribute("placeholder", "Mensagem em #produto")
     expect(input).toHaveValue("@")
     expect(send).not.toHaveBeenCalled()
   })

@@ -733,7 +733,12 @@ export const createRuntimeEngine = ({
     messageId?: Id,
   ): Promise<boolean> => {
     const pending = finalizations.get(run.id)
-    if (pending) return pending
+    if (pending) {
+      await pending
+      if (!isLive(run)) return false
+
+      return finishLiveRun(run, prepare, finish, messageId)
+    }
 
     // Abort and provider completion can converge; only one preparation may replace a run's snapshot at a time.
     const operation = finishLiveRunNow(run, prepare, finish, messageId)
@@ -1082,8 +1087,11 @@ export const createRuntimeEngine = ({
     state: RunState
   }): void => {
     const controller = controllers.get(run.id)
-    if (shuttingDown || state.cancelRequested || !controller || (controller.signal.aborted && !state.turnStarted))
-      return
+    if (shuttingDown || !controller || (controller.signal.aborted && !state.turnStarted)) return
+    if (state.cancelRequested) {
+      if (event.type !== "item") return
+      if (event.part.type !== "command" && event.part.type !== "tool_call" && event.part.type !== "file_change") return
+    }
     // A newer runtime may have fenced this writer during restart recovery.
     if (!isLiveForEvent(run, state)) {
       controllers.get(run.id)?.abort()

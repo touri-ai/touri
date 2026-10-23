@@ -278,6 +278,7 @@ test("a successful server index removes a cached conversation that no longer exi
   const hook = renderHook(() => useWorkspace(api))
 
   await waitFor(() => expect(hook.result.current.data.loaded).toBe(true))
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe("thread-mark"))
   expect(hook.result.current.data.groups).toEqual([])
   expect(hook.result.current.data.threads.some((candidate) => candidate.id === thread.id)).toBe(false)
   expect(hook.result.current.data.selectedThreadId).not.toBe(thread.id)

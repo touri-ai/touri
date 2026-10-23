@@ -14,7 +14,7 @@ import { init as initStore } from "../../src/store"
 
 const cleanups: Array<() => Promise<void> | void> = []
 afterEach(async () => {
-  for (const close of cleanups.splice(0)) await close()
+  for (const close of cleanups.splice(0).reverse()) await close()
 })
 
 const tempRoot = (): string => {
@@ -146,7 +146,10 @@ const claudeFixture = (connectors: boolean, vm = false) => {
   const root = tempRoot()
   const runtime = createKernel({ appData: join(root, "data") })
   const scenario = join(root, "scenario.json")
-  writeFileSync(scenario, JSON.stringify({ events: [{ type: "complete" }] }))
+  writeFileSync(
+    scenario,
+    JSON.stringify({ events: [{ type: "delta", delta: "Synthetic response." }, { type: "complete" }] }),
+  )
   mkdirSync(join(root, "home", ".claude"), { recursive: true })
   const calls: Array<Parameters<Kernel["spawnTree"]>[0]> = []
   const spawn: Kernel["spawnTree"] = (input) => {
@@ -197,7 +200,7 @@ const claudeFixture = (connectors: boolean, vm = false) => {
   }
   cleanups.push(async () => {
     await adapter.shutdown()
-    runtime.stop()
+    await runtime.stop()
   })
   return { adapter, args, calls }
 }

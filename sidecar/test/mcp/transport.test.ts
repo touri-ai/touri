@@ -64,7 +64,7 @@ test("Windows MCP loopback discovery keeps per-thread auth and typed response ID
     for (const client of clients) client.destroy()
     await transport.close()
     expect(existsSync(mcpEndpointFile(runtime.kernel.paths.runDir))).toBe(false)
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   }
 })
@@ -93,7 +93,7 @@ test.skipIf(process.platform === "win32")(
     } finally {
       client?.destroy()
       await transport.close()
-      runtime.stop()
+      await runtime.stop()
       rmSync(root, { recursive: true, force: true })
       rmSync(dirname(transport.socketPath), { recursive: true, force: true })
     }

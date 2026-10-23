@@ -18,7 +18,7 @@ const startStore = async (): Promise<{
   runtime: ReturnType<typeof createKernel>
   bot: Bot
   threadId: string
-  close: () => void
+  close: () => Promise<void>
 }> => {
   const root = tempRoot()
   const runtime = createKernel({ appData: root })
@@ -38,8 +38,8 @@ const startStore = async (): Promise<{
     runtime,
     bot: created.bot,
     threadId: threadPayload.threads[0]?.id ?? "",
-    close: () => {
-      runtime.stop()
+    close: async () => {
+      await runtime.stop()
       rmSync(root, { recursive: true, force: true })
     },
   }
@@ -61,7 +61,7 @@ test("VM memory preference survives database reopen while absent or invalid valu
       body: JSON.stringify({ botVmMemoryMb: 1024 }),
     })
     expect(response.status).toBe(200)
-    f.runtime.stop()
+    await f.runtime.stop()
     reopened = createKernel({ appData: f.root })
     await init(reopened.kernel)
     const settings = reopened.kernel.services.use("store.settings")
@@ -72,8 +72,8 @@ test("VM memory preference survives database reopen while absent or invalid valu
     db.query("DELETE FROM settings WHERE key = 'botVmMemoryMb'").run()
     expect(settings?.().botVmMemoryMb).toBe(1536)
   } finally {
-    reopened?.stop()
-    f.close()
+    await reopened?.stop()
+    await f.close()
   }
 })
 
@@ -98,7 +98,7 @@ test("sidebar float preference defaults on, persists off across reopen and rejec
       body: JSON.stringify({ sidebarFloatUpdates: false }),
     })
     expect(response.status).toBe(200)
-    f.runtime.stop()
+    await f.runtime.stop()
     reopened = createKernel({ appData: f.root })
     await init(reopened.kernel)
     const settings = reopened.kernel.services.use("store.settings")
@@ -107,8 +107,8 @@ test("sidebar float preference defaults on, persists off across reopen and rejec
     db.query("UPDATE settings SET value_json = '\"x\"' WHERE key = 'sidebarFloatUpdates'").run()
     expect(settings?.().sidebarFloatUpdates).toBe(true)
   } finally {
-    reopened?.stop()
-    f.close()
+    await reopened?.stop()
+    await f.close()
   }
 })
 
@@ -138,7 +138,7 @@ test("branch 2/2 → 1/2 → 2/2 restores descendants through the HTTP pointer a
     const all = (await (await fetch(`${url}/messages?all=true`, { headers })).json()) as { messages: Message[] }
     expect(all.messages).toHaveLength(5)
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
