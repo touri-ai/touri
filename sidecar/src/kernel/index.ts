@@ -705,7 +705,7 @@ export const createKernel = ({
       removePrivateFile({ root: paths.appData, path: handshakePath })
       shell.dispose()
       host.close()
-      bus.stop()
+      await bus.stop()
       database.close()
     })()
     return stopPromise

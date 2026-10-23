@@ -260,6 +260,11 @@ const usage = (): void => {
 
 const main = async (): Promise<void> => {
   const [mode = "serve", ...rest] = process.argv.slice(2)
+  if (mode === "transcript-retention") {
+    const { runTranscriptRetention } = await import("./kernel/transcript-retention-process")
+    await runTranscriptRetention()
+    return
+  }
   if (mode === "store-read") {
     const { runStoreRead } = await import("./store/read-process")
     await runStoreRead()

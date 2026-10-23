@@ -13,7 +13,7 @@ import { historyMigrationStatus } from "./history-backfill"
 import { externalizeMessagePartsAsync, OUTPUT_BLOB_ORIGIN } from "./output-blobs"
 import type { PerformanceStageRunner } from "./performance"
 import { createStorageUpgrade } from "./storage-upgrade"
-import { compactTranscript } from "./transcript-storage"
+import { createTranscriptRetention } from "./transcript-retention"
 import { createWalCheckpointer } from "./wal-checkpointer"
 
 export const DEFAULT_DATA_RETENTION_DAYS = 30
@@ -424,6 +424,7 @@ export const createStorageMaintenance = ({
     /* A damaged marker safely retries the idempotent pass. */
   }
   const upgrade = createStorageUpgrade({ database, appData })
+  const retention = createTranscriptRetention(database)
   let status: StorageMaintenanceStatus = upgrade.snapshot() ?? {
     running: false,
     processed: progress.cursor,
@@ -525,10 +526,10 @@ export const createStorageMaintenance = ({
       // Capture the recovery tail before pruning. Snapshots/files retain detail;
       // removing replay entries causes clients to refresh from those snapshots.
       if (progress.changed || manual) publishResync()
-      const compact = () =>
-        compactTranscript(manual ? { database, events: 0, entriesPerThread: 0, maxAgeMs: 0 } : { database })
-      const compactWithoutWait = () => withoutBusyWait(database, compact)
-      if (runStage ? runStage("transcript_retention", compactWithoutWait) : compactWithoutWait()) {
+      const compact = () => retention.run(manual)
+      const more = await (runStage ? runStage("transcript_retention", compact) : compact())
+      if (stopped) return
+      if (more) {
         timer = schedule(step, 10)
         return
       }
@@ -609,6 +610,7 @@ export const createStorageMaintenance = ({
     snapshot: (): StorageMaintenanceStatus => ({ ...status }),
     dispose: ({ closing = false }: { closing?: boolean } = {}) => {
       stopped = true
+      void retention.dispose()
       walCheckpointer.dispose({ closing })
       retryController.abort()
       clearTimeout(retryTimer)

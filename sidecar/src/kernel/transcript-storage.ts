@@ -292,154 +292,313 @@ export const purgeReplayRows = (database: Database, rows: Array<{ seq: number }>
   database.exec("UPDATE transcript_maintenance SET ui_delete_before_seq=0 WHERE id=1")
 }
 
-export const compactTranscript = ({
-  database,
-  events = TRANSCRIPT_RETENTION.events,
-  entriesPerThread = TRANSCRIPT_RETENTION.entriesPerThread,
-  maxAgeMs = TRANSCRIPT_RETENTION.maxAgeMs,
-  now = Date.now(),
-}: {
+type RetentionOptions = {
   database: Database
   events?: number
   entriesPerThread?: number
   maxAgeMs?: number
   now?: number
-}): boolean => {
-  const upgrade = database.query("SELECT value FROM schema_meta WHERE key = 'storage_upgrade_22'").get() as {
-    value: string
-  } | null
-  if (upgrade && upgrade.value !== "done") return false
-  // Both journals receive the same writes, so each needs its own bounded budget.
-  // Callers doing manual maintenance yield before draining another batch.
-  const limit = 256
-  return database
-    .transaction(() => {
-      const checkpoint = Number(
-        (
-          database.query("SELECT value FROM schema_meta WHERE key = 'transcript_event_checkpoint'").get() as {
-            value: string
-          }
-        ).value,
-      )
-      // Read only a small window from the age index. Grouping every expired entry
-      // before applying a LIMIT would still scan the entire historical backlog.
-      const aged = database
-        .query(`SELECT thread_id, seq, id FROM transcript_entries INDEXED BY transcript_entries_age
-        WHERE at < ? ORDER BY at, id LIMIT ?`)
-        .all(now - maxAgeMs, limit) as Array<{ thread_id: string; seq: number; id: number }>
-      const cutoffs = new Map<string, number>()
-      for (const row of aged)
-        if (row.id <= checkpoint) cutoffs.set(row.thread_id, Math.max(cutoffs.get(row.thread_id) ?? 0, row.seq))
-      database.exec(`CREATE TEMP TABLE IF NOT EXISTS transcript_retention_cursor (
-      id INTEGER PRIMARY KEY, cursor INTEGER NOT NULL
-    ); INSERT OR IGNORE INTO transcript_retention_cursor VALUES (1,0)`)
-      const cursor = (
-        database.query("SELECT cursor FROM transcript_retention_cursor WHERE id=1").get() as { cursor: number }
-      ).cursor
-      // One reverse-history seek per pass: gathering cutoffs for hundreds of
-      // threads before the deletion budget would still monopolize a cold store.
-      const threadLimit = 1
-      const threads = database
-        .query(`SELECT rowid AS cursor,id,updated_seq FROM threads
-      WHERE rowid > ? ORDER BY rowid LIMIT ?`)
-        .all(cursor, threadLimit) as Array<{
-        cursor: number
-        id: string
-        updated_seq: number
-      }>
-      for (const thread of threads.filter((thread) => thread.updated_seq > entriesPerThread)) {
-        // A bounded reverse seek replaces ranking every retained historical row.
-        const excess = database
-          .query(`SELECT seq, id FROM transcript_entries
-          WHERE thread_id = ? ORDER BY seq DESC LIMIT 1 OFFSET ?`)
-          .get(thread.id, entriesPerThread) as { seq: number; id: number } | null
-        if (excess && excess.id <= checkpoint) cutoffs.set(thread.id, Math.max(cutoffs.get(thread.id) ?? 0, excess.seq))
+}
+type RetentionRow = { id: number; seq: number; bytes: number }
+type RetentionThread = { threadId: string; cutoff: number; rows: RetentionRow[] }
+export type TranscriptRetentionPlan = {
+  checkpoint: number
+  threads: RetentionThread[]
+  events: Array<{ seq: number; bytes: number }>
+  nextCursor: number
+  more: boolean
+}
+
+/** Synchronous entry point for offline maintenance and synthetic equivalence checks. */
+export const compactTranscript = (options: RetentionOptions): boolean => {
+  const { database } = options
+  database.exec(`CREATE TEMP TABLE IF NOT EXISTS transcript_retention_cursor (
+    id INTEGER PRIMARY KEY, cursor INTEGER NOT NULL
+  ); INSERT OR IGNORE INTO transcript_retention_cursor VALUES (1,0)`)
+  const { cursor } = database.query("SELECT cursor FROM transcript_retention_cursor WHERE id=1").get() as {
+    cursor: number
+  }
+  const plan = getTranscriptRetentionPlan(options, cursor)
+  if (!plan) return false
+
+  const result = applyTranscriptRetentionPlan(database, plan)
+  database.query("UPDATE transcript_retention_cursor SET cursor=? WHERE id=1").run(result.cursor)
+  return result.more
+}
+
+/** Discover candidates BEFORE acquiring the writer slot. Live callers use the isolated helper. */
+export const getTranscriptRetentionPlan = (
+  {
+    database,
+    events = TRANSCRIPT_RETENTION.events,
+    entriesPerThread = TRANSCRIPT_RETENTION.entriesPerThread,
+    maxAgeMs = TRANSCRIPT_RETENTION.maxAgeMs,
+    now = Date.now(),
+  }: RetentionOptions,
+  cursor: number,
+  limit = 256,
+  byteLimit = 256 * 1024,
+): TranscriptRetentionPlan | undefined => {
+  if (isRetentionUpgradePending(database)) return undefined
+
+  const checkpoint = Number(
+    (database.query("SELECT value FROM schema_meta WHERE key='transcript_event_checkpoint'").get() as { value: string })
+      .value,
+  )
+  const aged = database
+    .query(`SELECT thread_id,seq,id FROM transcript_entries INDEXED BY transcript_entries_age
+      WHERE at < ? ORDER BY at,id LIMIT ?`)
+    .all(now - maxAgeMs, limit) as Array<{ thread_id: string; seq: number; id: number }>
+  // This bounded, private map combines age and count cutoffs for the same thread.
+  const cutoffs = new Map<string, number>()
+  aged
+    .filter((row) => row.id <= checkpoint)
+    .forEach((row) => {
+      cutoffs.set(row.thread_id, Math.max(cutoffs.get(row.thread_id) ?? 0, row.seq))
+    })
+  const thread = database
+    .query("SELECT rowid AS cursor,id,updated_seq FROM threads WHERE rowid > ? ORDER BY rowid LIMIT 1")
+    .get(cursor) as { cursor: number; id: string; updated_seq: number } | null
+  if (thread && thread.updated_seq > entriesPerThread) {
+    const excess = database
+      .query("SELECT seq,id FROM transcript_entries WHERE thread_id = ? ORDER BY seq DESC LIMIT 1 OFFSET ?")
+      .get(thread.id, entriesPerThread) as { seq: number; id: number } | null
+    if (excess && excess.id <= checkpoint) cutoffs.set(thread.id, Math.max(cutoffs.get(thread.id) ?? 0, excess.seq))
+  }
+  // Row and byte budgets are local accumulators; no historical body leaves this process.
+  let remainingRows = limit
+  let remainingBytes = byteLimit
+  let more = false
+  let transcriptBudgetExhausted = false
+  const threads = Array.from(cutoffs).map(([threadId, cutoff]): RetentionThread => {
+    const candidates = database
+      .query(`SELECT id,seq,length(CAST(event_json AS BLOB)) AS bytes FROM transcript_entries
+        WHERE thread_id=? AND seq<=? AND id<=? ORDER BY seq LIMIT ?`)
+      .all(threadId, cutoff, checkpoint, remainingRows) as RetentionRow[]
+    const rows = candidates.filter((row) => {
+      // One indivisible legacy row may exceed the byte budget. The helper's write deadline still applies.
+      if (transcriptBudgetExhausted) return false
+      if (remainingRows <= 0 || (row.bytes > remainingBytes && remainingRows < limit)) {
+        transcriptBudgetExhausted = true
+        return false
       }
-      // Old history must not checkpoint unrelated growing replies on every retention batch.
-      const pendingThread = Array.from(cutoffs).find(([threadId, cutoff]) =>
+      remainingRows -= 1
+      remainingBytes -= row.bytes
+      return true
+    })
+    if (rows.length < candidates.length || remainingRows === 0 || remainingBytes <= 0) more = true
+    return { threadId, cutoff, rows }
+  })
+  const retained = database.query("SELECT seq FROM ui_event_log ORDER BY seq DESC LIMIT 1 OFFSET ?").get(events) as {
+    seq: number
+  } | null
+  const agedEvents = database
+    .query(`SELECT seq FROM ui_event_log INDEXED BY ui_event_log_age WHERE at < ? ORDER BY at,seq LIMIT ?`)
+    .all(now - maxAgeMs, limit) as Array<{ seq: number }>
+  const cutoff = agedEvents.reduce((maximum, row) => Math.max(maximum, row.seq), retained?.seq ?? 0)
+  const candidates = database
+    .query("SELECT seq,length(CAST(event_json AS BLOB)) AS bytes FROM ui_event_log WHERE seq<=? ORDER BY seq LIMIT ?")
+    .all(cutoff, limit) as Array<{ seq: number; bytes: number }>
+  let eventBytes = 0
+  let eventBudgetExhausted = false
+  const eventRows = candidates.filter((row) => {
+    if (eventBudgetExhausted) return false
+    if (eventBytes > 0 && eventBytes + row.bytes > byteLimit) {
+      eventBudgetExhausted = true
+      return false
+    }
+    eventBytes += row.bytes
+    return true
+  })
+
+  return {
+    checkpoint,
+    threads,
+    events: eventRows,
+    nextCursor: thread?.cursor ?? 0,
+    more: more || eventRows.length < candidates.length || candidates.length === limit,
+  }
+}
+
+export const applyTranscriptRetentionPlan = (
+  database: Database,
+  plan: TranscriptRetentionPlan,
+): { more: boolean; cursor: number } =>
+  database
+    .transaction(() => {
+      if (isRetentionUpgradePending(database)) return { more: false, cursor: 0 }
+
+      // A projection can become dirty while discovery yields; revalidate under the writer lock.
+      const pending = plan.threads.find(({ threadId, cutoff }) =>
         hasPendingRetentionProjection(database, threadId, cutoff),
       )
-      if (pendingThread) {
-        materializeTranscriptBatch(database, pendingThread[0])
-        const needsAnotherCheckpoint = Array.from(cutoffs).some(([threadId, cutoff]) =>
-          hasPendingRetentionProjection(database, threadId, cutoff),
-        )
-        if (needsAnotherCheckpoint) return true
+      if (pending) {
+        materializeRetentionProjection(database, pending.threadId)
+        return { more: true, cursor: plan.nextCursor ? plan.nextCursor - 1 : 0 }
       }
-      let removed = 0
-      let more = false
+      const checkpoint = Math.min(
+        plan.checkpoint,
+        Number(
+          (
+            database.query("SELECT value FROM schema_meta WHERE key='transcript_event_checkpoint'").get() as {
+              value: string
+            }
+          ).value,
+        ),
+      )
       const started = performance.now()
-      for (const [threadId, cutoff] of cutoffs) {
-        if (removed >= limit || (removed > 0 && performance.now() - started >= 8)) {
-          more = true
-          break
-        }
-        // Bound the actual deletion prefix too: one old timestamp may identify a
-        // cutoff far beyond the oldest 256 rows in this thread.
-        const rows = database
-          .query(`SELECT id, seq FROM transcript_entries
-          WHERE thread_id = ? AND seq <= ? ORDER BY seq LIMIT ?`)
-          .all(threadId, cutoff, limit - removed) as Array<{ id: number; seq: number }>
-        let through = 0
-        for (const row of rows) {
-          if (removed > 0 && performance.now() - started >= 8) {
-            more = true
-            break
-          }
-          // An unpublished entry can share an older reserved thread sequence.
-          // Deleting exact ids preserves that tail even when sequence/id differ.
-          if (row.id > checkpoint) continue
-          database.query("UPDATE transcript_maintenance SET delete_before_id = ? WHERE id = 1").run(row.id)
-          database.query("DELETE FROM transcript_entries WHERE id = ?").run(row.id)
-          database.query("DELETE FROM rejections WHERE thread_id = ? AND seq = ?").run(threadId, row.seq)
-          through = row.seq
-          removed++
-        }
-        if (through)
-          database
-            .query(`INSERT INTO transcript_retention(thread_id, through_seq) VALUES (?, ?)
-            ON CONFLICT(thread_id) DO UPDATE SET through_seq = MAX(through_seq, excluded.through_seq)`)
-            .run(threadId, through)
-      }
-      if (removed >= limit) more = true
-
-      const retained = database
-        .query("SELECT seq FROM ui_event_log ORDER BY seq DESC LIMIT 1 OFFSET ?")
-        .get(events) as {
-        seq: number
-      } | null
-      const agedEvents = database
-        .query(`SELECT seq FROM ui_event_log INDEXED BY ui_event_log_age
-        WHERE at < ? ORDER BY at, seq LIMIT ?`)
-        .all(now - maxAgeMs, limit) as { seq: number }[]
-      const eventCutoff = agedEvents.reduce((maximum, row) => Math.max(maximum, row.seq), retained?.seq ?? 0)
-      if (eventCutoff) {
-        const rows = database
-          .query("SELECT seq FROM ui_event_log WHERE seq <= ? ORDER BY seq LIMIT ?")
-          .all(eventCutoff, limit) as { seq: number }[]
-        let through = 0
-        const eventStarted = performance.now()
-        database.query("UPDATE transcript_maintenance SET ui_delete_before_seq = ? WHERE id = 1").run(eventCutoff)
-        for (const row of rows) {
-          if (through && performance.now() - eventStarted >= 8) {
-            more = true
-            break
-          }
-          database.query("DELETE FROM ui_event_log WHERE seq = ?").run(row.seq)
-          through = row.seq
-        }
-        if (through)
-          database
-            .query("UPDATE schema_meta SET value = MAX(CAST(value AS INTEGER), ?) WHERE key = 'ui_event_floor_seq'")
-            .run(through)
-        if (rows.length >= limit) more = true
-      }
-      database.exec("UPDATE transcript_maintenance SET delete_before_id = 0, ui_delete_before_seq = 0 WHERE id = 1")
-      if (!more)
-        database
-          .query("UPDATE transcript_retention_cursor SET cursor=? WHERE id=1")
-          .run(threads.length === threadLimit ? (threads.at(-1)?.cursor ?? cursor) : 0)
-      return more || threads.length === threadLimit
+      const transcriptMore = plan.threads
+        .map((thread) => deleteTranscriptRetentionPrefix(database, thread, checkpoint, started))
+        .some(Boolean)
+      const eventMore = deleteEventRetentionPrefix(database, plan.events)
+      const more = plan.more || transcriptMore || eventMore
+      database.exec("UPDATE transcript_maintenance SET delete_before_id=0,ui_delete_before_seq=0 WHERE id=1")
+      const cursor = more && plan.nextCursor ? plan.nextCursor - 1 : plan.nextCursor
+      return { more: more || plan.nextCursor > 0, cursor }
     })
     .immediate()
+
+type RetentionProjectionScan = {
+  threadId: string
+  messageId: string
+  snapshotSeq: number
+  generation: number
+  cursor: number
 }
+const retentionProjectionScanKey = "transcript_retention_projection_scan"
+
+const materializeRetentionProjection = (database: Database, threadId: string): void => {
+  const target = database
+    .query(`SELECT p.message_id,m.updated_seq,m.generation FROM transcript_pending_deltas p
+    LEFT JOIN messages m ON m.thread_id=p.thread_id AND m.id=p.message_id
+    WHERE p.thread_id=? ORDER BY p.message_id LIMIT 1`)
+    .get(threadId) as {
+    message_id: string
+    updated_seq: number | null
+    generation: number | null
+  } | null
+  if (!target) return
+
+  database.exec(`CREATE TEMP TABLE IF NOT EXISTS transcript_recovery_scan (
+    thread_id TEXT NOT NULL,message_id TEXT NOT NULL,cursor INTEGER NOT NULL,
+    PRIMARY KEY(thread_id,message_id)
+  )`)
+  const saved = getRetentionProjectionScan(database)
+  if (
+    saved &&
+    saved.threadId === threadId &&
+    saved.messageId === target.message_id &&
+    saved.snapshotSeq === target.updated_seq &&
+    saved.generation === target.generation
+  )
+    database
+      .query(`INSERT INTO temp.transcript_recovery_scan(thread_id,message_id,cursor) VALUES(?,?,?)
+      ON CONFLICT(thread_id,message_id) DO UPDATE SET cursor=MAX(cursor,excluded.cursor)`)
+      .run(threadId, target.message_id, saved.cursor)
+
+  materializeTranscriptBatch(database, threadId)
+  const progress = database
+    .query(`SELECT scan.cursor,m.updated_seq,m.generation FROM temp.transcript_recovery_scan scan
+    JOIN messages m ON m.thread_id=scan.thread_id AND m.id=scan.message_id
+    WHERE scan.thread_id=? AND scan.message_id=?`)
+    .get(threadId, target.message_id) as {
+    cursor: number
+    updated_seq: number
+    generation: number
+  } | null
+  if (!progress) {
+    database.query("DELETE FROM schema_meta WHERE key=?").run(retentionProjectionScanKey)
+    return
+  }
+  // The durable marker and its snapshot commit together, so a fresh helper can resume through unrelated entries.
+  const next: RetentionProjectionScan = {
+    threadId,
+    messageId: target.message_id,
+    snapshotSeq: progress.updated_seq,
+    generation: progress.generation,
+    cursor: progress.cursor,
+  }
+  database
+    .query(`INSERT INTO schema_meta(key,value) VALUES(?,?)
+    ON CONFLICT(key) DO UPDATE SET value=excluded.value`)
+    .run(retentionProjectionScanKey, JSON.stringify(next))
+}
+
+const getRetentionProjectionScan = (database: Database): RetentionProjectionScan | undefined => {
+  const row = database.query("SELECT value FROM schema_meta WHERE key=?").get(retentionProjectionScanKey) as {
+    value: string
+  } | null
+  if (!row || row.value.length > 4096) return undefined
+
+  try {
+    const scan = JSON.parse(row.value) as RetentionProjectionScan
+    if (
+      typeof scan.threadId !== "string" ||
+      typeof scan.messageId !== "string" ||
+      !Number.isSafeInteger(scan.snapshotSeq) ||
+      scan.snapshotSeq < 0 ||
+      !Number.isSafeInteger(scan.generation) ||
+      scan.generation < 0 ||
+      !Number.isSafeInteger(scan.cursor) ||
+      scan.cursor < scan.snapshotSeq
+    )
+      return undefined
+    return scan
+  } catch {
+    return undefined
+  }
+}
+
+const deleteTranscriptRetentionPrefix = (
+  database: Database,
+  { threadId, rows }: RetentionThread,
+  checkpoint: number,
+  started: number,
+): boolean => {
+  // Only the committed prefix advances; these accumulators belong to one bounded transaction.
+  let through = 0
+  let more = false
+  for (const row of rows) {
+    if (performance.now() - started >= 8) {
+      more = true
+      break
+    }
+    if (row.id > checkpoint) continue
+
+    database.query("UPDATE transcript_maintenance SET delete_before_id=? WHERE id=1").run(row.id)
+    database.query("DELETE FROM transcript_entries WHERE id=?").run(row.id)
+    database.query("DELETE FROM rejections WHERE thread_id=? AND seq=?").run(threadId, row.seq)
+    through = row.seq
+  }
+  if (through)
+    database
+      .query(`INSERT INTO transcript_retention(thread_id,through_seq) VALUES (?,?)
+      ON CONFLICT(thread_id) DO UPDATE SET through_seq=MAX(through_seq,excluded.through_seq)`)
+      .run(threadId, through)
+  return more
+}
+
+const deleteEventRetentionPrefix = (database: Database, rows: TranscriptRetentionPlan["events"]): boolean => {
+  const started = performance.now()
+  // A slow last row is still protected by the helper's independent writer deadline.
+  let through = 0
+  let more = false
+  for (const row of rows) {
+    if (through && performance.now() - started >= 8) {
+      more = true
+      break
+    }
+
+    database.query("UPDATE transcript_maintenance SET ui_delete_before_seq=? WHERE id=1").run(row.seq)
+    database.query("DELETE FROM ui_event_log WHERE seq=?").run(row.seq)
+    through = row.seq
+  }
+  if (through)
+    database
+      .query("UPDATE schema_meta SET value=MAX(CAST(value AS INTEGER),?) WHERE key='ui_event_floor_seq'")
+      .run(through)
+  return more
+}
+
+const isRetentionUpgradePending = (database: Database): boolean =>
+  Boolean(database.query("SELECT 1 FROM schema_meta WHERE key='storage_upgrade_22' AND value<>'done'").get())
