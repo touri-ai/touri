@@ -228,6 +228,8 @@ export const createClaudeAdapter = ({
       args.onEvent({ type: "item", part: next })
     }
     let sawText = false
+    let streamedTextLength = 0
+    let sawApproval = false
     const thinkingBlocks = new Map<number, string>()
     let estimatedThinkingTokens = 0
     const emitThinking = (index: number, text: string): void => {
@@ -353,7 +355,8 @@ export const createClaudeAdapter = ({
         if (stringValue(event.type) === "content_block_delta" && stringValue(delta?.type) === "text_delta") {
           const text = stringValue(delta?.text)
           if (text) {
-            sawText = true
+            sawText ||= text.trim().length > 0
+            streamedTextLength += text.length
             args.onEvent({ type: "text_delta", itemId: stringValue(frame.index) ?? "assistant", delta: text })
           }
         }
@@ -369,6 +372,17 @@ export const createClaudeAdapter = ({
       } else if (type === "assistant") {
         const message = asRecord(frame.message) ?? {}
         const content = Array.isArray(message.content) ? message.content : []
+        const text = content
+          .map(asRecord)
+          .flatMap((block) => (block?.type === "text" && typeof block.text === "string" ? [block.text] : []))
+          .join("")
+        // Complete messages include text already delivered by this message's partial events.
+        const unstreamedText = text.slice(streamedTextLength)
+        streamedTextLength = 0
+        if (unstreamedText) {
+          sawText ||= unstreamedText.trim().length > 0
+          args.onEvent({ type: "text_delta", itemId: "assistant", delta: unstreamedText })
+        }
         for (const [index, item] of content.entries()) {
           const block = asRecord(item)
           if (block?.type === "thinking") {
@@ -397,6 +411,7 @@ export const createClaudeAdapter = ({
           outputs.delete(callId)
         }
       } else if (type === "approval_request") {
+        sawApproval = true
         const approvalId = stringValue(frame.approval_id) ?? stringValue(frame.id) ?? `claude-approval-${randomUUID()}`
         const toolUseId = stringValue(frame.tool_use_id) ?? approvalId
         const toolName = stringValue(frame.tool_name) ?? "Bash"
@@ -421,7 +436,10 @@ export const createClaudeAdapter = ({
       } else if (type === "result") {
         const isError = frame.is_error === true || stringValue(frame.subtype) === "error"
         const text = stringValue(frame.result) ?? ""
-        if (!sawText && text && !isError) args.onEvent({ type: "text_delta", itemId: "result", delta: text })
+        if (!sawText && text && !isError) {
+          sawText = text.trim().length > 0
+          args.onEvent({ type: "text_delta", itemId: "result", delta: text })
+        }
         const usage = asRecord(frame.usage)
         if (usage) {
           const usageDelta: { inputTokens?: number; outputTokens?: number; costUsd?: number } = {}
@@ -429,6 +447,14 @@ export const createClaudeAdapter = ({
           if (typeof usage.output_tokens === "number") usageDelta.outputTokens = usage.output_tokens
           if (typeof frame.total_cost_usd === "number") usageDelta.costUsd = frame.total_cost_usd
           args.onEvent({ type: "usage", usage: usageDelta, contextTokens: null, contextWindow: null })
+        }
+        if (!isError && !stopped && !sawText && !toolCalls.size && !sawApproval) {
+          complete({
+            success: false,
+            errorCode: "cli_protocol",
+            error: "O provedor terminou sem responder. Tente de novo.",
+          })
+          return
         }
         const providerError = isError ? text || "Claude reported an error" : null
         args.onEvent({

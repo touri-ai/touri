@@ -16,6 +16,7 @@ export const ptBR = {
     "coordinatorBotId: informe null ou o ID de um membro do grupo.",
   "title: informe um título não vazio com até 200 caracteres.":
     "title: informe um título não vazio com até 200 caracteres.",
+  "O provedor terminou sem responder. Tente de novo.": "O provedor terminou sem responder. Tente de novo.",
   "Person mention": "Menção a você",
   "Task started": "Tarefa iniciada",
   "Avisar quando um bot começar uma tarefa no canal": "Avisar quando um bot começar uma tarefa no canal",
@@ -3318,6 +3319,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "coordinatorBotId: provide null or the ID of a group member.",
   "title: informe um título não vazio com até 200 caracteres.":
     "title: enter a non-empty title with at most 200 characters.",
+  "O provedor terminou sem responder. Tente de novo.": "The provider finished without a response. Try again.",
   "Person mention": "Mentioned you",
   "Task started": "Task started",
   "Avisar quando um bot começar uma tarefa no canal": "Notify when a bot starts a task in a channel",
