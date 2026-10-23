@@ -33,4 +33,12 @@ database
   .query("INSERT INTO recovery_tasks VALUES(?,?,?)")
   .run("run:interrupted-reply", notification.id, "interrupted-reply")
 work.recover({ observe: () => ({ kind: "unobservable", reason: "Synthetic unknown outcome" }) })
+createNotificationStore({ db: database }).insert({
+  kind: "routine-failed",
+  botId,
+  threadId,
+  requestId: "routine:reply-failure",
+  title: "Rotina interrompida",
+  body: "Falha fictícia aguardando nova execução.",
+})
 database.close()

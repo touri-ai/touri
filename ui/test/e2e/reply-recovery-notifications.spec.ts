@@ -2,7 +2,7 @@ import { spawn } from "node:child_process"
 import { mkdir } from "node:fs/promises"
 import { join } from "node:path"
 import { expect, test } from "@playwright/test"
-import type { Bot, RecoveryTask, Thread } from "@touri/contracts"
+import type { Bot, NotificationRecord, RecoveryTask, Thread } from "@touri/contracts"
 import { createWorkGoldenServer } from "./work-golden-server"
 
 let server: Awaited<ReturnType<typeof createWorkGoldenServer>> | null = null
@@ -45,6 +45,7 @@ test("ordinary channel messages preserve recovery attention and uncertain effect
     expect(code).toBe(0)
   })
   await current.install(page)
+  await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto(current.serverUrl)
   const directory = process.env.TOURI_WORK_EVIDENCE_DIR ?? info.outputDir
   await mkdir(directory, { recursive: true })
@@ -54,15 +55,20 @@ test("ordinary channel messages preserve recovery attention and uncertain effect
       text: `Anotação fictícia do caderno ${width}.`,
     })) as { run: unknown }
     expect(result.run).toBeNull()
+    const { notifications } = (await current.api("/notifications")) as { notifications: NotificationRecord[] }
+    const original = notifications.find((item) => item.requestId === "recovery:run:interrupted-reply")
+    const routine = notifications.find((item) => item.requestId === "routine:reply-failure")
+    expect(original?.resolvedAt).toBeNull()
+    expect(routine?.resolvedAt).toBeNull()
     const { tasks } = (await current.api("/recovery")) as { tasks: RecoveryTask[] }
     expect(tasks.find((task) => task.runId === "interrupted-reply")?.notification.resolvedAt).toBeNull()
     expect(tasks[0]?.effects.some((effect) => effect.acknowledgeKey)).toBe(true)
     if (width === 390) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
     await page.getByRole("button", { name: /Notificações,/ }).click()
     const bell = page.getByRole("region", { name: "Central de notificações" })
-    await expect(bell.locator(".notification-row:not(.resolved)")).toHaveCount(1)
+    await expect(bell.locator(".notification-row:not(.resolved)")).toHaveCount(2)
     const bellPath = join(directory, `reply-recovery-bell-${width}.png`)
-    await page.screenshot({ path: bellPath })
+    await page.screenshot({ path: bellPath, animations: "disabled" })
     await info.attach(`bell-${width}`, { path: bellPath, contentType: "image/png" })
     await bell.getByRole("button", { name: "Tarefas interrompidas", exact: true }).click()
     const center = page.getByRole("dialog", { name: "Tarefas interrompidas", exact: true })
@@ -71,7 +77,7 @@ test("ordinary channel messages preserve recovery attention and uncertain effect
     await expect(center.getByText("Prévia fictícia pendente de revisão", { exact: true })).toBeVisible()
     await expect(center.getByRole("button", { name: "Descartar", exact: true })).toBeDisabled()
     const effectsPath = join(directory, `reply-recovery-effects-${width}.png`)
-    await page.screenshot({ path: effectsPath })
+    await page.screenshot({ path: effectsPath, animations: "disabled" })
     await info.attach(`effects-${width}`, { path: effectsPath, contentType: "image/png" })
     await page.keyboard.press("Escape")
   }
