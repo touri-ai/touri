@@ -649,7 +649,12 @@ export const createClaudeAdapter = ({
     if (!model.success) return model
 
     const turnArgs = Object.assign({}, args, { bot: Object.assign({}, args.bot, { model: model.model }) })
-    return withLocalTurnTemp(kernel, turnArgs, (turn) => startAttempt(turn, prepareOnly), warmSessions.getLifetime)
+    return withLocalTurnTemp(
+      kernel,
+      turnArgs,
+      (turn) => startAttempt(turn, false, undefined, prepareOnly),
+      warmSessions.getLifetime,
+    )
   }
 
   const answerApproval = async ({
