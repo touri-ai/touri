@@ -1,0 +1,95 @@
+{
+  "at": "2026-10-23T10:08:44.977Z",
+  "main": "eafb0d68",
+  "startedAt": 1792750065302,
+  "closedAt": 1792750066651,
+  "completedAt": 1792750123236,
+  "inspectOpenedAt": 1792750124738,
+  "runId": "01M5M3P63E7DT67HEN4H2D4Z7S",
+  "status": "succeeded",
+  "traceSupported": true,
+  "events": [
+    {
+      "at": 1792750066820,
+      "timestamp": 1792750066.8185792,
+      "service": "pushMessaging",
+      "eventName": "Push message received"
+    },
+    {
+      "at": 1792750067184,
+      "timestamp": 1792750067.179153,
+      "service": "pushMessaging",
+      "eventName": "Push event dispatched"
+    },
+    {
+      "at": 1792750067358,
+      "timestamp": 1792750067.3577619,
+      "service": "notifications",
+      "eventName": "Notification displayed"
+    },
+    {
+      "at": 1792750067359,
+      "timestamp": 1792750067.358799,
+      "service": "pushMessaging",
+      "eventName": "Push event completed"
+    },
+    {
+      "at": 1792750092565,
+      "timestamp": 1792750092.563953,
+      "service": "notifications",
+      "eventName": "Notification closed"
+    },
+    {
+      "at": 1792750123997,
+      "timestamp": 1792750123.9964461,
+      "service": "pushMessaging",
+      "eventName": "Push message received"
+    },
+    {
+      "at": 1792750123997,
+      "timestamp": 1792750123.9967241,
+      "service": "pushMessaging",
+      "eventName": "Push event dispatched"
+    },
+    {
+      "at": 1792750124017,
+      "timestamp": 1792750124.016895,
+      "service": "notifications",
+      "eventName": "Notification displayed"
+    },
+    {
+      "at": 1792750124018,
+      "timestamp": 1792750124.0178678,
+      "service": "pushMessaging",
+      "eventName": "Push event completed"
+    }
+  ],
+  "notes": [
+    {
+      "title": "touri",
+      "body": "O bot terminou. Abra a conversa para ver o resultado.",
+      "tag": "touri-770",
+      "data": {
+        "url": "https://qa.touri.test:18895/?bot=01M5KCSCZ24AEH2WYM10WBT7RR&thread=01M5KYSG1920XV2NK1BAHJANAW&notification=770"
+      }
+    }
+  ],
+  "fresh": [
+    {
+      "id": 770,
+      "kind": "done",
+      "requestId": null,
+      "threadId": "01M5KYSG1920XV2NK1BAHJANAW"
+    },
+    {
+      "id": 769,
+      "kind": "task-started",
+      "requestId": "task-started:01M5M3P63E7DT67HEN4H2D4Z7S:owner",
+      "threadId": "01M5KYSG1920XV2NK1BAHJANAW"
+    }
+  ],
+  "matchingTarget": true,
+  "target": "https://qa.touri.test:18895/?bot=01M5KCSCZ24AEH2WYM10WBT7RR&thread=01M5KYSG1920XV2NK1BAHJANAW&notification=770",
+  "matchingMethod": "URL thread matched actual completion notification, generic privacy-preserving title expected",
+  "notificationClickTested": false
+}
