@@ -481,3 +481,234 @@ test("a late routine failure remains discoverable outside the recent window", as
 
   expect(tasks.map((task) => task.id)).toEqual(["routine:old-routine-run"])
 })
+
+const saveGroupRecovery = (database: Database) => {
+  database.exec(`INSERT INTO bot_groups(id,name,color,avatar_shape,avatar_seed,created_at,updated_at)
+    VALUES ('group','Projeto','blue','circle','group',1,1);
+    UPDATE threads SET group_id = 'group' WHERE id = 'thread-a';`)
+  saveRun(database, "root")
+  saveRun(database, "child")
+  saveRun(database, "member")
+  database.exec(`UPDATE runs SET bot_id='bot-b', thread_id='thread-b' WHERE id='member';
+    UPDATE threads SET group_thread_id='thread-a' WHERE id='thread-b';
+    INSERT INTO group_turns VALUES ('root','group','["bot-a","bot-b"]');
+    INSERT INTO group_run_links VALUES ('child','root',0),('member','root',1);`)
+}
+
+test("one logical group recovery retains every member effect and independent work", async () => {
+  const h = await getFixture()
+  saveGroupRecovery(h.database)
+  saveRun(h.database, "independent")
+  saveUncertainEffect(h.work, "root")
+  h.work.beginEffect({
+    turnId: "member",
+    threadId: "thread-b",
+    key: "member-key",
+    description: "Member preview",
+    effectId: "member-preview",
+  })
+  h.work.recover({ observe: () => ({ kind: "unobservable", reason: "Unknown" }) })
+
+  const tasks = await h.getTasks()
+  const group = tasks.find((task) => task.runId === "root")
+
+  expect(tasks.filter((task) => task.notification.resolvedAt === null)).toHaveLength(2)
+  expect(group?.effects.map((effect) => effect.acknowledgeKey)).toEqual(
+    expect.arrayContaining(["preview-key", "member-key"]),
+  )
+  expect(tasks.some((task) => task.runId === "independent")).toBe(true)
+  const partial = await h.request("/recovery/run%3Aroot/dismiss", { acknowledgeKeys: ["preview-key"] })
+  expect(partial.status).toBe(409)
+  expect(h.work.isBlocked({ key: "member-key" })).toBe(true)
+  const complete = await h.request("/recovery/run%3Aroot/dismiss", { acknowledgeKeys: ["preview-key", "member-key"] })
+  expect(complete.status).toBe(200)
+  expect(h.work.isBlocked({ key: "member-key" })).toBe(false)
+  expect((await h.getTasks()).find((task) => task.runId === "independent")?.notification.resolvedAt).toBeNull()
+})
+
+const saveLegacyRecovery = (database: Database, runId: string, person: string | null = null) => {
+  const store = createNotificationStore({ db: database })
+  const { notification } = store.insert({
+    kind: "turn-failed",
+    botId: "bot-a",
+    threadId: "thread-a",
+    requestId: `recovery:run:${runId}`,
+    targetPersonId: person,
+    title: "Interrupted",
+    body: "Synthetic",
+  })
+  database.query("INSERT INTO recovery_tasks VALUES(?,?,?)").run(`run:${runId}`, notification.id, runId)
+  return notification
+}
+
+test("reconciles persisted duplicates before dismissal without losing child effects", async () => {
+  const h = await getFixture()
+  saveGroupRecovery(h.database)
+  saveUncertainEffect(h.work, "child")
+  const root = saveLegacyRecovery(h.database, "root")
+  const child = saveLegacyRecovery(h.database, "child")
+
+  const tasks = await h.getTasks()
+  const repeated = await h.getTasks()
+
+  expect(tasks).toHaveLength(1)
+  expect(repeated).toHaveLength(1)
+  expect(tasks[0]?.notification.id).toBe(root.id)
+  expect(tasks[0]?.effects.some((effect) => effect.acknowledgeKey === "preview-key")).toBe(true)
+  expect(h.database.query("SELECT resolution FROM notifications WHERE id=?").get(child.id)).toEqual({
+    resolution: "expired",
+  })
+  expect((await h.request(`/notifications/${root.id}/dismiss`, {})).status).toBe(409)
+  expect((await h.request("/notifications/dismiss-all", {})).status).toBe(200)
+  expect((await h.getTasks())[0]?.notification.resolvedAt).toBeNull()
+  expect(h.database.query("SELECT COUNT(*) AS count FROM work_journal WHERE kind='acknowledged'").get()).toEqual({
+    count: 0,
+  })
+})
+
+test("keeps person-addressed recovery notices separate", async () => {
+  const h = await getFixture()
+  saveGroupRecovery(h.database)
+  const root = saveLegacyRecovery(h.database, "root", "person-a")
+  const child = saveLegacyRecovery(h.database, "child", "person-b")
+
+  const tasks = await h.getTasks()
+
+  expect(tasks.find((task) => task.notification.id === root.id)?.notification.targetPersonId).toBe("person-a")
+  expect(tasks.find((task) => task.notification.id === child.id)?.notification.targetPersonId).toBe("person-b")
+  expect(tasks.filter((task) => task.notification.resolvedAt === null)).toHaveLength(3)
+})
+
+test("group recovery includes actions of already completed members", async () => {
+  const h = await getFixture()
+  saveGroupRecovery(h.database)
+  h.database.query("UPDATE runs SET status='succeeded' WHERE id='member'").run()
+  h.database
+    .query("UPDATE messages SET parts_json=? WHERE run_id='member'")
+    .run(
+      JSON.stringify([
+        { type: "command", callId: "member-action", command: "printf synthetic", output: "synthetic", exitCode: 0 },
+      ]),
+    )
+
+  const tasks = await h.getTasks()
+
+  expect(tasks).toHaveLength(1)
+  expect(tasks[0]?.effects.some((effect) => effect.description === "printf synthetic")).toBe(true)
+})
+
+test("the logical recovery identity survives coordination completion", async () => {
+  const h = await getFixture()
+  saveGroupRecovery(h.database)
+  saveUncertainEffect(h.work, "child")
+  const before = await h.getTasks()
+
+  h.database.query("UPDATE runs SET status='succeeded' WHERE id='root'").run()
+  const after = await h.getTasks()
+
+  expect(after).toHaveLength(1)
+  expect(after[0]?.id).toBe(before[0]?.id)
+  expect(after[0]?.notification.id).toBe(before[0]?.notification.id)
+  expect(after[0]?.notification.resolvedAt).toBeNull()
+  expect(after[0]?.effects.some((effect) => effect.acknowledgeKey === "preview-key")).toBe(true)
+})
+
+test("logical recovery lookups use indexed execution links", async () => {
+  const h = await getFixture()
+  saveGroupRecovery(h.database)
+
+  const plans = [
+    h.database.query("EXPLAIN QUERY PLAN SELECT turn_id FROM group_run_links WHERE run_id=?").all("child"),
+    h.database.query("EXPLAIN QUERY PLAN SELECT run_id FROM group_run_links WHERE turn_id=?").all("root"),
+  ]
+
+  expect(JSON.stringify(plans)).toContain("group_run_links_turn")
+  expect(JSON.stringify(plans)).not.toContain("SCAN group_run_links")
+})
+
+test("reconciles live failure notices by execution identity while leaving independent notices alone", async () => {
+  const h = await getFixture()
+  saveGroupRecovery(h.database)
+  saveUncertainEffect(h.work, "child")
+  const store = createNotificationStore({ db: h.database })
+  const child = store.insert({
+    kind: "turn-failed",
+    botId: "bot-a",
+    threadId: "thread-a",
+    requestId: "recovery:run:child",
+    title: "Failure",
+    body: "Synthetic",
+  }).notification
+  const independent = store.insert({
+    kind: "turn-failed",
+    botId: "bot-a",
+    threadId: "thread-a",
+    requestId: "another-request",
+    title: "Failure",
+    body: "Synthetic",
+  }).notification
+  const targeted = store.insert({
+    kind: "turn-failed",
+    botId: "bot-a",
+    threadId: "thread-a",
+    requestId: "recovery:run:root",
+    targetPersonId: "person-a",
+    title: "Failure",
+    body: "Synthetic",
+  }).notification
+
+  const tasks = await h.getTasks()
+
+  expect(tasks).toHaveLength(1)
+  expect(store.get(child.id)?.resolution).toBe("expired")
+  expect(store.get(independent.id)?.resolvedAt).toBeNull()
+  expect(store.get(targeted.id)?.resolvedAt).toBeNull()
+  expect(tasks[0]?.notification.targetPersonId).toBeNull()
+  expect(tasks[0]?.notification.resolvedAt).toBeNull()
+})
+
+test("unchanged logical recovery snapshots do not rewrite member ownership", async () => {
+  const h = await getFixture()
+  saveGroupRecovery(h.database)
+  await h.getTasks()
+  await h.getTasks()
+  h.database.exec(`CREATE TEMP TABLE recovery_ownership_writes (task_id TEXT NOT NULL);
+    CREATE TEMP TRIGGER record_recovery_insert AFTER INSERT ON recovery_tasks
+    BEGIN INSERT INTO recovery_ownership_writes VALUES (NEW.id); END;
+    CREATE TEMP TRIGGER record_recovery_update AFTER UPDATE ON recovery_tasks
+    BEGIN INSERT INTO recovery_ownership_writes VALUES (NEW.id); END;`)
+
+  // Background maintenance can write other tables while recovery reads are in flight.
+  h.database.query("UPDATE settings SET updated_at=updated_at+1 WHERE key='nativeNotifications'").run()
+  await h.getTasks()
+  await h.getTasks()
+
+  expect(h.database.query("SELECT COUNT(*) AS count FROM recovery_ownership_writes").get()).toEqual({ count: 0 })
+})
+
+test.each(["channel", "all"])("archiving %s preserves one logical task with every uncertain effect", async (scope) => {
+  const h = await getFixture()
+  saveGroupRecovery(h.database)
+  saveUncertainEffect(h.work, "root")
+  h.work.beginEffect({
+    turnId: "member",
+    threadId: "thread-b",
+    key: "member-key",
+    description: "Member preview",
+    effectId: "member-preview",
+  })
+  h.work.recover({ observe: () => ({ kind: "unobservable", reason: "Unknown" }) })
+  await h.getTasks()
+
+  h.database.query("UPDATE threads SET archived_at=300 WHERE id = 'thread-a' OR ? = 'all'").run(scope)
+  const tasks = await h.getTasks()
+
+  expect(tasks.filter((task) => task.notification.resolvedAt === null)).toHaveLength(1)
+  expect(tasks[0]?.effects.map((effect) => effect.acknowledgeKey)).toEqual(
+    expect.arrayContaining(["preview-key", "member-key"]),
+  )
+  const partial = await h.request("/recovery/run%3Aroot/dismiss", { acknowledgeKeys: ["preview-key"] })
+  expect(partial.status).toBe(409)
+  const complete = await h.request("/recovery/run%3Aroot/dismiss", { acknowledgeKeys: ["preview-key", "member-key"] })
+  expect(complete.status).toBe(200)
+})

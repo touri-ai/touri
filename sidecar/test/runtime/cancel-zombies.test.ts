@@ -1,6 +1,7 @@
 import { afterEach, expect, setDefaultTimeout, test } from "bun:test"
 import type { ProviderAdapter, Run, StartTurnArgs } from "@touri/contracts"
 import { spawnTree } from "../../src/kernel/spawn"
+import { createNotificationStore } from "../../src/notify/store"
 import { createRuntimeEngine } from "../../src/runtime/engine"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
 import type { ChildProcess } from "../../src/runtime/provider-io"
@@ -116,8 +117,18 @@ test("reconciliation fails a dead provider, preserves history and releases the s
     errorClass: "cli_crash",
     errorMessage: "O processo do bot foi encerrado sem concluir a tarefa. Você pode tentar novamente.",
   })
+  expect(fixture.notifications.byRequestId(`recovery:run:${fixture.run.id}`)?.kind).toBe("turn-failed")
   expect(fixture.engine.activeRun({ threadId: "thread" })).toBeNull()
   expect(fixture.store.activePath({ threadId: "thread" }).some((message) => message.role === "user")).toBe(true)
+})
+
+test("forced reconciliation retains execution identity when the output flush stalls", async () => {
+  const fixture = await getFixture("dead", false, "output")
+
+  await fixture.engine.reconcileRuns()
+
+  expect(fixture.getRun()).toMatchObject({ status: "failed", errorClass: "cli_crash" })
+  expect(fixture.notifications.byRequestId(`recovery:run:${fixture.run.id}`)?.kind).toBe("turn-failed")
 })
 
 test("a silent live provider is killed and reconciled after ten minutes", async () => {
@@ -232,6 +243,8 @@ const getFixture = async (
   const base = testKernel()
   cleanups.add(base.close)
   await initStore(base.kernel)
+  const notifications = createNotificationStore({ db: base.db })
+  base.kernel.services.provide("notify.emit", (input) => notifications.insert(input).notification)
   base.db
     .query("INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('bot','Synthetic','codex',?,1,1)")
     .run(base.kernel.paths.appData)
@@ -350,6 +363,7 @@ const getFixture = async (
     engine,
     store,
     persistence,
+    notifications,
     run,
     turn,
     child,
