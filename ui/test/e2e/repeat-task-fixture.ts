@@ -49,5 +49,7 @@ export const prepareChannelResult = async (page: Page) => {
     api.emit({ type: "message.created", message: question })
     api.emit({ type: "message.created", message: reply })
   })
-  await expect(page.getByText("Notas organizadas para revisão.", { exact: true })).toBeVisible()
+  await expect(
+    page.getByTestId("virtual-message-list").getByText("Notas organizadas para revisão.", { exact: true }),
+  ).toBeVisible()
 }
