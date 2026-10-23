@@ -58,9 +58,9 @@ export const createRunSupervision = (getProcessAlive = getProviderProcessAlive) 
 
   const stopProcess = async (runId: string): Promise<void> => {
     const observation = processes.get(runId)
-    if (!observation || (await getObservationAlive(observation)) === false) return
+    if (!observation) return
 
-    // Only a child handed to us by the adapter can be signaled, never a request-supplied PID.
+    // An exited leader can leave helpers in its owned group when the exit notification was missed.
     try {
       observation.child.kill("SIGKILL")
     } catch (error) {

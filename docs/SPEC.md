@@ -47,10 +47,14 @@ text update, even when the avatar's activity snapshot is one render behind.
 that transition has completed within five seconds; a cancellation that cannot be persisted or
 completed returns HTTP 503 with a clear, retryable explanation. Repeating cancellation is safe.
 Browser aliases return the selected canceled execution, preserving the authorization of other
-requests sharing a coordinator. Cancel removes waiting work, aborts the turn, expires approvals
+requests sharing a coordinator. A group cancellation also waits for every affected execution
+covered by the authorization check; a child stop failure returns HTTP 503 even if the selected
+group request is already terminal. Cancel removes waiting work, aborts the turn, expires approvals
 and releases its execution slot.
 An adapter that never settles cannot retain the slot. After a one-second grace period, a live
 provider is stopped through its owned process-group handle; no PID from an HTTP request is used.
+The owned group is also signaled after its leader exits, so surviving helpers cannot keep running
+when an exit notification is missed.
 Late output cannot change a terminal run. Normal finalization preserves the partial reply; if
 output preparation stalls, a bounded fallback still persists terminal state and retains the
 already stored history.

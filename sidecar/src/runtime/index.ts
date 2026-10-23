@@ -321,9 +321,12 @@ export const init = async (
             return routeError("NOT_FOUND", "Run not found")
           const cancellation = groups.cancelAuthorized(runId, getCancellationDecision)
           if (cancellation.denial) return cancellation.denial
-          const result = cancellation.run
+          const relatedRuns = Promise.all(cancellation.canceledRunIds.map((id) => engine.waitForRunEnd(id)))
+          const requested = cancellation.run
             ? await engine.waitForRunEnd(cancellation.canceledRunId ?? cancellation.run.id)
             : await engine.cancelAndWait(runId)
+          const stoppedRuns = await relatedRuns
+          const result = stoppedRuns.find((run) => !run.success) ?? requested
           return result.success
             ? { status: 200, json: { run: engine.getRunSnapshot(result.run) } }
             : routeError(result.errorCode, result.error)
