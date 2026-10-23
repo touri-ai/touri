@@ -126,6 +126,7 @@ const getPreview = async (dialog: Locator) => {
 }
 
 const expectCompactPicker = async (dialog: Locator) => {
+  await expect(dialog).toBeVisible()
   const picker = dialog.locator(".avatar-picker")
   if (!(await picker.isVisible())) await dialog.getByRole("button", { name: "Avançado", exact: true }).click()
   await picker.waitFor({ state: "visible" })

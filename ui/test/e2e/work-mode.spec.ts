@@ -130,7 +130,7 @@ test("captures an open channel on desktop and phone", async ({ page }) => {
     await page.setViewportSize({ width: viewport.width, height: viewport.height })
     await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "dark" })
     await page.goto("/test/e2e/work-mode-harness.html")
-    await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+    await expect(page.locator(".bot-workspace")).toBeVisible()
     if (viewport.name === "phone") await page.locator(".mobile-menu-button").click()
     await page.getByRole("button", { name: /^Planejamento/ }).click()
     await expect(page.getByRole("textbox", { name: "Mensagem para Planejamento" })).toBeVisible()

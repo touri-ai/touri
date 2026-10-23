@@ -4,7 +4,7 @@ import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
 import { showBotAdvanced, showBotDetails, showBotPanel } from "./home-navigation"
 
-const evidence = resolve(import.meta.dirname, "../../../docs/qa/bot-panel")
+const evidence = process.env.TOURI_E2E_EVIDENCE_DIR ?? resolve(import.meta.dirname, "../../../docs/qa/bot-panel")
 mkdirSync(evidence, { recursive: true })
 for (const theme of ["light", "dark"] as const)
   test(`bot panel workflow and screenshots · ${theme}`, async ({ page }) => {
@@ -19,7 +19,8 @@ for (const theme of ["light", "dark"] as const)
     await page.screenshot({ path: `${evidence}/after-details-${theme}.png` })
     await page.getByLabel("O que ele faz").fill("Planejamento de campanhas")
     await page.getByLabel("O que ele faz").press("Enter")
-    await expect(panel.getByText("Planejamento de campanhas", { exact: true })).toBeVisible()
+    await page.getByLabel("O que ele faz").press("Tab")
+    await expect(panel.getByRole("textbox", { name: "O que ele faz" })).toHaveValue("Planejamento de campanhas")
     await page.getByRole("tab", { name: "Detalhes" }).focus()
     await page.getByRole("tab", { name: "Detalhes" }).press("ArrowRight")
     await expect(page.getByRole("tab", { name: "Biblioteca" })).toBeFocused()

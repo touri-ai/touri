@@ -28,9 +28,7 @@ test("Home keeps advanced pages behind a single door and groups bots by their wo
   const sidebar = page.getByRole("navigation", { name: "Barra lateral" })
   await expect(sidebar.locator("#sidebar-mode-panel-bots .bot-status-heading")).toHaveCount(0)
   await expect(sidebar.locator(".sidebar-needs-you")).toBeVisible()
-  await expect(sidebar.locator('[data-bot-entry="bot-mark"] .bot-preview')).not.toHaveText(
-    "Aguardando você: sua resposta",
-  )
+  await expect(sidebar.locator('[data-bot-entry="bot-mark"] .bot-preview')).toHaveText("Aguardando você: sua resposta")
   await expect(sidebar.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
   await expect(page.locator(".bot-panel")).toHaveCount(0)
   for (const name of ["MCP", "Integrações", "Projetos", "Importar"])
