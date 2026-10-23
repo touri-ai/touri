@@ -1,5 +1,6 @@
 import type { NotificationRecord } from "@touri/contracts"
 import { type TranslationKey, t } from "../i18n"
+import { isReadyReviewNotice } from "../sidebarAttention"
 import { BotAvatar } from "./BotAvatar"
 import { PanelIcon } from "./PanelIcon"
 import "./notification-attention-bar.css"
@@ -52,6 +53,7 @@ export const NotificationAttentionBar = ({
 }
 
 const getReason = (item: NotificationRecord): TranslationKey => {
+  if (isReadyReviewNotice(item)) return "PR ready"
   if (item.kind === "approval") return "{name} wants your approval"
   if (item.kind === "question") return "{name} needs your answer"
   if (item.kind === "takeover") return "{name} needs your help"

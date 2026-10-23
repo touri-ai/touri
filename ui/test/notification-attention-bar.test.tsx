@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
 import { NotificationAttentionBar } from "../src/components/NotificationAttentionBar"
+import { getReadyReviewFixture } from "./fixtures/ready-review"
 
 afterEach(cleanup)
 
@@ -40,4 +41,16 @@ it("returns to the waiting question after the approval is resolved", () => {
 
   expect(onSelect).toHaveBeenCalledWith(question)
   expect(screen.getByText("onb precisa da sua resposta")).toBeVisible()
+})
+
+it("identifies a ready review and opens its original notification", async () => {
+  const { review } = await getReadyReviewFixture()
+  const onSelect = vi.fn()
+  render(<NotificationAttentionBar notifications={[review]} onSelect={onSelect} />)
+
+  const card = screen.getByRole("button", { name: /^Precisa de você.*Revisão pronta/ })
+  fireEvent.click(card)
+
+  expect(onSelect).toHaveBeenCalledWith(review)
+  expect(card).toHaveAccessibleDescription("Abrir pendência de touri")
 })
