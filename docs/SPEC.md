@@ -48,6 +48,9 @@ Optional member panels, group dialogs and the routine editor load asynchronously
 application bundle. They preserve existing actions and keyboard access, including their close control
 while their module loads.
 Closing a loading channel panel restores focus to its trigger and leaves the conversation available.
+Empty-conversation welcome content and its styles load separately without holding back the composer.
+Avatar customization styles load with their existing deferred dialogs.
+Preview workspace styles load with that optional screen, preserving its responsive layouts.
 The initial HTML, JavaScript and CSS remain limited to 400,000 bytes gzip.
 
 During browser takeover, choosing the keyboard control keeps focus in the remote input without
@@ -573,6 +576,24 @@ show their routine name and a localized short date, without an internal timestam
 message preview. Members appear in the channel header and panel, reached through the member count.
 The channel panel contains the channel name, people and bots with status, and Edit channel;
 it does not contain an internal turn-results board.
+Work restores its last channel index from a local cache scoped to the server and signed-in person,
+then refreshes it at app startup. The cache holds only channel/sidebar metadata (at most 64 KiB,
+200 channels and 500 visible conversations, expiring after seven days); it never stores messages,
+tool output, working paths or approval state. Channel names and each channel index render as their
+requests finish, independently of machine, routine and activity initialization. The selected channel's
+history starts as soon as its own index is available, even while another channel index is pending.
+A refresh resets index readiness while preserving known channels; clicking a newly discovered
+channel waits for its saved conversations instead of creating another conversation.
+Switching between saved conversations cancels an earlier channel click that is still waiting for its index.
+A failed channel-list read preserves the last known channels, offers Retry and does not prevent direct conversations from loading. Empty channel and conversation invitations appear
+only after the corresponding first read succeeds; pending reads show an accessible skeleton.
+A failed history read offers Retry, which reloads saved state without replaying a message or restarting the service.
+A matching task notification or failed reply cannot hide this recovery or turn it into a task retry.
+The channel header starts loading while history is pending; the message area keeps its skeleton until history succeeds.
+The composer becomes available together with its header, including while deferred UI modules load.
+The conversation history accepts keyboard focus so saved messages can be scrolled without a pointer.
+With 60 ms added network latency, reopening Work targets a visible cached channel list within
+300 ms and the selected channel's stored messages within one second.
 The header has no repeated breadcrumb; edit and invite actions live in its ellipsis menu. The empty
 channel shows a short introduction and member avatars. The composer keeps team actions in one menu.
 

@@ -25,12 +25,14 @@ const getProps = () => {
 
 const getProgressBlocks = (container: HTMLElement) => container.querySelectorAll(".activity-mark")
 const getStopButtons = () => screen.getAllByRole("button", { name: "Parar", exact: true })
+const getComposer = () => screen.findByRole("textbox", { name: "Mensagem para Equipe de exemplo" })
 
 describe("channel progress", () => {
-  it("hydrates one progress block, one connection check and only the global stop for a linked execution", () => {
+  it("hydrates one progress block, one connection check and only the global stop for a linked execution", async () => {
     const props = getProps()
 
     const view = render(<ChatPanel {...props} runs={[props.coordination, props.execution]} />)
+    await getComposer()
 
     expect(getProgressBlocks(view.container)).toHaveLength(1)
     expect(screen.getAllByRole("button", { name: "Verificar conexão" })).toHaveLength(1)
@@ -38,9 +40,10 @@ describe("channel progress", () => {
     expect(view.container.querySelectorAll("[data-pending-run]")).toHaveLength(0)
   })
 
-  it("replaces coordination-only progress when its child attaches, before any child message exists", () => {
+  it("replaces coordination-only progress when its child attaches, before any child message exists", async () => {
     const props = getProps()
     const view = render(<ChatPanel {...props} runs={[props.coordination]} messages={[props.request]} />)
+    await getComposer()
     expect(getProgressBlocks(view.container)).toHaveLength(1)
     expect(view.container.querySelector("[data-pending-run]")).toHaveAttribute(
       "data-pending-run",
@@ -68,6 +71,7 @@ describe("channel progress", () => {
         messages={[props.request]}
       />,
     )
+    await getComposer()
 
     expect(getProgressBlocks(view.container)).toHaveLength(3)
     expect(getStopButtons()).toHaveLength(1)
@@ -105,7 +109,7 @@ describe("channel progress", () => {
     expect(screen.queryByRole("button", { name: "Parar", exact: true })).toBeNull()
   })
 
-  it("does not bring coordination progress back after its child finishes before the parent", () => {
+  it("does not bring coordination progress back after its child finishes before the parent", async () => {
     const props = getProps()
 
     const view = render(
@@ -118,6 +122,7 @@ describe("channel progress", () => {
         runs={[props.coordination, { ...props.execution, status: "succeeded", finishedAt: Date.now() }]}
       />,
     )
+    await getComposer()
 
     expect(getProgressBlocks(view.container)).toHaveLength(0)
     expect(getStopButtons()).toHaveLength(1)

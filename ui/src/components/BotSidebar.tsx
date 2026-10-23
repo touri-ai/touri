@@ -51,6 +51,7 @@ import { useRoutineRunCountsToday } from "../useRoutineRunCountsToday"
 import { useMascotSnapshot } from "./AvatarRuntime"
 import { BotActionsMenu } from "./BotActionsMenu"
 import { BotAvatar } from "./BotAvatar"
+import { ConversationLoading } from "./ConversationLoading"
 import { DeleteBotDialog } from "./DeleteBotDialog"
 import { DeleteOldAutomaticThreadsDialog } from "./DeleteOldAutomaticThreadsDialog"
 import { DeleteThreadDialog, type ThreadDeleteTarget } from "./DeleteThreadDialog"
@@ -72,6 +73,7 @@ const GroupSidebar = lazy(() => import("./Groups").then((module) => ({ default: 
 
 type SidebarProps = {
   currentPerson?: ChannelPerson | undefined
+  groupsLoading?: boolean
   deletedThreadIds?: ReadonlySet<string> | undefined
   threadDeletion?: ThreadDeletion | undefined
   serverMode?: boolean
@@ -675,9 +677,10 @@ export const Sidebar = (props: SidebarProps) => {
           aria-hidden={sidebarMode !== "work" || undefined}
           inert={sidebarMode !== "work" || undefined}
         >
-          <Suspense fallback={null}>
+          <Suspense fallback={<ConversationLoading />}>
             {props.onNewGroup && hasOpenedWork && (
               <GroupSidebar
+                loading={props.groupsLoading}
                 groups={props.groups ?? EMPTY_GROUPS}
                 threads={props.threads}
                 attentionThreadIds={attentionThreadIds}

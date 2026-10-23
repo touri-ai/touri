@@ -250,6 +250,7 @@ const AppContent = ({ kernel }: AppProps) => {
     api !== null,
     route.section === "bots" && route.screen === "chat",
     currentPerson?.role ?? null,
+    currentPersonId ?? "owner",
   )
   const { data, actions } = workspace
   const interruptedWork = useRecoveryTasks(api)
@@ -708,6 +709,9 @@ const AppContent = ({ kernel }: AppProps) => {
         .sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0))[0]
     : undefined
   const noticeContext = {
+    historyRead:
+      (!!data.historyNotice && notice === data.historyNotice) ||
+      (!!data.channelNotice && notice === data.channelNotice),
     provider: noticeRun?.provider,
     errorClass: noticeRun?.errorClass,
     parts: data.activityMessages.find((message) => message.id === noticeRun?.replyMessageId)?.parts,
@@ -715,6 +719,7 @@ const AppContent = ({ kernel }: AppProps) => {
     occurredAt: noticeRun?.finishedAt ?? noticeRecord?.createdAt,
   }
   const failureShownInChat =
+    !noticeContext.historyRead &&
     !!noticeRun?.replyMessageId &&
     noticeRun.threadId === selectedThread?.id &&
     selectedMessages.some((message) => message.id === noticeRun.replyMessageId && message.status === "failed")
@@ -872,7 +877,7 @@ const AppContent = ({ kernel }: AppProps) => {
     return recovery(connectionError ?? t("Unknown connection error"))
   if (!api && connectionState === "loading") return loading()
   if (!api) return recovery(t("The sidecar connection is not available."))
-  if (data.loading && !data.botsLoaded) return loading()
+  if (data.loading && !data.botsLoaded && data.groups.length === 0) return loading()
   if (!api.isMock && data.bots.length === 0 && data.notice) return recovery(data.notice)
   // Doctor and import are reachable from onboarding, before any bot exists, so they render outside the main layout too.
   const setupModal =
@@ -903,14 +908,13 @@ const AppContent = ({ kernel }: AppProps) => {
               context={noticeContext}
               onAction={async (action) => {
                 if (action === "retry") {
-                  if (noticeRecord) {
+                  if (noticeRecord && !noticeContext.historyRead) {
                     await notificationActions.recover(noticeRecord, action)
                     return
                   }
                   // A provider notice must not restart the local service or replay a mutation.
-                  await api.request("GET /health", {})
+                  await actions.refresh()
                   setLocalNotice(null)
-                  actions.dismissNotice()
                 } else if (action === "login")
                   runFailureAction({ kind: "setting", settingId: "providerLogin", label: "" })
                 else if (action === "storage" || action === "doctor") openModal("doctor")
@@ -1008,7 +1012,7 @@ const AppContent = ({ kernel }: AppProps) => {
         onNotice={showNotice}
       />
     )
-  if (data.bots.length === 0)
+  if (data.bots.length === 0 && data.groups.length === 0)
     return (
       <AvatarRuntimeProvider value={{ ...data, messages: data.activityMessages }}>
         {botModal}
@@ -1097,6 +1101,7 @@ const AppContent = ({ kernel }: AppProps) => {
             serverUrl={serverState.status?.url ?? null}
             host={data.routineHost}
             groups={data.groups}
+            groupsLoading={!data.groupsLoaded}
             onInvitePerson={canInvitePeople ? () => openModal("invite") : undefined}
             onNewGroup={() => {
               setEditingGroup(null)
@@ -1272,6 +1277,10 @@ const AppContent = ({ kernel }: AppProps) => {
                       >
                         <RecoveryTasksContext.Provider value={interruptedWork.tasks}>
                           <ChatPanel
+                            historyLoading={
+                              !data.threadCreation &&
+                              (selectedThread ? data.historyThreadId !== selectedThread.id : !data.loaded)
+                            }
                             channelMode={Boolean(selectedGroup)}
                             workspaceMode={sidebarMode}
                             browserRuns={data.browserRuns ?? []}

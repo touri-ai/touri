@@ -2,6 +2,7 @@ import type { Bot } from "@touri/contracts"
 import { needsRepository } from "../features/jobs/catalog"
 import { t } from "../i18n"
 import { BotAvatar } from "./BotAvatar"
+import "./conversation-start.css"
 
 export const ConversationStart = ({
   bot,

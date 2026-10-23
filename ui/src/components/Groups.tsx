@@ -1,16 +1,18 @@
 import type { Bot, BotGroup, ChannelPerson, Message, Run, Thread } from "@touri/contracts"
 import { avatarColorFor } from "@touri/contracts/avatar"
-import { lazy, memo, Suspense, useEffect, useMemo, useState } from "react"
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useState } from "react"
 import { latestPreview } from "../botPreview"
 import { getChannelSidebarThreads, getChannelThreads, getChannelThreadTitle } from "../channelThreads"
 import { ChannelHeaderChip, ChannelWorkingMarker } from "../features/channelBrowser/ChannelBrowser"
 import { type Locale, t } from "../i18n"
 import { getLastActivityAt, getSidebarRowTime } from "../sidebarAttention"
 import { BotAvatar } from "./BotAvatar"
+import { ConversationLoading } from "./ConversationLoading"
 import { PanelIcon } from "./PanelIcon"
 import { PersonAvatar } from "./PersonAvatar"
 import { SidebarActionsMenu } from "./SidebarActionsMenu"
 import { SidebarCount, SidebarDot, SidebarRow } from "./SidebarRow"
+import "./conversation-start.css"
 import "./groups.css"
 
 const DeleteGroupDialog = lazy(() =>
@@ -50,6 +52,7 @@ export const MemberMascots = ({ bots, locale = "pt-BR" }: { bots: Bot[]; locale?
 )
 export const GroupSidebar = memo(
   ({
+    loading = false,
     groups,
     threads,
     attentionThreadIds = new Set(),
@@ -66,6 +69,7 @@ export const GroupSidebar = memo(
     runs = EMPTY_RUNS,
     locale = "pt-BR",
   }: {
+    loading?: boolean | undefined
     groups: BotGroup[]
     threads: Thread[]
     messages?: Message[]
@@ -87,6 +91,29 @@ export const GroupSidebar = memo(
       [threads, attentionThreadIds],
     )
     const previews = useMemo(() => getGroupPreviews(threadSummaries, messages, runs), [threadSummaries, messages, runs])
+    const [pendingGroup, setPendingGroup] = useState<{ id: string; previousThreadId: string | null } | null>(null)
+    const selectPendingGroup = useCallback(
+      (id: string) => setPendingGroup({ id, previousThreadId: selectedThreadId }),
+      [selectedThreadId],
+    )
+    const selectThread = useCallback(
+      (id: string) => {
+        setPendingGroup(null)
+        onSelect(id)
+      },
+      [onSelect],
+    )
+    useEffect(() => {
+      if (!pendingGroup) return
+      // Initial index hydration can choose a default without superseding the person's channel click.
+      const hasNewSelection =
+        pendingGroup.previousThreadId !== null &&
+        pendingGroup.previousThreadId !== selectedThreadId &&
+        threads.some((thread) => thread.id === pendingGroup.previousThreadId)
+      if (hasNewSelection) return setPendingGroup(null)
+      const thread = getChannelThreads(threads, pendingGroup.id)[0]
+      if (thread) selectThread(thread.id)
+    }, [pendingGroup, selectedThreadId, threads, selectThread])
 
     return (
       <section className="group-sidebar" aria-label={t("Channels", {}, locale)}>
@@ -124,7 +151,8 @@ export const GroupSidebar = memo(
             <span aria-hidden="true">+</span>
           </button>
         </div>
-        {groups.length === 0 && (
+        {loading && groups.length === 0 && <ConversationLoading />}
+        {!loading && groups.length === 0 && (
           <div className="group-sidebar-empty">
             <strong>{t("No channels yet", {}, locale)}</strong>
             <p>{t("Channels explainer", {}, locale)}</p>
@@ -141,6 +169,8 @@ export const GroupSidebar = memo(
 
           return (
             <GroupSidebarEntry
+              loading={loading}
+              onPendingSelect={selectPendingGroup}
               key={group.id}
               group={group}
               threads={isSelected ? groupThreads : EMPTY_THREADS}
@@ -152,7 +182,7 @@ export const GroupSidebar = memo(
               needsAttention={summary?.needsAttention ?? false}
               selected={isSelected}
               selectedThreadId={isSelected ? selectedThreadId : null}
-              onSelect={onSelect}
+              onSelect={selectThread}
               onEdit={onEdit}
               onNewThread={onNewThread}
               onDelete={onDelete}
@@ -216,6 +246,8 @@ const getGroupThreadSummaries = (threads: Thread[], attentionThreadIds: Readonly
 
 const GroupSidebarEntry = memo(
   ({
+    loading,
+    onPendingSelect,
     group,
     threads,
     firstThreadId,
@@ -233,6 +265,8 @@ const GroupSidebarEntry = memo(
     onDelete,
     locale,
   }: {
+    loading: boolean
+    onPendingSelect: (groupId: string) => void
     group: BotGroup
     threads: Thread[]
     firstThreadId: string | null
@@ -306,6 +340,7 @@ const GroupSidebarEntry = memo(
             />
           }
           onClick={() => {
+            if (!firstThreadId && loading) return onPendingSelect(group.id)
             if (!firstThreadId) return onNewThread(group)
 
             onSelect(firstThreadId)

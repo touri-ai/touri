@@ -1,0 +1,32 @@
+.conversation-loading {
+  padding: 20px;
+  display: grid;
+  align-content: start;
+  gap: 24px;
+}
+
+.conversation-loading-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.conversation-loading-row i,
+.conversation-loading-row span {
+  display: block;
+  background: var(--border);
+  opacity: 0.6;
+  border-radius: 8px;
+}
+
+.conversation-loading-row i {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.conversation-loading-row span {
+  width: 65%;
+  max-width: 420px;
+  height: 16px;
+}

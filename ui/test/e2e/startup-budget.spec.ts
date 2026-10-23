@@ -8,12 +8,14 @@ import type { Manifest } from "vite"
 const compress = promisify(gzip)
 const output = resolve(import.meta.dirname, "../../dist")
 const optionalModules = [
+  "src/components/ConversationStart.tsx",
   "src/components/GroupModal.tsx",
   "src/components/GroupPanel.tsx",
   "src/components/RoutineEditor.tsx",
+  "src/components/WorkspaceScreens.tsx",
 ]
 
-test("keeps the production startup payload below 400 KB gzip with optional channel modules deferred", async () => {
+test("keeps the production startup payload below 400 KB gzip with optional modules deferred", async () => {
   const manifest = JSON.parse(await readFile(resolve(output, ".vite/manifest.json"), "utf8")) as Manifest
   const initialFiles = Array.from(new Set(["index.html"].concat(getInitialFiles(manifest, "index.html"))))
   const sizes = await Promise.all(initialFiles.map((file) => getGzipBytes(resolve(output, file))))
@@ -26,6 +28,25 @@ test("keeps the production startup payload below 400 KB gzip with optional chann
     const chunk = manifest[key]
     expect(chunk?.isDynamicEntry).toBe(true)
     expect(initialFiles).not.toContain(chunk?.file)
+  })
+  const welcomeStyles = Object.values(manifest)
+    .flatMap((chunk) => chunk.css ?? [])
+    .filter((file) => file.includes("/conversation-start-"))
+  expect(welcomeStyles.length).toBeGreaterThan(0)
+  welcomeStyles.forEach((file) => {
+    expect(initialFiles).not.toContain(file)
+  })
+  const avatarStyles = Object.values(manifest)
+    .flatMap((chunk) => chunk.css ?? [])
+    .filter((file) => /\/(?:AvatarPicker|avatar-picker)-/.test(file))
+  expect(avatarStyles.length).toBeGreaterThan(0)
+  avatarStyles.forEach((file) => {
+    expect(initialFiles).not.toContain(file)
+  })
+  const previewStyles = manifest["src/components/WorkspaceScreens.tsx"]?.css ?? []
+  expect(previewStyles.length).toBeGreaterThan(0)
+  previewStyles.forEach((file) => {
+    expect(initialFiles).not.toContain(file)
   })
   const dialogStyles = manifest["src/components/GroupModal.tsx"]?.css ?? []
   expect(dialogStyles.length).toBeGreaterThan(0)

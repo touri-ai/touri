@@ -44,6 +44,8 @@ import { localResponseTimings } from "./localResponseTimings"
 import { useMachineParking } from "./machineIntents"
 import { reconcileFailureNotifications } from "./sidebarAttention"
 import { getSidebarReadThreadIds } from "./sidebarThreads"
+import { getStorageScope } from "./storageScope"
+import { getWorkChannelCache, saveWorkChannelCache } from "./workChannelCache"
 import { updateActivityStream } from "./workspaceMemory"
 import { activeRun, activityMessage, retainWorkspace } from "./workspaceRetention"
 import { readWorkspaceState, saveWorkspaceState, type ThreadCreationStatus } from "./workspaceState"
@@ -51,6 +53,12 @@ import { readWorkspaceState, saveWorkspaceState, type ThreadCreationStatus } fro
 type ProcessEntry = { spec: ProcessSpec; run: ProcessRunState | null }
 
 export type WorkspaceData = {
+  groupsLoaded?: boolean
+  readyGroupIds?: Id[]
+  historyThreadId?: Id | null
+  historyNotice?: string | null
+  channelNotice?: string | null
+  channelCacheIdentity?: { scope: string | null; personId: string }
   groups: Array<BotGroup>
   bots: Array<Bot>
   machineCapability: MachineCapability
@@ -593,12 +601,17 @@ export const useWorkspace = (
   enabled = true,
   chatOpen = true,
   role: "member" | "admin" | null = "admin",
+  personId = "owner",
 ): Workspace => {
   const diagnosis = useDoctorReport(api, enabled && role === "admin")
   const [data, setData] = useReducer(
     (current: WorkspaceData, update: (current: WorkspaceData) => WorkspaceData) => {
       const next = update(current)
-      return next === current ? current : retainWorkspace(next, current)
+      if (next === current) return current
+      const selectionChanged = next.selectedThreadId !== current.selectedThreadId
+      const resetHistory = selectionChanged && next.historyThreadId !== next.selectedThreadId
+
+      return retainWorkspace(resetHistory ? { ...next, historyThreadId: null } : next, current)
     },
     undefined,
     emptyState,
@@ -622,6 +635,47 @@ export const useWorkspace = (
   const threadLoads = useRef(new Map<Id, ThreadLoad>())
   const projectGeneration = useRef(0)
   const [projectRevision, setProjectRevision] = useState(0)
+  useEffect(() => {
+    if (!enabled || role === null) return
+    const cached = getWorkChannelCache(personId)
+    if (!cached) return
+
+    setData((current) => {
+      if (current.groupsLoaded) return current
+      const selectedThreadId = cached.selectedThreadId ?? current.selectedThreadId
+      return {
+        ...current,
+        groups: cached.groups,
+        threads: mergeThreads(cached.threads, current.threads),
+        selectedThreadId,
+      }
+    })
+  }, [enabled, role, personId])
+  useEffect(() => {
+    const identity = data.channelCacheIdentity
+    if (
+      !enabled ||
+      role === null ||
+      !data.groupsLoaded ||
+      !identity ||
+      identity.personId !== personId ||
+      identity.scope !== getStorageScope()
+    )
+      return
+    // Coalesce metadata changes; the snapshot is capped at 64 KiB and contains no transcript.
+    const snapshot = { groups: data.groups, threads: data.threads, selectedThreadId: data.selectedThreadId }
+    const timer = setTimeout(() => saveWorkChannelCache(snapshot, personId, Date.now(), identity.scope), 100)
+    return () => clearTimeout(timer)
+  }, [
+    enabled,
+    role,
+    personId,
+    data.groupsLoaded,
+    data.groups,
+    data.threads,
+    data.selectedThreadId,
+    data.channelCacheIdentity,
+  ])
   useEffect(() => {
     // React refs own the revision index; terminal IDs must not accumulate with durable history.
     const activeIds = new Set(data.runs.filter(activeRun).map((run) => run.id))
@@ -696,6 +750,8 @@ export const useWorkspace = (
 
             return {
               ...current,
+              historyThreadId: threadId,
+              historyNotice: null,
               messages: (api.pendingMessages?.() ?? [])
                 .filter((message) => message.threadId === threadId)
                 .reduce(
@@ -706,7 +762,10 @@ export const useWorkspace = (
                 current.runs,
                 runs.runs.filter((run) => (liveRuns.current.get(run.id) ?? 0) <= runsAtStart),
               ),
-              notice: current.notice === serviceNotice.current ? null : current.notice,
+              notice:
+                current.notice === serviceNotice.current || current.notice === current.historyNotice
+                  ? null
+                  : current.notice,
             }
           })
         })
@@ -715,7 +774,7 @@ export const useWorkspace = (
 
           const notice = t("Service request failed", { error: getServiceErrorMessage(error) })
           if (isServiceUnavailable(error)) serviceNotice.current = notice
-          setData((current) => ({ ...current, notice }))
+          setData((current) => ({ ...current, notice, historyNotice: notice }))
         })
         .finally(() => {
           const load = threadLoads.current.get(threadId)
@@ -732,8 +791,11 @@ export const useWorkspace = (
 
   const load = useCallback(async (): Promise<void> => {
     if (!enabled) return
+    // The server authorizes fresh reads while session identity retries; only the local cache must wait.
     const threadsAtStart = new Map(currentData.current.threads.map((thread) => [thread.id, thread]))
     const attempt = ++generation.current
+    const channelCacheIdentity = { scope: getStorageScope(), personId }
+    setData((current) => ({ ...current, groupsLoaded: false, readyGroupIds: [] }))
     // Pending callbacks share these request-owned arrays, so clear them before abandoning the loads.
     for (const load of threadLoads.current.values()) load.deltas.length = 0
     threadLoads.current.clear()
@@ -744,6 +806,42 @@ export const useWorkspace = (
     try {
       const member = role === "member"
       const restricted = role !== "admin"
+      // Channels publish as each read finishes, independently of machines, routines and bot histories.
+      const groupsRequest = api
+        .request("GET /groups", {})
+        .then((response) => {
+          if (attempt === generation.current) setData((current) => ({ ...current, groups: response.groups }))
+          return { ...response, loaded: true, notice: null }
+        })
+        .catch((error: unknown) => ({
+          groups: [],
+          loaded: false,
+          notice: t("Service request failed", { error: getServiceErrorMessage(error) }),
+        }))
+      const groupThreadsRequest = groupsRequest
+        .then(({ groups }) =>
+          Promise.all(
+            groups.map(async (group) => {
+              const response = await api.request("GET /groups/:id/threads", {}, { id: group.id })
+              if (attempt === generation.current)
+                setData((current) =>
+                  Object.assign({}, current, {
+                    threads: mergeThreads(current.threads, response.threads),
+                    readyGroupIds: (current.readyGroupIds ?? []).filter((id) => id !== group.id).concat(group.id),
+                  }),
+                )
+              return response
+            }),
+          ),
+        )
+        .then(async (responses) => {
+          const response = await groupsRequest
+          if (response.loaded && attempt === generation.current)
+            setData((current) => ({ ...current, groupsLoaded: true, channelCacheIdentity }))
+          return responses
+        })
+      // Attach a rejection handler immediately, including when another startup resource fails first.
+      void groupThreadsRequest.catch(() => undefined)
       const [
         groupResponse,
         botResponse,
@@ -758,7 +856,7 @@ export const useWorkspace = (
         activityResponse,
         workResponse,
       ] = await Promise.all([
-        api.request("GET /groups", {}).catch(() => ({ groups: [] })),
+        groupsRequest,
         api.request("GET /bots", {}).then((response) => {
           if (attempt === generation.current) {
             // The sidebar can render independently of machine, routine and history initialization.
@@ -811,7 +909,7 @@ export const useWorkspace = (
             return response.threads
           }),
         ),
-        Promise.all((groupResponse?.groups ?? []).map((g) => api.request("GET /groups/:id/threads", {}, { id: g.id }))),
+        groupThreadsRequest,
       ])
       const allThreads = [...botThreads.flat(), ...groupThreads.flatMap((r) => r.threads)]
       if (attempt !== generation.current) return
@@ -821,7 +919,9 @@ export const useWorkspace = (
         const changedDuringLoad = current.threads.filter(
           (thread) =>
             !current.deletedThreadIds?.has(thread.id) &&
-            (incomingIds.has(thread.id) || thread !== threadsAtStart.get(thread.id)),
+            (incomingIds.has(thread.id) ||
+              (!groupResponse.loaded && !!thread.groupId) ||
+              thread !== threadsAtStart.get(thread.id)),
         )
         const threads = mergeThreads(changedDuringLoad, incoming)
         // A newer run may have evicted a completed row while this snapshot was in flight.
@@ -842,6 +942,7 @@ export const useWorkspace = (
         const channelThread = member ? threads.find((thread) => thread.groupId) : undefined
         const selectedThread =
           channelThread ??
+          threads.find((thread) => thread.id === current.selectedThreadId && thread.groupId) ??
           threads.find((thread) => thread.id === current.selectedThreadId && thread.botId === selectedBot?.id) ??
           lastActiveThread(
             threads,
@@ -865,7 +966,7 @@ export const useWorkspace = (
         return {
           ...current,
           isMember: member,
-          groups: groupResponse?.groups ?? [],
+          groups: groupResponse.loaded ? groupResponse.groups : current.groups,
           machineCapability: machineResponse.capability,
           machines: machineResponse.machines,
           threads,
@@ -901,7 +1002,8 @@ export const useWorkspace = (
           activeProjectId: selectedBot?.projectId ?? null,
           loading: false,
           loaded: true,
-          notice: null,
+          notice: groupResponse.notice,
+          channelNotice: groupResponse.notice,
         }
       })
       snapshotUnavailable.current = false
@@ -918,17 +1020,14 @@ export const useWorkspace = (
     } catch (error) {
       if (attempt !== generation.current) return
       snapshotUnavailable.current = isServiceUnavailable(error)
-      setData((current) => ({
-        ...current,
-        loading: false,
-        notice: api.isMock
-          ? "Demo data · sidecar services are optional"
-          : t("Service request failed", { error: getServiceErrorMessage(error) }),
-      }))
+      const notice = api.isMock
+        ? "Demo data · sidecar services are optional"
+        : t("Service request failed", { error: getServiceErrorMessage(error) })
+      setData((current) => ({ ...current, loading: false, notice, channelNotice: notice }))
     } finally {
       if (attempt === generation.current) completedDuringLoad.current = null
     }
-  }, [api, enabled, loadThread, role])
+  }, [api, enabled, loadThread, role, personId])
 
   const removeGroup = useCallback(
     (groupId: Id): void => {
@@ -1250,9 +1349,25 @@ export const useWorkspace = (
       load.deltas.length = 0
       threadLoads.current.delete(id)
     }
-    if (enabled && !data.loading && data.selectedThreadId && !data.threadCreation)
+    const channelReady = data.threads.some(
+      (thread) =>
+        thread.id === data.selectedThreadId &&
+        thread.groupId &&
+        (data.groupsLoaded || data.readyGroupIds?.includes(thread.groupId)),
+    )
+    if (enabled && (!data.loading || channelReady) && data.selectedThreadId && !data.threadCreation)
       void loadThread(data.selectedThreadId)
-  }, [enabled, data.loading, data.selectedThreadId, data.threadCreation, projectRevision, loadThread])
+  }, [
+    enabled,
+    data.loading,
+    data.groupsLoaded,
+    data.readyGroupIds,
+    data.threads,
+    data.selectedThreadId,
+    data.threadCreation,
+    projectRevision,
+    loadThread,
+  ])
 
   // A bot update may precede its project event (or come from an older sidecar).
   const missingProjectIds = [...new Set(data.bots.map((bot) => bot.projectId))]
@@ -1351,6 +1466,7 @@ export const useWorkspace = (
           groups: uniqueById([...current.groups, response.group]),
           threads: uniqueById([...current.threads, response.thread]),
           selectedThreadId: response.thread.id,
+          historyThreadId: response.thread.id,
           selectedBotId: response.thread.botId,
           threadCreation: null,
           composerKey: null,
@@ -1390,7 +1506,12 @@ export const useWorkspace = (
           ...current,
           threads: uniqueById([...current.threads, response.thread]),
           ...(current.selectedThreadId === draftThread.id
-            ? { selectedThreadId: response.thread.id, selectedBotId: response.thread.botId, threadCreation: null }
+            ? {
+                selectedThreadId: response.thread.id,
+                historyThreadId: response.thread.id,
+                selectedBotId: response.thread.botId,
+                threadCreation: null,
+              }
             : {}),
         }))
       } catch {
