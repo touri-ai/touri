@@ -313,6 +313,7 @@ export const ptBR = {
   "Goal budget edit help":
     "O limite de turnos é o total, incluindo os já usados. O tempo conta a partir de agora. Salvar não retoma o trabalho.",
   "Goal wait for turn": "Aguarde o turno atual terminar para ativar.",
+  "Goal load failed": "Não foi possível carregar o objetivo. Confira a conexão e tente novamente.",
   "Goal request failed":
     "Não foi possível carregar ou alterar o objetivo. Confira a conexão, as pastas autorizadas e os limites e tente novamente.",
   "Goal active": "Em andamento",
@@ -3732,6 +3733,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Goal budget edit help":
     "The turn limit includes turns already used. Time starts from now. Saving does not resume work.",
   "Goal wait for turn": "Wait for the current turn to finish before enabling.",
+  "Goal load failed": "Could not load the goal. Check the connection and try again.",
   "Goal request failed":
     "Could not load or change the goal. Check the connection, authorized folders and limits, then try again.",
   "Goal active": "In progress",

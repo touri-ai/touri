@@ -318,6 +318,7 @@ interrupted | failed(cli_crash, oom) ─► automatic continuation run (see belo
   - Recovery cards follow continuation ancestry, preserving the original card and latest terminal state even when history arrives in reverse order or timestamps tie. A new channel request interrupts an older recovery backoff immediately instead of waiting for its deadline.
   - Stopping a pending recovery takes effect immediately; cancellation waits asynchronously for a competing database writer and finishes persisting before graceful shutdown.
   - Optional goal controls load separately from the initial chat assets, preserving the 400 KB compressed startup budget.
+  - Goal reads recover from transient startup/connection failures with at most four delayed retries (500 ms, 1 s, 2 s, 4 s), including a temporary missing route. Reconnection and relevant thread/run events start a fresh read; superseded reads and unmount cancel pending requests and retries. A successful read, including `goal: null`, clears the old load error and stops retrying. Goal setup reports load errors separately from failed goal actions. An ordinary conversation with no known goal shows no optional goal-load banner; a known goal and its controls remain visible during a failed refresh. Message drafts, history, turn recovery and authorization checks are unchanged.
 
   This fixes the touri web bug where "sim, nesse ambiente" was lost.
 - **Error classification** (`RunErrorClass`), in priority order:
