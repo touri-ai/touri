@@ -55,6 +55,7 @@ import { type DeepLink, parseDeepLink } from "./deepLink"
 import { navigatePage } from "./design/navigation"
 import { errorRecovery, type RecoveryAction } from "./errorRecovery"
 import { ApiError, userFacingError } from "./errors"
+import { useChannelPeople } from "./features/channelBrowser/useChannelPeople"
 import type { PaletteActionId, PaletteCommand } from "./features/commandPalette/paletteItems"
 import {
   type BotSettingsSectionId,
@@ -601,6 +602,8 @@ const AppContent = ({ kernel }: AppProps) => {
   const selectedThread =
     data.threadCreation?.thread ?? data.threads.find((thread) => thread.id === data.selectedThreadId) ?? null
   const selectedGroup = data.groups.find((g) => g.id === selectedThread?.groupId) ?? null
+  const identityPeople = useChannelPeople(api, selectedGroup?.id ?? data.groups[0]?.id ?? null)
+  const sidebarPerson = identityPeople.find((person) => person.id === currentPersonId)
   const groupMembers =
     selectedGroup?.memberIds.flatMap((id) => {
       const b = data.bots.find((b) => b.id === id)
@@ -1089,6 +1092,7 @@ const AppContent = ({ kernel }: AppProps) => {
         />
         <div className="app-grid">
           <SidebarDrawer
+            currentPerson={sidebarPerson}
             onSidebarModeChange={setSidebarMode}
             panelOpen={section === "bots" && screen === "chat" && panelOpen}
             workspaceHeader={workspaceHeader}
@@ -1359,7 +1363,6 @@ const AppContent = ({ kernel }: AppProps) => {
                           <Suspense fallback={<GroupPanelLoading onClose={closeGroupPanel} />}>
                             <GroupPanel
                               api={api}
-                              currentPersonId={currentPersonId}
                               key={selectedGroup.id}
                               group={selectedGroup}
                               channelMode={Boolean(selectedGroup)}

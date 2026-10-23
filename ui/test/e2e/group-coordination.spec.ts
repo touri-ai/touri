@@ -1,3 +1,4 @@
+import { join } from "node:path"
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
 
@@ -13,16 +14,14 @@ test("the board retains a removed member beside the surviving result on desktop 
   await expect(board.getByText("O membro foi removido do grupo.")).toBeVisible()
 
   await page.setViewportSize({ width: 1440, height: 900 })
-  await page.screenshot({ path: testInfo.outputPath("group-partial-success-removed-desktop.png") })
+  await page.screenshot({ path: getScreenshotPath(testInfo.outputDir, "group-partial-success-removed-desktop.png") })
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(board.getByText("O membro foi removido do grupo.")).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
-  await page.screenshot({ path: testInfo.outputPath("group-partial-success-removed-phone.png") })
+  await page.screenshot({ path: getScreenshotPath(testInfo.outputDir, "group-partial-success-removed-phone.png") })
 })
 
-test("group actions send a parallel request and show a confirmed board on desktop and phone", async ({
-  page,
-}, testInfo) => {
+test("team actions retain approvals and confirmed replies on desktop and phone", async ({ page }, testInfo) => {
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto("/test/e2e/groups-harness.html")
   await expect(page.getByRole("textbox", { name: "Mensagem para mark", exact: true })).toBeVisible()
@@ -148,8 +147,9 @@ test("group actions send a parallel request and show a confirmed board on deskto
   const board = page.locator(".chat-panel")
   await expect(board.getByText("Plano aprovado na revisão")).toBeVisible()
   await expect(board.getByText("Raciocínio privado")).toHaveCount(0)
-  await expect(panel.getByText("Trabalhando", { exact: true })).toHaveCount(0)
-  await expect(panel.getByText("Aguardando você", { exact: true })).toBeVisible()
+  await expect(panel.getByText("Trabalhando", { exact: true })).toHaveCount(1)
+  await expect(panel.getByText("Aguardando você", { exact: true })).toHaveCount(0)
+  await expect(board.locator('[data-approval-id="team-consent"]')).toBeVisible()
   await page.evaluate((root) => {
     const qa = window as typeof window & { groupsQa: { api: { emit: (event: unknown) => void } } }
     qa.groupsQa.api.emit({
@@ -164,16 +164,20 @@ test("group actions send a parallel request and show a confirmed board on deskto
       },
     })
   }, turn)
-  await expect(panel.getByText("Falhou", { exact: true })).toHaveCount(1)
-  await expect(panel.getByText("Disponível", { exact: true })).toHaveCount(1)
+  await expect(panel.getByText("Falhou", { exact: true })).toHaveCount(0)
+  await expect(panel.getByText("Disponível", { exact: true })).toHaveCount(2)
   await expect(board.getByText("Plano aprovado na revisão")).toBeVisible()
   await page.setViewportSize({ width: 1440, height: 900 })
-  await page.screenshot({ path: testInfo.outputPath("group-partial-success-desktop.png") })
+  await page.screenshot({ path: getScreenshotPath(testInfo.outputDir, "group-partial-success-desktop.png") })
   const violations = (await new AxeBuilder({ page }).include(".group-panel").withTags(["wcag2a", "wcag2aa"]).analyze())
     .violations
   expect(violations).toEqual([])
+  await panel.getByRole("button", { name: "Fechar painel do canal", exact: true }).click()
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(board.getByText("Plano aprovado na revisão")).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
-  await page.screenshot({ path: testInfo.outputPath("group-partial-success-phone.png") })
+  await page.screenshot({ path: getScreenshotPath(testInfo.outputDir, "group-partial-success-phone.png") })
 })
+
+const getScreenshotPath = (directory: string, name: string) =>
+  join(process.env.TOURI_E2E_EVIDENCE_DIR ?? directory, name)

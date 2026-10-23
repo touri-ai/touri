@@ -436,10 +436,17 @@
   gap: var(--space-8);
 }
 .r8-sidebar .user-chip {
+  flex: 1;
   gap: var(--space-8);
+}
+.r8-sidebar .user-chip > span:last-child {
+  min-width: 0;
 }
 .r8-sidebar .user-chip strong {
   font-size: var(--fs-caption);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .r8-sidebar .user-chip small {
   font-size: var(--fs-caption);
