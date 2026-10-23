@@ -824,6 +824,79 @@ test("restart continues an interrupted request before a queued request to the sa
   expect(f.order).toEqual(Array.from({ length: 3 }, () => f.bots[0]?.id ?? ""))
 })
 
+test("restart restores independent interrupted members after an unrelated member has completed", async () => {
+  const release = Promise.withResolvers<void>()
+  cleanups.unshift(() => release.resolve())
+  let restarting = false
+  const f = await fixture(async (ctx, complete) => {
+    if (ctx.botId === f.bots[2]?.id) return complete("Pedido independente concluído")
+    if (!restarting) return
+
+    await release.promise
+    complete("Pedido retomado e concluído")
+  }, 30_000)
+  const sender = { id: "requester", name: "Requester", kind: "person" as const }
+  const first = f.send("@pm primeiro pedido", f.thread.id, sender)
+  const second = f.send("@dev segundo pedido", f.thread.id, sender)
+  await until(() => f.order.length === 2)
+  const completed = f.send("@qa pedido independente")
+  await until(() => f.persistence.getRun(completed.id)?.status === "succeeded")
+
+  f.runtime.shutdown({ appRestart: true })
+  f.db
+    .query(
+      "UPDATE runs SET status='interrupted',error_class='app_restart',finished_at=? WHERE id IN (SELECT run_id FROM group_run_links WHERE turn_id IN (?,?))",
+    )
+    .run(Date.now(), first.id, second.id)
+  f.host.kernel.publish({ type: "transcript.resync" })
+  await until(() => [first, second].every((run) => f.persistence.getRun(run.id)?.status === "interrupted"))
+  restarting = true
+  const restarted = createGroupRuntime(f.host.kernel, f.engine, 30_000)
+  cleanups.unshift(() => restarted.shutdown())
+
+  const continuations = f.db
+    .query(
+      "SELECT r.id,r.request_message_id,r.requester_person_id,c.previous_run_id FROM runs r JOIN run_continuations c ON c.run_id=r.id ORDER BY r.rowid",
+    )
+    .all() as { id: string; request_message_id: string; requester_person_id: string; previous_run_id: string }[]
+  expect(continuations).toMatchObject(
+    [first, second].map((run) => ({
+      request_message_id: run.requestMessageId,
+      requester_person_id: sender.id,
+      previous_run_id: run.id,
+    })),
+  )
+  await until(() => f.order.length === 5)
+  release.resolve()
+  await until(() => continuations.every((run) => f.persistence.getRun(run.id)?.status === "succeeded"))
+
+  expect(f.order.filter((id) => id === f.bots[2]?.id)).toHaveLength(1)
+  expect(f.persistence.getRun(completed.id)?.status).toBe("succeeded")
+})
+
+test("a later completed request to the same member still supersedes an interrupted request", async () => {
+  const f = await fixture(async () => {}, 30_000)
+  const first = f.send("@pm primeiro pedido")
+  await until(() => f.order.length === 1)
+  const second = f.send("@pm pedido posterior")
+  f.runtime.shutdown({ appRestart: true })
+  f.db
+    .query(
+      "UPDATE runs SET status='interrupted',error_class='app_restart',finished_at=? WHERE id IN (SELECT run_id FROM group_run_links WHERE turn_id=?)",
+    )
+    .run(Date.now(), first.id)
+  f.host.kernel.publish({ type: "transcript.resync" })
+  await until(() => f.persistence.getRun(first.id)?.status === "interrupted")
+  f.persistence.saveRun({ ...second, status: "succeeded", startedAt: Date.now(), finishedAt: Date.now() })
+
+  const restarted = createGroupRuntime(f.host.kernel, f.engine, 30_000)
+  cleanups.unshift(() => restarted.shutdown())
+  await restarted.waitForDrain()
+
+  expect(f.db.query("SELECT COUNT(*) AS count FROM run_continuations").get()).toEqual({ count: 0 })
+  expect(f.order).toHaveLength(1)
+})
+
 test("startup fails queued group turns whose group or conversation was removed", async () => {
   for (const missing of ["group", "conversation"] as const) {
     const f = await fixture()

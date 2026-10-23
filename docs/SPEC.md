@@ -564,6 +564,9 @@ or the coordinator requires idle group conversations. Eligible unfinished channe
 restart and provider interruption, up to two automatic attempts recorded durably per original member
 turn. A newer queued request does not supersede an interrupted request: startup restores the
 interrupted request ahead of waiting requests, preserving its requester and continuation identity.
+Independent interrupted recipients are restored together, even if another member has already
+finished a later request. Supersession and session checks are scoped to the affected members;
+a later executed request to the same member still prevents recovery of its older request.
 Completed members are not repeated. Stop remains authoritative while startup is waiting;
 no member starts after cancellation when the engine becomes ready. Stop, pending approvals, recorded writes,
 tools without a trusted read-only definition and unconfirmed effects prevent automatic execution.

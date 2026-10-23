@@ -288,7 +288,8 @@ export const createGroupRuntime = (
     if (job && job.state !== "pending") return false
     const bot = store.getBot({ botId: run.botId })
     if (!bot || bot.paused || bot.archivedAt) return false
-    if (persistence.listRuns(turn.run.threadId)[0]?.id !== turn.run.id) return false
+    // Independent channel recipients use separate sessions; only this member's newer work supersedes it.
+    if (persistence.listRuns(run.threadId)[0]?.id !== run.id) return false
     const setting = db.query("SELECT value_json FROM settings WHERE key='resumeInterruptedTurns'").get() as {
       value_json: string
     } | null
@@ -337,8 +338,10 @@ export const createGroupRuntime = (
     const dispose = kernel.subscribe(({ event }) => {
       if (
         event.type === "run.updated" &&
-        event.run.threadId === turn.run.threadId &&
-        event.run.id !== turn.run.id &&
+        event.run.botId === run.botId &&
+        (event.run.threadId === run.threadId ||
+          (event.run.threadId === turn.run.threadId && event.run.kind === "execution")) &&
+        event.run.id !== run.id &&
         event.run.groupTurnId !== turn.run.id &&
         event.run.status === "queued"
       )
@@ -1373,7 +1376,19 @@ export const createGroupRuntime = (
       `SELECT r.*, 'coordination' AS run_kind, g.group_id, g.recipients_json FROM runs r JOIN group_turns g ON g.run_id = r.id
        LEFT JOIN run_continuations continuation ON continuation.run_id=r.id
        LEFT JOIN runs original ON original.id=continuation.original_run_id
-       WHERE r.status = 'queued' OR (r.status='interrupted' AND r.error_class='app_restart' AND r.finished_at>=? AND NOT EXISTS (SELECT 1 FROM runs newer JOIN group_turns ng ON ng.run_id=newer.id WHERE newer.thread_id=r.thread_id AND newer.rowid>r.rowid AND (newer.status<>'queued' OR newer.request_message_id IS r.request_message_id)))
+       WHERE r.status = 'queued' OR (
+         r.status='interrupted' AND r.error_class='app_restart' AND r.finished_at>=? AND NOT EXISTS (
+           SELECT 1 FROM runs newer JOIN group_turns ng ON ng.run_id=newer.id
+           WHERE newer.thread_id=r.thread_id AND newer.rowid>r.rowid AND (
+             newer.request_message_id IS r.request_message_id OR (
+               newer.status<>'queued' AND EXISTS (
+                 SELECT 1 FROM json_each(g.recipients_json) recipient
+                 JOIN json_each(ng.recipients_json) next_recipient ON next_recipient.value=recipient.value
+               )
+             )
+           )
+         )
+       )
        ORDER BY COALESCE(original.queued_at,r.queued_at),COALESCE(original.rowid,r.rowid)`,
     )
     .all(Date.now() - CONTINUATION_WINDOW_MS) as Array<
