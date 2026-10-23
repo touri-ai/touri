@@ -354,7 +354,7 @@ test("a grant-free bot without confinement keeps its tools and gets no folder wa
   const unavailable = spyOn(folderCapability, "hostFolderAccessAvailable").mockReturnValue(false)
   try {
     await f.finish(0)
-    f.send("oi")
+    f.send("Liste as notas")
     await waitFor(() => f.turns.length === 2)
     expect(f.turns[1]?.conversationOnly).toBeUndefined()
     expect(f.turns[1]?.bot.folders).toEqual([])
@@ -378,7 +378,7 @@ test("a full-access bot with saved grants is never degraded by an incompatible h
   const unavailable = spyOn(folderCapability, "hostFolderAccessAvailable").mockReturnValue(false)
   try {
     await f.finish(0)
-    f.send("oi")
+    f.send("Liste as notas")
     await waitFor(() => f.turns.length === 2)
     expect(f.turns[1]?.conversationOnly).toBeUndefined()
     expect(f.turns[1]?.bot).toMatchObject({ access: "full", folders: [{ path: f.reference, access: "read-only" }] })

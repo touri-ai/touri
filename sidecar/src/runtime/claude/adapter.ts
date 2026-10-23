@@ -139,13 +139,13 @@ export const createClaudeAdapter = ({
     Object.assign(env, userSettings.authEnv, args.env)
     Object.assign(env, applyProviderPrivacy(env, cliTelemetryOff(kernel)))
     const warmKey =
-      storedProviderLoginSource(kernel, args.bot) === "vault"
-        ? null
-        : warmSessions.getKey({
+      args.conversationOnly && !args.execution && storedProviderLoginSource(kernel, args.bot) !== "vault"
+        ? warmSessions.getKey({
             ...args,
             env,
             developerInstructions: JSON.stringify([args.developerInstructions, userSettings.settings]),
           })
+        : null
     const retained = warmSessions.getAvailable(warmKey, args.session?.externalSessionId)
     if (!retained) {
       await claudeConfig({ args, root: kernel.paths.appData, path: configPath })

@@ -286,7 +286,10 @@ export const createCodexAdapter = ({
       ? { success: true as const, path: "codex", env }
       : await resolveProviderExecutable({ kernel, command: commandName, env })
     if (!resolved.success) return resolved
-    const warmKey = storedProviderLoginSource(kernel, args.bot) === "vault" ? null : warmSessions.getKey(args)
+    const warmKey =
+      args.conversationOnly && !args.execution && storedProviderLoginSource(kernel, args.bot) !== "vault"
+        ? warmSessions.getKey(args)
+        : null
     const retained = warmSessions.getAvailable(warmKey, args.session?.externalSessionId)
     const candidate = retained
       ? null
