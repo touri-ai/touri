@@ -50,6 +50,7 @@ while their module loads.
 Closing a loading channel panel restores focus to its trigger and leaves the conversation available.
 Empty-conversation welcome content and its styles load separately without holding back the composer.
 Avatar customization styles load with their existing deferred dialogs.
+Preview workspace styles load with that optional screen, preserving its responsive layouts.
 The initial HTML, JavaScript and CSS remain limited to 400,000 bytes gzip.
 
 During browser takeover, choosing the keyboard control keeps focus in the remote input without

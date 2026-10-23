@@ -12,6 +12,7 @@ const optionalModules = [
   "src/components/GroupModal.tsx",
   "src/components/GroupPanel.tsx",
   "src/components/RoutineEditor.tsx",
+  "src/components/WorkspaceScreens.tsx",
 ]
 
 test("keeps the production startup payload below 400 KB gzip with optional modules deferred", async () => {
@@ -40,6 +41,11 @@ test("keeps the production startup payload below 400 KB gzip with optional modul
     .filter((file) => /\/(?:AvatarPicker|avatar-picker)-/.test(file))
   expect(avatarStyles.length).toBeGreaterThan(0)
   avatarStyles.forEach((file) => {
+    expect(initialFiles).not.toContain(file)
+  })
+  const previewStyles = manifest["src/components/WorkspaceScreens.tsx"]?.css ?? []
+  expect(previewStyles.length).toBeGreaterThan(0)
+  previewStyles.forEach((file) => {
     expect(initialFiles).not.toContain(file)
   })
   const dialogStyles = manifest["src/components/GroupModal.tsx"]?.css ?? []
