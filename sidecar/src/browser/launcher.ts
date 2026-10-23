@@ -292,7 +292,13 @@ export const createChromeLauncher = ({
     spawned: SpawnedChrome,
     client: CdpClient,
   ): Promise<{ client: CdpClient; process: SpawnedChrome }> => {
-    await client.call("Browser.getVersion")
+    // Bound startup without shortening later navigation, screenshots or evaluations.
+    const timer = setTimeout(() => void client.close().catch(() => undefined), 3000)
+    try {
+      await client.call("Browser.getVersion")
+    } finally {
+      clearTimeout(timer)
+    }
     active = { client, process: spawned }
     void spawned.exited.then(async () => {
       if (active?.process === spawned) {
@@ -332,7 +338,7 @@ export const createChromeLauncher = ({
       const parsed = new URL(websocketUrl)
       if (parsed.hostname !== "127.0.0.1" || parsed.port !== String(activePort.port))
         throw new Error("Chrome DevTools endpoint was not loopback-only")
-      client = await connectCdpWebSocket({ url: parsed.toString(), timeoutMs: 3000 })
+      client = await connectCdpWebSocket({ url: parsed.toString(), connectTimeoutMs: 3000 })
       return await activate(spawned, client)
     } catch {
       const exit = await Promise.race([spawned.exited, Bun.sleep(0).then(() => null)])
@@ -379,7 +385,7 @@ export const createChromeLauncher = ({
     }
     let client: CdpClient | null = null
     try {
-      client = createClient({ pipe: { read: output, write: input }, timeoutMs: 3000 })
+      client = createClient({ pipe: { read: output, write: input } })
       return await activate(spawned, client)
     } catch {
       const exit = await Promise.race([spawned.exited, Bun.sleep(0).then(() => null)])

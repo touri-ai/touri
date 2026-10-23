@@ -299,6 +299,7 @@ test("experimental, provider, project, browser, and computer filters follow the 
     computerUse: 1,
     provider: "claude",
   })
+  await initStore(runtime.kernel)
   const database = runtime.kernel.db as Database
   database
     .query("INSERT INTO settings (key, value_json, updated_at) VALUES (?, ?, ?)")

@@ -71,7 +71,9 @@ const getFixture = async (idleMs = 300_000) => {
     isClosed: () => false,
   }
   const launch = Promise.withResolvers<void>()
+  const launchStarted = Promise.withResolvers<void>()
   const start = mock(async () => {
+    launchStarted.resolve()
     await launch.promise
     return { client }
   })
@@ -90,7 +92,7 @@ const getFixture = async (idleMs = 300_000) => {
     signal: new AbortController().signal,
   }
 
-  return { f, bot, ctx, engine, launch, start, stop, calls, state, listeners, blocked }
+  return { f, bot, ctx, engine, launch, launchStarted, start, stop, calls, state, listeners, blocked }
 }
 
 test("unsupported host screen tools are neither listed nor callable despite a saved enabled flag", async () => {
@@ -144,6 +146,27 @@ test("slow accessibility reads return fresh partial text within a bounded budget
   expect(result).toMatchObject({ success: true, structured: { text: "Useful partial content", truncated: true } })
   expect(performance.now() - started).toBeLessThan(2000)
   expect(f.calls.some((call) => call.method === "Runtime.terminateExecution")).toBe(true)
+})
+
+test("cancelling one caller does not cancel another caller sharing browser startup", async () => {
+  const f = await getFixture()
+  const controller = new AbortController()
+  const first = f.engine.open({
+    url: "about:blank",
+    ctx: Object.assign({}, f.ctx, { signal: controller.signal }),
+    timeoutMs: 2500,
+  })
+  const second = f.engine.open({ url: "about:blank", ctx: f.ctx, timeoutMs: 2500 })
+  await f.launchStarted.promise
+
+  controller.abort()
+  f.launch.resolve()
+  const results = await Promise.all([first, second])
+
+  expect(results[0]).toMatchObject({ success: false })
+  expect(results[1]).toMatchObject({ success: true })
+  expect(f.start).toHaveBeenCalledTimes(1)
+  expect(f.stop).not.toHaveBeenCalled()
 })
 
 test("failed DNS navigation retries exactly once and preserves its cause", async () => {

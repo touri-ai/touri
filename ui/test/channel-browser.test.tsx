@@ -31,7 +31,10 @@ vi.mock("../src/features/desktop/inlineFrameSource", () => ({
   ),
 }))
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+})
 
 const getState = (patch: Partial<ChannelBrowserState> = {}): ChannelBrowserState => ({
   botId: "bot-leo",
@@ -270,6 +273,18 @@ describe("browser card in a channel", () => {
     renderCard(getState({ queue: [{ requesterId: "user-hugo", requesterName: "Hugo" }] }), "user-ana")
 
     expect(screen.getByText("Na fila: pedido de Hugo")).toBeVisible()
+  })
+
+  test("a private channel preview never offers a retry while another person types", async () => {
+    vi.useFakeTimers()
+    renderCard(getState({ controllerId: "user-ana", controllerName: "Ana" }), "user-hugo")
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(16_000)
+    })
+
+    expect(screen.getByText("Prévia oculta para o canal enquanto Ana digita")).toBeVisible()
+    expect(screen.queryByRole("button", { name: "Tentar carregar prévia novamente" })).toBeNull()
   })
 
   test("stays unchanged outside a channel", () => {

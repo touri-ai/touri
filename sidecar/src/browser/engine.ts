@@ -1466,6 +1466,8 @@ export const createBrowserEngine = ({
   let shutdownPromise: Promise<void> | undefined
   let client: CdpClient | null = null
   let starting: Promise<boolean> | null = null
+  let startupController: AbortController | null = null
+  const startupCallers = new Set<symbol>()
   let activeOperations = 0
   let lastActivityAt = Date.now()
   let unsubscribe: (() => void) | null = null
@@ -1993,16 +1995,31 @@ export const createBrowserEngine = ({
     }
   }
 
-  const ensureClient = (runningOnly = false): Promise<boolean> => {
-    if (starting) return starting
+  const ensureClient = async (runningOnly = false): Promise<boolean> => {
     const signal = operationSignals.getStore()
-    const cancel = () => void launcher.stop().catch(() => undefined)
-    signal?.addEventListener("abort", cancel, { once: true })
-    starting = startClient(runningOnly).finally(() => {
-      signal?.removeEventListener("abort", cancel)
-      starting = null
-    })
-    return starting
+    signal?.throwIfAborted()
+    if (!starting) {
+      startupController = new AbortController()
+      // A shared process outlives one caller; stop startup only when every caller leaves.
+      starting = operationSignals
+        .run(startupController.signal, () => startClient(runningOnly))
+        .finally(() => {
+          starting = null
+          startupController = null
+        })
+    }
+    const pending = starting
+    const caller = Symbol()
+    startupCallers.add(caller)
+    try {
+      return await callUntilAborted(() => pending, signal)
+    } finally {
+      startupCallers.delete(caller)
+      if (starting === pending && startupCallers.size === 0) {
+        startupController?.abort()
+        void launcher.stop().catch(() => undefined)
+      }
+    }
   }
 
   const focusManagedChrome = async (): Promise<void> => {
@@ -3574,7 +3591,10 @@ export const createBrowserEngine = ({
       onTimeout: async () => {
         if (client && tab.sessionId) void client.call("Page.stopLoading", {}, tab.sessionId).catch(() => undefined)
       },
-    }).catch((error: unknown) => ({ success: false, failure: browserError(error) }))
+    }).catch((error: unknown) => {
+      if (isSessionLost(error)) throw error
+      return { success: false, failure: browserError(error) }
+    })
 
   const resolveWithRetry = async (tab: TabState, target: BrowserTarget): Promise<ResolveResult> => {
     try {

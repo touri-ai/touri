@@ -368,11 +368,11 @@ export const BrowserActivityCard = ({
   // biome-ignore lint/correctness/useExhaustiveDependencies: an explicit retry starts a new first-frame deadline
   useEffect(() => {
     setWaitedTooLong(false)
-    if (finished || held || preview || !expanded) return
+    if (finished || held || preview || !expanded || !previewEnabled || channel?.previewHidden) return
     const timer = window.setTimeout(() => setWaitedTooLong(true), WAITING_TIMEOUT_MS)
 
     return () => window.clearTimeout(timer)
-  }, [expanded, finished, held, preview, previewAttempt])
+  }, [expanded, finished, held, preview, previewAttempt, previewEnabled, channel?.previewHidden])
 
   // Preserve a user's scroll position when they inspect earlier browser actions.
   // biome-ignore lint/correctness/useExhaustiveDependencies: row count changes trigger this check
@@ -653,7 +653,7 @@ export const BrowserActivityCard = ({
                     <BrowserPreviewImage src={preview.src} alt={t("Current browser page", {}, locale)} />
                   </div>
                 ) : previewEnabled ? (
-                  <p className="browser-activity-placeholder">
+                  <p className="browser-activity-placeholder" role="status">
                     {previewNotice ??
                       t(
                         waitedTooLong
@@ -666,7 +666,7 @@ export const BrowserActivityCard = ({
                       )}
                   </p>
                 ) : null}
-                {waitedTooLong && !preview?.src && (
+                {waitedTooLong && previewEnabled && !channel?.previewHidden && !preview?.src && (
                   <button
                     type="button"
                     className="button button-quiet"
