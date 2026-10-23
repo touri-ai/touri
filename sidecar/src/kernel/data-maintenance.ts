@@ -27,6 +27,8 @@ export const getStorageCollectionRetryDelay = (deferrals: number): number => {
   return Math.min(60_000, 1000 * 2 ** (deferrals - 1))
 }
 
+const getMaintenanceRetryDelay = (failures: number): number => Math.min(60_000, 1000 * 2 ** (failures - 1))
+
 export const isStorageUpgradePending = (database: Database): boolean =>
   !!database.query("SELECT 1 FROM schema_meta WHERE key = 'storage_upgrade_22' AND value <> 'done'").get()
 
@@ -440,6 +442,7 @@ export const createStorageMaintenance = ({
   let manual = false
   let vacuum = false
   let collectionDeferrals = 0
+  let maintenanceFailures = 0
   let timer: ReturnType<typeof setTimeout> | undefined
   const save = (value = progress) =>
     withoutBusyWait(database, () =>
@@ -576,12 +579,14 @@ export const createStorageMaintenance = ({
       progress = { ...progress, completedAt: Date.now() }
       save()
       status = { running: false, processed: progress.cursor, total: progress.total }
+      maintenanceFailures = 0
       timer = schedule(step, DAY)
     } catch {
       if (stopped) return
+      maintenanceFailures += 1
       onError()
       status = { ...status, running: false, error: "Não foi possível compactar os dados. Tente novamente." }
-      timer = schedule(step, 1000)
+      timer = schedule(step, getMaintenanceRetryDelay(maintenanceFailures))
     }
   }
   timer = schedule(step, 100)
@@ -595,6 +600,7 @@ export const createStorageMaintenance = ({
       progress = { cursor: 0, total: 0, completedAt: 0 }
       status = { running: true, processed: 0, total: 0 }
       collectionDeferrals = 0
+      maintenanceFailures = 0
       manual = true
       vacuum = withVacuum
       timer = schedule(step, 0)
