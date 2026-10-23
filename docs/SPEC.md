@@ -584,6 +584,11 @@ are appended to the current shared history path with the actual member's identit
 concurrent replies and newer user messages. These internal
 conversations are excluded from the bot's ordinary conversation list.
 
+Shared conversations display a flat chronological history, both when loaded and as messages arrive.
+Independent messages from people, integrations and bots remain visible even when they share a parent
+or are roots. Shared history has no message-edit or branch-selection controls and skips branch sibling
+lookups. Private direct conversations retain message editing and selection of real alternative branches.
+
 The touri MCP server exposes `ask_bot({bot, message})` and its `coordinate_bots` alias to group
 participant sessions. The final answer returns into the calling turn. Only current members can
 be addressed; cycles are rejected, depth is at most 2 and a group turn may make at most 6 calls.
@@ -1516,7 +1521,7 @@ Rules for every WP:
     - approval cards
     - failed or canceled turn banner with Retry
     - queued indicator, Stop button
-    - branch switcher (‹ 2/3 ›) on messages with siblings, and edit of a user message (creates a branch)
+    - in private direct conversations, branch switcher (‹ 2/3 ›) on messages with siblings, and edit of a user message (creates a branch)
     - image paste/drag
     - search (⌘K)
   - Bot settings: SOUL editor, provider/model/effort, access with a warning for `full`, project/cwd, browser and computer toggles, routines list (enable, run now, last runs).
@@ -1532,7 +1537,8 @@ Rules for every WP:
   - Development runs fully against a mock adapter (`ui/src/api/mock/`) seeded from `fixtures/ui-seed.json`, with a scripted event player for streaming, so no sidecar is needed.
 - **Acceptance:**
   - Vitest + Testing Library: a streaming render of 500 deltas has no dropped text, and the list stays virtualized above 1,000 messages.
-  - The branch switcher calls `PATCH /threads/:id {activeLeafId}`.
+  - In private direct conversations, the branch switcher calls `PATCH /threads/:id {activeLeafId}`.
+    Shared channel history keeps all independent messages visible without branch selectors or message editing.
   - A failed run shows the banner, and Retry calls `/runs/:id/retry`.
   - The secret form never sends the value to `fetch` (spy).
   - The Preview slot calls `preview_set_bounds` on resize and `preview_hide` when a modal opens.
