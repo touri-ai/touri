@@ -13,10 +13,8 @@ export const withLocalTurnTemp = async <T>(
   prepareFolders = refreshHostFolderAccess,
 ): Promise<T> => {
   if (args.execution) return run(args)
-  args.signal.throwIfAborted()
   if (folderConfinementRequired(args)) await prepareFolders()
   args.onPreparationStage?.("sandboxReadyAt")
-  args.signal.throwIfAborted()
   const directory = join(kernel.paths.runDir, "provider-tmp")
   await ensurePrivateDirectoryAsync({ root: kernel.paths.appData, path: directory })
   const temporary = await mkdtemp(join(directory, "turn-"))

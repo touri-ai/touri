@@ -3225,7 +3225,10 @@ describe("turn latency milestones", () => {
       ...current.store,
       getPathMessage: ({ threadId, messageId }) =>
         current.store.activePath({ threadId }).find((message) => message.id === messageId) ?? null,
-      activePath: () => {
+      activePath: (args) => {
+        // The in-memory fixture classifies requests without stored rows; handoffs request a history window.
+        if (args.limit === undefined) return current.store.activePath(args)
+
         throw new Error("A standalone greeting must not hydrate historical task bodies")
       },
     }
