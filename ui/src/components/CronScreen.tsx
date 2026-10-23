@@ -116,6 +116,7 @@ const CronScreen = ({
   useEffect(() => {
     const focusList = () => {
       if (document.querySelector(".modal-card")) return false
+      if (document.activeElement?.closest('[role="menu"], [aria-haspopup="menu"][aria-expanded="true"]')) return true
       listRef.current?.focus()
       return true
     }
