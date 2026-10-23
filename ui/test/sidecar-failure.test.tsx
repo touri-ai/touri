@@ -54,6 +54,26 @@ afterEach(() => {
 })
 
 describe("sidecar failure blocking state", () => {
+  it("explains a startup protocol mismatch once and makes updating the primary action", async () => {
+    const invoke = vi.fn(async (command: string) => {
+      if (command === "server_mode_status") return { mode: "server", url: "https://touri.example" }
+      if (command === "sidecar_endpoint") throw new Error("SERVER_VERSION_MISMATCH")
+      return null
+    })
+
+    render(<App kernel={{ services: { invoke: invoke as TauriInvoke } }} />)
+
+    const update = await screen.findByRole("button", { name: "Atualizar agora" })
+    expect(update).toHaveClass("button-brand")
+    expect(
+      screen.getAllByText("Esta versão do aplicativo precisa de uma atualização para conversar com o servidor."),
+    ).toHaveLength(1)
+    expect(screen.queryByText("Servidor offline. Tentando reconectar…")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Tentar novamente/ })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Reportar este problema" })).toBeEnabled()
+    expect(invoke).not.toHaveBeenCalledWith("updater_install", {})
+  })
+
   it.each(["endpoint", "health"])("offers recovery when the first %s request never settles", async (stage) => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
     const unavailableInvoke = vi.fn(() => new Promise(() => undefined))
@@ -347,7 +367,7 @@ describe("sidecar failure blocking state", () => {
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
   })
 
-  it("blocks on a dropped backend connection even when conversations are already loaded", async () => {
+  it("keeps the loaded conversation and draft mounted while a dropped backend reconnects", async () => {
     const connection = makeConnectionEvents()
     const api: UiApi = {
       ...createMockApi(),
@@ -358,12 +378,19 @@ describe("sidecar failure blocking state", () => {
       throw reason
     })
     render(<App kernel={{ services: { api, invoke: invoke as TauriInvoke } }} />)
-    await screen.findByRole("textbox", { name: "Mensagem para mark" })
+    const composer = await screen.findByRole("textbox", { name: "Mensagem para mark" })
+    fireEvent.change(composer, { target: { value: "Rascunho preservado" } })
+
     act(() => connection.emitConnection(false))
-    expect(await screen.findByText(reason)).not.toBeVisible()
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
-    act(() => connection.emitConnection(true))
-    await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+    expect(await screen.findByText("Reconectando…")).toBeVisible()
+    expect(composer).toHaveValue("Rascunho preservado")
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+
+    act(() => connection.emitConnection(true))
+
+    expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toBe(composer)
+    expect(composer).toHaveValue("Rascunho preservado")
+    expect(screen.queryByText("Reconectando…")).not.toBeInTheDocument()
   })
 })

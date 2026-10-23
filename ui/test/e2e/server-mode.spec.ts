@@ -118,11 +118,11 @@ test("desktop server mode pairs with a real isolated server and resyncs after a 
     const snapshots = server.snapshotReads
     const frameStart = frames.length
     server.pauseEvents()
-    await expect(page.getByText(/Servidor offline/).first()).toBeVisible()
+    await expect(page.locator('[data-connection-state="reconnecting"]')).toBeVisible()
     await testInfo.attach("server-mode-offline", {
       body: await page
         .locator(".app-shell > .notice-bar")
-        .filter({ hasText: "Servidor offline" })
+        .filter({ hasText: "Reconectando…" })
         .screenshot({ path: `${evidence}/server-mode-offline.png` }),
       contentType: "image/png",
     })
@@ -139,7 +139,7 @@ test("desktop server mode pairs with a real isolated server and resyncs after a 
     await expect(page.getByRole("textbox", { name: "Mensagem para Retomado no servidor" })).toBeVisible({
       timeout: 15_000,
     })
-    await expect(page.getByText(/Servidor offline/).first()).toBeHidden()
+    await expect(page.locator('[data-connection-state="reconnecting"]')).toBeHidden()
     expect(
       frames.slice(frameStart).some((frame) => frame.type === "resync" && Number.isSafeInteger(frame.lastSeq)),
     ).toBe(true)

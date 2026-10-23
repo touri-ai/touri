@@ -216,6 +216,36 @@ User repos stay wherever they are. touri writes into a repo only:
 - through the bot's own tools
 - through `env_write_file` (git-ignored files only)
 
+### Automatic recovery after server restarts
+
+- Desktop server mode and the web client retain the mounted workspace, selected conversation,
+  scroll position and composer draft while the server is unavailable. A small localized
+  “Reconectando…” / “Reconnecting…” status replaces the persistent disconnected banner.
+- Reconnect uses exponential delays of 250 ms, 500 ms and at most 1,000 ms. Each connection
+  attempt has a 1,000 ms deadline, including health, ticket and socket setup. Returning online or
+  returning to a visible tab immediately retries. Unmount removes listeners, timers and requests.
+  Target: connected within 2 s after the server is available; the real restart browser regression
+  requires less than 3 s and an unchanged draft, document, scroll position and history read count.
+- During server startup, API reads, writes, tickets and event upgrades return a retryable 503 until
+  modules have registered. Static pages and pairing remain available. Clients cannot flush queued
+  messages against partially initialized routes. Restart timing begins at authenticated health readiness.
+- Reconnect resumes authenticated events from the last applied sequence. Existing snapshots are
+  repaired by replay, without reloading the page or refetching unchanged conversations. A replay
+  gap outside the bounded event window explicitly requests a snapshot; incomplete/failed reads
+  are retried. Mutations are never blindly replayed.
+- Authenticated `GET /api/v1/health` advertises optional `protocolVersion` independently of the
+  database `schemaVersion` and application release `version`. Protocol metadata lives in
+  `packages/contracts/protocol.json`: protocol 1 permits compatible deployments with different
+  releases or database migrations. Breaking HTTP/event changes must increment the protocol.
+  For older servers without that field, accept only the last known compatible schema (46).
+  Both the native relay and UI reject an explicitly incompatible protocol, retain the workspace
+  and offer “Atualizar agora” / “Update now”. Only that explicit click reloads web assets or invokes
+  the native signed updater and restarts the app. Pairing, cookies, vault and socket tickets keep
+  their existing authentication boundaries.
+- When an incompatible protocol prevents startup, show the update explanation once and make
+  updating the primary recovery action, without an offline claim or a redundant retry action.
+  Recovery actions remain readable and inside their container at desktop and phone widths.
+
 ### 2.6 SQLite schema
 See `docs/contracts/schema.sql` (migration 0001). Summary:
 

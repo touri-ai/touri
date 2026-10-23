@@ -51,7 +51,7 @@ it.each([
     return
   }
 
-  expect(invite).toBeVisible()
+  expect(await screen.findByRole("button", { name: "Convidar pessoa" })).toBeVisible()
 })
 
 it("keeps the advanced native server setting out of the browser app", () => {

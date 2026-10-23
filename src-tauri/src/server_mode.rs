@@ -23,7 +23,9 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Message as UpstreamMessage;
 
 use crate::keychain::KeychainStore;
-use crate::sidecar::{SidecarEndpoint, SIDECAR_SCHEMA_VERSION};
+use crate::sidecar::SidecarEndpoint;
+#[cfg(test)]
+use crate::sidecar::SIDECAR_SCHEMA_VERSION;
 use crate::AppState;
 
 const CONFIG_FILE: &str = "server-mode.json";
@@ -222,14 +224,21 @@ async fn check_connection(client: &Client, url: &str, token: &str) -> Result<(),
         if value.get("ok").and_then(Value::as_bool) != Some(true) {
             return Err("SERVER_RESPONSE_INVALID".into());
         }
-        if path.ends_with("/health")
-            && value.get("schemaVersion").and_then(Value::as_u64)
-                != Some(SIDECAR_SCHEMA_VERSION as u64)
-        {
+        if path.ends_with("/health") && !is_protocol_compatible(&value) {
             return Err("SERVER_VERSION_MISMATCH".into());
         }
     }
     Ok(())
+}
+
+fn is_protocol_compatible(health: &Value) -> bool {
+    let protocol: Value =
+        serde_json::from_str(include_str!("../../packages/contracts/protocol.json"))
+            .expect("bundled protocol metadata is valid JSON");
+    if let Some(version) = health.get("protocolVersion") {
+        return version.as_u64() == protocol["version"].as_u64();
+    }
+    health.get("schemaVersion").and_then(Value::as_u64) == protocol["legacySchemaVersion"].as_u64()
 }
 
 fn may_read_mode(label: &str) -> bool {
@@ -530,7 +539,7 @@ impl RelayState {
             .ok_or("SERVER_PAIRING_REQUIRED")?
         };
         // A saved token establishes identity, not protocol compatibility. Never expose an API until
-        // the selected server authenticates the session and reports this bundled UI's schema.
+        // the selected server authenticates the session and reports a compatible HTTP/event protocol.
         *self.credential.lock().map_err(|_| "VAULT_UNAVAILABLE")? = Some(CachedCredential {
             token: token.clone(),
             compatible: false,
@@ -1330,12 +1339,28 @@ mod tests {
         drop(relay);
     }
 
+    #[test]
+    fn wire_protocol_compatibility_is_independent_of_release_and_database_schema() {
+        assert!(is_protocol_compatible(
+            &json!({"version":"99.0.0", "schemaVersion":999, "protocolVersion":1})
+        ));
+        assert!(is_protocol_compatible(&json!({"schemaVersion":46})));
+        assert!(!is_protocol_compatible(&json!({"schemaVersion":47})));
+        assert!(!is_protocol_compatible(
+            &json!({"schemaVersion":46, "protocolVersion":2})
+        ));
+        assert!(!is_protocol_compatible(
+            &json!({"schemaVersion":46, "protocolVersion":null})
+        ));
+    }
+
     #[derive(Default)]
     struct FakeServer {
         requests: Mutex<Vec<(String, HeaderMap)>>,
         tickets: Mutex<Tickets>,
         silent_socket: bool,
         schema_version: Mutex<Option<u32>>,
+        protocol_version: Mutex<Option<u64>>,
         silent_shutdown: tokio::sync::Notify,
     }
 
@@ -1366,8 +1391,19 @@ mod tests {
         match request.uri().path() {
             "/api/v1/session" => axum::Json(json!({"ok":true,"kind":"device"})).into_response(),
             "/api/v1/health" => {
-                axum::Json(json!({"ok":true,"schemaVersion":state.schema_version.lock().unwrap().unwrap_or(SIDECAR_SCHEMA_VERSION)}))
-                    .into_response()
+                let schema = state
+                    .schema_version
+                    .lock()
+                    .unwrap()
+                    .unwrap_or(SIDECAR_SCHEMA_VERSION);
+                let protocol = *state.protocol_version.lock().unwrap();
+                let health = match protocol {
+                    Some(version) => {
+                        json!({"ok":true,"schemaVersion":schema,"protocolVersion":version})
+                    }
+                    None => json!({"ok":true,"schemaVersion":schema}),
+                };
+                axum::Json(health).into_response()
             }
             "/api/v1/echo" => {
                 let body = to_bytes(request.into_body(), SMALL_BODY).await.unwrap();
@@ -1445,7 +1481,10 @@ mod tests {
             .await
             .unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
-        let fake = Arc::new(FakeServer::default());
+        let fake = Arc::new(FakeServer {
+            protocol_version: Mutex::new(Some(1)),
+            ..FakeServer::default()
+        });
         let router = Router::new()
             .fallback(fake_server_request)
             .with_state(Arc::clone(&fake));
@@ -1559,7 +1598,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn saved_device_token_requires_compatible_schema_before_api_and_each_socket_reconnect() {
+    async fn saved_device_token_requires_compatible_protocol_before_api_and_each_socket_reconnect()
+    {
         let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
             .await
             .unwrap();
@@ -1607,7 +1647,7 @@ mod tests {
             .unwrap()
             .iter()
             .any(|(path, _)| path == "/api/v1/echo"));
-        *fake.schema_version.lock().unwrap() = Some(SIDECAR_SCHEMA_VERSION);
+        *fake.protocol_version.lock().unwrap() = Some(1);
         let compatible = client
             .post(format!("{}/api/v1/echo", endpoint.base_url))
             .bearer_auth(&endpoint.token)
@@ -1617,7 +1657,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(compatible.status(), StatusCode::OK);
-        *fake.schema_version.lock().unwrap() = Some(SIDECAR_SCHEMA_VERSION + 1);
+        *fake.protocol_version.lock().unwrap() = Some(2);
         let payload = client
             .post(format!("{}/api/v1/ws-ticket", endpoint.base_url))
             .bearer_auth(&endpoint.token)
@@ -1641,7 +1681,7 @@ mod tests {
             .insert("Origin", HeaderValue::from_static("tauri://localhost"));
         let error = tokio_tungstenite::connect_async(request)
             .await
-            .expect_err("socket reconnect must validate the current schema");
+            .expect_err("socket reconnect must validate the current protocol");
         let tokio_tungstenite::tungstenite::Error::Http(response) = error else {
             panic!("expected rejected socket handshake")
         };
@@ -1663,6 +1703,7 @@ mod tests {
             .unwrap();
         let fake = Arc::new(FakeServer {
             silent_socket: true,
+            protocol_version: Mutex::new(Some(1)),
             ..FakeServer::default()
         });
         let mode = ServerModeStatus {

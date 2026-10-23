@@ -213,6 +213,27 @@ a {
   background: var(--surface);
   color: var(--text);
 }
+.notice-bar[data-connection-state="reconnecting"] {
+  min-height: 0;
+  margin-block: var(--space-4);
+  padding-block: var(--space-4);
+  color: var(--text-2);
+}
+.notice-bar[data-connection-state="incompatible"] {
+  flex-wrap: wrap;
+}
+.notice-bar[data-connection-state="incompatible"] > span {
+  flex: 1 1 240px;
+}
+.notice-bar[data-connection-state="incompatible"] button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.connection-recovery {
+  display: grid;
+  gap: var(--space-12);
+  min-width: 0;
+}
 .notice-bar button {
   margin-left: auto;
   min-width: var(--space-24);

@@ -1189,23 +1189,28 @@ export const useWorkspace = (
           refreshing = null
         })
     }
+    const refreshOnReturn = (): void => {
+      // Cursor-aware transports reconnect on return and replay changes without refetching valid history.
+      if (api.cursorReady && !currentData.current.notice) return
+      refreshAttention()
+    }
     let wasHidden = document.visibilityState === "hidden"
     const visibility = (): void => {
       if (document.visibilityState === "hidden") wasHidden = true
       else if (wasHidden) {
         wasHidden = false
-        refreshAttention()
+        refreshOnReturn()
       }
     }
     document.addEventListener("visibilitychange", visibility)
-    window.addEventListener("online", refreshAttention)
+    window.addEventListener("online", refreshOnReturn)
     const unsubscribeConnection = api.subscribeConnection?.((connected) => {
       if (!connected) return
       if (snapshotUnavailable.current || !currentData.current.loaded) {
         resync()
         return
       }
-      refreshAttention()
+      if (currentData.current.notice) refreshAttention()
     })
     // Subscribe first, then load: the snapshot starts where live delivery does.
     void (api.cursorReady?.() ?? Promise.resolve()).then(() => {
@@ -1223,7 +1228,7 @@ export const useWorkspace = (
       unsubscribe()
       unsubscribeConnection?.()
       document.removeEventListener("visibilitychange", visibility)
-      window.removeEventListener("online", refreshAttention)
+      window.removeEventListener("online", refreshOnReturn)
     }
   }, [api, enabled, load, loadThread, removeGroup])
 

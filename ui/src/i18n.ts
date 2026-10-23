@@ -4,6 +4,13 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "Reconectando…": "Reconectando…",
+  "Esta versão do aplicativo precisa de uma atualização para conversar com o servidor.":
+    "Esta versão do aplicativo precisa de uma atualização para conversar com o servidor.",
+  "Atualizando…": "Atualizando…",
+  "Atualizar agora": "Atualizar agora",
+  "Não foi possível atualizar. Tente novamente.": "Não foi possível atualizar. Tente novamente.",
+
   "Integration write scope required": "Este envio exige um token de administrador com permissão para integrações.",
   "Integrations can post only ordinary channel messages": "Integrações só podem enviar mensagens comuns em canais.",
   "Use a distinct integration name of 1 to 80 letters, numbers, spaces, dots, underscores or hyphens":
@@ -3343,6 +3350,13 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Reconectando…": "Reconnecting…",
+  "Esta versão do aplicativo precisa de uma atualização para conversar com o servidor.":
+    "This app version needs an update to connect to the server.",
+  "Atualizando…": "Updating…",
+  "Atualizar agora": "Update now",
+  "Não foi possível atualizar. Tente novamente.": "Could not update. Try again.",
+
   "Integration write scope required": "This send requires an administrator token with integration write permission.",
   "Integrations can post only ordinary channel messages": "Integrations can post only ordinary channel messages.",
   "Use a distinct integration name of 1 to 80 letters, numbers, spaces, dots, underscores or hyphens":

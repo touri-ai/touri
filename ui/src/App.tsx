@@ -70,6 +70,7 @@ import type { JobTemplate } from "./features/jobs/catalog"
 import { type TeamFollowup, TeamNextStep } from "./features/jobs/TeamNextStep"
 import { ReportErrorButton } from "./features/reports/ReportErrorButton"
 import { ReportMenuLauncher } from "./features/reports/ReportMenuLauncher"
+import { ConnectionNotice } from "./features/server/ConnectionNotice"
 import { useServerAttention } from "./features/server/serverAttention"
 import {
   isNativeDesktop,
@@ -287,11 +288,11 @@ const AppContent = ({ kernel }: AppProps) => {
     const unlisten: Array<() => void> = []
     let retryTimer: ReturnType<typeof setTimeout> | undefined
     let startupTimer: ReturnType<typeof setTimeout> | undefined
-    const fail = (reason: string): void => {
+    const fail = (reason: string, errorCode?: string): void => {
       clearTimeout(startupTimer)
       setConnectionState("error")
       setConnectionError(serverMode ? serverModeError(reason) : reason)
-      setConnectionErrorCode(serverModeErrorCode(reason))
+      setConnectionErrorCode(errorCode ?? serverModeErrorCode(reason))
       setRetryingConnection(false)
     }
     const scheduleRetry = (): void => {
@@ -359,7 +360,7 @@ const AppContent = ({ kernel }: AppProps) => {
           window.location.reload()
           return
         }
-        fail(errorMessage(error))
+        fail(errorMessage(error), error instanceof ApiError ? error.errorCode : undefined)
         if (!isTauriRuntime() || serverMode) scheduleRetry()
       }
     }
@@ -415,15 +416,18 @@ const AppContent = ({ kernel }: AppProps) => {
     if (!api || api.isMock) return
     let active = true
     let disconnected = false
-    const unsubscribe = api.subscribeConnection?.((connected) => {
+    const unsubscribe = api.subscribeConnection?.((connected, errorCode) => {
       disconnected = !connected
       if (connected) {
         setConnectionState("ready")
         setConnectionError(null)
+        setConnectionErrorCode(null)
         setRetryingConnection(false)
         return
       }
       setConnectionState("error")
+      setConnectionErrorCode(errorCode ?? null)
+      if (errorCode === "SERVER_VERSION_MISMATCH") return
       setConnectionError(
         serverMode ? t("Servidor offline. Tentando reconectar…") : t("The sidecar connection is not available."),
       )
@@ -852,6 +856,8 @@ const AppContent = ({ kernel }: AppProps) => {
         retrying={retryingConnection}
         serverMode={serverMode}
         onSettings={isNativeDesktop() ? openServerSettings : undefined}
+        incompatible={connectionErrorCode === "SERVER_VERSION_MISMATCH"}
+        invoke={invokeCommand}
       />
       {settingsModal}
     </>
@@ -862,7 +868,7 @@ const AppContent = ({ kernel }: AppProps) => {
       {settingsModal}
     </>
   )
-  if (connectionState === "error" && !(api?.sendMessage && data.bots.length > 0))
+  if (connectionState === "error" && (!api || !data.loaded))
     return recovery(connectionError ?? t("Unknown connection error"))
   if (!api && connectionState === "loading") return loading()
   if (!api) return recovery(t("The sidecar connection is not available."))
@@ -1070,16 +1076,7 @@ const AppContent = ({ kernel }: AppProps) => {
       <main className="app-shell">
         <HistoryMigrationStatus api={api} />
         {connectionState === "error" && (
-          <div className="notice-bar" role="status">
-            {serverMode
-              ? t("Servidor offline. Suas mensagens ficam na fila e serão enviadas ao reconectar.")
-              : t("Sem conexão. Suas mensagens ficam na fila e serão enviadas ao reconectar.")}
-            {serverMode && (
-              <button type="button" className="button button-quiet" onClick={openServerSettings}>
-                {t("Usar um servidor touri")}
-              </button>
-            )}
-          </div>
+          <ConnectionNotice incompatible={connectionErrorCode === "SERVER_VERSION_MISMATCH"} invoke={invokeCommand} />
         )}
         {workspaceNotice}
         <ApprovalNotice
@@ -1579,8 +1576,12 @@ const SidecarErrorScreen = ({
   retrying = false,
   serverMode = false,
   onSettings,
+  incompatible = false,
+  invoke,
 }: {
   reason: string
+  incompatible?: boolean
+  invoke: TauriInvoke
   onRetry: () => void
   retrying?: boolean
   serverMode?: boolean
@@ -1591,22 +1592,25 @@ const SidecarErrorScreen = ({
       <img className="error-bull" src="/touri-bull.png" alt="touri" />
       <p className="eyebrow">{serverMode ? t("Modo servidor") : t("local connection")}</p>
       <h1>{t("Couldn’t connect to touri services.")}</h1>
-      <p>
-        {serverMode
-          ? t("Servidor offline. Tentando reconectar…")
-          : reason === startupTimeoutMessage() || reason.startsWith("sidecar handshake timed out")
-            ? startupTimeoutMessage()
-            : reason.startsWith("schema mismatch:")
-              ? t("The app and the local service use incompatible versions.")
-              : t("Touri is unavailable until the local service reconnects.")}
-      </p>
-      <div className="error-reason">
-        <ErrorNotice error={reason} showActions={false} />
-      </div>
-      <button type="button" className="button button-brand" onClick={onRetry} disabled={retrying} aria-busy={retrying}>
-        {t("Retry connection")}
-        <PanelIcon name="arrow-right" />
-      </button>
+      {!incompatible && <p>{getStartupFailureDescription(reason, serverMode)}</p>}
+      {incompatible && <ConnectionNotice incompatible recovery invoke={invoke} />}
+      {!incompatible && (
+        <div className="error-reason">
+          <ErrorNotice error={reason} showActions={false} />
+        </div>
+      )}
+      {!incompatible && (
+        <button
+          type="button"
+          className="button button-brand"
+          onClick={onRetry}
+          disabled={retrying}
+          aria-busy={retrying}
+        >
+          {t("Retry connection")}
+          <PanelIcon name="arrow-right" />
+        </button>
+      )}
       {onSettings && (
         <button type="button" className="button button-quiet" onClick={onSettings}>
           {t("Usar um servidor touri")}
@@ -1617,6 +1621,15 @@ const SidecarErrorScreen = ({
     </div>
   </main>
 )
+
+const getStartupFailureDescription = (reason: string, serverMode: boolean): string => {
+  if (serverMode) return t("Servidor offline. Tentando reconectar…")
+  if (reason === startupTimeoutMessage() || reason.startsWith("sidecar handshake timed out"))
+    return startupTimeoutMessage()
+  if (reason.startsWith("schema mismatch:")) return t("The app and the local service use incompatible versions.")
+
+  return t("Touri is unavailable until the local service reconnects.")
+}
 
 const OnboardingLanding = ({
   host,

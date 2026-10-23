@@ -15,10 +15,10 @@ const portOf = (server: Server): number => {
   if (!address || typeof address === "string") throw new Error("Test listener has no loopback port")
   return address.port
 }
-const listen = (server: Server) =>
+const listen = (server: Server, port = 0) =>
   new Promise<void>((done, reject) => {
     server.once("error", reject)
-    server.listen(0, "127.0.0.1", () => {
+    server.listen(port, "127.0.0.1", () => {
       server.off("error", reject)
       done()
     })
@@ -26,13 +26,19 @@ const listen = (server: Server) =>
 const close = (server: Server) => new Promise<void>((done) => server.close(() => done()))
 
 /** Browser substitute for native IPC/relay only. Pairing, REST, tickets and events use a real server. */
-export const createServerModeFixture = async ({ initialMode = "local" }: { initialMode?: "local" | "server" } = {}) => {
+export const createServerModeFixture = async ({
+  initialMode = "local",
+  port = 0,
+}: {
+  initialMode?: "local" | "server"
+  port?: number
+} = {}) => {
   // Playwright's global setup builds this worktree's UI before any server fixture starts.
-  const dataDir = await mkdtemp(join(tmpdir(), "touri-server-mode-"))
   const reservation = createServer()
-  await listen(reservation)
+  await listen(reservation, port)
   const serverPort = portOf(reservation)
   await close(reservation)
+  const dataDir = await mkdtemp(join(tmpdir(), "touri-server-mode-"))
   const serverUrl = `http://127.0.0.1:${serverPort}`
   const relayToken = randomBytes(32).toString("hex")
   const sockets = new Set<Socket>()
@@ -201,7 +207,7 @@ export const createServerModeFixture = async ({ initialMode = "local" }: { initi
     upstream.end()
   })
 
-  try {
+  const start = async (): Promise<number> => {
     child = spawn(
       "bun",
       [
@@ -230,18 +236,30 @@ export const createServerModeFixture = async ({ initialMode = "local" }: { initi
     )
     child.stdout?.resume()
     child.stderr?.resume()
-    let started = false
-    for (let attempt = 0; attempt < 300; attempt++) {
-      if (child.exitCode !== null || child.signalCode !== null)
+    return waitForReady()
+  }
+
+  const waitForReady = async (): Promise<number> => {
+    const deadline = performance.now() + 90_000
+    while (performance.now() < deadline) {
+      if (!child || child.exitCode !== null || child.signalCode !== null)
         throw new Error("The isolated touri server exited during startup")
-      started = await fetch(`${serverUrl}/pair`, { signal: AbortSignal.timeout(500) })
+      const started = await fetch(`${serverUrl}${remoteToken ? "/api/v1/health" : "/pair"}`, {
+        headers: remoteToken ? { Authorization: `Bearer ${remoteToken}`, "X-Touri-Client": "desktop-test" } : {},
+        signal: AbortSignal.timeout(500),
+      })
         .then((r) => r.ok)
         .catch(() => false)
-      if (started) break
+      if (started) return performance.now()
       await wait(100)
     }
-    if (!started) throw new Error("The isolated touri server did not become ready")
+    throw new Error("The isolated touri server did not become ready")
+  }
+
+  try {
+    await start()
     await pair(code())
+    await waitForReady()
     await listen(fixture)
     relayUrl = `http://127.0.0.1:${portOf(fixture)}`
   } catch (error) {
@@ -305,6 +323,9 @@ export const createServerModeFixture = async ({ initialMode = "local" }: { initi
   return {
     serverUrl,
     relayUrl,
+    start,
+    stop,
+    dataDir,
     code,
     api,
     install,

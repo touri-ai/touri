@@ -1065,7 +1065,7 @@ export type ApiRoutes = {
   'POST /cloud/bots/:id/wake': { req: {}; res: { machine: MachineState } }
   'PUT /cloud/bots/:id/key': { req: { apiKey: string }; res: {} }
 
-  'GET /health': { req: {}; res: { ok: true; version: string; schemaVersion: number; draining?: boolean; host?: 'mac' | 'server'; hostKind?: HostKind; historyMigration?: { running: boolean; done: number; total: number }; eventLoop?: { lagMs: number; p99Ms: number; maxMs: number; samples: number } } }
+  'GET /health': { req: {}; res: { ok: true; version: string; schemaVersion: number; protocolVersion?: number; draining?: boolean; host?: 'mac' | 'server'; hostKind?: HostKind; historyMigration?: { running: boolean; done: number; total: number }; eventLoop?: { lagMs: number; p99Ms: number; maxMs: number; samples: number } } }
   'GET /session': { req: {}; res: { ok: true; kind: 'device'; person: { id: Id; name: string; email: string | null; avatarSeed: string; role: 'member' | 'admin' } } }
   'POST /ui/errors': { req: { area: string; message: string; stack: string; componentStack: string }; res: { ok: true } }
   'POST /reports/:id/saved': { req: { destination: 'zip' | 'github' }; res: {} }
