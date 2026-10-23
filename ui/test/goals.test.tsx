@@ -5,6 +5,7 @@ import App, { getGoalSelection } from "../src/App"
 import { createMockApi } from "../src/api/mock"
 import { DeferredGoalPanel } from "../src/components/DeferredGoalPanel"
 import { GoalPanel } from "../src/components/GoalPanel"
+import { ApiError } from "../src/errors"
 import { localizeToolText, t } from "../src/i18n"
 
 afterEach(() => {
@@ -272,6 +273,13 @@ test("goal state and controls have English copy", () => {
   ])
 })
 
+test("goal load failures have specific Portuguese and English copy", () => {
+  expect(t("Goal load failed", {}, "pt-BR")).toBe(
+    "Não foi possível carregar o objetivo. Confira a conexão e tente novamente.",
+  )
+  expect(t("Goal load failed", {}, "en")).toBe("Could not load the goal. Check the connection and try again.")
+})
+
 test("goal checkpoint failures use plain language", () => {
   const failure = "ERROR NOT_FOUND: Não há um objetivo ativo para este turno."
 
@@ -296,6 +304,155 @@ test("a temporary checkpoint loading error clears after reconnecting", async () 
 
   expect(screen.queryByRole("alert")).toBeNull()
   expect(api.request).toHaveBeenCalledTimes(2)
+})
+
+const makeGoalReadFixture = (surface: "chat" | "entry" = "chat") => {
+  const base = createMockApi()
+  const bot = base.getState().bots[0]
+  const request = base.getState().messages.find((message) => message.role === "user")
+  if (!bot || !request) throw new Error("Missing mock conversation")
+  const unsubscribeConnection = vi.fn()
+  const subscribeConnection = vi.fn((_listener: (connected: boolean) => void) => unsubscribeConnection)
+  const read = vi.fn(base.request)
+  const apiRequest: typeof base.request = async (...args) => {
+    await Promise.resolve()
+    return read(...args)
+  }
+  const api = { ...base, request: apiRequest, subscribeConnection }
+  const view = render(
+    <GoalPanel api={api} threadId={request.threadId} bot={bot} request={request} busy={false} surface={surface} />,
+  )
+  const reconnect = () => subscribeConnection.mock.calls[0]?.[0](true)
+
+  return { ...view, read, reconnect, unsubscribeConnection }
+}
+
+test("initial and early reconnect failures recover without another event or remount", async () => {
+  vi.useFakeTimers()
+  const fixture = makeGoalReadFixture()
+  fixture.read.mockRejectedValueOnce(new ApiError(404, "Starting"))
+  await act(async () => {})
+  fixture.read.mockRejectedValueOnce(new ApiError(404, "Starting"))
+  await act(async () => fixture.reconnect())
+  expect(fixture.read).toHaveBeenCalledTimes(2)
+
+  await act(async () => vi.advanceTimersByTimeAsync(500))
+
+  expect(fixture.read).toHaveBeenCalledTimes(3)
+  expect(screen.queryByRole("alert")).toBeNull()
+  expect(screen.queryByRole("region")).toBeNull()
+  expect(vi.getTimerCount()).toBe(0)
+  await act(async () => vi.advanceTimersByTimeAsync(60_000))
+  expect(fixture.read).toHaveBeenCalledTimes(3)
+})
+
+test("transient goal reads stop after four retries and remain scoped to goal setup", async () => {
+  vi.useFakeTimers()
+  const fixture = makeGoalReadFixture("entry")
+  fixture.read.mockRejectedValue(new ApiError(503, "Starting"))
+  await act(async () => {})
+
+  await act(async () => vi.advanceTimersByTimeAsync(60_000))
+
+  expect(fixture.read).toHaveBeenCalledTimes(5)
+  expect(vi.getTimerCount()).toBe(0)
+  expect(screen.getByRole("alert")).toHaveTextContent("Não foi possível carregar o objetivo.")
+  fixture.read.mockResolvedValue({ goal: null })
+  await act(async () => fixture.reconnect())
+  expect(screen.queryByRole("alert")).toBeNull()
+  expect(screen.getByRole("button", { name: "Definir objetivo" })).toBeVisible()
+})
+
+test.each([401, 403, 400])(
+  "goal read status %s does not retry authorization or validation failures",
+  async (status) => {
+    vi.useFakeTimers()
+    const fixture = makeGoalReadFixture("entry")
+    fixture.read.mockRejectedValue(new ApiError(status, "Denied"))
+    await act(async () => {})
+
+    await act(async () => vi.advanceTimersByTimeAsync(60_000))
+
+    expect(fixture.read).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
+    expect(screen.getByRole("alert")).toBeVisible()
+  },
+)
+
+test("unmount cancels a pending retry and unsubscribes from reconnects", async () => {
+  vi.useFakeTimers()
+  const fixture = makeGoalReadFixture()
+  fixture.read.mockRejectedValue(new ApiError(404, "Starting"))
+  await act(async () => {})
+  expect(vi.getTimerCount()).toBe(1)
+  const signal = fixture.read.mock.calls[0]?.[3]?.signal
+
+  fixture.unmount()
+  await act(async () => vi.advanceTimersByTimeAsync(60_000))
+
+  expect(signal?.aborted).toBe(true)
+  expect(fixture.unsubscribeConnection).toHaveBeenCalledTimes(1)
+  expect(fixture.read).toHaveBeenCalledTimes(1)
+  expect(vi.getTimerCount()).toBe(0)
+})
+
+test("unmount aborts an in-flight read and a late failure cannot schedule another retry", async () => {
+  vi.useFakeTimers()
+  const pending = Promise.withResolvers<never>()
+  const fixture = makeGoalReadFixture()
+  fixture.read.mockReturnValue(pending.promise)
+  await act(async () => {})
+  const signal = fixture.read.mock.calls[0]?.[3]?.signal
+
+  fixture.unmount()
+  await act(async () => pending.reject(new ApiError(503, "Starting")))
+  await act(async () => vi.advanceTimersByTimeAsync(60_000))
+
+  expect(signal?.aborted).toBe(true)
+  expect(fixture.read).toHaveBeenCalledTimes(1)
+  expect(vi.getTimerCount()).toBe(0)
+})
+
+test("a newer refresh cancels the old read so its late failure cannot overwrite success", async () => {
+  vi.useFakeTimers()
+  const pending = Promise.withResolvers<never>()
+  const fixture = makeGoalReadFixture("entry")
+  fixture.read.mockReturnValueOnce(pending.promise)
+  await act(async () => {})
+  const signal = fixture.read.mock.calls[0]?.[3]?.signal
+
+  await act(async () => fixture.reconnect())
+  await act(async () => pending.reject(new ApiError(503, "Starting")))
+
+  expect(signal?.aborted).toBe(true)
+  expect(fixture.read).toHaveBeenCalledTimes(2)
+  expect(screen.queryByRole("alert")).toBeNull()
+  expect(vi.getTimerCount()).toBe(0)
+})
+
+test("a failed refresh retains a known paused goal, controls and a feature-specific error", async () => {
+  vi.useFakeTimers()
+  const api = createMockApi()
+  const bot = api.getState().bots[0]
+  const request = api.getState().messages.find((message) => message.role === "user")
+  if (!bot || !request) throw new Error("Missing mock conversation")
+  const saved = await api.request(
+    "POST /threads/:id/goal",
+    { requestMessageId: request.id, completionCriterion: "Resumo revisado.", maxTurns: 4, maxMinutes: 15 },
+    { id: request.threadId },
+  )
+  vi.spyOn(api, "request").mockResolvedValue({ goal: { ...saved.goal, status: "paused" } })
+  render(<GoalPanel api={api} threadId={request.threadId} bot={bot} busy={false} surface="chat" />)
+  await act(async () => {})
+  vi.mocked(api.request).mockRejectedValue(new ApiError(503, "Starting"))
+  const thread = api.getState().threads.find((candidate) => candidate.id === request.threadId)
+  if (!thread) throw new Error("Missing mock thread")
+
+  await act(async () => api.emit({ type: "thread.updated", thread }))
+
+  expect(screen.getByText("Resumo revisado.")).toBeVisible()
+  expect(screen.getByRole("button", { name: "Retomar", exact: true })).toBeEnabled()
+  expect(screen.getByRole("alert")).toHaveTextContent(t("Goal load failed"))
 })
 
 test("a conversation without a goal fetches once and stays idle", async () => {
