@@ -282,6 +282,10 @@ export const purgeBotReplay = (database: Database, botId: string): void => {
 export const purgeReplayRows = (database: Database, rows: Array<{ seq: number }>): void => {
   const floor = rows.reduce((maximum, row) => Math.max(maximum, row.seq), 0)
   if (!floor) return
+
+  // A later purge can remove counted rows below an already higher replay floor.
+  database.exec(`INSERT INTO schema_meta(key,value) VALUES('event_retention_revision','1')
+    ON CONFLICT(key) DO UPDATE SET value=CAST(value AS INTEGER)+1`)
   database.query("UPDATE transcript_maintenance SET ui_delete_before_seq=? WHERE id=1").run(floor)
   rows.forEach((row) => {
     database.query("DELETE FROM ui_event_log WHERE seq=?").run(row.seq)
@@ -304,6 +308,7 @@ type RetentionThread = { threadId: string; cutoff: number; rows: RetentionRow[] 
 type EventRetentionScan = {
   events: number
   floor: number
+  revision: number
   head: number
   before: number
   remaining: number
@@ -442,7 +447,10 @@ export const applyTranscriptRetentionPlan = (
       if (isRetentionUpgradePending(database)) return { more: false, cursor: 0 }
 
       // A bot purge can remove already-counted tail rows while discovery yields.
-      if (getEventRetentionFloor(database) !== plan.eventScan.floor)
+      if (
+        getEventRetentionFloor(database) !== plan.eventScan.floor ||
+        getEventRetentionRevision(database) !== plan.eventScan.revision
+      )
         return { more: true, cursor: plan.nextCursor ? plan.nextCursor - 1 : 0 }
 
       // A projection can become dirty while discovery yields; revalidate under the writer lock.
@@ -481,6 +489,7 @@ const eventRetentionScanLimit = 1024
 
 const getEventRetentionScan = (database: Database, events: number): EventRetentionScan => {
   const floor = getEventRetentionFloor(database)
+  const revision = getEventRetentionRevision(database)
   const saved = getSavedEventRetentionScan(database)
   const head = database.query("SELECT seq FROM sqlite_sequence WHERE name='ui_event_log'").get() as {
     seq: number
@@ -488,6 +497,7 @@ const getEventRetentionScan = (database: Database, events: number): EventRetenti
   const initial: EventRetentionScan = {
     events,
     floor,
+    revision,
     head: head?.seq ?? 0,
     before: head?.seq ?? 0,
     remaining: events,
@@ -495,7 +505,8 @@ const getEventRetentionScan = (database: Database, events: number): EventRetenti
     complete: false,
   }
   const hasNewTail = saved?.complete && saved.cutoff <= floor && saved.head !== initial.head
-  const scan = saved?.events === events && saved.floor === floor && !hasNewTail ? saved : initial
+  const canResume = saved?.events === events && saved.floor === floor && saved.revision === revision && !hasNewTail
+  const scan = canResume ? saved : initial
   if (scan.complete) return scan
 
   // Seek from the last committed page; OFFSET repeatedly walks cold payload pages.
@@ -510,6 +521,7 @@ const getEventRetentionScan = (database: Database, events: number): EventRetenti
   return {
     events,
     floor,
+    revision,
     head: scan.head,
     before: Math.max(0, (last?.seq ?? 1) - 1),
     remaining: Math.max(0, scan.remaining - rows.length),
@@ -523,6 +535,14 @@ const getEventRetentionFloor = (database: Database): number =>
     (database.query("SELECT value FROM schema_meta WHERE key='ui_event_floor_seq'").get() as { value: string }).value,
   )
 
+const getEventRetentionRevision = (database: Database): number => {
+  const row = database.query("SELECT value FROM schema_meta WHERE key='event_retention_revision'").get() as {
+    value: string
+  } | null
+
+  return Number(row?.value ?? 0)
+}
+
 const getSavedEventRetentionScan = (database: Database): EventRetentionScan | undefined => {
   const row = database.query("SELECT value FROM schema_meta WHERE key=?").get(eventRetentionScanKey) as {
     value: string
@@ -531,7 +551,7 @@ const getSavedEventRetentionScan = (database: Database): EventRetentionScan | un
 
   try {
     const scan = JSON.parse(row.value) as EventRetentionScan
-    const counts = [scan.events, scan.floor, scan.head, scan.before, scan.remaining, scan.cutoff]
+    const counts = [scan.events, scan.floor, scan.revision, scan.head, scan.before, scan.remaining, scan.cutoff]
     if (!counts.every((count) => Number.isSafeInteger(count) && count >= 0)) return undefined
     if (scan.remaining > scan.events || typeof scan.complete !== "boolean") return undefined
 

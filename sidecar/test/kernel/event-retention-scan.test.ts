@@ -69,9 +69,10 @@ test("sequence gaps and new events preserve the counted suffix while the prefix 
 
 test("a purge invalidates both partial scans and plans discovered before the purge", async () => {
   const database = await getFixture()
+  purgeReplayRows(database, [{ seq: 7500 }])
   applyTranscriptRetentionPlan(database, getPlan(database))
   const stale = getPlan(database)
-  purgeReplayRows(database, [{ seq: 7500 }])
+  purgeReplayRows(database, [{ seq: 7497 }])
   const before = getSequences(database)
 
   const result = applyTranscriptRetentionPlan(database, stale)
