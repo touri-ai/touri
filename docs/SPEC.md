@@ -1747,7 +1747,8 @@ plain access summary before Adjust is opened. Secondary routine and approval act
 confirmation steps behind menus. Message actions appear on hover or keyboard focus and stay visible
 on touch devices, so scheduling a useful result remains discoverable on a phone. If routines finish
 loading while a menu is in use, that menu keeps keyboard focus. Opening routines intentionally
-still focuses the routine list.
+still focuses the routine list. Native connection settings remain reachable through Diagnostics →
+Use a touri server, with a destination label that describes what opens.
 
 Each bot with a pending question, approval or failed task shows its waiting reason in the sidebar
 in place of the conversation preview. The shared attention card and bell use the same unresolved

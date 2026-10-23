@@ -383,3 +383,22 @@ it("describes the viewing device consistently in the server access summary", asy
 
   expect(summary).toBeVisible()
 })
+
+it("names the native server destination explicitly under Diagnostics", async () => {
+  native()
+  const invoke = vi.fn(async () => local)
+  render(
+    <SettingsModal
+      invokeCommand={invoke as TauriInvoke}
+      settings={null}
+      initialSection="diagnostics"
+      onSave={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  )
+
+  fireEvent.click(screen.getByRole("button", { name: t("Usar um servidor touri"), exact: true }))
+
+  expect(await screen.findByRole("region", { name: t("Usar um servidor touri"), exact: true })).toBeVisible()
+  expect(screen.getByRole("textbox", { name: t("Endereço do servidor"), exact: true })).toBeVisible()
+})

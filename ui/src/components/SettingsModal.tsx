@@ -376,7 +376,7 @@ export const SettingsModal = ({
         <SettingsPane {...pane("diagnostics")}>
           {isNativeDesktop() && (
             <button type="button" className="text-button" onClick={() => setSection("advanced")}>
-              {SERVER_SETTINGS_SECTION.label}
+              {t("Usar um servidor touri")}
             </button>
           )}
           <SettingsDisclosure
