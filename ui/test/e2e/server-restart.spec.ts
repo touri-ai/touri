@@ -19,7 +19,10 @@ for (const mode of ["desktop", "web"] as const) {
   }, info) => {
     const evidence = resolve(import.meta.dirname, "../../../docs/qa/server-restart")
     await mkdir(evidence, { recursive: true })
-    const server = await createServerModeFixture({ initialMode: "server", port: 18795 })
+    const server = await createServerModeFixture({
+      initialMode: "server",
+      port: Number(process.env.TOURI_RESTART_TEST_PORT ?? 0),
+    })
     servers.add(server)
     if (mode === "web") await page.setViewportSize({ width: 390, height: 844 })
     const settings = await server.api("/settings")

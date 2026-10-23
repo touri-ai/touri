@@ -3,7 +3,15 @@ import type { TauriInvoke } from "../../api/client"
 import { t } from "../../i18n"
 import { isNativeDesktop } from "./serverMode"
 
-export const ConnectionNotice = ({ incompatible = false, invoke }: { incompatible?: boolean; invoke: TauriInvoke }) => {
+export const ConnectionNotice = ({
+  incompatible = false,
+  recovery = false,
+  invoke,
+}: {
+  incompatible?: boolean
+  recovery?: boolean
+  invoke: TauriInvoke
+}) => {
   const [updating, setUpdating] = useState(false)
   const [failed, setFailed] = useState(false)
   const update = async (): Promise<void> => {
@@ -25,16 +33,23 @@ export const ConnectionNotice = ({ incompatible = false, invoke }: { incompatibl
 
   return (
     <div
-      className={`notice-bar${incompatible ? "" : " notice-info"}`}
+      className={recovery ? "connection-recovery" : `notice-bar${incompatible ? "" : " notice-info"}`}
       role="status"
       aria-live="polite"
       data-connection-state={incompatible ? "incompatible" : "reconnecting"}
     >
-      {incompatible
-        ? t("Esta versão do aplicativo precisa de uma atualização para conversar com o servidor.")
-        : t("Reconectando…")}
+      <span>
+        {incompatible
+          ? t("Esta versão do aplicativo precisa de uma atualização para conversar com o servidor.")
+          : t("Reconectando…")}
+      </span>
       {incompatible && (
-        <button type="button" className="button button-quiet" disabled={updating} onClick={() => void update()}>
+        <button
+          type="button"
+          className={`button ${recovery ? "button-brand" : "button-quiet"}`}
+          disabled={updating}
+          onClick={() => void update()}
+        >
           {updating ? t("Atualizando…") : t("Atualizar agora")}
         </button>
       )}

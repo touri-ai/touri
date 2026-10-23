@@ -1589,23 +1589,25 @@ const SidecarErrorScreen = ({
       <img className="error-bull" src="/touri-bull.png" alt="touri" />
       <p className="eyebrow">{serverMode ? t("Modo servidor") : t("local connection")}</p>
       <h1>{t("Couldn’t connect to touri services.")}</h1>
-      <p>
-        {serverMode
-          ? t("Servidor offline. Tentando reconectar…")
-          : reason === startupTimeoutMessage() || reason.startsWith("sidecar handshake timed out")
-            ? startupTimeoutMessage()
-            : reason.startsWith("schema mismatch:")
-              ? t("The app and the local service use incompatible versions.")
-              : t("Touri is unavailable until the local service reconnects.")}
-      </p>
-      {incompatible && <ConnectionNotice incompatible invoke={invoke} />}
-      <div className="error-reason">
-        <ErrorNotice error={reason} showActions={false} />
-      </div>
-      <button type="button" className="button button-brand" onClick={onRetry} disabled={retrying} aria-busy={retrying}>
-        {t("Retry connection")}
-        <PanelIcon name="arrow-right" />
-      </button>
+      {!incompatible && <p>{getStartupFailureDescription(reason, serverMode)}</p>}
+      {incompatible && <ConnectionNotice incompatible recovery invoke={invoke} />}
+      {!incompatible && (
+        <div className="error-reason">
+          <ErrorNotice error={reason} showActions={false} />
+        </div>
+      )}
+      {!incompatible && (
+        <button
+          type="button"
+          className="button button-brand"
+          onClick={onRetry}
+          disabled={retrying}
+          aria-busy={retrying}
+        >
+          {t("Retry connection")}
+          <PanelIcon name="arrow-right" />
+        </button>
+      )}
       {onSettings && (
         <button type="button" className="button button-quiet" onClick={onSettings}>
           {t("Usar um servidor touri")}
@@ -1616,6 +1618,15 @@ const SidecarErrorScreen = ({
     </div>
   </main>
 )
+
+const getStartupFailureDescription = (reason: string, serverMode: boolean): string => {
+  if (serverMode) return t("Servidor offline. Tentando reconectar…")
+  if (reason === startupTimeoutMessage() || reason.startsWith("sidecar handshake timed out"))
+    return startupTimeoutMessage()
+  if (reason.startsWith("schema mismatch:")) return t("The app and the local service use incompatible versions.")
+
+  return t("Touri is unavailable until the local service reconnects.")
+}
 
 const OnboardingLanding = ({
   host,
