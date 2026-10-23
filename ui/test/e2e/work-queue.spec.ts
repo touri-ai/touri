@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
 
 test.use({ channel: "chromium", reducedMotion: "reduce" })
@@ -17,9 +18,21 @@ for (const viewport of [
 
     await expect(waiting).toContainText("Na fila · aguardando o bot concluir o pedido anterior")
     await expect(page.getByRole("region", { name: "Trabalhando", exact: true }).getByRole("article")).toHaveCount(1)
+    expect(
+      (await new AxeBuilder({ page }).include(".work-screen").withTags(["wcag2a", "wcag2aa"]).analyze()).violations,
+    ).toEqual([])
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     if (process.env.TOURI_SCREENSHOT_DIR)
       await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/channel-waiting-${viewport.width}.png` })
+
+    await waiting.getByRole("button", { name: "Equipe de demonstração", exact: true }).click()
+    await expect(page.getByRole("textbox", { name: "Mensagem para Equipe de demonstração" })).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    if (process.env.TOURI_SCREENSHOT_DIR)
+      await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/channel-conversation-${viewport.width}.png` })
+    if (viewport.width === 390) await page.getByRole("button", { name: "Abrir menu" }).click()
+    await page.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
+    await page.getByRole("button", { name: "Trabalho", exact: true }).click()
 
     await page.evaluate(() => {
       const fixture = window as Window & { workQa?: { finishFirst: () => void } }
