@@ -535,10 +535,14 @@ existing bot conversations, permissions and provider sessions are preserved.
 Human channel messages dispatch only to explicitly mentioned bots, in mention order.
 Mentioning a person never dispatches a bot. The explicit everyone and summary actions select
 their own recipients; routines retain the coordinator / mentioned-members / all-members order.
-Multiword names can be quoted (`@"Dev Bot"`). A queue serializes user turns across all conversations
-in the same group. Each member uses an internal
+Multiword names can be quoted (`@"Dev Bot"`). Turns addressed to different members may run
+concurrently within a group, subject to the runtime concurrency limit. Requests sharing a recipient
+retain their order across group conversations, including requests naming several members. Delegated
+recipients stay reserved during approval and execution; delegation into another active turn is refused.
+Each member uses an internal
 conversation with its own native session, machine, instructions, history and approvals. Replies
-are persisted into the shared transcript with the actual member's identity. These internal
+are appended to the current shared history path with the actual member's identity, preserving
+concurrent replies and newer user messages. These internal
 conversations are excluded from the bot's ordinary conversation list.
 
 The touri MCP server exposes `ask_bot({bot, message})` and its `coordinate_bots` alias to group
@@ -555,7 +559,7 @@ canceling a group or a delegating caller, the server checks every browser reques
 affect, including work reached while delegation approval is still pending. A denial leaves all runs,
 browser control and pending turns unchanged; a browser leaf can still be canceled in isolation.
 
-Parar cancels the active group turn, its delegated work and pending group turns. Editing members
+Parar cancels the active group turns, their delegated work and pending group turns. Editing members
 or the coordinator requires idle group conversations. Eligible unfinished channel turns resume after
 restart and provider interruption, up to two automatic attempts recorded durably per original member
 turn. Completed members are not repeated. Stop remains authoritative while startup is waiting;

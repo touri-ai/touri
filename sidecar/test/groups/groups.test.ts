@@ -606,6 +606,143 @@ test("queue serializes turns across group conversations; Parar cancels active an
   expect(f.order).toHaveLength(1)
 })
 
+test("an independent bot replies while an earlier bot and its next request are waiting", async () => {
+  const release = Promise.withResolvers<void>()
+  const f = await fixture(async (ctx, complete) => {
+    if (ctx.botId === f.bots[0]?.id) await release.promise
+    complete(ctx.botId === f.bots[0]?.id ? "Resposta do primeiro bot" : "Resposta do segundo bot")
+  }, 30_000)
+  cleanups.unshift(() => release.resolve())
+  const first = f.send("@pm tarefa longa")
+  await until(() => f.order.length === 1)
+  const waiting = f.send("@pm próximo pedido")
+  const independent = f.send("@dev diga oi")
+
+  await until(() => f.persistence.getRun(independent.id)?.status === "succeeded")
+
+  expect(f.persistence.getRun(first.id)?.status).toBe("running")
+  expect(f.persistence.getRun(waiting.id)?.status).toBe("queued")
+  expect(f.order).toEqual(f.group.memberIds.slice(0, 2))
+  release.resolve()
+  await until(() => f.persistence.getRun(waiting.id)?.status === "succeeded")
+  const history = f.store.activePath({ threadId: f.thread.id })
+
+  expect(f.order).toEqual([f.bots[0]?.id ?? "", f.bots[1]?.id ?? "", f.bots[0]?.id ?? ""])
+  expect(history.filter((message) => message.role === "user")).toHaveLength(3)
+  expect(history.filter((message) => message.role === "assistant")).toHaveLength(3)
+  expect(history.filter((message) => message.text === "Resposta do segundo bot")).toMatchObject([
+    { sender: { id: f.bots[1]?.id } },
+  ])
+})
+
+test("concurrent recipients cannot delegate into another active turn", async () => {
+  const started = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const result = Promise.withResolvers<unknown>()
+  const f = await fixture(async (ctx, complete) => {
+    if (ctx.botId === f.bots[0]?.id) {
+      started.resolve()
+      await release.promise
+    } else {
+      result.resolve(await f.runtime.askBot(ctx, { bot: "pm", message: "Confira" }))
+    }
+    complete("Concluído")
+  }, 30_000)
+  cleanups.unshift(() => release.resolve())
+  const first = f.send("@pm tarefa longa")
+  await started.promise
+
+  const second = f.send("@dev confira")
+  await until(() => f.persistence.getRun(second.id)?.status === "succeeded")
+
+  expect(await result.promise).toMatchObject({ success: false, errorCode: "BOT_BUSY" })
+  expect(f.persistence.getRun(first.id)?.status).toBe("running")
+  expect(f.order).toHaveLength(2)
+  release.resolve()
+  await until(() => f.persistence.getRun(first.id)?.status === "succeeded")
+})
+
+test("a delegated recipient stays reserved and starts its next request when delegation ends", async () => {
+  const delegated = Promise.withResolvers<void>()
+  const releasePeer = Promise.withResolvers<void>()
+  const releaseCaller = Promise.withResolvers<void>()
+  const f = await fixture(async (ctx, complete) => {
+    if (ctx.botId === f.bots[0]?.id) {
+      await f.runtime.askBot(ctx, { bot: "dev", message: "Confira" })
+      await releaseCaller.promise
+    }
+    if (ctx.botId === f.bots[1]?.id) {
+      delegated.resolve()
+      await releasePeer.promise
+    }
+    complete("Concluído")
+  }, 30_000)
+  cleanups.unshift(() => {
+    releasePeer.resolve()
+    releaseCaller.resolve()
+  })
+  const caller = f.send("@pm coordene")
+  await delegated.promise
+  const waiting = f.send("@dev próximo pedido")
+  const independent = f.send("@qa confira")
+  await until(() => f.persistence.getRun(independent.id)?.status === "succeeded")
+
+  expect(f.persistence.getRun(waiting.id)?.status).toBe("queued")
+  releasePeer.resolve()
+  await until(() => f.persistence.getRun(waiting.id)?.status === "succeeded")
+
+  expect(f.persistence.getRun(caller.id)?.status).toBe("running")
+  expect(f.order).toEqual([f.bots[0]?.id ?? "", f.bots[1]?.id ?? "", f.bots[2]?.id ?? "", f.bots[1]?.id ?? ""])
+  releaseCaller.resolve()
+  await until(() => f.persistence.getRun(caller.id)?.status === "succeeded")
+})
+
+test("a waiting multi-bot request keeps its order without blocking an unrelated recipient", async () => {
+  const release = Promise.withResolvers<void>()
+  const f = await fixture(async (ctx, complete) => {
+    if (ctx.botId === f.bots[0]?.id) await release.promise
+    complete("Concluído")
+  }, 30_000)
+  cleanups.unshift(() => release.resolve())
+  f.send("@pm tarefa longa")
+  await until(() => f.order.length === 1)
+  const shared = f.send("@pm @dev revisão")
+  const sameBot = f.send("@dev depois da revisão")
+
+  const independent = f.send("@qa confira")
+  await until(() => f.persistence.getRun(independent.id)?.status === "succeeded")
+
+  expect(f.persistence.getRun(shared.id)?.status).toBe("queued")
+  expect(f.persistence.getRun(sameBot.id)?.status).toBe("queued")
+  release.resolve()
+  await until(() => f.persistence.getRun(sameBot.id)?.status === "succeeded")
+  expect(f.order).toEqual([
+    f.bots[0]?.id ?? "",
+    f.bots[2]?.id ?? "",
+    f.bots[0]?.id ?? "",
+    f.bots[1]?.id ?? "",
+    f.bots[1]?.id ?? "",
+  ])
+})
+
+test("Parar cancels both independent active recipients and their waiting requests", async () => {
+  const f = await fixture(async () => {}, 30_000)
+  const first = f.send("@pm tarefa longa")
+  const second = f.send("@dev outra tarefa")
+  await until(() => f.order.length === 2)
+  const waiting = f.send("@pm depois")
+
+  expect(f.runtime.cancel(first.id)).toBe(true)
+  await f.runtime.waitForDrain()
+
+  expect([first, second, waiting].map((run) => f.persistence.getRun(run.id)?.status)).toEqual([
+    "canceled",
+    "canceled",
+    "canceled",
+  ])
+  expect(f.order).toHaveLength(2)
+})
+
 test("draining finishes the active group turn and replays waiting turns in order after restart", async () => {
   const release = Promise.withResolvers<void>()
   const f = await fixture(async (_ctx, complete) => {
@@ -614,7 +751,7 @@ test("draining finishes the active group turn and replays waiting turns in order
   })
   const active = f.send("@pm turno ativo")
   const other = f.data.createThread(f.group, "Outra conversa")
-  const waiting = [f.send("@dev segundo", other.id), f.send("@qa terceiro")]
+  const waiting = [f.send("@pm segundo", other.id), f.send("@pm terceiro")]
   await until(() => f.order.length === 1)
 
   f.runtime.beginDrain()
@@ -634,7 +771,7 @@ test("draining finishes the active group turn and replays waiting turns in order
   cleanups.unshift(() => restarted.shutdown())
   await until(() => waiting.every((run) => f.persistence.getRun(run.id)?.status === "succeeded"))
 
-  expect(f.order).toEqual(f.group.memberIds)
+  expect(f.order).toEqual(Array.from({ length: 3 }, () => f.bots[0]?.id ?? ""))
   expect(restarted.listRuns(other.id).some((run) => run.id === waiting[0]?.id)).toBe(true)
 })
 
@@ -2044,7 +2181,9 @@ test("group conversation actions persist routing, broadcast past the coordinator
   const summary = await post("summarize", "summary")
   await until(() => scenario.persistence.getRun(summary.run.id)?.status === "succeeded")
 
-  expect(scenario.order).toEqual([...scenario.group.memberIds, scenario.bots[0]?.id ?? ""])
+  expect(scenario.order).toHaveLength(scenario.group.memberIds.length + 1)
+  expect(scenario.order.slice(0, -1)).toEqual(expect.arrayContaining(scenario.group.memberIds))
+  expect(scenario.order.at(-1)).toBe(scenario.bots[0]?.id)
   const participant = scenario.data.participant(scenario.group, scenario.thread.id, scenario.bots[0]?.id ?? "")
   const summaryRequest = scenario.store
     .activePath({ threadId: participant.id })
@@ -2573,7 +2712,9 @@ test("ask-everyone and summary persist explicit mentions, with only the selected
 
   expect(everyone.message.text).toBe("@pm @dev @qa revise")
   expect(summary.message.text).toBe("@dev revise")
-  expect(scenario.order).toEqual([...scenario.group.memberIds, coordinator.id])
+  expect(scenario.order).toHaveLength(scenario.group.memberIds.length + 1)
+  expect(scenario.order.slice(0, -1)).toEqual(expect.arrayContaining(scenario.group.memberIds))
+  expect(scenario.order.at(-1)).toBe(coordinator.id)
 })
 
 test("unmentioned replies inside a bot member thread still run that bot", async () => {

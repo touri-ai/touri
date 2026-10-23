@@ -696,7 +696,7 @@ export const createGroupRuntime = (
           ...message,
           id: kernel.newId(),
           threadId: frame.turn.run.threadId,
-          parentId: frame.turn.tail,
+          parentId: store.getThread({ threadId: frame.turn.run.threadId })?.activeLeafId ?? frame.turn.tail,
           sender: bot ? { id: bot.id, name: bot.name } : null,
         },
       })
@@ -765,79 +765,103 @@ export const createGroupRuntime = (
     const failure = outcomes.find((outcome) => outcome.status === "rejected")
     if (failure?.status === "rejected") throw failure.reason
   }
+  const getTurnBots = (turn: Turn): string[] => turn.recipients.concat(Array.from(turn.reservations))
+  const getNextTurnIndex = (groupId: string, waiting: Turn[]): number => {
+    const executing = Array.from(turns.values()).filter((turn) => turn.group.id === groupId && busy.has(turn.run.id))
+    // This local set keeps selection linear in waiting turns, without repeated prefix scans.
+    const blocked = new Set(executing.flatMap(getTurnBots))
+
+    return waiting.findIndex((turn) => {
+      if (terminal(turn.run)) return true
+      if (!turn.recipients.some((botId) => blocked.has(botId))) return true
+
+      // An earlier request reserves its recipients even while waiting for another member.
+      turn.recipients.forEach((botId) => {
+        blocked.add(botId)
+      })
+      return false
+    })
+  }
   const drain = async (groupId: string): Promise<void> => {
     if (startupRecovery) await startupRecovery
-    if (busy.has(groupId) || stopped || draining) return
-    busy.add(groupId)
+    if (stopped || draining) return
+
+    const waiting = queues.get(groupId) ?? []
+    const index = getNextTurnIndex(groupId, waiting)
+    const turn = waiting[index]
+    if (!turn) return
+
+    queues.set(
+      groupId,
+      waiting.filter((_, position) => position !== index),
+    )
+    if (busy.size === 0) idleCompletion = null
+    busy.add(turn.run.id)
+    setImmediate(() => void drain(groupId))
     try {
-      while (!stopped && !draining) {
-        const turn = queues.get(groupId)?.shift()
-        if (!turn) break
-        if (db.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(turn.run.threadId)) {
-          cancelTurn(turn)
-          turns.delete(turn.run.id)
-          turn.completion.resolve()
-          setImmediate(() => void drain(groupId))
-          break
-        }
-        if (terminal(turn.run)) {
-          turns.delete(turn.run.id)
-          if (turn.continuationFromRunId) browserTakeoverContinuations.delete(turn.continuationFromRunId)
-          turn.completion.resolve()
-          continue
-        }
-        save(turn, { status: "running", startedAt: Date.now() })
-        try {
-          const request = turn.continuationFromRunId
-            ? null
-            : store
-                .activePath({
-                  threadId: turn.run.threadId,
-                  ...(turn.run.requestMessageId ? { leafId: turn.run.requestMessageId } : {}),
-                })
-                .find((message) => message.id === turn.run.requestMessageId)
-          await runRecipients(turn, request?.text ?? "")
-          if (turn.recovered && turn.run.routineRunId) {
-            const routineRun = persistence.getRoutineRun(turn.run.routineRunId)
-            if (routineRun) persistence.updateRoutineRun({ ...routineRun, status: "running", finishedAt: null })
-          }
-          save(turn, { status: "succeeded", finishedAt: Date.now() })
-        } catch (error) {
-          const interrupted = turn.controller.signal.reason === RESTART_ABORT_REASON
-          const canceled = turn.controller.signal.aborted && !interrupted && !turn.timeoutError
-          // A failed coordinator must not leave delegated members running without a stoppable turn.
-          turn.controller.abort()
-          if (!interrupted) cancelChildren(turn)
-          save(
-            turn,
-            interrupted
-              ? {
-                  status: "interrupted",
-                  errorClass: "app_restart",
-                  errorMessage: "touri restarted",
-                  finishedAt: Date.now(),
-                }
-              : {
-                  status: canceled ? "canceled" : "failed",
-                  errorClass: canceled
-                    ? "canceled"
-                    : (turn.timeoutError?.errorClass ??
-                      (error instanceof MemberRunError ? error.errorClass : "unknown")),
-                  errorMessage:
-                    turn.timeoutError?.errorMessage ??
-                    kernel.redact(error instanceof Error ? error.message : String(error)),
-                  finishedAt: Date.now(),
-                },
-          )
-        }
+      if (db.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(turn.run.threadId)) {
+        cancelTurn(turn)
+        turns.delete(turn.run.id)
+        turn.completion.resolve()
+        return
+      }
+      if (terminal(turn.run)) {
         turns.delete(turn.run.id)
         if (turn.continuationFromRunId) browserTakeoverContinuations.delete(turn.continuationFromRunId)
         turn.completion.resolve()
+        return
       }
+      save(turn, { status: "running", startedAt: Date.now() })
+      try {
+        const request = turn.continuationFromRunId
+          ? null
+          : store
+              .activePath({
+                threadId: turn.run.threadId,
+                ...(turn.run.requestMessageId ? { leafId: turn.run.requestMessageId } : {}),
+              })
+              .find((message) => message.id === turn.run.requestMessageId)
+        await runRecipients(turn, request?.text ?? "")
+        if (turn.recovered && turn.run.routineRunId) {
+          const routineRun = persistence.getRoutineRun(turn.run.routineRunId)
+          if (routineRun) persistence.updateRoutineRun({ ...routineRun, status: "running", finishedAt: null })
+        }
+        save(turn, { status: "succeeded", finishedAt: Date.now() })
+      } catch (error) {
+        const interrupted = turn.controller.signal.reason === RESTART_ABORT_REASON
+        const canceled = turn.controller.signal.aborted && !interrupted && !turn.timeoutError
+        // A failed coordinator must not leave delegated members running without a stoppable turn.
+        turn.controller.abort()
+        if (!interrupted) cancelChildren(turn)
+        save(
+          turn,
+          interrupted
+            ? {
+                status: "interrupted",
+                errorClass: "app_restart",
+                errorMessage: "touri restarted",
+                finishedAt: Date.now(),
+              }
+            : {
+                status: canceled ? "canceled" : "failed",
+                errorClass: canceled
+                  ? "canceled"
+                  : (turn.timeoutError?.errorClass ?? (error instanceof MemberRunError ? error.errorClass : "unknown")),
+                errorMessage:
+                  turn.timeoutError?.errorMessage ??
+                  kernel.redact(error instanceof Error ? error.message : String(error)),
+                finishedAt: Date.now(),
+              },
+        )
+      }
+      turns.delete(turn.run.id)
+      if (turn.continuationFromRunId) browserTakeoverContinuations.delete(turn.continuationFromRunId)
+      turn.completion.resolve()
     } finally {
-      busy.delete(groupId)
+      busy.delete(turn.run.id)
       if (busy.size === 0) idleCompletion?.resolve()
       if (stopped && busy.size === 0) unsubscribe()
+      if (!stopped && !draining) setImmediate(() => void drain(groupId))
     }
   }
   const getTurn = (
@@ -1150,6 +1174,13 @@ export const createGroupRuntime = (
     if (frame.depth >= 2) return fail("DELEGATION_DEPTH", "Profundidade máxima: 2")
     if (frame.stack.includes(target)) return fail("DELEGATION_LOOP", "Ciclo de delegação bloqueado")
     if (
+      Array.from(turns.values()).some(
+        (turn) =>
+          turn !== frame.turn &&
+          turn.group.id === frame.turn.group.id &&
+          busy.has(turn.run.id) &&
+          getTurnBots(turn).includes(target),
+      ) ||
       frame.turn.reservations.has(target) ||
       [...frames.values()].some((candidate) => candidate.turn === frame.turn && candidate.stack.at(-1) === target)
     )
@@ -1263,6 +1294,7 @@ export const createGroupRuntime = (
       return fail(frame.turn.controller.signal.aborted ? "CANCELED" : "DELEGATION_FAILED", kernel.redact(String(error)))
     } finally {
       frame.turn.reservations.delete(target)
+      setImmediate(() => void drain(frame.turn.group.id))
       frame.delegations.delete(target)
       ctx.signal.removeEventListener("abort", abort)
     }
