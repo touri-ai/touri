@@ -125,6 +125,7 @@ test("a healthy snapshot is repaired by event replay without refetching history 
   const client = makeConnectionClient({ ...mock, request, isMock: false })
   const hook = renderHook(() => useWorkspace(client.api))
   await waitFor(() => expect(hook.result.current.data.messages.length).toBeGreaterThan(0))
+  await waitFor(() => expect(hook.result.current.data.doctor).not.toBeNull())
   request.mockClear()
 
   await act(async () => client.reconnect())
@@ -138,6 +139,7 @@ test("returning online lets a cursor-aware transport replay changes without refe
   const api = { ...mock, request, cursorReady: async () => undefined }
   const hook = renderHook(() => useWorkspace(api))
   await waitFor(() => expect(hook.result.current.data.messages.length).toBeGreaterThan(0))
+  await waitFor(() => expect(hook.result.current.data.doctor).not.toBeNull())
   request.mockClear()
 
   await act(async () => window.dispatchEvent(new Event("online")))

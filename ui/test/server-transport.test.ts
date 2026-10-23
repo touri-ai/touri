@@ -23,7 +23,7 @@ test("a failed event ticket reports offline and recovers on the first successful
   const fetchImpl = vi
     .fn()
     .mockRejectedValueOnce(new TypeError("offline"))
-    .mockResolvedValue(Response.json({ schemaVersion: 46, ticket: "one-use" }))
+    .mockImplementation(async () => Response.json({ schemaVersion: 46, ticket: "one-use" }))
   const api = createApiClient({
     endpoint: { baseUrl: "http://127.0.0.1:1", wsUrl: "ws://127.0.0.1:1/api/v1/events", token: "local-relay" },
     fetchImpl,
