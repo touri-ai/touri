@@ -1,5 +1,5 @@
 import { invoke as nativeInvoke } from "@tauri-apps/api/core"
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
 import type { ApiRequest, TauriInvoke } from "../src/api/client"
@@ -54,7 +54,9 @@ it.each([
 
   fireEvent.click(await screen.findByRole("button", { name: /^Equipe QA/ }))
   await screen.findByRole("textbox", { name: "Mensagem para Equipe QA" })
-  fireEvent.click(screen.getByRole("button", { name: "Ações do canal Equipe QA", exact: true }))
+  const header = document.querySelector<HTMLElement>(".group-header")
+  if (!header) throw new Error("Missing channel header")
+  fireEvent.click(within(header).getByRole("button", { name: "Ações do canal Equipe QA", exact: true }))
   const invite = screen.queryByRole("menuitem", { name: "Convidar pessoa", exact: true })
   if (!canInvite) {
     expect(invite).not.toBeInTheDocument()
