@@ -143,6 +143,8 @@ export type Bot = {
   claudeAiConnectors?: boolean
   /** Defaults for bots created before schema 34: main. */
   automaticConversationMode?: BotAutomaticConversationMode
+  /** Use low reasoning for recognized, tool-free conversation. Defaults to true. */
+  fastConversation?: boolean
 
   /** Set only by explicit creation from the team-builder job; immutable afterward. */
   teamBuilder: boolean
@@ -873,6 +875,8 @@ export type ProviderAdapter = {
   provider: Provider
   detect: () => Promise<Result<{ path: AbsolutePath; version: string; loggedIn: boolean }, 'cli_missing' | 'cli_auth'>>
   startTurn: (args: StartTurnArgs) => Promise<StartTurnResult>
+  /** Prepare a tool-free connection without submitting a user turn. */
+  prepareSession?: (args: StartTurnArgs) => Promise<StartTurnResult>
   answerApproval: (input: { approvalId: Id; decision: 'approved' | 'denied'; message?: string }) => Promise<Result<{}, 'NOT_FOUND'>>
   shutdown: () => Promise<void>
 }
@@ -909,7 +913,7 @@ export type TeamCreationResult = {
 }
 
 export type CreateBotInput = { cloudApiKey?: string; jobId?: string } & Pick<Bot, 'name' | 'provider'> &
-  Partial<Pick<Bot, 'title' | 'roleLine' | 'description' | 'color' | 'avatarShape' | 'avatarSeed' | 'instructions' | 'model' | 'reasoningEffort' | 'access' | 'approvals' | 'projectId' | 'cwd' | 'browserEnabled' | 'automaticConversationMode' | 'browser' | 'computerUse' | 'machine' | 'machineIdleMinutes' | 'vmProviderLogin' | 'hostComputerUse' | 'folders' | 'anyFolderAccess' | 'providerProfile' | 'claudeAiConnectors'>>
+  Partial<Pick<Bot, 'title' | 'roleLine' | 'description' | 'color' | 'avatarShape' | 'avatarSeed' | 'instructions' | 'model' | 'reasoningEffort' | 'access' | 'approvals' | 'projectId' | 'cwd' | 'browserEnabled' | 'automaticConversationMode' | 'fastConversation' | 'browser' | 'computerUse' | 'machine' | 'machineIdleMinutes' | 'vmProviderLogin' | 'hostComputerUse' | 'folders' | 'anyFolderAccess' | 'providerProfile' | 'claudeAiConnectors'>>
 
 /** A named login under `<appData>/provider-profiles/<name>`, created with `touri profile login`. */
 export type ProviderProfile = { name: string; provider: Provider; loggedIn: boolean; account: string | null }
@@ -1145,6 +1149,7 @@ export type ApiRoutes = {
   'GET /threads/:id/goal': { req: {}; res: { goal: Goal | null } }
   'POST /threads/:id/goal': { req: GoalStart; res: { goal: Goal } }
   'PATCH /threads/:id/goal': { req: GoalControl; res: { goal: Goal } }
+  'POST /threads/:id/prepare': { req: {}; res: { preparing: boolean } }
   'GET /threads/:id/runs': { req: { all?: boolean }; res: { runs: Array<Run> } }
   /** Compact sidebar messages and latest/active runs; never a transcript snapshot. */
   'GET /workspace/activity': { req: Record<string, never>; res: { messages: Array<Message>; runs: Array<Run>; browserRuns: Array<BrowserChannelRun> } }

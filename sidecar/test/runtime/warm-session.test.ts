@@ -120,3 +120,30 @@ test("idle expiry and capacity bound retained processes", async () => {
   expect(second.signals).toEqual(["SIGTERM"])
   expect(pool.getAvailable("second", "session-two")).toBeUndefined()
 })
+
+test("a prepared native session can serve the first user message before it has been persisted", () => {
+  const pool = getPool()
+  const process = getChild()
+  const prepared = { externalSessionId: "prepared-session", rolloutPath: null }
+  pool.acquire("bot:settings", () => process.child).release(true, prepared.externalSessionId, prepared)
+
+  const firstTurn = pool.getAvailable("bot:settings")
+
+  expect(firstTurn?.reused).toBe(true)
+  expect(firstTurn?.preparedSession).toEqual(prepared)
+  firstTurn?.release(true, prepared.externalSessionId)
+  expect(pool.hasAvailable("bot:settings", prepared.externalSessionId)).toBe(true)
+  expect(pool.hasAvailable("bot:settings")).toBe(false)
+})
+
+test("switching conversations recycles the same bot's idle provider", () => {
+  const pool = getPool()
+  const old = getChild()
+  pool.acquire("bot:old-thread", () => old.child).release(true, "old-session")
+  const next = getChild()
+
+  pool.acquire("bot:next-thread", () => next.child).release(true, "next-session")
+
+  expect(old.signals).toEqual(["SIGTERM"])
+  expect(next.signals).toEqual([])
+})

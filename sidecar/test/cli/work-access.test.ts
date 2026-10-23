@@ -638,3 +638,18 @@ test("a member can request previews for a channel bot but not an unrelated bot",
   expect(preview("team-bot")).toBeNull()
   expect(preview("other-bot")).toMatchObject({ status: 404 })
 })
+
+test("only the owner of a private conversation can prepare its provider", () => {
+  const getDecision = (threadId: string) =>
+    access.authorizeHttp({
+      personId: "member",
+      role: "member",
+      method: "POST",
+      pathname: `/threads/${threadId}/prepare`,
+      body: {},
+    })
+
+  expect(getDecision("member-dm")).toBeNull()
+  expect(getDecision("other-dm")).toMatchObject({ status: 404 })
+  expect(getDecision("team-chat")).toMatchObject({ status: 403 })
+})

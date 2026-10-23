@@ -1353,6 +1353,17 @@ export const BotSettingsModal = ({
                     <option value="xhigh">{t("Extra high")}</option>
                   </select>
                 </SettingsRow>
+                <SettingsRow title={t("Fast conversation")} description={t("Fast conversation help")}>
+                  <SettingsSwitch
+                    aria-label={t("Fast conversation")}
+                    checked={bot.fastConversation !== false}
+                    disabled={updating || saving}
+                    onChange={(event) => {
+                      const fastConversation = event.target.checked
+                      void immediateAction(() => actions.updateBot(bot.id, { fastConversation }))
+                    }}
+                  />
+                </SettingsRow>
               </SettingsGroup>
               <SettingsGroup title={t("Instruções")}>
                 <section>

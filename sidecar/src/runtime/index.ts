@@ -240,6 +240,14 @@ export const init = async (
         },
       },
       {
+        method: "POST",
+        path: "/threads/:id/prepare",
+        handler: async ({ params }) => ({
+          status: 200,
+          json: { preparing: await engine.prepareConversation(params.id ?? "") },
+        }),
+      },
+      {
         method: "GET",
         path: "/threads/:id/runs",
         handler: async ({ params, query, signal }) => {

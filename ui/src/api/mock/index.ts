@@ -1420,6 +1420,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       goals.set(goal.threadId, next)
       return { goal: next } as ApiRoutes[typeof route]["res"]
     }
+    if (key === "POST /threads/:id/prepare") return { preparing: true }
     if (key === "GET /threads/:id/runs")
       return {
         runs: [...runs.values()].filter((run) => run.threadId === pathValues.id),

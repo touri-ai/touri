@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite"
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test"
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import type { Bot, Kernel, Message, RunTimings, StoreApi, Thread } from "@touri/contracts"
+import type { Bot, Kernel, Message, Run, RunTimings, StoreApi, Thread } from "@touri/contracts"
 import { t } from "../../../ui/src/i18n"
 import { createStandingGrantStore } from "../../src/approvals/grants"
 import { mcpStartupChecks } from "../../src/doctor/mcp"
@@ -17,6 +17,7 @@ import { createRuntimePersistence } from "../../src/runtime/persistence"
 import type { ChildProcess } from "../../src/runtime/provider-io"
 import { createRoutineScheduler } from "../../src/runtime/routines/scheduler"
 import { init as initStore } from "../../src/store"
+import { getPercentile } from "../fakes/latency"
 import { fakeProviderSpawn } from "../fakes/provider-spawn"
 import { createTestStore, type TestStore } from "./fake-store"
 
@@ -86,6 +87,7 @@ const fixture = async ({
   routineTimeoutMs,
   automaticConversationMode = "main",
   resumeInterruptedTurns = true,
+  fastConversation = true,
 }: {
   provider?: Bot["provider"]
   scenario?: Record<string, unknown>
@@ -94,6 +96,7 @@ const fixture = async ({
   routineTimeoutMs?: number
   automaticConversationMode?: Bot["automaticConversationMode"]
   resumeInterruptedTurns?: boolean
+  fastConversation?: boolean
 } = {}): Promise<Fixture> => {
   // Keep runtime data and provider logs under a disposable repository fixture.
   const root = mkdtempSync(join(repoRoot, "sidecar", "test", ".runtime-fixture-"))
@@ -136,6 +139,7 @@ const fixture = async ({
     provider,
     model: null,
     reasoningEffort: "medium",
+    fastConversation,
     access: "workspace-write",
     approvals: "on-request",
     projectId: null,
@@ -3232,6 +3236,90 @@ describe("turn latency milestones", () => {
     expect(enqueued.run.usage?.timings?.finishedAt).toBeDefined()
     expect(enqueued.run.usage?.timings?.processSpawnedAt).toBeUndefined()
     expect(enqueued.run.usage?.timings?.firstTokenAt).toBeUndefined()
+  })
+
+  test("simple questions use low effort while tasks retain their configured effort", async () => {
+    const current = await fixture({ scenario: { deltas: ["Olá!"] } })
+    value = current
+    const requestLogPath = join(current.assets, "requests.jsonl")
+    await Bun.write(current.scenario, JSON.stringify({ requestLogPath, deltas: ["Olá!"] }))
+
+    await sendTurn(current, "quem é você?")
+    await sendTurn(current, "Leia README.md")
+    const requests = (await Bun.file(requestLogPath).text())
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
+    const turns = requests.filter((request) => request.method === "turn/start")
+
+    expect(turns.map((request) => request.params.effort)).toEqual(["low", "medium"])
+    expect(turns.map((request) => request.params.summary)).toEqual(["none", "auto"])
+    const sessions = requests.filter((request) => ["thread/start", "thread/resume"].includes(request.method))
+    expect(sessions.map((request) => request.params.baseInstructions)).toEqual([
+      "You are a helpful conversational assistant. Follow the developer instructions.",
+      undefined,
+    ])
+  })
+
+  test("fast conversation opt-out preserves configured effort and prevents preparation", async () => {
+    const current = await fixture({ fastConversation: false, scenario: { deltas: ["Olá!"] } })
+    value = current
+    const requestLogPath = join(current.assets, "requests.jsonl")
+    await Bun.write(current.scenario, JSON.stringify({ requestLogPath, deltas: ["Olá!"] }))
+
+    expect(await current.engine.prepareConversation(current.thread.id)).toBe(false)
+    const turn = await sendTurn(current, "oi")
+    const requests = (await Bun.file(requestLogPath).text())
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
+
+    expect(turn.status).toBe("succeeded")
+    expect(requests.find((request) => request.method === "turn/start")?.params.effort).toBe("medium")
+  })
+
+  test.each([null, "vault"])("login source %s never starts a background provider", async (source) => {
+    const current = await fixture()
+    value = current
+    const children = recordProviderSpawns(current)
+    const database = current.runtime.kernel.db as Database
+    if (source)
+      database
+        .query("INSERT INTO settings(key,value_json,updated_at) VALUES (?, ?, 1)")
+        .run(`vm-login-source:${current.bot.id}:${current.bot.provider}`, JSON.stringify(source))
+
+    const prepared = await current.engine.prepareConversation(current.thread.id)
+
+    expect(prepared).toBe(false)
+    expect(children).toHaveLength(0)
+  })
+
+  test.each(["codex", "claude"] as const)("%s prepares a greeting without generating a turn", async (provider) => {
+    const current = await fixture({ provider, scenario: { deltas: ["Olá!"] } })
+    value = current
+    const children = recordProviderSpawns(current)
+    const database = current.runtime.kernel.db as Database
+    database
+      .query("INSERT INTO settings(key,value_json,updated_at) VALUES (?, ?, 1)")
+      .run(`vm-login-source:${current.bot.id}:${provider}`, JSON.stringify("host-file"))
+
+    expect(await current.engine.prepareConversation(current.thread.id)).toBe(true)
+    expect(current.engine.listRuns(current.thread.id)).toEqual([])
+    const greetings = await Array.from({ length: 10 }).reduce<Promise<Array<Run>>>(async (pending) => {
+      const previous = await pending
+      const turn = await sendTurn(current, "oi")
+      return previous.concat(turn)
+    }, Promise.resolve<Array<Run>>([]))
+    const readiness = greetings.map((turn) => (turn.usage?.timings?.providerReadyAt ?? Infinity) - turn.queuedAt)
+    const firstText = greetings.map((turn) => (turn.usage?.timings?.firstTokenAt ?? Infinity) - turn.queuedAt)
+
+    expect(greetings.every((turn) => turn.status === "succeeded")).toBe(true)
+    expect(children).toHaveLength(1)
+    expect(greetings.every((turn) => turn.usage?.timings?.processSpawnedAt === undefined)).toBe(true)
+    expect(greetings.every((turn) => turn.usage?.timings?.processReusedAt !== undefined)).toBe(true)
+    expect(getPercentile(readiness, 0.9)).toBeLessThan(500)
+    expect(getPercentile(firstText, 0.9)).toBeLessThan(1500)
+    expect(Math.max(...firstText)).toBeLessThan(5000)
   })
 
   test.each(["codex", "claude"] as const)(

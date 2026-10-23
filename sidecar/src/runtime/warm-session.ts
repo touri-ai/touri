@@ -4,11 +4,12 @@ import type { ChildProcess } from "./provider-io"
 export type WarmLease = {
   child: ChildProcess
   reused: boolean
-  release: (keep: boolean, sessionId?: string) => void
+  preparedSession?: { externalSessionId: string; rolloutPath: string | null }
+  release: (keep: boolean, sessionId?: string, preparedSession?: WarmLease["preparedSession"]) => void
 }
 
 // Only tool-free local sessions are retained. Task credentials and approvals never outlive their turn.
-export const createWarmSessions = (idleMs = 60_000, limit = 4) => {
+export const createWarmSessions = (idleMs = 5 * 60_000, limit = 4) => {
   const sessions = new Map<string, ReturnType<typeof createSession>>()
   const getKey = (args: StartTurnArgs): string | null => {
     if (!args.conversationOnly || args.execution) return null
@@ -16,7 +17,7 @@ export const createWarmSessions = (idleMs = 60_000, limit = 4) => {
     const env = Object.fromEntries(
       Object.entries(args.env).filter(([key]) => !["TMPDIR", "TMP", "TEMP", "TMPPREFIX"].includes(key)),
     )
-    return JSON.stringify([args.thread.id, args.bot, args.fingerprint, args.developerInstructions, env])
+    return `${args.bot.id}:${JSON.stringify([args.thread.id, args.bot, args.fingerprint, args.developerInstructions, env])}`
   }
   const acquire = (key: string | null, spawn: () => ChildProcess, temporary?: string): WarmLease => {
     if (key === null) {
@@ -24,6 +25,12 @@ export const createWarmSessions = (idleMs = 60_000, limit = 4) => {
       return { child, reused: false, release: () => child.kill("SIGTERM") }
     }
     if (sessions.has(key)) return acquire(null, spawn, temporary)
+    // Retain at most one idle connection per bot, including after settings or thread changes.
+    Array.from(sessions.entries())
+      .filter(([otherKey, session]) => otherKey.startsWith(`${key.split(":")[0]}:`) && session.isAvailable())
+      .forEach(([, session]) => {
+        session.stop()
+      })
     // Bound retained children even when many conversations receive greetings.
     if (sessions.size >= limit)
       Array.from(sessions.values())
@@ -42,15 +49,22 @@ export const createWarmSessions = (idleMs = 60_000, limit = 4) => {
     )
     if (cacheKey) sessions.set(cacheKey, session)
     const lease = session.attach(false)
-    return { ...lease, release: (keep, sessionId) => lease.release(keep && cacheKey !== null, sessionId) }
+    return {
+      ...lease,
+      release: (keep, sessionId, prepared) => lease.release(keep && cacheKey !== null, sessionId, prepared),
+    }
   }
 
   return {
     getKey,
+    hasAvailable: (key: string | null, sessionId?: string): boolean => {
+      const session = key ? sessions.get(key) : undefined
+      return !!session?.isAvailable() && session.matches(sessionId)
+    },
     getAvailable: (key: string | null, sessionId?: string): WarmLease | undefined => {
       const session = key ? sessions.get(key) : undefined
       if (!session?.isAvailable()) return undefined
-      if (!sessionId || session.getSessionId() !== sessionId) {
+      if (!session.matches(sessionId)) {
         session.stop()
         return undefined
       }
@@ -76,6 +90,7 @@ const createSession = (child: ChildProcess, temporary: string | undefined, onSto
   let timer: ReturnType<typeof setTimeout> | undefined
   let turns = 0
   let sessionId: string | undefined
+  let preparedSession: WarmLease["preparedSession"]
   const detach = (): void => {
     void sink?.stdout.close().catch(() => undefined)
     void sink?.stderr.close().catch(() => undefined)
@@ -116,7 +131,7 @@ const createSession = (child: ChildProcess, temporary: string | undefined, onSto
     temporary,
     exited: child.exited,
     isAvailable: () => alive && sink === null,
-    getSessionId: () => sessionId,
+    matches: (expected?: string) => (expected ? sessionId === expected : !!preparedSession),
     stop,
     attach: (reused: boolean): WarmLease => {
       clearTimeout(timer)
@@ -128,8 +143,10 @@ const createSession = (child: ChildProcess, temporary: string | undefined, onSto
       return {
         child: { ...child, stdout: stdout.readable, stderr: stderr.readable },
         reused,
-        release: (keep, externalSessionId) => {
+        ...(preparedSession ? { preparedSession } : {}),
+        release: (keep, externalSessionId, prepared) => {
           sessionId = externalSessionId
+          preparedSession = prepared
           if (!keep || turns >= 100) return stop()
           detach()
           timer = setTimeout(stop, idleMs)

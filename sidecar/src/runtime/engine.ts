@@ -47,7 +47,7 @@ import { reapOrphanShims } from "../mcp/shim-registry"
 import { mem0SessionAllowed } from "../mem0/session"
 import { resolveMcpEndpoint } from "../platform/transport"
 import { prepareLocalProviderLogin } from "../vm/local-provider-login"
-import { ProviderLoginError } from "../vm/provider-login"
+import { ProviderLoginError, storedProviderLoginSource } from "../vm/provider-login"
 import { redactVmEvents } from "../vm/redact-events"
 import { MachineServiceError } from "../vm/service-error"
 import { VmStageError, vmStage } from "../vm/stage"
@@ -67,10 +67,11 @@ import {
   MAX_AUTO_CONTINUATIONS,
   MAX_CRASH_CONTINUATIONS,
 } from "./continuations"
+import { prepareConversationSession } from "./conversation-preparation"
 import { getDocumentInput } from "./document-input"
 import { type GoalDeadlineClock, startGoalDeadline } from "./goal-deadline"
 import { createGoalRuntime, getGoalPrompt } from "./goals"
-import { isGreetingTurn } from "./greeting"
+import { isConversationTurn } from "./greeting"
 import { buildHandoffPacket } from "./handoff"
 import { composeDeveloperInstructions } from "./instructions"
 import { isMcpStartupError } from "./mcp-startup"
@@ -314,6 +315,7 @@ type RuntimeEngine = {
   beginDrain: () => void
   waitForDrain: () => Promise<void>
   shutdown: () => Promise<void>
+  prepareConversation: (threadId: Id) => Promise<boolean>
 }
 
 const statusForError = (errorClass: RunErrorClass): RunStatus => {
@@ -448,6 +450,53 @@ export const createRuntimeEngine = ({
       ...(interruptGraceMs === undefined ? {} : { interruptGraceMs }),
     }),
     ...providerAdapters,
+  }
+  const preparations = new Map<Id, { controller: AbortController; promise: Promise<boolean> }>()
+  const prepareConversation = (threadId: Id): Promise<boolean> => {
+    const store = kernel.services.use("store.api")
+    const thread = store?.getThread({ threadId })
+    const bot = thread ? store?.getBot({ botId: thread.botId }) : null
+    if (
+      !thread ||
+      !bot ||
+      thread.groupId ||
+      thread.archivedAt ||
+      bot.archivedAt ||
+      bot.machine !== "local" ||
+      bot.paused ||
+      bot.fastConversation === false
+    )
+      return Promise.resolve(false)
+    if (shuttingDown || draining || Array.from(active.values()).some((run) => run.botId === bot.id))
+      return Promise.resolve(false)
+    const previous = preparations.get(bot.id)
+    if (previous) return previous.promise
+    const prepare = adapters[bot.provider].prepareSession
+    if (!prepare || preparations.size >= 4 || storedProviderLoginSource(kernel, bot) !== "host-file")
+      return Promise.resolve(false)
+
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 15_000)
+    timer.unref()
+    const promise = prepareConversationSession({
+      kernel,
+      bot,
+      thread,
+      prepare,
+      signal: controller.signal,
+      session: persistence.getActiveSession({ threadId, provider: bot.provider }),
+      ...(environment ? { environment } : {}),
+    })
+      .then(
+        (prepared) => prepared && !controller.signal.aborted,
+        () => false,
+      )
+      .finally(() => {
+        clearTimeout(timer)
+        preparations.delete(bot.id)
+      })
+    preparations.set(bot.id, { controller, promise })
+    return promise
   }
   const getMaxConcurrentRuns = (): number =>
     Math.max(
@@ -1501,11 +1550,12 @@ export const createRuntimeEngine = ({
         ]
       : [{ type: "text", text: inputText }]
     const greeting =
+      bot.fastConversation !== false &&
       !goal &&
       !carryover &&
       !toolSummary &&
       !unacceptedRequest &&
-      isGreetingTurn(run.trigger, requestParts, requestText)
+      isConversationTurn(run.trigger, requestParts, requestText)
     const toolsDisabled = conversationOnly || greeting
     const { cwd, projectDataDir } =
       bot.machine === "vm"
@@ -2619,6 +2669,7 @@ export const createRuntimeEngine = ({
     const store = kernel.services.use("store.api")
     const thread = store?.getThread({ threadId })
     const bot = thread ? store?.getBot({ botId: thread.botId }) : null
+    if (bot) preparations.get(bot.id)?.controller.abort()
     if (!store || !thread || !bot) return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Thread not found" }
     if (
       kernel.db instanceof Database &&
@@ -3454,6 +3505,9 @@ export const createRuntimeEngine = ({
         abandonContinuation({ run: pending.run, status: "failed", summary: pending.summary })
     }
     shuttingDown = true
+    preparations.forEach(({ controller }) => {
+      controller.abort()
+    })
     signalDrainChange()
     for (const [id, controller] of controllers) {
       const state = getState(id)
@@ -3463,6 +3517,7 @@ export const createRuntimeEngine = ({
     approvalBridge.dispose()
     shutdownPromise = (async () => {
       await ready
+      await Promise.all(Array.from(preparations.values()).map(({ promise }) => promise))
       await Promise.all(Object.values(adapters).map((adapter) => adapter.shutdown()))
       await Promise.all(executions.values())
       // Queued cancellations can have a terminal write without an execution promise.
@@ -3612,6 +3667,7 @@ export const createRuntimeEngine = ({
 
   return {
     ready,
+    prepareConversation,
     goals,
     enqueue,
     getRetainedRunStateCount: () => states.size,

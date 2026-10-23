@@ -8,6 +8,7 @@ import type {
   Result,
   RunErrorClass,
   StartTurnArgs,
+  StartTurnResult,
 } from "@touri/contracts"
 import { redactToolText } from "@touri/contracts/redaction"
 import { codexApprovalPayload } from "../../approvals/payload"
@@ -277,6 +278,7 @@ export const createCodexAdapter = ({
     args: StartTurnArgs,
     canRetrySandbox: () => boolean,
     onTurnSubmitted: () => void,
+    prepareOnly = false,
   ): Promise<ReturnType<ProviderAdapter["startTurn"]> extends Promise<infer T> ? T : never> => {
     const env = applyProviderPrivacy(
       args.execution ? args.env : buildChildEnv({ base: process.env, overrides: args.env }),
@@ -290,6 +292,13 @@ export const createCodexAdapter = ({
       args.conversationOnly && !args.execution && storedProviderLoginSource(kernel, args.bot) !== "vault"
         ? warmSessions.getKey(args)
         : null
+    if (prepareOnly && (!warmKey || warmSessions.hasAvailable(warmKey, args.session?.externalSessionId)))
+      return {
+        success: true,
+        externalSessionId: args.session?.externalSessionId ?? "",
+        rolloutPath: null,
+        status: "succeeded",
+      }
     const retained = warmSessions.getAvailable(warmKey, args.session?.externalSessionId)
     const candidate = retained
       ? null
@@ -398,6 +407,9 @@ export const createCodexAdapter = ({
       lease.release(
         warmKey !== null && result.success && result.status === "succeeded",
         result.success ? result.externalSessionId : undefined,
+        prepareOnly && result.success
+          ? { externalSessionId: result.externalSessionId, rolloutPath: result.rolloutPath }
+          : undefined,
       )
       finish(result.success ? result : { ...result, error: kernel.redact(result.error) })
     }
@@ -632,6 +644,10 @@ export const createCodexAdapter = ({
         // the persisted configuration with this turn's credential before turn/start.
         const turnConfig = {
           ...access,
+          // A tool-free conversation does not need the coding agent's task-planning prompt.
+          ...(args.conversationOnly
+            ? { baseInstructions: "You are a helpful conversational assistant. Follow the developer instructions." }
+            : {}),
           config: {
             ...asRecord(access.config),
             ...(cliTelemetryOff(kernel)
@@ -667,10 +683,10 @@ export const createCodexAdapter = ({
               ...turnConfig,
             }
         resuming = !!args.session
-        const details =
-          lease.reused && args.session
-            ? { id: args.session.externalSessionId, rolloutPath: args.session.rolloutPath }
-            : sessionDetails((await sendRequest(resuming ? "thread/resume" : "thread/start", sessionRequest)).result)
+        const retainedSession = lease.preparedSession ?? (lease.reused ? args.session : null)
+        const details = retainedSession
+          ? { id: retainedSession.externalSessionId, rolloutPath: retainedSession.rolloutPath }
+          : sessionDetails((await sendRequest(resuming ? "thread/resume" : "thread/start", sessionRequest)).result)
         if (completed) return
         resuming = false
         args.signal.throwIfAborted()
@@ -679,6 +695,10 @@ export const createCodexAdapter = ({
         rolloutPath =
           details.rolloutPath ??
           (args.session?.externalSessionId === externalSessionId ? args.session.rolloutPath : null)
+        if (prepareOnly) {
+          complete({ success: true, externalSessionId, rolloutPath, status: "succeeded" })
+          return
+        }
         args.onEvent({ type: "session", externalSessionId, rolloutPath })
         const loaded = loadTurnImages({ kernel, input: args.input })
         if (!loaded.success) {
@@ -695,7 +715,7 @@ export const createCodexAdapter = ({
             ...(args.handoffPacket ? { textPrefix: args.handoffPacket } : {}),
           }),
           cwd: args.fingerprint.cwd,
-          summary: "auto",
+          summary: args.conversationOnly ? "none" : "auto",
           ...(args.bot.reasoningEffort ? { effort: args.bot.reasoningEffort } : {}),
         })
         turnId ??= stringValue(asRecord(asRecord(turnResponse.result)?.turn)?.id)
@@ -762,7 +782,7 @@ export const createCodexAdapter = ({
     return output
   }
 
-  const startTurn: ProviderAdapter["startTurn"] = async (args) => {
+  const startTurn = async (args: StartTurnArgs, prepareOnly = false): Promise<StartTurnResult> => {
     const model = getSavedBotModel(args.bot.model)
     if (!model.success) return model
 
@@ -796,6 +816,7 @@ export const createCodexAdapter = ({
             () => {
               canRetryTools = false
             },
+            prepareOnly,
           ),
         warmSessions.getLifetime,
       )
@@ -838,5 +859,12 @@ export const createCodexAdapter = ({
     await stopProviderChildren(children)
   }
 
-  return { provider: "codex", detect, startTurn, answerApproval, shutdown }
+  return {
+    provider: "codex",
+    detect,
+    startTurn,
+    prepareSession: (args) => startTurn(args, true),
+    answerApproval,
+    shutdown,
+  }
 }

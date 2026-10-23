@@ -1,6 +1,16 @@
 import type { Bot, ChannelPerson, GroupAction, Id, Project, Run } from "@touri/contracts"
 import { getApiModelProviderId } from "@touri/contracts"
-import { type ComponentProps, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
+import {
+  type ComponentProps,
+  lazy,
+  type RefObject,
+  Suspense,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react"
 import type { UiApi } from "../api/client"
 import { attachmentAccept, maxAttachmentBytes } from "../attachmentFiles"
 import { composerKeyAction } from "../composerKeys"
@@ -21,11 +31,14 @@ import { ComposerProjectChip } from "./ComposerProjectChip"
 import { ErrorText } from "./ErrorDetails"
 import { ModelPicker } from "./ModelPicker"
 import { PanelIcon } from "./PanelIcon"
-import { ProviderLoginFlow } from "./ProviderLoginFlow"
 import { useReveal } from "./Reveal"
 import { SidebarActionsMenu } from "./SidebarActionsMenu"
 import { VoiceInput } from "./VoiceInput"
 import "./Composer.css"
+
+const ProviderLoginFlow = lazy(() =>
+  import("./ProviderLoginFlow").then((module) => ({ default: module.ProviderLoginFlow })),
+)
 
 type AttachedFile = { key: string; name: string; id: Id | null; status: "loading" | "ready" | "failed" }
 type ComposerProps = {
@@ -57,6 +70,7 @@ type ComposerProps = {
   onSelectProject?: ((projectId: Id | null) => Promise<void>) | undefined
   onAddProject?: (() => void) | undefined
   queuedCount: number
+  hasPendingDelivery?: boolean
   onSend: (text: string, parentId?: Id | null, attachmentIds?: Array<Id>, groupAction?: GroupAction) => Promise<void>
   onCancel: (runId: Id) => Promise<void>
   onOpenPermissions?: (() => void) | undefined
@@ -123,6 +137,7 @@ export const Composer = ({
   onSelectProject,
   onAddProject,
   queuedCount,
+  hasPendingDelivery = queuedCount > 0,
   onSend,
   onCancel,
   notice,
@@ -137,6 +152,19 @@ export const Composer = ({
     false,
   )
   const { account: cloudAccount } = useCloudAccount(api, bot?.machine === "cloud")
+  const canPrepareConversation =
+    !!bot &&
+    bot.fastConversation !== false &&
+    bot.machine === "local" &&
+    !botActive &&
+    !activeRun &&
+    queuedCount === 0 &&
+    !login.blocked
+  const preparationBotVersion = bot?.updatedAt
+  useEffect(() => {
+    if (!canPrepareConversation || preparationBotVersion === undefined) return
+    void api.request("POST /threads/:id/prepare", {}, { id: threadId }).catch(() => undefined)
+  }, [api, threadId, canPrepareConversation, preparationBotVersion])
   const cloudUnavailable = bot?.machine === "cloud" && cloudAccount?.runtimeAvailable !== true
   const [focused, setFocused] = useState(false)
   const [caret, setCaret] = useState(draft.length)
@@ -179,6 +207,9 @@ export const Composer = ({
   const [files, setFiles] = useState<Array<AttachedFile>>([])
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
+  const [requestedReplyThreadId, setRequestedReplyThreadId] = useState<Id | null>(null)
+  const [connected, setConnected] = useState(true)
+  useEffect(() => api.subscribeConnection?.(setConnected), [api])
   const [dictating, setDictating] = useState(false)
   const [stoppingRunId, setStoppingRunId] = useState<string | null>(null)
   const [picking, setPicking] = useState(false)
@@ -353,6 +384,7 @@ export const Composer = ({
     pendingSend.current = null
     sendingRef.current = true
     setSending(true)
+    setRequestedReplyThreadId(threadId)
     setError(null)
     const text = draft
     const sentFiles = summary ? [] : files
@@ -373,7 +405,10 @@ export const Composer = ({
       setFiles((current) => current.filter((file) => !sentFiles.some((sent) => sent.key === file.key)))
       inputRef.current?.focus()
     } catch (failure) {
-      if (alive.current) setError(t("Could not send message", { reason: userFacingError(failure) }))
+      if (alive.current) {
+        setRequestedReplyThreadId(null)
+        setError(t("Could not send message", { reason: userFacingError(failure) }))
+      }
     } finally {
       sendingRef.current = false
       if (alive.current) setSending(false)
@@ -445,6 +480,11 @@ export const Composer = ({
         if (serverMode || !("__TAURI_INTERNALS__" in window)) addBrowserFiles(event.dataTransfer.files)
       }}
     >
+      {(sending || (requestedReplyThreadId === threadId && hasPendingDelivery)) && connected && !activeRun && bot && (
+        <div className="composer-status" role="status" aria-live="polite">
+          {t("Bot typing", { name: bot.name })}
+        </div>
+      )}
       {dragging && (
         <div className="composer-drop-hint" role="status">
           {t("Drop to attach")}
@@ -498,7 +538,9 @@ export const Composer = ({
       {login.blocked && (
         <aside className="composer-login-card" aria-label={t("Authentication required")}>
           <p>{t("Sua mensagem fica como rascunho até o login estar pronto.")}</p>
-          <ProviderLoginFlow login={login} resumeMessage />
+          <Suspense fallback={<p role="status">{t("Verificando login…")}</p>}>
+            <ProviderLoginFlow login={login} resumeMessage />
+          </Suspense>
         </aside>
       )}
       <textarea

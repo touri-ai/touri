@@ -4,6 +4,8 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "Escolha se a resposta rápida para conversa fica ativada.":
+    "Escolha se a resposta rápida para conversa fica ativada.",
   "Reconectando…": "Reconectando…",
   "Esta versão do aplicativo precisa de uma atualização para conversar com o servidor.":
     "Esta versão do aplicativo precisa de uma atualização para conversar com o servidor.",
@@ -16,6 +18,10 @@ export const ptBR = {
   "Use a distinct integration name of 1 to 80 letters, numbers, spaces, dots, underscores or hyphens":
     "Escolha um nome diferente de pessoas e bots, com até 80 letras, números, espaços, pontos, sublinhados ou hífens.",
   Integração: "Integração",
+  "Bot typing": "{name} digitando…",
+  "Fast conversation": "Resposta rápida para conversa",
+  "Fast conversation help":
+    "Responde mais rápido a cumprimentos e perguntas simples sobre o bot. Tarefas mantêm o esforço de raciocínio escolhido.",
   "body: envie um objeto JSON com os dados do grupo.": "body: envie um objeto JSON com os dados do grupo.",
   "name: informe um nome não vazio com até 80 caracteres.": "name: informe um nome não vazio com até 80 caracteres.",
   "color: informe uma cor hexadecimal válida, como #dc2626.":
@@ -3356,6 +3362,7 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Escolha se a resposta rápida para conversa fica ativada.": "Choose whether fast conversational replies are enabled.",
   "Reconectando…": "Reconnecting…",
   "Esta versão do aplicativo precisa de uma atualização para conversar com o servidor.":
     "This app version needs an update to connect to the server.",
@@ -3368,6 +3375,10 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Use a distinct integration name of 1 to 80 letters, numbers, spaces, dots, underscores or hyphens":
     "Choose a name different from people and bots, using up to 80 letters, numbers, spaces, dots, underscores or hyphens.",
   Integração: "Integration",
+  "Bot typing": "{name} is typing…",
+  "Fast conversation": "Fast conversational replies",
+  "Fast conversation help":
+    "Answers greetings and simple questions about the bot faster. Tasks keep your chosen reasoning effort.",
   "body: envie um objeto JSON com os dados do grupo.": "body: send a JSON object containing the group details.",
   "name: informe um nome não vazio com até 80 caracteres.": "name: enter a non-empty name with at most 80 characters.",
   "color: informe uma cor hexadecimal válida, como #dc2626.":

@@ -97,6 +97,7 @@ type RawBot = {
   home_dir: string
   main_thread_id: string | null
   browser_enabled: number
+  fast_conversation: number
   automatic_conversation_mode: Bot["automaticConversationMode"]
   browser: Bot["browser"]
   computer_use: number
@@ -255,6 +256,7 @@ const asBot = (row: RawBot): Bot => ({
   homeDir: row.home_dir,
   mainThreadId: row.main_thread_id,
   browserEnabled: row.browser_enabled === 1,
+  fastConversation: row.fast_conversation !== 0,
   automaticConversationMode: row.automatic_conversation_mode === "task" ? "task" : "main",
   browser: row.browser,
   computerUse: row.computer_use === 1,
@@ -884,6 +886,9 @@ export const init = async (
       body.automaticConversationMode !== "task"
     )
       return { input: null, error: "automaticConversationMode must be main or task" }
+    if (body.fastConversation !== undefined && typeof body.fastConversation !== "boolean")
+      return { input: null, error: "Escolha se a resposta rápida para conversa fica ativada." }
+    input.fastConversation = (body.fastConversation as boolean | undefined) ?? existing?.fastConversation ?? true
     input.automaticConversationMode =
       (body.automaticConversationMode as Bot["automaticConversationMode"] | undefined) ??
       existing?.automaticConversationMode ??
@@ -1159,8 +1164,8 @@ export const init = async (
           .query("UPDATE bots SET provider_profile = ?, claude_ai_connectors = ? WHERE id = ?")
           .run(input.providerProfile ?? null, input.claudeAiConnectors ? 1 : 0, id)
         database
-          .query("UPDATE bots SET automatic_conversation_mode = ? WHERE id = ?")
-          .run(input.automaticConversationMode ?? "main", id)
+          .query("UPDATE bots SET automatic_conversation_mode = ?, fast_conversation = ? WHERE id = ?")
+          .run(input.automaticConversationMode ?? "main", input.fastConversation === false ? 0 : 1, id)
         database
           .query(
             "INSERT INTO threads (id, bot_id, parent_thread_id, kind, title, active_leaf_id, routine_run_id, cwd_override, unread, carryover_note, usage_json, source, created_at, updated_at, archived_at) VALUES (?, ?, NULL, 'main', ?, NULL, NULL, NULL, 0, NULL, ?, 'local', ?, ?, NULL)",
@@ -1220,6 +1225,7 @@ export const init = async (
       "browser_enabled = ?",
       "computer_use = ?",
       "automatic_conversation_mode = ?",
+      "fast_conversation = ?",
       "updated_at = ?",
       ...(paused === undefined ? [] : ["paused = ?"]),
     ]
@@ -1243,6 +1249,7 @@ export const init = async (
       input.browserEnabled === true ? 1 : 0,
       input.computerUse === true ? 1 : 0,
       input.automaticConversationMode ?? bot.automaticConversationMode ?? "main",
+      input.fastConversation === false ? 0 : 1,
       now(),
       ...(paused === undefined ? [] : [paused ? 1 : 0]),
     ]

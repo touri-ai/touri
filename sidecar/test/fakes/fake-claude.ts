@@ -196,6 +196,10 @@ process.stdin.on("data", (chunk: string) => {
       continue
     }
     if (request.type === "control_request") {
+      if (record(request.request)?.subtype === "initialize") {
+        output({ type: "control_response", response: { subtype: "success", request_id: request.request_id } })
+        continue
+      }
       if (!scenario.ignoreInterrupt) interrupted = true
       continue
     }
