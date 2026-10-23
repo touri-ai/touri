@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright"
 import { expect, type Page, test } from "@playwright/test"
 import type { createMockApi } from "../../src/api/mock"
 
@@ -108,4 +109,68 @@ test("a result removed before authorized history loads reports the missing messa
 
   await expect(page.getByText("Esta mensagem não está mais disponível.")).toBeVisible()
   await expect(page.locator('[data-message-row="search-history-8"]')).toHaveCount(0)
+  await page.locator(".message-scroll").evaluate((element) => {
+    element.scrollTop = 0
+  })
+  await expect(page.locator(".chat-scroll-bottom")).toBeVisible()
+  await page.locator(".composer textarea").fill("Continuar depois do resultado removido")
+  await page.getByRole("button", { name: "Enviar", exact: true }).click()
+  await expect(
+    page.getByTestId("virtual-message-list").getByText("Continuar depois do resultado removido", { exact: true }),
+  ).toBeInViewport()
 })
+
+for (const width of [1440, 390]) {
+  for (const scenario of ["recovered", "browser", "browser-final", "long"]) {
+    test(`search reveals the selected text inside a projected response: ${scenario} at ${width}px`, async ({
+      page,
+    }, info) => {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+      await page.emulateMedia({ reducedMotion: "reduce" })
+      await page.goto(`/test/e2e/message-search-harness.html?scenario=${scenario}`)
+      await expect(page.locator(".composer textarea")).toBeVisible()
+      await openSearch(page)
+      const targetId =
+        scenario === "recovered" || scenario === "browser-final" ? "search-history-10" : "search-history-8"
+
+      await page.locator(`[data-palette-item="message:${targetId}"]`).click()
+
+      const path = `${process.env.TOURI_SCREENSHOT_DIR ?? info.outputDir}/projected-${scenario}-${width}.png`
+      await page.screenshot({
+        path,
+        animations: "disabled",
+        mask: [page.locator(".composer-model")],
+        maskColor: "#222222",
+      })
+      await info.attach(`projected search ${scenario} ${width}`, { path, contentType: "image/png" })
+      const target = page.locator(`[data-message-row="${targetId}"]`)
+      await expect(target).toBeInViewport()
+      await expect(target.locator(".markdown-content").filter({ hasText: "nota-qa.txt" })).toBeVisible()
+      await expect(target.locator(".markdown-content").filter({ hasText: "nota-qa.txt" })).toContainText(
+        "Fim da resposta.",
+      )
+      expect(await page.locator("[data-message-row]").count()).toBeLessThanOrEqual(34)
+      if (scenario !== "long") {
+        const otherId = targetId === "search-history-8" ? "search-history-10" : "search-history-8"
+        await expect(page.locator(`[data-message-row="${otherId}"]`)).toHaveCount(0)
+      }
+      const accessibility = await new AxeBuilder({ page }).include(".message-scroll").analyze()
+      expect(
+        accessibility.violations.filter(
+          (issue) => issue.impact === "serious" || issue.impact === "critical" || issue.id === "color-contrast",
+        ),
+      ).toEqual([])
+      if (scenario === "recovered" || scenario === "browser-final") {
+        await expect(target.getByRole("group", { name: "Ramificações da mensagem" })).toContainText("1/2")
+        await target.getByRole("button", { name: "Próxima ramificação" }).click()
+        const leaf = await page.evaluate(
+          () =>
+            (Reflect.get(window, "messageSearchFixture") as Fixture).api
+              .getState()
+              .threads.find((thread) => thread.id === "thread-mark")?.activeLeafId,
+        )
+        expect(leaf).toBe("search-other-branch")
+      }
+    })
+  }
+}

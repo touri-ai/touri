@@ -2,7 +2,7 @@ import type { Message, Run } from "@touri/contracts"
 import { getBrowserActivityTools } from "./browserActivityPresentation"
 
 /** A display projection preserves the stored transcript while keeping handbacks in one card. */
-export const getBrowserRequestMessages = (messages: Message[], runs: Run[]): Message[] => {
+export const getBrowserRequestMessages = (messages: Message[], runs: Run[], focusedMessageId?: string): Message[] => {
   const visible = messages.filter(
     (message) =>
       !(
@@ -34,11 +34,12 @@ export const getBrowserRequestMessages = (messages: Message[], runs: Run[]): Mes
     const first = history[0]
     const latest = history.at(-1)
     if (!first || !latest || latest.id !== message.id) return []
+    const focused = history.find((item) => item.id === focusedMessageId)
 
     return [
       Object.assign({}, latest, {
-        id: first.id,
-        parentId: first.parentId,
+        id: focused?.id ?? first.id,
+        parentId: focused ? focused.parentId : first.parentId,
         createdAt: first.createdAt,
         parts: history.flatMap((item) => item.parts),
       }),

@@ -267,8 +267,13 @@ export const VirtualMessageList = ({
   timelineCards = emptyTimelineCards,
 }: VirtualMessageListProps) => {
   const messages = useMemo(
-    () => getAutomaticResumeMessages(getBrowserRequestMessages(sourceMessages, runs), runs),
-    [sourceMessages, runs],
+    () =>
+      getAutomaticResumeMessages(
+        getBrowserRequestMessages(sourceMessages, runs, focusMessage?.messageId),
+        runs,
+        focusMessage?.messageId,
+      ),
+    [sourceMessages, runs, focusMessage?.messageId],
   )
   const locale = getDocumentLocale(document.documentElement)
   const browserContinuations = useMemo(() => getBrowserContinuationActivities(messages, runs), [messages, runs])
@@ -329,6 +334,10 @@ export const VirtualMessageList = ({
     return Array.from(entries).sort((a, b) => a.createdAt - b.createdAt)
   }, [messages, timelineCards])
   const isVirtualized = timeline.length > 100
+  const messageTargetIndex =
+    focusMessage && focusMessage !== focusedMessage.current
+      ? timeline.findIndex((entry) => entry.id === focusMessage.messageId)
+      : -1
   const rowOffsets = useMemo(
     () => (isVirtualized ? getTimelineOffsets(timeline, rowHeights) : [0]),
     [timeline, rowHeights, isVirtualized],
@@ -376,7 +385,7 @@ export const VirtualMessageList = ({
     if (
       !list ||
       (focusApproval && focusApproval.request !== focusedRequest.current) ||
-      (focusMessage && focusMessage !== focusedMessage.current) ||
+      messageTargetIndex >= 0 ||
       (!newTurn && !followBottom.current)
     )
       return
@@ -387,7 +396,7 @@ export const VirtualMessageList = ({
     scrollToEnd(list, programmaticTop)
     // Updating the virtual window explicitly also works before the browser fires its scroll event.
     setScrollTop(list.scrollTop)
-  }, [latestUserId, messages, timelineCards.length, focusApproval?.request, focusMessage])
+  }, [latestUserId, messages, timelineCards.length, focusApproval?.request, focusMessage, messageTargetIndex])
   useLayoutEffect(() => {
     const previous = observedMessages.current
     observedMessages.current = messages
@@ -447,10 +456,6 @@ export const VirtualMessageList = ({
         entry.message?.parts.some((part) => part.type === "approval" && part.approvalId === focusApproval.approvalId),
       )
     : -1
-  const messageTargetIndex =
-    focusMessage && focusMessage !== focusedMessage.current
-      ? timeline.findIndex((entry) => entry.id === focusMessage.messageId)
-      : -1
   const revealTarget = targetIndex >= 0 && focusApproval?.request !== focusedRequest.current
   const firstVisibleIndex = getTimelineIndex(rowOffsets, Math.max(0, scrollTop - estimatedRowHeight * 4))
   const selectedIndex = messageTargetIndex >= 0 ? messageTargetIndex : targetIndex
@@ -615,6 +620,7 @@ export const VirtualMessageList = ({
                     currentPersonId={currentPersonId}
                     machine={machine}
                     message={message}
+                    searchFocused={focusMessage?.messageId === message.id}
                     run={run}
                     browserActivity={browserContinuations.activities.get(message.id)}
                     hideBrowserActivity={browserContinuations.hidden.has(message.id)}
@@ -770,6 +776,7 @@ const MessageBubble = ({
   recovered,
   automaticRecovery = false,
   message,
+  searchFocused = false,
   run,
   browserActivity,
   hideBrowserActivity,
@@ -794,6 +801,7 @@ const MessageBubble = ({
   recovered: boolean
   automaticRecovery?: boolean
   message: Message
+  searchFocused?: boolean
   run?: Run | undefined
   browserActivity?: BrowserContinuationActivity | undefined
   hideBrowserActivity: boolean
@@ -870,7 +878,7 @@ const MessageBubble = ({
 
     return t("finished", {}, locale)
   }
-  const foldBrowserFlow = hasBrowserTools && message.status !== "streaming"
+  const foldBrowserFlow = hasBrowserTools && message.status !== "streaming" && !searchFocused
   const finalText = segments.filter((segment) => segment.type === "text").at(-1)
   const senderName = message.sender?.name ?? bot?.name ?? "touri"
   const renderBrowserSteps = (key: string, count: number) => (
@@ -898,7 +906,9 @@ const MessageBubble = ({
     if (final && message.status === "complete" && routineReply && isRoutineEmptyResult(answer))
       return <p className="routine-empty-result">{t("Sem novidades nesta execução")}</p>
 
-    return message.status !== "streaming" && (answer.length > 4000 || answer.split("\n").length > 40) ? (
+    return !searchFocused &&
+      message.status !== "streaming" &&
+      (answer.length > 4000 || answer.split("\n").length > 40) ? (
       <ChatDisclosure
         className="chat-long-content"
         label={t("Mostrar mais")}
@@ -1477,7 +1487,7 @@ export const ChatPanel = ({
         message.parts.some((part) => part.type === "approval" && part.decision === "pending")) &&
       !visibleMessageIds.has(message.id),
   )
-  const visibleMessages = getBrowserRequestMessages(messagePath.concat(pendingMessages), runs)
+  const visibleMessages = getBrowserRequestMessages(messagePath.concat(pendingMessages), runs, focusMessage?.messageId)
   const routineConversation = isRoutineConversation({ thread, runs, routineRuns, routines })
   const repeatDraft =
     bot && !activeRun && !routineConversation
