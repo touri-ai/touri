@@ -21,6 +21,7 @@ import type {
   RunTrigger,
   RunUsage,
   ServiceMap,
+  StartTurnResult,
   StoreApi,
   TextPart,
   Thread,
@@ -80,6 +81,7 @@ import { createOpenCodeAdapter } from "./opencode/adapter"
 import { createRuntimePersistence, type RuntimePersistence } from "./persistence"
 import { reapProviderProcesses } from "./provider-processes"
 import { formatRoutineTitle, nextCronSlot, parseCron, previousCronSlot, validTimezone } from "./routines/cron"
+import { createRunSupervision, RUN_CANCEL_GRACE_MS } from "./run-supervision"
 import { sessionFingerprint, workingDirectory } from "./session"
 import { canRecoverSession, hasTurnResponse, SESSION_RECOVERY_MESSAGE } from "./session-recovery"
 import { getStartupReply, getStartupRuns } from "./startup-runs"
@@ -119,6 +121,13 @@ type RunState = {
   lastEventLivenessCheckAt: number
   lastOutputPublishedAt: number
 }
+
+type RunStopFailure = { errorClass: RunErrorClass; errorMessage: string }
+
+const getRunStopFailure = (state: RunState, fallback: RunStopFailure): RunStopFailure => ({
+  errorClass: state.completionError?.errorClass ?? fallback.errorClass,
+  errorMessage: state.completionError?.errorMessage ?? fallback.errorMessage,
+})
 
 type ContinuationPlan = { reason: ContinuationReason; originalRunId: Id }
 
@@ -262,6 +271,10 @@ type RuntimeEngine = {
   getRunSnapshot: (run: Run) => Run
   getRunSnapshots: (runs: ReadonlyArray<Run>) => Array<Run>
   getWorkRuns: (runs?: ReadonlyArray<Run>) => Array<Run>
+  getRunActivities: (runs: ReadonlyArray<Run>) => Promise<Array<Run>>
+  reconcileRuns: () => Promise<void>
+  cancelAndWait: (id: Id) => Promise<Result<{ run: Run }, "NOT_FOUND" | "TIMEOUT">>
+  waitForRunEnd: (id: Id) => Promise<Result<{ run: Run }, "NOT_FOUND" | "TIMEOUT">>
   getRetainedRunStateCount: () => number
   settingsChanged: () => void
   listRuns: (threadId: Id, options?: { all?: boolean }) => Array<Run>
@@ -423,6 +436,10 @@ export const createRuntimeEngine = ({
   const finalizations = new Map<Id, Promise<boolean>>()
   const providers = new Map<Id, ProviderAdapter>()
   const states = new Map<Id, RunState>()
+  const supervision = createRunSupervision()
+  const stopOperations = new Map<Id, Promise<void>>()
+  const stopSignals = new Map<Id, ReturnType<typeof Promise.withResolvers<void>>>()
+  const providerStops = new Map<Id, ReturnType<typeof Promise.withResolvers<StartTurnResult>>>()
   const pendingApprovals = new Map<Id, PendingApproval>()
   let drainChange = Promise.withResolvers<void>()
   const signalDrainChange = (): void => {
@@ -1051,12 +1068,13 @@ export const createRuntimeEngine = ({
     store: StoreApi
     state: RunState
   }): void => {
-    if (shuttingDown) return
+    if (shuttingDown || state.cancelRequested) return
     // A newer runtime may have fenced this writer during restart recovery.
     if (!isLiveForEvent(run, state)) {
       controllers.get(run.id)?.abort()
       return
     }
+    supervision.recordEvent(run.id, getNow())
     if (event.type === "session") {
       recordTiming(run, "providerReadyAt")
       state.externalSessionId = event.externalSessionId
@@ -1806,7 +1824,7 @@ export const createRuntimeEngine = ({
 
           // Publish before invocation: startup and a silent provider are different waits.
           if (!run.providerStartedAt) updateRun(run, { providerStartedAt: Date.now() })
-          return startTurn({
+          const invocation = startTurn({
             ...(toolsDisabled ? { conversationOnly: true } : {}),
             thread,
             bot: greeting ? { ...turnBot, reasoningEffort: "low" } : turnBot,
@@ -1819,10 +1837,19 @@ export const createRuntimeEngine = ({
             env: turnEnv,
             ...(prepared ? { execution: prepared.execution } : {}),
             onEvent,
+            onProcess: (child) => {
+              if (!isLive(run) || controller.signal.aborted) {
+                child.kill("SIGKILL")
+                return
+              }
+              supervision.observeProcess(run.id, child)
+            },
             onProcessSpawned: () => recordTiming(run, "processSpawnedAt"),
             onProcessReused: () => recordTiming(run, "processReusedAt"),
             signal: controller.signal,
           })
+          const stopped = providerStops.get(run.id)
+          return stopped ? Promise.race([invocation, stopped.promise]) : invocation
         }
         const invokeWithRetry = (): ReturnType<typeof startTurn> =>
           retryTransient({
@@ -2594,8 +2621,12 @@ export const createRuntimeEngine = ({
   }
 
   const executeWithStateCleanup = async (run: Run): Promise<void> => {
+    const stopped = Promise.withResolvers<void>()
+    stopSignals.set(run.id, stopped)
+    providerStops.set(run.id, Promise.withResolvers<StartTurnResult>())
     try {
-      await executeGoalTurn(run)
+      // An adapter can miss both exit and abort. Its unresolved promise cannot own the execution slot forever.
+      await Promise.race([executeGoalTurn(run), stopped.promise])
     } catch (error) {
       controllers.get(run.id)?.abort()
       await finalizeUnexpectedFailure(run, error)
@@ -2605,6 +2636,9 @@ export const createRuntimeEngine = ({
       if (active.get(run.threadId)?.id === run.id) active.delete(run.threadId)
       controllers.delete(run.id)
       providers.delete(run.id)
+      stopSignals.delete(run.id)
+      providerStops.delete(run.id)
+      if (!stopOperations.has(run.id)) supervision.forgetRun(run.id)
       deleteRunState(run.id)
       void drain()
     }
@@ -2878,72 +2912,181 @@ export const createRuntimeEngine = ({
       if (descendant) return cancel(descendant.id)
     }
     if (!["queued", "starting", "running"].includes(run.status)) return { success: true, run }
-    if (reason) {
-      const state = getState(id)
-      state.completionError = reason
-      controllers.get(id)?.abort()
-      approvalBridge.cancelRun(id)
-      const store = kernel.services.use("store.api")
-      const thread = store?.getThread({ threadId: run.threadId })
-      if (store && thread)
-        void failTurn({ run, state, store, thread, ...reason }).catch(() => {
-          kernel.log({
-            level: "error",
-            module: "runtime",
-            msg: "Não foi possível encerrar o pedido que excedeu o prazo",
-          })
-        })
-      return { success: true, run }
-    }
-    if (run.status === "queued" || (run.status === "starting" && run.providerStartedAt == null)) {
-      controllers.get(id)?.abort()
-      const store = kernel.services.use("store.api")
-      const thread = store?.getThread({ threadId: run.threadId })
-      if (store && thread) {
-        void finalizeFailure({
-          run,
-          state: getState(id),
-          store,
-          thread,
-          errorClass: "canceled",
-          errorMessage: "Turno cancelado antes de iniciar",
-        })
-          .catch(() => {
-            try {
-              kernel.log({
-                level: "error",
-                module: "runtime",
-                msg: "Could not finalize canceled run",
-                data: { threadId: run.threadId, runId: run.id },
-              })
-            } catch {
-              // A storage failure can also prevent writing its diagnostic.
-            }
-          })
-          .finally(() => deleteRunState(id))
-        return { success: true, run }
-      }
-      updateRun(run, {
-        status: "canceled",
-        errorClass: "canceled",
-        errorMessage: "Canceled before start",
-        finishedAt: Date.now(),
-      })
-      finishRoutineRun({ run, status: "canceled", summary: "Turno cancelado" })
-      deleteRunState(id)
-      return { success: true, run }
-    }
-    const state = getState(id)
-    state.cancelRequested = true
-    controllers.get(id)?.abort()
-    finishParts({ run, state, reason: "cancelled_by_user", persist: false })
-    state.parts.forEach((part, index) => {
-      if (part.type === "text" || part.type === "reasoning") state.dirtyParts.add(index)
-    })
-    const store = kernel.services.use("store.api")
-    if (store) publishMessage({ store, state, run, status: "streaming" })
-    approvalBridge.cancelRun(id)
+    queued = queued.filter((runId) => runId !== run.id)
+    requestRunStop(run, reason ?? { errorClass: "canceled", errorMessage: "Cancelado por você" })
     return { success: true, run }
+  }
+
+  const requestRunStop = (run: Run, failure: { errorClass: RunErrorClass; errorMessage: string }): Promise<void> => {
+    const pending = stopOperations.get(run.id)
+    const state = getState(run.id)
+    if (pending) {
+      if (failure.errorClass === "canceled") Object.assign(state, { cancelRequested: true, completionError: failure })
+      return pending
+    }
+
+    // Cancellation is a lifecycle transition shared with the in-flight provider callback.
+    Object.assign(state, {
+      cancelRequested: failure.errorClass === "canceled",
+      completionError: failure,
+    })
+    controllers.get(run.id)?.abort()
+    approvalBridge.cancelRun(run.id)
+    const operation = stopRun(run, state, failure).finally(() => {
+      stopOperations.delete(run.id)
+      if (!isLive(run)) {
+        stopSignals.get(run.id)?.resolve()
+        supervision.forgetRun(run.id)
+      }
+      if (!executions.has(run.id)) deleteRunState(run.id)
+    })
+    stopOperations.set(run.id, operation)
+    void operation.catch(() => {
+      kernel.log({ level: "error", module: "runtime", msg: "Não foi possível encerrar a tarefa. Tente novamente." })
+    })
+    return operation
+  }
+
+  const stopRun = async (
+    run: Run,
+    state: RunState,
+    requestedFailure: { errorClass: RunErrorClass; errorMessage: string },
+  ): Promise<void> => {
+    if (supervision.hasProcess(run.id)) await Bun.sleep(RUN_CANCEL_GRACE_MS)
+    await supervision.stopProcess(run.id).catch(() => {
+      throw new Error("Não foi possível parar o processo do bot. Verifique as permissões e tente novamente.")
+    })
+    if (!isLive(run)) return
+
+    const failure = getRunStopFailure(state, requestedFailure)
+    providerStops.get(run.id)?.resolve({ success: false, errorCode: failure.errorClass, error: failure.errorMessage })
+    const store = kernel.services.use("store.api")
+    const thread = store?.getThread({ threadId: run.threadId })
+    const finalization =
+      store && thread ? failTurn(Object.assign({ run, state, store, thread }, failure)) : Promise.resolve()
+    try {
+      await Promise.race([finalization, Bun.sleep(2_000)]).catch(() => undefined)
+      await finishStoppedRun(run, getRunStopFailure(state, failure))
+    } finally {
+      if (!isLive(run)) stopSignals.get(run.id)?.resolve()
+    }
+  }
+
+  const finishStoppedRun = async (
+    run: Run,
+    failure: { errorClass: RunErrorClass; errorMessage: string },
+  ): Promise<void> => {
+    if (!isLive(run)) return
+
+    const finish = (): void => {
+      if (!isLive(run)) return
+
+      const status: RunStatus = failure.errorClass === "canceled" ? "canceled" : "failed"
+      updateRun(
+        run,
+        Object.assign({}, failure, {
+          status,
+          finishedAt: Date.now(),
+        }),
+      )
+    }
+    if (kernel.db instanceof Database) await writeDatabaseAsync(kernel.db, finish)
+    else finish()
+    if (isLive(run)) return
+
+    tools.clearPendingMemory(run.id)
+    finishRoutineRun({
+      run,
+      status: failure.errorClass === "canceled" ? "canceled" : "failed",
+      summary: failure.errorMessage,
+    })
+    if (failure.errorClass === "canceled") return
+
+    notices.failure({
+      botId: run.botId,
+      threadId: run.threadId,
+      routine: run.routineRunId !== null,
+      reason: failure.errorMessage,
+    })
+  }
+
+  const cancelAndWait: RuntimeEngine["cancelAndWait"] = async (id) => {
+    const result = cancel(id)
+    if (!result.success) return result
+
+    return waitForRunEnd(result.run.id)
+  }
+
+  const waitForRunEnd: RuntimeEngine["waitForRunEnd"] = async (id) => {
+    // Keep observation local to this bounded waiter; a failed signal must never become HTTP success.
+    let stopped = !stopOperations.has(id)
+    let stopFailed = false
+    let errorMessage = "O encerramento da tarefa não foi confirmado a tempo. Tente novamente."
+    void stopOperations.get(id)?.then(
+      () => {
+        stopped = true
+      },
+      (error: unknown) => {
+        stopped = true
+        stopFailed = true
+        const processFailure = "Não foi possível parar o processo do bot. Verifique as permissões e tente novamente."
+        errorMessage =
+          error instanceof Error && error.message === processFailure
+            ? processFailure
+            : "Não foi possível salvar o encerramento da tarefa. Tente novamente."
+      },
+    )
+    const deadline = performance.now() + 4_500
+    while (performance.now() < deadline) {
+      const run = persistence.getRun(id)
+      if (!run) return { success: false, errorCode: "NOT_FOUND", error: "Run not found" }
+      if (stopFailed) break
+      if (stopped && !["queued", "starting", "running"].includes(run.status)) return { success: true, run }
+      await Bun.sleep(20)
+    }
+    return { success: false, errorCode: "TIMEOUT", error: errorMessage }
+  }
+
+  const getRunActivities: RuntimeEngine["getRunActivities"] = async (runs) => {
+    return Promise.all(
+      runs.map(async (run) => {
+        const waitingForPerson =
+          states.get(run.id)?.parts.some((part) => part.type === "approval" && part.decision === "pending") ?? false
+        const activity = await supervision.getActivity(run, getNow(), waitingForPerson)
+        return Object.assign({}, run, { activity })
+      }),
+    )
+  }
+
+  let reconciliation: Promise<void> | null = null
+  const reconcileRuns = (): Promise<void> => {
+    if (reconciliation) return reconciliation
+    const operation = reconcileActiveRuns().finally(() => {
+      reconciliation = null
+    })
+    reconciliation = operation
+    return operation
+  }
+
+  const reconcileActiveRuns = async (): Promise<void> => {
+    await ready
+    if (shuttingDown || !ownsRuntime()) return
+
+    const runs = await getRunActivities(Array.from(active.values()))
+    await Promise.all(
+      runs.map(async (run) => {
+        const reason = run.activity?.staleReason
+        if (!reason || !isLive(run)) return
+
+        await requestRunStop(run, {
+          errorClass: "cli_crash",
+          errorMessage:
+            reason === "process_exited"
+              ? "O processo do bot foi encerrado sem concluir a tarefa. Você pode tentar novamente."
+              : "O bot ficou 10 minutos sem enviar eventos. A tarefa foi encerrada. Você pode tentar novamente.",
+        })
+      }),
+    )
   }
 
   const cancelBotTurns = async ({ botId }: { botId: Id }): Promise<void> => {
@@ -2957,9 +3100,10 @@ export const createRuntimeEngine = ({
   }
 
   const cancelRuns = async (runIds: Id[]): Promise<void> => {
-    runIds.forEach((runId) => {
-      cancel(runId)
-    })
+    const results = await Promise.all(runIds.map((runId) => cancelAndWait(runId)))
+    const failure = results.find((result) => !result.success)
+    if (failure && !failure.success) throw new Error(failure.error)
+
     await Promise.all(runIds.map((runId) => executions.get(runId)))
     await Promise.all(runIds.map((runId) => pendingAbandonments.get(runId)))
   }
@@ -3044,6 +3188,7 @@ export const createRuntimeEngine = ({
     const state = states.get(pending.runId)
     if (!run || !state || !["starting", "running"].includes(run.status)) return { success: true }
 
+    supervision.recordEvent(run.id, getNow())
     notices.resolve({ requestId: approvalId, resolution })
     const approval = state.parts.find(
       (part): part is ApprovalPart => part.type === "approval" && part.approvalId === approvalId,
@@ -3500,6 +3645,7 @@ export const createRuntimeEngine = ({
   const shutdown = (): Promise<void> => {
     if (shutdownPromise) return shutdownPromise
     draining = true
+    clearInterval(reconciliationTimer)
     unsubscribeGroupTurns()
     for (const state of states.values()) {
       if (state.outputTimer) clearTimeout(state.outputTimer)
@@ -3530,6 +3676,7 @@ export const createRuntimeEngine = ({
       await Promise.all(Array.from(preparations.values()).map(({ promise }) => promise))
       await Promise.all(Object.values(adapters).map((adapter) => adapter.shutdown()))
       await Promise.all(executions.values())
+      await Promise.allSettled(stopOperations.values())
       // Queued cancellations can have a terminal write without an execution promise.
       await Promise.all(finalizations.values())
       await Promise.all(pendingAbandonments.values())
@@ -3538,6 +3685,12 @@ export const createRuntimeEngine = ({
   }
 
   // Both scans run `ps` asynchronously (#121); the record list is read before the first await.
+  const reconciliationTimer = setInterval(() => {
+    void reconcileRuns().catch(() => {
+      kernel.log({ level: "error", module: "runtime", msg: "Não foi possível verificar as tarefas em andamento." })
+    })
+  }, 15_000)
+  reconciliationTimer.unref()
   const processCleanup = Promise.all([reapProviderProcesses(kernel), reapOrphanShims(kernel.paths.runDir)])
     .then(() => undefined)
     .catch((error) =>
@@ -3690,6 +3843,10 @@ export const createRuntimeEngine = ({
     },
     listRuns: persistence.listRuns,
     cancel,
+    cancelAndWait,
+    waitForRunEnd,
+    reconcileRuns,
+    getRunActivities,
     cancelBotTurns,
     cancelRuns,
     retry,

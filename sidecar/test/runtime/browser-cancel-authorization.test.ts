@@ -298,7 +298,7 @@ test("a browser group-root short circuit cancels only the authorized request onc
   expect(fixture.channelRuns.get(surviving.runId)?.status).toBe("running")
   expect(fixture.getRun(fixture.waiting.id)?.status).toBe("queued")
   expect(fixture.released).toEqual([target.requestId])
-  expect(response).toMatchObject({ status: 200, json: { run: { id: fixture.active.id } } })
+  expect(response).toMatchObject({ status: 200, json: { run: { id: target.runId, status: "canceled" } } })
 })
 
 test("the responsible person can cancel a delegated continuation through its original alias in isolation", async () => {

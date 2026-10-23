@@ -41,6 +41,40 @@ subsequent chunks keep the bounded batching interval.
 The UI renders partial assistant text before completion and changes its preparation status on the first
 text update, even when the avatar's activity snapshot is one render behind.
 
+## Cancellation and run liveness
+
+`POST /api/v1/runs/:id/cancel` waits for the stored run to become terminal. HTTP 200 means
+that transition has completed within five seconds; a cancellation that cannot be persisted or
+completed returns HTTP 503 with a clear, retryable explanation. Repeating cancellation is safe.
+Browser aliases return the selected canceled execution, preserving the authorization of other
+requests sharing a coordinator. Cancel removes waiting work, aborts the turn, expires approvals
+and releases its execution slot.
+An adapter that never settles cannot retain the slot. After a one-second grace period, a live
+provider is stopped through its owned process-group handle; no PID from an HTTP request is used.
+Late output cannot change a terminal run. Normal finalization preserves the partial reply; if
+output preparation stalls, a bounded fallback still persists terminal state and retains the
+already stored history.
+
+The runtime checks owned executions every 15 seconds and before listing active work. A provider
+that has exited (including an OS zombie with a missed exit notification), or a turn with no provider
+event for ten minutes, fails with an explanation in Portuguese and English. A pending human approval
+suspends the silence deadline, but does not hide an exited provider. Reconciliation uses the existing
+safe automatic continuation policy, including its limits and refusal to repeat uncertain actions.
+Local liveness checks use asynchronous process inspection; remote process liveness remains unknown
+until the execution handle reports its exit.
+
+`GET /api/v1/runs` includes an optional, runtime-derived `activity` object on each run:
+
+- `active`: whether this run still represents work to wait for.
+- `processAlive`: `true` or `false` for an observed local provider, `null` before spawning or when remote liveness is unknown.
+- `lastEventAt`: epoch milliseconds of its last observed provider event, or `null` before any event.
+- `staleReason`: `process_exited`, `event_timeout`, or `null`.
+
+These observations are transient and contain no process identifiers or conversation content.
+`scripts/safe-restart.sh` ignores a confirmed `activity.active: false` run, still waits for real
+active work, and treats missing activity from older servers conservatively. Malformed activity or
+an unreadable work response defers restart. No deployment timeout authorizes stopping healthy work.
+
 ## Decisions at a glance
 
 Channel navigation and headers are available at startup so the first click opens a stable surface.

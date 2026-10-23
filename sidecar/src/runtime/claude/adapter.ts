@@ -252,6 +252,7 @@ export const createClaudeAdapter = ({
         args.env.TMPDIR,
       )
     const spawned = lease.child
+    args.onProcess?.(spawned)
     if (lease.reused) args.onProcessReused?.()
     else args.onProcessSpawned?.()
     children.add(spawned)

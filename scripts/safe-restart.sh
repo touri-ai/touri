@@ -27,7 +27,16 @@ runs = json.loads(payload)["runs"]
 states = {"queued", "starting", "running", "succeeded", "failed", "canceled", "interrupted"}
 if not isinstance(runs, list) or any(not isinstance(run, dict) or run.get("status") not in states for run in runs):
     raise SystemExit(1)
-print(sum(run["status"] in {"queued", "starting", "running"} for run in runs))
+def is_active(run):
+    if run["status"] not in {"queued", "starting", "running"}:
+        return False
+    activity = run.get("activity")
+    if activity is None:
+        return True
+    if not isinstance(activity, dict) or not isinstance(activity.get("active"), bool):
+        raise SystemExit(1)
+    return activity["active"]
+print(sum(is_active(run) for run in runs))
 ' 2>/dev/null
 }
 
