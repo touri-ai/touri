@@ -1,5 +1,5 @@
 import type { StoreApi } from "@touri/contracts"
-import type { createStoreReader } from "./read-worker"
+import type { createStoreReader } from "./reader"
 
 export const getAsyncSearchHits = async (
   reader: ReturnType<typeof createStoreReader>,

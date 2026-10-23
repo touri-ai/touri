@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite"
 import type { Kernel, ToolHandler } from "@touri/contracts"
 import { consentToPrivateHistory, groupHistoryThread } from "../../groups/privacy"
-import { createStoreReader } from "../../store/read-worker"
+import { createStoreReader } from "../../store/reader"
 import { getAsyncSearchHits } from "../../store/search-query"
 
 type SearchArgs = { query: string; threadId?: string; limit?: number }

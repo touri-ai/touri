@@ -9,7 +9,7 @@ import { WORK_RUNS_SQL } from "../../src/runtime/persistence"
 import { getThreadRunsQuery } from "../../src/runtime/thread-runs-query"
 import { getHistoryQuery, THREAD_MESSAGES_SQL } from "../../src/store/history-query"
 import { getMessageFromRow } from "../../src/store/message-row"
-import { createStoreReader } from "../../src/store/read-worker"
+import { createStoreReader } from "../../src/store/reader"
 import { getSearchQuery } from "../../src/store/search-query"
 import type { RawMessage } from "../../src/store/workspace-activity"
 
@@ -127,7 +127,7 @@ test("thread snapshots enrich only selected roots and preserve member identity",
   expect(plan).not.toMatch(/SCAN r\b/)
 })
 
-test("worker snapshots preserve message JSON, ancestry and attachment references", async () => {
+test("background snapshots preserve message JSON, ancestry and attachment references", async () => {
   const db = await getFixture()
   const reader = createStoreReader(db.filename)
   cleanups.add(reader.dispose)
@@ -200,9 +200,10 @@ const getLagBudget = async (read: () => Promise<number>) => {
   }
 }
 
-test("cancellation and disposal stop SQL workers and reject reads", async () => {
+test("cancellation and disposal stop SQL processes and reject reads", async () => {
   const db = await getFixture()
-  const reader = createStoreReader(db.filename)
+  const ready = Promise.withResolvers<void>()
+  const reader = createStoreReader(db.filename, () => ready.resolve())
   cleanups.add(reader.dispose)
   const controller = new AbortController()
   const query = {
@@ -211,6 +212,7 @@ test("cancellation and disposal stop SQL workers and reject reads", async () => 
   }
 
   const result = reader.getRows(query, controller.signal)
+  await ready.promise
   controller.abort()
 
   await expect(result).rejects.toThrow("STORE_READ_ABORTED")

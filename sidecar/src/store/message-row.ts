@@ -49,10 +49,3 @@ const getRowSender = (value: string | null): Message["sender"] => {
     ...("kind" in sender && sender.kind === "person" ? { kind: "person" as const } : {}),
   }
 }
-
-// Embed the same pure mapper in compiled workers; do not maintain a second JSON schema.
-export const messageRowSource = `
-const getRowJson = ${getRowJson.toString()};
-const getRowSender = ${getRowSender.toString()};
-const getMessageFromRow = ${getMessageFromRow.toString()};
-`
