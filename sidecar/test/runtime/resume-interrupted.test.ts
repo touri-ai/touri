@@ -655,7 +655,9 @@ for (const recovery of ["missing", "rejected", "exit", "notification", "auth", "
       if (recovery === "auth" || recovery === "accepted-error") {
         expect(f.runs().find((run) => run.id === next.id)?.status).toBe("failed")
         if (recovery === "auth") expect(f.runs().find((run) => run.id === next.id)?.error_class).toBe("cli_auth")
-        expect(methods).toEqual(["thread/start", "thread/resume"])
+        expect(methods).toEqual(
+          ["thread/start", "thread/resume"].concat(recovery === "accepted-error" ? ["thread/start"] : []),
+        )
         return
       }
       expect(f.runs().find((run) => run.id === next.id)?.status).toBe("succeeded")
