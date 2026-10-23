@@ -1418,7 +1418,7 @@ export const createRuntimeEngine = ({
     persistence.updateRoutineRun(finished)
     kernel.publish({ type: "routine.updated", routine, lastRun: finished })
     if (status === "failed")
-      notices.failure({ botId: routine.botId, threadId: run.threadId, routine: true, reason: summary })
+      notices.failure({ botId: routine.botId, threadId: run.threadId, runId: run.id, routine: true, reason: summary })
   }
   // Minimal test kernels have no event bus; they also have no group runtime.
   const unsubscribeGroupTurns =
@@ -2206,6 +2206,7 @@ export const createRuntimeEngine = ({
         })
         if (errorClass === "canceled" || errorClass === "app_restart") return true
         notices.failure({
+          runId: run.id,
           botId: run.botId,
           threadId: run.threadId,
           routine: run.routineRunId !== null,
@@ -2650,6 +2651,7 @@ export const createRuntimeEngine = ({
     if (canceled) return
 
     notices.failure({
+      runId: run.id,
       botId: run.botId,
       threadId: run.threadId,
       routine: run.routineRunId !== null,

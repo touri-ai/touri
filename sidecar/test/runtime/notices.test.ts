@@ -164,3 +164,18 @@ test("bridge permission prompts retain their scope in notification summaries", (
   })
   expect(emitted.at(-1)?.body).toBe("Executar ferramenta")
 })
+
+test("failure notices carry execution identity for recovery reconciliation", () => {
+  const emitted: NotifyInput[] = []
+  const kernel = { services: { use: () => (input: NotifyInput) => emitted.push(input) } } as unknown as Kernel
+
+  createRuntimeNotices({ kernel }).failure({
+    botId: "bot-a",
+    threadId: "thread-a",
+    runId: "execution-a",
+    routine: false,
+    reason: "Synthetic failure",
+  })
+
+  expect(emitted[0]?.requestId).toBe("recovery:run:execution-a")
+})

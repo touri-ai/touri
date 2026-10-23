@@ -88,16 +88,19 @@ export const createRuntimeNotices = ({ kernel }: { kernel: Kernel }) => {
     threadId,
     routine,
     reason,
+    runId,
   }: {
     botId: Id
     threadId: Id
     routine: boolean
+    runId?: Id
     reason: string
   }): void => {
     emit("notify.emit")?.({
       kind: routine ? "routine-failed" : "turn-failed",
       botId,
       threadId,
+      ...(runId ? { requestId: `recovery:run:${runId}` } : {}),
       title: routine ? "Routine failed" : "Turn failed",
       body: clip({ value: reason, max: DETAIL_MAX }),
     })

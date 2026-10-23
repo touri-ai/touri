@@ -4,6 +4,7 @@ import { hasRecordedActions, sanitizeDiagnostic } from "@touri/contracts/run-fai
 import { createWorkState } from "../runtime/work-state"
 
 export type Candidate = Omit<RecoveryTask, "notification"> & {
+  members?: Array<{ id: string; turnId: string }>
   botId: string
   threadId: string | null
   turnId: string | null
@@ -43,7 +44,7 @@ export const getRecoveryCandidates = (database: Database, cursor: RecoveryCursor
   const journal = getJournalCandidates(database, runs)
   const routines = getRoutineCandidates(database, runs, cursor.routineRowid, cursor.routineIds)
 
-  return [...runs, ...journal, ...routines]
+  return getLogicalCandidates(database, [...runs, ...journal, ...routines])
 }
 
 const getRunCandidates = (database: Database, changedRunIds: string[], sinceRowid: number): Candidate[] => {
@@ -189,4 +190,69 @@ const getRoutineCandidates = (
       occurredAt: row.occurred_at,
       effects: [],
     }))
+}
+
+// Group identity comes only from persisted execution links, never presentation or timestamps.
+const getLogicalCandidates = (database: Database, candidates: Candidate[]): Candidate[] => {
+  const groups = new Map<string, Candidate[]>()
+  candidates.forEach((candidate) => {
+    const link = candidate.runId
+      ? (database.query("SELECT turn_id FROM group_run_links WHERE run_id = ?").get(candidate.runId) as {
+          turn_id: string
+        } | null)
+      : null
+    const key = link ? `run:${link.turn_id}` : candidate.id
+    groups.set(key, [...(groups.get(key) ?? []), candidate])
+  })
+
+  return [...groups.entries()].flatMap(([key, members]) => {
+    const root = getGroupCandidate(database, key, members)
+    if (!root) return members
+    const linked = database.query("SELECT run_id FROM group_run_links WHERE turn_id=?").all(root.runId) as Array<{
+      run_id: string
+    }>
+    const turnIds = [...new Set([root.runId, ...linked.map((link) => link.run_id)])].filter(
+      (id): id is string => id !== null,
+    )
+    const hasPersonNotice = turnIds.some(
+      (turnId) =>
+        database
+          .query(`SELECT 1 FROM recovery_tasks rt
+      JOIN notifications n ON n.id=rt.notification_id WHERE rt.id=? AND n.target_person_id IS NOT NULL LIMIT 1`)
+          .get(`run:${turnId}`) !== null,
+    )
+    if (hasPersonNotice) return members
+
+    const work = createWorkState({ database })
+    return [
+      {
+        ...root,
+        members: turnIds.map((turnId) => ({ id: `run:${turnId}`, turnId })),
+        journal: turnIds.flatMap((turnId) => work.rebuild({ turnId })),
+        effects: turnIds.flatMap((turnId) => getPartEffects(getRunParts(database, turnId))),
+      },
+    ]
+  })
+}
+
+const getGroupCandidate = (database: Database, key: string, members: Candidate[]): Candidate | undefined => {
+  const first = members[0]
+  if (!first || !key.startsWith("run:")) return undefined
+  const row = database
+    .query(`SELECT r.id, r.bot_id, r.thread_id FROM group_turns g
+    JOIN runs r ON r.id=g.run_id JOIN threads t ON t.id=r.thread_id JOIN bots b ON b.id=r.bot_id
+    WHERE g.run_id=? AND t.archived_at IS NULL AND b.archived_at IS NULL`)
+    .get(key.slice(4)) as { id: string; bot_id: string; thread_id: string } | null
+  if (!row) return undefined
+
+  return (
+    members.find((member) => member.id === key) ?? {
+      ...first,
+      id: key,
+      runId: row.id,
+      turnId: row.id,
+      botId: row.bot_id,
+      threadId: row.thread_id,
+    }
+  )
 }

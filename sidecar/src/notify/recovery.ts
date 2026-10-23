@@ -133,6 +133,7 @@ const syncRecoveryTasks = async (
     signal.throwIfAborted()
     const task = measure("notification_recovery_reconcile", () => {
       const notification = saveTaskNotification(kernel, store, notifier, candidate, silent)
+      reconcileMemberNotifications(database, notifier, candidate, notification.id)
       const effects = candidate.journal
       const hasUncertain = effects.some((effect) => effect.state === "uncertain" && !effect.acknowledged)
       const hasLater = hasLaterRun(database, candidate)
@@ -168,7 +169,9 @@ const expireOrphanTasks = (
   work: ReturnType<typeof createWorkState>,
   found: Candidate[],
 ): RecoveryTask[] => {
-  const foundIds = new Set(found.map((candidate) => candidate.id))
+  const foundIds = new Set(
+    found.flatMap((candidate) => [candidate.id, ...(candidate.members ?? []).map((member) => member.id)]),
+  )
   const rows = database
     .query(`SELECT rt.id, rt.notification_id, rt.turn_id FROM recovery_tasks rt JOIN notifications n ON n.id = rt.notification_id
       WHERE n.resolved_at IS NULL`)
@@ -235,16 +238,20 @@ const saveTaskNotification = (
   const hasUncertain = pendingEffects.length > 0
   if (existing && (existing.resolvedAt === null || !hasUncertain)) return existing
 
-  const matched = database
-    .query(`SELECT id FROM notifications WHERE bot_id = ? AND thread_id IS ?
-    AND kind IN ('turn-failed', 'routine-failed') AND ABS(created_at - ?) < 2000
+  const matched = candidate.members
+    ? null
+    : (database
+        .query(`SELECT id FROM notifications WHERE bot_id = ? AND thread_id IS ?
+    AND request_id IS NULL AND target_person_id IS NULL AND kind IN ('turn-failed', 'routine-failed') AND ABS(created_at - ?) < 2000
     AND id NOT IN (SELECT notification_id FROM recovery_tasks) ORDER BY ABS(created_at - ?) LIMIT 1`)
-    .get(candidate.botId, candidate.threadId, candidate.occurredAt, candidate.occurredAt) as { id: number } | null
+        .get(candidate.botId, candidate.threadId, candidate.occurredAt, candidate.occurredAt) as { id: number } | null)
   const previous = matched ? store.get(matched.id) : null
   const reusable = !existing && previous && (!hasUncertain || previous.resolvedAt === null) ? previous : null
+  const baseRequestId = `recovery:${candidate.id}`
+  const previousTarget = store.byRequestId(baseRequestId)?.targetPersonId
   const requestId = existing
     ? `recovery:${candidate.id}:${pendingEffects.map((effect) => effect.effectId).join(":")}`
-    : `recovery:${candidate.id}`
+    : `${baseRequestId}${previousTarget ? ":unscoped" : ""}`
   const notification =
     reusable ??
     notifier.emit(
@@ -286,4 +293,39 @@ const hasLaterRun = (database: Database, candidate: Candidate): boolean => {
     AND COALESCE(started_at, queued_at) > ? LIMIT 1`)
       .get(candidate.botId, candidate.runId, candidate.threadId, candidate.occurredAt) !== null
   )
+}
+
+const reconcileMemberNotifications = (
+  database: Database,
+  notifier: Notifier,
+  candidate: Candidate,
+  notificationId: number,
+): void => {
+  const members = candidate.members ?? []
+  const previous = members.flatMap((member) => {
+    const row = database.query("SELECT notification_id FROM recovery_tasks WHERE id=?").get(member.id) as {
+      notification_id: number
+    } | null
+    const notices = database
+      .query(`SELECT id FROM notifications WHERE request_id=?
+      AND thread_id IS ? AND target_person_id IS NULL AND kind IN ('turn-failed','routine-failed')
+      AND resolved_at IS NULL`)
+      .all(`recovery:${member.id}`, candidate.threadId) as Array<{ id: number }>
+    return [...(row ? [row.notification_id] : []), ...notices.map((notice) => notice.id)].filter(
+      (id) => id !== notificationId,
+    )
+  })
+  // Move journal ownership before resolving duplicates: the surviving notice guards every effect.
+  database.transaction(() => {
+    members.forEach((member) => {
+      database
+        .query(`INSERT INTO recovery_tasks(id,notification_id,turn_id) VALUES(?,?,?)
+      ON CONFLICT(id) DO UPDATE SET notification_id=excluded.notification_id,turn_id=excluded.turn_id
+        WHERE recovery_tasks.notification_id <> excluded.notification_id OR recovery_tasks.turn_id IS NOT excluded.turn_id`)
+        .run(member.id, notificationId, member.turnId)
+    })
+    new Set(previous).forEach((id) => {
+      notifier.finish({ id, resolution: "expired" })
+    })
+  })()
 }
