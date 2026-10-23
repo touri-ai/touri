@@ -163,9 +163,25 @@ SQLite durability and write diagnostics (#454):
 - Storage maintenance retries failed passes after 1, 2, 4, 8, 16 and 32 seconds, then caps each retry delay at 60 seconds. A completed pass or a new manual run resets the failure count. Retries retain the durable cursor, avoid SQLite busy waits and resume automatically when a competing writer releases its lock.
 - `kernel/db.ts` sets WAL and `synchronous=NORMAL` on every main connection, including reopen. This applies to settings, runs, messages, notifications and recovery records. Transactions remain atomic and committed data survives an application crash. The most recent commits can be lost after an OS crash or power failure; this is the accepted durability tradeoff. NORMAL avoids a sync on every commit, but SQL, page faults, writer locks and checkpoints can still block the calling thread.
 - Stream journal writes already run in `store/stream-persistence-worker.ts`, with WAL/NORMAL, foreign keys, a 64 MiB cache, no automatic checkpointing and zero SQLite lock wait. `stream-persistence.ts` owns the bounded FIFO (8 MiB / 4,096 events), retries and commit acknowledgements. Existing stream-writer tests cover ordering, generation fences, read-after-write, flush/shutdown and worker failure. Moving the stream journal off the main thread is already implemented; #454 does not replace that protocol.
+- Retryable busy/locked responses during stream-worker startup use the existing capped backoff without reporting persistence unavailable. Accepted writes remain buffered until recovery; exceeding the readiness wait still warns and lets store initialization continue. Non-retryable startup failures, buffer overflow and failure to drain accepted writes still report errors.
 - `kernel/wal-checkpoint-worker.ts` uses its own NORMAL connection, with automatic checkpointing and lock waits disabled. It checkpoints the existing WAL off the event loop. If that worker fails, the main connection restores automatic checkpointing; commits may then pay checkpoint costs. Authentication is deliberately separate: `cli/auth/database.ts` keeps WAL/FULL on the auth worker, so pairing-code consumption and revocation retain their stronger durability. Read-only attachment scans and legacy-source readers do not commit. The one-shot legacy import CLI opens a separate connection with SQLite's default FULL setting; that offline path is outside the live main-connection latency fix.
 - Main-connection instrumentation preserves an active caller stage. Otherwise it records fixed `sqlite_settings_write`, `sqlite_run_write`, `sqlite_message_write`, `sqlite_notification_write` and `sqlite_recovery_write` stages. `sqlite_transaction` includes implicit BEGIN/COMMIT and rollback time; nested statements retain their write-family stage. Other SQL, including comments or CTE prefixes that cannot be classified from the first 512 characters, uses `sqlite_main`. These labels are diagnostic hints, never authorization or SQL routing. Cached statements choose the stage at execution time, and markers are cleared on return or error. Existing bounded timing snapshots and SQL/value redaction apply.
 - `sidecar/test/kernel/sqlite-sync-benchmark.test.ts` uses the existing Linux slow-sync shim (200 ms per SQLite fsync/fdatasync). Alongside the batch, authentication and stream-worker comparisons, it exercises settings/message DML on the application schema and the real run, notification and work-recovery writers. The NORMAL case uses the production opener, checks each write family avoids commit syncs and stays below 50 ms, and verifies immediate reads and clean reopen. Stage tests use a synthetic clock to attribute completed stalls without sleeping. These tests do not simulate power loss or establish latency on every disk.
+
+Hot store reads and compaction (#791):
+
+- Schema 48 adds chronology indexes for thread messages, channel threads and groups, a covering visible-reply lookup, and an ordered partial index containing only active runs. Work listings drive their joins from that partial index. Channel listings materialize the same 50-root window as direct listings before probing member links; `all=true` explicitly includes older roots and their executions. Seek cost is O(log n) plus returned rows; listing all history and FTS matching necessarily depend on the requested results. Unread badges use the stored `threads.unread` projection, never a transcript scan.
+- HTTP work and thread-run listings and FTS execute on read-only, query-only processes with no lock wait. Thread-run listings enrich the selected roots and member executions in a single query and reuse one metadata snapshot for the response. Message history also parses parts, builds snapshots, encodes JSON and transfers the response bytes in a separate process. The main loop does not parse or stringify the historical message body. Attachment references are returned separately and indexed in batches of 32 before responding, preserving member access checks. Stream writes are drained before these reads. Readers permit two concurrent operations per owner and up to 512 cancellable waiting reads, with separate 15-second wait/execution deadlines, kill native SQL on cancellation/shutdown, and redact failures to fixed codes. Message output is limited to 64 MiB per read to bound process memory.
+- Current-version stores skip replaying committed schema migrations on restart. Notification recovery is scheduled after live routes are registered. Run/message discovery, uncertain-journal lookup and historical JSON parsing use an owned read-only helper; notification writes reconcile one candidate per event-loop turn. Run-message chronology and journal candidate/latest-state lookups are indexed. History reconciliation retains its persisted 50-row checkpoint and runs in the background. Shutdown aborts discovery and awaits recovery before closing SQLite. The public `GET /healthz` (and empty `HEAD`) returns only `{ "ok": true }`, without authentication or database access; HTTPS/loopback and URL-credential restrictions still apply. The authenticated `/api/v1/health` retains diagnostics. A restart budget test serves liveness and the paired UI in under two seconds with 100 interrupted runs and 25 MiB of historical parts, while history reconciliation is held at an explicit test hook. A second probe starts the complete server command with the same history and measures liveness and the paired static UI from process spawn.
+- Query-plan budgets cover work runs, channel runs, messages, groups, channel threads, unread projections, reply links and FTS on synthetic history. Indexed chronology reads must not sort historical rows; the channel result may sort its selected root window. Median hot reads must stay below 50 ms. A separate five-active-run fixture builds repeated large snapshots while five persisted active runs receive continuous stream deltas, sampling event-loop drift every 5 ms and enforces p99 below 50 ms and a 500 ms severe-stall guard. These are focused store budgets, not a guarantee about unrelated provider or filesystem work.
+- Existing stores with `auto_vacuum=0` need a rebuild once; setting the PRAGMA alone does not reclaim their free pages. The checkpoint worker already reclaims at most 32 pages per maintenance interval on incremental stores. Never run full VACUUM from a request, streaming callback or the server's main connection.
+
+Operator compaction preserves history and requires no network service:
+
+1. To prepare an independent compact snapshot while the server remains online, run `bun scripts/compact-store.ts SOURCE DESTINATION` from a checkout. Use absolute, operator-selected local paths and a destination that does not exist. The command opens the source read-only, uses SQLite `VACUUM INTO`, checks the output's integrity and incremental mode, fsyncs it, and publishes it with mode 0600. It does not replace or change the source. Reserve enough free disk for the live pages, the output and WAL growth; a long reader can retain WAL frames. Stop the command if disk pressure increases. Treat the output as private conversation data.
+2. An online snapshot is a backup, **not a replacement for a source that has received later writes**. To reclaim the live file, arrange a quiet window, drain active work, stop every process using the store, and prevent automatic restart. Re-run the command against the stopped store to produce a fresh compact output, including any committed WAL tail. Never install the earlier online snapshot after later writes.
+3. With all users of the database still stopped, retain the original database and any matching `-wal`/`-shm` files together as a rollback set. Move those originals out of the live filenames, then rename the freshly compacted output to the original database name on the same filesystem. Do not discard WAL files before taking the final snapshot. Keep restrictive permissions. Restart only after the complete replacement; verify integrity, conversation counts and the expected latest messages before releasing the rollback set.
+4. The replacement uses `auto_vacuum=2`, so normal worker maintenance can reclaim future free pages incrementally. No automatic live-file swap is performed: SQLite connections must never keep an old inode open while new connections write a replacement. To roll back before accepting new work, stop all processes and restore the original database plus its matching WAL set together.
 
 ### 2.4 Login-shell environment
 A GUI app launched from Finder gets a minimal `PATH`, so `codex`, `claude`, `pnpm`, `brew`, `node` and `mongod` would not be found.
@@ -254,6 +270,7 @@ Rules:
 - Migrations are numbered files in `sidecar/src/kernel/migrations/`. Only WP0 creates 0001. Later migrations go through a contract PR.
 
 ### 2.7 Notifications, events stream and deep links
+- **Integration senders.** A channel message may opt into `as: {kind: 'integration', name?: string}`. Only an active administrator's device bearer token receives the `integration:write` capability; cookies and member tokens cannot use it. The display name defaults to `X-Touri-Client`; names colliding with people, handles or bots are rejected. Server-derived IDs and avatars retain integration provenance in history and the UI. Each new message increments unread once and emits one `notice` per current channel person, replaced by a `mention` for explicitly named people. Delivery honors existing preferences/quiet hours. Replayed nonces do not notify again. Only explicit bot mentions dispatch work; integration sends cannot use group actions, post into private/participant threads, resolve human questions or gain administrator authority in bot runs. See [API examples](api.md).
 - **Store.** Migration `0002.sql` adds `notifications` (state) and `notification_log` (ordered, backs resumable streams). The `notify` sidecar module owns them and provides the `notify.emit` / `notify.resolve` services. Runtime, browser, projects and computer-use emit through the services and tolerate a missing module.
 - **Kinds.** Attention: `approval`, `question`, `takeover`, `routine-deferred`, `routine-failed`, `turn-failed`, `incident`. Messages (expire client-side after ~45s): `done`, `delegation-settled`. `approval` and `question` carry a `requestId`. Opening a thread with a user reply resolves open `question`, `turn-failed` and `routine-failed` items.
 - **API** (served under `/api/v1/*` and the `/api/*` alias, bearer token): `GET /events?since=<seq>` (SSE: `notify`, `resolved`, `ready` frames with `id: <seq>`, `: ping` every 15s; without `since` it hydrates unresolved attention items from the last 48h), `GET /notifications/pending`, `GET /notifications`, `POST /notifications/:id/dismiss`, `POST /notifications/dismiss-all`, `POST /threads/:id/respond {requestId, behavior: allow|deny|answer, message}`, `POST /bots/:id/messages {text, threadId?, sendId?}` (idempotent per `sendId` for 10 min).
@@ -338,11 +355,16 @@ interrupted | failed(cli_crash, oom) ─► automatic continuation run (see belo
 - **Carryover.** When a run ends in anything other than `succeeded`, `threads.carryover_note` is set. The next turn prepends it to the user input and then clears it.
   - If the CLI never reached `turn_started`, the note is: `[touri: your previous turn did not run (<class>: <msg>). The user's message was: "<text>"]`.
   - Otherwise: `[touri: your previous turn ended with <class>. Partial output: "<last 1500 chars>"]`.
-- **Automatic continuation** (setting `resumeInterruptedTurns`, default on). A turn cut off by an app restart (crash or quit), by the provider process exiting without a result (`cli_crash`, `oom`) or by the bot computer stopping mid-turn is continued without the user pressing Retry:
+- **Automatic continuation** (setting `resumeInterruptedTurns`, default on). A turn cut off by an app restart (crash or quit), by the provider process exiting without a result (`cli_crash`, `oom`, `timeout`) or by the bot computer stopping mid-turn is continued without the user pressing Retry:
   - The runtime inserts a system notice (`NoticePart{code:"run_resumed"}`, "Retomado após reinício do touri" or "Retomado após falha do provedor") after the partial reply and queues a run whose request is that notice. The provider receives an instruction to check the current state before repeating anything, plus the carryover, in the same native session (`run_resume_points` keeps the session id as soon as the provider reports it).
-  - After a restart this happens on boot for turns active in the last 6 hours; after a provider or VM death it happens once, after a short backoff, unless the user wrote meanwhile.
-  - Never more than 2 continuations per original turn (`run_continuations` links each continuation to the turn it continues). Not for canceled turns, group turns, paused bots, or turns with unacknowledged `uncertain` work effects (the work notice waits for the user).
+  - After a restart this happens on boot for turns active in the last 6 hours; after a timeout, provider failure or network interruption, the first retry is immediate and the second waits one minute, unless the user wrote meanwhile. Pending deadlines survive a restart in `automatic_resume_jobs`.
+  - Never more than 2 continuations per original turn (`run_continuations` links each continuation to the turn it continues). The chat projects the chain into the original card and displays “Retomando automaticamente…” while retrying; manual recovery appears after exhaustion. Shared-channel continuations target only the interrupted member in the same channel and preserve the initiating person for browser control. Not for user-canceled turns, pending approvals, browser handoffs, credential/permission errors, paused bots, delegated turns without their caller, recorded writes or tools without a trusted read-only definition, or turns with unacknowledged `uncertain` work effects (the work notice waits for the user).
   - A routine run is continued within its original timeout instead of being marked canceled.
+  - Shared-channel turns own their member retries, using the same durable deadlines as direct conversations. Recovery completes the interrupted member before proceeding to other explicitly requested members; completed members are never replayed after restart.
+  - Recovery cards follow continuation ancestry, preserving the original card and latest terminal state even when history arrives in reverse order or timestamps tie. A new channel request interrupts an older recovery backoff immediately instead of waiting for its deadline.
+  - Stopping a pending recovery takes effect immediately; cancellation waits asynchronously for a competing database writer and finishes persisting before graceful shutdown.
+  - Optional goal controls load separately from the initial chat assets, preserving the 400 KB compressed startup budget.
+  - Goal reads recover from transient startup/connection failures with at most four delayed retries (500 ms, 1 s, 2 s, 4 s), including a temporary missing route. Reconnection and relevant thread/run events start a fresh read; superseded reads and unmount cancel pending requests and retries. A successful read, including `goal: null`, clears the old load error and stops retrying. Goal setup reports load errors separately from failed goal actions. An ordinary conversation with no known goal shows no optional goal-load banner; a known goal and its controls remain visible during a failed refresh. Message drafts, history, turn recovery and authorization checks are unchanged.
 
   This fixes the touri web bug where "sim, nesse ambiente" was lost.
 - **Error classification** (`RunErrorClass`), in priority order:
@@ -369,7 +391,7 @@ interrupted | failed(cli_crash, oom) ─► automatic continuation run (see belo
   - Codex server requests `item/commandExecution/requestApproval`, `item/fileChange/requestApproval` and `item/permissions/requestApproval`.
   - Claude calls the `approval_prompt` tool.
   - Each request becomes an `ApprovalPart` message plus a notification. The answer comes through `POST /approvals/:id`. Requests expire after 30 min and are then denied.
-- **Channel run identity.** A channel message creates a coordination turn and a linked member execution; only the member execution starts a provider. Activity, work snapshots and live run events retain the member's `groupTurnId`, so reloading cannot turn it into an independent channel turn. Work snapshots preserve the execution `threadId` and expose the visible channel as `groupThreadId`.
+- **Channel run identity.** A channel message creates a coordination turn and a linked member execution; only the member execution starts a provider. Run outputs identify these records with optional `kind` metadata: `coordination` for the channel turn and `execution` for a provider execution attempt. The kind is derived from the persisted coordination identity without a database migration, including restored runs, restart recovery and browser handback continuations. Consumers count execution attempts with `kind === "execution"`; failed attempts may finish before a provider starts. Activity, work snapshots and live run events retain the member's `groupTurnId`, so reloading cannot turn it into an independent channel turn. Work snapshots preserve the execution `threadId` and expose the visible channel as `groupThreadId`.
 - **Queued messages.** While a thread has an active run, new user messages create `queued` runs that start in order. The UI shows "queued" and allows canceling them.
 
 ### 3.5 Handoff packet (session replacement only)
@@ -501,8 +523,10 @@ Parar cancels the active group turn, its delegated work and pending group turns.
 or the coordinator requires idle group conversations. Eligible unfinished channel turns resume after
 restart and provider interruption, up to two automatic attempts recorded durably per original member
 turn. Completed members are not repeated. Stop remains authoritative while startup is waiting;
-no member starts after cancellation when the engine becomes ready. Stop, pending approvals and unconfirmed effects prevent
-automatic execution. A managed effect recorded in the durable work journal requires human review
+no member starts after cancellation when the engine becomes ready. Stop, pending approvals, recorded writes,
+tools without a trusted read-only definition and unconfirmed effects prevent automatic execution.
+The first retry is immediate; the second waits one minute, retaining its deadline across restart.
+A managed effect recorded in the durable work journal requires human review
 even if no reply part was saved; neither automatic recovery nor a simple retry may replay it.
 The manual resume action appears only after automatic recovery is exhausted or needs human review.
 A later reply to another channel request or from another member does not hide that action.
@@ -569,6 +593,17 @@ clears typing from the previous conversation while its work and history remain a
 Explicit rate-limit rejections retry the rejected message up to twice for waits of at most 30
 seconds, rechecking access each time. Command effects are acknowledged independently of their
 outgoing replies, so a delayed reply cannot block `/stop`.
+
+
+### Channel creation validation
+
+`POST /groups` defaults omitted `color` to `#dc2626`, `avatarShape` to
+`classic-none`, and `coordinatorBotId` to `null`. Explicit invalid values are
+rejected. Updates still require the full group input. Validation reports all invalid
+field names in `fields`, retains the first name in `field` for compatibility, and
+returns fixed messages for every reported field in `errorMessages["pt-BR"]` and
+`errorMessages.en`. `error` uses the Portuguese message. Submitted values are never
+echoed, and invalid requests do not create a group or conversation.
 
 ## 4. Projects, processes, secrets, preview (WP5; Preview pane UI in WP9, webview in WP1)
 
@@ -664,6 +699,37 @@ outgoing replies, so a delayed reply cannot block `/stop`.
 ## 5. Browser (WP6)
 
 ### 5.1 Engine choice: direct CDP to a headed Chrome
+
+On a Linux server without a display, or in `touri serve`, the managed browser automatically runs
+headless. Host screen capture and input tools are neither advertised nor callable when the host
+cannot implement them, even if an imported bot has computer control enabled. The UI offers host
+screen control only in a supported native desktop; a supported isolated machine keeps its own
+screen capability and approvals.
+
+Managed tabs share one Chromium process and startup promise, with a separate browser context per
+bot. Each bot can keep at most eight tabs, including popups; excess popups are closed immediately.
+Cancelling one caller does not interrupt another caller sharing startup; startup is cancelled when
+all waiting callers leave.
+After five minutes without a browser operation, the managed process is terminated and tab metadata
+is retained for reopening. Active operations and human takeover prevent idle shutdown. Attached
+personal browsers and visible isolated desktops retain their own lifecycle.
+
+Initial navigation and repeatable navigation commands get at most one retry within the caller's
+budget. A disconnected tab session is reattached before navigation is retried. The three-second
+startup handshake deadline does not shorten the normal CDP request budget. DNS and network
+failures retain their specific cause; deadline and renderer crash failures
+explain what stopped loading. Accessibility inspection has a four-second budget, at most 200 nodes
+and 16 frame sessions. When inspection runs out of time, the current page text is returned with
+`truncated: true`, without inventing element references. A snapshot, including the wait behind an
+earlier tab operation, has a maximum 20-second engine budget. Private takeover documents remain
+redacted in partial results. Cancellation stops new CDP work and interrupts loading/evaluation.
+
+If a live preview has not arrived within 15 seconds, the viewer stops automatic reconnection and
+shows a clear failure with **Retry preview**. Retrying starts a fresh first-frame deadline; the
+task's stop control remains available. A preview hidden for privacy or disabled in preferences does
+not start this deadline or offer a retry. Background tabs and offscreen cards pause the deadline
+until the reader returns. Failure status is announced to assistive technology.
+All recovery copy is available in Portuguese and English.
 
 `Bot.browser` selects the launcher per bot: `touri` (**Chrome do touri**, default), `local`
 (**Meu Chrome**, opt-in), or `machine` (**Chrome da máquina**, Linux VM). Migration 0019 keeps
@@ -1317,6 +1383,18 @@ Rules for every WP:
       from a nested conversation menu closes that menu first. Deletion retains confirmation and undo.
     - center: thread list + chat
     - right panel tabs: Preview | Processes | Browser
+  - Work channels:
+    - The right panel contains only the channel avatar, name, member list and Edit channel action.
+      Turn results, copied replies, member role descriptions and person labels stay out of this panel.
+    - People use their account handle and the same avatar seed as their messages, including the header
+      member pill and sidebar footer. Bots show their name and one short Available/Working status.
+      Long footer handles truncate visually without covering notifications; their full text remains accessible.
+    - The sidebar omits a child conversation whose name repeats the channel name. Routine children
+      use localized short dates: `<routine> · 22 out` in Portuguese, without stored US date/time suffixes.
+    - A delivered message shows its sender and time without a delivery confirmation label. Pending
+      sends and failures remain visible. The channel composer placeholder contains only the channel name.
+    - Return to bottom has reserved space above the composer and bottom padding in the message list;
+      it never overlays message text, on desktop or phone.
   - Chat:
     - Markdown (react-markdown + remark-gfm + shiki)
     - streaming

@@ -236,7 +236,7 @@ test("platform support requires the execution environment and keeps Linux host c
   const support = (capability: "browser" | "computer_use", env = {}) =>
     capabilitySupport(f.runtime.kernel, f.bot(), capability, { platform: "linux", env, which: () => "/test/browser" })
   expect(support("computer_use")).toContain("não é suportado")
-  expect(support("browser")).toContain("sessão gráfica")
+  expect(support("browser")).toBeNull()
   expect(support("browser", { TOURI_BROWSER_HEADLESS: "1" })).toBeNull()
   expect(
     capabilitySupport(f.runtime.kernel, f.bot(), "browser", {

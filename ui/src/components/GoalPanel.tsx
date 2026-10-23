@@ -1,6 +1,7 @@
 import type { Bot, Goal, GoalControl, Id, Message } from "@touri/contracts"
 import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
+import { ApiError } from "../errors"
 import { type TranslationKey, t } from "../i18n"
 import { ChatDisclosure } from "./ChatDisclosure"
 import "./goal-panel.css"
@@ -45,34 +46,49 @@ export const GoalPanel = ({
   const hasScope = bot.machine === "local" && !!(bot.projectId || bot.folders?.length || bot.anyFolderAccess)
 
   useEffect(() => {
-    let alive = true
-    const refresh = async () => {
+    // Timer and controller ownership stay local to this subscription's lifecycle.
+    let controller = new AbortController()
+    let retryTimer: ReturnType<typeof setTimeout> | undefined
+    const readGoal = async (signal: AbortSignal, attempt = 0): Promise<void> => {
       try {
-        const response = await api.request("GET /threads/:id/goal", {}, { id: threadId })
-        if (!alive) return
+        const response = await api.request("GET /threads/:id/goal", {}, { id: threadId }, { signal })
+        if (signal.aborted) return
         setGoal((current) =>
           current && response.goal && current.updatedAt > response.goal.updatedAt ? current : response.goal,
         )
         setLoaded(true)
         setLoadFailed(false)
         setNow(Date.now())
-      } catch {
-        if (alive) setLoadFailed(true)
+      } catch (error) {
+        if (signal.aborted) return
+
+        setLoadFailed(true)
+        const delay = getGoalReadRetryDelay(error, attempt)
+        if (delay === undefined) return
+
+        retryTimer = setTimeout(() => void readGoal(signal, attempt + 1), delay)
       }
     }
-    refreshGoal.current = () => void refresh()
+    const refresh = () => {
+      controller.abort()
+      clearTimeout(retryTimer)
+      controller = new AbortController()
+      void readGoal(controller.signal)
+    }
+    refreshGoal.current = refresh
     const unsubscribe = api.subscribe(({ event }) => {
       const isThreadUpdate = event.type === "thread.updated" && event.thread.id === threadId
       const isRunUpdate = event.type === "run.updated" && event.run.threadId === threadId
-      if (isThreadUpdate || isRunUpdate) void refresh()
+      if (isThreadUpdate || isRunUpdate) refresh()
     })
     const unsubscribeConnection = api.subscribeConnection?.((connected) => {
-      if (connected) void refresh()
+      if (connected) refresh()
     })
-    void refresh()
+    refresh()
 
     return () => {
-      alive = false
+      controller.abort()
+      clearTimeout(retryTimer)
       unsubscribe()
       unsubscribeConnection?.()
       refreshGoal.current = () => {}
@@ -181,7 +197,8 @@ export const GoalPanel = ({
     surface === "standalone"
       ? !goal || goal.status === "completed"
       : surface === "entry" && loaded && (!goal || goal.status === "completed")
-  const showError = failed || loadFailed
+  const showLoadError = loadFailed && (surface !== "chat" || goal !== null)
+  const showError = failed || showLoadError
 
   if (!showCheckpoint && !showEntry && !showError && !showStarted) return null
 
@@ -289,7 +306,7 @@ export const GoalPanel = ({
           )}
         </ChatDisclosure>
       )}
-      {showError && <p role="alert">{t("Goal request failed")}</p>}
+      {showError && <p role="alert">{t(failed ? "Goal request failed" : "Goal load failed")}</p>}
     </section>
   )
 }
@@ -313,4 +330,18 @@ const getStatusKey = (status: Goal["status"]): TranslationKey => {
     completed: "Goal completed",
   }
   return labels[status]
+}
+
+const getGoalReadRetryDelay = (error: unknown, attempt: number): number | undefined => {
+  const isTransient =
+    error instanceof TypeError ||
+    (error instanceof ApiError &&
+      (error.status === 0 ||
+        error.status === 404 ||
+        error.status === 408 ||
+        error.status === 429 ||
+        error.status >= 500))
+  if (!isTransient) return undefined
+
+  return [500, 1000, 2000, 4000][attempt]
 }

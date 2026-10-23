@@ -31,6 +31,22 @@ const sendMentionNotifications = (kernel: Kernel, message: Message): void => {
   ).map((bot) => ({ ...bot, id: `bot:${bot.id}` }))
   const mentioned = getMentionedPeople(message.text, [...people, ...botNames])
 
+  if (message.role === "user" && message.sender?.kind === "integration") {
+    people
+      .filter((person) => !mentioned.some(({ id }) => id === person.id))
+      .forEach((person) => {
+        kernel.services.use("notify.emit")?.({
+          kind: "notice",
+          botId: null,
+          threadId: thread.id,
+          targetPersonId: person.id,
+          requestId: `integration:${message.id}:${person.id}`,
+          title: `${author} · #${channel}`,
+          body: getRedactedExcerpt(kernel, message.text, 500),
+        })
+      })
+  }
+
   mentioned
     .filter((person) => person.id !== authorId && people.some(({ id }) => id === person.id))
     .forEach((person) => {

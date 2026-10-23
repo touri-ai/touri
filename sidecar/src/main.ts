@@ -260,6 +260,11 @@ const usage = (): void => {
 
 const main = async (): Promise<void> => {
   const [mode = "serve", ...rest] = process.argv.slice(2)
+  if (mode === "store-read") {
+    const { runStoreRead } = await import("./store/read-process")
+    await runStoreRead()
+    return
+  }
   if (mode === "write-bot-home") {
     const { runBotHomeWriter } = await import("./store/bot-home")
     try {

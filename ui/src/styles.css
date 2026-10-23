@@ -4353,8 +4353,11 @@ a {
   min-height: 0;
   min-width: 0;
 }
+.chat-message-list:has(.chat-scroll-bottom) {
+  padding-bottom: 64px;
+}
 .chat-message-list .message-scroll {
-  padding-block: var(--space-16) var(--space-24);
+  padding-block: var(--space-16) 64px;
   overflow-anchor: none;
 }
 .chat-message-list .message-row {

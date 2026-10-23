@@ -148,7 +148,7 @@ CREATE TABLE messages (
   run_id       TEXT REFERENCES runs(id) ON DELETE SET NULL,
   text         TEXT NOT NULL DEFAULT '',           -- plain text for search and handoff
   parts_json   TEXT NOT NULL DEFAULT '[]',         -- MessagePart[]; reasoning may include optional estimatedTokens with empty text
-  sender_json  TEXT,                               -- {name, id} for routine / peer / import senders
+  sender_json  TEXT,                               -- {name, id, avatarSeed?, kind?: person|integration}; server-authenticated identity
   source       TEXT NOT NULL DEFAULT 'local' CHECK (source IN ('local','legacy')),
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL,
@@ -337,4 +337,5 @@ UPDATE schema_meta SET value = '6' WHERE key = 'schema_version';
 
 -- Group actions use notice parts (group_ask_all / group_summary) in messages.parts_json.
 -- Run.groupTurnId is a read projection of group_run_links.turn_id; no extra persisted state.
+-- Run.kind is 'coordination' for group_turns.run_id and 'execution' otherwise; no migration needed.
 -- ApprovalPart.groupMemberId is optional metadata in messages.parts_json for delegation waiting states.

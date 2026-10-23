@@ -679,6 +679,7 @@ export const createKernel = ({
   const stop = (): Promise<void> => {
     if (stopPromise) return stopPromise
     stopPromise = (async () => {
+      await services.use("notify.recovery")?.dispose()
       diagnostics.stop()
       clearInterval(revocationTimer)
       revocationTask.dispose()

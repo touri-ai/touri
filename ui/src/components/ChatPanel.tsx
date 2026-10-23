@@ -65,6 +65,7 @@ import { ActivityMark } from "./ActivityMark"
 import { ApprovalCard } from "./ApprovalCard"
 import { useAvatarBot, useMascotSnapshot, useMessageMascotState, useThreadBot } from "./AvatarRuntime"
 import { withApprovalAnswers } from "./activityStatus"
+import { getAutomaticResumeMessages } from "./automaticResumeMessages"
 import { BotAvatar } from "./BotAvatar"
 import { BrowserActivityControlsProvider } from "./BrowserActivityControls"
 import { getBrowserActivityTools } from "./browserActivityPresentation"
@@ -73,13 +74,13 @@ import { getBrowserRequestMessages } from "./browserRequestMessages"
 import { ChatDisclosure } from "./ChatDisclosure"
 import { ConnectDataCard, connectDataMarker } from "./ConnectDataCard"
 import { ConversationStart } from "./ConversationStart"
+import { DeferredGoalPanel as GoalPanel } from "./DeferredGoalPanel"
 import { Disclosure } from "./Disclosure"
 import { DraftComposer, type DraftComposerHandle } from "./DraftComposer"
 import { ErrorDetails, ErrorText } from "./ErrorDetails"
 import { ErrorNotice } from "./ErrorNotice"
 import { EvidenceContext } from "./EvidenceGallery"
 import { FailureActionContext } from "./FailureActionContext"
-import { GoalPanel } from "./GoalPanel"
 import { MachineServiceButton } from "./MachineServiceButton"
 import { MachineStatus } from "./MachineStatus"
 import { MarkdownContent } from "./MarkdownContent"
@@ -87,6 +88,7 @@ import { MessageAttachments } from "./MessageAttachments"
 import { useInsertedIds } from "./Motion"
 import { mascotSignalFor } from "./mascotState"
 import { PanelIcon } from "./PanelIcon"
+import { PersonAvatar } from "./PersonAvatar"
 import { ToolCallList } from "./ToolCallList"
 import { ToolText } from "./ToolOutput"
 import { BrowserTurnCard, TurnActivity } from "./TurnActivity"
@@ -193,10 +195,9 @@ export const activeMessagePath = (messages: Array<Message>, leafId: Id | null): 
 
 const deliveryLabels = {
   queued: "Na fila · aguardando conexão",
-  sent: t("Sending message…"),
-  acked: "Entregue",
+  sent: "Sending message…",
   failed: "Falha na entrega",
-}
+} as const
 const routineTriggerKeys: Record<RoutineRun["triggerSource"], TranslationKey> = {
   cron: "Routine trigger scheduled",
   manual: "Routine trigger manual",
@@ -255,7 +256,10 @@ export const VirtualMessageList = ({
   header,
   timelineCards = emptyTimelineCards,
 }: VirtualMessageListProps) => {
-  const messages = useMemo(() => getBrowserRequestMessages(sourceMessages, runs), [sourceMessages, runs])
+  const messages = useMemo(
+    () => getAutomaticResumeMessages(getBrowserRequestMessages(sourceMessages, runs), runs),
+    [sourceMessages, runs],
+  )
   const locale = getDocumentLocale(document.documentElement)
   const browserContinuations = useMemo(() => getBrowserContinuationActivities(messages, runs), [messages, runs])
   // r8 motion: immutable IDs drive text entry, never streaming tokens or status/cards.
@@ -768,7 +772,10 @@ const MessageBubble = ({
   const runtimeState = useMessageMascotState(message, run)
   const threadBot = useThreadBot(message.threadId)
   const senderBot = useAvatarBot(message.sender?.id ?? null)
-  const personSender = message.role === "user" && message.sender?.kind === "person" ? message.sender : null
+  const personSender =
+    message.role === "user" && (message.sender?.kind === "person" || message.sender?.kind === "integration")
+      ? message.sender
+      : null
   const messageFromOtherPerson = Boolean(personSender && personSender.id !== currentPersonId)
   const personMessageClass = messageFromOtherPerson ? "message-user message-other-person" : "message-user"
   const messageClass = message.role === "user" ? personMessageClass : "message-assistant"
@@ -862,7 +869,7 @@ const MessageBubble = ({
     )
   }
   const matchedApprovals = approvalTools(parts)
-  const failure = runErrorFor(message, run, machine?.status === "running")
+  const failure = run?.automaticResumePending ? null : runErrorFor(message, run, machine?.status === "running")
   const runError =
     vmBotId &&
     (machine?.status === "running" || machine?.status === "starting") &&
@@ -1012,11 +1019,9 @@ const MessageBubble = ({
         <div className="message-meta">
           {personSender && (
             <span className="message-sender-avatar" aria-hidden="true">
-              <BotAvatar
-                bot={{ id: personSender.id, color: null, avatarSeed: personSender.avatarSeed ?? personSender.id }}
+              <PersonAvatar
+                person={{ id: personSender.id, avatarSeed: personSender.avatarSeed ?? personSender.id }}
                 size={22}
-                state="idle"
-                still
               />
             </span>
           )}
@@ -1035,6 +1040,9 @@ const MessageBubble = ({
               </span>
             ))}
           <span className="message-role">{messageRoleLabel}</span>
+          {message.sender?.kind === "integration" && (
+            <span className="message-sender-kind">{t("Integração", {}, locale)}</span>
+          )}
           <time dateTime={new Date(message.createdAt).toISOString()}>
             {new Date(message.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
           </time>
@@ -1043,9 +1051,9 @@ const MessageBubble = ({
               {getBrowserRunLabel()}
             </span>
           )}
-          {message.role === "user" && message.delivery && (
+          {message.role === "user" && message.delivery && message.delivery.status !== "acked" && (
             <span className="delivery-state" role="status">
-              {deliveryLabels[message.delivery.status]}
+              {t(deliveryLabels[message.delivery.status], {}, locale)}
             </span>
           )}
           {message.status === "canceled" && (
@@ -1204,6 +1212,17 @@ const MessageBubble = ({
             <PanelIcon name="chevron-right" />
           </button>
         </fieldset>
+      )}
+      {(run?.automaticResumePending ||
+        (run?.automaticResumeFromRunId && ["queued", "starting", "running"].includes(run.status))) && (
+        <p className="run-resumed-marker" role="status">
+          {t("Retomando automaticamente…")}
+        </p>
+      )}
+      {run?.automaticResumePending && onCancel && (
+        <button type="button" className="text-button" onClick={() => void onCancel(run.id)}>
+          {t("Stop reply button")}
+        </button>
       )}
       {resolvedInterruption && (
         <p className="run-resumed-marker" role="note">

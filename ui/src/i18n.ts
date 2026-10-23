@@ -11,6 +11,11 @@ export const ptBR = {
   "Atualizar agora": "Atualizar agora",
   "Não foi possível atualizar. Tente novamente.": "Não foi possível atualizar. Tente novamente.",
 
+  "Integration write scope required": "Este envio exige um token de administrador com permissão para integrações.",
+  "Integrations can post only ordinary channel messages": "Integrações só podem enviar mensagens comuns em canais.",
+  "Use a distinct integration name of 1 to 80 letters, numbers, spaces, dots, underscores or hyphens":
+    "Escolha um nome diferente de pessoas e bots, com até 80 letras, números, espaços, pontos, sublinhados ou hífens.",
+  Integração: "Integração",
   "body: envie um objeto JSON com os dados do grupo.": "body: envie um objeto JSON com os dados do grupo.",
   "name: informe um nome não vazio com até 80 caracteres.": "name: informe um nome não vazio com até 80 caracteres.",
   "color: informe uma cor hexadecimal válida, como #dc2626.":
@@ -320,6 +325,7 @@ export const ptBR = {
   "Goal budget edit help":
     "O limite de turnos é o total, incluindo os já usados. O tempo conta a partir de agora. Salvar não retoma o trabalho.",
   "Goal wait for turn": "Aguarde o turno atual terminar para ativar.",
+  "Goal load failed": "Não foi possível carregar o objetivo. Confira a conexão e tente novamente.",
   "Goal request failed":
     "Não foi possível carregar ou alterar o objetivo. Confira a conexão, as pastas autorizadas e os limites e tente novamente.",
   "Goal active": "Em andamento",
@@ -752,6 +758,23 @@ export const ptBR = {
   "Preparing the browser…": "Preparando o navegador…",
   "The browser is taking longer than expected. Trying to reconnect…":
     "O navegador está demorando mais que o esperado. Tentando reconectar…",
+  "The browser did not send a preview in time. Retry the preview or stop the task.":
+    "O navegador não enviou a prévia no prazo. Tente carregar a prévia novamente ou pare a tarefa.",
+  "Retry preview": "Tentar carregar prévia novamente",
+  "O navegador encerrou por possível falta de memória. Feche abas ou libere memória no servidor e tente novamente.":
+    "O navegador encerrou por possível falta de memória. Feche abas ou libere memória no servidor e tente novamente.",
+  "O processo do navegador encerrou inesperadamente. Tente abrir a página novamente.":
+    "O processo do navegador encerrou inesperadamente. Tente abrir a página novamente.",
+  "A página encerrou por falta de memória. Tente novamente com menos abas abertas.":
+    "A página encerrou por falta de memória. Tente novamente com menos abas abertas.",
+  "A página do navegador encerrou inesperadamente. Tente abrir novamente.":
+    "A página do navegador encerrou inesperadamente. Tente abrir novamente.",
+  "Partial page: reading was bounded. Use a fresh snapshot or scroll for more content.":
+    "Página parcial: a leitura atingiu o limite de tempo. Leia novamente ou role para ver mais conteúdo.",
+  "This bot already has the maximum of 8 browser tabs. Close a tab before opening another.":
+    "Este bot já tem o máximo de 8 abas. Feche uma aba antes de abrir outra.",
+  "Browser page crashed: out of memory": "A página encerrou por falta de memória",
+  "Browser page crashed": "A página encerrou inesperadamente",
   "Why {name} stopped": "Por que {name} parou",
   "{name} paused so you can handle this step in the browser.":
     "{name} pausou para você cuidar deste passo no navegador.",
@@ -982,6 +1005,7 @@ export const ptBR = {
     "A resposta foi interrompida. Algumas ações podem ter sido concluídas.",
   "Ver ações realizadas": "Ver ações realizadas",
   "Retomar tarefa": "Retomar tarefa",
+  "Retomando automaticamente…": "Retomando automaticamente…",
   "Ver tarefa": "Ver tarefa",
   "Verificar ambiente": "Verificar ambiente",
   "Não foi possível concluir esta ação. Confira os detalhes do erro.":
@@ -1760,7 +1784,7 @@ export const ptBR = {
   "Remove attached file": "Remover {name}",
   "Message to bot": "Mensagem para {name}",
   "Os bots só respondem quando você os chama com @nome.": "Os bots só respondem quando você os chama com @nome.",
-  "Message in channel": "Mensagem em #{name} · @ chama um bot",
+  "Message in channel": "Mensagem em #{name}",
   "Mention member": "Mencionar membro",
   "Composer keyboard help":
     "Enter envia. Shift+Enter insere uma nova linha. Durante uma resposta, a mensagem entra na fila.",
@@ -1768,6 +1792,8 @@ export const ptBR = {
   "Stopping reply…": "Parando…",
   "Stop reply button": "Parar",
   "Sending message…": "Enviando…",
+  "Na fila · aguardando conexão": "Na fila · aguardando conexão",
+  "Falha na entrega": "Falha na entrega",
   "Queue message": "Adicionar à fila",
   "Send message button": "Enviar mensagem",
   "Attaching files…": "Anexando arquivos…",
@@ -3321,6 +3347,11 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Atualizar agora": "Update now",
   "Não foi possível atualizar. Tente novamente.": "Could not update. Try again.",
 
+  "Integration write scope required": "This send requires an administrator token with integration write permission.",
+  "Integrations can post only ordinary channel messages": "Integrations can post only ordinary channel messages.",
+  "Use a distinct integration name of 1 to 80 letters, numbers, spaces, dots, underscores or hyphens":
+    "Choose a name different from people and bots, using up to 80 letters, numbers, spaces, dots, underscores or hyphens.",
+  Integração: "Integration",
   "body: envie um objeto JSON com os dados do grupo.": "body: send a JSON object containing the group details.",
   "name: informe um nome não vazio com até 80 caracteres.": "name: enter a non-empty name with at most 80 characters.",
   "color: informe uma cor hexadecimal válida, como #dc2626.":
@@ -3726,6 +3757,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Goal budget edit help":
     "The turn limit includes turns already used. Time starts from now. Saving does not resume work.",
   "Goal wait for turn": "Wait for the current turn to finish before enabling.",
+  "Goal load failed": "Could not load the goal. Check the connection and try again.",
   "Goal request failed":
     "Could not load or change the goal. Check the connection, authorized folders and limits, then try again.",
   "Goal active": "In progress",
@@ -3981,6 +4013,23 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "The bot works on the selected server without accessing this device.",
   "Neste servidor": "On this server",
   "Modo servidor": "Server mode",
+  "The browser did not send a preview in time. Retry the preview or stop the task.":
+    "The browser did not send a preview in time. Retry the preview or stop the task.",
+  "Retry preview": "Retry preview",
+  "O navegador encerrou por possível falta de memória. Feche abas ou libere memória no servidor e tente novamente.":
+    "The browser stopped, possibly because it ran out of memory. Close tabs or free server memory and retry.",
+  "O processo do navegador encerrou inesperadamente. Tente abrir a página novamente.":
+    "The browser process stopped unexpectedly. Try opening the page again.",
+  "A página encerrou por falta de memória. Tente novamente com menos abas abertas.":
+    "The page ran out of memory. Try again with fewer tabs open.",
+  "A página do navegador encerrou inesperadamente. Tente abrir novamente.":
+    "The browser page stopped unexpectedly. Try opening it again.",
+  "Partial page: reading was bounded. Use a fresh snapshot or scroll for more content.":
+    "Partial page: reading was bounded. Use a fresh snapshot or scroll for more content.",
+  "This bot already has the maximum of 8 browser tabs. Close a tab before opening another.":
+    "This bot already has the maximum of 8 browser tabs. Close a tab before opening another.",
+  "Browser page crashed: out of memory": "Browser page crashed: out of memory",
+  "Browser page crashed": "Browser page crashed",
   "Servidor offline. Tentando reconectar…": "Server offline. Trying to reconnect…",
   "Servidor offline. Suas mensagens ficam na fila e serão enviadas ao reconectar.":
     "Server offline. Your messages are queued and will be sent when the connection returns.",
@@ -4163,6 +4212,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "The response was interrupted. Some actions may have completed.",
   "Ver ações realizadas": "View recorded actions",
   "Retomar tarefa": "Resume task",
+  "Retomando automaticamente…": "Resuming automatically…",
   "Ver tarefa": "View task",
   "Verificar ambiente": "Check environment",
   "Não foi possível concluir esta ação. Confira os detalhes do erro.":
@@ -4932,13 +4982,15 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Remove attached file": "Remove {name}",
   "Message to bot": "Message to {name}",
   "Os bots só respondem quando você os chama com @nome.": "Bots only reply when you call them with @name.",
-  "Message in channel": "Message #{name} · @ calls a bot",
+  "Message in channel": "Message in #{name}",
   "Mention member": "Mention member",
   "Composer keyboard help": "Enter sends. Shift+Enter adds a new line. During a reply, your message joins the queue.",
   "Stop reply": "Stop reply",
   "Stopping reply…": "Stopping…",
   "Stop reply button": "Stop",
   "Sending message…": "Sending…",
+  "Na fila · aguardando conexão": "Queued · waiting for connection",
+  "Falha na entrega": "Delivery failed",
   "Queue message": "Add to queue",
   "Send message button": "Send message",
   "Attaching files…": "Attaching files…",

@@ -5,12 +5,12 @@ import { useChannelPeople } from "../features/channelBrowser/useChannelPeople"
 import { t } from "../i18n"
 import { BotAvatar } from "./BotAvatar"
 import { getGroupProjection, getIdleMemberState } from "./groupProjection"
+import { PersonAvatar } from "./PersonAvatar"
 import "./groups.css"
 
 export const GroupPanel = ({
   group,
   api,
-  currentPersonId,
   bots,
   threadId,
   messages = [],
@@ -21,7 +21,6 @@ export const GroupPanel = ({
 }: {
   group: BotGroup
   api?: UiApi | null | undefined
-  currentPersonId?: string | null | undefined
   bots: Bot[]
   threadId?: string | undefined
   messages?: Message[]
@@ -38,7 +37,7 @@ export const GroupPanel = ({
 
   return (
     <aside
-      className="bot-panel group-panel"
+      className={`bot-panel group-panel${channelMode ? " channel-panel" : ""}`}
       id="bot-panel"
       aria-label={t(channelMode ? "Channel panel for {name}" : "Painel do grupo {name}", { name: group.name })}
     >
@@ -66,7 +65,7 @@ export const GroupPanel = ({
           className="group-context-members group-status-members"
           aria-label={t(channelMode ? "Channel members" : "Membros do grupo")}
         >
-          <ChannelPeople people={people} currentPersonId={currentPersonId} />
+          <ChannelPeople people={people} />
           {bots.map((bot) => {
             const member = members.get(bot.id) ?? getIdleMemberState()
             return (
@@ -74,9 +73,11 @@ export const GroupPanel = ({
                 <BotAvatar bot={bot} size={28} />
                 <div>
                   <strong>{bot.name}</strong>
-                  <small>{t(channelMode ? "Bot" : getMemberRole(bot.id, group.coordinatorBotId))}</small>
-                  {bot.roleLine && <small>{bot.roleLine}</small>}
-                  <span className={`group-member-state group-member-state-${member.state}`}>{t(member.label)}</span>
+                  {!channelMode && <small>{t(getMemberRole(bot.id, group.coordinatorBotId))}</small>}
+                  {!channelMode && bot.roleLine && <small>{bot.roleLine}</small>}
+                  <span className={`group-member-state group-member-state-${member.state}`}>
+                    {t(channelMode ? getChannelMemberLabel(member.state) : member.label)}
+                  </span>
                   {!channelMode && (
                     <p className="group-member-result">{member.result || t("Sem resultado confirmado.")}</p>
                   )}
@@ -128,26 +129,21 @@ export const GroupPanel = ({
   )
 }
 
-const ChannelPeople = ({
-  people,
-  currentPersonId,
-}: {
-  people: ChannelPerson[]
-  currentPersonId?: string | null | undefined
-}) =>
+const ChannelPeople = ({ people }: { people: ChannelPerson[] }) =>
   people.map((person) => (
     <li key={`person:${person.id}`}>
-      <span className="channel-person-avatar" aria-hidden="true">
-        {Array.from(person.name.trim())[0]?.toLocaleUpperCase("pt-BR")}
-      </span>
+      <PersonAvatar person={person} />
       <div>
-        <strong>{person.id === currentPersonId ? t("Você") : person.name}</strong>
-        <small>
-          {t("Person")} · @{person.handle ?? person.name}
-        </small>
+        <strong>{person.handle ?? person.name}</strong>
       </div>
     </li>
   ))
+
+const getChannelMemberLabel = (state: string) => {
+  if (state === "working" || state === "waiting") return "Trabalhando"
+
+  return "Disponível"
+}
 
 const getMemberRole = (botId: string, coordinatorId: string | null) => {
   if (botId === coordinatorId) return "Coordenador"

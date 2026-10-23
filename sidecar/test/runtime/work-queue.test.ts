@@ -204,49 +204,64 @@ test("work snapshots identify routine, delegated and resumed turns and restore q
   })
   fixture.addCleanup(() => replacement.shutdown())
 
+  await replacement.ready
+  await waitFor(
+    () => replacement.getWorkRuns().length === 5 && replacement.getWorkRuns().some((run) => run.status === "running"),
+  )
   const restored = replacement.getWorkRuns().filter((run) => run.status === "queued")
 
-  expect(restored.slice(0, 2).map((run) => run.id)).toEqual(waitingIds)
-  expect(restored.map((run) => run.queuePosition)).toEqual([1, 2, 3, 4, 5])
-  expect(restored.every((run) => run.queueTotal === 5)).toBe(true)
-  expect(restored.slice(2).map((run) => run.origin)).toEqual(["resume", "resume", "resume"])
+  expect(replacement.getWorkRuns().find((run) => run.status === "running")?.id).toBe(waitingIds[0])
+  expect(restored[0]?.id).toBe(waitingIds[1])
+  expect(restored.map((run) => run.queuePosition)).toEqual([1, 2, 3, 4])
+  expect(restored.every((run) => run.queueTotal === 4)).toBe(true)
+  expect(restored.slice(1).map((run) => run.origin)).toEqual(["resume", "resume", "resume"])
 })
 
-test("authenticated people keep message origin in live and persisted work snapshots", async () => {
-  const fixture = await getFixture()
-  const signal = new AbortController().signal
-  bindDeviceSession(signal, {
-    deviceId: "admin-device",
-    person: { id: "owner", name: "Admin", email: null, avatarSeed: "admin", role: "admin" },
-    active: () => true,
-  })
-  const store = fixture.runtime.kernel.services.use("store.api")
-  if (!store) throw new Error("Store unavailable")
-  const request = store.insertMessage({
-    message: {
-      id: "human-request",
+test.each(["person", "integration"] as const)(
+  "%s requests keep message origin in live and persisted work snapshots",
+  async (kind) => {
+    const fixture = await getFixture()
+    const signal = new AbortController().signal
+    bindDeviceSession(signal, {
+      deviceId: "admin-device",
+      person: { id: "owner", name: "Admin", email: null, avatarSeed: "admin", role: "admin" },
+      active: () => true,
+    })
+    const store = fixture.runtime.kernel.services.use("store.api")
+    if (!store) throw new Error("Store unavailable")
+    const request = store.insertMessage({
+      message: {
+        id: "human-request",
+        threadId: "thread-0",
+        parentId: null,
+        role: "user",
+        kind: "text",
+        status: "complete",
+        runId: null,
+        text: "Crie um time de demonstração.",
+        parts: [],
+        sender:
+          kind === "integration"
+            ? { id: "integration:script", name: "touri avisos", kind }
+            : authenticatedSender(signal),
+        source: "local",
+      },
+    })
+    if (!request.success) throw new Error(request.error)
+
+    const result = fixture.engine.enqueue({
       threadId: "thread-0",
-      parentId: null,
-      role: "user",
-      kind: "text",
-      status: "complete",
-      runId: null,
-      text: "Crie um time de demonstração.",
-      parts: [],
-      sender: authenticatedSender(signal),
-      source: "local",
-    },
-  })
-  if (!request.success) throw new Error(request.error)
+      requestMessageId: request.message.id,
+      trigger: "user",
+    })
+    if (!result.success) throw new Error(result.error)
+    const persisted = createRuntimePersistence({ database: fixture.runtime.kernel.db })
 
-  const result = fixture.engine.enqueue({ threadId: "thread-0", requestMessageId: request.message.id, trigger: "user" })
-  if (!result.success) throw new Error(result.error)
-  const persisted = createRuntimePersistence({ database: fixture.runtime.kernel.db })
-
-  expect(fixture.engine.getRunSnapshot(result.run).origin).toBe("message")
-  expect(fixture.engine.getWorkRuns().find((run) => run.id === result.run.id)?.origin).toBe("message")
-  expect(persisted.getRunSnapshots([result.run.id])[0]?.origin).toBe("message")
-})
+    expect(fixture.engine.getRunSnapshot(result.run).origin).toBe("message")
+    expect(fixture.engine.getWorkRuns().find((run) => run.id === result.run.id)?.origin).toBe("message")
+    expect(persisted.getRunSnapshots([result.run.id])[0]?.origin).toBe("message")
+  },
+)
 
 test("group work preserves execution thread IDs in every event and keeps learning scoped to private chats", async () => {
   const fixture = await getFixture()
@@ -335,16 +350,19 @@ test("one channel message starts one provider and preserves its parent turn in l
 
   const result = runtime.enqueue({ threadId: channel.id, requestMessageId: request.message.id, trigger: "user" })
   if (!result.success) throw new Error(result.error)
+  const repeated = runtime.enqueue({ threadId: channel.id, requestMessageId: request.message.id, trigger: "user" })
   await waitFor(() => startTurn.mock.calls.length === 1)
   const work = fixture.engine.getWorkRuns()
   const execution = work[0]
   if (!execution) throw new Error("Missing member execution")
 
+  expect(repeated).toMatchObject({ success: true, run: { id: result.run.id, kind: "coordination" } })
   expect(work).toHaveLength(1)
-  expect(execution).toMatchObject({ groupTurnId: result.run.id, groupThreadId: channel.id })
+  expect(execution).toMatchObject({ kind: "execution", groupTurnId: result.run.id, groupThreadId: channel.id })
+  expect(fixture.engine.getRunSnapshot(result.run)).toMatchObject({ kind: "coordination" })
   expect(execution.threadId).not.toBe(channel.id)
   expect(runtime.listRuns(channel.id)).toHaveLength(2)
-  expect(fixture.getEvent(execution.id)).toMatchObject({ groupTurnId: result.run.id })
+  expect(fixture.getEvent(execution.id)).toMatchObject({ kind: "execution", groupTurnId: result.run.id })
   fixture.finish(execution.threadId)
   await waitFor(() => fixture.getEvent(execution.id)?.status === "succeeded")
   expect(

@@ -12,6 +12,7 @@ test("runtime persistence restores the person who requested a run", () => {
       queued_at INTEGER NOT NULL, started_at INTEGER, finished_at INTEGER, provider_started_at INTEGER,
       requester_person_id TEXT
     );
+    CREATE TABLE group_turns (run_id TEXT PRIMARY KEY, group_id TEXT NOT NULL, recipients_json TEXT NOT NULL);
   `)
   try {
     const persistence = createRuntimePersistence({ database })

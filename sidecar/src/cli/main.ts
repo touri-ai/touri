@@ -2,6 +2,11 @@ import { parseCli, usageText } from "./args"
 import { runCommandLine } from "./commands"
 
 const main = async (): Promise<void> => {
+  if (process.argv[2] === "store-read") {
+    const { runStoreRead } = await import("../store/read-process")
+    await runStoreRead()
+    return
+  }
   if (process.argv[2] === "write-bot-home") {
     const { runBotHomeWriter } = await import("../store/bot-home")
     const { createAppPaths } = await import("../kernel/paths")

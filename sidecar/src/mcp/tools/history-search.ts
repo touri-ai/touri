@@ -1,5 +1,8 @@
+import type { Database } from "bun:sqlite"
 import type { Kernel, ToolHandler } from "@touri/contracts"
 import { consentToPrivateHistory, groupHistoryThread } from "../../groups/privacy"
+import { createStoreReader } from "../../store/reader"
+import { getAsyncSearchHits } from "../../store/search-query"
 
 type SearchArgs = { query: string; threadId?: string; limit?: number }
 
@@ -46,10 +49,15 @@ export const createHistorySearchHandler =
         }
       }
     } else await store.flushWritesAsync?.({ threadId })
-    const results =
-      threadId === undefined
-        ? store.search({ q: input.query, botId: ctx.botId, limit: input.limit ?? 10 })
-        : store.search({ q: input.query, ...(shared ? {} : { botId: ctx.botId }), threadId, limit: input.limit ?? 10 })
+    const reader = createStoreReader((kernel.db as Database).filename)
+    const searchInput = {
+      q: input.query,
+      ...(shared ? {} : { botId: ctx.botId }),
+      ...(threadId === undefined ? {} : { threadId }),
+      limit: input.limit ?? 10,
+    }
+    const results = await getAsyncSearchHits(reader, searchInput, ctx.signal).finally(reader.dispose)
+
     return {
       success: true,
       content: [{ type: "text", text: JSON.stringify({ results }) }],

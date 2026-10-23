@@ -93,7 +93,11 @@ const visibleTo = ({
   if (meta.internal && caller.provider !== "claude") return false
   if (meta.providers && !meta.providers.includes(caller.provider)) return false
   if (meta.group === "browser" && !caller.browserEnabled) return false
-  if (meta.group === "computer" && !caller.computerUse) return false
+  if (meta.group === "computer") {
+    if (!caller.computerUse) return false
+    const bot = effectiveBot(kernel, caller)
+    if (!bot || capabilitySupport(kernel, bot, "computer_use") !== null) return false
+  }
   // Keep preview_open callable so an unlinked bot receives the setup requirement.
   if (!caller.projectId && ["process", "secret"].includes(meta.group)) return false
   if (meta.group === "secret" && getDelegation(kernel, caller.threadId)?.secrets === false) return false

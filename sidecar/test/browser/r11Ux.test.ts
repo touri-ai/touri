@@ -199,6 +199,24 @@ realSuite("R11 browser UX against real Chrome", () => {
     expect(snapshotOf(result).url).toContain("/plain")
   })
 
+  test("a session lost during navigation is reattached before retrying the command", async () => {
+    const first = snapshotOf(await open("/basic"))
+    // The external CDP server rejects one command before the browser emits its detach event.
+    injections = [{ method: "Page.navigate", message: "Session with given id not found", times: 1 }]
+
+    const result = await engine.navigate({
+      tabId: first.tabId,
+      botId,
+      url: `${base}/plain`,
+      action: "goto",
+      timeoutMs: 10000,
+      signal: signal(),
+    })
+
+    expect(result.success).toBe(true)
+    expect(snapshotOf(result).url).toContain("/plain")
+  })
+
   test("a lost session on snapshot is recovered instead of ENGINE_UNAVAILABLE", async () => {
     const first = snapshotOf(await open("/basic"))
     injections.push({ method: "Accessibility.getFullAXTree", message: "Session with given id not found", times: 1 })

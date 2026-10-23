@@ -209,8 +209,8 @@ export type BotGroup = {
   updatedAt: EpochMs
 }
 export type GroupInput = Pick<BotGroup, 'name' | 'color' | 'avatarShape' | 'memberIds' | 'coordinatorBotId'>
-/** Creation defaults an omitted avatarShape to classic-none; updates require the full GroupInput. */
-export type GroupCreateInput = Omit<GroupInput, 'avatarShape'> & { avatarShape?: AvatarShape }
+/** Creation defaults omitted color, avatarShape and coordinatorBotId; updates require the full GroupInput. */
+export type GroupCreateInput = Omit<GroupInput, 'color' | 'avatarShape' | 'coordinatorBotId'> & Partial<Pick<GroupInput, 'color' | 'avatarShape' | 'coordinatorBotId'>>
 
 export type Thread = {
   ownerPersonId?: Id | null
@@ -308,6 +308,12 @@ export type RunUsage = {
 }
 
 export type Run = {
+  /** Coordination tracks a channel request; only execution invokes a provider. Derived from group_turns. */
+  kind?: "execution" | "coordination"
+  /** Automatic interruption recovery, projected from the durable continuation ledger. */
+  automaticResumePending?: boolean
+  automaticResumeFromRunId?: Id | null
+
   /** Stable browser request across private handback continuations. Derived from the continuation ledger. */
   browserRequestId?: Id | null
   browserWaitingForPerson?: boolean
@@ -482,6 +488,10 @@ export type MessagePart =
   | NoticePart
   | ApprovalPart
 
+export type MessageSender = { name: string; id: string; avatarSeed?: string; kind?: 'person' | 'integration' }
+
+export type IntegrationSenderInput = { kind: 'integration'; name?: string }
+
 export type Message = {
   seq?: number
   generation?: number
@@ -496,7 +506,7 @@ export type Message = {
   runId: Id | null
   text: string
   parts: Array<MessagePart>
-  sender: { name: string; id: string; avatarSeed?: string; kind?: 'person' } | null
+  sender: MessageSender | null
   source: RowSource
   createdAt: EpochMs
   updatedAt: EpochMs
@@ -958,7 +968,7 @@ export type SendMessageInput = {
   parentId: Id | null
   text: string
   attachmentIds: Array<Id>
-  sender?: { name: string; id: string; avatarSeed?: string; kind?: 'person' }
+  sender?: MessageSender
 }
 
 export type PersonRole = 'member' | 'admin'
@@ -1130,7 +1140,7 @@ export type ApiRoutes = {
   'POST /threads/delete': { req: { ids: Array<Id> }; res: { threadIds: Array<Id>; phase: string } }
   'GET /threads/:id/transcript': { req: { since?: number; limit?: number }; res: { entries: Array<{ seq: number; generation: number; event: UiEvent }>; rejections: Array<TranscriptRejection>; lastSeq: number; generation: number; hasMore: boolean; resync: boolean } }
   'GET /threads/:id/messages': { req: { all?: boolean }; res: { messages: Array<Message>; activeLeafId: Id | null } }
-  'POST /threads/:id/messages': { req: SendMessageInput; res: { message: Message; run: Run | null } }
+  'POST /threads/:id/messages': { req: SendMessageInput & { as?: IntegrationSenderInput }; res: { message: Message; run: Run | null } }
   'GET /runs': { req: Record<string, never>; res: { runs: Array<Run>; draining?: boolean } }
   'GET /threads/:id/goal': { req: {}; res: { goal: Goal | null } }
   'POST /threads/:id/goal': { req: GoalStart; res: { goal: Goal } }
@@ -1643,6 +1653,7 @@ export type ServiceMap = {
   'doctor': { start: () => void; dispose: () => void; snapshot: (refresh?: boolean) => DoctorReport; settled: () => Promise<void> }
   'storage.maintenance': { scheduleSessionKeyRetry: () => void; start: (vacuum?: boolean) => boolean; snapshot: () => StorageMaintenanceStatus; dispose: (options?: { closing?: boolean }) => void }
   'storage.botDeletion': { dispose: () => void }
+  'notify.recovery': { ready: Promise<void>; dispose: () => Promise<void> }
   'storage.threadTitles': { dispose: () => void }
   'storage.threadDeletion': { dispose: () => void }
   'mcp.botTools': (bot: Bot) => Array<string>

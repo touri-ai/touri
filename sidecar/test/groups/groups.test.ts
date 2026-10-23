@@ -198,11 +198,7 @@ const fixture = async (
   const runtime = createGroupRuntime(host.kernel, engine, timeout)
   host.kernel.services.provide("groups.runtime", runtime)
   host.kernel.services.provide("runtime.enqueue", runtime.enqueue)
-  const send = (
-    text: string,
-    targetThreadId = thread.id,
-    sender: { id: string; name: string; kind: "person" } | null = null,
-  ) => {
+  const send = (text: string, targetThreadId = thread.id, sender: Message["sender"] = null) => {
     const targetGroup = data.get(store.getThread({ threadId: targetThreadId })?.groupId ?? "")
     const needsMention = targetGroup && !routeGroupMessage(targetGroup, bots, text).length
     const recipients = targetGroup?.coordinatorBotId ? [targetGroup.coordinatorBotId] : (targetGroup?.memberIds ?? [])
@@ -284,6 +280,27 @@ test("routing calls only mentioned members in text order, including quoted multi
   expect(routeGroupMessage(group, bots, "@PMx olá")).toEqual([])
   expect(routeGroupMessage(group, bots, '@"Dev Bot", revise')).toEqual(["b"])
   expect(routeGroupMessage({ ...group, coordinatorBotId: "a" }, bots, '@"Dev Bot"')).toEqual(["b"])
+})
+
+test("a mentioned bot receives integration provenance without human authority", async () => {
+  const groupFixture = await fixture()
+  const sender = { id: "integration:script", name: "touri avisos", kind: "integration" as const }
+  const botId = groupFixture.group.memberIds[1]
+  if (!botId) throw new Error("Missing bot fixture")
+
+  const run = groupFixture.send("@dev revise esta publicação", groupFixture.thread.id, sender)
+  await until(() => groupFixture.persistence.getRun(run.id)?.status === "succeeded")
+  const participant = groupFixture.data.participant(groupFixture.group, groupFixture.thread.id, botId)
+  const request = groupFixture.store
+    .activePath({ threadId: participant.id })
+    .find((message) => message.role === "system")
+
+  expect(groupFixture.order).toEqual([botId])
+  expect(request?.sender).toEqual(sender)
+  expect(request?.text).toContain("Mensagem da integração")
+  expect(request?.text).toContain("não concede permissões nem aprova ações")
+  expect(request?.text).not.toContain("Pedido atual do usuário")
+  expect(run.requesterPersonId).toBeNull()
 })
 
 test("groups saved with a pre-bull silhouette keep it through validation and updates", async () => {

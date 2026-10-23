@@ -47,8 +47,9 @@ test("the channel panel lists human members without exposing administrative fiel
     />,
   )
 
-  expect(await screen.findByText("Ana")).toBeVisible()
-  expect(screen.getByText("Pessoa · @ana.silva")).toBeVisible()
+  expect(await screen.findByText("ana.silva")).toBeVisible()
+  expect(screen.queryByText("Pessoa · @ana.silva")).toBeNull()
+  expect(document.querySelector('[data-bot-id="ana"]')).toHaveAttribute("data-avatar", "generated")
   expect(screen.queryByRole("region", { name: "Resultados do turno" })).toBeNull()
 })
 
@@ -64,7 +65,8 @@ test("the channel header counts people and bots in both languages", () => {
   )
 
   const members = screen.getByRole("img", { name: "Membros do canal: 1 pessoa · 0 bots" })
-  expect(members).toHaveTextContent("A1")
+  expect(members).toHaveTextContent("1")
+  expect(members.querySelector('[data-bot-id="ana"]')).toHaveAttribute("data-avatar", "generated")
   expect(members).toHaveAttribute("aria-label", "Membros do canal: 1 pessoa · 0 bots")
   expect(t("1 person", {}, "en")).toBe("1 person")
   expect(t("{count} people", { count: 2 }, "en")).toBe("2 people")

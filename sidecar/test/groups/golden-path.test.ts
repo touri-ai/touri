@@ -127,7 +127,7 @@ const fixture = async (
       return { success: true as const, run }
     },
   }
-  const runtime = createGroupRuntime(host.kernel, engine)
+  const runtime = createGroupRuntime(host.kernel, engine, undefined, 1)
   const runtimes = new Set([runtime])
   cleanups.add(async () => {
     runtimes.forEach((current) => {
@@ -159,7 +159,7 @@ const fixture = async (
     return result.run
   }
   const restart = () => {
-    const resumed = createGroupRuntime(host.kernel, engine)
+    const resumed = createGroupRuntime(host.kernel, engine, undefined, 1)
     runtimes.add(resumed)
     return resumed
   }
@@ -184,6 +184,12 @@ const fixture = async (
 
 test("one channel mention starts one provider execution even if enqueue is repeated", async () => {
   const f = await fixture()
+  const updates = new Set<Run>()
+  const unsubscribe = f.host.kernel.subscribe(({ event }) => {
+    if (event.type === "run.updated" && event.run.threadId === f.thread.id) updates.add({ ...event.run })
+  })
+  cleanups.add(async () => unsubscribe())
+
   const run = f.send("@Lia confira o plano")
 
   const repeated = f.runtime.enqueue({
@@ -195,6 +201,20 @@ test("one channel mention starts one provider execution even if enqueue is repea
 
   expect(repeated.success && repeated.run.id).toBe(run.id)
   expect(f.order).toEqual([f.bots[0]?.id ?? ""])
+  expect(run).toMatchObject({ kind: "coordination" })
+  const history = f.runtime.listRuns(f.thread.id)
+  expect(history).toHaveLength(2)
+  expect(history.find((candidate) => candidate.id === run.id)).toMatchObject({ kind: "coordination" })
+  expect(history.find((candidate) => candidate.id !== run.id)).toMatchObject({
+    kind: "execution",
+    groupTurnId: run.id,
+  })
+  const coordination = Array.from(updates).filter((candidate) => candidate.id === run.id)
+  expect(coordination.map((candidate) => candidate.status)).toEqual(["queued", "running", "succeeded"])
+  expect(coordination.every((candidate) => candidate.kind === "coordination")).toBe(true)
+  const executions = Array.from(updates).filter((candidate) => candidate.id !== run.id)
+  expect(executions.length).toBeGreaterThan(0)
+  expect(executions.every((candidate) => candidate.kind === "execution" && candidate.groupTurnId === run.id)).toBe(true)
   expect(f.store.activePath({ threadId: f.thread.id }).filter((message) => message.role === "assistant")).toHaveLength(
     1,
   )
@@ -303,7 +323,7 @@ test("a channel waiting for approval never resumes by itself", async () => {
   expect(f.db.query("SELECT COUNT(*) AS count FROM run_continuations").get()).toEqual({ count: 0 })
 })
 
-test("a confirmed action stays in history while the same task continues", async () => {
+test("a recorded command stays in history and blocks automatic replay", async () => {
   const f: Awaited<ReturnType<typeof fixture>> = await fixture(async (run, complete) => {
     if (f.order.length > 1) return complete("Plano conferido")
     const reply = f.store.insertMessage({
@@ -341,9 +361,9 @@ test("a confirmed action stays in history while the same task continues", async 
   })
 
   const run = f.send("@Lia confira o plano")
-  await until(() => f.persistence.getRun(run.id)?.status === "succeeded")
+  await until(() => f.persistence.getRun(run.id)?.status === "failed")
 
-  expect(f.order).toHaveLength(2)
+  expect(f.order).toHaveLength(1)
   expect(
     f.store
       .activePath({ threadId: f.thread.id })

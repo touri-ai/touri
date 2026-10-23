@@ -82,8 +82,12 @@ const getRunError = (row: DbRow): Pick<Run, "errorClass" | "errorMessage"> => {
 export const toRun = (value: unknown): Run | null => {
   const row = asRow(value)
   if (!row) return null
+
+  const kind: Run["kind"] = row.run_kind === "coordination" ? "coordination" : "execution"
+
   return {
     id: text(row, "id"),
+    ...("run_kind" in row ? { kind } : {}),
     requesterPersonId: nullableText(row, "requester_person_id"),
     ...("browser_request_id" in row ? { browserRequestId: nullableText(row, "browser_request_id") } : {}),
     ...(row.browser_waiting_for_person ? { browserWaitingForPerson: true } : {}),
@@ -206,7 +210,9 @@ const canUseDatabase = (value: unknown): value is Database => {
   }
 }
 
-const RUN_SNAPSHOT_SELECT = `SELECT r.*, link.turn_id AS group_turn_id,
+export const RUN_SNAPSHOT_SELECT = `SELECT r.*, link.turn_id AS group_turn_id,
+  CASE WHEN EXISTS(SELECT 1 FROM group_turns coordination WHERE coordination.run_id = r.id)
+    THEN 'coordination' ELSE 'execution' END AS run_kind,
   COALESCE(root.thread_id, t.group_thread_id) AS group_thread_id,
   COALESCE(browser_continuation.original_run_id, r.id) AS browser_request_id,
   EXISTS(SELECT 1 FROM browser_pending_handoffs handoff WHERE handoff.run_id IN (r.id, browser_continuation.original_run_id) AND handoff.state = 'waiting') AS browser_waiting_for_person,
@@ -215,7 +221,7 @@ const RUN_SNAPSHOT_SELECT = `SELECT r.*, link.turn_id AS group_turn_id,
     WHEN continuation.run_id IS NOT NULL OR browser_continuation.run_id IS NOT NULL THEN 'resume'
     WHEN EXISTS(SELECT 1 FROM json_each(request.parts_json)
       WHERE json_extract(value, '$.type') = 'notice' AND json_extract(value, '$.code') = 'run_resumed') THEN 'resume'
-    WHEN request.sender_json IS NOT NULL AND coalesce(json_extract(request.sender_json, '$.kind'), '') <> 'person' THEN 'delegation'
+    WHEN request.sender_json IS NOT NULL AND coalesce(json_extract(request.sender_json, '$.kind'), '') NOT IN ('person', 'integration') THEN 'delegation'
     WHEN r.trigger = 'routine' THEN 'routine'
     ELSE 'message'
   END AS origin
@@ -227,6 +233,15 @@ const RUN_SNAPSHOT_SELECT = `SELECT r.*, link.turn_id AS group_turn_id,
   LEFT JOIN browser_takeover_continuations browser_continuation ON browser_continuation.run_id = r.id
   LEFT JOIN messages request ON request.id = r.request_message_id AND request.thread_id = r.thread_id`
 
+// Drive enrichment from the partial active index, independent of completed history.
+export const WORK_RUNS_SQL = `${RUN_SNAPSHOT_SELECT.replace("FROM runs r", "FROM runs r INDEXED BY runs_active_order")}
+  JOIN bots b ON b.id = r.bot_id
+  JOIN threads visible_thread ON visible_thread.id = COALESCE(root.thread_id, t.group_thread_id, r.thread_id)
+  WHERE r.status IN ('queued', 'starting', 'running')
+    AND r.id NOT IN (SELECT run_id FROM group_turns)
+    AND b.archived_at IS NULL AND visible_thread.archived_at IS NULL
+  ORDER BY r.queued_at, r.rowid`
+
 export const createRuntimePersistence = ({ database }: { database: unknown }): RuntimePersistence => {
   const db = canUseDatabase(database) ? database : null
   const runs = new Map<Id, Run>()
@@ -237,7 +252,14 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
   const getRun = (id: Id): Run | null => {
     if (!db) return runs.get(id) ?? null
     try {
-      const found = toRun(db.query("SELECT * FROM runs WHERE id = ?").get(id))
+      const found = toRun(
+        db
+          .query(`SELECT r.*,
+            CASE WHEN EXISTS(SELECT 1 FROM group_turns coordination WHERE coordination.run_id = r.id)
+              THEN 'coordination' ELSE 'execution' END AS run_kind
+            FROM runs r WHERE r.id = ?`)
+          .get(id),
+      )
       if (!found) {
         runs.delete(id)
         return null
@@ -307,7 +329,10 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
     if (db) {
       const rows = db
         .query(
-          `SELECT * FROM runs WHERE thread_id = ? ORDER BY queued_at DESC, rowid DESC${options?.all ? "" : " LIMIT 50"}`,
+          `SELECT r.*,
+            CASE WHEN EXISTS(SELECT 1 FROM group_turns coordination WHERE coordination.run_id = r.id)
+              THEN 'coordination' ELSE 'execution' END AS run_kind
+            FROM runs r WHERE r.thread_id = ? ORDER BY r.queued_at DESC, r.rowid DESC${options?.all ? "" : " LIMIT 50"}`,
         )
         .all(threadId)
       return rows.map(toRun).filter((run): run is Run => run !== null)
@@ -333,13 +358,7 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
     if (!db) return [...runs.values()].filter((run) => ["queued", "starting", "running"].includes(run.status))
 
     return db
-      .query(`${RUN_SNAPSHOT_SELECT}
-      JOIN bots b ON b.id = r.bot_id
-      JOIN threads visible_thread ON visible_thread.id = COALESCE(root.thread_id, t.group_thread_id, r.thread_id)
-      WHERE r.status IN ('queued', 'starting', 'running')
-        AND r.id NOT IN (SELECT run_id FROM group_turns)
-        AND b.archived_at IS NULL AND visible_thread.archived_at IS NULL
-      ORDER BY r.queued_at, r.rowid`)
+      .query(WORK_RUNS_SQL)
       .all()
       .flatMap((row) => {
         const run = toRun(row)
@@ -352,7 +371,7 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
     try {
       const rows = db
         .query(
-          "SELECT * FROM runs WHERE status IN ('starting', 'running') AND id NOT IN (SELECT run_id FROM group_turns)",
+          "SELECT * FROM runs WHERE status IN ('queued', 'starting', 'running') AND id NOT IN (SELECT run_id FROM group_turns) AND (status <> 'queued' OR id IN (SELECT run_id FROM group_run_links))",
         )
         .all()
       return rows.map(toRun).filter((run): run is Run => run !== null)
@@ -587,15 +606,14 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
   }
 
   const getRoutineRun = (id: Id): RoutineRun | null => {
-    const memory = routineRuns.get(id)
-    if (memory) return memory
-    if (!db) return null
+    if (!db) return routineRuns.get(id) ?? null
     try {
+      // Group recovery and the engine share the database, but not this projection cache.
       const found = toRoutineRun(db.query("SELECT * FROM routine_runs WHERE id = ?").get(id))
       if (found) routineRuns.set(found.id, found)
       return found
     } catch {
-      return null
+      return routineRuns.get(id) ?? null
     }
   }
 

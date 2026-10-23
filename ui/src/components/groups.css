@@ -560,3 +560,17 @@ button.channel-members-button[aria-expanded="true"] {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+.channel-panel .bot-panel-body {
+  padding: var(--space-20);
+}
+.channel-panel :is(h3, strong, .group-member-state) {
+  overflow-wrap: anywhere;
+}
+.channel-panel .group-context-members {
+  min-width: 0;
+}
+
+.channel-panel .group-member-state {
+  display: block;
+}

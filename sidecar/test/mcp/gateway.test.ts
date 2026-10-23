@@ -9,7 +9,7 @@ import { createKernel } from "../../src/kernel"
 import { init, stop } from "../../src/mcp"
 import { init as initNotify } from "../../src/notify"
 import { init as initStore } from "../../src/store"
-import { createFixtureStore } from "./store-fixture"
+import { createFixtureStore, seedHistorySearch } from "./store-fixture"
 
 type RpcResponse = { jsonrpc: "2.0"; id: number; result?: unknown; error?: { code: number; message: string } }
 type JsonObject = Record<string, unknown>
@@ -77,6 +77,7 @@ const seedDatabase = ({
       Date.now(),
       Date.now(),
     )
+  seedHistorySearch(database)
 }
 
 const writeToken = ({ root, threadId, token }: { root: string; threadId: string; token: string }): void => {
@@ -226,7 +227,7 @@ test("auth maps the session to a context and filters tools by bot capabilities",
       expect(tools.some((name) => name.startsWith("process_"))).toBe(false)
       expect(tools.some((name) => name.startsWith("computer_"))).toBe(false)
       const search = await client.request("tools/call", { name: "history_search", arguments: { query: "campaign" } })
-      expect(JSON.stringify(search.result)).toContain("Review the campaign")
+      expect(JSON.stringify(search.result)).toContain("Review the [campaign]")
       const history = await client.request("tools/call", {
         name: "history_read",
         arguments: { threadId: "thread-mark" },
@@ -299,6 +300,7 @@ test("experimental, provider, project, browser, and computer filters follow the 
     computerUse: 1,
     provider: "claude",
   })
+  await initStore(runtime.kernel)
   const database = runtime.kernel.db as Database
   database
     .query("INSERT INTO settings (key, value_json, updated_at) VALUES (?, ?, ?)")
@@ -319,7 +321,9 @@ test("experimental, provider, project, browser, and computer filters follow the 
       const listed = await client.request("tools/list", {})
       const tools = (listed.result as { tools: Array<{ name: string }> }).tools.map((tool) => tool.name)
       expect(tools).toContain("browser_hover")
-      expect(tools).toContain("computer_frontmost")
+      expect(tools.includes("computer_frontmost")).toBe(
+        process.platform === "darwin" && process.env.TOURI_HEADLESS !== "1",
+      )
       expect(tools).toContain("process_start")
       expect(tools).toContain("secret_list")
       expect(tools).toContain("preview_open")

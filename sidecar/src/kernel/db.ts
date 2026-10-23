@@ -49,12 +49,14 @@ import browserPendingHandoffsSql from "./migrations/0043.sql" with { type: "text
 import browserRequestResumeSql from "./migrations/0044.sql" with { type: "text" }
 import threadDeletionSql from "./migrations/0045.sql" with { type: "text" }
 import browserDocumentPrivacySql from "./migrations/0046.sql" with { type: "text" }
+import automaticResumeSql from "./migrations/0047.sql" with { type: "text" }
+import hotReadIndexesSql from "./migrations/0048.sql" with { type: "text" }
 import type { PerformanceStageRunner } from "./performance"
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 46
+export const SCHEMA_VERSION = 48
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -91,6 +93,17 @@ export const openDatabase = ({
   database.exec(
     "PRAGMA busy_timeout = 5000; PRAGMA auto_vacuum = INCREMENTAL; PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA journal_size_limit = 8388608; PRAGMA synchronous = NORMAL; PRAGMA cache_size = -65536;",
   )
+  const hasSchema = database.query("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='schema_meta'").all().length
+  const current = hasSchema
+    ? (database.query("SELECT value FROM schema_meta WHERE key='schema_version'").get() as { value: string } | null)
+    : null
+  // A committed version is the migration checkpoint. Replaying old writes delays every current-store restart.
+  if (current?.value === String(SCHEMA_VERSION)) return database
+  if (current?.value === "47") {
+    database.transaction(() => database.exec(hotReadIndexesSql))()
+    return database
+  }
+
   database.exec(migrationSql)
   database.exec(notificationsSql)
   database.transaction(() => {
@@ -343,6 +356,16 @@ export const openDatabase = ({
     const columns = database.query("PRAGMA table_info(browser_tabs)").all() as Array<{ name: string }>
     if (!columns.some((column) => column.name === "private_document_ids_json")) database.exec(browserDocumentPrivacySql)
     database.exec("UPDATE schema_meta SET value = '46' WHERE key = 'schema_version'")
+  })()
+  database.transaction(() => {
+    if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'automatic_resume_version'").get())
+      database.exec(automaticResumeSql)
+    database.exec("UPDATE schema_meta SET value = '47' WHERE key = 'schema_version'")
+  })()
+  database.transaction(() => {
+    if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'hot_read_indexes_version'").get())
+      database.exec(hotReadIndexesSql)
+    database.exec("UPDATE schema_meta SET value = '48' WHERE key = 'schema_version'")
   })()
   return database
 }

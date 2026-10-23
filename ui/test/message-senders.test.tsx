@@ -20,6 +20,31 @@ const getMessage = (id: string, sender: NonNullable<Message["sender"]>): Message
 })
 
 describe("message senders", () => {
+  it("shows an integration with its own avatar, label and incoming alignment", () => {
+    const sender = {
+      id: "integration:notice",
+      name: "touri avisos",
+      avatarSeed: "notice-avatar",
+      kind: "integration" as const,
+    }
+
+    const { container } = render(
+      <VirtualMessageList
+        messages={[getMessage("notice", sender)]}
+        currentPersonId="owner"
+        onSwitchBranch={() => undefined}
+        onRetry={async () => undefined}
+      />,
+    )
+    const notice = container.querySelector('[data-message-id="notice"]')
+    if (!notice) throw new Error("Missing integration message")
+
+    expect(within(notice).getByText("touri avisos")).toBeVisible()
+    expect(within(notice).getByText("Integração")).toBeVisible()
+    expect(within(notice).queryByText("Você")).toBeNull()
+    expect(notice).toHaveClass("message-other-person")
+    expect(notice.querySelector('[data-bot-id="integration:notice"]')).not.toBeNull()
+  })
   it("shows another person's name, avatar and incoming alignment beside the current person's own message", () => {
     const messages = [
       getMessage("owner-message", { id: "owner", name: "Pessoa A", avatarSeed: "owner-avatar", kind: "person" }),

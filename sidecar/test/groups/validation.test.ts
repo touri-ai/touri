@@ -43,7 +43,6 @@ test("invalid group fields survive HTTP error normalization without echoing supp
       input: { ...fixture.input, memberIds: [...fixture.input.memberIds, ...fixture.input.memberIds] },
     },
     { field: "coordinatorBotId", input: { ...fixture.input, coordinatorBotId: "private-value" } },
-    { field: "coordinatorBotId", input: { ...fixture.input, coordinatorBotId: undefined } },
   ]
 
   for (const scenario of cases) {
@@ -58,6 +57,46 @@ test("invalid group fields survive HTTP error normalization without echoing supp
     expect(JSON.stringify(body)).not.toContain("private-value")
   }
   expect(await (await fixture.request("/groups", undefined, "GET")).json()).toEqual({ groups: [] })
+})
+
+test("POST /groups reports every invalid field with fixed bilingual messages and no writes", async () => {
+  const fixture = await getFixture()
+  const response = await fixture.request("/groups", {
+    ...fixture.input,
+    name: "",
+    color: "private-value",
+    avatarShape: null,
+    memberIds: "private-value",
+    coordinatorBotId: "private-value",
+  })
+  const body = await response.json()
+  const fields = ["name", "color", "avatarShape", "memberIds", "coordinatorBotId"]
+
+  expect(response.status).toBe(400)
+  expect(body.field).toBe("name")
+  expect(body.fields).toEqual(fields)
+  for (const field of fields) {
+    expect(body.errorMessages["pt-BR"]).toContain(`${field}:`)
+    expect(body.errorMessages.en).toContain(`${field}:`)
+  }
+  expect(body.error).toBe(body.errorMessages["pt-BR"])
+  expect(JSON.stringify(body)).not.toContain("private-value")
+  expect(await (await fixture.request("/groups", undefined, "GET")).json()).toEqual({ groups: [] })
+})
+
+test("POST /groups defaults omitted presentation and coordinator fields, including with an explicit avatar", async () => {
+  const fixture = await getFixture()
+  const { color: _color, avatarShape: _avatarShape, coordinatorBotId: _coordinator, ...required } = fixture.input
+
+  for (const input of [required, { ...required, avatarShape: "short-crown" }]) {
+    const response = await fixture.request("/groups", input)
+    const { group } = (await response.json()) as { group: BotGroup }
+
+    expect(response.status).toBe(201)
+    expect(group.color).toBe("#dc2626")
+    expect(group.coordinatorBotId).toBeNull()
+    expect(group.avatarShape).toBe("avatarShape" in input ? "short-crown" : "classic-none")
+  }
 })
 
 test("PATCH /groups requires avatarShape and leaves the existing avatar intact", async () => {
