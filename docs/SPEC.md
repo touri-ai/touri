@@ -48,6 +48,7 @@ Optional member panels, group dialogs and the routine editor load asynchronously
 application bundle. They preserve existing actions and keyboard access, including their close control
 while their module loads.
 Closing a loading channel panel restores focus to its trigger and leaves the conversation available.
+The empty bot conversation's welcome content loads separately without holding back its composer.
 The initial HTML, JavaScript and CSS remain limited to 400,000 bytes gzip.
 
 During browser takeover, choosing the keyboard control keeps focus in the remote input without

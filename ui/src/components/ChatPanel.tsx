@@ -74,7 +74,6 @@ import { getBrowserRequestMessages } from "./browserRequestMessages"
 import { ChatDisclosure } from "./ChatDisclosure"
 import { ConnectDataCard, connectDataMarker } from "./ConnectDataCard"
 import { ConversationLoading } from "./ConversationLoading"
-import { ConversationStart } from "./ConversationStart"
 import { DeferredGoalPanel as GoalPanel } from "./DeferredGoalPanel"
 import { Disclosure } from "./Disclosure"
 import { DraftComposer, type DraftComposerHandle } from "./DraftComposer"
@@ -99,6 +98,9 @@ import { approvalTools, assistantSegments } from "./turnActivityModel"
 import { type EditMessage, UserMessageEdit } from "./UserMessageEdit"
 import { usePhoneViewport } from "./usePhoneViewport"
 
+const ConversationStart = lazy(() =>
+  import("./ConversationStart").then((module) => ({ default: module.ConversationStart })),
+)
 const GroupHeader = lazy(() => import("./Groups").then((module) => ({ default: module.GroupHeader })))
 const GroupConversationStart = lazy(() =>
   import("./Groups").then((module) => ({ default: module.GroupConversationStart })),
@@ -1639,15 +1641,17 @@ export const ChatPanel = ({
                               />
                             </Suspense>
                           ) : (
-                            <ConversationStart
-                              bot={bot}
-                              onFolder={onOpenPermissions}
-                              onAttach={() => attachmentButtonRef.current?.click()}
-                              onChoose={(prompt) => {
-                                draftComposerRef.current?.setDraft(prompt)
-                                composerRef.current?.focus()
-                              }}
-                            />
+                            <Suspense fallback={null}>
+                              <ConversationStart
+                                bot={bot}
+                                onFolder={onOpenPermissions}
+                                onAttach={() => attachmentButtonRef.current?.click()}
+                                onChoose={(prompt) => {
+                                  draftComposerRef.current?.setDraft(prompt)
+                                  composerRef.current?.focus()
+                                }}
+                              />
+                            </Suspense>
                           )
                         ) : null
                       }
