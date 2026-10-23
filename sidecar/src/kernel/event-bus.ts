@@ -4,7 +4,8 @@ import type { ServerWebSocket } from "bun"
 import { boundedProcessLog } from "./output-blobs"
 import type { PerformanceStage, PerformanceStageRunner } from "./performance"
 import { captureTranscript as captureEntries, type TranscriptRef } from "./transcript-events"
-import { compactTranscript, materializeTranscript } from "./transcript-storage"
+import { createTranscriptRetention } from "./transcript-retention"
+import { materializeTranscript } from "./transcript-storage"
 
 export type EventSocketData = { channel: "events"; since?: number }
 export type EventFilter = (event: UiEvent) => boolean
@@ -51,6 +52,8 @@ export const createEventBus = (
   let cancelContinuation: (() => void) | undefined
   let stopped = false
   let flushing = false
+  const retention = database ? createTranscriptRetention(database) : undefined
+  let retentionRunning = false
   let compactedAt = delivered
   let retentionTimer: ReturnType<typeof setTimeout> | undefined
   let captureRetryTimer: ReturnType<typeof setTimeout> | undefined
@@ -131,35 +134,25 @@ export const createEventBus = (
     if (stopped || retentionTimer) return
     retentionTimer = setTimeout(() => {
       retentionTimer = undefined
-      runRetentionMaintenance(true)
+      void runRetentionMaintenance(true)
     }, 100)
     retentionTimer.unref()
   }
 
-  const runRetentionMaintenance = (force = false): void => {
-    const currentDatabase = database
-    if (!currentDatabase || stopped || (!force && delivered - compactedAt < 256)) return
+  const runRetentionMaintenance = async (force = false): Promise<void> => {
+    if (!retention || stopped || retentionRunning || (!force && delivered - compactedAt < 256)) return
 
-    const timeout = (currentDatabase.query("PRAGMA busy_timeout").get() as { timeout: number }).timeout
-    currentDatabase.exec("PRAGMA busy_timeout = 0")
-    const getMore = (): boolean | undefined => {
-      try {
-        return measureStage("transcript_retention", compactTranscript, { database: currentDatabase })
-      } catch (error) {
-        if (!isSqliteBusy(error)) throw error
-        return undefined
-      } finally {
-        currentDatabase.exec(`PRAGMA busy_timeout = ${timeout}`)
-      }
-    }
-    const more = getMore()
-    if (more === undefined) {
+    retentionRunning = true
+    const through = delivered
+    try {
+      const more = await measureStage("transcript_retention", () => retention.run(), undefined)
+      compactedAt = through
+      if (more || delivered - compactedAt >= 256) scheduleRetention()
+    } catch {
       scheduleRetention()
-      return
+    } finally {
+      retentionRunning = false
     }
-
-    compactedAt = delivered
-    if (more) scheduleRetention()
   }
 
   const getRefEvent = (event: MessageRef): UiEvent => {
@@ -331,7 +324,7 @@ export const createEventBus = (
     }
     if (stopped || delivered < head() || delivered - compactedAt < 256) return
 
-    runRetentionMaintenance()
+    void runRetentionMaintenance()
   }
   const writeEvent = (event: UiEvent): void => {
     database
@@ -375,7 +368,7 @@ export const createEventBus = (
       captureTranscript()
       if (!scheduled) flush()
       if (database) {
-        runRetentionMaintenance(true)
+        void runRetentionMaintenance(true)
         for (const envelope of catchUp(since)) {
           const visible =
             filter && envelope.event.type !== "transcript.resync" && !filter(envelope.event)
@@ -395,12 +388,13 @@ export const createEventBus = (
     },
     replay,
     catchUp,
-    stop: (): void => {
+    stop: async (): Promise<void> => {
       stopped = true
       cancelContinuation?.()
       clearTimeout(retentionTimer)
       clearTimeout(captureRetryTimer)
       sockets = []
+      await retention?.dispose()
     },
   }
 }

@@ -2,6 +2,11 @@ import { parseCli, usageText } from "./args"
 import { runCommandLine } from "./commands"
 
 const main = async (): Promise<void> => {
+  if (process.argv[2] === "transcript-retention") {
+    const { runTranscriptRetention } = await import("../kernel/transcript-retention-process")
+    await runTranscriptRetention()
+    return
+  }
   if (process.argv[2] === "store-read") {
     const { runStoreRead } = await import("../store/read-process")
     await runStoreRead()
