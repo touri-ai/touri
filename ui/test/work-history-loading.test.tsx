@@ -30,7 +30,7 @@ test("opening an existing channel never shows the empty invitation while its fir
   const channels = await screen.findByRole("region", { name: "Canais", exact: true })
   fireEvent.click(await within(channels).findByText("Demonstração", { exact: true }))
 
-  expect(await screen.findByRole("status", { name: "Carregando conversas…" })).toBeVisible()
+  await waitFor(() => expect(screen.getByRole("status", { name: "Carregando conversas…" })).toBeVisible())
   expect(screen.queryByRole("region", { name: "Comece a conversa em #Demonstração" })).not.toBeInTheDocument()
   await act(async () => release())
   await screen.findByRole("textbox", { name: "Mensagem para Demonstração", exact: true })
