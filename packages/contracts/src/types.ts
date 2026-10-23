@@ -214,7 +214,11 @@ export type GroupInput = Pick<BotGroup, 'name' | 'color' | 'avatarShape' | 'memb
 /** Creation defaults omitted color, avatarShape and coordinatorBotId; updates require the full GroupInput. */
 export type GroupCreateInput = Omit<GroupInput, 'color' | 'avatarShape' | 'coordinatorBotId'> & Partial<Pick<GroupInput, 'color' | 'avatarShape' | 'coordinatorBotId'>>
 
+/** Read-only presentation of a verified automatic title; never a routine prompt or settings. */
+export type RoutineThreadTitle = { sourceTitle: string; name: string; scheduledFor: EpochMs; timezone: string }
+
 export type Thread = {
+  routineTitle?: RoutineThreadTitle | undefined
   ownerPersonId?: Id | null
   groupId?: Id | null
   groupThreadId?: Id | null
@@ -292,9 +296,42 @@ export type RunErrorClass =
 /** Wall-clock milestones, persisted inside usage_json and published with run.updated. */
 export type RunTimings = {
   queuedAt: number
+  queuedPersistedAt?: number
+  claimedAt?: number
+  reconciledAt?: number
+  permissionsReadyAt?: number
+  requestReadyAt?: number
+  toolSummaryReadyAt?: number
+  recallReadyAt?: number
+  inputReadyAt?: number
+  workspaceReadyAt?: number
+  mcpReadyAt?: number
+  fingerprintReadyAt?: number
+  sessionReadyAt?: number
+  environmentReadyAt?: number
+  startingPersistedAt?: number
+  providerHomeReadyAt?: number
+  providerConfigReadAt?: number
+  providerConfigWrittenAt?: number
+  providerAuthReadyAt?: number
+  documentsReadyAt?: number
+  loginReadyAt?: number
+  attachedMcpReadyAt?: number
+  projectReadyAt?: number
+  memoryReadyAt?: number
+  instructionsReadyAt?: number
+  dispatchReadyAt?: number
+  sandboxReadyAt?: number
+  temporaryReadyAt?: number
+  executableReadyAt?: number
+  attachmentsReadyAt?: number
   processSpawnedAt?: number
   processReusedAt?: number
+  providerInitializedAt?: number
+  providerSessionRequestedAt?: number
   providerReadyAt?: number
+  turnSubmittedAt?: number
+  turnAcceptedAt?: number
   firstTokenAt?: number
   finishedAt?: number
 }
@@ -873,6 +910,7 @@ export type StartTurnArgs = {
   onEvent: (event: ProviderEvent) => void
   /** The actual provider child, including reused and remote sessions; never a PID supplied by a client. */
   onProcess?: (child: Extract<ReturnType<Kernel['spawnTree']>, { success: true }>) => void
+  onPreparationStage?: (stage: keyof RunTimings) => void
   onProcessSpawned?: () => void
   onProcessReused?: () => void
   signal: AbortSignal
@@ -1169,7 +1207,7 @@ export type ApiRoutes = {
   'POST /runs/:id/cancel': { req: {}; res: { run: Run } }
   'POST /runs/:id/retry': { req: {}; res: { run: Run } }
   'POST /approvals/:id': { req: { decision: 'approved' | 'denied'; standing?: boolean }; res: {} }
-  'GET /search': { req: { q: string; botId?: Id }; res: { hits: Array<{ threadId: Id; messageId: Id; snippet: string; thread?: Pick<Thread, 'id' | 'botId' | 'title' | 'createdAt' | 'archivedAt'> | null }>; threads?: Array<Pick<Thread, 'id' | 'botId' | 'title' | 'createdAt' | 'archivedAt'>> } }
+  'GET /search': { req: { q: string; botId?: Id }; res: { hits: Array<{ threadId: Id; messageId: Id; snippet: string; thread?: Pick<Thread, 'id' | 'botId' | 'title' | 'createdAt' | 'archivedAt' | 'routineTitle'> | null }>; threads?: Array<Pick<Thread, 'id' | 'botId' | 'title' | 'createdAt' | 'archivedAt' | 'routineTitle'>> } }
   'POST /attachments': { req: { grantId: string } | { path: AbsolutePath }; res: { attachment: Attachment } }
   'GET /attachments/:id': { req: {}; res: Blob }
   'GET /attachments/:id/content': { req: { offset?: number; limit?: number }; res: { text: string; offset: number; nextOffset: number | null; bytes: number } }
@@ -1677,7 +1715,7 @@ export type ServiceMap = {
   'storage.maintenance': { scheduleSessionKeyRetry: () => void; start: (vacuum?: boolean) => boolean; snapshot: () => StorageMaintenanceStatus; dispose: (options?: { closing?: boolean }) => void }
   'storage.botDeletion': { dispose: () => void }
   'notify.recovery': { ready: Promise<void>; dispose: () => Promise<void> }
-  'storage.threadTitles': { dispose: () => void }
+  'storage.threadTitles': { dispose: () => void; getRoutineTitles: (threadIds: readonly Id[], signal: AbortSignal) => Promise<ReadonlyMap<Id, RoutineThreadTitle>> }
   'storage.threadDeletion': { dispose: () => void }
   'mcp.botTools': (bot: Bot) => Array<string>
 

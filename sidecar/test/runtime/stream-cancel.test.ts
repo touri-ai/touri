@@ -203,11 +203,9 @@ test("a failed stream drain still finalizes the run and releases its thread", as
   expect(fixture.engine.listRuns("thread")[0]?.status).toBe("canceled")
 })
 
-test("cancel catches a rejected asynchronous finalization", async () => {
+test("a rejected reply finalization falls back to terminal cancellation", async () => {
   const fixture = await getFixture()
   await fixture.ready
-  const log = spyOn(fixture.kernel, "log")
-  cleanups.add(() => log.mockRestore())
   const updateThread = fixture.store.updateThread
   fixture.store.updateThread = () => {
     throw new Error("Synthetic finalization failure")
@@ -219,13 +217,11 @@ test("cancel catches a rejected asynchronous finalization", async () => {
     .query("UPDATE runs SET status = 'queued', provider_started_at = NULL WHERE id = ?")
     .run(fixture.runId)
 
-  expect(fixture.engine.cancel(fixture.runId).success).toBe(true)
-  await getReady(() => log.mock.calls.some(([entry]) => entry.msg === "Could not finalize canceled run"))
-  fixture.store.updateThread = updateThread
-  fixture.finish()
-  await getReady(() => fixture.engine.listRuns("thread")[0]?.status === "canceled")
+  const result = await fixture.engine.cancelAndWait(fixture.runId)
 
-  expect(log.mock.calls.map(([entry]) => entry.msg)).toContain("Could not finalize canceled run")
+  expect(result).toMatchObject({ success: true, run: { status: "canceled" } })
+  await getReady(() => fixture.engine.activeRun({ threadId: "thread" }) === null)
+  expect(fixture.engine.listRuns("thread")[0]?.status).toBe("canceled")
 })
 
 test("startup recovery resolves engine readiness after a stream drain failure", async () => {

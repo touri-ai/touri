@@ -1,7 +1,7 @@
 import type { Message, Run } from "@touri/contracts"
 
 /** Keep each recovery chain in its original card without changing stored history. */
-export const getAutomaticResumeMessages = (messages: Message[], runs: Run[]): Message[] => {
+export const getAutomaticResumeMessages = (messages: Message[], runs: Run[], focusedMessageId?: string): Message[] => {
   if (!runs.some((run) => run.automaticResumeFromRunId)) return messages
 
   const runsById = new Map(runs.map((run) => [run.id, run]))
@@ -62,13 +62,15 @@ export const getAutomaticResumeMessages = (messages: Message[], runs: Run[]): Me
     if (!latest) return [message]
     const isActive = latestRun && ["queued", "starting", "running"].includes(latestRun.status)
     if (latest.id === message.id && latestRun?.id === message.runId) return [message]
+    const focused = chain.find((item) => item.id === focusedMessageId)
+
     return [
       {
         ...latest,
-        id: message.id,
+        id: focused?.id ?? message.id,
         runId: latestRun?.id ?? latest.runId,
         status: isActive ? "streaming" : latest.status,
-        parentId: message.parentId,
+        parentId: focused ? focused.parentId : message.parentId,
         createdAt: message.createdAt,
         text: chain
           .map((item) => item.text)

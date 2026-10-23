@@ -363,6 +363,49 @@ test("Codex does not retry canceled turns or ordinary permission errors", async 
   }
 })
 
+test.each(["full", "greeting"] as const)("%s turns do not wait for an unused folder sandbox", async (mode) => {
+  const current = fixture()
+  const args: StartTurnArgs = {
+    ...current.args,
+    bot: { ...current.args.bot, access: mode === "full" ? "full" : "workspace-write" },
+    conversationOnly: mode === "greeting",
+  }
+  const prepareFolders = async (): Promise<boolean> => {
+    throw new Error("An unused sandbox must not delay dispatch")
+  }
+
+  const temporary = await withLocalTurnTemp(
+    current.kernel,
+    args,
+    async (turn) => turn.env.TMPDIR,
+    undefined,
+    prepareFolders,
+  )
+
+  expect(temporary?.startsWith(current.runDir)).toBe(true)
+  expect(temporary && existsSync(temporary)).toBe(false)
+})
+
+test("restricted turns validate their folder boundary before dispatch", async () => {
+  const current = fixture()
+  const args: StartTurnArgs = {
+    ...current.args,
+    bot: {
+      ...current.args.bot,
+      access: "workspace-write",
+      folders: [{ path: current.workspace, access: "read-only" }],
+    },
+  }
+  const prepareFolders = async (): Promise<boolean> => {
+    throw new Error("Folder validation failed")
+  }
+
+  const turn = withLocalTurnTemp(current.kernel, args, async () => "dispatched", undefined, prepareFolders)
+
+  await expect(turn).rejects.toThrow("Folder validation failed")
+  expect(existsSync(join(current.runDir, "provider-tmp"))).toBe(false)
+})
+
 test("VM turns keep their guest temp environment and do not allocate host temporary storage", async () => {
   const f = fixture()
   f.args.execution = { spawn: f.kernel.spawnTree, writeFile: async () => {} }

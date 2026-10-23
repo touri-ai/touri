@@ -58,6 +58,11 @@ import { getMessageFromRow as asMessage } from "./message-row"
 import { getBotModel, MODEL_VALIDATION_ERROR } from "./model"
 import { createStoreReader } from "./reader"
 import { redeemFileGrant } from "./redeemFileGrant"
+import {
+  getRoutineThreadCandidateIds,
+  getRoutineThreadTitles,
+  getThreadsWithRoutineTitles,
+} from "./routine-thread-title"
 import { getAsyncSearchHits, getLiteralSearch, getSearchQuery } from "./search-query"
 import { createSendJournal } from "./send-journal"
 import { createStartupRecovery } from "./startup-recovery"
@@ -475,6 +480,7 @@ export const init = async (
   const threadTitleSearch = createThreadTitleSearch(database.filename)
   const reader = createStoreReader(database.filename)
   kernel.services.provide("storage.threadTitles", {
+    getRoutineTitles: (threadIds, signal) => getRoutineThreadTitles(reader, threadIds, signal),
     dispose: () => {
       threadTitleSearch.dispose()
       reader.dispose()
@@ -1709,17 +1715,16 @@ export const init = async (
             )
             .all(...parameters) as Array<RawThread>
           const threads = rows.map(asThread)
-          if (!person || person.role === "admin") return jsonResponse(200, { threads })
           const canAccessThread = kernel.services.use("work.canAccessThread")
-          return jsonResponse(200, {
-            threads: threads.filter((thread) =>
-              canAccessThread?.({
-                personId: person.id,
-                role: person.role,
-                threadId: thread.id,
-              }),
-            ),
-          })
+          const visible =
+            !person || person.role === "admin"
+              ? threads
+              : threads.filter((thread) =>
+                  canAccessThread?.({ personId: person.id, role: person.role, threadId: thread.id }),
+                )
+          const titles = await getRoutineThreadTitles(reader, getRoutineThreadCandidateIds(visible), signal)
+
+          return jsonResponse(200, { threads: getThreadsWithRoutineTitles(visible, titles) })
         },
       },
       {
@@ -1999,9 +2004,17 @@ export const init = async (
               ...(person?.role === "member" ? { personId: person.id } : {}),
             }),
           ])
+          const hitThreads = hits.flatMap((hit) => {
+            const thread = getSearchThread(database, hit.threadId)
+            return thread ? [thread] : []
+          })
+          const threadIds = [...new Set(getRoutineThreadCandidateIds([...threads, ...hitThreads]))]
+          const titles = await getRoutineThreadTitles(reader, threadIds, signal)
+          const byId = new Map(getThreadsWithRoutineTitles(hitThreads, titles).map((thread) => [thread.id, thread]))
+
           return jsonResponse(200, {
-            hits: hits.map((hit) => ({ ...hit, thread: getSearchThread(database, hit.threadId) })),
-            threads,
+            hits: hits.map((hit) => ({ ...hit, thread: byId.get(hit.threadId) ?? null })),
+            threads: getThreadsWithRoutineTitles(threads, titles),
           })
         },
       },

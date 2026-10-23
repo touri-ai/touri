@@ -21,7 +21,7 @@ afterEach(async () => {
   cleanups.clear()
 })
 
-test.each(["live", "dead", "missed-exit"] as const)(
+test.each(["live", "dead", "missed-exit", "missed-exit-descendant"] as const)(
   "cancel ends a run with a %s process even when its adapter never settles",
   async (mode) => {
     const fixture = await getFixture(mode)
@@ -225,7 +225,7 @@ test.each(["runtime", "shared"] as const)(
 )
 
 const getFixture = async (
-  mode: "live" | "dead" | "missed-exit" | "cooperative",
+  mode: "live" | "dead" | "missed-exit" | "missed-exit-descendant" | "cooperative",
   resume = false,
   failure?: "output" | "signal",
 ) => {
@@ -259,9 +259,8 @@ const getFixture = async (
       turn.onEvent({ type: "turn_started", externalTurnId: `synthetic-turn-${calls}` })
       if (calls === 1) {
         const live = mode === "live" || mode === "cooperative"
-        const program = live
-          ? 'process.on("SIGTERM", () => {}); process.on("SIGINT", () => {}); const helper = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], {stdout: "ignore", stderr: "ignore"}); console.log("READY " + helper.pid); setInterval(() => {}, 1000)'
-          : 'console.log("READY")'
+        const hasDescendant = live || mode === "missed-exit-descendant"
+        const program = getProviderProgram(mode)
         const child = spawnTree({
           cmd: process.execPath,
           args: ["-e", program],
@@ -272,11 +271,11 @@ const getFixture = async (
         children.add(child)
         const reader = child.stdout.getReader()
         const ready = await reader.read()
-        const descendantPid = live ? Number(new TextDecoder().decode(ready.value).trim().split(" ")[1]) : null
+        const descendantPid = hasDescendant ? Number(new TextDecoder().decode(ready.value).trim().split(" ")[1]) : null
         reader.releaseLock()
         if (!live) await child.exited
         const observed =
-          mode === "missed-exit"
+          mode === "missed-exit" || mode === "missed-exit-descendant"
             ? Object.assign({}, child, { exited: new Promise<Awaited<ChildProcess["exited"]>>(() => {}) })
             : child
         const stoppable =
@@ -311,7 +310,7 @@ const getFixture = async (
     output.resolve()
     finish.resolve()
     for (const child of children) {
-      if (await getProviderProcessAlive(child.pid)) child.kill("SIGKILL")
+      child.kill("SIGKILL")
       await child.exited
     }
     await engine.shutdown()
@@ -372,4 +371,15 @@ const getReady = async (predicate: () => boolean): Promise<void> => {
     if (performance.now() >= deadline) throw new Error("Synthetic run did not settle")
     await Bun.sleep(5)
   }
+}
+
+const getProviderProgram = (
+  mode: "live" | "dead" | "missed-exit" | "missed-exit-descendant" | "cooperative",
+): string => {
+  if (mode === "missed-exit-descendant")
+    return 'const helper = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], {stdout: "ignore", stderr: "ignore"}); console.log("READY " + helper.pid); process.exit(0)'
+  if (mode === "live" || mode === "cooperative")
+    return 'process.on("SIGTERM", () => {}); process.on("SIGINT", () => {}); const helper = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], {stdout: "ignore", stderr: "ignore"}); console.log("READY " + helper.pid); setInterval(() => {}, 1000)'
+
+  return 'console.log("READY")'
 }

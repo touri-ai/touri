@@ -72,7 +72,7 @@ import { prepareConversationSession } from "./conversation-preparation"
 import { getDocumentInput } from "./document-input"
 import { type GoalDeadlineClock, startGoalDeadline } from "./goal-deadline"
 import { createGoalRuntime, getGoalPrompt } from "./goals"
-import { isConversationTurn } from "./greeting"
+import { isConversationTurn, isGreetingTurn } from "./greeting"
 import { buildHandoffPacket } from "./handoff"
 import { composeDeveloperInstructions } from "./instructions"
 import { isMcpStartupError } from "./mcp-startup"
@@ -694,6 +694,8 @@ export const createRuntimeEngine = ({
 
     const at = Date.now()
     state.usage = { ...state.usage, timings: { queuedAt: run.queuedAt, ...state.usage.timings, [stage]: at } }
+    if (!["processSpawnedAt", "processReusedAt", "providerReadyAt", "firstTokenAt"].includes(stage)) return
+
     const updated = updateRun(run, { usage: state.usage })
     if (updated.usage?.timings?.[stage] === at) logTiming(run, stage, at)
   }
@@ -1427,6 +1429,7 @@ export const createRuntimeEngine = ({
       : () => {}
 
   const execute = async (run: Run): Promise<void> => {
+    recordTiming(run, "claimedAt")
     if (!isLive(run)) {
       active.delete(run.threadId)
       return
@@ -1444,6 +1447,7 @@ export const createRuntimeEngine = ({
     await kernel.services.use("store.recovery")?.ensureThread(run.threadId)
     await kernel.services.use("store.recovery")?.ensureBot(run.botId)
     await tools.reconcilePending(store, run.threadId)
+    recordTiming(run, "reconciledAt")
     if (!isLive(run)) {
       active.delete(run.threadId)
       return
@@ -1467,6 +1471,7 @@ export const createRuntimeEngine = ({
       candidateBot.access !== "full" &&
       (!!candidateBot.anyFolderAccess || !!candidateBot.folders?.length)
     if (grantsApply) await refreshHostFolderAccess()
+    recordTiming(run, "permissionsReadyAt")
     const conversationOnly = grantsApply && !!folderGrantProblem(candidateBot)
     const bot: Bot = conversationOnly
       ? {
@@ -1538,7 +1543,16 @@ export const createRuntimeEngine = ({
           .join("\n\n")
     const carryover = thread.carryoverNote
     if (carryover) store.updateThread({ threadId: thread.id, patch: { carryoverNote: null } })
-    const toolSummary = tools.summary(store, thread.id, request?.id)
+    recordTiming(run, "requestReadyAt")
+    const goal = goals.getForRun(run.id)
+    const standaloneGreeting =
+      bot.fastConversation !== false &&
+      !goal &&
+      !carryover &&
+      !unacceptedRequest &&
+      isGreetingTurn(run.trigger, request?.parts ?? [], requestText)
+    const toolSummary = standaloneGreeting ? null : tools.summary(store, thread.id, request?.id)
+    recordTiming(run, "toolSummaryReadyAt")
     // Optional Mem0 recall rides on this turn's input only: the stored message stays as the user wrote it.
     // Private memories never reach group or delegated sessions, routines, retries or continuations.
     const mem0 = kernel.services.use("mem0.api")
@@ -1561,7 +1575,7 @@ export const createRuntimeEngine = ({
         controllers.delete(run.id)
       }
     }
-    const goal = goals.getForRun(run.id)
+    recordTiming(run, "recallReadyAt")
     const inputText = [recalled, carryover, toolSummary, requestText, goal ? getGoalPrompt(goal) : null]
       .filter(Boolean)
       .join("\n\n")
@@ -1585,10 +1599,12 @@ export const createRuntimeEngine = ({
       !unacceptedRequest &&
       isConversationTurn(run.trigger, requestParts, requestText)
     const toolsDisabled = conversationOnly || greeting
+    recordTiming(run, "inputReadyAt")
     const { cwd, projectDataDir } =
       bot.machine === "vm"
         ? { cwd: "/workspace", projectDataDir: "/workspace/.touri/data" }
         : await chooseCwd({ bot, thread })
+    recordTiming(run, "workspaceReadyAt")
     if (shuttingDown || !isLive(run)) {
       active.delete(run.threadId)
       if (!shuttingDown) void drain()
@@ -1600,6 +1616,7 @@ export const createRuntimeEngine = ({
       bot.machine === "vm"
         ? { command: "/usr/local/bin/node", args: ["/usr/local/lib/touri/mcp-stdio.cjs", thread.id], env: {} }
         : await prepareMcpConnection(thread.id, toolsDisabled)
+    recordTiming(run, "mcpReadyAt")
     const mcpFingerprint = sessionFingerprint({
       bot: {
         ...bot,
@@ -1611,6 +1628,7 @@ export const createRuntimeEngine = ({
       mcpArgs: mcp.args,
       ...(toolsDisabled ? { conversationOnly: true } : {}),
     })
+    recordTiming(run, "fingerprintReadyAt")
     // Older versions saved the first session only as a per-run resume point.
     // Adopt it for a manual follow-up as well as for automatic continuations.
     if (!persistence.getActiveSession({ threadId: thread.id, provider: bot.provider })) {
@@ -1624,6 +1642,9 @@ export const createRuntimeEngine = ({
       reason: string,
       text = "O contexto da conversa foi recuperado do histórico salvo.",
     ): void => {
+      // Standalone greetings keep task history durable for the next task.
+      if (greeting) return
+
       if (!handoffPacket || text === SESSION_RECOVERY_MESSAGE) {
         const part: Extract<MessagePart, { type: "notice" }> = {
           type: "notice",
@@ -1669,21 +1690,23 @@ export const createRuntimeEngine = ({
     if (session && session.fingerprint !== mcpFingerprint.hash && session.fingerprint !== "imported") {
       persistence.markSession({ id: session.id, state: "replaced" })
       restoreContext("session fingerprint changed")
-      notice({
-        store,
-        run,
-        parentId: run.requestMessageId ?? thread.activeLeafId ?? run.id,
-        part: {
-          type: "notice",
-          level: "info",
-          code: "session_replaced",
-          text: "The native provider session was replaced and a handoff was supplied.",
-        },
-      })
+      if (!greeting)
+        notice({
+          store,
+          run,
+          parentId: run.requestMessageId ?? thread.activeLeafId ?? run.id,
+          part: {
+            type: "notice",
+            level: "info",
+            code: "session_replaced",
+            text: "The native provider session was replaced and a handoff was supplied.",
+          },
+        })
       session = null
     }
-    if (!session && !handoffPacket && hasPreviousMessages(store, thread, request?.id ?? null))
+    if (!greeting && !session && !handoffPacket && hasPreviousMessages(store, thread, request?.id ?? null))
       restoreContext("native session unavailable")
+    recordTiming(run, "sessionReadyAt")
     const baseEnvironment = bot.machine === "vm" ? {} : environment?.PATH ? environment : await kernel.shellEnv()
     const env = buildChildEnv({
       base: baseEnvironment,
@@ -1701,7 +1724,9 @@ export const createRuntimeEngine = ({
       if (!shuttingDown) void drain()
       return
     }
+    recordTiming(run, "environmentReadyAt")
     updateRun(run, { status: "starting", startedAt: run.startedAt ?? Date.now() })
+    recordTiming(run, "startingPersistedAt")
     state.generation = store.getThread({ threadId: thread.id })?.generation ?? null
     state.fingerprint = mcpFingerprint.hash
     const controller = new AbortController()
@@ -1740,15 +1765,19 @@ export const createRuntimeEngine = ({
           messages: documentMessages,
           signal: controller.signal,
         })
+        recordTiming(run, "documentsReadyAt")
         if (!documents.success) return documents
         const providerInput = [...input, ...documents.input]
         controller.signal.throwIfAborted()
 
         if (bot.machine !== "vm" && bot.machine !== "cloud") {
-          const login = await prepareLocalProviderLogin(kernel, bot, controller.signal, env.HOME)
+          const login = await prepareLocalProviderLogin(kernel, bot, controller.signal, env.HOME, (stage) =>
+            recordTiming(run, stage),
+          )
           Object.assign(env, login.env)
           releaseLogin = login.release
         }
+        recordTiming(run, "loginReadyAt")
         if (bot.machine === "vm") {
           const vm = kernel.services.use("vm.runtime")
           if (!vm) return { success: false, errorCode: "cli_crash", error: "VM runtime indisponível" }
@@ -1780,14 +1809,17 @@ export const createRuntimeEngine = ({
             mcpServers: toolsDisabled ? [] : await resolveAttachedMcp(kernel, prepared?.bot ?? bot),
           })
           signal?.throwIfAborted()
+          recordTiming(run, "attachedMcpReadyAt")
           const turnInstructions = await composeDeveloperInstructions({
             kernel,
             bot: greeting ? { ...turnBot, reasoningEffort: "low" } : turnBot,
             thread,
             cwd,
             ...(greeting ? { greetingOnly: true } : {}),
+            onPreparationStage: (stage) => recordTiming(run, stage),
             ...(signal ? { signal } : {}),
           })
+          signal?.throwIfAborted()
           return { turnBot, turnInstructions }
         }
         const { turnBot, turnInstructions } = prepared
@@ -1801,7 +1833,8 @@ export const createRuntimeEngine = ({
               signal: controller.signal,
               action: prepareInstructions,
             })
-          : await prepareInstructions()
+          : await prepareInstructions(controller.signal)
+        recordTiming(run, "instructionsReadyAt")
         const turnEnv = prepared?.env ?? env
         const dispatchEvent = (event: ProviderEvent) => handleEvent({ run, event, store, state })
         const emit = (event: ProviderEvent) =>
@@ -1819,11 +1852,14 @@ export const createRuntimeEngine = ({
           ? (args) => startVmTurn({ kernel, provider, args })
           : provider.startTurn
         const invoke = (): ReturnType<typeof startTurn> => {
+          controller.signal.throwIfAborted()
+
           // Completion diagnostics belong to one attempt; cancellation keeps its own cause.
           if (!controller.signal.aborted) state.completionError = null
 
           // Publish before invocation: startup and a silent provider are different waits.
           if (!run.providerStartedAt) updateRun(run, { providerStartedAt: Date.now() })
+          recordTiming(run, "dispatchReadyAt")
           const invocation = startTurn({
             ...(toolsDisabled ? { conversationOnly: true } : {}),
             thread,
@@ -1844,6 +1880,7 @@ export const createRuntimeEngine = ({
               }
               supervision.observeProcess(run.id, child)
             },
+            onPreparationStage: (stage) => recordTiming(run, stage),
             onProcessSpawned: () => recordTiming(run, "processSpawnedAt"),
             onProcessReused: () => recordTiming(run, "processReusedAt"),
             signal: controller.signal,
@@ -2777,6 +2814,7 @@ export const createRuntimeEngine = ({
     }
     if (kernel.db instanceof Database) kernel.db.transaction(saveQueuedRun)()
     else saveQueuedRun()
+    recordTiming(run, "queuedPersistedAt")
     logTiming(run, "queuedAt", queuedAt)
     if (delegated) {
       publishRun(run)
@@ -2932,6 +2970,7 @@ export const createRuntimeEngine = ({
     })
     controllers.get(run.id)?.abort()
     approvalBridge.cancelRun(run.id)
+    if (state.cancelRequested) publishCanceledParts(run, state)
     const operation = stopRun(run, state, failure).finally(() => {
       stopOperations.delete(run.id)
       if (!isLive(run)) {
@@ -2945,6 +2984,19 @@ export const createRuntimeEngine = ({
       kernel.log({ level: "error", module: "runtime", msg: "Não foi possível encerrar a tarefa. Tente novamente." })
     })
     return operation
+  }
+
+  const publishCanceledParts = (run: Run, state: RunState): void => {
+    try {
+      finishParts({ run, state, reason: "cancelled_by_user", persist: false })
+      state.parts.forEach((part, index) => {
+        if (part.type === "text" || part.type === "reasoning") state.dirtyParts.add(index)
+      })
+      const store = kernel.services.use("store.api")
+      if (store) publishMessage({ store, state, run, status: "streaming" })
+    } catch {
+      // A failed interim publication must still reach the bounded terminal finalization.
+    }
   }
 
   const stopRun = async (
@@ -3490,6 +3542,15 @@ export const createRuntimeEngine = ({
     const bot = store.getBot({ botId: routine.botId })
     if (!bot) return { success: false, errorCode: "NOT_FOUND", error: "Bot not found" }
     const group = routine.groupId ? createGroupStore(kernel).get(routine.groupId) : null
+    const publishRoutineThread = (thread: Thread): void => {
+      kernel.publish({
+        type: "thread.updated",
+        thread: {
+          ...thread,
+          routineTitle: { sourceTitle: thread.title, name: routine.name, scheduledFor, timezone: routine.timezone },
+        },
+      })
+    }
     let threadId: Id | null = null
     if (routine.continuity === "main-thread") threadId = bot.mainThreadId
     else if (routine.continuity === "results-thread") threadId = routine.resultsThreadId
@@ -3504,6 +3565,7 @@ export const createRuntimeEngine = ({
       })
       if (!created.success)
         return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Unable to create routine thread" }
+      publishRoutineThread(created.thread)
       threadId = created.thread.id
       if (routine.continuity === "results-thread" || (bot.automaticConversationMode ?? "main") === "main")
         persistence.updateRoutine({ ...routine, resultsThreadId: threadId, updatedAt: Date.now() })
@@ -3520,6 +3582,7 @@ export const createRuntimeEngine = ({
         : store.createThread(threadArgs)
       if (!created.success)
         return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Unable to create routine thread" }
+      publishRoutineThread(created.thread)
       threadId = created.thread.id
       if (routine.continuity === "results-thread")
         persistence.updateRoutine({ ...routine, resultsThreadId: threadId, updatedAt: Date.now() })
