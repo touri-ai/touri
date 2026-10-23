@@ -50,6 +50,7 @@ export const buildHandoffPacket = ({
     const message = messages[index]
     if (!message) continue
     const line = `${getMessageLabel(message)}: ${getMessageText(message)}`
+    if (recentCharacters + line.length > 24_000) break
     recent.unshift(line)
     recentCharacters += line.length
   }
@@ -75,12 +76,15 @@ export const buildHandoffPacket = ({
     "Recent messages:",
     recent.join("\n"),
     "Older excerpts:",
-    bounded({ value: older, max: 4_000 }),
+    older.slice(0, 4_000),
     "Recent work:",
-    recent
-      .flatMap((line) => (line.includes("tool:") ? [line] : []))
-      .slice(-20)
-      .join("\n"),
+    bounded({
+      value: recent
+        .flatMap((line) => (line.includes("tool:") ? [line] : []))
+        .slice(-20)
+        .join("\n"),
+      max: 2_000,
+    }),
     `Environment: ${environment}`,
     "Footer: Use history_search/history_read for anything older.",
   ].join("\n")
