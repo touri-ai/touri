@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite"
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test"
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import type { Bot, Kernel, Message, RunTimings, StoreApi, Thread } from "@touri/contracts"
+import type { Bot, Kernel, Message, Run, RunTimings, StoreApi, Thread } from "@touri/contracts"
 import { t } from "../../../ui/src/i18n"
 import { createStandingGrantStore } from "../../src/approvals/grants"
 import { mcpStartupChecks } from "../../src/doctor/mcp"
@@ -3300,7 +3300,7 @@ describe("turn latency milestones", () => {
 
     expect(await current.engine.prepareConversation(current.thread.id)).toBe(true)
     expect(current.engine.listRuns(current.thread.id)).toEqual([])
-    const greetings = await Array.from({ length: 10 }).reduce(async (pending) => {
+    const greetings = await Array.from({ length: 10 }).reduce<Promise<Array<Run>>>(async (pending) => {
       const previous = await pending
       const turn = await sendTurn(current, "oi")
       return previous.concat(turn)

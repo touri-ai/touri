@@ -41,6 +41,7 @@ export const prepareConversationSession = async ({
     thread,
     cwd,
     greetingOnly: true,
+    allowMemoryReview: false,
     signal,
   })
   const base = environment?.PATH ? environment : await kernel.shellEnv()

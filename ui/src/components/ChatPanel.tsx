@@ -1783,6 +1783,9 @@ export const ChatPanel = ({
               onSelectProject={onSelectProject}
               onAddProject={onAddProject}
               queuedCount={visibleMessages.filter((message) => message.delivery?.status === "queued").length}
+              hasPendingDelivery={visibleMessages.some(
+                (message) => message.delivery?.status === "queued" || message.delivery?.status === "sent",
+              )}
               onSend={onSend}
               onCancel={onCancel}
               onOpenPermissions={group ? undefined : onOpenPermissions}

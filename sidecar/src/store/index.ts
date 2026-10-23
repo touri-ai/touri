@@ -887,7 +887,7 @@ export const init = async (
     )
       return { input: null, error: "automaticConversationMode must be main or task" }
     if (body.fastConversation !== undefined && typeof body.fastConversation !== "boolean")
-      return { input: null, error: "fastConversation must be a boolean" }
+      return { input: null, error: "Escolha se a resposta rápida para conversa fica ativada." }
     input.fastConversation = (body.fastConversation as boolean | undefined) ?? existing?.fastConversation ?? true
     input.automaticConversationMode =
       (body.automaticConversationMode as Bot["automaticConversationMode"] | undefined) ??

@@ -24,6 +24,7 @@ const setup = ({
   access = "workspace-write",
   activeRun = null,
   queuedCount = 0,
+  hasPendingDelivery = queuedCount > 0,
   browserWorking = false,
   send = vi.fn().mockResolvedValue(undefined),
 }: {
@@ -31,6 +32,7 @@ const setup = ({
   access?: Bot["access"]
   activeRun?: Run | null
   queuedCount?: number
+  hasPendingDelivery?: boolean
   browserWorking?: boolean
   send?: ReturnType<typeof vi.fn>
 } = {}) => {
@@ -55,6 +57,7 @@ const setup = ({
         activeRun={currentRun}
         browserWorking={browserWorking}
         queuedCount={queuedCount}
+        hasPendingDelivery={hasPendingDelivery}
         onSend={send}
         onCancel={cancel}
       />
@@ -94,6 +97,18 @@ describe("composer island", () => {
     expect(samples.toSorted((first, second) => first - second)[8]).toBeLessThan(100)
     expect(Math.max(...samples)).toBeLessThan(500)
     expect(send).toHaveBeenCalledTimes(10)
+  })
+
+  it("keeps typing after an optimistic send until the accepted run arrives", async () => {
+    const { box, send, updateRun } = setup({ draft: "oi", hasPendingDelivery: true })
+    await waitFor(() => expect(screen.getByRole("button", { name: "Enviar" })).toBeEnabled())
+
+    fireEvent.keyDown(box, { key: "Enter" })
+    await waitFor(() => expect(send).toHaveBeenCalledOnce())
+
+    expect(screen.getByText("mark digitando…")).toBeVisible()
+    updateRun(run)
+    expect(screen.queryByText("mark digitando…")).not.toBeInTheDocument()
   })
 
   it("explicitly accepts common documents and images in the desktop picker and registers each one", async () => {

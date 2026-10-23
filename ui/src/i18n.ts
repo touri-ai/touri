@@ -4,6 +4,8 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "Escolha se a resposta rápida para conversa fica ativada.":
+    "Escolha se a resposta rápida para conversa fica ativada.",
   "Reconectando…": "Reconectando…",
   "Esta versão do aplicativo precisa de uma atualização para conversar com o servidor.":
     "Esta versão do aplicativo precisa de uma atualização para conversar com o servidor.",
@@ -3360,6 +3362,7 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Escolha se a resposta rápida para conversa fica ativada.": "Choose whether fast conversational replies are enabled.",
   "Reconectando…": "Reconnecting…",
   "Esta versão do aplicativo precisa de uma atualização para conversar com o servidor.":
     "This app version needs an update to connect to the server.",

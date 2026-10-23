@@ -57,6 +57,7 @@ type ComposerProps = {
   onSelectProject?: ((projectId: Id | null) => Promise<void>) | undefined
   onAddProject?: (() => void) | undefined
   queuedCount: number
+  hasPendingDelivery?: boolean
   onSend: (text: string, parentId?: Id | null, attachmentIds?: Array<Id>, groupAction?: GroupAction) => Promise<void>
   onCancel: (runId: Id) => Promise<void>
   onOpenPermissions?: (() => void) | undefined
@@ -123,6 +124,7 @@ export const Composer = ({
   onSelectProject,
   onAddProject,
   queuedCount,
+  hasPendingDelivery = queuedCount > 0,
   onSend,
   onCancel,
   notice,
@@ -138,7 +140,13 @@ export const Composer = ({
   )
   const { account: cloudAccount } = useCloudAccount(api, bot?.machine === "cloud")
   const canPrepareConversation =
-    !!bot && bot.fastConversation !== false && bot.machine === "local" && !botActive && !activeRun && !login.blocked
+    !!bot &&
+    bot.fastConversation !== false &&
+    bot.machine === "local" &&
+    !botActive &&
+    !activeRun &&
+    queuedCount === 0 &&
+    !login.blocked
   const preparationBotVersion = bot?.updatedAt
   useEffect(() => {
     if (!canPrepareConversation || preparationBotVersion === undefined) return
@@ -186,6 +194,9 @@ export const Composer = ({
   const [files, setFiles] = useState<Array<AttachedFile>>([])
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
+  const [requestedReplyThreadId, setRequestedReplyThreadId] = useState<Id | null>(null)
+  const [connected, setConnected] = useState(true)
+  useEffect(() => api.subscribeConnection?.(setConnected), [api])
   const [dictating, setDictating] = useState(false)
   const [stoppingRunId, setStoppingRunId] = useState<string | null>(null)
   const [picking, setPicking] = useState(false)
@@ -360,6 +371,7 @@ export const Composer = ({
     pendingSend.current = null
     sendingRef.current = true
     setSending(true)
+    setRequestedReplyThreadId(threadId)
     setError(null)
     const text = draft
     const sentFiles = summary ? [] : files
@@ -380,7 +392,10 @@ export const Composer = ({
       setFiles((current) => current.filter((file) => !sentFiles.some((sent) => sent.key === file.key)))
       inputRef.current?.focus()
     } catch (failure) {
-      if (alive.current) setError(t("Could not send message", { reason: userFacingError(failure) }))
+      if (alive.current) {
+        setRequestedReplyThreadId(null)
+        setError(t("Could not send message", { reason: userFacingError(failure) }))
+      }
     } finally {
       sendingRef.current = false
       if (alive.current) setSending(false)
@@ -452,7 +467,7 @@ export const Composer = ({
         if (serverMode || !("__TAURI_INTERNALS__" in window)) addBrowserFiles(event.dataTransfer.files)
       }}
     >
-      {sending && !activeRun && bot && (
+      {(sending || (requestedReplyThreadId === threadId && hasPendingDelivery)) && connected && !activeRun && bot && (
         <div className="composer-status" role="status" aria-live="polite">
           {t("Bot typing", { name: bot.name })}
         </div>
