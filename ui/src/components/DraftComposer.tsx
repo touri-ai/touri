@@ -59,7 +59,18 @@ export const getResumeDraft = (current: string, botName?: string): string => {
   if (!botName) return current || request
   const mention = getMentionToken(botName)
   if (!current.trim()) return `${mention} ${request}`
-  if (current.includes(mention)) return current
+  if (getHasBotMention(current, botName)) return current
 
   return `${mention} ${request}\n\n${current}`
 }
+
+const getHasBotMention = (draft: string, botName: string): boolean => {
+  const tokens = [botName, JSON.stringify(botName)]
+    .map((token) => getNormalizedMention(token).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|")
+  const mention = new RegExp(`(?:^|[^\\p{L}\\p{N}_@.-])@(?:${tokens})(?=$|[^\\p{L}\\p{N}_-])`, "u")
+
+  return mention.test(getNormalizedMention(draft))
+}
+
+const getNormalizedMention = (value: string): string => value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase()

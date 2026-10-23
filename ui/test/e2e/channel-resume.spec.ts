@@ -9,13 +9,18 @@ const request =
 for (const viewport of [
   { width: 1440, height: 900 },
   { width: 390, height: 844 },
-]) {
-  test(`resuming a channel task calls the interrupted bot at ${viewport.width}px`, async ({ page }) => {
+].flatMap((viewport) => [
+  { ...viewport, draft: "" },
+  { ...viewport, draft: "@marketing confira o relatório." },
+])) {
+  test(`resuming a channel task calls the interrupted bot at ${viewport.width}px (${viewport.draft ? "existing draft" : "empty draft"})`, async ({
+    page,
+  }) => {
     test.setTimeout(60_000)
     await page.setViewportSize(viewport)
     await page.goto("/test/e2e/groups-harness.html")
     await expect(page.getByRole("textbox", { name: "Mensagem para mark", exact: true })).toBeVisible()
-    await page.evaluate(async () => {
+    await page.evaluate(async (draft) => {
       const fixture = window as Window & {
         groupsQa?: {
           api: {
@@ -37,6 +42,7 @@ for (const viewport of [
       const { threads } = await api.request("GET /groups/:id/threads", {}, { id: group.id })
       const threadId = threads[0]?.id
       if (!threadId) throw new Error("Missing channel conversation")
+      if (draft) localStorage.setItem(`touri.composer-draft.v1:${threadId}`, draft)
       const at = Date.now()
       const base = { threadId, kind: "text", runId: null, source: "local" }
       // mark was interrupted by a restart; onb answered an independent request afterwards.
@@ -96,7 +102,7 @@ for (const viewport of [
         title: "Tarefas interrompidas",
         body: "app_restart: touri restarted",
       })
-    })
+    }, viewport.draft)
     if (viewport.width < 500) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
     await page.getByRole("button", { name: /^Notificações/ }).click()
     const center = page.getByRole("region", { name: "Central de notificações" })
@@ -109,7 +115,10 @@ for (const viewport of [
     await expect(input).toBeFocused()
     // Captured before the draft assertion so the same spec records the old draft on main.
     if (process.env.TOURI_SCREENSHOT_DIR)
-      await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/channel-resume-${viewport.width}.png` })
-    await expect(input).toHaveValue(`@mark ${request}`)
+      await page.screenshot({
+        path: `${process.env.TOURI_SCREENSHOT_DIR}/channel-resume-${viewport.width}-${viewport.draft ? "existing" : "empty"}.png`,
+      })
+    await expect(input).toHaveValue(`@mark ${request}${viewport.draft ? `\n\n${viewport.draft}` : ""}`)
+    await expect(page.getByRole("button", { name: "Enviar", exact: true })).toBeEnabled()
   })
 }

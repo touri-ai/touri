@@ -66,3 +66,31 @@ it("builds the resume draft from the interrupted bot only", () => {
   expect(getResumeDraft("", undefined)).toBe(request)
   expect(getResumeDraft("Meu rascunho", undefined)).toBe("Meu rascunho")
 })
+
+it.each(["@marketing veja o relatório", "demo@mark.example", "@mark-extra", "@mark_2", "@mark2"])(
+  "adds the interrupted bot when the draft contains a similar token: %s",
+  (draft) => {
+    const result = getResumeDraft(draft, "mark")
+
+    expect(result).toBe(`@mark ${request}\n\n${draft}`)
+  },
+)
+
+it.each(["@MARK já comecei", "Olá, @mark!", '@"mark" já comecei'])(
+  "preserves a draft with a complete mention: %s",
+  (draft) => {
+    const result = getResumeDraft(draft, "mark")
+
+    expect(result).toBe(draft)
+  },
+)
+
+it.each([
+  { botName: "João", draft: "@JOAO já comecei" },
+  { botName: "Dev Bot", draft: "@Dev Bot já comecei" },
+  { botName: "dev+qa", draft: "@dev+qa já comecei" },
+])("preserves a complete mention of $botName using channel matching", ({ botName, draft }) => {
+  const result = getResumeDraft(draft, botName)
+
+  expect(result).toBe(draft)
+})
