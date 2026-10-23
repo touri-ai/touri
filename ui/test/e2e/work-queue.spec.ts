@@ -13,8 +13,7 @@ for (const viewport of [
     await page.goto("/test/e2e/work-harness.html?channel-queue")
     await expect(page.getByRole("textbox", { name: "Mensagem para Planejamento" })).toBeVisible()
     if (viewport.width === 390) await page.getByRole("button", { name: "Abrir menu" }).click()
-    await page.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
-    await page.getByRole("button", { name: "Trabalho", exact: true }).click()
+    await openGlobalPage(page, "Trabalho")
     const waiting = page.locator('[data-run-id="channel-waiting"]')
 
     await expect(waiting).toContainText("Na fila · aguardando o bot concluir o pedido anterior")
@@ -37,8 +36,7 @@ for (const viewport of [
     if (process.env.TOURI_SCREENSHOT_DIR)
       await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/channel-conversation-${viewport.width}.png` })
     if (viewport.width === 390) await page.getByRole("button", { name: "Abrir menu" }).click()
-    await page.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
-    await page.getByRole("button", { name: "Trabalho", exact: true }).click()
+    await openGlobalPage(page, "Trabalho")
 
     await page.evaluate(() => {
       const fixture = window as Window & { workQa?: { finishFirst: () => void } }
