@@ -4,8 +4,12 @@ import { afterEach, expect, it, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
 import { VirtualMessageList } from "../src/components/ChatPanel"
 import { SettingsModal } from "../src/components/Modals"
+import { setDocumentLanguage } from "../src/documentLanguage"
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  setDocumentLanguage("pt-BR", document.documentElement)
+})
 
 const message = (overrides: Partial<Message>): Message => ({
   id: "m",
@@ -59,6 +63,24 @@ it.each(["Retomado após reinício do touri", "Retomado após aprovação de ace
     expect(screen.getByText("Terminei.")).toBeInTheDocument()
   },
 )
+
+it.each([
+  { locale: "pt-BR" as const, expected: "Retomando a resposta automaticamente…" },
+  { locale: "en" as const, expected: "Resuming the answer automatically…" },
+])("localizes the automatic channel recovery marker to $locale", ({ locale, expected }) => {
+  setDocumentLanguage(locale, document.documentElement)
+  const text = "Retomando a resposta automaticamente…"
+  const marker = message({
+    role: "system",
+    kind: "notice",
+    text,
+    parts: [{ type: "notice", level: "info", code: "run_resumed", text }],
+  })
+
+  render(<VirtualMessageList messages={[marker]} onSwitchBranch={vi.fn()} onRetry={vi.fn()} />)
+
+  expect(screen.getByRole("note")).toHaveTextContent(expected)
+})
 
 it("the resume setting is on by default and saving it off persists through the settings API", async () => {
   const onSave = vi.fn(async () => undefined)

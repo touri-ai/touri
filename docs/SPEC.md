@@ -444,7 +444,8 @@ no member starts after cancellation when the engine becomes ready. Stop, pending
 automatic execution. A managed effect recorded in the durable work journal requires human review
 even if no reply part was saved; neither automatic recovery nor a simple retry may replay it.
 The manual resume action appears only after automatic recovery is exhausted or needs human review.
-A later reply to another channel request or from another member does not hide that action. An empty final response (no text
+A later reply to another channel request or from another member does not hide that action.
+Automatic recovery markers follow the selected interface language. An empty final response (no text
 or parts) fails visibly instead of succeeding.
 One human message starts one group turn and one execution per addressed member, including a
 repeated delivery acknowledgement. The aggregate group record is not another provider execution.
