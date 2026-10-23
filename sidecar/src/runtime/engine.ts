@@ -208,6 +208,18 @@ type PendingApproval = { runId: Id; provider: ProviderAdapter; providerApprovalI
 
 const ROUTINE_TICK_GRACE_MS = 2 * 60_000
 const EVENT_LIVENESS_CHECK_INTERVAL_MS = 50
+const EXECUTION_FAILURE_CODES: ReadonlyArray<string> = [
+  "EIO",
+  "ENOSPC",
+  "EACCES",
+  "EPERM",
+  "ENOENT",
+  "SQLITE_BUSY",
+  "SQLITE_LOCKED",
+  "SQLITE_FULL",
+  "SQLITE_CORRUPT",
+  "SQLITE_IOERR",
+]
 
 type RoutineCreate = {
   botId: Id
@@ -2462,7 +2474,7 @@ export const createRuntimeEngine = ({
       msg: "Unexpected turn execution failure",
       data: {
         runId: run.id,
-        errorCode: typeof code === "string" && /^(?:E[A-Z_]{1,40}|SQLITE_[A-Z_]{1,40})$/.test(code) ? code : "UNKNOWN",
+        errorCode: typeof code === "string" && EXECUTION_FAILURE_CODES.includes(code) ? code : "UNKNOWN",
       },
     })
     if (!isLive(run)) return

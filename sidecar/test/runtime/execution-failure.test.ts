@@ -58,6 +58,7 @@ test.each([false, true])(
     expect(member).toMatchObject({ status: "failed", errorClass: "unknown", finishedAt: expect.any(Number) })
     expect(fixture.persistence.getRun(first.id)).toMatchObject({ status: "failed", errorClass: "unknown" })
     expect(fixture.getStartCount()).toBe(2)
+    expect(fixture.persistence.getRun(second.id)?.status).toBe(persistent ? "failed" : "succeeded")
     expect(fixture.engine.activeRun({ threadId: member.threadId })).toBeNull()
     expect(fixture.notifications).toContain("turn-failed")
     expect(fixture.logs).toContainEqual(
@@ -70,7 +71,7 @@ test.each([false, true])(
     if (persistent) return
 
     const reply = fixture.store.getPathMessage?.({ threadId: member.threadId, messageId: member.replyMessageId ?? "" })
-    expect(reply).toMatchObject({ status: "failed", text: "Resultado preservado." })
+    expect(reply).toMatchObject({ status: "failed", text: "Resultado preservado. Conferência concluída." })
     expect(reply?.parts).toContainEqual(expect.objectContaining({ callId: "completed-tool", resolution: "succeeded" }))
     expect(reply?.parts).toContainEqual(expect.objectContaining({ type: "notice", code: "run_failed" }))
   },
@@ -82,7 +83,7 @@ test("an unexpected startup failure releases the execution slot and preserves th
   const runStage: PerformanceStageRunner = (stage, action, input) => {
     if (stage === "runtime_request_path_lookup" && shouldFail) {
       shouldFail = false
-      throw new Error("Synthetic startup failure")
+      throw Object.assign(new Error("Synthetic startup failure"), { code: "EPRIVATE" })
     }
 
     return action(input as Parameters<typeof action>[0])
@@ -96,9 +97,11 @@ test("an unexpected startup failure releases the execution slot and preserves th
 
   expect(fixture.getMember(first.id)).toMatchObject({ status: "failed", errorClass: "unknown" })
   expect(fixture.getStartCount()).toBe(1)
+  expect(fixture.persistence.getRun(second.id)?.status).toBe("succeeded")
+  expect(JSON.stringify(fixture.logs)).not.toContain("EPRIVATE")
   expect(
     fixture.store.getPathMessage?.({ threadId: fixture.threadId, messageId: first.requestMessageId ?? "" }),
-  ).toMatchObject({ role: "user", text: "Confira o resultado sintético." })
+  ).toMatchObject({ role: "user", text: "@Teste confira o resultado sintético." })
 })
 
 const getFixture = async (runStage: PerformanceStageRunner) => {
@@ -149,7 +152,7 @@ const getFixture = async (runStage: PerformanceStageRunner) => {
       args.onEvent({ type: "turn_started", externalTurnId: `fixture-turn-${startCount}` })
       started.resolve(args)
       await finish.promise
-      args.onEvent({ type: "text_delta", itemId: "answer", delta: startCount === 1 ? "" : "Próximo pedido." })
+      args.onEvent({ type: "text_delta", itemId: "answer", delta: " Conferência concluída." })
       return {
         success: true,
         status: "succeeded",
@@ -189,7 +192,7 @@ const getFixture = async (runStage: PerformanceStageRunner) => {
       role: "user",
       kind: "text",
       status: "complete",
-      text: "Confira o resultado sintético.",
+      text: "@Teste confira o resultado sintético.",
       parts: [],
       runId: null,
       sender: null,
