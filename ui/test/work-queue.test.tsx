@@ -174,6 +174,36 @@ it("shows queue positions in Portuguese and English and uses the slot fallback w
   expect(screen.getByRole("status")).toHaveTextContent("Na fila · aguardando uma vaga")
 })
 
+it("keeps a waiting channel request visible and removes its placeholder when an execution starts", async () => {
+  const api = createWorkApi()
+  const template = api.getRuns()[3]
+  if (!template) throw new Error("Missing queued turn")
+  const waiting = { ...template, id: "channel-request", kind: "coordination" as const }
+  const hook = renderHook(() => useWorkspace(api))
+  await waitFor(() => expect(hook.result.current.data.loading).toBe(false))
+
+  act(() => api.emit({ type: "run.updated", run: waiting }))
+
+  expect(hook.result.current.data.workRuns.find((run) => run.id === waiting.id)).toMatchObject(waiting)
+  expect(getQueueLabel(waiting)).toBe("Na fila · aguardando o bot concluir o pedido anterior")
+  expect(getQueueLabel(waiting, "en")).toBe("Queued · waiting for the bot to finish the previous request")
+
+  act(() => {
+    api.emit({ type: "run.updated", run: { ...waiting, status: "running" } })
+    api.emit({
+      type: "run.updated",
+      run: { ...waiting, id: "channel-execution", groupTurnId: waiting.id, kind: "execution", status: "starting" },
+    })
+  })
+
+  expect(hook.result.current.data.workRuns.some((run) => run.id === waiting.id)).toBe(false)
+  expect(hook.result.current.data.workRuns.find((run) => run.id === "channel-execution")).toMatchObject({
+    kind: "execution",
+    status: "starting",
+    groupTurnId: waiting.id,
+  })
+})
+
 it("saves the concurrency limit through Advanced and restores its saved value", async () => {
   const api = createWorkApi()
   render(<App kernel={{ services: { api } }} />)

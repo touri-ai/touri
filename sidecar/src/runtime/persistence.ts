@@ -238,7 +238,7 @@ export const WORK_RUNS_SQL = `${RUN_SNAPSHOT_SELECT.replace("FROM runs r", "FROM
   JOIN bots b ON b.id = r.bot_id
   JOIN threads visible_thread ON visible_thread.id = COALESCE(root.thread_id, t.group_thread_id, r.thread_id)
   WHERE r.status IN ('queued', 'starting', 'running')
-    AND r.id NOT IN (SELECT run_id FROM group_turns)
+    AND (r.status = 'queued' OR r.id NOT IN (SELECT run_id FROM group_turns))
     AND b.archived_at IS NULL AND visible_thread.archived_at IS NULL
   ORDER BY r.queued_at, r.rowid`
 

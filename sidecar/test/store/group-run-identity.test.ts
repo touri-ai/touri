@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { openDatabase } from "../../src/kernel/db"
-import { createRuntimePersistence } from "../../src/runtime/persistence"
+import { createRuntimePersistence, WORK_RUNS_SQL } from "../../src/runtime/persistence"
 import { readWorkspaceActivity, WORKSPACE_RUNS_SQL } from "../../src/store/workspace-activity"
 
 const cleanups = new Set<() => void>()
@@ -63,6 +63,24 @@ test("workspace run kinds use the coordination primary key instead of scanning h
 
   expect(plan.some(({ detail }) => /SEARCH coordination .*\(run_id=\?\)/.test(detail))).toBe(true)
   expect(plan.some(({ detail }) => /SCAN coordination/.test(detail))).toBe(false)
+})
+
+test("a queued channel request stays in work before it has an execution", () => {
+  const db = getDatabase("running")
+  db.exec(`
+    INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at)
+      VALUES ('waiting','channel','bot','codex','user','queued',3);
+    INSERT INTO group_turns(run_id,group_id,recipients_json) VALUES ('waiting','team','["bot"]');
+  `)
+  const persistence = createRuntimePersistence({ database: db })
+
+  const work = persistence.listWorkRuns()
+  const plan = db.query(`EXPLAIN QUERY PLAN ${WORK_RUNS_SQL}`).all() as { detail: string }[]
+
+  expect(work.map((run) => run.id)).toEqual(["execution", "waiting"])
+  expect(work[1]).toMatchObject({ kind: "coordination", status: "queued", threadId: "channel", origin: "message" })
+  expect(plan.some(({ detail }) => /runs_active_order/.test(detail))).toBe(true)
+  expect(plan.some(({ detail }) => /SCAN (?:transcript_entries|messages|group_turns)/.test(detail))).toBe(false)
 })
 
 const getDatabase = (status: "running" | "succeeded") => {

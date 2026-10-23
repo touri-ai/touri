@@ -278,6 +278,7 @@ type RuntimeEngine = {
   getRunSnapshot: (run: Run) => Run
   getRunSnapshots: (runs: ReadonlyArray<Run>) => Array<Run>
   getWorkRuns: (runs?: ReadonlyArray<Run>) => Array<Run>
+  publishQueue: () => void
   getRunActivities: (runs: ReadonlyArray<Run>) => Promise<Array<Run>>
   reconcileRuns: () => Promise<void>
   cancelAndWait: (id: Id) => Promise<Result<{ run: Run }, "NOT_FOUND" | "TIMEOUT">>
@@ -575,11 +576,10 @@ export const createRuntimeEngine = ({
   )
 
   const getQueuedRuns = (): Run[] => {
-    const snapshots = new Map(persistence.getRunSnapshots(queued).map((run) => [run.id, run]))
-    return queued.flatMap((id) => {
-      const run = snapshots.get(id)
-      return run?.status === "queued" && active.get(run.threadId)?.id !== id ? [run] : []
-    })
+    // Channel requests have no provider execution until their bot is available.
+    return persistence
+      .listWorkRuns()
+      .filter((run) => run.status === "queued" && active.get(run.threadId)?.id !== run.id)
   }
 
   const getQueueSnapshot = () => {
@@ -4037,6 +4037,7 @@ export const createRuntimeEngine = ({
     getRunSnapshot,
     getRunSnapshots,
     getWorkRuns,
+    publishQueue,
     settingsChanged: () => {
       void drain()
     },

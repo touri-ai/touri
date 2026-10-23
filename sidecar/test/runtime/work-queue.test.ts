@@ -371,6 +371,74 @@ test("one channel message starts one provider and preserves its parent turn in l
   expect(startTurn).toHaveBeenCalledTimes(1)
 })
 
+test("channel requests remain visible behind a healthy busy bot and promote without duplicate work", async () => {
+  const fixture = await getFixture()
+  const kernel = fixture.runtime.kernel
+  const store = kernel.services.use("store.api")
+  if (!store) throw new Error("Store unavailable")
+  const groups = createGroupStore(kernel)
+  const group = groups.save({
+    name: "Demo team",
+    color: "#dc2626",
+    avatarShape: "classic-none",
+    memberIds: ["bot-0"],
+    coordinatorBotId: null,
+  })
+  const channel = groups.createThread(group)
+  const runtime = createGroupRuntime(kernel, fixture.engine)
+  fixture.addCleanup(async () => {
+    runtime.shutdown()
+    await runtime.waitForDrain()
+  })
+  const send = () => {
+    const request = store.insertMessage({
+      message: {
+        id: kernel.newId(),
+        threadId: channel.id,
+        parentId: store.getThread({ threadId: channel.id })?.activeLeafId ?? null,
+        role: "user",
+        kind: "text",
+        status: "complete",
+        runId: null,
+        text: '@"Equipe 0" Demo task',
+        parts: [],
+        sender: null,
+        source: "local",
+      },
+    })
+    if (!request.success) throw new Error(request.error)
+    const result = runtime.enqueue({ threadId: channel.id, requestMessageId: request.message.id, trigger: "user" })
+    if (!result.success) throw new Error(result.error)
+
+    return result.run
+  }
+  const first = send()
+  await waitFor(() => fixture.getRunning().length === 1)
+
+  const second = send()
+  const third = send()
+  const work = fixture.engine.getWorkRuns()
+  const execution = work.find((run) => run.groupTurnId === first.id)
+  if (!execution) throw new Error("Missing member execution")
+
+  expect(work.map((run) => run.id)).toEqual([execution.id, second.id, third.id])
+  expect(work.filter((run) => run.status === "queued")).toMatchObject([
+    { id: second.id, kind: "coordination", queuePosition: 1, queueTotal: 2 },
+    { id: third.id, kind: "coordination", queuePosition: 2, queueTotal: 2 },
+  ])
+  expect(fixture.getEvent(second.id)).toMatchObject({ origin: "message", queuePosition: 1, queueTotal: 2 })
+  expect(fixture.getProviderStarts()).toBe(1)
+
+  fixture.finish(execution.threadId)
+  await waitFor(() => fixture.getRunning().some((run) => run.groupTurnId === second.id))
+  const promoted = fixture.engine.getWorkRuns()
+
+  expect(promoted).toHaveLength(2)
+  expect(promoted.some((run) => run.id === first.id || run.id === second.id)).toBe(false)
+  expect(fixture.getEvent(third.id)).toMatchObject({ queuePosition: 1, queueTotal: 1 })
+  expect(fixture.getEvent(second.id)).toMatchObject({ status: "running", origin: "message", queuePosition: null })
+})
+
 test("queue publication batches database reads regardless of the number of waiting turns", async () => {
   const fixture = await getFixture(24)
   const turns = Array.from({ length: 24 }, (_, index) => fixture.send(`thread-${index}`))

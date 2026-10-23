@@ -550,6 +550,9 @@ const lastActiveThread = (threads: Thread[], runs: Run[], botId: Id, rememberedI
   )
 }
 
+const isWorkRun = (run: Run): boolean =>
+  run.status === "queued" || (run.kind !== "coordination" && ["starting", "running"].includes(run.status))
+
 const getProcessScope = (bot: Bot | undefined): string | null => {
   if (!bot) return null
   if (bot.machine === "local") return "local"
@@ -990,7 +993,7 @@ export const useWorkspace = (
           workRuns: mergeRunRows(
             workResponse.runs.filter((run) => !completedRuns.has(run.id)),
             current.workRuns.filter((run) => (liveRuns.current.get(run.id) ?? 0) > runsAtStart),
-          ).filter((run) => ["queued", "starting", "running"].includes(run.status)),
+          ).filter(isWorkRun),
           runs,
           projects: projectResponse.projects,
           previews: previewResponse.previews,
@@ -1198,9 +1201,7 @@ export const useWorkspace = (
           return {
             ...current,
             runs: mergeRunRows(current.runs, [event.run]),
-            workRuns: mergeRunRows(current.workRuns, event.run.origin ? [event.run] : []).filter((run) =>
-              ["queued", "starting", "running"].includes(run.status),
-            ),
+            workRuns: mergeRunRows(current.workRuns, event.run.origin ? [event.run] : []).filter(isWorkRun),
           }
         if (event.type === "routine.deleted")
           return { ...current, routines: current.routines.filter((routine) => routine.id !== event.routineId) }
