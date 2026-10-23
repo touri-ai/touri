@@ -337,4 +337,5 @@ UPDATE schema_meta SET value = '6' WHERE key = 'schema_version';
 
 -- Group actions use notice parts (group_ask_all / group_summary) in messages.parts_json.
 -- Run.groupTurnId is a read projection of group_run_links.turn_id; no extra persisted state.
+-- Run.kind is 'coordination' for group_turns.run_id and 'execution' otherwise; no migration needed.
 -- ApprovalPart.groupMemberId is optional metadata in messages.parts_json for delegation waiting states.

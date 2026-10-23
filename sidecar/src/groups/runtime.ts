@@ -108,7 +108,9 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = g
   }
   // Aggregate runs never enter the provider queue. Only turns that started are interrupted on restart.
   const interrupted = db
-    .query("SELECT r.* FROM runs r JOIN group_turns g ON g.run_id=r.id WHERE r.status IN ('starting','running')")
+    .query(
+      "SELECT r.*, 'coordination' AS run_kind FROM runs r JOIN group_turns g ON g.run_id=r.id WHERE r.status IN ('starting','running')",
+    )
     .all()
   for (const raw of interrupted) {
     const run = toRun(raw)
@@ -403,6 +405,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = g
         ? result.run
         : {
             ...turn.run,
+            kind: "execution",
             id: kernel.newId(),
             threadId: thread.id,
             botId,
@@ -431,7 +434,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = g
         })
       kernel.publish({
         type: "run.updated",
-        run: { ...memberRun, threadId: turn.run.threadId, groupTurnId: turn.run.id },
+        run: { ...memberRun, kind: "execution", threadId: turn.run.threadId, groupTurnId: turn.run.id },
       })
 
       if (!result.success) return memberRun
@@ -486,7 +489,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = g
         } | null)
       : null
 
-    return { ...run, threadId, groupTurnId, replyMessageId: link?.visible_message_id ?? null }
+    return { ...run, kind: "execution", threadId, groupTurnId, replyMessageId: link?.visible_message_id ?? null }
   }
   // Persist a distinct shared message, so reload, FTS, transcript replay and approvals all use the store normally.
   const unsubscribe = kernel.subscribe(({ event }) => {
@@ -819,6 +822,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = g
     const bot = bots.find((b) => b.id === recipients[0])
     if (!bot) return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Grupo sem membros" }
     const run: Run = {
+      kind: "coordination",
       id: kernel.newId(),
       threadId: thread.id,
       botId: bot.id,
@@ -904,6 +908,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = g
     if (!marker.success) return false
 
     const continuationRun: Run = {
+      kind: "coordination",
       id: kernel.newId(),
       threadId: channel.id,
       botId,
@@ -1245,7 +1250,7 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = g
   }
   const waiting = db
     .query(
-      `SELECT r.*, g.group_id, g.recipients_json FROM runs r JOIN group_turns g ON g.run_id = r.id
+      `SELECT r.*, 'coordination' AS run_kind, g.group_id, g.recipients_json FROM runs r JOIN group_turns g ON g.run_id = r.id
        WHERE r.status = 'queued' OR (r.status='interrupted' AND r.error_class='app_restart' AND r.finished_at>=? AND NOT EXISTS (SELECT 1 FROM runs newer JOIN group_turns ng ON ng.run_id=newer.id WHERE newer.thread_id=r.thread_id AND newer.rowid>r.rowid)) ORDER BY r.queued_at,r.rowid`,
     )
     .all(Date.now() - CONTINUATION_WINDOW_MS) as Array<
