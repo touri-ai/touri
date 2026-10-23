@@ -7,6 +7,30 @@ import type { WorkspaceData } from "../src/useWorkspace"
 
 afterEach(cleanup)
 
+it.each([
+  { kind: "done", title: "Done" },
+  { kind: "question", title: "Question" },
+  { kind: "approval", title: "Approval" },
+  { kind: "turn-failed", title: "Turn failed" },
+  { kind: "notice", title: "PR ready" },
+] as const)("delivers $kind once to the desktop with the exact remote conversation", ({ kind, title }) => {
+  const { emit, invoke } = fixture([], { digest: "all" })
+  const notification = note(42, { kind, title })
+
+  emit(1, { type: "notification.created", notification })
+  emit(2, { type: "notification.created", notification })
+
+  expect(invoke).toHaveBeenCalledTimes(1)
+  expect(invoke).toHaveBeenCalledWith(
+    "server_attention",
+    expect.objectContaining({
+      deepLink: "touri://open?bot=bot-remote&thread=thread-remote&notification=42",
+    }),
+  )
+  if (kind === "notice")
+    expect(invoke).toHaveBeenCalledWith("server_attention", expect.objectContaining({ title: "Revisão pronta" }))
+})
+
 const note = (id: number, patch: Partial<NotificationRecord> = {}): NotificationRecord => ({
   id,
   kind: "approval",

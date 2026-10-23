@@ -459,6 +459,7 @@ export type NoticePart = {
     | 'app_restart'
     | 'run_resumed'
     | 'folder_access_unavailable'
+    | 'automation_notice'
   text: string
 }
 export type ApprovalPart = {
@@ -1228,6 +1229,11 @@ export type ApiRoutes = {
   'POST /recovery/:id/dismiss': { req: { acknowledgeKeys: Array<string> }; res: { tasks: Array<RecoveryTask> } }
   'GET /notifications': { req: { limit?: number }; res: { notifications: Array<NotificationRecord> } }
   'GET /notifications/pending': { req: {}; res: { notifications: Array<NotificationRecord>; lastSeq: number } }
+  'GET /push': { req: {}; res: { publicKey: string; subscribed: boolean } }
+  'PUT /push': { req: { endpoint: string; keys: { p256dh: string; auth: string }; locale: 'pt-BR' | 'en' }; res: {} }
+  'DELETE /push': { req: {}; res: {} }
+  'POST /push/test': { req: {}; res: {} }
+  'POST /threads/:id/notices': { req: { eventId: string; kind: 'pr-ready'; text: string }; res: { notification: NotificationRecord } }
   'POST /notifications/:id/dismiss': { req: {}; res: { notification: NotificationRecord } }
   'POST /notifications/dismiss-all': { req: {}; res: { dismissed: number; skipped: number; skippedIds: Array<number> } }
   'POST /threads/:id/respond': { req: { requestId: string; behavior: RespondBehavior; message?: string }; res: {} }
@@ -1697,6 +1703,8 @@ export type ServiceMap = {
   'computer.input': ComputerInput
   'computer.isActive': () => { active: boolean; botId: Id | null }
   'notify.emit': (input: NotifyInput) => NotificationRecord
+  'notify.push': (notification: NotificationRecord) => void
+  'notify.channelNotice': (args: { threadId: Id; text: string }) => RouteResponse
   'runtime.answerApproval': (args: { approvalId: Id; decision: 'approved' | 'denied'; standing?: boolean; message?: string; source?: 'card' | 'notification' }) => Promise<Result<{}, 'NOT_FOUND' | 'DENIED'>>
   'notify.resolve': (args: { requestId: string; resolution: NotifyResolution }) => void
 }

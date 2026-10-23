@@ -20,7 +20,7 @@ test("schema 32 upgrades bot, thread, and attachment ownership columns", () => {
     `)
     database.close()
     database = openDatabase({ filename })
-    expect(SCHEMA_VERSION).toBe(50)
+    expect(SCHEMA_VERSION).toBe(51)
     expect(database.query("PRAGMA table_info(bots)").all()).toContainEqual(
       expect.objectContaining({ name: "responsible_person_id" }),
     )
@@ -30,7 +30,7 @@ test("schema 32 upgrades bot, thread, and attachment ownership columns", () => {
     expect(database.query("PRAGMA table_info(attachments)").all()).toContainEqual(
       expect.objectContaining({ name: "owner_person_id" }),
     )
-    expect(database.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({ value: "50" })
+    expect(database.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({ value: "51" })
   } finally {
     database.close()
     rmSync(root, { recursive: true, force: true })

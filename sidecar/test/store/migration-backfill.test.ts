@@ -63,6 +63,7 @@ import automaticResumeSql from "../../src/kernel/migrations/0047.sql" with { typ
 import hotReadIndexesSql from "../../src/kernel/migrations/0048.sql" with { type: "text" }
 import requestRunsSql from "../../src/kernel/migrations/0049.sql" with { type: "text" }
 import fastConversationSql from "../../src/kernel/migrations/0050.sql" with { type: "text" }
+import webPushSql from "../../src/kernel/migrations/0051.sql" with { type: "text" }
 import { captureTranscript } from "../../src/kernel/transcript-events"
 import { TRANSCRIPT_RETENTION } from "../../src/kernel/transcript-storage"
 import { init as initStore } from "../../src/store"
@@ -332,6 +333,7 @@ test("interrupted batches resume idempotently and match the shipped synchronous 
     synchronous.exec(hotReadIndexesSql)
     synchronous.exec(requestRunsSql)
     synchronous.exec(fastConversationSql)
+    synchronous.exec(webPushSql)
     synchronous.exec(browserTakeoverContinuationsSql)
     database = openDatabase({ filename })
     expect(database.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all()).toEqual(

@@ -137,6 +137,34 @@ test("same-origin API requests keep their URL origin when browsers omit Origin",
   expect(deviceSession(request.signal)?.origin).toBe(url.origin)
 })
 
+test("only an authenticated administrator bearer can identify an automation publisher", async () => {
+  const { pair, intercept } = await makeGate()
+  const { token, cookie } = await pair()
+  const url = new URL("https://touri.example/api/v1/threads/demo/messages")
+  const automated = new Request(url, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "X-Touri-Client": "touri-notify" },
+  })
+  const browser = new Request(url, {
+    method: "POST",
+    headers: { host: url.host, cookie, origin: url.origin, "X-Touri-Client": "touri-notify" },
+  })
+  const unauthenticated = new Request(url, {
+    method: "POST",
+    headers: { "X-Touri-Client": "touri-notify" },
+  })
+
+  const publisherResponse = await intercept({ request: automated, url, clientIp: "203.0.113.1" })
+  const browserResponse = await intercept({ request: browser, url, clientIp: "203.0.113.1" })
+  const anonymousResponse = await intercept({ request: unauthenticated, url, clientIp: "203.0.113.1" })
+
+  expect(publisherResponse).toBeNull()
+  expect(deviceSession(automated.signal)?.automation).toBe("notices")
+  expect(browserResponse).toBeNull()
+  expect(deviceSession(browser.signal)?.automation).toBeUndefined()
+  expect(anonymousResponse?.status).toBe(401)
+})
+
 test("trusted proxy requests use forwarded host and protocol when Origin is absent", async () => {
   const { pair, intercept } = await makeGate({ trustedProxy: true })
   const { token } = await pair()

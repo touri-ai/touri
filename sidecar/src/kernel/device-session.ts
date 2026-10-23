@@ -14,6 +14,7 @@ export type DeviceSession = {
   active: () => boolean
   person?: DevicePerson
   origin?: string
+  automation?: "notices"
   clientName?: string
   scopes?: readonly "integration:write"[]
 }

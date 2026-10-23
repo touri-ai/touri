@@ -113,6 +113,15 @@ const resized = (master: string, size: number, out: string): void => {
   magick([master, "-resize", `${size}x${size}`, "-depth", "8", `PNG32:${out}`])
 }
 
+const writeWebIcons = (master: string): void => {
+  // This one-shot asset script has no live requests; both output sizes are fixed.
+  const sizes = [192, 512]
+  sizes.forEach((size) => {
+    const destination = join(ROOT, "ui/public", `pwa-${size}.png`)
+    magick([master, "-resize", `${size}x${size}`, "-strip", "-depth", "8", `PNG32:${destination}`])
+  })
+}
+
 const appAssets = (): void => {
   const master = join(ICONS, "1024x1024.png")
   const flat: Record<string, number> = { "128x128.png": 128, "128x128@2x.png": 256, "32x32.png": 32 }
@@ -130,6 +139,7 @@ const appAssets = (): void => {
   }
 
   appMaster(master)
+  writeWebIcons(master)
   copyFileSync(SOURCE, join(ROOT, "ui/public/touri-bull.png"))
   for (const [name, size] of Object.entries(flat)) resized(master, size, join(ICONS, name))
   magick([join(ICONS, "32x32.png"), join(ROOT, "ui/public/favicon.ico")])

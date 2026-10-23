@@ -5,6 +5,7 @@ import { ensurePrivateDirectory } from "../kernel/files"
 import { acquireRuntimeLock } from "../kernel/lifecycle"
 import { createAppPaths } from "../kernel/paths"
 import { initModules } from "../main"
+import { initWebPush } from "../notify/push"
 import type { ServeOptions } from "./args"
 import { createRateLimiter } from "./auth/rateLimit"
 import { openAuthStore } from "./auth/store"
@@ -73,7 +74,9 @@ const startServer = async (options: ServeOptions, stopStderr: () => Promise<void
     },
   })
   initWorkMode({ kernel: runtime.kernel, authStore: store, secrets, authorization })
+  const push = await initWebPush({ kernel: runtime.kernel, authStore: store, secrets, schedule: false })
   await initModules(runtime)
+  push.start()
   availability.markReady()
   const port = runtime.handshake.port
   const exposed = options.tailscale ? await exposeOnTailscale({ localPort: port }) : null
@@ -113,6 +116,7 @@ const startServer = async (options: ServeOptions, stopStderr: () => Promise<void
     log: runtime.kernel.log,
     finish: async () => {
       try {
+        await push.stop()
         runtime.emitHostNotification({ method: "app.willQuit", params: {} })
         await runtime.kernel.services.use("vm.shutdown")?.()
         await clearServeInfo(options.dataDir)

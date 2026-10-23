@@ -53,12 +53,13 @@ import automaticResumeSql from "./migrations/0047.sql" with { type: "text" }
 import hotReadIndexesSql from "./migrations/0048.sql" with { type: "text" }
 import requestRunsSql from "./migrations/0049.sql" with { type: "text" }
 import fastConversationSql from "./migrations/0050.sql" with { type: "text" }
+import webPushSql from "./migrations/0051.sql" with { type: "text" }
 import type { PerformanceStageRunner } from "./performance"
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 50
+export const SCHEMA_VERSION = 51
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -101,8 +102,15 @@ export const openDatabase = ({
     : null
   // A committed version is the migration checkpoint. Replaying old writes delays every current-store restart.
   if (current?.value === String(SCHEMA_VERSION)) return database
+  if (current?.value === "50") {
+    database.transaction(() => database.exec(webPushSql))()
+    return database
+  }
   if (current?.value === "49") {
-    database.transaction(() => applyFastConversationSchema(database))()
+    database.transaction(() => {
+      applyFastConversationSchema(database)
+      database.exec(webPushSql)
+    })()
     return database
   }
   if (current?.value === "47" || current?.value === "48") {
@@ -111,6 +119,7 @@ export const openDatabase = ({
         database.exec(hotReadIndexesSql)
       database.exec(requestRunsSql)
       applyFastConversationSchema(database)
+      database.exec(webPushSql)
     })()
     return database
   }
@@ -382,6 +391,7 @@ export const openDatabase = ({
     database.exec(requestRunsSql)
   })()
   database.transaction(() => applyFastConversationSchema(database))()
+  database.transaction(() => database.exec(webPushSql))()
   return database
 }
 

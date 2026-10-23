@@ -31,6 +31,11 @@ const authHeaders = (token: string): Record<string, string> => (token ? { Author
 
 export const apiRouteKeys = [
   "GET /session",
+  "GET /push",
+  "PUT /push",
+  "DELETE /push",
+  "POST /push/test",
+  "POST /threads/:id/notices",
   "GET /people",
   "POST /pairing-codes",
   "GET /invites",

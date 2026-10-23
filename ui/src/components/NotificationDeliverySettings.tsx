@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core"
 import { useEffect, useState } from "react"
 import { t } from "../i18n"
+import { WebPushSettings } from "./WebPushSettings"
 import "./notification-delivery.css"
 
 type Permission = "granted" | "denied" | "not-determined" | "unknown"
@@ -32,14 +33,7 @@ export const NotificationDeliverySettings = ({ enabled }: { enabled: boolean }) 
       window.removeEventListener("focus", refresh)
     }
   }, [native])
-  if (!native)
-    return (
-      <div className="settings-notification-delivery">
-        <p className="field-help">
-          {t("Com o touri fechado, você não recebe avisos. Ao abrir, as solicitações pendentes aparecem.")}
-        </p>
-      </div>
-    )
+  if (!native) return <WebPushSettings enabled={enabled} />
   const test = async () => {
     setBusy(true)
     setError(false)

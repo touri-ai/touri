@@ -6,6 +6,24 @@ export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
   "Escolha se a resposta rápida para conversa fica ativada.":
     "Escolha se a resposta rápida para conversa fica ativada.",
+  "Automatic notice": "Aviso automático",
+  "PR ready": "Revisão pronta",
+  "Ative avisos neste aparelho para receber novidades mesmo com o touri fechado. O serviço de push do navegador recebe avisos criptografados. No celular, adicione o touri à tela de início e abra pelo ícone usando HTTPS.":
+    "Ative avisos neste aparelho para receber novidades mesmo com o touri fechado. O serviço de push do navegador recebe avisos criptografados. No celular, adicione o touri à tela de início e abra pelo ícone usando HTTPS.",
+  "Este navegador ainda não permite avisos aqui. Abra o touri instalado pela tela de início usando HTTPS.":
+    "Este navegador ainda não permite avisos aqui. Abra o touri instalado pela tela de início usando HTTPS.",
+  "Avisos ativados neste aparelho.": "Avisos ativados neste aparelho.",
+  "Avisos desativados neste aparelho.": "Avisos desativados neste aparelho.",
+  "Desativar neste aparelho": "Desativar neste aparelho",
+  "Ativar neste aparelho": "Ativar neste aparelho",
+  "Não foi possível ativar ou testar os avisos. Confira a permissão do navegador e tente novamente.":
+    "Não foi possível ativar ou testar os avisos. Confira a permissão do navegador e tente novamente.",
+  "O bot terminou. Abra a conversa para ver o resultado.": "O bot terminou. Abra a conversa para ver o resultado.",
+  "O bot precisa de você. Abra a conversa para responder.": "O bot precisa de você. Abra a conversa para responder.",
+  "A tarefa falhou. Abra a conversa para ver o que aconteceu.":
+    "A tarefa falhou. Abra a conversa para ver o que aconteceu.",
+  "Uma revisão está pronta. Abra a conversa para conferir.": "Uma revisão está pronta. Abra a conversa para conferir.",
+  "Você tem um novo aviso. Abra o touri para conferir.": "Você tem um novo aviso. Abra o touri para conferir.",
   "Reconectando…": "Reconectando…",
   "Esta versão do aplicativo precisa de uma atualização para conversar com o servidor.":
     "Esta versão do aplicativo precisa de uma atualização para conversar com o servidor.",
@@ -3365,6 +3383,24 @@ export const ptBR = {
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Escolha se a resposta rápida para conversa fica ativada.": "Choose whether fast conversational replies are enabled.",
+  "Automatic notice": "Automatic notice",
+  "PR ready": "Review ready",
+  "Ative avisos neste aparelho para receber novidades mesmo com o touri fechado. O serviço de push do navegador recebe avisos criptografados. No celular, adicione o touri à tela de início e abra pelo ícone usando HTTPS.":
+    "Enable notifications on this device to hear about updates even when touri is closed. Your browser push service receives encrypted notifications. On your phone, add touri to your Home Screen and open its icon using HTTPS.",
+  "Este navegador ainda não permite avisos aqui. Abra o touri instalado pela tela de início usando HTTPS.":
+    "This browser cannot receive notifications here yet. Open touri from your Home Screen using HTTPS.",
+  "Avisos ativados neste aparelho.": "Notifications enabled on this device.",
+  "Avisos desativados neste aparelho.": "Notifications disabled on this device.",
+  "Desativar neste aparelho": "Disable on this device",
+  "Ativar neste aparelho": "Enable on this device",
+  "Não foi possível ativar ou testar os avisos. Confira a permissão do navegador e tente novamente.":
+    "Could not enable or test notifications. Check your browser permission and try again.",
+  "O bot terminou. Abra a conversa para ver o resultado.": "The bot finished. Open the conversation to see the result.",
+  "O bot precisa de você. Abra a conversa para responder.": "The bot needs you. Open the conversation to respond.",
+  "A tarefa falhou. Abra a conversa para ver o que aconteceu.":
+    "The task failed. Open the conversation to see what happened.",
+  "Uma revisão está pronta. Abra a conversa para conferir.": "A review is ready. Open the conversation to check it.",
+  "Você tem um novo aviso. Abra o touri para conferir.": "You have a new notification. Open touri to check it.",
   "Reconectando…": "Reconnecting…",
   "Esta versão do aplicativo precisa de uma atualização para conversar com o servidor.":
     "This app version needs an update to connect to the server.",

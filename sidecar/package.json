@@ -8,9 +8,11 @@
   },
   "dependencies": {
     "@touri/contracts": "workspace:*",
-    "nodemailer": "^10.1.7"
+    "nodemailer": "^10.1.7",
+    "web-push": "3.6.7"
   },
   "devDependencies": {
-    "@types/nodemailer": "^8.0.2"
+    "@types/nodemailer": "^8.0.2",
+    "@types/web-push": "3.6.4"
   }
 }

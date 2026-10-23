@@ -41,6 +41,16 @@ test("deep links carry the bot and thread", () => {
   expect(buildDeepLink({ botId: null, threadId: null })).toBe("touri://open?")
 })
 
+test("automatic and review notice titles use the system language", () => {
+  expect(nativeNotificationTitle({ ...record("notice"), botName: null, title: "PR ready" }, "pt-BR")).toBe(
+    "Revisão pronta",
+  )
+  expect(nativeNotificationTitle({ ...record("notice"), botName: null, title: "PR ready" }, "en")).toBe("Review ready")
+  expect(nativeNotificationTitle({ ...record("notice"), botName: null, title: "Automatic notice" }, "pt-BR")).toBe(
+    "Aviso automático",
+  )
+})
+
 test("approval titles name the bot and action, without changing informational titles", () => {
   expect(
     nativeNotificationTitle({ ...record("approval"), botName: "Café Ideias", body: "Executar comando no terminal." }),

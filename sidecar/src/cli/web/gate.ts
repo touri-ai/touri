@@ -121,6 +121,9 @@ const authenticate = ({
         role: person.role,
       },
       ...(origin ? { origin } : {}),
+      ...(bearer && person.role === "admin" && args.request.headers.get("x-touri-client") === "touri-notify"
+        ? { automation: "notices" as const }
+        : {}),
       active: () =>
         store.verifyDeviceToken(token)?.id === device.id && store.getPersonForDevice(device.id)?.role === person.role,
     })
