@@ -534,12 +534,17 @@ const AppContent = ({ kernel }: AppProps) => {
         reviewApproval({ threadId: item.threadId, approvalId: item.requestId })
         return
       }
+      if (isReadyReviewNotice(item) && item.threadId) {
+        actions.selectThread(item.threadId)
+        setRoute({ section: "bots", screen: "chat" })
+        return
+      }
 
       actions.selectLocation({ bot: item.botId, thread: item.threadId })
       setRoute({ section: "bots", screen: "chat" })
       setNotificationFocus((current) => ({ id: item.id, request: (current?.request ?? 0) + 1 }))
     },
-    [reviewApproval, actions.selectLocation, setRoute],
+    [reviewApproval, actions.selectLocation, actions.selectThread, setRoute],
   )
   useEffect(() => {
     if (!pendingLink || !data.loaded || data.bots.length === 0) return

@@ -41,6 +41,7 @@ import {
   getSidebarRowTime,
   isFailureNotice,
   isInformationalNotice,
+  isReadyReviewNotice,
   pendingNotifications,
   reconcileFailureNotifications,
   relativeThreadDate,
@@ -626,7 +627,8 @@ export const Sidebar = (props: SidebarProps) => {
           notifications={barNeedsYou}
           onSelect={(item) => {
             const selectNotification = props.onNeedsYou ?? props.notificationActions.open
-            if (item.kind === "approval" && item.threadId && item.requestId) props.onNavigate?.()
+            if ((item.kind === "approval" && item.threadId && item.requestId) || isReadyReviewNotice(item))
+              props.onNavigate?.()
             selectNotification(item)
           }}
         />

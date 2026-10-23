@@ -202,3 +202,18 @@ it("opens a channel without bots and restores resolved reviews after remounting 
   expect(history.querySelectorAll(".notification-row.resolved")).toHaveLength(2)
   expect(within(history).getAllByRole("button", { name: "Ver conversa" })).toHaveLength(2)
 })
+
+it("opens the exact review conversation directly from the sidebar attention action", async () => {
+  const { api, mock, review, thread } = await getReadyReviewFixture()
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+  fireEvent.click(await screen.findByRole("button", { name: "Abrir pendência de touri" }))
+
+  await screen.findByRole("textbox", { name: "Mensagem para avisos" })
+  expect(new URLSearchParams(window.location.search).get("thread")).toBe(thread.id)
+  expect(await within(screen.getByTestId("virtual-message-list")).findByText(review.body)).toBeVisible()
+  expect(screen.queryByRole("region", { name: "Central de notificações" })).toBeNull()
+  expect(mock.calls.some((call) => call.route === "POST /notifications/:id/dismiss")).toBe(false)
+  expect(mock.calls.some((call) => call.route === "POST /threads/:id/respond")).toBe(false)
+})

@@ -1,18 +1,33 @@
+import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
 
 test.use({ locale: "pt-BR", reducedMotion: "reduce" })
 
 const viewports = [
-  { device: "desktop", width: 1440, height: 900 },
-  { device: "mobile", width: 390, height: 844 },
+  { device: "desktop", width: 1440, height: 900, theme: "dark" },
+  { device: "mobile", width: 390, height: 844, theme: "dark" },
+  { device: "desktop", width: 1440, height: 900, theme: "light" },
+  { device: "mobile", width: 390, height: 844, theme: "light" },
 ]
 
-viewports.forEach(({ device, width, height }) => {
-  test(`ready review opens its channel conversation and stays in history on ${device}`, async ({ page }) => {
+viewports.forEach(({ device, width, height, theme }) => {
+  test(`ready review opens its channel conversation and stays in history on ${device} in ${theme}`, async ({
+    page,
+  }) => {
+    test.setTimeout(60_000)
+    await page.addInitScript((theme) => localStorage.setItem("touri.appearance.v1", theme), theme)
     await page.setViewportSize({ width, height })
     await page.goto("/test/e2e/ready-review-notifications-harness.html")
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (device === "mobile") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+
+    await page.getByRole("button", { name: "Abrir pendência de touri", exact: true }).click()
+    await expect(page.getByRole("textbox", { name: "Mensagem para avisos" })).toBeVisible()
+    await expect(page.getByRole("region", { name: "Central de notificações" })).toHaveCount(0)
+    if (device === "mobile") {
+      await expect(page.getByRole("button", { name: "Fechar menu", exact: true })).toHaveCount(0)
+      await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+    }
 
     await page.getByRole("button", { name: "Notificações, 1 precisa de atenção", exact: true }).click()
     const center = page.getByRole("region", { name: "Central de notificações" })
@@ -22,6 +37,12 @@ viewports.forEach(({ device, width, height }) => {
     await expect(center.locator(".notification-row.resolved")).toHaveCount(1)
     await expect(center.locator(".notification-row.resolved").getByText("Resolvido", { exact: true })).toBeVisible()
     expect(await center.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
+
+    const audit = await new AxeBuilder({ page })
+      .include(".r8-notifications")
+      .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+      .analyze()
+    expect(audit.violations.map(({ id, nodes }) => ({ id, targets: nodes.map((node) => node.target) }))).toEqual([])
 
     const open = pending.getByRole("button", { name: "Abrir e revisar", exact: true })
     await open.focus()
