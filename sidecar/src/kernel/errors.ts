@@ -1,6 +1,7 @@
 import {
   errorRegistry,
   getGroupValidationError,
+  getGroupValidationErrors,
   isErrorCode,
   publicError,
   type RegisteredErrorCode,
@@ -34,7 +35,7 @@ export const normalizeErrorBody = (body: unknown, status: number): unknown => {
       : detail.code
   const validation =
     status === 400 && errorCode === "INVALID_ARGS" && detail.code === "TOURI-E1001"
-      ? getGroupValidationError(record.field)
+      ? (getGroupValidationErrors(record.fields) ?? getGroupValidationError(record.field))
       : undefined
 
   return { errorCode, ...detail, ...validation }

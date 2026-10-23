@@ -209,8 +209,8 @@ export type BotGroup = {
   updatedAt: EpochMs
 }
 export type GroupInput = Pick<BotGroup, 'name' | 'color' | 'avatarShape' | 'memberIds' | 'coordinatorBotId'>
-/** Creation defaults an omitted avatarShape to classic-none; updates require the full GroupInput. */
-export type GroupCreateInput = Omit<GroupInput, 'avatarShape'> & { avatarShape?: AvatarShape }
+/** Creation defaults omitted color, avatarShape and coordinatorBotId; updates require the full GroupInput. */
+export type GroupCreateInput = Omit<GroupInput, 'color' | 'avatarShape' | 'coordinatorBotId'> & Partial<Pick<GroupInput, 'color' | 'avatarShape' | 'coordinatorBotId'>>
 
 export type Thread = {
   ownerPersonId?: Id | null
