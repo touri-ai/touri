@@ -2,6 +2,9 @@ import { publicError } from "./errors"
 import type { MessagePart, RunErrorClass } from "./types"
 
 export const RUN_START_TIMEOUT_MESSAGE = "Sem resposta após 2 minutos."
+// Plain copy for people; the exit code and raw diagnostic stay in the error details.
+export const PROVIDER_MEMORY_DETAIL = "O bot parou antes de terminar, talvez por falta de memória."
+export const PROVIDER_MEMORY_HINT = "Envie a mensagem de novo para continuar. Se repetir, aumente a memória da máquina."
 
 /** Unknown tool outcomes are effects too: a missing acknowledgement is not proof of rollback. */
 export const hasRecordedActions = (parts: ReadonlyArray<MessagePart>): boolean =>
@@ -195,8 +198,8 @@ const RULES: ReadonlyArray<Rule> = [
     errorClass: "oom",
     build: () => ({
       stage: "provider_memory",
-      detail: "O provedor foi encerrado por falta de memória (código 137).",
-      hint: "Aumente a memória da máquina virtual nas configurações e tente de novo.",
+      detail: PROVIDER_MEMORY_DETAIL,
+      hint: PROVIDER_MEMORY_HINT,
       action: VM_MEMORY,
     }),
   },

@@ -1,5 +1,5 @@
 import { type Bot, getHostNoun, type HostKind, type Routine, type RoutineRun } from "@touri/contracts"
-import { RUN_START_TIMEOUT_MESSAGE } from "@touri/contracts/run-failure"
+import { PROVIDER_MEMORY_DETAIL, PROVIDER_MEMORY_HINT, RUN_START_TIMEOUT_MESSAGE } from "@touri/contracts/run-failure"
 import { userFacingError } from "./errors"
 /** All UI copy lives here. pt-BR is the default; English is available for a future locale picker. */
 export type Locale = "pt-BR" | "en"
@@ -2531,6 +2531,8 @@ export const ptBR = {
   "Limite de uso do provedor atingido": "Limite de uso do provedor atingido",
   "A conversa ficou grande demais": "A conversa ficou grande demais",
   [RUN_START_TIMEOUT_MESSAGE]: RUN_START_TIMEOUT_MESSAGE,
+  [PROVIDER_MEMORY_DETAIL]: PROVIDER_MEMORY_DETAIL,
+  [PROVIDER_MEMORY_HINT]: PROVIDER_MEMORY_HINT,
   "A execução demorou demais": "A execução demorou demais",
   "O grupo ou a conversa não existe mais. Este turno não foi executado.":
     "O grupo ou a conversa não existe mais. Este turno não foi executado.",
@@ -5522,6 +5524,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Limite de uso do provedor atingido": "Provider rate limit reached",
   "A conversa ficou grande demais": "Conversation context is too large",
   [RUN_START_TIMEOUT_MESSAGE]: "No response after 2 minutes.",
+  [PROVIDER_MEMORY_DETAIL]: "The bot stopped before finishing, possibly because it ran out of memory.",
+  [PROVIDER_MEMORY_HINT]: "Send your message again to continue. If it happens again, give the machine more memory.",
   "A execução demorou demais": "Run timed out",
   "O grupo ou a conversa não existe mais. Este turno não foi executado.":
     "The group or conversation no longer exists. This turn was not run.",
