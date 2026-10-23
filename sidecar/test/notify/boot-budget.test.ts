@@ -3,7 +3,7 @@ import { afterEach, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { createServer } from "node:net"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { createRateLimiter } from "../../src/cli/auth/rateLimit"
 import { openAuthStore } from "../../src/cli/auth/store"
 import { createHeadlessHost } from "../../src/cli/host/headlessHost"
@@ -94,10 +94,79 @@ test("health and the UI serve within two seconds while restart recovery is still
   expect((runtime.kernel.db as Database).query("SELECT COUNT(*) AS n FROM recovery_tasks").get()).toEqual({ n: 100 })
 }, 30_000)
 
+test("the complete server command serves health and the paired UI within two seconds", async () => {
+  const root = await mkdtemp(join(tmpdir(), "touri-command-boot-"))
+  cleanups.add(() => rm(root, { recursive: true, force: true }))
+  const db = openDatabase({ filename: join(root, "touri.db") })
+  const fixture = (await Bun.file(new URL("../fixtures/ui-seed.json", import.meta.url)).json()) as {
+    bots: Array<{ provider: string }>
+  }
+  seedRecovery(db, fixture.bots[0]?.provider ?? "fixture")
+  db.close()
+  const auth = await openAuthStore({ filename: join(root, "auth.db") })
+  const { code } = await auth.createPairingCode()
+  await auth.close()
+  await Bun.write(join(root, "index.html"), "<html>fixture command workspace</html>")
+  const port = await getFreePort()
+  const started = performance.now()
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      "sidecar/src/cli/main.ts",
+      "serve",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      String(port),
+      "--data-dir",
+      root,
+      "--ui-dir",
+      root,
+    ],
+    {
+      stdout: "ignore",
+      stderr: "ignore",
+      env: { ...process.env, TOURI_APP_DATA: root, TOURI_SECRETS_KEY: "fixture-key" },
+    },
+  )
+  cleanups.add(async () => {
+    child.kill("SIGTERM")
+    await child.exited
+  })
+  const base = `http://127.0.0.1:${port}`
+
+  const healthMs = await getHealthTime(base, started)
+  const paired = await fetch(`${base}/pair`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code, name: "Fixture", client: true }),
+  })
+  const { token } = (await paired.json()) as { token: string }
+  const ui = await fetch(base, { headers: { Authorization: `Bearer ${token}` } })
+  const uiMs = performance.now() - started
+
+  expect(await ui.text()).toContain("fixture command workspace")
+  expect(healthMs).toBeLessThan(2000)
+  expect(uiMs).toBeLessThan(2000)
+  console.info(
+    JSON.stringify({ probe: "server-command-restart", healthMs, uiMs, interruptedRuns: 100, historyBytes: 26_214_400 }),
+  )
+}, 30_000)
+
+const getHealthTime = async (base: string, started: number): Promise<number> => {
+  while (performance.now() - started < 2000) {
+    const response = await fetch(`${base}/healthz`, { signal: AbortSignal.timeout(1000) }).catch(() => null)
+    if (response?.ok && (await response.json()).ok === true) return performance.now() - started
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 10))
+  }
+  throw new Error("BOOT_BUDGET_EXCEEDED")
+}
+
 const seedRecovery = (database: Database, provider: string): void => {
   database
-    .query("INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES('bot','Fixture',?,'/tmp',1,1)")
-    .run(provider)
+    .query("INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES('bot','Fixture',?,?,1,1)")
+    .run(provider, join(dirname(database.filename), "bots", "bot"))
   database.exec(`
     INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES('thread','bot','Fixture',1,1);
     WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<100)

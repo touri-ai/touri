@@ -24,6 +24,7 @@ const fixture = async () => {
     callHost: async () => ({ success: false, errorCode: "HOST_UNAVAILABLE", error: "No host in unit tests" }),
   } as unknown as Kernel
   await initNotify(kernel)
+  await kernel.services.use("notify.recovery")?.ready
   const send = kernel.services.use("notify.emit")
   if (!send) throw new Error("notify.emit missing")
   return {
@@ -195,6 +196,7 @@ test("startup resolves persisted failures after a later success, including a gro
       "INSERT INTO runs (id, thread_id, bot_id, provider, trigger, status, queued_at, started_at, finished_at) VALUES ('success', 'member', 'bot', 'codex', 'user', 'succeeded', 200, 210, 300)",
     ).run()
     await initNotify(h.kernel)
+    await h.kernel.services.use("notify.recovery")?.ready
     const store = createNotificationStore({ db })
     expect(store.get(old.id)?.resolution).toBe("expired")
     expect(store.get(recent.id)?.resolvedAt).toBeNull()

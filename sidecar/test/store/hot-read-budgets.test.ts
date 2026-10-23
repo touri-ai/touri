@@ -6,8 +6,10 @@ import { dirname, join } from "node:path"
 import { getGroupRunsSql } from "../../src/groups/run-queries"
 import { createKernel } from "../../src/kernel"
 import { openDatabase } from "../../src/kernel/db"
+import { JOURNAL_RECOVERY_SQL, RUN_PARTS_SQL } from "../../src/notify/recovery-candidates"
 import { WORK_RUNS_SQL } from "../../src/runtime/persistence"
 import { getThreadRunsQuery } from "../../src/runtime/thread-runs-query"
+import { createWorkState } from "../../src/runtime/work-state"
 import { init as initStore } from "../../src/store"
 import { getHistoryQuery, THREAD_MESSAGES_SQL } from "../../src/store/history-query"
 import { getMessageFromRow } from "../../src/store/message-row"
@@ -66,13 +68,16 @@ test("hot reads seek indexes and avoid historical sorts with five active runs", 
       index: "group_message_links_message",
       rows: 1,
     },
+    { name: "run message recovery", sql: RUN_PARTS_SQL, bindings: ["root-1"], index: "messages_run_created", rows: 1 },
+    { name: "journal recovery", sql: JOURNAL_RECOVERY_SQL, bindings: [100], index: "work_journal_uncertain", rows: 1 },
     { name: "search", ...getSearchQuery({ q: "fixture", limit: 50 }), index: "VIRTUAL TABLE INDEX", rows: 50 },
   ]
 
   queries.forEach((query) => {
     const plan = getPlan(db, query.sql, query.bindings)
     expect(plan).toContain(query.index)
-    if (query.name !== "channel runs") expect(plan).not.toContain("USE TEMP B-TREE")
+    if (query.name === "journal recovery") expect(plan).toContain("work_journal_effect_state")
+    if (!["channel runs", "journal recovery"].includes(query.name)) expect(plan).not.toContain("USE TEMP B-TREE")
     expect(plan).not.toMatch(/SCAN (?:messages|group_message_links)\b/)
     const durations = Array.from({ length: 7 }, () => {
       const started = performance.now()
@@ -289,6 +294,40 @@ test("cancellation and disposal stop SQL processes and reject reads", async () =
   )
 })
 
+test("concurrent history reads wait for capacity and a waiting read can be canceled", async () => {
+  const db = await getFixture()
+  const ready = Promise.withResolvers<void>()
+  // This counter only tracks the two deliberately blocked fixture processes.
+  let started = 0
+  const reader = createStoreReader(db.filename, () => {
+    started++
+    if (started === 2) ready.resolve()
+  })
+  cleanups.add(reader.dispose)
+  const signal = new AbortController().signal
+  const query = {
+    sql: "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n) SELECT sum(x) FROM n",
+    bindings: [],
+  }
+  const running = Promise.allSettled([reader.getRows(query, signal), reader.getRows(query, signal)])
+  await ready.promise
+  const controller = new AbortController()
+
+  const waiting = reader.getRows({ sql: "SELECT 1", bindings: [] }, controller.signal)
+  controller.abort()
+
+  await expect(waiting).rejects.toThrow("STORE_READ_ABORTED")
+  reader.dispose()
+  expect((await running).every((result) => result.status === "rejected")).toBe(true)
+  const available = createStoreReader(db.filename)
+  cleanups.add(available.dispose)
+  const results = await Promise.all(
+    Array.from({ length: 8 }, (_, index) => available.getRows({ sql: "SELECT ? AS id", bindings: [index] }, signal)),
+  )
+
+  expect(results).toEqual(Array.from({ length: 8 }, (_, id) => [{ id }]))
+})
+
 const getPlan = (db: Database, sql: string, bindings: SQLQueryBindings[]): string =>
   (db.query(`EXPLAIN QUERY PLAN ${sql}`).all(...bindings) as Array<{ detail: string }>)
     .map(({ detail }) => detail)
@@ -331,14 +370,24 @@ const getFixture = async (): Promise<Database> => {
       INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at)
       SELECT 'active-'||x,'thread-'||x,'bot-'||x,'fixture','user','running',9000+x FROM n;
       WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<2000)
-      INSERT INTO messages(id,thread_id,parent_id,role,kind,status,text,parts_json,created_at,updated_at)
+      INSERT INTO messages(id,thread_id,parent_id,role,kind,status,run_id,text,parts_json,created_at,updated_at)
       SELECT 'message-'||x,'thread-0',CASE WHEN x=1 THEN NULL ELSE 'message-'||(x-1) END,
-        'assistant','text','complete','fixture searchable',
+        'assistant','text','complete','root-'||x,'fixture searchable',
         '[{"type":"file","attachmentId":"fixture-file","name":"fixture.txt"}]',x,x FROM n;
       WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<8000)
       INSERT INTO group_message_links SELECT 'reply-'||x,'thread-1','visible-'||x FROM n;
       INSERT INTO messages_fts(text,thread_id,message_id) SELECT text,thread_id,id FROM messages;`)
   })()
+
+  const work = createWorkState({ database: db, now: () => 1 })
+  work.beginEffect({
+    turnId: "root-1",
+    threadId: "thread-0",
+    key: "fixture",
+    description: "Fixture",
+    effectId: "effect",
+  })
+  work.recover({ observe: () => ({ kind: "unobservable", reason: "Fixture" }) })
 
   return db
 }

@@ -26,6 +26,17 @@ export const RECENT_TASK_LIMIT = 100
 
 export type RecoveryCursor = { runRowid: number; routineRowid: number; runIds: string[]; routineIds: string[] }
 
+export const RUN_PARTS_SQL = "SELECT parts_json FROM messages WHERE run_id = ? ORDER BY created_at"
+
+export const JOURNAL_RECOVERY_SQL = `SELECT DISTINCT j.turn_id FROM work_journal j WHERE j.kind = 'uncertain'
+      AND NOT EXISTS (SELECT 1 FROM work_journal later WHERE later.turn_id = j.turn_id
+        AND later.effect_id = j.effect_id AND later.seq > j.seq
+        AND later.kind IN ('result', 'acknowledged', 'uncertain'))
+      UNION SELECT rt.turn_id FROM recovery_tasks rt JOIN notifications n ON n.id = rt.notification_id
+        WHERE rt.id LIKE 'journal:%' AND rt.turn_id IS NOT NULL
+        AND (n.resolved_at IS NULL OR rt.notification_id IN (
+          SELECT notification_id FROM recovery_tasks ORDER BY notification_id DESC LIMIT ?))`
+
 /** Read-only discovery runs in the owned helper process, including historical JSON and journal replay. */
 export const getRecoveryCandidates = (database: Database, cursor: RecoveryCursor): Candidate[] => {
   const runs = getRunCandidates(database, cursor.runIds, cursor.runRowid)
@@ -76,9 +87,7 @@ const getRunCandidates = (database: Database, changedRunIds: string[], sinceRowi
 }
 
 const getRunParts = (database: Database, runId: string): MessagePart[] => {
-  const rows = database
-    .query("SELECT parts_json FROM messages WHERE run_id = ? ORDER BY created_at")
-    .all(runId) as Array<{ parts_json: string }>
+  const rows = database.query(RUN_PARTS_SQL).all(runId) as Array<{ parts_json: string }>
   return rows.flatMap((row) => JSON.parse(row.parts_json) as MessagePart[])
 }
 
@@ -101,23 +110,17 @@ const getPartEffects = (parts: MessagePart[]): RecoveryTask["effects"] =>
 
 const getJournalCandidates = (database: Database, runs: Candidate[]): Candidate[] => {
   const work = createWorkState({ database })
-  const turns = database
-    .query(`SELECT DISTINCT j.turn_id FROM work_journal j WHERE j.kind = 'uncertain'
-      AND NOT EXISTS (SELECT 1 FROM work_journal later WHERE later.turn_id = j.turn_id
-        AND later.effect_id = j.effect_id AND later.seq > j.seq
-        AND later.kind IN ('result', 'acknowledged', 'uncertain'))
-      UNION SELECT rt.turn_id FROM recovery_tasks rt JOIN notifications n ON n.id = rt.notification_id
-        WHERE rt.id LIKE 'journal:%' AND rt.turn_id IS NOT NULL
-        AND (n.resolved_at IS NULL OR rt.notification_id IN (
-          SELECT notification_id FROM recovery_tasks ORDER BY notification_id DESC LIMIT ?))`)
-    .all(RECENT_TASK_LIMIT) as Array<{ turn_id: string }>
+  const turns = database.query(JOURNAL_RECOVERY_SQL).all(RECENT_TASK_LIMIT) as Array<{ turn_id: string }>
 
   return turns.flatMap(({ turn_id: turnId }) => {
     if (runs.some((run) => run.turnId === turnId)) return []
     const effects = work.rebuild({ turnId })
     const first = effects.find((effect) => effect.state === "uncertain")
     const thread = first?.threadId
-      ? (database.query("SELECT id, bot_id AS botId FROM threads WHERE id=?").get(first.threadId) as {
+      ? (database
+          .query(`SELECT id, bot_id AS botId FROM threads WHERE id=? AND archived_at IS NULL
+            AND NOT EXISTS (SELECT 1 FROM bot_deletions WHERE bot_id=threads.bot_id AND phase <> 'stopping')`)
+          .get(first.threadId) as {
           id: string
           botId: string
         } | null)
