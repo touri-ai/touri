@@ -115,6 +115,29 @@ if (view === "conversation") {
     parts: [{ type: "notice", level: "info", code: "context_restored", text }],
   })
   add("assistant", "Retomei a conferência. O relatório mensal está concluído e os totais foram verificados.")
+} else if (view === "session-recovery" || view === "session-recovery-inline") {
+  bot.machine = "local"
+  bot.provider = "claude"
+  bot.model = "claude-opus-5-5"
+  add("user", "Prepare o relatório de demonstração.")
+  add("assistant", "Etapa inicial salva.", { status: "failed" })
+  const text = "A sessão anterior não pôde ser retomada. Vou continuar com o histórico salvo em uma nova sessão."
+  const answer = "Relatório concluído. Conferi o trabalho salvo antes de continuar."
+  if (view === "session-recovery-inline") {
+    add("assistant", answer, {
+      parts: [
+        { type: "reasoning", text: "Conferindo o histórico salvo." },
+        { type: "notice", level: "info", code: "run_resumed", text },
+        { type: "text", text: answer },
+      ],
+    })
+  } else {
+    add("system", text, {
+      kind: "notice",
+      parts: [{ type: "notice", level: "info", code: "run_resumed", text }],
+    })
+    add("assistant", answer)
+  }
 } else if (view === "thinking") {
   bot.machine = "local"
   add("user", "Confira o lock do payout antes de continuar.")

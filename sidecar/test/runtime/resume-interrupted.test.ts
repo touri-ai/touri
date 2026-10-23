@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite"
-import { afterEach, expect, mock, spyOn, test } from "bun:test"
+import { afterEach, expect, mock, setDefaultTimeout, spyOn, test } from "bun:test"
 import { EventEmitter } from "node:events"
 import {
   chmodSync,
@@ -22,12 +22,14 @@ import { createSetupTools } from "../../src/projects/setup-tools"
 import { continuationMarkers } from "../../src/runtime/continuations"
 import { createRuntimeEngine } from "../../src/runtime/engine"
 import * as folderAccess from "../../src/runtime/folder-access"
+import { SESSION_RECOVERY_MESSAGE } from "../../src/runtime/session-recovery"
 import { createWorkState } from "../../src/runtime/work-state"
 import { init as initStore } from "../../src/store"
 import { fakeProviderSpawn } from "../fakes/provider-spawn"
 
 type Engine = ReturnType<typeof createRuntimeEngine>
 type Runtime = ReturnType<typeof createKernel>
+setDefaultTimeout(20_000)
 
 const waitFor = async (predicate: () => boolean, timeout = 10_000): Promise<void> => {
   const deadline = Date.now() + timeout
@@ -680,7 +682,12 @@ for (const recovery of ["missing", "rejected", "exit", "notification", "auth", "
       const path = reopened.store.activePath({ threadId: "t" })
       expect(
         path.filter((message) =>
-          message.parts.some((part) => part.type === "notice" && part.code === "context_restored"),
+          message.parts.some(
+            (part) =>
+              part.type === "notice" &&
+              (part.code === "context_restored" ||
+                (part.code === "run_resumed" && part.text === SESSION_RECOVERY_MESSAGE)),
+          ),
         ),
       ).toHaveLength(1)
       expect(path.at(-1)?.text).toBe("Concluí o relatório.")

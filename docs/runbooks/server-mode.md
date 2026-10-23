@@ -30,6 +30,8 @@ TimeoutStopSec=90
 
 ## Graceful shutdown for `touri serve`
 
+For planned deployments, run `TOURI_DEVICE_COOKIE_FILE=<device-cookie-file> bash scripts/safe-restart.sh 30 -- <restart-command> [args...]`. Set `TOURI_RUNS_URL` and `TOURI_ORIGIN` for a custom server address. The helper checks authenticated active work before invoking the restart command, keeps the cookie out of command arguments and logs, and exits 75 to defer when work remains or the check fails. Retrying a deferred deployment is safe; do not force a restart merely because its wait elapsed. Shutdown recovery preserves the conversation if an external restart still interrupts a provider tool.
+
 On SIGTERM or SIGINT, `touri serve` stops starting turns, lets active turns run until the configured deadline, and leaves new messages in the durable queue for the next start. The default deadline is 60 seconds; set a value from 1 to 600 with `--drain-timeout <seconds>`. At the deadline, remaining active turns are persisted as interrupted and use the existing safe recovery rules. A second SIGTERM or SIGINT skips the wait and starts that interruption immediately, with a log entry. The absolute backstop remains the original deadline plus 20 seconds, including when a provider does not respond. Group turns still waiting remain durable and run in order after restart.
 
 For systemd, set `TimeoutStopSec` to at least 30 seconds beyond the drain deadline. Use `KillMode=mixed`: systemd first signals only the main process so touri can finish its providers; if the systemd timeout expires, it terminates the process group.

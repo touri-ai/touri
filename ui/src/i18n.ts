@@ -1668,6 +1668,16 @@ export const ptBR = {
   "Channel member count": "{count} membros do canal",
   "O bot terminou sem responder. Tente novamente.": "O bot terminou sem responder. Tente novamente.",
   "Retomando a resposta automaticamente…": "Retomando a resposta automaticamente…",
+  "Informe um prazo de espera válido.": "Informe um prazo de espera válido.",
+  "Informe o comando de reinício.": "Informe o comando de reinício.",
+  "Informe o arquivo do cookie do dispositivo.": "Informe o arquivo do cookie do dispositivo.",
+  "Cookie do dispositivo inválido.": "Cookie do dispositivo inválido.",
+  "Reinício adiado: não foi possível verificar as tarefas em andamento.":
+    "Reinício adiado: não foi possível verificar as tarefas em andamento.",
+  "Reinício adiado: ainda há tarefas em andamento.": "Reinício adiado: ainda há tarefas em andamento.",
+  "Aguardando as tarefas em andamento terminarem.": "Aguardando as tarefas em andamento terminarem.",
+  "A sessão anterior não pôde ser retomada. Vou continuar com o histórico salvo em uma nova sessão.":
+    "A sessão anterior não pôde ser retomada. Vou continuar com o histórico salvo em uma nova sessão.",
   "Your channel": "Seu canal",
   "Channel conversations": "Conversas do canal",
   "Invite to channel": "Convidar para o canal",
@@ -4858,6 +4868,16 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Channel member count": "{count} channel members",
   "O bot terminou sem responder. Tente novamente.": "The bot finished without answering. Try again.",
   "Retomando a resposta automaticamente…": "Resuming the answer automatically…",
+  "Informe um prazo de espera válido.": "Enter a valid wait duration.",
+  "Informe o comando de reinício.": "Enter the restart command.",
+  "Informe o arquivo do cookie do dispositivo.": "Enter the device cookie file.",
+  "Cookie do dispositivo inválido.": "Invalid device cookie.",
+  "Reinício adiado: não foi possível verificar as tarefas em andamento.":
+    "Restart deferred: could not verify active work.",
+  "Reinício adiado: ainda há tarefas em andamento.": "Restart deferred: work is still active.",
+  "Aguardando as tarefas em andamento terminarem.": "Waiting for active work to finish.",
+  "A sessão anterior não pôde ser retomada. Vou continuar com o histórico salvo em uma nova sessão.":
+    "The previous session could not be resumed. I will continue with the saved history in a new session.",
   "Your channel": "Your channel",
   "Channel conversations": "Channel conversations",
   "Open conversation": "Open conversation",

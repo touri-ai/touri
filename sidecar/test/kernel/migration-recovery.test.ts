@@ -148,7 +148,7 @@ for (const version of [9, 10]) {
       const resolutions = database.query("SELECT * FROM tool_resolutions").all()
       database.close()
       database = openDatabase({ filename })
-      expect(SCHEMA_VERSION).toBe(48)
+      expect(SCHEMA_VERSION).toBe(49)
       expect(database.query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get()).toEqual({
         value: String(SCHEMA_VERSION),
       })

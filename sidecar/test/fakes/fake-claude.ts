@@ -15,6 +15,7 @@ type Scenario = {
   executionMarker?: string
   permissionOutcome?: string
   startupStderr?: string
+  resumeError?: string
 }
 
 const record = (value: unknown): RecordValue | null =>
@@ -82,6 +83,12 @@ if (process.argv.includes("--version")) {
 }
 
 const scenario = loadScenario()
+if (scenario.resumeError && process.argv.includes("--resume")) {
+  process.stderr.write(scenario.resumeError.slice(0, 24))
+  await Bun.sleep(10)
+  await Bun.write(Bun.stderr, scenario.resumeError.slice(24))
+  process.exit(1)
+}
 if (scenario.ignoreInterrupt || scenario.signalLogPath) {
   for (const signal of ["SIGINT", "SIGTERM"] as const)
     process.on(signal, () => {

@@ -51,12 +51,13 @@ import threadDeletionSql from "./migrations/0045.sql" with { type: "text" }
 import browserDocumentPrivacySql from "./migrations/0046.sql" with { type: "text" }
 import automaticResumeSql from "./migrations/0047.sql" with { type: "text" }
 import hotReadIndexesSql from "./migrations/0048.sql" with { type: "text" }
+import requestRunsSql from "./migrations/0049.sql" with { type: "text" }
 import type { PerformanceStageRunner } from "./performance"
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 48
+export const SCHEMA_VERSION = 49
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -99,8 +100,12 @@ export const openDatabase = ({
     : null
   // A committed version is the migration checkpoint. Replaying old writes delays every current-store restart.
   if (current?.value === String(SCHEMA_VERSION)) return database
-  if (current?.value === "47") {
-    database.transaction(() => database.exec(hotReadIndexesSql))()
+  if (current?.value === "47" || current?.value === "48") {
+    database.transaction(() => {
+      if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'hot_read_indexes_version'").get())
+        database.exec(hotReadIndexesSql)
+      database.exec(requestRunsSql)
+    })()
     return database
   }
 
@@ -366,6 +371,9 @@ export const openDatabase = ({
     if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'hot_read_indexes_version'").get())
       database.exec(hotReadIndexesSql)
     database.exec("UPDATE schema_meta SET value = '48' WHERE key = 'schema_version'")
+  })()
+  database.transaction(() => {
+    database.exec(requestRunsSql)
   })()
   return database
 }
