@@ -503,7 +503,7 @@ export const createClaudeAdapter = ({
           complete({
             success: false,
             errorCode: "cli_protocol",
-            error: "O provedor terminou sem responder. Tente de novo.",
+            error: EMPTY_RESPONSE_ERROR,
           })
           return
         }
@@ -553,7 +553,7 @@ export const createClaudeAdapter = ({
         mcpError = mcpStartupError({ diagnostic: text })
         complete({ success: false, errorCode: "cli_protocol", error: mcpError })
       }
-      if (args.session && hasResumeDiagnostic(text)) {
+      if (hasSession && hasResumeDiagnostic(text)) {
         const classified = classifyProviderError(text)
         complete({
           success: false,
@@ -595,7 +595,7 @@ export const createClaudeAdapter = ({
     // Process exit can arrive before the final stderr chunk. Classify only after that drain too.
     if (!output.success && output.errorCode === "cli_crash" && !stopped) {
       const errorCode = classifyProviderError(stderr)
-      if (errorCode === "cli_auth" || (args.session && hasResumeDiagnostic(stderr)))
+      if (errorCode === "cli_auth" || (hasSession && hasResumeDiagnostic(stderr)))
         return {
           success: false,
           errorCode: errorCode === "unknown" ? "cli_protocol" : errorCode,

@@ -42,6 +42,7 @@ test.each([
 
   expect(result).toMatchObject({ success: true, status: "succeeded" })
   expect(getText(fixture.events)).toBe(scenario.expected)
+  expect(fixture.commandRuns).toHaveLength(1)
 })
 
 test("preserves result-only text", async () => {
@@ -104,6 +105,63 @@ test("retries one empty successful response in the same provider session", async
   expect(fixture.commandRuns[0]).toContain("--session-id")
   expect(fixture.commandRuns[1]).toContain("--resume")
   expect(getSessionId(fixture.commandRuns[0] ?? [])).toBe(getSessionId(fixture.commandRuns[1] ?? []))
+  expect(fixture.events.filter((event) => event.type === "turn_completed")).toEqual([
+    expect.objectContaining({ status: "succeeded" }),
+  ])
+})
+
+test("resumes an existing native session for both attempts", async () => {
+  const fixture = getFixture([], undefined, {
+    frames: [getAssistant("Resposta recuperada.")],
+    result: { type: "result", subtype: "success", result: "" },
+  })
+  const session = { externalSessionId: "synthetic-existing-session", rolloutPath: null } as NonNullable<
+    StartTurnArgs["session"]
+  >
+
+  const result = await fixture.adapter.startTurn(Object.assign({}, fixture.args, { session }))
+
+  expect(result).toMatchObject({ success: true, externalSessionId: session.externalSessionId })
+  expect(fixture.commandRuns).toHaveLength(2)
+  expect(fixture.commandRuns.every((args) => args.includes("--resume"))).toBe(true)
+  expect(fixture.commandRuns.map(getSessionId)).toEqual([session.externalSessionId, session.externalSessionId])
+})
+
+test("preserves a resume diagnostic when the empty attempt's session cannot be loaded", async () => {
+  const diagnostic = "No conversation found with session ID: synthetic-missing-session"
+  const fixture = getFixture([], undefined, { frames: [], result: null, stderr: diagnostic })
+
+  const result = await fixture.adapter.startTurn(fixture.args)
+
+  expect(result).toEqual({ success: false, errorCode: "cli_protocol", error: diagnostic })
+  expect(fixture.commandRuns).toHaveLength(2)
+})
+
+test("does not retry an empty result after cancellation", async () => {
+  const fixture = getFixture([])
+  const controller = new AbortController()
+  const onEvent = (event: ProviderEvent) => {
+    fixture.args.onEvent(event)
+    if (event.type === "session") controller.abort()
+  }
+
+  const result = await fixture.adapter.startTurn(
+    Object.assign({}, fixture.args, { signal: controller.signal, onEvent }),
+  )
+
+  expect(result).not.toMatchObject({ success: true, status: "succeeded" })
+  expect(fixture.commandRuns).toHaveLength(1)
+})
+
+test("does not retry a turn that requested approval", async () => {
+  const fixture = getFixture([
+    { type: "approval_request", approval_id: "synthetic-approval", tool_name: "Bash", input: { command: "pwd" } },
+  ])
+
+  await fixture.adapter.startTurn(fixture.args)
+
+  expect(fixture.commandRuns).toHaveLength(1)
+  expect(fixture.events.some((event) => event.type === "approval_request")).toBe(true)
 })
 
 test("keeps a tool-only result eligible for the runtime action conclusion", async () => {
@@ -128,13 +186,30 @@ test("keeps an explicit provider error failed", async () => {
 
   expect(result).toMatchObject({ success: true, status: "failed" })
   expect(getText(fixture.events)).toBe("")
+  expect(fixture.commandRuns).toHaveLength(1)
 })
 
 test.each([
-  { frames: [getAssistant("Resposta preservada.")], status: "succeeded", replyStatus: "complete" },
-  { frames: [], status: "failed", replyStatus: "failed" },
+  {
+    frames: [getAssistant("Resposta preservada.")],
+    secondAttempt: undefined,
+    status: "succeeded",
+    replyStatus: "complete",
+    attempts: 1,
+  },
+  {
+    frames: [],
+    secondAttempt: {
+      frames: [getAssistant("Resposta preservada.")],
+      result: { type: "result", subtype: "success", result: "" },
+    },
+    status: "succeeded",
+    replyStatus: "complete",
+    attempts: 2,
+  },
+  { frames: [], secondAttempt: undefined, status: "failed", replyStatus: "failed", attempts: 2 },
 ])("persists a visible reply with run status $status", async (scenario) => {
-  const fixture = getFixture(scenario.frames)
+  const fixture = getFixture(scenario.frames, undefined, scenario.secondAttempt)
   await initStore(fixture.kernel)
   fixture.fixture.db
     .query("INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('bot','Teste','claude',?,1,1)")
@@ -179,6 +254,7 @@ test.each([
   expect(queued.run.status).toBe(scenario.status)
   expect(reply?.status).toBe(scenario.replyStatus)
   expect(reply?.parts.length).toBeGreaterThan(0)
+  expect(fixture.commandRuns).toHaveLength(scenario.attempts)
   if (scenario.status === "succeeded") expect(reply?.text).toBe("Resposta preservada.")
   if (scenario.status === "failed")
     expect(reply?.parts).toContainEqual(expect.objectContaining({ type: "notice", code: "run_failed" }))
@@ -192,7 +268,7 @@ const getSessionId = (args: ReadonlyArray<string>): string | undefined => {
   return args[args.indexOf(flag) + 1]
 }
 
-type ProviderScenario = { frames: ReadonlyArray<object>; result: object }
+type ProviderScenario = { frames: ReadonlyArray<object>; result: object | null; stderr?: string }
 
 const getFixture = (
   frames: ReadonlyArray<object>,
@@ -200,14 +276,14 @@ const getFixture = (
   secondAttempt?: ProviderScenario,
 ) => {
   const fixture = testKernel()
-  let attemptIndex = 0
-  const commandRuns: ReadonlyArray<string>[] = []
+  // This recorder belongs to one synthetic provider lifecycle.
+  let commandRuns: ReadonlyArray<ReadonlyArray<string>> = []
   const spawn: Kernel["spawnTree"] = ({ args: commandArgs }) => {
-    const attempt = attemptIndex === 0 ? { frames, result } : (secondAttempt ?? { frames, result })
+    const attempt: ProviderScenario =
+      commandRuns.length === 0 ? { frames, result } : (secondAttempt ?? { frames, result })
     const sessionFlag = commandArgs.find((argument) => argument === "--session-id" || argument === "--resume")
     const externalSessionId = sessionFlag ? commandArgs[commandArgs.indexOf(sessionFlag) + 1] : "synthetic-session"
-    attemptIndex += 1
-    commandRuns.push(commandArgs)
+    commandRuns = commandRuns.concat([commandArgs])
 
     // Stream controllers and process completion belong to this synthetic child only.
     let output: ReadableStreamDefaultController<Uint8Array>
@@ -220,16 +296,26 @@ const getFixture = (
       pgid: 0,
       extra: [],
       stdout: new ReadableStream({ start: (controller) => (output = controller) }),
-      stderr: new ReadableStream({ start: (controller) => controller.close() }),
+      stderr: new ReadableStream({
+        start: (controller) => {
+          if (attempt.stderr) controller.enqueue(new TextEncoder().encode(attempt.stderr))
+          controller.close()
+        },
+      }),
       stdin: new WritableStream({
         write: () => {
           const wireFrames = Array.of<object>({
             type: "system",
             subtype: "init",
             session_id: externalSessionId,
-          }).concat(attempt.frames, attempt.result)
+          }).concat(attempt.frames, attempt.result ? [attempt.result] : [])
           const wireText = wireFrames.map((frame) => JSON.stringify(frame)).join("\n")
           output.enqueue(new TextEncoder().encode(`${wireText}\n`))
+          if (attempt.result === null) {
+            closed = true
+            output.close()
+            finish({ code: 1, signal: null })
+          }
         },
       }),
       exited: new Promise((resolve) => (finish = resolve)),
@@ -262,5 +348,14 @@ const getFixture = (
     onEvent: (event) => events.push(event),
   }
 
-  return { fixture, kernel, adapter, args, events, commandRuns }
+  return {
+    fixture,
+    kernel,
+    adapter,
+    args,
+    events,
+    get commandRuns() {
+      return commandRuns
+    },
+  }
 }
