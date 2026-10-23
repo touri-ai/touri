@@ -218,7 +218,11 @@ const getWorkspaceQueries = (scope?: WorkspaceScope) => {
     : "1 = 1"
 
   return {
-    messages: { sql: WORKSPACE_MESSAGES_SQL.replace("/* scope */ 1 = 1", personScope), bindings },
+    messages: {
+      sql: WORKSPACE_MESSAGES_SQL.replace("/* scope */ 1 = 1", personScope),
+      bindings,
+      chunkedStrings: true,
+    },
     runs: { sql: WORKSPACE_RUNS_SQL.replace("/* scope */ 1 = 1", personScope), bindings },
     browserRuns: {
       sql: WORKSPACE_BROWSER_RUNS_SQL.replace("/* scope */ 1 = 1", browserScope),

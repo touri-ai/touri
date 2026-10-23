@@ -12,7 +12,15 @@ type ReadInput = {
 } & (
   | { recovery: RecoveryCursor }
   | { references: TranscriptRef[]; maxBytes?: number }
-  | { query: { sql: string; bindings: SQLQueryBindings[]; activeLeafId?: string | null; reverse?: boolean } }
+  | {
+      query: {
+        sql: string
+        bindings: SQLQueryBindings[]
+        activeLeafId?: string | null
+        reverse?: boolean
+        chunkedStrings?: boolean
+      }
+    }
 )
 
 /** Private stdin protocol; this process never starts a server or loads user configuration. */
@@ -43,7 +51,10 @@ export const runStoreRead = async (): Promise<void> => {
     }
     const statement = database.query(input.query.sql)
     if (!input.messages) {
-      for (const row of statement.iterate(...input.query.bindings)) await writeReply(`${JSON.stringify(row)}\n`)
+      for (const row of statement.iterate(...input.query.bindings)) {
+        if (input.query.chunkedStrings) await writeRowFrames(row as Record<string, unknown>)
+        else await writeReply(`${JSON.stringify(row)}\n`)
+      }
       return
     }
 
@@ -87,6 +98,19 @@ export const runStoreRead = async (): Promise<void> => {
   } finally {
     database?.close()
   }
+}
+
+const writeRowFrames = async (row: Record<string, unknown>): Promise<void> => {
+  const entries = Object.entries(row)
+  const isLongString = (value: unknown): value is string => typeof value === "string" && value.length > 16_384
+  const header = Object.fromEntries(entries.filter(([, value]) => !isLongString(value)))
+  await writeReply(`${JSON.stringify(header)}\n`)
+  for (const [key, value] of entries) {
+    if (!isLongString(value)) continue
+    for (let offset = 0; offset < value.length; offset += 16_384)
+      await writeReply(`${JSON.stringify([key, value.slice(offset, offset + 16_384)])}\n`)
+  }
+  await writeReply("null\n")
 }
 
 const writeReply = (bytes: string | Uint8Array): Promise<void> =>

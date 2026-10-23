@@ -55,6 +55,20 @@ test.each([
   if (scope?.personId === "outsider") expect(actual.messages).toEqual([])
 })
 
+test("workspace previews preserve large approval details across bounded reader frames", async () => {
+  const fixture = await getFixture()
+  const detail = JSON.stringify({ changes: "Synthetic diff 🌿\n".repeat(40_000) })
+  const parts = [{ type: "approval", approvalId: "large-review", request: "file_change", detail, decision: "pending" }]
+  fixture.database.query("UPDATE messages SET parts_json = ? WHERE id = 'own-preview'").run(JSON.stringify(parts))
+
+  const response = await fixture.get("/workspace/activity")
+
+  expect(response.status).toBe(200)
+  const activity = await response.json()
+  const preview = activity.messages.find((message: { id: string }) => message.id === "own-preview")
+  expect(preview.parts).toEqual(parts)
+})
+
 test("health responds and cancellation kills a held workspace reader", async () => {
   const fixture = await getFixture()
   const ready = Promise.withResolvers<number>()
