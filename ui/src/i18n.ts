@@ -4,6 +4,13 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "Reconectando…": "Reconectando…",
+  "Esta versão do aplicativo precisa de uma atualização para conversar com o servidor.":
+    "Esta versão do aplicativo precisa de uma atualização para conversar com o servidor.",
+  "Atualizando…": "Atualizando…",
+  "Atualizar agora": "Atualizar agora",
+  "Não foi possível atualizar. Tente novamente.": "Não foi possível atualizar. Tente novamente.",
+
   "body: envie um objeto JSON com os dados do grupo.": "body: envie um objeto JSON com os dados do grupo.",
   "name: informe um nome não vazio com até 80 caracteres.": "name: informe um nome não vazio com até 80 caracteres.",
   "color: informe uma cor hexadecimal válida, como #dc2626.":
@@ -3307,6 +3314,13 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Reconectando…": "Reconnecting…",
+  "Esta versão do aplicativo precisa de uma atualização para conversar com o servidor.":
+    "This app version needs an update to connect to the server.",
+  "Atualizando…": "Updating…",
+  "Atualizar agora": "Update now",
+  "Não foi possível atualizar. Tente novamente.": "Could not update. Try again.",
+
   "body: envie um objeto JSON com os dados do grupo.": "body: send a JSON object containing the group details.",
   "name: informe um nome não vazio com até 80 caracteres.": "name: enter a non-empty name with at most 80 characters.",
   "color: informe uma cor hexadecimal válida, como #dc2626.":

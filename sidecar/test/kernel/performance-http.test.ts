@@ -27,6 +27,7 @@ test("health includes bounded numeric lag stats without extra logs in normal ope
   const health = (await response.json()) as ApiRoutes["GET /health"]["res"]
 
   expect(response.status).toBe(200)
+  expect(health.protocolVersion).toBe(1)
   expect(health.eventLoop).toEqual({ lagMs: 0, p99Ms: 0, maxMs: 0, samples: 0 })
   expect(await fixture.getLogs()).toEqual([])
 })

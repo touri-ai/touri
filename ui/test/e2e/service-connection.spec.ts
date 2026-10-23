@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises"
+import { resolve } from "node:path"
 import { test as base, expect, type Response } from "@playwright/test"
 import { createServerModeFixture } from "./server-mode-fixture"
 
@@ -20,18 +22,23 @@ test("server mode recovers a failed history read without another server event", 
   await page.goto(server.relayUrl)
   await initialHistory
   await expect(page.getByRole("textbox", { name: "Mensagem para Assistente de teste" })).toBeVisible()
+  await server.api("/bots", "POST", { name: "Outro assistente", provider: settings.settings.defaultProvider })
+  await page.locator(".bot-row-main").filter({ hasText: "Outro assistente" }).click()
+  await expect(page.getByRole("textbox", { name: "Mensagem para Outro assistente" })).toBeVisible()
   const historyRoute = "**/api/v1/threads/*/messages**"
   await page.route(historyRoute, (route) =>
     route.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ code: "TOURI-E1009" }) }),
   )
 
-  await page.evaluate(() => window.dispatchEvent(new Event("online")))
+  await page.locator(".bot-row-main").filter({ hasText: "Assistente de teste" }).click()
 
   const notice = page.locator(".notice-bar").filter({ hasText: "O serviço do touri está indisponível" })
   await expect(notice).toBeVisible()
   await expect(notice).not.toContainText("serviço local")
+  const evidence = resolve(import.meta.dirname, "../../../docs/qa/server-restart")
+  await mkdir(evidence, { recursive: true })
   await info.attach("server-unavailable", {
-    body: await notice.screenshot({ path: info.outputPath("server-unavailable.png") }),
+    body: await notice.screenshot({ path: resolve(evidence, "server-unavailable.png") }),
     contentType: "image/png",
   })
 

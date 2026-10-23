@@ -191,7 +191,11 @@ test("r2: reconnects WebSocket, refreshes the endpoint, and cancels retries afte
     }))
     let issued = 0
     const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      Response.json({ ok: true, ticket: `ticket-${++issued}` }),
+      Response.json({
+        schemaVersion: 46,
+        ok: true,
+        ticket: `ticket-${String(_input).endsWith("/health") ? issued : ++issued}`,
+      }),
     )
     const api = createApiClient({
       endpoint: { baseUrl: "http://127.0.0.1:1", wsUrl: "ws://127.0.0.1:1/events", token: "old" },
@@ -275,7 +279,7 @@ test("reports recovery when the first WebSocket connection failed before opening
   try {
     const api = createApiClient({
       endpoint: { baseUrl: "http://127.0.0.1:1", wsUrl: "ws://127.0.0.1:1/events", token: "test" },
-      fetchImpl: async () => Response.json({ ticket: "single-use-test" }),
+      fetchImpl: async () => Response.json({ schemaVersion: 46, ticket: "single-use-test" }),
     })
     const connections = vi.fn()
     api.subscribeConnection?.(connections)

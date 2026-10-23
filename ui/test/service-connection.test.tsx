@@ -22,7 +22,7 @@ test.each([
 ] as const)("a failed %s read replaces a socket that never closed", async (failure, status, errorCode) => {
   vi.useFakeTimers()
   const sockets = makeSockets()
-  const fetchImpl = vi.fn(async () => Response.json({ ticket: "test-ticket", ok: true }))
+  const fetchImpl = vi.fn(async () => Response.json({ ticket: "test-ticket", ok: true, schemaVersion: 46 }))
   const api = createApiClient({
     endpoint: { baseUrl: "https://server.example", wsUrl: "wss://server.example/api/v1/events", token: "test" },
     fetchImpl,
@@ -56,7 +56,7 @@ test.each([
 ] as const)("a 503 %s/%s read preserves the event connection and message delivery", async (errorCode, code) => {
   vi.useFakeTimers()
   const sockets = makeSockets()
-  const fetchImpl = vi.fn(async () => Response.json({ ticket: "test-ticket", ok: true }))
+  const fetchImpl = vi.fn(async () => Response.json({ ticket: "test-ticket", ok: true, schemaVersion: 46 }))
   const api = createApiClient({
     endpoint: { baseUrl: "https://server.example", wsUrl: "wss://server.example/api/v1/events", token: "test" },
     fetchImpl,
@@ -102,7 +102,7 @@ test.each([
 test("a failed write is not replayed and does not replace the event connection", async () => {
   vi.useFakeTimers()
   const sockets = makeSockets()
-  const fetchImpl = vi.fn(async () => Response.json({ ticket: "test-ticket", ok: true }))
+  const fetchImpl = vi.fn(async () => Response.json({ ticket: "test-ticket", ok: true, schemaVersion: 46 }))
   const api = createApiClient({
     endpoint: { baseUrl: "https://server.example", wsUrl: "wss://server.example/api/v1/events", token: "test" },
     fetchImpl,
@@ -117,6 +117,32 @@ test("a failed write is not replayed and does not replace the event connection",
 
   expect(fetchImpl).toHaveBeenCalledTimes(2)
   expect(sockets.getSocket(0).close).not.toHaveBeenCalled()
+})
+
+test("a healthy snapshot is repaired by event replay without refetching history on reconnect", async () => {
+  const mock = createMockApi()
+  const request = vi.fn(mock.request)
+  const client = makeConnectionClient({ ...mock, request, isMock: false })
+  const hook = renderHook(() => useWorkspace(client.api))
+  await waitFor(() => expect(hook.result.current.data.messages.length).toBeGreaterThan(0))
+  request.mockClear()
+
+  await act(async () => client.reconnect())
+
+  expect(request).not.toHaveBeenCalled()
+})
+
+test("returning online lets a cursor-aware transport replay changes without refetching valid history", async () => {
+  const mock = createMockApi()
+  const request = vi.fn(mock.request)
+  const api = { ...mock, request, cursorReady: async () => undefined }
+  const hook = renderHook(() => useWorkspace(api))
+  await waitFor(() => expect(hook.result.current.data.messages.length).toBeGreaterThan(0))
+  request.mockClear()
+
+  await act(async () => window.dispatchEvent(new Event("online")))
+
+  expect(request).not.toHaveBeenCalled()
 })
 
 test("reconnection reloads a snapshot that failed before the bot list arrived", async () => {

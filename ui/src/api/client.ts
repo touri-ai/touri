@@ -3,6 +3,7 @@ import {
   type ApiRoutes,
   type Attachment,
   isErrorCode,
+  isServerProtocolCompatible,
   type Message,
   type RegisteredErrorCode,
   type Run,
@@ -192,7 +193,7 @@ export type UiApi = {
   sendMessage?: (input: SendMessageInput) => Promise<{ message: Message; run: Run | null }>
   pendingMessages?: () => Message[]
   subscribe: (listener: (envelope: UiEventEnvelope) => void) => () => void
-  subscribeConnection?: (listener: (connected: boolean) => void) => () => void
+  subscribeConnection?: (listener: (connected: boolean, errorCode?: string) => void) => () => void
   /**
    * Resolves once the event stream knows where live delivery starts. A snapshot loaded after this
    * misses nothing, so the cold-start resync is not loaded a second time.
@@ -260,15 +261,26 @@ export const createApiClient = ({
     endpoint = next
   }
   const listeners = new Set<(event: UiEventEnvelope) => void>()
-  const connectionListeners = new Set<(connected: boolean) => void>()
+  const connectionListeners = new Set<(connected: boolean, errorCode?: string) => void>()
   let socket: WebSocket | null = null
   let timer: ReturnType<typeof setTimeout> | undefined
+  let connectionDeadline: ReturnType<typeof setTimeout> | undefined
+  let attemptController: AbortController | undefined
   let delay = 250
   let openedBefore = false
   let disconnectedBefore = false
   let connecting = false
   let socketGeneration = 0
   let lastSeq = 0
+  let incompatible = false
+  const requireCompatibleProtocol = (): void => {
+    if (incompatible)
+      throw new ApiError(
+        503,
+        t("Esta versão do aplicativo precisa de uma atualização para conversar com o servidor."),
+        "SERVER_VERSION_MISMATCH",
+      )
+  }
   let cursorKnown = false
   let cursorWaiters: Array<() => void> = []
   const settleCursor = (): boolean => {
@@ -290,15 +302,19 @@ export const createApiClient = ({
       })
     await recovering
   }
-  const websocketUrl = async (path: string): Promise<string> => {
+  const websocketUrl = async (path: string, signal?: AbortSignal): Promise<string> => {
+    requireCompatibleProtocol()
     const response = await fetchImpl(`${endpoint.baseUrl}/api/v1/ws-ticket`, {
       method: "POST",
       headers: { ...authHeaders(endpoint.token), "Content-Type": "application/json" },
       credentials: "same-origin",
       body: JSON.stringify({ path }),
-      signal: AbortSignal.timeout(10_000),
+      signal: signal ?? AbortSignal.timeout(10_000),
     })
-    if (!response.ok) throw new ApiError(response.status, "Não foi possível conectar")
+    if (!response.ok) {
+      const detail = (await response.json().catch(() => null)) as { errorCode?: string } | null
+      throw new ApiError(response.status, t("Reconectando…"), detail?.errorCode)
+    }
     const body = (await response.json()) as { ticket?: unknown }
     if (typeof body.ticket !== "string" || !body.ticket) throw new Error("Conexão indisponível")
     const url = new URL(endpoint.wsUrl)
@@ -313,11 +329,12 @@ export const createApiClient = ({
       timer = undefined
       void connect()
     }, delay)
-    delay = Math.min(delay * 2, 5000)
+    delay = Math.min(delay * 2, 1000)
   }
   const reconnectUnavailableService = (): void => {
     if (listeners.size === 0 || (disconnectedBefore && !socket)) return
     // Reads can fail before the event socket notices a stalled server.
+    clearTimeout(connectionDeadline)
     const previous = socket
     socket = null
     disconnectedBefore = true
@@ -332,10 +349,19 @@ export const createApiClient = ({
     if (connecting || socket || listeners.size === 0) return
     connecting = true
     const generation = socketGeneration
+    const controller = new AbortController()
+    attemptController = controller
+    connectionDeadline = setTimeout(() => {
+      controller.abort()
+      reconnectUnavailableService()
+    }, 1000)
     try {
       if (openedBefore || delay > 250) await refreshEndpoint()
       if (generation !== socketGeneration || listeners.size === 0) return
-      const url = new URL(await websocketUrl("/api/v1/events"))
+      controller.signal.throwIfAborted()
+      // Health is authenticated through the same relay/cookie boundary as normal reads.
+      if (disconnectedBefore) await request("GET /health", {}, {}, { signal: controller.signal })
+      const url = new URL(await websocketUrl("/api/v1/events", controller.signal))
       if (generation !== socketGeneration || listeners.size === 0) return
       url.searchParams.set("since", String(lastSeq))
       const next = new WebSocket(url)
@@ -385,6 +411,7 @@ export const createApiClient = ({
       })
       next.addEventListener("open", () => {
         if (socket !== next) return
+        clearTimeout(connectionDeadline)
         const reconnected = openedBefore || disconnectedBefore
         openedBefore = true
         disconnectedBefore = false
@@ -397,6 +424,7 @@ export const createApiClient = ({
       })
       const disconnected = (): void => {
         if (socket !== next) return
+        clearTimeout(connectionDeadline)
         journal.disconnect()
         disconnectedBefore = true
         socket = null
@@ -408,16 +436,22 @@ export const createApiClient = ({
       }
       next.addEventListener("close", disconnected)
       next.addEventListener("error", disconnected)
-    } catch {
+    } catch (error) {
+      clearTimeout(connectionDeadline)
       if (generation !== socketGeneration || listeners.size === 0) return
       journal.disconnect()
       disconnectedBefore = true
       connectionListeners.forEach((listener) => {
+        if (error instanceof ApiError && error.errorCode === "SERVER_VERSION_MISMATCH") {
+          listener(false, error.errorCode)
+          return
+        }
         listener(false)
       })
       scheduleReconnect()
     } finally {
       connecting = false
+      if (generation !== socketGeneration && listeners.size > 0) scheduleReconnect()
     }
   }
   const request: ApiRequest = async (route, input, pathValues = {}, transport = {}) => {
@@ -425,6 +459,7 @@ export const createApiClient = ({
     if (!method || !routePath) throw new Error(`invalid route ${String(route)}`)
     const path = replacePath(routePath, pathValues)
     const isGet = method === "GET"
+    if (!isGet) requireCompatibleProtocol()
     const query = isGet
       ? Object.entries(input as Record<string, unknown>)
           .filter(([, value]) => value !== undefined && value !== null && value !== "")
@@ -487,7 +522,12 @@ export const createApiClient = ({
       throw error
     }
     if (isBlobRoute(String(route))) return (await response.blob()) as ApiRoutes[typeof route]["res"]
-    return (await response.json()) as ApiRoutes[typeof route]["res"]
+    const result = await response.json()
+    if (route === "GET /health") {
+      incompatible = !isServerProtocolCompatible(result)
+      requireCompatibleProtocol()
+    }
+    return result as ApiRoutes[typeof route]["res"]
   }
 
   const journal = createSendJournal({
@@ -501,7 +541,26 @@ export const createApiClient = ({
   })
   journal.stop()
 
+  const retryConnection = (): void => {
+    if (document.visibilityState === "hidden" || listeners.size === 0) return
+    clearTimeout(timer)
+    timer = undefined
+    delay = 250
+    if (socket && !disconnectedBefore) reconnectUnavailableService()
+    attemptController?.abort()
+    // An aborted fetch settles in a microtask; let it release the single in-flight attempt first.
+    clearTimeout(timer)
+    timer = setTimeout(() => {
+      timer = undefined
+      void connect()
+    }, 0)
+  }
+
   const subscribe = (listener: (envelope: UiEventEnvelope) => void): (() => void) => {
+    if (listeners.size === 0) {
+      window.addEventListener("online", retryConnection)
+      document.addEventListener("visibilitychange", retryConnection)
+    }
     listeners.add(listener)
     journal.watchDeadlines()
     for (const message of journal.messages())
@@ -511,6 +570,10 @@ export const createApiClient = ({
       listeners.delete(listener)
       if (listeners.size > 0) return
       socketGeneration += 1
+      window.removeEventListener("online", retryConnection)
+      document.removeEventListener("visibilitychange", retryConnection)
+      clearTimeout(connectionDeadline)
+      attemptController?.abort()
       clearTimeout(timer)
       timer = undefined
       const previous = socket
@@ -524,6 +587,7 @@ export const createApiClient = ({
   return {
     request,
     uploadAttachment: async (file) => {
+      requireCompatibleProtocol()
       if (file.size > maxAttachmentBytes) throw new Error(t("Escolha um arquivo de até 15 MB"))
       const dataBase64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader()

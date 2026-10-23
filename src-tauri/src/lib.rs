@@ -333,7 +333,8 @@ async fn updater_install(app: AppHandle<Wry>) -> Result<(), String> {
     update
         .download_and_install(|_, _| {}, || {})
         .await
-        .map_err(|error| format!("install update failed: {error}"))
+        .map_err(|error| format!("install update failed: {error}"))?;
+    app.restart()
 }
 
 fn now_ms() -> i64 {

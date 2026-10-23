@@ -857,7 +857,7 @@ test("a loaded workspace keeps the composer available to queue messages while of
   render(<App kernel={{ services: { api } }} />)
   const composer = await screen.findByRole("textbox", { name: /Mensagem para/ })
   act(() => connection.emitConnection(false))
-  expect(screen.getByText("Sem conexão. Suas mensagens ficam na fila e serão enviadas ao reconectar.")).toBeVisible()
+  expect(screen.getByText("Reconectando…")).toBeVisible()
   fireEvent.change(composer, { target: { value: "Enviar quando voltar" } })
   fireEvent.click(screen.getByRole("button", { name: "Enviar" }))
   await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1))

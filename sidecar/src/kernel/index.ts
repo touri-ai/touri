@@ -1,6 +1,13 @@
 import { randomBytes } from "node:crypto"
 import { join } from "node:path"
-import type { HostNotification, Kernel, RouteModule, SidecarHandshake, UiEvent } from "@touri/contracts"
+import {
+  type HostNotification,
+  type Kernel,
+  type RouteModule,
+  SERVER_PROTOCOL_VERSION,
+  type SidecarHandshake,
+  type UiEvent,
+} from "@touri/contracts"
 import type { ServerWebSocket } from "bun"
 import { retryDeletedBrowserSessionKeys } from "../browser/sessionVault"
 import { compressBufferedResponse } from "../cli/web/compression"
@@ -275,6 +282,7 @@ export const createKernel = ({
             ok: true,
             version,
             schemaVersion: SCHEMA_VERSION,
+            protocolVersion: SERVER_PROTOCOL_VERSION,
             draining: services.use("runtime.isDraining")?.() ?? false,
             ...getHostIdentity(),
             historyMigration: historyMigrationStatus(database),

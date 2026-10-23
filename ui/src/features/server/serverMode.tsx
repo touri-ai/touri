@@ -21,7 +21,7 @@ export const serverModeError = (value: unknown): string => {
   if (code.includes("SERVER_RATE_LIMITED"))
     return t("Muitas tentativas de pareamento. Aguarde alguns minutos e gere outro código no servidor.")
   if (code.includes("SERVER_VERSION_MISMATCH"))
-    return t("O aplicativo e o servidor usam versões diferentes. Atualize os dois e tente novamente.")
+    return t("Esta versão do aplicativo precisa de uma atualização para conversar com o servidor.")
   return t("Não foi possível conectar ao servidor. Confira o endereço e a rede e tente novamente.")
 }
 
