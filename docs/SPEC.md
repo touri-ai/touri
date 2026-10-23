@@ -1753,7 +1753,8 @@ Each bot with a pending question, approval or failed task shows its waiting reas
 in place of the conversation preview. The shared attention card and bell use the same unresolved
 notifications. The card’s accessible name matches its visible reminder, and its description explains
 the destination. The card opens a pending approval before a question; resolving that approval returns
-the card to the remaining request. Redundant per-bot action buttons and mode counts stay hidden.
+the card to the remaining request. Redundant per-bot action buttons and activity-group counts stay
+hidden; Work retains its unread-message count.
 
 ### Dependency graph and order
 
