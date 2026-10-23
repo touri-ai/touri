@@ -5,7 +5,7 @@ import { showBotDetails } from "./home-navigation"
 
 const phase = process.env.R8_CAPTURE_PHASE ?? "after"
 test.setTimeout(60_000)
-const evidence = "../docs/qa/r8/composer"
+const evidence = process.env.TOURI_E2E_EVIDENCE_DIR ?? "../docs/qa/r8/composer"
 test.use({ channel: "chromium", viewport: { width: 1440, height: 900 } })
 for (const theme of ["light", "dark"] as const) {
   for (const view of phase === "before"
@@ -59,7 +59,13 @@ for (const theme of ["light", "dark"] as const) {
         if (["running", "queued"].includes(view))
           await expect(composer.getByRole("button", { name: "Parar", exact: true })).toBeVisible()
       }
-      await page.screenshot({ path: `${evidence}/${phase}-${view}-${theme}.png` })
+      await page.screenshot({
+        path: `${evidence}/${phase}-${view}-${theme}.png`,
+        mask: [
+          page.locator(".model-picker-trigger-label, .composer-login-card"),
+          page.getByRole("button", { name: /^Modelo:/ }),
+        ],
+      })
     })
   }
 }

@@ -1745,7 +1745,9 @@ Clicking a bot opens its conversation; conversation management lives in its menu
 the composer keeps attachment, text, voice and send controls. The panel shows the job once and a
 plain access summary before Adjust is opened. Secondary routine and approval actions keep their
 confirmation steps behind menus. Message actions appear on hover or keyboard focus and stay visible
-on touch devices, so scheduling a useful result remains discoverable on a phone.
+on touch devices, so scheduling a useful result remains discoverable on a phone. If routines finish
+loading while a menu is in use, that menu keeps keyboard focus. Opening routines intentionally
+still focuses the routine list.
 
 Each bot with a pending question, approval or failed task shows its waiting reason in the sidebar
 in place of the conversation preview. The shared attention card and bell use the same unresolved
