@@ -220,6 +220,47 @@ test("one channel mention starts one provider execution even if enqueue is repea
   )
 })
 
+test.each(["channel", "direct"] as const)("%s send acknowledgements retain run kind across retries", async (target) => {
+  const scenario = await fixture()
+  scenario.host.kernel.services.provide("runtime.enqueue", scenario.runtime.enqueue)
+  const direct =
+    target === "direct"
+      ? scenario.store.createThread({ botId: scenario.thread.botId, kind: "chat", title: "Conversa" })
+      : null
+  if (direct && !direct.success) throw new Error(direct.error)
+  const threadId = direct?.success ? direct.thread.id : scenario.thread.id
+  const sendMessage = scenario.store.sendMessage
+  if (!sendMessage) throw new Error("Send journal missing")
+  const input = {
+    threadId,
+    parentId: null,
+    text: "@Lia confira o plano",
+    attachmentIds: [],
+    clientNonce: "synthetic-run-identity",
+    deadline: Date.now() + 60_000,
+  }
+
+  const sent = sendMessage(input)
+  const repeated = sendMessage(input)
+  if (!("json" in sent)) throw new Error("Send acknowledgement missing")
+  const { run } = sent.json as { run: Run }
+  await until(() => scenario.persistence.getRun(run.id)?.status === "succeeded")
+  const completed = sendMessage(input)
+
+  expect(sent.status).toBe(201)
+  expect(repeated.status).toBe(200)
+  expect(completed.status).toBe(200)
+  const kind = target === "channel" ? "coordination" : "execution"
+  const acknowledgements = [sent, repeated, completed]
+  acknowledgements.forEach((response) => {
+    expect(response).toMatchObject({ json: { run: { id: run.id, threadId, kind } } })
+  })
+  expect(scenario.order).toEqual([scenario.thread.botId])
+  const history = scenario.runtime.listRuns(threadId)
+  expect(history).toHaveLength(target === "channel" ? 2 : 1)
+  expect(history.filter((candidate) => candidate.kind === "execution")).toHaveLength(1)
+})
+
 test("a channel resumes a crashed provider twice then stops", async () => {
   const f: Awaited<ReturnType<typeof fixture>> = await fixture(async (run) => {
     const previous = f.persistence.getRun(run.id)
