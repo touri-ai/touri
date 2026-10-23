@@ -794,4 +794,4 @@ export const Composer = ({
   )
 }
 
-const getMentionToken = (name: string) => `@${/\s/.test(name) ? JSON.stringify(name) : name}`
+export const getMentionToken = (name: string): string => `@${/\s/.test(name) ? JSON.stringify(name) : name}`
