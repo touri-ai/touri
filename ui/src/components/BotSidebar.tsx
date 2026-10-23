@@ -80,7 +80,7 @@ type SidebarProps = {
   serverUrl?: string | null
   host?: HostKind
   onNavigate?: () => void
-  onSidebarModeChange?: (mode: SidebarMode) => void
+  onSidebarModeChange?: (mode: SidebarMode, restore?: boolean) => void
   groups?: BotGroup[]
   onInvitePerson?: (() => void) | undefined
   onNewGroup?: () => void
@@ -441,7 +441,7 @@ export const Sidebar = (props: SidebarProps) => {
 
     setSidebarMode("work")
     setHasOpenedWork(true)
-    props.onSidebarModeChange?.("work")
+    props.onSidebarModeChange?.("work", false)
   }, [savedSidebarMode, hasUserSelectedMode, props.groups?.length, props.onSidebarModeChange])
   const selectMode = (mode: SidebarMode): void => {
     setSidebarMode(mode)

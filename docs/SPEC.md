@@ -611,6 +611,9 @@ env: CLAUDE_CODE_ENABLE_TODO_TOOLS=1, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 The Work navigation loads on its first opening and then stays mounted while switching
 sidebar modes, preserving channel rows and scroll position. Channel navigation and direct
 messages appear together after loading, so late content cannot move a row during activation.
+Each sidebar mode remembers its own last conversation. Switching back to Work reopens the last
+channel or Work conversation, and Bots never centers a channel. A deleted or archived destination
+falls back to another conversation of the same mode. Drafts stay with their conversation.
 
 Groups have a name, mascot shape/seed/color, an ordered roster and an optional coordinator
 from that roster. Each group owns multiple conversations. Migration `0008.sql` is additive;
