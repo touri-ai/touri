@@ -8,6 +8,7 @@ import type {
   Kernel,
   MessagePart,
   Run,
+  RunErrorClass,
   ServiceMap,
   ToolContext,
   ToolResult,
@@ -78,6 +79,15 @@ const configuration = (bot: Bot) =>
   ])
 const terminal = (run: Run) => !["queued", "starting", "running"].includes(run.status)
 const fail = (errorCode: string, error: string): ToolResult => ({ success: false, errorCode, error })
+
+class MemberRunError extends Error {
+  readonly errorClass: RunErrorClass
+
+  constructor(run: Run) {
+    super(run.errorMessage ?? "O bot não concluiu o pedido")
+    this.errorClass = run.errorClass ?? "cli_crash"
+  }
+}
 
 // Channel turns get the same room as a direct conversation: a coding or browser task can take hours. The cap only catches a
 // turn that never ends. TOURI_GROUP_TURN_TIMEOUT_MS overrides it, never below one hour.
@@ -307,8 +317,9 @@ export const createGroupRuntime = (
       ? store.getPathMessage?.({ threadId: run.threadId, messageId: run.replyMessageId })
       : null
     if (reply?.parts.some((part) => part.type === "approval" && part.decision !== "approved")) return false
-    if (reply?.parts.some(hasUnconfirmedEffect)) return false
-    if (hasUnsafeResumeActions(reply?.parts ?? [])) return false
+    // A restart continues the provider for state inspection; it never replays a stored tool call.
+    if (run.errorClass !== "app_restart" && reply?.parts.some(hasUnconfirmedEffect)) return false
+    if (run.errorClass !== "app_restart" && hasUnsafeResumeActions(reply?.parts ?? [])) return false
     if (
       db
         .query(
@@ -398,8 +409,7 @@ export const createGroupRuntime = (
       return (
         store.activePath({ threadId: thread.id }).find((message) => message.id === previous.replyMessageId)?.text ?? ""
       )
-    if (previous && !canResumeMember(previous, turn))
-      throw new Error(previous.errorMessage ?? "O bot não concluiu o pedido")
+    if (previous && !canResumeMember(previous, turn)) throw new MemberRunError(previous)
     const ceiling = caller ? delegationCeiling(caller, bot) : bot
     const allowedSecrets = caller ? delegationSecrets({ caller, target: bot, inherited: secrets }) : secrets
     if (caller)
@@ -562,7 +572,7 @@ export const createGroupRuntime = (
       }
       await pendingSharedUpdates
       await store.flushWritesAsync?.({ threadId: thread.id })
-      if (run.status !== "succeeded") throw new Error(run.errorMessage ?? "O bot não concluiu o pedido")
+      if (run.status !== "succeeded") throw new MemberRunError(run)
       return store.activePath({ threadId: thread.id }).find((message) => message.id === run.replyMessageId)?.text ?? ""
     } finally {
       frames.delete(thread.id)
@@ -826,8 +836,13 @@ export const createGroupRuntime = (
                 }
               : {
                   status: canceled ? "canceled" : "failed",
-                  errorClass: canceled ? "canceled" : (turn.timeoutError?.errorClass ?? "unknown"),
-                  errorMessage: turn.timeoutError?.errorMessage ?? kernel.redact(String(error)),
+                  errorClass: canceled
+                    ? "canceled"
+                    : (turn.timeoutError?.errorClass ??
+                      (error instanceof MemberRunError ? error.errorClass : "unknown")),
+                  errorMessage:
+                    turn.timeoutError?.errorMessage ??
+                    kernel.redact(error instanceof Error ? error.message : String(error)),
                   finishedAt: Date.now(),
                 },
           )
@@ -881,8 +896,12 @@ export const createGroupRuntime = (
 
     const thread = store.getThread({ threadId: args.threadId })
     if (!thread?.groupId || thread.groupThreadId) return engine.enqueue(args)
-    const existingRun = persistence.listRuns(thread.id).find((run) => run.requestMessageId === args.requestMessageId)
-    if (existingRun && args.trigger !== "retry") return { success: true, run: existingRun }
+    const existingRun = persistence.getRunForRequest({
+      threadId: thread.id,
+      requestMessageId: args.requestMessageId,
+      activeOnly: args.trigger === "retry",
+    })
+    if (existingRun) return { success: true, run: existingRun }
     const group = groups.get(thread.groupId)
     if (!group) return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Grupo não encontrado" }
     const request = store

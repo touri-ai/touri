@@ -1662,6 +1662,8 @@ export const ptBR = {
   "Channel member count": "{count} membros do canal",
   "O bot terminou sem responder. Tente novamente.": "O bot terminou sem responder. Tente novamente.",
   "Retomando a resposta automaticamente…": "Retomando a resposta automaticamente…",
+  "A sessão anterior não pôde ser retomada. Vou continuar com o histórico salvo em uma nova sessão.":
+    "A sessão anterior não pôde ser retomada. Vou continuar com o histórico salvo em uma nova sessão.",
   "Your channel": "Seu canal",
   "Channel conversations": "Conversas do canal",
   "Invite to channel": "Convidar para o canal",
@@ -4846,6 +4848,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Channel member count": "{count} channel members",
   "O bot terminou sem responder. Tente novamente.": "The bot finished without answering. Try again.",
   "Retomando a resposta automaticamente…": "Resuming the answer automatically…",
+  "A sessão anterior não pôde ser retomada. Vou continuar com o histórico salvo em uma nova sessão.":
+    "The previous session could not be resumed. I will continue with the saved history in a new session.",
   "Your channel": "Your channel",
   "Channel conversations": "Channel conversations",
   "Open conversation": "Open conversation",

@@ -682,6 +682,10 @@ const getResumeMarkerText = (message: Message, locale: Locale): string => {
   if (message.text === "Retomando a resposta automaticamente…") return t(message.text, {}, locale)
   if (message.text === "Retomado após aprovação de acesso") return t(message.text, {}, locale)
   if (message.text === "Retomado após a devolução do navegador") return t(message.text, {}, locale)
+  if (
+    message.text === "A sessão anterior não pôde ser retomada. Vou continuar com o histórico salvo em uma nova sessão."
+  )
+    return t(message.text, {}, locale)
 
   return message.text
 }

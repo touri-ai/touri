@@ -179,7 +179,7 @@ export type RuntimePersistence = {
   routines: Map<Id, Routine>
   routineRuns: Map<Id, RoutineRun>
   getRun: (id: Id) => Run | null
-  findActiveRunForRequest: (args: { threadId: Id; requestMessageId: Id }) => Run | null
+  getRunForRequest: (args: { threadId: Id; requestMessageId: Id; activeOnly?: boolean }) => Run | null
   getRunSnapshots: (ids: ReadonlyArray<Id>) => Array<Run>
   listWorkRuns: () => Array<Run>
   listActiveRuns: () => Array<Run>
@@ -264,12 +264,14 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
     }
   }
 
-  const findActiveRunForRequest = ({
+  const getRunForRequest = ({
     threadId,
     requestMessageId,
+    activeOnly = true,
   }: {
     threadId: Id
     requestMessageId: Id
+    activeOnly?: boolean
   }): Run | null => {
     if (!db)
       return (
@@ -277,7 +279,7 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
           (run) =>
             run.threadId === threadId &&
             run.requestMessageId === requestMessageId &&
-            ["queued", "starting", "running"].includes(run.status),
+            (!activeOnly || ["queued", "starting", "running"].includes(run.status)),
         ) ?? null
       )
 
@@ -285,7 +287,7 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
       const found = toRun(
         db
           .query(
-            "SELECT * FROM runs WHERE thread_id = ? AND request_message_id = ? AND status IN ('queued', 'starting', 'running') ORDER BY queued_at DESC, rowid DESC LIMIT 1",
+            `SELECT * FROM runs WHERE thread_id = ? AND request_message_id = ?${activeOnly ? " AND status IN ('queued', 'starting', 'running')" : ""} ORDER BY queued_at DESC, rowid DESC LIMIT 1`,
           )
           .get(threadId, requestMessageId),
       )
@@ -659,7 +661,7 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
     routines,
     routineRuns,
     getRun,
-    findActiveRunForRequest,
+    getRunForRequest,
     getRunSnapshots,
     listActiveRuns,
     listWorkRuns,

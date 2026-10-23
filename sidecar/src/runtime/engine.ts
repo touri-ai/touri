@@ -80,6 +80,7 @@ import { createRuntimePersistence, type RuntimePersistence } from "./persistence
 import { reapProviderProcesses } from "./provider-processes"
 import { formatRoutineTitle, nextCronSlot, parseCron, previousCronSlot, validTimezone } from "./routines/cron"
 import { sessionFingerprint, workingDirectory } from "./session"
+import { canRecoverSession, hasTurnResponse, SESSION_RECOVERY_MESSAGE } from "./session-recovery"
 import { createToolResolutions, type PreparedToolFinish } from "./tool-resolutions"
 import { retryTransient } from "./transient-retry"
 import { turnConclusion } from "./turn-conclusion"
@@ -1526,20 +1527,29 @@ export const createRuntimeEngine = ({
     const previousSession = persistence.getActiveSession({ threadId: thread.id, provider: bot.provider })
     let session = previousSession
     let handoffPacket: string | null = null
-    const restoreContext = (reason: string): void => {
-      if (!handoffPacket)
-        state.replyParentId =
-          notice({
-            store,
-            run,
-            parentId: state.replyParentId ?? run.requestMessageId ?? thread.activeLeafId ?? run.id,
-            part: {
-              type: "notice",
-              level: "info",
-              code: "context_restored",
-              text: "O contexto da conversa foi recuperado do histórico salvo.",
-            },
-          }) ?? state.replyParentId
+    const restoreContext = (
+      reason: string,
+      text = "O contexto da conversa foi recuperado do histórico salvo.",
+    ): void => {
+      if (!handoffPacket || text === SESSION_RECOVERY_MESSAGE) {
+        const part: Extract<MessagePart, { type: "notice" }> = {
+          type: "notice",
+          level: "info",
+          code: text === SESSION_RECOVERY_MESSAGE ? "run_resumed" : "context_restored",
+          text,
+        }
+        // An initialized provider may already have a thinking-only reply. Keep the notice
+        // in that reply instead of branching history away from its later recovered answer.
+        if (state.replyMessageId) handleEvent({ run, store, state, event: { type: "item", part } })
+        else
+          state.replyParentId =
+            notice({
+              store,
+              run,
+              parentId: state.replyParentId ?? run.requestMessageId ?? thread.activeLeafId ?? run.id,
+              part,
+            }) ?? state.replyParentId
+      }
       handoffPacket = buildHandoffPacket({ kernel, thread, reason })
     }
     if (unacceptedRequest) restoreContext("app restarted before the original turn was accepted")
@@ -1739,16 +1749,21 @@ export const createRuntimeEngine = ({
             signal: controller.signal,
           })
         let providerResult = await invokeWithRetry()
+        // Drain the redactor before deciding whether the attempt produced useful output.
+        safeEvents.flush()
         if (
-          !providerResult.success &&
           session &&
-          providerResult.errorCode === "cli_protocol" &&
-          !isMcpStartupError(providerResult.error) &&
-          !state.turnStarted &&
-          !controller.signal.aborted
+          !controller.signal.aborted &&
+          !state.cancelRequested &&
+          (providerResult.success || !isMcpStartupError(providerResult.error)) &&
+          canRecoverSession({
+            result: providerResult,
+            errorClass: state.completionError?.errorClass ?? null,
+            hasResponse: hasTurnResponse(state.parts) || state.pendingText.some((chunk) => !!chunk.trim()),
+          })
         ) {
           persistence.markSession({ id: session.id, state: "failed" })
-          restoreContext("native session could not be resumed")
+          restoreContext("native session could not be resumed", SESSION_RECOVERY_MESSAGE)
           session = null
           providerResult = await invokeWithRetry()
         }
@@ -1831,7 +1846,7 @@ export const createRuntimeEngine = ({
             result.status === "succeeded" &&
             !state.text.trim() &&
             !state.pendingText.some((chunk) => chunk.trim()) &&
-            state.parts.every((part) => part.type === "text" && !part.text.trim())
+            !hasTurnResponse(state.parts)
           if (emptyAnswer && !state.cancelRequested)
             state.completionError = {
               errorClass: "cli_protocol",
@@ -2135,7 +2150,7 @@ export const createRuntimeEngine = ({
         ?.activePath({ threadId: run.threadId })
         .filter((message) => message.runId === run.id)
         .flatMap((message) => message.parts) ?? []
-    if ((reason === "app_restart" || reason === "provider_crash") && hasUnsafeResumeActions(parts)) return null
+    if (reason === "provider_crash" && hasUnsafeResumeActions(parts)) return null
     // An interruption cannot grant consent or return browser control on the person's behalf.
     if (parts.some((part) => part.type === "approval" && part.decision !== "approved")) return null
     if (run.browserWaitingForPerson) return null
@@ -2507,7 +2522,7 @@ export const createRuntimeEngine = ({
       kernel.db.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(threadId)
     )
       return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Thread not found" }
-    const activeRequest = persistence.findActiveRunForRequest({ threadId, requestMessageId })
+    const activeRequest = persistence.getRunForRequest({ threadId, requestMessageId, activeOnly: trigger !== "user" })
     if (activeRequest) return { success: true, run: activeRequest }
     if (bot.paused || bot.machine === "cloud")
       return {

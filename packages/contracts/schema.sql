@@ -136,6 +136,7 @@ CREATE TABLE runs (
   finished_at        INTEGER
 );
 CREATE INDEX runs_thread ON runs(thread_id, queued_at);
+CREATE INDEX runs_request ON runs(thread_id, request_message_id, queued_at DESC);
 CREATE INDEX runs_status ON runs(status);
 
 CREATE TABLE messages (

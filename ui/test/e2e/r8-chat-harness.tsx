@@ -115,6 +115,16 @@ if (view === "conversation") {
     parts: [{ type: "notice", level: "info", code: "context_restored", text }],
   })
   add("assistant", "Retomei a conferência. O relatório mensal está concluído e os totais foram verificados.")
+} else if (view === "session-recovery") {
+  bot.machine = "local"
+  add("user", "Prepare o relatório de demonstração.")
+  add("assistant", "Etapa inicial salva.", { status: "canceled" })
+  const text = "A sessão anterior não pôde ser retomada. Vou continuar com o histórico salvo em uma nova sessão."
+  add("system", text, {
+    kind: "notice",
+    parts: [{ type: "notice", level: "info", code: "run_resumed", text }],
+  })
+  add("assistant", "Relatório concluído. Conferi o trabalho salvo antes de continuar.")
 } else if (view === "thinking") {
   bot.machine = "local"
   add("user", "Confira o lock do payout antes de continuar.")

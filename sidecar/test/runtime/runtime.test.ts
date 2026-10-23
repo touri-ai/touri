@@ -1404,6 +1404,60 @@ test.serial("Claude stream-json adapter completes a fake turn", async () => {
   }
 })
 
+test.each([
+  { subtype: "error_during_execution", errors: ["Session cannot be resumed"], expected: "cli_protocol" },
+  { subtype: "error_during_execution", errors: ["login required"], expected: "cli_auth" },
+])(
+  "Claude result $subtype preserves errors and never succeeds without a reply",
+  async ({ subtype, errors, expected }) => {
+    const value = await fixture({
+      provider: "claude",
+      scenario: { events: [{ type: "result", subtype, is_error: false, errors }] },
+    })
+
+    try {
+      const request = addUser(value.store, value.thread, "Prepare o relatório de demonstração")
+      const queued = value.engine.enqueue({ threadId: value.thread.id, requestMessageId: request.id, trigger: "user" })
+      if (!queued.success) throw new Error(queued.error)
+      await waitFor(() => terminal(queued.run.status))
+
+      expect(queued.run).toMatchObject({ status: "failed", errorClass: expected })
+      expect(queued.run.errorMessage).toContain(errors[0] ?? "")
+    } finally {
+      await closeFixture(value)
+    }
+  },
+)
+
+test("Claude replaces a missing session reported on stderr and keeps the same run", async () => {
+  const value = await fixture({ provider: "claude", scenario: { deltas: ["Etapa inicial salva."] } })
+
+  try {
+    const initial = addUser(value.store, value.thread, "Prepare o relatório de demonstração")
+    const first = value.engine.enqueue({ threadId: value.thread.id, requestMessageId: initial.id, trigger: "user" })
+    if (!first.success) throw new Error(first.error)
+    await waitFor(() => terminal(first.run.status))
+    writeFileSync(
+      value.scenario,
+      JSON.stringify({
+        resumeError: "No conversation found with session ID: demo-session",
+        deltas: ["Contexto recuperado."],
+      }),
+    )
+    const followup = addUser(value.store, value.thread, "Confira o total do relatório")
+
+    const second = value.engine.enqueue({ threadId: value.thread.id, requestMessageId: followup.id, trigger: "user" })
+    if (!second.success) throw new Error(second.error)
+    await waitFor(() => terminal(second.run.status))
+
+    expect(second.run.status).toBe("succeeded")
+    expect(value.engine.listRuns(value.thread.id)).toHaveLength(2)
+    expect([...value.store.messages.values()].some((message) => message.text === "Contexto recuperado.")).toBe(true)
+  } finally {
+    await closeFixture(value)
+  }
+})
+
 test.serial("Claude permission frames share approval cards and standing grants across turns", async () => {
   const value = await fixture({ provider: "claude" })
   const marker = join(value.assets, "permission-executed")

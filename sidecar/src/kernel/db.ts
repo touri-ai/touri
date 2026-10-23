@@ -50,12 +50,13 @@ import browserRequestResumeSql from "./migrations/0044.sql" with { type: "text" 
 import threadDeletionSql from "./migrations/0045.sql" with { type: "text" }
 import browserDocumentPrivacySql from "./migrations/0046.sql" with { type: "text" }
 import automaticResumeSql from "./migrations/0047.sql" with { type: "text" }
+import requestRunsSql from "./migrations/0048.sql" with { type: "text" }
 import type { PerformanceStageRunner } from "./performance"
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 47
+export const SCHEMA_VERSION = 48
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -349,6 +350,9 @@ export const openDatabase = ({
     if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'automatic_resume_version'").get())
       database.exec(automaticResumeSql)
     database.exec("UPDATE schema_meta SET value = '47' WHERE key = 'schema_version'")
+  })()
+  database.transaction(() => {
+    database.exec(requestRunsSql)
   })()
   return database
 }

@@ -17,6 +17,7 @@ import { applyProviderPrivacy, cliTelemetryOff } from "../privacy"
 import { type ChildProcess, readProviderStderr, startLineReader, writeLine } from "../provider-io"
 import { stopProviderChildren, trackProviderProcess } from "../provider-processes"
 import { resolveProviderExecutable } from "../resolveProviderExecutable"
+import { hasResumeDiagnostic } from "../session-recovery"
 import { asRecord, classifyProviderError, resolveExecutable, stringValue } from "../utils"
 import { createWarmSessions } from "../warm-session"
 import { claudeUserContent } from "./claudeUserContent"
@@ -479,7 +480,8 @@ export const createClaudeAdapter = ({
           },
         })
       } else if (type === "result") {
-        const isError = frame.is_error === true || stringValue(frame.subtype) === "error"
+        const subtype = stringValue(frame.subtype) ?? ""
+        const isError = frame.is_error === true || subtype === "error" || subtype.startsWith("error_")
         const text = stringValue(frame.result) ?? ""
         if (!sawText && text && !isError) {
           sawText = text.trim().length > 0
@@ -501,11 +503,20 @@ export const createClaudeAdapter = ({
           })
           return
         }
-        const providerError = isError ? text || "Claude reported an error" : null
+        const errors = Array.isArray(frame.errors)
+          ? frame.errors
+              .slice(0, 8)
+              .filter((error): error is string => typeof error === "string")
+              .join("\n")
+          : ""
+        const providerError = isError ? text || errors || "Claude reported an error" : null
+        const classified = providerError ? classifyProviderError(providerError) : null
+        // A rejected resume is a protocol failure, even when init already announced the session.
+        const errorClass = classified === "unknown" ? "cli_protocol" : classified
         args.onEvent({
           type: "turn_completed",
           status: isError ? "failed" : stopped ? "interrupted" : "succeeded",
-          errorClass: providerError ? classifyProviderError(providerError) : null,
+          errorClass,
           errorMessage: providerError ? kernel.redact(providerError) : null,
         })
         complete({
@@ -516,7 +527,8 @@ export const createClaudeAdapter = ({
         })
       } else if (type === "error") {
         const message = stringValue(frame.message) ?? "Claude reported an error"
-        complete({ success: false, errorCode: classifyProviderError(message), error: message })
+        const classified = classifyProviderError(message)
+        complete({ success: false, errorCode: classified === "unknown" ? "cli_protocol" : classified, error: message })
       }
     }
     const stopReader = startLineReader({
@@ -536,6 +548,14 @@ export const createClaudeAdapter = ({
       if (touriMcpStartupFailed(text)) {
         mcpError = mcpStartupError({ diagnostic: text })
         complete({ success: false, errorCode: "cli_protocol", error: mcpError })
+      }
+      if (args.session && hasResumeDiagnostic(text)) {
+        const classified = classifyProviderError(text)
+        complete({
+          success: false,
+          errorCode: classified === "unknown" ? "cli_protocol" : classified,
+          error: text.trim(),
+        })
       }
     }).catch(() => "")
     const onExit = spawned.exited.then(({ code, signal }) => {

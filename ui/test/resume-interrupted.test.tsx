@@ -83,6 +83,30 @@ it.each([
   expect(screen.getByRole("note")).toHaveTextContent(expected)
 })
 
+it.each([
+  {
+    locale: "pt-BR" as const,
+    expected: "A sessão anterior não pôde ser retomada. Vou continuar com o histórico salvo em uma nova sessão.",
+  },
+  {
+    locale: "en" as const,
+    expected: "The previous session could not be resumed. I will continue with the saved history in a new session.",
+  },
+])("explains fresh-session recovery in $locale", ({ locale, expected }) => {
+  setDocumentLanguage(locale, document.documentElement)
+  const text = "A sessão anterior não pôde ser retomada. Vou continuar com o histórico salvo em uma nova sessão."
+  const marker = message({
+    role: "system",
+    kind: "notice",
+    text,
+    parts: [{ type: "notice", level: "info", code: "run_resumed", text }],
+  })
+
+  render(<VirtualMessageList messages={[marker]} onSwitchBranch={vi.fn()} onRetry={vi.fn()} />)
+
+  expect(screen.getByRole("note")).toHaveTextContent(expected)
+})
+
 it("the resume setting is on by default and saving it off persists through the settings API", async () => {
   const onSave = vi.fn(async () => undefined)
   render(<SettingsModal settings={null} initialSection="general" onClose={() => undefined} onSave={onSave} />)
