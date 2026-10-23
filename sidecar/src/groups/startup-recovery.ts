@@ -7,22 +7,23 @@ import { getStartupReply } from "../runtime/startup-runs"
 export const recoverGroupReplies = async (kernel: Kernel, store: StoreApi, runs: Run[]): Promise<void> => {
   for (const run of runs) {
     await kernel.services.use("store.recovery")?.ensureThread(run.threadId)
-    await recoverThreadReplies(kernel, store, run.threadId)
+    await recoverThreadReplies(kernel, store, run)
     await yieldBackground()
   }
 }
 
-const recoverThreadReplies = async (kernel: Kernel, store: StoreApi, threadId: string): Promise<void> => {
+const recoverThreadReplies = async (kernel: Kernel, store: StoreApi, run: Run): Promise<void> => {
   const database = kernel.db as Database
-  const page = database.query(`SELECT id FROM messages
-    WHERE thread_id=? AND id>? AND status='streaming' ORDER BY id LIMIT 16`)
+  const page = database.query(`SELECT id FROM messages INDEXED BY messages_run_created
+    WHERE run_id IN (SELECT ? UNION ALL SELECT run_id FROM group_run_links WHERE turn_id=?)
+      AND thread_id=? AND id>? AND status='streaming' ORDER BY id LIMIT 16`)
   // This task owns its keyset cursor; each page releases the event loop before reading more replies.
   let cursor = ""
   while (true) {
-    const replies = page.all(threadId, cursor) as Array<{ id: string }>
+    const replies = page.all(run.id, run.id, run.threadId, cursor) as Array<{ id: string }>
     if (replies.length === 0) return
 
-    for (const { id } of replies) await recoverReply(kernel, store, threadId, id)
+    for (const { id } of replies) await recoverReply(kernel, store, run.threadId, id)
     cursor = replies.at(-1)?.id ?? cursor
     await yieldBackground()
   }
