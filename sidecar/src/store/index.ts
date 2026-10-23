@@ -69,7 +69,7 @@ import { createStartupRecovery } from "./startup-recovery"
 import { createStreamWriter } from "./stream-writer"
 import { threadDeletionRoutes } from "./thread-deletion"
 import { createThreadTitleSearch } from "./thread-title-search"
-import { type RawMessage, readWorkspaceActivity } from "./workspace-activity"
+import { getWorkspaceActivity, type RawMessage } from "./workspace-activity"
 
 export const name = "store"
 export const BOTS_SQL = `SELECT * FROM bots WHERE archived_at IS NULL
@@ -1570,8 +1570,10 @@ export const init = async (
                   channelIds: kernel.services.use("work.personChannelIds")?.(person.id) ?? [],
                 }
               : undefined
-          const { messages, runs, browserRuns } = readWorkspaceActivity(
+          const { messages, runs, browserRuns } = await getWorkspaceActivity(
             database,
+            reader,
+            signal,
             scope,
             (personId) => kernel.services.use("work.personName")?.(personId) ?? null,
           )

@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite"
 import type { BrowserChannelRun, BrowserChannelRunStatus, Message, MessageStatus, Run } from "@touri/contracts"
 import { toRun } from "../runtime/persistence"
+import type { createStoreReader } from "./reader"
 
 export type RawMessage = {
   seq: number
@@ -143,38 +144,89 @@ const asBrowserChannelRun = (
   finishedAt: row.finished_at,
 })
 
+type WorkspaceScope = { personId: string; channelIds: ReadonlyArray<string> }
+type WorkspaceActivity = { messages: RawMessage[]; runs: Run[]; browserRuns: Array<BrowserChannelRun> }
+type StoreReader = Pick<ReturnType<typeof createStoreReader>, "getRows">
+
+export const getWorkspaceActivity = async (
+  database: Database,
+  reader: StoreReader,
+  signal: AbortSignal,
+  scope?: WorkspaceScope,
+  personName: (personId: string) => string | null = () => null,
+): Promise<WorkspaceActivity> => {
+  const queries = getWorkspaceQueries(scope)
+  // Share the existing reader's bounded concurrency, deadlines and native-query cancellation.
+  const messages = await reader.getRows<RawMessage>(queries.messages, signal)
+  signal.throwIfAborted()
+
+  return getActivityWithMetadata(database, queries, messages, personName)
+}
+
 export const readWorkspaceActivity = (
   database: Database,
-  scope?: { personId: string; channelIds: Array<string> },
+  scope?: WorkspaceScope,
   personName: (personId: string) => string | null = () => null,
-): { messages: RawMessage[]; runs: Run[]; browserRuns: Array<BrowserChannelRun> } => {
-  // At most five indexed message probes per visible thread, plus open approvals.
-  // Never parse historical tool output or visit every completed run on a read.
+): WorkspaceActivity => {
+  const queries = getWorkspaceQueries(scope)
+  const messages = database.query(queries.messages.sql).all(...queries.messages.bindings) as RawMessage[]
+
+  return getActivityWithMetadata(database, queries, messages, personName)
+}
+
+const getActivityWithMetadata = (
+  database: Database,
+  queries: ReturnType<typeof getWorkspaceQueries>,
+  messages: RawMessage[],
+  personName: (personId: string) => string | null,
+): WorkspaceActivity => {
+  // Existing indexed run metadata reads remain separate from historical preview I/O.
+  const runs = database.query(queries.runs.sql).all(...queries.runs.bindings)
+  const browserRuns = database
+    .query(queries.browserRuns.sql)
+    .all(...queries.browserRuns.bindings) as RawBrowserChannelRun[]
+
+  return getActivityFromRows(messages, runs, browserRuns, personName)
+}
+
+const getActivityFromRows = (
+  messages: RawMessage[],
+  runs: unknown[],
+  browserRuns: RawBrowserChannelRun[],
+  personName: (personId: string) => string | null,
+): WorkspaceActivity => ({
+  messages,
+  runs: runs.flatMap((row) => {
+    const run = toRun(row)
+    return run ? [run] : []
+  }),
+  browserRuns: browserRuns.map((row) => asBrowserChannelRun(row, personName)),
+})
+
+const getWorkspaceQueries = (scope?: WorkspaceScope) => {
   const channelScope = scope?.channelIds.length
     ? `t.group_id IN (${scope.channelIds.map(() => "?").join(",")}) OR `
     : ""
   const personScope = scope
     ? `${channelScope}(t.group_id IS NULL AND (t.owner_person_id = ? OR (t.owner_person_id IS NULL AND ? = 'owner')))`
     : "1 = 1"
-  const values = scope ? [...scope.channelIds, scope.personId, scope.personId] : []
-  const messages = database
-    .query(WORKSPACE_MESSAGES_SQL.replace("/* scope */ 1 = 1", personScope))
-    .all(...values) as RawMessage[]
-  const runs = database
-    .query(WORKSPACE_RUNS_SQL.replace("/* scope */ 1 = 1", personScope))
-    .all(...values)
-    .flatMap((row) => {
-      const run = toRun(row)
-      return run ? [run] : []
-    })
+  const bindings = scope ? [...scope.channelIds, scope.personId, scope.personId] : []
   const browserScope = scope
     ? scope.channelIds.length
       ? `c.group_id IN (${scope.channelIds.map(() => "?").join(",")})`
       : "0 = 1"
     : "1 = 1"
-  const browserRuns = database
-    .query(WORKSPACE_BROWSER_RUNS_SQL.replace("/* scope */ 1 = 1", browserScope))
-    .all(...(scope?.channelIds ?? []))
-    .map((row) => asBrowserChannelRun(row as RawBrowserChannelRun, personName))
-  return { messages, runs, browserRuns }
+
+  return {
+    messages: {
+      sql: WORKSPACE_MESSAGES_SQL.replace("/* scope */ 1 = 1", personScope),
+      bindings,
+      chunkedStrings: true,
+    },
+    runs: { sql: WORKSPACE_RUNS_SQL.replace("/* scope */ 1 = 1", personScope), bindings },
+    browserRuns: {
+      sql: WORKSPACE_BROWSER_RUNS_SQL.replace("/* scope */ 1 = 1", browserScope),
+      bindings: [...(scope?.channelIds ?? [])],
+    },
+  }
 }

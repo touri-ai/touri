@@ -6,7 +6,7 @@ import type { TranscriptRef } from "../kernel/transcript-events"
 import { deferWorkerReply } from "../kernel/worker-reply"
 import type { Candidate, RecoveryCursor } from "../notify/recovery-candidates"
 
-type ReadQuery = { sql: string; bindings: SQLQueryBindings[] }
+type ReadQuery = { sql: string; bindings: SQLQueryBindings[]; chunkedStrings?: boolean }
 export type MessageReferences = { threadId: string; messageId: string; attachmentIds: string[] }
 type MessageReply = { body: Uint8Array; references: MessageReferences[] }
 type ReadProcess = Bun.Subprocess<"pipe", "pipe", "ignore">
@@ -57,7 +57,13 @@ export const createStoreReader = (filename: string, onReady?: (pid: number) => v
     try {
       child.stdin.write(JSON.stringify({ filename, ...input, messages }))
       await child.stdin.end()
-      const response = getProcessReply(child.stdout, messages, () => onReady?.(child.pid), "references" in input)
+      const response = getProcessReply(
+        child.stdout,
+        messages,
+        () => onReady?.(child.pid),
+        "references" in input,
+        "query" in input && input.query.chunkedStrings === true,
+      )
       const [value, code] = await Promise.all([response, child.exited])
       if (abortReason) throw abortReason
       if (code !== 0) throw new Error("STORE_READ_FAILED")
@@ -102,6 +108,7 @@ const getProcessReply = async (
   messages: boolean,
   onReady: () => void,
   eventReferences = false,
+  chunkedStrings = false,
 ) => {
   const reader = stdout.getReader()
   const first = await reader.read()
@@ -119,7 +126,7 @@ const getProcessReply = async (
     },
     cancel: () => reader.cancel(),
   })
-  if (!messages) return getRowsFromStream(remaining, eventReferences ? 64 * 1024 * 1024 : undefined)
+  if (!messages) return getRowsFromStream(remaining, eventReferences ? 64 * 1024 * 1024 : undefined, chunkedStrings)
 
   const bytes = new Uint8Array(await new Response(remaining).arrayBuffer())
   if (bytes.byteLength < 4) throw new Error("STORE_READ_FAILED")
@@ -141,11 +148,16 @@ const getProcessReply = async (
   return { references, body: bytes.subarray(headerLength + 4) }
 }
 
-const getRowsFromStream = async (stream: ReadableStream<Uint8Array>, lineLimit = 512 * 1024): Promise<unknown[]> => {
+const getRowsFromStream = async (
+  stream: ReadableStream<Uint8Array>,
+  lineLimit = 512 * 1024,
+  chunkedStrings = false,
+): Promise<unknown[]> => {
   const reader = stream.getReader()
   const decoder = new TextDecoder()
   // Framing and rows are request-local; each parse is bounded and batches yield to live I/O.
   const rows: unknown[] = []
+  const frames = createRowFrames()
   let tail = ""
   let bytes = 0
   for (;;) {
@@ -160,14 +172,51 @@ const getRowsFromStream = async (stream: ReadableStream<Uint8Array>, lineLimit =
     for (let offset = 0; offset < lines.length; offset += 32) {
       lines.slice(offset, offset + 32).forEach((line) => {
         if (!line || line.length > lineLimit) throw new Error("STORE_READ_LIMIT")
-        rows.push(JSON.parse(line))
+        const value = JSON.parse(line)
+        if (chunkedStrings) frames.append(value)
+        else rows.push(value)
       })
       await new Promise<void>((resolve) => setImmediate(resolve))
     }
   }
   if (tail) throw new Error("STORE_READ_FAILED")
+  return chunkedStrings ? frames.finish() : rows
+}
 
-  return rows
+const createRowFrames = () => {
+  // A single read owns these accumulators; long strings are joined once per completed row.
+  const rows: unknown[] = []
+  let row: Record<string, unknown> | undefined
+  const chunks = new Map<string, string[]>()
+  const append = (frame: Record<string, unknown> | [string, string] | null): void => {
+    if (frame === null) {
+      if (!row) throw new Error("STORE_READ_FAILED")
+      rows.push(
+        Object.fromEntries(Object.entries(row).concat(Array.from(chunks, ([key, parts]) => [key, parts.join("")]))),
+      )
+      row = undefined
+      chunks.clear()
+      return
+    }
+    if (Array.isArray(frame)) {
+      if (!row) throw new Error("STORE_READ_FAILED")
+      const [key, value] = frame
+      const parts = chunks.get(key) ?? []
+      parts.push(value)
+      chunks.set(key, parts)
+      return
+    }
+    if (row) throw new Error("STORE_READ_FAILED")
+    row = frame
+  }
+
+  return {
+    append,
+    finish: (): unknown[] => {
+      if (row) throw new Error("STORE_READ_FAILED")
+      return rows
+    },
+  }
 }
 
 const createReadSlots = () => {
