@@ -16,7 +16,7 @@ for (const width of [1000, 760]) {
     await panel.click({ trial: true })
     await panel.click()
     await expect(panel).toHaveAttribute("aria-expanded", "true")
-    await panel.click()
+    await page.getByRole("button", { name: "Fechar painel do bot", exact: true }).click()
     await expect(panel).toHaveAttribute("aria-expanded", "false")
 
     await pending.click()

@@ -65,7 +65,6 @@ test("native preferences list the core tabs and advanced server settings", async
   await dialog.getByRole("button", { name: "Fechar diálogo", exact: true }).click()
   await page.getByRole("button", { name: "Você", exact: true }).click()
   await dialog.getByRole("tab", { name: "Diagnóstico", exact: true }).click()
-  await dialog.getByRole("button", { name: "Verificar e cuidar deste computador", exact: true }).click()
   await dialog.getByRole("button", { name: "Usar um servidor touri", exact: true }).click()
   await expect(dialog.getByRole("region", { name: "Usar um servidor touri", exact: true })).toBeVisible()
   await expect(dialog.getByLabel("Endereço do servidor", { exact: true })).toBeVisible()

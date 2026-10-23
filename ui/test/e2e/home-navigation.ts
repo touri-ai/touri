@@ -15,6 +15,8 @@ export const showBotConversations = async (page: Page, name = "mark") => {
 }
 
 export const showBotPanel = async (page: Page): Promise<void> => {
+  if (await page.locator(".bot-panel").isVisible()) return
+
   const trigger = page.getByRole("button", { name: "Painel do bot", exact: true })
   if ((await trigger.getAttribute("aria-expanded")) === "false") await trigger.click()
 }
@@ -112,8 +114,6 @@ export const showServerSettings = async (page: Page): Promise<void> => {
     return
   }
   await dialog.getByRole("tab", { name: "Diagnóstico", exact: true }).click()
-  const diagnostics = dialog.getByRole("button", { name: "Verificar e cuidar deste computador", exact: true })
-  if ((await diagnostics.getAttribute("aria-expanded")) === "false") await diagnostics.click()
   await dialog.getByRole("button", { name: "Usar um servidor touri", exact: true }).click()
 }
 
