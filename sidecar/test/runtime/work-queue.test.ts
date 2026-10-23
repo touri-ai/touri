@@ -335,11 +335,13 @@ test("one channel message starts one provider and preserves its parent turn in l
 
   const result = runtime.enqueue({ threadId: channel.id, requestMessageId: request.message.id, trigger: "user" })
   if (!result.success) throw new Error(result.error)
+  const repeated = runtime.enqueue({ threadId: channel.id, requestMessageId: request.message.id, trigger: "user" })
   await waitFor(() => startTurn.mock.calls.length === 1)
   const work = fixture.engine.getWorkRuns()
   const execution = work[0]
   if (!execution) throw new Error("Missing member execution")
 
+  expect(repeated).toMatchObject({ success: true, run: { id: result.run.id, kind: "coordination" } })
   expect(work).toHaveLength(1)
   expect(execution).toMatchObject({ kind: "execution", groupTurnId: result.run.id, groupThreadId: channel.id })
   expect(fixture.engine.getRunSnapshot(result.run)).toMatchObject({ kind: "coordination" })
