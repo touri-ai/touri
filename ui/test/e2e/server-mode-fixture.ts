@@ -240,21 +240,20 @@ export const createServerModeFixture = async ({
   }
 
   const waitForReady = async (): Promise<number> => {
-    let started = false
-    for (let attempt = 0; attempt < 300; attempt++) {
+    const deadline = performance.now() + 90_000
+    while (performance.now() < deadline) {
       if (!child || child.exitCode !== null || child.signalCode !== null)
         throw new Error("The isolated touri server exited during startup")
-      started = await fetch(`${serverUrl}${remoteToken ? "/api/v1/health" : "/pair"}`, {
+      const started = await fetch(`${serverUrl}${remoteToken ? "/api/v1/health" : "/pair"}`, {
         headers: remoteToken ? { Authorization: `Bearer ${remoteToken}`, "X-Touri-Client": "desktop-test" } : {},
         signal: AbortSignal.timeout(500),
       })
         .then((r) => r.ok)
         .catch(() => false)
-      if (started) break
+      if (started) return performance.now()
       await wait(100)
     }
-    if (!started) throw new Error("The isolated touri server did not become ready")
-    return performance.now()
+    throw new Error("The isolated touri server did not become ready")
   }
 
   try {

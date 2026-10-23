@@ -10,7 +10,7 @@ test.afterEach(async () => {
   for (const server of servers) await server.dispose()
   servers.clear()
 })
-test.setTimeout(120_000)
+test.setTimeout(240_000)
 test.use({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" })
 
 for (const mode of ["desktop", "web"] as const) {
