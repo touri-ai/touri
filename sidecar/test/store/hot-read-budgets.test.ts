@@ -1,4 +1,4 @@
-import type { Database, SQLQueryBindings } from "bun:sqlite"
+import { Database, type SQLQueryBindings } from "bun:sqlite"
 import { afterEach, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -87,12 +87,16 @@ test("hot reads seek indexes and avoid historical sorts with five active runs", 
     expect(median).toBeLessThan(50)
   })
 
-  db.exec("DROP INDEX messages_thread_created; DROP INDEX group_message_links_message")
+  const filename = db.filename
+  db.close()
+  const unindexed = new Database(filename)
+  cleanups.add(() => unindexed.close())
+  unindexed.exec("DROP INDEX messages_thread_created; DROP INDEX group_message_links_message")
 
-  expect(getPlan(db, THREAD_MESSAGES_SQL, ["thread-0"])).toContain("USE TEMP B-TREE")
-  expect(getPlan(db, "SELECT visible_message_id FROM group_message_links WHERE message_id=?", ["reply-1"])).toContain(
-    "SCAN group_message_links",
-  )
+  expect(getPlan(unindexed, THREAD_MESSAGES_SQL, ["thread-0"])).toContain("USE TEMP B-TREE")
+  expect(
+    getPlan(unindexed, "SELECT visible_message_id FROM group_message_links WHERE message_id=?", ["reply-1"]),
+  ).toContain("SCAN group_message_links")
 })
 
 test("channel windows retain member executions and explicit all retains older turns", async () => {
@@ -158,7 +162,10 @@ test("large snapshot building keeps event-loop p99 below 50 ms with five active 
   const parts = JSON.stringify([{ type: "text", text: "fixture ".repeat(32_768) }])
   db.query("UPDATE messages SET parts_json=? WHERE thread_id='thread-0' AND created_at <= 32").run(parts)
   const signal = new AbortController().signal
-  const runtime = createKernel({ appData: dirname(db.filename) })
+  const filename = db.filename
+  db.close()
+  const runtime = createKernel({ appData: dirname(filename) })
+  const database = runtime.kernel.db as Database
   cleanups.add(() => runtime.stop())
   await initStore(runtime.kernel)
   const store = runtime.kernel.services.use("store.api")
@@ -195,7 +202,7 @@ test("large snapshot building keeps event-loop p99 below 50 ms with five active 
   cleanups.add(() => clearInterval(streaming))
 
   const before = await getLagBudget(async () => {
-    const rows = db.query(THREAD_MESSAGES_SQL).all("thread-0") as RawMessage[]
+    const rows = database.query(THREAD_MESSAGES_SQL).all("thread-0") as RawMessage[]
     const body = new TextEncoder().encode(JSON.stringify({ messages: rows.map(getMessageFromRow) }))
     return body.byteLength
   })
@@ -314,7 +321,7 @@ const getFixture = async (): Promise<Database> => {
         'assistant','text','complete','fixture searchable',
         '[{"type":"file","attachmentId":"fixture-file","name":"fixture.txt"}]',x,x FROM n;
       WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<8000)
-      INSERT INTO group_message_links VALUES('reply-'||x,'thread-1','visible-'||x);
+      INSERT INTO group_message_links SELECT 'reply-'||x,'thread-1','visible-'||x FROM n;
       INSERT INTO messages_fts(text,thread_id,message_id) SELECT text,thread_id,id FROM messages;`)
   })()
 

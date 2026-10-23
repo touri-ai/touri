@@ -1,5 +1,8 @@
 -- Keep chronology and channel metadata reads independent of unrelated history.
 CREATE INDEX messages_thread_created ON messages(thread_id, created_at);
+CREATE INDEX messages_run_created ON messages(run_id, created_at);
+CREATE INDEX work_journal_uncertain ON work_journal(turn_id, effect_id, seq) WHERE kind = 'uncertain';
+CREATE INDEX work_journal_effect_state ON work_journal(turn_id, effect_id, seq, kind);
 CREATE INDEX group_message_links_message ON group_message_links(message_id, visible_message_id);
 CREATE INDEX bot_groups_created ON bot_groups(created_at);
 CREATE INDEX threads_channel_updated ON threads(group_id, updated_at DESC)

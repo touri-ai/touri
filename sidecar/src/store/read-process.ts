@@ -1,4 +1,5 @@
 import { constants, Database, type SQLQueryBindings } from "bun:sqlite"
+import { getRecoveryCandidates, type RecoveryCursor } from "../notify/recovery-candidates"
 import { getMessageFromRow } from "./message-row"
 import type { MessageReferences } from "./reader"
 import type { RawMessage } from "./workspace-activity"
@@ -6,8 +7,10 @@ import type { RawMessage } from "./workspace-activity"
 type ReadInput = {
   filename: string
   messages: boolean
-  query: { sql: string; bindings: SQLQueryBindings[]; activeLeafId?: string | null; reverse?: boolean }
-}
+} & (
+  | { recovery: RecoveryCursor }
+  | { query: { sql: string; bindings: SQLQueryBindings[]; activeLeafId?: string | null; reverse?: boolean } }
+)
 
 /** Private stdin protocol; this process never starts a server or loads user configuration. */
 export const runStoreRead = async (): Promise<void> => {
@@ -16,8 +19,13 @@ export const runStoreRead = async (): Promise<void> => {
     const input = JSON.parse(await Bun.stdin.text()) as ReadInput
     database = new Database(input.filename, constants.SQLITE_OPEN_READONLY | constants.SQLITE_OPEN_NOFOLLOW)
     database.exec("PRAGMA busy_timeout = 0; PRAGMA query_only = ON; PRAGMA cache_size = -8192")
-    const statement = database.query(input.query.sql)
     await writeReply(new Uint8Array([82]))
+    if ("recovery" in input) {
+      for (const candidate of getRecoveryCandidates(database, input.recovery))
+        await writeReply(`${JSON.stringify(candidate)}\n`)
+      return
+    }
+    const statement = database.query(input.query.sql)
     if (!input.messages) {
       for (const row of statement.iterate(...input.query.bindings)) await writeReply(`${JSON.stringify(row)}\n`)
       return

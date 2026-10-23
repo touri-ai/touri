@@ -93,6 +93,17 @@ export const openDatabase = ({
   database.exec(
     "PRAGMA busy_timeout = 5000; PRAGMA auto_vacuum = INCREMENTAL; PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA journal_size_limit = 8388608; PRAGMA synchronous = NORMAL; PRAGMA cache_size = -65536;",
   )
+  const hasSchema = database.query("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='schema_meta'").all().length
+  const current = hasSchema
+    ? (database.query("SELECT value FROM schema_meta WHERE key='schema_version'").get() as { value: string } | null)
+    : null
+  // A committed version is the migration checkpoint. Replaying old writes delays every current-store restart.
+  if (current?.value === String(SCHEMA_VERSION)) return database
+  if (current?.value === "47") {
+    database.transaction(() => database.exec(hotReadIndexesSql))()
+    return database
+  }
+
   database.exec(migrationSql)
   database.exec(notificationsSql)
   database.transaction(() => {

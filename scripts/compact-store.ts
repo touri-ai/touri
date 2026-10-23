@@ -1,13 +1,14 @@
 import { constants, Database } from "bun:sqlite"
 import { open, realpath, rename, rm, stat } from "node:fs/promises"
-import { dirname, resolve } from "node:path"
+import { basename, dirname, resolve } from "node:path"
 
 /** One-shot operator command. Never invoked by a request handler or turn. */
 export const prepareCompactedStore = async (filename: string, destination: string): Promise<void> => {
   const sourcePath = await realpath(filename)
-  const targetPath = resolve(destination)
-  const targetRoot = await realpath(dirname(targetPath))
-  if (targetRoot !== dirname(targetPath) || sourcePath === targetPath) throw new Error("INVALID_DESTINATION")
+  const requestedPath = resolve(destination)
+  const targetRoot = await realpath(dirname(requestedPath))
+  const targetPath = resolve(targetRoot, basename(requestedPath))
+  if (sourcePath === targetPath) throw new Error("INVALID_DESTINATION")
 
   // Exclusive creation reserves an operator-selected private destination without overwriting a backup.
   const reservation = await open(targetPath, "wx", 0o600)

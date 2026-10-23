@@ -137,7 +137,7 @@ export const createNotifyRoutes = ({
         path: "/recovery",
         handler: async ({ signal }) => {
           const person = deviceSession(signal)?.person
-          const tasks = syncRecoveryTasks()
+          const tasks = await syncRecoveryTasks()
           const visible = tasks.filter((task) => {
             if (!person) return true
             if (task.notification.targetPersonId && task.notification.targetPersonId !== person.id) return false
@@ -160,7 +160,7 @@ export const createNotifyRoutes = ({
         method: "POST",
         path: "/recovery/:id/dismiss",
         handler: async ({ params, body }) => {
-          const tasks = syncRecoveryTasks()
+          const tasks = await syncRecoveryTasks()
           const task = tasks.find((item) => item.id === params.id)
           if (!task) return fail(404, "NOT_FOUND", "Tarefa interrompida não encontrada.")
           const database = kernel.db as Database
@@ -178,7 +178,7 @@ export const createNotifyRoutes = ({
           if (results.some((result) => !result.success))
             return fail(500, "STORE_ERROR", "Não foi possível salvar a confirmação. Tente novamente.")
           notifier.finish({ id: task.notification.id, resolution: "dismissed" })
-          return { status: 200, json: { tasks: syncRecoveryTasks() } }
+          return { status: 200, json: { tasks: await syncRecoveryTasks() } }
         },
       },
       {
@@ -247,7 +247,7 @@ export const createNotifyRoutes = ({
         method: "POST",
         path: "/notifications/dismiss-all",
         handler: async () => {
-          syncRecoveryTasks()
+          await syncRecoveryTasks()
           const open = store.getUnresolvedAttention()
           const skippedIds = open
             .filter((item) => getRecoveryAcknowledgementKeys(kernel.db as Database, item.id).length > 0)
@@ -264,7 +264,7 @@ export const createNotifyRoutes = ({
         method: "POST",
         path: "/notifications/:id/dismiss",
         handler: async ({ params }) => {
-          syncRecoveryTasks()
+          await syncRecoveryTasks()
           const id = Number(params.id)
           const found = Number.isInteger(id) ? store.get(id) : null
           if (!found) return fail(404, "NOT_FOUND", "Notification not found")

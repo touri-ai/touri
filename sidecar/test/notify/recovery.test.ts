@@ -49,6 +49,7 @@ const getFixture = async (
   const hostCalls = mock(runtime.kernel.callHost)
   const stages = createPerformanceStageTracker(() => 0)
   await initNotify({ ...runtime.kernel, callHost: hostCalls }, stages.run, options.yieldHistoryBatch)
+  await runtime.kernel.services.use("notify.recovery")?.ready
 
   const { token } = JSON.parse(readFileSync(join(root, "run", "handshake.json"), "utf8")) as { token: string }
   const request = (path: string, body?: object) =>
@@ -130,7 +131,7 @@ test("restart recovery attributes synthetic journal scans and reconciliation sta
     },
   })
 
-  expect(h.stageCalls()).toContain("notification_journal_recovery_scan")
+  expect(h.stageCalls()).toContain("notification_run_recovery_scan")
   expect(h.stageCalls()).toContain("notification_recovery_reconcile")
 })
 
@@ -328,7 +329,7 @@ test("a restart clears an interrupted routine run once a later run of the routin
     VALUES ('routine-next','routine','thread-a',300,'succeeded','cron',300,400);`)
   const store = createNotificationStore({ db: h.database })
   const notifier = createNotifier({ kernel: h.runtime.kernel, store, hub: createSseHub({ store }) })
-  const restarted = createRecoverySync(h.runtime.kernel, store, notifier)({ silent: true })
+  const restarted = await createRecoverySync(h.runtime.kernel, store, notifier)({ silent: true })
   const pending = await h.request("/notifications/pending")
   const { notifications }: { notifications: Array<{ id: number }> } = await pending.json()
 
@@ -397,15 +398,15 @@ test("bounds history discovery and reuses the snapshot until the database change
   const notifier = createNotifier({ kernel: h.runtime.kernel, store, hub })
   const sync = createRecoverySync(h.runtime.kernel, store, notifier)
 
-  const tasks = sync()
-  const repeated = sync()
+  const tasks = await sync()
+  const repeated = await sync()
   h.database.query("UPDATE messages SET parts_json = '[null]' WHERE run_id = 'history-299'").run()
-  const afterUnrelatedWrite = sync()
+  const afterUnrelatedWrite = await sync()
   saveRun(h.database, "new-interruption")
-  const updated = sync()
+  const updated = await sync()
 
   expect(tasks.map((task) => task.id)).toEqual([pending.id])
-  expect(repeated).toBe(tasks)
+  expect(repeated).toEqual(tasks)
   expect(afterUnrelatedWrite).toEqual(tasks)
   expect(updated.map((task) => task.id)).toContain("run:new-interruption")
   expect(updated.map((task) => task.id)).toContain("run:pending")

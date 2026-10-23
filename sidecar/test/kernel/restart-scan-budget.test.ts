@@ -42,5 +42,6 @@ test("a current-store restart does not audit every foreign-key table", () => {
   })
 
   expect(getQueries()).not.toContain("PRAGMA foreign_key_check")
+  expect(getQueries()).not.toContain("PRAGMA table_info(bots)")
   expect(reopened.query("PRAGMA foreign_keys").get()).toEqual({ foreign_keys: 1 })
 })
