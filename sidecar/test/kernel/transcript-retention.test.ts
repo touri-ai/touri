@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite"
 import { afterEach, expect, test } from "bun:test"
-import { lstat, mkdtemp, rm, symlink } from "node:fs/promises"
+import { lstat, mkdtemp, realpath, rm, symlink } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { openDatabase } from "../../src/kernel/db"
@@ -216,7 +216,7 @@ test("both compiled entry points dispatch the private retention helper", async (
 }, 60_000)
 
 const getFixture = async (deltaAt = 1) => {
-  const root = await mkdtemp(join(tmpdir(), "touri-retention-"))
+  const root = await realpath(await mkdtemp(join(tmpdir(), "touri-retention-")))
   cleanups.add(() => rm(root, { recursive: true, force: true }))
   const database = openDatabase({ filename: join(root, "touri.db") })
   cleanups.add(() => database.close())

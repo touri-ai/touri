@@ -106,6 +106,13 @@ const verifyRestartRecovery = async (page: Page, info: TestInfo, independent: bo
       { timeout: 60_000 },
     )
     .toBe(2)
+    .catch(async (error: unknown) => {
+      await info.attach("restart-runs", {
+        body: JSON.stringify(await getRuns(), null, 2),
+        contentType: "application/json",
+      })
+      throw error
+    })
   const runs = await getRuns()
   const resumed = runs.find(
     (run) =>

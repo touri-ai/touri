@@ -69,7 +69,13 @@ test("hot reads seek indexes and avoid historical sorts with five active runs", 
       rows: 1,
     },
     { name: "run message recovery", sql: RUN_PARTS_SQL, bindings: ["root-1"], index: "messages_run_created", rows: 1 },
-    { name: "journal recovery", sql: JOURNAL_RECOVERY_SQL, bindings: [100], index: "work_journal_uncertain", rows: 1 },
+    {
+      name: "journal recovery",
+      sql: JOURNAL_RECOVERY_SQL,
+      bindings: [100],
+      index: "work_journal_effect_state",
+      rows: 1,
+    },
     { name: "search", ...getSearchQuery({ q: "fixture", limit: 50 }), index: "VIRTUAL TABLE INDEX", rows: 50 },
   ]
 

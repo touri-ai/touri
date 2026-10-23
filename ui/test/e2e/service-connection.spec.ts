@@ -33,13 +33,17 @@ test("server mode recovers a failed history read without another server event", 
     route.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ code: "TOURI-E1009" }) }),
   )
 
+  await page.reload()
   await page
     .getByRole("tabpanel", { name: /^Bots/ })
     .getByRole("button", { name: /^Assistente de teste/ })
     .click()
 
-  const notice = page.locator(".notice-bar").filter({ hasText: "O serviço do touri está indisponível" })
+  const notice = page
+    .locator(".notice-bar")
+    .filter({ hasText: "Não foi possível carregar a conversa. Tente novamente." })
   await expect(notice).toBeVisible()
+  await expect(notice.getByRole("button", { name: "Tentar novamente", exact: true })).toBeVisible()
   await expect(notice).not.toContainText("serviço local")
   const evidence = resolve(import.meta.dirname, "../../../docs/qa/server-restart")
   await mkdir(evidence, { recursive: true })

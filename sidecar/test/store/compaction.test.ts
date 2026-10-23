@@ -1,8 +1,8 @@
 import { Database } from "bun:sqlite"
 import { afterEach, expect, test } from "bun:test"
-import { mkdtemp, readFile, rm, stat, symlink } from "node:fs/promises"
+import { mkdtemp, readdir, readFile, rm, stat, symlink } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { basename, dirname, join } from "node:path"
 import { prepareCompactedStore } from "../../../scripts/compact-store"
 
 // This registry owns only fixture resources and closes connections before removing directories.
@@ -56,7 +56,9 @@ test("failed compaction removes only its own incomplete output", async () => {
   await expect(prepareCompactedStore(invalid, destination)).rejects.toThrow()
 
   expect(await Bun.file(destination).exists()).toBe(false)
-  expect(await Bun.file(`${destination}.pending`).exists()).toBe(false)
+  expect(
+    (await readdir(dirname(destination))).filter((name) => name.startsWith(`${basename(destination)}.pending-`)),
+  ).toEqual([])
   expect(await Bun.file(invalid).text()).toBe("fixture invalid database")
 })
 

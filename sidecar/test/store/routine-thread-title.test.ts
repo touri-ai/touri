@@ -1,4 +1,4 @@
-import type { Database } from "bun:sqlite"
+import { Database } from "bun:sqlite"
 import { afterEach, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -6,6 +6,7 @@ import { join } from "node:path"
 import type { ApiRoutes, Bot, Kernel, RouteModule, Thread } from "@touri/contracts"
 import { init as initGroups } from "../../src/groups"
 import { createKernel } from "../../src/kernel"
+import { writeDatabaseAsync } from "../../src/kernel/database-write"
 import { bindDeviceSession } from "../../src/kernel/device-session"
 import { createRuntimeEngine } from "../../src/runtime/engine"
 import { init as initStore } from "../../src/store"
@@ -157,13 +158,17 @@ test("channel members get only verified date metadata for authorized saved routi
 test("metadata uses indexed initial execution candidates and ignores changed timezone and deleted routines", async () => {
   const { db, invoke, makeThread } = await getFixture()
   const visible = makeThread("planning")
+  const writer = new Database(db.filename)
+  cleanups.add(async () => writer.close())
   const query = getRoutineThreadTitleQuery([visible.id])
   const plan = db.query(`EXPLAIN QUERY PLAN ${query.sql}`).all(...query.bindings)
 
   const initial = await invoke("GET /groups/:id/threads", { id: "planning" })
-  db.query("UPDATE routines SET timezone = 'UTC' WHERE id = ?").run(`routine-${visible.id}`)
+  await writeDatabaseAsync(writer, () =>
+    writer.query("UPDATE routines SET timezone = 'UTC' WHERE id = ?").run(`routine-${visible.id}`),
+  )
   const changed = await invoke("GET /groups/:id/threads", { id: "planning" })
-  db.query("DELETE FROM routines WHERE id = ?").run(`routine-${visible.id}`)
+  await writeDatabaseAsync(writer, () => writer.query("DELETE FROM routines WHERE id = ?").run(`routine-${visible.id}`))
   const legacy = await invoke("GET /groups/:id/threads", { id: "planning" })
 
   expect(JSON.stringify(plan)).toContain("routine_runs_thread")

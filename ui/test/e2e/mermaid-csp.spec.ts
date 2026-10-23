@@ -53,6 +53,7 @@ test.describe("mermaid production and desktop CSP", () => {
       "src/components/BrowserActivityCard.tsx",
       "src/components/BotComputer.tsx",
       "src/components/Modals.tsx",
+      "src/components/InterruptedTasks.tsx",
       "src/components/ProviderLoginFlow.tsx",
       "src/components/GoalPanel.tsx",
       "src/components/ApiModelsSettings.tsx",

@@ -236,7 +236,7 @@ const fixture = async (
           .get(),
     )
     await Bun.sleep(0)
-    host.stop()
+    await host.stop()
     rmSync(root, { recursive: true, force: true })
   })
   return {

@@ -39,7 +39,7 @@ const fixture = async (
   requestText = "Crie notas.md com três ideias.",
   options: {
     cancelAt?: PerformanceStage
-    beforeFinalization?: (database: Database) => void
+    beforeFinalization?: (database: Database) => Promise<void>
     afterStage?: (stage: PerformanceStage) => void
   } = {},
 ) => {
@@ -66,6 +66,7 @@ const fixture = async (
     startTurn: async (args) => {
       args.onEvent({ type: "turn_started", externalTurnId: "turn" })
       const result = await script(args)
+      await options.beforeFinalization?.(db)
       return result ?? { success: true, externalSessionId: "session", rolloutPath: null, status: "succeeded" }
     },
     answerApproval: async () => ({ success: true }),
@@ -74,7 +75,6 @@ const fixture = async (
   let didCancel = false
   const stages = createPerformanceStageTracker()
   const runStage: PerformanceStageRunner = (stage, action, input) => {
-    if (stage === "runtime_turn_finalization") options.beforeFinalization?.(db)
     const result = stages.run(stage, action, input)
     options.afterStage?.(stage)
     if (stage === options.cancelAt && !didCancel) {
@@ -138,6 +138,29 @@ const fixture = async (
     },
   }
 }
+
+test("late text and approval items cannot revive a canceled turn", async () => {
+  const started = Promise.withResolvers<void>()
+  const f = await fixture(async ({ onEvent, signal }) => {
+    const stopped = new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }))
+    started.resolve()
+    await stopped
+    onEvent({ type: "item", part: { type: "text", text: "Late provider text" } })
+    onEvent({
+      type: "item",
+      part: { type: "approval", approvalId: "late", request: "command", decision: "pending", detail: "Synthetic" },
+    })
+  })
+  cleanups.add(f.close)
+  await started.promise
+
+  f.engine.cancel(f.run.id)
+  const reply = await f.finish()
+
+  expect(reply.status).toBe("canceled")
+  expect(reply.text).not.toContain("Late provider text")
+  expect(reply.parts.some((part) => part.type === "approval")).toBe(false)
+})
 
 const holdFinalization = (store: StoreApi) => {
   const started = Promise.withResolvers<void>()
@@ -314,11 +337,27 @@ const getWriterBlocker = () => {
   let releaseDelayMs = Infinity
 
   return {
-    hold: (database: Database): void => {
+    hold: async (database: Database): Promise<void> => {
       if (writer) return
       writer = new Database(database.filename)
       database.exec("PRAGMA busy_timeout = 120")
-      writer.exec("BEGIN IMMEDIATE")
+      writer.exec("PRAGMA busy_timeout = 0")
+      const deadline = performance.now() + 5000
+      for (;;) {
+        try {
+          writer.exec("BEGIN IMMEDIATE")
+          break
+        } catch (error) {
+          if (
+            !(error instanceof Error) ||
+            !("code" in error) ||
+            error.code !== "SQLITE_BUSY" ||
+            performance.now() >= deadline
+          )
+            throw error
+          await Bun.sleep(10)
+        }
+      }
       const startedAt = performance.now()
       timer = setTimeout(() => {
         releaseDelayMs = performance.now() - startedAt

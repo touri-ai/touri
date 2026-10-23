@@ -630,6 +630,7 @@ export const useWorkspace = (
   const privateThreads = useRef(new Set<string>())
   const deletedGroups = useRef(new Set<Id>())
   const threadsByBot = useRef(readWorkspaceState().threadsByBot ?? {})
+  const cachedGroupIds = useRef(new Set<string>())
   const generation = useRef(0)
   const runRevision = useRef(0)
   const liveRuns = useRef(new Map<Id, number>())
@@ -643,6 +644,7 @@ export const useWorkspace = (
   useEffect(() => {
     if (!enabled || role === null) return
     const cached = getWorkChannelCache(personId)
+    cachedGroupIds.current = new Set(cached?.groups.map((group) => group.id) ?? [])
     if (!cached) return
 
     setData((current) => {
@@ -921,9 +923,14 @@ export const useWorkspace = (
       setData((current) => {
         const incoming = allThreads.filter((thread) => !current.deletedThreadIds?.has(thread.id))
         const incomingIds = new Set(incoming.map((thread) => thread.id))
+        const groupIds = new Set(groupResponse.groups.map((group) => group.id))
         const changedDuringLoad = current.threads.filter(
           (thread) =>
             !current.deletedThreadIds?.has(thread.id) &&
+            (!thread.groupId ||
+              !cachedGroupIds.current.has(thread.groupId) ||
+              !groupResponse.loaded ||
+              groupIds.has(thread.groupId)) &&
             (incomingIds.has(thread.id) ||
               (!groupResponse.loaded && !!thread.groupId) ||
               thread !== threadsAtStart.get(thread.id)),

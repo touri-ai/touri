@@ -1660,3 +1660,11 @@ WP4 ⇢ WP3 (runtime.activeRun), WP3 ⇢ WP5/WP6 (optional services), WP7 ⇢ WP
 Selecting a message result, by click or keyboard, carries its message ID through conversation navigation. The selected conversation uses its existing authorized history load; other conversations are not fetched. Once history is ready, the virtual transcript mounts its bounded window around that exact message and reveals it, preserving full text and composer drafts. Active-path results do not change the saved leaf. An inactive DM branch uses the existing branch-selection operation; archived conversations use the existing restore operation. Missing or inaccessible messages produce a localized notice rather than selecting a substitute. Normal conversation results retain their existing navigation behavior.
 
 When a stored message belongs to a grouped browser or automatic recovery response, search reveals that response using the selected message's identity while preserving one card. The selected response's text is shown in full, including narration or long text normally collapsed. Missing results do not prevent subsequent messages from scrolling into view.
+
+### Main CI regression contracts
+
+- Channel composer placeholders remain concise in both locales: `Mensagem em #{name}` / `Message in #{name}`. The channel introduction and its members remain available after lazy loading.
+- Cancellation waits for its own terminal snapshot if another finalization loses the race. Tool result frames already in flight remain recorded after cancellation, with their observed or uncertain disposition; new approval requests and text cannot restart canceled work.
+- Finalization yields while acquiring the SQLite writer. Fixture teardown awaits asynchronous kernel shutdown before deleting or reopening its database.
+- A successful channel index replaces cached membership: cached threads from removed channels must not keep the conversation in a loading state. Failed channel reads retain cached metadata until recovery.
+- Interrupted-task details load when opened; the initial UI payload retains the 400,000-byte gzip limit. Contrast remains at least 4.5:1 in both themes, including the extracted preview stylesheet.

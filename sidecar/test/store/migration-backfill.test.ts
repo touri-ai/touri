@@ -109,10 +109,16 @@ test("50k legacy rows serve before backfill, yield between bounded transactions 
   let runtime: ReturnType<typeof createKernel> | undefined
   let database: Database | undefined
   try {
-    const before = legacyDatabase(root, 1, 50_000, 1)
+    legacyDatabase(root, 1, 50_000, 1)
     const started = performance.now()
     runtime = createKernel({ appData: root })
     database = runtime.kernel.db as Database
+    // Compare backfill growth after schema upgrades have installed their required indexes.
+    const before = (
+      database.query("SELECT page_count * page_size AS bytes FROM pragma_page_count(), pragma_page_size()").get() as {
+        bytes: number
+      }
+    ).bytes
     expect(historyMigrationStatus(database)).toEqual({ running: true, done: 0, total: 50_000 })
     const url = `http://127.0.0.1:${runtime.handshake.port}/api/v1/health`
     const health = await (await fetch(url, { headers })).json()
@@ -124,7 +130,7 @@ test("50k legacy rows serve before backfill, yield between bounded transactions 
     const progress = historyMigrationStatus(database)
     expect(progress.done).toBeGreaterThan(0)
     expect(progress.done).toBeLessThan(50_000)
-    runtime.stop()
+    await runtime.stop()
     runtime = undefined
     database = openDatabase({ filename: join(root, "touri.db") })
     expect(historyMigrationStatus(database)).toEqual(progress)
@@ -153,7 +159,7 @@ test("50k legacy rows serve before backfill, yield between bounded transactions 
       `50k history: health ${Math.round(healthMs)} ms; ${before} → ${after} bytes (${(after / before).toFixed(2)}x)`,
     )
   } finally {
-    if (runtime) runtime.stop()
+    if (runtime) await runtime.stop()
     else database?.close()
     rmSync(root, { recursive: true, force: true })
   }

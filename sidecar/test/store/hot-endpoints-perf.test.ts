@@ -70,7 +70,6 @@ test("hot endpoints stay responsive with 500000 events and seek indexed sidebar 
     const messagesPlan = plan(db, WORKSPACE_MESSAGES_SQL)
     for (const index of [
       "messages_visible_created",
-      "messages_assistant_created",
       "messages_assistant_updated",
       "messages_assistant_settled",
       "messages_assistant_complete",
@@ -78,6 +77,7 @@ test("hot endpoints stay responsive with 500000 events and seek indexed sidebar 
       "notifications_pending_request",
     ])
       expect(messagesPlan).toContain(index)
+    expect(messagesPlan).toMatch(/messages_(?:assistant|thread)_created/)
     expect(messagesPlan).not.toMatch(/\bSCAN m\b/)
     const runsPlan = plan(db, WORKSPACE_RUNS_SQL)
     expect(runsPlan).toContain("runs_active_workspace")
@@ -117,7 +117,7 @@ test("hot endpoints stay responsive with 500000 events and seek indexed sidebar 
     const pending = (await get<{ notifications: NotificationRecord[] }>("/notifications/pending")).value
     expect(pending.notifications.map((item) => item.requestId)).toEqual(["pending-request"])
   } finally {
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   }
 }, 60000)

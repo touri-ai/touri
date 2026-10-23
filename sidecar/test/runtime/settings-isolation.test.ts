@@ -23,6 +23,8 @@ const fixture = (vm = false, provider: "claude" | "codex" = "claude") => {
   const home = join(root, "user")
   mkdirSync(join(workspace, ".claude"), { recursive: true })
   mkdirSync(join(home, ".claude"), { recursive: true })
+  mkdirSync(join(home, ".codex"), { recursive: true })
+  writeFileSync(join(home, ".codex/auth.json"), "{}", { mode: 0o600 })
   const permissive = { permissions: { allow: ["Bash(*)"], defaultMode: "auto" } }
   for (const path of [
     join(home, ".claude/settings.json"),
@@ -31,7 +33,10 @@ const fixture = (vm = false, provider: "claude" | "codex" = "claude") => {
   ])
     writeFileSync(path, JSON.stringify(permissive))
   const scenario = join(root, "scenario.json")
-  writeFileSync(scenario, JSON.stringify({ events: [{ type: "complete" }] }))
+  writeFileSync(
+    scenario,
+    JSON.stringify({ events: [{ type: "delta", delta: "Synthetic response." }, { type: "complete" }] }),
+  )
   const calls: Array<Parameters<Kernel["spawnTree"]>[0]> = []
   const spawn: Kernel["spawnTree"] = (input) => {
     if (input.cmd === "cat") return runtime.kernel.spawnTree({ ...input, cmd: "/bin/cat" })
@@ -73,6 +78,7 @@ const fixture = (vm = false, provider: "claude" | "codex" = "claude") => {
     env: {
       HOME: home,
       CLAUDE_CONFIG_DIR: join(home, ".claude"),
+      CODEX_HOME: join(home, ".codex"),
       TOURI_RUN_DIR: runtime.kernel.paths.runDir,
       TOURI_FAKE_SCENARIO: scenario,
     },
@@ -82,7 +88,7 @@ const fixture = (vm = false, provider: "claude" | "codex" = "claude") => {
   }
   cleanups.push(async () => {
     await adapter.shutdown()
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
   return { root, adapter, args, calls, events, scenario, workspace, home, kernel: runtime.kernel }
@@ -144,7 +150,7 @@ for (const vm of [false, true]) {
         f.args.bot.approvals = approvals
         if (resumed) f.args.session = { externalSessionId: "old-session" } as ProviderSession
         const result = await f.adapter.startTurn(f.args)
-        expect(result.success).toBe(true)
+        expect(result).toMatchObject({ success: true })
         const call = f.calls[0]
         if (!call) throw new Error("Missing spawn")
         const option = (flag: string) => call.args[call.args.indexOf(flag) + 1]
@@ -241,7 +247,7 @@ for (const vm of [false, true]) {
         }
       }
       const result = await f.adapter.startTurn(f.args)
-      expect(result.success).toBe(true)
+      expect(result).toMatchObject({ success: true })
       expect(f.events.filter((event) => event.type === "approval_request")).toHaveLength(1)
       expect(existsSync(marker)).toBe(false)
     })
@@ -270,7 +276,13 @@ for (const vm of [false, true]) {
           f.args.bot.approvals = approvals
           if (resumed) f.args.session = { externalSessionId: "old-session", rolloutPath: null } as ProviderSession
           const requestLogPath = join(f.root, "requests.jsonl")
-          writeFileSync(f.scenario, JSON.stringify({ events: [{ type: "complete" }], requestLogPath }))
+          writeFileSync(
+            f.scenario,
+            JSON.stringify({
+              events: [{ type: "delta", delta: "Synthetic response." }, { type: "complete" }],
+              requestLogPath,
+            }),
+          )
           expect((await f.adapter.startTurn(f.args)).success).toBe(true)
           const call = f.calls[0]
           if (!call) throw new Error("Missing spawn")
@@ -359,7 +371,13 @@ for (const provider of ["claude", "codex"] as const)
         { path: realpathSync(rw), access: "read-write" },
       ]
       const requestLogPath = join(f.root, "folder-requests.jsonl")
-      writeFileSync(f.scenario, JSON.stringify({ events: [{ type: "complete" }], requestLogPath }))
+      writeFileSync(
+        f.scenario,
+        JSON.stringify({
+          events: [{ type: "delta", delta: "Synthetic response." }, { type: "complete" }],
+          requestLogPath,
+        }),
+      )
       const available =
         process.platform === "darwin" || (process.platform === "linux" && (await refreshHostFolderAccess()))
       const result = await f.adapter.startTurn(f.args)
@@ -369,7 +387,7 @@ for (const provider of ["claude", "codex"] as const)
         expect(f.calls).toHaveLength(0)
         return
       }
-      expect(result.success).toBe(true)
+      expect(result).toMatchObject({ success: true })
       if (!vm && process.platform === "linux") expect(f.calls[0]?.cmd).toMatch(/\/bwrap$/)
       else expect(f.calls[0]?.cmd).toBe(vm ? provider : "/usr/bin/sandbox-exec")
       const grantedRO = vm ? folderGuestPath(realpathSync(ro)) : realpathSync(ro)

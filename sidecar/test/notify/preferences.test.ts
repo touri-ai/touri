@@ -18,11 +18,9 @@ import { createNotificationStore } from "../../src/notify/store"
 import { createRuntimeNotices } from "../../src/runtime/notices"
 import { init as initStore } from "../../src/store"
 
-const cleanups = new Set<() => void>()
-afterEach(() => {
-  cleanups.forEach((close) => {
-    close()
-  })
+const cleanups = new Set<() => void | Promise<void>>()
+afterEach(async () => {
+  for (const close of cleanups) await close()
   cleanups.clear()
 })
 
@@ -295,8 +293,8 @@ const getFixture = async () => {
     error: "No desktop host in this fixture",
   }))
   const kernel: Kernel = { ...runtime.kernel, callHost }
-  cleanups.add(() => {
-    runtime.stop()
+  cleanups.add(async () => {
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
   await initStore(kernel)

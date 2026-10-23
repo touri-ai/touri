@@ -1,6 +1,6 @@
 import { constants, Database } from "bun:sqlite"
-import { open, realpath, rename, rm, stat } from "node:fs/promises"
-import { basename, dirname, resolve } from "node:path"
+import { chmod, mkdtemp, open, realpath, rename, rm, stat } from "node:fs/promises"
+import { basename, dirname, join, resolve } from "node:path"
 
 /** One-shot operator command. Never invoked by a request handler or turn. */
 export const prepareCompactedStore = async (filename: string, destination: string): Promise<void> => {
@@ -13,12 +13,11 @@ export const prepareCompactedStore = async (filename: string, destination: strin
   // Exclusive creation reserves an operator-selected private destination without overwriting a backup.
   const reservation = await open(targetPath, "wx", 0o600)
   await reservation.close()
-  const pendingPath = `${targetPath}.pending`
-  const pending = await open(pendingPath, "wx", 0o600).catch(async (error: unknown) => {
+  const pendingRoot = await mkdtemp(`${targetPath}.pending-`).catch(async (error: unknown) => {
     await rm(targetPath)
     throw error
   })
-  await pending.close()
+  const pendingPath = join(pendingRoot, "store.db")
   let source: Database | undefined
   try {
     source = new Database(sourcePath, constants.SQLITE_OPEN_READONLY | constants.SQLITE_OPEN_NOFOLLOW)
@@ -27,6 +26,7 @@ export const prepareCompactedStore = async (filename: string, destination: strin
     // only the output is rebuilt. Run this CLI in a separate process, never on the server loop.
     source.exec("PRAGMA busy_timeout = 1000; PRAGMA auto_vacuum = INCREMENTAL")
     source.query("VACUUM INTO ?").run(pendingPath)
+    await chmod(pendingPath, 0o600)
     const compacted = new Database(pendingPath, constants.SQLITE_OPEN_READWRITE | constants.SQLITE_OPEN_NOFOLLOW)
     try {
       const integrity = compacted.query("PRAGMA integrity_check").get() as { integrity_check: string }
@@ -52,6 +52,7 @@ export const prepareCompactedStore = async (filename: string, destination: strin
     throw error
   } finally {
     source?.close()
+    await rm(pendingRoot, { recursive: true, force: true })
   }
 }
 
