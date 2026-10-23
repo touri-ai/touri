@@ -17,7 +17,7 @@ for (const width of [1440, 390]) {
     await expect(
       transcript.getByText("Relatório concluído. Conferi o trabalho salvo antes de continuar."),
     ).toBeVisible()
-    await expect(transcript.getByText("Etapa inicial salva.")).toBeVisible()
+    await expect(transcript.getByRole("paragraph").filter({ hasText: /^Etapa inicial salva\.$/ })).toBeVisible()
     await page.evaluate(() => document.fonts.ready)
     const directory = resolve(import.meta.dirname, "../../../docs/evidence/restart-session")
     await mkdir(directory, { recursive: true })
