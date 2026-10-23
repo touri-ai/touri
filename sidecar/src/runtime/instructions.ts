@@ -48,6 +48,10 @@ const reviewedMemory = async (
     ? accessRank[bot.access] > accessRank[previous.access] || (previous.machine !== "local" && bot.machine === "local")
     : bot.access === "full"
   const review = raised || previous?.review === true || (!!row && !previous)
+  // A warm turn must recheck provenance without rewriting the identical trust snapshot.
+  if (!review && previous?.hash === hash && previous.access === bot.access && previous.machine === bot.machine)
+    return memory
+
   const save = (pending: boolean) =>
     db
       .query(`INSERT INTO settings(key,value_json,updated_at) VALUES(?,?,?)
@@ -116,6 +120,23 @@ const referenceBlock = (kernel: Kernel, name: string, value: string, referenceId
 const readOptional = (path: string): string => {
   try {
     return readFileSync(path, "utf8")
+  } catch {
+    return ""
+  }
+}
+
+const getMemoryReference = async (path: string, maxCharacters: number): Promise<string> => {
+  try {
+    const file = await open(path, constants.O_RDONLY | constants.O_NONBLOCK)
+    try {
+      if (!(await file.stat()).isFile()) return ""
+
+      const bytes = Buffer.alloc(maxCharacters * 4)
+      const { bytesRead } = await file.read(bytes, 0, bytes.length, 0)
+      return bytes.subarray(0, bytesRead).toString("utf8").slice(0, maxCharacters)
+    } finally {
+      await file.close()
+    }
   } catch {
     return ""
   }
@@ -216,10 +237,9 @@ export const composeDeveloperInstructions = async ({
       : null
   const learning = readLearning(kernel, bot.id)
   const learnsMemory = learning.memory && !guest && bot.machine === "local"
-  const localReference = async (target: "memory" | "user"): Promise<string> => {
+  const getLocalReference = async (target: "memory" | "user", maxCharacters: number): Promise<string> => {
     try {
-      const path = memoryFile(bot.homeDir, target)
-      return greetingOnly ? getConversationReference(path) : readOptional(path)
+      return await getMemoryReference(memoryFile(bot.homeDir, target), maxCharacters)
     } catch {
       return ""
     }
@@ -228,18 +248,15 @@ export const composeDeveloperInstructions = async ({
     if (grouped) return ""
     if (vmMemory?.success) return vmMemory.stdout
     if (guest) return ""
-    if (learnsMemory) return localReference("memory")
+    if (learnsMemory) return getLocalReference("memory", 3_500)
 
-    const path = join(bot.homeDir, "MEMORY.md")
-    return greetingOnly ? getConversationReference(path) : readOptional(path)
+    return getMemoryReference(join(bot.homeDir, "MEMORY.md"), 3_500)
   }
-  const [memoryReference, userReference] = await Promise.all([
-    getRawMemory(),
-    learnsMemory && !grouped ? localReference("user") : Promise.resolve(""),
-  ])
-  const rawMemory = memoryReference.slice(0, 3_500)
   // Both references belong to the same approval snapshot, including USER.md alone.
-  const rawUserProfile = userReference.slice(0, 2_000)
+  const [rawMemory, rawUserProfile] = await Promise.all([
+    getRawMemory().then((memory) => memory.slice(0, 3_500)),
+    learnsMemory && !grouped ? getLocalReference("user", 2_000) : Promise.resolve(""),
+  ])
   const memory = grouped
     ? "Group memory is limited to this group's shared conversation; private bot memory is unavailable."
     : await reviewedMemory(kernel, bot, thread, rawMemory, signal, rawUserProfile, allowMemoryReview)
@@ -432,19 +449,3 @@ export const composeDeveloperInstructions = async ({
   return bounded({ value: [base, fitted, guidance].join("\n\n"), max: 24_000 })
 }
 
-const getConversationReference = async (path: string): Promise<string> => {
-  // A reference only needs 3,500 characters; never read a growing file or wait on a pipe during a greeting.
-  const file = await open(path, constants.O_RDONLY | constants.O_NONBLOCK).catch(() => null)
-  if (!file) return ""
-
-  try {
-    if (!(await file.stat()).isFile()) return ""
-    const bytes = Buffer.alloc(16_384)
-    const { bytesRead } = await file.read(bytes, 0, bytes.length, 0)
-    return bytes.subarray(0, bytesRead).toString("utf8")
-  } catch {
-    return ""
-  } finally {
-    await file.close()
-  }
-}

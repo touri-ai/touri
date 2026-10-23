@@ -24,16 +24,21 @@ The existing run endpoints and `run.updated` events expose milestones while a tu
 older usage records remain readable without a migration. Provider retries retain the first observed
 milestone; finish includes final stream persistence and terminal state publication.
 
-Preparation also records optional epoch-millisecond checkpoints: `claimedAt`, `reconciledAt`,
+Preparation also records optional epoch-millisecond checkpoints: `queuedPersistedAt`, `claimedAt`, `reconciledAt`,
 `permissionsReadyAt`, `requestReadyAt`, `toolSummaryReadyAt`, `recallReadyAt`, `inputReadyAt`,
-`workspaceReadyAt`, `mcpReadyAt`, `sessionReadyAt`, `environmentReadyAt`, `providerHomeReadyAt`,
+`workspaceReadyAt`, `mcpReadyAt`, `fingerprintReadyAt`, `sessionReadyAt`, `environmentReadyAt`,
+`startingPersistedAt`, `documentsReadyAt`, `providerHomeReadyAt`,
 `providerConfigReadAt`, `providerConfigWrittenAt`, `providerAuthReadyAt`, `loginReadyAt`,
-`attachedMcpReadyAt`, `projectReadyAt`, `memoryReadyAt`, `instructionsReadyAt`, `sandboxReadyAt`,
+`attachedMcpReadyAt`, `projectReadyAt`, `memoryReadyAt`, `instructionsReadyAt`, `dispatchReadyAt`, `sandboxReadyAt`,
 `temporaryReadyAt`, `executableReadyAt` and `attachmentsReadyAt`. Consecutive timestamps attribute
 claim/recovery, folder permissions, request and tool-history lookup, optional memory recall, attachment
 input preparation, cwd/project discovery, MCP credentials, session fingerprint/handoff, shell environment,
 home/config/auth synchronization, attached MCP resolution, SOUL/project/memory composition, sandbox
 preflight, temporary storage and executable discovery. Image bytes are staged after provider readiness.
+The local adapter also records `providerInitializedAt`, `providerSessionRequestedAt`, `turnSubmittedAt`
+and `turnAcceptedAt`, separating process initialization, native session setup, submission and acknowledgement
+from the wait for generated text. Acknowledgement is not a visible reply. Persistence checkpoints separate
+database commit time from execution-slot waiting and preparation; they add no extra commit.
 Absent checkpoints mean that path did not run. These bounded scalar records contain no paths, prompts,
 credentials or filesystem listings; they are persisted with provider milestones or final failure usage,
 without an extra database write or event per preparation step. Bot-home reconciliation happens during
@@ -55,7 +60,12 @@ its default prompt; subscription login remains unchanged. Tool-free local sessio
 60 seconds of inactivity, with at most four retained processes per provider and 100 turns per process.
 The managed provider config is compared through the bounded private-file reader on each turn.
 Identical bytes keep the existing file; a changed host config is written atomically as before.
-Symlinks and unsafe file targets still fail closed; no path or content cache bypasses validation.
+Host configuration reads run through the bounded asynchronous file reader. Symlinks and unsafe managed
+file targets still fail closed; no path or content cache bypasses validation. Local memory and user-profile
+references read bounded UTF-8 prefixes asynchronously and independently, preserving the existing 3,500/2,000
+character limits and exact-content approval snapshot. Unchanged reviewed memory does not rewrite its trust
+setting; changed content, access or machine still updates provenance and preserves quarantine. Greeting
+instruction composition does not request project discovery.
 Folder-sandbox preflight runs only when the turn needs folder confinement; full-access and tool-free
 turns do not wait for an unused probe. Restricted turns still validate before dispatch.
 Vault logins keep their existing per-turn process and credential lifetime. Reuse requires matching bot configuration,

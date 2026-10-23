@@ -45,6 +45,13 @@ export const readPrivateFileAsync = (args: { root: string; path: string; maxByte
     typeof value === "string" ? Buffer.from(value, "base64") : null,
   )
 
+export const getBoundedFileAsync = (args: { root: string; path: string; maxBytes: number }): Promise<Buffer> =>
+  runFileIoTask({ operation: "read-bounded", args }).then((value) => {
+    if (typeof value !== "string") throw new Error("Invalid bounded file response")
+
+    return Buffer.from(value, "base64")
+  })
+
 export const prepareDatabaseFileAsync = (args: { root: string; path: string }): Promise<string> =>
   runFileIoTask({ operation: "prepare-database", args }).then((filename) => String(filename))
 

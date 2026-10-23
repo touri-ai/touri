@@ -88,6 +88,7 @@ const fixture = async ({
   automaticConversationMode = "main",
   resumeInterruptedTurns = true,
   fastConversation = true,
+  onProviderSpawn,
 }: {
   provider?: Bot["provider"]
   scenario?: Record<string, unknown>
@@ -97,6 +98,7 @@ const fixture = async ({
   automaticConversationMode?: Bot["automaticConversationMode"]
   resumeInterruptedTurns?: boolean
   fastConversation?: boolean
+  onProviderSpawn?: (input: Parameters<Kernel["spawnTree"]>[0]) => void
 } = {}): Promise<Fixture> => {
   // Keep runtime data and provider logs under a disposable repository fixture.
   const root = mkdtempSync(join(repoRoot, "sidecar", "test", ".runtime-fixture-"))
@@ -124,7 +126,11 @@ const fixture = async ({
     ),
   )
   const runtime = createKernel({ appData: root })
-  runtime.kernel.spawnTree = fakeProviderSpawn(runtime.kernel.spawnTree, fakePath, scenario)
+  const spawnProvider = fakeProviderSpawn(runtime.kernel.spawnTree, fakePath, scenario)
+  runtime.kernel.spawnTree = (input) => {
+    onProviderSpawn?.(input)
+    return spawnProvider(input)
+  }
   const timestamp = Date.now()
   const bot: Bot = {
     teamBuilder: false,
@@ -3210,6 +3216,18 @@ describe("turn latency milestones", () => {
     expect(timings?.providerReadyAt).toBeGreaterThanOrEqual(timings?.processSpawnedAt ?? 0)
     expect(timings?.firstTokenAt).toBeGreaterThanOrEqual(timings?.providerReadyAt ?? 0)
     expect(timings?.finishedAt).toBeGreaterThanOrEqual(timings?.firstTokenAt ?? 0)
+    if (provider === "codex")
+      expect(timings).toMatchObject({
+        queuedPersistedAt: expect.any(Number),
+        fingerprintReadyAt: expect.any(Number),
+        startingPersistedAt: expect.any(Number),
+        documentsReadyAt: expect.any(Number),
+        dispatchReadyAt: expect.any(Number),
+        providerInitializedAt: expect.any(Number),
+        providerSessionRequestedAt: expect.any(Number),
+        turnSubmittedAt: expect.any(Number),
+        turnAcceptedAt: expect.any(Number),
+      })
     expect(snapshots.some((sample) => sample.firstTokenAt && !sample.finishedAt)).toBe(true)
     const persisted = createRuntimePersistence({ database: current.runtime.kernel.db as Database }).getRun(
       enqueued.run.id,
@@ -3365,6 +3383,41 @@ describe("turn latency milestones", () => {
     expect(getPercentile(readiness, 0.9)).toBeLessThan(500)
     expect(getPercentile(firstText, 0.9)).toBeLessThan(1500)
     expect(Math.max(...firstText)).toBeLessThan(5000)
+  })
+
+  test("cancellation during instruction review never spawns a provider", async () => {
+    const spawns: Array<Parameters<Kernel["spawnTree"]>[0]> = []
+    const current = await fixture({ onProviderSpawn: (input) => spawns.push(input) })
+    value = current
+    const entered = Promise.withResolvers<void>()
+    const reviewed = Promise.withResolvers<void>()
+    const database = current.runtime.kernel.db as Database
+    database
+      .query("INSERT INTO settings(key,value_json,updated_at) VALUES (?, ?, 1)")
+      .run(
+        `memory-trust:${current.bot.id}`,
+        JSON.stringify({ access: "read-only", machine: "local", hash: "synthetic-prior-hash", review: true }),
+      )
+    current.runtime.kernel.services.provide("approvals.present", async () => {
+      entered.resolve()
+      await reviewed.promise
+      return { success: true, behavior: "allow" }
+    })
+    const request = addUser(current.store, current.thread, "oi")
+    const enqueued = current.engine.enqueue({
+      threadId: current.thread.id,
+      requestMessageId: request.id,
+      trigger: "user",
+    })
+    if (!enqueued.success) throw new Error(enqueued.error)
+    await entered.promise
+
+    current.engine.cancel(enqueued.run.id)
+    reviewed.resolve()
+    await waitFor(() => current.engine.activeRun({ threadId: current.thread.id }) === null)
+
+    expect(enqueued.run.status).toBe("canceled")
+    expect(spawns).toHaveLength(0)
   })
 
   test.each(["codex", "claude"] as const)(

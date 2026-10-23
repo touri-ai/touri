@@ -296,6 +296,7 @@ export type RunErrorClass =
 /** Wall-clock milestones, persisted inside usage_json and published with run.updated. */
 export type RunTimings = {
   queuedAt: number
+  queuedPersistedAt?: number
   claimedAt?: number
   reconciledAt?: number
   permissionsReadyAt?: number
@@ -305,24 +306,32 @@ export type RunTimings = {
   inputReadyAt?: number
   workspaceReadyAt?: number
   mcpReadyAt?: number
+  fingerprintReadyAt?: number
   sessionReadyAt?: number
   environmentReadyAt?: number
+  startingPersistedAt?: number
   providerHomeReadyAt?: number
   providerConfigReadAt?: number
   providerConfigWrittenAt?: number
   providerAuthReadyAt?: number
+  documentsReadyAt?: number
   loginReadyAt?: number
   attachedMcpReadyAt?: number
   projectReadyAt?: number
   memoryReadyAt?: number
   instructionsReadyAt?: number
+  dispatchReadyAt?: number
   sandboxReadyAt?: number
   temporaryReadyAt?: number
   executableReadyAt?: number
   attachmentsReadyAt?: number
   processSpawnedAt?: number
   processReusedAt?: number
+  providerInitializedAt?: number
+  providerSessionRequestedAt?: number
   providerReadyAt?: number
+  turnSubmittedAt?: number
+  turnAcceptedAt?: number
   firstTokenAt?: number
   finishedAt?: number
 }

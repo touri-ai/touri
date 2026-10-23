@@ -1606,6 +1606,7 @@ export const createRuntimeEngine = ({
       mcpArgs: mcp.args,
       ...(toolsDisabled ? { conversationOnly: true } : {}),
     })
+    recordTiming(run, "fingerprintReadyAt")
     // Older versions saved the first session only as a per-run resume point.
     // Adopt it for a manual follow-up as well as for automatic continuations.
     if (!persistence.getActiveSession({ threadId: thread.id, provider: bot.provider })) {
@@ -1703,6 +1704,7 @@ export const createRuntimeEngine = ({
     }
     recordTiming(run, "environmentReadyAt")
     updateRun(run, { status: "starting", startedAt: run.startedAt ?? Date.now() })
+    recordTiming(run, "startingPersistedAt")
     state.generation = store.getThread({ threadId: thread.id })?.generation ?? null
     state.fingerprint = mcpFingerprint.hash
     const controller = new AbortController()
@@ -1741,6 +1743,7 @@ export const createRuntimeEngine = ({
           messages: documentMessages,
           signal: controller.signal,
         })
+        recordTiming(run, "documentsReadyAt")
         if (!documents.success) return documents
         const providerInput = [...input, ...documents.input]
         controller.signal.throwIfAborted()
@@ -1794,6 +1797,7 @@ export const createRuntimeEngine = ({
             onPreparationStage: (stage) => recordTiming(run, stage),
             ...(signal ? { signal } : {}),
           })
+          signal?.throwIfAborted()
           return { turnBot, turnInstructions }
         }
         const { turnBot, turnInstructions } = prepared
@@ -1807,7 +1811,7 @@ export const createRuntimeEngine = ({
               signal: controller.signal,
               action: prepareInstructions,
             })
-          : await prepareInstructions()
+          : await prepareInstructions(controller.signal)
         recordTiming(run, "instructionsReadyAt")
         const turnEnv = prepared?.env ?? env
         const dispatchEvent = (event: ProviderEvent) => handleEvent({ run, event, store, state })
@@ -1826,11 +1830,14 @@ export const createRuntimeEngine = ({
           ? (args) => startVmTurn({ kernel, provider, args })
           : provider.startTurn
         const invoke = (): ReturnType<typeof startTurn> => {
+          controller.signal.throwIfAborted()
+
           // Completion diagnostics belong to one attempt; cancellation keeps its own cause.
           if (!controller.signal.aborted) state.completionError = null
 
           // Publish before invocation: startup and a silent provider are different waits.
           if (!run.providerStartedAt) updateRun(run, { providerStartedAt: Date.now() })
+          recordTiming(run, "dispatchReadyAt")
           return startTurn({
             ...(toolsDisabled ? { conversationOnly: true } : {}),
             thread,
@@ -2769,6 +2776,7 @@ export const createRuntimeEngine = ({
     }
     if (kernel.db instanceof Database) kernel.db.transaction(saveQueuedRun)()
     else saveQueuedRun()
+    recordTiming(run, "queuedPersistedAt")
     logTiming(run, "queuedAt", queuedAt)
     if (delegated) {
       publishRun(run)
