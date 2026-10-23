@@ -41,7 +41,9 @@ store startup, before the runtime accepts turns. Queue-to-claim includes waiting
 execution slot; retries keep the first observed checkpoints. No fixed preparation sleep is required.
 The local dispatch budget is 300 ms; warm first-visible-text target is one second. Provider/network
 latency is measured separately and cannot be inferred from dispatch time. Controlled-provider regression
-tests assert both budgets; live measurements must state when the provider misses the text target.
+tests assert both budgets across three sequential greetings (median dispatch <300 ms, median text
+<1 s, with absolute stall guards of 1 s dispatch and 5 s text); live measurements must state when
+the provider misses the text target.
 
 Standalone greetings (Portuguese and English) use a tool-free turn with low reasoning and a compact
 prompt preserving bot identity, SOUL and reviewed memory. Tasks, attachments, routines, continuations,
