@@ -542,7 +542,7 @@ export const createApiClient = ({
   journal.stop()
 
   const retryConnection = (): void => {
-    if (document.visibilityState === "hidden" || listeners.size === 0) return
+    if (listeners.size === 0) return
     clearTimeout(timer)
     timer = undefined
     delay = 250
@@ -556,10 +556,15 @@ export const createApiClient = ({
     }, 0)
   }
 
+  const retryVisibleConnection = (): void => {
+    if (document.visibilityState === "hidden") return
+    retryConnection()
+  }
+
   const subscribe = (listener: (envelope: UiEventEnvelope) => void): (() => void) => {
     if (listeners.size === 0) {
       window.addEventListener("online", retryConnection)
-      document.addEventListener("visibilitychange", retryConnection)
+      document.addEventListener("visibilitychange", retryVisibleConnection)
     }
     listeners.add(listener)
     journal.watchDeadlines()
@@ -571,7 +576,7 @@ export const createApiClient = ({
       if (listeners.size > 0) return
       socketGeneration += 1
       window.removeEventListener("online", retryConnection)
-      document.removeEventListener("visibilitychange", retryConnection)
+      document.removeEventListener("visibilitychange", retryVisibleConnection)
       clearTimeout(connectionDeadline)
       attemptController?.abort()
       clearTimeout(timer)

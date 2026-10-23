@@ -56,6 +56,33 @@ test.each(["online", "visibilitychange"])(
   },
 )
 
+test("network recovery retries immediately even when the window is hidden", async () => {
+  const fixture = makeClient()
+  await vi.advanceTimersByTimeAsync(0)
+  fixture.getSocket(0).dispatchEvent(new Event("open"))
+  fixture.getSocket(0).dispatchEvent(new Event("close"))
+  hideDocument()
+
+  window.dispatchEvent(new Event("online"))
+  await vi.advanceTimersByTimeAsync(0)
+
+  expect(fixture.getSocketCount()).toBe(2)
+})
+
+test("hiding a healthy window keeps its connection open", async () => {
+  const fixture = makeClient()
+  await vi.advanceTimersByTimeAsync(0)
+  const socket = fixture.getSocket(0)
+  socket.dispatchEvent(new Event("open"))
+  hideDocument()
+
+  document.dispatchEvent(new Event("visibilitychange"))
+  await vi.advanceTimersByTimeAsync(0)
+
+  expect(socket.close).not.toHaveBeenCalled()
+  expect(fixture.getSocketCount()).toBe(1)
+})
+
 test("a socket stalled during its handshake is replaced after one second", async () => {
   const fixture = makeClient()
   await vi.advanceTimersByTimeAsync(0)
@@ -132,4 +159,9 @@ const makeClient = () => {
       return socket
     },
   }
+}
+
+const hideDocument = () => {
+  const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden")
+  cleanups.add(() => visibility.mockRestore())
 }
