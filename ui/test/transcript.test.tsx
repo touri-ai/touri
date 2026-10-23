@@ -764,8 +764,9 @@ test("delivery states and interrupted tools render in Portuguese", () => {
   const activity = view.container.querySelector<HTMLButtonElement>(".turn-activity-toggle")
   expect(activity).not.toBeNull()
   if (activity) fireEvent.click(activity)
-  for (const label of ["Na fila · aguardando conexão", "Enviando…", "Entregue", "Falha na entrega", "Encerrado"])
+  for (const label of ["Na fila · aguardando conexão", "Enviando…", "Falha na entrega", "Encerrado"])
     expect(screen.getByText(label)).toBeInTheDocument()
+  expect(screen.queryByText("Entregue")).toBeNull()
   expect(screen.queryByText("Em execução")).toBeNull()
 })
 

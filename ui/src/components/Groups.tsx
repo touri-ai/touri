@@ -2,12 +2,13 @@ import type { Bot, BotGroup, ChannelPerson, Message, Run, Thread } from "@touri/
 import { avatarColorFor } from "@touri/contracts/avatar"
 import { lazy, memo, Suspense, useEffect, useMemo, useState } from "react"
 import { latestPreview } from "../botPreview"
-import { getChannelThreads, getChannelThreadTitle } from "../channelThreads"
+import { getChannelSidebarThreads, getChannelThreads, getChannelThreadTitle } from "../channelThreads"
 import { ChannelHeaderChip, ChannelWorkingMarker } from "../features/channelBrowser/ChannelBrowser"
 import { type Locale, t } from "../i18n"
 import { getLastActivityAt, getSidebarRowTime } from "../sidebarAttention"
 import { BotAvatar } from "./BotAvatar"
 import { PanelIcon } from "./PanelIcon"
+import { PersonAvatar } from "./PersonAvatar"
 import { SidebarActionsMenu } from "./SidebarActionsMenu"
 import { SidebarCount, SidebarDot, SidebarRow } from "./SidebarRow"
 import "./groups.css"
@@ -259,6 +260,7 @@ const GroupSidebarEntry = memo(
     const unreadCount = Math.max(0, unread - selectedUnread)
     const unreadLabel = t("Unread messages", { count: unreadCount }, locale)
     const stateLabels = [...(needsAttention ? [attentionLabel] : []), ...(unreadCount > 0 ? [unreadLabel] : [])]
+    const conversations = selected ? getChannelSidebarThreads(threads, group, locale) : []
 
     return (
       <div className={`group-sidebar-item ${selected ? "selected" : ""}`}>
@@ -320,20 +322,18 @@ const GroupSidebarEntry = memo(
             />
           </Suspense>
         )}
-        {selected && threads.length > 1 && (
+        {selected && conversations.length > 0 && (
           <div className="group-thread-list">
-            {getChannelThreads(threads, group.id)
-              .slice(1)
-              .map((thread) => (
-                <button
-                  type="button"
-                  key={thread.id}
-                  aria-current={thread.id === selectedThreadId ? "page" : undefined}
-                  onClick={() => onSelect(thread.id)}
-                >
-                  {getChannelThreadTitle(thread, locale)}
-                </button>
-              ))}
+            {conversations.map((thread) => (
+              <button
+                type="button"
+                key={thread.id}
+                aria-current={thread.id === selectedThreadId ? "page" : undefined}
+                onClick={() => onSelect(thread.id)}
+              >
+                {getChannelThreadTitle(thread, locale)}
+              </button>
+            ))}
           </div>
         )}
       </div>
@@ -419,9 +419,7 @@ const ChannelConversationStart = ({
       <ul className="channel-start-members" aria-label={t("Channel members")}>
         {people.map((person) => (
           <li key={`person:${person.id}`} title={person.name}>
-            <span className="channel-person-avatar" aria-hidden="true">
-              {Array.from(person.name.trim())[0]?.toLocaleUpperCase("pt-BR")}
-            </span>
+            <PersonAvatar person={person} />
             <span className="visually-hidden">{person.name}</span>
           </li>
         ))}
@@ -559,9 +557,7 @@ const ChannelHeader = ({
     <>
       <span className="channel-member-avatars" aria-hidden="true">
         {people.slice(0, MAX_HEADER_AVATARS).map((person) => (
-          <span key={`person:${person.id}`} className="channel-person-avatar">
-            {Array.from(person.name.trim())[0]?.toLocaleUpperCase(locale)}
-          </span>
+          <PersonAvatar key={`person:${person.id}`} person={person} size={20} />
         ))}
         {bots.slice(0, Math.max(0, MAX_HEADER_AVATARS - people.length)).map((bot) => (
           <BotAvatar key={bot.id} bot={bot} size={20} />
@@ -614,23 +610,12 @@ const ChannelHeader = ({
   )
 }
 
-export const ChannelPeople = ({
-  people,
-  currentPersonId,
-}: {
-  people: ChannelPerson[]
-  currentPersonId?: string | null | undefined
-}) =>
+export const ChannelPeople = ({ people }: { people: ChannelPerson[]; currentPersonId?: string | null | undefined }) =>
   people.map((person) => (
     <li key={`person:${person.id}`}>
-      <span className="channel-person-avatar" aria-hidden="true">
-        {Array.from(person.name.trim())[0]?.toLocaleUpperCase("pt-BR")}
-      </span>
+      <PersonAvatar person={person} />
       <div>
-        <strong>{person.id === currentPersonId ? t("Você") : person.name}</strong>
-        <small>
-          {t("Person")} · @{person.handle ?? person.name}
-        </small>
+        <strong>{person.handle ?? person.name}</strong>
       </div>
     </li>
   ))

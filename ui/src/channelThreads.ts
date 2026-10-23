@@ -1,4 +1,4 @@
-import type { Thread } from "@touri/contracts"
+import type { BotGroup, Thread } from "@touri/contracts"
 import type { Locale } from "./i18n"
 import { getSidebarThreadTitle } from "./sidebarThreadTitle"
 
@@ -22,7 +22,20 @@ export const getChannelThreadTitle = (thread: Thread, locale: Locale = "pt-BR"):
   const date = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" })
     .format(thread.createdAt)
     .replace(/ de |\./g, " ")
+    .replace(/\s+/g, " ")
     .trim()
 
   return `${title} · ${date}`
+}
+
+export const getChannelSidebarThreads = (
+  threads: readonly Thread[],
+  group: Pick<BotGroup, "id" | "name">,
+  locale: Locale = "pt-BR",
+): Thread[] => {
+  const channelName = group.name.trim().toLocaleLowerCase(locale)
+
+  return getChannelThreads(threads, group.id)
+    .slice(1)
+    .filter((thread) => getChannelThreadTitle(thread, locale).trim().toLocaleLowerCase(locale) !== channelName)
 }

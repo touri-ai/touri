@@ -2,6 +2,7 @@ import type {
   ApiRoutes,
   Bot,
   BotGroup,
+  ChannelPerson,
   HostKind,
   Id,
   Message,
@@ -59,6 +60,7 @@ import { useInsertedIds } from "./Motion"
 import { mascotIsBusy } from "./mascotState"
 import { NotificationAttentionBar } from "./NotificationAttentionBar"
 import { type NotificationActions, NotificationBell } from "./NotificationCenter"
+import { PersonAvatar } from "./PersonAvatar"
 import { SidebarCount, SidebarDot, SidebarRow } from "./SidebarRow"
 import { ThreadActionsMenu } from "./ThreadActionsMenu"
 import { ThreadGroupHistory } from "./ThreadGroupHistory"
@@ -69,6 +71,7 @@ import "./bot-sidebar.css"
 const GroupSidebar = lazy(() => import("./Groups").then((module) => ({ default: module.GroupSidebar })))
 
 type SidebarProps = {
+  currentPerson?: ChannelPerson | undefined
   deletedThreadIds?: ReadonlySet<string> | undefined
   threadDeletion?: ThreadDeletion | undefined
   serverMode?: boolean
@@ -698,11 +701,9 @@ export const Sidebar = (props: SidebarProps) => {
       <div className="sidebar-footer">
         <div className="sidebar-user-row">
           <button type="button" className="user-chip" onClick={() => navigate(props.onSettings)}>
-            <span className="user-avatar" aria-hidden="true">
-              T
-            </span>
+            <PersonAvatar person={props.currentPerson ?? { id: "owner", avatarSeed: "owner" }} />
             <span>
-              <strong>{t("Você")}</strong>
+              <strong>{props.currentPerson?.handle ?? props.currentPerson?.name ?? t("Você")}</strong>
               <small title={props.serverUrl ?? undefined}>
                 {props.serverMode ? t("Modo servidor") : t("Local · grátis")}
               </small>

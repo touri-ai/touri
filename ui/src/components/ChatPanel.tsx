@@ -87,6 +87,7 @@ import { MessageAttachments } from "./MessageAttachments"
 import { useInsertedIds } from "./Motion"
 import { mascotSignalFor } from "./mascotState"
 import { PanelIcon } from "./PanelIcon"
+import { PersonAvatar } from "./PersonAvatar"
 import { ToolCallList } from "./ToolCallList"
 import { ToolText } from "./ToolOutput"
 import { BrowserTurnCard, TurnActivity } from "./TurnActivity"
@@ -193,10 +194,9 @@ export const activeMessagePath = (messages: Array<Message>, leafId: Id | null): 
 
 const deliveryLabels = {
   queued: "Na fila · aguardando conexão",
-  sent: t("Sending message…"),
-  acked: "Entregue",
+  sent: "Sending message…",
   failed: "Falha na entrega",
-}
+} as const
 const routineTriggerKeys: Record<RoutineRun["triggerSource"], TranslationKey> = {
   cron: "Routine trigger scheduled",
   manual: "Routine trigger manual",
@@ -1012,11 +1012,9 @@ const MessageBubble = ({
         <div className="message-meta">
           {personSender && (
             <span className="message-sender-avatar" aria-hidden="true">
-              <BotAvatar
-                bot={{ id: personSender.id, color: null, avatarSeed: personSender.avatarSeed ?? personSender.id }}
+              <PersonAvatar
+                person={{ id: personSender.id, avatarSeed: personSender.avatarSeed ?? personSender.id }}
                 size={22}
-                state="idle"
-                still
               />
             </span>
           )}
@@ -1043,9 +1041,9 @@ const MessageBubble = ({
               {getBrowserRunLabel()}
             </span>
           )}
-          {message.role === "user" && message.delivery && (
+          {message.role === "user" && message.delivery && message.delivery.status !== "acked" && (
             <span className="delivery-state" role="status">
-              {deliveryLabels[message.delivery.status]}
+              {t(deliveryLabels[message.delivery.status], {}, locale)}
             </span>
           )}
           {message.status === "canceled" && (
