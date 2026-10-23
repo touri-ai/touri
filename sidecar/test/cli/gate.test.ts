@@ -64,6 +64,24 @@ const makeGate = async ({ trustedProxy = false }: { trustedProxy?: boolean } = {
   return { call, pair, store, intercept, secrets, limiter }
 }
 
+test("public liveness omits diagnostics and preserves transport and credential restrictions", async () => {
+  const { call, intercept } = await makeGate()
+  const url = new URL("http://service.example:18800/healthz")
+
+  const health = await call({ path: "/healthz" })
+  const head = await call({ path: "/healthz", method: "HEAD" })
+  const insecure = await intercept({ request: new Request(url), url, clientIp: "203.0.113.8" })
+
+  expect(health?.status).toBe(200)
+  expect(await health?.json()).toEqual({ ok: true })
+  expect(head?.status).toBe(200)
+  expect(await head?.text()).toBe("")
+  expect(insecure?.status).toBe(426)
+  expect((await call({ path: "/healthz", method: "POST" }))?.status).toBe(405)
+  expect((await call({ path: "/healthz?token=fixture-token" }))?.status).toBe(401)
+  expect((await call({ path: "/api/v1/health" }))?.status).toBe(401)
+})
+
 test("unauthenticated root shows the pairing page and the API answers 401", async () => {
   const { call } = await makeGate()
   const page = await call({ path: "/" })

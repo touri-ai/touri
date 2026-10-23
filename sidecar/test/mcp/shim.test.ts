@@ -6,7 +6,7 @@ import { dirname, join } from "node:path"
 import { createKernel } from "../../src/kernel"
 import { resolveMcpSocketPath } from "../../src/kernel/paths"
 import { init, stop } from "../../src/mcp"
-import { createFixtureStore } from "./store-fixture"
+import { createFixtureStore, seedHistorySearch } from "./store-fixture"
 
 type WireResponse = { result?: unknown; error?: unknown }
 
@@ -50,6 +50,7 @@ test.each([
        VALUES ('thread-mark', 'bot-mark', 'chat', 'Fixture', ?, ?)`,
     )
     .run(Date.now(), Date.now())
+  seedHistorySearch(database)
   runtime.kernel.services.provide("store.api", createFixtureStore({ root }))
   let child: ReturnType<typeof Bun.spawn> | null = null
   try {
@@ -89,7 +90,7 @@ test.each([
       `${JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "history_search", arguments: { query: "campaign" } } })}\n`,
     )
     const search = JSON.parse(await readLine(stdout)) as WireResponse
-    expect(JSON.stringify(search.result)).toContain("Review the campaign")
+    expect(JSON.stringify(search.result)).toContain("Review the [campaign]")
   } finally {
     child?.kill()
     if (child) await child.exited

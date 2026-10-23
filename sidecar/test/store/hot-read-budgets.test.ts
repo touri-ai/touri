@@ -252,6 +252,21 @@ const getLagBudget = async (read: () => Promise<number>) => {
   }
 }
 
+test("concurrent history reads wait for capacity and canceled waiters release their slot", async () => {
+  const db = await getFixture()
+  const reader = createStoreReader(db.filename)
+  cleanups.add(reader.dispose)
+  const query = { sql: "SELECT 1 AS value", bindings: [] }
+  const controller = new AbortController()
+
+  const reads = Array.from({ length: 5 }, () => reader.getRows(query, new AbortController().signal))
+  const canceled = reader.getRows(query, controller.signal)
+  controller.abort()
+
+  await expect(canceled).rejects.toThrow()
+  expect(await Promise.all(reads)).toEqual(Array.from({ length: 5 }, () => [{ value: 1 }]))
+})
+
 test("cancellation and disposal stop SQL processes and reject reads", async () => {
   const db = await getFixture()
   const ready = Promise.withResolvers<void>()
