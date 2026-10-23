@@ -239,6 +239,7 @@ Tokens are never written to disk, except the per-thread MCP token files (rewritt
 - Preparation has a 15-second deadline, deduplicates concurrent requests per bot and is canceled on a new turn or runtime shutdown. Task turns keep their own tools, permissions and reasoning, restoring history when switching native session fingerprints. Background preparation cannot make a user turn wait on the model.
 - Enter immediately shows **{name} digitando…** / **{name} is typing…** while HTTP delivery is pending. Errors clear the indicator and keep the draft. Existing frame-batched streaming renders text deltas as they arrive, preserving transcript virtualization and cancellation.
 - The initial UI payload remains limited to 400 KB gzip. Conversation sign-in controls load on demand when authentication is required, with localized loading feedback and the draft still visible.
+- The bot library loads only when its tab is first opened. Panel tabs and the close control remain available while it loads.
 - Regression budgets: a prepared provider reaches readiness within 500 ms of enqueue and first text within 1.5 seconds with deterministic provider fixtures; local send feedback appears within 100 ms without an HTTP response. Live provider latency is measured separately on isolated staging, including warm-up and task turns, and reported in PR evidence rather than guaranteed by a fixture.
 
 ### 2.3 Why Bun (and the risks)
@@ -611,6 +612,9 @@ env: CLAUDE_CODE_ENABLE_TODO_TOOLS=1, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 The Work navigation loads on its first opening and then stays mounted while switching
 sidebar modes, preserving channel rows and scroll position. Channel navigation and direct
 messages appear together after loading, so late content cannot move a row during activation.
+Each sidebar mode remembers its own last conversation. Switching back to Work reopens the last
+channel or Work conversation, and Bots never centers a channel. A deleted or archived destination
+falls back to another conversation of the same mode. Drafts stay with their conversation.
 
 Groups have a name, mascot shape/seed/color, an ordered roster and an optional coordinator
 from that roster. Each group owns multiple conversations. Migration `0008.sql` is additive;

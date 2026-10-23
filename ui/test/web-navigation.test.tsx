@@ -168,8 +168,11 @@ it("restores group conversations from their thread URL and through browser histo
   fireEvent.click(await screen.findByRole("button", { name: /^Equipe QA/ }))
   await screen.findByRole("textbox", { name: "Mensagem para Equipe QA" })
   await locationIs(thread.botId, thread.id)
+  // Returning to Bots reopens its own last conversation before the click on onb.
   selectBot("bot-onb")
   await locationIs("bot-onb", "thread-onb")
+  act(() => window.history.back())
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
   act(() => window.history.back())
   await screen.findByRole("textbox", { name: "Mensagem para Equipe QA" })
   act(() => window.history.back())

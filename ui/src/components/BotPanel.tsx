@@ -7,7 +7,6 @@ import { machineStateForDisplay } from "../machineState"
 import { useHost } from "../useHost"
 import { BotAvatar } from "./BotAvatar"
 import { BotDetails } from "./BotDetails"
-import { BotLibrary } from "./BotLibrary"
 import { DeferredGoalPanel as GoalPanel } from "./DeferredGoalPanel"
 import { ErrorText } from "./ErrorDetails"
 import { MotionSkeleton, useSegmentedControl } from "./Motion"
@@ -15,6 +14,7 @@ import { PanelIcon } from "./PanelIcon"
 import "./bot-panel.css"
 
 const BotComputer = lazy(() => import("./BotComputer").then((module) => ({ default: module.BotComputer })))
+const BotLibrary = lazy(() => import("./BotLibrary").then((module) => ({ default: module.BotLibrary })))
 
 const tabs = ["details", "library", "computer"] as const
 const tabLabels = { details: "Bot details", library: "Bot library", computer: "Bot computer" } as const
@@ -280,7 +280,9 @@ export const BotPanel = ({
           </div>
         )}
         {tab === "library" && (
-          <BotLibrary key={bot.id} api={api} bot={bot} request={libraryRequest} onComputer={openComputer} />
+          <Suspense fallback={<MotionSkeleton />}>
+            <BotLibrary key={bot.id} api={api} bot={bot} request={libraryRequest} onComputer={openComputer} />
+          </Suspense>
         )}
         {tab === "computer" && (
           <Suspense fallback={<MotionSkeleton />}>

@@ -91,6 +91,7 @@ import { useNotificationSounds } from "./useNotificationSounds"
 import { RecoveryTasksContext, useRecoveryTasks } from "./useRecoveryTasks"
 import { useWebNavigation } from "./useWebNavigation"
 import { useWorkspace } from "./useWorkspace"
+import { getModeSelection, type ModeSelection, type WorkspaceMode } from "./workspaceModes"
 import { type AppRoute, type RoutineHistoryTarget, readWorkspaceState, saveWorkspaceState } from "./workspaceState"
 
 const BotComputer = lazy(() => import("./components/BotComputer").then((module) => ({ default: module.BotComputer })))
@@ -607,6 +608,24 @@ const AppContent = ({ kernel }: AppProps) => {
   const selectedThread =
     data.threadCreation?.thread ?? data.threads.find((thread) => thread.id === data.selectedThreadId) ?? null
   const selectedGroup = data.groups.find((g) => g.id === selectedThread?.groupId) ?? null
+  const modeSelections = useRef<Partial<Record<WorkspaceMode, ModeSelection>>>({})
+  const switchSidebarMode = (mode: WorkspaceMode, restore = true): void => {
+    if (mode === sidebarMode) return
+
+    if (selectedBot && (sidebarMode === "work" || (!selectedThread?.groupId && !selectedThread?.groupThreadId)))
+      modeSelections.current = {
+        ...modeSelections.current,
+        [sidebarMode]: { botId: selectedBot.id, threadId: data.threadCreation ? null : (selectedThread?.id ?? null) },
+      }
+
+    const target = getModeSelection(mode, data.threads, data.bots, modeSelections.current[mode])
+    setSidebarMode(mode)
+    if (!restore) return
+    if (target?.threadId) actions.selectThread(target.threadId)
+    else if (target) actions.selectBot(target.botId)
+    else if (selectedBot) actions.selectBot(selectedBot.id)
+    setRoute({ section: "bots", screen: "chat" })
+  }
   const identityPeople = useChannelPeople(api, selectedGroup?.id ?? data.groups[0]?.id ?? null)
   const sidebarPerson = identityPeople.find((person) => person.id === currentPersonId)
   const groupMembers =
@@ -1125,7 +1144,7 @@ const AppContent = ({ kernel }: AppProps) => {
         <div className="app-grid">
           <SidebarDrawer
             currentPerson={sidebarPerson}
-            onSidebarModeChange={setSidebarMode}
+            onSidebarModeChange={switchSidebarMode}
             panelOpen={section === "bots" && screen === "chat" && panelOpen}
             workspaceHeader={workspaceHeader}
             serverMode={serverMode}
