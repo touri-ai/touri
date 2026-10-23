@@ -113,8 +113,9 @@ export const openDatabase = ({
     })()
     return database
   }
-  if (current?.value === "47" || current?.value === "48") {
+  if (current?.value === "46" || current?.value === "47" || current?.value === "48") {
     database.transaction(() => {
+      if (current.value === "46") database.exec(automaticResumeSql)
       if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'hot_read_indexes_version'").get())
         database.exec(hotReadIndexesSql)
       database.exec(requestRunsSql)

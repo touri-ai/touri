@@ -1,11 +1,9 @@
 import { dirname, join } from "node:path"
-import { createKernel } from "../kernel"
 import { closeFileIoAsync } from "../kernel/async-files"
+import { prepareDatabaseAsync } from "../kernel/database-startup"
 import { ensurePrivateDirectory } from "../kernel/files"
 import { acquireRuntimeLock } from "../kernel/lifecycle"
 import { createAppPaths } from "../kernel/paths"
-import { initModules } from "../main"
-import { initWebPush } from "../notify/push"
 import type { ServeOptions } from "./args"
 import { createRateLimiter } from "./auth/rateLimit"
 import { openAuthStore } from "./auth/store"
@@ -17,6 +15,7 @@ import { remoteAccessWarning } from "./remoteAccessWarning"
 import { clearServeInfo, writeServeInfo } from "./serveInfo"
 import { closeServeFiles, registerServeShutdown } from "./serveShutdown"
 import { createStartupAvailability } from "./startupAvailability"
+import { startStartupListener } from "./startupListener"
 import { exposeOnTailscale } from "./tailscale"
 import { cliVersion } from "./version"
 import { createWebGate, type MemberAuthorizer } from "./web/gate"
@@ -64,6 +63,34 @@ const startServer = async (options: ServeOptions, stopStderr: () => Promise<void
     authorizeMember: (input) => authorization.authorize?.(input) ?? null,
   })
   const availability = createStartupAvailability(intercept)
+  const listener = startStartupListener(options.host, options.port, availability.intercept)
+  const startup = new AbortController()
+  const preparationStarted = performance.now()
+  const abortStartup = () => startup.abort()
+  process.once("SIGTERM", abortStartup)
+  process.once("SIGINT", abortStartup)
+  const loadRuntime = async () => {
+    const [kernel, main, push] = await Promise.all([import("../kernel"), import("../main"), import("../notify/push")])
+    return { createKernel: kernel.createKernel, initModules: main.initModules, initWebPush: push.initWebPush }
+  }
+  const preparation = prepareDatabaseAsync(options.dataDir, startup.signal)
+  const prepared = Promise.all([preparation, loadRuntime()])
+  const { createKernel, initModules, initWebPush } = await prepared
+    .then(
+      ([, runtime]) => runtime,
+      async (error: unknown) => {
+        startup.abort()
+        await preparation.catch(() => undefined)
+        listener.stop()
+        await store.close()
+        await lease.release()
+        throw error
+      },
+    )
+    .finally(() => {
+      process.off("SIGTERM", abortStartup)
+      process.off("SIGINT", abortStartup)
+    })
   const runtime = createKernel({
     appData: options.dataDir,
     web: {
@@ -71,7 +98,14 @@ const startServer = async (options: ServeOptions, stopStderr: () => Promise<void
       port: options.port,
       intercept: availability.intercept,
       host: createHeadlessHost({ secrets }),
+      listen: listener.listen,
     },
+  })
+  runtime.kernel.log({
+    level: "info",
+    module: "startup",
+    msg: "Conversation store prepared",
+    data: { durationMs: Math.round(performance.now() - preparationStarted) },
   })
   initWorkMode({ kernel: runtime.kernel, authStore: store, secrets, authorization })
   const push = await initWebPush({ kernel: runtime.kernel, authStore: store, secrets, schedule: false })

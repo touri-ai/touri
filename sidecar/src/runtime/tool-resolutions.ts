@@ -267,10 +267,12 @@ export const createToolResolutions = (kernel: Kernel) => {
     clearPendingMemory(runId)
     database?.query("DELETE FROM tool_recovery_pending WHERE run_id = ?").run(runId)
   }
-  const getPendingRuns = (threadId?: string): RecoveryRun[] =>
+  const getPendingRuns = (threadId: string | undefined, cursor: string): RecoveryRun[] =>
     (database
-      ?.query(`${PENDING_TOOL_RECOVERY_SQL} ${threadId ? "AND p.thread_id = ?" : ""} ORDER BY r.queued_at, r.id`)
-      .all(...(threadId ? [threadId] : [])) ?? []) as RecoveryRun[]
+      ?.query(
+        `${PENDING_TOOL_RECOVERY_SQL} AND p.run_id > ? ${threadId ? "AND p.thread_id = ?" : ""} ORDER BY p.run_id LIMIT 16`,
+      )
+      .all(cursor, ...(threadId ? [threadId] : [])) ?? []) as RecoveryRun[]
 
   const finishAsync = async (
     run: Run,
@@ -400,17 +402,20 @@ export const createToolResolutions = (kernel: Kernel) => {
     )
   }
   const reconcile = async (store: StoreApi, threadId?: string): Promise<void> => {
-    for (const row of getPendingRuns(threadId)) {
-      await reconcileRun(store, row.id)
+    let cursor = ""
+    while (true) {
+      const rows = getPendingRuns(threadId, cursor)
+      if (!rows.length) return
+
+      for (const row of rows) {
+        await kernel.services.use("store.recovery")?.ensureThread(row.thread_id)
+        await reconcileRun(store, row.id)
+        await new Promise<void>((resolve) => setImmediate(resolve))
+      }
+      cursor = rows.at(-1)?.id ?? cursor
     }
   }
-  const reconcilePending = async (store: StoreApi, threadId: string): Promise<void> => {
-    for (const row of getPendingRuns(threadId)) {
-      await reconcileRun(store, row.id)
-      // Live imports may introduce many completed turns; let other clients run between them.
-      await new Promise<void>((resolve) => setImmediate(resolve))
-    }
-  }
+  const reconcilePending = (store: StoreApi, threadId: string): Promise<void> => reconcile(store, threadId)
   return {
     record,
     recordAsync,

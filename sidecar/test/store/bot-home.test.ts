@@ -489,6 +489,7 @@ for (const hasSoul of [false, true]) {
     if (hasSoul) database.query("UPDATE bots SET archived_at = 1 WHERE id = ?").run(botId)
 
     await initStore(runtime.kernel)
+    await runtime.kernel.services.use("store.recovery")?.ready
 
     expect(await readFile(join(home, "SOUL.md"), "utf8")).toBe(instructions)
     expect(await readdir(home)).toEqual(["SOUL.md"])
@@ -503,6 +504,7 @@ test("startup leaves instructions on disk untouched when there is no edit backup
   await writeFile(join(home, "SOUL.md"), "Instructions edited outside the app")
 
   await initStore(runtime.kernel)
+  await runtime.kernel.services.use("store.recovery")?.ready
 
   expect(await readFile(join(home, "SOUL.md"), "utf8")).toBe("Instructions edited outside the app")
   expect(await readdir(home)).toEqual(["SOUL.md"])
@@ -530,6 +532,7 @@ for (const target of ["SOUL.md", ".SOUL.edit-backup"] as const) {
     const stages = createPerformanceStageTracker()
 
     await initStore(kernel, stages.run)
+    await kernel.services.use("store.recovery")?.ready
 
     expect(kernel.services.use("store.api")).toBeDefined()
     expect(await readFile(outside, "utf8")).toBe("Keep this file")
@@ -544,7 +547,7 @@ for (const target of ["SOUL.md", ".SOUL.edit-backup"] as const) {
       },
     ])
     expect(stages.snapshot()).toContainEqual(
-      expect.objectContaining({ stage: "store_bot_home_startup_recovery", calls: 1, asyncCalls: 1 }),
+      expect.objectContaining({ stage: "store_bot_home_startup_recovery", calls: 2, asyncCalls: 2 }),
     )
   })
 }
@@ -558,6 +561,7 @@ test("startup still registers the store when recovery and its diagnostic both fa
   cleanups.add(() => stopBotHomeWriter(kernel))
 
   await initStore(kernel)
+  await kernel.services.use("store.recovery")?.ready
 
   expect(kernel.services.use("store.api")).toBeDefined()
   expect(getLogs()).toHaveLength(1)

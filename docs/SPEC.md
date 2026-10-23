@@ -236,6 +236,14 @@ User repos stay wherever they are. touri writes into a repo only:
 - through the bot's own tools
 - through `env_write_file` (git-ignored files only)
 
+### Responsive server startup
+
+- The web listener binds before opening the conversation store. Static liveness and paired UI assets use the existing authentication, origin and HTTPS rules throughout startup. API requests receive retryable 503 responses until routes are registered; accepting a connection does not authorize an early send.
+- The serving bootstrap loads before unrelated CLI commands. Schema preparation runs in an owned subprocess with a private data directory, a two-minute deadline and cancellation on startup termination. The main connection opens only after preparation completes. Committed versions 46–50 apply only missing migrations; current stores skip migration replay. No automatic full-store compaction is added to startup. Modules preload in batches of three with a task yield between batches and register in dependency order.
+- Store registration does not wait for all bot homes or transcript projections. Recovery visits one home at a time and replays indexed transcript batches with a real task yield between batches. Clean threads need no writer; pending projections acquire the writer with asynchronous lock retries. Opening a thread or updating its message first repairs that thread; starting a turn also waits for its bot home. Instruction edits wait for that home's recovery. Shutdown awaits recovery before closing SQLite.
+- Shared-channel recovery replays its durable transcript before settling interrupted replies or dispatching queued turns; shutdown awaits that repair. Runtime routes register while interrupted-run and tool recovery continue. Startup run discovery seeks the existing active-run index in pages of 16 and fences candidates to the preexisting rowid watermark. Each run is rechecked before repair; its saved reply is read by indexed identity without walking the conversation. Tool repair uses 16-row cursor pages and yields between runs. Provider dispatch and idle preparation still wait for recovery and orphan-process cleanup, preventing concurrent old and new executions.
+- Restart regression budgets: public liveness within 500 ms, authenticated workspace/sidebar reads within two seconds, and no sampled startup event-loop pause over 200 ms. The full-command fixture includes 257 bots, 100 interrupted runs and 25 MiB of historical message parts. A held migration write proves liveness remains responsive; a 5 ms probe observes startup for 2.5 seconds. First-time schema upgrades may extend API readiness while liveness continues to respond.
+
 ### Automatic recovery after server restarts
 
 - Desktop server mode and the web client retain the mounted workspace, selected conversation,

@@ -103,7 +103,6 @@ export const init = async (
   let drainPromise: Promise<void> | null = null
   kernel.services.provide("runtime.isDraining", () => draining)
   kernel.services.provide("runtime.settingsChanged", engine.settingsChanged)
-  await engine.ready
   const groups = createGroupRuntime(kernel, engine)
   kernel.services.provide("groups.runtime", groups)
   const scheduler = createRoutineScheduler({ kernel, engine, ...(runStage ? { runStage } : {}) })
