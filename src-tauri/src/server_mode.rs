@@ -1481,7 +1481,10 @@ mod tests {
             .await
             .unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
-        let fake = Arc::new(FakeServer::default());
+        let fake = Arc::new(FakeServer {
+            protocol_version: Mutex::new(Some(1)),
+            ..FakeServer::default()
+        });
         let router = Router::new()
             .fallback(fake_server_request)
             .with_state(Arc::clone(&fake));
@@ -1700,6 +1703,7 @@ mod tests {
             .unwrap();
         let fake = Arc::new(FakeServer {
             silent_socket: true,
+            protocol_version: Mutex::new(Some(1)),
             ..FakeServer::default()
         });
         let mode = ServerModeStatus {
