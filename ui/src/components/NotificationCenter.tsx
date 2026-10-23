@@ -28,7 +28,6 @@ import { isFailureNotice, isReadyReviewNotice, pendingNotifications } from "../s
 import { useAvatarBot } from "./AvatarRuntime"
 import { BotAvatar } from "./BotAvatar"
 import { Badge, type BadgeTone, Button, UnreadCount } from "./Button"
-import { Disclosure } from "./Disclosure"
 import { ErrorNotice } from "./ErrorNotice"
 import { MotionPresence, useInsertedIds } from "./Motion"
 import "./screens.css"
@@ -129,6 +128,8 @@ const NotificationRow = ({
   onReviewApproval?: ((target: ApprovalTarget) => void) | undefined
 }) => {
   const bot = useAvatarBot(item.botId)
+  const [secondaryActions, setSecondaryActions] = useState(false)
+  const touchStart = useRef<{ x: number; y: number } | null>(null)
   const [text, setText] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>(null)
@@ -188,6 +189,19 @@ const NotificationRow = ({
       data-kind={item.kind}
       data-unread={unread}
       data-testid="notification-row"
+      data-secondary-actions={secondaryActions || undefined}
+      onTouchStart={(event) => {
+        const touch = event.touches[0]
+        touchStart.current = touch ? { x: touch.clientX, y: touch.clientY } : null
+      }}
+      onTouchEnd={(event) => {
+        const start = touchStart.current
+        const end = event.changedTouches[0]
+        touchStart.current = null
+        if (!start || !end || Math.abs(start.y - end.clientY) > 32) return
+        if (start.x - end.clientX > 48) setSecondaryActions(true)
+        if (end.clientX - start.x > 48) setSecondaryActions(false)
+      }}
       data-avatar-hover
       tabIndex={-1}
     >
@@ -245,11 +259,6 @@ const NotificationRow = ({
           body.toLowerCase() !== t(KIND_KEY[item.kind]).toLowerCase() && <p className="notification-body">{body}</p>
         )}
         {approval?.command && <pre className="notification-command">{approval.command}</pre>}
-        {approval?.technical && (
-          <Disclosure className="notification-technical" summary={t("Detalhes técnicos")}>
-            <pre>{approval.technical}</pre>
-          </Disclosure>
-        )}
         {!resolved && hasReplyBox(item) && (
           <form
             className="notification-reply"
@@ -280,7 +289,12 @@ const NotificationRow = ({
             </Button>
           )}
           {!resolved && (
-            <Button variant="quiet" disabled={busy} onClick={() => void run(() => actions.dismiss(item.id))}>
+            <Button
+              className="notification-mark-read"
+              variant="quiet"
+              disabled={busy}
+              onClick={() => void run(() => actions.dismiss(item.id))}
+            >
               {canMarkNotificationRead(item) ? t("Marcar como lida") : t("Dismiss")}
             </Button>
           )}
@@ -306,7 +320,11 @@ export const NotificationBell = ({
   focusNotification = null,
   onOpenChange,
   onReviewApproval,
+  hasInterruptedTasks = notifications.some(
+    (item) => !isResolvedNotification(item) && ["turn-failed", "routine-failed"].includes(item.kind),
+  ),
 }: {
+  hasInterruptedTasks?: boolean
   notifications: Array<NotificationRecord>
   messages?: Array<Message>
   runs?: Array<Run>
@@ -469,7 +487,7 @@ export const NotificationBell = ({
                 </Button>
               </div>
             </header>
-            {actions.openRecovery && (
+            {actions.openRecovery && hasInterruptedTasks && (
               <Button
                 variant="link-action"
                 onClick={() => {

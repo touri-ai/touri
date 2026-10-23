@@ -120,7 +120,8 @@ it.each([false, true])(
     if (!thread) throw new Error("Missing thread fixture")
     thread.activeLeafId = failed.id
     render(<App kernel={{ services: { api } }} />)
-    const schedule = await screen.findByRole("button", { name: "Agendar esta tarefa" }, { timeout: 15000 })
+    fireEvent.click(await screen.findByRole("button", { name: "Ações da mensagem" }))
+    const schedule = screen.getByRole("menuitem", { name: "Agendar esta tarefa" })
     expect(screen.queryByRole("button", { name: "Repetir esta tarefa" })).toBeNull()
     fireEvent.click(schedule)
     const dialog = await screen.findByRole("dialog", { name: "Quando?" })

@@ -7,7 +7,7 @@ import { ApprovalCard } from "../src/components/ApprovalCard"
 import { Sidebar } from "../src/components/BotSidebar"
 import { VirtualMessageList } from "../src/components/ChatPanel"
 import { settingsIndex } from "../src/features/commandPalette/settingsRegistry"
-import { openRoutines, showBotSettings } from "./workspaceNavigation"
+import { openBotDetails, openRoutines, showBotSettings } from "./workspaceNavigation"
 
 beforeEach(() => {
   document.documentElement.dataset.motion = "reduce"
@@ -79,6 +79,7 @@ it("F013 opens the bot routines screen directly from the settings tab", async ()
   const dialog = await screen.findByRole("dialog", { name: "Configurações de mark" })
   fireEvent.click(within(dialog).getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(within(dialog).getByRole("tab", { name: "Rotinas" }))
+  fireEvent.click(within(dialog).getByRole("button", { name: "Gerenciar rotinas" }))
   await waitFor(() => expect(dialog).not.toBeInTheDocument())
   expect(await screen.findByRole("heading", { name: "Rotinas" })).toBeVisible()
   expect(screen.getByRole("button", { name: /Criar rotina/ })).toBeVisible()
@@ -178,12 +179,11 @@ it("opens the empty bot's routines directly from Configure routines and focuses 
   const sidebar = screen.getByRole("navigation", { name: "Barra lateral" })
   fireEvent.click(sidebar.querySelector('[data-bot-entry="bot-onb"] .bot-row-main') as HTMLElement)
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
-  fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
-  await screen.findByRole("complementary", { name: /^Painel de / })
+  await openBotDetails()
   fireEvent.click(screen.getByRole("button", { name: "Configurar rotinas" }))
   const routines = await screen.findByRole("region", { name: "Rotinas" })
   expect(screen.queryByRole("dialog")).toBeNull()
-  expect(within(routines).getByRole("button", { name: "onb", exact: true })).toHaveAttribute("aria-pressed", "true")
+  expect(within(routines).getByRole("combobox", { name: "Bot", exact: true })).toHaveValue("bot-onb")
   expect(within(routines).queryByText("Resumo diário")).toBeNull()
   await waitFor(() => expect(routines).toHaveFocus())
 })
@@ -193,7 +193,7 @@ it.each(["mark", "onb"])("opens and focuses %s's routines from its actions menu"
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   openRoutines(name)
   const routines = await screen.findByRole("region", { name: "Rotinas" })
-  expect(within(routines).getByRole("button", { name, exact: true })).toHaveAttribute("aria-pressed", "true")
+  expect(within(routines).getByRole("combobox", { name: "Bot", exact: true })).toHaveValue(`bot-${name}`)
   await waitFor(() => expect(routines).toHaveFocus())
 })
 
@@ -202,13 +202,14 @@ it("restores the bot filter and list focus when reopening routines from settings
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   openRoutines()
   const routines = await screen.findByRole("region", { name: "Rotinas", exact: true })
-  fireEvent.click(within(routines).getByRole("button", { name: "Todos os bots", exact: true }))
+  fireEvent.change(within(routines).getByRole("combobox", { name: "Bot", exact: true }), { target: { value: "all" } })
   showBotSettings()
   const settings = await screen.findByRole("dialog", { name: "Configurações de mark" })
   fireEvent.click(within(settings).getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(within(settings).getByRole("tab", { name: "Rotinas", exact: true }))
+  fireEvent.click(within(settings).getByRole("button", { name: "Gerenciar rotinas", exact: true }))
   await waitFor(() => expect(settings).not.toBeInTheDocument())
   const destination = screen.getByRole("region", { name: "Rotinas", exact: true })
-  expect(within(destination).getByRole("button", { name: "mark", exact: true })).toHaveAttribute("aria-pressed", "true")
+  expect(within(destination).getByRole("combobox", { name: "Bot", exact: true })).toHaveValue("bot-mark")
   await waitFor(() => expect(destination).toHaveFocus())
 })

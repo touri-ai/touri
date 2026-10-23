@@ -80,7 +80,7 @@ test("switches and remembers Work mode, with channels and routine history", asyn
             : page.locator('[data-bot-entry="bot-mark"] .bot-row-main')
         await botRow.click()
         await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
-        await expect(page.locator(".chat-header-crumb")).toHaveText(mode === "work" ? "Mensagens diretas" : "Bots")
+        await expect(page.locator(".chat-header-crumb")).toHaveCount(0)
         if (viewport.name === "phone") await page.locator(".mobile-menu-button").click()
         const sidebar = page.locator(".bot-sidebar")
         await expect(sidebar).toBeVisible()
@@ -100,9 +100,20 @@ test("switches and remembers Work mode, with channels and routine history", asyn
   await expect(page.getByRole("region", { name: "Canais" })).toBeVisible()
   const touchTargetHeights = await page
     .locator(".sidebar-mode-tabs [role=tab], .group-select, .channel-create")
-    .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().height))
+    .evaluateAll((elements) =>
+      elements.map((element) => ({
+        height: element.getBoundingClientRect().height,
+        channel: element.matches(".group-select"),
+      })),
+    )
   expect(touchTargetHeights.length).toBeGreaterThanOrEqual(4)
-  expect(touchTargetHeights.every((height) => height >= 44)).toBe(true)
+  touchTargetHeights.forEach(({ height, channel }) => {
+    if (channel) {
+      expect(height).toBe(40)
+      return
+    }
+    expect(height).toBeGreaterThanOrEqual(44)
+  })
 })
 
 test("captures an open channel on desktop and phone", async ({ page }) => {

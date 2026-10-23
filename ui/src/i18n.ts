@@ -85,6 +85,12 @@ export const ptBR = {
   "Avisar quando um bot começar uma tarefa no canal": "Avisar quando um bot começar uma tarefa no canal",
   "@{author} mencionou você em #{channel}": "@{author} mencionou você em #{channel}",
   "{bot} começou uma tarefa em #{channel}: {title}": "{bot} começou uma tarefa em #{channel}: {title}",
+  "Adjust bot": "Ajustar",
+  "Active routines": "Ativas",
+  "Paused routines": "Pausadas",
+  "Approval options": "Mais opções de aprovação",
+  "Message actions": "Ações da mensagem",
+
   incomplete: "não concluído",
   "No one took over in time. Ask again when you can.": "Ninguém assumiu a tempo. Peça de novo quando puder.",
   "Este documento contém entrada privada. Continue a tarefa em uma nova aba.":
@@ -3502,6 +3508,13 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Avisar quando um bot começar uma tarefa no canal": "Notify when a bot starts a task in a channel",
   "@{author} mencionou você em #{channel}": "@{author} mentioned you in #{channel}",
   "{bot} começou uma tarefa em #{channel}: {title}": "{bot} started a task in #{channel}: {title}",
+  Encerrado: "Closed",
+  "Adjust bot": "Adjust",
+  "Active routines": "Active",
+  "Paused routines": "Paused",
+  "Approval options": "More approval options",
+  "Message actions": "Message actions",
+
   incomplete: "incomplete",
   "No one took over in time. Ask again when you can.": "No one took over in time. Ask again when you can.",
   "Este documento contém entrada privada. Continue a tarefa em uma nova aba.":

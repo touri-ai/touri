@@ -19,9 +19,27 @@ export const showBotPanel = async (page: Page): Promise<void> => {
   if ((await trigger.getAttribute("aria-expanded")) === "false") await trigger.click()
 }
 
+export const showBotDetails = async (page: Page): Promise<void> => {
+  await showBotPanel(page)
+  const adjust = page.getByRole("button", { name: "Ajustar", exact: true })
+  if ((await adjust.getAttribute("aria-expanded")) === "false") await adjust.click()
+}
+
 export const openGlobalPage = async (page: Page, name: string): Promise<void> => {
   await page.locator("button.sidebar-connect[aria-controls='sidebar-advanced-pages']").click()
-  await page.getByRole("navigation", { name: "Opções avançadas" }).getByRole("button", { name, exact: true }).click()
+  const menu = page.getByRole("navigation", { name: "Opções avançadas" })
+  const groupByPage: Record<string, string> = {
+    MCP: "Ferramentas",
+    Integrações: "Ferramentas",
+    "Modelos por API": "Ferramentas",
+    Trabalho: "Trabalho",
+    Pessoas: "Trabalho",
+    Desempenho: "Diagnóstico",
+    "Reportar problema": "Diagnóstico",
+  }
+  const section = groupByPage[name] ?? (name.startsWith("Verificar") ? "Diagnóstico" : undefined)
+  if (section) await menu.getByRole("button", { name: section, exact: true }).click()
+  await menu.getByRole("button", { name, exact: true }).last().click()
 }
 
 export const showBotChat = async (page: Page, botId = "bot-mark"): Promise<void> => {
@@ -60,6 +78,18 @@ export const showBotAdvanced = async (page: Page, name = "mark"): Promise<void> 
 }
 
 export const chooseBotAction = async (page: Page, action: string, name = "mark"): Promise<void> => {
+  const conversationActions: Record<string, string> = {
+    "Nova conversa": "Nova conversa",
+    "Selecionar conversas…": "Selecionar",
+    Arquivadas: "Arquivadas",
+    "Apagar conversas automáticas antigas…": "Apagar conversas automáticas antigas…",
+  }
+  const nested = conversationActions[action]
+  if (nested) {
+    const management = await showBotConversations(page, name)
+    await management.getByRole("button", { name: new RegExp(`^${nested}`) }).click()
+    return
+  }
   await openBotActions(page, name)
   await page.getByRole("menuitem", { name: action, exact: true }).click()
 }
@@ -72,4 +102,28 @@ export const chooseChannelAction = async (page: Page, channel: string, action: s
     .getByRole("button", { name: `Ações do canal ${channel}`, exact: true })
     .click()
   await page.getByRole("menuitem", { name: action, exact: true }).click()
+}
+
+export const showServerSettings = async (page: Page): Promise<void> => {
+  const dialog = page.getByRole("dialog")
+  const section = dialog.getByRole("tab", { name: "Avançado", exact: true })
+  if (await section.isVisible()) {
+    await section.click()
+    return
+  }
+  await dialog.getByRole("tab", { name: "Diagnóstico", exact: true }).click()
+  const diagnostics = dialog.getByRole("button", { name: "Verificar e cuidar deste computador", exact: true })
+  if ((await diagnostics.getAttribute("aria-expanded")) === "false") await diagnostics.click()
+  await dialog.getByRole("button", { name: "Usar um servidor touri", exact: true }).click()
+}
+
+export const chooseRoutineAction = async (page: Page, name: string, action: string): Promise<void> => {
+  await page.getByRole("button", { name: `Ações da rotina ${name}`, exact: true }).click()
+  await page.getByRole("menuitem", { name: action, exact: true }).click()
+}
+
+export const openMessageActions = async (page: Page): Promise<void> => {
+  const trigger = page.getByRole("button", { name: "Ações da mensagem", exact: true }).last()
+  await trigger.focus()
+  await trigger.click()
 }

@@ -10,7 +10,7 @@ import { PreviewPane } from "../src/components/PreviewPane"
 import { ScreenServerPolicies } from "../src/components/ScreenConnections"
 import { McpScreen, PreviewScreen } from "../src/components/WorkspaceScreens"
 import type { WorkspaceActions } from "../src/useWorkspace"
-import { openRoutines } from "./workspaceNavigation"
+import { chooseRoutineAction, openBotDetails, openRoutines } from "./workspaceNavigation"
 
 const server: McpServer = {
   name: "arquivos",
@@ -173,17 +173,15 @@ describe("r8 screens", () => {
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     openRoutines("mark")
-    const run = await screen.findByRole("button", { name: "Rodar agora Daily brief" })
-    expect(run).toHaveTextContent("Rodar agora")
-    expect(screen.getByRole("button", { name: "Retomar Daily brief" })).toHaveTextContent("Retomar")
-    fireEvent.click(run)
+    await chooseRoutineAction("Daily brief", "Rodar agora")
     await waitFor(() => expect(api.calls.some((call) => call.route === "POST /routines/:id/run")).toBe(true))
     expect((await api.request("GET /routines", {})).routines[0]?.enabled).toBe(false)
     expect(api.calls.some((call) => call.route === "PATCH /routines/:id")).toBe(false)
-    fireEvent.click(screen.getByRole("button", { name: "Retomar Daily brief" }))
+    await chooseRoutineAction("Daily brief", "Retomar")
     fireEvent.click(screen.getByRole("button", { name: "Revisar rotina" }))
     fireEvent.click(screen.getByRole("button", { name: "Ativar rotina" }))
-    await screen.findByRole("button", { name: "Pausar Daily brief" })
+    fireEvent.click(screen.getByRole("button", { name: "Ações da rotina Daily brief", exact: true }))
+    expect(screen.getByRole("menuitem", { name: "Pausar", exact: true })).toBeVisible()
     expect((await api.request("GET /routines", {})).routines[0]?.enabled).toBe(true)
   })
 
@@ -216,9 +214,7 @@ describe("r8 screens", () => {
     thread.activeLeafId = reply.id
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    if (!screen.queryByRole("button", { name: "Preview do projeto" }))
-      fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
-    await screen.findByRole("complementary", { name: /^Painel de / })
+    await openBotDetails()
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
     await screen.findByRole("heading", { name: "Preview", exact: true })
 

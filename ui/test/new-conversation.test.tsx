@@ -5,7 +5,7 @@ import type { ApiRequest, TauriInvoke } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { setStorageScope } from "../src/storageScope"
 import { useWorkspace } from "../src/useWorkspace"
-import { openConversations } from "./workspaceNavigation"
+import { openBotDetails, openConversations } from "./workspaceNavigation"
 
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }))
 
@@ -167,9 +167,7 @@ it("also blocks the group conversation action until the group's new id exists", 
 
 it("keeps the project preview composer disabled until the new conversation is ready", async () => {
   const { api, release } = await setup()
-  if (!screen.queryByRole("button", { name: "Preview do projeto" }))
-    fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
-  await screen.findByRole("complementary", { name: /^Painel de / })
+  await openBotDetails()
   fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
   const input = await screen.findByRole("textbox", { name: "Mensagem para o bot" })
   fireEvent.change(input, { target: { value: "Confira o projeto nesta conversa" } })

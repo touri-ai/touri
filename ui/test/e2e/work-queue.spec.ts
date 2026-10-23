@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
+import { openGlobalPage } from "./home-navigation"
 
 test.use({ channel: "chromium", reducedMotion: "reduce" })
 
@@ -90,11 +91,10 @@ for (const viewport of [
     const startedDocument = await page.evaluate(() => performance.timeOrigin)
     const openAdvanced = async () => {
       if (viewport.width === 390) await page.getByRole("button", { name: "Abrir menu" }).click()
-      await page.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
     }
 
     await openAdvanced()
-    await page.getByRole("button", { name: "Trabalho", exact: true }).click()
+    await openGlobalPage(page, "Trabalho")
 
     const running = page.getByRole("region", { name: "Trabalhando", exact: true })
     const queued = page.getByRole("region", { name: "Na fila", exact: true })
@@ -118,16 +118,16 @@ for (const viewport of [
     await expect(page.getByText("Na fila · 1º de 1")).toBeVisible()
 
     await openAdvanced()
-    await page.getByRole("button", { name: "Desempenho", exact: true }).click()
+    await openGlobalPage(page, "Desempenho")
     await page.getByRole("spinbutton", { name: "Tarefas ao mesmo tempo" }).fill("4")
     await page.getByRole("button", { name: "Salvar limite" }).click()
     await expect(page.getByText("Limite salvo.")).toBeVisible()
     if (process.env.TOURI_SCREENSHOT_DIR)
       await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/work-performance-${viewport.width}.png` })
     await openAdvanced()
-    await page.getByRole("button", { name: "Trabalho", exact: true }).click()
+    await openGlobalPage(page, "Trabalho")
     await openAdvanced()
-    await page.getByRole("button", { name: "Desempenho", exact: true }).click()
+    await openGlobalPage(page, "Desempenho")
     expect(await page.evaluate(() => performance.timeOrigin)).toBe(startedDocument)
     await expect(page.getByRole("spinbutton", { name: "Tarefas ao mesmo tempo" })).toHaveValue("4")
   })

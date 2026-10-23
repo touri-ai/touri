@@ -5,7 +5,7 @@ import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
 import { pendingNotifications, relativeThreadDate } from "../src/sidebarAttention"
 import { saveWorkspaceState } from "../src/workspaceState"
-import { openConversations, openRoutines } from "./workspaceNavigation"
+import { openConversations, openGlobalPage, openRoutines } from "./workspaceNavigation"
 
 const localDate = (day: number, hour = 12): number => new Date(2026, 9, day, hour).getTime()
 
@@ -112,7 +112,7 @@ it("keeps bots reachable beside global screens, footer integrations and creation
   fireEvent.click(sidebar.querySelector('[data-bot-id="bot-onb"]')?.closest("button") as HTMLElement)
   expect(await screen.findByRole("textbox", { name: "Mensagem para onb" })).toBeVisible()
   fireEvent.click(within(sidebar).getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
-  fireEvent.click(within(sidebar).getByRole("button", { name: "Integrações", exact: true }))
+  openGlobalPage("Integrações")
   expect(await screen.findByRole("heading", { name: "Integrações" })).toBeVisible()
   fireEvent.click(within(sidebar).getByRole("button", { name: "Criar bot" }))
   expect(await screen.findByRole("dialog", { name: "Criar um bot" })).toBeVisible()
@@ -162,7 +162,7 @@ it("opening a failure clears row and bell attention persistently, while keeping 
   const first = render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   expect(screen.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
-  fireEvent.click(screen.getByRole("button", { name: "Abrir falha de onb" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Precisa de você.*onb/ }))
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
   await waitFor(() => expect(screen.getByRole("button", { name: "Notificações" })).toBeVisible())
   expect(screen.queryByRole("button", { name: "Abrir falha de onb" })).toBeNull()
@@ -191,7 +191,7 @@ it("opening a question from the bot row focuses its response and keeps it pendin
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
-  fireEvent.click(within(getBotEntry("bot-onb")).getByRole("button", { name: "Abrir pendência de onb" }))
+  fireEvent.click(screen.getByRole("button", { name: /^Precisa de você.*onb/ }))
 
   const row = (await screen.findByText("Qual pasta devo revisar?")).closest("[data-notification-id]")
   await waitFor(() => expect(row).toHaveFocus())

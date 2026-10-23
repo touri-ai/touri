@@ -6,7 +6,7 @@ import { GroupSidebar } from "../src/components/Groups"
 
 afterEach(cleanup)
 
-it("derives channel previews without scanning every message once per channel", () => {
+it("keeps channel rows to their names without scanning every message once per channel", () => {
   const state = createMockApi().getState()
   const bot = state.bots[0]
   const baseThread = state.threads[0]
@@ -58,8 +58,9 @@ it("derives channel previews without scanning every message once per channel", (
     />,
   )
 
-  expect(screen.getByText("Mensagem do canal 0")).toBeVisible()
-  expect(screen.getByText("Mensagem do canal 99")).toBeVisible()
+  expect(screen.getByRole("button", { name: "Canal 0" })).toBeVisible()
+  expect(screen.getByRole("button", { name: "Canal 99" })).toBeVisible()
+  expect(screen.queryByText("Mensagem do canal 0")).toBeNull()
   expect(getMessageThreadId.mock.calls.length).toBeLessThanOrEqual(messages.length * 3)
 })
 

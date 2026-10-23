@@ -556,6 +556,8 @@ const AppContent = ({ kernel }: AppProps) => {
   )
   const openNeedsYou = useCallback(
     (item: NotificationRecord): void => {
+      if (isFailureNotice(item) && item.resolvedAt === null)
+        void actions.dismissNotification(item.id).catch(setLocalNotice)
       if (item.kind === "approval" && item.threadId && item.requestId) {
         reviewApproval({ threadId: item.threadId, approvalId: item.requestId })
         return
@@ -570,7 +572,7 @@ const AppContent = ({ kernel }: AppProps) => {
       setRoute({ section: "bots", screen: "chat" })
       setNotificationFocus((current) => ({ id: item.id, request: (current?.request ?? 0) + 1 }))
     },
-    [reviewApproval, actions.selectLocation, actions.selectThread, setRoute],
+    [reviewApproval, actions.selectLocation, actions.selectThread, actions.dismissNotification, setRoute],
   )
   useEffect(() => {
     if (!pendingLink || !data.loaded || data.bots.length === 0) return
@@ -1283,8 +1285,8 @@ const AppContent = ({ kernel }: AppProps) => {
             onNewThread={() => void actions.createThread()}
             onNewBot={() => openModal("bot")}
             onBotSettings={() => openModal("bot-settings")}
-            onSettings={() => {
-              setSettingsInitialSection("appearance")
+            onSettings={(section = "appearance") => {
+              setSettingsInitialSection(section)
               openModal("settings")
             }}
             onDoctor={() => openModal("doctor")}
@@ -1561,6 +1563,16 @@ const AppContent = ({ kernel }: AppProps) => {
                                   onClose={closePanel}
                                   onSettings={() => openModal("bot-settings")}
                                   onRoutines={() => openBotRoutines(selectedBot.id)}
+                                  projects={data.projects}
+                                  onSaveModel={(model) => actions.updateBotModel(selectedBot.id, model)}
+                                  onSelectProject={async (projectId) => {
+                                    await actions.updateBot(selectedBot.id, { projectId })
+                                  }}
+                                  onAddProject={() => {
+                                    openModal("project")
+                                    setProjectLinkBotId(selectedBot.id)
+                                  }}
+                                  onNotice={showNotice}
                                   onModel={() => openModal("bot-settings", "model")}
                                   onPermissions={() => openModal("bot-permissions")}
                                   onPreview={() => setScreen("preview")}

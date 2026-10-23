@@ -43,7 +43,10 @@ const openNavigation = async (page: Page) => {
 }
 
 const captureSurface = async (page: Page, surface: string, width: number, theme: string) => {
-  const picker = page.locator(".avatar-picker:visible")
+  const dialog = page.getByRole("dialog").last()
+  if (!(await dialog.locator(".avatar-picker").isVisible()))
+    await dialog.getByRole("button", { name: "Avançado", exact: true }).click()
+  const picker = dialog.locator(".avatar-picker")
   await expect(picker).toBeVisible()
   if (output) {
     await mkdir(output, { recursive: true })

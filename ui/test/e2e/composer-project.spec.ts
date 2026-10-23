@@ -1,11 +1,13 @@
 import { expect, test } from "@playwright/test"
+import { showBotDetails } from "./home-navigation"
 
 for (const width of [420, 720]) {
   test(`project picker stays inside a ${width}px window and unlinks by keyboard`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     await page.emulateMedia({ reducedMotion: "reduce" })
     await page.goto("/test/e2e/r8-composer-harness.html")
-    const composer = page.getByRole("form", { name: "Compor mensagem" })
+    await showBotDetails(page)
+    const composer = page.getByRole("complementary", { name: "Painel de mark" })
     const chip = composer.getByRole("button", { name: /^Projeto do bot:/ })
     await expect(chip).toBeVisible()
     await chip.focus()

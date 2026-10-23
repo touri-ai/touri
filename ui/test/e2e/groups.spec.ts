@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs"
 import { resolve } from "node:path"
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
-import { showBotPanel } from "./home-navigation"
+import { showBotDetails, showBotPanel } from "./home-navigation"
 
 const evidence = resolve(import.meta.dirname, "../../../docs/qa/groups")
 mkdirSync(evidence, { recursive: true })
@@ -22,6 +22,7 @@ for (const theme of ["light", "dark"] as const)
     await dialog.getByRole("checkbox", { name: "mark", exact: true }).check()
     await dialog.getByRole("checkbox", { name: "onb", exact: true }).check()
     await dialog.getByRole("checkbox", { name: "Panko", exact: true }).check()
+    await dialog.getByRole("button", { name: /^Avançado/ }).click()
     await dialog.getByLabel("Coordenador do canal", { exact: true }).selectOption("bot-mark")
     await page.screenshot({ path: `${evidence}/create-${theme}.png` })
     const violations = (
@@ -90,13 +91,16 @@ for (const theme of ["light", "dark"] as const)
     await expect(page.getByRole("textbox", { name: "Mensagem para mark", exact: true })).toBeVisible()
     const botPanel = page.getByRole("complementary", { name: "Painel de mark", exact: true })
     await expect(botPanel).toBeVisible()
+    await showBotDetails(page)
     await expect(botPanel.getByRole("button", { name: "Preview do projeto", exact: true })).toBeVisible()
     await botPanel.getByRole("button", { name: "Produto · coordenador", exact: true }).click()
     await expect(composer).toBeVisible()
     await expect(groupPanel).toBeVisible()
-    await groupPanel.getByRole("button", { name: "Editar canal", exact: true }).click()
+    await page.locator(".group-header-actions button[aria-haspopup=menu]").click()
+    await page.getByRole("menuitem", { name: "Editar canal", exact: true }).click()
     const edit = page.getByRole("dialog", { name: "Editar canal" })
     await edit.getByLabel("Nome do canal").fill("Produto e Operação")
+    await edit.getByRole("button", { name: /^Avançado/ }).click()
     await edit.getByLabel("Coordenador do canal", { exact: true }).selectOption("")
     await page.screenshot({ path: `${evidence}/edit-${theme}.png` })
     await edit.getByRole("button", { name: "Salvar canal" }).click()

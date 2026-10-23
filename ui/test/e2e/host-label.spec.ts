@@ -1,5 +1,6 @@
 import { join } from "node:path"
 import { expect, type Page, test } from "@playwright/test"
+import { showBotDetails } from "./home-navigation"
 
 test.use({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" })
 
@@ -14,7 +15,7 @@ hosts.forEach(({ host, noun, platform }) => {
     await setBrowserPlatform(page, platform)
 
     await page.goto(`/test/e2e/r8-composer-harness.html?host=${host}`)
-    await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
+    await showBotDetails(page)
 
     const panel = page.getByRole("complementary", { name: "Painel de mark" })
     await expect(panel.getByText(`Trabalha neste ${noun}.`)).toBeVisible()
@@ -26,6 +27,7 @@ hosts.forEach(({ host, noun, platform }) => {
       .getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ })
       .click()
 
+    await page.getByRole("button", { name: "Diagnóstico", exact: true }).click()
     await expect(page.getByRole("button", { name: `Verificar este ${noun}`, exact: true })).toBeVisible()
     await captureHostLabel(page, `${host}-details.png`)
 

@@ -35,6 +35,7 @@ viewportWidths.forEach((width) => {
     await create.getByRole("checkbox", { name: "mark", exact: true }).check()
 
     await expect(create.locator("..")).toHaveCSS("z-index", "1000")
+    await create.getByRole("button", { name: /^Avançado/ }).click()
     await create.getByRole("button", { name: "Personalizar", exact: true }).click()
     await expect(create.getByRole("radio", { name: "Cor Automática", exact: true })).toBeVisible()
     await create.getByRole("button", { name: "Personalizar", exact: true }).click()

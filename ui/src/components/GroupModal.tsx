@@ -5,6 +5,7 @@ import { userFacingError } from "../errors"
 import { t } from "../i18n"
 import { AvatarPicker } from "./AvatarPicker"
 import { BotAvatar } from "./BotAvatar"
+import { Disclosure } from "./Disclosure"
 import "./groups.css"
 import "./group-modal.css"
 
@@ -39,6 +40,35 @@ export const GroupModal = ({
     dialog.current?.querySelector<HTMLInputElement>("input")?.focus()
     return () => previous?.focus()
   }, [])
+  const avatarPicker = (
+    <AvatarPicker
+      label={t(channelMode ? "Channel mascot" : "avatar.group")}
+      bot={{ id: group?.id ?? avatarSeed, avatarShape: shape, color, avatarSeed }}
+      onChange={(v) => {
+        if (v.avatarShape) setShape(v.avatarShape)
+        if (v.color !== undefined) setColor(v.color)
+      }}
+    />
+  )
+  const coordinatorField = (
+    <label className="group-field">
+      {t(channelMode ? "Channel coordinator" : "Group coordinator")} <span className="muted-copy">{t("optional")}</span>
+      <select
+        aria-label={t(channelMode ? "Channel coordinator" : "Group coordinator")}
+        value={coordinatorBotId ?? ""}
+        disabled={saving}
+        onChange={(e) => setCoordinator(e.target.value || null)}
+      >
+        <option value="">{t(channelMode ? "No channel coordinator" : "Sem coordenador")}</option>
+        {memberIds.map((id) => (
+          <option key={id} value={id}>
+            {bots.find((b) => b.id === id)?.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+
   return (
     <div className="modal-backdrop group-modal-backdrop">
       <div
@@ -90,7 +120,7 @@ export const GroupModal = ({
         >
           <div className="group-modal-heading">
             <div>
-              <p className="eyebrow">{t("Bots together")}</p>
+              {!channelMode && <p className="eyebrow">{t("Bots together")}</p>}
               <h2 id="group-modal-title">
                 {channelMode ? t(group ? "Edit channel" : "Create channel") : t(group ? "Editar grupo" : "Criar grupo")}
               </h2>
@@ -123,16 +153,9 @@ export const GroupModal = ({
               disabled={saving}
             />
           </label>
-          <AvatarPicker
-            label={t(channelMode ? "Channel mascot" : "avatar.group")}
-            bot={{ id: group?.id ?? avatarSeed, avatarShape: shape, color, avatarSeed }}
-            onChange={(v) => {
-              if (v.avatarShape) setShape(v.avatarShape)
-              if (v.color !== undefined) setColor(v.color)
-            }}
-          />
+          {!channelMode && avatarPicker}
           <fieldset disabled={saving}>
-            <legend>{t(channelMode ? "Channel members · response order" : "Group members · response order")}</legend>
+            <legend>{t(channelMode ? "Channel members" : "Group members · response order")}</legend>
             <div className="group-member-picker">
               {bots
                 .filter((b) => !b.archivedAt)
@@ -149,28 +172,19 @@ export const GroupModal = ({
                     />
                     <BotAvatar bot={bot} size={28} />
                     <span>{bot.name}</span>
-                    {memberIds.includes(bot.id) && <small>{memberIds.indexOf(bot.id) + 1}</small>}
+                    {!channelMode && memberIds.includes(bot.id) && <small>{memberIds.indexOf(bot.id) + 1}</small>}
                   </label>
                 ))}
             </div>
           </fieldset>
-          <label className="group-field">
-            {t(channelMode ? "Channel coordinator" : "Group coordinator")}{" "}
-            <span className="muted-copy">{t("optional")}</span>
-            <select
-              aria-label={t(channelMode ? "Channel coordinator" : "Group coordinator")}
-              value={coordinatorBotId ?? ""}
-              disabled={saving}
-              onChange={(e) => setCoordinator(e.target.value || null)}
-            >
-              <option value="">{t(channelMode ? "No channel coordinator" : "Sem coordenador")}</option>
-              {memberIds.map((id) => (
-                <option key={id} value={id}>
-                  {bots.find((b) => b.id === id)?.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          {channelMode ? (
+            <Disclosure summary={t("Advanced")}>
+              {avatarPicker}
+              {coordinatorField}
+            </Disclosure>
+          ) : (
+            coordinatorField
+          )}
           <p className="group-routing-note">{t("Os bots só respondem quando você os chama com @nome.")}</p>
           {error && <p role="alert">{error}</p>}
           <div className="group-modal-actions">

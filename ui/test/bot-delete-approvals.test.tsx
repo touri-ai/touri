@@ -134,6 +134,7 @@ it("confirms the tool scope before granting a permanent permission and offers re
   api.request = request as ApiRequest
   render(<ApprovalCard api={api} part={approval} />)
   const user = userEvent.setup()
+  fireEvent.click(screen.getByText("Mais opções de aprovação"))
   screen.getByRole("button", { name: "Permitir sempre nesta ferramenta" }).focus()
   await user.keyboard("{Enter}")
   expect(request).not.toHaveBeenCalled()
@@ -230,10 +231,6 @@ it("a pending failure in another conversation shows the same request in the bot 
       body: "Falha antiga",
     })
   })
-  await waitFor(() =>
-    expect(document.querySelector('[data-bot-entry="bot-mark"] .bot-preview')).toHaveTextContent(
-      "Aguardando você: revise a tarefa interrompida",
-    ),
-  )
+  await waitFor(() => expect(screen.getByRole("button", { name: /^Precisa de você.*mark/ })).toBeVisible())
   expect(screen.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
 })

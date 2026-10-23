@@ -117,6 +117,45 @@ const GenericApprovalCard = ({
           event.preventDefault()
         }
       }}
+      technicalActions={
+        status === "pending" && allowStanding ? (
+          <div className="tool-standing-section">
+            {!confirmStanding ? (
+              <button
+                className="tool-standing-action text-button"
+                type="button"
+                disabled={busy || !api || !presentation.canApprove}
+                onClick={() => setConfirmStanding(true)}
+              >
+                {t("Permitir sempre nesta ferramenta")}
+              </button>
+            ) : (
+              <fieldset className="tool-standing-confirmation">
+                <legend className="visually-hidden">{t("Permissão permanente para {name}", { name: toolName })}</legend>
+                <p>{scopeHelp}</p>
+                <div className="tool-approval-actions">
+                  <button
+                    className="tool-action tool-action-primary tool-standing-confirm"
+                    type="button"
+                    disabled={busy || !api || !presentation.canApprove}
+                    onClick={() => void answer(true, true)}
+                  >
+                    {t("Sim, permitir {name} neste bot sem perguntar de novo", { name: toolName })}
+                  </button>
+                  <button
+                    className="tool-action tool-action-secondary"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setConfirmStanding(false)}
+                  >
+                    {t("Back")}
+                  </button>
+                </div>
+              </fieldset>
+            )}
+          </div>
+        ) : null
+      }
       actions={
         status === "pending" ? (
           <div className="tool-approval-footer">
@@ -138,45 +177,6 @@ const GenericApprovalCard = ({
                 {capabilityRequest ? t("Agora não") : t("Deny")}
               </button>
             </div>
-            {allowStanding && (
-              <div className="tool-standing-section">
-                {!confirmStanding ? (
-                  <button
-                    className="tool-standing-action text-button"
-                    type="button"
-                    disabled={busy || !api || !presentation.canApprove}
-                    onClick={() => setConfirmStanding(true)}
-                  >
-                    {t("Permitir sempre nesta ferramenta")}
-                  </button>
-                ) : (
-                  <fieldset className="tool-standing-confirmation">
-                    <legend className="visually-hidden">
-                      {t("Permissão permanente para {name}", { name: toolName })}
-                    </legend>
-                    <p>{scopeHelp}</p>
-                    <div className="tool-approval-actions">
-                      <button
-                        className="tool-action tool-action-primary tool-standing-confirm"
-                        type="button"
-                        disabled={busy || !api || !presentation.canApprove}
-                        onClick={() => void answer(true, true)}
-                      >
-                        {t("Sim, permitir {name} neste bot sem perguntar de novo", { name: toolName })}
-                      </button>
-                      <button
-                        className="tool-action tool-action-secondary"
-                        type="button"
-                        disabled={busy}
-                        onClick={() => setConfirmStanding(false)}
-                      >
-                        {t("Back")}
-                      </button>
-                    </div>
-                  </fieldset>
-                )}
-              </div>
-            )}
           </div>
         ) : permanent ? (
           <div className="tool-standing-resolution">

@@ -1,18 +1,10 @@
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
-import { showBotAdvanced } from "./home-navigation"
+import { openGlobalPage, showBotAdvanced } from "./home-navigation"
 
 test.use({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" })
 
-const nativePreferencesTabs = [
-  "Modelos por API",
-  "Aparência",
-  "Privacidade",
-  "Atualizações",
-  "Notificações",
-  "Diagnóstico",
-  "Avançado",
-]
+const nativePreferencesTabs = ["Aparência", "Privacidade", "Atualizações", "Notificações", "Diagnóstico"]
 
 test("bot identity stays simple and every advanced section remains reachable", async ({ page }) => {
   await page.goto("/test/e2e/r8-settings-harness.html")
@@ -55,27 +47,33 @@ test("bot identity stays simple and every advanced section remains reachable", a
   await showBotAdvanced(page)
   await dialog.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
   await dialog.getByRole("tab", { name: "Rotinas", exact: true }).click()
+  await dialog.getByRole("button", { name: "Gerenciar rotinas", exact: true }).click()
   await expect(dialog).toHaveCount(0)
   await expect(page.getByRole("region", { name: "Rotinas", exact: true })).toBeFocused()
 })
 
 test("native preferences list the core tabs and advanced server settings", async ({ page }) => {
   await page.goto("/test/e2e/r8-settings-harness.html")
-  await page.getByRole("button", { name: /Você Local/ }).click()
+  await page.getByRole("button", { name: "Você", exact: true }).click()
   const dialog = page.getByRole("dialog")
   await expect(dialog.getByRole("tab")).toHaveText(nativePreferencesTabs)
 
-  await dialog.getByRole("tab", { name: "Modelos por API", exact: true }).click()
+  await dialog.getByRole("button", { name: "Fechar diálogo", exact: true }).click()
+  await openGlobalPage(page, "Modelos por API")
   await expect(dialog.getByLabel("Provedor da API")).toBeVisible()
   await expect(dialog.getByLabel("Chave de API", { exact: true })).toHaveAttribute("type", "password")
-  await dialog.getByRole("tab", { name: "Avançado", exact: true }).click()
+  await dialog.getByRole("button", { name: "Fechar diálogo", exact: true }).click()
+  await page.getByRole("button", { name: "Você", exact: true }).click()
+  await dialog.getByRole("tab", { name: "Diagnóstico", exact: true }).click()
+  await dialog.getByRole("button", { name: "Verificar e cuidar deste computador", exact: true }).click()
+  await dialog.getByRole("button", { name: "Usar um servidor touri", exact: true }).click()
   await expect(dialog.getByRole("region", { name: "Usar um servidor touri", exact: true })).toBeVisible()
   await expect(dialog.getByLabel("Endereço do servidor", { exact: true })).toBeVisible()
 })
 
 test("app preferences disclose technical controls and preserve edits between sections", async ({ page }) => {
   await page.goto("/test/e2e/r8-settings-harness.html")
-  await page.getByRole("button", { name: /Você Local/ }).click()
+  await page.getByRole("button", { name: "Você", exact: true }).click()
   const dialog = page.getByRole("dialog")
   await expect(dialog.getByRole("tab")).toHaveText(nativePreferencesTabs)
   await expect(dialog.getByRole("switch")).toHaveCount(0)
@@ -108,7 +106,7 @@ test("app preferences disclose technical controls and preserve edits between sec
   ).not.toBeChecked()
   await dialog.getByRole("button", { name: "Salvar preferências", exact: true }).click()
   await expect(dialog).toHaveCount(0)
-  await page.getByRole("button", { name: /Você Local/ }).click()
+  await page.getByRole("button", { name: "Você", exact: true }).click()
   await dialog.getByText("Chat, barra lateral e atalhos", { exact: true }).click()
   await expect(
     dialog.getByRole("switch", { name: "Mover bots com novidades para o topo", exact: true }),

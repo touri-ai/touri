@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
-import { showBotAdvanced, showBotRoutines } from "./home-navigation"
+import { chooseRoutineAction, showBotAdvanced, showBotRoutines } from "./home-navigation"
 
 test.use({ channel: "chromium" })
 test.setTimeout(90_000)
@@ -19,7 +19,7 @@ for (const width of [1440, 390]) {
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (width === 390) await page.getByRole("button", { name: "Abrir menu" }).click()
     await showBotRoutines(page)
-    const trigger = page.getByRole("button", { name: "Excluir rotina", exact: true })
+    const trigger = page.getByRole("button", { name: "Ações da rotina Daily brief", exact: true })
     await expect(trigger).toBeVisible()
     await expect(trigger).toBeInViewport()
     expect(
@@ -29,6 +29,7 @@ for (const width of [1440, 390]) {
     await page.screenshot({ path: testInfo.outputPath("card.png"), animations: "disabled" })
     await trigger.focus()
     await trigger.press("Enter")
+    await page.getByRole("menuitem", { name: "Excluir rotina", exact: true }).press("Enter")
     const confirmation = page.getByRole("alertdialog")
     await expect(confirmation).toHaveAccessibleName("Excluir a rotina Daily brief?")
     await expect(confirmation).toHaveAccessibleDescription(
@@ -51,6 +52,7 @@ for (const width of [1440, 390]) {
     await expect(trigger).toBeFocused()
     await expect(trigger).toBeVisible()
     await trigger.click()
+    await page.getByRole("menuitem", { name: "Excluir rotina", exact: true }).click()
     await page.getByRole("button", { name: "Excluir", exact: true }).press("Space")
     await expect(confirmation).toHaveCount(0)
     await expect(trigger).toHaveCount(0)
@@ -61,7 +63,7 @@ for (const width of [1440, 390]) {
     await page.reload()
     if (width === 390) await page.getByRole("button", { name: "Abrir menu" }).click()
     await showBotRoutines(page)
-    await page.getByRole("button", { name: "Editar Daily brief", exact: true }).click()
+    await chooseRoutineAction(page, "Daily brief", "Editar")
     const editor = page.getByRole("dialog", { name: "Quando?" })
     await editor.getByRole("button", { name: "Excluir rotina", exact: true }).scrollIntoViewIfNeeded()
     await page.screenshot({ path: testInfo.outputPath("editor.png"), animations: "disabled" })
@@ -84,6 +86,7 @@ for (const width of [1440, 390]) {
     const settings = page.getByRole("dialog")
     await settings.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
     await settings.getByRole("tab", { name: "Rotinas", exact: true }).click()
+    await settings.getByRole("button", { name: "Gerenciar rotinas", exact: true }).click()
     await expect(settings).toHaveCount(0)
     const routines = page.getByRole("region", { name: "Rotinas", exact: true })
     await expect(routines).toBeFocused()
@@ -94,6 +97,7 @@ for (const width of [1440, 390]) {
     expect(await routines.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
     await page.screenshot({ path: testInfo.outputPath("bot-routines.png"), animations: "disabled" })
     await trigger.click()
+    await page.getByRole("menuitem", { name: "Excluir rotina", exact: true }).click()
     await page.getByRole("alertdialog").getByRole("button", { name: "Excluir", exact: true }).click()
     await expect(page.getByRole("alertdialog")).toHaveCount(0)
     await expect(settings).toHaveCount(0)

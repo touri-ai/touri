@@ -363,9 +363,9 @@ it("shows active work as a clear navigation action in both languages", () => {
 
   renderSidebar({ bots, threads, workRuns: [running, queued] })
 
-  const badge = screen.getByRole("button", { name: "Trabalhando · 1 1 na fila Ver trabalho", exact: true })
-  expect(badge).toHaveTextContent("Trabalhando · 1")
-  expect(badge).toHaveTextContent("1 na fila")
+  expect(document.querySelector(".sidebar-work-badge")).toBeNull()
+  fireEvent.click(screen.getByRole("button", { name: "Avançado", exact: true }))
+  expect(screen.getByRole("button", { name: "Trabalho", exact: true })).toBeVisible()
   expect(t("View work", {}, "en")).toBe("View work")
   expect(t("View work summary", { running: 1, queued: 1 }, "en")).toBe("Working: 1, 1 queued. View work")
 })
@@ -567,6 +567,7 @@ it("keeps the waiting line and bell in sync for questions, failures and resolved
     notifications: [question, failure, approvalNotice],
   })
   expect(screen.getByRole("button", { name: "Notificações, 3 precisam de atenção" })).toBeVisible()
+  expect(document.querySelector(".sidebar-needs-you")).toBeVisible()
   expect(within(entry("bot-alfa")).getByText("Aguardando você: sua resposta")).toBeVisible()
   expect(within(entry("bot-beta")).getByText("Aguardando você: revise a tarefa interrompida")).toBeVisible()
   expect(within(entry("bot-delta")).getByText("Aguardando você: sua aprovação")).toBeVisible()
@@ -601,6 +602,7 @@ it.each(["failed", "succeeded"] as const)("clears failure attention during a ret
   const view = renderSidebar({ bots, threads, messages: [reply], runs: [failedRun], notifications: [failure] })
   expect(entry("bot-beta")).toHaveAttribute("data-activity", "needs-you")
   expect(within(entry("bot-beta")).getByText("Aguardando você: revise a tarefa interrompida")).toBeVisible()
+  expect(document.querySelector(".sidebar-needs-you")).toBeVisible()
   expect(screen.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toBeVisible()
 
   const retry = {

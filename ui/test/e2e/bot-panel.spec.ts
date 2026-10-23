@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs"
 import { resolve } from "node:path"
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
-import { showBotAdvanced, showBotPanel } from "./home-navigation"
+import { showBotAdvanced, showBotDetails, showBotPanel } from "./home-navigation"
 
 const evidence = resolve(import.meta.dirname, "../../../docs/qa/bot-panel")
 mkdirSync(evidence, { recursive: true })
@@ -65,11 +65,12 @@ for (const theme of ["light", "dark"] as const)
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     await expect(panel).toBeHidden()
     await page.getByRole("button", { name: "Painel do bot" }).click()
-    await expect(page.getByRole("button", { name: "Preview do projeto" })).toBeVisible()
+    await showBotDetails(page)
     await page.getByRole("button", { name: "Preview do projeto" }).click()
     await expect(page.getByRole("tab", { name: "Tela da VM" })).toHaveCount(0)
     await page.screenshot({ path: `${evidence}/after-preview-${theme}.png` })
     await page.getByRole("button", { name: "Voltar ao chat" }).click()
+    await showBotDetails(page)
     await page.getByRole("button", { name: /^Modelo: Codex/ }).click()
     const settings = page.getByRole("dialog", { name: "Configurações de mark" })
     await expect(settings).toBeVisible()

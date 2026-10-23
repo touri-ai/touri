@@ -71,8 +71,6 @@ const ApprovalContext = ({
   review: { reason: string; scope: { label: string; value: string }[]; missingFiles?: string }
 }) => {
   const rows = [{ label: "Motivo", value: review.reason }, ...review.scope].filter((row) => row.value)
-  if (!rows.length && !review.missingFiles)
-    return <p className="tool-approval-unknown">{t("Nenhum detalhe adicional foi informado")}</p>
   if (!rows.length) return null
 
   return (
@@ -94,6 +92,7 @@ export const ToolCallCard = ({
   createdAt,
   decidedAt,
   actions,
+  technicalActions,
   busy,
   error,
   onKeyDown,
@@ -105,6 +104,7 @@ export const ToolCallCard = ({
   finished?: boolean | undefined
   createdAt?: number | undefined
   decidedAt?: number | undefined
+  technicalActions?: ReactNode
   actions?: ReactNode
   busy?: boolean
   error?: string | null
@@ -177,9 +177,11 @@ export const ToolCallCard = ({
           </span>
         </div>
       </header>
-      <p className="tool-summary" title={presentation.summary}>
-        {presentation.summary}
-      </p>
+      {presentation.summary !== "Permitir os acessos solicitados" && (
+        <p className="tool-summary" title={presentation.summary}>
+          {presentation.summary}
+        </p>
+      )}
       {presentation.filePaths.length > 0 && (
         <ul className="tool-file-list" aria-label="Arquivos">
           {[...new Set(presentation.filePaths)].map((path) => (
@@ -290,9 +292,13 @@ export const ToolCallCard = ({
       {part && !part.outputAttachmentId && rawOutput == null && status === "closed" && (
         <p className="tool-output-unavailable">Resultado histórico indisponível.</p>
       )}
-      {presentation.technical && (
-        <RevealDetails className="tool-details tool-technical" summary="Detalhes técnicos">
-          <ToolText text={presentation.technical} language="json" />
+      {(presentation.technical || technicalActions) && (
+        <RevealDetails
+          className="tool-details tool-technical"
+          summary={t(technicalActions ? "Approval options" : "Detalhes técnicos")}
+        >
+          {technicalActions}
+          {presentation.technical && <ToolText text={presentation.technical} language="json" />}
         </RevealDetails>
       )}
     </article>

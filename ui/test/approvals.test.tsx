@@ -46,6 +46,8 @@ it("requires a scoped confirmation before granting standing permission", async (
   const api = createMockApi()
   render(<ApprovalCard api={api} part={part} />)
 
+  if (!screen.queryByRole("button", { name: "Permitir sempre nesta ferramenta" }))
+    fireEvent.click(screen.getByRole("button", { name: "Mais opções de aprovação" }))
   fireEvent.click(screen.getByRole("button", { name: "Permitir sempre nesta ferramenta" }))
   expect(screen.getByRole("group", { name: /Permissão permanente para/ })).toBeVisible()
   expect(screen.getByText(/novas chamadas com outros parâmetros/)).toBeVisible()
@@ -56,6 +58,8 @@ it("requires a scoped confirmation before granting standing permission", async (
   expect(screen.getByRole("button", { name: "Permitir sempre nesta ferramenta" })).toBeVisible()
   expect(api.calls).toEqual([])
 
+  if (!screen.queryByRole("button", { name: "Permitir sempre nesta ferramenta" }))
+    fireEvent.click(screen.getByRole("button", { name: "Mais opções de aprovação" }))
   fireEvent.click(screen.getByRole("button", { name: "Permitir sempre nesta ferramenta" }))
   fireEvent.click(screen.getByRole("button", { name: /Sim, permitir .* neste bot sem perguntar de novo/ }))
   await waitFor(() =>
@@ -171,6 +175,8 @@ it("approval cards appear in chat messages and react to settled parts", async ()
   } as import("@touri/contracts").Message
   const props = { api, messages: [message], onSwitchBranch: vi.fn(), onRetry: vi.fn() }
   const view = render(<VirtualMessageList {...props} />)
+  expect(screen.queryByRole("button", { name: "Permitir sempre nesta ferramenta" })).toBeNull()
+  fireEvent.click(screen.getByRole("button", { name: "Mais opções de aprovação" }))
   expect(screen.getByRole("button", { name: "Permitir sempre nesta ferramenta" })).toBeVisible()
   view.rerender(
     <VirtualMessageList {...props} messages={[{ ...message, parts: [{ ...part, decision: "expired" }] }]} />,

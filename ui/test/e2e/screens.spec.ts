@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises"
 import { resolve } from "node:path"
 import { expect, test } from "@playwright/test"
-import { openGlobalPage, showBotChat, showBotPanel, showBotRoutines } from "./home-navigation"
+import { openGlobalPage, showBotChat, showBotDetails, showBotPanel, showBotRoutines } from "./home-navigation"
 
 const phase = process.env.R8_PHASE ?? "after"
 const qa = resolve(import.meta.dirname, "../../../docs/qa/r8/screens")
@@ -44,9 +44,10 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.getByRole("heading", { name: "Rotinas", exact: true })).toBeVisible()
       await shot("cron")
       if (phase === "after") {
-        await expect(page.getByRole("button", { name: "Rodar agora Resumo da manhã" })).toHaveText("Rodar agora")
-        await expect(page.getByRole("button", { name: "Rodar agora Resumo da manhã" })).toBeDisabled()
-        await expect(page.getByRole("button", { name: "Pausar Resumo da manhã" })).toHaveText("Pausar")
+        await page.getByRole("button", { name: "Ações da rotina Resumo da manhã", exact: true }).click()
+        await expect(page.getByRole("menuitem", { name: "Rodar agora", exact: true })).toBeDisabled()
+        await expect(page.getByRole("menuitem", { name: "Pausar", exact: true })).toBeEnabled()
+        await page.keyboard.press("Escape")
         await expect(page.getByText("Aguardando aprovação", { exact: true })).toBeVisible()
         if (width === 1100) {
           await page.locator(".calendar-card").scrollIntoViewIfNeeded()
@@ -71,23 +72,24 @@ for (const theme of ["light", "dark"] as const) {
       if (await page.getByRole("button", { name: "Fechar painel do bot" }).isVisible())
         await page.getByRole("button", { name: "Fechar painel do bot" }).click()
       await showBotPanel(page)
+      await showBotDetails(page)
       await page.getByRole("button", { name: "Preview do projeto" }).click()
       await shot("preview")
       await page.getByRole("button", { name: "Subir tudo", exact: true }).click()
       await expect(page.getByText("Abrir no navegador do bot")).toBeVisible()
       await expect(page.locator(".preview-process-row > i.ready")).toHaveCount(2)
       const processNotice = page.getByRole("status").filter({ hasText: "Processo pronto" })
-      const approvalNotice = page.locator(".approval-notice")
+      const approvalNotice = page.locator(".sidebar-needs-you")
       await expect(processNotice).toBeVisible()
       await expect(approvalNotice).toBeVisible()
-      await expect(approvalNotice).toContainText("mark pede sua aprovação")
+      await expect(approvalNotice).toContainText("mark quer sua aprovação")
 
       await processNotice.getByRole("button", { name: "Dispensar aviso", exact: true }).click()
 
       await expect(processNotice).toHaveCount(0)
       await expect(approvalNotice).toBeVisible()
-      await expect(approvalNotice.getByRole("button", { name: "Revisar", exact: true })).toBeVisible()
-      await expect(approvalNotice.getByRole("button", { name: "Dispensar aviso", exact: true })).toBeVisible()
+      await expect(approvalNotice).toBeEnabled()
+      await expect(approvalNotice.getByRole("button")).toHaveCount(0)
       await shot("preview-live")
       await page.getByRole("tab", { name: "Logs", exact: true }).click()
       await page.locator(".preview-process-row").first().click()
@@ -128,6 +130,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
       if (view === "logs") {
         await showBotPanel(page)
+        await showBotDetails(page)
         await page.getByRole("button", { name: "Preview do projeto" }).click()
         await page.getByRole("tab", { name: "Logs", exact: true }).click()
         await page.locator(".preview-process-row").first().click()

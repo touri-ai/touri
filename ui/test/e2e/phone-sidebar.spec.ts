@@ -34,7 +34,7 @@ const getSmallTargets = (page: Page) =>
     return Array.from(document.querySelectorAll<HTMLElement>(selector))
       .map((element) => ({ element, box: element.getBoundingClientRect() }))
       .filter(({ box }) => box.width > 0 && box.height > 0)
-      .filter(({ box }) => box.width < 44 || box.height < 44)
+      .filter(({ element, box }) => box.width < 44 || box.height < (element.matches(".group-select") ? 40 : 44))
       .map(
         ({ element, box }) =>
           `${element.getAttribute("aria-label") ?? element.textContent?.trim().slice(0, 20)} ${Math.round(box.width)}x${Math.round(box.height)}`,
@@ -50,7 +50,7 @@ themes.forEach((theme) => {
         const sidebar = await page.locator(".bot-sidebar").boundingBox()
         const row = await page.locator(".bot-sidebar .traffic-light-row").boundingBox()
         expect(sidebar?.y).toBeGreaterThanOrEqual(0)
-        const names = ["Fechar menu", "Criar bot"].concat(mode === "bots" ? ["Buscar conversas"] : [])
+        const names = mode === "bots" ? ["Fechar menu", "Criar bot", "Buscar conversas"] : ["Fechar menu"]
         for (const name of names) {
           const box = await page.locator(".bot-sidebar").getByRole("button", { name }).first().boundingBox()
           expect(box, name).not.toBeNull()

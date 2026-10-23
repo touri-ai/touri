@@ -36,15 +36,25 @@ afterEach(() => {
 it.each([
   { status: local, canInvite: false },
   { status: server, canInvite: true },
-])("only offers people invitations with a server connection ($status.mode)", async ({ status, canInvite }) => {
+])("only offers channel invitations with a server connection ($status.mode)", async ({ status, canInvite }) => {
   native()
   const api = { ...createMockApi(), isMock: false }
+  await api.request("POST /groups", {
+    name: "Equipe QA",
+    color: "#dc2626",
+    avatarShape: "classic-none",
+    memberIds: ["bot-mark"],
+    coordinatorBotId: null,
+  })
   const invoke = vi.fn(async (command: string) => (command === "server_mode_status" ? status : {}))
 
   render(<App kernel={{ services: { api, invoke: invoke as TauriInvoke } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   fireEvent.click(screen.getByRole("tab", { name: /^Work,/ }))
 
+  fireEvent.click(screen.getByRole("button", { name: /^Equipe QA/ }))
+  fireEvent.click(await screen.findByRole("button", { name: /Membros do canal/ }))
+  await screen.findByRole("complementary", { name: "Painel do canal Equipe QA" })
   const invite = screen.queryByRole("button", { name: "Convidar pessoa", exact: true })
   if (!canInvite) {
     expect(invite).not.toBeInTheDocument()
@@ -185,7 +195,7 @@ it("applies the pending cold-start target after server mode loads and acknowledg
   })
   render(<App kernel={{ services: { api, invoke: invoke as unknown as TauriInvoke } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
-  expect(screen.getByText("Modo servidor")).toHaveAttribute("title", server.url)
+  expect(screen.getByRole("button", { name: "Você", exact: true })).toBeVisible()
   expect(screen.queryByText("Local · grátis")).not.toBeInTheDocument()
   await waitFor(() => expect(invoke).toHaveBeenCalledWith("deep_link_ack", { requestId: 3 }))
 })

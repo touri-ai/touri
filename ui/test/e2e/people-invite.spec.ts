@@ -2,6 +2,7 @@ import { join } from "node:path"
 import AxeBuilder from "@axe-core/playwright"
 import type { BrowserContext, TestInfo } from "@playwright/test"
 import { expect, test } from "@playwright/test"
+import { openGlobalPage } from "./home-navigation"
 import { createPeopleInviteServer } from "./people-invite-server"
 
 let server: Awaited<ReturnType<typeof createPeopleInviteServer>> | null = null
@@ -28,20 +29,20 @@ for (const theme of ["light", "dark"] as const) {
     await currentServer.install(page)
     await page.addInitScript((value) => localStorage.setItem("touri.appearance.v1", value), theme)
     await page.emulateMedia({ reducedMotion: "reduce" })
-    await page.route("**/api/v1/invites", (route) =>
-      route.fulfill({
+    await page.route("**/api/v1/invites", (route) => {
+      if (route.request().method() !== "POST") return route.continue()
+      return route.fulfill({
         json: {
           invite: { id: "synthetic-invite", name: "Ana", email: "ana@example.test", role: "member", channelIds: [] },
           emailConfigured: true,
           emailSent: true,
           link: "https://team.example.test/join#invite=synthetic",
         },
-      }),
-    )
+      })
+    })
 
     await page.goto(currentServer.serverUrl)
-    // Inviting people belongs to Work, next to the channels.
-    await page.getByRole("tab", { name: /^Work,/ }).click()
+    await openGlobalPage(page, "Pessoas")
     await page.getByRole("button", { name: "Convidar pessoa", exact: true }).first().click()
     const dialog = page.getByRole("dialog", { name: "Convidar pessoa", exact: true })
     await dialog.getByLabel("Nome", { exact: true }).fill("Ana")
@@ -91,6 +92,7 @@ test("an owner invites a person who joins in a second browser context", async ({
   if (await workTab.count()) await workTab.click()
   await page.getByRole("button", { name: "Vendas", exact: true }).click()
   await expect(page.getByRole("textbox", { name: /Mensagem (?:para |em #)Vendas/ })).toBeVisible()
+  await page.locator(".channel-members-button").click()
   await expect(page.getByRole("button", { name: "Convidar pessoa", exact: true }).first()).toBeVisible()
   const beforePath = getImagePath(testInfo, "people-invite-before.png")
   await page.screenshot({ path: beforePath })
