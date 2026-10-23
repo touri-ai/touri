@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react"
+import { render, waitFor } from "@testing-library/react"
 import { expect, test, vi } from "vitest"
 import { ChatPanel } from "../src/components/ChatPanel"
 import type * as GroupProjection from "../src/components/groupProjection"
@@ -11,7 +11,7 @@ vi.mock("../src/components/groupProjection", async (importOriginal) => {
   return importOriginal<typeof GroupProjection>()
 })
 
-test("renders channel progress without loading the optional member panel projection", () => {
+test("renders channel progress without loading the optional member panel projection", async () => {
   const fixture = getGroupProgressFixture()
 
   const view = render(
@@ -33,6 +33,6 @@ test("renders channel progress without loading the optional member panel project
     />,
   )
 
-  expect(view.container.querySelectorAll(".activity-mark")).toHaveLength(1)
+  await waitFor(() => expect(view.container.querySelectorAll(".activity-mark")).toHaveLength(1))
   expect(loadMemberProjection).not.toHaveBeenCalled()
 })
