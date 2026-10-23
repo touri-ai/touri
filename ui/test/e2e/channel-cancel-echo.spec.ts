@@ -14,7 +14,7 @@ for (const viewport of [
     await page.setViewportSize(viewport)
     await page.goto("/test/e2e/groups-harness.html")
     await expect(page.getByRole("textbox", { name: "Mensagem para mark", exact: true })).toBeVisible()
-    await page.evaluate(async () => {
+    const runs = await page.evaluate(async () => {
       const fixture = window as Window & {
         groupsQa?: {
           api: { request: ApiRequest; emit: (event: UiEvent) => void; getState: () => { messages: unknown[] } }
@@ -106,8 +106,7 @@ for (const viewport of [
         startedAt: at,
         finishedAt: at + 2,
       })
-      api.emit({ type: "run.updated", run: getRun("run-coordination", "coordination") })
-      api.emit({ type: "run.updated", run: getRun("run-execution", "execution", "run-coordination") })
+      return [getRun("run-coordination", "coordination"), getRun("run-execution", "execution", "run-coordination")]
     })
     if (viewport.width < 500) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
     await page.getByRole("tab", { name: /^Work/ }).click()
@@ -118,12 +117,19 @@ for (const viewport of [
     if (await page.getByRole("dialog", { name: "Barra lateral", exact: true }).isVisible())
       await page.keyboard.press("Escape")
     await expect(page.getByRole("textbox", { name: "Mensagem para Parar", exact: true })).toBeVisible()
+    // The synthetic runs are not in the mock store; hydrate the selected Work workspace through its event stream.
+    await page.evaluate((runs) => {
+      const fixture = window as Window & { groupsQa?: { api: { emit: (event: UiEvent) => void } } }
+      const api = fixture.groupsQa?.api
+      if (!api) throw new Error("Missing group fixture")
+
+      runs.forEach((run) => {
+        api.emit({ type: "run.updated", run })
+      })
+    }, runs)
 
     const replies = page.locator(".message-scroll [data-message-id]")
     await expect(page.locator('[data-message-id="stop-execution"]')).toContainText("Teste de parar iniciado")
-    // Captured before the echo assertions so the same spec records the duplicate on main.
-    if (process.env.TOURI_SCREENSHOT_DIR)
-      await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/channel-stop-${viewport.width}.png` })
     await expect(page.locator('[data-message-id="stop-execution"]')).toContainText("Cancelado por você")
     await expect(page.locator('[data-message-id="stop-coordination"]')).toHaveCount(0)
     await expect(replies.filter({ hasText: "Cancelado por você" })).toHaveCount(1)
@@ -133,5 +139,7 @@ for (const viewport of [
       .analyze()
 
     expect(violations.violations).toEqual([])
+    if (process.env.TOURI_SCREENSHOT_DIR)
+      await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/channel-stop-${viewport.width}.png` })
   })
 }
