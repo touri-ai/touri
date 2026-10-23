@@ -210,6 +210,9 @@ User repos stay wherever they are. touri writes into a repo only:
   returning to a visible tab immediately retries. Unmount removes listeners, timers and requests.
   Target: connected within 2 s after the server is available; the real restart browser regression
   requires less than 3 s and an unchanged draft, document, scroll position and history read count.
+- During server startup, API reads, writes, tickets and event upgrades return a retryable 503 until
+  modules have registered. Static pages and pairing remain available. Clients cannot flush queued
+  messages against partially initialized routes. Restart timing begins at authenticated health readiness.
 - Reconnect resumes authenticated events from the last applied sequence. Existing snapshots are
   repaired by replay, without reloading the page or refetching unchanged conversations. A replay
   gap outside the bounded event window explicitly requests a snapshot; incomplete/failed reads

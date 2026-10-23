@@ -15,6 +15,7 @@ import { startHeadlessStderr } from "./nativeStderr"
 import { remoteAccessWarning } from "./remoteAccessWarning"
 import { clearServeInfo, writeServeInfo } from "./serveInfo"
 import { closeServeFiles, registerServeShutdown } from "./serveShutdown"
+import { createStartupAvailability } from "./startupAvailability"
 import { exposeOnTailscale } from "./tailscale"
 import { cliVersion } from "./version"
 import { createWebGate, type MemberAuthorizer } from "./web/gate"
@@ -61,12 +62,19 @@ const startServer = async (options: ServeOptions, stopStderr: () => Promise<void
     requestEmailSignIn: createEmailSignInSender({ authStore: store, secrets }),
     authorizeMember: (input) => authorization.authorize?.(input) ?? null,
   })
+  const availability = createStartupAvailability(intercept)
   const runtime = createKernel({
     appData: options.dataDir,
-    web: { hostname: options.host, port: options.port, intercept, host: createHeadlessHost({ secrets }) },
+    web: {
+      hostname: options.host,
+      port: options.port,
+      intercept: availability.intercept,
+      host: createHeadlessHost({ secrets }),
+    },
   })
   initWorkMode({ kernel: runtime.kernel, authStore: store, secrets, authorization })
   await initModules(runtime)
+  availability.markReady()
   const port = runtime.handshake.port
   const exposed = options.tailscale ? await exposeOnTailscale({ localPort: port }) : null
   const url = exposed?.success ? exposed.url : null

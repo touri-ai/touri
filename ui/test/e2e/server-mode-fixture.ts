@@ -236,11 +236,18 @@ export const createServerModeFixture = async ({
     )
     child.stdout?.resume()
     child.stderr?.resume()
+    return waitForReady()
+  }
+
+  const waitForReady = async (): Promise<number> => {
     let started = false
     for (let attempt = 0; attempt < 300; attempt++) {
-      if (child.exitCode !== null || child.signalCode !== null)
+      if (!child || child.exitCode !== null || child.signalCode !== null)
         throw new Error("The isolated touri server exited during startup")
-      started = await fetch(`${serverUrl}/pair`, { signal: AbortSignal.timeout(500) })
+      started = await fetch(`${serverUrl}${remoteToken ? "/api/v1/health" : "/pair"}`, {
+        headers: remoteToken ? { Authorization: `Bearer ${remoteToken}`, "X-Touri-Client": "desktop-test" } : {},
+        signal: AbortSignal.timeout(500),
+      })
         .then((r) => r.ok)
         .catch(() => false)
       if (started) break
@@ -253,6 +260,7 @@ export const createServerModeFixture = async ({
   try {
     await start()
     await pair(code())
+    await waitForReady()
     await listen(fixture)
     relayUrl = `http://127.0.0.1:${portOf(fixture)}`
   } catch (error) {
