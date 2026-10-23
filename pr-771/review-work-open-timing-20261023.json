@@ -2767,11 +2767,34 @@
   "refs": {
     "before": "c0177053",
     "runtimeAfter": "ea6ced53",
-    "reviewedHead": "ea6ced53"
+    "reviewedHead": "607b1afb"
   },
   "notes": [
     "Synthetic data only: nine bots, three channels, 135 conversations and 1295 messages.",
     "Single observed samples with 60 ms added latency, measured from the Work tab becoming usable.",
     "The separate loading test holds activity unresolved until saved messages are visible."
-  ]
+  ],
+  "verificationAfterRebase": {
+    "head": "607b1afb",
+    "base": "ddc2c313",
+    "timing": {
+      "latencyMs": 60,
+      "cold": {
+        "sidebarMs": 176.5002999999997,
+        "messagesMs": 782.855101000001
+      },
+      "warm": {
+        "sidebarMs": 39.689393000000564,
+        "messagesMs": 450.3200369999977
+      }
+    },
+    "startup": {
+      "initialGzipBytes": 399534,
+      "limitBytes": 400000
+    },
+    "uiTests": 244,
+    "uiTestFiles": 16,
+    "browserCasesOnFinalHead": 5,
+    "otherVerifiedScrollingCases": 3
+  }
 }
