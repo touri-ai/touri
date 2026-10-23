@@ -54,11 +54,22 @@ export const prepareCompactedStore = async (filename: string, destination: strin
   }
 }
 
-if (import.meta.main) {
+const runCompaction = async (): Promise<void> => {
   const [filename, destination] = process.argv.slice(2)
-  if (!filename || !destination) throw new Error("Usage: bun scripts/compact-store.ts SOURCE DESTINATION")
+  if (!filename || !destination) {
+    process.stderr.write("STORE_COMPACTION_INVALID_ARGS\n")
+    process.exitCode = 2
+    return
+  }
 
-  await prepareCompactedStore(filename, destination)
-  const { size } = await stat(destination)
-  console.info(JSON.stringify({ compactedBytes: size, sourceReplaced: false, autoVacuum: "incremental" }))
+  try {
+    await prepareCompactedStore(filename, destination)
+    const { size } = await stat(destination)
+    console.info(JSON.stringify({ compactedBytes: size, sourceReplaced: false, autoVacuum: "incremental" }))
+  } catch {
+    process.stderr.write("STORE_COMPACTION_FAILED\n")
+    process.exitCode = 1
+  }
 }
+
+if (import.meta.main) await runCompaction()
