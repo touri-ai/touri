@@ -1,4 +1,5 @@
 import type { SQLQueryBindings } from "bun:sqlite"
+import { dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 
 type ReadQuery = { sql: string; bindings: SQLQueryBindings[] }
@@ -20,6 +21,7 @@ export const createStoreReader = (filename: string, onReady?: (pid: number) => v
       stdin: "pipe",
       stdout: "pipe",
       stderr: "ignore",
+      env: { ...process.env, TOURI_APP_DATA: dirname(filename) },
     })
     // Only this request owns its cancellation reason and process lifecycle.
     let abortReason: Error | undefined
