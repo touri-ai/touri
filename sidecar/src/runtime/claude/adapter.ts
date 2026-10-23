@@ -588,8 +588,16 @@ export const createClaudeAdapter = ({
     const stderr = await Promise.race([stderrPromise, cancellationDeadline])
     args.signal.removeEventListener("abort", abort)
     if (mcpError) return { success: false, errorCode: "cli_protocol", error: mcpError }
-    if (!completed && classifyProviderError(stderr) === "cli_auth")
-      return { success: false, errorCode: "cli_auth", error: kernel.redact(stderr.trim()) }
+    // Process exit can arrive before the final stderr chunk. Classify only after that drain too.
+    if (!output.success && output.errorCode === "cli_crash" && !stopped) {
+      const errorCode = classifyProviderError(stderr)
+      if (errorCode === "cli_auth" || (args.session && hasResumeDiagnostic(stderr)))
+        return {
+          success: false,
+          errorCode: errorCode === "unknown" ? "cli_protocol" : errorCode,
+          error: kernel.redact(stderr.trim()),
+        }
+    }
     if (!completed) spawned.kill("SIGTERM")
     return output
   }

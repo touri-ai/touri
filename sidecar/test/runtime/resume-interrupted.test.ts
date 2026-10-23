@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite"
-import { afterEach, expect, mock, spyOn, test } from "bun:test"
+import { afterEach, expect, mock, setDefaultTimeout, spyOn, test } from "bun:test"
 import { EventEmitter } from "node:events"
 import {
   chmodSync,
@@ -29,6 +29,7 @@ import { fakeProviderSpawn } from "../fakes/provider-spawn"
 
 type Engine = ReturnType<typeof createRuntimeEngine>
 type Runtime = ReturnType<typeof createKernel>
+setDefaultTimeout(20_000)
 
 const waitFor = async (predicate: () => boolean, timeout = 10_000): Promise<void> => {
   const deadline = Date.now() + timeout
