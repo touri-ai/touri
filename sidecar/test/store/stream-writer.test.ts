@@ -861,6 +861,51 @@ test("a cached projection stays available while its worker batch is in flight", 
   ])
 })
 
+test.each([true, false])("an in-flight batch preserves an explicit first-word flush: %s", async (immediate) => {
+  const committed = Promise.withResolvers<number>()
+  const delivered = Promise.withResolvers<number>()
+  const posts = Promise.withResolvers<ReturnType<typeof spyOn<Worker, "postMessage">>>()
+  const stream = await fixture(undefined, (url) => {
+    const worker = new Worker(url, { smol: true, ref: false })
+    const post = spyOn(worker, "postMessage")
+    posts.resolve(post)
+    cleanups.add(() => post.mockRestore())
+    worker.addEventListener("message", ({ data }) => {
+      if (data.type === "committed") committed.resolve(performance.now())
+    })
+    return worker
+  })
+  cleanups.add(stream.close)
+  cleanups.add(
+    stream.runtime.kernel.subscribe(({ event }) => {
+      if (event.type === "message.delta") delivered.resolve(performance.now())
+    }),
+  )
+  stream.store.appendParts?.({
+    threadId: "t",
+    messageId: "a",
+    parts: [{ partIndex: 1, part: { type: "reasoning", text: "Conferindo" } }],
+  })
+  stream.store.flushWrites?.()
+
+  stream.store.appendDelta({ threadId: "t", messageId: "a", partIndex: 0, delta: "Olá!" })
+  if (immediate) stream.store.flushWrites?.()
+  const committedAt = await committed.promise
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  const post = await posts.promise
+  const batches = post.mock.calls.filter(([message]) => message.type === "batch")
+  const deliveredAt = await delivered.promise
+
+  if (process.env.TOURI_FIRST_WORD_TIMINGS === "1")
+    console.info("First-word persistence", { immediate, afterPreviousCommitMs: Math.round(deliveredAt - committedAt) })
+
+  await stream.store.flushWritesAsync?.()
+
+  expect(batches).toHaveLength(immediate ? 2 : 1)
+  expect(stream.events.map(({ event }) => event.type)).toEqual(["message.parts", "message.delta"])
+  expect(stream.store.activePath({ threadId: "t", leafId: "a" })[0]?.text).toBe("Olá!")
+})
+
 test("drain waits for its watermark while another stream keeps accepting events", async () => {
   const url = URL.createObjectURL(
     new Blob(

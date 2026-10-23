@@ -107,6 +107,7 @@ export const createStreamWriter = ({
   const lastByMessage = new Map<string, PendingStreamEvent>()
   let timer: ReturnType<typeof setTimeout> | null = null
   let flushing = false
+  let flushRequested = false
   const failed = new WeakSet<PendingEvent>()
   let capacityReported = false
   let stopped = false
@@ -213,7 +214,12 @@ export const createStreamWriter = ({
   }
 
   const flush = (): void => {
-    if (stopped || flushing) return
+    if (stopped) return
+    if (flushing) {
+      // First words can arrive while another message is still being committed.
+      flushRequested ||= pending.length > 0
+      return
+    }
     if (database.inTransaction) {
       if (!timer) timer = setTimeout(flushLater, STREAM_WRITE_LIMITS.delayMs)
       return
@@ -300,8 +306,12 @@ export const createStreamWriter = ({
       .finally(() => {
         inFlightMessages.clear()
         flushing = false
+        const requested = flushRequested
+        flushRequested = false
         if (!pending.length) capacityReported = false
-        if (!stopped && pending.length && !timer) timer = setTimeout(flushLater, STREAM_WRITE_LIMITS.delayMs)
+        if (stopped || !pending.length) return
+        if (requested) return flushLater()
+        if (!timer) timer = setTimeout(flushLater, STREAM_WRITE_LIMITS.delayMs)
       })
   }
 
