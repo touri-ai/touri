@@ -274,14 +274,24 @@ test("a successful server index removes a cached conversation that no longer exi
   const { group, thread } = await getChannelFixture()
   saveWorkChannelCache({ groups: [group], threads: [thread], selectedThreadId: thread.id }, "owner")
   const api = createMockApi()
+  const cursor = getBarrier()
+  const client = {
+    ...api,
+    cursorReady: () => cursor.promise,
+    subscribeConnection: (connected: (value: boolean) => void) => {
+      connected(true)
+      return () => undefined
+    },
+  }
 
-  const hook = renderHook(() => useWorkspace(api))
+  const hook = renderHook(() => useWorkspace(client))
 
   await waitFor(() => expect(hook.result.current.data.loaded).toBe(true))
   await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe("thread-mark"))
   expect(hook.result.current.data.groups).toEqual([])
   expect(hook.result.current.data.threads.some((candidate) => candidate.id === thread.id)).toBe(false)
   expect(hook.result.current.data.selectedThreadId).not.toBe(thread.id)
+  await act(async () => cursor.resolve())
 })
 
 test("a failed channel index preserves cached channels and history until a successful retry", async () => {
