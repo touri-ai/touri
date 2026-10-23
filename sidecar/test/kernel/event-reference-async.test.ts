@@ -77,6 +77,27 @@ test("a committed publisher hands off its payload and cancels a redundant refere
   expect(client.getEvents()[0]?.event).toEqual(getDelta())
 })
 
+test("queued live snapshots retain their exact revisions across a committed publication", async () => {
+  const fixture = await getFixture()
+  const bus = createEventBus(fixture.database)
+  cleanups.add(() => bus.stop())
+  const client = getClient()
+  bus.add(client.socket)
+  const first = getSnapshot("first synthetic revision", 1)
+  const second = getSnapshot("second synthetic revision", 2)
+  fixture.database.transaction(() => bus.publish(getMarker("committed-prefix")))()
+  forbidReferenceReads(fixture.database)
+
+  fixture.saveReference("message.updated", 1)
+  bus.publish(first)
+  fixture.saveReference("message.updated", 2)
+  bus.publish(second)
+  await waitFor(() => client.getEvents().length === 3)
+
+  expect(client.getEvents().map(({ seq }) => seq)).toEqual([1, 2, 3])
+  expect(client.getEvents().map(({ event }) => event)).toEqual([getMarker("committed-prefix"), first, second])
+})
+
 test("a rolled-back publisher cannot supply the payload of a later committed reference", async () => {
   const fixture = await getFixture()
   const bus = createEventBus(fixture.database, undefined, {
@@ -382,6 +403,30 @@ test("a real 32-reference batch keeps health responsive with bounded synthetic p
   expect(JSON.stringify(queryPlans)).toContain("SEARCH transcript_entries USING INDEX")
 })
 
+test("an oversized live reference batch resyncs and releases subsequent control events", async () => {
+  const fixture = await getFixture()
+  const bus = createEventBus(fixture.database)
+  cleanups.add(() => bus.stop())
+  const delta = getDelta("x".repeat(REPLAY_LIMITS.bytes))
+  fixture.database
+    .query("INSERT INTO transcript_entries(thread_id, seq, generation, event_json, at) VALUES (?, 1, 1, ?, 1)")
+    .run("synthetic-thread", JSON.stringify(delta))
+  fixture.database.exec(
+    "UPDATE schema_meta SET value = (SELECT CAST(MAX(id) AS TEXT) FROM transcript_entries) WHERE key = 'transcript_event_checkpoint'",
+  )
+  Array.from({ length: 32 }, () => fixture.saveReference())
+  let delivered: Array<{ seq: number; type: UiEvent["type"] }> = []
+  bus.subscribe(({ seq, event }) => {
+    delivered = delivered.concat({ seq, type: event.type })
+  })
+
+  bus.publish(getMarker("after-oversized-batch"))
+  await waitFor(() => delivered.at(-1)?.type === "import.progress")
+
+  expect(delivered.map(({ seq }) => seq)).toEqual(Array.from({ length: 33 }, (_, index) => index + 1))
+  expect(delivered.slice(0, -1).every(({ type }) => type === "transcript.resync")).toBe(true)
+})
+
 const startProbeServer = () => {
   for (const port of Array.from({ length: 100 }, (_, index) => 18800 + index)) {
     try {
@@ -407,12 +452,12 @@ const getFixture = async () => {
     database.close()
     await rm(root, { recursive: true, force: true })
   })
-  const saveReference = (type: TranscriptRef["type"] = "message.delta") =>
+  const saveReference = (type: TranscriptRef["type"] = "message.delta", seq = 1) =>
     database
       .query("INSERT INTO ui_event_log(at, event_json) VALUES (?, ?)")
       .run(
         Date.now(),
-        JSON.stringify({ type, ref: true, threadId: "synthetic-thread", messageId: "synthetic-message", seq: 1 }),
+        JSON.stringify({ type, ref: true, threadId: "synthetic-thread", messageId: "synthetic-message", seq }),
       )
   const saveMarker = (id: string) =>
     database
@@ -444,6 +489,25 @@ const getDelta = (delta = "synthetic"): UiEvent => ({
   partIndex: 0,
   delta,
   updatedSeq: 1,
+})
+const getSnapshot = (text: string, updatedSeq: number): UiEvent => ({
+  type: "message.updated",
+  message: {
+    id: "synthetic-message",
+    threadId: "synthetic-thread",
+    parentId: null,
+    role: "assistant",
+    kind: "text",
+    status: "streaming",
+    runId: null,
+    text,
+    parts: [],
+    sender: null,
+    source: "local",
+    createdAt: 1,
+    updatedAt: updatedSeq,
+    updatedSeq,
+  },
 })
 const getMarker = (importId: string, phase = "done"): UiEvent => ({
   type: "import.progress",

@@ -185,13 +185,10 @@ export const createEventBus = (
   }
 
   const getPublicationKey = (event: UiEvent | MessageRef): string | undefined => {
-    if (isMessageRef(event))
-      return event.type === "message.created" || event.type === "message.updated"
-        ? JSON.stringify([event.threadId, event.messageId])
-        : JSON.stringify([event.threadId, event.messageId, event.seq])
+    if (isMessageRef(event)) return JSON.stringify([event.threadId, event.messageId, event.seq])
     if (event.type === "message.created" || event.type === "message.updated") {
       if (event.message.updatedSeq === undefined) return undefined
-      return JSON.stringify([event.message.threadId, event.message.id])
+      return JSON.stringify([event.message.threadId, event.message.id, event.message.updatedSeq])
     }
     if (event.type === "message.delta" || event.type === "message.parts") {
       if (event.updatedSeq === undefined) return undefined
@@ -377,7 +374,7 @@ export const createEventBus = (
     liveRead = read
     let ownsDelivery = false
     try {
-      const events = await getReferences?.(references, read.abort.signal)
+      const events = await getReferences?.(references, read.abort.signal, REPLAY_LIMITS.bytes)
       if (stopped || liveRead !== read) return
       ownsDelivery = true
       liveRead = undefined
@@ -388,7 +385,11 @@ export const createEventBus = (
         const value = stored[index]
         if (!value) break
         const event = isMessageRef(value) ? hydrated.get(value) : value
-        if (!event) throw new Error("EVENT_READ_FAILED")
+        if (!event) {
+          // A bounded reply ends at its resync marker; continue its durable suffix on another turn.
+          if (events?.at(-1)?.type === "transcript.resync") break
+          throw new Error("EVENT_READ_FAILED")
+        }
         delivered = row.seq
         publications = publications.filter((publication) => publication.through > delivered)
         deliver({ seq: row.seq, at: row.at, event })
