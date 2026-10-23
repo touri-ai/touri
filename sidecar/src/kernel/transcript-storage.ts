@@ -301,10 +301,20 @@ type RetentionOptions = {
 }
 type RetentionRow = { id: number; seq: number; bytes: number }
 type RetentionThread = { threadId: string; cutoff: number; rows: RetentionRow[] }
+type EventRetentionScan = {
+  events: number
+  floor: number
+  head: number
+  before: number
+  remaining: number
+  cutoff: number
+  complete: boolean
+}
 export type TranscriptRetentionPlan = {
   checkpoint: number
   threads: RetentionThread[]
   events: Array<{ seq: number; bytes: number }>
+  eventScan: EventRetentionScan
   nextCursor: number
   more: boolean
 }
@@ -389,13 +399,13 @@ export const getTranscriptRetentionPlan = (
     if (rows.length < candidates.length || remainingRows === 0 || remainingBytes <= 0) more = true
     return { threadId, cutoff, rows }
   })
-  const retained = database.query("SELECT seq FROM ui_event_log ORDER BY seq DESC LIMIT 1 OFFSET ?").get(events) as {
-    seq: number
-  } | null
+  const eventScan = getEventRetentionScan(database, events)
   const agedEvents = database
     .query(`SELECT seq FROM ui_event_log INDEXED BY ui_event_log_age WHERE at < ? ORDER BY at,seq LIMIT ?`)
     .all(now - maxAgeMs, limit) as Array<{ seq: number }>
-  const cutoff = agedEvents.reduce((maximum, row) => Math.max(maximum, row.seq), retained?.seq ?? 0)
+  const cutoff = eventScan.complete
+    ? agedEvents.reduce((maximum, row) => Math.max(maximum, row.seq), eventScan.cutoff)
+    : 0
   const candidates = database
     .query("SELECT seq,length(CAST(event_json AS BLOB)) AS bytes FROM ui_event_log WHERE seq<=? ORDER BY seq LIMIT ?")
     .all(cutoff, limit) as Array<{ seq: number; bytes: number }>
@@ -411,12 +421,15 @@ export const getTranscriptRetentionPlan = (
     return true
   })
 
+  const eventsMore = eventRows.length < candidates.length || candidates.length === limit
+
   return {
     checkpoint,
     threads,
     events: eventRows,
+    eventScan,
     nextCursor: thread?.cursor ?? 0,
-    more: more || eventRows.length < candidates.length || candidates.length === limit,
+    more: more || !eventScan.complete || eventsMore,
   }
 }
 
@@ -427,6 +440,10 @@ export const applyTranscriptRetentionPlan = (
   database
     .transaction(() => {
       if (isRetentionUpgradePending(database)) return { more: false, cursor: 0 }
+
+      // A bot purge can remove already-counted tail rows while discovery yields.
+      if (getEventRetentionFloor(database) !== plan.eventScan.floor)
+        return { more: true, cursor: plan.nextCursor ? plan.nextCursor - 1 : 0 }
 
       // A projection can become dirty while discovery yields; revalidate under the writer lock.
       const pending = plan.threads.find(({ threadId, cutoff }) =>
@@ -451,12 +468,86 @@ export const applyTranscriptRetentionPlan = (
         .map((thread) => deleteTranscriptRetentionPrefix(database, thread, checkpoint, started))
         .some(Boolean)
       const eventMore = deleteEventRetentionPrefix(database, plan.events)
+      saveEventRetentionScan(database, plan.eventScan)
       const more = plan.more || transcriptMore || eventMore
       database.exec("UPDATE transcript_maintenance SET delete_before_id=0,ui_delete_before_seq=0 WHERE id=1")
       const cursor = more && plan.nextCursor ? plan.nextCursor - 1 : plan.nextCursor
       return { more: more || plan.nextCursor > 0, cursor }
     })
     .immediate()
+
+const eventRetentionScanKey = "event_retention_scan"
+const eventRetentionScanLimit = 1024
+
+const getEventRetentionScan = (database: Database, events: number): EventRetentionScan => {
+  const floor = getEventRetentionFloor(database)
+  const saved = getSavedEventRetentionScan(database)
+  const head = database.query("SELECT seq FROM sqlite_sequence WHERE name='ui_event_log'").get() as {
+    seq: number
+  } | null
+  const initial: EventRetentionScan = {
+    events,
+    floor,
+    head: head?.seq ?? 0,
+    before: head?.seq ?? 0,
+    remaining: events,
+    cutoff: 0,
+    complete: false,
+  }
+  const hasNewTail = saved?.complete && saved.cutoff <= floor && saved.head !== initial.head
+  const scan = saved?.events === events && saved.floor === floor && !hasNewTail ? saved : initial
+  if (scan.complete) return scan
+
+  // Seek from the last committed page; OFFSET repeatedly walks cold payload pages.
+  // Count actual rows, since purges leave gaps and sequence subtraction would lose history.
+  const limit = Math.min(eventRetentionScanLimit, scan.remaining + 1)
+  const rows = database
+    .query("SELECT seq FROM ui_event_log WHERE seq<=? ORDER BY seq DESC LIMIT ?")
+    .all(scan.before, limit) as Array<{ seq: number }>
+  const cutoff = rows[scan.remaining]?.seq ?? 0
+  const last = rows.at(-1)
+
+  return {
+    events,
+    floor,
+    head: scan.head,
+    before: Math.max(0, (last?.seq ?? 1) - 1),
+    remaining: Math.max(0, scan.remaining - rows.length),
+    cutoff,
+    complete: cutoff > 0 || rows.length < limit,
+  }
+}
+
+const getEventRetentionFloor = (database: Database): number =>
+  Number(
+    (database.query("SELECT value FROM schema_meta WHERE key='ui_event_floor_seq'").get() as { value: string }).value,
+  )
+
+const getSavedEventRetentionScan = (database: Database): EventRetentionScan | undefined => {
+  const row = database.query("SELECT value FROM schema_meta WHERE key=?").get(eventRetentionScanKey) as {
+    value: string
+  } | null
+  if (!row || row.value.length > 4096) return undefined
+
+  try {
+    const scan = JSON.parse(row.value) as EventRetentionScan
+    const counts = [scan.events, scan.floor, scan.head, scan.before, scan.remaining, scan.cutoff]
+    if (!counts.every((count) => Number.isSafeInteger(count) && count >= 0)) return undefined
+    if (scan.remaining > scan.events || typeof scan.complete !== "boolean") return undefined
+
+    return scan
+  } catch {
+    return undefined
+  }
+}
+
+const saveEventRetentionScan = (database: Database, scan: EventRetentionScan): void => {
+  const next = { ...scan, floor: getEventRetentionFloor(database) }
+  database
+    .query(`INSERT INTO schema_meta(key,value) VALUES(?,?)
+    ON CONFLICT(key) DO UPDATE SET value=excluded.value`)
+    .run(eventRetentionScanKey, JSON.stringify(next))
+}
 
 type RetentionProjectionScan = {
   threadId: string
