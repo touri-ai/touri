@@ -9,6 +9,8 @@ import {
   getTranscriptRetentionPlan,
   purgeReplayRows,
 } from "../../src/kernel/transcript-storage"
+import { threadDeletionWorkerSource } from "../../src/store/thread-deletion-worker"
+import { deleteBotWorkerSource } from "../../src/vm/delete-bot-worker"
 
 const cleanups = new Set<() => void | Promise<void>>()
 afterEach(async () => {
@@ -108,12 +110,67 @@ test("interrupted discovery commits no cursor and a policy change restarts the s
   expect(changed?.events).toHaveLength(32)
 })
 
+test.each(["bot", "thread"] as const)(
+  "%s deletion invalidates counted rows below an unchanged replay floor",
+  async (kind) => {
+    const database = await getFixture()
+    database.exec(`INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at)
+    VALUES('bot','Synthetic','codex','.',1,1);
+    INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES('thread','bot','Synthetic',1,1);
+    UPDATE schema_meta SET value='7500' WHERE key='ui_event_floor_seq'`)
+    if (kind === "bot")
+      database.exec(`INSERT INTO bot_deletions(bot_id,delete_volumes,phase,cursor,high_water,created_at,updated_at)
+      VALUES('bot',0,'replay',7000,7500,1,1)`)
+    if (kind === "thread")
+      database.exec(`INSERT INTO thread_deletions(thread_id,bot_id,phase,event_cursor,event_high_water,created_at,updated_at)
+      VALUES('thread','bot','events',7000,7500,1,1)`)
+    applyTranscriptRetentionPlan(database, getPlan(database))
+    const stale = getPlan(database)
+    const source = kind === "bot" ? deleteBotWorkerSource : threadDeletionWorkerSource
+    const request = getWorkerRequest(source)
+
+    expect(await request({ type: "start", filename: database.filename })).toMatchObject({ type: "ready" })
+    expect(await request({ type: "batch", id: "synthetic", botId: "bot", threadId: "thread" })).toMatchObject({
+      type: "batch",
+    })
+    const afterPurge = getSequences(database)
+    applyTranscriptRetentionPlan(database, stale)
+
+    expect(afterPurge.length).toBeLessThan(2500)
+    expect(getFloor(database)).toBe("7500")
+    expect(getSequences(database)).toEqual(afterPurge)
+    expect(getPlan(database).eventScan.remaining).toBe(476)
+
+    await drainRetention(database)
+
+    expect(getSequences(database)).toEqual(afterPurge.slice(-1500))
+    expect(database.query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" })
+  },
+)
+
+const getWorkerRequest = (source: string) => {
+  const url = URL.createObjectURL(new Blob([source], { type: "application/javascript" }))
+  cleanups.add(() => URL.revokeObjectURL(url))
+  const worker = new Worker(url, { smol: true })
+  cleanups.add(() => worker.terminate())
+
+  return (request: object): Promise<unknown> => {
+    const response = Promise.withResolvers<unknown>()
+    const timer = setTimeout(() => response.reject(new Error("Synthetic worker did not respond")), 5000)
+    worker.onmessage = ({ data }) => response.resolve(data)
+    worker.onerror = () => response.reject(new Error("Synthetic worker failed"))
+    worker.postMessage(request)
+
+    return response.promise.finally(() => clearTimeout(timer))
+  }
+}
+
 const getFixture = async (): Promise<Database> => {
   const root = await mkdtemp(join(tmpdir(), "touri-event-scan-"))
   cleanups.add(() => rm(root, { recursive: true, force: true }))
   const database = openDatabase({ filename: join(root, "touri.db") })
   cleanups.add(() => database.close())
-  const body = JSON.stringify({ type: "fixture.event", text: "x".repeat(4096) })
+  const body = JSON.stringify({ type: "fixture.event", botId: "bot", threadId: "thread", text: "x".repeat(4096) })
   database
     .query(`WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<2500)
     INSERT INTO ui_event_log(seq,at,event_json) SELECT x*3,1,? FROM n`)
@@ -122,18 +179,20 @@ const getFixture = async (): Promise<Database> => {
   return database
 }
 
-const getPlan = (database: Database) => {
-  const plan = getTranscriptRetentionPlan({ database, events: 1500, maxAgeMs: Number.MAX_SAFE_INTEGER }, 0, 32)
+const getPlan = (database: Database, cursor = 0) => {
+  const plan = getTranscriptRetentionPlan({ database, events: 1500, maxAgeMs: Number.MAX_SAFE_INTEGER }, cursor, 32)
   if (!plan) throw new Error("Missing synthetic event plan")
 
   return plan
 }
 
 const drainRetention = async (database: Database): Promise<void> => {
+  let cursor = 0
   for (const _batch of Array.from({ length: 100 })) {
-    const result = applyTranscriptRetentionPlan(database, getPlan(database))
+    const result = applyTranscriptRetentionPlan(database, getPlan(database, cursor))
     if (!result.more) return
 
+    cursor = result.cursor
     await Bun.sleep(0)
   }
   throw new Error("Synthetic retention did not finish")
