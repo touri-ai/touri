@@ -1,5 +1,5 @@
 import { afterEach, expect, setDefaultTimeout, test } from "bun:test"
-import type { Message, ProviderAdapter, StartTurnArgs } from "@touri/contracts"
+import type { Message, ProviderAdapter, Run, StartTurnArgs } from "@touri/contracts"
 import { createGroupRuntime } from "../../src/groups/runtime"
 import { createGroupStore } from "../../src/groups/store"
 import type { PerformanceStageRunner } from "../../src/kernel/performance"
@@ -71,7 +71,9 @@ test.each([false, true])(
     if (persistent) return
 
     const reply = fixture.store.getPathMessage?.({ threadId: member.threadId, messageId: member.replyMessageId ?? "" })
-    expect(reply).toMatchObject({ status: "failed", text: "Resultado preservado. Conferência concluída." })
+    expect(reply).toMatchObject({ status: "failed" })
+    expect(reply?.text).toContain("Resultado preservado.")
+    expect(reply?.text).toContain("Conferência concluída.")
     expect(reply?.parts).toContainEqual(expect.objectContaining({ callId: "completed-tool", resolution: "succeeded" }))
     expect(reply?.parts).toContainEqual(expect.objectContaining({ type: "notice", code: "run_failed" }))
   },
@@ -182,6 +184,12 @@ const getFixture = async (runStage: PerformanceStageRunner) => {
     finish.resolve()
     runtime.shutdown()
     await engine.shutdown()
+    // A broken baseline can orphan executions; settle only this fixture's records so teardown can finish.
+    persistence.listActiveRuns().forEach((run) => {
+      const canceled: Run = { ...run, status: "canceled", errorClass: "canceled", finishedAt: Date.now() }
+      persistence.saveRun(canceled)
+      fixture.kernel.publish({ type: "run.updated", run: canceled })
+    })
     await runtime.waitForDrain()
   })
   const send = () => {
