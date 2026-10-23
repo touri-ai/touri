@@ -1,6 +1,7 @@
 import type { ApprovalPart, Message, MessagePart, Run } from "@touri/contracts"
 import { type Locale, type TranslationKey, t } from "../i18n"
 import { messageMarkdown } from "../messageMarkdown"
+import { isSessionRecoveryDiagnostic } from "./sessionRecoveryPresentation"
 import { approvalMatchesTool, type ToolPart, toolIdentity, toolLeaf } from "./toolPresentation"
 
 export const isActivityTool = (part: MessagePart): part is ToolPart =>
@@ -82,7 +83,7 @@ export type AssistantSegment =
   | { type: "attachments"; key: string; parts: Extract<MessagePart, { type: "image" | "file" }>[] }
 
 /** A display projection only: prose and approval positions never change in persisted history. */
-export const assistantSegments = (message: Message): AssistantSegment[] => {
+export const assistantSegments = (message: Message, run?: Run): AssistantSegment[] => {
   const segments: AssistantSegment[] = []
   let activity = false
   let textParts: MessagePart[] = []
@@ -113,12 +114,16 @@ export const assistantSegments = (message: Message): AssistantSegment[] => {
       browserCalls = new Set([...browserCalls, part.callId])
       stepCount += 1
     }
-    if (part.type === "notice" && part.code === "run_resumed")
+    const resolvedDiagnostic = run?.status === "succeeded" && isSessionRecoveryDiagnostic(part)
+    if (part.type === "notice" && part.code === "run_resumed" && !resolvedDiagnostic)
       segments.push({ type: "resume", key: `resume-${index}`, text: part.text })
     else if (part.type === "approval") segments.push({ type: "approval", key: part.approvalId, part })
     else if (part.type === "image" || part.type === "file")
       segments.push({ type: "attachments", key: `attachment-${index}`, parts: [part] })
-    else if (!activity && (isActivityTool(part) || (part.type === "reasoning" && part.text.trim()))) {
+    else if (
+      !activity &&
+      (resolvedDiagnostic || isActivityTool(part) || (part.type === "reasoning" && part.text.trim()))
+    ) {
       segments.push({ type: "activity", key: "activity" })
       activity = true
     }
