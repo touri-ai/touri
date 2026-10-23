@@ -140,7 +140,7 @@ export const createStreamPersistence = ({
     running = false
   }
   const failStartup = (busy = false): void => {
-    reportError()
+    if (!busy) reportError()
     stopWorker()
     if (busy) {
       busyStartupAttempts += 1

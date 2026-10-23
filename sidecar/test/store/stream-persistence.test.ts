@@ -373,7 +373,10 @@ test("busy startup retries past the permanent startup failure limit", async () =
 
   expect(busyErrors).toBe(5)
   expect(starts).toBe(6)
+  expect(f.errors).toHaveLength(0)
   expect(committed.events).toHaveLength(1)
+  expect(f.published).toEqual(committed.events)
+  expect(f.database.query("SELECT text FROM messages WHERE thread_id='thread'").get()).toEqual({ text: "durable" })
 })
 
 test("busy worker startup releases readiness after a bound and keeps retrying", async () => {
@@ -409,6 +412,7 @@ test("busy worker startup releases readiness after a bound and keeps retrying", 
   blocker?.exec("ROLLBACK")
   const committed = await f.persistence.submit([getDelta()])
 
+  expect(f.errors).toHaveLength(0)
   expect(committed.events).toHaveLength(1)
 })
 
