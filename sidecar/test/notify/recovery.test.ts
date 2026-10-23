@@ -6,7 +6,7 @@ import { join } from "node:path"
 import type { MessagePart, RecoveryTask, Run } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
 import { createPerformanceStageTracker } from "../../src/kernel/performance"
-import { init as initNotify } from "../../src/notify"
+import { init as initNotify, NOTIFICATION_HISTORY_RECONCILE_SQL } from "../../src/notify"
 import { createNotifier } from "../../src/notify/notifier"
 import { createRecoverySync } from "../../src/notify/recovery"
 import { createSseHub } from "../../src/notify/sse"
@@ -176,6 +176,46 @@ test("restart history reconcile uses bounded reads and a persisted stage marker"
   expect(h.database.query("SELECT value_json FROM settings WHERE key = 'notification.history-reconcile'").get()).toBe(
     null,
   )
+})
+
+test("historical reconciliation looks up runs by conversation instead of unrelated successful history", async () => {
+  const h = await getFixture({
+    beforeNotify: (database) => {
+      database.exec(`WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<200)
+        INSERT INTO threads(id,bot_id,title,created_at,updated_at)
+        SELECT 'other-'||x,'bot-a','Notas fictícias',1,1 FROM n;
+        WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<20000)
+        INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at,finished_at)
+        SELECT 'other-run-'||x,'other-'||(1+x%200),'bot-a','codex','user','succeeded',1,2 FROM n;
+        WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<50)
+        INSERT INTO notifications(kind,level,bot_id,thread_id,title,body,created_at)
+        SELECT 'turn-failed','error','bot-a','thread-a','Brisa fictícia parou','Revise a tarefa fictícia',3 FROM n;`)
+    },
+  })
+
+  const plan = h.database.query(`EXPLAIN QUERY PLAN ${NOTIFICATION_HISTORY_RECONCILE_SQL}`).all(0, 50) as Array<{
+    detail: string
+  }>
+  const runLookups = plan.map((step) => step.detail).filter((detail) => detail.startsWith("SEARCH r "))
+  const samples = Array.from({ length: 10 }, () => {
+    const start = performance.now()
+    h.database.query(NOTIFICATION_HISTORY_RECONCILE_SQL).all(0, 50)
+    return performance.now() - start
+  })
+
+  console.info(
+    JSON.stringify({
+      probe: "notification-history",
+      unrelatedRuns: 20000,
+      conversations: 200,
+      notifications: 50,
+      runLookups,
+      samples,
+    }),
+  )
+  expect(runLookups).toHaveLength(2)
+  expect(runLookups.every((detail) => detail.includes("runs_thread (thread_id=?)"))).toBe(true)
+  expect(plan.some((step) => step.detail.startsWith("SCAN r"))).toBe(false)
 })
 
 test.each(["root", "member", "direct", "routine"])(
