@@ -30,7 +30,8 @@ const fixture = async () => {
   return {
     kernel,
     send,
-    close: () => {
+    close: async () => {
+      await kernel.services.use("notify.recovery")?.dispose()
       events.stop()
       db.close()
       rmSync(root, { recursive: true, force: true })
@@ -131,7 +132,7 @@ test.each(["retry", "user", "routine"] as const)(
         unsubscribe()
       }
     } finally {
-      h.close()
+      await h.close()
     }
   },
 )
@@ -170,7 +171,7 @@ test("a successful completion resolves older attention even when its starting ev
     h.kernel.publish({ type: "run.updated", run })
     expect(store.logSince({ since: 0 }).filter((entry) => entry.type === "resolved")).toHaveLength(1)
   } finally {
-    h.close()
+    await h.close()
   }
 })
 
@@ -203,7 +204,7 @@ test("startup resolves persisted failures after a later success, including a gro
     expect(store.get(other.id)?.resolvedAt).toBeNull()
     expect(store.recent(10)).toHaveLength(3)
   } finally {
-    h.close()
+    await h.close()
   }
 })
 
@@ -255,6 +256,6 @@ test("repeated routine deferrals collapse into one and a later run of that routi
     expect(h.send(deferral).id).not.toBe(first.id)
     expect(store.pending()).toHaveLength(2)
   } finally {
-    h.close()
+    await h.close()
   }
 })
