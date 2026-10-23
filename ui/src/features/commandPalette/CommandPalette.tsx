@@ -3,8 +3,10 @@ import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 
 import { createPortal } from "react-dom"
 import type { UiApi } from "../../api/client"
 import { MotionPresence } from "../../components/Motion"
-import { t, threadTitle } from "../../i18n"
+import { getDocumentLocale } from "../../documentLanguage"
+import { type Locale, t } from "../../i18n"
 import { markdownSummary } from "../../markdownSummary"
+import { getRoutineThreadTitle } from "../../routineThreadTitle"
 import {
   buildMessageIndex,
   buildPaletteIndex,
@@ -29,6 +31,7 @@ type CommandPaletteProps = {
   messages: ReadonlyArray<Message>
   settings: ReadonlyArray<SettingsIndexEntry>
   hasBot: boolean
+  locale?: Locale
   onClose: () => void
   onRun: (command: PaletteCommand) => void
 }
@@ -46,9 +49,11 @@ export const CommandPalette = ({
   messages,
   settings,
   hasBot,
+  locale: requestedLocale,
   onClose,
   onRun,
 }: CommandPaletteProps) => {
+  const locale = requestedLocale ?? getDocumentLocale(document.documentElement)
   const [query, setQuery] = useState("")
   const [active, setActive] = useState(0)
   const [recentIds, setRecentIds] = useState<Array<string>>(readRecentPaletteIds)
@@ -65,8 +70,28 @@ export const CommandPalette = ({
   const listRef = useRef<HTMLDivElement>(null)
   const returnFocus = useRef<HTMLElement | null>(null)
   const baseId = useId()
-  const index = useMemo(() => buildPaletteIndex({ bots, threads, settings, hasBot }), [bots, threads, settings, hasBot])
-  const messageIndex = useMemo(() => (open ? buildMessageIndex(messages, threads) : []), [open, messages, threads])
+  const index = useMemo(
+    () => buildPaletteIndex({ bots, threads, settings, hasBot, locale }),
+    [bots, threads, settings, hasBot, locale],
+  )
+  const threadTitles = useMemo(
+    () =>
+      new Map(
+        index.items
+          .filter((item) => item.group === "threads")
+          .map((item) => [item.id.slice("thread:".length), item.label]),
+      ),
+    [index],
+  )
+  const messageIndex = useMemo(
+    () => (open ? buildMessageIndex(messages, threads, locale, threadTitles) : []),
+    [open, messages, threads, locale, threadTitles],
+  )
+  const remoteTitles = useMemo(() => {
+    const candidates = [...search.threads, ...search.hits.flatMap((hit) => (hit.thread ? [hit.thread] : []))]
+
+    return new Map(candidates.map((thread) => [thread.id, getRoutineThreadTitle(thread, locale)]))
+  }, [search, locale])
   const groups = useMemo(() => {
     const groups = searchPalette({ index, query, messages: messageIndex, recentIds })
     if (!open || search.query !== query || !query.trim()) return groups
@@ -76,7 +101,7 @@ export const CommandPalette = ({
       .map((thread) => ({
         id: `thread:${thread.id}`,
         group: "threads",
-        label: thread.title,
+        label: remoteTitles.get(thread.id) ?? thread.title,
         detail: t("Archived"),
         command: { kind: "thread", threadId: thread.id, archived: true },
       }))
@@ -96,7 +121,7 @@ export const CommandPalette = ({
           id,
           group: "messages",
           label: markdownSummary(hit.snippet),
-          detail: markdownSummary(threadTitle(thread.title, thread.createdAt)),
+          detail: remoteTitles.get(thread.id) ?? index.byId.get(`thread:${thread.id}`)?.label ?? thread.title,
           command: { kind: "thread", threadId: thread.id, archived: thread.archivedAt !== null },
         })
     }
@@ -106,7 +131,7 @@ export const CommandPalette = ({
           { id: "messages" as const, label: "Mensagens", items: [...items.values()].slice(0, 8) },
         ]
       : titleGroups
-  }, [index, query, messageIndex, recentIds, search, threads, open])
+  }, [index, query, messageIndex, recentIds, search, threads, open, remoteTitles])
   const flat = useMemo(() => groups.flatMap((group) => group.items), [groups])
   const activeIndex = flat.length === 0 ? -1 : Math.min(active, flat.length - 1)
   const optionId = (position: number): string => `${baseId}-option-${position}`

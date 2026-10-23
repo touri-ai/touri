@@ -3344,6 +3344,15 @@ export const createRuntimeEngine = ({
     const bot = store.getBot({ botId: routine.botId })
     if (!bot) return { success: false, errorCode: "NOT_FOUND", error: "Bot not found" }
     const group = routine.groupId ? createGroupStore(kernel).get(routine.groupId) : null
+    const publishRoutineThread = (thread: Thread): void => {
+      kernel.publish({
+        type: "thread.updated",
+        thread: {
+          ...thread,
+          routineTitle: { sourceTitle: thread.title, name: routine.name, scheduledFor, timezone: routine.timezone },
+        },
+      })
+    }
     let threadId: Id | null = null
     if (routine.continuity === "main-thread") threadId = bot.mainThreadId
     else if (routine.continuity === "results-thread") threadId = routine.resultsThreadId
@@ -3358,6 +3367,7 @@ export const createRuntimeEngine = ({
       })
       if (!created.success)
         return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Unable to create routine thread" }
+      publishRoutineThread(created.thread)
       threadId = created.thread.id
       if (routine.continuity === "results-thread" || (bot.automaticConversationMode ?? "main") === "main")
         persistence.updateRoutine({ ...routine, resultsThreadId: threadId, updatedAt: Date.now() })
@@ -3374,6 +3384,7 @@ export const createRuntimeEngine = ({
         : store.createThread(threadArgs)
       if (!created.success)
         return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Unable to create routine thread" }
+      publishRoutineThread(created.thread)
       threadId = created.thread.id
       if (routine.continuity === "results-thread")
         persistence.updateRoutine({ ...routine, resultsThreadId: threadId, updatedAt: Date.now() })

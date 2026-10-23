@@ -511,6 +511,7 @@ env: CLAUDE_CODE_ENABLE_TODO_TOOLS=1, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
   - `new-thread`: a new thread (`kind 'routine'`, parent = main thread, title `"<routine name> · <local date time>"`).
   - `results-thread`: append to `results_thread_id` (created on first run).
   - `main-thread`: append to the main thread.
+- **Search presentation.** Search results, recent conversations and message-result details display verified automatic routine titles in the app language (Portuguese or English), using the scheduled instant and the routine timezone. The palette reads the document language unless explicitly overridden. Both the saved title and the localized date remain searchable in loaded conversations. Authorized conversation/search responses expose only the verified title's name, scheduled instant, timezone and source title; never the routine prompt or settings. Ordinary conversation lists without automatic date-title candidates do not start a metadata reader. New routine conversations publish that presentation immediately. Ordinary live updates preserve it while the source title matches; manual renames and legacy records without trustworthy metadata keep their saved names. No stored title or conversation identity is rewritten.
 - **Run.** The prompt goes in as a user message with `sender {name:"routine", id: routineId}` and `trigger:'routine'`.
   - On finish, `routine_runs.summary` gets the first 500 chars of the reply.
   - A notification goes out per `bots.notifications`.
