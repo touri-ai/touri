@@ -1028,6 +1028,9 @@ export const ptBR = {
     "Não foi possível liberar a pasta com segurança. Seu bot continua disponível.",
   "A conexão direta com esta fonte ainda não está disponível. Exporte um CSV para começar.":
     "A conexão direta com esta fonte ainda não está disponível. Exporte um CSV para começar.",
+  "Não foi possível ler o anexo. Anexe o arquivo de novo.": "Não foi possível ler o anexo. Anexe o arquivo de novo.",
+  "Este anexo não pode ser lido. Use texto UTF-8 (TXT, Markdown, JSON, CSV, TSV ou LOG), até 256 KiB no total e no máximo 10 documentos.":
+    "Este anexo não pode ser lido. Use texto UTF-8 (TXT, Markdown, JSON, CSV, TSV ou LOG), até 256 KiB no total e no máximo 10 documentos.",
   "Anexar CSV": "Anexar CSV",
   "Dados disponíveis para {bot}.": "Dados disponíveis para {bot}.",
   "Continuar tarefa": "Continuar tarefa",
@@ -4246,6 +4249,9 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "Folder access could not be granted safely. Your bot is still available.",
   "A conexão direta com esta fonte ainda não está disponível. Exporte um CSV para começar.":
     "A direct connection to this source is not available yet. Export a CSV to get started.",
+  "Não foi possível ler o anexo. Anexe o arquivo de novo.": "Could not read the attachment. Attach the file again.",
+  "Este anexo não pode ser lido. Use texto UTF-8 (TXT, Markdown, JSON, CSV, TSV ou LOG), até 256 KiB no total e no máximo 10 documentos.":
+    "This attachment cannot be read. Use UTF-8 text (TXT, Markdown, JSON, CSV, TSV or LOG), up to 256 KiB in total and at most 10 documents.",
   "Anexar CSV": "Attach CSV",
   "Dados disponíveis para {bot}.": "Data available for {bot}.",
   "Continuar tarefa": "Continue task",

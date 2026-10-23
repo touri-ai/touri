@@ -1,5 +1,6 @@
 import { apiModelErrors, errorRegistry, type MessagePart, type Provider, publicError } from "@touri/contracts"
 import { hasRecordedActions, isModelAtCapacity, safeRunFailure, sanitizeDiagnostic } from "@touri/contracts/run-failure"
+import { getAttachmentError } from "./attachmentError"
 import { providerName } from "./components/ProviderMark"
 import { ApiError, isServiceUnavailable } from "./errors"
 import { type Locale, t } from "./i18n"
@@ -38,6 +39,8 @@ export const errorRecovery = (error: unknown, context: RecoveryContext = {}): Er
     actions,
     classified,
   })
+  const attachmentError = getAttachmentError(raw, locale)
+  if (attachmentError) return view(attachmentError, [])
   if (raw === "O bot terminou sem responder. Tente novamente.")
     return view(tr("O bot terminou sem responder. Tente novamente."), [action("retry", "Tentar novamente")])
   if (context.errorClass === "group_context_missing")

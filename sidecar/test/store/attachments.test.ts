@@ -6,7 +6,7 @@ import { join } from "node:path"
 import type { Attachment, Message } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
 import { MAX_ATTACHMENT_BYTES } from "../../src/kernel/files"
-import { csvInput } from "../../src/runtime/csv-input"
+import { getDocumentInput } from "../../src/runtime/document-input"
 import { init } from "../../src/store"
 
 const cleanup: Array<() => void> = []
@@ -66,8 +66,16 @@ test("a device CSV upload becomes real provider data without any folder grant", 
   expect(parts).toContainEqual(
     expect.objectContaining({ type: "file", name: "cadastros.csv", attachmentId: attachment.id }),
   )
-  const input = csvInput({ kernel: f.runtime.kernel, parts })
-  expect(input[0]?.text).toContain(JSON.stringify({ name: "cadastros.csv", content }))
+  const input = await getDocumentInput({
+    kernel: f.runtime.kernel,
+    botId: "b",
+    thread: { id: "t", botId: "b" },
+    messages,
+    signal: new AbortController().signal,
+  })
+  expect(input.success).toBe(true)
+  if (!input.success) throw new Error(input.error)
+  expect(input.input[0]?.text).toContain(JSON.stringify({ name: "cadastros.csv", content }))
   expect(f.store.getBot({ botId: "b" })).toMatchObject({ folders: [], anyFolderAccess: false })
 })
 
