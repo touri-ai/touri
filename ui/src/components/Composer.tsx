@@ -672,8 +672,9 @@ export const Composer = ({
                   disabled: sending || Boolean(activeRun) || Boolean(threadCreation),
                 },
                 ...memberRuns.map((run) => ({
+                  id: run.id,
                   label: t(
-                    "Parar {name}",
+                    "Stop {name}",
                     { name: mentionBots.find((member) => member.id === run.botId)?.name ?? "touri" },
                     locale,
                   ),

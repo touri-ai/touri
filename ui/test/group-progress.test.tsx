@@ -61,6 +61,7 @@ describe("channel progress", () => {
     const second = { ...props.execution, id: "second", botId: secondBot.id }
     const { groupTurnId: _turnId, ...standalone } = props.execution
     const independent = { ...standalone, id: "independent" }
+    const finished = { ...props.execution, status: "succeeded" as const, finishedAt: Date.now() }
     const view = render(
       <ChatPanel
         {...props}
@@ -72,10 +73,17 @@ describe("channel progress", () => {
     expect(getProgressBlocks(view.container)).toHaveLength(3)
     expect(getStopButtons()).toHaveLength(1)
     fireEvent.click(screen.getByRole("button", { name: "Ações do time" }))
+
+    view.rerender(
+      <ChatPanel {...props} runs={[props.coordination, finished, second, independent]} messages={[props.request]} />,
+    )
+
+    expect(screen.getAllByRole("menuitem", { name: `Parar ${props.bot.name}`, exact: true })).toHaveLength(1)
+    expect(screen.getByRole("menuitem", { name: `Parar ${secondBot.name}`, exact: true })).toHaveFocus()
     fireEvent.click(screen.getByRole("menuitem", { name: `Parar ${secondBot.name}`, exact: true }))
 
     await waitFor(() => expect(props.onCancel).toHaveBeenCalledWith(second.id))
-    expect(t("Parar {name}", { name: "Revisor" }, "en")).toBe("Stop Revisor")
+    expect(t("Stop {name}", { name: "Revisor" }, "en")).toBe("Stop Revisor")
   })
 
   it("keeps streamed text and terminal history while the global stop targets coordination regardless of row order", async () => {
