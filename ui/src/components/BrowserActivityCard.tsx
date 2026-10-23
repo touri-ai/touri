@@ -368,11 +368,12 @@ export const BrowserActivityCard = ({
   // biome-ignore lint/correctness/useExhaustiveDependencies: an explicit retry starts a new first-frame deadline
   useEffect(() => {
     setWaitedTooLong(false)
-    if (finished || held || preview || !expanded || !previewEnabled || channel?.previewHidden) return
+    const isPreviewPaused = !previewEnabled || channel?.previewHidden || hidden || !visible
+    if (finished || held || preview || !expanded || isPreviewPaused) return
     const timer = window.setTimeout(() => setWaitedTooLong(true), WAITING_TIMEOUT_MS)
 
     return () => window.clearTimeout(timer)
-  }, [expanded, finished, held, preview, previewAttempt, previewEnabled, channel?.previewHidden])
+  }, [expanded, finished, held, preview, previewAttempt, previewEnabled, channel?.previewHidden, hidden, visible])
 
   // Preserve a user's scroll position when they inspect earlier browser actions.
   // biome-ignore lint/correctness/useExhaustiveDependencies: row count changes trigger this check

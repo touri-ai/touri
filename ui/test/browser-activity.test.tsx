@@ -49,6 +49,7 @@ afterEach(() => {
   clearBrowserHold("bot-mark", "browser-tab")
   setInlinePreviewPreference(true)
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
   vi.clearAllMocks()
 })
 
@@ -1001,4 +1002,27 @@ test("a stalled preview stops reconnecting and offers an explicit retry", async 
   expect(startInlineFrameSource).toHaveBeenCalledTimes(attempts + 1)
   vi.useRealTimers()
   vi.mocked(startInlineFrameSource).mockReset()
+})
+
+test("a background tab starts its preview deadline only when the reader returns", async () => {
+  const visibility = vi.spyOn(document, "hidden", "get").mockReturnValue(true)
+  vi.mocked(startInlineFrameSource).mockReturnValue(() => {})
+  const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
+  vi.useFakeTimers()
+  renderCard(parts, false)
+
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(16_000)
+  })
+
+  expect(screen.queryByRole("button", { name: "Tentar carregar prévia novamente" })).toBeNull()
+  expect(startInlineFrameSource).not.toHaveBeenCalled()
+
+  act(() => {
+    visibility.mockReturnValue(false)
+    document.dispatchEvent(new Event("visibilitychange"))
+  })
+
+  expect(startInlineFrameSource).toHaveBeenCalled()
+  expect(screen.queryByText(/O navegador não enviou a prévia no prazo/)).toBeNull()
 })

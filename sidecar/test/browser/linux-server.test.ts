@@ -20,11 +20,24 @@ const getFixture = async (idleMs = 300_000) => {
   const calls: Array<{ method: string; params: JsonObject }> = []
   const listeners = new Set<(event: CdpEvent) => void>()
   // The fake models the external CDP server's mutable state, isolated to each fixture.
-  const state = { target: 0, slowAx: false, loading: false, dns: false, hangEvaluation: false, crashes: 0 }
+  const state = {
+    target: 0,
+    slowAx: false,
+    loading: false,
+    dns: false,
+    hangEvaluation: false,
+    crashes: 0,
+    lostSession: false,
+  }
   const blocked = Promise.withResolvers<void>()
   const client: CdpClient = {
-    call: async <T>(method: string, params: JsonObject = {}) => {
+    call: async <T>(method: string, params: JsonObject = {}, sessionId?: string) => {
       calls.push({ method, params })
+      if (method === "Page.navigate" && sessionId) {
+        if (state.lostSession) throw new Error("Session with given id not found")
+        for (const listener of listeners)
+          listener({ method: "Page.frameNavigated", params: { frame: { id: "main", url: params.url } }, sessionId })
+      }
       if (state.hangEvaluation && method === "Runtime.evaluate") {
         blocked.resolve()
         return new Promise<T>(() => {})
@@ -37,7 +50,10 @@ const getFixture = async (idleMs = 300_000) => {
       if (state.slowAx && method === "Accessibility.getFullAXTree") return new Promise<T>(() => {})
       if (method === "Target.createBrowserContext") return { browserContextId: "isolated" } as T
       if (method === "Target.createTarget") return { targetId: `target-${++state.target}` } as T
-      if (method === "Target.attachToTarget") return { sessionId: `session-${params.targetId}` } as T
+      if (method === "Target.attachToTarget") {
+        state.lostSession = false
+        return { sessionId: `session-${params.targetId}` } as T
+      }
       if (method === "Runtime.evaluate")
         return {
           result: {
@@ -276,4 +292,25 @@ test("navigation of an existing tab also retries once and preserves a DNS failur
   expect(result).toMatchObject({ success: false, errorCode: "NAVIGATION_FAILED" })
   expect(JSON.stringify(result)).toContain("ERR_NAME_NOT_RESOLVED")
   expect(f.calls.filter((call) => call.method === "Page.navigate")).toHaveLength(2)
+})
+
+test("a lost navigation session is reattached before its command is retried", async () => {
+  const f = await getFixture()
+  f.launch.resolve()
+  await f.engine.open({ url: "about:blank", ctx: f.ctx, timeoutMs: 2500 })
+  const tabId = f.engine.tabsForBot(f.bot.id)[0]?.tabId ?? ""
+  f.state.lostSession = true
+
+  const result = await f.engine.navigate({
+    tabId,
+    botId: f.bot.id,
+    url: "https://example.test/",
+    action: "goto",
+    timeoutMs: 2500,
+    signal: f.ctx.signal,
+  })
+
+  expect(result).toMatchObject({ success: true })
+  expect(f.calls.filter((call) => call.method === "Page.navigate")).toHaveLength(2)
+  expect(f.calls.filter((call) => call.method === "Target.attachToTarget")).toHaveLength(2)
 })

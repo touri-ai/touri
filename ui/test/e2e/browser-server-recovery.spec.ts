@@ -9,6 +9,7 @@ for (const width of [1440, 390]) {
     await page.goto("/test/e2e/browser-activity-harness.html?previewStall=true")
     await page.getByRole("button", { name: "Iniciar busca de viagem" }).click()
     await expect(page.getByRole("article", { name: "Navegador do mark" })).toBeVisible()
+    await expect.poll(() => page.evaluate(getPreviewRequestCount)).toBeGreaterThan(0)
 
     await page.clock.fastForward(16_000)
 
@@ -24,4 +25,10 @@ for (const width of [1440, 390]) {
     await expect(retry).toHaveCount(0)
     await expect(page.getByText("Aguardando a página do navegador…")).toBeVisible()
   })
+}
+
+const getPreviewRequestCount = () => {
+  const fixture = window as Window & { browserActivity?: { snapshot: () => { previewRequests: number } } }
+
+  return fixture.browserActivity?.snapshot().previewRequests ?? 0
 }

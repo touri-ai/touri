@@ -662,7 +662,8 @@ redacted in partial results. Cancellation stops new CDP work and interrupts load
 If a live preview has not arrived within 15 seconds, the viewer stops automatic reconnection and
 shows a clear failure with **Retry preview**. Retrying starts a fresh first-frame deadline; the
 task's stop control remains available. A preview hidden for privacy or disabled in preferences does
-not start this deadline or offer a retry. Failure status is announced to assistive technology.
+not start this deadline or offer a retry. Background tabs and offscreen cards pause the deadline
+until the reader returns. Failure status is announced to assistive technology.
 All recovery copy is available in Portuguese and English.
 
 `Bot.browser` selects the launcher per bot: `touri` (**Chrome do touri**, default), `local`
