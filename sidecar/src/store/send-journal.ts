@@ -104,7 +104,16 @@ export const createSendJournal = ({
 
   const reply = (entry: Entry): RouteResponse => {
     const message = getMessage({ threadId: entry.thread_id, messageId: entry.message_id })
-    const rawRun = entry.run_id ? database.query("SELECT * FROM runs WHERE id = ?").get(entry.run_id) : null
+    const rawRun = entry.run_id
+      ? database
+          .query(
+            `SELECT r.*,
+              CASE WHEN EXISTS(SELECT 1 FROM group_turns coordination WHERE coordination.run_id = r.id)
+                THEN 'coordination' ELSE 'execution' END AS run_kind
+              FROM runs r WHERE r.id = ? AND r.thread_id = ?`,
+          )
+          .get(entry.run_id, entry.thread_id)
+      : null
     const run = toRun(rawRun)
     if (run) return { status: 200, json: { message, run } }
     if (entry.status === "acked") return { status: 200, json: { message, run: null } }
