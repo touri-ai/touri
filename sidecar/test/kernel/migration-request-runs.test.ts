@@ -8,7 +8,9 @@ const roots = new Set<string>()
 const databases = new Set<ReturnType<typeof openDatabase>>()
 
 afterEach(async () => {
-  databases.forEach((database) => database.close())
+  databases.forEach((database) => {
+    database.close()
+  })
   databases.clear()
   for (const root of roots) await rm(root, { recursive: true, force: true })
   roots.clear()
@@ -18,12 +20,12 @@ test("schema 48 gains the ordered request index and preserves existing history i
   const root = await mkdtemp(join(tmpdir(), "touri-request-migration-"))
   roots.add(root)
   const filename = join(root, "touri.db")
-  const original = getDatabase(filename)
-  original.exec("DROP INDEX runs_request; UPDATE schema_meta SET value = '48' WHERE key = 'schema_version'")
+  const original = openTestDatabase(filename)
+  original.exec("DROP INDEX IF EXISTS runs_request; UPDATE schema_meta SET value = '48' WHERE key = 'schema_version'")
   original.close()
   databases.delete(original)
 
-  const upgraded = getDatabase(filename)
+  const upgraded = openTestDatabase(filename)
   const plan = upgraded
     .query(
       "EXPLAIN QUERY PLAN SELECT * FROM runs WHERE thread_id = ? AND request_message_id = ? ORDER BY queued_at DESC, rowid DESC LIMIT 1",
@@ -41,7 +43,7 @@ test("schema 48 gains the ordered request index and preserves existing history i
 
   upgraded.close()
   databases.delete(upgraded)
-  const reopened = getDatabase(filename)
+  const reopened = openTestDatabase(filename)
 
   expect(reopened.query("SELECT name FROM sqlite_master WHERE name = 'runs_request'").get()).toEqual({
     name: "runs_request",
@@ -49,7 +51,7 @@ test("schema 48 gains the ordered request index and preserves existing history i
   expect(reopened.query("PRAGMA foreign_key_check").all()).toEqual([])
 })
 
-const getDatabase = (filename: string) => {
+const openTestDatabase = (filename: string) => {
   const database = openDatabase({ filename })
   databases.add(database)
 

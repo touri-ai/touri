@@ -321,8 +321,9 @@ test("normal terminal transitions consume their recovery marker atomically", asy
   })
   fixture.restore.add(() => engine.shutdown())
 
-  const queued = engine.enqueue({ threadId: "thread", requestMessageId: "request-a", trigger: "user" })
+  const queued = engine.enqueue({ threadId: "thread", requestMessageId: "request-a", trigger: "retry" })
   if (!queued.success) throw new Error(queued.error)
+  expect(queued.run.id).not.toBe("run-a")
   await getReady(() => engine.listRuns("thread").find((run) => run.id === queued.run.id)?.status === "succeeded")
 
   expect(database.query("SELECT run_id FROM tool_recovery_pending").all()).toEqual([])
