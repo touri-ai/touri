@@ -397,7 +397,7 @@ it("keeps a failed member's recovery actions when another member finishes the sh
   expect(screen.getByRole("alert")).toBeVisible()
 })
 
-it("a matching task notification cannot turn history recovery into another bot run", async () => {
+it.each([false, true])("read recovery never retries a task (visible failed reply: %s)", async (hasReply) => {
   const api = createMockApi()
   const { thread } = await api.request("POST /groups", {
     name: "Demonstração",
@@ -431,6 +431,10 @@ it("a matching task notification cannot turn history recovery into another bot r
   fireEvent.click(await screen.findByRole("button", { name: /Notificações/ }))
   await screen.findByTestId("notification-row")
   fireEvent.click(screen.getByRole("button", { name: /Notificações/ }))
+  act(() => {
+    api.emit({ type: "run.updated", run })
+    if (hasReply) api.emit({ type: "message.created", message: { ...failed(diagnostic), threadId: thread.id } })
+  })
   const retry = await screen.findByRole("button", { name: "Tentar novamente", exact: true })
   failing = false
   fireEvent.click(retry)

@@ -587,6 +587,7 @@ channel waits for its saved conversations instead of creating another conversati
 A failed channel-list read preserves the last known channels, offers Retry and does not prevent direct conversations from loading. Empty channel and conversation invitations appear
 only after the corresponding first read succeeds; pending reads show an accessible skeleton.
 A failed history read offers Retry, which reloads saved state without replaying a message or restarting the service.
+A matching task notification or failed reply cannot hide this recovery or turn it into a task retry.
 The channel header starts loading while history is pending; the message area keeps its skeleton until history succeeds.
 The composer becomes available together with its header, including while deferred UI modules load.
 The conversation history accepts keyboard focus so saved messages can be scrolled without a pointer.

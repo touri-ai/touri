@@ -719,6 +719,7 @@ const AppContent = ({ kernel }: AppProps) => {
     occurredAt: noticeRun?.finishedAt ?? noticeRecord?.createdAt,
   }
   const failureShownInChat =
+    !noticeContext.historyRead &&
     !!noticeRun?.replyMessageId &&
     noticeRun.threadId === selectedThread?.id &&
     selectedMessages.some((message) => message.id === noticeRun.replyMessageId && message.status === "failed")
@@ -907,7 +908,7 @@ const AppContent = ({ kernel }: AppProps) => {
               context={noticeContext}
               onAction={async (action) => {
                 if (action === "retry") {
-                  if (noticeRecord) {
+                  if (noticeRecord && !noticeContext.historyRead) {
                     await notificationActions.recover(noticeRecord, action)
                     return
                   }
