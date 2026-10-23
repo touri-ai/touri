@@ -1,7 +1,17 @@
-import { expect, test } from "bun:test"
+import { afterEach, expect, test } from "bun:test"
 import type { Kernel, NotifyInput } from "@touri/contracts"
 import { approvalSummary, isApprovalNoticeTitle } from "@touri/contracts/approval-summary"
+import { createNotificationStore } from "../../src/notify/store"
 import { createRuntimeNotices } from "../../src/runtime/notices"
+import { testKernel } from "../kernel/test-kernel"
+
+const cleanups = new Set<() => void>()
+afterEach(() => {
+  cleanups.forEach((cleanup) => {
+    cleanup()
+  })
+  cleanups.clear()
+})
 
 test("approval notices contain a human summary instead of tool arguments", () => {
   const emitted: NotifyInput[] = []
@@ -166,16 +176,22 @@ test("bridge permission prompts retain their scope in notification summaries", (
 })
 
 test("failure notices carry execution identity for recovery reconciliation", () => {
-  const emitted: NotifyInput[] = []
-  const kernel = { services: { use: () => (input: NotifyInput) => emitted.push(input) } } as unknown as Kernel
+  const fixture = testKernel()
+  cleanups.add(fixture.close)
+  fixture.db.exec(`INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at)
+    VALUES ('execution-bot','Synthetic','codex','/tmp',1,1);
+    INSERT INTO threads(id,bot_id,title,created_at,updated_at)
+    VALUES ('execution-thread','execution-bot','Synthetic',1,1);`)
+  const notifications = createNotificationStore({ db: fixture.db })
+  fixture.kernel.services.provide("notify.emit", (input) => notifications.insert(input).notification)
 
-  createRuntimeNotices({ kernel }).failure({
-    botId: "bot-a",
-    threadId: "thread-a",
+  createRuntimeNotices({ kernel: fixture.kernel }).failure({
+    botId: "execution-bot",
+    threadId: "execution-thread",
     runId: "execution-a",
     routine: false,
     reason: "Synthetic failure",
   })
 
-  expect(emitted[0]?.requestId).toBe("recovery:run:execution-a")
+  expect(notifications.byRequestId("recovery:run:execution-a")?.kind).toBe("turn-failed")
 })

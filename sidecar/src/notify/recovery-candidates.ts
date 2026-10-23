@@ -240,8 +240,7 @@ const getGroupCandidate = (database: Database, key: string, members: Candidate[]
   if (!first || !key.startsWith("run:")) return undefined
   const row = database
     .query(`SELECT r.id, r.bot_id, r.thread_id FROM group_turns g
-    JOIN runs r ON r.id=g.run_id JOIN threads t ON t.id=r.thread_id JOIN bots b ON b.id=r.bot_id
-    WHERE g.run_id=? AND t.archived_at IS NULL AND b.archived_at IS NULL`)
+    JOIN runs r ON r.id=g.run_id WHERE g.run_id=?`)
     .get(key.slice(4)) as { id: string; bot_id: string; thread_id: string } | null
   if (!row) return undefined
 

@@ -177,9 +177,14 @@ const expireOrphanTasks = (
       WHERE n.resolved_at IS NULL`)
     .all() as Array<{ id: string; notification_id: number; turn_id: string | null }>
 
+  // This pass owns its deduplication set; archived members still share one guarded notification.
+  const retainedNotifications = new Set<number>()
   return rows
     .filter((row) => !foundIds.has(row.id))
     .flatMap((row) => {
+      if (retainedNotifications.has(row.notification_id)) return []
+      retainedNotifications.add(row.notification_id)
+
       const notification = store.get(row.notification_id)
       const resolved = notifier.finish({ id: row.notification_id, resolution: "expired" })
       if (resolved || !notification) return []
@@ -192,24 +197,23 @@ const expireOrphanTasks = (
           routineId: null,
           cause: "app_restart" as const,
           occurredAt: notification.createdAt,
-          effects: row.turn_id ? getJournalEffects(work.rebuild({ turnId: row.turn_id })) : [],
+          effects: getJournalEffects(getRecoveryJournal(database, work, row.notification_id)),
         },
       ]
     })
 }
 
-export const getRecoveryAcknowledgementKeys = (database: Database, notificationId: number): string[] => {
+export const getRecoveryAcknowledgementKeys = (database: Database, notificationId: number): string[] =>
+  getRecoveryJournal(database, createWorkState({ database }), notificationId)
+    .filter((effect) => effect.state === "uncertain" && !effect.acknowledged)
+    .map((effect) => effect.key)
+
+const getRecoveryJournal = (database: Database, work: ReturnType<typeof createWorkState>, notificationId: number) => {
   const rows = database
     .query("SELECT turn_id FROM recovery_tasks WHERE notification_id = ? AND turn_id IS NOT NULL")
     .all(notificationId) as Array<{ turn_id: string }>
-  const work = createWorkState({ database })
 
-  return rows.flatMap((row) =>
-    work
-      .rebuild({ turnId: row.turn_id })
-      .filter((effect) => effect.state === "uncertain" && !effect.acknowledged)
-      .map((effect) => effect.key),
-  )
+  return rows.flatMap((row) => work.rebuild({ turnId: row.turn_id }))
 }
 
 const getJournalEffects = (

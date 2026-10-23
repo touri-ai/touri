@@ -679,3 +679,30 @@ test("unchanged logical recovery snapshots do not rewrite member ownership", asy
 
   expect(h.database.query("SELECT total_changes() AS count").get()).toEqual(before)
 })
+
+test.each(["channel", "all"])("archiving %s preserves one logical task with every uncertain effect", async (scope) => {
+  const h = await getFixture()
+  saveGroupRecovery(h.database)
+  saveUncertainEffect(h.work, "root")
+  h.work.beginEffect({
+    turnId: "member",
+    threadId: "thread-b",
+    key: "member-key",
+    description: "Member preview",
+    effectId: "member-preview",
+  })
+  h.work.recover({ observe: () => ({ kind: "unobservable", reason: "Unknown" }) })
+  await h.getTasks()
+
+  h.database.query("UPDATE threads SET archived_at=300 WHERE id = 'thread-a' OR ? = 'all'").run(scope)
+  const tasks = await h.getTasks()
+
+  expect(tasks.filter((task) => task.notification.resolvedAt === null)).toHaveLength(1)
+  expect(tasks[0]?.effects.map((effect) => effect.acknowledgeKey)).toEqual(
+    expect.arrayContaining(["preview-key", "member-key"]),
+  )
+  const partial = await h.request("/recovery/run%3Aroot/dismiss", { acknowledgeKeys: ["preview-key"] })
+  expect(partial.status).toBe(409)
+  const complete = await h.request("/recovery/run%3Aroot/dismiss", { acknowledgeKeys: ["preview-key", "member-key"] })
+  expect(complete.status).toBe(200)
+})

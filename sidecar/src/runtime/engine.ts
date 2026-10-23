@@ -3057,6 +3057,7 @@ export const createRuntimeEngine = ({
     if (failure.errorClass === "canceled") return
 
     notices.failure({
+      runId: run.id,
       botId: run.botId,
       threadId: run.threadId,
       routine: run.routineRunId !== null,
