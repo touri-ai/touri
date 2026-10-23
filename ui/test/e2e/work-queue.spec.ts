@@ -6,6 +6,32 @@ for (const viewport of [
   { width: 1440, height: 900 },
   { width: 390, height: 844 },
 ]) {
+  test(`queued channel request stays visible at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport)
+    await page.goto("/test/e2e/work-harness.html?channel-queue")
+    await expect(page.getByRole("textbox", { name: "Mensagem para Planejamento" })).toBeVisible()
+    if (viewport.width === 390) await page.getByRole("button", { name: "Abrir menu" }).click()
+    await page.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
+    await page.getByRole("button", { name: "Trabalho", exact: true }).click()
+    const waiting = page.locator('[data-run-id="channel-waiting"]')
+
+    await expect(waiting).toContainText("Na fila · aguardando o bot concluir o pedido anterior")
+    await expect(page.getByRole("region", { name: "Trabalhando", exact: true }).getByRole("article")).toHaveCount(1)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    if (process.env.TOURI_SCREENSHOT_DIR)
+      await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/channel-waiting-${viewport.width}.png` })
+
+    await page.evaluate(() => {
+      const fixture = window as Window & { workQa?: { finishFirst: () => void } }
+      fixture.workQa?.finishFirst()
+    })
+
+    await expect(waiting).toHaveCount(0)
+    await expect(page.locator('[data-run-id="channel-execution"]')).toBeVisible()
+    await expect(page.getByRole("region", { name: "Trabalhando", exact: true }).getByRole("article")).toHaveCount(1)
+    await expect(page.getByRole("region", { name: "Na fila", exact: true }).getByRole("article")).toHaveCount(0)
+  })
+
   test(`work queue and performance at ${viewport.width}px`, async ({ page }) => {
     test.setTimeout(45_000)
     await page.setViewportSize(viewport)

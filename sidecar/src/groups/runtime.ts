@@ -38,7 +38,12 @@ import { recoverGroupReplies } from "./startup-recovery"
 import { createGroupStore, routeGroupMessage } from "./store"
 
 type Engine = Pick<ReturnType<typeof createRuntimeEngine>, "enqueue" | "cancel"> &
-  Partial<Pick<ReturnType<typeof createRuntimeEngine>, "cancelBotTurns" | "cancelRuns" | "ready" | "getRunSnapshot">>
+  Partial<
+    Pick<
+      ReturnType<typeof createRuntimeEngine>,
+      "cancelBotTurns" | "cancelRuns" | "ready" | "getRunSnapshot" | "publishQueue"
+    >
+  >
 type Turn = {
   run: Run
   group: BotGroup
@@ -126,12 +131,16 @@ export const createGroupRuntime = (
     !!groups.get(turn.group.id) &&
     store.getThread({ threadId: turn.run.threadId })?.groupId === turn.group.id &&
     !!persistence.getRun(turn.run.id)
+  const publishRun = (run: Run): void => {
+    kernel.publish({ type: "run.updated", run: engine.getRunSnapshot?.(run) ?? run })
+    engine.publishQueue?.()
+  }
   const save = (turn: Turn, patch: Partial<Run>) => {
     if (!isCurrentTurn(turn)) return
 
     Object.assign(turn.run, patch)
     persistence.saveRun(turn.run)
-    kernel.publish({ type: "run.updated", run: { ...turn.run } })
+    publishRun(turn.run)
   }
   // Aggregate runs never enter the provider queue. Only turns that started are interrupted on restart.
   const interrupted = db
@@ -147,7 +156,7 @@ export const createGroupRuntime = (
     const interruptedRun: Run = { ...run, status: "interrupted", errorClass: "app_restart", finishedAt: Date.now() }
     persistence.saveRun(interruptedRun)
     // The runtime engine closes a routine run when its group turn ends, including here.
-    kernel.publish({ type: "run.updated", run: interruptedRun })
+    publishRun(interruptedRun)
   })
   const startupRecovery =
     interrupted.length === 0
@@ -972,7 +981,7 @@ export const createGroupRuntime = (
     const turn = getTurn(run, group, recipients, action)
     turns.set(run.id, turn)
     queues.set(group.id, [...(queues.get(group.id) ?? []), turn])
-    kernel.publish({ type: "run.updated", run })
+    publishRun(run)
     queueMicrotask(() => void drain(group.id))
     return { success: true, run }
   }
@@ -1059,7 +1068,7 @@ export const createGroupRuntime = (
     turns.set(continuationRun.id, turn)
     queues.set(group.id, [...(queues.get(group.id) ?? []), turn])
     browserTakeoverContinuations.add(runId)
-    kernel.publish({ type: "run.updated", run: continuationRun })
+    publishRun(continuationRun)
     queueMicrotask(() => void drain(group.id))
 
     return true
@@ -1424,7 +1433,7 @@ export const createGroupRuntime = (
         finishedAt: Date.now(),
       }
       persistence.saveRun(failed)
-      kernel.publish({ type: "run.updated", run: failed })
+      publishRun(failed)
       return
     }
 
@@ -1477,7 +1486,7 @@ export const createGroupRuntime = (
             })
         }
       }).immediate()
-      kernel.publish({ type: "run.updated", run: resumedRun })
+      publishRun(resumedRun)
     }
     const turn = getTurn(
       resumedRun,
