@@ -841,3 +841,90 @@ test.each(["channel", "all"])("archiving %s preserves one logical task with ever
   const complete = await h.request("/recovery/run%3Aroot/dismiss", { acknowledgeKeys: ["preview-key", "member-key"] })
   expect(complete.status).toBe(200)
 })
+
+test("recovery counts linked channel projections once while preserving distinct calls and journal acknowledgements", async () => {
+  const h = await getFixture()
+  saveGroupRecovery(h.database)
+  const command: MessagePart = {
+    type: "command",
+    callId: "wait",
+    command: "sleep 90",
+    cwd: "/tmp",
+    outputTail: "",
+    exitCode: null,
+  }
+  h.database
+    .query("UPDATE messages SET thread_id='thread-b', parts_json=? WHERE id='reply-child'")
+    .run(JSON.stringify([command]))
+  h.database
+    .query(`INSERT INTO messages(id,thread_id,role,kind,status,run_id,parts_json,created_at,updated_at)
+    VALUES ('mirror','thread-a','assistant','text','failed','child',?,100,200)`)
+    .run(JSON.stringify([command]))
+  h.database.query("INSERT INTO group_message_links VALUES ('reply-child','thread-b','mirror')").run()
+  h.database
+    .query("UPDATE messages SET parts_json=? WHERE id='reply-member'")
+    .run(JSON.stringify([{ ...command, callId: "other-wait" }]))
+  saveUncertainEffect(h.work, "child")
+
+  const tasks = await h.getTasks()
+  const effects = tasks[0]?.effects ?? []
+
+  expect(tasks).toHaveLength(1)
+  expect(effects.filter((effect) => effect.description === "sleep 90")).toHaveLength(2)
+  expect(effects.filter((effect) => effect.acknowledgeKey === "preview-key")).toHaveLength(1)
+  expect((await h.request("/recovery/run%3Aroot/dismiss", {})).status).toBe(409)
+  expect((await h.request("/recovery/run%3Aroot/dismiss", { acknowledgeKeys: ["preview-key"] })).status).toBe(200)
+  expect(h.database.query("SELECT id FROM messages WHERE id IN ('reply-child','mirror')").all()).toHaveLength(2)
+})
+
+test.each([false, true])(
+  "recovery preserves unlinked calls and a mirror whose source is missing: %s",
+  async (missingSource) => {
+    const h = await getFixture()
+    const command: MessagePart = {
+      type: "command",
+      callId: "wait",
+      command: "sleep 90",
+      cwd: "/tmp",
+      outputTail: "",
+      exitCode: null,
+    }
+    saveRun(h.database, "interrupted", "interrupted", [command])
+    h.database
+      .query(`INSERT INTO messages(id,thread_id,role,kind,status,run_id,parts_json,created_at,updated_at)
+    VALUES ('second','thread-b','assistant','text','failed','interrupted',?,100,200)`)
+      .run(JSON.stringify([command]))
+    if (missingSource) {
+      h.database.query("DELETE FROM messages WHERE id='reply-interrupted'").run()
+      h.database.query("INSERT INTO group_message_links VALUES ('reply-interrupted','thread-a','second')").run()
+    }
+
+    const tasks = await h.getTasks()
+
+    expect(tasks[0]?.effects).toHaveLength(missingSource ? 1 : 2)
+  },
+)
+
+test("recovery preserves linked commands with the same call identifier in different executions", async () => {
+  const h = await getFixture()
+  saveGroupRecovery(h.database)
+  const command: MessagePart = {
+    type: "command",
+    callId: "wait",
+    command: "sleep 90",
+    cwd: "/tmp",
+    outputTail: "",
+    exitCode: null,
+  }
+  h.database
+    .query("UPDATE messages SET thread_id='thread-b', parts_json=? WHERE id='reply-child'")
+    .run(JSON.stringify([command]))
+  h.database.query("UPDATE messages SET parts_json=? WHERE id='reply-member'").run(JSON.stringify([command]))
+  h.database.query("INSERT INTO group_message_links VALUES ('reply-child','thread-b','reply-member')").run()
+
+  const tasks = await h.getTasks()
+
+  expect(tasks).toHaveLength(1)
+  expect(tasks[0]?.effects.filter((effect) => effect.description === "sleep 90")).toHaveLength(2)
+  expect(h.database.query("SELECT id FROM messages WHERE id IN ('reply-child','reply-member')").all()).toHaveLength(2)
+})
