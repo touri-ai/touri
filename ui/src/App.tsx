@@ -709,7 +709,9 @@ const AppContent = ({ kernel }: AppProps) => {
         .sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0))[0]
     : undefined
   const noticeContext = {
-    historyRead: !!data.historyNotice && notice === data.historyNotice,
+    historyRead:
+      (!!data.historyNotice && notice === data.historyNotice) ||
+      (!!data.channelNotice && notice === data.channelNotice),
     provider: noticeRun?.provider,
     errorClass: noticeRun?.errorClass,
     parts: data.activityMessages.find((message) => message.id === noticeRun?.replyMessageId)?.parts,

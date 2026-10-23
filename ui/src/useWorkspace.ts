@@ -57,6 +57,7 @@ export type WorkspaceData = {
   readyGroupIds?: Id[]
   historyThreadId?: Id | null
   historyNotice?: string | null
+  channelNotice?: string | null
   channelCacheIdentity?: { scope: string | null; personId: string }
   groups: Array<BotGroup>
   bots: Array<Bot>
@@ -809,9 +810,13 @@ export const useWorkspace = (
         .request("GET /groups", {})
         .then((response) => {
           if (attempt === generation.current) setData((current) => ({ ...current, groups: response.groups }))
-          return response
+          return { ...response, loaded: true, notice: null }
         })
-        .catch(() => ({ groups: [] }))
+        .catch((error: unknown) => ({
+          groups: [],
+          loaded: false,
+          notice: t("Service request failed", { error: getServiceErrorMessage(error) }),
+        }))
       const groupThreadsRequest = groupsRequest
         .then(({ groups }) =>
           Promise.all(
@@ -828,8 +833,9 @@ export const useWorkspace = (
             }),
           ),
         )
-        .then((responses) => {
-          if (attempt === generation.current)
+        .then(async (responses) => {
+          const response = await groupsRequest
+          if (response.loaded && attempt === generation.current)
             setData((current) => ({ ...current, groupsLoaded: true, channelCacheIdentity }))
           return responses
         })
@@ -912,7 +918,9 @@ export const useWorkspace = (
         const changedDuringLoad = current.threads.filter(
           (thread) =>
             !current.deletedThreadIds?.has(thread.id) &&
-            (incomingIds.has(thread.id) || thread !== threadsAtStart.get(thread.id)),
+            (incomingIds.has(thread.id) ||
+              (!groupResponse.loaded && !!thread.groupId) ||
+              thread !== threadsAtStart.get(thread.id)),
         )
         const threads = mergeThreads(changedDuringLoad, incoming)
         // A newer run may have evicted a completed row while this snapshot was in flight.
@@ -957,7 +965,7 @@ export const useWorkspace = (
         return {
           ...current,
           isMember: member,
-          groups: groupResponse?.groups ?? [],
+          groups: groupResponse.loaded ? groupResponse.groups : current.groups,
           machineCapability: machineResponse.capability,
           machines: machineResponse.machines,
           threads,
@@ -993,7 +1001,8 @@ export const useWorkspace = (
           activeProjectId: selectedBot?.projectId ?? null,
           loading: false,
           loaded: true,
-          notice: null,
+          notice: groupResponse.notice,
+          channelNotice: groupResponse.notice,
         }
       })
       snapshotUnavailable.current = false
@@ -1010,13 +1019,10 @@ export const useWorkspace = (
     } catch (error) {
       if (attempt !== generation.current) return
       snapshotUnavailable.current = isServiceUnavailable(error)
-      setData((current) => ({
-        ...current,
-        loading: false,
-        notice: api.isMock
-          ? "Demo data · sidecar services are optional"
-          : t("Service request failed", { error: getServiceErrorMessage(error) }),
-      }))
+      const notice = api.isMock
+        ? "Demo data · sidecar services are optional"
+        : t("Service request failed", { error: getServiceErrorMessage(error) })
+      setData((current) => ({ ...current, loading: false, notice, channelNotice: notice }))
     } finally {
       if (attempt === generation.current) completedDuringLoad.current = null
     }

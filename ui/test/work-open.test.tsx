@@ -195,6 +195,8 @@ test("a failed channel read does not prevent direct conversation startup", async
   await waitFor(() => expect(hook.result.current.data.loaded).toBe(true))
   await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe(hook.result.current.data.selectedThreadId))
   expect(hook.result.current.data.messages.length).toBeGreaterThan(0)
+  expect(hook.result.current.data.groupsLoaded).not.toBe(true)
+  expect(hook.result.current.data.channelNotice).toBeTruthy()
 })
 
 test("a successful server index removes a cached conversation that no longer exists", async () => {
@@ -208,4 +210,58 @@ test("a successful server index removes a cached conversation that no longer exi
   expect(hook.result.current.data.groups).toEqual([])
   expect(hook.result.current.data.threads.some((candidate) => candidate.id === thread.id)).toBe(false)
   expect(hook.result.current.data.selectedThreadId).not.toBe(thread.id)
+})
+
+test("a failed channel index preserves cached channels and history until a successful retry", async () => {
+  const { api, group, thread } = await getChannelFixture()
+  saveWorkChannelCache({ groups: [group], threads: [thread], selectedThreadId: thread.id }, "owner")
+  let failing = true
+  const request: ApiRequest = async (route, input, path) => {
+    if (route === "GET /groups" && failing) throw new Error("Channel request failed")
+    return api.request(route, input, path)
+  }
+  const client = Object.assign({}, api, { request })
+  const hook = renderHook(() => useWorkspace(client))
+
+  await waitFor(() => expect(hook.result.current.data.loaded).toBe(true))
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe(thread.id))
+
+  expect(hook.result.current.data.groups).toEqual([group])
+  expect(hook.result.current.data.selectedThreadId).toBe(thread.id)
+  expect(hook.result.current.data.groupsLoaded).not.toBe(true)
+  expect(hook.result.current.data.notice).toBe(hook.result.current.data.channelNotice)
+  expect(hook.result.current.data.notice).toBeTruthy()
+  expect(getWorkChannelCache("owner")?.groups).toEqual([group])
+
+  failing = false
+  await act(async () => hook.result.current.actions.refresh())
+
+  await waitFor(() => expect(hook.result.current.data.groupsLoaded).toBe(true))
+  expect(hook.result.current.data.groups).toEqual([group])
+  expect(hook.result.current.data.channelNotice).toBeNull()
+  expect(hook.result.current.data.notice).toBeNull()
+})
+
+test("a failed conversation index keeps read recovery available until a successful retry", async () => {
+  const { api, thread } = await getChannelFixture()
+  let failing = true
+  const request: ApiRequest = async (route, input, path) => {
+    if (route === "GET /groups/:id/threads" && failing) throw new Error("Conversation index failed")
+    return api.request(route, input, path)
+  }
+  const client = Object.assign({}, api, { request, isMock: false })
+  const hook = renderHook(() => useWorkspace(client))
+
+  await waitFor(() => expect(hook.result.current.data.notice).toBeTruthy())
+
+  expect(hook.result.current.data.notice).toBe(hook.result.current.data.channelNotice)
+  expect(hook.result.current.data.groupsLoaded).not.toBe(true)
+
+  failing = false
+  await act(async () => hook.result.current.actions.refresh())
+
+  await waitFor(() => expect(hook.result.current.data.loaded).toBe(true))
+  expect(hook.result.current.data.groupsLoaded).toBe(true)
+  expect(hook.result.current.data.threads).toContainEqual(thread)
+  expect(hook.result.current.data.channelNotice).toBeNull()
 })
