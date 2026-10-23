@@ -3254,6 +3254,11 @@ describe("turn latency milestones", () => {
 
     expect(turns.map((request) => request.params.effort)).toEqual(["low", "medium"])
     expect(turns.map((request) => request.params.summary)).toEqual(["none", "auto"])
+    const sessions = requests.filter((request) => ["thread/start", "thread/resume"].includes(request.method))
+    expect(sessions.map((request) => request.params.baseInstructions)).toEqual([
+      "You are a helpful conversational assistant. Follow the developer instructions.",
+      undefined,
+    ])
   })
 
   test("fast conversation opt-out preserves configured effort and prevents preparation", async () => {

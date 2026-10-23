@@ -644,6 +644,10 @@ export const createCodexAdapter = ({
         // the persisted configuration with this turn's credential before turn/start.
         const turnConfig = {
           ...access,
+          // A tool-free conversation does not need the coding agent's task-planning prompt.
+          ...(args.conversationOnly
+            ? { baseInstructions: "You are a helpful conversational assistant. Follow the developer instructions." }
+            : {}),
           config: {
             ...asRecord(access.config),
             ...(cliTelemetryOff(kernel)
