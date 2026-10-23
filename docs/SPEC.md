@@ -672,6 +672,11 @@ interrupted request ahead of waiting requests, preserving its requester and cont
 Independent interrupted recipients are restored together, even if another member has already
 finished a later request. Supersession and session checks are scoped to the affected members;
 a later executed request to the same member still prevents recovery of its older request.
+With `resumeInterruptedTurns` disabled, startup creates no continuation for an interrupted channel
+request. Its coordination and member executions stay interrupted. Unless a later execution supersedes
+it, the logical request retains one actionable recovery task and failure notification. Accepted requests
+that never started still run in their persisted order. Manual recovery and acknowledgement of uncertain
+effects remain available.
 During provider-retry backoff, a fresh request to that member releases the older recovery wait
 immediately; requests to independent members do not cancel it.
 Completed members are not repeated. Stop remains authoritative while startup is waiting;
