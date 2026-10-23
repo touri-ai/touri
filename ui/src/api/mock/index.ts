@@ -1122,6 +1122,9 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       const group: BotGroup = {
         ...existing,
         ...values,
+        color: values.color ?? existing?.color ?? "#dc2626",
+        coordinatorBotId:
+          values.coordinatorBotId === undefined ? (existing?.coordinatorBotId ?? null) : values.coordinatorBotId,
         avatarShape: values.avatarShape ?? existing?.avatarShape ?? "classic-none",
         id: existing?.id ?? crypto.randomUUID(),
         avatarSeed: existing?.avatarSeed ?? crypto.randomUUID(),
