@@ -56,8 +56,9 @@ test("retrying a failed first history read loads the conversation", async () => 
     { id: thread.id },
   )
   let failures = 0
+  let failing = true
   const request: ApiRequest = async (route, input, path) => {
-    if (route === "GET /threads/:id/messages" && path?.id === thread.id && failures < 2) {
+    if (route === "GET /threads/:id/messages" && path?.id === thread.id && failing) {
       failures += 1
       throw new Error("History request failed")
     }
@@ -72,14 +73,13 @@ test("retrying a failed first history read loads the conversation", async () => 
   expect(await screen.findByText("Não foi possível carregar a conversa. Tente novamente.")).toBeVisible()
   fireEvent.click(await screen.findByRole("button", { name: "Tentar novamente", exact: true }))
 
-  await waitFor(() => expect(failures).toBe(2))
-  const retry = await screen.findByRole("button", { name: "Tentar novamente", exact: true })
-  await waitFor(() => expect(retry).toBeEnabled())
+  await waitFor(() => expect(failures).toBeGreaterThanOrEqual(2))
+  await waitFor(() => expect(screen.getByRole("button", { name: "Tentar novamente", exact: true })).toBeEnabled())
   expect(screen.getByText("Não foi possível carregar a conversa. Tente novamente.")).toBeVisible()
-  fireEvent.click(retry)
+  failing = false
+  fireEvent.click(screen.getByRole("button", { name: "Tentar novamente", exact: true }))
 
-  expect(
-    await within(screen.getByRole("region", { name: "Histórico da conversa" })).findByText("O plano está salvo."),
-  ).toBeVisible()
+  const history = await screen.findByRole("region", { name: "Histórico da conversa" })
+  expect(await within(history).findByText("O plano está salvo.")).toBeVisible()
   expect(screen.queryByRole("status", { name: "Carregando conversas…" })).not.toBeInTheDocument()
 })

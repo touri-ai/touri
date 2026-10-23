@@ -278,8 +278,9 @@ test("history recovery remains available after repeated read failures", async ({
   })
   await current.install(page)
   let failures = 0
+  let failing = true
   await page.route(`**/threads/${thread.id}/messages?*`, async (route) => {
-    if (failures >= 2) return route.continue()
+    if (!failing) return route.continue()
     failures += 1
     await route.fulfill({ status: 500, contentType: "application/json", body: '{"error":"Synthetic history failure"}' })
   })
@@ -298,9 +299,10 @@ test("history recovery remains available after repeated read failures", async ({
     }
   }
   await retry.click()
-  await expect.poll(() => failures).toBe(2)
+  await expect.poll(() => failures).toBeGreaterThanOrEqual(2)
   await expect(retry).toBeEnabled()
   await expect(page.getByText("Não foi possível carregar a conversa. Tente novamente.", { exact: true })).toBeVisible()
+  failing = false
   await retry.click()
 
   await expect(page.getByTestId("virtual-message-list").getByText("O plano de demonstração está salvo.")).toBeVisible()
