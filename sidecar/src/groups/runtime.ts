@@ -1371,7 +1371,10 @@ export const createGroupRuntime = (
   const waiting = db
     .query(
       `SELECT r.*, 'coordination' AS run_kind, g.group_id, g.recipients_json FROM runs r JOIN group_turns g ON g.run_id = r.id
-       WHERE r.status = 'queued' OR (r.status='interrupted' AND r.error_class='app_restart' AND r.finished_at>=? AND NOT EXISTS (SELECT 1 FROM runs newer JOIN group_turns ng ON ng.run_id=newer.id WHERE newer.thread_id=r.thread_id AND newer.rowid>r.rowid)) ORDER BY r.queued_at,r.rowid`,
+       LEFT JOIN run_continuations continuation ON continuation.run_id=r.id
+       LEFT JOIN runs original ON original.id=continuation.original_run_id
+       WHERE r.status = 'queued' OR (r.status='interrupted' AND r.error_class='app_restart' AND r.finished_at>=? AND NOT EXISTS (SELECT 1 FROM runs newer JOIN group_turns ng ON ng.run_id=newer.id WHERE newer.thread_id=r.thread_id AND newer.rowid>r.rowid AND (newer.status<>'queued' OR newer.request_message_id IS r.request_message_id)))
+       ORDER BY COALESCE(original.queued_at,r.queued_at),COALESCE(original.rowid,r.rowid)`,
     )
     .all(Date.now() - CONTINUATION_WINDOW_MS) as Array<
     Record<string, unknown> & { group_id: string; recipients_json: string }
