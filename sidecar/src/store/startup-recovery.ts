@@ -51,7 +51,7 @@ export const createStartupRecovery = (
     threads.set(threadId, ready)
     return ready
   }
-  const ready = (async () => {
+  const ready = measure("store_transcript_startup_recovery", async () => {
     await yieldBackground()
     let cursor = ""
     while (!stopped) {
@@ -76,7 +76,7 @@ export const createStartupRecovery = (
       if (!stopped) kernel.publish({ type: "transcript.resync" })
       await yieldBackground()
     }
-  })().catch(() => {
+  }).catch(() => {
     kernel.log({ level: "error", module: "store", msg: "STORE_STARTUP_RECOVERY_FAILED" })
   })
 

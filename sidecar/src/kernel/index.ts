@@ -681,9 +681,12 @@ export const createKernel = ({
   const stop = (): Promise<void> => {
     if (stopPromise) return stopPromise
     stopPromise = (async () => {
-      await services.use("runtime.shutdown")?.({ appRestart: true })
-      await services.use("notify.recovery")?.dispose()
-      await services.use("store.recovery")?.dispose()
+      const shutdownRuntime = services.use("runtime.shutdown")
+      if (shutdownRuntime) await shutdownRuntime({ appRestart: true })
+      const notificationRecovery = services.use("notify.recovery")
+      if (notificationRecovery) await notificationRecovery.dispose()
+      const storeRecovery = services.use("store.recovery")
+      if (storeRecovery) await storeRecovery.dispose()
       diagnostics.stop()
       clearInterval(revocationTimer)
       revocationTask.dispose()

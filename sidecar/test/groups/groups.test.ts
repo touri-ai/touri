@@ -1194,6 +1194,7 @@ test("restart interrupts shared streaming replies, expires approvals and never r
   const recovered = createGroupRuntime(f.host.kernel, f.engine)
   cleanups.unshift(() => recovered.shutdown())
   expect(f.persistence.getRun(root.id)?.status).toBe("interrupted")
+  await until(() => f.store.activePath({ threadId: f.thread.id }).some((message) => message.status === "failed"))
   const reply = f.store.activePath({ threadId: f.thread.id }).find((m) => m.role === "assistant")
   expect(reply?.status).toBe("failed")
   expect(reply?.parts.some((p) => p.type === "approval" && p.decision === "expired")).toBe(true)

@@ -34,6 +34,7 @@ import type { createRuntimeEngine } from "../runtime/engine"
 import { createRuntimePersistence, toRun } from "../runtime/persistence"
 import { getGroupRunsSql } from "./run-queries"
 import { crossesBoundary, delegatedBot, delegationCeiling, delegationSecrets, setDelegation } from "./security"
+import { recoverGroupReplies } from "./startup-recovery"
 import { createGroupStore, routeGroupMessage } from "./store"
 
 type Engine = Pick<ReturnType<typeof createRuntimeEngine>, "enqueue" | "cancel"> &
@@ -138,42 +139,23 @@ export const createGroupRuntime = (
       "SELECT r.*, 'coordination' AS run_kind FROM runs r JOIN group_turns g ON g.run_id=r.id WHERE r.status IN ('starting','running')",
     )
     .all()
-  for (const raw of interrupted) {
-    const run = toRun(raw)
-    if (run) {
-      const interruptedRun: Run = { ...run, status: "interrupted", errorClass: "app_restart", finishedAt: Date.now() }
-      persistence.saveRun(interruptedRun)
-      // The runtime engine closes a routine run when its group turn ends, including here.
-      kernel.publish({ type: "run.updated", run: interruptedRun })
-      const streaming = db
-        .query("SELECT id FROM messages WHERE thread_id=? AND status='streaming'")
-        .all(run.threadId) as { id: string }[]
-      for (const { id } of streaming) {
-        const message = store.activePath({ threadId: run.threadId, leafId: id }).find((m) => m.id === id)
-        if (!message) continue
-        const parts = message.parts.map((p) =>
-          p.type === "approval" && p.decision === "pending" ? { ...p, decision: "expired" as const } : p,
-        )
-        const updated = store.updateMessage({
-          threadId: run.threadId,
-          messageId: id,
-          patch: {
-            status: "failed",
-            parts: [
-              ...parts,
-              {
-                type: "notice",
-                level: "warning",
-                code: "app_restart",
-                text: "O turno do grupo foi interrompido ao reiniciar o touri.",
-              },
-            ],
-          },
+    .flatMap((row) => {
+      const run = toRun(row)
+      return run ? [run] : []
+    })
+  interrupted.forEach((run) => {
+    const interruptedRun: Run = { ...run, status: "interrupted", errorClass: "app_restart", finishedAt: Date.now() }
+    persistence.saveRun(interruptedRun)
+    // The runtime engine closes a routine run when its group turn ends, including here.
+    kernel.publish({ type: "run.updated", run: interruptedRun })
+  })
+  const startupRecovery =
+    interrupted.length === 0
+      ? null
+      : recoverGroupReplies(kernel, store, interrupted).catch(() => {
+          stopped = true
+          kernel.log({ level: "error", module: "groups", msg: "GROUP_STARTUP_RECOVERY_FAILED" })
         })
-        if (updated.success) kernel.publish({ type: "message.updated", message: updated.message })
-      }
-    }
-  }
   db.query(
     "UPDATE runs SET status='interrupted',error_class='app_restart',finished_at=? WHERE id IN (SELECT run_id FROM group_run_links) AND status='queued'",
   ).run(Date.now())
@@ -784,6 +766,7 @@ export const createGroupRuntime = (
     if (failure?.status === "rejected") throw failure.reason
   }
   const drain = async (groupId: string): Promise<void> => {
+    if (startupRecovery) await startupRecovery
     if (busy.has(groupId) || stopped || draining) return
     busy.add(groupId)
     try {
@@ -1348,6 +1331,7 @@ export const createGroupRuntime = (
     draining = true
   }
   const waitForDrain = async (): Promise<void> => {
+    if (startupRecovery) await startupRecovery
     if (busy.size === 0) return
     idleCompletion ??= Promise.withResolvers<void>()
     await idleCompletion.promise
