@@ -446,3 +446,73 @@ test("a bot paused while startup is waiting cannot start when the engine becomes
   expect(f.persistence.getRun(run.id)?.status).toBe("failed")
   expect(f.order).toHaveLength(0)
 })
+
+const failureClasses = ["cli_protocol", "rate_limit", "cli_auth"] as const
+failureClasses.forEach((errorClass) => {
+  test(`coordination preserves the member failure class: ${errorClass}`, async () => {
+    const f: Awaited<ReturnType<typeof fixture>> = await fixture(async (run) => {
+      f.finish(run, {
+        status: "failed",
+        errorClass,
+        errorMessage: "Synthetic provider failure",
+        finishedAt: Date.now(),
+      })
+    })
+
+    const run = f.send("@Lia confira o plano")
+    await until(() => f.persistence.getRun(run.id)?.status === "failed")
+
+    expect(f.persistence.getRun(run.id)).toMatchObject({
+      errorClass,
+      errorMessage: "Synthetic provider failure",
+    })
+    expect(f.order).toHaveLength(1)
+  })
+})
+
+test("recovery keeps the member failure when automatic resume becomes disabled", async () => {
+  const f: Awaited<ReturnType<typeof fixture>> = await fixture(async (run) => {
+    if (f.order.length === 1) return
+
+    f.finish(run, {
+      status: "failed",
+      errorClass: "cli_auth",
+      errorMessage: "Unexpected synthetic retry",
+      finishedAt: Date.now(),
+    })
+  })
+  const run = f.send("@Lia confira o plano")
+  await until(() => f.order.length === 1)
+  f.runtime.shutdown({ appRestart: true })
+  const memberId = f.runtime.listRuns(f.thread.id).find((candidate) => candidate.groupTurnId === run.id)?.id
+  const member = memberId ? f.persistence.getRun(memberId) : null
+  if (!member) throw new Error("Synthetic member missing")
+  f.finish(member, {
+    status: "failed",
+    errorClass: "cli_crash",
+    errorMessage: "Synthetic provider failure",
+    finishedAt: Date.now(),
+  })
+  await f.runtime.waitForDrain()
+  expect(f.persistence.getRun(run.id)?.status).toBe("interrupted")
+  const unsubscribe = f.host.kernel.subscribe(({ event }) => {
+    if (event.type !== "message.created") return
+    if (!event.message.parts.some((part) => part.type === "notice" && part.code === "group_coordination_prompt")) return
+
+    f.db
+      .query("INSERT OR REPLACE INTO settings(key,value_json,updated_at) VALUES ('resumeInterruptedTurns','false',1)")
+      .run()
+  })
+  cleanups.add(async () => unsubscribe())
+
+  const resumed = f.restart()
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  await resumed.waitForDrain()
+
+  expect(f.persistence.listRuns(f.thread.id).find((candidate) => candidate.id !== run.id)).toMatchObject({
+    errorClass: "cli_crash",
+    errorMessage: "Synthetic provider failure",
+  })
+  expect(f.order).toHaveLength(1)
+  expect(f.persistence.getRun(run.id)?.status).toBe("interrupted")
+})

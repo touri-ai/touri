@@ -538,8 +538,7 @@ export const createGroupRuntime = (
       return waitRun(memberRun.id, turn, turn.deadline)
     }
     try {
-      if (previous && !(await waitForMemberResume(previous, turn)))
-        throw new Error(previous.errorMessage ?? "O bot não concluiu o pedido")
+      if (previous && !(await waitForMemberResume(previous, turn))) throw new MemberRunError(previous)
       let run = await executeMember(previous ?? undefined)
       while (canResumeMember(run, turn)) {
         if (!(await waitForMemberResume(run, turn))) break
