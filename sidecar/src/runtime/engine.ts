@@ -208,6 +208,18 @@ type PendingApproval = { runId: Id; provider: ProviderAdapter; providerApprovalI
 
 const ROUTINE_TICK_GRACE_MS = 2 * 60_000
 const EVENT_LIVENESS_CHECK_INTERVAL_MS = 50
+const EXECUTION_FAILURE_CODES: ReadonlyArray<string> = [
+  "EIO",
+  "ENOSPC",
+  "EACCES",
+  "EPERM",
+  "ENOENT",
+  "SQLITE_BUSY",
+  "SQLITE_LOCKED",
+  "SQLITE_FULL",
+  "SQLITE_CORRUPT",
+  "SQLITE_IOERR",
+]
 
 type RoutineCreate = {
   botId: Id
@@ -1966,10 +1978,8 @@ export const createRuntimeEngine = ({
           })
         }
       } finally {
-        active.delete(run.threadId)
         controllers.delete(run.id)
         providers.delete(run.id)
-        void drain()
       }
     }
     if (runStage) await runStage("runtime_turn_finalization", finalizeProviderTurn)
@@ -2456,11 +2466,87 @@ export const createRuntimeEngine = ({
     }
   }
 
+  const finalizeUnexpectedFailure = async (run: Run, error: unknown): Promise<void> => {
+    const code = error instanceof Error && "code" in error ? error.code : null
+    kernel.log({
+      level: "error",
+      module: "runtime",
+      msg: "Unexpected turn execution failure",
+      data: {
+        runId: run.id,
+        errorCode: typeof code === "string" && EXECUTION_FAILURE_CODES.includes(code) ? code : "UNKNOWN",
+      },
+    })
+    if (!isLive(run)) return
+
+    const state = getState(run.id)
+    const errorMessage = publicError("unknown").error
+    approvalBridge.cancelRun(run.id)
+    try {
+      const store = kernel.services.use("store.api")
+      const thread = store?.getThread({ threadId: run.threadId })
+      if (store && thread)
+        await finalizeFailure({
+          run,
+          state,
+          store,
+          thread,
+          errorClass: "unknown",
+          errorMessage,
+        })
+    } catch {
+      kernel.log({
+        level: "error",
+        module: "runtime",
+        msg: "Could not finalize failed reply",
+        data: { runId: run.id },
+      })
+    }
+    if (!isLive(run)) return
+
+    // Attachment preparation can keep failing; retain durable history and end the run without replaying actions.
+    const finish = (): Run | null => {
+      if (!isLive(run)) return null
+
+      const canceled = state.cancelRequested
+      return updateRun(run, {
+        status: canceled ? "canceled" : "failed",
+        errorClass: canceled ? "canceled" : "unknown",
+        errorMessage: canceled ? publicError("canceled").error : errorMessage,
+        usage: state.usage,
+        finishedAt: Date.now(),
+      })
+    }
+    const finished = kernel.db instanceof Database ? await writeDatabaseAsync(kernel.db, finish) : finish()
+    if (!finished) return
+
+    tools.clearPendingMemory(run.id)
+    const canceled = finished.status === "canceled"
+    finishRoutineRun({ run: finished, status: canceled ? "canceled" : "failed", summary: errorMessage })
+    if (canceled) return
+
+    notices.failure({
+      botId: run.botId,
+      threadId: run.threadId,
+      routine: run.routineRunId !== null,
+      reason: errorMessage,
+    })
+  }
+
   const executeWithStateCleanup = async (run: Run): Promise<void> => {
     try {
       await executeGoalTurn(run)
+    } catch (error) {
+      controllers.get(run.id)?.abort()
+      await finalizeUnexpectedFailure(run, error)
+      const finished = persistence.getRun(run.id)
+      if (finished) goals.finishTurn(finished, getState(run.id).text, false, true)
     } finally {
+      if (active.get(run.threadId)?.id === run.id) active.delete(run.threadId)
+      controllers.delete(run.id)
+      providers.delete(run.id)
       deleteRunState(run.id)
+      void drain()
     }
   }
 
