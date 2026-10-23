@@ -254,7 +254,8 @@ const mergeThreads = (current: Thread[], incoming: Thread[]): Thread[] => {
         ((previous.updatedSeq ?? 0) === (thread.updatedSeq ?? 0) && previous.updatedAt > thread.updatedAt))
     )
       continue
-    rows.set(thread.id, thread)
+    const routineTitle = thread.routineTitle ?? (previous?.title === thread.title ? previous.routineTitle : undefined)
+    rows.set(thread.id, { ...thread, routineTitle })
   }
   return [...rows.values()]
 }

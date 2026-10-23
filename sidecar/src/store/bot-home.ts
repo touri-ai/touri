@@ -78,7 +78,7 @@ export const reconcileBotHomes = async (kernel: Kernel): Promise<void> => {
   }
 }
 
-const reconcileBotHome = async (kernel: Kernel, bot: { id: string; instructions: string }): Promise<void> => {
+export const reconcileBotHome = async (kernel: Kernel, bot: { id: string; instructions: string }): Promise<void> => {
   try {
     await getWriter(kernel).run({ operation: "reconcile", botId: bot.id, instructions: bot.instructions })
   } catch (error) {

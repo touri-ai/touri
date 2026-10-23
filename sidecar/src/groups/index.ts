@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite"
 import { userInfo } from "node:os"
 import type { GroupValidationField, Kernel } from "@touri/contracts"
 import { deviceSession } from "../kernel/device-session"
+import { getRoutineThreadCandidateIds, getThreadsWithRoutineTitles } from "../store/routine-thread-title"
 import { deleteGroupRoute } from "./delete-group"
 import { createGroupStore } from "./store"
 export const name = "groups"
@@ -93,7 +94,20 @@ export const init = async (kernel: Kernel): Promise<void> => {
       {
         method: "GET",
         path: "/groups/:id/threads",
-        handler: async ({ params }) => ({ status: 200, json: { threads: groups.threads(params.id ?? "") } }),
+        handler: async ({ params, signal }) => {
+          const groupId = params.id ?? ""
+          const actor = deviceSession(signal)?.person
+          const canAccess = kernel.services.use("work.canAccessGroup")
+          if (canAccess && (!actor || !canAccess({ personId: actor.id, role: actor.role, groupId })))
+            return { status: 404, json: { errorCode: "NOT_FOUND", error: "Canal não encontrado" } }
+
+          const threads = groups.threads(groupId)
+          const titles = await kernel.services
+            .use("storage.threadTitles")
+            ?.getRoutineTitles(getRoutineThreadCandidateIds(threads), signal)
+
+          return { status: 200, json: { threads: titles ? getThreadsWithRoutineTitles(threads, titles) : threads } }
+        },
       },
       {
         method: "POST",

@@ -214,7 +214,11 @@ export type GroupInput = Pick<BotGroup, 'name' | 'color' | 'avatarShape' | 'memb
 /** Creation defaults omitted color, avatarShape and coordinatorBotId; updates require the full GroupInput. */
 export type GroupCreateInput = Omit<GroupInput, 'color' | 'avatarShape' | 'coordinatorBotId'> & Partial<Pick<GroupInput, 'color' | 'avatarShape' | 'coordinatorBotId'>>
 
+/** Read-only presentation of a verified automatic title; never a routine prompt or settings. */
+export type RoutineThreadTitle = { sourceTitle: string; name: string; scheduledFor: EpochMs; timezone: string }
+
 export type Thread = {
+  routineTitle?: RoutineThreadTitle | undefined
   ownerPersonId?: Id | null
   groupId?: Id | null
   groupThreadId?: Id | null
@@ -1157,7 +1161,7 @@ export type ApiRoutes = {
   'POST /runs/:id/cancel': { req: {}; res: { run: Run } }
   'POST /runs/:id/retry': { req: {}; res: { run: Run } }
   'POST /approvals/:id': { req: { decision: 'approved' | 'denied'; standing?: boolean }; res: {} }
-  'GET /search': { req: { q: string; botId?: Id }; res: { hits: Array<{ threadId: Id; messageId: Id; snippet: string; thread?: Pick<Thread, 'id' | 'botId' | 'title' | 'createdAt' | 'archivedAt'> | null }>; threads?: Array<Pick<Thread, 'id' | 'botId' | 'title' | 'createdAt' | 'archivedAt'>> } }
+  'GET /search': { req: { q: string; botId?: Id }; res: { hits: Array<{ threadId: Id; messageId: Id; snippet: string; thread?: Pick<Thread, 'id' | 'botId' | 'title' | 'createdAt' | 'archivedAt' | 'routineTitle'> | null }>; threads?: Array<Pick<Thread, 'id' | 'botId' | 'title' | 'createdAt' | 'archivedAt' | 'routineTitle'>> } }
   'POST /attachments': { req: { grantId: string } | { path: AbsolutePath }; res: { attachment: Attachment } }
   'GET /attachments/:id': { req: {}; res: Blob }
   'GET /attachments/:id/content': { req: { offset?: number; limit?: number }; res: { text: string; offset: number; nextOffset: number | null; bytes: number } }
@@ -1665,7 +1669,7 @@ export type ServiceMap = {
   'storage.maintenance': { scheduleSessionKeyRetry: () => void; start: (vacuum?: boolean) => boolean; snapshot: () => StorageMaintenanceStatus; dispose: (options?: { closing?: boolean }) => void }
   'storage.botDeletion': { dispose: () => void }
   'notify.recovery': { ready: Promise<void>; dispose: () => Promise<void> }
-  'storage.threadTitles': { dispose: () => void }
+  'storage.threadTitles': { dispose: () => void; getRoutineTitles: (threadIds: readonly Id[], signal: AbortSignal) => Promise<ReadonlyMap<Id, RoutineThreadTitle>> }
   'storage.threadDeletion': { dispose: () => void }
   'mcp.botTools': (bot: Bot) => Array<string>
 
@@ -1676,6 +1680,12 @@ export type ServiceMap = {
   'vm.shutdown': () => Promise<void>
   'vm.desktop': VmDesktop
   'store.api': StoreApi
+  'store.recovery': {
+    ready: Promise<void>
+    ensureBot: (botId: string) => Promise<void>
+    ensureThread: (threadId: string) => Promise<void>
+    dispose: () => Promise<void>
+  }
   'runtime.enqueue': (args: { threadId: Id; requestMessageId: Id; trigger: RunTrigger; requesterPersonId?: Id }) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED' | 'DELEGATION_LIMIT' | 'RUNTIME_DRAINING'>
   'runtime.isDraining': () => boolean
   'runtime.beginDrain': () => Promise<void>

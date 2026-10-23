@@ -1,6 +1,7 @@
 import type { Bot, Id, Message, Thread } from "@touri/contracts"
-import { threadTitle } from "../../i18n"
+import type { Locale } from "../../i18n"
 import { markdownSummary } from "../../markdownSummary"
+import { getRoutineThreadTitle } from "../../routineThreadTitle"
 import { matchScore, normalizeSearch, queryTokens } from "./fuzzy"
 import type { PaletteDestination, SettingsIndexEntry } from "./settingsRegistry"
 
@@ -67,12 +68,19 @@ export type PaletteSource = {
   threads: ReadonlyArray<Thread>
   settings: ReadonlyArray<SettingsIndexEntry>
   hasBot: boolean
+  locale?: Locale
 }
 
 export type PaletteIndex = { items: Array<IndexedItem>; byId: Map<string, IndexedItem> }
 
 /** Built once per data change; typing only scores the prepared, normalized index. */
-export const buildPaletteIndex = ({ bots, threads, settings, hasBot }: PaletteSource): PaletteIndex => {
+export const buildPaletteIndex = ({
+  bots,
+  threads,
+  settings,
+  hasBot,
+  locale = "pt-BR",
+}: PaletteSource): PaletteIndex => {
   const botNames = new Map(bots.map((bot) => [bot.id, bot.name]))
   const items: Array<IndexedItem> = [
     ...bots.map((bot) =>
@@ -95,11 +103,11 @@ export const buildPaletteIndex = ({ bots, threads, settings, hasBot }: PaletteSo
           {
             id: `thread:${thread.id}`,
             group: "threads",
-            label: markdownSummary(threadTitle(thread.title, thread.createdAt)),
+            label: getRoutineThreadTitle(thread, locale),
             detail: botNames.get(thread.botId) ?? "",
             command: { kind: "thread", threadId: thread.id, archived: thread.archivedAt !== null },
           },
-          "",
+          thread.title,
         ),
       ),
     ...settings.map((entry) =>
@@ -132,17 +140,31 @@ export const buildPaletteIndex = ({ bots, threads, settings, hasBot }: PaletteSo
 
 const strip = ({ label_n: _label, extra_n: _extra, ...item }: IndexedItem): PaletteItem => item
 
-export type MessageIndex = Array<{ message: Message; thread: Thread; text: string }>
+export type MessageIndex = Array<{ message: Message; thread: Thread; text: string; title?: string | undefined }>
 
 /** Normalizes already-loaded messages once per data change; no transcript is fetched. */
-export const buildMessageIndex = (messages: ReadonlyArray<Message>, threads: ReadonlyArray<Thread>): MessageIndex => {
+export const buildMessageIndex = (
+  messages: ReadonlyArray<Message>,
+  threads: ReadonlyArray<Thread>,
+  locale: Locale = "pt-BR",
+  titles?: ReadonlyMap<string, string>,
+): MessageIndex => {
   const threadById = new Map(threads.map((thread) => [thread.id, thread]))
   return [...messages]
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, MESSAGE_SCAN_LIMIT)
     .flatMap((message) => {
       const thread = threadById.get(message.threadId)
-      return thread && message.text ? [{ message, thread, text: normalizeSearch(message.text) }] : []
+      return thread && message.text
+        ? [
+            {
+              message,
+              thread,
+              text: normalizeSearch(message.text),
+              title: titles?.get(thread.id) ?? getRoutineThreadTitle(thread, locale),
+            },
+          ]
+        : []
     })
 }
 
@@ -150,11 +172,11 @@ const messageHits = (tokens: ReadonlyArray<string>, messages: MessageIndex): Arr
   messages
     .filter((entry) => tokens.every((token) => entry.text.includes(token)))
     .slice(0, GROUP_LIMIT)
-    .map(({ message, thread }) => ({
+    .map(({ message, thread, title }) => ({
       id: `message:${message.id}`,
       group: "messages",
       label: markdownSummary(message.text),
-      detail: markdownSummary(threadTitle(thread.title, thread.createdAt)),
+      detail: title ?? getRoutineThreadTitle(thread),
       command: { kind: "thread", threadId: thread.id, messageId: message.id, archived: thread.archivedAt !== null },
     }))
 

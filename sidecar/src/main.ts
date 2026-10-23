@@ -4,6 +4,7 @@ import { isAbsolute, relative, resolve } from "node:path"
 import type { Kernel } from "@touri/contracts"
 import { createKernel, type KernelRuntime } from "./kernel"
 import { closeFileIoAsync } from "./kernel/async-files"
+import { yieldBackground } from "./kernel/background-task"
 import { acquireRuntimeLock, watchParent, watchShutdownRequest } from "./kernel/lifecycle"
 import { createAppPaths } from "./kernel/paths"
 import type { PerformanceStageRunner } from "./kernel/performance"
@@ -54,13 +55,8 @@ const isContained = ({ root, candidate }: { root: string; candidate: string }): 
 }
 
 export const initModules = async (runtime: KernelRuntime): Promise<void> => {
-  for (const module of moduleLoaders) {
-    const started = performance.now()
-    const imported = await module.load().then(
-      (value: unknown) => ({ ok: true as const, value }),
-      (error: unknown) => ({ ok: false as const, error }),
-    )
-    const loadedAt = performance.now()
+  for await (const module of getLoadedModules()) {
+    const { imported, loadMs } = module
     if (!imported.ok) {
       runtime.kernel.log({
         level: "info",
@@ -75,13 +71,14 @@ export const initModules = async (runtime: KernelRuntime): Promise<void> => {
       runtime.kernel.log({ level: "info", module: "main", msg: `skipping missing module ${module.path}` })
       continue
     }
+    const initStarted = performance.now()
     try {
       await loaded.init(runtime.kernel, runtime.runStage)
       runtime.kernel.log({
         level: "info",
         module: "main",
         msg: `initialized module ${module.path}`,
-        data: { loadMs: Math.round(loadedAt - started), initMs: Math.round(performance.now() - loadedAt) },
+        data: { loadMs, initMs: Math.round(performance.now() - initStarted) },
       })
     } catch (error) {
       runtime.kernel.log({
@@ -90,13 +87,35 @@ export const initModules = async (runtime: KernelRuntime): Promise<void> => {
         msg: `module init failed ${module.path}`,
         data: {
           error: error instanceof Error ? error.message : String(error),
-          loadMs: Math.round(loadedAt - started),
-          initMs: Math.round(performance.now() - loadedAt),
+          loadMs,
+          initMs: Math.round(performance.now() - initStarted),
         },
       })
     }
   }
   runtime.kernel.services.use("doctor")?.start()
+}
+
+async function* getLoadedModules() {
+  const batches = Array.from({ length: Math.ceil(moduleLoaders.length / 3) }, (_, index) =>
+    moduleLoaders.slice(index * 3, (index + 1) * 3),
+  )
+  // Small import batches avoid a single evaluation burst; initializers retain dependency order.
+  for (const batch of batches) {
+    const modules = await Promise.all(batch.map(getLoadedModule))
+    for (const module of modules) yield module
+    await yieldBackground()
+  }
+}
+
+const getLoadedModule = async (module: ModuleLoader) => {
+  const started = performance.now()
+  const imported = await module.load().then(
+    (value: unknown) => ({ ok: true as const, value }),
+    (error: unknown) => ({ ok: false as const, error }),
+  )
+
+  return { path: module.path, imported, loadMs: Math.round(performance.now() - started) }
 }
 
 const runServe = async (): Promise<void> => {
@@ -263,6 +282,11 @@ const main = async (): Promise<void> => {
   if (mode === "transcript-retention") {
     const { runTranscriptRetention } = await import("./kernel/transcript-retention-process")
     await runTranscriptRetention()
+    return
+  }
+  if (mode === "prepare-store") {
+    const { prepareDatabase } = await import("./kernel/database-startup")
+    await prepareDatabase()
     return
   }
   if (mode === "store-read") {

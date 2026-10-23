@@ -9,6 +9,7 @@ import { getBrowserActivityTools } from "./browserActivityPresentation"
 import type { BrowserContinuationActivity } from "./browserContinuationActivity"
 import { MarkdownContent } from "./MarkdownContent"
 import type { MascotState } from "./mascotState"
+import { isSessionRecoveryDiagnostic, sessionRecoveryDiagnosticText } from "./sessionRecoveryPresentation"
 import { ToolCallCard } from "./ToolCallCard"
 import { activityGroupLabels, activityGroups, activitySummary, activityTools, approvalTools } from "./turnActivityModel"
 import "./turn-activity.css"
@@ -39,6 +40,15 @@ export const BrowserTurnCard = ({
     bot: bot ?? inlinePreview.bot,
     machine: bot && inlinePreview.bot?.id !== bot.id ? undefined : inlinePreview.machine,
   }
+  const sessionDetails = getSessionRecoveryDetails(message, run, locale)
+  const history = sessionDetails ? (
+    <>
+      {children}
+      {sessionDetails}
+    </>
+  ) : (
+    children
+  )
   const card = (
     <Suspense fallback={<div className="browser-card-loading" aria-busy="true" />}>
       <BrowserActivityCard
@@ -59,7 +69,7 @@ export const BrowserTurnCard = ({
         botName={message.sender?.name ?? bot?.name ?? "touri"}
         locale={locale}
       >
-        {children}
+        {history}
       </BrowserActivityCard>
     </Suspense>
   )
@@ -183,6 +193,7 @@ export const TurnActivity = ({
                 ))}
               </section>
             ))}
+            {browserTools.length === 0 && getSessionRecoveryDetails(message, run, locale)}
             {reasoning.length > 0 && (
               <section className="turn-activity-group chat-reasoning" aria-label={t("Reasoning", {}, locale)}>
                 <h4>{t("Reasoning", {}, locale)}</h4>
@@ -193,5 +204,16 @@ export const TurnActivity = ({
         )}
       </div>
     </div>
+  )
+}
+
+const getSessionRecoveryDetails = (message: Message, run: Run | undefined, locale: Locale): ReactNode => {
+  if (run?.status !== "succeeded" || !message.parts.some(isSessionRecoveryDiagnostic)) return null
+
+  return (
+    <section className="turn-activity-group" aria-label={t("Detalhes técnicos", {}, locale)}>
+      <h4>{t("Detalhes técnicos", {}, locale)}</h4>
+      <p>{t(sessionRecoveryDiagnosticText, {}, locale)}</p>
+    </section>
   )
 }

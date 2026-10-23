@@ -82,6 +82,7 @@ import { reapProviderProcesses } from "./provider-processes"
 import { formatRoutineTitle, nextCronSlot, parseCron, previousCronSlot, validTimezone } from "./routines/cron"
 import { sessionFingerprint, workingDirectory } from "./session"
 import { canRecoverSession, hasTurnResponse, SESSION_RECOVERY_MESSAGE } from "./session-recovery"
+import { getStartupReply, getStartupRuns } from "./startup-runs"
 import { createToolResolutions, type PreparedToolFinish } from "./tool-resolutions"
 import { retryTransient } from "./transient-retry"
 import { turnConclusion } from "./turn-conclusion"
@@ -388,6 +389,7 @@ export const createRuntimeEngine = ({
 }): RuntimeEngine => {
   const runtimeStartedAt = getNow()
   const persistence: RuntimePersistence = createRuntimePersistence({ database: kernel.db })
+  const startupRuns = getStartupRuns(kernel.db, persistence.listActiveRuns)
   const ownerPath = `${kernel.paths.runDir}/runtime-owner`
   const owner = randomHexToken()
   let ownerWriteState: "pending" | "ready" | "failed" = "pending"
@@ -478,15 +480,21 @@ export const createRuntimeEngine = ({
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 15_000)
     timer.unref()
-    const promise = prepareConversationSession({
-      kernel,
-      bot,
-      thread,
-      prepare,
-      signal: controller.signal,
-      session: persistence.getActiveSession({ threadId, provider: bot.provider }),
-      ...(environment ? { environment } : {}),
-    })
+    const promise = ready
+      .then(async () => {
+        await kernel.services.use("store.recovery")?.ensureThread(threadId)
+        await kernel.services.use("store.recovery")?.ensureBot(bot.id)
+        controller.signal.throwIfAborted()
+        return prepareConversationSession({
+          kernel,
+          bot,
+          thread,
+          prepare,
+          signal: controller.signal,
+          session: persistence.getActiveSession({ threadId, provider: bot.provider }),
+          ...(environment ? { environment } : {}),
+        })
+      })
       .then(
         (prepared) => prepared && !controller.signal.aborted,
         () => false,
@@ -1415,6 +1423,8 @@ export const createRuntimeEngine = ({
       })
       return
     }
+    await kernel.services.use("store.recovery")?.ensureThread(run.threadId)
+    await kernel.services.use("store.recovery")?.ensureBot(run.botId)
     await tools.reconcilePending(store, run.threadId)
     if (!isLive(run)) {
       active.delete(run.threadId)
@@ -2401,7 +2411,7 @@ export const createRuntimeEngine = ({
   }
 
   const scheduleContinuation = ({ run, plan }: { run: Run; plan: ContinuationPlan }): void => {
-    if (pendingContinuations.has(run.id)) return
+    if (shuttingDown || pendingContinuations.has(run.id)) return
     const summary = bounded({ value: getState(run.id).text, max: 500 })
     const job = automaticResumes.getJob(run.id)
     const timer = setTimeout(
@@ -3334,6 +3344,15 @@ export const createRuntimeEngine = ({
     const bot = store.getBot({ botId: routine.botId })
     if (!bot) return { success: false, errorCode: "NOT_FOUND", error: "Bot not found" }
     const group = routine.groupId ? createGroupStore(kernel).get(routine.groupId) : null
+    const publishRoutineThread = (thread: Thread): void => {
+      kernel.publish({
+        type: "thread.updated",
+        thread: {
+          ...thread,
+          routineTitle: { sourceTitle: thread.title, name: routine.name, scheduledFor, timezone: routine.timezone },
+        },
+      })
+    }
     let threadId: Id | null = null
     if (routine.continuity === "main-thread") threadId = bot.mainThreadId
     else if (routine.continuity === "results-thread") threadId = routine.resultsThreadId
@@ -3348,6 +3367,7 @@ export const createRuntimeEngine = ({
       })
       if (!created.success)
         return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Unable to create routine thread" }
+      publishRoutineThread(created.thread)
       threadId = created.thread.id
       if (routine.continuity === "results-thread" || (bot.automaticConversationMode ?? "main") === "main")
         persistence.updateRoutine({ ...routine, resultsThreadId: threadId, updatedAt: Date.now() })
@@ -3364,6 +3384,7 @@ export const createRuntimeEngine = ({
         : store.createThread(threadArgs)
       if (!created.success)
         return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Unable to create routine thread" }
+      publishRoutineThread(created.thread)
       threadId = created.thread.id
       if (routine.continuity === "results-thread")
         persistence.updateRoutine({ ...routine, resultsThreadId: threadId, updatedAt: Date.now() })
@@ -3539,129 +3560,126 @@ export const createRuntimeEngine = ({
       }),
     )
   const startupCleanup = Promise.all([ownerWrite, processCleanup]).then(() => undefined)
-  const recovered = new Set<Id>()
-  const startupRecoveries: Array<Promise<void>> = []
-  for (const run of persistence.listActiveRuns()) {
-    recovered.add(run.id)
-    const store = kernel.services.use("store.api")
-    const thread = store?.getThread({ threadId: run.threadId })
-    if (store && thread) {
-      const state = getState(run.id)
-      const reply = run.replyMessageId
-        ? store
-            .activePath({ threadId: run.threadId, leafId: run.replyMessageId })
-            .find((message) => message.id === run.replyMessageId)
-        : null
-      if (reply) {
-        state.replyMessageId = reply.id
-        state.text = reply.text
-        state.pendingText = []
-        state.pendingPartText.clear()
-        state.parts = structuredClone(reply.parts)
+  const recoverAtStartup = async (): Promise<void> => {
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    const recovered = new Set<Id>()
+    for await (const pendingRun of startupRuns) {
+      if (shuttingDown) return
+
+      await kernel.services.use("store.recovery")?.ensureThread(pendingRun.threadId)
+      const run = persistence.getRun(pendingRun.id)
+      if (!run || !["queued", "starting", "running"].includes(run.status)) continue
+      recovered.add(run.id)
+      const store = kernel.services.use("store.api")
+      const thread = store?.getThread({ threadId: run.threadId })
+      if (store && thread) {
+        const state = getState(run.id)
+        const reply = getStartupReply(store, run)
+        if (reply) {
+          state.replyMessageId = reply.id
+          state.text = reply.text
+          state.pendingText = []
+          state.pendingPartText.clear()
+          state.parts = structuredClone(reply.parts)
+        }
+        state.turnStarted = run.externalTurnId !== null
+        const plan = planContinuation({
+          run,
+          reason: "app_restart",
+          lastActivityAt: Math.max(run.startedAt ?? run.queuedAt, reply?.updatedAt ?? 0),
+        })
+        const recovery = finalizeFailure({
+          run,
+          state,
+          store,
+          thread,
+          errorClass: "app_restart",
+          errorMessage: "touri restarted",
+          continuing: plan !== null,
+        })
+          .then((committed) => {
+            if (committed && plan) scheduleContinuation({ run, plan })
+          })
+          .finally(() => deleteRunState(run.id))
+        await recovery
+        continue
       }
-      state.turnStarted = run.externalTurnId !== null
-      const plan = planContinuation({
-        run,
-        reason: "app_restart",
-        lastActivityAt: Math.max(run.startedAt ?? run.queuedAt, reply?.updatedAt ?? 0),
-      })
-      const recovery = finalizeFailure({
-        run,
-        state,
-        store,
-        thread,
+      const finishedAt = Date.now()
+      updateRun(run, {
+        status: "interrupted",
         errorClass: "app_restart",
         errorMessage: "touri restarted",
-        continuing: plan !== null,
+        finishedAt,
       })
-        .then((committed) => {
-          if (committed && plan) scheduleContinuation({ run, plan })
-        })
-        .finally(() => deleteRunState(run.id))
-      startupRecoveries.push(recovery)
-      continue
+      if (run.routineRunId) {
+        const routineRun = persistence.getRoutineRun(run.routineRunId)
+        if (routineRun && routineRun.status === "running")
+          persistence.updateRoutineRun({
+            ...routineRun,
+            status: "canceled",
+            summary: "Interrupted because touri restarted",
+            finishedAt,
+          })
+      }
     }
-    const finishedAt = Date.now()
-    updateRun(run, {
-      status: "interrupted",
-      errorClass: "app_restart",
-      errorMessage: "touri restarted",
-      finishedAt,
-    })
-    if (run.routineRunId) {
-      const routineRun = persistence.getRoutineRun(run.routineRunId)
-      if (routineRun && routineRun.status === "running")
-        persistence.updateRoutineRun({
-          ...routineRun,
-          status: "canceled",
-          summary: "Interrupted because touri restarted",
-          finishedAt,
-        })
-    }
-  }
 
-  const restoreAutomaticResumes = async (): Promise<void> => {
-    let cursor = ""
-    while (true) {
-      const page = automaticResumes.getPending(cursor)
-      if (page.length === 0) return
-      page.forEach((job) => {
-        // Shared-channel turns own their member retries and preserve the remaining recipients.
-        if (recovered.has(job.runId) || continuations.isGroupRun(job.runId)) return
-        const run = persistence.getRun(job.runId)
-        if (!run || !canStartContinuation(run, job)) {
-          automaticResumes.saveJob({ ...job, state: "abandoned" })
-          return
-        }
-        const plan = planContinuation({ run, reason: job.reason, lastActivityAt: run.finishedAt ?? run.queuedAt })
-        if (plan) scheduleContinuation({ run, plan })
-        else abandonContinuation({ run, status: "failed", summary: run.errorMessage ?? "" })
-      })
-      cursor = page.at(-1)?.runId ?? cursor
+    const restoreAutomaticResumes = async (): Promise<void> => {
+      let cursor = ""
+      while (true) {
+        const page = automaticResumes.getPending(cursor)
+        if (page.length === 0) return
+        page.forEach((job) => {
+          // Shared-channel turns own their member retries and preserve the remaining recipients.
+          if (recovered.has(job.runId) || continuations.isGroupRun(job.runId)) return
+          const run = persistence.getRun(job.runId)
+          if (!run || !canStartContinuation(run, job)) {
+            automaticResumes.saveJob({ ...job, state: "abandoned" })
+            return
+          }
+          const plan = planContinuation({ run, reason: job.reason, lastActivityAt: run.finishedAt ?? run.queuedAt })
+          if (plan) scheduleContinuation({ run, plan })
+          else abandonContinuation({ run, status: "failed", summary: run.errorMessage ?? "" })
+        })
+        cursor = page.at(-1)?.runId ?? cursor
+        await new Promise<void>((resolve) => setImmediate(resolve))
+      }
+    }
+    await restoreAutomaticResumes()
+
+    for (const runId of continuations.recentlyInterrupted(Date.now() - CONTINUATION_WINDOW_MS)) {
       await new Promise<void>((resolve) => setImmediate(resolve))
-    }
-  }
-  startupRecoveries.push(restoreAutomaticResumes())
-
-  for (const runId of continuations.recentlyInterrupted(Date.now() - CONTINUATION_WINDOW_MS)) {
-    const run = persistence.getRun(runId)
-    if (!run || recovered.has(run.id) || persistence.listRuns(run.threadId)[0]?.id !== run.id) continue
-    const plan = planContinuation({ run, reason: "app_restart", lastActivityAt: run.finishedAt ?? run.queuedAt })
-    if (plan && !pendingContinuations.has(run.id)) scheduleContinuation({ run, plan })
-  }
-
-  goals.getActive().forEach((goal) => {
-    const run = goal.runId ? persistence.getRun(goal.runId) : null
-    if (run && ["queued", "starting", "running"].includes(run.status)) return
-    if (!goals.prepareContinuation(goal)) return
-    const isLatest = run && persistence.listRuns(goal.threadId)[0]?.id === run.id
-    const plan = isLatest
-      ? planContinuation({ run, reason: "app_restart", lastActivityAt: run.finishedAt ?? run.queuedAt })
-      : null
-    if (run && plan) {
-      scheduleContinuation({ run, plan })
-      return
+      const run = persistence.getRun(runId)
+      if (!run || recovered.has(run.id) || persistence.listRuns(run.threadId)[0]?.id !== run.id) continue
+      const plan = planContinuation({ run, reason: "app_restart", lastActivityAt: run.finishedAt ?? run.queuedAt })
+      if (plan && !pendingContinuations.has(run.id)) scheduleContinuation({ run, plan })
     }
 
-    const current = goals.getGoal(goal.threadId)
-    if (current?.status === "active") goals.saveGoal({ ...current, status: "paused" })
-  })
+    goals.getActive().forEach((goal) => {
+      const run = goal.runId ? persistence.getRun(goal.runId) : null
+      if (run && ["queued", "starting", "running"].includes(run.status)) return
+      if (!goals.prepareContinuation(goal)) return
+      const isLatest = run && persistence.listRuns(goal.threadId)[0]?.id === run.id
+      const plan = isLatest
+        ? planContinuation({ run, reason: "app_restart", lastActivityAt: run.finishedAt ?? run.queuedAt })
+        : null
+      if (run && plan) {
+        scheduleContinuation({ run, plan })
+        return
+      }
 
-  const recoveryStore = kernel.services.use("store.api")
-  // Recovery repairs persisted history once. Terminal transitions already settle
-  // their own tools; repeating recovery per turn rescans every previous result.
-  const toolReconciliation = recoveryStore ? tools.reconcile(recoveryStore) : Promise.resolve()
-  const ready = Promise.allSettled([startupCleanup, ...startupRecoveries, toolReconciliation]).then((results) => {
+      const current = goals.getGoal(goal.threadId)
+      if (current?.status === "active") goals.saveGoal({ ...current, status: "paused" })
+    })
+
+    const recoveryStore = kernel.services.use("store.api")
+    // Recovery repairs persisted history once. Terminal transitions already settle
+    // their own tools; repeating recovery per turn rescans every previous result.
+    if (recoveryStore) await tools.reconcile(recoveryStore)
+  }
+  const ready = Promise.allSettled([startupCleanup, recoverAtStartup()]).then((results) => {
     if (results.every((result) => result.status === "fulfilled")) return
-    try {
-      kernel.log({
-        level: "error",
-        module: "runtime",
-        msg: "Startup run recovery did not complete",
-      })
-    } catch {
-      // A startup recovery failure can also prevent writing its diagnostic.
-    }
+
+    kernel.log({ level: "error", module: "runtime", msg: "Startup run recovery did not complete" })
   })
   queueMicrotask(() => void ready.then(() => drain()))
 
