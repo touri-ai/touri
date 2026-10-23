@@ -141,6 +141,86 @@ test("sends private browser typing only to the remote input route and returns co
   )
 })
 
+test("handback drains accepted phone typing, paste and keyboard input before returning control", async () => {
+  const pendingInput = Promise.withResolvers<void>()
+  const request = vi.fn(async (route: string) => {
+    if (route === "POST /browser/tabs/:id/takeover/frame") return getBrowserFrame()
+    if (route === "POST /browser/tabs/:id/takeover/input") await pendingInput.promise
+    return {}
+  })
+  const api = Object.assign({}, createMockApi(), { request: request as ApiRequest })
+  const onHandback = vi.fn()
+
+  render(
+    <BrowserTakeoverView
+      api={api}
+      tabId="synthetic-tab"
+      sessionId="synthetic-session"
+      controlEpoch="control-epoch"
+      botName="Lia"
+      locale="pt-BR"
+      reason={null}
+      actions={[]}
+      onHandback={onHandback}
+    />,
+  )
+  await loadFirstBrowserFrame()
+  const keyboard = screen.getByRole("textbox", { name: "Entrada de teclado para o navegador" })
+  fireEvent.input(keyboard, { target: { value: "entrada privada inicial" } })
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith(
+      "POST /browser/tabs/:id/takeover/input",
+      expect.objectContaining({ input: { kind: "text", text: "entrada privada inicial" } }),
+      { id: "synthetic-tab" },
+    ),
+  )
+
+  fireEvent.input(keyboard, { target: { value: "entrada privada final" } })
+  fireEvent.paste(keyboard, { clipboardData: { getData: () => "texto colado privado" } })
+  fireEvent.keyDown(keyboard, { key: "Enter", code: "Enter" })
+  fireEvent.keyUp(keyboard, { key: "Enter", code: "Enter" })
+  fireEvent.click(screen.getByRole("button", { name: "Devolver para Lia" }))
+  fireEvent.input(keyboard, { target: { value: "entrada depois de devolver" } })
+  expect(screen.getByRole("button", { name: "Devolvendo o controle…" })).toBeDisabled()
+  expect(onHandback).not.toHaveBeenCalled()
+  expect(request).not.toHaveBeenCalledWith("DELETE /browser/tabs/:id/takeover/session", expect.anything(), {
+    id: "synthetic-tab",
+  })
+  pendingInput.resolve()
+
+  await waitFor(() => expect(onHandback).toHaveBeenCalledOnce())
+
+  const actions = request.mock.calls.filter(([route]) => route !== "POST /browser/tabs/:id/takeover/frame")
+  const getInputRequest = (input: unknown) => [
+    "POST /browser/tabs/:id/takeover/input",
+    {
+      sessionId: "synthetic-session",
+      controlEpoch: "control-epoch",
+      targetEpoch: 1,
+      viewEpoch: 0,
+      width: 1_000,
+      height: 500,
+      input,
+    },
+    { id: "synthetic-tab" },
+  ]
+  expect(actions).toEqual([
+    getInputRequest({ kind: "text", text: "entrada privada inicial" }),
+    getInputRequest({ kind: "text", text: "entrada privada final" }),
+    getInputRequest({ kind: "text", text: "texto colado privado" }),
+    getInputRequest({ kind: "key", phase: "down", key: "Enter", code: "Enter", modifiers: 0 }),
+    getInputRequest({ kind: "key", phase: "up", key: "Enter", code: "Enter", modifiers: 0 }),
+    [
+      "DELETE /browser/tabs/:id/takeover/session",
+      { sessionId: "synthetic-session", controlEpoch: "control-epoch" },
+      { id: "synthetic-tab" },
+    ],
+  ])
+  expect(keyboard).toHaveValue("")
+  expect(document.body.textContent).not.toContain("entrada privada")
+  expect(document.body.textContent).not.toContain("texto colado privado")
+})
+
 test("keeps the privacy notice visible and lets a person expand the browser view", async () => {
   const api = createMockApi()
   const request = vi.fn(async (route: string) => {

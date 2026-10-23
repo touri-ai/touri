@@ -1,0 +1,57 @@
+name: Menu snapshots
+on:
+  workflow_dispatch:
+    inputs:
+      update_snapshots:
+        description: Generate references for review instead of comparing
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - '.github/workflows/menu-snapshots.yml'
+      - '.github/workflows/ci.yml'
+      - 'bun.lock'
+      - 'ui/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/menu-snapshots.yml'
+      - '.github/workflows/ci.yml'
+      - 'bun.lock'
+      - 'ui/**'
+permissions:
+  contents: read
+jobs:
+  menus:
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install archive tool
+        run: apt-get update && apt-get install -y --no-install-recommends unzip
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: 1.4.3
+      - name: Compare menu references
+        working-directory: ui
+        env:
+          UPDATE_SNAPSHOTS: ${{ github.event_name == 'workflow_dispatch' && inputs.update_snapshots }}
+        run: |
+          if [ "$UPDATE_SNAPSHOTS" = "true" ]; then
+            bunx playwright test test/e2e/bot-menu-clipping.spec.ts --workers=1 --update-snapshots
+          else
+            bunx playwright test test/e2e/bot-menu-clipping.spec.ts --workers=1
+          fi
+      - name: Retain menu evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: menu-snapshots
+          path: |
+            ui/test/e2e/bot-menu-clipping.spec.ts-snapshots/*linux.png
+            ui/test-results/**/*.png
+            ui/test-results/**/error-context.md
+            ui/test-results/**/project-menu-fonts.json
+          retention-days: 7

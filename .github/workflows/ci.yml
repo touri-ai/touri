@@ -151,7 +151,10 @@ jobs:
       - run: bash scripts/test-ui-affected.sh ${{ github.event.pull_request.base.sha }}
 
   browser-e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # Match the reference generator's browser, OS libraries and font fallback set.
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462
     timeout-minutes: 25
     strategy:
       fail-fast: false
@@ -159,15 +162,26 @@ jobs:
         shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install archive tool
+        run: apt-get update && apt-get install -y --no-install-recommends unzip
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: 1.4.3
-      - name: Install test browser
-        working-directory: ui
-        run: bunx playwright install --with-deps chromium
       - name: Check the complete browser suite
         working-directory: ui
         run: bunx playwright test --workers=1 --shard=${{ matrix.shard }}/3
+      - name: Retain browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-failures-${{ matrix.shard }}
+          path: |
+            ui/test-results/**/*.png
+            ui/test-results/**/error-context.md
+            ui/test-results/**/project-menu-fonts.json
+            docs/qa/visual/*.png
+            docs/evidence/qa-r4/*.png
+          retention-days: 7
 
   channel-takeover:
     runs-on: ubuntu-latest

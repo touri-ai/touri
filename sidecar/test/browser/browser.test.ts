@@ -369,6 +369,18 @@ realSuite("WP6 real Chrome browser acceptance", () => {
     })
     expect(submit).toMatchObject({ success: true, structured: { status: "waiting_for_person" } })
     await evaluateAsPerson(page.tabId, "document.querySelector('#travel-search').requestSubmit()")
+    // CDP acknowledges requestSubmit before navigation commits. Return control only after the
+    // person's result document is loaded, so the privacy assertion cannot race the form response.
+    const navigationDeadline = Date.now() + 10_000
+    while (
+      !(await evaluateAsPerson(
+        page.tabId,
+        "location.pathname === '/travel-results' && document.readyState === 'complete'",
+      ).catch(() => false))
+    ) {
+      if (Date.now() >= navigationDeadline) throw new Error("Synthetic travel submission did not navigate")
+      await Bun.sleep(25)
+    }
     expect(await engine.releaseTakeover(page.tabId)).toBe(true)
     const navigated = await engine.waitFor({
       tabId: page.tabId,

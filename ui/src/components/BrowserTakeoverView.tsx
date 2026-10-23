@@ -250,7 +250,8 @@ export const BrowserTakeoverView = ({
     pendingInputs.current += 1
     inputQueue.current = inputQueue.current
       .then(() => {
-        if (!connected.current || released.current || releasing.current) return
+        // Handback stops new input but drains actions accepted before the click.
+        if (!connected.current || released.current) return
         if (observedFrame.viewEpoch !== viewEpoch.current) return
         return api.request(
           "POST /browser/tabs/:id/takeover/input",

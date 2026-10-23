@@ -308,6 +308,7 @@ interrupted | failed(cli_crash, oom) ─► automatic continuation run (see belo
   - Codex server requests `item/commandExecution/requestApproval`, `item/fileChange/requestApproval` and `item/permissions/requestApproval`.
   - Claude calls the `approval_prompt` tool.
   - Each request becomes an `ApprovalPart` message plus a notification. The answer comes through `POST /approvals/:id`. Requests expire after 30 min and are then denied.
+- **Channel run identity.** A channel message creates a coordination turn and a linked member execution; only the member execution starts a provider. Activity, work snapshots and live run events retain the member's `groupTurnId`, so reloading cannot turn it into an independent channel turn. Work snapshots preserve the execution `threadId` and expose the visible channel as `groupThreadId`.
 - **Queued messages.** While a thread has an active run, new user messages create `queued` runs that start in order. The UI shows "queued" and allows canceling them.
 
 ### 3.5 Handoff packet (session replacement only)

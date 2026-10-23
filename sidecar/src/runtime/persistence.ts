@@ -102,6 +102,7 @@ export const toRun = (value: unknown): Run | null => {
     startedAt: nullableInteger(row, "started_at"),
     ...(row.provider_started_at == null ? {} : { providerStartedAt: integer(row, "provider_started_at") }),
     finishedAt: nullableInteger(row, "finished_at"),
+    ...(row.group_turn_id == null ? {} : { groupTurnId: text(row, "group_turn_id") }),
     ...("group_thread_id" in row ? { groupThreadId: nullableText(row, "group_thread_id") } : {}),
     ...("browser_takeover_from_run_id" in row
       ? { browserTakeoverFromRunId: nullableText(row, "browser_takeover_from_run_id") }
@@ -205,7 +206,8 @@ const canUseDatabase = (value: unknown): value is Database => {
   }
 }
 
-const RUN_SNAPSHOT_SELECT = `SELECT r.*, COALESCE(root.thread_id, t.group_thread_id) AS group_thread_id,
+const RUN_SNAPSHOT_SELECT = `SELECT r.*, link.turn_id AS group_turn_id,
+  COALESCE(root.thread_id, t.group_thread_id) AS group_thread_id,
   COALESCE(browser_continuation.original_run_id, r.id) AS browser_request_id,
   EXISTS(SELECT 1 FROM browser_pending_handoffs handoff WHERE handoff.run_id IN (r.id, browser_continuation.original_run_id) AND handoff.state = 'waiting') AS browser_waiting_for_person,
   browser_continuation.previous_run_id AS browser_takeover_from_run_id,

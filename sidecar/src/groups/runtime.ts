@@ -506,12 +506,13 @@ export const createGroupRuntime = (kernel: Kernel, engine: Engine, timeoutMs = g
       })
       return
     }
-    if (event.type === "run.updated" && !event.run.groupTurnId) {
+    if (event.type === "run.updated" && event.run.threadId !== event.run.groupThreadId) {
       const link = db.query("SELECT turn_id FROM group_run_links WHERE run_id=?").get(event.run.id) as {
         turn_id: string
       } | null
       const root = link ? readRun(link.turn_id) : null
-      if (root) kernel.publish({ type: "run.updated", run: getGroupRun(event.run, root.threadId, root.id) })
+      if (root && event.run.threadId !== root.threadId)
+        kernel.publish({ type: "run.updated", run: getGroupRun(event.run, root.threadId, root.id) })
       return
     }
     if (event.type === "bot.updated") {

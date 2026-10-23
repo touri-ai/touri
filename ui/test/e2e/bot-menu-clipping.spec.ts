@@ -1,3 +1,4 @@
+import { writeFile } from "node:fs/promises"
 import { expect, type Locator, type Page, test } from "@playwright/test"
 
 test.use({ channel: "chromium" })
@@ -128,6 +129,23 @@ for (const theme of ["light", "dark"]) {
           (element) => element.closest(".composer-project-picker")?.parentElement === document.body,
         ),
       ).toBe(true)
+      const fontSession = await page.context().newCDPSession(page)
+      await fontSession.send("DOM.enable")
+      await fontSession.send("CSS.enable")
+      const { root } = await fontSession.send("DOM.getDocument")
+      const { nodeId } = await fontSession.send("DOM.querySelector", {
+        nodeId: root.nodeId,
+        selector: '[role="menu"] [aria-checked="true"] span:last-child',
+      })
+      const { fonts } = await fontSession.send("CSS.getPlatformFontsForNode", { nodeId })
+      const fontsPath = info.outputPath("project-menu-fonts.json")
+      await writeFile(fontsPath, JSON.stringify(fonts, null, 2))
+      await info.attach("project-menu-fonts", {
+        path: fontsPath,
+        contentType: "application/json",
+      })
+      await fontSession.detach()
+
       const projectSurface = projects.locator("xpath=..")
       await expect(projectSurface).toHaveCSS("position", "fixed")
       await expect(projectSurface).toHaveCSS("background-color", await themeColor(projectSurface, "--surface"))
