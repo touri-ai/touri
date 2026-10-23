@@ -1,4 +1,6 @@
+import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
+import type { Run, UiEvent } from "@touri/contracts"
 import type { ApiRequest } from "../../src/api/client"
 
 test.use({ channel: "chromium", reducedMotion: "reduce" })
@@ -14,7 +16,9 @@ for (const viewport of [
     await expect(page.getByRole("textbox", { name: "Mensagem para mark", exact: true })).toBeVisible()
     await page.evaluate(async () => {
       const fixture = window as Window & {
-        groupsQa?: { api: { request: ApiRequest; getState: () => { messages: unknown[] } } }
+        groupsQa?: {
+          api: { request: ApiRequest; emit: (event: UiEvent) => void; getState: () => { messages: unknown[] } }
+        }
       }
       const api = fixture.groupsQa?.api
       if (!api) throw new Error("Missing group fixture")
@@ -29,13 +33,14 @@ for (const viewport of [
       const threadId = threads[0]?.id
       if (!threadId) throw new Error("Missing channel conversation")
       const at = Date.now()
-      const base = { threadId, kind: "text", runId: null, source: "local", sender: { id: "bot-mark", name: "mark" } }
+      const base = { threadId, kind: "text", source: "local", sender: { id: "bot-mark", name: "mark" } }
       const notice = { type: "notice", level: "info", code: "run_canceled", text: "Cancelado por você" }
       // Stored shape after Stop: the execution reply holds the text and command, the coordination only the notice.
       api.getState().messages.push(
         {
           ...base,
           id: "stop-request",
+          runId: null,
           parentId: null,
           role: "user",
           status: "complete",
@@ -48,6 +53,7 @@ for (const viewport of [
         {
           ...base,
           id: "stop-execution",
+          runId: "run-execution",
           parentId: "stop-request",
           role: "assistant",
           status: "canceled",
@@ -70,6 +76,7 @@ for (const viewport of [
         {
           ...base,
           id: "stop-coordination",
+          runId: "run-coordination",
           parentId: "stop-execution",
           role: "assistant",
           status: "canceled",
@@ -79,6 +86,28 @@ for (const viewport of [
           updatedAt: at + 2,
         },
       )
+      const getRun = (id: string, kind: Run["kind"], groupTurnId?: string): Run => ({
+        id,
+        kind,
+        groupTurnId,
+        threadId,
+        botId: "bot-mark",
+        provider: "codex",
+        trigger: "user",
+        requestMessageId: "stop-request",
+        replyMessageId: kind === "coordination" ? "stop-coordination" : "stop-execution",
+        externalTurnId: null,
+        status: "canceled",
+        errorClass: "canceled",
+        errorMessage: null,
+        usage: null,
+        routineRunId: null,
+        queuedAt: at,
+        startedAt: at,
+        finishedAt: at + 2,
+      })
+      api.emit({ type: "run.updated", run: getRun("run-coordination", "coordination") })
+      api.emit({ type: "run.updated", run: getRun("run-execution", "execution", "run-coordination") })
     })
     if (viewport.width < 500) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
     await page.getByRole("tab", { name: /^Work/ }).click()
@@ -98,5 +127,11 @@ for (const viewport of [
     await expect(page.locator('[data-message-id="stop-execution"]')).toContainText("Cancelado por você")
     await expect(page.locator('[data-message-id="stop-coordination"]')).toHaveCount(0)
     await expect(replies.filter({ hasText: "Cancelado por você" })).toHaveCount(1)
+    const violations = await new AxeBuilder({ page })
+      .include(".message-scroll")
+      .withTags(["wcag2a", "wcag2aa"])
+      .analyze()
+
+    expect(violations.violations).toEqual([])
   })
 }

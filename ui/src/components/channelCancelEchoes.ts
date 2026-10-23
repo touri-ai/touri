@@ -1,37 +1,38 @@
-import type { Message } from "@touri/contracts"
+import type { Message, Run } from "@touri/contracts"
+
+/** Hide only a coordination echo linked to an earlier stopped execution with content. */
+export const getChannelMessages = (messages: readonly Message[], runs: readonly Run[]): Message[] => {
+  const runsById = new Map(runs.map((run) => [run.id, run]))
+  // Local indexes keep render work linear instead of rescanning growing history for every echo.
+  const stoppedAuthors = new Set<string>()
+  const stoppedTurns = new Set<string>()
+
+  return messages.filter((message) => {
+    if (message.role !== "assistant" || message.status !== "canceled") return true
+    const run = runsById.get(message.runId ?? "")
+    if (!run) return true
+
+    if (run.kind === "execution" && run.groupTurnId && hasContent(message)) {
+      stoppedTurns.add(getKey(message.threadId, run.groupTurnId))
+      stoppedAuthors.add(getKey(message.threadId, run.groupTurnId, message.sender?.id ?? run.botId))
+      return true
+    }
+    if (run.kind !== "coordination" || !isEmptyCancelReply(message)) return true
+
+    const key = getKey(message.threadId, run.id, message.sender?.id)
+    return message.sender === null ? !stoppedTurns.has(key) : !stoppedAuthors.has(key)
+  })
+}
+
+const getKey = (threadId: string, turnId: string, authorId?: string): string =>
+  JSON.stringify([threadId, turnId, authorId ?? null])
 
 const isCancelNotice = (part: Message["parts"][number]): boolean =>
   part.type === "notice" && part.code === "run_canceled"
 
-/** A reply with nothing but the cancel notice adds no content of its own. */
 const isEmptyCancelReply = (message: Message): boolean =>
-  message.role === "assistant" &&
-  message.status === "canceled" &&
-  message.text.trim() === "" &&
-  message.parts.length > 0 &&
-  message.parts.every(isCancelNotice)
+  message.text.trim() === "" && message.parts.length > 0 && message.parts.every(isCancelNotice)
 
-const isSameAuthor = (reply: Message, echo: Message): boolean =>
-  echo.sender === null || reply.sender?.id === echo.sender.id
-
-/**
- * Stopping a channel task cancels its coordination and its member execution. The coordination may
- * leave a reply with only the cancel notice next to the execution reply that holds the text and
- * actions; showing both reads as two stopped tasks. Only that empty echo is hidden; the stored
- * transcript, failures and replies with content stay visible.
- */
-export const getChannelMessages = (messages: readonly Message[]): Message[] =>
-  messages.filter((message, index) => {
-    if (!isEmptyCancelReply(message)) return true
-    const earlier = messages.slice(0, index)
-    const requestIndex = earlier.map((item) => item.role).lastIndexOf("user")
-    const sameRequest = earlier.slice(requestIndex + 1)
-
-    return !sameRequest.some(
-      (reply) =>
-        reply.role === "assistant" &&
-        reply.status === "canceled" &&
-        !isEmptyCancelReply(reply) &&
-        isSameAuthor(reply, message),
-    )
-  })
+const hasContent = (message: Message): boolean =>
+  message.text.trim() !== "" ||
+  message.parts.some((part) => !isCancelNotice(part) && (part.type !== "text" || part.text.trim() !== ""))

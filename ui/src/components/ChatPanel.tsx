@@ -1485,6 +1485,7 @@ export const ChatPanel = ({
   const messagePath = group
     ? getChannelMessages(
         messages.filter((message) => message.threadId === thread.id && !isGroupCoordinationPrompt(message)),
+        runs,
       )
     : (activePath ??
       activeMessagePath(
