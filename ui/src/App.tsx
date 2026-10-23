@@ -609,16 +609,15 @@ const AppContent = ({ kernel }: AppProps) => {
     data.threadCreation?.thread ?? data.threads.find((thread) => thread.id === data.selectedThreadId) ?? null
   const selectedGroup = data.groups.find((g) => g.id === selectedThread?.groupId) ?? null
   const modeSelections = useRef<Partial<Record<WorkspaceMode, ModeSelection>>>({})
-  useEffect(() => {
-    if (!selectedBot) return
-    if (sidebarMode === "bots" && (selectedThread?.groupId || selectedThread?.groupThreadId)) return
-    modeSelections.current = {
-      ...modeSelections.current,
-      [sidebarMode]: { botId: selectedBot.id, threadId: data.threadCreation ? null : (selectedThread?.id ?? null) },
-    }
-  }, [sidebarMode, selectedBot, selectedThread, data.threadCreation])
   const switchSidebarMode = (mode: WorkspaceMode, restore = true): void => {
     if (mode === sidebarMode) return
+
+    if (selectedBot && (sidebarMode === "work" || (!selectedThread?.groupId && !selectedThread?.groupThreadId)))
+      modeSelections.current = {
+        ...modeSelections.current,
+        [sidebarMode]: { botId: selectedBot.id, threadId: data.threadCreation ? null : (selectedThread?.id ?? null) },
+      }
+
     const target = getModeSelection(mode, data.threads, data.bots, modeSelections.current[mode])
     setSidebarMode(mode)
     if (!restore) return

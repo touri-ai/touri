@@ -239,6 +239,7 @@ Tokens are never written to disk, except the per-thread MCP token files (rewritt
 - Preparation has a 15-second deadline, deduplicates concurrent requests per bot and is canceled on a new turn or runtime shutdown. Task turns keep their own tools, permissions and reasoning, restoring history when switching native session fingerprints. Background preparation cannot make a user turn wait on the model.
 - Enter immediately shows **{name} digitando…** / **{name} is typing…** while HTTP delivery is pending. Errors clear the indicator and keep the draft. Existing frame-batched streaming renders text deltas as they arrive, preserving transcript virtualization and cancellation.
 - The initial UI payload remains limited to 400 KB gzip. Conversation sign-in controls load on demand when authentication is required, with localized loading feedback and the draft still visible.
+- The bot library loads only when its tab is first opened. Panel tabs and the close control remain available while it loads.
 - Regression budgets: a prepared provider reaches readiness within 500 ms of enqueue and first text within 1.5 seconds with deterministic provider fixtures; local send feedback appears within 100 ms without an HTTP response. Live provider latency is measured separately on isolated staging, including warm-up and task turns, and reported in PR evidence rather than guaranteed by a fixture.
 
 ### 2.3 Why Bun (and the risks)
