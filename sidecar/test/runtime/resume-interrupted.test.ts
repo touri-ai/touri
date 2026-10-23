@@ -21,6 +21,7 @@ import { createProjectStore } from "../../src/projects/repository"
 import { createSetupTools } from "../../src/projects/setup-tools"
 import { continuationMarkers } from "../../src/runtime/continuations"
 import { createRuntimeEngine } from "../../src/runtime/engine"
+import { SESSION_RECOVERY_MESSAGE } from "../../src/runtime/session-recovery"
 import * as folderAccess from "../../src/runtime/folder-access"
 import { createWorkState } from "../../src/runtime/work-state"
 import { init as initStore } from "../../src/store"
@@ -655,9 +656,7 @@ for (const recovery of ["missing", "rejected", "exit", "notification", "auth", "
       if (recovery === "auth" || recovery === "accepted-error") {
         expect(f.runs().find((run) => run.id === next.id)?.status).toBe("failed")
         if (recovery === "auth") expect(f.runs().find((run) => run.id === next.id)?.error_class).toBe("cli_auth")
-        expect(methods).toEqual(
-          ["thread/start", "thread/resume"].concat(recovery === "accepted-error" ? ["thread/start"] : []),
-        )
+        expect(methods).toEqual(["thread/start", "thread/resume"])
         return
       }
       expect(f.runs().find((run) => run.id === next.id)?.status).toBe("succeeded")
@@ -682,7 +681,12 @@ for (const recovery of ["missing", "rejected", "exit", "notification", "auth", "
       const path = reopened.store.activePath({ threadId: "t" })
       expect(
         path.filter((message) =>
-          message.parts.some((part) => part.type === "notice" && part.code === "context_restored"),
+          message.parts.some(
+            (part) =>
+              part.type === "notice" &&
+              (part.code === "context_restored" ||
+                (part.code === "run_resumed" && part.text === SESSION_RECOVERY_MESSAGE)),
+          ),
         ),
       ).toHaveLength(1)
       expect(path.at(-1)?.text).toBe("Concluí o relatório.")
