@@ -28,6 +28,10 @@ import { openDatabase, SCHEMA_VERSION } from "../../src/kernel/db"
 import { createToolRouter } from "../../src/mcp/router"
 import { createHistoryReadHandler } from "../../src/mcp/tools/history-read"
 import { createHistorySearchHandler } from "../../src/mcp/tools/history-search"
+import { createNotifier } from "../../src/notify/notifier"
+import { createRecoverySync } from "../../src/notify/recovery"
+import { createSseHub } from "../../src/notify/sse"
+import { createNotificationStore } from "../../src/notify/store"
 import { createRuntimeEngine } from "../../src/runtime/engine"
 import { composeDeveloperInstructions } from "../../src/runtime/instructions"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
@@ -775,6 +779,81 @@ test("draining finishes the active group turn and replays waiting turns in order
   expect(restarted.listRuns(other.id).some((run) => run.id === waiting[0]?.id)).toBe(true)
 })
 
+test("disabled automatic resume keeps a linked interruption actionable without an empty continuation", async () => {
+  const f = await fixture(async () => {}, 30_000)
+  f.db.query("INSERT OR REPLACE INTO settings VALUES ('resumeInterruptedTurns','false',0)").run()
+  const first = f.send("@pm pedido interrompido")
+  await until(() => f.order.length === 1)
+  const child = f.runtime.listRuns(f.thread.id).find((run) => run.groupTurnId === first.id)
+  expect(child).toBeDefined()
+  f.runtime.shutdown({ appRestart: true })
+  f.db
+    .query(
+      "UPDATE runs SET status='interrupted',error_class='app_restart',finished_at=? WHERE id IN (SELECT run_id FROM group_run_links WHERE turn_id=?)",
+    )
+    .run(Date.now(), first.id)
+  f.host.kernel.publish({ type: "transcript.resync" })
+  await until(() => f.persistence.getRun(first.id)?.status === "interrupted")
+  const notifications = createNotificationStore({ db: f.db })
+  const notifier = createNotifier({
+    kernel: f.host.kernel,
+    store: notifications,
+    hub: createSseHub({ store: notifications }),
+  })
+  const sync = createRecoverySync(f.host.kernel, notifications, notifier)
+  cleanups.unshift(() => sync.dispose())
+
+  const restarted = createGroupRuntime(f.host.kernel, f.engine, 30_000)
+  cleanups.unshift(() => restarted.shutdown())
+  await restarted.waitForDrain()
+  const tasks = await sync({ silent: true })
+
+  expect(tasks.filter((task) => task.notification.resolvedAt === null)).toMatchObject([
+    { id: `run:${first.id}`, runId: first.id, cause: "app_restart", notification: { threadId: f.thread.id } },
+  ])
+  expect(f.db.query("SELECT COUNT(*) AS count FROM run_continuations").get()).toEqual({ count: 0 })
+  expect(f.persistence.getRun(first.id)?.status).toBe("interrupted")
+  expect(f.persistence.getRun(child?.id ?? "")?.status).toBe("interrupted")
+  expect(f.order).toHaveLength(1)
+  expect(notifications.pending().filter((notice) => notice.kind === "turn-failed")).toHaveLength(1)
+  expect((await sync({ silent: true })).map((task) => task.notification.id)).toEqual(
+    tasks.map((task) => task.notification.id),
+  )
+})
+
+test("disabled automatic resume still restores ordinary queued requests in order", async () => {
+  const f = await fixture(async (_ctx, complete) => {
+    if (f.order.length === 1) return
+
+    complete("Pedido concluído")
+  }, 30_000)
+  f.db.query("INSERT OR REPLACE INTO settings VALUES ('resumeInterruptedTurns','false',0)").run()
+  const interrupted = f.send("@pm pedido interrompido")
+  await until(() => f.order.length === 1)
+  const first = f.send("@pm primeiro pedido aguardando")
+  const second = f.send("@pm segundo pedido aguardando")
+  f.runtime.shutdown({ appRestart: true })
+  f.db
+    .query(
+      "UPDATE runs SET status='interrupted',error_class='app_restart',finished_at=? WHERE id IN (SELECT run_id FROM group_run_links WHERE turn_id=?)",
+    )
+    .run(Date.now(), interrupted.id)
+  f.host.kernel.publish({ type: "transcript.resync" })
+  await until(() => f.persistence.getRun(interrupted.id)?.status === "interrupted")
+
+  const restarted = createGroupRuntime(f.host.kernel, f.engine, 30_000)
+  cleanups.unshift(() => restarted.shutdown())
+  await until(() => f.persistence.getRun(second.id)?.status === "succeeded")
+
+  expect(f.persistence.getRun(first.id)?.status).toBe("succeeded")
+  expect(f.persistence.getRun(interrupted.id)?.status).toBe("interrupted")
+  expect(f.order).toEqual(Array.from({ length: 3 }, () => f.bots[0]?.id ?? ""))
+  expect(f.db.query("SELECT turn_id AS turnId FROM group_run_links ORDER BY rowid").all()).toEqual(
+    [interrupted, first, second].map((run) => ({ turnId: run.id })),
+  )
+  expect(f.db.query("SELECT COUNT(*) AS count FROM run_continuations").get()).toEqual({ count: 0 })
+})
+
 test("restart continues an interrupted request before a queued request to the same member", async () => {
   const release = Promise.withResolvers<void>()
   cleanups.unshift(() => release.resolve())
@@ -785,6 +864,7 @@ test("restart continues an interrupted request before a queued request to the sa
     await release.promise
     complete("Pedido concluído")
   }, 30_000)
+  f.db.query("INSERT OR REPLACE INTO settings VALUES ('resumeInterruptedTurns','true',0)").run()
   const sender = { id: "requester", name: "Requester", kind: "person" as const }
   const first = f.send("@pm primeiro pedido", f.thread.id, sender)
   await until(() => f.order.length === 1)
