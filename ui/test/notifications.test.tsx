@@ -277,7 +277,7 @@ it("keeps the clicked conversation when another workspace reuses the notificatio
   expect(screen.queryByRole("region", { name: "Central de notificações" })).not.toBeInTheDocument()
 })
 
-it("clears ordinary notifications while guiding uncertain work to the recovery center", async () => {
+it("clears ordinary notifications while preserving uncertain work in the recovery center", async () => {
   const api = createMockApi({ scenario: "interrupted-tasks" })
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
@@ -293,5 +293,14 @@ it("clears ordinary notifications while guiding uncertain work to the recovery c
   await waitFor(() => expect(within(bell).getAllByTestId("notification-row")).toHaveLength(1))
   fireEvent.click(within(bell).getByRole("button", { name: "Tarefas interrompidas" }))
   const center = await screen.findByRole("dialog", { name: "Tarefas interrompidas", exact: true })
-  expect(within(center).getByRole("checkbox")).toBeVisible()
+  const acknowledgement = await within(center).findByRole("checkbox", {
+    name: "Revisei os efeitos incertos e entendo que descartar não desfaz as ações.",
+  })
+  expect(acknowledgement).toBeVisible()
+  expect(acknowledgement).not.toBeChecked()
+  expect(within(center).getByRole("button", { name: "Descartar", exact: true })).toBeDisabled()
+
+  fireEvent.click(acknowledgement)
+
+  expect(within(center).getByRole("button", { name: "Descartar", exact: true })).toBeEnabled()
 })
