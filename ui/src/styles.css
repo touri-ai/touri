@@ -213,19 +213,17 @@ a {
   background: var(--surface);
   color: var(--text);
 }
-.notice-bar[data-connection-state="reconnecting"] {
+.notice-bar.connection-status {
   min-height: 0;
   margin-block: var(--space-4);
   padding-block: var(--space-4);
   color: var(--text-2);
-}
-.notice-bar[data-connection-state="incompatible"] {
   flex-wrap: wrap;
 }
-.notice-bar[data-connection-state="incompatible"] > span {
+.notice-bar.connection-status > span {
   flex: 1 1 240px;
 }
-.notice-bar[data-connection-state="incompatible"] button {
+.notice-bar.connection-status :is(button, a) {
   flex-shrink: 0;
   white-space: nowrap;
 }

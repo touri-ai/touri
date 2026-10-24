@@ -363,11 +363,15 @@ User repos stay wherever they are. touri writes into a repo only:
 ### Automatic recovery after server restarts
 
 - Desktop server mode and the web client retain the mounted workspace, selected conversation,
-  scroll position and composer draft while the server is unavailable. A small localized
-  “Reconectando…” / “Reconnecting…” status replaces the persistent disconnected banner.
+  scroll position and composer draft while the server is unavailable. A small localized status
+  explains whether the device is offline, the server is unavailable or the session was rejected.
+  Server recovery shows the current attempt, whether another retry is scheduled and a retry action.
+  A healthy connection removes the notice entirely; bot activity remains in the existing bot status.
 - Reconnect uses exponential delays of 250 ms, 500 ms and at most 1,000 ms. Each connection
   attempt has a 1,000 ms deadline, including health, ticket and socket setup. Returning online or
-  returning to a visible tab immediately retries. Unmount removes listeners, timers and requests.
+  returning to a visible tab immediately retries. An offline browser pauses remote attempts until
+  networking returns; the local desktop service can recover independently of internet access.
+  Unmount removes listeners, timers and requests.
   Target: connected within 2 s after the server is available; the real restart browser regression
   requires less than 3 s and an unchanged draft, document, scroll position and history read count.
 - During server startup, API reads, writes, tickets and event upgrades return a retryable 503 until
@@ -377,6 +381,14 @@ User repos stay wherever they are. touri writes into a repo only:
   repaired by replay, without reloading the page or refetching unchanged conversations. A replay
   gap outside the bounded event window explicitly requests a snapshot; incomplete/failed reads
   are retried. Mutations are never blindly replayed.
+- A device-authentication HTTP 401 (`UNAUTHORIZED`) pauses the rejected session without reloading
+  the conversation or failing pending sends. Pairing opens the existing settings on desktop or
+  `/login` in a separate browser tab, with a single pairing action on the recovery screen;
+  only an explicit access check resumes attempts. Recovered sends retain their original nonce
+  and deadline. Resource-level HTTP 403 and optional-account HTTP 401 errors do not expire the
+  device session.
+  Local service token rotation still refreshes the endpoint automatically. Native endpoint lookup
+  has a one-second waiting limit and shares one underlying invocation until it settles.
 - Authenticated `GET /api/v1/health` advertises optional `protocolVersion` independently of the
   database `schemaVersion` and application release `version`. Protocol metadata lives in
   `packages/contracts/protocol.json`: protocol 1 permits compatible deployments with different
@@ -386,6 +398,8 @@ User repos stay wherever they are. touri writes into a repo only:
   and offer “Atualizar agora” / “Update now”. Only that explicit click reloads web assets or invokes
   the native signed updater and restarts the app. Pairing, cookies, vault and socket tickets keep
   their existing authentication boundaries.
+- A required protocol update remains available across device offline/online signals; a network
+  change cannot replace that explicit update action with an unrecoverable offline notice.
 - When an incompatible protocol prevents startup, show the update explanation once and make
   updating the primary recovery action, without an offline claim or a redundant retry action.
   Recovery actions remain readable and inside their container at desktop and phone widths.

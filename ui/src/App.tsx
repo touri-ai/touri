@@ -23,6 +23,7 @@ import {
   type UiApi,
   webEndpoint,
 } from "./api/client"
+import { type ConnectionStatus, isSessionRejected } from "./api/connectionStatus"
 import type { ApprovalTarget } from "./approvalNavigation"
 import { isResolvedNotification } from "./approvalState"
 import { ApprovalNotice } from "./components/ApprovalNotice"
@@ -185,6 +186,7 @@ const AppContent = ({ kernel }: AppProps) => {
   )
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const [connectionErrorCode, setConnectionErrorCode] = useState<string | null>(null)
+  const [transportConnection, setTransportConnection] = useState<ConnectionStatus | undefined>(undefined)
   const [connectionAttempt, setConnectionAttempt] = useState(0)
   const [retryingConnection, setRetryingConnection] = useState(false)
   const [panelsByBot, setPanelsByBot] = useState<Record<string, boolean>>(() => readWorkspaceState().panelsByBot ?? {})
@@ -361,8 +363,8 @@ const AppContent = ({ kernel }: AppProps) => {
         setRetryingConnection(false)
       } catch (error) {
         if (!active || attempt !== generation) return
-        if (!isTauriRuntime() && error instanceof ApiError && error.status === 401) {
-          window.location.reload()
+        if (isSessionRejected(error) && (!isTauriRuntime() || serverMode)) {
+          fail(errorMessage(error), "UNAUTHORIZED")
           return
         }
         fail(errorMessage(error), error instanceof ApiError ? error.errorCode : undefined)
@@ -419,6 +421,24 @@ const AppContent = ({ kernel }: AppProps) => {
 
   useEffect(() => {
     if (!api || api.isMock) return
+    setTransportConnection(api.getConnectionStatus?.())
+    if (api.subscribeConnectionStatus)
+      return api.subscribeConnectionStatus((status) => {
+        setTransportConnection(status)
+        if (status.state === "connected") {
+          setConnectionState("ready")
+          setConnectionError(null)
+          setConnectionErrorCode(null)
+          setRetryingConnection(false)
+          return
+        }
+        if (status.state === "connecting") return
+
+        setConnectionState("error")
+        setConnectionErrorCode(status.errorCode ?? null)
+        if (status.state === "session-expired") setConnectionErrorCode("UNAUTHORIZED")
+        if (status.state === "incompatible") setConnectionErrorCode("SERVER_VERSION_MISMATCH")
+      })
     let active = true
     let disconnected = false
     const unsubscribe = api.subscribeConnection?.((connected, errorCode) => {
@@ -948,11 +968,13 @@ const AppContent = ({ kernel }: AppProps) => {
     <>
       <SidecarErrorScreen
         reason={reason}
-        onRetry={retryConnection}
+        onRetry={api?.retryConnection ?? retryConnection}
         retrying={retryingConnection}
         serverMode={serverMode}
         onSettings={isNativeDesktop() ? openServerSettings : undefined}
         incompatible={connectionErrorCode === "SERVER_VERSION_MISMATCH"}
+        sessionRejected={connectionErrorCode === "UNAUTHORIZED" || connectionErrorCode === "SERVER_PAIRING_REQUIRED"}
+        status={transportConnection?.state === "connected" ? undefined : transportConnection}
         invoke={invokeCommand}
       />
       {settingsModal}
@@ -1174,8 +1196,14 @@ const AppContent = ({ kernel }: AppProps) => {
       )}
       <main className="app-shell">
         <HistoryMigrationStatus api={api} />
-        {connectionState === "error" && (
-          <ConnectionNotice incompatible={connectionErrorCode === "SERVER_VERSION_MISMATCH"} invoke={invokeCommand} />
+        {(connectionState === "error" || (transportConnection && transportConnection.state !== "connected")) && (
+          <ConnectionNotice
+            incompatible={connectionErrorCode === "SERVER_VERSION_MISMATCH"}
+            status={transportConnection}
+            onRetry={api.retryConnection ?? (() => void retryConnection())}
+            onPair={isNativeDesktop() ? openServerSettings : undefined}
+            invoke={invokeCommand}
+          />
         )}
         {workspaceNotice}
         <ApprovalNotice
@@ -1693,10 +1721,14 @@ const SidecarErrorScreen = ({
   serverMode = false,
   onSettings,
   incompatible = false,
+  sessionRejected = false,
+  status,
   invoke,
 }: {
   reason: string
   incompatible?: boolean
+  sessionRejected?: boolean
+  status?: ConnectionStatus | undefined
   invoke: TauriInvoke
   onRetry: () => void
   retrying?: boolean
@@ -1708,14 +1740,26 @@ const SidecarErrorScreen = ({
       <img className="error-bull" src="/touri-bull.png" alt="touri" />
       <p className="eyebrow">{serverMode ? t("Modo servidor") : t("local connection")}</p>
       <h1>{t("Couldn’t connect to touri services.")}</h1>
-      {!incompatible && <p>{getStartupFailureDescription(reason, serverMode)}</p>}
+      {!incompatible && !sessionRejected && !status && <p>{getStartupFailureDescription(reason, serverMode)}</p>}
       {incompatible && <ConnectionNotice incompatible recovery invoke={invoke} />}
-      {!incompatible && (
+      {!incompatible && !sessionRejected && status && (
+        <ConnectionNotice recovery status={status} onRetry={onRetry} invoke={invoke} />
+      )}
+      {sessionRejected && (
+        <ConnectionNotice
+          recovery
+          status={status ?? { state: "session-expired", attempt: 0, retryAt: null }}
+          onPair={onSettings}
+          onRetry={onRetry}
+          invoke={invoke}
+        />
+      )}
+      {!incompatible && !sessionRejected && !status && (
         <div className="error-reason">
           <ErrorNotice error={reason} showActions={false} />
         </div>
       )}
-      {!incompatible && (
+      {!incompatible && !sessionRejected && !status && (
         <button
           type="button"
           className="button button-brand"
@@ -1727,7 +1771,7 @@ const SidecarErrorScreen = ({
           <PanelIcon name="arrow-right" />
         </button>
       )}
-      {onSettings && (
+      {onSettings && !sessionRejected && (
         <button type="button" className="button button-quiet" onClick={onSettings}>
           {t("Usar um servidor touri")}
         </button>

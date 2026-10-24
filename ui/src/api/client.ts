@@ -16,6 +16,7 @@ import { maxAttachmentBytes } from "../attachmentFiles"
 import { ApiError, isServiceUnavailable } from "../errors"
 import { t } from "../i18n"
 import { scopedStorageKey } from "../storageScope"
+import { type ConnectionStatus, getConnectionErrorCode, getWhileActive, isSessionRejected } from "./connectionStatus"
 import { createSendJournal } from "./sendJournal"
 
 export type Endpoint = { baseUrl: string; wsUrl: string; token: string; scope?: string }
@@ -200,6 +201,9 @@ export type UiApi = {
   pendingMessages?: () => Message[]
   subscribe: (listener: (envelope: UiEventEnvelope) => void) => () => void
   subscribeConnection?: (listener: (connected: boolean, errorCode?: string) => void) => () => void
+  getConnectionStatus?: () => ConnectionStatus
+  subscribeConnectionStatus?: (listener: (status: ConnectionStatus) => void) => () => void
+  retryConnection?: () => void
   /**
    * Resolves once the event stream knows where live delivery starts. A snapshot loaded after this
    * misses nothing, so the cold-start resync is not loaded a second time.
@@ -268,6 +272,21 @@ export const createApiClient = ({
   }
   const listeners = new Set<(event: UiEventEnvelope) => void>()
   const connectionListeners = new Set<(connected: boolean, errorCode?: string) => void>()
+  // Browser transport callbacks own this local state and the listener/timer lifecycle.
+  const statusListeners = new Set<(status: ConnectionStatus) => void>()
+  let connectionStatus: ConnectionStatus = { state: "connecting", attempt: 0, retryAt: null }
+  const setConnectionStatus = (
+    state: ConnectionStatus["state"],
+    attempt: number,
+    retryAt: number | null,
+    errorCode?: string,
+  ): void => {
+    connectionStatus = Object.assign({ state, attempt, retryAt }, errorCode ? { errorCode } : {})
+    statusListeners.forEach((listener) => {
+      listener(connectionStatus)
+    })
+  }
+  const isDeviceOffline = (): boolean => navigator.onLine === false && (!endpoint.token || Boolean(endpoint.scope))
   let socket: WebSocket | null = null
   let timer: ReturnType<typeof setTimeout> | undefined
   let connectionDeadline: ReturnType<typeof setTimeout> | undefined
@@ -279,6 +298,11 @@ export const createApiClient = ({
   let socketGeneration = 0
   let lastSeq = 0
   let incompatible = false
+  const requireSession = (): void => {
+    if (connectionStatus.state !== "session-expired") return
+
+    throw new ApiError(401, "", "UNAUTHORIZED")
+  }
   const requireCompatibleProtocol = (): void => {
     if (incompatible)
       throw new ApiError(
@@ -297,18 +321,25 @@ export const createApiClient = ({
     return waiters.length > 0
   }
   let recovering: Promise<void> | null = null
-  const refreshEndpoint = async (): Promise<void> => {
+  const refreshEndpoint = async (signal = AbortSignal.timeout(10_000)): Promise<void> => {
     if (!resolveEndpoint) return
-    recovering ??= resolveEndpoint()
-      .then((next) => {
-        updateEndpoint(next)
-      })
-      .finally(() => {
-        recovering = null
-      })
-    await recovering
+    const generation = socketGeneration
+    // Cache even the deadline rejection until native IPC settles, so a stalled call cannot grow waiters.
+    recovering ??= getWhileActive(
+      resolveEndpoint()
+        .then((next) => {
+          if (generation !== socketGeneration) return
+          updateEndpoint(next)
+        })
+        .finally(() => {
+          recovering = null
+        }),
+      AbortSignal.timeout(1000),
+    )
+    await getWhileActive(recovering, signal)
   }
   const websocketUrl = async (path: string, signal?: AbortSignal): Promise<string> => {
+    requireSession()
     requireCompatibleProtocol()
     const response = await fetchImpl(`${endpoint.baseUrl}/api/v1/ws-ticket`, {
       method: "POST",
@@ -319,7 +350,9 @@ export const createApiClient = ({
     })
     if (!response.ok) {
       const detail = (await response.json().catch(() => null)) as { errorCode?: string } | null
-      throw new ApiError(response.status, t("Reconectando…"), detail?.errorCode)
+      const error = new ApiError(response.status, t("Reconectando…"), detail?.errorCode)
+      if (isSessionRejected(error)) pauseRejectedSession()
+      throw error
     }
     const body = (await response.json()) as { ticket?: unknown }
     if (typeof body.ticket !== "string" || !body.ticket) throw new Error("Conexão indisponível")
@@ -329,8 +362,16 @@ export const createApiClient = ({
     url.searchParams.set("ticket", body.ticket)
     return url.toString()
   }
-  const scheduleReconnect = (): void => {
+  const scheduleReconnect = (errorCode?: string): void => {
     if (timer || listeners.size === 0) return
+    if (connectionStatus.state === "session-expired" || connectionStatus.state === "incompatible" || incompatible)
+      return
+    if (isDeviceOffline()) {
+      setConnectionStatus("offline", connectionStatus.attempt, null)
+      return
+    }
+
+    setConnectionStatus("unavailable", connectionStatus.attempt, Date.now() + delay, errorCode)
     timer = setTimeout(() => {
       timer = undefined
       void connect()
@@ -339,6 +380,7 @@ export const createApiClient = ({
   }
   const reconnectUnavailableService = (): void => {
     if (listeners.size === 0 || (disconnectedBefore && !socket)) return
+    if (connectionStatus.state === "session-expired") return
     // Reads can fail before the event socket notices a stalled server.
     clearTimeout(connectionDeadline)
     const previous = socket
@@ -351,9 +393,39 @@ export const createApiClient = ({
     })
     scheduleReconnect()
   }
+  const pauseRejectedSession = (): void => {
+    if (connectionStatus.state === "session-expired") return
+    // The local shell can rotate its service token on restart; remote pairing is a separate boundary.
+    if (resolveEndpoint && endpoint.token && !endpoint.scope) {
+      reconnectUnavailableService()
+      return
+    }
+
+    socketGeneration += 1
+    clearTimeout(timer)
+    timer = undefined
+    clearTimeout(connectionDeadline)
+    attemptController?.abort()
+    const previous = socket
+    socket = null
+    disconnectedBefore = true
+    previous?.close()
+    journal.disconnect()
+    setConnectionStatus("session-expired", connectionStatus.attempt, null)
+    connectionListeners.forEach((listener) => {
+      listener(false, "UNAUTHORIZED")
+    })
+  }
   const connect = async (): Promise<void> => {
     if (connecting || socket || listeners.size === 0) return
+    if (connectionStatus.state === "session-expired" || incompatible) return
+    if (isDeviceOffline()) {
+      pauseOfflineConnection()
+      return
+    }
+
     connecting = true
+    setConnectionStatus(disconnectedBefore ? "unavailable" : "connecting", connectionStatus.attempt + 1, null)
     const generation = socketGeneration
     const controller = new AbortController()
     attemptController = controller
@@ -362,13 +434,14 @@ export const createApiClient = ({
       reconnectUnavailableService()
     }, 1000)
     try {
-      if (openedBefore || delay > 250) await refreshEndpoint()
+      if (openedBefore || delay > 250) await refreshEndpoint(controller.signal)
       if (generation !== socketGeneration || listeners.size === 0) return
       controller.signal.throwIfAborted()
       // Health is authenticated through the same relay/cookie boundary as normal reads.
       if (disconnectedBefore) await request("GET /health", {}, {}, { signal: controller.signal })
       const url = new URL(await websocketUrl("/api/v1/events", controller.signal))
       if (generation !== socketGeneration || listeners.size === 0) return
+      controller.signal.throwIfAborted()
       url.searchParams.set("since", String(lastSeq))
       const next = new WebSocket(url)
       socket = next
@@ -422,6 +495,7 @@ export const createApiClient = ({
         openedBefore = true
         disconnectedBefore = false
         delay = 250
+        setConnectionStatus("connected", connectionStatus.attempt, null)
         journal.reconnect()
         if (reconnected)
           connectionListeners.forEach((listener) => {
@@ -445,8 +519,14 @@ export const createApiClient = ({
     } catch (error) {
       clearTimeout(connectionDeadline)
       if (generation !== socketGeneration || listeners.size === 0) return
+      if (isSessionRejected(error)) {
+        pauseRejectedSession()
+        return
+      }
       journal.disconnect()
       disconnectedBefore = true
+      if (error instanceof ApiError && error.errorCode === "SERVER_VERSION_MISMATCH")
+        setConnectionStatus("incompatible", connectionStatus.attempt, null)
       connectionListeners.forEach((listener) => {
         if (error instanceof ApiError && error.errorCode === "SERVER_VERSION_MISMATCH") {
           listener(false, error.errorCode)
@@ -454,13 +534,14 @@ export const createApiClient = ({
         }
         listener(false)
       })
-      scheduleReconnect()
+      scheduleReconnect(getConnectionErrorCode(error))
     } finally {
       connecting = false
       if (generation !== socketGeneration && listeners.size > 0) scheduleReconnect()
     }
   }
   const request: ApiRequest = async (route, input, pathValues = {}, transport = {}) => {
+    requireSession()
     const [method, routePath] = String(route).split(" ")
     if (!method || !routePath) throw new Error(`invalid route ${String(route)}`)
     const path = replacePath(routePath, pathValues)
@@ -491,9 +572,12 @@ export const createApiClient = ({
     } catch {
       transport.signal?.throwIfAborted()
       // Only reads may be replayed. A lost mutation response may already have committed.
-      if (!isGet) throw new ApiError(0, "", undefined, "TOURI-E1010")
+      if (!isGet) {
+        reconnectUnavailableService()
+        throw new ApiError(0, "", undefined, "TOURI-E1010")
+      }
       try {
-        await refreshEndpoint()
+        await refreshEndpoint(transport.signal)
         response = await send()
       } catch {
         transport.signal?.throwIfAborted()
@@ -524,6 +608,7 @@ export const createApiClient = ({
           : Date.parse(retryAfter)
         : undefined
       const error = new ApiError(response.status, message, errorCode, code, retryAt, field)
+      if (isSessionRejected(error)) pauseRejectedSession()
       if (isGet && isServiceUnavailable(error)) reconnectUnavailableService()
       throw error
     }
@@ -549,10 +634,11 @@ export const createApiClient = ({
 
   const retryConnection = (): void => {
     if (listeners.size === 0) return
+    if (connectionStatus.state === "session-expired" || incompatible || isDeviceOffline()) return
     clearTimeout(timer)
     timer = undefined
     delay = 250
-    if (socket && !disconnectedBefore) reconnectUnavailableService()
+    if (socket) reconnectUnavailableService()
     attemptController?.abort()
     // An aborted fetch settles in a microtask; let it release the single in-flight attempt first.
     clearTimeout(timer)
@@ -567,9 +653,29 @@ export const createApiClient = ({
     retryConnection()
   }
 
+  const pauseOfflineConnection = (): void => {
+    if (!isDeviceOffline() || connectionStatus.state === "session-expired" || incompatible) return
+
+    socketGeneration += 1
+    clearTimeout(timer)
+    timer = undefined
+    clearTimeout(connectionDeadline)
+    attemptController?.abort()
+    const previous = socket
+    socket = null
+    disconnectedBefore = true
+    previous?.close()
+    journal.disconnect()
+    setConnectionStatus("offline", connectionStatus.attempt, null)
+    connectionListeners.forEach((listener) => {
+      listener(false)
+    })
+  }
+
   const subscribe = (listener: (envelope: UiEventEnvelope) => void): (() => void) => {
     if (listeners.size === 0) {
       window.addEventListener("online", retryConnection)
+      window.addEventListener("offline", pauseOfflineConnection)
       document.addEventListener("visibilitychange", retryVisibleConnection)
     }
     listeners.add(listener)
@@ -582,6 +688,7 @@ export const createApiClient = ({
       if (listeners.size > 0) return
       socketGeneration += 1
       window.removeEventListener("online", retryConnection)
+      window.removeEventListener("offline", pauseOfflineConnection)
       document.removeEventListener("visibilitychange", retryVisibleConnection)
       clearTimeout(connectionDeadline)
       attemptController?.abort()
@@ -598,6 +705,7 @@ export const createApiClient = ({
   return {
     request,
     uploadAttachment: async (file) => {
+      requireSession()
       requireCompatibleProtocol()
       if (file.size > maxAttachmentBytes) throw new Error(t("Escolha um arquivo de até 15 MB"))
       const dataBase64 = await new Promise<string>((resolve, reject) => {
@@ -615,17 +723,32 @@ export const createApiClient = ({
       })
       if (!response.ok) {
         const detail = (await response.json().catch(() => null)) as { error?: unknown; errorCode?: string } | null
-        throw new ApiError(
+        const error = new ApiError(
           response.status,
           typeof detail?.error === "string" ? detail.error : t("Não foi possível anexar o arquivo"),
           detail?.errorCode,
         )
+        if (isSessionRejected(error)) pauseRejectedSession()
+        throw error
       }
       return ((await response.json()) as { attachment: Attachment }).attachment
     },
     updateEndpoint,
     sendMessage: journal.enqueue,
     pendingMessages: journal.messages,
+    getConnectionStatus: () => connectionStatus,
+    subscribeConnectionStatus: (listener) => {
+      statusListeners.add(listener)
+      listener(connectionStatus)
+      return () => {
+        statusListeners.delete(listener)
+      }
+    },
+    retryConnection: () => {
+      if (connectionStatus.state === "session-expired")
+        setConnectionStatus("unavailable", connectionStatus.attempt, null)
+      retryConnection()
+    },
     subscribe,
     cursorReady: () =>
       cursorKnown
