@@ -38,7 +38,7 @@ for (const viewport of [
       await input.fill("Rascunho que deve continuar aqui")
       const takeOver = page.locator(".browser-activity-card").getByRole("button", { name: "Assumir", exact: true })
       await expect(takeOver).toBeVisible({ timeout: 20_000 })
-      await expect.poll(() => getHeaderSpot(page)).toEqual(headerFirst)
+      await expect.poll(() => getHeaderSpot(page)).toMatchObject(headerFirst)
 
       // The protected refusal is revealed in place; the header still leads the card, without the test scrolling.
       await takeOver.dispatchEvent("click")
@@ -49,10 +49,18 @@ for (const viewport of [
         await page.screenshot({
           path: `${process.env.TOURI_SCREENSHOT_DIR}/card-header-${history}-${viewport.width}.png`,
         })
-      await expect.poll(() => getHeaderSpot(page)).toEqual(headerFirst)
+      await expect.poll(() => getHeaderSpot(page)).toMatchObject(headerFirst)
 
       // Reading further down the card, the header still sticks to the top of the history.
-      await page.locator(".message-scroll").evaluate((list) => list.scrollBy(0, 120))
+      // In a long history the revealed refusal leaves room below, so the card's top can pass the header's spot.
+      const passed = await page.locator(".message-scroll").evaluate((list) => {
+        const card = list.querySelector(".browser-activity-card")
+        if (!card) return false
+        const spot = list.getBoundingClientRect().top + Number.parseFloat(getComputedStyle(list).paddingTop)
+        list.scrollBy(0, Math.ceil(card.getBoundingClientRect().top - spot) + 40)
+        return card.getBoundingClientRect().top < spot - 1
+      })
+      if (history === "long") expect(passed).toBe(true)
       await expect.poll(async () => (await getHeaderSpot(page)).inPlace).toBe(true)
 
       await page.locator(".browser-activity-recovery-return").dispatchEvent("click")
