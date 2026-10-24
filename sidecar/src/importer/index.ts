@@ -87,9 +87,10 @@ const startJob = ({
   options: LegacyImportOptions
 }): void => {
   void runLegacyImport({ kernel, importId, options })
-    .then(({ report }) => {
-      jobs.set(importId, { status: "succeeded", report })
+    .then(async ({ report }) => {
       kernel.publish({ type: "import.progress", importId, phase: "complete", done: 1, total: 1 })
+      await kernel.flushEvents?.().catch(() => undefined)
+      jobs.set(importId, { status: "succeeded", report })
     })
     .catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error)

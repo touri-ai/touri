@@ -1450,7 +1450,7 @@ export const createRuntimeEngine = ({
   // Minimal test kernels have no event bus; they also have no group runtime.
   const unsubscribeGroupTurns =
     typeof kernel.subscribe === "function"
-      ? kernel.subscribe(({ event }) => {
+      ? (kernel.subscribeRuntime ?? kernel.subscribe)(({ event }) => {
           if (event.type === "run.updated") finishGroupRoutineRun(event.run)
         })
       : () => {}
@@ -2596,6 +2596,8 @@ export const createRuntimeEngine = ({
   }
 
   const executeGoalTurn = async (run: Run, controller: AbortController): Promise<void> => {
+    // Observe committed queue callbacks before rechecking a goal's authorization and deadline.
+    if (goals.getForRun(run.id)) await kernel.flushEvents?.()
     const goal = goals.getForRun(run.id)
     if (!goal) return execute(run, controller)
     if (goal.status !== "active" || getGoalNow() >= goal.deadlineAt) {

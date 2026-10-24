@@ -58,7 +58,7 @@ test("committed control callbacks do not wait behind cold history while socket o
   const client = getClient()
   bus.add(client.socket)
   const local: UiEvent[] = []
-  bus.subscribe(({ event }) => local.push(event))
+  bus.subscribeRuntime(({ event }) => local.push(event))
   fixture.saveReference()
   const marker = getMarker("committed-control")
 
@@ -601,7 +601,7 @@ const getSnapshot = (text: string, updatedSeq: number): UiEvent => ({
     updatedSeq,
   },
 })
-const getMarker = (importId: string, phase = "done"): UiEvent => ({
+const getMarker = (importId: string, phase = "done"): Extract<UiEvent, { type: "import.progress" }> => ({
   type: "import.progress",
   importId,
   phase,

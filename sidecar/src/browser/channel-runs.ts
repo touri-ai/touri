@@ -566,7 +566,7 @@ export const createChannelBrowserRuns = ({
             AND run.status = 'taken_over' LIMIT 1`)
         .get(tabId),
     )
-  const onRunUpdated = kernel.subscribe(({ event }) => {
+  const onRunUpdated = (kernel.subscribeRuntime ?? kernel.subscribe)(({ event }) => {
     if (event.type !== "run.updated") return
     const row = getRaw(event.run.id)
     if (!row) return

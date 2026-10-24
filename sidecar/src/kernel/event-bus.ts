@@ -49,6 +49,7 @@ export const createEventBus = (
   let sequence = 0
   let localControlThrough = 0
   const listeners = new Set<(envelope: UiEventEnvelope) => void>()
+  const runtimeListeners = new Set<(envelope: UiEventEnvelope) => void>()
   let sockets: SocketEntry[] = []
   const reader = database ? createStoreReader(database.filename) : undefined
   const shutdown = new AbortController()
@@ -120,8 +121,9 @@ export const createEventBus = (
     })
   }
 
-  const notifyListeners = (envelope: UiEventEnvelope): void => {
-    listeners.forEach((listener) => {
+  const notifyListeners = (envelope: UiEventEnvelope, immediate = false): void => {
+    const targets = immediate ? runtimeListeners : listeners
+    targets.forEach((listener) => {
       try {
         listener(envelope)
       } catch {
@@ -131,8 +133,9 @@ export const createEventBus = (
   }
 
   const deliverNow = (envelope: UiEventEnvelope): void => {
+    notifyListeners(envelope)
     if (!isControlEvent(envelope.event) || envelope.seq > localControlThrough) {
-      notifyListeners(envelope)
+      notifyListeners(envelope, true)
       if (isControlEvent(envelope.event)) localControlThrough = envelope.seq
     }
     if (!sockets.some(({ since }) => envelope.seq > since)) return
@@ -512,7 +515,7 @@ export const createEventBus = (
       // Internal run/approval coordination cannot wait behind a cold transcript read.
       if (envelope.seq <= localControlThrough || stopped) return
       localControlThrough = envelope.seq
-      measureStage("workspace_event_delivery", notifyListeners, envelope)
+      measureStage("workspace_event_delivery", () => notifyListeners(envelope, true), undefined)
     }
     if (database.inTransaction) onDatabaseCommit(database, notify)
     else notify()
@@ -580,6 +583,10 @@ export const createEventBus = (
   return {
     publish,
     flushAsync,
+    subscribeRuntime: (listener: (envelope: UiEventEnvelope) => void): (() => void) => {
+      runtimeListeners.add(listener)
+      return () => runtimeListeners.delete(listener)
+    },
     subscribe: (listener: (envelope: UiEventEnvelope) => void): (() => void) => {
       listeners.add(listener)
       return () => listeners.delete(listener)

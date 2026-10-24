@@ -273,7 +273,7 @@ export const createGroupRuntime = (
           Math.max(1, expiresAt - Date.now()),
         )
       }
-      dispose = kernel.subscribe(({ event }) => {
+      dispose = (kernel.subscribeRuntime ?? kernel.subscribe)(({ event }) => {
         if (
           (event.type === "run.updated" && event.run.id === id) ||
           event.type === "transcript.resync" ||
@@ -363,7 +363,7 @@ export const createGroupRuntime = (
         run: getGroupRun(engine.getRunSnapshot?.(run) ?? run, turn.run.threadId, turn.run.id),
       })
     const superseded = new AbortController()
-    const dispose = kernel.subscribe(({ event }) => {
+    const dispose = (kernel.subscribeRuntime ?? kernel.subscribe)(({ event }) => {
       if (event.type === "run.updated" && isMemberSuperseded(event.run, run, turn)) superseded.abort()
     })
     try {
@@ -596,7 +596,7 @@ export const createGroupRuntime = (
     return { ...run, kind: "execution", threadId, groupTurnId, replyMessageId: link?.visible_message_id ?? null }
   }
   // Persist a distinct shared message, so reload, FTS, transcript replay and approvals all use the store normally.
-  const unsubscribe = kernel.subscribe(({ event }) => {
+  const unsubscribe = (kernel.subscribeRuntime ?? kernel.subscribe)(({ event }) => {
     if (event.type === "transcript.resync" || event.type === "bot.deleted") {
       turns.forEach((turn) => {
         if (!isCurrentTurn(turn)) {

@@ -1835,6 +1835,7 @@ export type Kernel = {
   db: unknown
   publish: (event: UiEvent) => void
   flushEvents?: (() => Promise<void>) | undefined
+  subscribeRuntime?: ((listener: (envelope: UiEventEnvelope) => void) => () => void) | undefined
   subscribe: (listener: (envelope: UiEventEnvelope) => void) => () => void
   registerRoutes: (module: RouteModule) => void
   registerTools: RegisterTools
