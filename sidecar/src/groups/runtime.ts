@@ -44,6 +44,10 @@ type Engine = Pick<ReturnType<typeof createRuntimeEngine>, "enqueue" | "cancel">
       "cancelBotTurns" | "cancelRuns" | "ready" | "getRunSnapshot" | "publishQueue"
     >
   >
+type GroupDeadlineClock = {
+  getNow: () => number
+  schedule: (callback: () => void, delayMs: number) => () => void
+}
 type Turn = {
   run: Run
   group: BotGroup
@@ -97,8 +101,7 @@ class MemberRunError extends Error {
   }
 }
 
-// Channel turns get the same room as a direct conversation: a coding or browser task can take hours. The cap only catches a
-// turn that never ends. TOURI_GROUP_TURN_TIMEOUT_MS overrides it, never below one hour.
+// Channel work can take hours. Keep the finite six-hour default and the host override, with a one-hour minimum.
 export const DEFAULT_GROUP_TURN_TIMEOUT_MS = 6 * 60 * 60_000
 export const groupTurnTimeoutMs = (configured = Number(process.env.TOURI_GROUP_TURN_TIMEOUT_MS) || 0) =>
   configured > 0 ? Math.max(configured, 60 * 60_000) : DEFAULT_GROUP_TURN_TIMEOUT_MS
@@ -108,6 +111,7 @@ export const createGroupRuntime = (
   engine: Engine,
   timeoutMs = groupTurnTimeoutMs(),
   resumeBackoffMs = CRASH_RESUME_BACKOFF_MS,
+  deadlineClock: GroupDeadlineClock = { getNow: Date.now, schedule: scheduleDeadline },
 ) => {
   const db = kernel.db as Database
   const store = kernel.services.use("store.api")
@@ -211,12 +215,12 @@ export const createGroupRuntime = (
   const waitRun = (id: string, turn: Turn, deadline: number | null): Promise<Run> =>
     new Promise((resolve, reject) => {
       const signal = turn.controller.signal
-      let timer: ReturnType<typeof setTimeout> | undefined
+      let cancelTimer: (() => void) | undefined
       let timedOut = false
       let dispose = () => {}
       const cleanup = () => {
         dispose()
-        if (timer) clearTimeout(timer)
+        cancelTimer?.()
         signal.removeEventListener("abort", abort)
       }
       const abort = () => {
@@ -236,7 +240,8 @@ export const createGroupRuntime = (
           return
         }
         // Queue time must not consume a member's chat budget. Routines retain their absolute deadline.
-        if (timedOut || timer || (deadline === null && run.startedAt === null)) return
+        if (timedOut || cancelTimer || (deadline === null && run.startedAt === null)) return
+
         const browserActive = Boolean(
           db
             .query(
@@ -245,11 +250,12 @@ export const createGroupRuntime = (
             .get(id),
         )
         const budget = browserActive ? Math.max(timeoutMs, 10 * 60_000) : timeoutMs
-        const expiresAt = deadline ?? (run.startedAt ?? Date.now()) + budget
-        timer = setTimeout(
+        const expiresAt = deadline ?? (run.startedAt ?? deadlineClock.getNow()) + budget
+
+        cancelTimer = deadlineClock.schedule(
           () => {
-            timer = undefined
-            if (Date.now() < expiresAt) {
+            cancelTimer = undefined
+            if (deadlineClock.getNow() < expiresAt) {
               check()
               return
             }
@@ -270,7 +276,7 @@ export const createGroupRuntime = (
             engine.cancel(id, turn.timeoutError)
             check()
           },
-          Math.max(1, expiresAt - Date.now()),
+          Math.max(1, expiresAt - deadlineClock.getNow()),
         )
       }
       dispose = (kernel.subscribeRuntime ?? kernel.subscribe)(({ event }) => {
@@ -917,7 +923,7 @@ export const createGroupRuntime = (
       tail: run.requestMessageId,
       ...(continuationFromRunId ? { continuationFromRunId } : {}),
       ...(continuationDelegation ? { continuationDelegation } : {}),
-      deadline: budget ? (budget.started_at ?? Date.now()) + budget.timeout_minutes * 60_000 : null,
+      deadline: budget ? (budget.started_at ?? deadlineClock.getNow()) + budget.timeout_minutes * 60_000 : null,
     }
   }
   const enqueue: ServiceMap["groups.runtime"]["enqueue"] = (args) => {
@@ -1526,6 +1532,12 @@ export const createGroupRuntime = (
     askBot,
     askAll,
   }
+}
+
+const scheduleDeadline: GroupDeadlineClock["schedule"] = (callback, delayMs) => {
+  const timer = setTimeout(callback, delayMs)
+
+  return () => clearTimeout(timer)
 }
 
 const getRecipients = (
