@@ -10,8 +10,9 @@ const getPlacement = (locator: Locator) =>
     const visibleBottom = window.visualViewport
       ? window.visualViewport.offsetTop + window.visualViewport.height
       : Infinity
+    const visibleTop = Math.max(list?.top ?? 0, window.visualViewport?.offsetTop ?? 0)
     return {
-      withinHistory: list ? box.top >= list.top - 1 && box.bottom <= Math.min(list.bottom, visibleBottom) + 1 : false,
+      withinHistory: list ? box.top >= visibleTop - 1 && box.bottom <= Math.min(list.bottom, visibleBottom) + 1 : false,
       hittable: [box.top + 1, box.bottom - 1].every((y) => {
         const hit = document.elementFromPoint(box.left + Math.min(24, box.width / 2), y)
         return hit !== null && element.contains(hit)
@@ -130,5 +131,25 @@ test("resizing does not pull back a person who scrolled away from the take-over"
   await nextFrames(page)
   expect((await getPlacement(handback)).withinHistory).toBe(false)
 
+  await handBack(page, input, view, handback)
+})
+
+test("a panned visual viewport keeps the handback and privacy note visible", async ({ page }) => {
+  const { input, view, handback } = await takeOver(page, { width: 390, height: 844 }, true)
+
+  await page.evaluate(() => {
+    const viewport = window.visualViewport
+    if (!viewport) throw new Error("Missing visual viewport")
+    Object.defineProperties(viewport, {
+      offsetTop: { configurable: true, value: 200 },
+      height: { configurable: true, value: 400 },
+    })
+    viewport.dispatchEvent(new Event("resize"))
+  })
+
+  await expect.poll(() => getPlacement(handback)).toEqual(reachable)
+  await expect
+    .poll(() => getPlacement(view.getByRole("status", { name: "Privacidade do navegador" })))
+    .toEqual(reachable)
   await handBack(page, input, view, handback)
 })
