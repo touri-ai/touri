@@ -86,7 +86,7 @@ import { createOpenCodeAdapter } from "./opencode/adapter"
 import { createRuntimePersistence, type RuntimePersistence } from "./persistence"
 import { reapProviderProcesses } from "./provider-processes"
 import { formatRoutineTitle, nextCronSlot, parseCron, previousCronSlot, validTimezone } from "./routines/cron"
-import { createRunSupervision, RUN_CANCEL_GRACE_MS } from "./run-supervision"
+import { createRunSupervision, RUN_CANCEL_GRACE_MS, waitForProviderCompletion } from "./run-supervision"
 import { sessionFingerprint, workingDirectory } from "./session"
 import { canRecoverSession, hasTurnResponse, SESSION_RECOVERY_MESSAGE } from "./session-recovery"
 import { getStartupReply, getStartupRuns } from "./startup-runs"
@@ -3262,6 +3262,14 @@ export const createRuntimeEngine = ({
       runs.map(async (run) => {
         const reason = run.activity?.staleReason
         if (!reason || !isLive(run)) return
+        if (reason === "process_exited") {
+          // Exit can precede buffered output and the adapter's terminal result.
+          await waitForProviderCompletion(executions.get(run.id))
+          if (shuttingDown || !isLive(run)) return
+
+          const [current] = await getRunActivities([run])
+          if (shuttingDown || !isLive(run) || current?.activity?.staleReason !== "process_exited") return
+        }
 
         await requestRunStop(run, {
           errorClass: "cli_crash",
