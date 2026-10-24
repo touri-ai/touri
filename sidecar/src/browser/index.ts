@@ -296,42 +296,25 @@ const runWithBrowserDecision = async ({
 
         return run({ target, signal, timeoutMs })
       }
+
+      // The engine validates ref identity and sensitive actions together. A preflight
+      // snapshot advances the generation and invalidates the ref it tries to inspect.
+      if (requestedTarget.kind === "ref") return runAction(requestedTarget)
+
       const pageUrl = getPageUrl({ tabId, botId })
-      let intent = getTargetIntent(requestedTarget)
-      let formSubmit = false
-      if (requestedTarget.kind === "ref") {
-        const inspect = await snapshotBrowser({
-          tabId,
-          botId,
-          image: "never",
-          signal,
-          timeoutMs: remaining(),
-        })
-        const snapshot = inspect.success ? getSnapshot(inspect.structured) : null
-        const element = snapshot?.elements.find((entry) => entry.ref === requestedTarget.ref)
-        if (element) {
-          intent = `${element.role} ${getDecisionName(element.name, redact)}`
-          formSubmit = element.formSubmit === true
-        } else
-          return {
-            success: false,
-            errorCode: "TARGET_CHANGED",
-            error: "The target is not in the current browser snapshot. Take a fresh snapshot and use one of its refs.",
-          }
-      }
+      const intent = getTargetIntent(requestedTarget)
       if (
         requiresBrowserTakeover({
           action,
           intent,
           pageUrl,
           submit,
-          formSubmit,
           pointTarget: requestedTarget.kind === "point",
         })
       )
         return getBrowserTakeoverRequiredResult(
           getBrowserTakeoverReasonCode({
-            error: submit || formSubmit ? "form_submit" : "",
+            error: submit ? "form_submit" : "",
             intent,
             pageUrl,
           }),
