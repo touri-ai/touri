@@ -232,6 +232,23 @@ test("a forbidden resource is not mistaken for a revoked device session", async 
   expect(fixture.getSocket(0).close).not.toHaveBeenCalled()
 })
 
+test("a report account rejection leaves the device connection and ordinary requests usable", async () => {
+  const fixture = makeClient()
+  await vi.advanceTimersByTimeAsync(0)
+  fixture.getSocket(0).dispatchEvent(new Event("open"))
+  fixture.fetchImpl.mockImplementationOnce(async () =>
+    Response.json({ error: "Conecte sua conta touri" }, { status: 401 }),
+  )
+
+  await expect(
+    fixture.api.request("POST /reports/:id/deliver", { destination: "cloud" }, { id: "synthetic-report" }),
+  ).rejects.toMatchObject({ status: 401 })
+
+  expect(fixture.api.getConnectionStatus?.().state).toBe("connected")
+  expect(fixture.getSocket(0).close).not.toHaveBeenCalled()
+  await expect(fixture.api.request("GET /health", {})).resolves.toMatchObject({ ok: true })
+})
+
 test("a rejected socket ticket requires pairing rather than repeatedly retrying auth", async () => {
   const fixture = makeClient()
   await vi.advanceTimersByTimeAsync(0)

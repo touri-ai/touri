@@ -15,7 +15,7 @@ export const getConnectionErrorCode = (error: unknown): string | undefined => {
 }
 
 export const isSessionRejected = (error: unknown): boolean => {
-  if (error instanceof ApiError) return error.status === 401
+  if (error instanceof ApiError) return error.status === 401 && error.errorCode === "UNAUTHORIZED"
   if (!(error instanceof Error)) return false
 
   return /\bSERVER_(AUTH|UNAUTHORIZED|PAIRING_REQUIRED)\b/.test(error.message)

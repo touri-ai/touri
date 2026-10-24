@@ -14,8 +14,8 @@ viewportWidths.forEach((width) => {
     const composer = page.getByRole("textbox", { name: "Mensagem para mark" })
     const conversation = page.getByTestId("virtual-message-list")
     const status = page.locator(".connection-status")
-    await expect(status).toHaveAttribute("data-connection-state", "idle")
-    await expect(status).toContainText("Este bot não tem tarefa em execução.")
+    await expect(composer).toBeVisible()
+    await expect(status).toHaveCount(0)
     await expect(conversation.getByText("Histórico de teste preservado.", { exact: true })).toBeVisible()
     const originalComposer = await composer.elementHandle()
 
@@ -45,7 +45,8 @@ viewportWidths.forEach((width) => {
 
     await page.evaluate(() => window.connectionRecovery.setServerAvailable(true))
 
-    await expect(status).toHaveAttribute("data-connection-state", "idle")
+    await expect(composer).toBeVisible()
+    await expect(status).toHaveCount(0)
     await expect.poll(() => page.evaluate(() => window.connectionRecovery.getPending().length)).toBe(0)
     const sends = await page.evaluate(() => window.connectionRecovery.getSends())
     expect(sends).toHaveLength(1)
@@ -54,7 +55,9 @@ viewportWidths.forEach((width) => {
     await expect(conversation.getByText("Mensagem pendente de teste.", { exact: true })).toHaveCount(1)
     await expect(composer).toHaveValue("Rascunho preservado.")
     expect(await originalComposer?.evaluate((element) => element.isConnected)).toBe(true)
-    expect(await status.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
+    expect(
+      await page.locator("main.app-shell").evaluate((element) => element.scrollWidth - element.clientWidth),
+    ).toBeLessThanOrEqual(1)
   })
 })
 
@@ -68,7 +71,8 @@ test("revoked access preserves the open conversation and pending message until p
   const composer = page.getByRole("textbox", { name: "Mensagem para mark" })
   const conversation = page.getByTestId("virtual-message-list")
   const status = page.locator(".connection-status")
-  await expect(status).toHaveAttribute("data-connection-state", "idle")
+  await expect(composer).toBeVisible()
+  await expect(status).toHaveCount(0)
   await page.context().setOffline(true)
   await expect(status).toHaveAttribute("data-connection-state", "offline")
   await composer.fill("Mensagem que aguarda novo acesso.")
@@ -100,7 +104,8 @@ test("revoked access preserves the open conversation and pending message until p
 
   await status.getByRole("button", { name: "Verificar acesso" }).click()
 
-  await expect(status).toHaveAttribute("data-connection-state", "idle")
+  await expect(composer).toBeVisible()
+  await expect(status).toHaveCount(0)
   await expect.poll(() => page.evaluate(() => window.connectionRecovery.getPending().length)).toBe(0)
   await expect(conversation.getByText("Mensagem que aguarda novo acesso.", { exact: true })).toHaveCount(1)
   await expect(composer).toHaveValue("Rascunho durante revogação.")
@@ -114,7 +119,8 @@ test("reopening the app restores the offline journal and draft without duplicati
   await page.goto("/test/e2e/connection-recovery-harness.html")
   const composer = page.getByRole("textbox", { name: "Mensagem para mark" })
   const conversation = page.getByTestId("virtual-message-list")
-  await expect(page.locator('[data-connection-state="idle"]')).toBeVisible()
+  await expect(composer).toBeVisible()
+  await expect(page.locator(".connection-status")).toHaveCount(0)
   await page.context().setOffline(true)
   await expect(page.locator('[data-connection-state="offline"]')).toBeVisible()
   await composer.fill("Envio que sobrevive ao reinício da interface.")
@@ -127,7 +133,8 @@ test("reopening the app restores the offline journal and draft without duplicati
   await page.context().setOffline(false)
   await page.reload()
 
-  await expect(page.locator('[data-connection-state="idle"]')).toBeVisible()
+  await expect(composer).toBeVisible()
+  await expect(page.locator(".connection-status")).toHaveCount(0)
   await expect(composer).toHaveValue("Rascunho salvo antes do reinício.")
   await expect(conversation.getByText("Histórico de teste preservado.", { exact: true })).toBeVisible()
   await expect(conversation.getByText("Envio que sobrevive ao reinício da interface.", { exact: true })).toHaveCount(1)

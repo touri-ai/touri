@@ -127,6 +127,25 @@ it("keeps server recovery reachable after startup fails and never restarts a loc
   await screen.findByText("O touri vai reiniciar no modo local.")
 })
 
+it("offers one pairing action when the server rejects the device during startup", async () => {
+  native()
+  const invoke = vi.fn(async (command: string) => {
+    if (command === "server_mode_status") return server
+    throw new Error("SERVER_PAIRING_REQUIRED")
+  })
+
+  render(<App kernel={{ services: { invoke: invoke as TauriInvoke } }} />)
+  const pair = await screen.findByRole("button", { name: "Parear novamente" })
+
+  expect(screen.queryByRole("button", { name: "Usar um servidor touri" })).not.toBeInTheDocument()
+  expect(screen.getByRole("button", { name: "Verificar acesso" })).toBeEnabled()
+  expect(invoke).not.toHaveBeenCalledWith("server_mode_pair", expect.anything())
+
+  fireEvent.click(pair)
+
+  expect(await screen.findByRole("dialog", { name: "Configurações" })).toBeVisible()
+})
+
 it.each([server, { mode: "server", url: null } as const])(
   "waits for native mode before mounting destination-scoped UI (%j)",
   async (status) => {

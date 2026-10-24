@@ -639,11 +639,6 @@ const AppContent = ({ kernel }: AppProps) => {
     data.bots.find((bot) => bot.id === (requestedComputer ?? data.selectedBotId)) ??
     (data.isMember ? null : data.bots[0]) ??
     null
-  const hasSelectedBotRun = useMemo(
-    () =>
-      data.runs.some((run) => run.botId === selectedBot?.id && ["queued", "starting", "running"].includes(run.status)),
-    [data.runs, selectedBot?.id],
-  )
   const selectedThread =
     data.threadCreation?.thread ?? data.threads.find((thread) => thread.id === data.selectedThreadId) ?? null
   const selectedGroup = data.groups.find((g) => g.id === selectedThread?.groupId) ?? null
@@ -1201,20 +1196,10 @@ const AppContent = ({ kernel }: AppProps) => {
       )}
       <main className="app-shell">
         <HistoryMigrationStatus api={api} />
-        {(connectionState === "error" || transportConnection) && (
+        {(connectionState === "error" || (transportConnection && transportConnection.state !== "connected")) && (
           <ConnectionNotice
             incompatible={connectionErrorCode === "SERVER_VERSION_MISMATCH"}
             status={transportConnection}
-            idle={
-              section === "bots" &&
-              screen === "chat" &&
-              Boolean(selectedBot) &&
-              !selectedGroup &&
-              data.loaded &&
-              !data.notice &&
-              data.historyThreadId === selectedThread?.id &&
-              !hasSelectedBotRun
-            }
             onRetry={api.retryConnection ?? (() => void retryConnection())}
             onPair={isNativeDesktop() ? openServerSettings : undefined}
             invoke={invokeCommand}
@@ -1786,7 +1771,7 @@ const SidecarErrorScreen = ({
           <PanelIcon name="arrow-right" />
         </button>
       )}
-      {onSettings && (
+      {onSettings && !sessionRejected && (
         <button type="button" className="button button-quiet" onClick={onSettings}>
           {t("Usar um servidor touri")}
         </button>

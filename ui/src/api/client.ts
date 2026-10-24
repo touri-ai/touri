@@ -723,12 +723,13 @@ export const createApiClient = ({
       })
       if (!response.ok) {
         const detail = (await response.json().catch(() => null)) as { error?: unknown; errorCode?: string } | null
-        if (response.status === 401) pauseRejectedSession()
-        throw new ApiError(
+        const error = new ApiError(
           response.status,
           typeof detail?.error === "string" ? detail.error : t("Não foi possível anexar o arquivo"),
           detail?.errorCode,
         )
+        if (isSessionRejected(error)) pauseRejectedSession()
+        throw error
       }
       return ((await response.json()) as { attachment: Attachment }).attachment
     },

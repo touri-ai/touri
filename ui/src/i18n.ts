@@ -45,9 +45,6 @@ export const ptBR = {
     "Este aparelho está sem internet. Conecte-se à rede; a reconexão é automática.",
   "A sessão expirou ou o acesso foi revogado. Pareie novamente e verifique o acesso aqui. Mensagens pendentes e histórico são mantidos.":
     "A sessão expirou ou o acesso foi revogado. Pareie novamente e verifique o acesso aqui. Mensagens pendentes e histórico são mantidos.",
-  "Conectado. Este bot não tem tarefa em execução. Envie uma mensagem para começar.":
-    "Conectado. Este bot não tem tarefa em execução. Envie uma mensagem para começar.",
-  "Conectado ao servidor.": "Conectado ao servidor.",
   "Servidor indisponível. Tentativa {attempt} falhou. Nova tentativa automática agendada. Confira se o servidor está ligado.":
     "Servidor indisponível. Tentativa {attempt} falhou. Nova tentativa automática agendada. Confira se o servidor está ligado.",
   "Conectando ao servidor. Tentativa {attempt} em andamento. Aguarde ou confira a rede e o servidor.":
@@ -3461,9 +3458,6 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "This device is offline. Connect to a network; reconnection is automatic.",
   "A sessão expirou ou o acesso foi revogado. Pareie novamente e verifique o acesso aqui. Mensagens pendentes e histórico são mantidos.":
     "The session expired or access was revoked. Pair again, then check access here. Pending messages and history are kept.",
-  "Conectado. Este bot não tem tarefa em execução. Envie uma mensagem para começar.":
-    "Connected. This bot has no task running. Send a message to get started.",
-  "Conectado ao servidor.": "Connected to the server.",
   "Servidor indisponível. Tentativa {attempt} falhou. Nova tentativa automática agendada. Confira se o servidor está ligado.":
     "Server unavailable. Attempt {attempt} failed. An automatic retry is scheduled. Check that the server is on.",
   "Conectando ao servidor. Tentativa {attempt} em andamento. Aguarde ou confira a rede e o servidor.":

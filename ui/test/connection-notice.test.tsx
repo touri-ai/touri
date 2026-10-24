@@ -20,6 +20,15 @@ test("a temporary outage only shows a quiet reconnection status", () => {
   expect(t("Reconectando…", {}, "en")).toBe("Reconnecting…")
 })
 
+test("a healthy connection leaves the conversation free of a persistent status banner", () => {
+  const invoke = vi.fn<TauriInvoke>(async () => null)
+
+  render(<ConnectionNotice status={{ state: "connected", attempt: 2, retryAt: null }} invoke={invoke} />)
+
+  expect(screen.queryByRole("status")).not.toBeInTheDocument()
+  expect(screen.queryByText("Conectado ao servidor.")).not.toBeInTheDocument()
+})
+
 test("an incompatible protocol only installs an update after an explicit click", async () => {
   vi.stubGlobal("__TAURI_INTERNALS__", {})
   const invoke = vi.fn<TauriInvoke>(async () => null)
@@ -44,7 +53,7 @@ test("a failed update keeps the conversation open and offers a retry", async () 
   expect(screen.getByRole("button", { name: "Atualizar agora" })).toBeEnabled()
 })
 
-test("the quiet status distinguishes device offline, server retries and a connected idle bot", () => {
+test("the quiet status distinguishes device offline and server retries, then disappears on recovery", () => {
   const invoke = vi.fn<TauriInvoke>(async () => null)
   const retry = vi.fn()
   const view = render(
@@ -66,11 +75,10 @@ test("the quiet status distinguishes device offline, server retries and a connec
   )
 
   expect(screen.getByRole("status")).toHaveTextContent("Tentativa 4 em andamento.")
-  view.rerender(<ConnectionNotice status={{ state: "connected", attempt: 4, retryAt: null }} idle invoke={invoke} />)
-
-  expect(screen.getByRole("status")).toHaveTextContent("Este bot não tem tarefa em execução. Envie uma mensagem")
   expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite")
-  expect(screen.getByRole("status")).toHaveAttribute("data-connection-state", "idle")
+  view.rerender(<ConnectionNotice status={{ state: "connected", attempt: 4, retryAt: null }} invoke={invoke} />)
+
+  expect(screen.queryByRole("status")).not.toBeInTheDocument()
 })
 
 test("web pairing opens separately and access is only checked after an explicit action", () => {
@@ -122,10 +130,6 @@ test.each([
     "The session expired or access was revoked. Pair again, then check access here. Pending messages and history are kept.",
   ],
   [
-    "Conectado. Este bot não tem tarefa em execução. Envie uma mensagem para começar.",
-    "Connected. This bot has no task running. Send a message to get started.",
-  ],
-  [
     "Servidor indisponível. Tentativa {attempt} falhou. Nova tentativa automática agendada. Confira se o servidor está ligado.",
     "Server unavailable. Attempt 3 failed. An automatic retry is scheduled. Check that the server is on.",
   ],
@@ -136,7 +140,6 @@ test.each([
   ["Parear novamente", "Pair again"],
   ["Verificar acesso", "Check access"],
   ["Tentar agora", "Try now"],
-  ["Conectado ao servidor.", "Connected to the server."],
 ] as const)("connection copy is available in English: %s", (key, english) => {
   expect(t(key, { attempt: 3 }, "en")).toBe(english)
 })

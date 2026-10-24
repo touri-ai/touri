@@ -84,7 +84,7 @@ for (const mode of ["desktop", "web"] as const) {
     expect(Number(await status.getAttribute("data-connection-attempt"))).toBeGreaterThan(1)
     const readyAt = await server.start()
     await expect(status).toBeHidden({ timeout: 2900 })
-    await expect(page.locator('[data-connection-reason="connected"]')).toBeVisible()
+    await expect(page.locator(".connection-status")).toHaveCount(0)
     const reconnectMs = performance.now() - readyAt
 
     expect(reconnectMs).toBeLessThan(3000)

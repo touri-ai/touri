@@ -8,7 +8,6 @@ export const ConnectionNotice = ({
   incompatible = false,
   recovery = false,
   status,
-  idle = false,
   onRetry,
   onPair,
   invoke,
@@ -16,7 +15,6 @@ export const ConnectionNotice = ({
   incompatible?: boolean
   recovery?: boolean
   status?: ConnectionStatus | undefined
-  idle?: boolean
   onRetry?: (() => void) | undefined
   onPair?: (() => void) | undefined
   invoke: TauriInvoke
@@ -43,12 +41,14 @@ export const ConnectionNotice = ({
     }
   }
 
+  if (state === "connected") return null
+
   return (
     <div
       className={recovery ? "connection-recovery" : "notice-bar connection-status notice-info"}
       role="status"
       aria-live="polite"
-      data-connection-state={getConnectionState(state, idle)}
+      data-connection-state={getConnectionState(state)}
       data-connection-reason={state}
       data-connection-attempt={status?.attempt ?? 0}
       data-connection-retry-at={status?.retryAt ?? undefined}
@@ -56,7 +56,7 @@ export const ConnectionNotice = ({
       <span>
         {needsUpdate
           ? t("Esta versão do aplicativo precisa de uma atualização para conversar com o servidor.")
-          : getConnectionDescription(state, status, idle)}
+          : getConnectionDescription(state, status)}
       </span>
       {needsPairing && (
         <>
@@ -96,26 +96,18 @@ export const ConnectionNotice = ({
   )
 }
 
-const getConnectionState = (state: ConnectionStatus["state"], idle: boolean): string => {
+const getConnectionState = (state: ConnectionStatus["state"]): string => {
   if (state === "unavailable" || state === "connecting") return "reconnecting"
-  if (state === "connected" && idle) return "idle"
 
   return state
 }
 
-const getConnectionDescription = (
-  state: ConnectionStatus["state"],
-  status: ConnectionStatus | undefined,
-  idle: boolean,
-): string => {
+const getConnectionDescription = (state: ConnectionStatus["state"], status: ConnectionStatus | undefined): string => {
   if (state === "offline") return t("Este aparelho está sem internet. Conecte-se à rede; a reconexão é automática.")
   if (state === "session-expired")
     return t(
       "A sessão expirou ou o acesso foi revogado. Pareie novamente e verifique o acesso aqui. Mensagens pendentes e histórico são mantidos.",
     )
-  if (state === "connected" && idle)
-    return t("Conectado. Este bot não tem tarefa em execução. Envie uma mensagem para começar.")
-  if (state === "connected") return t("Conectado ao servidor.")
   if (!status) return t("Reconectando…")
   if (status.retryAt !== null)
     return t(
