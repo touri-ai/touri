@@ -139,6 +139,13 @@ describe("runtime projection", () => {
     // Linear in the history: each run id is read a bounded number of times, not once per message.
     expect(idReads).toBeLessThanOrEqual(runs.length * 2)
   })
+  it("reports a failed reply without a tracked run, but not one whose run succeeded", () => {
+    const failed = message([], { status: "failed", runId: "unknown", updatedAt: 40 })
+    const finished = run("succeeded", { finishedAt: 30 })
+
+    expect(stateFor([finished], [failed])).toBe("error")
+    expect(stateFor([finished], [{ ...failed, runId: "r" }])).toBe("idle")
+  })
   it("unresolved attention waits, and resolved attention resumes work", () => {
     const note = { botId: "b", kind: "approval", resolvedAt: null } as NotificationRecord
     expect(stateFor([run("running")], [], [note])).toBe("waiting-approval")

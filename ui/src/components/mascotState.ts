@@ -75,7 +75,7 @@ export const mascotSignalFor = ({
   const latest = [...botRuns].sort((a, b) => b.queuedAt - a.queuedAt)[0]
   const activeRuns = botRuns.filter(active)
   const liveMessages = messages.filter((message) => {
-    const run = message.runId ? runsById.get(message.runId) : undefined
+    const run = message.runId === null ? undefined : runsById.get(message.runId)
     return run ? active(run) : message.status === "streaming"
   })
   const successful = [...botRuns]
@@ -95,7 +95,7 @@ export const mascotSignalFor = ({
     .find((message) => message.role === "assistant")
   const untrackedFailure =
     latestAssistant?.status === "failed" &&
-    !(latestAssistant.runId && runsById.has(latestAssistant.runId)) &&
+    !(latestAssistant.runId !== null && runsById.has(latestAssistant.runId)) &&
     latestAssistant.updatedAt >= (latest?.finishedAt ?? latest?.queuedAt ?? 0)
   if (paused) return signal("sleeping")
   const attention = notifications.filter((item) => item.botId === botId && !isResolvedNotification(item))
