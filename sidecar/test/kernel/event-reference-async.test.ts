@@ -601,7 +601,7 @@ const getSnapshot = (text: string, updatedSeq: number): UiEvent => ({
     updatedSeq,
   },
 })
-const getMarker = (importId: string, phase = "done"): UiEvent => ({
+const getMarker = (importId: string, phase = "done"): Extract<UiEvent, { type: "import.progress" }> => ({
   type: "import.progress",
   importId,
   phase,
