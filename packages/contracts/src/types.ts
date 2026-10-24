@@ -1279,6 +1279,7 @@ export type ApiRoutes = {
   'POST /recovery/:id/dismiss': { req: { acknowledgeKeys: Array<string> }; res: { tasks: Array<RecoveryTask> } }
   'GET /notifications': { req: { limit?: number }; res: { notifications: Array<NotificationRecord> } }
   'GET /notifications/pending': { req: {}; res: { notifications: Array<NotificationRecord>; lastSeq: number } }
+  'POST /notifications/read': { req: { ids: Array<number> }; res: { notifications: Array<NotificationRecord>; skipped: number; skippedIds: Array<number> } }
   'GET /push': { req: {}; res: { publicKey: string; subscribed: boolean } }
   'PUT /push': { req: { endpoint: string; keys: { p256dh: string; auth: string }; locale: 'pt-BR' | 'en' }; res: {} }
   'DELETE /push': { req: {}; res: {} }
@@ -1383,6 +1384,7 @@ export type UiEvent =
   | { type: 'import.progress'; importId: Id; phase: string; done: number; total: number }
   | { type: 'notification.created'; notification: NotificationRecord }
   | { type: 'notification.resolved'; notification: NotificationRecord }
+  | { type: 'notifications.read'; personId: Id; receipts: Array<{ notificationId: number; readAt: EpochMs }> }
   | { type: 'notify'; level: 'info' | 'warning' | 'error'; title: string; body: string; threadId: Id | null; requestId?: Id | null; notificationId?: number; kind?: NotifyKind; targetPersonId?: Id | null }
 
 /** Attention kinds need the user; message kinds (`done`, `delegation-settled`, `notice`) are informational and expire. */
@@ -1441,6 +1443,8 @@ export type NotificationRecord = {
   /** When set, only this person (and no other channel member) can read the notification. */
   targetPersonId?: Id | null
   createdAt: EpochMs
+  /** Receipt for the authenticated person only; independent of the shared action's resolution. */
+  readAt?: EpochMs | null
   resolvedAt: EpochMs | null
   resolution: NotifyResolution | null
 }

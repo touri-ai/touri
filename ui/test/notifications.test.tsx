@@ -118,7 +118,7 @@ it("replies to a question through the respond endpoint and dismisses a failure",
       ),
     ).toBe(true),
   )
-  fireEvent.click(screen.getAllByRole("button", { name: "Marcar como lida" })[0] as HTMLElement)
+  fireEvent.click(screen.getAllByRole("button", { name: "Dispensar" })[0] as HTMLElement)
   await waitFor(() => expect(api.calls.some((call) => call.route === "POST /notifications/:id/dismiss")).toBe(true))
 })
 
@@ -287,21 +287,23 @@ it("clears ordinary notifications while preserving uncertain work in the recover
 
   fireEvent.click(within(bell).getByRole("button", { name: "Limpar", exact: true }))
 
-  expect(await within(bell).findByRole("status")).toHaveTextContent(
-    "Notificações que precisam de revisão em Tarefas interrompidas: 1.",
-  )
+  expect(await within(bell).findByRole("status")).toHaveTextContent("Notificações que ainda precisam de atenção: 3.")
   expect(within(bell).queryByRole("alert")).not.toBeInTheDocument()
-  await waitFor(() => expect(within(bell).getAllByTestId("notification-row")).toHaveLength(1))
+  await waitFor(() => expect(within(bell).getAllByTestId("notification-row")).toHaveLength(3))
   fireEvent.click(within(bell).getByRole("button", { name: "Tarefas interrompidas" }))
   const center = await screen.findByRole("dialog", { name: "Tarefas interrompidas", exact: true })
-  const acknowledgement = await within(center).findByRole("checkbox", {
+  const tasks = await within(center).findAllByTestId("interrupted-task")
+  const task = tasks[0]
+  if (!task) throw new Error("Missing synthetic recovery task")
+  expect(within(center).getAllByRole("checkbox")).toHaveLength(2)
+  const acknowledgement = await within(task).findByRole("checkbox", {
     name: "Revisei os efeitos incertos e entendo que descartar não desfaz as ações.",
   })
   expect(acknowledgement).toBeVisible()
   expect(acknowledgement).not.toBeChecked()
-  expect(within(center).getByRole("button", { name: "Descartar", exact: true })).toBeDisabled()
+  expect(within(task).getByRole("button", { name: "Descartar", exact: true })).toBeDisabled()
 
   fireEvent.click(acknowledgement)
 
-  expect(within(center).getByRole("button", { name: "Descartar", exact: true })).toBeEnabled()
+  expect(within(task).getByRole("button", { name: "Descartar", exact: true })).toBeEnabled()
 })

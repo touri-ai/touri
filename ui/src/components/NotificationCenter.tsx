@@ -1,5 +1,6 @@
 import {
   type BotGroup,
+  canMarkNotificationRead,
   getNotificationBody,
   type Message,
   type NotificationRecord,
@@ -24,7 +25,6 @@ import { dictionaries, localizeNotice, type TranslationKey, t } from "../i18n"
 import { markdownSummary } from "../markdownSummary"
 // r8-sidebar: shared attention projection; resolved and superseded failures stay in history.
 import { isFailureNotice, isReadyReviewNotice, pendingNotifications } from "../sidebarAttention"
-import { scopedStorageKey } from "../storageScope"
 import { useAvatarBot } from "./AvatarRuntime"
 import { BotAvatar } from "./BotAvatar"
 import { Badge, type BadgeTone, Button, UnreadCount } from "./Button"
@@ -36,16 +36,6 @@ import "./screens.css"
 export { countAttention, isAttention } from "../sidebarAttention"
 
 const RECENT_LIMIT = 16
-const CLEARED_KEY = "touri.notifications.cleared.v1"
-const notificationKey = (item: NotificationRecord): string => `${item.id}:${item.createdAt}`
-const readCleared = (key: string): Set<string> => {
-  try {
-    const saved: unknown = JSON.parse(localStorage.getItem(key) ?? "[]")
-    return new Set(Array.isArray(saved) ? saved.filter((item): item is string => typeof item === "string") : [])
-  } catch {
-    return new Set()
-  }
-}
 
 const KIND_KEY: Record<NotificationRecord["kind"], TranslationKey> = {
   mention: "Person mention",
@@ -99,7 +89,7 @@ export type NotificationActions = {
   open: (item: NotificationRecord) => void
   openRecovery?: () => void
   dismiss: (id: number) => Promise<void>
-  dismissAll: () => Promise<{ skipped: number; skippedIds?: Array<number> } | undefined>
+  dismissAll: (ids: number[]) => Promise<{ skipped: number; skippedIds?: Array<number> } | undefined>
   respond: (args: { notification: NotificationRecord; behavior: RespondBehavior; message?: string }) => Promise<void>
   reply: (args: { notification: NotificationRecord; text: string }) => Promise<void>
   recover?: (item: NotificationRecord, action: RecoveryAction) => Promise<void>
@@ -291,7 +281,7 @@ const NotificationRow = ({
           )}
           {!resolved && (
             <Button variant="quiet" disabled={busy} onClick={() => void run(() => actions.dismiss(item.id))}>
-              {t("Marcar como lida")}
+              {canMarkNotificationRead(item) ? t("Marcar como lida") : t("Dismiss")}
             </Button>
           )}
         </div>
@@ -331,9 +321,6 @@ export const NotificationBell = ({
   const [open, setOpen] = useState(false)
   const origins = useMemo(() => getNotificationOrigins(threads ?? [], channels ?? []), [threads, channels])
   const inserted = useInsertedIds(notifications.map((item) => String(item.id)))
-  // Native mode changes restart the workspace. Retain this destination for late dismiss responses.
-  const [clearedStorageKey] = useState(() => scopedStorageKey(CLEARED_KEY))
-  const [clearedIds, setClearedIds] = useState(() => readCleared(clearedStorageKey))
   const [clearing, setClearing] = useState(false)
   const [clearError, setClearError] = useState(false)
   const [skippedCount, setSkippedCount] = useState(0)
@@ -360,7 +347,7 @@ export const NotificationBell = ({
   const popover = useRef<HTMLElement | null>(null)
   const [position, setPosition] = useState({ left: 12, bottom: 52 })
   const visible = uniqueApprovalNotifications(reconcileApprovalNotifications(notifications, messages)).filter(
-    (item) => !clearedIds.has(notificationKey(item)),
+    (item) => !item.readAt || !canMarkNotificationRead(item),
   )
   const pending = pendingNotifications(visible, messages)
   const missingApprovals = pendingApprovalTargets(reconcileApprovalMessages(messages, notifications)).filter(
@@ -385,20 +372,8 @@ export const NotificationBell = ({
     setClearing(true)
     setClearError(false)
     try {
-      const result = await actions.dismissAll()
+      const result = await actions.dismissAll(visible.map((item) => item.id))
       setSkippedCount(result?.skipped ?? 0)
-      if (result?.skipped && !result.skippedIds) return
-
-      const protectedIds = new Set(result?.skippedIds ?? [])
-      const ids = visible.filter((item) => !protectedIds.has(item.id)).map(notificationKey)
-      const protectedKeys = new Set(notifications.filter((item) => protectedIds.has(item.id)).map(notificationKey))
-      const next = new Set([...clearedIds, ...ids].filter((key) => !protectedKeys.has(key)).slice(-1000))
-      setClearedIds(next)
-      try {
-        localStorage.setItem(clearedStorageKey, JSON.stringify([...next]))
-      } catch {
-        /* Keep clearing usable when storage is unavailable. */
-      }
     } catch {
       setClearError(true)
     } finally {
@@ -507,7 +482,7 @@ export const NotificationBell = ({
             )}
             {skippedCount > 0 && (
               <p role="status">
-                {t("Notificações que precisam de revisão em Tarefas interrompidas: {count}.", {
+                {t("Notificações que ainda precisam de atenção: {count}.", {
                   count: skippedCount,
                 })}
               </p>

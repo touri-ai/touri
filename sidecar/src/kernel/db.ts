@@ -54,12 +54,13 @@ import hotReadIndexesSql from "./migrations/0048.sql" with { type: "text" }
 import requestRunsSql from "./migrations/0049.sql" with { type: "text" }
 import fastConversationSql from "./migrations/0050.sql" with { type: "text" }
 import webPushSql from "./migrations/0051.sql" with { type: "text" }
+import notificationReadsSql from "./migrations/0052.sql" with { type: "text" }
 import type { PerformanceStageRunner } from "./performance"
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 51
+export const SCHEMA_VERSION = 52
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -102,14 +103,22 @@ export const openDatabase = ({
     : null
   // A committed version is the migration checkpoint. Replaying old writes delays every current-store restart.
   if (current?.value === String(SCHEMA_VERSION)) return database
+  if (current?.value === "51") {
+    database.transaction(() => database.exec(notificationReadsSql))()
+    return database
+  }
   if (current?.value === "50") {
-    database.transaction(() => database.exec(webPushSql))()
+    database.transaction(() => {
+      database.exec(webPushSql)
+      database.exec(notificationReadsSql)
+    })()
     return database
   }
   if (current?.value === "49") {
     database.transaction(() => {
       applyFastConversationSchema(database)
       database.exec(webPushSql)
+      database.exec(notificationReadsSql)
     })()
     return database
   }
@@ -121,6 +130,7 @@ export const openDatabase = ({
       database.exec(requestRunsSql)
       applyFastConversationSchema(database)
       database.exec(webPushSql)
+      database.exec(notificationReadsSql)
     })()
     return database
   }
@@ -393,6 +403,7 @@ export const openDatabase = ({
   })()
   database.transaction(() => applyFastConversationSchema(database))()
   database.transaction(() => database.exec(webPushSql))()
+  database.transaction(() => database.exec(notificationReadsSql))()
   return database
 }
 

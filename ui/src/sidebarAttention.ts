@@ -1,4 +1,5 @@
 import type { Message, NotificationRecord, Run, Thread } from "@touri/contracts"
+import { canMarkNotificationRead } from "@touri/contracts"
 import { isResolvedNotification, reconcileApprovalNotifications } from "./approvalState"
 
 const ATTENTION_KINDS: ReadonlyArray<NotificationRecord["kind"]> = [
@@ -61,6 +62,7 @@ export const pendingNotifications = (
 ): Array<NotificationRecord> =>
   reconcileFailureNotifications(reconcileApprovalNotifications([...items], [...messages]), runs)
     .filter((item) => {
+      if (item.readAt && canMarkNotificationRead(item)) return false
       if (isResolvedNotification(item) || !isAttention(item)) return false
       if (!isFailureNotice(item) || item.requestId?.startsWith("recovery:")) return true
       const completedLater = items.some(

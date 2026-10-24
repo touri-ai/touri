@@ -25,6 +25,7 @@ import type {
   UiEvent,
   UiEventEnvelope,
 } from "@touri/contracts"
+import { canMarkNotificationRead } from "@touri/contracts"
 import { isApprovalNoticeTitle } from "@touri/contracts/approval-summary"
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react"
 import type { UiApi } from "./api/client"
@@ -96,7 +97,10 @@ export type WorkspaceData = {
   computerGrantRequest: { threadId: Id } | null
   pendingRequestsOnReturn: number | null
   notifications: Array<NotificationRecord>
+  notificationReads?: Array<NotificationReadReceipt>
 }
+
+type NotificationReadReceipt = Extract<UiEvent, { type: "notifications.read" }>["receipts"][number]
 
 export type WorkspaceActions = {
   refresh: () => Promise<void>
@@ -148,7 +152,7 @@ export type WorkspaceActions = {
   updateSettings: (patch: Partial<ApiRoutes["PATCH /settings"]["req"]>) => Promise<void>
   selectLocation: (location: { bot: Id | null; thread: Id | null }) => void
   dismissNotification: (id: number) => Promise<void>
-  dismissAllNotifications: () => Promise<{ skipped: number; skippedIds?: Array<number> }>
+  dismissAllNotifications: (ids: number[]) => Promise<{ skipped: number; skippedIds?: Array<number> }>
   respondNotification: (args: {
     notification: NotificationRecord
     behavior: RespondBehavior
@@ -522,13 +526,46 @@ const withoutBot = (data: WorkspaceData, botId: Id): WorkspaceData => {
 const upsertNotification = (list: Array<NotificationRecord>, next: NotificationRecord): Array<NotificationRecord> => {
   const found = list.some((item) => item.id === next.id)
   const merged = found
-    ? list.map((item) =>
-        item.id === next.id ? (item.resolvedAt !== null && next.resolvedAt === null ? item : next) : item,
-      )
+    ? list.map((item) => (item.id === next.id ? getMergedNotification(item, next) : item))
     : [next, ...list]
   // Snapshot merge order is not age: retain the newest server IDs at the history limit.
-  // The merged list is newly allocated; order it once before applying the fixed history limit.
+  // ES2022 lacks immutable sorting; only this newly allocated list is sorted.
   return merged.sort((a, b) => b.id - a.id).slice(0, MAX_NOTIFICATIONS)
+}
+
+const getMergedNotification = (current: NotificationRecord, next: NotificationRecord): NotificationRecord => {
+  const notification = current.resolvedAt !== null && next.resolvedAt === null ? current : next
+  const readAt = Math.max(current.readAt ?? 0, next.readAt ?? 0) || null
+
+  return Object.assign({}, notification, { readAt })
+}
+
+const getNotificationReads = (
+  current: ReadonlyArray<NotificationReadReceipt>,
+  incoming: ReadonlyArray<NotificationReadReceipt>,
+): NotificationReadReceipt[] => {
+  const previous = new Map(current.map((receipt) => [receipt.notificationId, receipt.readAt]))
+  const updated = incoming.map((receipt) => ({
+    notificationId: receipt.notificationId,
+    readAt: Math.max(receipt.readAt, previous.get(receipt.notificationId) ?? 0),
+  }))
+  const receipts = new Map(current.concat(updated).map((receipt) => [receipt.notificationId, receipt]))
+
+  // ES2022 lacks immutable sorting; sort only the disposable values array.
+  return Array.from(receipts.values())
+    .sort((left, right) => right.notificationId - left.notificationId)
+    .slice(0, MAX_NOTIFICATIONS)
+}
+
+const getReadNotifications = (
+  notifications: NotificationRecord[],
+  receipts: ReadonlyArray<NotificationReadReceipt> = [],
+): NotificationRecord[] => {
+  const readAtById = new Map(receipts.map((receipt) => [receipt.notificationId, receipt.readAt]))
+
+  return notifications.map((item) =>
+    Object.assign({}, item, { readAt: Math.max(item.readAt ?? 0, readAtById.get(item.id) ?? 0) || null }),
+  )
 }
 
 const getServiceErrorMessage = (error: unknown): string => {
@@ -1053,7 +1090,10 @@ export const useWorkspace = (
             ? { thread: getDraftThread(selectedBot.id), status: "draft" }
             : null)
         const selectedThreadId = threadCreation ? threadCreation.thread.id : (selectedThread?.id ?? null)
-        const notifications = current.notifications.reduce(upsertNotification, notificationsResponse.notifications)
+        const notifications = getReadNotifications(
+          current.notifications.reduce(upsertNotification, notificationsResponse.notifications),
+          current.notificationReads,
+        )
         const pendingRequests = countPendingRequests(notifications, activityResponse.messages)
         return {
           ...current,
@@ -1318,7 +1358,20 @@ export const useWorkspace = (
         if (event.type === "import.progress")
           return { ...current, importProgress: { phase: event.phase, done: event.done, total: event.total } }
         if (event.type === "notification.created" || event.type === "notification.resolved")
-          return { ...current, notifications: upsertNotification(current.notifications, event.notification) }
+          return Object.assign({}, current, {
+            notifications: getReadNotifications(
+              upsertNotification(current.notifications, event.notification),
+              current.notificationReads,
+            ),
+          })
+        if (event.type === "notifications.read") {
+          if (event.personId !== personId) return current
+          // Receipts can arrive while the initial snapshot is still in flight.
+          const notificationReads = getNotificationReads(current.notificationReads ?? [], event.receipts)
+          const notifications = getReadNotifications(current.notifications, notificationReads)
+
+          return Object.assign({}, current, { notifications, notificationReads })
+        }
         // Older computer grants open their existing card; their native echo is not an error.
         if (
           event.type === "notify" &&
@@ -1365,7 +1418,10 @@ export const useWorkspace = (
         .then(async ([snapshot, activity]) => {
           if (!active || attempt !== generation.current) return
           setData((current) => {
-            const notifications = current.notifications.reduce(upsertNotification, snapshot.notifications)
+            const notifications = getReadNotifications(
+              current.notifications.reduce(upsertNotification, snapshot.notifications),
+              current.notificationReads,
+            )
             const messages = reconcileApprovalMessages([...activity.messages, ...current.messages], notifications)
             return {
               ...current,
@@ -1431,7 +1487,7 @@ export const useWorkspace = (
       document.removeEventListener("visibilitychange", visibility)
       window.removeEventListener("online", refreshOnReturn)
     }
-  }, [api, enabled, load, loadThread, removeGroup])
+  }, [api, enabled, load, loadThread, removeGroup, personId])
 
   const selectedBot = useMemo(
     () => data.bots.find((bot) => bot.id === data.selectedBotId) ?? null,
@@ -1977,23 +2033,36 @@ export const useWorkspace = (
     })
   }, [])
 
+  const dismissAllNotifications = useCallback(
+    async (ids: number[]) => {
+      const result = await api.request("POST /notifications/read", { ids })
+      setData((current) =>
+        Object.assign({}, current, {
+          notifications: result.notifications.reduce(upsertNotification, current.notifications),
+        }),
+      )
+
+      return result
+    },
+    [api],
+  )
+
   const dismissNotification = useCallback(
     async (id: number): Promise<void> => {
+      const notification = currentData.current.notifications.find((item) => item.id === id)
+      if (notification && canMarkNotificationRead(notification)) {
+        await dismissAllNotifications([id])
+        return
+      }
+
       const response = await api.request("POST /notifications/:id/dismiss", {}, { id: String(id) })
       setData((current) => ({
         ...current,
         notifications: upsertNotification(current.notifications, response.notification),
       }))
     },
-    [api],
+    [api, dismissAllNotifications],
   )
-
-  const dismissAllNotifications = useCallback(async () => {
-    const result = await api.request("POST /notifications/dismiss-all", {})
-    const response = await api.request("GET /notifications", {})
-    setData((current) => ({ ...current, notifications: response.notifications }))
-    return result
-  }, [api])
 
   const respondNotification = useCallback(
     async ({

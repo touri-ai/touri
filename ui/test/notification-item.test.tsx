@@ -62,9 +62,9 @@ it("offers one primary action on an approval and opens the full card instead of 
   expect(actions.respond).not.toHaveBeenCalled()
 })
 
-it("keeps a quiet mark-as-read next to the primary action and dismisses on click", () => {
+it("labels an explicit action dismissal separately from reading information", () => {
   const { actions, row } = renderCenter([getNotification()])
-  const quiet = within(row).getByRole("button", { name: "Marcar como lida" })
+  const quiet = within(row).getByRole("button", { name: "Dispensar" })
 
   expect(quiet).toHaveClass("ds-button-quiet")
 

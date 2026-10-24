@@ -1,6 +1,12 @@
 import type { Database } from "bun:sqlite"
-import type { Kernel, RouteModule, RouteResponse } from "@touri/contracts"
-import { deviceSession } from "../kernel/device-session"
+import {
+  canMarkNotificationRead,
+  type Kernel,
+  type NotificationRecord,
+  type RouteModule,
+  type RouteResponse,
+} from "@touri/contracts"
+import { type DevicePerson, deviceSession } from "../kernel/device-session"
 import { createWorkState } from "../runtime/work-state"
 import type { Notifier } from "./notifier"
 import { createRecoverySync, getRecoveryAcknowledgementKeys } from "./recovery"
@@ -51,6 +57,30 @@ export const createNotifyRoutes = ({
   hub: SseHub
   syncRecoveryTasks?: ReturnType<typeof createRecoverySync>
 }): RouteModule => {
+  const getReader = (signal: AbortSignal): Pick<DevicePerson, "id" | "role"> | null => {
+    const session = deviceSession(signal)
+    if (session) return session.active() ? (session.person ?? null) : null
+    if (kernel.services.use("work.authorizeHttp")) return null
+
+    return { id: kernel.services.use("work.defaultPersonId")?.() ?? "owner", role: "admin" }
+  }
+
+  const canRead = (person: Pick<DevicePerson, "id" | "role">, notification: NotificationRecord): boolean => {
+    if (notification.targetPersonId && notification.targetPersonId !== person.id) return false
+    if (person.role === "admin") return true
+
+    return Boolean(
+      kernel.services.use("work.canAccessNotification")?.({
+        personId: person.id,
+        role: person.role,
+        threadId: notification.threadId,
+        kind: notification.kind,
+        requestId: notification.requestId,
+        targetPersonId: notification.targetPersonId ?? null,
+      }),
+    )
+  }
+
   const respond = async ({
     threadId,
     body,
@@ -240,7 +270,40 @@ export const createNotifyRoutes = ({
               }),
             )
           })
-          return { status: 200, json: { notifications: visible } }
+          const reader = getReader(signal)
+          const projected = reader ? store.getForPerson(reader.id, visible) : visible
+          return { status: 200, json: { notifications: projected } }
+        },
+      },
+      {
+        method: "POST",
+        path: "/notifications/read",
+        handler: async ({ body, signal }) => {
+          const reader = getReader(signal)
+          if (!reader) return fail(401, "UNAUTHORIZED", "Authenticated person required")
+          const input = record(body)
+          const ids = input.ids
+          if (
+            Object.keys(input).some((key) => key !== "ids") ||
+            !Array.isArray(ids) ||
+            ids.length > MAX_LIST_LIMIT ||
+            ids.some((id) => !Number.isSafeInteger(id) || id <= 0) ||
+            new Set(ids).size !== ids.length
+          )
+            return fail(400, "INVALID_ARGS", "ids must contain at most 500 unique positive integers")
+
+          const found = ids.map((id: number) => store.get(id))
+          if (found.some((item) => !item || !canRead(reader, item)))
+            return fail(404, "NOT_FOUND", "Notification not found")
+
+          const visible = found.filter((item): item is NotificationRecord => item !== null)
+          const skippedIds = visible.filter((item) => !canMarkNotificationRead(item)).map((item) => item.id)
+          const notifications = store.markRead(reader.id, visible.filter(canMarkNotificationRead))
+          const receipts = notifications.flatMap((item) =>
+            item.readAt === null || item.readAt === undefined ? [] : [{ notificationId: item.id, readAt: item.readAt }],
+          )
+          if (receipts.length > 0) kernel.publish({ type: "notifications.read", personId: reader.id, receipts })
+          return { status: 200, json: { notifications, skipped: skippedIds.length, skippedIds } }
         },
       },
       {

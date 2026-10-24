@@ -121,7 +121,7 @@ describe("r8 screens", () => {
     }
   })
 
-  it("keeps cleared notification history hidden after remount without hiding new records", async () => {
+  it("uses host read receipts after remount without hiding new records", async () => {
     const api = createMockApi()
     const item = api.notify({ kind: "done", title: "Resumo antigo", body: "Resultado disponível", createdAt: 100 })
     const actions = {
@@ -134,10 +134,16 @@ describe("r8 screens", () => {
     const view = render(<NotificationBell notifications={[item]} actions={actions} />)
     fireEvent.click(screen.getByRole("button", { name: "Notificações" }))
     fireEvent.click(screen.getByRole("button", { name: "Limpar" }))
+    await waitFor(() => expect(actions.dismissAll).toHaveBeenCalledWith([item.id]))
+    const read = Object.assign({}, item, { readAt: 150 })
+    view.rerender(<NotificationBell notifications={[read]} actions={actions} />)
     await waitFor(() => expect(screen.queryAllByTestId("notification-row")).toHaveLength(0))
     view.unmount()
     render(
-      <NotificationBell notifications={[item, { ...item, createdAt: 200, title: "Resumo novo" }]} actions={actions} />,
+      <NotificationBell
+        notifications={[read, Object.assign({}, item, { id: item.id + 1, createdAt: 200, title: "Resumo novo" })]}
+        actions={actions}
+      />,
     )
     fireEvent.click(screen.getByRole("button", { name: "Notificações" }))
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1)
@@ -277,8 +283,8 @@ describe("r8 screens", () => {
     fireEvent.click(within(rows[0] as HTMLElement).getByRole("button", { name: "Marcar como lida" }))
     await waitFor(() => expect(read).toHaveBeenCalledWith(fresh.id))
     fireEvent.click(screen.getByRole("button", { name: "Limpar" }))
-    await waitFor(() => expect(screen.queryAllByTestId("notification-row")).toHaveLength(0))
-    expect(clear).toHaveBeenCalledOnce()
+    await waitFor(() => expect(clear).toHaveBeenCalledWith([old.id, fresh.id]))
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(2)
   })
 
   it("keeps notification failures recoverable", async () => {

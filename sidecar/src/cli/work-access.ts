@@ -299,6 +299,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
   }
 
   const visibleEvent = ({ personId, role, event }: { personId: string; role: PersonRole; event: UiEvent }): boolean => {
+    if (event.type === "notifications.read") return event.personId === personId
     if (event.type === "notification.created" || event.type === "notification.resolved")
       return canAccessNotification({
         personId,
@@ -459,6 +460,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
     if (role === "admin") return null
     if (pathname === "/push" && ["GET", "PUT", "DELETE"].includes(verb)) return null
     if (pathname === "/push/test" && verb === "POST") return null
+    if (pathname === "/notifications/read" && verb === "POST") return null
     if (verb === "POST" && pathname === "/ws-ticket") return null
     // The browser handler verifies the original requester or bot owner for each control change.
     if (

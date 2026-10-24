@@ -57,7 +57,7 @@ viewports.forEach(({ device, width, height, theme }) => {
     ).toBeVisible()
     if (device === "mobile") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
     await page.getByRole("button", { name: "Notificações, 1 precisa de atenção", exact: true }).click()
-    await pending.getByRole("button", { name: "Marcar como lida", exact: true }).click()
+    await pending.getByRole("button", { name: "Dispensar", exact: true }).click()
 
     await expect(center.locator('[data-unread="true"]')).toHaveCount(0)
     await expect(center.locator(".notification-row.resolved")).toHaveCount(2)
