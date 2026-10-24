@@ -29,7 +29,6 @@ import { isResolvedNotification } from "./approvalState"
 import { ApprovalNotice } from "./components/ApprovalNotice"
 import { AvatarRuntimeProvider } from "./components/AvatarRuntime"
 import { BotAvatar } from "./components/BotAvatar"
-import { BotPanel } from "./components/BotPanel"
 import { activeMessagePath, ChatPanel } from "./components/ChatPanel"
 import { ErrorBoundary } from "./components/ErrorBoundary"
 import { ErrorNotice } from "./components/ErrorNotice"
@@ -94,6 +93,7 @@ import { useWorkspace } from "./useWorkspace"
 import { getModeSelection, type ModeSelection, type WorkspaceMode } from "./workspaceModes"
 import { type AppRoute, type RoutineHistoryTarget, readWorkspaceState, saveWorkspaceState } from "./workspaceState"
 
+const BotPanel = lazy(() => import("./components/BotPanel").then((module) => ({ default: module.BotPanel })))
 const InterruptedTasks = lazy(() =>
   import("./components/InterruptedTasks").then((module) => ({ default: module.InterruptedTasksContent })),
 )

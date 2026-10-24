@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { UiEvent, UiEventEnvelope } from "@touri/contracts"
+import { writeDatabaseAsync } from "../../src/kernel/database-write"
 import { openDatabase } from "../../src/kernel/db"
 import { createEventBus, REPLAY_LIMITS } from "../../src/kernel/event-bus"
 import { profileProviders } from "../../src/kernel/provider-profiles"
@@ -47,6 +48,28 @@ test("a held live reference read leaves input and health responsive and preserve
   expect(queries.mock.calls.some(([sql]) => String(sql).includes("SELECT event_json FROM transcript_entries"))).toBe(
     false,
   )
+})
+
+test("committed control callbacks do not wait behind cold history while socket order stays intact", async () => {
+  const fixture = await getFixture()
+  const read = Promise.withResolvers<UiEvent[]>()
+  const bus = createEventBus(fixture.database, undefined, { getReferenceEvents: () => read.promise })
+  cleanups.add(() => bus.stop())
+  const client = getClient()
+  bus.add(client.socket)
+  const local: UiEvent[] = []
+  bus.subscribe(({ event }) => local.push(event))
+  fixture.saveReference()
+  const marker = getMarker("committed-control")
+
+  bus.publish(marker)
+
+  expect(local).toEqual([marker])
+  expect(client.getFrames()).toHaveLength(1)
+  read.resolve([getDelta()])
+  await waitFor(() => client.getEvents().length === 2)
+  expect(client.getEvents().map(({ event }) => event)).toEqual([getDelta(), marker])
+  expect(local.filter((event) => event.type === "import.progress")).toEqual([marker])
 })
 
 test("a committed publisher hands off its payload and cancels a redundant reference read", async () => {
@@ -96,6 +119,75 @@ test("queued live snapshots retain their exact revisions across a committed publ
 
   expect(client.getEvents().map(({ seq }) => seq)).toEqual([1, 2, 3])
   expect(client.getEvents().map(({ event }) => event)).toEqual([getMarker("committed-prefix"), first, second])
+})
+
+test("an owned transaction hands off its committed snapshot before the writer resolves", async () => {
+  const fixture = await getFixture()
+  const read = Promise.withResolvers<UiEvent[]>()
+  const bus = createEventBus(fixture.database, undefined, { getReferenceEvents: () => read.promise })
+  cleanups.add(() => bus.stop())
+  const client = getClient()
+  bus.add(client.socket)
+  const snapshot = getSnapshot("committed terminal reply", 1)
+  forbidReferenceReads(fixture.database)
+
+  await writeDatabaseAsync(fixture.database, () => {
+    fixture.saveReference("message.updated", 1)
+    bus.publish(snapshot)
+    expect(client.getEvents()).toHaveLength(0)
+  })
+
+  expect(client.getEvents().map(({ event }) => event)).toEqual([snapshot])
+})
+
+test("a nested writer cannot publish before its outer transaction commits", async () => {
+  const fixture = await getFixture()
+  const bus = createEventBus(fixture.database, undefined, {
+    getReferenceEvents: async () => [getDelta("committed synthetic")],
+  })
+  cleanups.add(() => bus.stop())
+  const client = getClient()
+  bus.add(client.socket)
+
+  await expect(
+    writeDatabaseAsync(fixture.database, () => {
+      void writeDatabaseAsync(fixture.database, () => {
+        fixture.saveReference()
+        bus.publish(getDelta("rolled-back nested"))
+      })
+      throw new Error("outer rollback")
+    }),
+  ).rejects.toThrow("outer rollback")
+  fixture.saveReference()
+  bus.publish(getMarker("committed-control"))
+  await waitFor(() => client.getEvents().length === 2)
+
+  expect(client.getEvents()[0]?.event).toEqual(getDelta("committed synthetic"))
+  expect(JSON.stringify(client.getEvents())).not.toContain("rolled-back nested")
+})
+
+test("an owned transaction discards its handoff after rollback", async () => {
+  const fixture = await getFixture()
+  const bus = createEventBus(fixture.database, undefined, {
+    getReferenceEvents: async () => [getDelta("committed synthetic")],
+  })
+  cleanups.add(() => bus.stop())
+  const client = getClient()
+  bus.add(client.socket)
+
+  await expect(
+    writeDatabaseAsync(fixture.database, () => {
+      fixture.saveReference()
+      bus.publish(getDelta("rolled-back synthetic"))
+      throw new Error("synthetic rollback")
+    }),
+  ).rejects.toThrow("synthetic rollback")
+  fixture.saveReference()
+  bus.publish(getMarker("after-rollback"))
+  await waitFor(() => client.getEvents().length === 2)
+
+  expect(client.getEvents()[0]?.event).toEqual(getDelta("committed synthetic"))
+  expect(JSON.stringify(client.getEvents())).not.toContain("rolled-back synthetic")
 })
 
 test("a rolled-back publisher cannot supply the payload of a later committed reference", async () => {

@@ -121,8 +121,7 @@ test("desktop server mode pairs with a real isolated server and resyncs after a 
     await expect(page.locator('[data-connection-state="reconnecting"]')).toBeVisible()
     await testInfo.attach("server-mode-offline", {
       body: await page
-        .locator(".app-shell > .notice-bar")
-        .filter({ hasText: "Reconectando…" })
+        .locator('[data-connection-state="reconnecting"]')
         .screenshot({ path: `${evidence}/server-mode-offline.png` }),
       contentType: "image/png",
     })

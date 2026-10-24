@@ -53,7 +53,7 @@ export const startLineReader = ({
   onError: (error: Error) => void
   runStage?: PerformanceStageRunner
   now?: () => number
-}): (() => void) => {
+}): (() => void) & { done: Promise<void> } => {
   let stopped = false
   type Slice = { offset: number; processed: number; elapsedMs: number }
   const processLines = ({ buffer, offset, processed, elapsedMs }: Slice & { buffer: string }): Slice => {
@@ -76,7 +76,7 @@ export const startLineReader = ({
   const processBatch = (input: Slice & { buffer: string }): Slice => {
     return runStage ? runStage("provider_frame_batch", processLines, input) : processLines(input)
   }
-  void (async () => {
+  const done = (async () => {
     const reader = stream.getReader()
     const decoder = new TextDecoder()
     let buffer = ""
@@ -109,7 +109,10 @@ export const startLineReader = ({
       reader.releaseLock()
     }
   })()
-  return () => {
-    stopped = true
-  }
+  return Object.assign(
+    () => {
+      stopped = true
+    },
+    { done },
+  )
 }

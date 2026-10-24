@@ -13,6 +13,36 @@ afterEach(async () => {
   fixtures.clear()
 })
 
+test.each([0, 17])("process exit %s drains acknowledged buffered frames before settling", async (code) => {
+  const fixture = makeFixture()
+  const running = fixture.adapter.startTurn(fixture.args)
+  const request = await fixture.nextRequest("turn/start")
+  Array.from({ length: 20 }, () =>
+    fixture.send({
+      method: "item/agentMessage/delta",
+      params: { threadId: "parent", turnId: "current", itemId: "reply", delta: "saved " },
+    }),
+  )
+  fixture.acknowledge(request)
+  if (code === 0)
+    fixture.send({
+      method: "turn/completed",
+      params: { threadId: "parent", turnId: "current", status: "succeeded" },
+    })
+  fixture.exit(code)
+
+  const result = await running
+
+  expect(
+    fixture.events
+      .filter((event) => event.type === "text_delta")
+      .map((event) => event.delta)
+      .join(""),
+  ).toBe("saved ".repeat(20))
+  expect(result.success).toBe(code === 0)
+  if (!result.success) expect(result.errorCode).toBe("cli_crash")
+})
+
 test.each(["before acknowledgement", "after acknowledgement"])(
   "isolates foreign and stale events %s",
   async (phase) => {
@@ -422,6 +452,11 @@ const makeFixture = () => {
     events,
     requests,
     send,
+    exit: (code: number) => {
+      output?.close()
+      output = undefined
+      finish({ code, signal: null })
+    },
     acknowledge: (request: Frame) => send({ id: request.id, result: { turn: { id: "current" } } }),
     nextRequest: (method?: string, id?: string | number, offset = 0) =>
       nextValue(() =>

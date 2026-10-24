@@ -3417,6 +3417,7 @@ export const createRuntimeEngine = ({
       publishMessage({ store, state, run, status: "streaming" })
       if (state.replyMessageId)
         await store.flushWritesAsync?.({ threadId: ctx.threadId, messageId: state.replyMessageId })
+      await kernel.flushEvents?.()
       return true
     },
   })

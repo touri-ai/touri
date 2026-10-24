@@ -1748,3 +1748,17 @@ Recovery counts a channel message and its source as one set of actions only when
 never an identity: independent calls and executions remain separate even with identical descriptions.
 A surviving projection remains available if its source is missing. This changes only recovery's
 read projection; saved messages and every uncertain journal acknowledgement remain intact.
+
+### Committed streaming delivery
+
+Owned asynchronous database writes hand committed message revisions to event delivery before
+resolving; rolled-back revisions are discarded. A bounded cache of at most 32 revisions and 2 MiB
+also serves immediate reconnects, with cold references still read asynchronously. Provider exit
+waits for stdout parsing and acknowledged-turn replay before reporting failure, preserving partial
+text and the terminal outcome without accepting foreign sessions or turns. Failed history reads
+remain visible across workspace refreshes until a successful history read clears them. Bot details
+load on demand, keeping the existing initial compressed payload budget unchanged.
+Internal control callbacks run after commit without waiting for cold transcript hydration; socket
+frames retain durable sequence order. Approval acknowledgements wait for committed card delivery.
+Shutdown asks the stream worker to close SQLite and waits for its confirmation before releasing
+files, with a one-second fallback for an unresponsive worker.

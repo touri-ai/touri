@@ -363,6 +363,7 @@ export const createCodexAdapter = ({
     let turnAcknowledged = false
     let pendingFrames: Array<{ frame: Record<string, unknown>; bytes: number }> = []
     let pendingBytes = 0
+    let replay: Promise<void> | undefined
     let resuming = false
     const classifyError = (message: string): RunErrorClass => {
       const errorClass = classifyProviderError(message)
@@ -775,17 +776,20 @@ export const createCodexAdapter = ({
         turnId = stringValue(asRecord(turnResult.turn)?.id) ?? stringValue(turnResult.turnId)
         if (stopped) interrupt()
 
-        // Replay cursors stay local; live arrivals join the bounded buffer until it drains.
-        while (!completed && pendingFrames.length > 0) {
-          const [pending, ...remaining] = pendingFrames
-          if (!pending) break
+        replay = (async () => {
+          // Replay cursors stay local; live arrivals join the bounded buffer until it drains.
+          while (!completed && pendingFrames.length > 0) {
+            const [pending, ...remaining] = pendingFrames
+            if (!pending) break
 
-          pendingFrames = remaining
-          pendingBytes -= pending.bytes
-          routeFrame(pending.frame, pending.bytes, true)
-          if (!completed) await new Promise<void>((resolve) => setImmediate(resolve))
-        }
-        turnAcknowledged = true
+            pendingFrames = remaining
+            pendingBytes -= pending.bytes
+            routeFrame(pending.frame, pending.bytes, true)
+            if (!completed) await new Promise<void>((resolve) => setImmediate(resolve))
+          }
+          turnAcknowledged = true
+        })()
+        await replay
       } catch (error) {
         const message = errorText(error)
         const errorClass = classifyProviderError(message)
@@ -807,6 +811,9 @@ export const createCodexAdapter = ({
       }
     })()
     const onExit = spawned.exited.then(async ({ code, signal }) => {
+      // Process exit can precede stdout delivery and the acknowledged-turn replay.
+      await stopReader.done
+      await replay
       const stderr = (await stderrOutput.catch(() => "")).trim()
       const errorClass = classifyError(stderr)
       if (!completed)

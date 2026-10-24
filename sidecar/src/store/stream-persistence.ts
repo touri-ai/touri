@@ -346,6 +346,36 @@ export const createStreamPersistence = ({
     clearTimeout(timer)
     return drained
   }
+  const stopWorkerGracefully = async (): Promise<void> => {
+    const current = worker
+    if (!current) return
+    workerNumber += 1
+    worker = undefined
+    ready = false
+    running = false
+    await new Promise<void>((resolve) => {
+      const finish = (): void => {
+        clearTimeout(timer)
+        current.removeEventListener("message", onMessage)
+        resolve()
+      }
+      const onMessage = ({ data }: MessageEvent): void => {
+        if (data?.type === "stopped") finish()
+      }
+      const timer = setTimeout(() => {
+        current.terminate()
+        finish()
+      }, 1_000)
+      current.addEventListener("message", onMessage)
+      try {
+        current.postMessage({ type: "stop" })
+      } catch {
+        current.terminate()
+        finish()
+      }
+    })
+  }
+
   const dispose = (): void => {
     disposed = true
     clearTimeout(retryTimer)
@@ -358,6 +388,7 @@ export const createStreamPersistence = ({
     stopping = true
     const drained = await drain({ timeoutMs: 1_000 })
     if (!drained) reportError()
+    await stopWorkerGracefully()
     dispose()
     const abandoned = queue
     queue = []
@@ -369,7 +400,7 @@ export const createStreamPersistence = ({
   }
   const closeIfIdle = (): boolean => {
     if (disposed) return true
-    if (queue.length || running) return false
+    if (queue.length || running || worker) return false
     stopping = true
     dispose()
     return true
