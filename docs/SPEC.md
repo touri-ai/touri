@@ -661,6 +661,9 @@ messages appear together after loading, so late content cannot move a row during
 Each sidebar mode remembers its own last conversation. Switching back to Work reopens the last
 channel or Work conversation, and Bots never centers a channel. A deleted or archived destination
 falls back to another conversation of the same mode. Drafts stay with their conversation.
+Opening a channel from somewhere else while Bots is selected, such as a notification or search,
+switches the sidebar to Work without restoring another conversation over the requested one; Bots
+keeps its last direct conversation for the next switch back.
 
 Groups have a name, mascot shape/seed/color, an ordered roster and an optional coordinator
 from that roster. Each group owns multiple conversations. Migration `0008.sql` is additive;

@@ -82,6 +82,8 @@ type SidebarProps = {
   host?: HostKind
   onNavigate?: () => void
   onSidebarModeChange?: (mode: SidebarMode, restore?: boolean) => void
+  /** A destination opened elsewhere, such as a channel notice, moves the sidebar to its mode. */
+  sidebarModeRequest?: { mode: SidebarMode; id: number } | null
   groups?: BotGroup[]
   onInvitePerson?: (() => void) | undefined
   onNewGroup?: () => void
@@ -444,6 +446,14 @@ export const Sidebar = (props: SidebarProps) => {
     setHasOpenedWork(true)
     props.onSidebarModeChange?.("work", false)
   }, [savedSidebarMode, hasUserSelectedMode, props.groups?.length, props.onSidebarModeChange])
+  const modeRequest = props.sidebarModeRequest
+  useEffect(() => {
+    if (!modeRequest) return
+
+    setSidebarMode(modeRequest.mode)
+    if (modeRequest.mode === "work") setHasOpenedWork(true)
+    setHasUserSelectedMode(true)
+  }, [modeRequest])
   const selectMode = (mode: SidebarMode): void => {
     setSidebarMode(mode)
     if (mode === "work") setHasOpenedWork(true)
