@@ -7,7 +7,13 @@ test("pending login recovers after a failed read without focus and stops polling
   await page.clock.install({ time: startedAt })
   await page.clock.pauseAt(startedAt + 1000)
   await page.goto("/test/e2e/qa-r4-harness.html?scenario=login-recovery")
-  // Resolve the optional interface before advancing its suspended render, short of the first one-second poll.
+  // Each suspended parent must commit before the login boundary can resolve.
+  await page.evaluate(async () => {
+    const modulePath = "/src/components/ChatPanel.tsx"
+    await import(modulePath)
+  })
+  await page.clock.runFor(500)
+  await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
   await page.evaluate(async () => {
     const modulePath = "/src/components/ProviderLoginFlow.tsx"
     await import(modulePath)
