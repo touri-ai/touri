@@ -75,7 +75,15 @@ test("a waiting handoff survives browser shutdown with its original deadline and
   expect(resumed).toBe(1)
   expect(ledger.get("tab")).toBeNull()
   expect(persistence.getRunSnapshots(["old"])[0]?.browserWaitingForPerson).not.toBe(true)
-  await again.holdTakeover({ tabId: "tab", reason: "fixture", runId: "resumed" })
+  await again.requestTakeover({
+    tabId: "tab",
+    botId: "bot",
+    threadId: "thread",
+    reason: "fixture",
+    runId: "resumed",
+    timeoutMs: 120_000,
+    signal: new AbortController().signal,
+  })
   expect(ledger.get("tab")?.runId).toBe("resumed")
   expect(persistence.getRunSnapshots(["resumed"])[0]?.browserWaitingForPerson).toBe(true)
 })

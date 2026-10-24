@@ -275,8 +275,12 @@ export type BrowserEngine = {
   secretEntry: (args: { tabId: Id; secretName?: string; cancel: boolean }) => Promise<boolean>
   releaseTakeover: (tabId: Id) => Promise<boolean>
   releaseTakeoverForPerson: (args: { tabId: Id; personId: Id }) => Promise<"released" | "forbidden" | "not_found">
-  holdTakeoverForPerson: (args: { tabId: Id; personId: Id }) => Promise<"held" | "forbidden" | "not_found">
-  holdTakeover: (args: { tabId: Id; reason: string; runId?: Id }) => Promise<boolean>
+  holdTakeoverForPerson: (args: {
+    tabId: Id
+    personId: Id
+    signal?: AbortSignal
+  }) => Promise<"held" | "forbidden" | "not_found">
+  holdTakeover: (args: { tabId: Id; reason: string; runId?: Id; signal?: AbortSignal }) => Promise<boolean>
   getWindowBounds: (args: { tabId: Id; botId: Id }) => Promise<WindowBounds | null>
   tabsForBot: (botId: Id | null) => Array<BrowserTabInfo & { ownerBotId: Id | null }>
   cancelTakeover: (args: { tabId: Id }) => boolean
