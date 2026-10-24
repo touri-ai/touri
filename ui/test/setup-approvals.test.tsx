@@ -392,6 +392,7 @@ it.each([
   expect(
     screen.getByText("Não foi possível mostrar os detalhes desta ação. Negue e peça ao bot para solicitar novamente."),
   ).toBeVisible()
+  fireEvent.click(screen.getByRole("button", { name: "Mais opções de aprovação", exact: true }))
   for (const name of ["Aprovar", "Permitir sempre nesta ferramenta"]) {
     const button = screen.getByRole("button", { name, exact: true })
     expect(button).toBeDisabled()

@@ -14,6 +14,7 @@ import {
 } from "react"
 import type { Components } from "react-markdown"
 import { userFacingError } from "../errors"
+import { markdownSummary } from "../markdownSummary"
 import { hasShellBraceAlternatives, localFileLinks, localFilePath } from "../messageMarkdown"
 import { useSaveNotice } from "../useSaveNotice"
 import { protectDiffFences } from "./codeFence"
@@ -144,7 +145,7 @@ const MarkdownCodeBlock = ({ children, preview }: { children: ReactNode; preview
   )
 }
 
-const LazyMarkdown = lazy(async () => {
+const getMarkdownRenderer = async () => {
   const [
     { default: ReactMarkdown, defaultUrlTransform },
     { default: remarkGfm },
@@ -203,7 +204,9 @@ const LazyMarkdown = lazy(async () => {
     )
   }
   return { default: memo(Markdown) }
-})
+}
+
+const LazyMarkdown = lazy(getMarkdownRenderer)
 
 const ShikiCode = ({
   language,
@@ -313,7 +316,15 @@ export const MarkdownContent = ({
         <div
           className={`markdown-content${compact ? " markdown-compact" : ""}${blocks ? " markdown-streaming-blocks" : ""}`}
         >
-          <Suspense fallback={<p className="whitespace-pre-wrap">{preview ? displayed.slice(0, 600) : displayed}</p>}>
+          <Suspense
+            fallback={
+              <p className="whitespace-pre-wrap">
+                {markdownSummary(displayed.slice(0, 600))
+                  .replace(/\|(?:\s*[-:]+\s*\|)+/g, "")
+                  .replace(/\|/g, " · ")}
+              </p>
+            }
+          >
             {evidence ? <EvidenceContext.Provider value={evidence}>{markdown}</EvidenceContext.Provider> : markdown}
           </Suspense>
         </div>

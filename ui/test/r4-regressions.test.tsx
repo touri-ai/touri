@@ -10,7 +10,7 @@ import { BotCreateModal, BotSettingsModal } from "../src/components/Modals"
 import { ApiError, userFacingError } from "../src/errors"
 import { t, threadTitle } from "../src/i18n"
 import { useWorkspace, type WorkspaceActions } from "../src/useWorkspace"
-import { openConversations } from "./workspaceNavigation"
+import { chooseRoutineAction, openBotDetails, openConversations } from "./workspaceNavigation"
 
 afterEach(() => {
   cleanup()
@@ -185,8 +185,9 @@ describe("r4 P0/P1 recovery", () => {
         return <CronScreen {...data} actions={actions} onReviewApprovals={vi.fn()} onNotice={vi.fn()} />
       }
       render(<View />)
-      const button = await screen.findByRole("button", { name: `Rodar agora ${routine.name}` })
-      fireEvent.click(button)
+      await chooseRoutineAction(routine.name, "Rodar agora")
+      fireEvent.click(screen.getByRole("button", { name: `Ações da rotina ${routine.name}` }))
+      const button = screen.getByRole("menuitem", { name: "Rodar agora" })
       expect(button).toBeDisabled()
       await act(async () => {
         api.emit({ type: "routine.updated", routine, lastRun: { ...running, status, finishedAt: Date.now() } })
@@ -313,9 +314,7 @@ describe("r4 P0/P1 recovery", () => {
     }
     render(<App kernel={{ services: { api: client } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    if (!screen.queryByRole("button", { name: "Preview do projeto" }))
-      fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
-    await screen.findByRole("complementary", { name: /^Painel de / })
+    await openBotDetails()
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
     await screen.findByText("web", { selector: "strong" })
     fireEvent.click(screen.getByRole("tab", { name: "Logs" }))
@@ -334,9 +333,7 @@ describe("r4 P0/P1 recovery", () => {
     hook.unmount()
     const first = render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para onb" })
-    if (!screen.queryByRole("button", { name: "Preview do projeto" }))
-      fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
-    await screen.findByRole("complementary", { name: /^Painel de / })
+    await openBotDetails()
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
     first.unmount()
     render(<App kernel={{ services: { api } }} />)

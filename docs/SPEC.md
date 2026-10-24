@@ -1739,6 +1739,28 @@ Rules for every WP:
   - Lighthouse-style budget: the initial JS bundle is ≤ 400 KB gzipped.
 - **Depends on:** WP0 (mock-first; real integration once WP2/WP3/WP5/WP6 land).
 
+#### UI navigation and pending requests
+
+Clicking a bot opens its conversation; conversation management lives in its menu. Model and project controls live behind the bot panel’s Adjust disclosure, while
+the composer keeps attachment, text, voice and send controls. The panel shows the job once and a
+plain access summary before Adjust is opened. Secondary routine and approval actions keep their
+confirmation steps behind menus. Message actions appear on hover or keyboard focus and stay visible
+on touch devices, so scheduling a useful result remains discoverable on a phone, including completed
+channel replies. The draft retains its channel destination and requires review before activation. If routines finish
+loading while a menu is in use, that menu keeps keyboard focus. Opening routines intentionally
+still focuses the routine list. Native connection settings remain reachable through Diagnostics →
+Use a touri server, with a destination label that describes what opens.
+
+Each bot with a pending question, approval or failed task shows its waiting reason in the sidebar
+in place of the conversation preview. The shared attention card and bell use the same unresolved
+notifications. The card’s accessible name matches its visible reminder, and its description explains
+the destination. The card opens a pending approval before a question; resolving that approval returns
+the card to the remaining request. Ready-review notices identify themselves as Review ready and
+open their originating conversation, preserving unread state until explicitly marked read.
+Redundant per-bot action buttons and activity-group counts stay
+hidden; Work retains its unread-message count. Empty profile handles fall back to the person’s name
+or You, keeping the settings entry visible and named.
+
 ### Dependency graph and order
 
 ```text

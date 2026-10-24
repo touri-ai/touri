@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import { expect, test } from "@playwright/test"
-import { showBotAdvanced, showBotPanel } from "./home-navigation"
+import { openMessageActions, showBotAdvanced, showBotPanel } from "./home-navigation"
 
 const framebuffer = readFileSync(new URL("./fixtures/r8-desktop.js", import.meta.url), "utf8")
 
@@ -116,10 +116,11 @@ test("computer settings explain the choice before showing implementation details
 test("failed task offers scheduling and retry as distinct actions", async ({ page }, testInfo) => {
   await page.goto("/test/e2e/home-harness.html?scenario=failed")
   await expect(page.getByRole("button", { name: "Tentar novamente", exact: true })).toBeVisible()
+  await openMessageActions(page)
   await page
-    .getByRole("button", { name: "Agendar esta tarefa", exact: true })
+    .getByRole("menuitem", { name: "Agendar esta tarefa", exact: true })
     .screenshot({ path: testInfo.outputPath("schedule-action.png") })
-  await page.getByRole("button", { name: "Agendar esta tarefa", exact: true }).click()
+  await page.getByRole("menuitem", { name: "Agendar esta tarefa", exact: true }).click()
   const dialog = page.getByRole("dialog", { name: "Quando?" })
   await expect(dialog.getByRole("textbox", { name: "Tarefa", exact: true })).toHaveValue("Review the campaign")
   await dialog.screenshot({ path: testInfo.outputPath("schedule-task.png") })

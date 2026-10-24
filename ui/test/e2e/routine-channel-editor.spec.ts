@@ -1,6 +1,6 @@
 import { join } from "node:path"
 import { expect, test } from "@playwright/test"
-import { showBotRoutines } from "./home-navigation"
+import { chooseRoutineAction, showBotRoutines } from "./home-navigation"
 
 test.use({ channel: "chromium" })
 test.setTimeout(60_000)
@@ -20,8 +20,8 @@ viewports.forEach(([device, width, height]) => {
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (device === "phone") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
     await showBotRoutines(page)
-    await page.getByRole("button", { name: "Todos os bots", exact: true }).click()
-    await page.getByRole("button", { name: "Editar Resumo do canal", exact: true }).click()
+    await page.getByRole("combobox", { name: "Bot", exact: true }).selectOption("all")
+    await chooseRoutineAction(page, "Resumo do canal", "Editar")
     const editor = page.getByRole("dialog", { name: "Quando?" })
     const destination = editor.getByRole("combobox", { name: "Destino dos resultados" })
     await expect(destination.locator("option:checked")).toHaveText("Conversa do grupo Relatórios")
@@ -45,7 +45,7 @@ viewports.forEach(([device, width, height]) => {
     await review.getByRole("button", { name: "Ativar rotina", exact: true }).click()
     await expect(review).toHaveCount(0)
 
-    await page.getByRole("button", { name: "Editar Resumo do canal", exact: true }).click()
+    await chooseRoutineAction(page, "Resumo do canal", "Editar")
     await expect(destination.locator("option:checked")).toHaveText("Conversa do grupo Relatórios")
     await expect(editor.getByRole("textbox", { name: "Tarefa", exact: true })).toHaveValue(
       "Resuma também as próximas tarefas fictícias.",

@@ -11,7 +11,7 @@ import { ApiError } from "../src/errors"
 import { machineStateForDisplay } from "../src/machineState"
 import { useWorkspace } from "../src/useWorkspace"
 import { readWorkspaceState } from "../src/workspaceState"
-import { showBotSettings } from "./workspaceNavigation"
+import { openBotDetails, openGlobalPage, showBotSettings } from "./workspaceNavigation"
 
 const originalReveal = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView")
 afterEach(() => {
@@ -434,7 +434,7 @@ describe("R6: integrações e Preview/Logs", () => {
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: `Mensagem para ${name}` })
     fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
-    fireEvent.click(screen.getByRole("button", { name: /Integrações/ }))
+    openGlobalPage("Integrações")
     const configureMcp = await screen.findByRole("button", { name: `Configurar MCP de ${name}` })
 
     await act(async () => fireEvent.click(configureMcp))
@@ -450,9 +450,7 @@ describe("R6: integrações e Preview/Logs", () => {
     const api = createMockApi()
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    if (!screen.queryByRole("button", { name: "Preview do projeto" }))
-      fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
-    await screen.findByRole("complementary", { name: /^Painel de / })
+    await openBotDetails()
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" })))
     await screen.findByRole("heading", { name: "Preview", exact: true })
 

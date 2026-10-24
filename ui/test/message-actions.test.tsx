@@ -202,3 +202,60 @@ describe("user prompt editing", () => {
     expect(edit).toHaveBeenCalledOnce()
   })
 })
+
+it.each([false, true])("keeps scheduling a completed group reply available (channel mode: %s)", async (channelMode) => {
+  const api = createMockApi()
+  const bot = api.getState().bots[0]
+  if (!bot) throw new Error("Missing bot fixture")
+  const { group, thread } = await api.request("POST /groups", {
+    name: "Notas fictícias",
+    memberIds: [bot.id],
+    coordinatorBotId: null,
+  })
+  const question = message({ threadId: thread.id, text: "@mark Organize minhas notas", parts: [] })
+  const reply = message({
+    id: "group-repeat-reply",
+    threadId: thread.id,
+    parentId: question.id,
+    role: "assistant",
+    text: "Notas organizadas para revisão.",
+    parts: [],
+    sender: { id: bot.id, name: bot.name },
+    createdAt: 2,
+  })
+  const repeat = vi.fn()
+  render(
+    <ChatPanel
+      group={group}
+      groupMembers={[bot]}
+      channelMode={channelMode}
+      thread={{ ...thread, activeLeafId: reply.id }}
+      bot={bot}
+      messages={[question, reply]}
+      runs={[]}
+      onRepeatTask={repeat}
+      onSend={vi.fn()}
+      onRetry={vi.fn()}
+      onCancel={vi.fn()}
+      onSwitchBranch={vi.fn()}
+      computerGrant={null}
+      api={api}
+      onComputerGrant={vi.fn()}
+      onOpenTools={vi.fn()}
+    />,
+  )
+  await screen.findByText(reply.text)
+
+  fireEvent.click(screen.getByRole("button", { name: "Ações da mensagem", exact: true }))
+  fireEvent.click(screen.getByRole("menuitem", { name: "Agendar esta tarefa", exact: true }))
+
+  expect(repeat).toHaveBeenCalledWith(
+    expect.objectContaining({
+      botId: bot.id,
+      groupId: group.id,
+      resultsThreadId: thread.id,
+      continuity: "results-thread",
+    }),
+  )
+  expect(api.calls.some((call) => call.route === "POST /routines")).toBe(false)
+})

@@ -59,16 +59,7 @@ it("keeps conversation housekeeping in the bot menu", async () => {
     within(menu)
       .getAllByRole("menuitem")
       .map((item) => item.textContent),
-  ).toEqual([
-    "Nova conversa",
-    "Selecionar conversas…",
-    "Apagar conversas automáticas antigas…",
-    "Arquivadas",
-    "Avançado",
-    "Rotinas",
-    "Conversas",
-    "Excluir bot",
-  ])
+  ).toEqual(["Avançado", "Rotinas", "Conversas", "Excluir bot"])
 })
 
 it("starts a new conversation for the bot whose menu was used, even when another bot is open", async () => {

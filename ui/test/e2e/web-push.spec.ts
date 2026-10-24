@@ -16,7 +16,7 @@ for (const width of [1440, 390]) {
     )
     await page.goto("/test/e2e/home-harness.html")
     if (width < 500) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
-    await page.getByRole("button", { name: /Você Local/ }).click()
+    await page.locator(".user-chip").click()
     const dialog = page.getByRole("dialog", { name: "Configurações", exact: true })
 
     await dialog.getByRole("tab", { name: "Notificações", exact: true }).click()

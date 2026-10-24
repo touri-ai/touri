@@ -31,7 +31,7 @@ export const BotActionsMenu = ({
   onDelete?: (() => void) | undefined
   conversations?: BotConversationActions
 }) => {
-  const conversationItems = getConversationItems(conversations)
+  const conversationItems = onConversations ? [] : getConversationItems(conversations)
 
   const container = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)

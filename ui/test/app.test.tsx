@@ -8,7 +8,7 @@ import { createMockApi } from "../src/api/mock"
 import { VirtualMessageList } from "../src/components/ChatPanel"
 import { PreviewPane } from "../src/components/PreviewPane"
 import { SecretsPanel } from "../src/components/RightPanels"
-import { openRoutines } from "./workspaceNavigation"
+import { openBotDetails, openGlobalPage, openRoutines } from "./workspaceNavigation"
 
 const project: Project = {
   id: "project-test",
@@ -79,7 +79,7 @@ describe("WP9 frontend acceptance", () => {
     fireEvent.click(screen.getByRole("tab", { name: /^Bots,/ }))
     expect(document.querySelectorAll("#sidebar-mode-panel-bots .bot-entry")).toHaveLength(api.getState().bots.length)
     fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
-    fireEvent.click(screen.getByRole("button", { name: /MCP/ }))
+    openGlobalPage("MCP")
     expect(await screen.findByRole("heading", { name: "MCP" })).toBeVisible()
   })
 
@@ -88,7 +88,7 @@ describe("WP9 frontend acceptance", () => {
     const first = render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
-    fireEvent.click(screen.getByRole("button", { name: /Integrações/ }))
+    openGlobalPage("Integrações")
     expect(await screen.findByRole("heading", { name: "Integrações" })).toBeVisible()
     fireEvent.click(screen.getByRole("tab", { name: /^Bots,/ }))
     openRoutines()
@@ -118,9 +118,7 @@ describe("WP9 frontend acceptance", () => {
         : request(route, ...args)) as typeof api.request
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    if (!screen.queryByRole("button", { name: "Preview do projeto" }))
-      fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
-    await screen.findByRole("complementary", { name: /^Painel de / })
+    await openBotDetails()
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
     await screen.findByText("touri demo workspace", { selector: ".project-sidebar-heading strong" })
     fireEvent.click(await screen.findByRole("button", { name: "Menu do projeto" }))
@@ -165,9 +163,7 @@ describe("WP9 frontend acceptance", () => {
       }) as typeof api.request
       render(<App kernel={{ services: { api } }} />)
       await screen.findByRole("textbox", { name: "Mensagem para mark" })
-      if (!screen.queryByRole("button", { name: "Preview do projeto" }))
-        fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
-      await screen.findByRole("complementary", { name: /^Painel de / })
+      await openBotDetails()
       fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
       fireEvent.click(screen.getByRole("button", { name: "Menu do projeto" }))
       fireEvent.click(screen.getByRole("menuitem", { name: "Conectar projeto" }))
@@ -190,9 +186,7 @@ describe("WP9 frontend acceptance", () => {
     existing.name = "r3-MyApp"
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    if (!screen.queryByRole("button", { name: "Preview do projeto" }))
-      fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
-    await screen.findByRole("complementary", { name: /^Painel de / })
+    await openBotDetails()
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
     fireEvent.click(screen.getByRole("button", { name: "Menu do projeto" }))
     fireEvent.click(screen.getByRole("menuitem", { name: "Conectar projeto" }))
@@ -214,9 +208,7 @@ describe("WP9 frontend acceptance", () => {
     const existing = (await api.request("GET /projects", {})).projects[0] as Project
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    if (!screen.queryByRole("button", { name: "Preview do projeto" }))
-      fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
-    await screen.findByRole("complementary", { name: /^Painel de / })
+    await openBotDetails()
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
     fireEvent.click(screen.getByRole("button", { name: "Menu do projeto" }))
     fireEvent.click(screen.getByRole("menuitem", { name: "Conectar projeto" }))
@@ -253,9 +245,7 @@ describe("WP9 frontend acceptance", () => {
       }) as typeof api.request
       render(<App kernel={{ services: { api } }} />)
       await screen.findByRole("textbox", { name: "Mensagem para mark" })
-      if (!screen.queryByRole("button", { name: "Preview do projeto" }))
-        fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
-      await screen.findByRole("complementary", { name: /^Painel de / })
+      await openBotDetails()
       fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
       fireEvent.click(screen.getByRole("button", { name: "Menu do projeto" }))
       fireEvent.click(screen.getByRole("menuitem", { name: "Conectar projeto" }))
@@ -545,7 +535,7 @@ it("opens the new bot conversation after completing creation from a global scree
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
-  fireEvent.click(screen.getByRole("button", { name: "Integrações", exact: true }))
+  openGlobalPage("Integrações")
   fireEvent.click(screen.getByRole("button", { name: "Criar bot" }))
   fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Clara" } })
   await screen.findByText(/Usa o Codex/)

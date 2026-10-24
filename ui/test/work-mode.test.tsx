@@ -41,12 +41,12 @@ describe("sidebar work mode", () => {
     expect(document.querySelectorAll(".sidebar-needs-you")).toHaveLength(1)
     const workPanel = document.getElementById("sidebar-mode-panel-work")
     if (!workPanel) throw new Error("Missing Work navigation")
-    expect(within(workPanel).queryByRole("button", { name: "Abrir pendência de mark" })).toBeNull()
+    expect(within(workPanel).queryByRole("button", { name: /^Precisa de você.*mark/ })).toBeNull()
 
     fireEvent.click(screen.getByRole("tab", { name: /^Bots,/ }))
 
-    expect(document.querySelector(".sidebar-needs-you")).toBeNull()
-    expect(screen.getByRole("button", { name: "Abrir pendência de mark" })).toBeVisible()
+    expect(document.querySelector(".sidebar-needs-you")).toBeVisible()
+    expect(screen.getByRole("button", { name: /^Precisa de você.*mark/ })).toHaveClass("sidebar-needs-you")
   })
 
   it("opens Work by default for existing channels and keeps both mode panels mounted", async () => {
@@ -224,9 +224,10 @@ describe("sidebar design", () => {
     })
     const botsTab = screen.getByRole("tab", { name: "Bots, 1 item precisa da sua atenção" })
 
-    expect(workTab.querySelector('.sidebar-unread[data-tone="attention"]')).toHaveTextContent("1")
+    expect(workTab.querySelector('.sidebar-unread[data-tone="attention"]')).toBeNull()
     expect(workTab.querySelector('.sidebar-unread[data-tone="unread"]')).toHaveTextContent("5")
-    expect(botsTab.querySelector('.sidebar-unread[data-tone="attention"]')).toHaveTextContent("1")
+    expect(botsTab.querySelector('.sidebar-unread[data-tone="attention"]')).toBeNull()
+    expect(document.querySelectorAll(".sidebar-needs-you")).toHaveLength(1)
     expect(workTab).toHaveAccessibleName("Work, 1 item precisa da sua atenção, 5 mensagens não lidas")
   })
 
@@ -302,7 +303,7 @@ describe("sidebar design", () => {
     const channels = await screen.findByRole("region", { name: "Canais" })
 
     expect(within(channels).getByRole("heading", { name: "Canais" })).toBeVisible()
-    expect(within(channels).getByRole("button", { name: "Convidar pessoa" })).toHaveTextContent("+ Convidar")
+    expect(within(channels).queryByRole("button", { name: "Convidar pessoa" })).toBeNull()
     expect(
       document.querySelectorAll("#sidebar-mode-panel-work .bot-preview:not(.visually-hidden):not(.paused)"),
     ).toHaveLength(api.getState().bots.filter((bot) => !bot.paused).length)

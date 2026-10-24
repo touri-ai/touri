@@ -7,6 +7,7 @@ import { DeferredGoalPanel } from "../src/components/DeferredGoalPanel"
 import { GoalPanel } from "../src/components/GoalPanel"
 import { ApiError } from "../src/errors"
 import { localizeToolText, t } from "../src/i18n"
+import { openBotDetails } from "./workspaceNavigation"
 
 afterEach(() => {
   vi.useRealTimers()
@@ -72,7 +73,7 @@ test("keeps empty goal setup in the bot panel instead of above the conversation"
   expect(screen.queryByRole("region", { name: "Continuar até concluir" })).toBeNull()
   expect(screen.queryByRole("button", { name: "Definir objetivo" })).toBeNull()
 
-  fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
+  await openBotDetails()
   const botPanel = await screen.findByRole("complementary", { name: "Painel de mark" })
   const goalEntry = await within(botPanel).findByRole("button", { name: "Definir objetivo" })
   expect(goalEntry).toHaveAttribute("aria-expanded", "false")

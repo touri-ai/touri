@@ -1,0 +1,158 @@
+{
+  "bots-sidebar": {
+    "maxControls": 7,
+    "maxTopLevelLabels": 8,
+    "notes": "Bots mode, nothing open. Root: nav.bot-sidebar. Count visible buttons/links/inputs/tabs/menuitems EXCLUDING list rows (.sidebar-row-main, one per bot/channel/DM). Allowed: search, novo bot, Bots, Work, Você, notificações, Avançado. Today: 14 chrome (20 incl. 6 rows), incl. inline thread tree (Selecionar, conversa, Apagar conversas automáticas antigas…, Nova conversa, Arquivadas) + 'Revisar aprovação' + 'Convidar pessoa'. Labels exclude bot names/previews.",
+    "root": "nav.bot-sidebar"
+  },
+  "bot-row-click": {
+    "maxControls": 7,
+    "maxTopLevelLabels": 8,
+    "notes": "After clicking a non-selected bot row in Bots mode. The click must open that bot's conversation and add ZERO controls to the sidebar (delta vs bots-sidebar = 0). No [aria-expanded=true] tree, no 'Selecionar', 'Apagar conversas automáticas antigas…', 'Nova conversa', 'Arquivadas' under the row. Today: +5 controls (tree).",
+    "root": "nav.bot-sidebar"
+  },
+  "conversation": {
+    "maxControls": 6,
+    "maxTopLevelLabels": 2,
+    "notes": "Bot conversation with a long reply. Root: .workspace-page. Count chrome only: header + composer + per-turn chips; exclude controls inside message content (code 'Copiar', links). Allowed: painel do bot, message field, anexar, ditar, enviar (+1 spare). Top-level labels = header text + composer placeholder: bot name only; no breadcrumb ('Bots', 'Mensagens diretas'), no model/project chip text, no 'Agendar esta tarefa'. Today: 9 controls (Painel, Copiar, Agendar esta tarefa, field, anexar, modelo, projeto, ditar, enviar).",
+    "root": ".workspace-page"
+  },
+  "tool-activity": {
+    "maxControls": 1,
+    "maxTopLevelLabels": 1,
+    "notes": "One assistant turn with N tool/command/browser steps, collapsed: exactly one disclosure per turn ('Trabalhou por … · N ações'). Expanded: at most 1 + N controls (one per step), raw command/output only inside a 'Detalhes técnicos' per turn. Today collapsed: 2 disclosures for one browser turn ('Usou o navegador · 1 ação' + 'Trabalhou por 30 s'); expanded: 3 controls and 2 status pills per command (14 in pane for 3 commands).",
+    "root": "[data-turn-activity] (add a test id) or .workspace-page"
+  },
+  "composer": {
+    "maxControls": 4,
+    "maxTopLevelLabels": 1,
+    "notes": "Root: the composer form around textarea 'Mensagem para …'. Allowed: field, anexar, ditar/voz, enviar. No 'Escolher modelo:' pill, no 'Projeto do bot:' chip (spec S4; regressed by #182 which inverted ui/test/e2e/clean-composer.spec.ts). Only label: the placeholder. Today: 6.",
+    "root": "form:has(textarea)"
+  },
+  "channel-composer": {
+    "maxControls": 4,
+    "maxTopLevelLabels": 1,
+    "notes": "Work channel composer. Allowed: field, anexar, @bot (mention picker), enviar. 'Perguntar a todos' / 'Pedir resumo do time' move into the @/slash menu. Today: 6.",
+    "root": "form:has(textarea)"
+  },
+  "new-bot": {
+    "maxControls": 18,
+    "maxTopLevelLabels": 32,
+    "notes": "Create-bot dialog first view at 1440x900. Within spec today (name + job list + mascot, no provider/model/access). Budget freezes it: no new inputs outside the job list. Selected 'Ainda não sei' must not use the error (red) outline. Today: 17.",
+    "root": "[role=dialog]"
+  },
+  "bot-menu": {
+    "maxControls": 4,
+    "maxTopLevelLabels": 4,
+    "notes": "Advanced, Routines, Conversations, Delete bot. Conversations nests history management, as the audit explicitly permits four top-level items when conversation tools move here.",
+    "root": "[role=menu]"
+  },
+  "bot-settings": {
+    "maxControls": 8,
+    "maxTopLevelLabels": 10,
+    "notes": "Bot settings first view. Allowed: fechar, nome, o que ele faz, sortear, personalizar, Avançado, cancelar, salvar. 'Onde o bot responde' (main vs per-task conversation) moves behind Avançado → Rotinas. Today: 10.",
+    "root": "[role=dialog]"
+  },
+  "bot-panel": {
+    "maxControls": 6,
+    "maxTopLevelLabels": 10,
+    "notes": "Right 'Seu bot' panel, Detalhes tab, panel only (subtract the conversation pane). Allowed: fechar, 3 tabs (Detalhes/Biblioteca/Computador), 1 action ('Ajustar' → Avançado), 1 spare. No 'Preview do projeto', 'Definir objetivo', group chips on the first view.",
+    "root": ".workspace-page aside / right panel"
+  },
+  "advanced-menu": {
+    "maxControls": 5,
+    "maxTopLevelLabels": 5,
+    "notes": "Global Avançado menu items. No 'MCP' at top level (S5/S8). Suggested: Trabalho, Ferramentas (MCP + Integrações), Projetos, Diagnóstico (Desempenho + Verificar + Reportar), Importar. Today: 8 items.",
+    "root": "the menu opened by nav 'Avançado'"
+  },
+  "app-settings": {
+    "maxControls": 10,
+    "maxTopLevelLabels": 12,
+    "notes": "App settings first view. Section list ≤ 5 (Aparência first; Privacidade, Atualizações, Notificações, Diagnóstico); 'Modelos por API' moves to Avançado → Modelo; 'Pessoas' lives in Work. ui/test/settings-simplification.test.tsx:169-176 currently asserts the 7-item order and must be updated. Today: 12 controls, 7 sections.",
+    "root": "[role=dialog]"
+  },
+  "work-sidebar": {
+    "maxControls": 7,
+    "maxTopLevelLabels": 8,
+    "notes": "Work mode, rows excluded (channels + DMs). Allowed: one search, novo canal, Bots, Work, Você, notificações, Avançado. Only ONE search control (today: icon 'Buscar conversas' + field 'Buscar canais e mensagens'). 'Convidar pessoa' moves to the members panel / Canais '+' menu. Channel row = '#' + name + optional badge on ONE line: assert every .sidebar-row in 'Canais' has height ≤ 40px and its '#', name and badge share the same vertical center (±2px); no .channel-bot-avatar inside rows. Today: 11 chrome.",
+    "root": "nav.bot-sidebar"
+  },
+  "channel": {
+    "maxControls": 6,
+    "maxTopLevelLabels": 3,
+    "notes": "Channel with messages. Root: .workspace-page, chrome only (exclude controls inside messages except per-message chips). Header: '# nome', 'N pessoas · N bots' (or topic), presence avatars (one control → members), one '···' (Editar canal, Convidar pessoa, Nova conversa). No breadcrumb 'Canais / nome'. Composer per channel-composer. No 'Agendar esta tarefa' in channels. Today: 11.",
+    "root": ".workspace-page"
+  },
+  "channel-empty": {
+    "maxControls": 6,
+    "maxTopLevelLabels": 8,
+    "notes": "Empty channel welcome. Must NOT render 'Sem menções, todos … respondem'; copy must say bots answer when called with @ (or that touri picks at most one). Today: 9 controls.",
+    "root": ".workspace-page"
+  },
+  "channel-row-menu": {
+    "maxControls": 3,
+    "maxTopLevelLabels": 3,
+    "notes": "Channel row '···' menu: Editar canal, Nova conversa, Apagar canal. Layout: each item on one line (menu min-width ≥ label width; today labels wrap to 2 lines).",
+    "root": "[role=menu]"
+  },
+  "channel-edit": {
+    "maxControls": 11,
+    "maxTopLevelLabels": 14,
+    "notes": "Editar canal dialog with 6 bots. Remove 'Coordenador do canal' select and the response-order numbers from the first view (Avançado); eyebrow must not say 'Bots juntos'. Bot checkboxes count 1 each. Today: 13.",
+    "root": "[role=dialog]"
+  },
+  "channel-members": {
+    "maxControls": 2,
+    "maxTopLevelLabels": 14,
+    "notes": "Members panel only: fechar + convidar. Per member ≤ 2 labels (name + one-line role/status). No 'Resultados do turno', 'Sem resultado confirmado.', 'Somente respostas finais confirmadas'. Panel content must have ≥ 12px inner padding (today flush at x=0 on phone). Today: 45 labels in pane.",
+    "root": "channel side panel"
+  },
+  "invite": {
+    "maxControls": 9,
+    "maxTopLevelLabels": 10,
+    "notes": "Convidar pessoa dialog with 2 channels (+1 per extra channel chip). Matches the concept today; budget freezes it. Layout: all field labels same style; helper text below its input, not between label and input.",
+    "root": "[role=dialog]"
+  },
+  "dm": {
+    "maxControls": 6,
+    "maxTopLevelLabels": 2,
+    "notes": "Work DM with a bot: same budget as conversation. Header without 'Mensagens diretas' breadcrumb.",
+    "root": ".workspace-page"
+  },
+  "needs-you-signals": {
+    "maxControls": 2,
+    "maxTopLevelLabels": 2,
+    "notes": "Count distinct visible places that announce ONE pending approval: allowed = sidebar 'Precisa de você' bar (or row status line) + bell count. Today: 6 (top banner 'pede sua aprovação', Bots tab '1', Work tab '1', row dot + 'Revisar aprovação' button, bell badge, routines-page banner) while .sidebar-needs-you is never rendered (suppressed in BotSidebar.tsx:383-392; tests work-mode.test.tsx:42, notifications.test.tsx:185, e2e/channel-takeover.spec.ts:38 assert its absence).",
+    "root": "body"
+  },
+  "approval-card": {
+    "maxControls": 3,
+    "maxTopLevelLabels": 4,
+    "notes": "Pending approval card: Aprovar, Recusar, one '···'/disclosure holding 'Permitir sempre nesta ferramenta' + 'Detalhes técnicos'. No filler ('Permitir os acessos solicitados', 'Nenhum detalhe adicional foi informado'); no 'Agendar esta tarefa' after a pending approval. Today: 4 controls + chip.",
+    "root": "approval card element"
+  },
+  "bell": {
+    "maxControls": 3,
+    "maxTopLevelLabels": 4,
+    "notes": "Notification panel chrome (fechar, limpar, 1 spare) + 1 primary action per item (secondary 'Marcar como lida' on hover/swipe). 'Tarefas interrompidas' link only when there is one. Today: 3 chrome + 2 per item.",
+    "root": "notification popover"
+  },
+  "routines": {
+    "maxControls": 6,
+    "maxTopLevelLabels": 8,
+    "notes": "Routines page with 3 routines, excluding one row control + one '···' per routine. Bot filter = one select (not 7 chips); state filter = one select; no 'Atualizar' (live); row actions (Rodar agora, Pausar, Editar, Excluir) in '···'; no repeated approval banner. Today: 21 page controls (44 on screen).",
+    "root": ".workspace-page"
+  },
+  "search": {
+    "maxControls": 10,
+    "maxTopLevelLabels": 21,
+    "notes": "Command palette, empty query. Within budget; copy: 'Novo grupo' must read 'Novo canal'; recent items must not repeat the title as subtitle.",
+    "root": "[role=dialog]"
+  },
+  "phone-drawer": {
+    "maxControls": 8,
+    "maxTopLevelLabels": 8,
+    "notes": "390x844 drawer, rows excluded: search, novo, fechar, Bots, Work, Você, notificações, Avançado. Today: 12 chrome (20 incl. rows).",
+    "root": "nav.bot-sidebar"
+  }
+}

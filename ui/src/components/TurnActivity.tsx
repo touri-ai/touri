@@ -7,10 +7,12 @@ import { type Locale, t } from "../i18n"
 import { ActivityMark } from "./ActivityMark"
 import { getBrowserActivityTools } from "./browserActivityPresentation"
 import type { BrowserContinuationActivity } from "./browserContinuationActivity"
+import { Disclosure } from "./Disclosure"
 import { MarkdownContent } from "./MarkdownContent"
 import type { MascotState } from "./mascotState"
 import { isSessionRecoveryDiagnostic, sessionRecoveryDiagnosticText } from "./sessionRecoveryPresentation"
 import { ToolCallCard } from "./ToolCallCard"
+import { toolPresentation, toolStatus } from "./toolPresentation"
 import { activityGroupLabels, activityGroups, activitySummary, activityTools, approvalTools } from "./turnActivityModel"
 import "./turn-activity.css"
 
@@ -95,6 +97,7 @@ export const TurnActivity = ({
   onFocusApproval,
   browserFlow,
   hideBrowserCard = false,
+  embedded = false,
   locale = "pt-BR",
 }: {
   message: Message
@@ -111,11 +114,13 @@ export const TurnActivity = ({
   /** Narration and step rows folded into the finished browser card. */
   browserFlow?: ReactNode
   /** The live card is rendered after the last step by the message instead. */
+  embedded?: boolean
   hideBrowserCard?: boolean
   locale?: Locale
 }) => {
   const id = useId()
   const [expanded, setExpanded] = useState(false)
+  const [technicalExpanded, setTechnicalExpanded] = useState(false)
   const live = message.status === "streaming"
   useEffect(() => {
     if (!live) setExpanded(false)
@@ -132,8 +137,52 @@ export const TurnActivity = ({
       {browserFlow}
     </BrowserTurnCard>
   )
+  const getDetails = () => (
+    <>
+      {groups.map(({ kind, tools: entries }) => (
+        <section key={kind} className="turn-activity-group" aria-label={t(activityGroupLabels[kind], {}, locale)}>
+          <h4>
+            {t(activityGroupLabels[kind], {}, locale)} · {entries.length}
+          </h4>
+          {entries.map((part) => {
+            const presentation = toolPresentation(part)
+            return (
+              <p key={part.callId} className="turn-activity-step">
+                <strong>{presentation.name}</strong>
+                <span>{presentation.summary}</span>
+                <small>{t(getStepStatus(toolStatus(part, !live)), {}, locale)}</small>
+              </p>
+            )
+          })}
+        </section>
+      ))}
+      {browserTools.length === 0 && getSessionRecoveryDetails(message, run, locale)}
+      {reasoning.length > 0 && (
+        <section className="turn-activity-group chat-reasoning" aria-label={t("Reasoning", {}, locale)}>
+          <h4>{t("Reasoning", {}, locale)}</h4>
+          <MarkdownContent content={reasoning.join("\n\n")} streaming={live} />
+        </section>
+      )}
+      {groups.length > 0 && (
+        <Disclosure
+          summary={t("Detalhes técnicos", {}, locale)}
+          open={technicalExpanded}
+          onOpenChange={setTechnicalExpanded}
+        >
+          {technicalExpanded &&
+            groups
+              .flatMap((group) => group.tools)
+              .map((part) => (
+                <ToolCallCard key={part.callId} part={part} api={api} finished={!live} createdAt={message.createdAt} />
+              ))}
+        </Disclosure>
+      )}
+    </>
+  )
+  if (embedded) return getDetails()
+
   return (
-    <div className="turn-activity" data-running={live}>
+    <div className="turn-activity" data-turn-activity data-running={live}>
       {browserCard}
       {browserOnly ? null : live ? (
         <ActivityMark
@@ -175,33 +224,7 @@ export const TurnActivity = ({
         </button>
       ) : null}
       <div id={id} hidden={!expanded} className="turn-activity-details">
-        {expanded && (
-          <>
-            {groups.map(({ kind, tools: entries }) => (
-              <section key={kind} className="turn-activity-group" aria-label={t(activityGroupLabels[kind], {}, locale)}>
-                <h4>
-                  {t(activityGroupLabels[kind], {}, locale)} · {entries.length}
-                </h4>
-                {entries.map((part) => (
-                  <ToolCallCard
-                    key={part.callId}
-                    part={part}
-                    api={api}
-                    finished={!live}
-                    createdAt={message.createdAt}
-                  />
-                ))}
-              </section>
-            ))}
-            {browserTools.length === 0 && getSessionRecoveryDetails(message, run, locale)}
-            {reasoning.length > 0 && (
-              <section className="turn-activity-group chat-reasoning" aria-label={t("Reasoning", {}, locale)}>
-                <h4>{t("Reasoning", {}, locale)}</h4>
-                <MarkdownContent content={reasoning.join("\n\n")} streaming={live} />
-              </section>
-            )}
-          </>
-        )}
+        {expanded && getDetails()}
       </div>
     </div>
   )
@@ -216,4 +239,13 @@ const getSessionRecoveryDetails = (message: Message, run: Run | undefined, local
       <p>{t(sessionRecoveryDiagnosticText, {}, locale)}</p>
     </section>
   )
+}
+
+const getStepStatus = (status: ReturnType<typeof toolStatus>) => {
+  if (status === "completed") return "Finished"
+  if (status === "running") return "Em execução"
+  if (status === "pending") return "Waiting for approval"
+  if (status === "denied") return "Denied"
+  if (status === "closed") return "Encerrado"
+  return "failed"
 }

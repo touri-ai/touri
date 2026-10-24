@@ -16,7 +16,7 @@ concurrency:
 jobs:
   conversations:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/setup-bun
@@ -25,16 +25,20 @@ jobs:
       - name: Install browser
         working-directory: ui
         run: bunx playwright install --with-deps chromium
-      - name: Verify deletion, undo, archive search and accessibility
+      - name: Verify conversation controls and responsive UI budgets
         working-directory: ui
         env:
           TOURI_THREAD_EVIDENCE_DIR: ${{ runner.temp }}/touri-conversations
-        run: bunx playwright test test/e2e/thread-deletion.spec.ts --workers=1 --output test-results/conversations
+          TOURI_E2E_EVIDENCE_DIR: ${{ runner.temp }}/touri-ui-budget
+        run: bunx playwright test test/e2e/thread-deletion.spec.ts test/e2e/ui-budget.spec.ts --workers=1 --output test-results/conversations
       - name: Keep synthetic conversation screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: conversations
-          path: ${{ runner.temp }}/touri-conversations/*.png
+          path: |
+            ${{ runner.temp }}/touri-conversations/*.png
+            ${{ runner.temp }}/touri-ui-budget/*.png
+            ${{ runner.temp }}/touri-ui-budget/*.json
           if-no-files-found: ignore
           retention-days: 7

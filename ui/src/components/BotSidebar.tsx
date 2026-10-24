@@ -125,7 +125,7 @@ type SidebarProps = {
     | ((threadId: string) => Promise<ApiRoutes["GET /threads/:id/delete-preview"]["res"]>)
     | undefined
   onLoadArchivedThreads?: ((botId: string, before?: string) => Promise<Array<Thread>>) | undefined
-  onSettings: () => void
+  onSettings: (section?: "appearance" | "work" | "api-models") => void
   onDoctor: () => void
   onRecovery?: () => void
   recoveryCount?: number
@@ -209,10 +209,6 @@ export const Sidebar = (props: SidebarProps) => {
   const routines = props.routines ?? EMPTY_ROUTINES
   const runs = props.runs ?? EMPTY_RUNS
   const sidebarDataByBot = useMemo(() => getSidebarDataByBot(props.threads, routineRuns), [props.threads, routineRuns])
-  const workRuns = props.workRuns ?? EMPTY_RUNS
-  const runningWorkCount = workRuns.filter((run) => run.status !== "queued").length
-  const queuedWorkCount = workRuns.filter((run) => run.status === "queued").length
-  const hasWork = runningWorkCount + queuedWorkCount > 0
   const routineIds = useMemo(
     () => (props.routines ? new Set(props.routines.map((routine) => routine.id)) : undefined),
     [props.routines],
@@ -353,6 +349,7 @@ export const Sidebar = (props: SidebarProps) => {
   )
   const attention = useMemo(() => pendingNotifications(notifications, messages), [notifications, messages])
   const needsYou = useMemo(() => attention.filter((item) => !isInformationalNotice(item)), [attention])
+  const personName = props.currentPerson?.handle?.trim() || props.currentPerson?.name?.trim() || t("Você")
   const ordered = useSidebarOrder({ ...props, messages, notifications, attention })
   const botsWaitingCount = [...ordered.activity.values()].filter((activity) => activity.kind === "needs-you").length
   const attentionThreadIds = useMemo(
@@ -427,16 +424,7 @@ export const Sidebar = (props: SidebarProps) => {
       ),
     [props.bots, notifications, workThreadIdsByBot],
   )
-  const visibleBotIds = useMemo(() => new Set(props.bots.map((bot) => bot.id)), [props.bots])
-  const rowAttentionIds = useMemo(() => {
-    const rowNotifications =
-      sidebarMode === "bots"
-        ? needsYou.filter((item) => item.botId && visibleBotIds.has(item.botId))
-        : Array.from(workAttentionByBot.values()).flat()
-
-    return new Set(rowNotifications.map((item) => item.id))
-  }, [sidebarMode, needsYou, visibleBotIds, workAttentionByBot])
-  const barNeedsYou = needsYou.filter((item) => !rowAttentionIds.has(item.id))
+  const barNeedsYou = needsYou
   const hasNeedsYou = barNeedsYou.length > 0
   const botNavigationKey = `${props.section}:${props.advancedPage}:${props.selectedBotId}:${props.selectedThreadId}`
   useEffect(() => {
@@ -560,18 +548,20 @@ export const Sidebar = (props: SidebarProps) => {
               </SidebarIcon>
             </button>
           )}
-          <button
-            type="button"
-            className="sidebar-icon-button"
-            onClick={() => navigate(props.onNewBot)}
-            aria-label={t("Create teammate")}
-            title={t("Create teammate")}
-            aria-keyshortcuts="Meta+N Control+N"
-          >
-            <SidebarIcon>
-              <path d="M12 5v14M5 12h14" />
-            </SidebarIcon>
-          </button>
+          {sidebarMode === "bots" && (
+            <button
+              type="button"
+              className="sidebar-icon-button"
+              onClick={() => navigate(props.onNewBot)}
+              aria-label={t("Create teammate")}
+              title={t("Create teammate")}
+              aria-keyshortcuts="Meta+N Control+N"
+            >
+              <SidebarIcon>
+                <path d="M12 5v14M5 12h14" />
+              </SidebarIcon>
+            </button>
+          )}
           {props.onNavigate && (
             <button
               type="button"
@@ -626,13 +616,12 @@ export const Sidebar = (props: SidebarProps) => {
               onKeyDown={handleModeKeyDown}
             >
               <span>{mode.label}</span>
-              {mode.needsYouCount > 0 && <SidebarCount count={mode.needsYouCount} label={label} tone="attention" />}
               {mode.unreadCount > 0 && <SidebarCount count={mode.unreadCount} label={label} tone="unread" />}
             </button>
           )
         })}
       </div>
-      {hasNeedsYou ? (
+      {hasNeedsYou && (
         <NotificationAttentionBar
           notifications={barNeedsYou}
           onSelect={(item) => {
@@ -642,29 +631,6 @@ export const Sidebar = (props: SidebarProps) => {
             selectNotification(item)
           }}
         />
-      ) : (
-        hasWork && (
-          <button
-            type="button"
-            className="sidebar-work-badge"
-            onClick={() => navigate(() => props.onAdvancedPage("work"))}
-          >
-            <span className="sidebar-status-dot state-running" aria-hidden="true" />
-            <span className="sidebar-work-copy">
-              {t("Working")} · {runningWorkCount}
-              {queuedWorkCount > 0 && (
-                <>
-                  {" "}
-                  <small>{t("Work queued count", { count: queuedWorkCount })}</small>
-                </>
-              )}
-            </span>
-            <span className="sidebar-work-action" aria-hidden="true">
-              ›
-            </span>
-            <span className="visually-hidden">{t("View work")}</span>
-          </button>
-        )
       )}
       <div className="sidebar-panel-stack">
         <div
@@ -718,12 +684,7 @@ export const Sidebar = (props: SidebarProps) => {
           <button type="button" className="user-chip" onClick={() => navigate(props.onSettings)}>
             <PersonAvatar person={props.currentPerson ?? { id: "owner", avatarSeed: "owner" }} />
             <span>
-              <strong title={props.currentPerson?.handle ?? props.currentPerson?.name}>
-                {props.currentPerson?.handle ?? props.currentPerson?.name ?? t("Você")}
-              </strong>
-              <small title={props.serverUrl ?? undefined}>
-                {props.serverMode ? t("Modo servidor") : t("Local · grátis")}
-              </small>
+              <strong title={personName}>{personName}</strong>
             </span>
           </button>
           {props.onRecovery && (props.recoveryCount ?? 0) > 0 && (
@@ -742,6 +703,7 @@ export const Sidebar = (props: SidebarProps) => {
             </button>
           )}
           <NotificationBell
+            hasInterruptedTasks={(props.recoveryCount ?? 0) > 0}
             notifications={notifications}
             messages={messages}
             runs={runs}
@@ -763,6 +725,7 @@ export const Sidebar = (props: SidebarProps) => {
           onProject={() => navigate(props.onProject)}
           onDoctor={() => navigate(props.onDoctor)}
           onImport={() => navigate(props.onImport)}
+          onSettings={(section) => navigate(() => props.onSettings(section))}
         />
       </div>
     </nav>
@@ -837,7 +800,6 @@ const BotEntryView = ({
   onRoutines,
   onRoutineHistory,
   onReviewApproval,
-  onNotification,
   onDelete,
   onArchiveThread,
   onArchiveThreads,
@@ -976,7 +938,11 @@ const BotEntryView = ({
   const waiting = attention.find((item) => ["approval", "question", "takeover", "incident"].includes(item.kind))
   const approvals = pendingApprovalTargets(botMessages)
   const unread = threads.reduce((count, thread) => count + (thread.id === selectedThreadId ? 0 : thread.unread), 0)
-  const preview = latestPreview({ threadIds: ids, messages, runs })
+  const preview = latestPreview({
+    threadIds: ids,
+    messages: failed ? messages : messages.filter((message) => message.status !== "failed"),
+    runs,
+  })
   const rowTime = getSidebarRowTime(getLastActivityAt(threads.filter((thread) => thread.archivedAt === null)))
   const reason =
     approvals.length || waiting?.kind === "approval"
@@ -999,6 +965,7 @@ const BotEntryView = ({
         : bot.paused
           ? t("Paused")
           : null
+  const hasCentralAttention = attention.some((item) => !isInformationalNotice(item))
   const badgeState =
     approvals.length || waiting
       ? "waiting"
@@ -1263,12 +1230,12 @@ const BotEntryView = ({
         rowClassName="bot-row"
         className="bot-row-main"
         selected={selected}
-        rowAttention={badgeState ?? undefined}
+        rowAttention={hasCentralAttention ? undefined : (badgeState ?? undefined)}
         title={status || preview || undefined}
         leading={<BotAvatar bot={bot} size={32} {...(avatarState ? { state: avatarState } : {})} motion="idle" />}
         label={<BotRowLabel bot={bot} preview={status || preview || t("Start a conversation")} time={rowTime} />}
         trailing={
-          trailingState ? (
+          trailingState && (!hasCentralAttention || trailingState !== "waiting") ? (
             <SidebarDot tone={trailingState} label={status ?? t("Em execução")} />
           ) : botUnread > 0 && !hasActionBadge ? (
             <SidebarCount count={botUnread} label={t("Unread messages", { count: botUnread })} />
@@ -1278,7 +1245,7 @@ const BotEntryView = ({
         }
         actions={
           <>
-            {approvals.length > 0 ? (
+            {approvals.length > 0 && !hasCentralAttention && (
               <button
                 type="button"
                 className="sidebar-approval-badge"
@@ -1293,22 +1260,7 @@ const BotEntryView = ({
               >
                 <span className="sidebar-status-dot state-waiting" />
               </button>
-            ) : (waiting || failure)?.threadId ? (
-              <button
-                type="button"
-                className={`sidebar-attention-button state-${badgeState}`}
-                aria-label={t(badgeState === "failed" ? "Open failure for {name}" : "Open request for {name}", {
-                  name: bot.name,
-                })}
-                title={t(badgeState === "failed" ? "Open and mark read" : "Open request")}
-                onClick={() => {
-                  const item = waiting || failure
-                  if (item) onNotification(item)
-                }}
-              >
-                <span className="sidebar-status-dot" />
-              </button>
-            ) : null}
+            )}
             {hasCompactHistory && (
               <button
                 type="button"

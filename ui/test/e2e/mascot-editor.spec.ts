@@ -18,7 +18,7 @@ viewports.forEach((viewport) => {
       await page.goto("/test/e2e/groups-harness.html")
       await showNavigation(page)
       await page.getByRole("button", { name: "Criar bot", exact: true }).click()
-      const creation = page.getByRole("dialog")
+      const creation = page.getByRole("dialog", { name: "Criar um bot", exact: true })
       await expectCompactPicker(creation)
       await creation.getByLabel("Nome", { exact: true }).fill("Compact bot")
 
@@ -126,7 +126,9 @@ const getPreview = async (dialog: Locator) => {
 }
 
 const expectCompactPicker = async (dialog: Locator) => {
+  await expect(dialog).toBeVisible()
   const picker = dialog.locator(".avatar-picker")
+  if (!(await picker.isVisible())) await dialog.getByRole("button", { name: "Avançado", exact: true }).click()
   await picker.waitFor({ state: "visible" })
 
   await expect(picker.getByRole("button")).toHaveCount(2)

@@ -1,5 +1,5 @@
 import { invoke as nativeInvoke } from "@tauri-apps/api/core"
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
 import type { ApiRequest, TauriInvoke } from "../src/api/client"
@@ -36,22 +36,34 @@ afterEach(() => {
 it.each([
   { status: local, canInvite: false },
   { status: server, canInvite: true },
-])("only offers people invitations with a server connection ($status.mode)", async ({ status, canInvite }) => {
+])("only offers channel invitations with a server connection ($status.mode)", async ({ status, canInvite }) => {
   native()
   const api = { ...createMockApi(), isMock: false }
+  await api.request("POST /groups", {
+    name: "Equipe QA",
+    color: "#dc2626",
+    avatarShape: "classic-none",
+    memberIds: ["bot-mark"],
+    coordinatorBotId: null,
+  })
   const invoke = vi.fn(async (command: string) => (command === "server_mode_status" ? status : {}))
 
   render(<App kernel={{ services: { api, invoke: invoke as TauriInvoke } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   fireEvent.click(screen.getByRole("tab", { name: /^Work,/ }))
 
-  const invite = screen.queryByRole("button", { name: "Convidar pessoa", exact: true })
+  fireEvent.click(await screen.findByRole("button", { name: /^Equipe QA/ }))
+  await screen.findByRole("textbox", { name: "Mensagem para Equipe QA" })
+  const header = document.querySelector<HTMLElement>(".group-header")
+  if (!header) throw new Error("Missing channel header")
+  fireEvent.click(within(header).getByRole("button", { name: "Ações do canal Equipe QA", exact: true }))
+  const invite = screen.queryByRole("menuitem", { name: "Convidar pessoa", exact: true })
   if (!canInvite) {
     expect(invite).not.toBeInTheDocument()
     return
   }
 
-  expect(await screen.findByRole("button", { name: "Convidar pessoa" })).toBeVisible()
+  expect(await screen.findByRole("menuitem", { name: "Convidar pessoa", exact: true })).toBeVisible()
 })
 
 it("keeps the advanced native server setting out of the browser app", () => {
@@ -185,7 +197,7 @@ it("applies the pending cold-start target after server mode loads and acknowledg
   })
   render(<App kernel={{ services: { api, invoke: invoke as unknown as TauriInvoke } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
-  expect(screen.getByText("Modo servidor")).toHaveAttribute("title", server.url)
+  expect(screen.getByRole("button", { name: "Você", exact: true })).toBeVisible()
   expect(screen.queryByText("Local · grátis")).not.toBeInTheDocument()
   await waitFor(() => expect(invoke).toHaveBeenCalledWith("deep_link_ack", { requestId: 3 }))
 })
@@ -370,4 +382,23 @@ it("describes the viewing device consistently in the server access summary", asy
   const summary = await screen.findByText(/trabalha no servidor escolhido; não pode acessar os arquivos deste aparelho/)
 
   expect(summary).toBeVisible()
+})
+
+it("names the native server destination explicitly under Diagnostics", async () => {
+  native()
+  const invoke = vi.fn(async () => local)
+  render(
+    <SettingsModal
+      invokeCommand={invoke as TauriInvoke}
+      settings={null}
+      initialSection="diagnostics"
+      onSave={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  )
+
+  fireEvent.click(screen.getByRole("button", { name: t("Usar um servidor touri"), exact: true }))
+
+  expect(await screen.findByRole("region", { name: t("Usar um servidor touri"), exact: true })).toBeVisible()
+  expect(screen.getByRole("textbox", { name: t("Endereço do servidor"), exact: true })).toBeVisible()
 })

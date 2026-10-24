@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test"
-import { showBotPanel, showBotRoutines } from "./home-navigation"
+import type { createMockApi } from "../../src/api/mock"
+import { showBotDetails, showBotRoutines } from "./home-navigation"
 
 test("r3 ⌘K accepts typing and input clicks, finds bot names and navigates", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" })
@@ -21,7 +22,7 @@ test("r3 permissions panel exposes full approval access, provider defaults and b
 }) => {
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto("/")
-  await showBotPanel(page)
+  await showBotDetails(page)
   await page.getByRole("button", { name: "Ajustar permissões" }).click()
   const panel = page.getByRole("dialog", { name: "Permissões do bot" })
   await expect(panel).toBeVisible()
@@ -34,14 +35,23 @@ test("r3 permissions panel exposes full approval access, provider defaults and b
   await expect(panel).toHaveCount(0)
 })
 
-test("r3 run-now shows an immediate busy state and rejects the second keyboard activation", async ({ page }) => {
+test("r3 run-now rejects a second keyboard activation through the routine menu", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" })
-  await page.goto("/")
+  await page.goto("/test/e2e/home-harness.html")
   await showBotRoutines(page)
-  const button = page.getByRole("button", { name: /Rodar agora/ }).first()
-  await button.focus()
-  await page.keyboard.press("Enter")
-  await page.keyboard.press("Space")
-  await expect(button).toBeDisabled()
-  await expect(button).toHaveAttribute("aria-busy", "true")
+  const trigger = page.getByRole("button", { name: "Ações da rotina Daily brief", exact: true })
+  await trigger.focus()
+  await trigger.press("Enter")
+  const action = page.getByRole("menuitem", { name: "Rodar agora", exact: true })
+
+  await action.press("Enter")
+  await trigger.press("Space")
+  await expect(action).toBeDisabled()
+
+  expect(
+    await page.evaluate(() => {
+      const fixture: { api: ReturnType<typeof createMockApi> } = Reflect.get(window, "workspaceQa")
+      return fixture.api.calls.filter((call) => call.route === "POST /routines/:id/run").length
+    }),
+  ).toBe(1)
 })

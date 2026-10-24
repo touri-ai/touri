@@ -1,8 +1,16 @@
-import { writeFile } from "node:fs/promises"
-import { expect, type Locator, type Page, test } from "@playwright/test"
+import { mkdir, writeFile } from "node:fs/promises"
+import { join } from "node:path"
+import { expect, type Locator, type Page, type TestInfo, test } from "@playwright/test"
+import { showBotDetails } from "./home-navigation"
 
 test.use({ channel: "chromium" })
 const phase = process.env.MENU_EVIDENCE_PHASE ?? "after"
+const getScreenshotPath = async (info: TestInfo, name: string): Promise<string> => {
+  const directory = process.env.MENU_EVIDENCE_DIR
+  if (!directory) return info.outputPath(name)
+  await mkdir(directory, { recursive: true })
+  return join(directory, `${info.testId}-${name}`)
+}
 // Share the geometry reference while allowing native font rasterization on desktop.
 const screenshotOptions = {
   animations: "disabled" as const,
@@ -78,7 +86,7 @@ for (const theme of ["light", "dark"]) {
       const menu = page.getByRole("menu", { name: "Ações de release", exact: true })
       await exposed(page, menu)
       await page.mouse.move(1100, 20)
-      const botScreenshot = info.outputPath(`${phase}-bot-menu-${theme}.png`)
+      const botScreenshot = await getScreenshotPath(info, `${phase}-bot-menu-${theme}.png`)
       await page.screenshot({ path: botScreenshot, animations: "disabled" })
       await info.attach(`bot menu ${theme}`, { path: botScreenshot, contentType: "image/png" })
       expect(await menu.evaluate((element) => element.parentElement === document.body)).toBe(true)
@@ -102,26 +110,26 @@ for (const theme of ["light", "dark"]) {
       await expect(routines).toHaveCSS("background-color", control)
       await page.mouse.move(1100, 20)
       await page.keyboard.press("Home")
-      // Conversation housekeeping leads the bot menu, so Home lands on "Nova conversa".
-      const newThread = menu.getByRole("menuitem", { name: "Nova conversa", exact: true })
-      await expect(newThread).toBeFocused()
-      await expect(newThread).toHaveCSS("outline-style", "solid")
-      await expect(newThread).toHaveCSS("outline-width", "2px")
-      await expect(newThread).toHaveCSS("outline-offset", "-2px")
-      await expect(newThread).toHaveCSS("background-color", control)
+      // Conversation housekeeping is nested in the conversation manager.
+      const firstAction = menu.getByRole("menuitem", { name: "Avançado", exact: true })
+      await expect(firstAction).toBeFocused()
+      await expect(firstAction).toHaveCSS("outline-style", "solid")
+      await expect(firstAction).toHaveCSS("outline-width", "2px")
+      await expect(firstAction).toHaveCSS("outline-offset", "-2px")
+      await expect(firstAction).toHaveCSS("background-color", control)
       await page.keyboard.press("End")
       await expect(remove).toBeFocused()
       await expect(remove).toHaveCSS("color", danger)
       await expect(remove).toHaveCSS("background-color", await themeColor(menu, "--surface-notice"))
       await page.keyboard.press("Escape")
 
-      await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
+      await showBotDetails(page)
       await page.getByRole("button", { name: /^Projeto do bot:/ }).click()
       const projects = page.getByRole("menu", { name: "Projeto do bot" })
       await exposed(page, projects)
       await expect(projects.getByRole("menuitemradio", { checked: true }).first()).toBeFocused()
       await page.mouse.move(1100, 20)
-      const projectScreenshot = info.outputPath(`${phase}-project-menu-${theme}.png`)
+      const projectScreenshot = await getScreenshotPath(info, `${phase}-project-menu-${theme}.png`)
       await page.screenshot({ path: projectScreenshot, animations: "disabled" })
       await info.attach(`project menu ${theme}`, { path: projectScreenshot, contentType: "image/png" })
       expect(
@@ -194,17 +202,17 @@ for (const size of [
       const anchor = await trigger.boundingBox()
       if (!split || !anchor) throw new Error("Missing sidebar geometry")
       expect(split.y + split.height - anchor.y - anchor.height).toBeLessThan(60)
-      await page.screenshot({ path: info.outputPath(`${phase}-bot-menu.png`) })
+      await page.screenshot({ path: await getScreenshotPath(info, `${phase}-bot-menu.png`) })
       await exposed(page, menu)
       await clickSidebarActions(page, "Ações de release")
       await expect(menu).toHaveCount(0)
       await expect(trigger).toBeFocused()
       await clickSidebarActions(page, "Ações de release")
-      await expect(menu.getByRole("menuitem", { name: "Nova conversa", exact: true })).toBeFocused()
+      await expect(menu.getByRole("menuitem", { name: "Avançado", exact: true })).toBeFocused()
       await page.keyboard.press("End")
       await expect(menu.getByRole("menuitem", { name: "Excluir bot", exact: true })).toBeFocused()
       await page.keyboard.press("ArrowDown")
-      await expect(menu.getByRole("menuitem", { name: "Nova conversa", exact: true })).toBeFocused()
+      await expect(menu.getByRole("menuitem", { name: "Avançado", exact: true })).toBeFocused()
       await page.keyboard.press("ArrowUp")
       await expect(menu.getByRole("menuitem", { name: "Excluir bot", exact: true })).toBeFocused()
       await page.keyboard.press("ArrowUp")
@@ -213,7 +221,7 @@ for (const size of [
       await expect(menu.getByRole("menuitem", { name: "Rotinas", exact: true })).toBeFocused()
       await page.keyboard.press("Home")
       await page.keyboard.press("ArrowDown")
-      await expect(menu.getByRole("menuitem", { name: "Selecionar conversas…", exact: true })).toBeFocused()
+      await expect(menu.getByRole("menuitem", { name: "Rotinas", exact: true })).toBeFocused()
       await page.keyboard.press("Escape")
       await expect(menu).toHaveCount(0)
       await expect(trigger).toBeFocused()
@@ -252,12 +260,13 @@ for (const size of [
       await expect(page.getByRole("dialog")).toBeVisible()
       await page.keyboard.press("Escape")
       await page.getByRole("tab", { name: /^Bots/ }).click()
-      await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
+      await showBotDetails(page)
       await page.getByRole("button", { name: "Fechar painel do bot", exact: true }).click()
       await expect(page.getByRole("button", { name: "Painel do bot", exact: true })).toHaveAttribute(
         "aria-expanded",
         "false",
       )
+      await showBotDetails(page)
       await page.getByRole("button", { name: /^Projeto do bot:/ }).click()
       const projectMenu = page.getByRole("menu", { name: "Projeto do bot" })
       await exposed(page, projectMenu)

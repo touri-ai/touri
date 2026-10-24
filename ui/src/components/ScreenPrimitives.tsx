@@ -7,10 +7,12 @@ export const ScreenHeader = ({
   title,
   description,
   actions,
+  showBreadcrumb = true,
 }: {
   id: string
   title: string
   description: string
+  showBreadcrumb?: boolean
   actions?: ReactNode
 }) => {
   const registerHeader = useContext(ScreenHeaderContext)
@@ -18,7 +20,7 @@ export const ScreenHeader = ({
   return (
     <header ref={registerHeader} className="screen-header">
       <div>
-        <span className="screen-crumb">touri / {title}</span>
+        {showBreadcrumb && <span className="screen-crumb">touri / {title}</span>}
         <h1 id={id}>{title}</h1>
         <p>{description}</p>
       </div>

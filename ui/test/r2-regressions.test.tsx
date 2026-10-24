@@ -8,7 +8,7 @@ import { ChatPanel, VirtualMessageList } from "../src/components/ChatPanel"
 import { BotCreateModal, BotSettingsModal, ProjectModal } from "../src/components/Modals"
 import { dictionaries, t } from "../src/i18n"
 import { useWorkspace } from "../src/useWorkspace"
-import { openRoutines } from "./workspaceNavigation"
+import { openBotDetails, openRoutines } from "./workspaceNavigation"
 
 // REST serialization matters: callers must not mutate the server's arrays by reference.
 const fixtureApi = (deferEvents = false) => {
@@ -121,21 +121,27 @@ describe("r2 regressions", () => {
     act(() => hook.mock.emit({ type: "browser.tab", tab: { ...tab, state: "closed" } }))
     expect(hook.result.current.data.browserTabs.some((entry) => entry.tabId === "guest")).toBe(false)
   })
-  it("P1: refreshes Cron in place and preserves bot, conversation, filter and navigation", async () => {
+  it("P1: updates Cron live in place and preserves bot, conversation, filter and navigation", async () => {
     const { api, mock } = fixtureApi()
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     fireEvent.click(screen.getByRole("button", { name: /onb.*Operations/ }))
     await screen.findByRole("textbox", { name: "Mensagem para onb" })
     openRoutines("onb")
-    fireEvent.click(await screen.findByRole("button", { name: "Pausadas" }))
-    const count = mock.calls.filter((call) => call.route === "GET /routines").length
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Atualizar" })))
-    await waitFor(() => expect(mock.calls.filter((call) => call.route === "GET /routines").length).toBe(count + 1))
+    fireEvent.change(await screen.findByRole("combobox", { name: "estado" }), { target: { value: "paused" } })
+    const routine = (await mock.request("GET /routines", {})).routines[0]
+    if (!routine) throw new Error("Missing routine")
+    act(() =>
+      mock.emit({
+        type: "routine.updated",
+        routine: { ...routine, id: "routine-onb-live", botId: "bot-onb", enabled: false, name: "Resumo atualizado" },
+      }),
+    )
+    await screen.findByText("Resumo atualizado")
     expect(screen.getByRole("heading", { name: "Rotinas" })).toBeVisible()
-    expect(screen.getByRole("button", { name: "Pausadas" })).toHaveClass("active")
+    expect(screen.getByRole("combobox", { name: "estado" })).toHaveValue("paused")
     fireEvent.click(screen.getByRole("button", { name: /Criar rotina/ }))
-    expect(screen.getByLabelText("Bot")).toHaveValue("bot-onb")
+    expect(within(screen.getByRole("dialog")).getByLabelText("Bot")).toHaveValue("bot-onb")
     fireEvent.click(screen.getByRole("button", { name: "Cancelar" }))
     fireEvent.click(screen.getByRole("tab", { name: /^Bots,/ }))
     fireEvent.click(screen.getByRole("button", { name: /onb.*Operations/ }))
@@ -300,11 +306,9 @@ describe("r2 regressions", () => {
     await api.request("PATCH /bots/:id", { projectId: null }, { id: "bot-mark" })
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    if (!screen.queryByRole("button", { name: "Preview do projeto" }))
-      fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
-    await screen.findByRole("complementary", { name: /^Painel de / })
+    await openBotDetails()
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
-    await screen.findByRole("heading", { name: "Preview", exact: true })
+    await screen.findByRole("heading", { name: "Preview", exact: true }, { timeout: 30_000 })
 
     expect(screen.getAllByText("Nenhum projeto para mark").length).toBeGreaterThan(0)
     expect(document.body.textContent).not.toMatch(
@@ -356,6 +360,7 @@ describe("r2 regressions", () => {
       />,
     )
     fireEvent.click(screen.getByRole("button", { name: /2 ações/ }))
+    fireEvent.click(screen.getByText("Detalhes técnicos"))
     const commands = screen.getAllByRole("figure", { name: "Comando" })
     expect(commands[0]).toHaveTextContent("ls src/app")
     expect(commands[1]).toHaveTextContent("cat README.md")

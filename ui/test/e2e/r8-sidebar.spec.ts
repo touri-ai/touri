@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises"
 import { expect, test } from "@playwright/test"
-import { openGlobalPage, showBotConversations } from "./home-navigation"
+import { openGlobalPage, showBotConversations, showBotDetails } from "./home-navigation"
 
 test.use({ channel: "chromium" })
 const phase = process.env.R8_SIDEBAR_PHASE ?? "after"
@@ -57,8 +57,9 @@ for (const width of [1440, 1100]) {
             .filter({ hasText: "touri-pm" })
             .locator(".bot-preview"),
         ).toHaveText("Digitar filtro · Conferir os resultados")
-        await expect(sidebar.getByRole("button", { name: "Revisar aprovação de seo" })).toBeVisible()
-        await expect(sidebar.getByRole("button", { name: "Abrir falha de mobile-qa" })).toBeVisible()
+        await expect(sidebar.locator(".sidebar-needs-you")).toBeVisible()
+        await expect(sidebar.locator('[data-bot-entry="bot-seo"] .sidebar-approval-badge')).toHaveCount(0)
+        await expect(sidebar.getByRole("button", { name: "Abrir falha de mobile-qa" })).toHaveCount(0)
       }
       await mkdir(output, { recursive: true })
       await page.screenshot({ path: `${output}/${phase}-bots-content-${width}-${theme}.png` })
@@ -100,8 +101,7 @@ for (const width of [1440, 1100]) {
         // The base panel overlays the chat toolbar at narrow widths; close it through its existing affordance.
         if (await page.getByRole("button", { name: "Fechar painel do bot" }).isVisible())
           await page.getByRole("button", { name: "Fechar painel do bot" }).click()
-        if (!(await page.getByRole("button", { name: "Preview do projeto" }).isVisible()))
-          await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
+        await showBotDetails(page)
         await page.getByRole("button", { name: "Preview do projeto" }).click()
         await expect(page.getByRole("button", { name: "Voltar ao chat" })).toBeVisible()
         await page

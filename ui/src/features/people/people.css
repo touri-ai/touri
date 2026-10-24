@@ -6,7 +6,8 @@
 .invite-sent {
   gap: var(--space-12);
 }
-.invite-label {
+.invite-label,
+.invite-form > label {
   font-size: var(--fs-caption);
   font-weight: 600;
   color: var(--text-2);

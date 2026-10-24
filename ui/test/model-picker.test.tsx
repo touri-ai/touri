@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
 import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
+import { openBotDetails } from "./workspaceNavigation"
 
 afterEach(() => {
   cleanup()
@@ -16,7 +17,7 @@ const catalog = {
   available: true,
 }
 
-const openComposerPicker = async (
+const openAdvancedPicker = async (
   provider: Bot["provider"],
   listModels = async (): Promise<ApiRoutes["GET /providers/opencode/models"]["res"]> => catalog,
   model: string | null = null,
@@ -37,6 +38,7 @@ const openComposerPicker = async (
   }
   const api = { ...mock, request }
   render(<App kernel={{ services: { api } }} />)
+  await openBotDetails()
   const chip = await screen.findByRole("button", { name: /^Escolher modelo:/ })
   fireEvent.click(chip)
   const listbox = await screen.findByRole("listbox", {
@@ -45,8 +47,8 @@ const openComposerPicker = async (
   return { api, bot, chip, listbox, list, apiModels }
 }
 
-it("opens the composer list, marks the current model and saves a picked model immediately", async () => {
-  const { api, bot, chip, listbox } = await openComposerPicker("codex", undefined, "gpt-6.1-sol")
+it("opens the advanced list, marks the current model and saves a picked model immediately", async () => {
+  const { api, bot, chip, listbox } = await openAdvancedPicker("codex", undefined, "gpt-6.1-sol")
 
   expect(within(listbox).getByRole("option", { name: "gpt-6.1-sol" })).toHaveAttribute("aria-selected", "true")
   expect(within(listbox).getByRole("option", { name: "gpt-6-luna" })).toBeVisible()
@@ -68,8 +70,7 @@ it("opens the same list from the bot settings model field and saves immediately"
   if (!bot) throw new Error("Missing bot")
   Object.assign(bot, { provider: "codex", model: null })
   render(<App kernel={{ services: { api: mock } }} />)
-  fireEvent.click(await screen.findByRole("button", { name: "Painel do bot", exact: true }))
-  await screen.findByRole("complementary", { name: /^Painel de / })
+  await openBotDetails()
   fireEvent.click(screen.getByRole("button", { name: /^Modelo:/ }))
 
   const dialog = await screen.findByRole("dialog", { name: `Configurações de ${bot.name}` })
@@ -95,7 +96,7 @@ it("opens the same list from the bot settings model field and saves immediately"
 })
 
 it("shows discovered OpenCode and saved API models and saves the selected model immediately", async () => {
-  const { api, bot, listbox, list, apiModels } = await openComposerPicker(
+  const { api, bot, listbox, list, apiModels } = await openAdvancedPicker(
     "opencode",
     undefined,
     null,
@@ -128,7 +129,7 @@ it("shows discovered OpenCode and saved API models and saves the selected model 
 })
 
 it("saves a trimmed custom model from the inline field", async () => {
-  const { api, bot, listbox } = await openComposerPicker("codex")
+  const { api, bot, listbox } = await openAdvancedPicker("codex")
 
   fireEvent.click(within(listbox).getByRole("option", { name: "Outro modelo…" }))
   const input = screen.getByRole("textbox", { name: "Nome do modelo" })
@@ -144,7 +145,7 @@ it("saves a trimmed custom model from the inline field", async () => {
 })
 
 it("rejects hidden characters in a custom model name", async () => {
-  const { api, listbox } = await openComposerPicker("codex")
+  const { api, listbox } = await openAdvancedPicker("codex")
 
   fireEvent.click(within(listbox).getByRole("option", { name: "Outro modelo…" }))
   const input = screen.getByRole("textbox", { name: "Nome do modelo" })
@@ -156,7 +157,7 @@ it("rejects hidden characters in a custom model name", async () => {
 })
 
 it("supports arrow navigation, Enter to choose and Escape to close", async () => {
-  const { bot, chip, listbox } = await openComposerPicker("codex")
+  const { bot, chip, listbox } = await openAdvancedPicker("codex")
   const defaultModel = within(listbox).getByRole("option", { name: "Padrão do provedor" })
   defaultModel.focus()
   fireEvent.keyDown(defaultModel, { key: "ArrowDown" })
@@ -177,7 +178,7 @@ it("supports arrow navigation, Enter to choose and Escape to close", async () =>
 
 it("virtualizes long catalogs while keeping keyboard access to the final model", async () => {
   const models = Array.from({ length: 80 }, (_, index) => `provider/model-${index}`)
-  const { bot, listbox } = await openComposerPicker("opencode", async () => ({
+  const { bot, listbox } = await openAdvancedPicker("opencode", async () => ({
     models,
     defaultModel: null,
     available: true,
@@ -212,6 +213,7 @@ it("rolls back an optimistic selection and shows a toast when saving fails", asy
   }
   const api = { ...mock, request }
   render(<App kernel={{ services: { api } }} />)
+  await openBotDetails()
   fireEvent.click(await screen.findByRole("button", { name: "Escolher modelo: Codex · gpt-6.1-sol" }))
   const listbox = await screen.findByRole("listbox", { name: "Modelos de Codex" })
   fireEvent.click(within(listbox).getByRole("option", { name: "gpt-6-luna" }))
@@ -226,7 +228,7 @@ it("rolls back an optimistic selection and shows a toast when saving fails", asy
 })
 
 it("uses the Claude Code aliases in the same compact list", async () => {
-  const { bot, listbox, list } = await openComposerPicker("claude")
+  const { bot, listbox, list } = await openAdvancedPicker("claude")
 
   expect(within(listbox).getByRole("option", { name: "Opus" })).toBeVisible()
   expect(within(listbox).getByRole("option", { name: "Sonnet" })).toBeVisible()

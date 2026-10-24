@@ -13,3 +13,7 @@
   line-height: var(--leading-body);
   overflow-wrap: anywhere;
 }
+
+.composer-dictation[hidden] {
+  display: none;
+}

@@ -70,3 +70,16 @@
   border: 1px solid var(--border);
   border-radius: 12px;
 }
+
+.turn-activity-step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-8);
+  margin: var(--space-8) 0;
+  font-size: var(--fs-caption);
+}
+.turn-activity-step small {
+  margin-left: auto;
+  color: var(--text-3);
+}

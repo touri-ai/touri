@@ -1158,3 +1158,13 @@
   width: 14px;
   height: 14px;
 }
+
+.r8-sidebar .channel-row,
+.r8-sidebar .channel-row .sidebar-row-main {
+  min-height: 40px;
+  height: 40px;
+  padding-block: 0;
+}
+.r8-sidebar .channel-row .bot-row-top {
+  align-items: center;
+}

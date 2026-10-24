@@ -3,10 +3,11 @@ import { afterEach, expect, it, vi } from "vitest"
 import App from "../src/App"
 import type { TauriInvoke } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
+import { NotificationBell } from "../src/components/NotificationCenter"
 import { type DeepLink, parseDeepLink } from "../src/deepLink"
 import { t } from "../src/i18n"
 import type { DeepLinkRequest } from "../src/nativeDeepLinks"
-import { openConversations } from "./workspaceNavigation"
+import { openBotDetails, openConversations, openGlobalPage } from "./workspaceNavigation"
 
 const nativeLinks = vi.hoisted(() => ({ handler: null as ((event: { payload: DeepLinkRequest }) => void) | null }))
 const sound = vi.hoisted(() => ({ play: vi.fn(), unlock: vi.fn() }))
@@ -36,7 +37,7 @@ it("sounds for the selected conversation while the user is viewing another page"
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
-  fireEvent.click(screen.getByRole("button", { name: "Integrações", exact: true }))
+  openGlobalPage("Integrações")
   await waitFor(() => expect(screen.queryByRole("textbox", { name: "Mensagem para mark" })).not.toBeInTheDocument())
 
   act(() => {
@@ -148,12 +149,10 @@ it("opens a notification's bot and thread from the touri tab", async () => {
   const { thread } = await api.request("POST /threads", { botId: "bot-onb", title: "Notification target" })
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
-  if (!screen.queryByRole("button", { name: "Preview do projeto" }))
-    fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
-  await screen.findByRole("complementary", { name: /^Painel de / })
+  await openBotDetails()
   fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
   fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
-  fireEvent.click(screen.getByRole("button", { name: "Integrações", exact: true }))
+  openGlobalPage("Integrações")
   act(() => {
     api.notify({
       kind: "question",
@@ -183,8 +182,9 @@ it("shows one bot-row request action and focuses its pending card", async () => 
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
-  const requestCue = screen.getByRole("button", { name: "Abrir pendência de onb" })
-  expect(document.querySelector(".sidebar-needs-you")).toBeNull()
+  const requestCue = document.querySelector<HTMLButtonElement>(".sidebar-needs-you")
+  if (!requestCue) throw new Error("Missing attention bar")
+  expect(requestCue).toBeVisible()
   fireEvent.click(requestCue)
 
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
@@ -206,7 +206,7 @@ it("opens a native touri:// deep link from the touri tab", async () => {
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   await waitFor(() => expect(nativeLinks.handler).not.toBeNull())
   fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
-  fireEvent.click(screen.getByRole("button", { name: "Integrações", exact: true }))
+  openGlobalPage("Integrações")
   act(() => {
     nativeLinks.handler?.({ payload: parseDeepLink(`touri://open?bot=bot-onb&thread=${thread.id}`) as DeepLink })
   })
@@ -306,4 +306,25 @@ it("clears ordinary notifications while preserving uncertain work in the recover
   fireEvent.click(acknowledgement)
 
   expect(within(task).getByRole("button", { name: "Descartar", exact: true })).toBeEnabled()
+})
+
+it("reveals mark-as-read with a deliberate horizontal swipe", () => {
+  const api = createMockApi()
+  const notification = api.notify({ kind: "done", title: "Plano pronto", body: "Confira o roteiro." })
+  const dismiss = vi.fn(async () => {})
+  render(
+    <NotificationBell
+      notifications={[notification]}
+      actions={{ open: vi.fn(), dismiss, dismissAll: vi.fn(), respond: vi.fn(), reply: vi.fn() }}
+    />,
+  )
+  fireEvent.click(screen.getByRole("button", { name: /Notificações/ }))
+  const row = screen.getByTestId("notification-row")
+
+  fireEvent.touchStart(row, { touches: [{ clientX: 200, clientY: 60 }] })
+  fireEvent.touchEnd(row, { changedTouches: [{ clientX: 120, clientY: 62 }] })
+
+  expect(row).toHaveAttribute("data-secondary-actions", "true")
+  fireEvent.click(within(row).getByRole("button", { name: "Marcar como lida", exact: true }))
+  expect(dismiss).toHaveBeenCalledWith(notification.id)
 })

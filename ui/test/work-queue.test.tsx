@@ -9,6 +9,7 @@ import { getQueueLabel } from "../src/features/work/presentation"
 import { PerformanceScreen, WorkScreen } from "../src/features/work/WorkScreen"
 import { useWorkspace } from "../src/useWorkspace"
 import { createWorkApi } from "./fixtures/work-api"
+import { openGlobalPage, openWork } from "./workspaceNavigation"
 
 afterEach(cleanup)
 
@@ -17,13 +18,9 @@ it("lists every executing and queued turn, origins and engine positions, and ope
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para Planejamento" })
 
-  const badge = screen.getByRole("button", { name: "Trabalhando · 3 2 na fila Ver trabalho", exact: true })
-  expect(badge).toBeVisible()
-  expect(badge).toHaveTextContent("Trabalhando · 3")
-  expect(badge).toHaveTextContent("2 na fila")
+  expect(document.querySelector(".sidebar-work-badge")).toBeNull()
 
-  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
-  fireEvent.click(screen.getByRole("button", { name: "Trabalho", exact: true }))
+  openWork()
 
   const running = await screen.findByRole("region", { name: "Trabalhando", exact: true })
   const queued = screen.getByRole("region", { name: "Na fila", exact: true })
@@ -185,8 +182,7 @@ it("keeps completion events newer than an in-flight global snapshot", async () =
     release()
   })
   await screen.findByRole("textbox", { name: "Mensagem para Planejamento" })
-  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
-  fireEvent.click(screen.getByRole("button", { name: "Trabalho", exact: true }))
+  openWork()
 
   await waitFor(() => expect(screen.getAllByRole("article")).toHaveLength(4))
   expect(document.querySelector('[data-run-id="work-run-0"]')).toBeNull()
@@ -309,7 +305,7 @@ it("saves the concurrency limit through Advanced and restores its saved value", 
   await screen.findByRole("textbox", { name: "Mensagem para Planejamento" })
 
   fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
-  fireEvent.click(screen.getByRole("button", { name: "Desempenho", exact: true }))
+  openGlobalPage("Desempenho")
   const input = await screen.findByRole("spinbutton", { name: "Tarefas ao mesmo tempo" })
   expect(input).toHaveValue(3)
   fireEvent.change(input, { target: { value: "4" } })
@@ -319,11 +315,10 @@ it("saves the concurrency limit through Advanced and restores its saved value", 
   expect(api.calls).toContainEqual({ route: "PATCH /settings", input: { maxConcurrentRuns: 4 }, pathValues: {} })
   expect((await api.request("GET /settings", {})).settings.maxConcurrentRuns).toBe(4)
 
-  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
-  fireEvent.click(screen.getByRole("button", { name: "Trabalho", exact: true }))
+  openWork()
   expect(await screen.findByRole("heading", { name: "Trabalho", exact: true })).toBeVisible()
   fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
-  fireEvent.click(screen.getByRole("button", { name: "Desempenho", exact: true }))
+  openGlobalPage("Desempenho")
   expect(await screen.findByRole("spinbutton", { name: "Tarefas ao mesmo tempo" })).toHaveValue(4)
 })
 

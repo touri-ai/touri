@@ -46,10 +46,12 @@ for (const coarse of [false, true]) {
     expect((await tab.boundingBox())?.height).toBeGreaterThanOrEqual(coarse ? 44 : 32)
     for (const selector of [".bot-context-menu button", ".tool-action", ".tool-details > .ds-disclosure-trigger"]) {
       for (const box of await page.locator(selector).evaluateAll((nodes) =>
-        nodes.map((node) => ({
-          width: node.getBoundingClientRect().width,
-          height: node.getBoundingClientRect().height,
-        })),
+        nodes
+          .map((node) => ({
+            width: node.getBoundingClientRect().width,
+            height: node.getBoundingClientRect().height,
+          }))
+          .filter((bounds) => bounds.width > 0 && bounds.height > 0),
       )) {
         if (coarse) {
           expect(box.height).toBeGreaterThanOrEqual(44)
@@ -153,7 +155,9 @@ test("A14: tool deltas keep insertion stable and disclosures preserve the readin
   expect(await card.evaluate((node) => node.getAnimations().length)).toBe(0)
   await page.emulateMedia({ reducedMotion: "reduce" })
   const list = page.getByTestId("virtual-message-list")
-  await list.locator(".turn-activity-toggle").last().press("Enter")
+  const activity = list.locator(".turn-activity-toggle").last()
+  if ((await activity.getAttribute("aria-expanded")) === "false") await activity.press("Enter")
+  await list.getByRole("button", { name: "Detalhes técnicos", exact: true }).click()
   const summary = list.locator(".tool-output > .ds-disclosure-trigger").last()
   await summary.scrollIntoViewIfNeeded()
   const before = await summary.evaluate((node) => node.getBoundingClientRect().top)

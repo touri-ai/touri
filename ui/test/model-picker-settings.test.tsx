@@ -1,10 +1,8 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { ApiRoutes, Bot } from "@touri/contracts"
-import { createRef } from "react"
 import { afterEach, expect, it, vi } from "vitest"
 import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
-import { Composer } from "../src/components/Composer"
 import { BotSettingsModal } from "../src/components/Modals"
 import { ModelPicker } from "../src/components/ModelPicker"
 import { t } from "../src/i18n"
@@ -142,28 +140,15 @@ it("ignores late discovery after the picker changes bots", async () => {
   await waitFor(() => expect(onSave).toHaveBeenCalledExactlyOnceWith("demo/current"))
 })
 
-it("closes the composer picker on bot switch and keeps the next bot's catalog", async () => {
+it("closes the advanced picker on bot switch and keeps the next bot's catalog", async () => {
   const { api, first, second } = getDiscovery()
   const bot = getBot({ id: "first", provider: "opencode", model: null })
-  const props = {
-    api,
-    threadId: bot.mainThreadId ?? "demo-thread",
-    parentId: null,
-    draft: "",
-    onDraft: vi.fn(),
-    inputRef: createRef<HTMLTextAreaElement>(),
-    activeRun: null,
-    queuedCount: 0,
-    onSend: vi.fn(async () => {}),
-    onCancel: vi.fn(async () => {}),
-    onSaveModel: vi.fn(async () => {}),
-    onNotice: vi.fn(),
-  }
-  const view = render(<Composer {...props} bot={bot} />)
+  const props = { api, provider: bot.provider, value: bot.model, onSave: vi.fn(async () => {}), onNotice: vi.fn() }
+  const view = render(<ModelPicker key={bot.id} {...props} botId={bot.id} />)
   fireEvent.click(screen.getByRole("button", { name: /^Escolher modelo:/ }))
   expect(screen.getByRole("listbox")).toBeVisible()
 
-  view.rerender(<Composer {...props} bot={{ ...bot, id: "second" }} />)
+  view.rerender(<ModelPicker key="second" {...props} botId="second" />)
 
   expect(screen.queryByRole("listbox")).toBeNull()
   fireEvent.click(screen.getByRole("button", { name: /^Escolher modelo:/ }))
@@ -173,7 +158,7 @@ it("closes the composer picker on bot switch and keeps the next bot's catalog", 
   expect(screen.queryByRole("option", { name: "demo/stale" })).toBeNull()
   fireEvent.click(screen.getByRole("option", { name: "demo/current" }))
 
-  await waitFor(() => expect(props.onSaveModel).toHaveBeenCalledExactlyOnceWith("demo/current"))
+  await waitFor(() => expect(props.onSave).toHaveBeenCalledExactlyOnceWith("demo/current"))
 })
 
 it.each(["--help", " -config ", "demo\u034fmodel", "demo\ufe0fmodel", "m".repeat(257)])(
