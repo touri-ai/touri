@@ -9,7 +9,7 @@ test.afterEach(async () => server?.dispose())
 
 test("first readable reply preserves leading whitespace and the draft", async ({ page }, testInfo) => {
   test.setTimeout(180_000)
-  const current = await createWorkGoldenServer()
+  const current = await createWorkGoldenServer({ withSyntheticProfile: true })
   server = current
   await current.setScenario({
     events: [
@@ -23,6 +23,7 @@ test("first readable reply preserves leading whitespace and the draft", async ({
   const { bot } = (await current.api("/bots", "POST", {
     name: "Brisa",
     provider: "codex",
+    providerProfile: "synthetic",
     access: "read-only",
     approvals: "on-request",
   })) as { bot: Bot }
@@ -34,7 +35,6 @@ test("first readable reply preserves leading whitespace and the draft", async ({
   await page.goto(`${current.serverUrl}/?bot=${bot.id}&thread=${thread.id}`)
   const input = page.getByRole("textbox", { name: "Mensagem para Brisa" })
   await expect(input).toBeVisible({ timeout: 30_000 })
-  await page.getByRole("button", { name: "Usar login deste servidor", exact: true }).click()
   await expect(
     page.getByText("Sua mensagem fica como rascunho até o login estar pronto.", { exact: true }),
   ).toHaveCount(0)
@@ -83,6 +83,7 @@ test("first readable reply preserves leading whitespace and the draft", async ({
       { timeout: 30_000 },
     )
     .toBe("succeeded")
+  await expect(input).toHaveValue("Rascunho fictício preservado.")
   const { runs } = (await current.api(`/threads/${thread.id}/runs?all=true`)) as { runs: Run[] }
   const timings = runs[0]?.usage?.timings
   const observation = await page.evaluate(

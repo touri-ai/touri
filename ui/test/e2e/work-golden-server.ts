@@ -7,7 +7,11 @@ import type { Page } from "@playwright/test"
 
 const root = resolve(import.meta.dirname, "../../..")
 
-export const createWorkGoldenServer = async () => {
+export const createWorkGoldenServer = async ({
+  withSyntheticProfile = false,
+}: {
+  withSyntheticProfile?: boolean
+} = {}) => {
   const port = await getAvailablePort()
   const serverUrl = `http://127.0.0.1:${port}`
   const directory = await mkdtemp(join(tmpdir(), "touri-work-golden-"))
@@ -15,6 +19,12 @@ export const createWorkGoldenServer = async () => {
   const scenario = join(directory, "scenario.json")
   const provider = join(directory, "fixture-provider")
   await mkdir(data, { recursive: true })
+  if (withSyntheticProfile) {
+    // The fake provider needs only a profile marker, never the host's credentials.
+    const profile = join(data, "provider-profiles", "synthetic", "codex")
+    await mkdir(profile, { recursive: true, mode: 0o700 })
+    await writeFile(join(profile, "auth.json"), "{}", { mode: 0o600 })
+  }
   await writeFile(
     provider,
     `#!/usr/bin/env bun\nawait import(${JSON.stringify(join(root, "sidecar/test/fakes/fake-codex.ts"))})\n`,
