@@ -1084,11 +1084,14 @@ export const createGroupRuntime = (
 
     return true
   }
-  const getGroupCancellation = (id: string) => {
+  const getGroupCancellation = (id: string, scope: "group" | "turn" = "group") => {
     const link = db.query("SELECT turn_id FROM group_run_links WHERE run_id=?").get(id) as { turn_id: string } | null
     const root = link?.turn_id ?? id
     const turn = turns.get(root)
-    const affected = turn ? Array.from(turns.values()).filter((candidate) => candidate.group.id === turn.group.id) : []
+    if (!turn) return { root, affected: [] }
+    if (scope === "turn") return { root, affected: [turn] }
+
+    const affected = Array.from(turns.values()).filter((candidate) => candidate.group.id === turn.group.id)
 
     return { root, affected }
   }
@@ -1103,27 +1106,28 @@ export const createGroupRuntime = (
     // A recipient failure or a caller's abort listener propagates cancellation to its turn's children.
     return [frame.turn.run.id].concat(Array.from(frame.turn.children))
   }
-  const cancel = (id: string): boolean => {
+  const cancel = (id: string, scope: "group" | "turn" = "group"): boolean => {
     const browserRunId = kernel.services.use("browser.cancelRequest")?.({ runId: id })
     if (browserRunId) {
       engine.cancel(browserRunId)
       return true
     }
-    const { root, affected } = getGroupCancellation(id)
+    const { root, affected } = getGroupCancellation(id, scope)
     if (affected.length === 0) return !!db.query("SELECT run_id FROM group_turns WHERE run_id=?").get(root)
-    // Parar ends the active turn and pending messages for this group, across all its conversations.
+    // Conversation Stop retains its group scope; Work can stop one turn without losing queued requests.
     affected.forEach(cancelTurn)
     return true
   }
   const cancelAuthorized = (
     id: string,
     getDecision: (runId: string) => ReturnType<ServiceMap["work.authorizeHttp"]>,
+    scope: "group" | "turn" = "group",
   ) => {
     const browser = kernel.services.use("browser.cancelRequest") ? getBrowserCancellationTarget(db, id) : null
     const targets = browser
       ? getBrowserCancellationRunIds(browser.runId)
       : [id].concat(
-          getGroupCancellation(id).affected.flatMap((turn) => [turn.run.id].concat(Array.from(turn.children))),
+          getGroupCancellation(id, scope).affected.flatMap((turn) => [turn.run.id].concat(Array.from(turn.children))),
         )
     // Keep preflight and execution synchronous: aborting even an ordinary child can stop its browser peers.
     for (const runId of new Set(targets)) {
@@ -1131,7 +1135,7 @@ export const createGroupRuntime = (
       if (denial) return { canceled: false, denial, run: null }
     }
 
-    const canceled = cancel(id)
+    const canceled = cancel(id, scope)
     // Repeating a root cancellation after the short circuit could select another browser child.
     return {
       canceled,

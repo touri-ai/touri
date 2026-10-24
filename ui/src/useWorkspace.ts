@@ -114,7 +114,7 @@ export type WorkspaceActions = {
     groupAction?: GroupAction,
   ) => Promise<void>
   retryRun: (runId: Id) => Promise<void>
-  cancelRun: (runId: Id) => Promise<void>
+  cancelRun: (runId: Id, scope?: "group" | "turn") => Promise<void>
   switchBranch: (threadId: Id, leafId: Id) => Promise<void>
   updateBot: (botId: Id, patch: Partial<ApiRoutes["PATCH /bots/:id"]["req"]>) => Promise<void>
   updateBotModel: (botId: Id, model: string | null) => Promise<void>
@@ -1704,8 +1704,8 @@ export const useWorkspace = (
   )
 
   const cancelRun = useCallback(
-    async (runId: Id): Promise<void> => {
-      const response = await api.request("POST /runs/:id/cancel", {}, { id: runId })
+    async (runId: Id, scope?: "group" | "turn"): Promise<void> => {
+      const response = await api.request("POST /runs/:id/cancel", scope ? { scope } : {}, { id: runId })
       setData((current) => ({ ...current, runs: mergeRunRows(current.runs, [response.run]) }))
     },
     [api],

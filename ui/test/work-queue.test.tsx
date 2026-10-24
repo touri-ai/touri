@@ -46,6 +46,70 @@ it("lists every executing and queued turn, origins and engine positions, and ope
   expect(screen.getByText("Na fila · 1º de 1")).toBeVisible()
 })
 
+it("stops a selected work task with turn scope and preserves the queued request", async () => {
+  const api = createWorkApi()
+  const running = api.getRuns()[0]
+  const queued = api.getRuns()[3]
+  if (!running || !queued) throw new Error("Missing work fixture")
+  const canceled = Object.assign({}, running, { status: "canceled" as const, finishedAt: Date.now() })
+  const cancellation = vi.fn()
+  const request: UiApi["request"] = async (route, input, path) => {
+    if (route !== "POST /runs/:id/cancel") return api.request(route, input, path)
+
+    cancellation(input, path)
+    api.emit({ type: "run.updated", run: canceled })
+    return { run: canceled } as ApiRoutes[typeof route]["res"]
+  }
+  const client = Object.assign({}, api, { request })
+  render(<App kernel={{ services: { api: client } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para Planejamento" })
+  fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
+  fireEvent.click(screen.getByRole("button", { name: "Trabalho", exact: true }))
+  const stopButtons = await screen.findAllByRole("button", { name: "Parar só esta tarefa" })
+  const firstStop = stopButtons[0]
+  if (!firstStop) throw new Error("Missing task control")
+
+  fireEvent.click(firstStop)
+
+  await waitFor(() => expect(cancellation).toHaveBeenCalledWith({ scope: "turn" }, { id: running.id }))
+  await waitFor(() => expect(document.querySelector(`[data-run-id="${running.id}"]`)).toBeNull())
+  expect(document.querySelector(`[data-run-id="${queued.id}"]`)).toBeVisible()
+})
+
+it("shows stop failures and prevents duplicate requests while stopping", async () => {
+  const api = createWorkApi()
+  const stopped = Promise.withResolvers<void>()
+  const onStop = vi.fn(() => stopped.promise)
+  render(
+    <WorkScreen
+      runs={api.getRuns()}
+      bots={api.bots}
+      threads={api.threads}
+      loading={false}
+      onThread={vi.fn()}
+      onStop={onStop}
+    />,
+  )
+  const cancelButtons = screen.getAllByRole("button", { name: "Cancelar só este pedido" })
+  const firstCancel = cancelButtons[0]
+  if (!firstCancel) throw new Error("Missing waiting request")
+
+  fireEvent.click(firstCancel)
+
+  expect(screen.getByRole("button", { name: "Parando…" })).toBeDisabled()
+  expect(
+    screen.getAllByRole("button", { name: "Parar só esta tarefa" }).every((button) => button.hasAttribute("disabled")),
+  ).toBe(true)
+  await act(async () => stopped.reject(new Error("Synthetic failure")))
+  expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível parar a tarefa. Tente novamente.")
+  expect(
+    screen
+      .getAllByRole("button", { name: "Cancelar só este pedido" })
+      .every((button) => !button.hasAttribute("disabled")),
+  ).toBe(true)
+  expect(onStop).toHaveBeenCalledTimes(1)
+})
+
 it("opens the visible group while the work run retains its execution thread", () => {
   const api = createWorkApi()
   const run = api.getRuns()[0]

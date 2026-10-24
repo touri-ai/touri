@@ -292,7 +292,11 @@ export const init = async (
       {
         method: "POST",
         path: "/runs/:id/cancel",
-        handler: async ({ params, signal }) => {
+        handler: async ({ params, body, signal }) => {
+          const { scope = "group" } = bodyRecord(body)
+          if (scope !== "group" && scope !== "turn")
+            return routeError("INVALID_ARGS", "Escopo de cancelamento inválido.")
+
           const runId = params.id ?? ""
           const person = deviceSession(signal)?.person
           const getCancellationDecision = (targetId: string) =>
@@ -309,6 +313,7 @@ export const init = async (
           if (remote) {
             const denial = getCancellationDecision(runId)
             if (denial) return denial
+            if (scope === "turn") return routeError("INVALID_ARGS", "Escopo de cancelamento inválido.")
             const cloud = kernel.services.use("cloud.account")
             if (!cloud) return routeError("TOURI-E9013", "Nuvem desativada")
             return {
@@ -319,7 +324,7 @@ export const init = async (
           const canAccess = kernel.services.use("work.canAccessRun")
           if (person && canAccess && !canAccess({ personId: person.id, role: person.role, runId }))
             return routeError("NOT_FOUND", "Run not found")
-          const cancellation = groups.cancelAuthorized(runId, getCancellationDecision)
+          const cancellation = groups.cancelAuthorized(runId, getCancellationDecision, scope)
           if (cancellation.denial) return cancellation.denial
           const relatedRuns = Promise.all(cancellation.canceledRunIds.map((id) => engine.waitForRunEnd(id)))
           const requested = cancellation.run
