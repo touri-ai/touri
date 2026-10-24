@@ -842,3 +842,59 @@ test("a message repair preserves a previous run failure until run metadata recov
   await act(async () => runs.resolve())
   expect(hook.result.current.data.notice).toBeNull()
 })
+
+test("message repairs cancel superseded reads instead of accumulating held run requests", async () => {
+  const api = createMockApi()
+  const runs = deferred()
+  // This local index records the cancellation ownership of each synthetic read.
+  const runSignals = new Map<number, AbortSignal | undefined>()
+  let messageReads = 0
+  const request: ApiRequest = async (route, input, path, transport) => {
+    const response = structuredClone(await api.request(route, input, path))
+    if (route === "GET /threads/:id/runs") {
+      runSignals.set(runSignals.size, transport?.signal)
+      await runs.promise
+    }
+    if (route !== "GET /threads/:id/messages") return response
+
+    const snapshot = `Snapshot ${++messageReads}`
+    const history = response as { messages: Message[] }
+    return {
+      messages: history.messages.map((message) => ({
+        ...message,
+        status: "streaming",
+        text: snapshot,
+        parts: [{ type: "text", text: snapshot }],
+        updatedSeq: messageReads * 10,
+      })),
+    } as never
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe("thread-mark"))
+
+  for (const index of [1, 2, 3]) {
+    const message = hook.result.current.data.messages[0]
+    if (!message) throw new Error("Missing selected message fixture")
+    act(() =>
+      api.emit({
+        type: "message.delta",
+        threadId: message.threadId,
+        messageId: message.id,
+        partIndex: 0,
+        offset: 1000,
+        delta: "!",
+        updatedSeq: index * 10 + 1,
+      }),
+    )
+    await waitFor(() => expect(hook.result.current.data.messages[0]?.text).toBe(`Snapshot ${index + 1}`))
+    expect([...runSignals.values()].filter((signal) => !signal?.aborted)).toHaveLength(1)
+  }
+
+  act(() => hook.result.current.actions.selectThread("thread-onb"))
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe("thread-onb"))
+  expect([...runSignals.values()].filter((signal) => !signal?.aborted)).toHaveLength(1)
+  hook.unmount()
+  expect([...runSignals.values()].every((signal) => signal?.aborted)).toBe(true)
+  await act(async () => runs.resolve())
+})

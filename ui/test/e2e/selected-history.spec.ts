@@ -12,8 +12,11 @@ test.afterEach(async () => {
 })
 test.setTimeout(240_000)
 
-for (const width of [1440, 390]) {
-  test(`selected history renders before held run metadata at ${width}px`, async ({ page }, info) => {
+const scenarios = [false, true].flatMap((channel) => [1440, 390].map((width) => ({ channel, width })))
+for (const { channel, width } of scenarios) {
+  test(`selected history renders before held run metadata in ${channel ? "channel" : "bot"} at ${width}px`, async ({
+    page,
+  }, info) => {
     const server = await createServerModeFixture({ port: 18867 })
     servers.add(server)
     const settings = await server.api("/settings")
@@ -21,8 +24,19 @@ for (const width of [1440, 390]) {
       name: "Brisa fictícia",
       provider: settings.settings.defaultProvider,
     })
+    const conversation = channel
+      ? await server.api("/groups", "POST", {
+          name: "Canal fictício",
+          color: "#558866",
+          avatarShape: "cercle",
+          memberIds: [bot.id],
+          coordinatorBotId: null,
+        })
+      : { thread: { id: bot.mainThreadId } }
+    const threadId = conversation.thread.id
+    const recipient = channel ? "Canal fictício" : "Brisa fictícia"
     await server.stop()
-    await seedHistory(server.dataDir, bot.mainThreadId)
+    await seedHistory(server.dataDir, threadId)
     await server.start()
     await server.install(page)
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
@@ -42,21 +56,26 @@ for (const width of [1440, 390]) {
       })
       observer.observe(document, { childList: true, subtree: true })
     })
-    await page.route(`**/api/v1/threads/${bot.mainThreadId}/runs*`, async (route) => {
+    await page.route(`**/api/v1/threads/${threadId}/runs*`, async (route) => {
       const response = await route.fetch()
       runResponse.resolve()
       await release.promise
       await route.fulfill({ response })
     })
     page.on("response", (response) => {
-      if (response.url().includes(`/threads/${bot.mainThreadId}/messages`) && response.ok())
+      if (response.url().includes(`/threads/${threadId}/messages`) && response.ok())
         times.messagesResponseMs = performance.now()
     })
     const started = performance.now()
     await page.goto(server.relayUrl)
+    if (channel) {
+      if (width === 390) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+      await page.getByRole("tab", { name: /^Work,/ }).click()
+      await page.getByRole("region", { name: "Canais", exact: true }).getByText(recipient, { exact: true }).click()
+    }
     await runResponse.promise
     const message = page.locator('[data-message-id="restart-history-59"]')
-    const composer = page.getByRole("textbox", { name: "Mensagem para Brisa fictícia", exact: true })
+    const composer = page.getByRole("textbox", { name: `Mensagem para ${recipient}`, exact: true })
     await expect.poll(() => times.messagesResponseMs).toBeGreaterThan(0)
     if (before) {
       await expect(page.getByRole("status", { name: "Carregando conversas…" })).toBeVisible()
@@ -67,7 +86,9 @@ for (const width of [1440, 390]) {
       await composer.fill("Rascunho fictício preservado.")
     }
     const observed = performance.now()
-    const imageName = `selected-history-${before ? "before" : "after"}-${width}.png`
+    if (channel && width === 1440)
+      await expect(page.locator(".sidebar-footer .user-chip strong")).toHaveText("Pessoa demo")
+    const imageName = `selected-history-${channel ? "channel-" : ""}${before ? "before" : "after"}-${width}.png`
     const imagePath = info.outputPath(imageName)
     await info.attach(imageName, {
       body: await page.screenshot({
@@ -96,10 +117,11 @@ for (const width of [1440, 390]) {
         navigationToHistoryDomMs: historyDomMs,
         messagesResponseToHistoryDomMs: historyDomMs !== null && response ? historyDomMs - response.responseEnd : null,
       }
-    }, bot.mainThreadId)
+    }, threadId)
     const metrics = {
       ...domTiming,
       width,
+      surface: channel ? "channel" : "bot",
       phase: before ? "before" : "after",
       navigationToObservationMs: observed - started,
       messagesResponseToObservationMs: observed - (times.messagesResponseMs ?? observed),
@@ -116,11 +138,11 @@ for (const width of [1440, 390]) {
 
 const seedHistory = (dataDir: string, threadId: string): Promise<void> =>
   new Promise((done, reject) => {
-    const child = spawn("bun", [resolve(import.meta.dirname, "reconnect-history-fixture.ts"), dataDir, threadId], {
-      stdio: "ignore",
-      timeout: 15_000,
-      killSignal: "SIGKILL",
-    })
+    const child = spawn(
+      "bun",
+      [resolve(import.meta.dirname, "reconnect-history-fixture.ts"), dataDir, threadId, "Pessoa demo"],
+      { stdio: "ignore", timeout: 15_000, killSignal: "SIGKILL" },
+    )
     child.once("error", reject)
     child.once("exit", (code) => (code === 0 ? done() : reject(new Error("Could not seed synthetic conversation"))))
   })

@@ -388,6 +388,7 @@ const MAX_STREAM_BUFFER_BYTES = 256 * 1024
 type ThreadLoad = {
   attempt: number
   promise: Promise<void>
+  controller: AbortController
   deltas: Array<MessageStreamEvent>
   bytes: number
   overflow: boolean
@@ -740,6 +741,10 @@ export const useWorkspace = (
       const pending = threadLoads.current.get(threadId)
       if (pending?.attempt === attempt && (!force || !pending.historyReady)) return pending.promise
       if (!force && loadedThreads.current.get(threadId) === attempt) return Promise.resolve()
+
+      // Repairs must release the previous reader before starting another message/run pair.
+      pending?.controller.abort()
+      const controller = new AbortController()
       const deltas: Array<MessageStreamEvent> = []
       const isCurrentLoad = (): boolean =>
         attempt === generation.current &&
@@ -758,7 +763,7 @@ export const useWorkspace = (
         }))
       }
       const messagesRequest = api
-        .request("GET /threads/:id/messages", { all: true }, { id: threadId })
+        .request("GET /threads/:id/messages", { all: true }, { id: threadId }, { signal: controller.signal })
         .then((messages) => {
           const load = threadLoads.current.get(threadId)
           if (!isCurrentLoad() || !load) return
@@ -806,7 +811,12 @@ export const useWorkspace = (
         for (;;) {
           const runsAtStart = runRevision.current
           const terminalRevision = threadLoads.current.get(threadId)?.terminalRevision ?? 0
-          const runs = await api.request("GET /threads/:id/runs", { all: true }, { id: threadId })
+          const runs = await api.request(
+            "GET /threads/:id/runs",
+            { all: true },
+            { id: threadId },
+            { signal: controller.signal },
+          )
           const load = threadLoads.current.get(threadId)
           if (!isCurrentLoad() || !load) return
           // A single watermark outlives pruned terminal rows without retaining completed IDs.
@@ -837,6 +847,7 @@ export const useWorkspace = (
       threadLoads.current.set(threadId, {
         attempt,
         promise,
+        controller,
         deltas,
         bytes: 0,
         overflow: false,
@@ -855,7 +866,10 @@ export const useWorkspace = (
     const channelCacheIdentity = { scope: getStorageScope(), personId }
     setData((current) => ({ ...current, groupsLoaded: false, readyGroupIds: [] }))
     // Pending callbacks share these request-owned arrays, so clear them before abandoning the loads.
-    for (const load of threadLoads.current.values()) load.deltas.length = 0
+    for (const load of threadLoads.current.values()) {
+      load.controller.abort()
+      load.deltas.length = 0
+    }
     threadLoads.current.clear()
     loadedThreads.current.clear()
     const runsAtStart = runRevision.current
@@ -1152,7 +1166,10 @@ export const useWorkspace = (
         privateThreads.current.delete(event.threadId)
         loadedThreads.current.delete(event.threadId)
         const load = threadLoads.current.get(event.threadId)
-        if (load) load.deltas.length = 0
+        if (load) {
+          load.controller.abort()
+          load.deltas.length = 0
+        }
         threadLoads.current.delete(event.threadId)
         setData((current) => getWorkspaceWithoutThread(current, event.threadId, event.botId))
         return
@@ -1385,7 +1402,10 @@ export const useWorkspace = (
       active = false
       generation.current += 1
       // Pending callbacks share these request-owned arrays, so clear them before abandoning the loads.
-      for (const load of threadLoads.current.values()) load.deltas.length = 0
+      for (const load of threadLoads.current.values()) {
+        load.controller.abort()
+        load.deltas.length = 0
+      }
       threadLoads.current.clear()
       loadedThreads.current.clear()
       liveRuns.current.clear()
@@ -1413,6 +1433,7 @@ export const useWorkspace = (
     for (const [id, load] of threadLoads.current) {
       if (id === data.selectedThreadId) continue
       // Clearing the request-owned buffer in place releases payloads still captured by its callback.
+      load.controller.abort()
       load.deltas.length = 0
       threadLoads.current.delete(id)
     }

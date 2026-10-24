@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite"
 import { join } from "node:path"
 
-const [dataDir, threadId] = process.argv.slice(2)
+const [dataDir, threadId, personName] = process.argv.slice(2)
 if (!dataDir || !threadId) throw new Error("Synthetic history requires a data directory and conversation")
 const db = new Database(join(dataDir, "touri.db"))
 const now = Date.now()
@@ -22,3 +22,10 @@ db.transaction(() => {
   db.query("UPDATE threads SET active_leaf_id = ? WHERE id = ?").run(messages.at(-1)?.id, threadId)
 })()
 db.close()
+
+if (personName) {
+  // Browser evidence must use a synthetic display name rather than the host account's name.
+  const auth = new Database(join(dataDir, "auth.db"))
+  auth.query("UPDATE people SET name = ? WHERE id = 'owner'").run(personName)
+  auth.close()
+}
