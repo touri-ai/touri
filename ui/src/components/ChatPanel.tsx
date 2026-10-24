@@ -16,6 +16,7 @@ import { failureRetryHint, sanitizeDiagnostic } from "@touri/contracts/run-failu
 import {
   Fragment,
   lazy,
+  memo,
   type ReactNode,
   Suspense,
   useCallback,
@@ -271,6 +272,19 @@ export const VirtualMessageList = ({
   header,
   timelineCards = emptyTimelineCards,
 }: VirtualMessageListProps) => {
+  // Rows keep stable callbacks so an unchanged message is not rendered again when another one streams.
+  const latestCallbacks = useRef({ onSwitchBranch, onRetry, onEdit, onCancel })
+  latestCallbacks.current = { onSwitchBranch, onRetry, onEdit, onCancel }
+  const rowCallbacks = useMemo(
+    () => ({
+      onSwitchBranch: (message: Message, siblings: Array<Message>, index: number) =>
+        latestCallbacks.current.onSwitchBranch(message, siblings, index),
+      onRetry: (runId: Id) => latestCallbacks.current.onRetry(runId),
+      onEdit: ((...args) => latestCallbacks.current.onEdit?.(...args)) as EditMessage,
+      onCancel: async (runId: Id) => latestCallbacks.current.onCancel?.(runId),
+    }),
+    [],
+  )
   const messages = useMemo(
     () =>
       getAutomaticResumeMessages(
@@ -706,10 +720,10 @@ export const VirtualMessageList = ({
                     {...(api ? { api } : {})}
                     siblings={siblings}
                     branchIndex={branchIndex}
-                    onSwitchBranch={onSwitchBranch}
-                    onRetry={onRetry}
-                    onEdit={onEdit}
-                    onCancel={onCancel}
+                    onSwitchBranch={rowCallbacks.onSwitchBranch}
+                    onRetry={rowCallbacks.onRetry}
+                    onEdit={onEdit ? rowCallbacks.onEdit : undefined}
+                    onCancel={onCancel ? rowCallbacks.onCancel : undefined}
                     editDisabled={editDisabled}
                     showActivityStop={showActivityStop}
                     onImageLoad={measureRowOnNextFrame}
@@ -807,7 +821,7 @@ const formatDaySeparator = (timestamp: number): string => {
   return (date.getFullYear() !== now.getFullYear() ? dayWithYearFormat : dayFormat).format(date)
 }
 
-const MessageBubble = ({
+const MessageBubbleRow = ({
   inserted,
   vmBotId,
   currentPersonId,
@@ -1354,6 +1368,19 @@ const MessageBubble = ({
     </article>
   )
 }
+
+/** Rebuilt lists hold the same messages: compare them by element so an unchanged row skips rendering. */
+const sameBubbleProps = (previous: Record<string, unknown>, next: Record<string, unknown>): boolean =>
+  Object.keys({ ...previous, ...next }).every((key) => {
+    const before = previous[key]
+    const after = next[key]
+    if (Array.isArray(before) && Array.isArray(after))
+      return before.length === after.length && before.every((item, index) => Object.is(item, after[index]))
+
+    return Object.is(before, after)
+  })
+
+const MessageBubble = memo(MessageBubbleRow, sameBubbleProps)
 
 export const ChatPanel = ({
   currentPersonId = "owner",

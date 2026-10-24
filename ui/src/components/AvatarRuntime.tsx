@@ -21,8 +21,9 @@ export type AvatarRuntime = Pick<
 > &
   Partial<Pick<WorkspaceData, "computerGrantRequest" | "machines">>
 type ComposerEvent = { botId: string; threadId: string; focused: boolean; typing: boolean }
-type RuntimeValue = AvatarRuntime & {
+type RuntimeValue = {
   snapshots: ReturnType<typeof createSnapshotStore>
+  data: ReturnType<typeof createDataStore>
   composer: (event: ComposerEvent) => void
 }
 type MachineView = { snapshots: ReadonlyMap<string, MascotSnapshot>; deadline: number | null }
@@ -160,19 +161,30 @@ export const AvatarRuntimeProvider = ({ value, children }: { value: AvatarRuntim
     },
     [machines, publish],
   )
-  const runtime = useMemo(() => ({ ...value, snapshots, composer }), [value, snapshots, composer])
+  // Readers select what they show from this store, so a streaming delta does not re-render every avatar.
+  const [data] = useState(() => createDataStore(value))
+  useLayoutEffect(() => data.publish(value), [data, value])
+  const runtime = useMemo(() => ({ snapshots, data, composer }), [snapshots, data, composer])
 
   return <RuntimeContext.Provider value={runtime}>{children}</RuntimeContext.Provider>
 }
 
-export const useAvatarBot = (id: string | null): Bot | undefined =>
-  useContext(RuntimeContext)?.bots.find((bot) => bot.id === id)
-
-export const useThreadBot = (threadId: string): Bot | undefined => {
+/** Reads one value from the workspace data; the component renders again only when that value changes. */
+const useRuntimeSelector = <T,>(select: (value: AvatarRuntime) => T, fallback: T): T => {
   const runtime = useContext(RuntimeContext)
-  const botId = runtime?.threads.find((thread) => thread.id === threadId)?.botId
-  return runtime?.bots.find((bot) => bot.id === botId)
+  const getSnapshot = () => (runtime ? select(runtime.data.get()) : fallback)
+
+  return useSyncExternalStore(runtime?.data.subscribe ?? subscribeWithoutRuntime, getSnapshot)
 }
+
+export const useAvatarBot = (id: string | null): Bot | undefined =>
+  useRuntimeSelector((value) => value.bots.find((bot) => bot.id === id), undefined)
+
+export const useThreadBot = (threadId: string): Bot | undefined =>
+  useRuntimeSelector((value) => {
+    const botId = value.threads.find((thread) => thread.id === threadId)?.botId
+    return value.bots.find((bot) => bot.id === botId)
+  }, undefined)
 
 export const useMascotComposer = (): RuntimeValue["composer"] | undefined => useContext(RuntimeContext)?.composer
 
@@ -188,23 +200,30 @@ export const useMascotSnapshot = (
 }
 
 export const useAvatarMood = (identity: AvatarIdentity & { paused?: boolean }, override?: AvatarMood): AvatarMood => {
-  const runtime = useContext(RuntimeContext)
+  const loading = useRuntimeSelector((value) => value.loading, false)
   const snapshot = useMascotSnapshot(identity)
-  return override ?? (runtime?.loading && snapshot.state === "idle" ? "connecting" : mascotMoodFor(snapshot.state))
+  return override ?? (loading && snapshot.state === "idle" ? "connecting" : mascotMoodFor(snapshot.state))
 }
 
 export const useMessageMascotState = (message: Message, run?: Run): MascotState => {
   const runtime = useContext(RuntimeContext)
-  const botId = run?.botId ?? runtime?.threads.find((thread) => thread.id === message.threadId)?.botId ?? ""
+  const botId = useRuntimeSelector(
+    (value) => run?.botId ?? value.threads.find((thread) => thread.id === message.threadId)?.botId ?? "",
+    run?.botId ?? "",
+  )
   const snapshot = useRuntimeSnapshot(runtime, botId, message.threadId)
-  if (snapshot) return snapshot.state
-  return mascotSignalFor({
-    botId,
-    runs: run ? [run] : [],
-    messages: [message],
-    notifications: runtime?.notifications.filter((item) => item.threadId === message.threadId) ?? [],
-    waiting: runtime?.computerGrantRequest?.threadId === message.threadId,
-  }).state
+  const fallback = useRuntimeSelector(
+    (value) =>
+      mascotSignalFor({
+        botId,
+        runs: run ? [run] : [],
+        messages: [message],
+        notifications: value.notifications.filter((item) => item.threadId === message.threadId),
+        waiting: value.computerGrantRequest?.threadId === message.threadId,
+      }).state,
+    mascotSignalFor({ botId, runs: run ? [run] : [], messages: [message], notifications: [], waiting: false }).state,
+  )
+  return snapshot ? snapshot.state : fallback
 }
 
 const createSnapshotStore = (initial: ReadonlyMap<string, MascotSnapshot>) => {
@@ -225,6 +244,29 @@ const createSnapshotStore = (initial: ReadonlyMap<string, MascotSnapshot>) => {
         return
 
       snapshots = next
+      listeners.forEach((listener) => {
+        listener()
+      })
+    },
+  }
+}
+
+const createDataStore = (initial: AvatarRuntime) => {
+  // Same external-store contract as the snapshots: synchronous reads and explicit subscriptions.
+  let current = initial
+  const listeners = new Set<() => void>()
+
+  return {
+    get: () => current,
+    subscribe: (listener: () => void) => {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+    publish: (next: AvatarRuntime) => {
+      if (next === current) return
+      current = next
       listeners.forEach((listener) => {
         listener()
       })
