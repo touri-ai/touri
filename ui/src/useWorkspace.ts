@@ -388,12 +388,15 @@ const MAX_STREAM_BUFFER_BYTES = 256 * 1024
 type ThreadLoad = {
   attempt: number
   promise: Promise<void>
+  controller: AbortController
   deltas: Array<MessageStreamEvent>
   bytes: number
   overflow: boolean
+  historyReady?: boolean
+  terminalRevision: number
 }
 const bufferStreamEvent = (load: ThreadLoad | undefined, event: MessageStreamEvent): void => {
-  if (!load || load.overflow) return
+  if (!load || load.overflow || load.historyReady) return
   // The pending loader shares this bounded replay buffer; reset it in place on overflow.
   load.bytes += JSON.stringify(event).length * 2
   if (load.deltas.length >= 512 || load.bytes > MAX_STREAM_BUFFER_BYTES) {
@@ -641,6 +644,7 @@ export const useWorkspace = (
   const loadedThreads = useRef(new Map<Id, number>())
   const snapshotUnavailable = useRef(false)
   const serviceNotice = useRef<string | null>(null)
+  const runNotice = useRef<string | null>(null)
   const threadLoads = useRef(new Map<Id, ThreadLoad>())
   const projectGeneration = useRef(0)
   const [projectRevision, setProjectRevision] = useState(0)
@@ -735,29 +739,49 @@ export const useWorkspace = (
       const attempt = generation.current
       const groupId = currentData.current.threads.find((thread) => thread.id === threadId)?.groupId
       const pending = threadLoads.current.get(threadId)
-      if (pending?.attempt === attempt) return pending.promise
+      if (pending?.attempt === attempt && (!force || !pending.historyReady)) return pending.promise
       if (!force && loadedThreads.current.get(threadId) === attempt) return Promise.resolve()
+
+      // Repairs must release the previous reader before starting another message/run pair.
+      pending?.controller.abort()
+      const controller = new AbortController()
       const deltas: Array<MessageStreamEvent> = []
-      const runsAtStart = runRevision.current
-      const promise = Promise.all([
-        api.request("GET /threads/:id/messages", { all: true }, { id: threadId }),
-        api.request("GET /threads/:id/runs", { all: true }, { id: threadId }),
-      ])
-        .then(([messages, runs]) => {
+      const isCurrentLoad = (): boolean =>
+        attempt === generation.current &&
+        threadLoads.current.get(threadId)?.promise === promise &&
+        currentData.current.selectedThreadId === threadId
+      const showReadFailure = (error: unknown, history: boolean): void => {
+        if (!isCurrentLoad()) return
+
+        const notice = t("Service request failed", { error: getServiceErrorMessage(error) })
+        if (isServiceUnavailable(error)) serviceNotice.current = notice
+        if (!history) runNotice.current = notice
+        setData((current) => ({
+          ...current,
+          notice,
+          historyNotice: history ? notice : (current.historyNotice ?? null),
+        }))
+      }
+      const messagesRequest = api
+        .request("GET /threads/:id/messages", { all: true }, { id: threadId }, { signal: controller.signal })
+        .then((messages) => {
           const load = threadLoads.current.get(threadId)
-          if (
-            attempt !== generation.current ||
-            load?.promise !== promise ||
-            currentData.current.selectedThreadId !== threadId
-          )
-            return
+          if (!isCurrentLoad() || !load) return
           loadedThreads.current.clear()
           if (load.overflow) return
+
+          // The request owns its overlap buffer; release it as soon as messages are readable.
+          const replay = deltas.slice()
+          load.historyReady = true
+          load.deltas.length = 0
           loadedThreads.current.set(threadId, attempt)
           setData((current) => {
             if (groupId && !current.groups.some((group) => group.id === groupId)) return current
             if (current.selectedThreadId !== threadId) return current
 
+            const canClearNotice =
+              current.notice !== runNotice.current &&
+              (current.notice === serviceNotice.current || current.notice === current.historyNotice)
             return {
               ...current,
               historyThreadId: threadId,
@@ -766,34 +790,69 @@ export const useWorkspace = (
                 .filter((message) => message.threadId === threadId)
                 .reduce(
                   updateMessage,
-                  deltas.reduce(applyStreamEvent, messages.messages).reduce(updateMessage, current.messages),
+                  replay.reduce(applyStreamEvent, messages.messages).reduce(updateMessage, current.messages),
                 ),
-              runs: mergeRunRows(
-                current.runs,
-                runs.runs.filter((run) => (liveRuns.current.get(run.id) ?? 0) <= runsAtStart),
-              ),
-              notice:
-                current.notice === serviceNotice.current || current.notice === current.historyNotice
-                  ? null
-                  : current.notice,
+              notice: canClearNotice ? null : current.notice,
             }
           })
         })
-        .catch((error: unknown) => {
-          if (attempt !== generation.current || threadLoads.current.get(threadId)?.promise !== promise) return
+        .catch((error: unknown) => showReadFailure(error, true))
+        .finally(() => {
+          const load = threadLoads.current.get(threadId)
+          if (!isCurrentLoad() || !load) return
+          load.historyReady = true
+          if (!load.overflow) return
 
-          const notice = t("Service request failed", { error: getServiceErrorMessage(error) })
-          if (isServiceUnavailable(error)) serviceNotice.current = notice
-          setData((current) => ({ ...current, notice, historyNotice: notice }))
+          // Overflow recovery belongs to messages, even while run metadata is still pending.
+          void loadThread(threadId, true)
         })
+      const loadRuns = async (): Promise<void> => {
+        // Retry one read at a time; a terminal-heavy stream must not build a chain of pending promises.
+        for (;;) {
+          const runsAtStart = runRevision.current
+          const terminalRevision = threadLoads.current.get(threadId)?.terminalRevision ?? 0
+          const runs = await api.request(
+            "GET /threads/:id/runs",
+            { all: true },
+            { id: threadId },
+            { signal: controller.signal },
+          )
+          const load = threadLoads.current.get(threadId)
+          if (!isCurrentLoad() || !load) return
+          // A single watermark outlives pruned terminal rows without retaining completed IDs.
+          if (load.terminalRevision !== terminalRevision) continue
+
+          const previousNotice = runNotice.current
+          runNotice.current = null
+          setData((current) => ({
+            ...current,
+            notice:
+              current.notice === previousNotice && current.historyNotice !== previousNotice ? null : current.notice,
+            runs: mergeRunRows(
+              current.runs,
+              runs.runs.filter((run) => (liveRuns.current.get(run.id) ?? 0) <= runsAtStart),
+            ),
+          }))
+          return
+        }
+      }
+      const runsRequest = loadRuns().catch((error: unknown) => showReadFailure(error, false))
+      const promise = Promise.all([messagesRequest, runsRequest])
+        .then(() => undefined)
         .finally(() => {
           const load = threadLoads.current.get(threadId)
           if (load?.promise !== promise) return
           threadLoads.current.delete(threadId)
-          if (load.overflow && attempt === generation.current && currentData.current.selectedThreadId === threadId)
-            void loadThread(threadId, true)
         })
-      threadLoads.current.set(threadId, { attempt, promise, deltas, bytes: 0, overflow: false })
+      threadLoads.current.set(threadId, {
+        attempt,
+        promise,
+        controller,
+        deltas,
+        bytes: 0,
+        overflow: false,
+        terminalRevision: pending?.terminalRevision ?? 0,
+      })
       return promise
     },
     [api],
@@ -807,7 +866,10 @@ export const useWorkspace = (
     const channelCacheIdentity = { scope: getStorageScope(), personId }
     setData((current) => ({ ...current, groupsLoaded: false, readyGroupIds: [] }))
     // Pending callbacks share these request-owned arrays, so clear them before abandoning the loads.
-    for (const load of threadLoads.current.values()) load.deltas.length = 0
+    for (const load of threadLoads.current.values()) {
+      load.controller.abort()
+      load.deltas.length = 0
+    }
     threadLoads.current.clear()
     loadedThreads.current.clear()
     const runsAtStart = runRevision.current
@@ -1104,7 +1166,10 @@ export const useWorkspace = (
         privateThreads.current.delete(event.threadId)
         loadedThreads.current.delete(event.threadId)
         const load = threadLoads.current.get(event.threadId)
-        if (load) load.deltas.length = 0
+        if (load) {
+          load.controller.abort()
+          load.deltas.length = 0
+        }
         threadLoads.current.delete(event.threadId)
         setData((current) => getWorkspaceWithoutThread(current, event.threadId, event.botId))
         return
@@ -1121,6 +1186,8 @@ export const useWorkspace = (
         else {
           liveRuns.current.delete(event.run.id)
           completedDuringLoad.current?.add(event.run.id)
+          const load = threadLoads.current.get(event.run.threadId)
+          if (load) load.terminalRevision = revision
         }
       }
       setData((current) => {
@@ -1185,7 +1252,10 @@ export const useWorkspace = (
               : hasPartGap(message?.parts.length ?? 0, event.parts)
           if (!message || gap) {
             // Unopened threads have no snapshot to repair; selection fetches their current history.
-            if (event.threadId === current.selectedThreadId && !threadLoads.current.has(event.threadId))
+            if (
+              event.threadId === current.selectedThreadId &&
+              (!threadLoads.current.has(event.threadId) || threadLoads.current.get(event.threadId)?.historyReady)
+            )
               queueMicrotask(() => {
                 if (currentData.current.selectedThreadId !== event.threadId) return
                 void loadThread(event.threadId, true)
@@ -1332,10 +1402,14 @@ export const useWorkspace = (
       active = false
       generation.current += 1
       // Pending callbacks share these request-owned arrays, so clear them before abandoning the loads.
-      for (const load of threadLoads.current.values()) load.deltas.length = 0
+      for (const load of threadLoads.current.values()) {
+        load.controller.abort()
+        load.deltas.length = 0
+      }
       threadLoads.current.clear()
       loadedThreads.current.clear()
       liveRuns.current.clear()
+      runNotice.current = null
       completedDuringLoad.current = null
       unsubscribe()
       unsubscribeConnection?.()
@@ -1359,6 +1433,7 @@ export const useWorkspace = (
     for (const [id, load] of threadLoads.current) {
       if (id === data.selectedThreadId) continue
       // Clearing the request-owned buffer in place releases payloads still captured by its callback.
+      load.controller.abort()
       load.deltas.length = 0
       threadLoads.current.delete(id)
     }
