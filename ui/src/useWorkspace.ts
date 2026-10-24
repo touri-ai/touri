@@ -875,6 +875,19 @@ export const useWorkspace = (
     const runsAtStart = runRevision.current
     const completedRuns = new Set<Id>()
     completedDuringLoad.current = completedRuns
+    const selected = currentData.current
+    const cachedThread = selected.threads.find(
+      (thread) =>
+        thread.id === selected.selectedThreadId && thread.groupId && cachedGroupIds.current.has(thread.groupId),
+    )
+    // Cached metadata selects a request, never access; the event cursor still precedes the snapshot.
+    if (role !== null && cachedThread && !selected.threadCreation)
+      void (api.cursorReady?.() ?? Promise.resolve()).then(() => {
+        if (attempt !== generation.current || currentData.current.selectedThreadId !== cachedThread.id) return
+
+        return loadThread(cachedThread.id)
+      })
+
     try {
       const member = role === "member"
       const restricted = role !== "admin"

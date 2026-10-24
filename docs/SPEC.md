@@ -773,6 +773,11 @@ then refreshes it at app startup. The cache holds only channel/sidebar metadata 
 tool output, working paths or approval state. Channel names and each channel index render as their
 requests finish, independently of machine, routine and activity initialization. The selected channel's
 history starts as soon as its own index is available, even while another channel index is pending.
+When the signed-in person's cache already identifies the selected channel conversation, startup
+requests its messages and runs after establishing the event cursor, concurrently with the channel
+list and indexes. Cached metadata never authorizes a read: both requests retain server-side access
+checks, cancellation and selection/generation ownership. The fresh index still reconciles removed
+channels and conversations, and no transcript is persisted in the sidebar cache.
 A refresh resets index readiness while preserving known channels; clicking a newly discovered
 channel waits for its saved conversations instead of creating another conversation.
 Switching between saved conversations cancels an earlier channel click that is still waiting for its index.
