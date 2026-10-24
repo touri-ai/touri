@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest"
-import { createApiClient } from "../src/api/client"
+import { createApiClient, type Endpoint } from "../src/api/client"
 
 const cleanups = new Set<() => void>()
 afterEach(() => {
@@ -124,7 +124,181 @@ test("an incompatible protocol reports the update state without opening another 
   expect(fixture.fetchImpl).toHaveBeenCalledTimes(reads)
 })
 
-const makeClient = () => {
+test("status reports the current attempt and next retry, including to a late subscriber", async () => {
+  const fixture = makeClient()
+  await vi.advanceTimersByTimeAsync(0)
+  fixture.getSocket(0).dispatchEvent(new Event("open"))
+
+  fixture.getSocket(0).dispatchEvent(new Event("close"))
+
+  expect(fixture.api.getConnectionStatus?.()).toEqual({
+    state: "unavailable",
+    attempt: 1,
+    retryAt: Date.now() + 250,
+  })
+  const status = vi.fn()
+  cleanups.add(fixture.api.subscribeConnectionStatus?.(status) ?? (() => undefined))
+  expect(status).toHaveBeenLastCalledWith(fixture.api.getConnectionStatus?.())
+
+  await vi.advanceTimersByTimeAsync(250)
+
+  expect(status).toHaveBeenLastCalledWith({ state: "unavailable", attempt: 2, retryAt: null })
+  fixture.getSocket(1).dispatchEvent(new Event("open"))
+  expect(status).toHaveBeenLastCalledWith({ state: "connected", attempt: 2, retryAt: null })
+})
+
+test("retry now replaces the current stalled handshake instead of waiting for its deadline", async () => {
+  const fixture = makeClient()
+  await vi.advanceTimersByTimeAsync(0)
+  fixture.getSocket(0).dispatchEvent(new Event("open"))
+  fixture.getSocket(0).dispatchEvent(new Event("close"))
+  await vi.advanceTimersByTimeAsync(250)
+  const stalled = fixture.getSocket(1)
+
+  fixture.api.retryConnection?.()
+  await vi.advanceTimersByTimeAsync(0)
+
+  expect(stalled.close).toHaveBeenCalledOnce()
+  expect(fixture.getSocketCount()).toBe(3)
+  expect(fixture.api.getConnectionStatus?.()).toEqual({ state: "unavailable", attempt: 3, retryAt: null })
+})
+
+test("device offline pauses attempts until the online signal and removes the offline listener on teardown", async () => {
+  const fixture = makeClient()
+  await vi.advanceTimersByTimeAsync(0)
+  fixture.getSocket(0).dispatchEvent(new Event("open"))
+  const online = makeOnlineSignal(false)
+  cleanups.add(online.restore)
+
+  window.dispatchEvent(new Event("offline"))
+  await vi.advanceTimersByTimeAsync(10_000)
+
+  expect(fixture.api.getConnectionStatus?.()).toEqual({ state: "offline", attempt: 1, retryAt: null })
+  expect(fixture.getSocketCount()).toBe(1)
+  expect(fixture.getSocket(0).close).toHaveBeenCalledOnce()
+
+  online.setOnline(true)
+  window.dispatchEvent(new Event("online"))
+  await vi.advanceTimersByTimeAsync(0)
+  fixture.getSocket(1).dispatchEvent(new Event("open"))
+
+  expect(fixture.api.getConnectionStatus?.()).toEqual({ state: "connected", attempt: 2, retryAt: null })
+  fixture.stop()
+  online.setOnline(false)
+  window.dispatchEvent(new Event("offline"))
+  expect(fixture.api.getConnectionStatus?.().state).toBe("connected")
+})
+
+test("a rejected session stops retries and only an explicit access check can reconnect", async () => {
+  const fixture = makeClient()
+  await vi.advanceTimersByTimeAsync(0)
+  fixture.getSocket(0).dispatchEvent(new Event("open"))
+  fixture.fetchImpl.mockImplementation(async () => Response.json({ errorCode: "UNAUTHORIZED" }, { status: 401 }))
+
+  await expect(fixture.api.request("GET /session", {})).rejects.toMatchObject({ status: 401 })
+
+  expect(fixture.api.getConnectionStatus?.()).toEqual({ state: "session-expired", attempt: 1, retryAt: null })
+  expect(fixture.getSocket(0).close).toHaveBeenCalledOnce()
+  const reads = fixture.fetchImpl.mock.calls.length
+  window.dispatchEvent(new Event("online"))
+  document.dispatchEvent(new Event("visibilitychange"))
+  await vi.advanceTimersByTimeAsync(10_000)
+  await expect(fixture.api.request("GET /bots", {})).rejects.toMatchObject({ status: 401 })
+  expect(fixture.fetchImpl).toHaveBeenCalledTimes(reads)
+  expect(fixture.getSocketCount()).toBe(1)
+
+  fixture.api.retryConnection?.()
+  await vi.advanceTimersByTimeAsync(0)
+
+  expect(fixture.api.getConnectionStatus?.().state).toBe("session-expired")
+  expect(fixture.getSocketCount()).toBe(1)
+  fixture.fetchImpl.mockImplementation(async () => getHealthyResponse())
+  fixture.api.retryConnection?.()
+  await vi.advanceTimersByTimeAsync(0)
+  fixture.getSocket(1).dispatchEvent(new Event("open"))
+
+  expect(fixture.api.getConnectionStatus?.().state).toBe("connected")
+})
+
+test("a forbidden resource is not mistaken for a revoked device session", async () => {
+  const fixture = makeClient()
+  await vi.advanceTimersByTimeAsync(0)
+  fixture.getSocket(0).dispatchEvent(new Event("open"))
+  fixture.fetchImpl.mockImplementation(async () => Response.json({ errorCode: "FORBIDDEN" }, { status: 403 }))
+
+  await expect(fixture.api.request("GET /bots", {})).rejects.toMatchObject({ status: 403 })
+
+  expect(fixture.api.getConnectionStatus?.().state).toBe("connected")
+  expect(fixture.getSocket(0).close).not.toHaveBeenCalled()
+})
+
+test("a rejected socket ticket requires pairing rather than repeatedly retrying auth", async () => {
+  const fixture = makeClient()
+  await vi.advanceTimersByTimeAsync(0)
+  fixture.getSocket(0).dispatchEvent(new Event("open"))
+  fixture.fetchImpl.mockImplementation(async (url) => {
+    if (String(url).endsWith("/ws-ticket")) return Response.json({ errorCode: "UNAUTHORIZED" }, { status: 401 })
+    return getHealthyResponse()
+  })
+
+  fixture.getSocket(0).dispatchEvent(new Event("close"))
+  await vi.advanceTimersByTimeAsync(5000)
+
+  expect(fixture.api.getConnectionStatus?.().state).toBe("session-expired")
+  expect(fixture.getSocketCount()).toBe(1)
+  expect(fixture.connection).toHaveBeenLastCalledWith(false, "UNAUTHORIZED")
+})
+
+test("the local shell refreshes a rotated service token without asking for remote pairing", async () => {
+  const endpoint = { baseUrl: "http://localhost:1234", wsUrl: "ws://localhost:1234/events", token: "local-token" }
+  const resolveEndpoint = vi.fn(async () => Object.assign({}, endpoint, { token: "rotated-local-token" }))
+  const fixture = makeClient({ endpoint, resolveEndpoint })
+  await vi.advanceTimersByTimeAsync(0)
+  fixture.getSocket(0).dispatchEvent(new Event("open"))
+  fixture.fetchImpl.mockImplementationOnce(async () => Response.json({ errorCode: "UNAUTHORIZED" }, { status: 401 }))
+
+  await expect(fixture.api.request("GET /health", {})).rejects.toMatchObject({ status: 401 })
+  await vi.advanceTimersByTimeAsync(250)
+  fixture.getSocket(1).dispatchEvent(new Event("open"))
+
+  expect(resolveEndpoint).toHaveBeenCalledOnce()
+  expect(fixture.api.getConnectionStatus?.().state).toBe("connected")
+  expect(fixture.connection).not.toHaveBeenCalledWith(false, "UNAUTHORIZED")
+})
+
+test("a stalled native endpoint lookup has bounded waits and one underlying lookup", async () => {
+  const resolveEndpoint = vi.fn(() => new Promise<Endpoint>(() => undefined))
+  const fixture = makeClient({ resolveEndpoint })
+  await vi.advanceTimersByTimeAsync(0)
+  fixture.getSocket(0).dispatchEvent(new Event("open"))
+
+  fixture.getSocket(0).dispatchEvent(new Event("close"))
+  await vi.advanceTimersByTimeAsync(5000)
+
+  expect(resolveEndpoint).toHaveBeenCalledOnce()
+  expect(fixture.api.getConnectionStatus?.().attempt).toBeGreaterThan(2)
+  fixture.stop()
+  await vi.advanceTimersByTimeAsync(5000)
+  expect(vi.getTimerCount()).toBe(0)
+})
+
+test("native vault recovery keeps its trusted error identifier available to settings", async () => {
+  const resolveEndpoint = vi.fn(async () => {
+    throw new Error("VAULT_LOCKED")
+  })
+  const fixture = makeClient({ resolveEndpoint })
+  await vi.advanceTimersByTimeAsync(0)
+  fixture.getSocket(0).dispatchEvent(new Event("open"))
+
+  fixture.getSocket(0).dispatchEvent(new Event("close"))
+  await vi.advanceTimersByTimeAsync(250)
+
+  expect(fixture.api.getConnectionStatus?.()).toMatchObject({ state: "unavailable", errorCode: "VAULT_LOCKED" })
+})
+
+const getHealthyResponse = () => Response.json({ ok: true, schemaVersion: 46, protocolVersion: 1, ticket: "fixture" })
+
+const makeClient = (options: { resolveEndpoint?: () => Promise<Endpoint>; endpoint?: Endpoint } = {}) => {
   vi.useFakeTimers()
   const sockets = new Map<number, Socket>()
   // The fake records browser-owned socket creation and closure at the transport boundary.
@@ -136,13 +310,16 @@ const makeClient = () => {
     }
   }
   vi.stubGlobal("WebSocket", Socket)
-  const fetchImpl = vi.fn(async () =>
-    Response.json({ ok: true, schemaVersion: 46, protocolVersion: 1, ticket: "fixture" }),
+  const fetchImpl = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => getHealthyResponse())
+  const api = createApiClient(
+    Object.assign(
+      {
+        endpoint: { baseUrl: "https://server.example", wsUrl: "wss://server.example/api/v1/events", token: "" },
+        fetchImpl,
+      },
+      options,
+    ),
   )
-  const api = createApiClient({
-    endpoint: { baseUrl: "https://server.example", wsUrl: "wss://server.example/api/v1/events", token: "" },
-    fetchImpl,
-  })
   const connection = vi.fn()
   api.subscribeConnection?.(connection)
   const stop = api.subscribe(vi.fn())
@@ -164,4 +341,16 @@ const makeClient = () => {
 const hideDocument = () => {
   const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden")
   cleanups.add(() => visibility.mockRestore())
+}
+
+// The browser owns this read-only signal; the fixture exposes its restore function for teardown.
+const makeOnlineSignal = (initial: boolean) => {
+  const online = vi.spyOn(navigator, "onLine", "get").mockReturnValue(initial)
+
+  return {
+    setOnline: (value: boolean): void => {
+      online.mockReturnValue(value)
+    },
+    restore: () => online.mockRestore(),
+  }
 }

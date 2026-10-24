@@ -232,14 +232,14 @@ it("never replays a confirmed write on review or resume", () => {
   fireEvent.click(screen.getByRole("button", { name: "Retomar tarefa" }))
   expect(retry).not.toHaveBeenCalled()
 })
-it("reconciles lost send acknowledgements with the same nonce and stops permanent failures", async () => {
+it("reconciles lost send acknowledgements with the same nonce and stops permanent permission failures", async () => {
   vi.useFakeTimers()
   const saved = new Map<string, string>()
   const inputs: unknown[] = []
   const request = vi.fn(async (_route, input) => {
     inputs.push(structuredClone(input))
     if (inputs.length === 1) throw new ApiError(0, "", undefined, "TOURI-E1010")
-    throw new ApiError(401, "Unauthorized")
+    throw new ApiError(403, "Forbidden")
   })
   const journal = createSendJournal({
     request: request as never,

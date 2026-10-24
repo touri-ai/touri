@@ -41,6 +41,20 @@ export const ptBR = {
   "Uma revisão está pronta. Abra a conversa para conferir.": "Uma revisão está pronta. Abra a conversa para conferir.",
   "Você tem um novo aviso. Abra o touri para conferir.": "Você tem um novo aviso. Abra o touri para conferir.",
   "Reconectando…": "Reconectando…",
+  "Este aparelho está sem internet. Conecte-se à rede; a reconexão é automática.":
+    "Este aparelho está sem internet. Conecte-se à rede; a reconexão é automática.",
+  "A sessão expirou ou o acesso foi revogado. Pareie novamente e verifique o acesso aqui. Mensagens pendentes e histórico são mantidos.":
+    "A sessão expirou ou o acesso foi revogado. Pareie novamente e verifique o acesso aqui. Mensagens pendentes e histórico são mantidos.",
+  "Conectado. Este bot não tem tarefa em execução. Envie uma mensagem para começar.":
+    "Conectado. Este bot não tem tarefa em execução. Envie uma mensagem para começar.",
+  "Conectado ao servidor.": "Conectado ao servidor.",
+  "Servidor indisponível. Tentativa {attempt} falhou. Nova tentativa automática agendada. Confira se o servidor está ligado.":
+    "Servidor indisponível. Tentativa {attempt} falhou. Nova tentativa automática agendada. Confira se o servidor está ligado.",
+  "Conectando ao servidor. Tentativa {attempt} em andamento. Aguarde ou confira a rede e o servidor.":
+    "Conectando ao servidor. Tentativa {attempt} em andamento. Aguarde ou confira a rede e o servidor.",
+  "Parear novamente": "Parear novamente",
+  "Verificar acesso": "Verificar acesso",
+  "Tentar agora": "Tentar agora",
   "Esta versão do aplicativo precisa de uma atualização para conversar com o servidor.":
     "Esta versão do aplicativo precisa de uma atualização para conversar com o servidor.",
   "Atualizando…": "Atualizando…",
@@ -3443,6 +3457,20 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Uma revisão está pronta. Abra a conversa para conferir.": "A review is ready. Open the conversation to check it.",
   "Você tem um novo aviso. Abra o touri para conferir.": "You have a new notification. Open touri to check it.",
   "Reconectando…": "Reconnecting…",
+  "Este aparelho está sem internet. Conecte-se à rede; a reconexão é automática.":
+    "This device is offline. Connect to a network; reconnection is automatic.",
+  "A sessão expirou ou o acesso foi revogado. Pareie novamente e verifique o acesso aqui. Mensagens pendentes e histórico são mantidos.":
+    "The session expired or access was revoked. Pair again, then check access here. Pending messages and history are kept.",
+  "Conectado. Este bot não tem tarefa em execução. Envie uma mensagem para começar.":
+    "Connected. This bot has no task running. Send a message to get started.",
+  "Conectado ao servidor.": "Connected to the server.",
+  "Servidor indisponível. Tentativa {attempt} falhou. Nova tentativa automática agendada. Confira se o servidor está ligado.":
+    "Server unavailable. Attempt {attempt} failed. An automatic retry is scheduled. Check that the server is on.",
+  "Conectando ao servidor. Tentativa {attempt} em andamento. Aguarde ou confira a rede e o servidor.":
+    "Connecting to the server. Attempt {attempt} is in progress. Wait or check the network and server.",
+  "Parear novamente": "Pair again",
+  "Verificar acesso": "Check access",
+  "Tentar agora": "Try now",
   "Esta versão do aplicativo precisa de uma atualização para conversar com o servidor.":
     "This app version needs an update to connect to the server.",
   "Atualizando…": "Updating…",

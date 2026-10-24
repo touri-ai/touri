@@ -72,6 +72,8 @@ for (const mode of ["desktop", "web"] as const) {
 
     await server.stop()
     await expect(status).toBeVisible()
+    await expect(status).toHaveAttribute("data-connection-reason", "unavailable")
+    await expect(status).toContainText(/Tentativa \d+/)
     await expect(composer).toHaveValue("Rascunho fictício: continuar depois da atualização.")
     await info.attach(`${mode}-reconnecting`, {
       body: await page.screenshot({ path: resolve(evidence, `${mode}-reconnecting.png`) }),
@@ -79,8 +81,10 @@ for (const mode of ["desktop", "web"] as const) {
     })
     // Reach the capped retry interval before making the server available again.
     await expect.poll(() => failedHealthReads, { timeout: 15_000 }).toBeGreaterThanOrEqual(4)
+    expect(Number(await status.getAttribute("data-connection-attempt"))).toBeGreaterThan(1)
     const readyAt = await server.start()
     await expect(status).toBeHidden({ timeout: 2900 })
+    await expect(page.locator('[data-connection-reason="connected"]')).toBeVisible()
     const reconnectMs = performance.now() - readyAt
 
     expect(reconnectMs).toBeLessThan(3000)

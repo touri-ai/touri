@@ -2,6 +2,7 @@ import type { Message, Run, SendMessageInput, UiEvent } from "@touri/contracts"
 import { ApiError } from "../errors"
 import { scopedStorageKey } from "../storageScope"
 import type { ApiRequest } from "./client"
+import { isSessionRejected } from "./connectionStatus"
 
 type PendingSend = { input: SendMessageInput & { clientNonce: string; deadline: number }; message: Message }
 const STORAGE_KEY = "touri.send-journal.v1"
@@ -91,6 +92,13 @@ export const createSendJournal = ({
           if (response.run) emit({ type: "run.updated", run: response.run })
           retryDelay = 500
         } catch (error) {
+          if (isSessionRejected(error)) {
+            // The journal owns this serial drain; pairing must finish before it can resume.
+            connected = false
+            clearTimeout(retryTimer)
+            retryTimer = undefined
+            break
+          }
           if (error instanceof ApiError && error.status >= 400 && error.status < 500) status(entry, "failed")
           // Keep sent when acknowledgement was lost. Reconnect retries this exact nonce and deadline.
           else if (entries.includes(entry)) {
