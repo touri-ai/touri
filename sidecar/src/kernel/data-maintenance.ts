@@ -475,11 +475,11 @@ export const createStorageMaintenance = ({
   }
   const step = async () => {
     if (stopped) return
-    if (historyMigrationStatus(database).running) {
-      timer = schedule(step, 100)
-      return
-    }
     try {
+      if (historyMigrationStatus(database).running) {
+        timer = schedule(step, 100)
+        return
+      }
       if (upgrade.snapshot()) {
         status = upgrade.snapshot() ?? status
         const pending = runStage ? await runStage("storage_upgrade_batch", upgrade.step) : await upgrade.step()
