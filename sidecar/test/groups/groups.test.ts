@@ -231,6 +231,7 @@ const fixture = async (
   }
   cleanups.push(async () => {
     runtime.shutdown()
+    await runtime.waitForDrain()
     await until(
       () =>
         !db
@@ -772,7 +773,10 @@ test("draining finishes the active group turn and replays waiting turns in order
   expect(f.order).toHaveLength(1)
 
   const restarted = createGroupRuntime(f.host.kernel, f.engine)
-  cleanups.unshift(() => restarted.shutdown())
+  cleanups.unshift(async () => {
+    restarted.shutdown()
+    await restarted.waitForDrain()
+  })
   await until(() => waiting.every((run) => f.persistence.getRun(run.id)?.status === "succeeded"))
 
   expect(f.order).toEqual(Array.from({ length: 3 }, () => f.bots[0]?.id ?? ""))
@@ -804,7 +808,10 @@ test("disabled automatic resume keeps a linked interruption actionable without a
   cleanups.unshift(() => sync.dispose())
 
   const restarted = createGroupRuntime(f.host.kernel, f.engine, 30_000)
-  cleanups.unshift(() => restarted.shutdown())
+  cleanups.unshift(async () => {
+    restarted.shutdown()
+    await restarted.waitForDrain()
+  })
   await restarted.waitForDrain()
   const tasks = await sync({ silent: true })
 
@@ -842,7 +849,10 @@ test("disabled automatic resume still restores ordinary queued requests in order
   await until(() => f.persistence.getRun(interrupted.id)?.status === "interrupted")
 
   const restarted = createGroupRuntime(f.host.kernel, f.engine, 30_000)
-  cleanups.unshift(() => restarted.shutdown())
+  cleanups.unshift(async () => {
+    restarted.shutdown()
+    await restarted.waitForDrain()
+  })
   await until(() => f.persistence.getRun(second.id)?.status === "succeeded")
 
   expect(f.persistence.getRun(first.id)?.status).toBe("succeeded")
@@ -889,7 +899,10 @@ test("restart continues an interrupted request before a queued request to the sa
   cleanups.unshift(dispose)
 
   const restarted = createGroupRuntime(f.host.kernel, f.engine, 30_000)
-  cleanups.unshift(() => restarted.shutdown())
+  cleanups.unshift(async () => {
+    restarted.shutdown()
+    await restarted.waitForDrain()
+  })
 
   const continuation = f.db
     .query("SELECT r.* FROM runs r JOIN run_continuations c ON c.run_id=r.id WHERE c.previous_run_id=?")
@@ -940,7 +953,10 @@ test("restart restores independent interrupted members after an unrelated member
   await until(() => [first, second].every((run) => f.persistence.getRun(run.id)?.status === "interrupted"))
   restarting = true
   const restarted = createGroupRuntime(f.host.kernel, f.engine, 30_000)
-  cleanups.unshift(() => restarted.shutdown())
+  cleanups.unshift(async () => {
+    restarted.shutdown()
+    await restarted.waitForDrain()
+  })
 
   const continuations = f.db
     .query(
@@ -978,7 +994,10 @@ test("a later completed request to the same member still supersedes an interrupt
   f.persistence.saveRun({ ...second, status: "succeeded", startedAt: Date.now(), finishedAt: Date.now() })
 
   const restarted = createGroupRuntime(f.host.kernel, f.engine, 30_000)
-  cleanups.unshift(() => restarted.shutdown())
+  cleanups.unshift(async () => {
+    restarted.shutdown()
+    await restarted.waitForDrain()
+  })
   await restarted.waitForDrain()
 
   expect(f.db.query("SELECT COUNT(*) AS count FROM run_continuations").get()).toEqual({ count: 0 })
@@ -1015,7 +1034,10 @@ test("startup fails queued group turns whose group or conversation was removed",
     f.db.exec("PRAGMA foreign_keys = ON")
 
     const restarted = createGroupRuntime(f.host.kernel, f.engine)
-    cleanups.unshift(() => restarted.shutdown())
+    cleanups.unshift(async () => {
+    restarted.shutdown()
+    await restarted.waitForDrain()
+  })
 
     expect(f.persistence.getRun(run.id)).toMatchObject({
       status: "failed",
@@ -2073,7 +2095,10 @@ test("a waiting group routine keeps its original timeout after restart", async (
   f.db.query("UPDATE routine_runs SET started_at = ? WHERE id = ?").run(Date.now() - 60_001, started.routineRun.id)
 
   const restarted = createGroupRuntime(f.host.kernel, f.engine)
-  cleanups.unshift(() => restarted.shutdown())
+  cleanups.unshift(async () => {
+    restarted.shutdown()
+    await restarted.waitForDrain()
+  })
   await until(() => f.persistence.getRun(runId)?.status === "failed")
 
   expect(f.persistence.getRun(active.id)?.status).toBe("succeeded")
