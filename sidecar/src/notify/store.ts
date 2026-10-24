@@ -154,6 +154,34 @@ export const createNotificationStore = ({ db, now = Date.now }: { db: Database; 
   const recent = (limit: number): Array<NotificationRecord> =>
     (db.query(`${SELECT} ORDER BY n.id DESC LIMIT ?`).all(limit) as Array<Row>).map(asRecord)
 
+  const getForPerson = (personId: string, notifications: ReadonlyArray<NotificationRecord>): NotificationRecord[] => {
+    if (notifications.length === 0) return []
+
+    const placeholders = notifications.map(() => "?").join(",")
+    const statement = db.query(`SELECT notification_id, read_at FROM notification_reads
+      WHERE person_id = ? AND notification_id IN (${placeholders})`)
+    const personBindings: Array<string | number> = [personId]
+    const bindings = personBindings.concat(notifications.map((item) => item.id))
+    const receipts = statement.all.apply(statement, bindings) as Array<{ notification_id: number; read_at: number }>
+    const readAtById = new Map(receipts.map((receipt) => [receipt.notification_id, receipt.read_at]))
+
+    return notifications.map((item) => Object.assign({}, item, { readAt: readAtById.get(item.id) ?? null }))
+  }
+
+  const markRead = (personId: string, notifications: ReadonlyArray<NotificationRecord>): NotificationRecord[] => {
+    const readAt = now()
+    const insert = db.query(
+      "INSERT OR IGNORE INTO notification_reads(person_id, notification_id, read_at) VALUES (?, ?, ?)",
+    )
+    db.transaction(() => {
+      notifications.forEach((notification) => {
+        insert.run(personId, notification.id, readAt)
+      })
+    })()
+
+    return getForPerson(personId, notifications)
+  }
+
   const lastSeq = (): number => {
     const row = db.query("SELECT COALESCE(MAX(seq), 0) AS seq FROM notification_log").get() as { seq: number }
     return row.seq
@@ -183,6 +211,8 @@ export const createNotificationStore = ({ db, now = Date.now }: { db: Database; 
     pending,
     getUnresolvedAttention,
     recent,
+    getForPerson,
+    markRead,
     lastSeq,
     logSince,
   }

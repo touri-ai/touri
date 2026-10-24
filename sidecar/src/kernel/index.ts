@@ -587,7 +587,9 @@ export const createKernel = ({
           const filter = person
             ? (event: UiEvent) =>
                 services.use("work.visibleEvent")?.({ personId: person.id, role: person.role, event }) ?? false
-            : undefined
+            : (event: UiEvent) =>
+                event.type !== "notifications.read" ||
+                event.personId === (services.use("work.defaultPersonId")?.() ?? "owner")
           bus.add(guarded, socket.data.since, filter)
         }
       },

@@ -36,7 +36,7 @@ test("schema 49 enables fast conversation without replaying earlier migrations a
     name: "Fixture",
     fast_conversation: 1,
   })
-  expect(migrated.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({ value: "51" })
+  expect(migrated.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({ value: "52" })
   migrated.exec("UPDATE bots SET fast_conversation=0")
   migrated.close()
   databases.delete(migrated)
@@ -63,7 +63,7 @@ test.each(["47", "48", "49", "50"])(
     databases.add(migrated)
 
     expect(migrated.query("SELECT fast_conversation FROM bots").get()).toEqual({ fast_conversation: 0 })
-    expect(migrated.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({ value: "51" })
+    expect(migrated.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({ value: "52" })
     expect(migrated.query("SELECT count(*) AS total FROM push_devices").get()).toEqual({ total: 0 })
     expect(migrated.query("SELECT count(*) AS total FROM push_deliveries").get()).toEqual({ total: 0 })
   },

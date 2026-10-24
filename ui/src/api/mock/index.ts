@@ -26,7 +26,7 @@ import type {
   UiEvent,
   UiEventEnvelope,
 } from "@touri/contracts"
-import { toolCatalog } from "@touri/contracts"
+import { canMarkNotificationRead, toolCatalog } from "@touri/contracts"
 import { avatarColorFor, avatarShapeFor } from "@touri/contracts/avatar"
 import rootPackage from "../../../../package.json"
 import seedJson from "../../../../sidecar/test/fixtures/ui-seed.json"
@@ -640,7 +640,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     const current = notifications[index]
     if (!current || current.resolvedAt !== null) return current ?? null
     const next: NotificationRecord = { ...current, resolvedAt: now(), resolution }
-    notifications[index] = next
+    notifications = notifications.map((item) => (item.id === id ? next : item))
     emit({ type: "notification.resolved", notification: next })
     return next
   }
@@ -664,7 +664,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       resolution: null,
       ...input,
     }
-    notifications.push(record)
+    notifications = notifications.concat(record)
     emit({ type: "notification.created", notification: record })
     return record
   }
@@ -1789,6 +1789,31 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
         notifications: notifications.filter((item) => item.resolvedAt === null),
         lastSeq: notifications.length,
       } as ApiRoutes[typeof route]["res"]
+    if (key === "POST /notifications/read") {
+      const body = input as ApiRoutes["POST /notifications/read"]["req"]
+      if (
+        Object.keys(body).some((key) => key !== "ids") ||
+        !Array.isArray(body.ids) ||
+        body.ids.length > 500 ||
+        body.ids.some((id) => !Number.isSafeInteger(id) || id <= 0) ||
+        new Set(body.ids).size !== body.ids.length
+      )
+        throw new Error("Invalid notification IDs")
+
+      const found = notifications.filter((item) => body.ids.includes(item.id))
+      if (found.length !== body.ids.length) throw new Error("Notification not found")
+      const skippedIds = found.filter((item) => !canMarkNotificationRead(item)).map((item) => item.id)
+      const readable = new Set(found.filter(canMarkNotificationRead).map((item) => item.id))
+      const readAt = now()
+      notifications = notifications.map((item) =>
+        readable.has(item.id) ? Object.assign({}, item, { readAt: item.readAt ?? readAt }) : item,
+      )
+      const updated = notifications.filter((item) => readable.has(item.id))
+      const receipts = updated.map((item) => ({ notificationId: item.id, readAt: item.readAt ?? readAt }))
+      if (receipts.length > 0) emit({ type: "notifications.read", personId: "owner", receipts })
+
+      return { notifications: updated, skipped: skippedIds.length, skippedIds } as ApiRoutes[typeof route]["res"]
+    }
     if (key === "POST /notifications/:id/dismiss") {
       const hasProtectedTask = getRecoveryTasks().some(
         (task) =>

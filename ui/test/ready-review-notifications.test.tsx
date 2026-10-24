@@ -136,7 +136,7 @@ it("retains the resolved review, its origin and its conversation action in histo
   fireEvent.click(screen.getByRole("button", { name: /Notificações/ }))
 
   await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: "Marcar como lida" }))
+    fireEvent.click(screen.getByRole("button", { name: "Dispensar" }))
   })
   const resolved = getReview({ resolvedAt: now + 1, resolution: "dismissed" })
   view.rerender(<NotificationBell notifications={[resolved]} actions={actions} now={now} {...origin} />)
@@ -148,7 +148,7 @@ it("retains the resolved review, its origin and its conversation action in histo
   expect(row).toHaveAttribute("data-unread", "false")
   expect(within(row).getByText("Resolvido")).toBeVisible()
   expect(within(row).getByText("Conversa de origem: #avisos · Revisão da alteração fictícia")).toBeVisible()
-  expect(within(row).queryByRole("button", { name: "Marcar como lida" })).toBeNull()
+  expect(within(row).queryByRole("button", { name: "Dispensar" })).toBeNull()
 
   fireEvent.click(within(row).getByRole("button", { name: "Ver conversa" }))
 
@@ -182,7 +182,7 @@ it("opens a channel without bots and restores resolved reviews after remounting 
   fireEvent.click(screen.getByRole("button", { name: "Notificações, 1 precisa de atenção" }))
   fireEvent.click(
     within(screen.getByRole("region", { name: "Central de notificações" })).getByRole("button", {
-      name: "Marcar como lida",
+      name: "Dispensar",
     }),
   )
 
