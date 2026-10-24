@@ -6,6 +6,7 @@ import { join } from "node:path"
 import type { ReportInput, Run } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
 import { buildReport } from "../../src/reports/bundle"
+import { getMaximum, getMedian } from "../fakes/latency"
 
 const cleanups = new Set<() => Promise<void>>()
 
@@ -20,7 +21,7 @@ test.each(["queued", "running", "succeeded", "canceled"] as const)(
     const root = await mkdtemp(join(tmpdir(), "touri-report-identity-"))
     const runtime = createKernel({ appData: root })
     cleanups.add(async () => {
-      runtime.stop()
+      await runtime.stop()
       await rm(root, { recursive: true, force: true })
     })
     const db = runtime.kernel.db as Database
@@ -48,7 +49,52 @@ test.each(["queued", "running", "succeeded", "canceled"] as const)(
   },
 )
 
+test("recent report identity stays within the history lookup CPU budget", async () => {
+  const root = await mkdtemp(join(tmpdir(), "touri-report-history-"))
+  const runtime = createKernel({ appData: root })
+  cleanups.add(async () => {
+    await runtime.stop()
+    await rm(root, { recursive: true, force: true })
+  })
+  const db = runtime.kernel.db as Database
+  saveRuns(db, "running")
+  db.exec(`WITH RECURSIVE history(position) AS (
+      VALUES(1) UNION ALL SELECT position + 1 FROM history WHERE position < 50000
+    ) INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at)
+      SELECT 'history-' || position,'direct','bot','codex','user','succeeded',-position FROM history`)
+  const input = getReportInput(["runs"])
+  await buildReport(runtime.kernel, input)
+
+  const samples = await getReportCpuSamples(() => buildReport(runtime.kernel, input))
+  const snapshot = await buildReport(runtime.kernel, input)
+
+  const diagnostics = snapshot.report.diagnostics as { runs: Array<{ id: string; kind: string }> }
+  expect(diagnostics.runs).toHaveLength(20)
+  expect(diagnostics.runs.slice(0, 3).map(({ id }) => id)).toEqual(["direct", "member", "coordination"])
+  expect(diagnostics.runs.at(-1)?.id).toBe("history-17")
+  expect(diagnostics.runs.find(({ id }) => id === "coordination")?.kind).toBe("coordination")
+  expect(getMedian(samples)).toBeLessThan(50)
+  expect(getMaximum(samples)).toBeLessThan(250)
+})
+
 const getProviderStartedAt = (status: Run["status"]): number | null => (status === "queued" ? null : 200)
+
+const getReportCpuSamples = async (getReport: () => Promise<unknown>, remaining = 15): Promise<number[]> => {
+  if (remaining === 0) return []
+
+  const reportStart = process.cpuUsage()
+  await getReport()
+  const report = getCpuMs(reportStart)
+  const rest = await getReportCpuSamples(getReport, remaining - 1)
+
+  return [report].concat(rest)
+}
+
+const getCpuMs = (start: ReturnType<typeof process.cpuUsage>): number => {
+  const usage = process.cpuUsage(start)
+
+  return (usage.user + usage.system) / 1000
+}
 
 const saveRuns = (db: Database, status: Run["status"]): void => {
   db.exec(`INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at)
@@ -68,7 +114,7 @@ const saveRuns = (db: Database, status: Run["status"]): void => {
   db.query("INSERT INTO group_run_links VALUES ('member','coordination',0)").run()
 }
 
-const getReportInput = (): ReportInput => ({
+const getReportInput = (parts: ReportInput["parts"] = ["states", "runs"]): ReportInput => ({
   title: "Demo report",
   happened: "Demo task",
   expected: "One execution",
@@ -77,7 +123,7 @@ const getReportInput = (): ReportInput => ({
   botId: null,
   threadId: null,
   errorCode: null,
-  parts: ["states", "runs"],
+  parts,
   images: [],
   repository: "",
 })

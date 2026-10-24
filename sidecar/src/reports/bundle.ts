@@ -152,14 +152,14 @@ export const buildReport = async (kernel: Kernel, input: ReportInput): Promise<R
     await collect("runs", () =>
       db
         .query(
-          `WITH recent AS MATERIALIZED (
-            SELECT id, bot_id, thread_id, status, error_class, queued_at, started_at, finished_at,
-              provider_started_at,
-              CASE WHEN finished_at IS NOT NULL AND started_at IS NOT NULL
-                THEN finished_at - started_at END AS duration_ms
-            FROM runs ORDER BY queued_at DESC LIMIT 20
+          `WITH recent AS (
+            SELECT id FROM runs ORDER BY queued_at DESC LIMIT 20
           )
-          SELECT r.*, ${runIdentityColumns} FROM recent r ORDER BY r.queued_at DESC`,
+          SELECT r.id, r.bot_id, r.thread_id, r.status, r.error_class, r.queued_at, r.started_at, r.finished_at,
+            CASE WHEN r.finished_at IS NOT NULL AND r.started_at IS NOT NULL
+              THEN r.finished_at - r.started_at END AS duration_ms,
+            ${runIdentityColumns}
+          FROM recent CROSS JOIN runs r WHERE r.id = recent.id ORDER BY r.queued_at DESC`,
         )
         .all(),
     )
