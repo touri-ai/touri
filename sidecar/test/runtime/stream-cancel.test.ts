@@ -35,6 +35,32 @@ test("the first reply word flushes immediately while later chunks remain batched
   fixture.finish()
 })
 
+test("leading whitespace does not consume the first readable reply flush", async () => {
+  const fixture = await getFixture()
+  const turn = await fixture.ready
+  const flush = spyOn(fixture.store, "flushWrites")
+  cleanups.add(() => flush.mockRestore())
+
+  turn.onEvent({ type: "text_delta", itemId: "reply", delta: " \n" })
+  await getReady(() => getReply(getMessages(fixture.frames))?.text === " \n")
+  flush.mockClear()
+  const startedAt = performance.now()
+  turn.onEvent({ type: "text_delta", itemId: "reply", delta: "Olá!" })
+  const firstWordFlushes = flush.mock.calls.length
+  turn.onEvent({ type: "text_delta", itemId: "reply", delta: " Como vai?" })
+
+  const laterChunkFlushes = flush.mock.calls.length
+  await getReady(() => getReply(getMessages(fixture.frames))?.text.includes("Olá!") === true)
+  if (process.env.TOURI_FIRST_READABLE_TIMING === "1")
+    console.log("FIRST_READABLE_TIMING", JSON.stringify({ deliveryMs: performance.now() - startedAt }))
+
+  expect(firstWordFlushes).toBe(1)
+  expect(laterChunkFlushes).toBe(1)
+  expect(getReply(getMessages(fixture.frames))?.text).toContain(" \nOlá!")
+  expect(fixture.engine.listRuns("thread")[0]?.status).toBe("running")
+  fixture.finish()
+})
+
 test("late provider text cannot add timing milestones after a turn finishes", async () => {
   const fixture = await getFixture()
   const turn = await fixture.ready

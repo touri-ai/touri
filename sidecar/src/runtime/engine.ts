@@ -101,6 +101,7 @@ type RunState = {
   replyParentId?: Id | undefined
   requestMessage: Message | null
   text: string
+  hasReadableText: boolean
   pendingText: Array<string>
   pendingPartText: Map<number, { type: "text" | "reasoning"; chunks: Array<string> }>
   textItemIds: Set<string>
@@ -795,6 +796,7 @@ export const createRuntimeEngine = ({
     if (state) return state
     const created: RunState = {
       text: "",
+      hasReadableText: false,
       pendingText: [],
       pendingPartText: new Map(),
       textItemIds: new Set(),
@@ -1156,6 +1158,8 @@ export const createRuntimeEngine = ({
       const separator = hasText && (!state.textItemIds.has(event.itemId) || last?.type !== "text") ? "\n\n" : ""
       state.textItemIds.add(event.itemId)
       const delta = separator + event.delta
+      const firstReadableText = !state.hasReadableText && /\S/.test(event.delta)
+      state.hasReadableText ||= firstReadableText
       const existing = last?.type === "text" ? last : undefined
       const partIndex = existing ? state.parts.length - 1 : state.parts.length
       if (state.replyMessageId) flushPendingPartPublish({ store, state, run })
@@ -1171,7 +1175,7 @@ export const createRuntimeEngine = ({
           ...(state.generation === null ? {} : { generation: state.generation }),
         })
         // Send the first word to persistence immediately; later chunks keep the bounded batch cadence.
-        if (!hasText) store.flushWrites?.()
+        if (!hasText || firstReadableText) store.flushWrites?.()
       }
       return
     }
@@ -3913,6 +3917,7 @@ export const createRuntimeEngine = ({
         if (reply) {
           state.replyMessageId = reply.id
           state.text = reply.text
+          state.hasReadableText = /\S/.test(reply.text)
           state.pendingText = []
           state.pendingPartText.clear()
           state.parts = structuredClone(reply.parts)
