@@ -784,7 +784,9 @@ export const createCodexAdapter = ({
 
             pendingFrames = remaining
             pendingBytes -= pending.bytes
-            routeFrame(pending.frame, pending.bytes, true)
+            const dispatch = () => routeFrame(pending.frame, pending.bytes, true)
+            if (runStage) runStage("provider_frame_dispatch", () => runStage("provider_frame_route", dispatch))
+            else dispatch()
             if (!completed) await new Promise<void>((resolve) => setImmediate(resolve))
           }
           turnAcknowledged = true

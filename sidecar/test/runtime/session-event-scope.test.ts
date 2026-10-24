@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test"
 import type { Bot, Kernel, ProviderEvent, StartTurnArgs, Thread } from "@touri/contracts"
+import { createPerformanceStageTracker } from "../../src/kernel/performance"
 import { createCodexAdapter } from "../../src/runtime/codex/adapter"
 import { testKernel } from "../kernel/test-kernel"
 
@@ -39,6 +40,7 @@ test.each([0, 17])("process exit %s drains acknowledged buffered frames before s
       .map((event) => event.delta)
       .join(""),
   ).toBe("saved ".repeat(20))
+  expect(fixture.getAttributedText()).toBe("saved ".repeat(20))
   expect(result.success).toBe(code === 0)
   if (!result.success) expect(result.errorCode).toBe("cli_crash")
 })
@@ -368,7 +370,10 @@ const getForeignFrames = (scope: Frame): Frame[] => [
 
 const makeFixture = () => {
   const kernel = testKernel()
+  const stages = createPerformanceStageTracker()
   const events: ProviderEvent[] = []
+  const attributedText: string[] = []
+  let dispatchDepth = 0
   const requests: Frame[] = []
   const waiters = new Set<() => void>()
   const controller = new AbortController()
@@ -407,7 +412,21 @@ const makeFixture = () => {
       },
     }),
   })
-  const adapter = createCodexAdapter({ kernel: { ...kernel.kernel, spawnTree: spawn }, command: process.execPath })
+  const adapter = createCodexAdapter({
+    kernel: { ...kernel.kernel, spawnTree: spawn },
+    command: process.execPath,
+    runStage: (stage, action, input) => {
+      if (stage !== "provider_frame_dispatch") return stages.run(stage, action, input)
+
+      // The injected stage wrapper records synchronous dispatch ownership for buffered frames.
+      dispatchDepth += 1
+      try {
+        return stages.run(stage, action, input)
+      } finally {
+        dispatchDepth -= 1
+      }
+    },
+  })
   const args: StartTurnArgs = {
     bot: {
       provider: "codex",
@@ -428,6 +447,7 @@ const makeFixture = () => {
     signal: controller.signal,
     onEvent: (event) => {
       events.push(event)
+      if (event.type === "text_delta" && dispatchDepth > 0) attributedText.push(event.delta)
       waiters.forEach((notify) => {
         notify()
       })
@@ -450,6 +470,7 @@ const makeFixture = () => {
     args,
     controller,
     events,
+    getAttributedText: () => attributedText.join(""),
     requests,
     send,
     exit: (code: number) => {

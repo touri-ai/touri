@@ -1762,10 +1762,14 @@ also serves immediate reconnects, with cold references still read asynchronously
 waits for stdout parsing and acknowledged-turn replay before reporting failure, preserving partial
 text and the terminal outcome without accepting foreign sessions or turns. Failed history reads
 remain visible across workspace refreshes until a successful history read clears them. Bot details
-load on demand, keeping the existing initial compressed payload budget unchanged.
+load on demand within a closable panel, keeping the conversation visible and the existing initial
+compressed payload budget unchanged. Conversation layout styles remain available at startup. The
+phone close control receives focus when the loaded panel replaces its loading state.
 Internal control callbacks run after commit without waiting for cold transcript hydration; socket
 frames retain durable sequence order. Early callbacks are tracked individually, up to 2,000 pending
 callbacks; later publications cannot suppress an older committed callback. At that bound, remaining
 callbacks use normal durable delivery. Approval acknowledgements wait for committed card delivery.
+Runtime resync callbacks cancel stale work without waiting for cold history. Buffered provider
+replay retains the same dispatch performance attribution as live frames.
 Shutdown asks the stream worker to close SQLite and waits for its confirmation before releasing
 files, with a one-second fallback for an unresponsive worker.

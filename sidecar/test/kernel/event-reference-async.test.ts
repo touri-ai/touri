@@ -72,6 +72,23 @@ test("committed control callbacks do not wait behind cold history while socket o
   expect(local.filter((event) => event.type === "import.progress")).toEqual([marker])
 })
 
+test("runtime resync cancels stale work without waiting for cold history", async () => {
+  const fixture = await getFixture()
+  const read = Promise.withResolvers<UiEvent[]>()
+  const bus = createEventBus(fixture.database, undefined, { getReferenceEvents: () => read.promise })
+  cleanups.add(() => bus.stop())
+  const local: UiEvent[] = []
+  bus.subscribeRuntime(({ event }) => local.push(event))
+  fixture.saveReference()
+
+  bus.publish({ type: "transcript.resync" })
+
+  expect(local).toEqual([{ type: "transcript.resync" }])
+  read.resolve([getDelta()])
+  await bus.flushAsync()
+  expect(local.filter((event) => event.type === "transcript.resync")).toHaveLength(1)
+})
+
 test("an early control callback cannot suppress an older committed transaction callback", async () => {
   const fixture = await getFixture()
   const bus = createEventBus(fixture.database)
