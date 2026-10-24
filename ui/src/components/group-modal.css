@@ -119,7 +119,12 @@
   flex-shrink: 0;
 }
 .group-modal .group-member-picker label > span:not(.tb-avatar) {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 620px) {
+  .group-member-picker {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
