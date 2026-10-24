@@ -4,6 +4,7 @@ import App from "../src/App"
 import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { GroupSidebar } from "../src/components/Groups"
+import { ApiError } from "../src/errors"
 import { setStorageScope } from "../src/storageScope"
 import { useWorkspace } from "../src/useWorkspace"
 import { getWorkChannelCache, saveWorkChannelCache } from "../src/workChannelCache"
@@ -84,6 +85,82 @@ test("cached channel metadata is immediately available while the websocket curso
   expect(hook.result.current.data.selectedThreadId).toBe(thread.id)
   expect(hook.result.current.data.loaded).toBe(false)
   await act(async () => barrier.resolve())
+})
+
+test("saved channel history starts after the event cursor without waiting for the channel index", async () => {
+  const { api, group, thread } = await getChannelFixture()
+  saveWorkChannelCache({ groups: [group], threads: [thread], selectedThreadId: thread.id }, "owner")
+  const cursor = getBarrier()
+  const groups = getBarrier()
+  const requests: string[] = []
+  const request: ApiRequest = async (route, input, path, transport) => {
+    requests.push(route)
+    if (route === "GET /groups") await groups.promise
+    return api.request(route, input, path, transport)
+  }
+  const client = { ...api, request, cursorReady: () => cursor.promise }
+  const hook = renderHook(() => useWorkspace(client))
+
+  expect(hook.result.current.data.selectedThreadId).toBe(thread.id)
+  expect(requests).not.toContain("GET /threads/:id/messages")
+  await act(async () => cursor.resolve())
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe(thread.id))
+
+  expect(hook.result.current.data.loaded).toBe(false)
+  expect(requests.filter((route) => route === "GET /threads/:id/messages")).toHaveLength(1)
+  await act(async () => groups.resolve())
+  await waitFor(() => expect(hook.result.current.data.loaded).toBe(true))
+  expect(requests.filter((route) => route === "GET /threads/:id/messages")).toHaveLength(1)
+})
+
+test("cached channel metadata cannot publish a history read rejected by the server", async () => {
+  const { api, group, thread } = await getChannelFixture()
+  saveWorkChannelCache({ groups: [group], threads: [thread], selectedThreadId: thread.id }, "owner")
+  const groups = getBarrier()
+  const request: ApiRequest = async (route, input, path, transport) => {
+    if (route === "GET /groups") await groups.promise
+    if (route === "GET /threads/:id/messages" || route === "GET /threads/:id/runs")
+      throw new ApiError(404, "Not found", "NOT_FOUND")
+    return api.request(route, input, path, transport)
+  }
+  const client = Object.assign({}, api, { request })
+  const hook = renderHook(() => useWorkspace(client))
+
+  await waitFor(() => expect(hook.result.current.data.historyNotice).toBeTruthy())
+
+  expect(hook.result.current.data.historyThreadId).not.toBe(thread.id)
+  expect(hook.result.current.data.messages).toEqual([])
+  expect(hook.result.current.data.loaded).toBe(false)
+  await act(async () => groups.resolve())
+})
+
+test("leaving a cached conversation aborts its early readers and ignores a late snapshot", async () => {
+  const { api, group, thread } = await getChannelFixture()
+  const { thread: next } = await api.request(
+    "POST /groups/:id/threads",
+    { title: "Próxima conversa" },
+    { id: group.id },
+  )
+  saveWorkChannelCache({ groups: [group], threads: [thread, next], selectedThreadId: thread.id }, "owner")
+  const history = getBarrier()
+  const signals: AbortSignal[] = []
+  const request: ApiRequest = async (route, input, path, transport) => {
+    if (path?.id === thread.id && (route === "GET /threads/:id/messages" || route === "GET /threads/:id/runs")) {
+      if (transport?.signal) signals.push(transport.signal)
+      await history.promise
+    }
+    return api.request(route, input, path, transport)
+  }
+  const client = Object.assign({}, api, { request })
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(signals).toHaveLength(2))
+
+  act(() => hook.result.current.actions.selectThread(next.id))
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe(next.id))
+  await act(async () => history.resolve())
+
+  expect(signals.every((signal) => signal.aborted)).toBe(true)
+  expect(hook.result.current.data.historyThreadId).toBe(next.id)
 })
 
 test("unresolved identity loads authorized history without hydrating a person's channel cache", async () => {
