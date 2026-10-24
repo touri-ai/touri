@@ -25,7 +25,7 @@ test("maintenance defers a contended progress write without waiting on the event
     onError: () => {},
   })
   cleanups.add(async () => {
-    maintenance.dispose({ closing: true })
+    await maintenance.dispose({ closing: true })
     if (blocker.inTransaction) blocker.exec("ROLLBACK")
     blocker.close()
     database.close()
@@ -72,7 +72,7 @@ test("repeated storage contention backs off and resumes after the writer release
     },
   })
   cleanups.add(async () => {
-    maintenance.dispose({ closing: true })
+    await maintenance.dispose({ closing: true })
     if (blocker.inTransaction) blocker.exec("ROLLBACK")
     blocker.close()
     database.close()

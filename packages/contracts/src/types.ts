@@ -1712,7 +1712,7 @@ export type ServiceMap = {
   'approvals.approve': (input: { approvalId: Id; decision: 'approved' | 'denied'; standing?: boolean; message?: string; source?: 'card' | 'notification' }) => Promise<Result<{}, 'NOT_FOUND' | 'DENIED'>>
   'approvals.settle': (input: { approvalId: Id; decision: 'denied' | 'expired' }) => void
   'doctor': { start: () => void; dispose: () => void; snapshot: (refresh?: boolean) => DoctorReport; settled: () => Promise<void> }
-  'storage.maintenance': { scheduleSessionKeyRetry: () => void; start: (vacuum?: boolean) => boolean; snapshot: () => StorageMaintenanceStatus; dispose: (options?: { closing?: boolean }) => void }
+  'storage.maintenance': { scheduleSessionKeyRetry: () => void; start: (vacuum?: boolean) => boolean; snapshot: () => StorageMaintenanceStatus; dispose: (options?: { closing?: boolean }) => Promise<void> }
   'storage.botDeletion': { dispose: () => void }
   'notify.recovery': { ready: Promise<void>; dispose: () => Promise<void> }
   'storage.threadTitles': { dispose: () => void; getRoutineTitles: (threadIds: readonly Id[], signal: AbortSignal) => Promise<ReadonlyMap<Id, RoutineThreadTitle>> }

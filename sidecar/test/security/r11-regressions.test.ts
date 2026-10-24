@@ -19,8 +19,8 @@ const fixture = async ({ access, approvals }: { access: string; approvals: strin
   const root = mkdtempSync(join(tmpdir(), "touri-r11-regress-"))
   const runtime = createKernel({ appData: root })
   mkdirSync(join(root, "data"), { recursive: true })
-  cleanup.push(() => {
-    runtime.stop()
+  cleanup.push(async () => {
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
   await initStore(runtime.kernel)

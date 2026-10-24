@@ -251,6 +251,24 @@ test("kernel and database initialization refuse linked directories and SQLite co
   expect(readdirSync(outside)).toEqual([])
 })
 
+for (const suffix of ["", "-wal", "-shm", "-journal"]) {
+  for (const kind of ["symbolic", "hard"] as const) {
+    test(`database preparation rejects a ${kind} link for ${suffix || "the database"}`, () => {
+      const { root, outside } = fixture()
+      const external = join(outside, "original")
+      const path = join(root, "touri.db")
+      writeFileSync(external, "untouched", { mode: 0o600 })
+      if (kind === "symbolic") symlinkSync(external, `${path}${suffix}`)
+      else linkSync(external, `${path}${suffix}`)
+
+      expect(() => prepareDatabaseFile({ root, path })).toThrow()
+
+      expect(readFileSync(external, "utf8")).toBe("untouched")
+      expect(statSync(external).mode & 0o777).toBe(0o600)
+    })
+  }
+}
+
 test("secret persistence rejects linked keys and envelopes", async () => {
   const { root, outside } = fixture()
   symlinkSync(join(outside, "key"), join(root, "secrets.key"))

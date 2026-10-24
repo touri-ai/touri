@@ -8,11 +8,9 @@ import { createStorageMaintenance } from "../../src/kernel/data-maintenance"
 import { openDatabase } from "../../src/kernel/db"
 
 // Resource handles are registered locally for the test runner's teardown lifecycle.
-const cleanups = new Set<() => void>()
-afterEach(() => {
-  cleanups.forEach((cleanup) => {
-    cleanup()
-  })
+const cleanups = new Set<() => void | Promise<void>>()
+afterEach(async () => {
+  for (const cleanup of cleanups) await cleanup()
   cleanups.clear()
 })
 
@@ -51,8 +49,8 @@ const makeMaintenance = (retry: (signal: AbortSignal) => Promise<void>) => {
     onError,
   })
   cleanups.delete(fixture.close)
-  cleanups.add(() => {
-    maintenance.dispose()
+  cleanups.add(async () => {
+    await maintenance.dispose()
     fixture.close()
   })
   return { ...fixture, maintenance, onError, publishResync }
@@ -65,7 +63,7 @@ test("a failed key cleanup runs once while message compaction advances through s
   const fixture = makeMaintenance(retry)
 
   await waitUntil(() => fixture.maintenance.snapshot().processed === 151 && !fixture.maintenance.snapshot().running)
-  fixture.maintenance.dispose()
+  await fixture.maintenance.dispose()
 
   expect(retry).toHaveBeenCalledTimes(1)
   expect(fixture.onError).toHaveBeenCalledTimes(1)

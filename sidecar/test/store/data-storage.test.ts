@@ -42,7 +42,7 @@ const fixture = async () => {
   const runtime = createKernel({ appData: root })
   const stages = createPerformanceStageTracker(() => 0)
   // Async store setup must not let maintenance finish before the fixture is seeded.
-  runtime.kernel.services.use("storage.maintenance")?.dispose()
+  await runtime.kernel.services.use("storage.maintenance")?.dispose()
   await initStore(runtime.kernel, stages.run)
   const database = runtime.kernel.db as Database
   seed(database)
@@ -532,7 +532,7 @@ test("Doctor starts background compaction once; only explicit VACUUM shrinks all
     expect(f.database.query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" })
     expect(f.store.search({ q: "preservado", limit: 10 })).toHaveLength(1)
   } finally {
-    scheduled.maintenance.dispose()
+    await scheduled.maintenance.dispose()
     await f.close()
   }
 })
@@ -559,13 +559,13 @@ test("background maintenance resumes a committed cursor after restart without re
     expect(committed.running).toBe(true)
     expect(committed.processed).toBeGreaterThan(0)
     expect(committed.processed).toBeLessThan(1200)
-    initial.maintenance.dispose()
+    await initial.maintenance.dispose()
     await f.runtime.stop()
 
     resumed = createKernel({ appData: f.root })
     const next = resumed.kernel.services.use("storage.maintenance")
     expect(next?.snapshot().processed).toBe(committed.processed)
-    next?.dispose()
+    await next?.dispose()
     const database = resumed.kernel.db as Database
     scheduled = makeScheduledMaintenance({ database, root: f.root }, () => Bun.sleep(0), f.stages.run)
     await scheduled.runNext()
@@ -589,7 +589,7 @@ test("background maintenance resumes a committed cursor after restart without re
     })
     expect(database.query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" })
   } finally {
-    scheduled?.maintenance.dispose()
+    await scheduled?.maintenance.dispose()
     await resumed?.stop()
     await f.close()
   }

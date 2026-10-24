@@ -171,13 +171,13 @@ const measureBotDeletion = async (f: Awaited<ReturnType<typeof fixture>>, bot: B
 
 const makeCleanupFixture = async (collectBlobs = collectUnusedOutputBlobs) => {
   const workspace = await fixture({ collectBlobs })
-  workspace.runtime.kernel.services.use("storage.maintenance")?.dispose()
+  await workspace.runtime.kernel.services.use("storage.maintenance")?.dispose()
   const start = mock(() => true)
   workspace.runtime.kernel.services.provide("storage.maintenance", {
     start,
     scheduleSessionKeyRetry: () => {},
     snapshot: () => ({ running: false, processed: 0, total: 0 }),
-    dispose: () => {},
+    dispose: async () => {},
   })
   const bot = await workspace.create("Private cleanup", "local")
   const path = join(workspace.runtime.kernel.paths.attachmentsDir, "cleanup-private.png")

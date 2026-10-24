@@ -7,6 +7,7 @@ import {
   fchmodSync,
   fstatSync,
   fsyncSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -561,11 +562,33 @@ export const replacePrivateSymlink = ({ root, path, target }: { root: string; pa
 /** SQLite retains its own WAL/transaction protocol; never rename a live database. */
 export const prepareDatabaseFile = ({ root, path }: { root: string; path: string }): string => {
   if (process.platform === "win32") return nativeFileOperation<string>("database", { root, path })
-  for (const suffix of ["", "-wal", "-shm", "-journal"])
-    assertPrivateFile({ root, path: `${path}${suffix}`, mode: 0o600 })
+  for (const suffix of ["", "-wal", "-shm", "-journal"]) {
+    const target = `${path}${suffix}`
+    if (process.platform === "linux") {
+      const parts = pathParts(root, target)
+      const name = parts.at(-1)
+      if (!name) throw new TouriError("TOURI-E2000")
+      // Closing even a validation descriptor drops other SQLite connections' POSIX locks.
+      const mode = withDirectory(root, parts.slice(0, -1), (directory) => getDatabaseFileMode(directory, name))
+      if (mode === null || mode === 0o600) continue
+    }
+    assertPrivateFile({ root, path: target, mode: 0o600 })
+  }
   if (!existsSync(path)) atomicWriteFile({ root, path, content: "" })
   // Canonicalize only ancestors outside the app root (including macOS /var).
   // Keep the root and filename intact for SQLite's own NOFOLLOW checks.
   const absoluteRoot = resolve(root)
   return resolve(realpathSync(dirname(absoluteRoot)), basename(absoluteRoot), ...pathParts(root, path))
+}
+
+const getDatabaseFileMode = (directory: number, name: string): number | null => {
+  try {
+    // Resolve through the pinned parent and inspect the entry without opening or following it.
+    const stats = lstatSync(`/proc/self/fd/${directory}/${name}`)
+    if (!stats.isFile() || stats.nlink > 1) throw new TouriError("TOURI-E2000")
+    return stats.mode & 0o7777
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return null
+    throw error
+  }
 }
