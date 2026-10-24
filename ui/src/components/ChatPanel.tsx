@@ -751,7 +751,8 @@ export const VirtualMessageList = ({
                         ),
                     )}
                     recovered={
-                      runs.some(
+                      message.status === "failed" &&
+                      (runs.some(
                         (later) =>
                           later.threadId === message.threadId &&
                           later.status === "succeeded" &&
@@ -759,14 +760,15 @@ export const VirtualMessageList = ({
                           (later.finishedAt ?? later.startedAt ?? later.queuedAt) >
                             (run?.finishedAt ?? message.updatedAt),
                       ) ||
-                      allMessages.some(
-                        (later) =>
-                          later.threadId === message.threadId &&
-                          later.role === "assistant" &&
-                          later.status === "complete" &&
-                          (!run?.groupTurnId || isSameChannelRequest(run, runsById.get(later.runId ?? ""), runsById)) &&
-                          later.createdAt > (run?.finishedAt ?? message.updatedAt),
-                      )
+                        allMessages.some(
+                          (later) =>
+                            later.threadId === message.threadId &&
+                            later.role === "assistant" &&
+                            later.status === "complete" &&
+                            (!run?.groupTurnId ||
+                              isSameChannelRequest(run, runsById.get(later.runId ?? ""), runsById)) &&
+                            later.createdAt > (run?.finishedAt ?? message.updatedAt),
+                        ))
                     }
                     {...(api ? { api } : {})}
                     siblings={siblings}
