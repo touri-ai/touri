@@ -1026,3 +1026,35 @@ test("a background tab starts its preview deadline only when the reader returns"
   expect(startInlineFrameSource).toHaveBeenCalled()
   expect(screen.queryByText(/O navegador não enviou a prévia no prazo/)).toBeNull()
 })
+
+test("an unavailable session explains recovery without claiming browser control", async () => {
+  const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
+  const { request } = renderCard(parts, false)
+  await screen.findByRole("button", { name: "Assumir" })
+  request.mockImplementation(async (route: string) => {
+    if (route === "GET /browser/tabs")
+      return { tabs: [Object.assign({}, tab, { state: "unloaded", heldByUser: true })] }
+    if (route === "POST /browser/tabs/:id/takeover/session")
+      throw new ApiError(409, "unavailable", "BROWSER_TAKEOVER_UNAVAILABLE")
+    return {}
+  })
+
+  fireEvent.click(screen.getByRole("button", { name: "Assumir" }))
+
+  expect(await screen.findByText(/Esta sessão do navegador está indisponível/)).toBeVisible()
+  expect(screen.getByText(/Nenhuma página foi reaberta/)).toBeVisible()
+  expect(screen.queryByRole("region", { name: "Controle remoto do navegador" })).toBeNull()
+  expect(screen.queryByText(/Você está no controle/)).toBeNull()
+  expect(request).not.toHaveBeenCalledWith(
+    "POST /browser/tabs/:id/takeover/frame",
+    expect.anything(),
+    expect.anything(),
+  )
+
+  fireEvent.click(screen.getByRole("button", { name: "Devolver para Lia" }))
+
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith("POST /browser/tabs/:id/takeover", { hold: false }, { id: "browser-tab" }),
+  )
+  expect(screen.queryByText(/Esta sessão do navegador está indisponível/)).toBeNull()
+})

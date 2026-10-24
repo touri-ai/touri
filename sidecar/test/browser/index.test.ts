@@ -91,6 +91,7 @@ test("remote browser takeover gives one device an interactive session and reject
   let botId = ""
   let receivedInput: unknown = null
   let frameCapture: Promise<void> | null = null
+  let canHold = true
   let heldRunId: string | undefined
   let engineReleaseCount = 0
   let leaseAcquired = 0
@@ -137,7 +138,7 @@ test("remote browser takeover gives one device an interactive session and reject
     holdTakeoverForPerson: async () => "held",
     holdTakeover: async ({ runId }) => {
       heldRunId = runId
-      return true
+      return canHold
     },
     getWindowBounds: async () => null,
     tabsForBot: () => [{ ...tab, ownerBotId: botId }],
@@ -453,6 +454,19 @@ test("remote browser takeover gives one device an interactive session and reject
 
     expect(expiredFrame.status).toBe(403)
     expect(leaseReleased).toBe(releasesBeforeExpiry + 1)
+
+    canHold = false
+    const unavailable = await startSessionRoute.handler({
+      params: { id: "t_remote" },
+      query: {},
+      body: {},
+      signal: ownerSignal,
+    })
+
+    expect(unavailable.status).toBe(409)
+    expect("json" in unavailable && unavailable.json).toMatchObject({ errorCode: "BROWSER_TAKEOVER_UNAVAILABLE" })
+    expect(JSON.stringify(unavailable)).not.toContain("sessionId")
+    expect(leaseReleased).toBe(releasesBeforeExpiry + 2)
   } finally {
     await runtime.stop()
     rmSync(root, { recursive: true, force: true })

@@ -1854,10 +1854,15 @@ export const createBrowserEngine = ({
     await client.call("Browser.setWindowBounds", { windowId, bounds })
   }
 
-  const attach = async (tab: TabState, targetId: string): Promise<boolean> => {
+  const attach = async (
+    tab: TabState,
+    targetId: string,
+    signal?: AbortSignal,
+    onAttached?: (sessionId: string) => void,
+  ): Promise<boolean> => {
     if (!client) return false
     if (attaching.has(targetId)) {
-      for (let attempt = 0; attempt < 100 && attaching.has(targetId); attempt += 1) await Bun.sleep(10)
+      for (let attempt = 0; attempt < 100 && attaching.has(targetId); attempt += 1) await sleep(10, signal)
       return tab.targetId === targetId && tab.sessionId !== null
     }
     attaching.add(targetId)
@@ -1868,7 +1873,13 @@ export const createBrowserEngine = ({
           ? cdpResult(await client.call<unknown>("Target.attachToTarget", { targetId, flatten: true }))
           : {}
       const sessionId = attached ?? asString(result.sessionId)
+      if (signal?.aborted && attached === undefined && sessionId) {
+        const cdp = client
+        void operationSignals.exit(() => cdp.call("Target.detachFromTarget", { sessionId }).catch(() => undefined))
+      }
+      signal?.throwIfAborted()
       if (!sessionId) return false
+      if (attached === undefined) onAttached?.(sessionId)
       targetSessions.set(targetId, sessionId)
       tab.targetId = targetId
       tab.sessionId = sessionId
@@ -1882,6 +1893,7 @@ export const createBrowserEngine = ({
         sessionId,
       )
       await enableSession(tab, sessionId)
+      signal?.throwIfAborted()
       publishTab(tab)
       return true
     } catch (error) {
@@ -1962,8 +1974,20 @@ export const createBrowserEngine = ({
     }
     const transport = started.client
     client = Object.assign({}, transport, {
-      call: <T>(method: string, params?: JsonObject, sessionId?: string) =>
-        callUntilAborted(() => transport.call<T>(method, params, sessionId), operationSignals.getStore()),
+      call: <T>(method: string, params?: JsonObject, sessionId?: string) => {
+        const signal = operationSignals.getStore()
+        return callUntilAborted(
+          () =>
+            transport.call<T>(method, params, sessionId).then((result) => {
+              if (method !== "Target.attachToTarget" || !signal?.aborted) return result
+              const attachedSessionId = asString(asRecord(result)?.sessionId)
+              if (attachedSessionId)
+                void transport.call("Target.detachFromTarget", { sessionId: attachedSessionId }).catch(() => undefined)
+              return result
+            }),
+          signal,
+        )
+      },
     })
     browserContexts.clear()
     contextOwners.clear()
@@ -4747,6 +4771,7 @@ export const createBrowserEngine = ({
   }): NonNullable<TabState["takeover"]> | null => {
     const takeover = tab.takeover
     if (!takeover) return null
+    takeoverRecoveries.get(tab.info.tabId)?.abort()
     if (takeover.timer) clearTimeout(takeover.timer)
     if (takeover.signal && takeover.onAbort) takeover.signal.removeEventListener("abort", takeover.onAbort)
     handoffs.resolve(tab.info.tabId, resolution)
@@ -4923,6 +4948,7 @@ export const createBrowserEngine = ({
   const cancelTakeover: BrowserEngine["cancelTakeover"] = ({ tabId }) => {
     const tab = store.find(tabId)
     if (!tab) return false
+    takeoverRecoveries.get(tabId)?.abort()
     const takeover = clearTakeover({
       tab,
       resolution: "canceled",
@@ -4936,6 +4962,7 @@ export const createBrowserEngine = ({
   const releaseTakeover = async (tabId: Id): Promise<boolean> => {
     const tab = store.find(tabId)
     if (!tab) return false
+    takeoverRecoveries.get(tabId)?.abort()
     if (!tab.info.heldByUser) return true
     await protectTakeoverDocument(tab, true)
     const takeover = clearTakeover({
@@ -4969,9 +4996,104 @@ export const createBrowserEngine = ({
     return (await releaseTakeover(tabId)) ? "released" : "not_found"
   }
 
-  const holdTakeover = async ({ tabId, runId }: { tabId: Id; reason: string; runId?: Id }): Promise<boolean> => {
+  const takeoverRecoveries = new Map<Id, AbortController>()
+
+  const prepareTakeover = async (tab: TabState, signal?: AbortSignal): Promise<boolean> => {
+    if (signal?.aborted || retired) return false
+    if (
+      client &&
+      !client.isClosed() &&
+      tab.sessionId &&
+      tab.info.state === "live" &&
+      !takeoverRecoveries.has(tab.info.tabId)
+    )
+      return true
+    takeoverRecoveries.get(tab.info.tabId)?.abort()
+    const controller = new AbortController()
+    takeoverRecoveries.set(tab.info.tabId, controller)
+    const generation = tab.generation
+    const takeover = tab.takeover
+    // The recovery owns only the session it attaches, never an already live human session.
+    let attachedSessionId: string | null = null
+    const isCurrent = () =>
+      !retired && tab.info.state !== "closed" && tab.generation === generation && tab.takeover === takeover
+    const recoverySignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal
+
+    const detachRecovery = async () => {
+      const sessionId = tab.sessionId
+      const cdp = client
+      if (!sessionId || sessionId !== attachedSessionId || !cdp || !isCurrent()) return
+      tab.sessionId = null
+      tab.frameSessions.clear()
+      tab.info.state = "unloaded"
+      tab.generation += 1
+      if (tab.targetId) targetSessions.delete(tab.targetId)
+      publishTab(tab)
+      await callUntilAborted(
+        () => operationSignals.exit(() => cdp.call("Target.detachFromTarget", { sessionId })),
+        AbortSignal.timeout(500),
+      ).catch(() => undefined)
+    }
+
+    try {
+      const ready = await withDeadline({
+        timeoutMs: 5_000,
+        signal: recoverySignal,
+        onTimeout: detachRecovery,
+        operation: async (boundedSignal) => {
+          if (!isCurrent() || !(await ensureClient(true)) || !client) return false
+          boundedSignal.throwIfAborted()
+          if (!isCurrent()) return false
+          if (!tab.sessionId || tab.info.state !== "live") {
+            const targetId = tab.targetId
+            if (!targetId) return false
+            // A URL match cannot authorize recovering another page or recreating a private document.
+            const result = cdpResult(await client.call<unknown>("Target.getTargetInfo", { targetId }))
+            const info = targetInfo(result.targetInfo)
+            if (
+              !info ||
+              info.targetId !== targetId ||
+              info.type !== "page" ||
+              tab.targetId !== targetId ||
+              !isCurrent()
+            )
+              return false
+            const attached = await attach(tab, targetId, boundedSignal, (sessionId) => {
+              attachedSessionId = sessionId
+            })
+            if (!attached) return false
+          }
+          const sessionId = tab.sessionId
+          if (!sessionId || !isCurrent()) return false
+          const frame = await captureTakeoverPage(tab, client, sessionId, boundedSignal)
+          boundedSignal.throwIfAborted()
+
+          return isCurrent() && tab.sessionId === sessionId && tab.info.state === "live" && frame !== null
+        },
+      })
+      if (!ready) await detachRecovery()
+      return ready
+    } catch {
+      await detachRecovery()
+      return false
+    } finally {
+      if (takeoverRecoveries.get(tab.info.tabId) === controller) takeoverRecoveries.delete(tab.info.tabId)
+    }
+  }
+
+  const holdTakeover = async ({
+    tabId,
+    runId,
+    signal,
+  }: {
+    tabId: Id
+    reason: string
+    runId?: Id
+    signal?: AbortSignal
+  }): Promise<boolean> => {
     const tab = store.find(tabId)
     if (!tab || tab.info.state === "closed") return false
+    if (!(await prepareTakeover(tab, signal))) return false
     if (tab.info.heldByUser) return true
     tab.info.heldByUser = true
     tab.privateAfterTakeover = true
@@ -5021,7 +5143,7 @@ export const createBrowserEngine = ({
     return true
   }
 
-  const holdTakeoverForPerson: BrowserEngine["holdTakeoverForPerson"] = async ({ tabId, personId }) => {
+  const holdTakeoverForPerson: BrowserEngine["holdTakeoverForPerson"] = async ({ tabId, personId, signal }) => {
     const tab = store.find(tabId)
     if (!tab || tab.info.state === "closed") return "not_found"
     const takeover = tab.takeover
@@ -5033,7 +5155,11 @@ export const createBrowserEngine = ({
     })
     if (!allowed) return "forbidden"
 
-    const held = await holdTakeover({ tabId, reason: "The user requested browser takeover" })
+    const held = await holdTakeover({
+      tabId,
+      reason: "The user requested browser takeover",
+      ...(signal ? { signal } : {}),
+    })
     return held ? "held" : "not_found"
   }
 
@@ -5059,6 +5185,39 @@ export const createBrowserEngine = ({
     return { left, top, width, height, windowState }
   }
 
+  const captureTakeoverPage = async (tab: TabState, cdp: CdpClient, sessionId: string, signal: AbortSignal) => {
+    const viewport = await layoutClip({ client: cdp, sessionId, fullPage: false, scale: 1 }).catch(() => null)
+    if (!viewport || signal.aborted) return null
+
+    for (const scale of [0.65, 0.5, 0.35]) {
+      const result = await cdpCall<unknown>(
+        cdp,
+        "Page.captureScreenshot",
+        {
+          format: "jpeg",
+          quality: 50,
+          captureBeyondViewport: false,
+          fromSurface: true,
+          clip: { x: viewport.x, y: viewport.y, width: viewport.width, height: viewport.height, scale },
+        },
+        sessionId,
+      ).catch(() => null)
+      const data = asString(asRecord(result)?.data)
+      if (!data || data.length > 450_000) continue
+      if (signal.aborted || tab.secretMode || tab.info.state !== "live" || tab.sessionId !== sessionId) return null
+
+      return {
+        title: kernel.redact(tab.privateAfterTakeover ? "" : tab.info.title),
+        url: kernel.redact(tab.privateAfterTakeover ? sanitizeHumanTakeoverUrl(tab.info.url) : tab.info.url),
+        image: `data:image/jpeg;base64,${data}`,
+        width: viewport.width,
+        height: viewport.height,
+      }
+    }
+
+    return null
+  }
+
   const takeoverFrame: BrowserEngine["takeoverFrame"] = async ({ tabId, botId, signal }) => {
     const owned = getTab({ tabId, botId, allowHeld: true })
     if (!owned.success || !owned.value.info.heldByUser || owned.value.secretMode || !client || !owned.value.sessionId)
@@ -5078,38 +5237,7 @@ export const createBrowserEngine = ({
         !tab.secretMode &&
         tab.info.state === "live" &&
         tab.sessionId === sessionId,
-      capture: async () => {
-        const viewport = await layoutClip({ client: cdp, sessionId, fullPage: false, scale: 1 }).catch(() => null)
-        if (!viewport || signal.aborted) return null
-
-        for (const scale of [0.65, 0.5, 0.35]) {
-          const result = await cdpCall<unknown>(
-            cdp,
-            "Page.captureScreenshot",
-            {
-              format: "jpeg",
-              quality: 50,
-              captureBeyondViewport: false,
-              fromSurface: true,
-              clip: { x: viewport.x, y: viewport.y, width: viewport.width, height: viewport.height, scale },
-            },
-            sessionId,
-          ).catch(() => null)
-          const data = asString(asRecord(result)?.data)
-          if (!data || data.length > 450_000) continue
-          if (signal.aborted || !tab.info.heldByUser || tab.secretMode || tab.info.state !== "live") return null
-
-          return {
-            title: kernel.redact(tab.privateAfterTakeover ? "" : tab.info.title),
-            url: kernel.redact(tab.privateAfterTakeover ? sanitizeHumanTakeoverUrl(tab.info.url) : tab.info.url),
-            image: `data:image/jpeg;base64,${data}`,
-            width: viewport.width,
-            height: viewport.height,
-          }
-        }
-
-        return null
-      },
+      capture: () => captureTakeoverPage(tab, cdp, sessionId, signal),
     })
   }
 
@@ -5227,6 +5355,8 @@ export const createBrowserEngine = ({
   const performShutdown = async (): Promise<void> => {
     if (retired) return
     retired = true
+    for (const recovery of takeoverRecoveries.values()) recovery.abort()
+    takeoverRecoveries.clear()
     clearInterval(idleTimer)
     sharedPreview.clear()
     unhost()

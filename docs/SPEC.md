@@ -1075,6 +1075,11 @@ Launch:
 **R8. Human take-over.**
 - `browser_request_takeover(tabId, reason)` marks the tab `held_by_user`, brings the Chrome window to the front, and notifies the user ("the bot needs you in the browser: <reason>").
 - The user can also take a tab from the app's Browser panel.
+- A pending handoff is not proof of an interactive session. After restart, assuming an unloaded tab
+  only reconnects its recorded target; it never matches by URL or silently recreates/reloads a page.
+  Recovery is asynchronous, canceled on return/disconnect, and bounded to five seconds. If the target
+  is gone, the UI explains that no page was reopened and offers an explicit handback before the person
+  asks for a public page again. Bot/device ownership and session/control/view epochs remain required.
 - While a tab is held, every agent tool on it returns `TAB_HELD_BY_USER`.
 - "Hand back" (UI button or tray) releases it. The generation bumps, the blocked `request_takeover` call returns a fresh snapshot, and its notes include "User handed back the tab; the page may have changed."
 - Take-over times out after `timeoutMs` (default 10 min), and the tool then returns the current snapshot with a note.

@@ -942,6 +942,8 @@ export const ptBR = {
   "Used the browser": "Usou o navegador",
   "Updating browser control…": "Atualizando o controle do navegador…",
   "Hand back to {name}": "Devolver para {name}",
+  "This browser session is unavailable. Return control, then ask the bot to open a public page again. No page was reopened.":
+    "Esta sessão do navegador está indisponível. Devolva o controle e peça ao bot para abrir novamente uma página pública. Nenhuma página foi reaberta.",
   "The browser tab could not be updated.": "Não foi possível atualizar a aba do navegador.",
   "Final browser screenshot": "Captura final do navegador",
   "Current browser page": "Página atual do navegador",

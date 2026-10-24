@@ -1,5 +1,6 @@
 import type { BrowserTabInfo, BrowserTakeoverReason, Id, MessagePart, ToolCallPart } from "@touri/contracts"
 import { type ReactNode, useContext, useEffect, useId, useRef, useState } from "react"
+import { ApiError } from "../errors"
 import {
   ChannelCardFooter,
   ChannelControlNote,
@@ -131,6 +132,7 @@ export const BrowserActivityCard = ({
     !held && !channel?.previewHidden && previewFrame?.tabId === activeTabId ? previewFrame?.frame : undefined
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [takeoverUnavailable, setTakeoverUnavailable] = useState(false)
   const [expanded, setExpanded] = useState(!finished)
   const [showAllActions, setShowAllActions] = useState(false)
   const [fullView, setFullView] = useState(false)
@@ -388,6 +390,7 @@ export const BrowserActivityCard = ({
     if (!api || !activeTabId || busy || queued) return
     setBusy(true)
     setError(null)
+    setTakeoverUnavailable(false)
     try {
       if (takeoverSession) {
         if (!controlEpoch) throw new Error("Missing browser control epoch")
@@ -414,6 +417,25 @@ export const BrowserActivityCard = ({
       setControlEpoch(nextControlEpoch)
       setTakeoverViewEpoch(nextViewEpoch)
       setHeldTab({ tabId: activeTabId, held: true, reason: heldTab?.reason ?? "requested" })
+    } catch (error) {
+      const unavailable = error instanceof ApiError && error.errorCode === "BROWSER_TAKEOVER_UNAVAILABLE"
+      setTakeoverUnavailable(unavailable)
+      const message = unavailable
+        ? "This browser session is unavailable. Return control, then ask the bot to open a public page again. No page was reopened."
+        : "The browser tab could not be updated."
+      setError(t(message, {}, locale))
+    } finally {
+      setBusy(false)
+    }
+  }
+  const returnUnavailableTakeover = async (): Promise<void> => {
+    if (!api || !activeTabId || busy) return
+    setBusy(true)
+    try {
+      await api.request("POST /browser/tabs/:id/takeover", { hold: false }, { id: activeTabId })
+      setHeldTab({ tabId: activeTabId, held: false, reason: null })
+      setTakeoverUnavailable(false)
+      setError(null)
     } catch {
       setError(t("The browser tab could not be updated.", {}, locale))
     } finally {
@@ -753,6 +775,16 @@ export const BrowserActivityCard = ({
               )}
               {takeoverSession && held && <p role="status">{t("You have control of this browser tab.", {}, locale)}</p>}
               {error && <p role="alert">{error}</p>}
+              {takeoverUnavailable && channel?.canControl !== false && (
+                <button
+                  type="button"
+                  className="button button-quiet browser-activity-recovery-return"
+                  disabled={busy}
+                  onClick={() => void returnUnavailableTakeover()}
+                >
+                  {t("Hand back to {name}", { name: botName }, locale)}
+                </button>
+              )}
               {finished && screenshot?.outputAttachmentId && (
                 <section className="browser-activity-final-shot" aria-label={t("Final browser screenshot", {}, locale)}>
                   <strong>{t("Final browser screenshot", {}, locale)}</strong>

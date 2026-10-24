@@ -1130,17 +1130,18 @@ export const init = async (
 
               const hold = async (): Promise<boolean> => {
                 if (!channelRun && kernel.services.use("work.defaultPersonId")) {
-                  const status = await engine.holdTakeoverForPerson({ tabId, personId: actorPersonId ?? "" })
+                  const status = await engine.holdTakeoverForPerson({ tabId, personId: actorPersonId ?? "", signal })
                   return status === "held"
                 }
                 return engine.holdTakeover({
                   tabId,
                   reason: "The user requested browser takeover",
+                  signal,
                   ...(channelRun ? { runId: channelRuns.getCurrentRunId(channelRun.runId) ?? channelRun.runId } : {}),
                 })
               }
               const held = await hold().catch(() => false)
-              if (!held) {
+              if (!held || signal.aborted || (device && !device.active())) {
                 await releaseVm?.().catch(() => undefined)
                 undoChannelControl()
                 return null
@@ -1170,7 +1171,15 @@ export const init = async (
 
           const session = await starting
           if (takeoverStarts.get(tabId) === starting) takeoverStarts.delete(tabId)
-          if (!session) return { status: 409, json: { error: "Não foi possível pausar o navegador. Tente novamente." } }
+          if (!session)
+            return {
+              status: 409,
+              json: {
+                errorCode: "BROWSER_TAKEOVER_UNAVAILABLE",
+                error:
+                  "Esta sessão do navegador está indisponível. Devolva o controle e peça para abrir uma página pública novamente. Nenhuma página foi reaberta.",
+              },
+            }
           if (!isTakeoverController(device, session))
             return { status: 409, json: { error: "Outra pessoa está controlando esta página." } }
           return {
@@ -1372,7 +1381,7 @@ export const init = async (
           const applyUnmanagedControl = async () => {
             if (controller || channelRun) return null
             const personId = actorPersonId ?? ""
-            if (hold) return engine.holdTakeoverForPerson({ tabId, personId })
+            if (hold) return engine.holdTakeoverForPerson({ tabId, personId, signal: request.signal })
             return engine.releaseTakeoverForPerson({ tabId, personId })
           }
           const release = await applyUnmanagedControl()
@@ -1391,6 +1400,7 @@ export const init = async (
             return engine.holdTakeover({
               tabId,
               reason: "The user requested browser takeover",
+              signal: request.signal,
               ...(channelRun ? { runId: channelRuns.getCurrentRunId(channelRun.runId) ?? channelRun.runId } : {}),
             })
           }

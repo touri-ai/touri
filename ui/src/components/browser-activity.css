@@ -838,3 +838,8 @@
     justify-self: start;
   }
 }
+
+.browser-activity-recovery-return {
+  min-height: 44px;
+  margin-top: var(--space-8);
+}
