@@ -17,6 +17,7 @@ import { createRouteRegistry } from "../../src/kernel/routes"
 import { createServices } from "../../src/kernel/services"
 import { init as initNotify } from "../../src/notify"
 import { createNotificationStore } from "../../src/notify/store"
+import seed from "../fixtures/ui-seed.json"
 
 const cleanups = new Set<() => Promise<void>>()
 afterEach(async () => {
@@ -36,6 +37,29 @@ test("reading on desktop persists for the same person's mobile device without re
   expect(mobile[0]).toMatchObject({ id: notice.id, resolvedAt: null, resolution: null })
   expect(mobile[0]?.readAt).toBeNumber()
   expect(owner[0]?.readAt ?? null).toBeNull()
+})
+
+test("a maximum-size member read batch preserves resolution and broadcasts every receipt", async () => {
+  const fixture = await getFixture()
+  const notices = Array.from({ length: 500 }, (_, index) =>
+    fixture.emit({ kind: "done", botId: null, threadId: "shared-chat", title: `Resumo ${index}`, body: "Pronto" }),
+  )
+  const mobile = getEventViewer(fixture, fixture.personId, "member")
+  const started = process.cpuUsage()
+
+  const response = await fixture.request(fixture.desktop, "/notifications/read", "POST", {
+    ids: notices.map((notice) => notice.id),
+  })
+  const elapsed = process.cpuUsage(started)
+  const payload = await response.json()
+  const read = mobile.getEvents().find((item) => item.event.type === "notifications.read")
+
+  console.info(`500-notice member read: CPU ${((elapsed.user + elapsed.system) / 1000).toFixed(2)}ms`)
+  expect(response.status).toBe(200)
+  expect(payload.notifications).toHaveLength(500)
+  expect(payload.skipped).toBe(0)
+  expect(payload.notifications.every((item: NotificationRecord) => item.readAt && item.resolvedAt === null)).toBe(true)
+  expect(read?.event.type === "notifications.read" && read.event.receipts.length).toBe(500)
 })
 
 test("local native reads use the host owner and are visible on the owner's paired device", async () => {
@@ -332,7 +356,7 @@ const getFixture = async ({ workMode = true } = {}) => {
   await kernel.services.use("notify.recovery")?.ready
   database
     .query("INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES (?,?,?,?,?,?)")
-    .run("demo-bot", "Demo", "codex", "/fixture/bot", 1, 1)
+    .run("demo-bot", "Demo", seed.bots[0]?.provider ?? null, "/fixture/bot", 1, 1)
   database
     .query(
       "INSERT INTO bot_groups(id,name,color,avatar_shape,avatar_seed,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",

@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises"
+import { join } from "node:path"
 import { expect, test } from "@playwright/test"
 
 test.use({ locale: "pt-BR", reducedMotion: "reduce" })
@@ -16,6 +18,12 @@ viewports.forEach(({ width, height }) => {
     const center = page.getByRole("region", { name: "Central de notificações" })
     await expect(center.getByText("Resumo fictício", { exact: true })).toBeVisible()
 
+    const directory = process.env.TOURI_E2E_EVIDENCE_DIR
+    if (directory) {
+      await mkdir(directory, { recursive: true })
+      await center.screenshot({ path: join(directory, `notification-read-before-${width}.png`) })
+    }
+
     await center.getByRole("button", { name: "Limpar", exact: true }).click()
 
     await expect(center.getByText("Resumo fictício", { exact: true })).toHaveCount(0)
@@ -24,6 +32,7 @@ viewports.forEach(({ width, height }) => {
     await expect(center.getByRole("button", { name: "Tarefas interrompidas", exact: true })).toBeVisible()
     await expect(center.getByRole("status")).toHaveText("Notificações que ainda precisam de atenção: 4.")
     await expect(center.getByTestId("notification-row")).toHaveCount(4)
+    if (directory) await center.screenshot({ path: join(directory, `notification-read-after-${width}.png`) })
     expect(await page.evaluate(() => localStorage.getItem("touri.notifications.cleared.v1"))).toBeNull()
     expect(await center.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
   })
