@@ -296,7 +296,10 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
       const found = toRun(
         db
           .query(
-            `SELECT * FROM runs WHERE thread_id = ? AND request_message_id = ?${activeOnly ? " AND status IN ('queued', 'starting', 'running')" : ""} ORDER BY queued_at DESC, rowid DESC LIMIT 1`,
+            `SELECT r.*,
+              CASE WHEN EXISTS(SELECT 1 FROM group_turns coordination WHERE coordination.run_id = r.id)
+                THEN 'coordination' ELSE 'execution' END AS run_kind
+              FROM runs r WHERE r.thread_id = ? AND r.request_message_id = ?${activeOnly ? " AND r.status IN ('queued', 'starting', 'running')" : ""} ORDER BY r.queued_at DESC, r.rowid DESC LIMIT 1`,
           )
           .get(threadId, requestMessageId),
       )
