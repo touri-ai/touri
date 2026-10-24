@@ -14,9 +14,9 @@ import { capabilitySupport } from "../../src/projects/capability-support"
 import { createCapabilityTools } from "../../src/projects/capability-tools"
 import { init as initStore } from "../../src/store"
 
-const cleanups: Array<() => void> = []
-afterEach(() => {
-  for (const close of cleanups.splice(0).reverse()) close()
+const cleanups: Array<() => void | Promise<void>> = []
+afterEach(async () => {
+  for (const close of cleanups.splice(0).reverse()) await close()
 })
 
 const fixture = async (patch: Partial<Bot> = {}, platform: NodeJS.Platform = "linux") => {
@@ -107,9 +107,9 @@ const fixture = async (patch: Partial<Bot> = {}, platform: NodeJS.Platform = "li
     if (!card) throw new Error("Missing card")
     return bridge.approve({ approvalId: card.approvalId, decision, standing })
   }
-  cleanups.push(() => {
+  cleanups.push(async () => {
     bridge.dispose()
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
   return {

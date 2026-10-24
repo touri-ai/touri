@@ -16,11 +16,9 @@ import { createWorkState } from "../../src/runtime/work-state"
 import { init as initStore } from "../../src/store"
 
 // Resource ownership stays at the test boundary; each fixture has its own database.
-const cleanups = new Set<() => void>()
-afterEach(() => {
-  cleanups.forEach((close) => {
-    close()
-  })
+const cleanups = new Set<() => void | Promise<void>>()
+afterEach(async () => {
+  for (const close of Array.from(cleanups).reverse()) await close()
   cleanups.clear()
 })
 
@@ -35,8 +33,8 @@ const getFixture = async (
   const runtime = createKernel({ appData: root })
   const database = runtime.kernel.db as Database
   database.query("INSERT INTO settings (key, value_json, updated_at) VALUES ('nativeNotifications', 'false', 0)").run()
-  cleanups.add(() => {
-    runtime.stop()
+  cleanups.add(async () => {
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
   await initStore(runtime.kernel)

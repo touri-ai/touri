@@ -458,8 +458,13 @@ const stopBotTasks = async (kernel: Kernel, botId: string) => {
   // Pause before waiting for turns so the scheduler cannot start more work.
   const db = kernel.db as Database
   db.query("UPDATE bots SET paused = 1 WHERE id = ?").run(botId)
+  const hasLiveTurns = Boolean(
+    db.query("SELECT 1 FROM runs WHERE bot_id = ? AND status IN ('queued', 'starting', 'running') LIMIT 1").get(botId),
+  )
   await kernel.services.use("runtime.cancelBotTurns")?.({ botId })
   await kernel.services.use("vm.desktop")?.closeBot(botId)
+  // A stopped live turn must reach ordered subscribers before its replay rows are purged.
+  if (hasLiveTurns) await kernel.flushEvents?.()
 }
 
 const publishBotDeletion = (kernel: Kernel, botId: string) => {

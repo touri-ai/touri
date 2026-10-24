@@ -1776,3 +1776,4 @@ Shutdown asks the stream worker to close SQLite and waits for its confirmation b
 files, with a one-second fallback for an unresponsive worker.
 Capture retries contain transient SQLite I/O failures and retry the committed journal without
 discarding its entries.
+Bot deletion drains terminal notifications for stopped live turns before purging their replay rows.
