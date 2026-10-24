@@ -640,13 +640,9 @@ export const VirtualMessageList = ({
             ref={contentRef}
             style={
               timeline.length > 100
-                ? {
-                    position: "absolute",
-                    top: 0,
-                    right: 0,
-                    left: 0,
-                    transform: `translateY(${rowOffsets[start] ?? 0}px)`,
-                  }
+                ? // Offset with `top`, not a transform: sticky card headers resolve against the untransformed
+                  // layout and would otherwise be pushed to the bottom of their card.
+                  { position: "absolute", top: rowOffsets[start] ?? 0, right: 0, left: 0 }
                 : undefined
             }
           >
