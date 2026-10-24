@@ -56,6 +56,30 @@ test("persisted work snapshots identify one execution under its channel turn", (
   expect(persistence.listRuns("participant")[0]).toMatchObject({ kind: "execution" })
 })
 
+test.each(["running", "succeeded"] as const)("%s request replay derives run kinds without a warm cache", (status) => {
+  const db = getDatabase(status)
+  db.query("UPDATE runs SET request_message_id = ? WHERE id IN ('turn', 'execution')").run("request")
+  const persistence = createRuntimePersistence({ database: db })
+
+  const coordination = persistence.getRunForRequest({
+    threadId: "channel",
+    requestMessageId: "request",
+    activeOnly: false,
+  })
+  const execution = persistence.getRunForRequest({
+    threadId: "participant",
+    requestMessageId: "request",
+    activeOnly: false,
+  })
+  const active = persistence.getRunForRequest({ threadId: "channel", requestMessageId: "request" })
+  const missing = persistence.getRunForRequest({ threadId: "channel", requestMessageId: "missing" })
+
+  expect(coordination).toMatchObject({ id: "turn", kind: "coordination", status })
+  expect(execution).toMatchObject({ id: "execution", kind: "execution", status })
+  expect(active).toEqual(status === "running" ? coordination : null)
+  expect(missing).toBeNull()
+})
+
 test("workspace run kinds use the coordination primary key instead of scanning history", () => {
   const db = getDatabase("running")
 

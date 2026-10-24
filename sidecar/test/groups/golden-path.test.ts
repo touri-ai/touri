@@ -261,6 +261,26 @@ test.each(["channel", "direct"] as const)("%s send acknowledgements retain run k
   expect(history.filter((candidate) => candidate.kind === "execution")).toHaveLength(1)
 })
 
+test("replaying a completed channel request after runtime recreation retains coordination identity", async () => {
+  const scenario = await fixture()
+  const run = scenario.send("@Lia confira o plano")
+  await until(() => scenario.persistence.getRun(run.id)?.status === "succeeded")
+  const restarted = scenario.restart()
+
+  const repeated = restarted.enqueue({
+    threadId: run.threadId,
+    requestMessageId: run.requestMessageId ?? "",
+    trigger: "user",
+  })
+
+  expect(repeated).toMatchObject({ success: true, run: { id: run.id, kind: "coordination", status: "succeeded" } })
+  expect(scenario.order).toEqual([scenario.thread.botId])
+  expect(scenario.persistence.listWorkRuns()).toEqual([])
+  expect(scenario.db.query("SELECT COUNT(*) AS count FROM group_run_links WHERE turn_id = ?").get(run.id)).toEqual({
+    count: 1,
+  })
+})
+
 test("a channel resumes a crashed provider twice then stops", async () => {
   const f: Awaited<ReturnType<typeof fixture>> = await fixture(async (run) => {
     const previous = f.persistence.getRun(run.id)
