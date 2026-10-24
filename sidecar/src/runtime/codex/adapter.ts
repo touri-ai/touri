@@ -667,6 +667,7 @@ export const createCodexAdapter = ({
     }
     const stopReader = startLineReader({
       stream: spawned.stdout,
+      waitForDispatch: () => (turnAcknowledged ? undefined : replay),
       onLine: (line) => (runStage ? runStage("provider_frame_dispatch", onLine, line) : onLine(line)),
       onError: (error) => complete({ success: false, errorCode: "cli_protocol", error: error.message }),
       ...(runStage ? { runStage } : {}),

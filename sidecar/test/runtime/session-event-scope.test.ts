@@ -45,6 +45,27 @@ test.each([0, 17])("process exit %s drains acknowledged buffered frames before s
   if (!result.success) expect(result.errorCode).toBe("cli_crash")
 })
 
+test("live arrivals wait for acknowledged replay without exceeding the pre-acknowledgement bound", async () => {
+  const fixture = makeFixture()
+  const running = fixture.adapter.startTurn(fixture.args)
+  const request = await fixture.nextRequest("turn/start")
+  const sendText = (delta: string) =>
+    fixture.send({
+      method: "item/agentMessage/delta",
+      params: { threadId: "parent", turnId: "current", itemId: "reply", delta },
+    })
+  Array.from({ length: 100 }, () => sendText("buffered "))
+  fixture.acknowledge(request)
+  await fixture.nextText()
+  Array.from({ length: 512 }, () => sendText("live "))
+  fixture.send({ method: "turn/completed", params: { threadId: "parent", turnId: "current", status: "succeeded" } })
+
+  const result = await running
+
+  expect(result.success).toBe(true)
+  expect(fixture.getAttributedText()).toBe("buffered ".repeat(100) + "live ".repeat(512))
+})
+
 test.each(["before acknowledgement", "after acknowledgement"])(
   "isolates foreign and stale events %s",
   async (phase) => {

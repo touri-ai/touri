@@ -100,7 +100,8 @@ export const init = async (
     },
   })
 
-  kernel.subscribe(({ event }) => {
+  const subscribeRuntime = kernel.subscribeRuntime ?? kernel.subscribe
+  subscribeRuntime(({ event }) => {
     if (event.type === "run.updated" && event.run.routineRunId && STARTED_STATUSES.includes(event.run.status)) {
       const routineId = (
         database.query("SELECT routine_id FROM routine_runs WHERE id = ?").get(event.run.routineRunId) as {

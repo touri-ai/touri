@@ -1776,3 +1776,5 @@ Shutdown asks the stream worker to close SQLite and waits for its confirmation b
 files, with a one-second fallback for an unresponsive worker.
 Capture retries contain transient SQLite I/O failures and retry the committed journal without
 discarding its entries.
+
+Provider readers apply backpressure while acknowledged pre-start frames replay, preserving frame order and the existing 128-frame / 1 MiB cap. Notification resolution receives committed runtime controls without waiting for cold message hydration.

@@ -46,12 +46,14 @@ export const startLineReader = ({
   onLine,
   onError,
   runStage,
+  waitForDispatch,
   now = performance.now.bind(performance),
 }: {
   stream: ReadableStream<Uint8Array>
   onLine: (line: string) => void
   onError: (error: Error) => void
   runStage?: PerformanceStageRunner
+  waitForDispatch?: () => Promise<void> | undefined
   now?: () => number
 }): (() => void) & { done: Promise<void> } => {
   let stopped = false
@@ -89,6 +91,9 @@ export const startLineReader = ({
         buffer += decoder.decode(result.value, { stream: true })
         let offset = 0
         while (!stopped && buffer.indexOf("\n", offset) >= 0) {
+          // Let an acknowledged replay drain before accepting another live batch.
+          await waitForDispatch?.()
+          if (stopped) break
           const slice = processBatch({ buffer, offset, processed, elapsedMs })
           offset = slice.offset
           processed = slice.processed
@@ -101,6 +106,7 @@ export const startLineReader = ({
         }
         buffer = buffer.slice(offset)
       }
+      await waitForDispatch?.()
       const tail = buffer.trim()
       if (!stopped && tail) onLine(tail)
     } catch (error) {
