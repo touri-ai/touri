@@ -16,7 +16,7 @@ import { createApprovalBridge } from "../../src/approvals/bridge"
 import { createStandingGrantStore } from "../../src/approvals/grants"
 import { setDelegation } from "../../src/groups/security"
 import { createGroupStore } from "../../src/groups/store"
-import { openDatabase } from "../../src/kernel/db"
+import { openDatabase, SCHEMA_VERSION } from "../../src/kernel/db"
 import { createRedactor } from "../../src/kernel/redact"
 import { createToolRouter } from "../../src/mcp/router"
 import { init as initStore } from "../../src/store"
@@ -727,7 +727,9 @@ test("pre-job databases migrate existing bots to ordinary bots without changing 
     name: "Criador",
     team_builder: 0,
   })
-  expect(migrated.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({ value: "51" })
+  expect(migrated.query("SELECT value FROM schema_meta WHERE key='schema_version'").get()).toEqual({
+    value: String(SCHEMA_VERSION),
+  })
   migrated.close()
 })
 
