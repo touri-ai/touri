@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test"
 import type { Bot, Kernel, ProviderEvent, StartTurnArgs, Thread } from "@touri/contracts"
+import { createPerformanceStageTracker } from "../../src/kernel/performance"
 import { createCodexAdapter } from "../../src/runtime/codex/adapter"
 import { testKernel } from "../kernel/test-kernel"
 
@@ -11,6 +12,82 @@ afterEach(async () => {
     fixture.kernel.close()
   }
   fixtures.clear()
+})
+
+test.each([0, 17])("process exit %s drains acknowledged buffered frames before settling", async (code) => {
+  const fixture = makeFixture()
+  const running = fixture.adapter.startTurn(fixture.args)
+  const request = await fixture.nextRequest("turn/start")
+  Array.from({ length: 20 }, () =>
+    fixture.send({
+      method: "item/agentMessage/delta",
+      params: { threadId: "parent", turnId: "current", itemId: "reply", delta: "saved " },
+    }),
+  )
+  fixture.acknowledge(request)
+  if (code === 0)
+    fixture.send({
+      method: "turn/completed",
+      params: { threadId: "parent", turnId: "current", status: "succeeded" },
+    })
+  fixture.exit(code)
+
+  const result = await running
+
+  expect(
+    fixture.events
+      .filter((event) => event.type === "text_delta")
+      .map((event) => event.delta)
+      .join(""),
+  ).toBe("saved ".repeat(20))
+  expect(fixture.getAttributedText()).toBe("saved ".repeat(20))
+  expect(result.success).toBe(code === 0)
+  if (!result.success) expect(result.errorCode).toBe("cli_crash")
+})
+
+test("live arrivals wait for acknowledged replay without exceeding the pre-acknowledgement bound", async () => {
+  const fixture = makeFixture()
+  const running = fixture.adapter.startTurn(fixture.args)
+  const request = await fixture.nextRequest("turn/start")
+  const sendText = (delta: string) =>
+    fixture.send({
+      method: "item/agentMessage/delta",
+      params: { threadId: "parent", turnId: "current", itemId: "reply", delta },
+    })
+  Array.from({ length: 100 }, () => sendText("buffered "))
+  fixture.acknowledge(request)
+  await fixture.nextText()
+  Array.from({ length: 512 }, () => sendText("live "))
+  fixture.send({ method: "turn/completed", params: { threadId: "parent", turnId: "current", status: "succeeded" } })
+
+  const result = await running
+
+  expect(result.success).toBe(true)
+  expect(fixture.getAttributedText()).toBe("buffered ".repeat(100) + "live ".repeat(512))
+})
+
+test("an acknowledgement inside a full buffer pauses the same wire batch before newer frames", async () => {
+  const fixture = makeFixture()
+  const running = fixture.adapter.startTurn(fixture.args)
+  const request = await fixture.nextRequest("turn/start")
+  const getDeltaFrame = (delta: string): Frame => ({
+    method: "item/agentMessage/delta",
+    params: { threadId: "parent", turnId: "current", itemId: "reply", delta },
+  })
+  const older = Array.from({ length: 128 }, () => getDeltaFrame("older "))
+  const newer = Array.from({ length: 256 }, () => getDeltaFrame("newer "))
+  const acknowledgement: Frame = { id: request.id, result: { turn: { id: "current" } } }
+  const completed: Frame = {
+    method: "turn/completed",
+    params: { threadId: "parent", turnId: "current", status: "succeeded" },
+  }
+
+  fixture.sendBatch(older.concat(acknowledgement, newer, completed))
+  fixture.exit(0)
+  const result = await running
+
+  expect(result.success).toBe(true)
+  expect(fixture.getAttributedText()).toBe("older ".repeat(128) + "newer ".repeat(256))
 })
 
 test.each(["before acknowledgement", "after acknowledgement"])(
@@ -338,7 +415,10 @@ const getForeignFrames = (scope: Frame): Frame[] => [
 
 const makeFixture = () => {
   const kernel = testKernel()
+  const stages = createPerformanceStageTracker()
   const events: ProviderEvent[] = []
+  const attributedText: string[] = []
+  let dispatchDepth = 0
   const requests: Frame[] = []
   const waiters = new Set<() => void>()
   const controller = new AbortController()
@@ -377,7 +457,21 @@ const makeFixture = () => {
       },
     }),
   })
-  const adapter = createCodexAdapter({ kernel: { ...kernel.kernel, spawnTree: spawn }, command: process.execPath })
+  const adapter = createCodexAdapter({
+    kernel: { ...kernel.kernel, spawnTree: spawn },
+    command: process.execPath,
+    runStage: (stage, action, input) => {
+      if (stage !== "provider_frame_dispatch") return stages.run(stage, action, input)
+
+      // The injected stage wrapper records synchronous dispatch ownership for buffered frames.
+      dispatchDepth += 1
+      try {
+        return stages.run(stage, action, input)
+      } finally {
+        dispatchDepth -= 1
+      }
+    },
+  })
   const args: StartTurnArgs = {
     bot: {
       provider: "codex",
@@ -398,6 +492,7 @@ const makeFixture = () => {
     signal: controller.signal,
     onEvent: (event) => {
       events.push(event)
+      if (event.type === "text_delta" && dispatchDepth > 0) attributedText.push(event.delta)
       waiters.forEach((notify) => {
         notify()
       })
@@ -420,8 +515,16 @@ const makeFixture = () => {
     args,
     controller,
     events,
+    getAttributedText: () => attributedText.join(""),
     requests,
     send,
+    sendBatch: (frames: Frame[]) =>
+      output?.enqueue(new TextEncoder().encode(`${frames.map((frame) => JSON.stringify(frame)).join("\n")}\n`)),
+    exit: (code: number) => {
+      output?.close()
+      output = undefined
+      finish({ code, signal: null })
+    },
     acknowledge: (request: Frame) => send({ id: request.id, result: { turn: { id: "current" } } }),
     nextRequest: (method?: string, id?: string | number, offset = 0) =>
       nextValue(() =>

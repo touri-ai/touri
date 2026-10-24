@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite"
 import type { UiEvent, UiEventEnvelope } from "@touri/contracts"
 import type { ServerWebSocket } from "bun"
 import { createStoreReader } from "../store/reader"
+import { onDatabaseCommit } from "./database-write"
 import { getRefEvent, isMessageRef } from "./event-reference"
 import { boundedProcessLog } from "./output-blobs"
 import type { PerformanceStage, PerformanceStageRunner } from "./performance"
@@ -21,6 +22,9 @@ const isSqliteBusy = (error: unknown): boolean =>
   "code" in error &&
   typeof error.code === "string" &&
   (error.code.startsWith("SQLITE_BUSY") || error.code.startsWith("SQLITE_LOCKED"))
+
+const isControlEvent = (event: UiEvent): boolean =>
+  event.type === "transcript.resync" || (!event.type.startsWith("message.") && !event.type.startsWith("transcript."))
 
 type MessageRef = TranscriptRef
 const messageKey = (event: UiEvent): string | null =>
@@ -43,7 +47,10 @@ export const createEventBus = (
   const measureStage = <Value, Input>(stage: PerformanceStage, action: (input: Input) => Value, input: Input): Value =>
     runStage ? runStage(stage, action, input) : action(input)
   let sequence = 0
+  // Track early callbacks individually: a later publication cannot supersede an older committed control.
+  const earlyControls = new Set<number>()
   const listeners = new Set<(envelope: UiEventEnvelope) => void>()
+  const runtimeListeners = new Set<(envelope: UiEventEnvelope) => void>()
   let sockets: SocketEntry[] = []
   const reader = database ? createStoreReader(database.filename) : undefined
   const shutdown = new AbortController()
@@ -115,14 +122,22 @@ export const createEventBus = (
     })
   }
 
-  const deliverNow = (envelope: UiEventEnvelope): void => {
-    listeners.forEach((listener) => {
+  const notifyListeners = (envelope: UiEventEnvelope, immediate = false): void => {
+    const targets = immediate ? runtimeListeners : listeners
+    targets.forEach((listener) => {
       try {
         listener(envelope)
       } catch {
         // A subscriber must not turn a committed write into a failed request.
       }
     })
+  }
+
+  const deliverNow = (envelope: UiEventEnvelope): void => {
+    notifyListeners(envelope)
+    if (!isControlEvent(envelope.event) || !earlyControls.delete(envelope.seq)) {
+      notifyListeners(envelope, true)
+    }
     if (!sockets.some(({ since }) => envelope.seq > since)) return
 
     const payload = payloadFor(envelope)
@@ -136,8 +151,13 @@ export const createEventBus = (
     if (!backlog) captureRetryAttempt += 1
     captureRetryTimer = setTimeout(() => {
       captureRetryTimer = undefined
-      captureTranscript()
-      if (!scheduled) flush()
+      try {
+        captureTranscript()
+        if (!scheduled) flush()
+      } catch {
+        // Durable entries stay pending when storage is temporarily unavailable.
+        scheduleCaptureRetry()
+      }
     }, delayMs)
     captureRetryTimer.unref()
   }
@@ -198,16 +218,23 @@ export const createEventBus = (
   }
 
   const rememberPublication = (event: UiEvent): void => {
-    if (database?.inTransaction) return
     const key = getPublicationKey(event)
     if (!key) return
     const bytes = Buffer.byteLength(JSON.stringify(event))
     if (bytes > REPLAY_LIMITS.bytes) return
+    if (database?.inTransaction) {
+      const snapshot = structuredClone(event)
+      onDatabaseCommit(database, () => {
+        rememberPublication(snapshot)
+        if (!scheduled) flush()
+      })
+      return
+    }
     const previous = publications.filter((publication) => publication.key !== key)
     const fits =
       previous.length < LIVE_DELIVERY_LIMITS.events &&
       previous.reduce((total, publication) => total + publication.bytes, bytes) <= REPLAY_LIMITS.bytes
-    // Only committed publishers hand off payloads; discard them once their captured cursor is delivered.
+    // Keep a bounded committed revision cache for live delivery and immediate reconnects.
     const next = { key, event: structuredClone(event), bytes, through: head() }
     publications = fits ? previous.concat(next) : [next]
     if (liveRead?.key !== key) return
@@ -336,12 +363,26 @@ export const createEventBus = (
       const key = keyOf(event)
       return !key || latest.get(key) === index
     })
-    if (!references.length || !getReferences) return getCoalesced(new Map())
+    const cached = new Map(
+      rows.flatMap((row, index) => {
+        const reference = stored[index]
+        if (!isMessageRef(reference)) return []
+        const event = getPublishedReference(reference, row.seq)
+        return event ? [[reference, event] as const] : []
+      }),
+    )
+    const missing = references.filter((reference) => !cached.has(reference))
+    if (!missing.length || !getReferences) return getCoalesced(cached)
 
-    return getReferences(references, signal, REPLAY_LIMITS.bytes).then((events) => {
+    return getReferences(missing, signal, REPLAY_LIMITS.bytes).then((events) => {
       if (events.some((event) => event.type === "transcript.resync")) return resync()
       return getCoalesced(
-        new Map(references.map((reference, index) => [reference, events[index] ?? { type: "transcript.superseded" }])),
+        new Map([
+          ...cached,
+          ...missing.map(
+            (reference, index) => [reference, events[index] ?? { type: "transcript.superseded" }] as const,
+          ),
+        ]),
       )
     })
   }
@@ -391,7 +432,6 @@ export const createEventBus = (
           throw new Error("EVENT_READ_FAILED")
         }
         delivered = row.seq
-        publications = publications.filter((publication) => publication.through > delivered)
         deliver({ seq: row.seq, at: row.at, event })
         if (now() - startedAt >= LIVE_DELIVERY_LIMITS.budgetMs) break
       }
@@ -444,7 +484,6 @@ export const createEventBus = (
           }
           const envelope = { seq: row.seq, at: row.at, event }
           delivered = envelope.seq
-          publications = publications.filter((publication) => publication.through > delivered)
           deliveredCount += 1
           deliver(envelope)
           if (now() - startedAt >= LIVE_DELIVERY_LIMITS.budgetMs) break
@@ -458,10 +497,35 @@ export const createEventBus = (
 
     void runRetentionMaintenance()
   }
+  const flushAsync = async (): Promise<void> => {
+    const through = head()
+    if (!database || delivered >= through) return
+    const deadline = performance.now() + 5_000
+    if (!scheduled) flush()
+    while (!stopped && delivered < through) {
+      if (performance.now() >= deadline) throw new Error("EVENT_DELIVERY_TIMEOUT")
+      await new Promise<void>((resolve) => setTimeout(resolve, 5))
+    }
+    if (stopped && delivered < through) throw new Error("EVENT_DELIVERY_STOPPED")
+  }
+
   const writeEvent = (event: UiEvent): void => {
-    database
-      ?.query("INSERT INTO ui_event_log(at, event_json) VALUES (?, ?)")
-      .run(Date.now(), JSON.stringify(event.type === "process.log" ? boundedProcessLog(event) : event))
+    if (!database) return
+    const at = Date.now()
+    const payload = JSON.stringify(event.type === "process.log" ? boundedProcessLog(event) : event)
+    const inserted = database.query("INSERT INTO ui_event_log(at, event_json) VALUES (?, ?)").run(at, payload)
+    if (!isControlEvent(event)) return
+    const envelope = { seq: Number(inserted.lastInsertRowid), at, event: JSON.parse(payload) as UiEvent }
+    const notify = (): void => {
+      // Internal run/approval coordination cannot wait behind a cold transcript read.
+      if (envelope.seq <= delivered || earlyControls.has(envelope.seq) || stopped) return
+      // At the replay bound, normal durable delivery owns the remaining callbacks.
+      if (earlyControls.size >= REPLAY_LIMITS.events) return
+      earlyControls.add(envelope.seq)
+      measureStage("workspace_event_delivery", () => notifyListeners(envelope, true), undefined)
+    }
+    if (database.inTransaction) onDatabaseCommit(database, notify)
+    else notify()
   }
   const publish = (event: UiEvent): void => {
     if (stopped) return
@@ -525,6 +589,11 @@ export const createEventBus = (
 
   return {
     publish,
+    flushAsync,
+    subscribeRuntime: (listener: (envelope: UiEventEnvelope) => void): (() => void) => {
+      runtimeListeners.add(listener)
+      return () => runtimeListeners.delete(listener)
+    },
     subscribe: (listener: (envelope: UiEventEnvelope) => void): (() => void) => {
       listeners.add(listener)
       return () => listeners.delete(listener)
@@ -579,6 +648,7 @@ export const createEventBus = (
       clearTimeout(captureRetryTimer)
       sockets = []
       publications = []
+      earlyControls.clear()
       await retention?.dispose()
     },
   }

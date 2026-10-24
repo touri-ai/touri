@@ -227,7 +227,7 @@ test("schema 11 answers health in under a second while a 2–5 MB history is bac
     )
     expect(database.query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" })
   } finally {
-    runtime?.stop()
+    await runtime?.stop()
     rmSync(root, { recursive: true, force: true })
   }
 })
@@ -385,11 +385,11 @@ test("interrupted batches resume idempotently and match the shipped synchronous 
     expect(database.query("SELECT COUNT(*) AS n FROM transcript_entries").get()).toEqual(count)
     const bus = createEventBus(database)
     expect(database.query("SELECT COUNT(*) AS n FROM ui_event_log").get()).toEqual({ n: 0 })
-    bus.stop()
+    await bus.stop()
     expect(database.query("PRAGMA foreign_key_check").all()).toEqual([])
     const oldBus = createEventBus(synchronous)
     while (captureTranscript(synchronous)) await Bun.sleep(0)
-    oldBus.stop()
+    await oldBus.stop()
     expect(synchronous.query("SELECT COUNT(*) AS n FROM ui_event_log").get()).toEqual({ n: 600 })
     console.info(
       `Shipped synchronous path: ${before} → ${statSync(oldFilename).size} bytes (${(statSync(oldFilename).size / before).toFixed(2)}x)`,
@@ -464,7 +464,7 @@ test("live inserts, edits and deltas reserve newer revisions while pending reade
       n: 153,
     })
   } finally {
-    runtime?.stop()
+    await runtime?.stop()
     rmSync(root, { recursive: true, force: true })
   }
 })
@@ -539,7 +539,7 @@ test("final retention includes live revisions created between batches and preser
         .query("SELECT COUNT(*) AS n FROM transcript_entries WHERE json_extract(event_json, '$.legacy') = 1")
         .get(),
     ).toEqual({ n: 450 })
-    bus.stop()
+    await bus.stop()
   } finally {
     database?.close()
     rmSync(root, { recursive: true, force: true })

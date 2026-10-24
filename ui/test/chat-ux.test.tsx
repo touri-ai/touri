@@ -218,6 +218,7 @@ describe("window chrome", () => {
     expect(document.querySelector(".model-pill")).toBeNull()
     expect(screen.queryByRole("button", { name: /^Modelo:/ })).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
+    await screen.findByRole("complementary", { name: /^Painel de / })
     expect(screen.getByRole("button", { name: /^Modelo: Codex ·/ })).toBeVisible()
   })
 })

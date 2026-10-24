@@ -16,11 +16,9 @@ import { createWorkState } from "../../src/runtime/work-state"
 import { init as initStore } from "../../src/store"
 
 // Resource ownership stays at the test boundary; each fixture has its own database.
-const cleanups = new Set<() => void>()
-afterEach(() => {
-  cleanups.forEach((close) => {
-    close()
-  })
+const cleanups = new Set<() => void | Promise<void>>()
+afterEach(async () => {
+  for (const close of Array.from(cleanups).reverse()) await close()
   cleanups.clear()
 })
 
@@ -29,14 +27,15 @@ const getFixture = async (
     beforeNotify?: (database: Database) => void
     native?: boolean
     yieldHistoryBatch?: () => Promise<void>
+    holdOrderedEvents?: boolean
   } = {},
 ) => {
   const root = mkdtempSync(join(tmpdir(), "touri-recovery-center-"))
   const runtime = createKernel({ appData: root })
   const database = runtime.kernel.db as Database
   database.query("INSERT INTO settings (key, value_json, updated_at) VALUES ('nativeNotifications', 'false', 0)").run()
-  cleanups.add(() => {
-    runtime.stop()
+  cleanups.add(async () => {
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
   await initStore(runtime.kernel)
@@ -48,7 +47,15 @@ const getFixture = async (
   if (options.native) database.query("DELETE FROM settings WHERE key = 'nativeNotifications'").run()
   const hostCalls = mock(runtime.kernel.callHost)
   const stages = createPerformanceStageTracker(() => 0)
-  await initNotify({ ...runtime.kernel, callHost: hostCalls }, stages.run, options.yieldHistoryBatch)
+  await initNotify(
+    {
+      ...runtime.kernel,
+      callHost: hostCalls,
+      subscribe: options.holdOrderedEvents ? () => () => {} : runtime.kernel.subscribe,
+    },
+    stages.run,
+    options.yieldHistoryBatch,
+  )
   await runtime.kernel.services.use("notify.recovery")?.ready
 
   const { token } = JSON.parse(readFileSync(join(root, "run", "handshake.json"), "utf8")) as { token: string }
@@ -337,42 +344,45 @@ test("uncertain effects require their existing journal key on every dismissal su
   })
 })
 
-test("a new chat turn resolves the same notification immediately while uncertain effects remain pending", async () => {
-  const h = await getFixture()
-  saveRun(h.database, "interrupted")
-  saveRun(h.database, "uncertain")
-  saveUncertainEffect(h.work, "uncertain")
-  const task = (await h.getTasks()).find((item) => item.id === "run:interrupted")
-  if (!task) throw new Error("Expected interruption")
-  const run: Run = {
-    id: "next-turn",
-    threadId: "thread-a",
-    botId: "bot-a",
-    provider: "codex",
-    trigger: "user",
-    requestMessageId: null,
-    replyMessageId: null,
-    externalTurnId: null,
-    status: "queued",
-    errorClass: null,
-    errorMessage: null,
-    usage: null,
-    routineRunId: null,
-    queuedAt: Date.now() + 1,
-    startedAt: null,
-    finishedAt: null,
-  }
+test.each([false, true])(
+  "new chat resolves notifications immediately with ordered delivery held: %s",
+  async (holdOrderedEvents) => {
+    const h = await getFixture({ holdOrderedEvents })
+    saveRun(h.database, "interrupted")
+    saveRun(h.database, "uncertain")
+    saveUncertainEffect(h.work, "uncertain")
+    const task = (await h.getTasks()).find((item) => item.id === "run:interrupted")
+    if (!task) throw new Error("Expected interruption")
+    const run: Run = {
+      id: "next-turn",
+      threadId: "thread-a",
+      botId: "bot-a",
+      provider: "codex",
+      trigger: "user",
+      requestMessageId: null,
+      replyMessageId: null,
+      externalTurnId: null,
+      status: "queued",
+      errorClass: null,
+      errorMessage: null,
+      usage: null,
+      routineRunId: null,
+      queuedAt: Date.now() + 1,
+      startedAt: null,
+      finishedAt: null,
+    }
 
-  h.runtime.kernel.publish({ type: "run.updated", run })
-  const resolved = await h.getTasks()
+    h.runtime.kernel.publish({ type: "run.updated", run })
+    const resolved = await h.getTasks()
 
-  const previous = resolved.find((item) => item.id === task.id)
-  expect(previous?.notification.resolution).toBe("expired")
-  expect(previous?.notification.id).toBe(task.notification.id)
-  expect(previous?.notification.resolvedAt).not.toBeNull()
-  expect(resolved.find((item) => item.id === "run:uncertain")?.notification.resolvedAt).toBeNull()
-  expect(h.work.isBlocked({ key: "preview-key" })).toBe(true)
-})
+    const previous = resolved.find((item) => item.id === task.id)
+    expect(previous?.notification.resolution).toBe("expired")
+    expect(previous?.notification.id).toBe(task.notification.id)
+    expect(previous?.notification.resolvedAt).not.toBeNull()
+    expect(resolved.find((item) => item.id === "run:uncertain")?.notification.resolvedAt).toBeNull()
+    expect(h.work.isBlocked({ key: "preview-key" })).toBe(true)
+  },
+)
 
 test("journal recovery keeps one identity when its turn is subsequently marked interrupted", async () => {
   const h = await getFixture()

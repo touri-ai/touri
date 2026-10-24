@@ -53,6 +53,24 @@ const getFixture = async (
   return { root, database, persistence, published, errors }
 }
 
+test("shutdown waits for the worker to close SQLite before releasing its files", async () => {
+  const stopped: boolean[] = []
+  const fixture = await getFixture((url) => {
+    const worker = new Worker(url, { smol: true, ref: false })
+    worker.addEventListener("message", ({ data }) => {
+      if (data?.type === "stopped") stopped.push(true)
+    })
+    return worker
+  })
+  await fixture.persistence.ready
+
+  expect(fixture.persistence.closeIfIdle()).toBe(false)
+  await fixture.persistence.close()
+
+  expect(stopped).toEqual([true])
+  fixture.database.exec("PRAGMA wal_checkpoint(TRUNCATE)")
+})
+
 const getDelta = (threadId = "thread", delta = "durable") => ({
   type: "message.delta" as const,
   threadId,

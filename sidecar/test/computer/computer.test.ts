@@ -152,7 +152,7 @@ test("computer tools use approval cards, scoped standing grants and revocation b
   } finally {
     bridge?.dispose()
     controller?.dispose()
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   }
 })
@@ -197,7 +197,7 @@ test("computer kill switch cancels an open card and cannot be bypassed by a stan
   } finally {
     bridge?.dispose()
     controller?.dispose()
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   }
 })
@@ -229,7 +229,7 @@ test("computer tools enforce bot opt-in and time-boxed approval", async () => {
     expect(fake.notifications).toEqual([])
   } finally {
     controller?.dispose()
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   }
 })
@@ -285,7 +285,7 @@ test("computer lock, kill notification, expiry and state events are enforced", a
     unsubscribe()
   } finally {
     controller?.dispose()
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   }
 })
@@ -340,7 +340,7 @@ test("computer routes grant only a matching bot thread and kill revokes all gran
     ).toMatchObject({ success: false, errorCode: "COMPUTER_NOT_GRANTED" })
   } finally {
     controller?.dispose()
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   }
 })
@@ -382,7 +382,7 @@ test("computer kill cannot be undone by an in-flight activation", async () => {
     expect(controller.isActive()).toEqual({ active: false, botId: null })
   } finally {
     controller?.dispose()
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   }
 })
@@ -422,7 +422,7 @@ test("B03: standing host grants cannot send keyboard or pointer input into touri
     expect(posts).toBe(0)
   } finally {
     controller.dispose()
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   }
 })
@@ -474,7 +474,7 @@ test("B03: terminal keyboard actions require exact one-shot consent despite a st
   } finally {
     bridge?.dispose()
     controller.dispose()
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   }
 })
@@ -508,7 +508,7 @@ test("B03: pointer input outside protected window bounds can focus another app a
     expect(posts).toBe(1)
   } finally {
     controller.dispose()
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   }
 })

@@ -22,7 +22,8 @@ export const createRecoverySync = (
   let snapshot: { changes: number; tasks: RecoveryTask[]; runRowid: number; routineRowid: number } | null = null
   let changedRunIds: string[] = []
   let changedRoutineIds: string[] = []
-  kernel.subscribe(({ event }) => {
+  const subscribe = kernel.subscribeRuntime ?? kernel.subscribe
+  subscribe(({ event }) => {
     if (event.type === "routine.updated" && event.lastRun?.status === "failed")
       changedRoutineIds = [...new Set([...changedRoutineIds, event.lastRun.id])]
     if (event.type === "run.updated" && ["failed", "interrupted"].includes(event.run.status))

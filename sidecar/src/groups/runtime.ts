@@ -279,7 +279,7 @@ export const createGroupRuntime = (
           Math.max(1, expiresAt - deadlineClock.getNow()),
         )
       }
-      dispose = kernel.subscribe(({ event }) => {
+      dispose = (kernel.subscribeRuntime ?? kernel.subscribe)(({ event }) => {
         if (
           (event.type === "run.updated" && event.run.id === id) ||
           event.type === "transcript.resync" ||
@@ -369,7 +369,7 @@ export const createGroupRuntime = (
         run: getGroupRun(engine.getRunSnapshot?.(run) ?? run, turn.run.threadId, turn.run.id),
       })
     const superseded = new AbortController()
-    const dispose = kernel.subscribe(({ event }) => {
+    const dispose = (kernel.subscribeRuntime ?? kernel.subscribe)(({ event }) => {
       if (event.type === "run.updated" && isMemberSuperseded(event.run, run, turn)) superseded.abort()
     })
     try {
@@ -582,6 +582,8 @@ export const createGroupRuntime = (
         if (!updated.success) throw new Error(updated.error)
         run = await executeMember(run)
       }
+      // Completion can overtake cold message delivery; keep the shared-copy frame until it catches up.
+      await kernel.flushEvents?.()
       await pendingSharedUpdates
       await store.flushWritesAsync?.({ threadId: thread.id })
       if (run.status !== "succeeded") throw new MemberRunError(run)
@@ -602,7 +604,7 @@ export const createGroupRuntime = (
     return { ...run, kind: "execution", threadId, groupTurnId, replyMessageId: link?.visible_message_id ?? null }
   }
   // Persist a distinct shared message, so reload, FTS, transcript replay and approvals all use the store normally.
-  const unsubscribe = kernel.subscribe(({ event }) => {
+  const unsubscribe = (kernel.subscribeRuntime ?? kernel.subscribe)(({ event }) => {
     if (event.type === "transcript.resync" || event.type === "bot.deleted") {
       turns.forEach((turn) => {
         if (!isCurrentTurn(turn)) {

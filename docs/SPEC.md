@@ -1753,3 +1753,33 @@ Recovery counts a channel message and its source as one set of actions only when
 never an identity: independent calls and executions remain separate even with identical descriptions.
 A surviving projection remains available if its source is missing. This changes only recovery's
 read projection; saved messages and every uncertain journal acknowledgement remain intact.
+
+### Committed streaming delivery
+
+Owned asynchronous database writes hand committed message revisions to event delivery before
+resolving; rolled-back revisions are discarded. A bounded cache of at most 32 revisions and 2 MiB
+also serves immediate reconnects, with cold references still read asynchronously. Provider exit
+waits for stdout parsing and acknowledged-turn replay before reporting failure, preserving partial
+text and the terminal outcome without accepting foreign sessions or turns. Failed history reads
+remain visible across workspace refreshes until a successful history read clears them. Bot details
+load on demand within a closable panel, keeping the conversation visible and the existing initial
+compressed payload budget unchanged. Shared conversation, panel, computer and error styles remain available at startup. The
+phone close control receives focus when the loaded panel replaces its loading state.
+Internal control callbacks run after commit without waiting for cold transcript hydration; socket
+frames retain durable sequence order. Early callbacks are tracked individually, up to 2,000 pending
+callbacks; later publications cannot suppress an older committed callback. At that bound, remaining
+callbacks use normal durable delivery. Approval acknowledgements wait for committed card delivery.
+Runtime resync callbacks cancel stale work without waiting for cold history. Buffered provider
+frames retain bounded wire text and replay through the measured parser and dispatcher, preserving
+dispatch performance attribution.
+Shutdown asks the stream worker to close SQLite and waits for its confirmation before releasing
+files, with a one-second fallback for an unresponsive worker.
+Capture retries contain transient SQLite I/O failures and retry the committed journal without
+discarding its entries.
+Reading also pauses at an acknowledgement inside a batch, before subsequent wire frames can
+consume the unchanged buffer limit. Notification recovery observes committed runtime callbacks
+without waiting for ordered history delivery.
+
+Provider readers apply backpressure while acknowledged pre-start frames replay, preserving frame order and the existing 128-frame / 1 MiB cap. Notification resolution receives committed runtime controls without waiting for cold message hydration.
+
+Channel members retain their shared-reply frame until ordered message delivery and shared writes complete, even when the committed terminal callback arrives first. A successful member result therefore remains visible in the shared conversation.

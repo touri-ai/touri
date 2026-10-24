@@ -1079,7 +1079,7 @@ export const useWorkspace = (
           activeProjectId: selectedBot?.projectId ?? null,
           loading: false,
           loaded: true,
-          notice: groupResponse.notice,
+          notice: groupResponse.notice ?? current.historyNotice ?? null,
           channelNotice: groupResponse.notice,
         }
       })

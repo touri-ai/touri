@@ -634,6 +634,8 @@ export const createKernel = ({
     spawnTree: processSpawn,
     db: database,
     publish: (event: UiEvent) => bus.publish(event),
+    flushEvents: bus.flushAsync,
+    subscribeRuntime: bus.subscribeRuntime,
     subscribe: bus.subscribe,
     registerRoutes: (module: RouteModule) => routes.registerRoutes(module),
     registerTools: tools.registerTools,

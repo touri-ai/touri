@@ -111,7 +111,7 @@ describe("Grupos", () => {
     if (!botEntry) throw new Error("Missing bot entry")
     fireEvent.click(botEntry)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    const botPanel = screen.getByRole("complementary", { name: "Painel de mark" })
+    const botPanel = await screen.findByRole("complementary", { name: "Painel de mark" })
     expect(within(botPanel).getByRole("button", { name: "Preview do projeto" })).toBeVisible()
     fireEvent.click(within(botPanel).getByRole("button", { name: "Produto · coordenador" }))
     await screen.findByRole("textbox", { name: "Mensagem para Produto" })

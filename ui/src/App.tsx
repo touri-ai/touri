@@ -29,7 +29,6 @@ import { isResolvedNotification } from "./approvalState"
 import { ApprovalNotice } from "./components/ApprovalNotice"
 import { AvatarRuntimeProvider } from "./components/AvatarRuntime"
 import { BotAvatar } from "./components/BotAvatar"
-import { BotPanel } from "./components/BotPanel"
 import { activeMessagePath, ChatPanel } from "./components/ChatPanel"
 import { ErrorBoundary } from "./components/ErrorBoundary"
 import { ErrorNotice } from "./components/ErrorNotice"
@@ -94,6 +93,9 @@ import { useWorkspace } from "./useWorkspace"
 import { getModeSelection, type ModeSelection, type WorkspaceMode } from "./workspaceModes"
 import { type AppRoute, type RoutineHistoryTarget, readWorkspaceState, saveWorkspaceState } from "./workspaceState"
 
+import "./components/bot-panel.css"
+
+const BotPanel = lazy(() => import("./components/BotPanel").then((module) => ({ default: module.BotPanel })))
 const InterruptedTasks = lazy(() =>
   import("./components/InterruptedTasks").then((module) => ({ default: module.InterruptedTasksContent })),
 )
@@ -769,7 +771,7 @@ const AppContent = ({ kernel }: AppProps) => {
     },
     [selectedBot],
   )
-  const closeGroupPanel = () => {
+  const closePanel = () => {
     setPanelOpen(false)
     window.requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".bot-panel-toggle")?.focus())
   }
@@ -1495,7 +1497,7 @@ const AppContent = ({ kernel }: AppProps) => {
                       {/* r8 motion: preserve the panel during its inert exit */}
                       <MotionPresence show={panelOpen && Boolean(selectedGroup || selectedBot)} kind="panel">
                         {selectedGroup ? (
-                          <Suspense fallback={<GroupPanelLoading onClose={closeGroupPanel} />}>
+                          <Suspense fallback={<PanelLoading onClose={closePanel} />}>
                             <GroupPanel
                               api={api}
                               key={selectedGroup.id}
@@ -1510,56 +1512,55 @@ const AppContent = ({ kernel }: AppProps) => {
                                 setGroupModalChannelMode(Boolean(selectedGroup))
                                 openModal("group")
                               }}
-                              onClose={closeGroupPanel}
+                              onClose={closePanel}
                             />
                           </Suspense>
                         ) : (
                           selectedBot && (
                             <ErrorBoundary key={selectedBot.id} area="o painel do bot" api={api}>
-                              <BotPanel
-                                libraryRequest={
-                                  libraryRequest?.botId === selectedBot.id ? (libraryRequest ?? undefined) : undefined
-                                }
-                                computerTabRequest={
-                                  computerTabRequest?.botId === selectedBot.id ? computerTabRequest.request : 0
-                                }
-                                key={selectedBot.id}
-                                api={api}
-                                goalThreadId={goalThread?.id}
-                                goalRequest={goalRequest}
-                                goalBusy={goalBusy}
-                                goalRefreshRequest={goalRefreshRequest}
-                                onGoalChange={notifyGoalChange}
-                                groups={data.groups.filter((g) => g.memberIds.includes(selectedBot.id))}
-                                onGroup={(g) => {
-                                  const thread = data.threads.find((t) => t.groupId === g.id && !t.groupThreadId)
-                                  if (thread) actions.selectThread(thread.id)
-                                }}
-                                bot={selectedBot}
-                                machine={data.machines.find((state) => state.botId === selectedBot.id)}
-                                routines={botRoutines}
-                                activeTurns={data.runs.some(
-                                  (run) =>
-                                    run.botId === selectedBot.id &&
-                                    ["queued", "starting", "running"].includes(run.status),
-                                )}
-                                paused={modal !== null || searchOpen || notificationsOpen || recoveryOpen}
-                                expanded={expandedBot === selectedBot.id}
-                                onExpand={() => setExpandedBot((id) => (id === selectedBot.id ? null : selectedBot.id))}
-                                onWindow={() => openComputerWindow(selectedBot.id)}
-                                onClose={() => {
-                                  setPanelOpen(false)
-                                  window.requestAnimationFrame(() =>
-                                    document.querySelector<HTMLButtonElement>(".bot-panel-toggle")?.focus(),
-                                  )
-                                }}
-                                onSettings={() => openModal("bot-settings")}
-                                onRoutines={() => openBotRoutines(selectedBot.id)}
-                                onModel={() => openModal("bot-settings", "model")}
-                                onPermissions={() => openModal("bot-permissions")}
-                                onPreview={() => setScreen("preview")}
-                                onRole={(roleLine) => actions.updateBot(selectedBot.id, { roleLine })}
-                              />
+                              <Suspense fallback={<PanelLoading onClose={closePanel} closeLabel="Close bot panel" />}>
+                                <BotPanel
+                                  libraryRequest={
+                                    libraryRequest?.botId === selectedBot.id ? (libraryRequest ?? undefined) : undefined
+                                  }
+                                  computerTabRequest={
+                                    computerTabRequest?.botId === selectedBot.id ? computerTabRequest.request : 0
+                                  }
+                                  key={selectedBot.id}
+                                  api={api}
+                                  goalThreadId={goalThread?.id}
+                                  goalRequest={goalRequest}
+                                  goalBusy={goalBusy}
+                                  goalRefreshRequest={goalRefreshRequest}
+                                  onGoalChange={notifyGoalChange}
+                                  groups={data.groups.filter((g) => g.memberIds.includes(selectedBot.id))}
+                                  onGroup={(g) => {
+                                    const thread = data.threads.find((t) => t.groupId === g.id && !t.groupThreadId)
+                                    if (thread) actions.selectThread(thread.id)
+                                  }}
+                                  bot={selectedBot}
+                                  machine={data.machines.find((state) => state.botId === selectedBot.id)}
+                                  routines={botRoutines}
+                                  activeTurns={data.runs.some(
+                                    (run) =>
+                                      run.botId === selectedBot.id &&
+                                      ["queued", "starting", "running"].includes(run.status),
+                                  )}
+                                  paused={modal !== null || searchOpen || notificationsOpen || recoveryOpen}
+                                  expanded={expandedBot === selectedBot.id}
+                                  onExpand={() =>
+                                    setExpandedBot((id) => (id === selectedBot.id ? null : selectedBot.id))
+                                  }
+                                  onWindow={() => openComputerWindow(selectedBot.id)}
+                                  onClose={closePanel}
+                                  onSettings={() => openModal("bot-settings")}
+                                  onRoutines={() => openBotRoutines(selectedBot.id)}
+                                  onModel={() => openModal("bot-settings", "model")}
+                                  onPermissions={() => openModal("bot-permissions")}
+                                  onPreview={() => setScreen("preview")}
+                                  onRole={(roleLine) => actions.updateBot(selectedBot.id, { roleLine })}
+                                />
+                              </Suspense>
                             </ErrorBoundary>
                           )
                         )}
@@ -1661,11 +1662,17 @@ const PageLoading = () => (
   </div>
 )
 
-const GroupPanelLoading = ({ onClose }: { onClose: () => void }) => (
+const PanelLoading = ({
+  onClose,
+  closeLabel = "Close channel panel",
+}: {
+  onClose: () => void
+  closeLabel?: "Close channel panel" | "Close bot panel"
+}) => (
   <aside id="bot-panel" className="bot-panel group-panel" aria-busy="true" aria-label={t("Loading")}>
     <div className="bot-panel-top">
       <span role="status">{t("Loading")}</span>
-      <button type="button" className="toolbar-icon" aria-label={t("Close channel panel")} onClick={onClose}>
+      <button type="button" className="toolbar-icon" aria-label={t(closeLabel)} onClick={onClose}>
         ×
       </button>
     </div>

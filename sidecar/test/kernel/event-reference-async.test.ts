@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { UiEvent, UiEventEnvelope } from "@touri/contracts"
+import { writeDatabaseAsync } from "../../src/kernel/database-write"
 import { openDatabase } from "../../src/kernel/db"
 import { createEventBus, REPLAY_LIMITS } from "../../src/kernel/event-bus"
 import { profileProviders } from "../../src/kernel/provider-profiles"
@@ -47,6 +48,87 @@ test("a held live reference read leaves input and health responsive and preserve
   expect(queries.mock.calls.some(([sql]) => String(sql).includes("SELECT event_json FROM transcript_entries"))).toBe(
     false,
   )
+})
+
+test("committed control callbacks do not wait behind cold history while socket order stays intact", async () => {
+  const fixture = await getFixture()
+  const read = Promise.withResolvers<UiEvent[]>()
+  const bus = createEventBus(fixture.database, undefined, { getReferenceEvents: () => read.promise })
+  cleanups.add(() => bus.stop())
+  const client = getClient()
+  bus.add(client.socket)
+  const local: UiEvent[] = []
+  bus.subscribeRuntime(({ event }) => local.push(event))
+  fixture.saveReference()
+  const marker = getMarker("committed-control")
+
+  bus.publish(marker)
+
+  expect(local).toEqual([marker])
+  expect(client.getFrames()).toHaveLength(1)
+  read.resolve([getDelta()])
+  await waitFor(() => client.getEvents().length === 2)
+  expect(client.getEvents().map(({ event }) => event)).toEqual([getDelta(), marker])
+  expect(local.filter((event) => event.type === "import.progress")).toEqual([marker])
+})
+
+test("runtime resync cancels stale work without waiting for cold history", async () => {
+  const fixture = await getFixture()
+  const read = Promise.withResolvers<UiEvent[]>()
+  const bus = createEventBus(fixture.database, undefined, { getReferenceEvents: () => read.promise })
+  cleanups.add(() => bus.stop())
+  const local: UiEvent[] = []
+  bus.subscribeRuntime(({ event }) => local.push(event))
+  fixture.saveReference()
+
+  bus.publish({ type: "transcript.resync" })
+
+  expect(local).toEqual([{ type: "transcript.resync" }])
+  read.resolve([getDelta()])
+  await bus.flushAsync()
+  expect(local.filter((event) => event.type === "transcript.resync")).toHaveLength(1)
+})
+
+test("an early control callback cannot suppress an older committed transaction callback", async () => {
+  const fixture = await getFixture()
+  const bus = createEventBus(fixture.database)
+  cleanups.add(() => bus.stop())
+  const client = getClient()
+  bus.add(client.socket)
+  const local: UiEvent[] = []
+  bus.subscribeRuntime(({ event }) => local.push(event))
+  const first = getMarker("committed-transaction")
+  const second = getMarker("later-publication")
+
+  fixture.database.transaction(() => bus.publish(first))()
+  bus.publish(second)
+  await bus.flushAsync()
+
+  expect(local).toHaveLength(2)
+  expect(local).toContainEqual(first)
+  expect(local).toContainEqual(second)
+  expect(client.getEvents().map(({ event }) => event)).toEqual([first, second])
+})
+
+test("capture retries survive transient I/O failure and deliver the retained journal", async () => {
+  const fixture = await getFixture()
+  const bus = createEventBus(fixture.database)
+  cleanups.add(() => bus.stop())
+  const client = getClient()
+  bus.add(client.socket)
+  const delta = getDelta("synthetic retained")
+  fixture.database
+    .query("INSERT INTO transcript_entries(thread_id, seq, generation, event_json, at) VALUES (?, 1, 1, ?, 1)")
+    .run("synthetic-thread", JSON.stringify(delta))
+  const getFaultCount = injectCaptureFaults(fixture.database, ["SQLITE_BUSY", "SQLITE_IOERR"])
+
+  bus.publish(getMarker("after-storage-fault"))
+  await waitFor(() =>
+    client.getEvents().some(({ event }) => event.type === "message.delta" && event.delta === "synthetic retained"),
+  )
+
+  expect(getFaultCount()).toBe(2)
+  expect(client.getEvents().filter(({ event }) => event.type === "import.progress")).toHaveLength(1)
 })
 
 test("a committed publisher hands off its payload and cancels a redundant reference read", async () => {
@@ -96,6 +178,75 @@ test("queued live snapshots retain their exact revisions across a committed publ
 
   expect(client.getEvents().map(({ seq }) => seq)).toEqual([1, 2, 3])
   expect(client.getEvents().map(({ event }) => event)).toEqual([getMarker("committed-prefix"), first, second])
+})
+
+test("an owned transaction hands off its committed snapshot before the writer resolves", async () => {
+  const fixture = await getFixture()
+  const read = Promise.withResolvers<UiEvent[]>()
+  const bus = createEventBus(fixture.database, undefined, { getReferenceEvents: () => read.promise })
+  cleanups.add(() => bus.stop())
+  const client = getClient()
+  bus.add(client.socket)
+  const snapshot = getSnapshot("committed terminal reply", 1)
+  forbidReferenceReads(fixture.database)
+
+  await writeDatabaseAsync(fixture.database, () => {
+    fixture.saveReference("message.updated", 1)
+    bus.publish(snapshot)
+    expect(client.getEvents()).toHaveLength(0)
+  })
+
+  expect(client.getEvents().map(({ event }) => event)).toEqual([snapshot])
+})
+
+test("a nested writer cannot publish before its outer transaction commits", async () => {
+  const fixture = await getFixture()
+  const bus = createEventBus(fixture.database, undefined, {
+    getReferenceEvents: async () => [getDelta("committed synthetic")],
+  })
+  cleanups.add(() => bus.stop())
+  const client = getClient()
+  bus.add(client.socket)
+
+  await expect(
+    writeDatabaseAsync(fixture.database, () => {
+      void writeDatabaseAsync(fixture.database, () => {
+        fixture.saveReference()
+        bus.publish(getDelta("rolled-back nested"))
+      })
+      throw new Error("outer rollback")
+    }),
+  ).rejects.toThrow("outer rollback")
+  fixture.saveReference()
+  bus.publish(getMarker("committed-control"))
+  await waitFor(() => client.getEvents().length === 2)
+
+  expect(client.getEvents()[0]?.event).toEqual(getDelta("committed synthetic"))
+  expect(JSON.stringify(client.getEvents())).not.toContain("rolled-back nested")
+})
+
+test("an owned transaction discards its handoff after rollback", async () => {
+  const fixture = await getFixture()
+  const bus = createEventBus(fixture.database, undefined, {
+    getReferenceEvents: async () => [getDelta("committed synthetic")],
+  })
+  cleanups.add(() => bus.stop())
+  const client = getClient()
+  bus.add(client.socket)
+
+  await expect(
+    writeDatabaseAsync(fixture.database, () => {
+      fixture.saveReference()
+      bus.publish(getDelta("rolled-back synthetic"))
+      throw new Error("synthetic rollback")
+    }),
+  ).rejects.toThrow("synthetic rollback")
+  fixture.saveReference()
+  bus.publish(getMarker("after-rollback"))
+  await waitFor(() => client.getEvents().length === 2)
+
+  expect(client.getEvents()[0]?.event).toEqual(getDelta("committed synthetic"))
+  expect(JSON.stringify(client.getEvents())).not.toContain("rolled-back synthetic")
 })
 
 test("a rolled-back publisher cannot supply the payload of a later committed reference", async () => {
@@ -467,6 +618,23 @@ const getFixture = async () => {
   return { database, saveReference, saveMarker }
 }
 
+const injectCaptureFaults = (database: ReturnType<typeof openDatabase>, codes: string[]) => {
+  const query = database.query.bind(database)
+  // Only the probe's sequential fault cursor changes; the journal remains committed.
+  let count = 0
+  const queries = spyOn(database, "query").mockImplementation((sql) => {
+    const code = codes[count]
+    if (sql.includes("transcript_event_checkpoint") && code) {
+      count += 1
+      throw Object.assign(new Error("Synthetic capture fault"), { code })
+    }
+    return query(sql)
+  })
+  cleanups.add(() => queries.mockRestore())
+
+  return () => count
+}
+
 const forbidReferenceReads = (database: ReturnType<typeof openDatabase>) => {
   const query = database.query.bind(database)
   const queries = spyOn(database, "query").mockImplementation((sql) => {
@@ -509,7 +677,7 @@ const getSnapshot = (text: string, updatedSeq: number): UiEvent => ({
     updatedSeq,
   },
 })
-const getMarker = (importId: string, phase = "done"): UiEvent => ({
+const getMarker = (importId: string, phase = "done"): Extract<UiEvent, { type: "import.progress" }> => ({
   type: "import.progress",
   importId,
   phase,

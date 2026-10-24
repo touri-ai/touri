@@ -142,6 +142,7 @@ it("keeps project processes available after opening the active bot's routines", 
   expect(screen.queryByRole("complementary", { name: "Painel de mark" })).toBeNull()
   expect(screen.queryByRole("button", { name: "Preview do projeto" })).toBeNull()
   fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
+  await screen.findByRole("complementary", { name: /^Painel de / })
   const panel = screen.getByRole("complementary", { name: "Painel de mark" })
   fireEvent.click(within(panel).getByRole("button", { name: "Preview do projeto" }))
   await waitFor(() => expect(screen.getByRole("button", { name: "Subir tudo" })).toBeEnabled())

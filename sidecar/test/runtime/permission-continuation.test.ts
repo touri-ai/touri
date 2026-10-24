@@ -196,7 +196,7 @@ const fixture = async ({ missingOutput = false, browserTask = false } = {}) => {
   }
   const close = async () => {
     await engine.shutdown()
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   }
   const initialRun = send()

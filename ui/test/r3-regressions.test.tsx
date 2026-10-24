@@ -178,6 +178,7 @@ describe("r3 P2 chat and navigation", () => {
     render(<App kernel={{ services: { api } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
+    await screen.findByRole("complementary", { name: /^Painel de / })
     fireEvent.click(screen.getByRole("button", { name: "Ajustar permissões" }))
     const panel = await screen.findByRole("dialog", { name: "Permissões do bot" })
     expect(within(panel).queryByRole("option", { name: "Acesso total com aprovação" })).toBeNull()
@@ -453,6 +454,7 @@ describe("r3 P3 integrity", () => {
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     if (!screen.queryByRole("button", { name: "Preview do projeto" }))
       fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
+    await screen.findByRole("complementary", { name: /^Painel de / })
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
     await screen.findByRole("heading", { name: "Preview", exact: true })
 

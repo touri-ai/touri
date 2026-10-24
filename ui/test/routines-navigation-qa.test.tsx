@@ -179,6 +179,7 @@ it("opens the empty bot's routines directly from Configure routines and focuses 
   fireEvent.click(sidebar.querySelector('[data-bot-entry="bot-onb"] .bot-row-main') as HTMLElement)
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
   fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
+  await screen.findByRole("complementary", { name: /^Painel de / })
   fireEvent.click(screen.getByRole("button", { name: "Configurar rotinas" }))
   const routines = await screen.findByRole("region", { name: "Rotinas" })
   expect(screen.queryByRole("dialog")).toBeNull()

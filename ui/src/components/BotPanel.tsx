@@ -11,7 +11,7 @@ import { DeferredGoalPanel as GoalPanel } from "./DeferredGoalPanel"
 import { ErrorText } from "./ErrorDetails"
 import { MotionSkeleton, useSegmentedControl } from "./Motion"
 import { PanelIcon } from "./PanelIcon"
-import "./bot-panel.css"
+import { usePhoneViewport } from "./usePhoneViewport"
 
 const BotComputer = lazy(() => import("./BotComputer").then((module) => ({ default: module.BotComputer })))
 const BotLibrary = lazy(() => import("./BotLibrary").then((module) => ({ default: module.BotLibrary })))
@@ -72,6 +72,11 @@ export const BotPanel = ({
   onGoalChange?: () => void
 }) => {
   const host = useHost(api)
+  const phone = usePhoneViewport()
+  const closeButton = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (phone) closeButton.current?.focus({ preventScroll: true })
+  }, [phone])
   const [tab, setTab] = useState<(typeof tabs)[number]>("details")
   useEffect(() => {
     if (computerTabRequest) setTab("computer")
@@ -117,7 +122,13 @@ export const BotPanel = ({
         <span>
           {t("Your bot")} <span className="panel-bot-name">· {bot.name}</span>
         </span>
-        <button className="toolbar-icon" type="button" aria-label={t("Close bot panel")} onClick={onClose}>
+        <button
+          ref={closeButton}
+          className="toolbar-icon"
+          type="button"
+          aria-label={t("Close bot panel")}
+          onClick={onClose}
+        >
           <PanelIcon name="close" />
         </button>
       </div>

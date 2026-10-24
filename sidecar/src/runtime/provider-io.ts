@@ -46,14 +46,16 @@ export const startLineReader = ({
   onLine,
   onError,
   runStage,
+  getPause,
   now = performance.now.bind(performance),
 }: {
   stream: ReadableStream<Uint8Array>
   onLine: (line: string) => void
   onError: (error: Error) => void
   runStage?: PerformanceStageRunner
+  getPause?: () => Promise<void> | undefined
   now?: () => number
-}): (() => void) => {
+}): (() => void) & { done: Promise<void> } => {
   let stopped = false
   type Slice = { offset: number; processed: number; elapsedMs: number }
   const processLines = ({ buffer, offset, processed, elapsedMs }: Slice & { buffer: string }): Slice => {
@@ -69,14 +71,14 @@ export const startLineReader = ({
       cursor = newline + 1
       lines += 1
       if (line) onLine(line)
-      if (elapsedMs + now() - startedAt >= PROVIDER_FRAME_BATCH_MS) break
+      if (getPause?.() || elapsedMs + now() - startedAt >= PROVIDER_FRAME_BATCH_MS) break
     }
     return { offset: cursor, processed: lines, elapsedMs: elapsedMs + now() - startedAt }
   }
   const processBatch = (input: Slice & { buffer: string }): Slice => {
     return runStage ? runStage("provider_frame_batch", processLines, input) : processLines(input)
   }
-  void (async () => {
+  const done = (async () => {
     const reader = stream.getReader()
     const decoder = new TextDecoder()
     let buffer = ""
@@ -84,11 +86,19 @@ export const startLineReader = ({
     let elapsedMs = 0
     try {
       while (!stopped) {
+        const pause = getPause?.()
+        if (pause) await pause
+        if (stopped) break
+
         const result = await reader.read()
         if (result.done) break
         buffer += decoder.decode(result.value, { stream: true })
         let offset = 0
         while (!stopped && buffer.indexOf("\n", offset) >= 0) {
+          const pause = getPause?.()
+          if (pause) await pause
+          if (stopped) break
+
           const slice = processBatch({ buffer, offset, processed, elapsedMs })
           offset = slice.offset
           processed = slice.processed
@@ -109,7 +119,10 @@ export const startLineReader = ({
       reader.releaseLock()
     }
   })()
-  return () => {
-    stopped = true
-  }
+  return Object.assign(
+    () => {
+      stopped = true
+    },
+    { done },
+  )
 }

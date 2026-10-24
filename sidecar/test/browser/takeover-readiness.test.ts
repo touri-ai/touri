@@ -59,7 +59,7 @@ const getFixture = async ({
   cleanups.add(async () => {
     await engine.shutdown()
     await runtime.stop()
-    await rm(root, { recursive: true })
+    await rm(root, { recursive: true, force: true })
   })
 
   return { engine, calls }

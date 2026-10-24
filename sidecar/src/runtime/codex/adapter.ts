@@ -361,8 +361,10 @@ export const createCodexAdapter = ({
     // Streaming state belongs to this attempt; acknowledgement selects the authoritative turn.
     let turnSubmitted = false
     let turnAcknowledged = false
-    let pendingFrames: Array<{ frame: Record<string, unknown>; bytes: number }> = []
+    let pendingFrames: Array<{ line: string; bytes: number }> = []
     let pendingBytes = 0
+    let replay: Promise<void> | undefined
+    let inputPause: { promise: Promise<void>; resolve: () => void } | undefined
     let resuming = false
     const classifyError = (message: string): RunErrorClass => {
       const errorClass = classifyProviderError(message)
@@ -380,12 +382,12 @@ export const createCodexAdapter = ({
     let nextRequestId = 1
     const responseWaiters = new Map<
       number,
-      { resolve: (response: RpcResponse) => void; reject: (error: Error) => void }
+      { method: string; resolve: (response: RpcResponse) => void; reject: (error: Error) => void }
     >()
     const sendRequest = (method: string, params: unknown): Promise<RpcResponse> => {
       const id = nextRequestId++
       return new Promise((resolve, reject) => {
-        responseWaiters.set(id, { resolve, reject })
+        responseWaiters.set(id, { method, resolve, reject })
         void writeLine({ stdin: spawned.stdin, value: { jsonrpc: "2.0", id, method, params } }).catch((error) => {
           responseWaiters.delete(id)
           reject(error)
@@ -415,6 +417,8 @@ export const createCodexAdapter = ({
       completed = true
       pendingFrames = []
       pendingBytes = 0
+      inputPause?.resolve()
+      inputPause = undefined
       expireApprovals()
       for (const waiter of responseWaiters.values()) waiter.reject(new Error("Codex turn ended"))
       responseWaiters.clear()
@@ -434,7 +438,7 @@ export const createCodexAdapter = ({
       return true
     }
     const parseFrame = (line: string): unknown => JSON.parse(line)
-    const onLine = (line: string): void => {
+    const onLine = (line: string, replayed = false): void => {
       if (completed) return
       let parsed: unknown
       try {
@@ -443,15 +447,16 @@ export const createCodexAdapter = ({
         complete({ success: false, errorCode: "cli_protocol", error: "Malformed Codex JSON frame" })
         return
       }
-      if (runStage) runStage("provider_frame_route", () => routeFrame(parsed, line.length * 2))
-      else routeFrame(parsed, line.length * 2)
+      if (runStage) runStage("provider_frame_route", () => routeFrame(parsed, line.length * 2, line, replayed))
+      else routeFrame(parsed, line.length * 2, line, replayed)
     }
-    const routeFrame = (parsed: unknown, bytes: number, replayed = false): void => {
+    const routeFrame = (parsed: unknown, bytes: number, line: string, replayed = false): void => {
       const response = responseRecord(parsed)
       if (response) {
         const waiter = responseWaiters.get(response.id)
         if (waiter) {
           responseWaiters.delete(response.id)
+          if (waiter.method === "turn/start" && !response.error) inputPause = Promise.withResolvers<void>()
           if (response.error) waiter.reject(new Error(response.error.message ?? "Codex request failed"))
           else waiter.resolve(response)
         }
@@ -490,7 +495,8 @@ export const createCodexAdapter = ({
           complete({ success: false, errorCode: "cli_protocol", error: "Resposta inesperada do provedor" })
           return
         }
-        pendingFrames = [...pendingFrames, { frame, bytes }]
+        // Retain bounded wire text rather than an expanded protocol object graph.
+        pendingFrames = [...pendingFrames, { line, bytes }]
         pendingBytes += bytes
         return
       }
@@ -667,6 +673,7 @@ export const createCodexAdapter = ({
       stream: spawned.stdout,
       onLine: (line) => (runStage ? runStage("provider_frame_dispatch", onLine, line) : onLine(line)),
       onError: (error) => complete({ success: false, errorCode: "cli_protocol", error: error.message }),
+      getPause: () => inputPause?.promise,
       ...(runStage ? { runStage } : {}),
     })
     const stderrOutput = readProviderStderr(spawned.stderr, (text) => {
@@ -775,17 +782,25 @@ export const createCodexAdapter = ({
         turnId = stringValue(asRecord(turnResult.turn)?.id) ?? stringValue(turnResult.turnId)
         if (stopped) interrupt()
 
-        // Replay cursors stay local; live arrivals join the bounded buffer until it drains.
-        while (!completed && pendingFrames.length > 0) {
-          const [pending, ...remaining] = pendingFrames
-          if (!pending) break
+        replay = (async () => {
+          // Hold upstream reading while older frames replay, preserving the existing buffer limits.
+          while (!completed && pendingFrames.length > 0) {
+            const [pending, ...remaining] = pendingFrames
+            if (!pending) break
 
-          pendingFrames = remaining
-          pendingBytes -= pending.bytes
-          routeFrame(pending.frame, pending.bytes, true)
-          if (!completed) await new Promise<void>((resolve) => setImmediate(resolve))
-        }
-        turnAcknowledged = true
+            pendingFrames = remaining
+            pendingBytes -= pending.bytes
+            // Reuse dispatch instrumentation and validation for the retained wire frame.
+            const dispatch = () => onLine(pending.line, true)
+            if (runStage) runStage("provider_frame_dispatch", dispatch)
+            else dispatch()
+            if (!completed) await new Promise<void>((resolve) => setImmediate(resolve))
+          }
+          turnAcknowledged = true
+        })()
+        await replay
+        inputPause?.resolve()
+        inputPause = undefined
       } catch (error) {
         const message = errorText(error)
         const errorClass = classifyProviderError(message)
@@ -807,6 +822,9 @@ export const createCodexAdapter = ({
       }
     })()
     const onExit = spawned.exited.then(async ({ code, signal }) => {
+      // Process exit can precede stdout delivery and the acknowledged-turn replay.
+      await stopReader.done
+      await replay
       const stderr = (await stderrOutput.catch(() => "")).trim()
       const errorClass = classifyError(stderr)
       if (!completed)

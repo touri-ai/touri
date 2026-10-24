@@ -114,7 +114,7 @@ for (const area of ["chat", "panel", "modal", "app"] as const) {
     }
     const label = area === "app" ? "Recarregar app" : "Recarregar esta área"
     expect(await screen.findByRole("button", { name: label })).toBeVisible()
-    if (area === "chat") expect(screen.getByRole("complementary", { name: "Painel de mark" })).toBeVisible()
+    if (area === "chat") expect(await screen.findByRole("complementary", { name: "Painel de mark" })).toBeVisible()
     if (area === "panel" || area === "modal")
       expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (area === "modal") {

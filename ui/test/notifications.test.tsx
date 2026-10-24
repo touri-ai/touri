@@ -150,6 +150,7 @@ it("opens a notification's bot and thread from the touri tab", async () => {
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   if (!screen.queryByRole("button", { name: "Preview do projeto" }))
     fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
+  await screen.findByRole("complementary", { name: /^Painel de / })
   fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
   fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   fireEvent.click(screen.getByRole("button", { name: "Integrações", exact: true }))
