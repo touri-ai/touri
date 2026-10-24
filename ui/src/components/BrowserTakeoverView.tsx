@@ -82,30 +82,47 @@ export const BrowserTakeoverView = ({
     revealedSessions.add(sessionId)
     requestReveal(view.current)
   }, [sessionId])
-  // A window that changes size (a narrower layout, the on-screen keyboard) can push the controls out of
-  // the conversation; bring them back then, while ordinary scrolling stays under the person's control.
+  // Remember visibility before layout changes so a resize never pulls someone away from their reading.
   useEffect(() => {
+    const section = view.current
+    const controls = section?.querySelector(".browser-takeover-controls")
+    const history = section?.closest(".message-scroll")
+    if (!section || !controls || !history) return
+
+    const viewport = window.visualViewport
+    const getControlsVisible = () => {
+      const box = controls.getBoundingClientRect()
+      const area = history.getBoundingClientRect()
+      const top = Math.max(area.top, viewport?.offsetTop ?? 0)
+      const bottom = Math.min(area.bottom, viewport ? viewport.offsetTop + viewport.height : window.innerHeight)
+      return box.top >= top && box.bottom <= bottom
+    }
+
     let frame: number | null = null
+    let wereVisible = getControlsVisible()
+    const trackVisibility = () => {
+      if (frame === null) wereVisible = getControlsVisible()
+    }
+
     const keepControlsInView = () => {
       if (frame !== null) return
+      const shouldReveal = wereVisible
       frame = requestAnimationFrame(() => {
         frame = null
-        const section = view.current
-        const controls = section?.querySelector(".browser-takeover-controls")
-        const history = section?.closest(".message-scroll")
-        if (!section || !controls || !history) return
-        const box = controls.getBoundingClientRect()
-        const area = history.getBoundingClientRect()
-        if (box.top >= area.top && box.bottom <= area.bottom) return
+        wereVisible = getControlsVisible()
+        if (!shouldReveal || wereVisible) return
+
         requestReveal(section)
       })
     }
+    history.addEventListener("scroll", trackVisibility, { passive: true })
     window.addEventListener("resize", keepControlsInView)
-    window.visualViewport?.addEventListener("resize", keepControlsInView)
+    viewport?.addEventListener("resize", keepControlsInView)
     return () => {
       if (frame !== null) cancelAnimationFrame(frame)
+      history.removeEventListener("scroll", trackVisibility)
       window.removeEventListener("resize", keepControlsInView)
-      window.visualViewport?.removeEventListener("resize", keepControlsInView)
+      viewport?.removeEventListener("resize", keepControlsInView)
     }
   }, [])
   const browserControls = useBrowserActivityControls()
