@@ -85,7 +85,7 @@ const makeFixture = async (
   const engines = new Set([engine])
   cleanups.add(async () => {
     await Promise.all([...engines].map((value) => value.shutdown()))
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
   const restart = () => {

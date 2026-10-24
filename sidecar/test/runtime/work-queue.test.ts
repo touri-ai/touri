@@ -489,7 +489,7 @@ const getFixture = async (botCount = 5) => {
     await engine.shutdown()
     for (const close of extraCleanups) await close()
     unsubscribe()
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
   const send = (threadId: string, index = 0): Run => {
