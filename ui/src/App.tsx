@@ -920,10 +920,14 @@ const AppContent = ({ kernel }: AppProps) => {
     }
     setModal("doctor")
   }
-  const runFailureAction = (action: FailureAction): void => {
+  const openFailureAction = (action: FailureAction): void => {
     if (action.kind === "doctor") openDestination({ kind: "doctor" })
     if (action.kind === "setting") openDestination(destinationForSetting(action.settingId))
   }
+  // A context value: keep its identity so every message does not render again on each streaming delta.
+  const latestFailureAction = useRef(openFailureAction)
+  latestFailureAction.current = openFailureAction
+  const runFailureAction = useCallback((action: FailureAction): void => latestFailureAction.current(action), [])
   const paletteSettings = useMemo(() => settingsIndex({ hasBot: data.bots.length > 0 }), [data.bots.length])
   const startProcess = async (processId: Id): Promise<void> => {
     await actions.startProcess(processId)

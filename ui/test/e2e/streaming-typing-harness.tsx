@@ -25,6 +25,47 @@ const api = createMockApi()
 const thread = api.getState().threads.find((item) => item.id === "thread-mark")
 if (!thread) throw new Error("Fixture conversation is missing")
 
+// A realistic conversation: earlier long answers (collapsed when complete) between short turns.
+if (new URLSearchParams(location.search).get("history") === "realistic") {
+  const start = Date.now() - 60 * 60_000
+  const earlier = Array.from({ length: 13 }, (_, index) => index).flatMap((index) => {
+    const at = start + index * 60_000
+    const long = index % 3 === 1
+    const answer = long
+      ? longAnswer.replace("roteiro fictício completo", `roteiro fictício ${index}`)
+      : `Resposta curta ${index}.`
+    const ask: Message = {
+      id: `history-ask-${index}`,
+      threadId: thread.id,
+      parentId: index ? `history-answer-${index - 1}` : (thread.activeLeafId ?? null),
+      role: "user",
+      kind: "text",
+      status: "complete",
+      runId: null,
+      text: `Pergunta ${index}`,
+      parts: [{ type: "text", text: `Pergunta ${index}` }],
+      sender: null,
+      source: "local",
+      createdAt: at,
+      updatedAt: at,
+    }
+    const reply: Message = {
+      ...ask,
+      id: `history-answer-${index}`,
+      parentId: ask.id,
+      role: "assistant",
+      text: answer,
+      parts: [{ type: "text", text: answer }],
+      sender: { id: "bot-mark", name: "mark" },
+      createdAt: at + 1,
+      updatedAt: at + 1,
+    }
+    return [ask, reply]
+  })
+  api.getState().messages.push(...earlier)
+  thread.activeLeafId = "history-answer-12"
+}
+
 const stream = ({
   interval = 30,
   size = 40,
@@ -80,6 +121,9 @@ const stream = ({
     api.getState().messages.push(request, reply)
     api.emit({ type: "message.created", message: request })
     api.emit({ type: "message.created", message: reply })
+    // The conversation follows the new reply, as the server does when a turn starts.
+    thread.activeLeafId = reply.id
+    api.emit({ type: "thread.updated", thread: { ...thread } })
     api.emit({ type: "run.updated", run })
     let offset = 0
     const timer = window.setInterval(() => {
