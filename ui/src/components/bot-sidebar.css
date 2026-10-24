@@ -123,7 +123,7 @@
   font-size: var(--fs-body);
   letter-spacing: 0;
 }
-.r8-sidebar .bot-row:focus-within .bot-settings {
+.r8-sidebar .bot-row:has(:focus-visible) .bot-settings {
   opacity: 1;
 }
 .r8-sidebar .bot-settings:hover {
@@ -799,7 +799,7 @@
   margin-right: var(--space-4);
 }
 
-/* Actions stay out of sight until the row is hovered, focused or selected: the slot grows from 0, so nothing overlaps. */
+/* Keyboard focus and open menus reveal actions without retaining the slot after pointer focus. */
 .r8-sidebar .sidebar-row-actions {
   display: flex;
   flex: 0 0 auto;
@@ -810,7 +810,7 @@
   width: 0;
   overflow: hidden;
 }
-.r8-sidebar .sidebar-row:is(:hover, :focus-within) .bot-actions-menu,
+.r8-sidebar .sidebar-row:is(:hover, :has(:focus-visible)) .bot-actions-menu,
 .r8-sidebar .sidebar-row .bot-actions-menu:has([aria-expanded="true"]) {
   width: var(--sidebar-row-height);
   overflow: visible;
@@ -834,7 +834,7 @@
   letter-spacing: 0;
   opacity: 0;
 }
-.r8-sidebar .sidebar-row:is(:hover, :focus-within) .bot-settings,
+.r8-sidebar .sidebar-row:is(:hover, :has(:focus-visible)) .bot-settings,
 .r8-sidebar .sidebar-row .bot-settings[aria-expanded="true"] {
   opacity: 1;
 }

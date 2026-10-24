@@ -1666,6 +1666,10 @@ Rules for every WP:
     - left: bots grouped by section, with unread and running badges. In Bots and Work direct messages,
       each bot has its name and one quiet preview line. Clicking the row, including repeated clicks,
       Enter and Space, only opens its conversation; it never expands management controls.
+    - Bot row action slots appear on hover, keyboard-visible focus or an explicitly open menu.
+      Pointer selection does not leave an extra action visible after the pointer exits the row.
+      Touch layouts retain one management action on the selected row; selecting another bot
+      preserves the total visible sidebar control count.
     - bot row actions: the ellipsis menu opens Conversations explicitly, without switching the current
       conversation. History, selection, archive, deletion and new conversations remain available there;
       Routines is a separate menu action. Closing management restores focus to its trigger, and Escape
