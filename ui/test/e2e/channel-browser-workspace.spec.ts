@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
 
 test.use({ reducedMotion: "reduce", viewport: { width: 1280, height: 900 } })
@@ -69,3 +70,34 @@ test("activating browser Stop returns focus before cancellation completes", asyn
   await expect(stop).toHaveCount(0)
   await expect(page.getByRole("textbox", { name: "Mensagem para Viagens" })).toBeFocused()
 })
+
+for (const width of [1440, 390]) {
+  for (const theme of ["light", "dark"]) {
+    test(`controller context stays readable at ${width}px in ${theme}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+      await page.addInitScript((appearance) => localStorage.setItem("touri.appearance.v1", appearance), theme)
+      await page.goto("/test/e2e/channel-browser-workspace-harness.html?viewer=person-requester&controller=owner")
+      await expect(page.getByRole("textbox", { name: "Mensagem para Léo" })).toBeVisible({ timeout: 15_000 })
+      if (width === 390) await page.locator(".mobile-menu-button").click()
+      await page.getByRole("tab", { name: /^Work,/ }).click()
+      await page.getByRole("button", { name: /^Viagens/ }).click()
+
+      const context = page.getByRole("status", {
+        name: "Léo no navegador · pedido de Ana · Carla está no controle",
+      })
+      await expect(context).toBeVisible()
+      const fitsViewport = await context.evaluate((element) => {
+        const bounds = element.getBoundingClientRect()
+
+        return element.scrollWidth <= element.clientWidth && bounds.left >= 0 && bounds.right <= innerWidth
+      })
+      expect(fitsViewport).toBe(true)
+      const accessibility = await new AxeBuilder({ page })
+        .include(".channel-chip")
+        .include(".browser-activity-card")
+        .include(".composer-browser-status")
+        .analyze()
+      expect(accessibility.violations).toEqual([])
+    })
+  }
+}
