@@ -623,6 +623,33 @@ const AppContent = ({ kernel }: AppProps) => {
     data.threadCreation?.thread ?? data.threads.find((thread) => thread.id === data.selectedThreadId) ?? null
   const selectedGroup = data.groups.find((g) => g.id === selectedThread?.groupId) ?? null
   const modeSelections = useRef<Partial<Record<WorkspaceMode, ModeSelection>>>({})
+  const [sidebarModeRequest, setSidebarModeRequest] = useState<{ mode: WorkspaceMode; id: number } | null>(null)
+  const selectedChannel = Boolean(selectedThread?.groupId || selectedThread?.groupThreadId)
+  const selectedThreadId = selectedThread?.id ?? null
+  const modeSelectionSeen = useRef({ mode: sidebarMode, threadId: selectedThreadId })
+  // Bots never centers a channel: a channel opened from a notice or search belongs to Work.
+  useEffect(() => {
+    const seen = modeSelectionSeen.current
+    modeSelectionSeen.current = { mode: sidebarMode, threadId: selectedThreadId }
+    if (sidebarMode !== "bots" || !selectedBot) return
+    if (!selectedChannel) {
+      modeSelections.current = {
+        ...modeSelections.current,
+        bots: { botId: selectedBot.id, threadId: data.threadCreation ? null : selectedThreadId },
+      }
+      return
+    }
+    // A manual switch to Bots is still restoring its own conversation.
+    if (seen.mode !== "bots" || seen.threadId === selectedThreadId) return
+
+    setSidebarMode("work")
+    setSidebarModeRequest((current) => ({ mode: "work", id: (current?.id ?? 0) + 1 }))
+    try {
+      window.localStorage.setItem("touri.sidebar.mode", "work")
+    } catch {
+      // The in-memory mode still follows the opened channel when storage is unavailable.
+    }
+  }, [sidebarMode, selectedBot, selectedChannel, selectedThreadId, data.threadCreation])
   const switchSidebarMode = (mode: WorkspaceMode, restore = true): void => {
     if (mode === sidebarMode) return
 
@@ -1163,6 +1190,8 @@ const AppContent = ({ kernel }: AppProps) => {
           <SidebarDrawer
             currentPerson={sidebarPerson}
             onSidebarModeChange={switchSidebarMode}
+            // A drawer that remounts must not reapply a request the person already left.
+            sidebarModeRequest={sidebarModeRequest?.mode === sidebarMode ? sidebarModeRequest : null}
             panelOpen={section === "bots" && screen === "chat" && panelOpen}
             workspaceHeader={workspaceHeader}
             serverMode={serverMode}
