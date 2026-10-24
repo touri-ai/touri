@@ -82,6 +82,47 @@ export const BrowserTakeoverView = ({
     revealedSessions.add(sessionId)
     requestReveal(view.current)
   }, [sessionId])
+  // A window that changes size (a narrower layout, the on-screen keyboard) can push the controls out of
+  // the conversation. Bring them back only when they were in view before the resize, so a person who
+  // scrolled away to read is not pulled back.
+  useEffect(() => {
+    const section = view.current
+    const history = section?.closest(".message-scroll")
+    if (!section || !history) return
+    const controlsInView = () => {
+      const box = section.querySelector(".browser-takeover-controls")?.getBoundingClientRect()
+      if (!box) return false
+      const area = history.getBoundingClientRect()
+      const visible = window.visualViewport
+      const top = Math.max(area.top, visible?.offsetTop ?? area.top)
+      const bottom = Math.min(area.bottom, visible ? visible.offsetTop + visible.height : area.bottom)
+      return box.top >= top && box.bottom <= bottom
+    }
+    let inView = controlsInView()
+    let pendingCheck: number | null = null
+    const onScroll = () => {
+      inView = controlsInView()
+    }
+    // Resize events run before the scroll they cause, so the state they read is the one before the resize.
+    const onResize = () => {
+      if (pendingCheck !== null) return
+      const wasInView = inView
+      pendingCheck = requestAnimationFrame(() => {
+        pendingCheck = null
+        inView = controlsInView()
+        if (wasInView && !inView) requestReveal(section)
+      })
+    }
+    history.addEventListener("scroll", onScroll, { passive: true })
+    window.addEventListener("resize", onResize)
+    window.visualViewport?.addEventListener("resize", onResize)
+    return () => {
+      if (pendingCheck !== null) cancelAnimationFrame(pendingCheck)
+      history.removeEventListener("scroll", onScroll)
+      window.removeEventListener("resize", onResize)
+      window.visualViewport?.removeEventListener("resize", onResize)
+    }
+  }, [])
   const browserControls = useBrowserActivityControls()
   const [frame, setFrame] = useState<FrameMeta | null>(null)
   const [fallbackImage, setFallbackImage] = useState("")

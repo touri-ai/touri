@@ -236,7 +236,13 @@ type ProgrammaticScroll = { top: number; viewportHeight: number }
  */
 const alignRevealed = (list: HTMLElement, element: HTMLElement): boolean => {
   const header = element.closest(".browser-activity-card")?.querySelector<HTMLElement>(".browser-activity-header")
-  const view = list.getBoundingClientRect()
+  const area = list.getBoundingClientRect()
+  const viewport = window.visualViewport
+  // The keyboard can pan the visual viewport without moving the history's layout bounds.
+  const view = {
+    top: Math.max(area.top, viewport?.offsetTop ?? area.top),
+    bottom: Math.min(area.bottom, viewport ? viewport.offsetTop + viewport.height : area.bottom),
+  }
   list.scrollTop += element.getBoundingClientRect().top - view.top - 8
   const placed = element.getBoundingClientRect()
   // A hidden element has nothing to show; stop instead of scrolling toward an empty box.
