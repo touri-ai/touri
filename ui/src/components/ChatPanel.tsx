@@ -157,7 +157,7 @@ type ChatPanelProps = {
   runs: Array<Run>
   onSend: (text: string, parentId?: Id | null, attachmentIds?: Array<Id>, groupAction?: GroupAction) => Promise<void>
   onRetry: (runId: Id) => Promise<void>
-  onCancel: (runId: Id) => Promise<void>
+  onCancel: (runId: Id, scope?: "turn") => Promise<void>
   onSwitchBranch: (threadId: Id, leafId: Id) => Promise<void>
   computerGrant: { botId: Id; threadId: Id; botName: string } | null
   api: UiApi

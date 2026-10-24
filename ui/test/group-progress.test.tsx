@@ -86,7 +86,7 @@ describe("channel progress", () => {
     expect(screen.getByRole("menuitem", { name: `Parar ${secondBot.name}`, exact: true })).toHaveFocus()
     fireEvent.click(screen.getByRole("menuitem", { name: `Parar ${secondBot.name}`, exact: true }))
 
-    await waitFor(() => expect(props.onCancel).toHaveBeenCalledWith(second.id))
+    await waitFor(() => expect(props.onCancel).toHaveBeenCalledWith(second.id, "turn"))
     expect(t("Stop {name}", { name: "Revisor" }, "en")).toBe("Stop Revisor")
   })
 
