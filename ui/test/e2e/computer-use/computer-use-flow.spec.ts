@@ -113,7 +113,8 @@ for (const variant of variants) {
 
     test("ten actions, a login wall, a take-over and a formatted answer", async ({ page: ui, browser }, testInfo) => {
       await ui.goto(`/test/e2e/computer-use/flow-harness.html?theme=${variant.theme}`)
-      await expect(ui.getByRole("textbox", { name: "Mensagem para Léo" })).toBeVisible()
+      // The first fixture load compiles the app before the composer can mount.
+      await expect(ui.getByRole("textbox", { name: "Mensagem para Léo" })).toBeVisible({ timeout: 15_000 })
       const chip = ui.locator(".composer-browser-status")
       const card = ui.locator(".browser-activity-card")
       const snapshots: string[] = []
