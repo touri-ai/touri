@@ -21,6 +21,17 @@ const getPlacement = (locator: Locator) =>
 
 const reachable = { withinHistory: true, hittable: true }
 
+const captureControls = async (page: Page, name: string) => {
+  const directory = process.env.TOURI_TAKEOVER_RESIZE_CAPTURE_DIR
+  if (!directory) return
+
+  await page.screenshot({
+    path: `${directory}/${name}.png`,
+    mask: [page.locator(".composer-model")],
+    maskColor: "#28282b",
+  })
+}
+
 const nextFrames = (page: Page) =>
   page.evaluate(
     () =>
@@ -64,12 +75,15 @@ for (const history of ["short", "long"] as const)
   }) => {
     test.setTimeout(60_000)
     const { input, view, handback } = await takeOver(page, { width: 1440, height: 900 }, history === "long")
+    await captureControls(page, `takeover-${history}-1440`)
 
     // The same session moves to a phone-sized window; nothing in the test scrolls the history.
     await page.setViewportSize({ width: 390, height: 844 })
     await expect.poll(() => getPlacement(handback)).toEqual(reachable)
-    if (process.env.TOURI_SCREENSHOT_DIR)
-      await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/takeover-resized-${history}-390.png` })
+    await expect
+      .poll(() => getPlacement(view.getByRole("status", { name: "Privacidade do navegador" })))
+      .toEqual(reachable)
+    await captureControls(page, `takeover-resized-${history}-390`)
 
     // Focusing the keyboard entry on the phone must not hide the handback either.
     await view.getByRole("button", { name: "Digitar no navegador" }).dispatchEvent("click")
