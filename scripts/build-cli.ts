@@ -52,6 +52,8 @@ const main = (): void => {
           process.execPath,
           "build",
           "--compile",
+          "--bytecode",
+          "--format=esm",
           `--target=${target}`,
           `--define=process.env.TOURI_VERSION=${JSON.stringify(version)}`,
           "sidecar/src/cli/main.ts",

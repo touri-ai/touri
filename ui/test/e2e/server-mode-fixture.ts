@@ -29,9 +29,11 @@ const close = (server: Server) => new Promise<void>((done) => server.close(() =>
 export const createServerModeFixture = async ({
   initialMode = "local",
   port = 0,
+  executable,
 }: {
   initialMode?: "local" | "server"
   port?: number
+  executable?: string
 } = {}) => {
   // Playwright's global setup builds this worktree's UI before any server fixture starts.
   const reservation = createServer()
@@ -209,10 +211,9 @@ export const createServerModeFixture = async ({
 
   const start = async (): Promise<number> => {
     child = spawn(
-      "bun",
+      executable ?? "bun",
       [
-        "run",
-        "touri",
+        ...(executable ? [] : ["run", "touri"]),
         "serve",
         "--host",
         "127.0.0.1",

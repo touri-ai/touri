@@ -18,6 +18,8 @@ const child = Bun.spawnSync(
     process.execPath,
     "build",
     "--compile",
+    "--bytecode",
+    "--format=esm",
     `--target=${target.bun}`,
     "./sidecar/src/main.ts",
     "./sidecar/src/file-io-worker-entry.ts",
