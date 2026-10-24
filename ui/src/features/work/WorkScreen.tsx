@@ -1,6 +1,7 @@
 import type { AppSettings, Bot, Run, Thread } from "@touri/contracts"
 import { type FormEvent, useEffect, useState } from "react"
 import { BotAvatar } from "../../components/BotAvatar"
+import { Button } from "../../components/Button"
 import { ScreenHeader } from "../../components/ScreenPrimitives"
 import { type TranslationKey, t } from "../../i18n"
 import { getSidebarThreadTitle } from "../../sidebarThreadTitle"
@@ -99,14 +100,14 @@ export const WorkScreen = ({
                       </div>
                     </dl>
                     {onStop && bot?.machine !== "cloud" && (
-                      <button
-                        type="button"
+                      <Button
+                        variant="secondary"
                         className="work-stop"
                         disabled={stoppingRunId !== null}
                         onClick={() => void stop(run.id)}
                       >
                         {t(getStopLabel(run, stoppingRunId))}
-                      </button>
+                      </Button>
                     )}
                   </article>
                 )

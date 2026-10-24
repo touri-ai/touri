@@ -56,7 +56,10 @@ for (const viewport of [
     const waiting = page.locator('[data-run-id="channel-waiting"]')
 
     await expect(waiting.getByRole("button", { name: "Cancelar só este pedido" })).toBeVisible()
-    await expect(active.getByRole("button", { name: "Parar só esta tarefa" })).toBeVisible()
+    const stopButton = active.getByRole("button", { name: "Parar só esta tarefa" })
+    await expect(stopButton).toBeVisible()
+    const target = await stopButton.boundingBox()
+    expect(target?.height).toBeGreaterThanOrEqual(viewport.width === 390 ? 44 : 40)
     if (process.env.TOURI_SCREENSHOT_DIR)
       await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/task-stop-${viewport.width}.png` })
 
