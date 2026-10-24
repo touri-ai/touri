@@ -147,6 +147,25 @@ test("status reports the current attempt and next retry, including to a late sub
   expect(status).toHaveBeenLastCalledWith({ state: "connected", attempt: 2, retryAt: null })
 })
 
+test("a required update remains available when the device loses and regains its network", async () => {
+  const fixture = makeClient()
+  await vi.advanceTimersByTimeAsync(0)
+  fixture.getSocket(0).dispatchEvent(new Event("open"))
+  fixture.fetchImpl.mockResolvedValue(Response.json({ ok: true, schemaVersion: 99, protocolVersion: 2 }))
+  fixture.getSocket(0).dispatchEvent(new Event("close"))
+  await vi.advanceTimersByTimeAsync(250)
+  const online = makeOnlineSignal(false)
+  cleanups.add(online.restore)
+
+  window.dispatchEvent(new Event("offline"))
+  online.setOnline(true)
+  window.dispatchEvent(new Event("online"))
+  await vi.advanceTimersByTimeAsync(5000)
+
+  expect(fixture.api.getConnectionStatus?.().state).toBe("incompatible")
+  expect(fixture.getSocketCount()).toBe(1)
+})
+
 test("retry now replaces the current stalled handshake instead of waiting for its deadline", async () => {
   const fixture = makeClient()
   await vi.advanceTimersByTimeAsync(0)

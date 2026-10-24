@@ -654,7 +654,7 @@ export const createApiClient = ({
   }
 
   const pauseOfflineConnection = (): void => {
-    if (!isDeviceOffline() || connectionStatus.state === "session-expired") return
+    if (!isDeviceOffline() || connectionStatus.state === "session-expired" || incompatible) return
 
     socketGeneration += 1
     clearTimeout(timer)

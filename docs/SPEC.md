@@ -398,6 +398,8 @@ User repos stay wherever they are. touri writes into a repo only:
   and offer “Atualizar agora” / “Update now”. Only that explicit click reloads web assets or invokes
   the native signed updater and restarts the app. Pairing, cookies, vault and socket tickets keep
   their existing authentication boundaries.
+- A required protocol update remains available across device offline/online signals; a network
+  change cannot replace that explicit update action with an unrecoverable offline notice.
 - When an incompatible protocol prevents startup, show the update explanation once and make
   updating the primary recovery action, without an offline claim or a redundant retry action.
   Recovery actions remain readable and inside their container at desktop and phone widths.
