@@ -50,8 +50,10 @@ const result = (success: boolean): ToolResult =>
 
 const makeEngine = ({
   snapshot: page = snapshot,
+  refreshRefs = false,
 }: {
   snapshot?: BrowserSnapshot
+  refreshRefs?: boolean
 } = {}): {
   engine: BrowserEngine
   clicks: () => Array<BrowserTarget>
@@ -67,21 +69,42 @@ const makeEngine = ({
   let secretSubmissions = 0
   let types = 0
   let evaluations: Array<string> = []
+  // Model the real engine's snapshot generations without sharing mutable page fixtures.
+  let currentPage = page
   const engine: BrowserEngine = {
     preview: async () => null,
     open: async () => result(true),
     list: async () => result(true),
     close: async () => result(true),
-    snapshot: async () => ({ success: true, content: [], structured: page }),
+    snapshot: async () => {
+      const generation = currentPage.generation + 1
+      currentPage = refreshRefs
+        ? {
+            ...currentPage,
+            generation,
+            elements: currentPage.elements.map((element, index) => ({ ...element, ref: `${generation}.${index}` })),
+          }
+        : currentPage
+
+      return { success: true, content: [], structured: currentPage }
+    },
     screenshot: async () => result(true),
     navigate: async () => result(true),
     click: async ({ target }) => {
       clicks = [...clicks, target]
+      if (target.kind === "ref")
+        return currentPage.elements.some((element) => element.ref === target.ref)
+          ? result(true)
+          : { success: false, errorCode: "STALE_REF", error: "Take a fresh snapshot and use its refs." }
+
       return clicks.length === 1
         ? { success: false, errorCode: "AMBIGUOUS_TARGET", error: "Two targets match." }
         : result(true)
     },
-    type: async () => {
+    type: async ({ target }) => {
+      if (target.kind === "ref" && !currentPage.elements.some((element) => element.ref === target.ref))
+        return { success: false, errorCode: "STALE_REF", error: "Take a fresh snapshot and use its refs." }
+
       types += 1
       return result(true)
     },
@@ -149,10 +172,12 @@ const makeFixture = async ({
   getApiKey,
   fetchDecision,
   pageSnapshot,
+  refreshRefs,
 }: {
   getApiKey: (signal: AbortSignal) => Promise<string | null>
   fetchDecision: (input: string, init: RequestInit) => Promise<Response>
   pageSnapshot?: BrowserSnapshot
+  refreshRefs?: boolean
 }) => {
   const root = mkdtempSync(join(tmpdir(), "touri-browser-decision-"))
   const runtime = createKernel({ appData: root })
@@ -164,6 +189,7 @@ const makeFixture = async ({
   }
   const fake = makeEngine({
     ...(pageSnapshot ? { snapshot: pageSnapshot } : {}),
+    ...(refreshRefs === undefined ? {} : { refreshRefs }),
   })
   await init(runtime.kernel, undefined, {
     engine: fake.engine,
@@ -189,6 +215,7 @@ const makeFixture = async ({
   return {
     context,
     handler: handlers.get("browser_click")?.handler,
+    snapshotHandler: handlers.get("browser_snapshot")?.handler,
     typeHandler: handlers.get("browser_type")?.handler,
     pressHandler: handlers.get("browser_press")?.handler,
     secretHandler: handlers.get("browser_submit_secret")?.handler,
@@ -202,17 +229,49 @@ const makeFixture = async ({
   }
 }
 
-test("typing into a stale plain search ref asks for a fresh snapshot without takeover", async () => {
+test.each(["click", "type"])("a fresh snapshot ref remains usable for %s", async (action) => {
+  const fixture = await makeFixture({
+    getApiKey: async () => null,
+    fetchDecision: async () => Response.json({}),
+    refreshRefs: true,
+    pageSnapshot: {
+      ...snapshot,
+      elements: [{ ref: "2.0", role: "textbox", name: "Destination", states: [], frame: "main", inViewport: true }],
+    },
+  })
+  const snapshotResult = await fixture.snapshotHandler?.({
+    ctx: fixture.context,
+    args: { tabId: snapshot.tabId, image: "never" },
+  })
+  if (!snapshotResult?.success) throw new Error("Missing synthetic snapshot")
+  const page = snapshotResult.structured as BrowserSnapshot
+  const handler = action === "click" ? fixture.handler : fixture.typeHandler
+
+  const response = await handler?.({
+    ctx: fixture.context,
+    args: {
+      tabId: page.tabId,
+      target: { kind: "ref", ref: page.elements[0]?.ref ?? "" },
+      ...(action === "type" ? { text: "Lisboa", submit: false } : {}),
+    },
+  })
+
+  expect(response).toMatchObject({ success: true })
+  expect(fixture.takeovers()).toEqual([])
+})
+
+test("typing into a stale plain search ref preserves the engine's recovery error without takeover", async () => {
   const fixture = await makeFixture({
     getApiKey: async () => null,
     fetchDecision: async () => Response.json({}),
   })
+
   const response = await fixture.typeHandler?.({
     ctx: fixture.context,
     args: { tabId: snapshot.tabId, target: { kind: "ref", ref: "9.9" }, text: "Lisboa", submit: false },
   })
 
-  expect(response).toMatchObject({ success: false, errorCode: "TARGET_CHANGED" })
+  expect(response).toMatchObject({ success: false, errorCode: "STALE_REF" })
   expect(fixture.takeovers()).toEqual([])
   expect(fixture.types()).toBe(0)
 })
