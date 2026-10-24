@@ -4022,6 +4022,10 @@ a {
 .markdown-content li + li {
   margin-top: var(--space-4);
 }
+/* A long streaming list arrives in chunks; adjacent chunks keep the item spacing of one list. */
+.markdown-streaming-blocks :is(ol + ol, ul + ul) {
+  margin-top: calc(var(--space-4) - var(--space-8));
+}
 .markdown-content li > p {
   margin-block: var(--space-4);
 }

@@ -121,17 +121,19 @@ export const runErrorFor = (message: Message, candidate?: Run, machineReady = fa
   }
 }
 
+// Intl formatters are costly to build; one instance serves every render of a failed message.
+const failureDay = new Intl.DateTimeFormat("pt-BR")
+const failureClock = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" })
+
 export const failureTimeLabel = (timestamp: number, now = Date.now()): string => {
   const date = new Date(timestamp)
   const today = new Date(now)
   const yesterday = new Date(now)
   yesterday.setDate(today.getDate() - 1)
-  const day = date.toLocaleDateString("pt-BR")
-  const relativeDay =
-    day === today.toLocaleDateString("pt-BR")
-      ? "hoje"
-      : day === yesterday.toLocaleDateString("pt-BR")
-        ? "ontem"
-        : `em ${day}`
-  return `falhou ${relativeDay} às ${date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+  const day = failureDay.format(date)
+  const time = failureClock.format(date)
+  if (day === failureDay.format(today)) return `falhou hoje às ${time}`
+  if (day === failureDay.format(yesterday)) return `falhou ontem às ${time}`
+
+  return `falhou em ${day} às ${time}`
 }

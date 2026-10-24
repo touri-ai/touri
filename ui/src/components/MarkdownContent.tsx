@@ -30,6 +30,7 @@ import {
 import { LocalFileLink } from "./LocalFileLink"
 import { MermaidDiagram } from "./MermaidDiagram"
 import { getMarkdownCodeHtml } from "./markdownHighlight"
+import { splitStreamingBlocks } from "./streamingBlocks"
 import { useStreamingContent } from "./useStreamingContent"
 
 type MarkdownRendererProps = {
@@ -287,6 +288,8 @@ const ShikiCode = ({
   )
 }
 
+const STREAMING_BLOCKS_MIN = 1_500
+
 export const MarkdownContent = ({
   content,
   compact = false,
@@ -296,19 +299,22 @@ export const MarkdownContent = ({
 }: MarkdownRendererProps) => {
   const displayed = useStreamingContent(content, streaming)
   const visibleOnly = !streaming && (content.length > 4000 || content.split("\n").length > 40)
+  // While a long reply streams, finished blocks keep their props and skip parsing on each update.
+  const blocks =
+    streaming && !preview && displayed.length > STREAMING_BLOCKS_MIN ? splitStreamingBlocks(displayed) : null
+  const renderMarkdown = (text: string, key?: number) => (
+    <LazyMarkdown key={key} content={text} preview={preview} streaming={streaming} />
+  )
+  const markdown = blocks ? blocks.map((block, index) => renderMarkdown(block, index)) : renderMarkdown(displayed)
 
   return (
     <StreamingContext.Provider value={streaming}>
       <CodeVisibilityContext.Provider value={visibleOnly}>
-        <div className={`markdown-content${compact ? " markdown-compact" : ""}`}>
+        <div
+          className={`markdown-content${compact ? " markdown-compact" : ""}${blocks ? " markdown-streaming-blocks" : ""}`}
+        >
           <Suspense fallback={<p className="whitespace-pre-wrap">{preview ? displayed.slice(0, 600) : displayed}</p>}>
-            {evidence ? (
-              <EvidenceContext.Provider value={evidence}>
-                <LazyMarkdown content={displayed} preview={preview} streaming={streaming} />
-              </EvidenceContext.Provider>
-            ) : (
-              <LazyMarkdown content={displayed} preview={preview} streaming={streaming} />
-            )}
+            {evidence ? <EvidenceContext.Provider value={evidence}>{markdown}</EvidenceContext.Provider> : markdown}
           </Suspense>
         </div>
       </CodeVisibilityContext.Provider>

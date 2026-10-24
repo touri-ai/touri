@@ -792,6 +792,11 @@ const sameCalendarDay = (left: number, right: number): boolean => {
   )
 }
 
+// Formatters are reused across renders; building them per message is costly while a reply streams.
+const dayFormat = new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "long" })
+const dayWithYearFormat = new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "long", year: "numeric" })
+const messageClock = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" })
+
 const formatDaySeparator = (timestamp: number): string => {
   const date = new Date(timestamp)
   const now = new Date()
@@ -799,11 +804,7 @@ const formatDaySeparator = (timestamp: number): string => {
   yesterday.setDate(now.getDate() - 1)
   if (sameCalendarDay(timestamp, now.getTime())) return "Hoje"
   if (sameCalendarDay(timestamp, yesterday.getTime())) return "Ontem"
-  return date.toLocaleDateString("pt-BR", {
-    day: "numeric",
-    month: "long",
-    ...(date.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
-  })
+  return (date.getFullYear() !== now.getFullYear() ? dayWithYearFormat : dayFormat).format(date)
 }
 
 const MessageBubble = ({
@@ -984,7 +985,8 @@ const MessageBubble = ({
     return () => window.removeEventListener(reviewTaskEvent, review)
   }, [message.runId])
   const failedAt = run?.finishedAt ?? message.updatedAt
-  const failureTime = failureTimeLabel(failedAt)
+  // Only a failed message shows this label; skip date formatting for every other render.
+  const failureTime = message.status === "failed" ? failureTimeLabel(failedAt) : ""
   const onFailureAction = useContext(FailureActionContext)
   const failureAction = runError?.action
   const failureRecovery = runError && {
@@ -1134,9 +1136,7 @@ const MessageBubble = ({
           {message.sender?.kind === "integration" && (
             <span className="message-sender-kind">{t("Integração", {}, locale)}</span>
           )}
-          <time dateTime={new Date(message.createdAt).toISOString()}>
-            {new Date(message.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-          </time>
+          <time dateTime={new Date(message.createdAt).toISOString()}>{messageClock.format(message.createdAt)}</time>
           {hasBrowserTools && (
             <span className="browser-run-state" role="status">
               {getBrowserRunLabel()}

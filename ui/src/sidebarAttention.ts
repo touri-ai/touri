@@ -86,6 +86,11 @@ export const pendingNotifications = (
 
 export const countAttention = (items: Array<NotificationRecord>): number => pendingNotifications(items).length
 
+// Built once: every sidebar row formats its time on each workspace update.
+const sidebarClock = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" })
+const sidebarDate = new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "short" })
+const sidebarDateWithYear = new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "short", year: "numeric" })
+
 /** Sidebar row time: the clock for today, then "ontem" or a short date. */
 export const getSidebarRowTime = (timestamp: number, now = Date.now()): string => {
   if (!timestamp) return ""
@@ -93,7 +98,7 @@ export const getSidebarRowTime = (timestamp: number, now = Date.now()): string =
   const date = new Date(timestamp)
   if (date.toDateString() !== new Date(now).toDateString()) return relativeThreadDate(timestamp, now)
 
-  return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+  return sidebarClock.format(date)
 }
 
 /** The newest update among a bot's or channel's conversations; 0 when there is none. */
@@ -102,14 +107,12 @@ export const getLastActivityAt = (threads: ReadonlyArray<Thread>): number =>
 
 export const relativeThreadDate = (timestamp: number, now = Date.now()): string => {
   const date = new Date(timestamp)
+  // A shared formatter throws on an invalid date where toLocaleDateString returned text.
+  if (Number.isNaN(date.getTime())) return ""
   const today = new Date(now)
   const yesterday = new Date(today)
   yesterday.setDate(today.getDate() - 1)
   if (date.toDateString() === today.toDateString()) return "hoje"
   if (date.toDateString() === yesterday.toDateString()) return "ontem"
-  return date.toLocaleDateString("pt-BR", {
-    day: "numeric",
-    month: "short",
-    ...(date.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}),
-  })
+  return (date.getFullYear() !== today.getFullYear() ? sidebarDateWithYear : sidebarDate).format(date)
 }
