@@ -243,6 +243,31 @@ const getTimelineIndex = (offsets: number[], position: number): number => {
 
 type ProgrammaticScroll = { top: number; viewportHeight: number }
 
+/**
+ * Places a revealed element right below the list's top edge and any sticky card header over it.
+ * Returns false while the list cannot scroll far enough yet, so the caller retries after measuring.
+ */
+const alignRevealed = (list: HTMLElement, element: HTMLElement): boolean => {
+  const header = element.closest(".browser-activity-card")?.querySelector<HTMLElement>(".browser-activity-header")
+  const view = list.getBoundingClientRect()
+  list.scrollTop += element.getBoundingClientRect().top - view.top - 8
+  const placed = element.getBoundingClientRect()
+  // A hidden element has nothing to show; stop instead of scrolling toward an empty box.
+  if (!placed.height) return true
+  // Measure where the sticky header actually landed; padding moves it below the list's top edge.
+  // Only a header that overlaps the element covers it; one laid out further down is not in the way.
+  const headerBox = header?.getBoundingClientRect()
+  const covered =
+    headerBox && headerBox.top < placed.bottom && headerBox.bottom > placed.top ? headerBox.bottom + 8 - placed.top : 0
+  if (covered > 0) list.scrollTop -= covered
+  const box = element.getBoundingClientRect()
+
+  // Placed once fully in view, or once its top reached the aimed spot; a taller result scrolls on from there.
+  return (
+    (box.top >= view.top && box.bottom <= view.bottom) || Math.abs(box.top - (view.top + 8 + Math.max(0, covered))) <= 1
+  )
+}
+
 /** Jump to the end and remember the position so its own scroll event is not mistaken for the user leaving the bottom. */
 const scrollToEnd = (list: HTMLElement, programmaticTop: { current: ProgrammaticScroll | null }): void => {
   list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight)
@@ -341,6 +366,27 @@ export const VirtualMessageList = ({
   const focusedRequest = useRef<number | undefined>(undefined)
   const focusedMessage = useRef<typeof focusMessage>(undefined)
   const latestUserId = [...messages].reverse().find((message) => message.role === "user")?.id
+  // A revealed result waits here until it actually sits in view: a virtualized list can only scroll
+  // as far as its measured rows allow, and the row holding the result is measured a frame later.
+  const pendingReveal = useRef<HTMLElement | null>(null)
+  const revealPending = (list: HTMLElement): void => {
+    const element = pendingReveal.current
+    if (!element?.isConnected) {
+      pendingReveal.current = null
+      return
+    }
+    if (alignRevealed(list, element)) pendingReveal.current = null
+    readingAnchor.current = {
+      element,
+      top: element.getBoundingClientRect().top - list.getBoundingClientRect().top,
+      scrollTop: list.scrollTop,
+    }
+    followBottom.current = false
+    setAwayFromBottom(list.scrollTop + list.clientHeight < list.scrollHeight - 48)
+    setScrollTop(list.scrollTop)
+  }
+  const revealPendingRef = useRef(revealPending)
+  revealPendingRef.current = revealPending
   useEffect(() => {
     // A result shown under a control the person used stays put while the turn keeps growing.
     // The history can mount after this effect, so the list is read when the request arrives.
@@ -348,21 +394,8 @@ export const VirtualMessageList = ({
       const list = scrollRef.current
       if (!list || !(event.target instanceof HTMLElement) || !list.contains(event.target)) return
       event.preventDefault()
-      const element = event.target
-      // A sticky card header stays over the top of the list; the result goes right below it.
-      const header = element.closest(".browser-activity-card")?.querySelector<HTMLElement>(".browser-activity-header")
-      list.scrollTop += element.getBoundingClientRect().top - list.getBoundingClientRect().top - 8
-      // Measure where the sticky header actually landed; padding moves it below the list's top edge.
-      const covered = (header?.getBoundingClientRect().bottom ?? 0) + 8 - element.getBoundingClientRect().top
-      if (covered > 0) list.scrollTop -= covered
-      readingAnchor.current = {
-        element,
-        top: element.getBoundingClientRect().top - list.getBoundingClientRect().top,
-        scrollTop: list.scrollTop,
-      }
-      followBottom.current = false
-      setAwayFromBottom(list.scrollTop + list.clientHeight < list.scrollHeight - 48)
-      setScrollTop(list.scrollTop)
+      pendingReveal.current = event.target
+      revealPendingRef.current(list)
     }
     document.addEventListener(REVEAL_EVENT, reveal)
 
@@ -438,6 +471,7 @@ export const VirtualMessageList = ({
     )
       return
     followBottom.current = true
+    pendingReveal.current = null
     readingAnchor.current = null
     setAwayFromBottom(false)
     setUnseenCount(0)
@@ -469,6 +503,7 @@ export const VirtualMessageList = ({
     // Markdown and the virtual window can grow after the first layout of a new turn.
     const observer = new ResizeObserver(() => {
       measureMountedRows()
+      if (pendingReveal.current) revealPendingRef.current(list)
       const anchor = readingAnchor.current
       if (anchor?.element.isConnected) {
         const delta = anchor.element.getBoundingClientRect().top - list.getBoundingClientRect().top - anchor.top
@@ -482,6 +517,7 @@ export const VirtualMessageList = ({
       const collapsed = anchor?.element.getAttribute("aria-expanded") === "false"
       if (atBottom && collapsed) {
         readingAnchor.current = null
+        pendingReveal.current = null
         followBottom.current = true
       }
       setAwayFromBottom(!atBottom)
@@ -523,6 +559,7 @@ export const VirtualMessageList = ({
     focusedRequest.current = focusApproval.request
     followBottom.current = false
     readingAnchor.current = null
+    pendingReveal.current = null
     setAwayFromBottom(true)
     if (timeline.length > 100) list.scrollTop = rowOffsets[targetIndex] ?? 0
     card.scrollIntoView?.({ block: "center", behavior: "instant" })
@@ -542,6 +579,8 @@ export const VirtualMessageList = ({
     followBottom.current = false
     setAwayFromBottom(true)
     if (isVirtualized) list.scrollTop = rowOffsets[messageTargetIndex] ?? 0
+    // A searched message takes over the view from any result still being revealed.
+    pendingReveal.current = null
     row.scrollIntoView?.({ block: "start", behavior: "instant" })
     programmaticTop.current = { top: list.scrollTop, viewportHeight: list.clientHeight }
     readingAnchor.current = {
@@ -568,6 +607,8 @@ export const VirtualMessageList = ({
           )
           if (!control) return
           const list = event.currentTarget
+          // The disclosure the person opened becomes the anchor instead of a result still being revealed.
+          pendingReveal.current = null
           readingAnchor.current = {
             element: control,
             top: control.getBoundingClientRect().top - list.getBoundingClientRect().top,
@@ -588,7 +629,11 @@ export const VirtualMessageList = ({
             return
           }
           const anchor = readingAnchor.current
-          if (anchor && Math.abs(list.scrollTop - anchor.scrollTop) > 2) readingAnchor.current = null
+          if (anchor && Math.abs(list.scrollTop - anchor.scrollTop) > 2) {
+            readingAnchor.current = null
+            // The person scrolled away; stop placing the revealed result again.
+            pendingReveal.current = null
+          }
           const atBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 48
           followBottom.current = !readingAnchor.current && atBottom
           setAwayFromBottom(!atBottom)
@@ -748,6 +793,7 @@ export const VirtualMessageList = ({
             const list = scrollRef.current
             if (!list) return
             readingAnchor.current = null
+            pendingReveal.current = null
             followBottom.current = true
             scrollToEnd(list, programmaticTop)
             setScrollTop(list.scrollTop)
