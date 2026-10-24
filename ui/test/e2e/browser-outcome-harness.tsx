@@ -34,21 +34,23 @@ const text = (id: string, role: "user" | "assistant", body: string, minutesAgo: 
     createdAt: now - minutesAgo * 60_000,
     updatedAt: now - minutesAgo * 60_000,
   }) satisfies Message
-const history = Array.from({ length: 6 }, (_, index) => index).flatMap((index) => {
+// `?long=1` keeps more than 100 history entries, so the conversation list virtualizes its rows.
+const historyTurns = new URLSearchParams(location.search).get("long") === "1" ? 60 : 6
+const history = Array.from({ length: historyTurns }, (_, index) => index).flatMap((index) => {
   const parent = index === 0 ? (thread.activeLeafId ?? null) : `history-reply-${index - 1}`
   return [
     text(
       `history-user-${index}`,
       "user",
       `Pergunta fictícia ${index + 1} sobre o roteiro de viagem.`,
-      60 - index * 8,
+      historyTurns * 2 + 4 - index * 2,
       parent,
     ),
     text(
       `history-reply-${index}`,
       "assistant",
       `Resposta fictícia ${index + 1}: separei horários, preços e observações de bagagem para comparar com calma.`,
-      59 - index * 8,
+      historyTurns * 2 + 3 - index * 2,
       `history-user-${index}`,
     ),
   ]
@@ -58,7 +60,7 @@ const request = text(
   "user",
   "Abra a busca de viagem e confira as opções para Lisboa.",
   2,
-  "history-reply-5",
+  `history-reply-${historyTurns - 1}`,
 )
 const browserPart = (callId: string, tool: string, input: Record<string, unknown>): ToolCallPart => ({
   type: "tool_call",
@@ -71,9 +73,13 @@ const browserPart = (callId: string, tool: string, input: Record<string, unknown
   resolvedAt: now - 59_000,
   ok: true,
 })
+// `?held=1`: the tab was handed to the person before a restart; `?done=1`: the run already finished.
+const params = new URLSearchParams(location.search)
+const held = params.get("held") === "1"
+const done = params.get("done") === "1"
 const reply: Message = {
   ...text("browser-reply", "assistant", "", 1, request.id),
-  status: "streaming",
+  status: done ? "complete" : "streaming",
   parts: [
     { type: "text", text: "Abri a busca de viagem e estou conferindo as opções." },
     browserPart("browser-open", "browser_open", { url: pageUrl }),
@@ -119,7 +125,8 @@ api.request = (async (route: string, input?: unknown, pathValues?: Record<string
           title: "Busca de viagem",
           state: live ? "live" : "unloaded",
           openerTabId: null,
-          heldByUser: false,
+          heldByUser: held,
+          ...(held ? { takeoverReason: "requested" as const, takeoverRunId: null } : {}),
           lastUsedAt: now,
         },
       ],
