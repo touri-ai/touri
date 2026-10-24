@@ -176,7 +176,7 @@ export const createHarness = async (): Promise<Harness> => {
   const close = async (): Promise<void> => {
     hostServer.notifyHost({ method: "app.willQuit", params: {} })
     await Bun.sleep(500)
-    runtime.stop()
+    await runtime.stop()
     hostServer.server.close()
     if (previousSocket === undefined) delete process.env.TOURI_HOST_SOCK
     else process.env.TOURI_HOST_SOCK = previousSocket
