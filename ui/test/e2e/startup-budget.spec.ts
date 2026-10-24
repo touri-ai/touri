@@ -14,6 +14,7 @@ const optionalModules = [
   "src/components/GroupPanel.tsx",
   "src/components/RoutineEditor.tsx",
   "src/components/WorkspaceScreens.tsx",
+  "src/features/work/WorkScreen.tsx",
 ]
 
 test("keeps the production startup payload below 400 KB gzip with optional modules deferred", async () => {
