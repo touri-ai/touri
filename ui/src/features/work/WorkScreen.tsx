@@ -5,7 +5,7 @@ import { Button } from "../../components/Button"
 import { ScreenHeader } from "../../components/ScreenPrimitives"
 import { type TranslationKey, t } from "../../i18n"
 import { getSidebarThreadTitle } from "../../sidebarThreadTitle"
-import { getWorkStateLabel } from "./presentation"
+import { getOngoingWorkRuns, getPrecedingWorkRun, getWorkStateLabel } from "./presentation"
 import "../../components/screens.css"
 import "./work.css"
 
@@ -46,6 +46,7 @@ export const WorkScreen = ({
     return () => clearInterval(timer)
   }, [runs.length])
   const running = runs.filter((run) => run.status === "starting" || run.status === "running")
+  const ongoing = getOngoingWorkRuns(running)
   // Sort a fresh filtered array; the workspace snapshot stays untouched.
   const queued = runs
     .filter((run) => run.status === "queued")
@@ -74,9 +75,16 @@ export const WorkScreen = ({
                 const bot = bots.find((bot) => bot.id === run.botId)
                 const threadId = run.groupThreadId ?? run.threadId
                 const thread = threads.find((thread) => thread.id === threadId)
+                const preceding = getPrecedingWorkRun(run, ongoing)
 
                 return (
-                  <article className="screen-card work-card" key={run.id} data-run-id={run.id}>
+                  <article
+                    className="screen-card work-card"
+                    key={run.id}
+                    data-run-id={run.id}
+                    id={`work-task-${run.id}`}
+                    tabIndex={-1}
+                  >
                     <div className="work-card-bot">
                       {bot && <BotAvatar bot={bot} size={28} />}
                       <strong>{bot?.name ?? t("Bot local")}</strong>
@@ -98,6 +106,16 @@ export const WorkScreen = ({
                         <dd>{getElapsedLabel(run, now)}</dd>
                       </div>
                     </dl>
+                    {preceding && (
+                      <button
+                        type="button"
+                        className="work-thread work-previous"
+                        aria-controls={`work-task-${preceding.id}`}
+                        onClick={() => document.getElementById(`work-task-${preceding.id}`)?.focus()}
+                      >
+                        {t("Work preceding task", { name: bot?.name ?? t("Bot local") })}
+                      </button>
+                    )}
                     {onStop && bot?.machine !== "cloud" && (
                       <Button
                         variant="secondary"

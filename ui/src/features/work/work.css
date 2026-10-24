@@ -18,6 +18,11 @@
   margin-bottom: 12px;
   padding: var(--screen-card-padding);
 }
+.work-card:focus {
+  outline: 2px solid var(--link);
+  outline-offset: 3px;
+  scroll-margin-top: 24px;
+}
 .work-card-bot {
   display: flex;
   gap: 10px;
@@ -34,6 +39,10 @@
   text-decoration: underline;
   text-underline-offset: 3px;
   overflow-wrap: anywhere;
+}
+.work-previous {
+  min-height: 44px;
+  margin-bottom: 0;
 }
 .work-card dl {
   display: grid;
