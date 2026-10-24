@@ -32,67 +32,75 @@ test("health includes bounded numeric lag stats without extra logs in normal ope
   expect(await fixture.getLogs()).toEqual([])
 })
 
-test("lag logs count active runs and live clients and keep only route templates", async () => {
-  const fixture = makeServer()
-  const pending = Promise.withResolvers<RouteResponse>()
-  const entered = Promise.withResolvers<void>()
-  fixture.runtime.kernel.registerRoutes({
-    name: "fixture",
-    routes: [
-      {
-        method: "GET",
-        path: "/threads/:id/pending",
-        handler: async () => {
-          entered.resolve()
-          return pending.promise
+test.each(["starting", "running"] as const)(
+  "lag logs count a channel execution once with %s coordination and keep only route templates",
+  async (coordinationStatus) => {
+    const fixture = makeServer()
+    const pending = Promise.withResolvers<RouteResponse>()
+    const entered = Promise.withResolvers<void>()
+    fixture.runtime.kernel.registerRoutes({
+      name: "fixture",
+      routes: [
+        {
+          method: "GET",
+          path: "/threads/:id/pending",
+          handler: async () => {
+            entered.resolve()
+            return pending.promise
+          },
         },
+        { method: "GET", path: "/fixture-events", handler: async ({ signal }) => getStreamResponse(signal) },
+      ],
+    })
+    const database = fixture.runtime.kernel.db as Database
+    seedRuns(database)
+    expect(database.query("SELECT status FROM runs ORDER BY id").all()).toEqual([
+      { status: "succeeded" },
+      { status: "running" },
+      { status: "starting" },
+    ])
+    saveChannelCoordination(database, coordinationStatus)
+    const stream = await fixture.request("/fixture-events")
+    cleanups.add(() => {
+      void stream.body?.cancel()
+    })
+    const ticket = await socketTicket(fixture.runtime.handshake.port, "/api/v1/events")
+    const socket = new FixtureSocket(
+      `ws://127.0.0.1:${fixture.runtime.handshake.port}/api/v1/events?ticket=${ticket}`,
+      {
+        headers: { Origin: "tauri://localhost" },
       },
-      { method: "GET", path: "/fixture-events", handler: async ({ signal }) => getStreamResponse(signal) },
-    ],
-  })
-  const database = fixture.runtime.kernel.db as Database
-  seedRuns(database)
-  expect(database.query("SELECT status FROM runs ORDER BY id").all()).toEqual([
-    { status: "succeeded" },
-    { status: "running" },
-    { status: "starting" },
-  ])
-  const stream = await fixture.request("/fixture-events")
-  cleanups.add(() => {
-    void stream.body?.cancel()
-  })
-  const ticket = await socketTicket(fixture.runtime.handshake.port, "/api/v1/events")
-  const socket = new FixtureSocket(`ws://127.0.0.1:${fixture.runtime.handshake.port}/api/v1/events?ticket=${ticket}`, {
-    headers: { Origin: "tauri://localhost" },
-  })
-  cleanups.add(() => socket.close())
-  await new Promise<void>((resolve) => socket.addEventListener("open", () => resolve(), { once: true }))
-  const request = fixture.request("/threads/private-id/pending?secret=private-query")
-  await entered.promise
+    )
+    cleanups.add(() => socket.close())
+    await new Promise<void>((resolve) => socket.addEventListener("open", () => resolve(), { once: true }))
+    const request = fixture.request("/threads/private-id/pending?secret=private-query")
+    await entered.promise
 
-  blockLoop(1_700)
-  await Bun.sleep(25)
-  const warnings = await fixture.getLogs()
-  pending.resolve({ status: 200, json: {} })
-  await request
-  await stream.body?.cancel()
-  socket.close()
+    blockLoop(1_700)
+    await Bun.sleep(25)
+    const warnings = await fixture.getLogs()
+    pending.resolve({ status: 200, json: {} })
+    await request
+    await stream.body?.cancel()
+    socket.close()
 
-  expect(warnings).toHaveLength(1)
-  expect(warnings[0]).toMatchObject({
-    module: "performance",
-    msg: "Atraso no event loop",
-    data: {
-      activeRuns: 2,
-      sseClients: 1,
-      websocketClients: 1,
-      inFlight: [{ method: "GET", route: "/threads/:id/pending", durationMs: expect.any(Number) }],
-    },
-  })
-  expect(JSON.stringify(warnings)).not.toMatch(/private-id|private-query/)
-  const health = (await (await fixture.request("/health")).json()) as ApiRoutes["GET /health"]["res"]
-  expect(health.eventLoop?.maxMs).toBeGreaterThanOrEqual(500)
-}, 10_000)
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toMatchObject({
+      module: "performance",
+      msg: "Atraso no event loop",
+      data: {
+        activeRuns: 2,
+        sseClients: 1,
+        websocketClients: 1,
+        inFlight: [{ method: "GET", route: "/threads/:id/pending", durationMs: expect.any(Number) }],
+      },
+    })
+    expect(JSON.stringify(warnings)).not.toMatch(/private-id|private-query/)
+    const health = (await (await fixture.request("/health")).json()) as ApiRoutes["GET /health"]["res"]
+    expect(health.eventLoop?.maxMs).toBeGreaterThanOrEqual(500)
+  },
+  10_000,
+)
 
 test("HTTP requests over two seconds log once and long-lived streams stay quiet", async () => {
   const fixture = makeServer()
@@ -189,6 +197,24 @@ const seedRuns = (database: Database): void => {
       ('fixture-running', 'fixture-thread', 'fixture-bot', 'fixture', 'user', 'running', 1),
       ('fixture-done', 'fixture-thread', 'fixture-bot', 'fixture', 'user', 'succeeded', 1)`)
     .run()
+}
+
+const saveChannelCoordination = (database: Database, status: "starting" | "running"): void => {
+  database.exec(`INSERT INTO bot_groups(id,name,color,avatar_shape,avatar_seed,created_at,updated_at)
+      VALUES ('fixture-team','Demo team','#112233','classic-none','team',1,1);
+    INSERT INTO threads(id,bot_id,title,group_id,created_at,updated_at)
+      VALUES ('fixture-channel','fixture-bot','Demo channel','fixture-team',1,1);
+    INSERT INTO threads(id,bot_id,title,group_id,group_thread_id,created_at,updated_at)
+      VALUES ('fixture-member','fixture-bot','Demo member','fixture-team','fixture-channel',1,1);
+    UPDATE runs SET thread_id='fixture-member' WHERE id='fixture-running';
+    INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at)
+      VALUES ('fixture-queued','fixture-thread','fixture-bot','fixture','user','queued',1);`)
+  database
+    .query(`INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at)
+      VALUES ('fixture-coordination','fixture-channel','fixture-bot','fixture','user',?,1)`)
+    .run(status)
+  database.exec(`INSERT INTO group_turns VALUES ('fixture-coordination','fixture-team','["fixture-bot"]');
+    INSERT INTO group_run_links VALUES ('fixture-running','fixture-coordination',0);`)
 }
 
 const getStreamResponse = (signal: AbortSignal): RouteResponse => ({
