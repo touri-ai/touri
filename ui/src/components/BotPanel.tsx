@@ -12,7 +12,6 @@ import { ErrorText } from "./ErrorDetails"
 import { MotionSkeleton, useSegmentedControl } from "./Motion"
 import { PanelIcon } from "./PanelIcon"
 import { usePhoneViewport } from "./usePhoneViewport"
-import "./bot-panel.css"
 
 const BotComputer = lazy(() => import("./BotComputer").then((module) => ({ default: module.BotComputer })))
 const BotLibrary = lazy(() => import("./BotLibrary").then((module) => ({ default: module.BotLibrary })))

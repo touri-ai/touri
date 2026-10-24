@@ -93,7 +93,7 @@ import { useWorkspace } from "./useWorkspace"
 import { getModeSelection, type ModeSelection, type WorkspaceMode } from "./workspaceModes"
 import { type AppRoute, type RoutineHistoryTarget, readWorkspaceState, saveWorkspaceState } from "./workspaceState"
 
-import "./components/workspace-layout.css"
+import "./components/bot-panel.css"
 
 const BotPanel = lazy(() => import("./components/BotPanel").then((module) => ({ default: module.BotPanel })))
 const InterruptedTasks = lazy(() =>
