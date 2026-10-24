@@ -169,6 +169,7 @@ it("keeps the project preview composer disabled until the new conversation is re
   const { api, release } = await setup()
   if (!screen.queryByRole("button", { name: "Preview do projeto" }))
     fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
+  await screen.findByRole("complementary", { name: /^Painel de / })
   fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
   const input = await screen.findByRole("textbox", { name: "Mensagem para o bot" })
   fireEvent.change(input, { target: { value: "Confira o projeto nesta conversa" } })

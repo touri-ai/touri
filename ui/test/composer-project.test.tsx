@@ -138,6 +138,7 @@ describe("composer project picker", () => {
     await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull())
     await waitFor(() => expect(modelButton).toHaveFocus())
     fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
+    await screen.findByRole("complementary", { name: /^Painel de / })
     expect(screen.getAllByRole("button", { name: /^Projeto do bot:/ })).toHaveLength(1)
   })
 

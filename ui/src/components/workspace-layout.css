@@ -1,0 +1,57 @@
+/* The conversation and loading panel need their layout before optional details load. */
+.bot-workspace {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+.bot-workspace.has-bot-panel {
+  grid-template-columns: minmax(0, 1fr) clamp(360px, 31%, 440px);
+}
+.bot-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  animation: bot-panel-enter var(--duration-standard) var(--ease-standard);
+}
+.bot-panel-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 48px;
+  padding: 0 var(--space-20);
+}
+.bot-panel-top > span {
+  font: var(--weight-medium) var(--fs-caption) var(--font-body);
+  color: var(--text-2);
+}
+.bot-panel-top button {
+  border-radius: var(--radius-pill);
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+}
+@media (max-width: 1000px) {
+  .bot-workspace.has-bot-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .bot-panel {
+    position: absolute;
+    z-index: 8;
+    right: 0;
+    top: 0;
+    width: min(390px, 100%);
+    box-shadow: var(--elevation-popover);
+  }
+  .bot-panel-expanded {
+    width: 100%;
+  }
+}

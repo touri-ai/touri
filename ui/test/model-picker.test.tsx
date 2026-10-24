@@ -69,6 +69,7 @@ it("opens the same list from the bot settings model field and saves immediately"
   Object.assign(bot, { provider: "codex", model: null })
   render(<App kernel={{ services: { api: mock } }} />)
   fireEvent.click(await screen.findByRole("button", { name: "Painel do bot", exact: true }))
+  await screen.findByRole("complementary", { name: /^Painel de / })
   fireEvent.click(screen.getByRole("button", { name: /^Modelo:/ }))
 
   const dialog = await screen.findByRole("dialog", { name: `Configurações de ${bot.name}` })
