@@ -105,6 +105,10 @@ that has exited (including an OS zombie with a missed exit notification), or a t
 event for ten minutes, fails with an explanation in Portuguese and English. A pending human approval
 suspends the silence deadline, but does not hide an exited provider. Answering or expiring an approval
 starts a fresh ten-minute silence deadline, including decisions through the shared approval service.
+Before treating an exited process as a failed turn, reconciliation allows up to one second for its
+adapter to drain buffered output and persist the terminal result. A completed reply or specific failure
+keeps its own outcome; a replacement process is checked again before stopping it. A stalled adapter
+still reaches the existing bounded stop path, and an explicit Stop does not wait for this drain window.
 Reconciliation uses the existing safe automatic continuation policy, including its limits and refusal
 to repeat uncertain actions.
 Local liveness checks use asynchronous process inspection; remote process liveness remains unknown

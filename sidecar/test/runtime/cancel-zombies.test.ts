@@ -1,5 +1,5 @@
 import { afterEach, expect, setDefaultTimeout, test } from "bun:test"
-import type { ProviderAdapter, Run, StartTurnArgs } from "@touri/contracts"
+import type { ProviderAdapter, Run, StartTurnArgs, StartTurnResult } from "@touri/contracts"
 import { spawnTree } from "../../src/kernel/spawn"
 import { createNotificationStore } from "../../src/notify/store"
 import { createRuntimeEngine } from "../../src/runtime/engine"
@@ -122,6 +122,37 @@ test("reconciliation fails a dead provider, preserves history and releases the s
   expect(fixture.store.activePath({ threadId: "thread" }).some((message) => message.role === "user")).toBe(true)
 })
 
+test("reconciliation lets a dead provider finish draining its successful reply", async () => {
+  const fixture = await getFixture("dead")
+  const reconciliation = fixture.engine.reconcileRuns()
+
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  fixture.finish.resolve()
+  await reconciliation
+  await getReady(() => fixture.getRun()?.finishedAt != null)
+
+  expect(fixture.getRun()).toMatchObject({ status: "succeeded", errorClass: null })
+  expect(fixture.turn.signal.aborted).toBe(false)
+  expect(fixture.notifications.byRequestId(`recovery:run:${fixture.run.id}`)).toBeNull()
+})
+
+test("reconciliation preserves the failure reported while a dead provider drains", async () => {
+  const fixture = await getFixture("dead", false, undefined, {
+    success: false,
+    errorCode: "oom",
+    error: "Synthetic provider exited (137)",
+  })
+  const reconciliation = fixture.engine.reconcileRuns()
+
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  fixture.finish.resolve()
+  await reconciliation
+  await getReady(() => fixture.getRun()?.finishedAt != null)
+
+  expect(fixture.getRun()).toMatchObject({ status: "failed", errorClass: "oom" })
+  expect(fixture.turn.signal.aborted).toBe(false)
+})
+
 test("forced reconciliation retains execution identity when the output flush stalls", async () => {
   const fixture = await getFixture("dead", false, "output")
 
@@ -239,6 +270,7 @@ const getFixture = async (
   mode: "live" | "dead" | "missed-exit" | "missed-exit-descendant" | "cooperative",
   resume = false,
   failure?: "output" | "signal",
+  completion?: StartTurnResult,
 ) => {
   const base = testKernel()
   cleanups.add(base.close)
@@ -304,6 +336,8 @@ const getFixture = async (
         started.resolve({ turn, child, descendantPid })
       }
       await finish.promise
+      if (completion) return completion
+
       turn.onEvent({ type: "text_delta", itemId: "reply", delta: "Resultado sintético." })
       return { success: true, status: "succeeded", externalSessionId: "synthetic-session", rolloutPath: null }
     },

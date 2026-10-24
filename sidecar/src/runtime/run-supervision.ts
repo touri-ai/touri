@@ -77,3 +77,15 @@ export const createRunSupervision = (getProcessAlive = getProviderProcessAlive) 
 
   return { observeProcess, recordEvent, getActivity, hasProcess, stopProcess, forgetRun }
 }
+
+export const waitForProviderCompletion = async (execution: Promise<void> | undefined): Promise<void> => {
+  if (!execution) return
+
+  const deadline = Promise.withResolvers<void>()
+  const timer = setTimeout(deadline.resolve, RUN_CANCEL_GRACE_MS)
+  try {
+    await Promise.race([execution, deadline.promise])
+  } finally {
+    clearTimeout(timer)
+  }
+}
