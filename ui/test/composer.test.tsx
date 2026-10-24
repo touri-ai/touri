@@ -42,7 +42,13 @@ const setup = ({
   bot.access = access
   bot.model = "gpt-6.1-sol"
   const cancel = vi.fn().mockResolvedValue(undefined)
-  const Harness = ({ currentRun }: { currentRun: Run | null }) => {
+  const Harness = ({
+    currentRun,
+    currentBrowserWorking = browserWorking,
+  }: {
+    currentRun: Run | null
+    currentBrowserWorking?: boolean
+  }) => {
     const [text, setText] = useState(draft)
     const input = useRef<HTMLTextAreaElement>(null)
     return (
@@ -55,7 +61,7 @@ const setup = ({
         onDraft={setText}
         inputRef={input}
         activeRun={currentRun}
-        browserWorking={browserWorking}
+        browserWorking={currentBrowserWorking}
         queuedCount={queuedCount}
         hasPendingDelivery={hasPendingDelivery}
         onSend={send}
@@ -70,6 +76,7 @@ const setup = ({
     cancel,
     box: screen.getByRole("textbox", { name: "Mensagem para mark" }),
     updateRun: (currentRun: Run | null) => view.rerender(<Harness currentRun={currentRun} />),
+    finishBrowser: () => view.rerender(<Harness currentRun={null} currentBrowserWorking={false} />),
   }
 }
 const run = { id: "active", status: "running" } as Run
@@ -167,6 +174,65 @@ describe("composer island", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Parar mark" }))
     await waitFor(() => expect(cancel).toHaveBeenCalledWith("active"))
+  })
+
+  it("restores composer focus when the focused browser Stop disappears", () => {
+    const { box, finishBrowser } = setup({ activeRun: run, browserWorking: true })
+    const stop = screen.getByRole("button", { name: "Parar mark" })
+    act(() => stop.focus())
+
+    finishBrowser()
+
+    expect(screen.queryByRole("button", { name: "Parar mark" })).toBeNull()
+    expect(box).toHaveFocus()
+  })
+
+  it("returns focus to the composer before browser Stop becomes disabled", () => {
+    const { box, cancel } = setup({ activeRun: run, browserWorking: true })
+    const stop = screen.getByRole("button", { name: "Parar mark" })
+    act(() => stop.focus())
+
+    fireEvent.click(stop)
+
+    expect(cancel).toHaveBeenCalledWith("active")
+    expect(stop).toBeDisabled()
+    expect(box).toHaveFocus()
+  })
+
+  it("keeps focus on another control when the browser status disappears", () => {
+    const { finishBrowser } = setup({ activeRun: run, browserWorking: true })
+    const attach = screen.getByRole("button", { name: "Anexar arquivo" })
+    act(() => {
+      screen.getByRole("button", { name: "Parar mark" }).focus()
+      attach.focus()
+    })
+
+    finishBrowser()
+
+    expect(screen.queryByRole("button", { name: "Parar mark" })).toBeNull()
+    expect(attach).toHaveFocus()
+  })
+
+  it("keeps focus on browser Stop when its status only rerenders", () => {
+    const { updateRun } = setup({ activeRun: run, browserWorking: true })
+    const stop = screen.getByRole("button", { name: "Parar mark" })
+    act(() => stop.focus())
+
+    updateRun(Object.assign({}, run, { id: "next-browser-run" }))
+
+    expect(stop).toHaveFocus()
+  })
+
+  it("restores focus when Stop disappears before the browser status", () => {
+    const { box, updateRun } = setup({ activeRun: run, browserWorking: true })
+    const stop = screen.getByRole("button", { name: "Parar mark" })
+    act(() => stop.focus())
+
+    updateRun(null)
+
+    expect(screen.getByText("mark está trabalhando · No navegador")).toBeVisible()
+    expect(screen.queryByRole("button", { name: "Parar mark" })).toBeNull()
+    expect(box).toHaveFocus()
   })
 
   it("keeps draft attention separate from runtime work (r7 step 67)", async () => {

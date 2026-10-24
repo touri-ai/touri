@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
-import type { Bot, BotGroup, Message, Run, ToolCallPart } from "@touri/contracts"
+import type { Bot, BotGroup, Message, ToolCallPart } from "@touri/contracts"
 import { useEffect } from "react"
 import { afterEach, describe, expect, test, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
@@ -15,6 +15,7 @@ import {
   getChannelWorking,
 } from "../src/features/channelBrowser/channelBrowserModel"
 import { InlinePreviewContext } from "../src/features/desktop/InlineLivePreview"
+import { getChannelBrowserWorkspaceFixture } from "./channel-browser-workspace-fixture"
 
 vi.mock("../src/features/desktop/inlineFrameSource", () => ({
   startInlineFrameSource: vi.fn(
@@ -90,25 +91,6 @@ const getMessage = (overrides: Partial<Message> = {}): Message => ({
   ...overrides,
 })
 
-const getRun = (threadId: string, bot: Bot): Run => ({
-  id: "run-channel",
-  botId: bot.id,
-  threadId,
-  provider: bot.provider,
-  trigger: "user",
-  requestMessageId: "prompt",
-  replyMessageId: "reply",
-  externalTurnId: null,
-  status: "running",
-  errorClass: null,
-  errorMessage: null,
-  usage: null,
-  routineRunId: null,
-  queuedAt: 1,
-  startedAt: 1,
-  finishedAt: null,
-})
-
 const renderCard = (state: ChannelBrowserState, viewerId: string) => {
   const api = createMockApi()
   const bot = api.getState().bots[0] ?? null
@@ -133,6 +115,14 @@ describe("getChannelBrowserView", () => {
     expect(getChannelBrowserView(state, "user-ana").canControl).toBe(true)
     expect(getChannelBrowserView(state, "user-owner").canControl).toBe(true)
     expect(getChannelBrowserView(state, "user-hugo").canControl).toBe(false)
+  })
+
+  test("does not treat missing viewer and requester identities as permission", () => {
+    const state = Object.assign({}, getState(), { requesterId: "", ownerId: "" })
+
+    const view = getChannelBrowserView(state, "")
+
+    expect(view.canControl).toBe(false)
   })
 
   test("names the requester as in control while the bot works", () => {
@@ -399,46 +389,25 @@ describe("channel chrome", () => {
   })
 })
 
-test("ChatPanel shares channel browser state with the group header, reply card, and composer", async () => {
-  const api = createMockApi()
-  const bot = api.getState().bots.find((item) => item.id === "bot-mark")
-  if (!bot) throw new Error("Missing fixture bot")
-  const { group, thread } = await api.request("POST /groups", {
-    name: "viagens",
-    color: "#dc2626",
-    avatarShape: "classic-none",
-    memberIds: [bot.id],
-    coordinatorBotId: null,
-  })
-  const prompt = getMessage({ threadId: thread.id })
-  const reply = getMessage({
-    id: "reply",
-    threadId: thread.id,
-    parentId: prompt.id,
-    role: "assistant",
-    status: "streaming",
-    runId: "run-channel",
-    text: "Estou na página de estadias.",
-    parts: [{ ...browserParts[0], ok: null, outputJson: null }],
-    sender: { id: bot.id, name: "Léo" },
-    createdAt: 2,
-  })
+test("ChatPanel derives shared browser presentation from workspace browser runs", async () => {
+  const fixture = await getChannelBrowserWorkspaceFixture()
 
   render(
     <ChatPanel
-      group={group}
-      groupMembers={[bot]}
-      channelBrowser={{ state: getState({ botId: bot.id, botName: "Léo" }), viewerId: "user-ana" }}
-      thread={{ ...thread, activeLeafId: reply.id }}
-      bot={bot}
-      messages={[prompt, reply]}
-      runs={[getRun(thread.id, bot)]}
+      group={fixture.group}
+      groupMembers={[fixture.bot]}
+      browserRuns={[fixture.browserRun]}
+      currentPersonId="person-requester"
+      thread={fixture.thread}
+      bot={fixture.bot}
+      messages={[fixture.reply]}
+      runs={[fixture.run]}
       onSend={vi.fn(async () => {})}
       onRetry={vi.fn(async () => {})}
       onCancel={vi.fn(async () => {})}
       onSwitchBranch={vi.fn(async () => {})}
       computerGrant={null}
-      api={api}
+      api={fixture.api}
       onComputerGrant={vi.fn()}
       onOpenTools={vi.fn()}
     />,
@@ -448,6 +417,6 @@ test("ChatPanel shares channel browser state with the group header, reply card, 
   expect(await screen.findByText("Todos no canal veem")).toBeVisible()
   expect(screen.getByText("Léo está trabalhando · No navegador · para Ana")).toBeVisible()
   expect(screen.getByText("Todos no canal veem").closest(".message-assistant")).toContainElement(
-    screen.getByText("Estou na página de estadias."),
+    screen.getByText(fixture.reply.text),
   )
 })

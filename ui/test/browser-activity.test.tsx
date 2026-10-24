@@ -7,6 +7,7 @@ import { BrowserActivityCard } from "../src/components/BrowserActivityCard"
 import { BrowserActivityControlsProvider } from "../src/components/BrowserActivityControls"
 import { BrowserWorkingStatus } from "../src/components/BrowserWorkingStatus"
 import {
+  getBrowserActivityCurrentLabel,
   getBrowserActivityLabel,
   getBrowserActivityNotice,
   getBrowserActivityShortUrl,
@@ -22,7 +23,7 @@ import { clearBrowserHold, setBrowserHold } from "../src/features/desktop/browse
 import { InlinePreviewContext } from "../src/features/desktop/InlineLivePreview"
 import { startInlineFrameSource } from "../src/features/desktop/inlineFrameSource"
 import { setInlinePreviewPreference } from "../src/features/desktop/inlinePreviewPreference"
-import { t } from "../src/i18n"
+import { type Locale, t } from "../src/i18n"
 
 vi.mock("../src/features/desktop/inlineFrameSource", () => ({
   startInlineFrameSource: vi.fn(
@@ -88,6 +89,7 @@ const renderCard = (
   getTabs = async () => ({ tabs: [tab] }),
   machine: Bot["machine"] = "local",
   waitingForPerson = false,
+  locale: Locale = "pt-BR",
 ) => {
   const api = createMockApi()
   let sessionHeld: boolean | undefined
@@ -144,6 +146,7 @@ const renderCard = (
         createdAt={1}
         threadId="thread-mark"
         botName="Lia"
+        locale={locale}
       />
     </InlinePreviewContext.Provider>,
   )
@@ -180,7 +183,7 @@ test("shows live browser steps and keeps typed values and URL credentials and qu
   expect(screen.getByText("Clicou em Lisboa, Portugal")).toBeVisible()
   expect(screen.getByText("Lia · clicou em Lisboa, Portugal · travel.example.test")).toBeVisible()
   expect(screen.getByRole("progressbar", { name: "Progresso do navegador" })).toBeVisible()
-  expect(screen.getByRole("button", { name: "Expandir navegador" })).toBeVisible()
+  expect(screen.getByRole("button", { name: "Ampliar tela do navegador" })).toBeVisible()
   expect(screen.getByRole("button", { name: "Recolher cartão do navegador" })).toBeVisible()
   expect(document.querySelector(".browser-activity-checklist")).toBeNull()
   await waitFor(() => expect(screen.getByRole("img", { name: "Página atual do navegador" })).toBeVisible())
@@ -225,16 +228,116 @@ test("the activity log is keyboard-accessible and disclosure controls reference 
   expect(screen.queryByRole("log", { name: "Atividade do navegador" })).toBeNull()
 })
 
+test.each<{
+  locale: Locale
+  expandView: string
+  collapseView: string
+  expandCard: string
+  collapseCard: string
+}>([
+  {
+    locale: "pt-BR",
+    expandView: "Ampliar tela do navegador",
+    collapseView: "Reduzir tela do navegador",
+    expandCard: "Expandir cartão do navegador",
+    collapseCard: "Recolher cartão do navegador",
+  },
+  {
+    locale: "en",
+    expandView: "Expand browser view",
+    collapseView: "Collapse browser view",
+    expandCard: "Expand browser card",
+    collapseCard: "Collapse browser card",
+  },
+])("browser toggles announce their next action once in $locale", async (copy) => {
+  const parts = [getPart({ callId: "read", tool: "browser_snapshot", inputJson: '{"tabId":"browser-tab"}' })]
+  renderCard(parts, false, undefined, "local", false, copy.locale)
+  const viewToggle = screen.getByRole("button", { name: copy.expandView })
+  await waitFor(() => expect(viewToggle).toBeEnabled())
+
+  fireEvent.click(viewToggle)
+
+  expect(screen.getByRole("button", { name: copy.collapseView })).toBe(viewToggle)
+  expect(viewToggle).not.toHaveAttribute("aria-pressed")
+  expect(viewToggle).not.toHaveAttribute("aria-expanded")
+  expect(document.querySelector(".browser-activity-preview")).toHaveClass("browser-activity-preview-full")
+
+  fireEvent.click(viewToggle)
+
+  expect(viewToggle).toHaveAccessibleName(copy.expandView)
+  expect(document.querySelector(".browser-activity-preview")).not.toHaveClass("browser-activity-preview-full")
+  const cardToggle = screen.getByRole("button", { name: copy.collapseCard })
+  expect(cardToggle).not.toHaveAttribute("aria-expanded")
+  expect(cardToggle).toHaveAttribute("aria-controls")
+
+  fireEvent.click(cardToggle)
+
+  expect(cardToggle).toHaveAccessibleName(copy.expandCard)
+  expect(cardToggle).not.toHaveAttribute("aria-expanded")
+  expect(cardToggle).not.toHaveAttribute("aria-controls")
+
+  fireEvent.click(cardToggle)
+
+  expect(cardToggle).toHaveAccessibleName(copy.collapseCard)
+  expect(cardToggle).not.toHaveAttribute("aria-expanded")
+  expect(cardToggle).toHaveAttribute("aria-controls")
+})
+
+test.each([
+  {
+    action: "click",
+    current: ["Clicking an element", "Clicando em um elemento"],
+    completed: ["Clicked an element", "Clicou em um elemento"],
+  },
+  {
+    action: "list_tabs",
+    current: ["Switching tabs", "Trocando de aba"],
+    completed: ["Switched tabs", "Trocou de aba"],
+  },
+  {
+    action: "switch_tab",
+    current: ["Switching tabs", "Trocando de aba"],
+    completed: ["Switched tabs", "Trocou de aba"],
+  },
+  {
+    action: "scroll",
+    current: ["Scrolling the page", "Rolando a página"],
+    completed: ["Scrolled the page", "Rolou a página"],
+  },
+  {
+    action: "wait_for",
+    current: ["Waiting for the page", "Aguardando a página"],
+    completed: ["Waited for the page", "Aguardou a página"],
+  },
+])(
+  "browser $action copy describes the live and completed action in both languages",
+  ({ action, current, completed }) => {
+    const part = getPart({ callId: "action", tool: `browser_${action}`, inputJson: "{}" })
+    const pending = Object.assign({}, part, { ok: null })
+
+    const currentLabels = [
+      getBrowserActivityCurrentLabel(pending, "en"),
+      getBrowserActivityCurrentLabel(pending, "pt-BR"),
+    ]
+    const completedLabels = [getBrowserActivityLabel(part, "en"), getBrowserActivityLabel(part, "pt-BR")]
+
+    expect(currentLabels).toEqual(current)
+    expect(completedLabels).toEqual(completed)
+  },
+)
+
 test("a completed card only controls its history after the disclosure is open", () => {
   const parts = [getPart({ callId: "read", tool: "browser_snapshot", inputJson: "{}" })]
 
   renderCard(parts, true)
 
-  const summary = screen.getByRole("button", { name: /Ver o que ele fez/ })
+  const summary = screen.getByRole("button", { name: /Ver as etapas/ })
+  expect(summary).toHaveAttribute("aria-expanded", "false")
   expect(summary).not.toHaveAttribute("aria-controls")
 
   fireEvent.click(summary)
 
+  expect(summary).toHaveAttribute("aria-expanded", "true")
   const contentId = summary.getAttribute("aria-controls")
   expect(contentId).toBeTruthy()
   expect(document.getElementById(contentId ?? "")).toBeVisible()
@@ -292,23 +395,30 @@ test("lets a phone reader expand the compact browser action list", () => {
   expect(showAll).toHaveAttribute("aria-expanded", "true")
 })
 
-test("the finished browser summary shows its page title with the screenshot", async () => {
-  const parts = [
-    getPart({
-      callId: "screenshot",
-      tool: "browser_screenshot",
-      inputJson: "{}",
-      outputAttachmentId: "final-shot",
-      outputBytes: 64,
-      outputPreview: "",
-    }),
-  ]
+test.each<{ locale: Locale; screenshot: string; steps: string }>([
+  { locale: "pt-BR", screenshot: "Print final do navegador", steps: "Ver as etapas" },
+  { locale: "en", screenshot: "Final browser screenshot", steps: "See the steps" },
+])(
+  "the finished browser summary localizes its screenshot and steps in $locale",
+  async ({ locale, screenshot, steps }) => {
+    const parts = [
+      getPart({
+        callId: "screenshot",
+        tool: "browser_screenshot",
+        inputJson: "{}",
+        outputAttachmentId: "final-shot",
+        outputBytes: 64,
+        outputPreview: "",
+      }),
+    ]
 
-  renderCard(parts, true)
+    renderCard(parts, true, undefined, "local", false, locale)
 
-  expect(await screen.findByText("Resultados de Lisboa", { exact: false })).toBeVisible()
-  expect(screen.getByRole("img", { name: "Captura final do navegador" })).toBeVisible()
-})
+    expect(await screen.findByText("Resultados de Lisboa", { exact: false })).toBeVisible()
+    expect(screen.getByRole("img", { name: screenshot })).toBeVisible()
+    expect(screen.getByRole("button", { name: /Used the browser|Usou o navegador/ })).toHaveTextContent(steps)
+  },
+)
 
 test("the composer takeover action opens the active browser session", async () => {
   const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
@@ -399,8 +509,8 @@ test("take-over holds the browser, opens its view, and the finished card collaps
   act(() => api.emit({ type: "run.updated", run: resumedRun }))
   act(() => api.emit({ type: "run.updated", run: { ...resumedRun, status: "succeeded" } }))
   expect(await screen.findByText("Usou o navegador · 3 ações")).toBeVisible()
-  expect(screen.getByText("Ver o que ele fez")).toBeVisible()
-  expect(screen.getByRole("img", { name: "Captura final do navegador" })).toBeVisible()
+  expect(screen.getByText("Ver as etapas")).toBeVisible()
+  expect(screen.getByRole("img", { name: "Print final do navegador" })).toBeVisible()
   await waitFor(() => expect(screen.queryByText("Atividade do navegador")).toBeNull())
   fireEvent.click(screen.getByRole("button", { name: /Usou o navegador/ }))
   expect(await screen.findByText("Atividade do navegador")).toBeVisible()
@@ -461,7 +571,7 @@ test("historical browser cards never sample or take over the current browser pag
 
   fireEvent.click(screen.getByRole("button", { name: /Usou o navegador/ }))
 
-  expect(screen.queryByRole("img", { name: "Captura final do navegador" })).toBeNull()
+  expect(screen.queryByRole("img", { name: "Print final do navegador" })).toBeNull()
   expect(screen.queryByRole("img", { name: "Página atual do navegador" })).toBeNull()
   expect(screen.queryByRole("button", { name: "Assumir" })).toBeNull()
   expect(request).not.toHaveBeenCalledWith("GET /browser/tabs", expect.anything())
@@ -640,7 +750,7 @@ test("disabling live chat previews prevents capture and leaves browser control a
 
   expect(startInlineFrameSource).not.toHaveBeenCalled()
   expect(screen.queryByRole("img", { name: "Página atual do navegador" })).toBeNull()
-  expect(screen.queryByRole("button", { name: "Expandir navegador" })).toBeNull()
+  expect(screen.queryByRole("button", { name: "Ampliar tela do navegador" })).toBeNull()
   expect(screen.getByText("Atividade do navegador")).toBeVisible()
   expect(screen.getByRole("button", { name: "Assumir" })).toBeVisible()
 })
@@ -853,7 +963,7 @@ test("short browser URLs drop scheme, port and query, and target labels omit pri
   })
 
   expect(getBrowserActivityLabel(click, "pt-BR")).toBe("Clicou em Buscar")
-  expect(getBrowserActivityLabel(email, "pt-BR")).toBe("Clicou")
+  expect(getBrowserActivityLabel(email, "pt-BR")).toBe("Clicou em um elemento")
 })
 
 test.each(["TARGET_CHANGED", "ENGINE_UNAVAILABLE", "DEADLINE_EXCEEDED"])(
@@ -910,7 +1020,7 @@ test("reopening a completed manual handoff restores its controls", async () => {
 
   expect(await screen.findByRole("button", { name: "Assumir" })).toBeVisible()
   expect(await screen.findByText("Por que Lia parou")).toBeVisible()
-  expect(screen.queryByText("Ver o que ele fez")).toBeNull()
+  expect(screen.queryByText("Ver as etapas")).toBeNull()
 })
 
 test("an already completed continuation settles the handback without a live event", async () => {
@@ -941,7 +1051,7 @@ test("a finished browser task without a screenshot keeps a compact disclosure an
   const summary = screen.getByRole("button", { name: /Usou o navegador/ })
 
   expect(summary).toHaveClass("browser-activity-summary-compact")
-  expect(summary).toHaveTextContent("Ver o que ele fez")
+  expect(summary).toHaveTextContent("Ver as etapas")
   expect(view.container.querySelector(".browser-activity-thumbnail")).toBeNull()
   fireEvent.click(summary)
   expect(screen.getByRole("log", { name: "Atividade do navegador" })).toBeVisible()
@@ -950,7 +1060,7 @@ test("a finished browser task without a screenshot keeps a compact disclosure an
     <BrowserActivityCard parts={parts} finished createdAt={1} threadId="thread-mark" botName="Lia" locale="en" />,
   )
 
-  expect(screen.getByRole("button", { name: /Used the browser/ })).toHaveTextContent("See what the bot did")
+  expect(screen.getByRole("button", { name: /Used the browser/ })).toHaveTextContent("See the steps")
 })
 
 test.each(["live", "unloaded", "closed"] as const)(

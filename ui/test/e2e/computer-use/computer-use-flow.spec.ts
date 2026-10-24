@@ -5,7 +5,7 @@ import { type FixtureSite, startFixtureSite } from "./fixture-server"
 import { decideOption } from "./mock-jev"
 import { FINAL_ANSWER, FIXTURE_LOGIN_VALUE, type FlowSnapshot, runScriptedBot } from "./scripted-bot"
 
-// Strict assertions for the owner-approved flow (live subtitle, quiet narration, thumbnail/log split, "Ver o que ele fez").
+// Strict assertions for the owner-approved flow (live subtitle, quiet narration, thumbnail/log split, "Ver as etapas").
 // They describe the finished card, so they run with TOURI_CU_CONCEPT=1 once the card branch is merged.
 const conceptOnly = process.env.TOURI_CU_CONCEPT !== "1"
 const pace = Number(process.env.CU_PACE ?? 250)
@@ -201,7 +201,7 @@ for (const variant of variants) {
         await bot.run
 
         await expect(ui.getByRole("button", { name: /Usou o navegador · \d+ ações/ })).toBeVisible()
-        await ui.getByRole("button", { name: "Ver o que ele fez" }).click()
+        await ui.getByRole("button", { name: "Ver as etapas" }).click()
         await expect(ui.getByText("Abriu uma página")).toBeVisible()
         await bot.close()
       })

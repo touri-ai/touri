@@ -588,7 +588,7 @@ export const BrowserActivityCard = ({
           >
             <span className="browser-activity-summary-copy">
               <strong>{summary}</strong>
-              <small>{t("See what the bot did", {}, locale)}</small>
+              <small>{t("See the steps", {}, locale)}</small>
             </span>
             {screenshot?.outputAttachmentId ? (
               <span className="browser-activity-thumbnail">
@@ -645,7 +645,6 @@ export const BrowserActivityCard = ({
                   type="button"
                   className="browser-activity-icon-button"
                   aria-label={fullView ? t("Collapse browser view", {}, locale) : t("Expand browser view", {}, locale)}
-                  aria-pressed={fullView}
                   disabled={!preview}
                   onClick={() => setFullView((value) => !value)}
                 >
@@ -656,7 +655,6 @@ export const BrowserActivityCard = ({
                 type="button"
                 className="browser-activity-icon-button"
                 aria-label={expanded ? t("Collapse browser card", {}, locale) : t("Expand browser card", {}, locale)}
-                aria-expanded={expanded}
                 aria-controls={expanded ? contentId : undefined}
                 onClick={() => setExpanded((value) => !value)}
               >
