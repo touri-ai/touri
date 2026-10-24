@@ -1088,6 +1088,7 @@ Launch:
 - Before acting on a ref, the node is described again and its fingerprint compared. A mismatch or detached node → `TARGET_CHANGED`.
 - A main-frame navigation that starts during a snapshot → `NAVIGATED_DURING_SNAPSHOT`.
 - Same-document navigations (pushState) do not invalidate refs on their own; the fingerprint check still guards them.
+- Click and type tools pass ref targets directly to the engine without taking a preflight snapshot that would advance their generation. Fresh refs remain usable after handback and safe-document recovery. The engine still checks tab ownership, private-input protection, target identity, sensitive actions and cancellation; its recovery errors reach the caller unchanged.
 
 **R3. Resolution order and ambiguity errors.**
 - The schema allows `ref | role(+name, exact) | text(exact) | css | point`, and the instructions tell the model to prefer them in that order.
