@@ -158,6 +158,11 @@ shared bot identity and lifecycle status alone do not establish duplicate provid
 Both records remain available for history and cancellation. Recent diagnostics retain the latest
 20 runs, selecting that window before enriching identity through indexed relationship lookups.
 
+Event-loop lag warnings count only `starting` and `running` execution records in `activeRuns`.
+Persisted channel coordination records in `group_turns` are excluded, so one linked member execution
+counts once. Independent starting executions still count; queued and terminal records do not.
+This numeric diagnostic does not remove either record from history or change cancellation.
+
 ## Decisions at a glance
 
 Channel navigation and headers are available at startup so the first click opens a stable surface.
