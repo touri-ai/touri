@@ -708,7 +708,7 @@ export const createKernel = ({
       services.use("storage.threadTitles")?.dispose()
       stopHistoryBackfill()
       const attentionStopped = stopWorkspaceAttentionBackfill()
-      await storageMaintenance.dispose({ closing: true })
+      const maintenanceStopped = storageMaintenance.dispose({ closing: true })
       services.use("vm.desktop")?.dispose()
       services.use("doctor")?.dispose()
       const homeWriterStopped = stopBotHomeWriter(kernel)
@@ -717,7 +717,7 @@ export const createKernel = ({
       removePrivateFile({ root: paths.appData, path: handshakePath })
       shell.dispose()
       host.close()
-      await bus.stop()
+      await Promise.all([maintenanceStopped, bus.stop()])
       database.close()
     })()
     return stopPromise
