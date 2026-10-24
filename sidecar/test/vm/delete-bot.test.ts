@@ -350,8 +350,26 @@ const until = async (check: () => boolean) => {
 const makeLiveGroup = async (
   workspace: Awaited<ReturnType<typeof fixture>>,
   history: Awaited<ReturnType<typeof makeGroupHistory>>,
+  holdMessages = false,
 ) => {
-  const kernel = workspace.runtime.kernel
+  const delivery = Promise.withResolvers<void>()
+  const original = workspace.runtime.kernel
+  const kernel: Kernel = {
+    ...original,
+    subscribeRuntime: (listener) =>
+      (original.subscribeRuntime ?? original.subscribe)((envelope) => {
+        if (holdMessages && envelope.event.type.startsWith("message.")) {
+          void delivery.promise.then(() => listener(envelope))
+          return
+        }
+        listener(envelope)
+      }),
+    flushEvents: async () => {
+      await original.flushEvents?.()
+      delivery.resolve()
+      await Promise.resolve()
+    },
+  }
   const signals = new Map<string, AbortSignal>()
   const threadSignals = new Map<string, AbortSignal>()
   const completions = new Map<string, () => void>()
@@ -554,14 +572,14 @@ test("the bot deletion event preserves another member's live turn", async () => 
   expect(live.signals.get(history.participant.id)?.aborted).toBe(false)
 })
 
-test.each(groupMembers)(
-  "deleting the ask-all %s cancels only its live run and preserves the other results",
-  async (member) => {
+test.each(groupMembers.flatMap((member) => [false, true].map((holdMessages) => [member, holdMessages] as const)))(
+  "deleting the ask-all %s cancels only its live run and preserves the other results (held messages=%s)",
+  async (member, holdMessages) => {
     const workspace = await fixture()
     const history = await makeGroupHistory(workspace)
     const third = await workspace.create("Third member", "local")
     history.groups.save({ ...history.group, memberIds: [...history.group.memberIds, third.id] }, history.group)
-    const live = await makeLiveGroup(workspace, history)
+    const live = await makeLiveGroup(workspace, history, holdMessages)
     const bot = history[member]
     const turn = await live.send("Revisem o plano", "ask_all")
     await until(() => live.signals.size === 3)

@@ -582,6 +582,8 @@ export const createGroupRuntime = (
         if (!updated.success) throw new Error(updated.error)
         run = await executeMember(run)
       }
+      // Completion can overtake cold message delivery; keep the shared-copy frame until it catches up.
+      await kernel.flushEvents?.()
       await pendingSharedUpdates
       await store.flushWritesAsync?.({ threadId: thread.id })
       if (run.status !== "succeeded") throw new MemberRunError(run)

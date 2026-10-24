@@ -1781,3 +1781,5 @@ consume the unchanged buffer limit. Notification recovery observes committed run
 without waiting for ordered history delivery.
 
 Provider readers apply backpressure while acknowledged pre-start frames replay, preserving frame order and the existing 128-frame / 1 MiB cap. Notification resolution receives committed runtime controls without waiting for cold message hydration.
+
+Channel members retain their shared-reply frame until ordered message delivery and shared writes complete, even when the committed terminal callback arrives first. A successful member result therefore remains visible in the shared conversation.
