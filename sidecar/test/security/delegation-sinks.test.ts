@@ -28,8 +28,8 @@ const fixture = async (callerMachine: "local" | "vm") => {
   mkdirSync(join(root, "project"), { recursive: true })
   mkdirSync(dataDir, { recursive: true })
   mkdirSync(join(root, "home"), { recursive: true })
-  cleanup.push(() => {
-    runtime.stop()
+  cleanup.push(async () => {
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
     rmSync(outside, { recursive: true, force: true })
   })

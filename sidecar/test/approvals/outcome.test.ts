@@ -10,9 +10,9 @@ import { createKernel } from "../../src/kernel"
 import { createApprovalContextHandler, createApprovalPromptHandler } from "../../src/runtime"
 import { init as initStore } from "../../src/store"
 
-const cleanup: Array<() => void> = []
-afterEach(() => {
-  for (const close of cleanup.splice(0)) close()
+const cleanup: Array<() => void | Promise<void>> = []
+afterEach(async () => {
+  for (const close of cleanup.splice(0)) await close()
 })
 const fixture = async () => {
   const root = mkdtempSync(join(tmpdir(), "touri-approval-outcome-"))
@@ -41,9 +41,9 @@ const fixture = async () => {
     cwd: root,
     signal: new AbortController().signal,
   }
-  cleanup.push(() => {
+  cleanup.push(async () => {
     bridge.dispose()
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
   return { bridge, ctx, cards, runtime }
@@ -135,7 +135,7 @@ test("deny is visible in the permission response and completed runs discard unco
 test("approval prompts and permission responses wait for the approval card write", async () => {
   const f = await fixture()
   const cards: ApprovalPart[] = []
-  const releases: Array<() => void> = []
+  const releases: Array<() => void | Promise<void>> = []
   let notified = false
   let resolveNotification: () => void = () => {}
   const notification = new Promise<void>((resolve) => {

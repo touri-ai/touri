@@ -477,7 +477,9 @@ test("deleting an idle group member waits for another member's child and the agg
   if (!turn.success) throw new Error("Could not enqueue test group turn")
   const child = await engine.started
   const settled = Promise.withResolvers<Run>()
-  const unsubscribe = f.runtime.kernel.subscribe(({ event }) => {
+  // Observe internal cancellation before deletion removes the ordered history projection.
+  const subscribe = f.runtime.kernel.subscribeRuntime ?? f.runtime.kernel.subscribe
+  const unsubscribe = subscribe(({ event }) => {
     if (event.type !== "run.updated" || event.run.id !== turn.run.id || event.run.status !== "canceled") return
 
     unsubscribe()
