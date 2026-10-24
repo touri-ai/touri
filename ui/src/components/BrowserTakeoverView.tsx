@@ -82,6 +82,32 @@ export const BrowserTakeoverView = ({
     revealedSessions.add(sessionId)
     requestReveal(view.current)
   }, [sessionId])
+  // A window that changes size (a narrower layout, the on-screen keyboard) can push the controls out of
+  // the conversation; bring them back then, while ordinary scrolling stays under the person's control.
+  useEffect(() => {
+    let frame: number | null = null
+    const keepControlsInView = () => {
+      if (frame !== null) return
+      frame = requestAnimationFrame(() => {
+        frame = null
+        const section = view.current
+        const controls = section?.querySelector(".browser-takeover-controls")
+        const history = section?.closest(".message-scroll")
+        if (!section || !controls || !history) return
+        const box = controls.getBoundingClientRect()
+        const area = history.getBoundingClientRect()
+        if (box.top >= area.top && box.bottom <= area.bottom) return
+        requestReveal(section)
+      })
+    }
+    window.addEventListener("resize", keepControlsInView)
+    window.visualViewport?.addEventListener("resize", keepControlsInView)
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame)
+      window.removeEventListener("resize", keepControlsInView)
+      window.visualViewport?.removeEventListener("resize", keepControlsInView)
+    }
+  }, [])
   const browserControls = useBrowserActivityControls()
   const [frame, setFrame] = useState<FrameMeta | null>(null)
   const [fallbackImage, setFallbackImage] = useState("")
