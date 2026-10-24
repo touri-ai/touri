@@ -1759,6 +1759,8 @@ text and the terminal outcome without accepting foreign sessions or turns. Faile
 remain visible across workspace refreshes until a successful history read clears them. Bot details
 load on demand, keeping the existing initial compressed payload budget unchanged.
 Internal control callbacks run after commit without waiting for cold transcript hydration; socket
-frames retain durable sequence order. Approval acknowledgements wait for committed card delivery.
+frames retain durable sequence order. Early callbacks are tracked individually, up to 2,000 pending
+callbacks; later publications cannot suppress an older committed callback. At that bound, remaining
+callbacks use normal durable delivery. Approval acknowledgements wait for committed card delivery.
 Shutdown asks the stream worker to close SQLite and waits for its confirmation before releasing
 files, with a one-second fallback for an unresponsive worker.
