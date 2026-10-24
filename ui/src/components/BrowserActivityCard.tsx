@@ -36,6 +36,7 @@ import {
   isBrowserActivityRunning,
   isBrowserRequestQueued,
 } from "./browserActivityPresentation"
+import { requestReveal } from "./revealEvent"
 import { StoredToolOutput } from "./ToolOutput"
 import "./browser-activity.css"
 
@@ -133,6 +134,8 @@ export const BrowserActivityCard = ({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [takeoverUnavailable, setTakeoverUnavailable] = useState(false)
+  const [outcomeRequest, setOutcomeRequest] = useState(0)
+  const outcome = useRef<HTMLDivElement>(null)
   const [expanded, setExpanded] = useState(!finished)
   const [showAllActions, setShowAllActions] = useState(false)
   const [fullView, setFullView] = useState(false)
@@ -424,6 +427,7 @@ export const BrowserActivityCard = ({
         ? "This browser session is unavailable. Return control, then ask the bot to open a public page again. No page was reopened."
         : "The browser tab could not be updated."
       setError(t(message, {}, locale))
+      setOutcomeRequest((request) => request + 1)
     } finally {
       setBusy(false)
     }
@@ -443,6 +447,11 @@ export const BrowserActivityCard = ({
     }
   }
   toggleTakeoverRef.current = toggleTakeover
+
+  // The take-over can start from the composer strip, far from this card; bring its outcome into view.
+  useEffect(() => {
+    if (outcomeRequest > 0 && outcome.current) requestReveal(outcome.current)
+  }, [outcomeRequest])
 
   useEffect(() => {
     if (!botId || !activeTabId || !takeoverSession || finished) return
@@ -658,7 +667,7 @@ export const BrowserActivityCard = ({
         )}
         {/* The outcome sits under the control the person just used, outside the scrolling log. */}
         {(error || (takeoverUnavailable && channel?.canControl !== false)) && (
-          <div className="browser-activity-alert">
+          <div className="browser-activity-alert" ref={outcome}>
             {error && <p role="alert">{error}</p>}
             {takeoverUnavailable && channel?.canControl !== false && (
               <button
