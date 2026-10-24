@@ -72,6 +72,27 @@ test("committed control callbacks do not wait behind cold history while socket o
   expect(local.filter((event) => event.type === "import.progress")).toEqual([marker])
 })
 
+test("an early control callback cannot suppress an older committed transaction callback", async () => {
+  const fixture = await getFixture()
+  const bus = createEventBus(fixture.database)
+  cleanups.add(() => bus.stop())
+  const client = getClient()
+  bus.add(client.socket)
+  const local: UiEvent[] = []
+  bus.subscribeRuntime(({ event }) => local.push(event))
+  const first = getMarker("committed-transaction")
+  const second = getMarker("later-publication")
+
+  fixture.database.transaction(() => bus.publish(first))()
+  bus.publish(second)
+  await bus.flushAsync()
+
+  expect(local).toHaveLength(2)
+  expect(local).toContainEqual(first)
+  expect(local).toContainEqual(second)
+  expect(client.getEvents().map(({ event }) => event)).toEqual([first, second])
+})
+
 test("a committed publisher hands off its payload and cancels a redundant reference read", async () => {
   const fixture = await getFixture()
   const read = Promise.withResolvers<UiEvent[]>()

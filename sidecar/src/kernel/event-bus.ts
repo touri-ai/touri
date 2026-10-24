@@ -47,7 +47,8 @@ export const createEventBus = (
   const measureStage = <Value, Input>(stage: PerformanceStage, action: (input: Input) => Value, input: Input): Value =>
     runStage ? runStage(stage, action, input) : action(input)
   let sequence = 0
-  let localControlThrough = 0
+  // Track early callbacks individually: a later publication cannot supersede an older committed control.
+  const earlyControls = new Set<number>()
   const listeners = new Set<(envelope: UiEventEnvelope) => void>()
   const runtimeListeners = new Set<(envelope: UiEventEnvelope) => void>()
   let sockets: SocketEntry[] = []
@@ -134,9 +135,8 @@ export const createEventBus = (
 
   const deliverNow = (envelope: UiEventEnvelope): void => {
     notifyListeners(envelope)
-    if (!isControlEvent(envelope.event) || envelope.seq > localControlThrough) {
+    if (!isControlEvent(envelope.event) || !earlyControls.delete(envelope.seq)) {
       notifyListeners(envelope, true)
-      if (isControlEvent(envelope.event)) localControlThrough = envelope.seq
     }
     if (!sockets.some(({ since }) => envelope.seq > since)) return
 
@@ -513,8 +513,10 @@ export const createEventBus = (
     const envelope = { seq: Number(inserted.lastInsertRowid), at, event: JSON.parse(payload) as UiEvent }
     const notify = (): void => {
       // Internal run/approval coordination cannot wait behind a cold transcript read.
-      if (envelope.seq <= localControlThrough || stopped) return
-      localControlThrough = envelope.seq
+      if (envelope.seq <= delivered || earlyControls.has(envelope.seq) || stopped) return
+      // At the replay bound, normal durable delivery owns the remaining callbacks.
+      if (earlyControls.size >= REPLAY_LIMITS.events) return
+      earlyControls.add(envelope.seq)
       measureStage("workspace_event_delivery", () => notifyListeners(envelope, true), undefined)
     }
     if (database.inTransaction) onDatabaseCommit(database, notify)
@@ -641,6 +643,7 @@ export const createEventBus = (
       clearTimeout(captureRetryTimer)
       sockets = []
       publications = []
+      earlyControls.clear()
       await retention?.dispose()
     },
   }
