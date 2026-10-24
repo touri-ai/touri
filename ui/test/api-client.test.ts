@@ -144,6 +144,7 @@ const contractRouteKeys: Array<keyof ApiRoutes> = [
   "POST /recovery/:id/dismiss",
   "GET /notifications",
   "GET /notifications/pending",
+  "POST /notifications/read",
   "POST /notifications/:id/dismiss",
   "POST /notifications/dismiss-all",
   "POST /threads/:id/respond",

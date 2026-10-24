@@ -275,6 +275,8 @@ Boot handshake:
 3. The sidecar listens on port 0, then prints one `SidecarHandshake` JSON line on stdout.
 4. Rust parses it and serves `sidecar_endpoint` to the UI.
 
+The desktop shell and sidecar must agree on the current schema version, including schema 52 for per-person notification read receipts. The shell accepts that version at startup and continues to reject incompatible versions.
+
 Tokens are never written to disk, except the per-thread MCP token files (rewritten each boot).
 
 ### Fast conversational replies (schema 50)
