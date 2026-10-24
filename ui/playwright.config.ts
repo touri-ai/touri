@@ -16,6 +16,8 @@ export default defineConfig({
   use: {
     ...(process.env.TOURI_E2E_CHANNEL ? { channel: process.env.TOURI_E2E_CHANNEL } : {}),
     headless: true,
+    // Pages follow the system theme by default; existing captures were made against a dark system.
+    colorScheme: "dark",
     baseURL,
     trace: { mode: "retain-on-failure", screenshots: false },
   },

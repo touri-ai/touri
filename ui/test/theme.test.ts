@@ -231,15 +231,33 @@ test("the migration keeps touri fonts and components only consume defined color 
   }
 })
 
-test("dark is the existing default, explicit themes persist and invalid storage is ignored", () => {
-  expect(readTheme()).toBe("dark")
+test("the system theme is the default, explicit themes persist and invalid storage is ignored", () => {
+  expect(readTheme()).toBe("system")
   setTheme("light")
   expect(readTheme()).toBe("light")
   expect(document.documentElement.dataset.theme).toBe("light")
   setTheme("dark")
   expect(document.documentElement.classList.contains("dark")).toBe(true)
-  localStorage.setItem("touri.appearance.v1", "invalid")
   expect(readTheme()).toBe("dark")
+  localStorage.setItem("touri.appearance.v1", "invalid")
+  expect(readTheme()).toBe("system")
+})
+
+test("a first opening follows a light or dark system theme until a theme is chosen", () => {
+  const media = new EventTarget() as EventTarget & { matches: boolean }
+  media.matches = false
+  vi.spyOn(window, "matchMedia").mockReturnValue(media as MediaQueryList)
+  const cleanup = initializeTheme()
+  expect(document.documentElement.dataset.theme).toBe("light")
+  expect(document.documentElement.classList.contains("dark")).toBe(false)
+  media.matches = true
+  media.dispatchEvent(new Event("change"))
+  expect(document.documentElement.dataset.theme).toBe("dark")
+  setTheme("dark")
+  media.matches = false
+  media.dispatchEvent(new Event("change"))
+  expect(document.documentElement.dataset.theme).toBe("dark")
+  cleanup()
 })
 
 test("system theme follows OS changes, explicit themes do not, and listeners clean up", () => {
@@ -261,14 +279,17 @@ test("system theme follows OS changes, explicit themes do not, and listeners cle
   expect(document.documentElement.dataset.theme).toBe("dark")
 })
 
-test("unavailable local storage still allows the chosen theme to be displayed", () => {
+test("unavailable local storage still allows the chosen theme to be displayed", async () => {
   vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
     throw new Error("unavailable")
   })
   vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
     throw new Error("unavailable")
   })
-  expect(readTheme()).toBe("dark")
+  // A fresh module has no remembered choice, so a first opening without storage follows the system.
+  vi.resetModules()
+  const fresh = await import("../src/design/theme")
+  expect(fresh.readTheme()).toBe("system")
   const cleanup = initializeTheme()
   expect(() => setTheme("light")).not.toThrow()
   expect(document.documentElement.dataset.theme).toBe("light")
