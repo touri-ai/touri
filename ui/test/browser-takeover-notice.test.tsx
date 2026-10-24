@@ -27,6 +27,7 @@ test("a person takeover echo stays quiet while browser state and history remain 
   const hook = renderHook(() => useWorkspace(api))
   await waitFor(() => expect(hook.result.current.data.messages.length).toBeGreaterThan(0))
   const messages = hook.result.current.data.messages
+  const notifications = hook.result.current.data.notifications
   const tab: BrowserTabInfo & { ownerBotId: string } = {
     tabId: "browser-tab",
     ownerBotId: "bot-mark",
@@ -47,7 +48,8 @@ test("a person takeover echo stays quiet while browser state and history remain 
   expect(hook.result.current.data.notice).toBeNull()
   expect(hook.result.current.data.browserTabs).toContainEqual(tab)
   expect(hook.result.current.data.messages).toEqual(messages)
-  expect(hook.result.current.data.notifications).toContainEqual(notification)
+  expect(hook.result.current.data.notifications).toContainEqual(Object.assign({}, notification, { readAt: null }))
+  expect(hook.result.current.data.notifications).toEqual(notifications)
 })
 
 test("a person takeover echo preserves an existing notice", async () => {
