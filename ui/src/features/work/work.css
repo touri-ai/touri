@@ -53,6 +53,9 @@
   margin: 0;
   text-align: right;
 }
+.work-stop {
+  margin-top: 16px;
+}
 .performance-form {
   max-width: 620px;
   padding: var(--screen-card-padding);

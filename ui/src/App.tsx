@@ -1346,6 +1346,7 @@ const AppContent = ({ kernel }: AppProps) => {
               ) : section === "advanced" && advancedPage === "work" ? (
                 <WorkScreen
                   runs={data.workRuns}
+                  onStop={(id) => actions.cancelRun(id, "turn")}
                   bots={data.bots}
                   threads={data.threads}
                   loading={data.loading}

@@ -27,6 +27,106 @@ afterEach(async () => {
   cleanups.clear()
 })
 
+test.each(["root", "child"] as const)(
+  "stopping one channel %s preserves and starts queued requests",
+  async (target) => {
+    const fixture = await getFixture()
+    const runId = target === "root" ? fixture.active.id : fixture.coordinator.run.id
+
+    const response = await fixture.cancel(runId, getPerson("requester"), "turn")
+    expect(fixture.getRun(fixture.waiting.id)?.status).not.toBe("canceled")
+    await fixture.waitForGroupStart(fixture.waiting.id)
+
+    expect(response.status).toBe(200)
+    expect(fixture.getRun(fixture.active.id)?.status).toBe("canceled")
+    expect(fixture.coordinator.signal.aborted).toBe(true)
+    expect(fixture.getRun(fixture.waiting.id)?.status).toBe("running")
+    expect(fixture.getRun(fixture.last.id)?.status).toBe("queued")
+  },
+)
+
+test("canceling one waiting request leaves the running task and later requests untouched", async () => {
+  const fixture = await getFixture()
+
+  const response = await fixture.cancel(fixture.waiting.id, getPerson("requester"), "turn")
+
+  expect(response.status).toBe(200)
+  expect(fixture.getRun(fixture.waiting.id)?.status).toBe("canceled")
+  expect(fixture.getRun(fixture.active.id)?.status).toBe("running")
+  expect(fixture.coordinator.signal.aborted).toBe(false)
+  expect(fixture.getRun(fixture.last.id)?.status).toBe("queued")
+})
+
+test.each(["root", "child", "browser"] as const)(
+  "single-turn stop through a %s cancels browser children and releases waiting work",
+  async (target) => {
+    const fixture = await getFixture()
+    const browser = await fixture.startBrowser()
+    const peer = await fixture.startBrowser("peer")
+    const runIds = { root: fixture.active.id, child: fixture.coordinator.run.id, browser: browser.runId }
+
+    const response = await fixture.cancel(runIds[target], getPerson("requester"), "turn")
+
+    expect(response.status).toBe(200)
+    expect(fixture.coordinator.signal.aborted).toBe(true)
+    expect(browser.signal.aborted).toBe(true)
+    expect(peer.signal.aborted).toBe(true)
+    expect(fixture.channelRuns.get(browser.runId)?.status).toBe("canceled")
+    expect(fixture.channelRuns.get(peer.runId)?.status).toBe("canceled")
+    await fixture.waitForGroupStart(fixture.waiting.id)
+    expect(fixture.getRun(fixture.active.id)?.status).toBe("canceled")
+    expect(fixture.getRun(fixture.waiting.id)?.status).toBe("running")
+    expect(fixture.getRun(fixture.last.id)?.status).toBe("queued")
+  },
+)
+
+test("a single-turn stop checks protected children before canceling any work", async () => {
+  const fixture = await getFixture()
+  await fixture.startBrowser()
+  const before = fixture.getSnapshot()
+
+  const response = await fixture.cancel(fixture.active.id, getPerson("unrelated", "admin"), "turn")
+
+  expectForbidden(response)
+  fixture.expectUnchanged(before)
+})
+
+test.each(["root", "browser"] as const)(
+  "single-turn stop through a %s preflights protected browser peers",
+  async (target) => {
+    const fixture = await getFixture()
+    const browser = await fixture.startBrowser()
+    await fixture.startBrowser("peer", "requester", "other-responsible")
+    const before = fixture.getSnapshot()
+    const runId = target === "root" ? fixture.active.id : browser.runId
+
+    const response = await fixture.cancel(runId, getPerson("responsible"), "turn")
+
+    expectForbidden(response)
+    fixture.expectUnchanged(before)
+  },
+)
+
+test.each([null, "unexpected"])("an invalid cancellation scope %j cannot stop any task", async (scope) => {
+  const fixture = await getFixture()
+  const before = fixture.getSnapshot()
+
+  const response = await fixture.cancel(fixture.active.id, getPerson("requester"), scope)
+
+  expect(response.status).toBe(400)
+  fixture.expectUnchanged(before)
+})
+
+test("single-turn cancellation cannot silently broaden into a remote group cancellation", async () => {
+  const fixture = await getFixture()
+  const cloud = fixture.registerCloudRun()
+
+  const response = await fixture.cancel("cloud-run", getPerson("unrelated", "admin"), "turn")
+
+  expect(response.status).toBe(400)
+  expect(cloud.request).not.toHaveBeenCalled()
+})
+
 test("settling one approval keeps a caller's other pending delegation protected", async () => {
   const fixture = await getFixture()
   const browser = await fixture.startBrowser()
@@ -632,12 +732,12 @@ const getFixture = async (workMode = true) => {
         .run(requester, responsible, args.run.id)
       return Object.assign({}, ctx, { runId: args.run.id })
     },
-    cancel: async (runId: string, person?: DevicePerson) => {
+    cancel: async (runId: string, person?: DevicePerson, scope?: unknown) => {
       const handler = routes.get("POST /runs/:id/cancel")
       if (!handler) throw new Error("Missing cancellation route")
       const signal = new AbortController().signal
       if (person) bindDeviceSession(signal, { deviceId: "fixture-device", person, active: () => true })
-      return handler({ params: { id: runId }, body: null, query: {}, signal })
+      return handler({ params: { id: runId }, body: scope === undefined ? null : { scope }, query: {}, signal })
     },
   }
 }

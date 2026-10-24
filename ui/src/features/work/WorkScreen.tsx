@@ -1,6 +1,7 @@
 import type { AppSettings, Bot, Run, Thread } from "@touri/contracts"
 import { type FormEvent, useEffect, useState } from "react"
 import { BotAvatar } from "../../components/BotAvatar"
+import { Button } from "../../components/Button"
 import { ScreenHeader } from "../../components/ScreenPrimitives"
 import { type TranslationKey, t } from "../../i18n"
 import { getSidebarThreadTitle } from "../../sidebarThreadTitle"
@@ -14,14 +15,31 @@ export const WorkScreen = ({
   threads,
   loading,
   onThread,
+  onStop,
 }: {
   runs: Run[]
   bots: Bot[]
   threads: Thread[]
   loading: boolean
   onThread: (id: string) => void
+  onStop?: (id: string) => Promise<void>
 }) => {
   const [now, setNow] = useState(Date.now)
+  const [stoppingRunId, setStoppingRunId] = useState<string | null>(null)
+  const [stopFailed, setStopFailed] = useState(false)
+  const stop = async (runId: string): Promise<void> => {
+    if (!onStop || stoppingRunId) return
+
+    setStoppingRunId(runId)
+    setStopFailed(false)
+    try {
+      await onStop(runId)
+    } catch {
+      setStopFailed(true)
+    } finally {
+      setStoppingRunId(null)
+    }
+  }
   useEffect(() => {
     if (runs.length === 0) return
     const timer = setInterval(() => setNow(Date.now()), 1000)
@@ -40,6 +58,7 @@ export const WorkScreen = ({
     <section className="workspace-screen r8-screen work-screen" aria-labelledby="work-title">
       <ScreenHeader id="work-title" title={t("Work")} description={t("Work description")} />
       <div className="screen-content">
+        {stopFailed && <p role="alert">{t("Work stop error")}</p>}
         {loading && <p role="status">{t("Work loading")}</p>}
         {!loading && runs.length === 0 && <p className="screen-card">{t("Work empty")}</p>}
         <div className="work-columns">
@@ -79,6 +98,16 @@ export const WorkScreen = ({
                         <dd>{getElapsedLabel(run, now)}</dd>
                       </div>
                     </dl>
+                    {onStop && bot?.machine !== "cloud" && (
+                      <Button
+                        variant="secondary"
+                        className="work-stop"
+                        disabled={stoppingRunId !== null}
+                        onClick={() => void stop(run.id)}
+                      >
+                        {t(getStopLabel(run, stoppingRunId))}
+                      </Button>
+                    )}
                   </article>
                 )
               })}
@@ -166,4 +195,11 @@ const getElapsedLabel = (run: Run, now: number): string => {
   if (seconds < 60) return t("Work seconds", { count: seconds })
 
   return t("Work minutes", { count: Math.floor(seconds / 60), seconds: seconds % 60 })
+}
+
+const getStopLabel = (run: Run, stoppingRunId: string | null): TranslationKey => {
+  if (run.id === stoppingRunId) return "Work stopping"
+  if (run.status === "queued") return "Work cancel request"
+
+  return "Work stop task"
 }

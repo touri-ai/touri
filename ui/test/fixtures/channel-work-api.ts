@@ -40,6 +40,19 @@ export const createChannelWorkApi = () => {
     if (route === "GET /runs")
       return { runs: runs.filter((run) => run.status !== "succeeded") } as ApiRoutes[typeof route]["res"]
     if (route === "GET /workspace/activity") return { messages: [], runs } as ApiRoutes[typeof route]["res"]
+    if (route === "POST /runs/:id/cancel") {
+      const selected = runs.find((run) => run.id === path.id)
+      if (!selected) throw new Error("Missing synthetic task")
+      if ((input as ApiRoutes["POST /runs/:id/cancel"]["req"]).scope !== "turn")
+        throw new Error("Expected single-turn cancellation")
+
+      const canceled = Object.assign({}, selected, { status: "canceled" as const, finishedAt: Date.now() })
+      runs = runs.map((run) => (run.id === canceled.id ? canceled : run))
+      base.emit({ type: "run.updated", run: canceled })
+      if (selected.id === active.id) finishFirst("canceled")
+
+      return { run: canceled } as ApiRoutes[typeof route]["res"]
+    }
     if (route === "GET /threads/:id/runs")
       return {
         runs: runs
@@ -49,9 +62,9 @@ export const createChannelWorkApi = () => {
 
     return base.request(route, input, path)
   }
-  const finishFirst = () => {
+  const finishFirst = (status: "succeeded" | "canceled" = "succeeded") => {
     runs = [
-      { ...active, status: "succeeded", finishedAt: Date.now() },
+      Object.assign({}, active, { status, finishedAt: Date.now() }),
       { ...waiting, status: "running", queuePosition: null, queueTotal: null },
       { ...active, id: "channel-execution", kind: "execution", groupTurnId: waiting.id },
     ]

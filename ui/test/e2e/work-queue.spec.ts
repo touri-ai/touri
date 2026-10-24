@@ -21,6 +21,11 @@ for (const viewport of [
     expect(
       (await new AxeBuilder({ page }).include(".work-screen").withTags(["wcag2a", "wcag2aa"]).analyze()).violations,
     ).toEqual([])
+    await page.emulateMedia({ colorScheme: "light" })
+    expect(
+      (await new AxeBuilder({ page }).include(".work-screen").withTags(["wcag2a", "wcag2aa"]).analyze()).violations,
+    ).toEqual([])
+    await page.emulateMedia({ colorScheme: "dark" })
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     if (process.env.TOURI_SCREENSHOT_DIR)
       await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/channel-waiting-${viewport.width}.png` })
@@ -43,6 +48,35 @@ for (const viewport of [
     await expect(page.locator('[data-run-id="channel-execution"]')).toBeVisible()
     await expect(page.getByRole("region", { name: "Trabalhando", exact: true }).getByRole("article")).toHaveCount(1)
     await expect(page.getByRole("region", { name: "Na fila", exact: true }).getByRole("article")).toHaveCount(0)
+  })
+
+  test(`stop a blocking task without canceling its waiting request at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport)
+    await page.goto("/test/e2e/work-harness.html?channel-queue")
+    await expect(page.getByRole("textbox", { name: "Mensagem para Planejamento" })).toBeVisible()
+    if (viewport.width === 390) await page.getByRole("button", { name: "Abrir menu" }).click()
+    await page.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
+    await page.getByRole("button", { name: "Trabalho", exact: true }).click()
+    const active = page.locator('[data-run-id="work-run-0"]')
+    const waiting = page.locator('[data-run-id="channel-waiting"]')
+
+    await expect(waiting.getByRole("button", { name: "Cancelar só este pedido" })).toBeVisible()
+    const stopButton = active.getByRole("button", { name: "Parar só esta tarefa" })
+    await expect(stopButton).toBeVisible()
+    const target = await stopButton.boundingBox()
+    expect(target?.height).toBeGreaterThanOrEqual(viewport.width === 390 ? 44 : 40)
+    if (process.env.TOURI_SCREENSHOT_DIR)
+      await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/task-stop-${viewport.width}.png` })
+
+    await active.getByRole("button", { name: "Parar só esta tarefa" }).click()
+
+    await expect(active).toHaveCount(0)
+    await expect(waiting).toHaveCount(0)
+    await expect(page.locator('[data-run-id="channel-execution"]')).toBeVisible()
+    await expect(page.getByRole("alert")).toHaveCount(0)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    if (process.env.TOURI_SCREENSHOT_DIR)
+      await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/task-started-${viewport.width}.png` })
   })
 
   test(`work queue and performance at ${viewport.width}px`, async ({ page }) => {
