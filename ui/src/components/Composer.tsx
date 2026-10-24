@@ -72,7 +72,7 @@ type ComposerProps = {
   queuedCount: number
   hasPendingDelivery?: boolean
   onSend: (text: string, parentId?: Id | null, attachmentIds?: Array<Id>, groupAction?: GroupAction) => Promise<void>
-  onCancel: (runId: Id) => Promise<void>
+  onCancel: (runId: Id, scope?: "turn") => Promise<void>
   onOpenPermissions?: (() => void) | undefined
   onOpenProviderLogin?: (() => void) | undefined
   notice?: Omit<ComponentProps<typeof ComposerNotice>, "api" | "active" | "loginFlowShown">
@@ -437,13 +437,13 @@ export const Composer = ({
       void submitRef.current(pending.groupAction)
     }
   }, [api, bot?.id, bot?.provider, threadId, parentId, draft, files, login.blocked])
-  const stop = async (runId = activeRun?.id) => {
+  const stop = async (runId = activeRun?.id, scope?: "turn") => {
     if (!runId || stoppingRef.current === runId) return
     stoppingRef.current = runId
     setStoppingRunId(runId)
     setError(null)
     try {
-      await onCancel(runId)
+      await (scope ? onCancel(runId, scope) : onCancel(runId))
     } catch (failure) {
       if (stoppingRef.current !== runId) return
       stoppingRef.current = null
@@ -678,7 +678,7 @@ export const Composer = ({
                     { name: mentionBots.find((member) => member.id === run.botId)?.name ?? "touri" },
                     locale,
                   ),
-                  onSelect: () => void stop(run.id),
+                  onSelect: () => void stop(run.id, "turn"),
                   disabled: stoppingRunId === run.id,
                 })),
               ]}
