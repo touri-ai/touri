@@ -5,6 +5,7 @@ import {
   lazy,
   type RefObject,
   Suspense,
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -455,6 +456,13 @@ export const Composer = ({
   }
   const hasContent = Boolean(draft.trim() || files.length)
   const showStop = Boolean(activeRun && !hasContent && !sending && !browserWorking)
+
+  const restoreComposerFocus = useCallback(() => inputRef.current?.focus({ preventScroll: true }), [inputRef])
+  const stopBrowser = () => {
+    restoreComposerFocus()
+    void stop()
+  }
+
   const composer = (
     <form
       ref={island}
@@ -784,7 +792,8 @@ export const Composer = ({
         <ChannelComposerChip
           botName={browserBotName ?? bot?.name ?? "touri"}
           botId={bot?.id}
-          onStop={() => void stop()}
+          onStop={activeRun ? stopBrowser : undefined}
+          onFocusedStopRemoved={restoreComposerFocus}
           stopping={stopping}
           locale={locale}
         />

@@ -123,14 +123,16 @@ test.describe("full browser activity flow", () => {
       await expect(card.getByRole("button", { name: "Assumir" })).toBeEnabled({ timeout: 40_000 })
       const livePreview = card.getByRole("img", { name: "Página atual do navegador" })
       await expect(livePreview).toBeVisible({ timeout: 40_000 })
-      await expect(card.getByRole("button", { name: "Expandir navegador" })).toBeEnabled()
+      await expect(card.getByRole("button", { name: "Ampliar tela do navegador" })).toBeEnabled()
       const initialColumns = await card
         .locator(".browser-activity-content")
         .evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length)
       expect(initialColumns).toBe(variant.width <= 1100 ? 1 : 2)
       const expandBrowser = card.locator(".browser-activity-header-actions .browser-activity-icon-button").first()
       await expandBrowser.click()
-      await expect(expandBrowser).toHaveAttribute("aria-pressed", "true")
+      await expect(expandBrowser).toHaveAccessibleName("Reduzir tela do navegador")
+      await expect(expandBrowser).not.toHaveAttribute("aria-pressed")
+      await expect(expandBrowser).not.toHaveAttribute("aria-expanded")
       await expect(card.locator(".browser-activity-preview")).toHaveClass(/browser-activity-preview-full/)
       const columns = await card
         .locator(".browser-activity-content")
@@ -138,7 +140,7 @@ test.describe("full browser activity flow", () => {
       expect(columns).toBe(1)
       if (variant.width <= 600) await expect(card.locator(".browser-activity-log")).toHaveCSS("height", "156px")
       await page.screenshot({ path: getEvidencePath(info, `browser-live-${variant.name}.png`), fullPage: true })
-      await card.getByRole("button", { name: "Recolher navegador" }).click()
+      await card.getByRole("button", { name: "Reduzir tela do navegador" }).click()
       const takeOver = page.locator(".composer-browser-status").getByRole("button", { name: "Assumir" })
       await expect(takeOver).toBeVisible()
       await takeOver.click()
@@ -204,13 +206,13 @@ test.describe("full browser activity flow", () => {
       await expect(page.getByRole("progressbar", { name: "Progresso do navegador" })).toHaveCount(0)
       await expect(page.locator(".browser-activity-card")).toHaveAttribute("data-finished", "true")
       const summary = page.getByRole("button", { name: /Usou o navegador/ })
-      await expect(summary).toContainText("Ver o que ele fez")
+      await expect(summary).toContainText("Ver as etapas")
       await summary.scrollIntoViewIfNeeded()
       await page.screenshot({ path: getEvidencePath(info, `browser-summary-${variant.name}.png`), fullPage: true })
-      await expect(summary.getByRole("img", { name: "Captura final do navegador" })).toBeVisible()
+      await expect(summary.getByRole("img", { name: "Print final do navegador" })).toBeVisible()
       await expect
         .poll(() =>
-          summary.getByRole("img", { name: "Captura final do navegador" }).evaluate((image) => {
+          summary.getByRole("img", { name: "Print final do navegador" }).evaluate((image) => {
             return image instanceof HTMLImageElement ? image.naturalWidth : 0
           }),
         )
@@ -223,8 +225,8 @@ test.describe("full browser activity flow", () => {
         "Clicou",
         "Preencheu um campo",
         "Tirou um print",
-        "Esperou a página",
-        "Moveu nas abas",
+        "Aguardou a página",
+        "Trocou de aba",
       ])
         await expect(activity).toContainText(action)
       await expect(page.locator(".browser-activity-card")).toHaveCount(1)
@@ -434,7 +436,7 @@ for (const width of [360, 390, 430, 1440]) {
     await page.screenshot({ path: `${evidence}/browser-no-image-${width}.png` })
 
     expect((await summary.boundingBox())?.height).toBeLessThan(90)
-    await expect(summary).toContainText("Ver o que ele fez")
+    await expect(summary).toContainText("Ver as etapas")
     await summary.click()
     await expect(page.getByText("Atividade do navegador", { exact: true })).toBeVisible()
   })

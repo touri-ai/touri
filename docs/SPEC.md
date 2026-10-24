@@ -1681,6 +1681,16 @@ Rules for every WP:
     - center: thread list + chat
     - right panel tabs: Preview | Processes | Browser
   - Work channels:
+    - During browser work, the channel header shows the bot, requester and current human controller
+      from workspace browser-run snapshots and live events. Take over, Hand back and Stop appear
+      only for the requester or responsible person when no other person controls the browser;
+      an unresolved viewer identity grants no controls. Stop stays hidden throughout human control.
+      Server authorization remains authoritative.
+    - Activating browser Stop returns focus to the composer before cancellation disables the button.
+      If a focused browser Stop disappears on completion or a control change, focus returns to the
+      composer. Ordinary updates and focus on another control do not move keyboard focus.
+    - Live browser view/card buttons announce their next action in Portuguese and English. The
+      completed card opens the action history through “Ver as etapas” / “See the steps”.
     - The right panel contains only the channel avatar, name, member list and Edit channel action.
       Turn results, copied replies, member role descriptions and person labels stay out of this panel.
     - People use their account handle and the same avatar seed as their messages, including the header

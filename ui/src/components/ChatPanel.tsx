@@ -32,11 +32,7 @@ import type { ApprovalFocus } from "../approvalNavigation"
 import { getChannelThreads } from "../channelThreads"
 import { getDocumentLocale } from "../documentLanguage"
 import { userFacingRunError } from "../errors"
-import {
-  ChannelBrowserContext,
-  ChannelBrowserRunsContext,
-  type ChannelBrowserValue,
-} from "../features/channelBrowser/ChannelBrowser"
+import { ChannelBrowserContext, ChannelBrowserRunsContext } from "../features/channelBrowser/ChannelBrowser"
 import { getChannelBrowserValue } from "../features/channelBrowser/channelBrowserModel"
 import { useChannelPeople } from "../features/channelBrowser/useChannelPeople"
 import { ComputerGrantCard } from "../features/computer"
@@ -130,7 +126,6 @@ type ChatPanelProps = {
   channelMode?: boolean
   workspaceMode?: "bots" | "work"
   onEditGroup?: () => void
-  channelBrowser?: ChannelBrowserValue | null
   browserRuns?: BrowserChannelRun[]
   onInviteToGroup?: (() => void) | undefined
   focusMessage?: { messageId: Id; request: number } | undefined
@@ -1446,7 +1441,6 @@ export const ChatPanel = ({
   historyLoading = false,
   workspaceMode = "bots",
   onEditGroup = () => {},
-  channelBrowser = null,
   browserRuns = [],
   onInviteToGroup,
   focusApproval,
@@ -1482,14 +1476,12 @@ export const ChatPanel = ({
   routines = [],
   routineRuns = [],
 }: ChatPanelProps) => {
-  const channelBrowserValue =
-    channelBrowser ??
-    getChannelBrowserValue({
-      runs: browserRuns,
-      bots: groupMembers,
-      threadId: thread?.id ?? "",
-      viewerId: currentPersonId ?? "",
-    })
+  const channelBrowserValue = getChannelBrowserValue({
+    runs: browserRuns,
+    bots: groupMembers,
+    threadId: thread?.id ?? "",
+    viewerId: currentPersonId ?? "",
+  })
   const phone = usePhoneViewport()
   const chatIsCovered = panelOpen && phone
   const host = useHost(api)

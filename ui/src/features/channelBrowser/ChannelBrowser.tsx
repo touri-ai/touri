@@ -1,5 +1,5 @@
 import type { Bot, BrowserChannelRun } from "@touri/contracts"
-import { createContext, type ReactNode, useContext } from "react"
+import { createContext, type ReactNode, useCallback, useContext } from "react"
 import { useBrowserActivityControls } from "../../components/BrowserActivityControls"
 import { type Locale, t } from "../../i18n"
 import { useBrowserHold } from "../desktop/browserHold"
@@ -41,7 +41,7 @@ export const useChannelBrowserView = (): (ChannelBrowserView & { state: ChannelB
   const value = useContext(ChannelBrowserContext)
   if (!value) return null
 
-  return { ...getChannelBrowserView(value.state, value.viewerId), state: value.state }
+  return Object.assign({}, getChannelBrowserView(value.state, value.viewerId), { state: value.state })
 }
 
 export const ChannelHeaderChip = ({ locale = "pt-BR" }: { locale?: Locale }) => {
@@ -50,13 +50,23 @@ export const ChannelHeaderChip = ({ locale = "pt-BR" }: { locale?: Locale }) => 
 
   const bot = t("{name} in the browser", { name: channel.state.botName }, locale)
   const request = t("request from {person}", { person: channel.state.requesterName }, locale)
+  const controller = channel.state.controllerId
+    ? t("{person} is in control", { person: channel.controlName }, locale)
+    : ""
+  const label = [bot, request, controller].filter(Boolean).join(" · ")
 
   return (
-    <span className="channel-chip" role="status" aria-label={`${bot} · ${request}`}>
+    <span className="channel-chip" role="status" aria-label={label}>
       <span className="channel-dot" aria-hidden="true" />
       {bot}
       <span aria-hidden="true">·</span>
       <span className="channel-chip-muted">{request}</span>
+      {controller && (
+        <>
+          <span aria-hidden="true">·</span>
+          <span className="channel-chip-muted">{controller}</span>
+        </>
+      )}
     </span>
   )
 }
@@ -135,18 +145,32 @@ export const ChannelComposerChip = ({
   botName,
   botId,
   onStop,
+  onFocusedStopRemoved,
   stopping = false,
   locale = "pt-BR",
 }: {
   botName: string
   botId?: string | undefined
   onStop?: (() => void) | undefined
+  onFocusedStopRemoved?: (() => void) | undefined
   stopping?: boolean | undefined
   locale?: Locale
 }) => {
   const channel = useChannelBrowserView()
   const hold = useBrowserHold(botId)
   const browserControls = useBrowserActivityControls()
+  const restoreStopFocus = useCallback(
+    (button: HTMLButtonElement | null) => {
+      if (!button) return
+
+      return () => {
+        if (button.ownerDocument.activeElement !== button) return
+
+        onFocusedStopRemoved?.()
+      }
+    },
+    [onFocusedStopRemoved],
+  )
   const canReturnControl = Boolean(hold && (!channel || channel.canControl))
   const base = t("{name} is working · In the browser", { name: botName }, locale)
   const text = canReturnControl
@@ -155,6 +179,7 @@ export const ChannelComposerChip = ({
   const stopButton =
     onStop && (!channel || channel.canControl) && !channel?.state.controllerId ? (
       <button
+        ref={restoreStopFocus}
         type="button"
         className="composer-browser-stop"
         aria-label={stopping ? t("Stopping reply…", {}, locale) : t("Stop {name}", { name: botName }, locale)}

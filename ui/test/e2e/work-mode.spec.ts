@@ -271,7 +271,7 @@ for (const viewport of [
       }
       if (mode === "finished") {
         await expect(card.getByRole("button", { name: /Usou o navegador · 4 ações/ })).toBeVisible()
-        await expect(card.getByText("Ver o que ele fez")).toBeVisible()
+        await expect(card.getByText("Ver as etapas")).toBeVisible()
         await expect(card.locator(".browser-activity-thumbnail img")).toBeVisible()
         await expect(page.locator(".message-assistant ol li")).toHaveCount(2)
       }

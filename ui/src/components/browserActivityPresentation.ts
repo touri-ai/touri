@@ -160,7 +160,7 @@ export const getBrowserActivityLabel = (part: ToolCallPart, locale: Locale): str
     open: "Opened a page",
     navigate: "Opened a page",
     snapshot: "Read the page",
-    click: "Clicked",
+    click: "Clicked an element",
     type: "Filled a field",
     fill: "Filled a field",
     fill_form: "Filled a form",
@@ -175,8 +175,8 @@ export const getBrowserActivityLabel = (part: ToolCallPart, locale: Locale): str
     submit_secret: "Filled a saved credential",
     fill_secret: "Filled a saved credential",
     press: "Pressed a key",
-    list_tabs: "Moved between tabs",
-    switch_tab: "Moved between tabs",
+    list_tabs: "Switched tabs",
+    switch_tab: "Switched tabs",
   } satisfies Record<string, keyof typeof ptBR>
   const label = labels[action] ?? "Used the browser"
 
@@ -191,18 +191,18 @@ export const getBrowserActivityCurrentLabel = (part: ToolCallPart, locale: Local
     open: "Opening a page",
     navigate: "Opening a page",
     snapshot: "Reading the page",
-    click: "Clicking",
+    click: "Clicking an element",
     type: "Filling a field",
     fill: "Filling a field",
     fill_form: "Filling a form",
     select_option: "Selecting an option",
     screenshot: "Taking a screenshot",
     take_screenshot: "Taking a screenshot",
-    scroll: "Moving on the page",
+    scroll: "Scrolling the page",
     hover: "Inspecting an element",
     wait_for: "Waiting for the page",
-    list_tabs: "Moving between tabs",
-    switch_tab: "Moving between tabs",
+    list_tabs: "Switching tabs",
+    switch_tab: "Switching tabs",
   } satisfies Record<string, keyof typeof ptBR>
 
   return t(labels[action] ?? "Browser action in progress…", {}, locale)
