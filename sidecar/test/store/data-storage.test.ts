@@ -54,8 +54,8 @@ const fixture = async () => {
     database,
     stages,
     store,
-    close: () => {
-      runtime.stop()
+    close: async () => {
+      await runtime.stop()
       rmSync(root, { recursive: true, force: true })
     },
   }
@@ -97,7 +97,7 @@ test("startup transcript recovery is included in performance diagnostics", async
   try {
     expect(f.stages.snapshot().map((timing) => timing.stage)).toContain("store_transcript_startup_recovery")
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -164,9 +164,9 @@ for (const kind of ["text", "tool", "screenshot"] as const) {
         `Bytes/turn (${kind}): DB ${(stats.databaseBytes - initial) / 10}; text ${stats.messageTextBytes / 10}; parts ${stats.messagePartsBytes / 10}; transcript ${stats.transcriptBytes / 10}; UI events ${stats.eventBytes / 10}; blobs ${stats.attachmentBytes / 10}; legacy payload ${oldLogical / 10}`,
       )
     } finally {
-      bus.stop()
+      await bus.stop()
       legacy.close()
-      f.close()
+      await f.close()
     }
   })
 }
@@ -198,7 +198,7 @@ test("blob cutoff measures UTF-8 bytes; screenshots below cutoff are offloaded; 
     )
     expect(response.status).toBe(200)
     expect(await response.text()).toBe(output)
-    f.runtime.stop()
+    await f.runtime.stop()
     reopened = openDatabase({ filename: join(f.root, "touri.db") })
     expect(
       JSON.parse(
@@ -208,7 +208,7 @@ test("blob cutoff measures UTF-8 bytes; screenshots below cutoff are offloaded; 
     expect(readFileSync(blob.path, "utf8")).toBe(output)
   } finally {
     reopened?.close()
-    f.close()
+    await f.close()
   }
 })
 
@@ -250,7 +250,7 @@ test("live output stays inline and completion writes one content-addressed body 
     ) as MessagePart[]
     expect(summary[0]).not.toHaveProperty("outputPreview")
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -282,7 +282,7 @@ test("saved output pages cap reads and preserve UTF-8 across continuation cursor
       expect((await fetch(`${url}?${query}`, { headers })).status).toBe(400)
     expect((await fetch(url)).status).toBe(401)
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -305,7 +305,7 @@ test("output ranges remain readable when a prior user upload already owns the sa
     expect(response.status).toBe(200)
     expect(await response.json()).toMatchObject({ text: output, nextOffset: null })
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -335,7 +335,7 @@ test("a compact tool patch alone keeps its output body until the journal is reta
     compactTranscript({ database: f.database, events: 0, entriesPerThread: 0, maxAgeMs: 0, now: Date.now() + 1 })
     expect(await collectUnusedOutputBlobs(f.database, f.root)).toBe(1)
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -364,7 +364,7 @@ test("retention releases completed recovery outputs when only snapshot locators 
     compactTranscript({ database: f.database, events: 0, entriesPerThread: 0, maxAgeMs: 0, now: Date.now() + 1 })
     expect(await collectUnusedOutputBlobs(f.database, f.root)).toBe(0)
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -421,7 +421,7 @@ test("30-day retention preserves conversation text, tool summaries, status and F
     expect(await collectUnusedOutputBlobs(f.database, f.root)).toBe(0)
     expect(f.database.query("SELECT COUNT(*) AS n FROM attachments").get()).toEqual({ n: 1 })
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -442,7 +442,7 @@ test("retention preference persists, rejects invalid values and 0 keeps old deta
     f.database.query("UPDATE messages SET updated_at = 1").run()
     await compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
     expect((f.store.activePath({ threadId: "t" })[0]?.parts[0] as ToolCallPart)?.outputJson).toBe("Detalhes originais")
-    f.runtime.stop()
+    await f.runtime.stop()
     const database = openDatabase({ filename: join(f.root, "touri.db") })
     try {
       expect(dataRetentionDays(database)).toBe(0)
@@ -450,7 +450,7 @@ test("retention preference persists, rejects invalid values and 0 keeps old deta
       database.close()
     }
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -486,7 +486,7 @@ test("maintenance skips streaming messages and threads with active runs, and off
     await compactMessageBatch({ database: f.database, appData: f.root, cursor: 0, total: 100 })
     expect(f.database.query("SELECT parts_json FROM messages ORDER BY rowid").all()).toEqual(before)
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -533,7 +533,7 @@ test("Doctor starts background compaction once; only explicit VACUUM shrinks all
     expect(f.store.search({ q: "preservado", limit: 10 })).toHaveLength(1)
   } finally {
     scheduled.maintenance.dispose()
-    f.close()
+    await f.close()
   }
 })
 
@@ -591,7 +591,7 @@ test("background maintenance resumes a committed cursor after restart without re
   } finally {
     scheduled?.maintenance.dispose()
     await resumed?.stop()
-    f.close()
+    await f.close()
   }
 })
 
@@ -614,7 +614,7 @@ test("rollback orphans are collected after a grace period without deleting a sha
     expect(part.outputAttachmentId).toBeUndefined()
     expect(part.outputJson).toBe("Novo resultado pequeno")
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -636,7 +636,7 @@ test("garbage collection yields and defers deletion if a live writer introduces 
     expect(removed).toBe(0)
     expect(f.database.query("SELECT COUNT(*) AS n FROM attachments").get()).toEqual({ n: 100 })
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -668,7 +668,7 @@ test("orphan attachment scanning yields after bounded directory batches and repo
     expect(stages.snapshot().map((timing) => timing.stage)).toContain("storage_attachment_orphan_scan")
     expect(f.database.query("SELECT COUNT(*) AS n FROM attachments").get()).toEqual({ n: 0 })
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -691,7 +691,7 @@ test("a user upload sharing a tool-output hash remains after tool retention remo
     expect(await collectUnusedOutputBlobs(f.database, f.root)).toBe(0)
     expect(readFileSync(stored.path, "utf8")).toContain("Resultado compartilhado")
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -719,7 +719,7 @@ test("interrupted tool reconciliation preserves file-backed results even without
       .get(recorded.outputAttachmentId ?? "") as { path: string }
     expect(readFileSync(blob.path, "utf8")).toBe(output)
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -763,7 +763,7 @@ test("many small command and tool outputs share a bounded inline budget without 
     expect(entry.n).toBeLessThan(256)
     expect(parts[49]).toMatchObject({ outputJson: outputs[49] })
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -797,7 +797,7 @@ test("tool progress tails cannot bypass output offloading and repeated writes ad
     resolutions.record(run, tool("Resultado"))
     expect(f.database.query("SELECT total_changes() AS n").get()).toEqual(changes)
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -841,7 +841,7 @@ test("completed output cannot crowd live command progress into a new file on eve
       expect(f.database.query("SELECT COUNT(*) AS n FROM attachments").get()).toEqual(files)
     }
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -862,7 +862,7 @@ test("final tool previews remain visible and oversized result plus preview stays
     }
     expect(JSON.parse(readFileSync(blob.path, "utf8"))).toEqual({ outputJson: "done", outputTail: completeTail })
   } finally {
-    f.close()
+    await f.close()
   }
 })
 
@@ -876,14 +876,10 @@ test("process replay keeps a bounded UTF-8 tail of the file-backed log", () => {
   expect(event.lines[0]?.length).toBe(100_000)
 })
 
-const scanCleanups = new Set<() => void>()
-afterEach(() => {
+const scanCleanups = new Set<() => void | Promise<void>>()
+afterEach(async () => {
   // Reverse only the fresh snapshot so dependent connections close first.
-  Array.from(scanCleanups)
-    .reverse()
-    .forEach((cleanup) => {
-      cleanup()
-    })
+  for (const cleanup of Array.from(scanCleanups).reverse()) await cleanup()
   scanCleanups.clear()
 })
 
