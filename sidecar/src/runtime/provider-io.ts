@@ -46,14 +46,14 @@ export const startLineReader = ({
   onLine,
   onError,
   runStage,
-  waitForDispatch,
+  getPause,
   now = performance.now.bind(performance),
 }: {
   stream: ReadableStream<Uint8Array>
   onLine: (line: string) => void
   onError: (error: Error) => void
   runStage?: PerformanceStageRunner
-  waitForDispatch?: () => Promise<void> | undefined
+  getPause?: () => Promise<void> | undefined
   now?: () => number
 }): (() => void) & { done: Promise<void> } => {
   let stopped = false
@@ -71,7 +71,7 @@ export const startLineReader = ({
       cursor = newline + 1
       lines += 1
       if (line) onLine(line)
-      if (elapsedMs + now() - startedAt >= PROVIDER_FRAME_BATCH_MS) break
+      if (getPause?.() || elapsedMs + now() - startedAt >= PROVIDER_FRAME_BATCH_MS) break
     }
     return { offset: cursor, processed: lines, elapsedMs: elapsedMs + now() - startedAt }
   }
@@ -86,14 +86,19 @@ export const startLineReader = ({
     let elapsedMs = 0
     try {
       while (!stopped) {
+        const pause = getPause?.()
+        if (pause) await pause
+        if (stopped) break
+
         const result = await reader.read()
         if (result.done) break
         buffer += decoder.decode(result.value, { stream: true })
         let offset = 0
         while (!stopped && buffer.indexOf("\n", offset) >= 0) {
-          // Let an acknowledged replay drain before accepting another live batch.
-          await waitForDispatch?.()
+          const pause = getPause?.()
+          if (pause) await pause
           if (stopped) break
+
           const slice = processBatch({ buffer, offset, processed, elapsedMs })
           offset = slice.offset
           processed = slice.processed
@@ -106,7 +111,6 @@ export const startLineReader = ({
         }
         buffer = buffer.slice(offset)
       }
-      await waitForDispatch?.()
       const tail = buffer.trim()
       if (!stopped && tail) onLine(tail)
     } catch (error) {

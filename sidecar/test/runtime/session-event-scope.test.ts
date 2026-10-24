@@ -66,6 +66,30 @@ test("live arrivals wait for acknowledged replay without exceeding the pre-ackno
   expect(fixture.getAttributedText()).toBe("buffered ".repeat(100) + "live ".repeat(512))
 })
 
+test("an acknowledgement inside a full buffer pauses the same wire batch before newer frames", async () => {
+  const fixture = makeFixture()
+  const running = fixture.adapter.startTurn(fixture.args)
+  const request = await fixture.nextRequest("turn/start")
+  const getDeltaFrame = (delta: string): Frame => ({
+    method: "item/agentMessage/delta",
+    params: { threadId: "parent", turnId: "current", itemId: "reply", delta },
+  })
+  const older = Array.from({ length: 128 }, () => getDeltaFrame("older "))
+  const newer = Array.from({ length: 256 }, () => getDeltaFrame("newer "))
+  const acknowledgement: Frame = { id: request.id, result: { turn: { id: "current" } } }
+  const completed: Frame = {
+    method: "turn/completed",
+    params: { threadId: "parent", turnId: "current", status: "succeeded" },
+  }
+
+  fixture.sendBatch(older.concat(acknowledgement, newer, completed))
+  fixture.exit(0)
+  const result = await running
+
+  expect(result.success).toBe(true)
+  expect(fixture.getAttributedText()).toBe("older ".repeat(128) + "newer ".repeat(256))
+})
+
 test.each(["before acknowledgement", "after acknowledgement"])(
   "isolates foreign and stale events %s",
   async (phase) => {
@@ -494,6 +518,8 @@ const makeFixture = () => {
     getAttributedText: () => attributedText.join(""),
     requests,
     send,
+    sendBatch: (frames: Frame[]) =>
+      output?.enqueue(new TextEncoder().encode(`${frames.map((frame) => JSON.stringify(frame)).join("\n")}\n`)),
     exit: (code: number) => {
       output?.close()
       output = undefined

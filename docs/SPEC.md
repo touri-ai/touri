@@ -1763,7 +1763,7 @@ waits for stdout parsing and acknowledged-turn replay before reporting failure, 
 text and the terminal outcome without accepting foreign sessions or turns. Failed history reads
 remain visible across workspace refreshes until a successful history read clears them. Bot details
 load on demand within a closable panel, keeping the conversation visible and the existing initial
-compressed payload budget unchanged. Conversation layout styles remain available at startup. The
+compressed payload budget unchanged. Shared conversation, panel, computer and error styles remain available at startup. The
 phone close control receives focus when the loaded panel replaces its loading state.
 Internal control callbacks run after commit without waiting for cold transcript hydration; socket
 frames retain durable sequence order. Early callbacks are tracked individually, up to 2,000 pending
@@ -1776,5 +1776,8 @@ Shutdown asks the stream worker to close SQLite and waits for its confirmation b
 files, with a one-second fallback for an unresponsive worker.
 Capture retries contain transient SQLite I/O failures and retry the committed journal without
 discarding its entries.
+Reading also pauses at an acknowledgement inside a batch, before subsequent wire frames can
+consume the unchanged buffer limit. Notification recovery observes committed runtime callbacks
+without waiting for ordered history delivery.
 
 Provider readers apply backpressure while acknowledged pre-start frames replay, preserving frame order and the existing 128-frame / 1 MiB cap. Notification resolution receives committed runtime controls without waiting for cold message hydration.

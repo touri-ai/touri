@@ -364,6 +364,7 @@ export const createCodexAdapter = ({
     let pendingFrames: Array<{ line: string; bytes: number }> = []
     let pendingBytes = 0
     let replay: Promise<void> | undefined
+    let inputPause: { promise: Promise<void>; resolve: () => void } | undefined
     let resuming = false
     const classifyError = (message: string): RunErrorClass => {
       const errorClass = classifyProviderError(message)
@@ -381,12 +382,12 @@ export const createCodexAdapter = ({
     let nextRequestId = 1
     const responseWaiters = new Map<
       number,
-      { resolve: (response: RpcResponse) => void; reject: (error: Error) => void }
+      { method: string; resolve: (response: RpcResponse) => void; reject: (error: Error) => void }
     >()
     const sendRequest = (method: string, params: unknown): Promise<RpcResponse> => {
       const id = nextRequestId++
       return new Promise((resolve, reject) => {
-        responseWaiters.set(id, { resolve, reject })
+        responseWaiters.set(id, { method, resolve, reject })
         void writeLine({ stdin: spawned.stdin, value: { jsonrpc: "2.0", id, method, params } }).catch((error) => {
           responseWaiters.delete(id)
           reject(error)
@@ -416,6 +417,8 @@ export const createCodexAdapter = ({
       completed = true
       pendingFrames = []
       pendingBytes = 0
+      inputPause?.resolve()
+      inputPause = undefined
       expireApprovals()
       for (const waiter of responseWaiters.values()) waiter.reject(new Error("Codex turn ended"))
       responseWaiters.clear()
@@ -453,6 +456,7 @@ export const createCodexAdapter = ({
         const waiter = responseWaiters.get(response.id)
         if (waiter) {
           responseWaiters.delete(response.id)
+          if (waiter.method === "turn/start" && !response.error) inputPause = Promise.withResolvers<void>()
           if (response.error) waiter.reject(new Error(response.error.message ?? "Codex request failed"))
           else waiter.resolve(response)
         }
@@ -667,9 +671,9 @@ export const createCodexAdapter = ({
     }
     const stopReader = startLineReader({
       stream: spawned.stdout,
-      waitForDispatch: () => (turnAcknowledged ? undefined : replay),
       onLine: (line) => (runStage ? runStage("provider_frame_dispatch", onLine, line) : onLine(line)),
       onError: (error) => complete({ success: false, errorCode: "cli_protocol", error: error.message }),
+      getPause: () => inputPause?.promise,
       ...(runStage ? { runStage } : {}),
     })
     const stderrOutput = readProviderStderr(spawned.stderr, (text) => {
@@ -779,7 +783,7 @@ export const createCodexAdapter = ({
         if (stopped) interrupt()
 
         replay = (async () => {
-          // Replay cursors stay local; live arrivals join the bounded buffer until it drains.
+          // Hold upstream reading while older frames replay, preserving the existing buffer limits.
           while (!completed && pendingFrames.length > 0) {
             const [pending, ...remaining] = pendingFrames
             if (!pending) break
@@ -795,6 +799,8 @@ export const createCodexAdapter = ({
           turnAcknowledged = true
         })()
         await replay
+        inputPause?.resolve()
+        inputPause = undefined
       } catch (error) {
         const message = errorText(error)
         const errorClass = classifyProviderError(message)
