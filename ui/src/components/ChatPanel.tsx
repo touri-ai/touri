@@ -91,6 +91,7 @@ import { useInsertedIds } from "./Motion"
 import { mascotSignalFor } from "./mascotState"
 import { PanelIcon } from "./PanelIcon"
 import { PersonAvatar } from "./PersonAvatar"
+import { REVEAL_EVENT } from "./revealEvent"
 import { getSessionRecoveryPresentation } from "./sessionRecoveryPresentation"
 import { ToolCallList } from "./ToolCallList"
 import { ToolText } from "./ToolOutput"
@@ -324,6 +325,33 @@ export const VirtualMessageList = ({
   const focusedRequest = useRef<number | undefined>(undefined)
   const focusedMessage = useRef<typeof focusMessage>(undefined)
   const latestUserId = [...messages].reverse().find((message) => message.role === "user")?.id
+  useEffect(() => {
+    // A result shown under a control the person used stays put while the turn keeps growing.
+    // The history can mount after this effect, so the list is read when the request arrives.
+    const reveal = (event: Event) => {
+      const list = scrollRef.current
+      if (!list || !(event.target instanceof HTMLElement) || !list.contains(event.target)) return
+      event.preventDefault()
+      const element = event.target
+      // A sticky card header stays over the top of the list; the result goes right below it.
+      const header = element.closest(".browser-activity-card")?.querySelector<HTMLElement>(".browser-activity-header")
+      list.scrollTop += element.getBoundingClientRect().top - list.getBoundingClientRect().top - 8
+      // Measure where the sticky header actually landed; padding moves it below the list's top edge.
+      const covered = (header?.getBoundingClientRect().bottom ?? 0) + 8 - element.getBoundingClientRect().top
+      if (covered > 0) list.scrollTop -= covered
+      readingAnchor.current = {
+        element,
+        top: element.getBoundingClientRect().top - list.getBoundingClientRect().top,
+        scrollTop: list.scrollTop,
+      }
+      followBottom.current = false
+      setAwayFromBottom(list.scrollTop + list.clientHeight < list.scrollHeight - 48)
+      setScrollTop(list.scrollTop)
+    }
+    document.addEventListener(REVEAL_EVENT, reveal)
+
+    return () => document.removeEventListener(REVEAL_EVENT, reveal)
+  }, [])
   const timeline = useMemo(() => {
     // This disposable list is sorted because the TypeScript target does not include toSorted.
     const entries = [
