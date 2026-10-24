@@ -35,9 +35,9 @@ import { composeDeveloperInstructions } from "../../src/runtime/instructions"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { init as initStore } from "../../src/store"
 
-const cleanup: Array<() => void> = []
-afterEach(() => {
-  for (const close of cleanup.splice(0)) close()
+const cleanup: Array<() => void | Promise<void>> = []
+afterEach(async () => {
+  for (const close of cleanup.splice(0)) await close()
 })
 
 const tempHome = () => {
@@ -49,8 +49,8 @@ const tempHome = () => {
 const fixture = async ({ decision = "allow" }: { decision?: "allow" | "deny" } = {}) => {
   const root = mkdtempSync(join(tmpdir(), "touri-learning-"))
   const runtime = createKernel({ appData: root })
-  cleanup.push(() => {
-    runtime.stop()
+  cleanup.push(async () => {
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
   await initStore(runtime.kernel)

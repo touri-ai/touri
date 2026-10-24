@@ -105,6 +105,51 @@ test("repeated storage contention backs off and resumes after the writer release
   expect(database.query("SELECT key FROM settings WHERE key = 'storage.maintenance.progress'").get()).not.toBeNull()
 })
 
+test("maintenance catches migration status failures and retries after recovery", async () => {
+  const root = await mkdtemp(join(tmpdir(), "touri-maintenance-status-"))
+  const database = openDatabase({ filename: join(root, "synthetic.db") })
+  let next: (() => Promise<void>) | undefined
+  let delay = 0
+  let failures = 0
+  const maintenance = createStorageMaintenance({
+    database,
+    appData: root,
+    publishResync: () => {},
+    retryDeletedBrowserSessionKeys: async () => {},
+    onError: () => {
+      failures += 1
+    },
+    schedule: (action, wait) => {
+      next = action
+      delay = wait
+      const timer = setTimeout(() => {}, 60_000)
+      timer.unref()
+      return timer
+    },
+  })
+  cleanups.add(async () => {
+    await maintenance.dispose({ closing: true })
+    database.close()
+    await rm(root, { recursive: true, force: true })
+  })
+  const key = "transcript.backfill.7.thread.synthetic"
+  database.query("INSERT INTO settings(key, value_json, updated_at) VALUES (?, ?, 0)").run(key, "invalid-json")
+  const step = next
+  if (!step) throw new Error("Missing maintenance step")
+
+  await expect(step()).resolves.toBeUndefined()
+
+  expect(failures).toBe(1)
+  expect(delay).toBe(1000)
+  expect(maintenance.snapshot().error).toBeDefined()
+  database.query("DELETE FROM settings WHERE key = ?").run(key)
+  const retry = next
+  if (!retry) throw new Error("Missing maintenance retry")
+  await retry()
+  expect(maintenance.snapshot().error).toBeUndefined()
+  expect(failures).toBe(1)
+})
+
 const waitUntil = async (condition: () => boolean) => {
   const deadline = Date.now() + 3000
   while (Date.now() < deadline) {
