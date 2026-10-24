@@ -1706,7 +1706,19 @@ export const useWorkspace = (
   const cancelRun = useCallback(
     async (runId: Id, scope?: "group" | "turn"): Promise<void> => {
       const response = await api.request("POST /runs/:id/cancel", scope ? { scope } : {}, { id: runId })
-      setData((current) => ({ ...current, runs: mergeRunRows(current.runs, [response.run]) }))
+      if (!activeRun(response.run)) {
+        const revision = ++runRevision.current
+        liveRuns.current.delete(response.run.id)
+        completedDuringLoad.current?.add(response.run.id)
+        const load = threadLoads.current.get(response.run.threadId)
+        if (load) load.terminalRevision = revision
+      }
+      setData((current) =>
+        Object.assign({}, current, {
+          runs: mergeRunRows(current.runs, [response.run]),
+          workRuns: current.workRuns.filter((run) => run.id !== response.run.id || activeRun(response.run)),
+        }),
+      )
     },
     [api],
   )

@@ -46,7 +46,7 @@ it("lists every executing and queued turn, origins and engine positions, and ope
   expect(screen.getByText("Na fila · 1º de 1")).toBeVisible()
 })
 
-it("stops a selected work task with turn scope and preserves the queued request", async () => {
+it("confirms a selected task stop without waiting for live events and preserves the queued request", async () => {
   const api = createWorkApi()
   const running = api.getRuns()[0]
   const queued = api.getRuns()[3]
@@ -57,7 +57,6 @@ it("stops a selected work task with turn scope and preserves the queued request"
     if (route !== "POST /runs/:id/cancel") return api.request(route, input, path)
 
     cancellation(input, path)
-    api.emit({ type: "run.updated", run: canceled })
     return { run: canceled } as ApiRoutes[typeof route]["res"]
   }
   const client = Object.assign({}, api, { request })
@@ -108,6 +107,42 @@ it("shows stop failures and prevents duplicate requests while stopping", async (
       .every((button) => !button.hasAttribute("disabled")),
   ).toBe(true)
   expect(onStop).toHaveBeenCalledTimes(1)
+})
+
+it("keeps a confirmed stop newer than a workspace snapshot without live events", async () => {
+  const api = createWorkApi()
+  const running = api.getRuns()[0]
+  if (!running) throw new Error("Missing work fixture")
+  const canceled = Object.assign({}, running, { status: "canceled" as const, finishedAt: Date.now() })
+  const requested = Promise.withResolvers<void>()
+  const snapshot = Promise.withResolvers<void>()
+  let delayRuns = false
+  const request: UiApi["request"] = async (route, input, path) => {
+    if (route === "POST /runs/:id/cancel") return { run: canceled } as ApiRoutes[typeof route]["res"]
+
+    const response = await api.request(route, input, path)
+    if (route === "GET /runs" && delayRuns) {
+      requested.resolve()
+      await snapshot.promise
+    }
+
+    return response
+  }
+  const client = Object.assign({}, api, { request })
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(hook.result.current.data.loading).toBe(false))
+  delayRuns = true
+
+  await act(async () => {
+    const refreshed = hook.result.current.actions.refresh()
+    await requested.promise
+    await hook.result.current.actions.cancelRun(running.id, "turn")
+    snapshot.resolve()
+    await refreshed
+  })
+
+  expect(hook.result.current.data.workRuns.some((run) => run.id === running.id)).toBe(false)
+  expect(hook.result.current.data.runs.find((run) => run.id === running.id)?.status).toBe("canceled")
 })
 
 it("opens the visible group while the work run retains its execution thread", () => {
