@@ -898,3 +898,57 @@ test("message repairs cancel superseded reads instead of accumulating held run r
   expect([...runSignals.values()].every((signal) => signal?.aborted)).toBe(true)
   await act(async () => runs.resolve())
 })
+
+test.each(["omitted", "cleared"] as const)("a workspace summary respects %s recovery lineage", async (projection) => {
+  const api = createMockApi()
+  const active = (await api.request("GET /threads/:id/runs", {}, { id: "thread-onb" })).runs[0]
+  if (!active) throw new Error("Missing run fixture")
+  const summary: Run = {
+    ...active,
+    id: "recovered-run",
+    threadId: "thread-mark",
+    botId: "bot-mark",
+    status: "succeeded",
+    finishedAt: 10,
+    replyMessageId: "summary-reply",
+  }
+  const recovered: Run = { ...summary, replyMessageId: "selected-reply", automaticResumeFromRunId: "interrupted-run" }
+  const reread = deferred()
+  let holdRuns = false
+  const request: ApiRequest = async (route, input, path) => {
+    if (route === "GET /threads/:id/runs") {
+      if (holdRuns) await reread.promise
+      return { runs: [recovered] } as never
+    }
+    const response = await api.request(route, input, path)
+    if (route === "GET /workspace/activity")
+      return {
+        ...response,
+        runs: [projection === "cleared" ? { ...summary, automaticResumeFromRunId: null } : summary],
+      } as never
+    return response
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() =>
+    expect(hook.result.current.data.runs.find((row) => row.id === recovered.id)?.automaticResumeFromRunId).toBe(
+      "interrupted-run",
+    ),
+  )
+
+  holdRuns = true
+  let refresh = Promise.resolve()
+  act(() => {
+    refresh = hook.result.current.actions.refresh()
+  })
+  await waitFor(() =>
+    expect(hook.result.current.data.runs.find((row) => row.id === recovered.id)?.replyMessageId).toBe("summary-reply"),
+  )
+  const lineage = hook.result.current.data.runs.find((row) => row.id === recovered.id)?.automaticResumeFromRunId
+  await act(async () => {
+    reread.resolve()
+    await refresh
+  })
+
+  expect(lineage).toBe(projection === "cleared" ? null : "interrupted-run")
+})
