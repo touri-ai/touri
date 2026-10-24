@@ -42,6 +42,24 @@ it("a growing streamed reply reparses only its last block on each update", async
   await screen.findByText(/Etapa 60:/)
 })
 
+it.each(["\n", "\n\n", "\ncontinuação sem recuo\n\n"])(
+  "keeps automatic ordered numbering while streaming with %j separators",
+  async (separator) => {
+    const content = Array.from(
+      { length: 25 },
+      (_, index) => `1. Etapa ${index + 1}: revise os detalhes da viagem e confirme os horários com a equipe.`,
+    ).join(separator)
+
+    const view = render(<MarkdownContent content={content} streaming />)
+    await screen.findByText(/Etapa 25:/)
+
+    const ordinals = Array.from(view.container.querySelectorAll("ol")).flatMap((list) =>
+      Array.from(list.children, (_, index) => Number(list.getAttribute("start") ?? 1) + index),
+    )
+    expect(ordinals).toEqual(Array.from({ length: 25 }, (_, index) => index + 1))
+  },
+)
+
 it("rendering messages that did not fail builds no date strings for failure labels", () => {
   const messages: Message[] = Array.from({ length: 20 }, (_, index) => ({
     id: `message-${index}`,
