@@ -5,6 +5,10 @@ test.use({ channel: "chromium", reducedMotion: "reduce" })
 test.setTimeout(120_000)
 
 type Counts = { enabled: boolean; commits: number; bubbleRenders: number; longTasks: number[]; frames: number[] }
+type StreamingWindow = Window & {
+  streamingCounts: Counts
+  streamingTyping: { stream: () => Promise<void> }
+}
 
 /** Counts message bubble renders per React commit; reused fibers are skipped without walking them. */
 const installCounter = () => {
@@ -17,6 +21,12 @@ const installCounter = () => {
   }
   const counts: Counts = { enabled: false, commits: 0, bubbleRenders: 0, longTasks: [], frames: [] }
   const seen = new WeakMap<Fiber, Fiber>()
+  const getFiberName = (type: Fiber["type"]): string | undefined => {
+    if (typeof type === "function") return type.name
+    if (typeof type === "object") return type?.name ?? type?.type?.name
+
+    return undefined
+  }
   Object.assign(window, {
     streamingCounts: counts,
     // The dev server's refresh runtime also registers through this hook, so it needs a renderer map.
@@ -39,12 +49,7 @@ const installCounter = () => {
             seen.set(fiber, fiber)
             if (fiber.alternate) seen.set(fiber.alternate, fiber)
             const type = fiber.type
-            const name =
-              typeof type === "function"
-                ? (type as { name?: string }).name
-                : typeof type === "object"
-                  ? (type?.name ?? type?.type?.name)
-                  : undefined
+            const name = getFiberName(type)
             // The row function may sit inside a memo wrapper; count the function component that did work.
             if (typeof type === "function" && /^MessageBubble(?:Row)?$/.test(name ?? "") && (fiber.flags & 1) !== 0)
               bubbles += 1
@@ -73,8 +78,8 @@ const installCounter = () => {
   )
 }
 
-const percentile = (values: number[], fraction: number): number =>
-  [...values].sort((left, right) => left - right)[Math.max(0, Math.ceil(values.length * fraction) - 1)] ?? 0
+const getPercentile = (values: number[], fraction: number): number =>
+  values.toSorted((left, right) => left - right)[Math.max(0, Math.ceil(values.length * fraction) - 1)] ?? 0
 
 for (const viewport of [
   { width: 1440, height: 900 },
@@ -95,19 +100,18 @@ for (const viewport of [
     await expect(page.getByText("Pergunta 12", { exact: true })).toBeVisible()
     await input.click()
     await page.evaluate(() => {
-      ;(window as unknown as { streamingCounts: Counts }).streamingCounts.enabled = true
+      const probe = (window as StreamingWindow).streamingCounts
+      probe.enabled = true
     })
 
-    const streamed = page.evaluate(() =>
-      (window as unknown as { streamingTyping: { stream: () => Promise<void> } }).streamingTyping.stream(),
-    )
+    const streamed = page.evaluate(() => (window as StreamingWindow).streamingTyping.stream())
     await page.getByText("Aqui está o roteiro fictício completo").waitFor()
     await input.pressSequentially("o rascunho continua enquanto a resposta chega ", { delay: 40 })
     await streamed
     if (process.env.TOURI_SCREENSHOT_DIR)
       await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/streaming-history-${viewport.width}.png` })
     const counts = await page.evaluate(() => {
-      const value = (window as unknown as { streamingCounts: Counts }).streamingCounts
+      const value = (window as StreamingWindow).streamingCounts
       value.enabled = false
       return value
     })
@@ -117,13 +121,18 @@ for (const viewport of [
       longTasks: counts.longTasks.length,
       longestTask: Math.max(0, ...counts.longTasks),
       longTaskMs: counts.longTasks.reduce((sum, value) => sum + value, 0),
-      inputFrameP99: percentile(counts.frames, 0.99),
+      inputFrameP99: getPercentile(counts.frames, 0.99),
     }
     console.log(`streaming-history ${viewport.width}: ${JSON.stringify(result)}`)
     await writeFile(info.outputPath("metrics.json"), JSON.stringify(result))
 
     await expect(input).toHaveValue("o rascunho continua enquanto a resposta chega ")
-    await expect(page.locator('[data-message-id="stream-reply"]')).toContainText("Etapa 60")
+    const reply = page.locator('[data-message-id="stream-reply"]')
+    await expect(reply).toContainText("Etapa 60")
+    await reply.getByRole("button", { name: "Mostrar mais", exact: true }).click()
+    await expect(reply.locator("ol > li")).toHaveCount(60)
+    await expect(reply.locator("tbody > tr")).toHaveCount(8)
+    await expect(reply).toContainText("Cidade 8")
     // Earlier messages keep their props while one reply streams; only the streaming row renders again.
     expect(result.commits).toBeGreaterThan(10)
     expect(result.bubbleRendersPerCommit).toBeLessThan(3)
