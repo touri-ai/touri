@@ -80,7 +80,7 @@ test("browser init registers its routes and optional tab service", async () => {
     })
     expect(takeoverResponse.status).toBe(404)
   } finally {
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   }
 })
@@ -499,7 +499,7 @@ test("a local owner can return browser control without a paired work identity", 
     expect(response.status).toBe(200)
     expect(people).toEqual(["owner"])
   } finally {
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   }
 })
@@ -542,7 +542,7 @@ test("chat browser preview validates bot and running source without launching a 
     await engine.shutdown()
   } finally {
     runtime.emitHostNotification({ method: "app.willQuit", params: {} })
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   }
 })
@@ -555,7 +555,7 @@ test("browser preview stays below 50 ms event-loop lag for 1 Hz maximum-sized fr
   cleanups.add(async () => {
     stopSampler()
     await shutdownEngine()
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
   await initStore(runtime.kernel)
@@ -677,7 +677,7 @@ test("browser takeover enforces a two-minute minimum and a thirty-minute maximum
     await handler({ ctx, args: { tabId: "tab-1", timeoutMs: 3600000 } })
     expect(durations).toEqual([120000, 1800000])
   } finally {
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   }
 })
@@ -713,7 +713,7 @@ test("the last failed browser tool of a bot is exposed to the screen viewers", a
     })
     expect(body.lastFailure?.error.length).toBeGreaterThan(0)
   } finally {
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   }
 })
@@ -775,7 +775,7 @@ test("VM browser keyboard and mouse tools wait for handback; kill blocks subsequ
     })
   } finally {
     runtime.emitHostNotification({ method: "app.willQuit", params: {} })
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   }
 })
