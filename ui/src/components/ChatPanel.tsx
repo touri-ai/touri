@@ -65,6 +65,7 @@ import type { ThreadCreationStatus } from "../workspaceState"
 import { ActivityMark } from "./ActivityMark"
 import { ApprovalCard } from "./ApprovalCard"
 import { useAvatarBot, useMascotSnapshot, useMessageMascotState, useThreadBot } from "./AvatarRuntime"
+import { activeMessagePath } from "./activeMessagePath"
 import { withApprovalAnswers } from "./activityStatus"
 import { getAutomaticResumeMessages } from "./automaticResumeMessages"
 import { BotAvatar } from "./BotAvatar"
@@ -110,6 +111,8 @@ const GroupConversationStart = lazy(() =>
   import("./Groups").then((module) => ({ default: module.GroupConversationStart })),
 )
 const ChannelThreads = lazy(() => import("./ChannelThreads").then((module) => ({ default: module.ChannelThreads })))
+
+export { activeMessagePath } from "./activeMessagePath"
 
 type ChatPanelProps = {
   historyLoading?: boolean
@@ -189,22 +192,6 @@ type VirtualMessageListProps = {
   timelineCards?: Array<{ id: string; createdAt: number; content: ReactNode }>
 }
 const emptyTimelineCards: NonNullable<VirtualMessageListProps["timelineCards"]> = []
-
-export const activeMessagePath = (messages: Array<Message>, leafId: Id | null): Array<Message> => {
-  if (!leafId) return messages
-  const byId = new Map(messages.map((message) => [message.id, message]))
-  const path: Message[] = []
-  const seen = new Set<Id>()
-  let next: Id | null = leafId
-  while (next && !seen.has(next)) {
-    seen.add(next)
-    const message = byId.get(next)
-    if (!message) break
-    path.unshift(message)
-    next = message.parentId
-  }
-  return path
-}
 
 const deliveryLabels = {
   queued: "Na fila · aguardando conexão",

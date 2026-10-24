@@ -239,7 +239,9 @@ const mergeRunRows = <
       (row.finishedAt === null || row.status !== previous.status)
     )
       continue
-    rows.set(row.id, row)
+    // Activity summaries omit optional metadata already hydrated by the selected history.
+    // Preserve those fields while allowing an explicit null to clear them.
+    rows.set(row.id, { ...previous, ...row })
   }
   return [...rows.values()]
 }

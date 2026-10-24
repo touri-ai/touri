@@ -31,6 +31,13 @@ test("keeps the production startup payload below 400 KB gzip with optional modul
     expect(chunk?.isDynamicEntry).toBe(true)
     expect(initialFiles).not.toContain(chunk?.file)
   })
+  // Shared conversation exports can give this dynamic chunk a generated manifest key.
+  const conversation = Object.values(manifest).find((chunk) => chunk.name === "ChatPanel")
+  expect(conversation?.isDynamicEntry).toBe(true)
+  expect(initialFiles).not.toContain(conversation?.file)
+  conversation?.css?.forEach((file) => {
+    expect(initialFiles).not.toContain(file)
+  })
   const welcomeStyles = Object.values(manifest)
     .flatMap((chunk) => chunk.css ?? [])
     .filter((file) => file.includes("/conversation-start-"))
