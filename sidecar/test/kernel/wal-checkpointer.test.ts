@@ -196,6 +196,43 @@ test("shutdown can dispose maintenance after its database connection has already
   expect(onError).not.toHaveBeenCalled()
 })
 
+test("shutdown waits for the worker to close its SQLite connection before resolving", async () => {
+  const { database } = await getFixture()
+  const ready = Promise.withResolvers<void>()
+  const stopped = Promise.withResolvers<void>()
+  const onError = mock(() => ready.reject(new Error("Checkpoint worker failed")))
+  const checkpointer = createWalCheckpointer({
+    database,
+    onReady: ready.resolve,
+    onError,
+    createWorker: () => {
+      // Delay the real connection close to expose a caller removing its backing files too early.
+      const source = walCheckpointSource.replace(
+        '    stop();\n    self.postMessage({ type: "stopped" });\n    self.close();',
+        '    setTimeout(() => { stop(); self.postMessage({ type: "stopped" }); self.close(); }, 100);',
+      )
+      const url = URL.createObjectURL(new Blob([source], { type: "application/javascript" }))
+      cleanups.add(() => URL.revokeObjectURL(url))
+      const worker = new Worker(url, { smol: true, ref: false })
+      worker.addEventListener("message", ({ data }) => {
+        if (data?.type === "stopped") stopped.resolve()
+      })
+      return worker
+    },
+  })
+  cleanups.add(() => checkpointer.dispose({ closing: true }))
+  await ready.promise
+  const closed = mock(() => {})
+  void stopped.promise.then(closed)
+
+  await checkpointer.dispose({ closing: true })
+
+  const closedBeforeReturn = closed.mock.calls.length
+  await stopped.promise
+  expect(closedBeforeReturn).toBe(1)
+  expect(onError).not.toHaveBeenCalled()
+})
+
 const getFixture = async () => {
   // SQLite's no-follow open rejects directory aliases as well as a symlinked database.
   const root = await realpath(await mkdtemp(join(tmpdir(), "touri-wal-checkpointer-")))

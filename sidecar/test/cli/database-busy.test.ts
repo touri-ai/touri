@@ -178,3 +178,35 @@ database.close();`,
   expect(result.stderr).toBe("")
   expect(result.stdout).toContain('"timeout":5000')
 })
+
+test.skipIf(process.platform !== "linux")(
+  "preparing an open database preserves its cross-process write lock",
+  async () => {
+    const { root, database } = await fixture("reserved")
+    const filename = join(root, "auth.db")
+    const getLock = () =>
+      start([
+        "--eval",
+        `import { Database } from "bun:sqlite";
+const database = new Database(${JSON.stringify(filename)});
+database.exec("PRAGMA busy_timeout = 0");
+try {
+  database.exec("BEGIN IMMEDIATE");
+  console.log("unlocked");
+  database.exec("ROLLBACK");
+} catch (error) {
+  console.log(error.code);
+} finally {
+  database.close();
+}`,
+      ]).result
+    const before = await getLock()
+
+    prepareDatabaseFile({ root, path: filename })
+    const after = await getLock()
+    database.exec("ROLLBACK")
+
+    expect(before).toMatchObject({ code: 0, stdout: "SQLITE_BUSY\n", stderr: "" })
+    expect(after).toMatchObject({ code: 0, stdout: "SQLITE_BUSY\n", stderr: "" })
+  },
+)

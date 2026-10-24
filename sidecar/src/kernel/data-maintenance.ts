@@ -610,13 +610,14 @@ export const createStorageMaintenance = ({
     snapshot: (): StorageMaintenanceStatus => ({ ...status }),
     dispose: ({ closing = false }: { closing?: boolean } = {}) => {
       stopped = true
-      void retention.dispose()
-      walCheckpointer.dispose({ closing })
+      const retentionStopped = retention.dispose()
+      const checkpointStopped = walCheckpointer.dispose({ closing })
       retryController.abort()
       clearTimeout(retryTimer)
       clearInterval(dailyRetryTimer)
       upgrade.dispose()
       clearTimeout(timer)
+      return Promise.all([retentionStopped, checkpointStopped]).then(() => {})
     },
   }
 }

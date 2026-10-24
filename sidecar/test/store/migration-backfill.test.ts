@@ -387,9 +387,7 @@ test("interrupted batches resume idempotently and match the shipped synchronous 
     expect(database.query("SELECT COUNT(*) AS n FROM ui_event_log").get()).toEqual({ n: 0 })
     await bus.stop()
     expect(database.query("PRAGMA foreign_key_check").all()).toEqual([])
-    const oldBus = createEventBus(synchronous)
     while (captureTranscript(synchronous)) await Bun.sleep(0)
-    await oldBus.stop()
     expect(synchronous.query("SELECT COUNT(*) AS n FROM ui_event_log").get()).toEqual({ n: 600 })
     console.info(
       `Shipped synchronous path: ${before} → ${statSync(oldFilename).size} bytes (${(statSync(oldFilename).size / before).toFixed(2)}x)`,

@@ -19,7 +19,7 @@ export const createWalCheckpointer = ({
   intervalMs?: number
   pageIntervalMs?: number
   createWorker?: (url: string) => Worker
-}): { dispose: (options?: { closing?: boolean }) => void; vacuum: () => Promise<void> } => {
+}): { dispose: (options?: { closing?: boolean }) => Promise<void>; vacuum: () => Promise<void> } => {
   const previousPages = (database.query("PRAGMA wal_autocheckpoint").get() as { wal_autocheckpoint: number })
     .wal_autocheckpoint
   const fallbackPages = previousPages > 0 ? previousPages : 1_000
@@ -31,6 +31,7 @@ export const createWalCheckpointer = ({
   let startupTimer: ReturnType<typeof setTimeout> | undefined
   let stopTimer: ReturnType<typeof setTimeout> | undefined
   let requestId = 0
+  const closed = Promise.withResolvers<void>()
   const pendingVacuum = new Map<number, { resolve: () => void; reject: (error: Error) => void }>()
 
   const finish = (): void => {
@@ -44,6 +45,7 @@ export const createWalCheckpointer = ({
     pendingVacuum.clear()
     if (workerUrl) URL.revokeObjectURL(workerUrl)
     workerUrl = undefined
+    closed.resolve()
   }
   const restoreAutocheckpoint = (): void => {
     // Setting the threshold does no checkpoint I/O. Degraded commits use SQLite's safety net.
@@ -104,15 +106,15 @@ export const createWalCheckpointer = ({
       worker.postMessage({ type: "vacuum", requestId: id })
       return result
     },
-    dispose: ({ closing = false }: { closing?: boolean } = {}): void => {
-      if (stopped) return
+    dispose: ({ closing = false }: { closing?: boolean } = {}): Promise<void> => {
+      if (stopped) return closed.promise
       stopped = true
       // Shutdown closes the connection next; it may already have lost its backing file.
       if (!closing) restoreAutocheckpoint()
       clearTimeout(startupTimer)
       if (!worker) {
         finish()
-        return
+        return closed.promise
       }
 
       stopTimer = setTimeout(finish, 1_000)
@@ -122,6 +124,7 @@ export const createWalCheckpointer = ({
       } catch {
         finish()
       }
+      return closed.promise
     },
   }
 }

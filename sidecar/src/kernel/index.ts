@@ -708,7 +708,7 @@ export const createKernel = ({
       services.use("storage.threadTitles")?.dispose()
       stopHistoryBackfill()
       const attentionStopped = stopWorkspaceAttentionBackfill()
-      storageMaintenance.dispose({ closing: true })
+      await storageMaintenance.dispose({ closing: true })
       services.use("vm.desktop")?.dispose()
       services.use("doctor")?.dispose()
       const homeWriterStopped = stopBotHomeWriter(kernel)
