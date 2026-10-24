@@ -1204,7 +1204,7 @@ export type ApiRoutes = {
   'GET /threads/:id/runs': { req: { all?: boolean }; res: { runs: Array<Run> } }
   /** Compact sidebar messages and latest/active runs; never a transcript snapshot. */
   'GET /workspace/activity': { req: Record<string, never>; res: { messages: Array<Message>; runs: Array<Run>; browserRuns: Array<BrowserChannelRun> } }
-  'POST /runs/:id/cancel': { req: {}; res: { run: Run } }
+  'POST /runs/:id/cancel': { req: { scope?: 'group' | 'turn' }; res: { run: Run } }
   'POST /runs/:id/retry': { req: {}; res: { run: Run } }
   'POST /approvals/:id': { req: { decision: 'approved' | 'denied'; standing?: boolean }; res: {} }
   'GET /search': { req: { q: string; botId?: Id }; res: { hits: Array<{ threadId: Id; messageId: Id; snippet: string; thread?: Pick<Thread, 'id' | 'botId' | 'title' | 'createdAt' | 'archivedAt' | 'routineTitle'> | null }>; threads?: Array<Pick<Thread, 'id' | 'botId' | 'title' | 'createdAt' | 'archivedAt' | 'routineTitle'>> } }
