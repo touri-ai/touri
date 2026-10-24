@@ -200,7 +200,7 @@ afterAll(async () => {
     await engine.shutdown()
     await assertNoTestChrome({ profile: join(root, "browser", "profiles", "default") })
   } finally {
-    runtime.stop()
+    await runtime.stop()
     server.stop(true)
     await new Promise<void>((resolve) => (host ? host.close(() => resolve()) : resolve()))
     if (originalHostSocket === undefined) delete process.env.TOURI_HOST_SOCK

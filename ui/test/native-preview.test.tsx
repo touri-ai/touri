@@ -101,6 +101,7 @@ describe("P1-1 native preview ownership", () => {
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     if (!screen.queryByRole("button", { name: "Preview do projeto" }))
       fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
+    await screen.findByRole("complementary", { name: /^Painel de / })
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
     act(() => api.emit({ type: "preview.available", preview }))
     await waitFor(() => expect(vi.mocked(invoke).mock.calls.some(([command]) => command === "preview_show")).toBe(true))

@@ -114,6 +114,7 @@ it("renders structured Markdown in the Preview mini-chat with the main chat rend
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   if (!screen.queryByRole("button", { name: "Preview do projeto" }))
     fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
+  await screen.findByRole("complementary", { name: /^Painel de / })
   fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
   await screen.findByRole("heading", { name: "Preview", exact: true })
 

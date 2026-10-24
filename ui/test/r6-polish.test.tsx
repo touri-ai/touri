@@ -452,6 +452,7 @@ describe("R6: integrações e Preview/Logs", () => {
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
     if (!screen.queryByRole("button", { name: "Preview do projeto" }))
       fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
+    await screen.findByRole("complementary", { name: /^Painel de / })
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" })))
     await screen.findByRole("heading", { name: "Preview", exact: true })
 

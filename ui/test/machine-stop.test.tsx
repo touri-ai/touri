@@ -54,6 +54,7 @@ it.each(["panel", "window"])(
     })
     if (surface === "panel") {
       fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
+      await screen.findByRole("complementary", { name: /^Painel de / })
       fireEvent.click(screen.getByRole("tab", { name: "Computador" }))
     }
     expect(await screen.findAllByRole("button", { name: "Parar máquina" })).toHaveLength(1)

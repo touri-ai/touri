@@ -62,7 +62,7 @@ const fixture = async (decide: (input: unknown) => Decision, approvalContext: st
   cleanup.push(async () => {
     await client.close().catch(() => undefined)
     await stopMcp({ kernel: runtime.kernel })
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
   return { root, client, transport, prompts: () => prompted }

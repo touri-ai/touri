@@ -107,6 +107,7 @@ test("panel visibility persists independently per bot and survives remount", asy
   expect(screen.queryByRole("complementary", { name: "Painel de mark" })).toBeNull()
   expect(screen.getByRole("button", { name: "Painel do bot" })).toHaveAttribute("aria-expanded", "false")
   fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
+  await screen.findByRole("complementary", { name: /^Painel de / })
   expect(screen.getByRole("complementary", { name: "Painel de mark" })).toBeVisible()
   fireEvent.click(screen.getByRole("button", { name: "Fechar painel do bot" }))
   expect(readWorkspaceState().panelsByBot?.["bot-mark"]).toBe(false)
@@ -117,6 +118,7 @@ test("panel visibility persists independently per bot and survives remount", asy
   await screen.findByRole("textbox", { name: "Mensagem para onb" })
   expect(screen.queryByRole("complementary", { name: "Painel de onb" })).toBeNull()
   fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
+  await screen.findByRole("complementary", { name: /^Painel de / })
   expect(screen.getByRole("complementary", { name: "Painel de onb" })).toBeVisible()
   expect(readWorkspaceState().panelsByBot?.["bot-onb"]).toBe(true)
   view.unmount()
@@ -127,6 +129,7 @@ test("panel visibility persists independently per bot and survives remount", asy
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
   expect(screen.queryByRole("complementary", { name: "Painel de mark" })).toBeNull()
   fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
+  await screen.findByRole("complementary", { name: /^Painel de / })
   expect(screen.getByRole("complementary", { name: "Painel de mark" })).toBeVisible()
 })
 
