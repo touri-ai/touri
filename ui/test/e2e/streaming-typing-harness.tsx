@@ -25,7 +25,15 @@ const api = createMockApi()
 const thread = api.getState().threads.find((item) => item.id === "thread-mark")
 if (!thread) throw new Error("Fixture conversation is missing")
 
-const stream = ({ interval = 30, size = 40 }: { interval?: number; size?: number } = {}) =>
+const stream = ({
+  interval = 30,
+  size = 40,
+  content = longAnswer,
+}: {
+  interval?: number
+  size?: number
+  content?: string
+} = {}) =>
   new Promise<void>((done) => {
     const now = Date.now()
     const run: Run = {
@@ -75,12 +83,12 @@ const stream = ({ interval = 30, size = 40 }: { interval?: number; size?: number
     api.emit({ type: "run.updated", run })
     let offset = 0
     const timer = window.setInterval(() => {
-      const delta = longAnswer.slice(offset, offset + size)
+      const delta = content.slice(offset, offset + size)
       offset += size
       reply.text += delta
       reply.parts = [{ type: "text", text: reply.text }]
       api.emit({ type: "message.delta", threadId: thread.id, messageId: reply.id, partIndex: 0, delta })
-      if (offset < longAnswer.length) return
+      if (offset < content.length) return
 
       window.clearInterval(timer)
       reply.status = "complete"

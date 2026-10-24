@@ -19,6 +19,8 @@ export const splitStreamingBlocks = (content: string): string[] => {
   let block: string[] = []
   let fence: string | null = null
   let items = 0
+  let nextOrdinal: number | null = null
+  let hasAutomaticNumbering = false
   lines.forEach((line, index) => {
     if (fence !== null) {
       block.push(line)
@@ -28,6 +30,12 @@ export const splitStreamingBlocks = (content: string): string[] => {
     }
     const opening = FENCE_OPEN.exec(line)?.[1]
     if (opening) fence = opening
+    const ordinal = /^(\d{1,9})[.)] /.exec(line)?.[1]
+    if (ordinal !== undefined) {
+      const number = Number(ordinal)
+      if (nextOrdinal !== null && number !== nextOrdinal) hasAutomaticNumbering = true
+      nextOrdinal = number + 1
+    }
     const item = isListItem(line)
     if (item && items > 0 && items % ITEMS_PER_CHUNK === 0) {
       blocks.push(block.join("\n"))
@@ -43,6 +51,9 @@ export const splitStreamingBlocks = (content: string): string[] => {
     block = []
     items = 0
   })
+
+  // Independent lists restart at their source marker; keep automatic numbering in one document.
+  if (hasAutomaticNumbering) return [content]
 
   return block.length > 0 ? [...blocks, block.join("\n")] : blocks
 }
