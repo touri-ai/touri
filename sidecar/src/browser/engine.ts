@@ -1883,7 +1883,8 @@ export const createBrowserEngine = ({
       targetSessions.set(targetId, sessionId)
       tab.targetId = targetId
       tab.sessionId = sessionId
-      tab.info.state = "live"
+      // Listing tabs during activation must not expire a restored page using its persisted idle timestamp.
+      tab.info = { ...tab.info, state: "live", lastUsedAt: Date.now() }
       targetToTab.set(targetId, tab)
       await applyWindowBounds(targetId)
       await cdpCall(
