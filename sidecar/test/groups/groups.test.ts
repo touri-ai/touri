@@ -1035,9 +1035,9 @@ test("startup fails queued group turns whose group or conversation was removed",
 
     const restarted = createGroupRuntime(f.host.kernel, f.engine)
     cleanups.unshift(async () => {
-    restarted.shutdown()
-    await restarted.waitForDrain()
-  })
+      restarted.shutdown()
+      await restarted.waitForDrain()
+    })
 
     expect(f.persistence.getRun(run.id)).toMatchObject({
       status: "failed",
