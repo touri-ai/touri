@@ -120,7 +120,12 @@ it("resolves a legacy generic notice from the existing runs API and retries when
     "Inicialização da máquina · A máquina não ficou pronta em 90 s: o ambiente gráfico não iniciou ou a máquina não respondeu",
   )
   expect(screen.getByText("Aguarde a máquina terminar de iniciar para tentar de novo.")).toBeVisible()
-  expect(api.request).toHaveBeenCalledWith("GET /threads/:id/runs", { all: true }, { id: thread.id })
+  expect(api.request).toHaveBeenCalledWith(
+    "GET /threads/:id/runs",
+    { all: true },
+    { id: thread.id },
+    { signal: expect.any(AbortSignal) },
+  )
   expect(screen.queryByRole("button", { name: "Tentar novamente" })).not.toBeInTheDocument()
   act(() => api.emit({ type: "machine.updated", machine: { ...machine, status: "running" } }))
   expect(screen.getByText("A máquina está pronta para uma nova tentativa.")).toBeVisible()
