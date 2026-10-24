@@ -1114,7 +1114,7 @@ Launch:
   the person used, outside the scrolling action log, so they are visible at phone width without
   another scroll. When a take-over fails, including from the strip next to the composer, the
   conversation history keeps that result right below the card's sticky header instead of following
-  new content to the end; "Voltar ao fim" returns to following.
+  new content to the end; "Voltar ao fim" returns to following. The same applies when a take-over starts: the history brings the control panel's top, with "Hand back" and the privacy note, into view below the conversation header instead of leaving it above the visible area.
 - While a tab is held, every agent tool on it returns `TAB_HELD_BY_USER`.
 - "Hand back" (UI button or tray) releases it. The generation bumps, the blocked `request_takeover` call returns a fresh snapshot, and its notes include "User handed back the tab; the page may have changed."
 - Take-over times out after `timeoutMs` (default 10 min), and the tool then returns the current snapshot with a note.
