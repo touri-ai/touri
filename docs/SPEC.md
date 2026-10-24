@@ -1136,6 +1136,10 @@ Launch:
 **R8. Human take-over.**
 - `browser_request_takeover(tabId, reason)` marks the tab `held_by_user`, brings the Chrome window to the front, and notifies the user ("the bot needs you in the browser: <reason>").
 - The user can also take a tab from the app's Browser panel.
+- Person-initiated control is confirmed by the browser card without an additional top toast.
+  The UI ignores legacy `notify` echoes with the exact `Browser takeover` title and
+  `The user took over the browser:` body prefix. Existing notices, conversation history,
+  browser state and bot-requested help notifications remain available.
 - A pending handoff is not proof of an interactive session. After restart, assuming an unloaded tab
   only reconnects its recorded target; it never matches by URL or silently recreates/reloads a page.
   Recovery is asynchronous, canceled on return/disconnect, and bounded to five seconds. If the target
