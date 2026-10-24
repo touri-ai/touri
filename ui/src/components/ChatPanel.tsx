@@ -1167,7 +1167,7 @@ const MessageBubbleRow = ({
           )}
           {isCanceled && (
             <span className="run-status chat-terminal-status" role="status">
-              {t("Cancelado por você")}
+              {t("Cancelado por você", {}, locale)}
             </span>
           )}
         </div>

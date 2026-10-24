@@ -4,7 +4,15 @@ import { afterEach, expect, it } from "vitest"
 import { VirtualMessageList } from "../src/components/ChatPanel"
 import { getBrowserTurnMessage, getBrowserTurnRun } from "./browser-turn-fixture"
 
-afterEach(cleanup)
+const languageCleanups = new Set<() => void>()
+
+afterEach(() => {
+  cleanup()
+  languageCleanups.forEach((restore) => {
+    restore()
+  })
+  languageCleanups.clear()
+})
 
 it.each<{
   messageStatus: Message["status"]
@@ -101,6 +109,22 @@ it("keeps the cancellation chip for a reply without browser tools", () => {
   expect(container).toHaveTextContent(message.text)
 })
 
+it.each<{ status: Message["status"]; label: string }>([
+  { status: "canceled", label: "Canceled by you" },
+  { status: "failed", label: "Failed" },
+  { status: "complete", label: "finished" },
+])("shows the English $label status in an English conversation", ({ status, label }) => {
+  languageCleanups.add(setDocumentLanguage("en"))
+  const message = getBrowserTurnMessage({ status })
+
+  const { container } = renderBrowserTurn(message, [])
+  const meta = getMessageMeta(container)
+
+  expect(meta.querySelectorAll('[role="status"]')).toHaveLength(1)
+  expect(meta.querySelector('[role="status"]')).toHaveTextContent(label)
+  expect(meta).not.toHaveTextContent(/Cancelado por você|falhou|concluído/)
+})
+
 const renderBrowserTurn = (message: Message, runs: Run[]) =>
   render(
     <VirtualMessageList
@@ -110,6 +134,15 @@ const renderBrowserTurn = (message: Message, runs: Run[]) =>
       onRetry={async () => undefined}
     />,
   )
+
+const setDocumentLanguage = (locale: string): (() => void) => {
+  const previous = document.documentElement.lang
+  document.documentElement.lang = locale
+
+  return () => {
+    document.documentElement.lang = previous
+  }
+}
 
 const getMessageMeta = (container: HTMLElement): HTMLElement => {
   const meta = container.querySelector<HTMLElement>(".message-meta")
