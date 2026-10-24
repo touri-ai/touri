@@ -1126,7 +1126,7 @@ test("coordinator receives requests; real MCP router returns peer answer and gro
       })
       expect(instructions).toContain("with the coordinator role")
       expect(instructions).toContain(
-        "each member has its own 10-minute execution budget, starting when that member's run starts, and time waiting in the queue does not count",
+        "each member has its own execution budget (six hours by default, configurable by the host), starting when that member's run starts, and time waiting in the queue does not count",
       )
       expect(instructions).toContain("Routine runs retain their configured absolute deadline.")
       answer = await router.call({

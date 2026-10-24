@@ -101,12 +101,15 @@ class MemberRunError extends Error {
   }
 }
 
-export const DEFAULT_GROUP_TURN_TIMEOUT_MS = 10 * 60_000
+// Channel work can take hours. Keep the finite six-hour default and the host override, with a one-hour minimum.
+export const DEFAULT_GROUP_TURN_TIMEOUT_MS = 6 * 60 * 60_000
+export const groupTurnTimeoutMs = (configured = Number(process.env.TOURI_GROUP_TURN_TIMEOUT_MS) || 0) =>
+  configured > 0 ? Math.max(configured, 60 * 60_000) : DEFAULT_GROUP_TURN_TIMEOUT_MS
 
 export const createGroupRuntime = (
   kernel: Kernel,
   engine: Engine,
-  timeoutMs = DEFAULT_GROUP_TURN_TIMEOUT_MS,
+  timeoutMs = groupTurnTimeoutMs(),
   resumeBackoffMs = CRASH_RESUME_BACKOFF_MS,
   deadlineClock: GroupDeadlineClock = { getNow: Date.now, schedule: scheduleDeadline },
 ) => {

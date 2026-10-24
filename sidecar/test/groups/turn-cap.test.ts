@@ -1,6 +1,6 @@
 import { afterEach, expect, mock, test } from "bun:test"
 import type { Run, ToolContext } from "@touri/contracts"
-import { createGroupRuntime } from "../../src/groups/runtime"
+import { createGroupRuntime, groupTurnTimeoutMs } from "../../src/groups/runtime"
 import { createGroupStore } from "../../src/groups/store"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { init as initStore } from "../../src/store"
@@ -12,7 +12,7 @@ afterEach(async () => {
   cleanups.clear()
 })
 
-test("a queued member gets ten minutes from execution start, even while reporting progress", async () => {
+test("a queued member gets six hours from execution start, even while reporting progress", async () => {
   const fixture = await getFixture()
   const { turn, member } = await fixture.send()
 
@@ -30,7 +30,7 @@ test("a queued member gets ten minutes from execution start, even while reportin
   expect(fixture.getSignal(member.id).aborted).toBe(false)
   expect(fixture.clock.getPendingCount()).toBe(1)
 
-  fixture.clock.advanceBy(479_998)
+  fixture.clock.advanceBy(6 * 60 * 60_000 - 120_002)
 
   expect(fixture.getRun(member.id).status).toBe("running")
 
@@ -46,7 +46,7 @@ test("a queued member gets ten minutes from execution start, even while reportin
   expect(fixture.clock.getPendingCount()).toBe(0)
 })
 
-test("a delegated member can finish after two minutes and releases its deadline", async () => {
+test("a delegated member can finish after ten minutes and releases its deadline", async () => {
   const fixture = await getFixture()
   const { turn, member: caller } = await fixture.send()
   fixture.startMember(caller.id)
@@ -59,7 +59,7 @@ test("a delegated member can finish after two minutes and releases its deadline"
   if (!worker) throw new Error("Missing delegated member")
   fixture.startMember(worker.id)
 
-  fixture.clock.advanceBy(120_001)
+  fixture.clock.advanceBy(10 * 60_000 + 1)
 
   expect(fixture.getRun(worker.id).status).toBe("running")
   expect(fixture.getSignal(worker.id).aborted).toBe(false)
@@ -71,11 +71,33 @@ test("a delegated member can finish after two minutes and releases its deadline"
   const answer = await delegated
   fixture.updateRun(caller.id, { status: "succeeded", finishedAt: fixture.clock.getNow() })
   await fixture.runtime.waitForDrain()
-  fixture.clock.advanceBy(10 * 60_000)
+  fixture.clock.advanceBy(6 * 60 * 60_000)
 
   expect(answer).toMatchObject({ success: true, structured: { answer: "Synthetic task completed" } })
   expect(fixture.getRun(turn.id).status).toBe("succeeded")
   expect(fixture.cancel).not.toHaveBeenCalled()
+  expect(fixture.clock.getPendingCount()).toBe(0)
+})
+
+test.each([
+  { configuredMs: 120_000, expectedMs: 60 * 60_000 },
+  { configuredMs: 3 * 60 * 60_000, expectedMs: 3 * 60 * 60_000 },
+])("a configured $configuredMs ms budget expires at $expectedMs ms", async (scenario) => {
+  const fixture = await getFixture(groupTurnTimeoutMs(scenario.configuredMs))
+  const { turn, member } = await fixture.send()
+
+  fixture.startMember(member.id)
+  fixture.clock.advanceBy(scenario.expectedMs - 1)
+
+  expect(fixture.getRun(member.id).status).toBe("running")
+  expect(fixture.cancel).not.toHaveBeenCalled()
+
+  fixture.clock.advanceBy(1)
+  await fixture.runtime.waitForDrain()
+
+  expect(fixture.getRun(member.id)).toMatchObject({ status: "failed", errorClass: "timeout" })
+  expect(fixture.getRun(turn.id)).toMatchObject({ status: "failed", errorClass: "timeout" })
+  expect(fixture.getSignal(member.id).aborted).toBe(true)
   expect(fixture.clock.getPendingCount()).toBe(0)
 })
 
@@ -122,7 +144,7 @@ test.each(["queued", "running"] as const)("canceling a %s member stops it and cl
   expect(fixture.clock.getPendingCount()).toBe(0)
 })
 
-const getFixture = async () => {
+const getFixture = async (timeoutMs?: number) => {
   const host = testKernel()
   await initStore(host.kernel)
   const store = host.kernel.services.use("store.api")
@@ -193,7 +215,7 @@ const getFixture = async () => {
     controllers.get(id)?.abort()
     return { success: true as const, run: canceled }
   })
-  const runtime = createGroupRuntime(host.kernel, { enqueue, cancel }, undefined, undefined, clock)
+  const runtime = createGroupRuntime(host.kernel, { enqueue, cancel }, timeoutMs, undefined, clock)
   cleanups.add(async () => {
     runtime.shutdown()
     await runtime.waitForDrain()
