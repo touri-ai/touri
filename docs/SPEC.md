@@ -984,6 +984,10 @@ Managed tabs share one Chromium process and startup promise, with a separate bro
 bot. Each bot can keep at most eight tabs, including popups; excess popups are closed immediately.
 Cancelling one caller does not interrupt another caller sharing startup; startup is cancelled when
 all waiting callers leave.
+Reattaching a saved tab refreshes its use time when the CDP session becomes live, before activation
+awaits. Concurrent tab-list reads must not unload that tab using its persisted idle timestamp, even
+after more than 30 minutes. Reopening preserves the saved tab ID, bot ownership, isolated context,
+eight-tab limit and private-document protections.
 After five minutes without a browser operation, the managed process is terminated and tab metadata
 is retained for reopening. Active operations and human takeover prevent idle shutdown. Attached
 personal browsers and visible isolated desktops retain their own lifecycle.
