@@ -24,7 +24,7 @@ const isSqliteBusy = (error: unknown): boolean =>
   (error.code.startsWith("SQLITE_BUSY") || error.code.startsWith("SQLITE_LOCKED"))
 
 const isControlEvent = (event: UiEvent): boolean =>
-  !event.type.startsWith("message.") && !event.type.startsWith("transcript.")
+  event.type === "transcript.resync" || (!event.type.startsWith("message.") && !event.type.startsWith("transcript."))
 
 type MessageRef = TranscriptRef
 const messageKey = (event: UiEvent): string | null =>
@@ -151,8 +151,13 @@ export const createEventBus = (
     if (!backlog) captureRetryAttempt += 1
     captureRetryTimer = setTimeout(() => {
       captureRetryTimer = undefined
-      captureTranscript()
-      if (!scheduled) flush()
+      try {
+        captureTranscript()
+        if (!scheduled) flush()
+      } catch {
+        // Durable entries stay pending when storage is temporarily unavailable.
+        scheduleCaptureRetry()
+      }
     }, delayMs)
     captureRetryTimer.unref()
   }

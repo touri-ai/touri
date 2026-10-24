@@ -361,7 +361,7 @@ export const createCodexAdapter = ({
     // Streaming state belongs to this attempt; acknowledgement selects the authoritative turn.
     let turnSubmitted = false
     let turnAcknowledged = false
-    let pendingFrames: Array<{ frame: Record<string, unknown>; bytes: number }> = []
+    let pendingFrames: Array<{ line: string; bytes: number }> = []
     let pendingBytes = 0
     let replay: Promise<void> | undefined
     let resuming = false
@@ -435,7 +435,7 @@ export const createCodexAdapter = ({
       return true
     }
     const parseFrame = (line: string): unknown => JSON.parse(line)
-    const onLine = (line: string): void => {
+    const onLine = (line: string, replayed = false): void => {
       if (completed) return
       let parsed: unknown
       try {
@@ -444,10 +444,10 @@ export const createCodexAdapter = ({
         complete({ success: false, errorCode: "cli_protocol", error: "Malformed Codex JSON frame" })
         return
       }
-      if (runStage) runStage("provider_frame_route", () => routeFrame(parsed, line.length * 2))
-      else routeFrame(parsed, line.length * 2)
+      if (runStage) runStage("provider_frame_route", () => routeFrame(parsed, line.length * 2, line, replayed))
+      else routeFrame(parsed, line.length * 2, line, replayed)
     }
-    const routeFrame = (parsed: unknown, bytes: number, replayed = false): void => {
+    const routeFrame = (parsed: unknown, bytes: number, line: string, replayed = false): void => {
       const response = responseRecord(parsed)
       if (response) {
         const waiter = responseWaiters.get(response.id)
@@ -491,7 +491,8 @@ export const createCodexAdapter = ({
           complete({ success: false, errorCode: "cli_protocol", error: "Resposta inesperada do provedor" })
           return
         }
-        pendingFrames = [...pendingFrames, { frame, bytes }]
+        // Retain bounded wire text rather than an expanded protocol object graph.
+        pendingFrames = [...pendingFrames, { line, bytes }]
         pendingBytes += bytes
         return
       }
@@ -784,7 +785,10 @@ export const createCodexAdapter = ({
 
             pendingFrames = remaining
             pendingBytes -= pending.bytes
-            routeFrame(pending.frame, pending.bytes, true)
+            // Reuse dispatch instrumentation and validation for the retained wire frame.
+            const dispatch = () => onLine(pending.line, true)
+            if (runStage) runStage("provider_frame_dispatch", dispatch)
+            else dispatch()
             if (!completed) await new Promise<void>((resolve) => setImmediate(resolve))
           }
           turnAcknowledged = true

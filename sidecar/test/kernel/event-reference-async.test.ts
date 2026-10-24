@@ -93,6 +93,27 @@ test("an early control callback cannot suppress an older committed transaction c
   expect(client.getEvents().map(({ event }) => event)).toEqual([first, second])
 })
 
+test("capture retries survive transient I/O failure and deliver the retained journal", async () => {
+  const fixture = await getFixture()
+  const bus = createEventBus(fixture.database)
+  cleanups.add(() => bus.stop())
+  const client = getClient()
+  bus.add(client.socket)
+  const delta = getDelta("synthetic retained")
+  fixture.database
+    .query("INSERT INTO transcript_entries(thread_id, seq, generation, event_json, at) VALUES (?, 1, 1, ?, 1)")
+    .run("synthetic-thread", JSON.stringify(delta))
+  const getFaultCount = injectCaptureFaults(fixture.database, ["SQLITE_BUSY", "SQLITE_IOERR"])
+
+  bus.publish(getMarker("after-storage-fault"))
+  await waitFor(() =>
+    client.getEvents().some(({ event }) => event.type === "message.delta" && event.delta === "synthetic retained"),
+  )
+
+  expect(getFaultCount()).toBe(2)
+  expect(client.getEvents().filter(({ event }) => event.type === "import.progress")).toHaveLength(1)
+})
+
 test("a committed publisher hands off its payload and cancels a redundant reference read", async () => {
   const fixture = await getFixture()
   const read = Promise.withResolvers<UiEvent[]>()
@@ -578,6 +599,23 @@ const getFixture = async () => {
       .run(Date.now(), JSON.stringify(getMarker(id)))
 
   return { database, saveReference, saveMarker }
+}
+
+const injectCaptureFaults = (database: ReturnType<typeof openDatabase>, codes: string[]) => {
+  const query = database.query.bind(database)
+  // Only the probe's sequential fault cursor changes; the journal remains committed.
+  let count = 0
+  const queries = spyOn(database, "query").mockImplementation((sql) => {
+    const code = codes[count]
+    if (sql.includes("transcript_event_checkpoint") && code) {
+      count += 1
+      throw Object.assign(new Error("Synthetic capture fault"), { code })
+    }
+    return query(sql)
+  })
+  cleanups.add(() => queries.mockRestore())
+
+  return () => count
 }
 
 const forbidReferenceReads = (database: ReturnType<typeof openDatabase>) => {

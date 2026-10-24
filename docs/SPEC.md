@@ -1769,3 +1769,7 @@ callbacks; later publications cannot suppress an older committed callback. At th
 callbacks use normal durable delivery. Approval acknowledgements wait for committed card delivery.
 Shutdown asks the stream worker to close SQLite and waits for its confirmation before releasing
 files, with a one-second fallback for an unresponsive worker.
+Buffered frames retain bounded wire text and replay through the measured parser and dispatcher.
+Resynchronization signals reach runtime subscribers immediately so deleted conversations cancel
+live work without waiting for old history. Capture retries contain transient SQLite I/O failures
+and retry the committed journal without discarding its entries.
