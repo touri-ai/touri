@@ -1,17 +1,18 @@
 export type ThemePreference = "dark" | "light" | "system"
 const storageKey = "touri.appearance.v1"
 const themeEvent = "touri:appearance"
-let fallbackPreference: ThemePreference = "dark"
+// Without an explicit choice the app follows the operating system, including when storage fails.
+let fallbackPreference: ThemePreference = "system"
 
 export const readTheme = (): ThemePreference => {
   try {
     const saved = localStorage.getItem(storageKey)
-    if (saved === "light" || saved === "system") return saved
+    if (saved === "dark" || saved === "light" || saved === "system") return saved
   } catch {
     /* Embedded storage may be unavailable. */
     return fallbackPreference
   }
-  return "dark"
+  return "system"
 }
 
 export const setTheme = (preference: ThemePreference): void => {

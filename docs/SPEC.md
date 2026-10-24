@@ -193,7 +193,7 @@ and phone layouts. Existing takeover authorization, input bounds and the release
 4. **A browser that does not get lost.** Reliability rules for agent browsing (section 5), all original code.
 5. **Computer use.** The agent controls the Mac only when the user opts in, with a visible indicator and a kill switch.
 6. **Local and free.** No touri server, no account, no telemetry. The only network traffic comes from the user's CLIs, the git remotes, the sites the bots browse, and the update check (can be turned off).
-7. **touri branding**: product name "touri", brand red `#dc2626`, DM Sans / DM Mono / Space Grotesk (OFL fonts, bundled), light and dark themes.
+7. **touri branding**: product name "touri", brand red `#dc2626`, DM Sans / DM Mono / Space Grotesk (OFL fonts, bundled), light and dark themes. Appearance offers Light, Dark and System; without a saved choice, including when storage is unavailable, the app follows the operating system theme, and an explicit choice (Dark included) stays fixed.
 
 ### 1.2 Non-goals
 - Hosting, multi-user, sync between machines, mobile clients.
