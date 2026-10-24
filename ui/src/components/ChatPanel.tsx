@@ -241,10 +241,12 @@ const getTimelineIndex = (offsets: number[], position: number): number => {
   return low
 }
 
+type ProgrammaticScroll = { top: number; viewportHeight: number }
+
 /** Jump to the end and remember the position so its own scroll event is not mistaken for the user leaving the bottom. */
-const scrollToEnd = (list: HTMLElement, programmaticTop: { current: number | null }): void => {
+const scrollToEnd = (list: HTMLElement, programmaticTop: { current: ProgrammaticScroll | null }): void => {
   list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight)
-  programmaticTop.current = list.scrollTop
+  programmaticTop.current = { top: list.scrollTop, viewportHeight: list.clientHeight }
 }
 
 const emptyRuns: Run[] = []
@@ -330,7 +332,7 @@ export const VirtualMessageList = ({
   const pendingRowMeasurements = useRef(new Set<string>())
   const measurementFrame = useRef<number | null>(null)
   const followBottom = useRef(true)
-  const programmaticTop = useRef<number | null>(null)
+  const programmaticTop = useRef<ProgrammaticScroll | null>(null)
   const readingAnchor = useRef<{ element: HTMLElement; top: number; scrollTop: number } | null>(null)
   const [awayFromBottom, setAwayFromBottom] = useState(false)
   const [unseenCount, setUnseenCount] = useState(0)
@@ -541,7 +543,7 @@ export const VirtualMessageList = ({
     setAwayFromBottom(true)
     if (isVirtualized) list.scrollTop = rowOffsets[messageTargetIndex] ?? 0
     row.scrollIntoView?.({ block: "start", behavior: "instant" })
-    programmaticTop.current = list.scrollTop
+    programmaticTop.current = { top: list.scrollTop, viewportHeight: list.clientHeight }
     readingAnchor.current = {
       element: row,
       top: row.getBoundingClientRect().top - list.getBoundingClientRect().top,
@@ -577,7 +579,11 @@ export const VirtualMessageList = ({
           const list = event.currentTarget
           const expected = programmaticTop.current
           programmaticTop.current = null
-          if (expected !== null && Math.abs(list.scrollTop - expected) <= 1) {
+          // Hiding the jump button enlarges the viewport and clamps the requested position.
+          const expectedTop = expected
+            ? Math.max(0, expected.top - Math.max(0, list.clientHeight - expected.viewportHeight))
+            : null
+          if (expectedTop !== null && Math.abs(list.scrollTop - expectedTop) <= 1) {
             setScrollTop(list.scrollTop)
             return
           }
