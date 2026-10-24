@@ -128,7 +128,8 @@ export const buildReport = async (kernel: Kernel, input: ReportInput): Promise<R
       bots: db.query("SELECT id, provider, machine, paused FROM bots WHERE archived_at IS NULL").all(),
       machines: kernel.services.use("vm.runtime")?.states() ?? [],
       activeRuns: db
-        .query("SELECT id, bot_id, thread_id, status FROM runs WHERE status IN ('queued','starting','running')")
+        .query(`SELECT r.id, r.bot_id, r.thread_id, r.status, ${runIdentityColumns}
+          FROM runs r WHERE r.status IN ('queued','starting','running')`)
         .all(),
     }))
   if (has("database"))
@@ -151,7 +152,14 @@ export const buildReport = async (kernel: Kernel, input: ReportInput): Promise<R
     await collect("runs", () =>
       db
         .query(
-          "SELECT id, bot_id, thread_id, status, error_class, queued_at, started_at, finished_at, CASE WHEN finished_at IS NOT NULL AND started_at IS NOT NULL THEN finished_at - started_at END AS duration_ms FROM runs ORDER BY queued_at DESC LIMIT 20",
+          `WITH recent AS MATERIALIZED (
+            SELECT id, bot_id, thread_id, status, error_class, queued_at, started_at, finished_at,
+              provider_started_at,
+              CASE WHEN finished_at IS NOT NULL AND started_at IS NOT NULL
+                THEN finished_at - started_at END AS duration_ms
+            FROM runs ORDER BY queued_at DESC LIMIT 20
+          )
+          SELECT r.*, ${runIdentityColumns} FROM recent r ORDER BY r.queued_at DESC`,
         )
         .all(),
     )
@@ -248,3 +256,10 @@ export const buildReport = async (kernel: Kernel, input: ReportInput): Promise<R
     githubUrl: githubReportUrl(input.repository || reportRepository(), report),
   }
 }
+
+// A channel's control record shares its bot with the execution but never starts a provider.
+const runIdentityColumns = `
+  CASE WHEN EXISTS(SELECT 1 FROM group_turns turn WHERE turn.run_id = r.id)
+    THEN 'coordination' ELSE 'execution' END AS kind,
+  (SELECT link.turn_id FROM group_run_links link WHERE link.run_id = r.id) AS group_turn_id,
+  r.provider_started_at`
