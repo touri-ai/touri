@@ -24,6 +24,12 @@ vi.mock("../src/api/client", async (importOriginal) => ({
   createApiClient: vi.fn(),
 }))
 
+const waitForConversation = async () => {
+  // Dynamic modules use real I/O even while the connection deadlines use a fake clock.
+  await act(async () => vi.dynamicImportSettled())
+  expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+}
+
 const endpoint = { baseUrl: "http://127.0.0.1:43123", wsUrl: "ws://127.0.0.1:43123/api/v1/events", token: "test" }
 const reason = "schema mismatch: shell expects 6, sidecar reported 5"
 const localInvoke = (handler: (command: string, args: unknown) => Promise<unknown>) =>
@@ -160,7 +166,7 @@ describe("sidecar failure blocking state", () => {
 
       await act(async () => vi.advanceTimersByTimeAsync(2000))
 
-      expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+      await waitForConversation()
       expect(screen.queryByText("Servidor offline. Tentando reconectar…")).not.toBeInTheDocument()
       expect(invoke.mock.calls.filter(([command]) => command === "sidecar_endpoint")).toHaveLength(2)
       expect(invoke).not.toHaveBeenCalledWith("sidecar_restart", {})
@@ -216,11 +222,11 @@ describe("sidecar failure blocking state", () => {
       await act(async () => vi.advanceTimersByTimeAsync(2000))
 
       expect(endpointChecks).toBe(3)
-      expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+      await waitForConversation()
 
       await act(async () => finish?.())
 
-      expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+      await waitForConversation()
       expect(invoke).not.toHaveBeenCalledWith("sidecar_restart", {})
     },
   )
@@ -250,7 +256,7 @@ describe("sidecar failure blocking state", () => {
 
     await act(async () => shell.listeners.get("sidecar-ready")?.({ payload: endpoint }))
 
-    expect(screen.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+    await waitForConversation()
 
     await act(async () => vi.advanceTimersByTimeAsync(2000))
 

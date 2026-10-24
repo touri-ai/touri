@@ -10,6 +10,7 @@ import { createRuntimeEngine } from "../../src/runtime/engine"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { reapProviderProcesses, stopProviderChildren, trackProviderProcess } from "../../src/runtime/provider-processes"
 import { init as initStore } from "../../src/store"
+import { streamPersistenceWorkerSource } from "../../src/store/stream-persistence-worker"
 import { fakeProviderSpawn } from "../fakes/provider-spawn"
 import { socketTicket } from "../fakes/ws-ticket"
 
@@ -21,7 +22,7 @@ const waitFor = async (predicate: () => boolean | Promise<boolean>): Promise<voi
   }
 }
 
-const fixture = async (ignoreTerm = false, interruptGraceMs = 30) => {
+const fixture = async (ignoreTerm = false, interruptGraceMs = 30, createWorker?: (url: string) => Worker) => {
   const root = mkdtempSync(join(tmpdir(), "touri-recovery-"))
   // Keep mock provider files outside the protected application data tree.
   const assets = mkdtempSync(join(tmpdir(), "touri-recovery-provider-"))
@@ -40,7 +41,7 @@ const fixture = async (ignoreTerm = false, interruptGraceMs = 30) => {
     JSON.stringify({ pauseAfterFirstDelta: release, ignoreInterrupt: true, deltas: ["INÍCIO", " meio", " FIM"] }),
   )
   const runtime = createKernel({ appData: root })
-  await initStore(runtime.kernel)
+  await initStore(runtime.kernel, undefined, createWorker)
   const db = runtime.kernel.db as Database
   // These cases cover the manual recovery path; automatic continuation is covered in resume-interrupted.test.ts.
   db.query("INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES ('b','Teste','codex',?,1,1)").run(
@@ -263,12 +264,24 @@ test.each(["cancel", "restart"])(
 )
 
 test("restart fences a still-streaming writer and kills its surviving local provider", async () => {
-  const f = await fixture()
+  // Delay only the worker to distinguish optimistic text from a durable restart checkpoint.
+  const source = streamPersistenceWorkerSource.replace(
+    "const result = database.transaction(() => writeBatch(data.batch)).immediate();",
+    `Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+    const result = database.transaction(() => writeBatch(data.batch)).immediate();`,
+  )
+  expect(source).not.toBe(streamPersistenceWorkerSource)
+  const workerUrl = URL.createObjectURL(new Blob([source], { type: "application/javascript" }))
+  const f = await fixture(false, 30, () => new Worker(workerUrl, { smol: true, ref: false }))
   let restored: ReturnType<typeof createKernel> | undefined
   let engine: ReturnType<typeof createRuntimeEngine> | undefined
   try {
     const run = f.start()
     await waitFor(() => f.store.activePath({ threadId: "t" }).some((message) => message.text === "INÍCIO"))
+    // The original store can show buffered text that a new runtime cannot recover yet.
+    const durable = f.store.flushWritesAsync?.({ threadId: "t" })
+    if (!durable) throw new Error("Missing asynchronous durability boundary")
+    await durable
     const providerPid = f.pid()
     expect(providerPid).toBeGreaterThan(0)
     process.kill(providerPid, 0)
@@ -330,6 +343,7 @@ test("restart fences a still-streaming writer and kills its surviving local prov
     await f.engine.shutdown()
     await restored?.stop()
     await f.close()
+    URL.revokeObjectURL(workerUrl)
   }
 }, 30_000)
 
