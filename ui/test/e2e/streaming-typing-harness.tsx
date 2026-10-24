@@ -1,70 +1,34 @@
 import type { Message, Run } from "@touri/contracts"
 import { createRoot } from "react-dom/client"
 import App from "../../src/App"
+import type { UiApi } from "../../src/api/client"
 import { createMockApi } from "../../src/api/mock"
 import { initializeTheme } from "../../src/design/theme"
+import { getStreamingHistory, longAnswer } from "./streaming-history-fixture"
 import "../../src/styles.css"
-
-// A long fictional answer: 60 numbered items with two sentences each and an 8-row table.
-export const longAnswer = [
-  "Aqui está o roteiro fictício completo, organizado por etapas:\n\n",
-  ...Array.from(
-    { length: 60 },
-    (_, index) =>
-      `${index + 1}. **Etapa ${index + 1}:** revise o item ${index + 1} da lista de viagem com calma. Depois anote o horário combinado e confirme com a equipe.\n`,
-  ),
-  "\n| Dia | Cidade | Atividade | Observação |\n| --- | --- | --- | --- |\n",
-  ...Array.from(
-    { length: 8 },
-    (_, index) => `| ${index + 1} | Cidade ${index + 1} | Passeio ${index + 1} | Reservar com antecedência |\n`,
-  ),
-].join("")
 
 initializeTheme()
 const api = createMockApi()
 const thread = api.getState().threads.find((item) => item.id === "thread-mark")
 if (!thread) throw new Error("Fixture conversation is missing")
 
-// A realistic conversation: earlier long answers (collapsed when complete) between short turns.
-if (new URLSearchParams(location.search).get("history") === "realistic") {
-  const start = Date.now() - 60 * 60_000
-  const earlier = Array.from({ length: 13 }, (_, index) => index).flatMap((index) => {
-    const at = start + index * 60_000
-    const long = index % 3 === 1
-    const answer = long
-      ? longAnswer.replace("roteiro fictício completo", `roteiro fictício ${index}`)
-      : `Resposta curta ${index}.`
-    const ask: Message = {
-      id: `history-ask-${index}`,
-      threadId: thread.id,
-      parentId: index ? `history-answer-${index - 1}` : (thread.activeLeafId ?? null),
-      role: "user",
-      kind: "text",
-      status: "complete",
-      runId: null,
-      text: `Pergunta ${index}`,
-      parts: [{ type: "text", text: `Pergunta ${index}` }],
-      sender: null,
-      source: "local",
-      createdAt: at,
-      updatedAt: at,
-    }
-    const reply: Message = {
-      ...ask,
-      id: `history-answer-${index}`,
-      parentId: ask.id,
-      role: "assistant",
-      text: answer,
-      parts: [{ type: "text", text: answer }],
-      sender: { id: "bot-mark", name: "mark" },
-      createdAt: at + 1,
-      updatedAt: at + 1,
-    }
-    return [ask, reply]
-  })
-  api.getState().messages.push(...earlier)
-  thread.activeLeafId = "history-answer-12"
+const historyMode = new URLSearchParams(location.search).get("history")
+const turns = historyMode === "rich" ? 250 : 13
+const history = historyMode
+  ? getStreamingHistory(thread.id, thread.activeLeafId ?? null, turns)
+  : { messages: [], runs: [] }
+if (historyMode) {
+  // The mock adapter exposes mutable seed state; initialize it before the app subscribes.
+  api.getState().messages.push(...history.messages)
+  thread.activeLeafId = `history-answer-${turns - 1}`
 }
+const request: UiApi["request"] = async (route, input, pathValues, transport) => {
+  const result = await api.request(route, input, pathValues, transport)
+  if (!historyMode || route !== "GET /threads/:id/runs" || pathValues?.id !== thread.id) return result
+
+  return Object.assign({}, result, { runs: history.runs })
+}
+const appApi = Object.assign({}, api, { request })
 
 const stream = ({
   interval = 30,
@@ -115,7 +79,18 @@ const stream = ({
       status: "streaming",
       runId: run.id,
       text: "",
-      parts: [{ type: "text", text: "" }],
+      parts: [
+        {
+          type: "tool_call",
+          callId: "stream-command",
+          tool: "exec_command",
+          summary: "Conferir amostra sintética",
+          inputJson: JSON.stringify({ cmd: "printf synthetic-sample" }),
+          outputJson: JSON.stringify({ output: "synthetic-sample", exitCode: 0 }),
+          ok: true,
+        },
+        { type: "text", text: "" },
+      ],
       sender: { id: "bot-mark", name: "mark" },
     }
     api.getState().messages.push(request, reply)
@@ -130,8 +105,8 @@ const stream = ({
       const delta = content.slice(offset, offset + size)
       offset += size
       reply.text += delta
-      reply.parts = [{ type: "text", text: reply.text }]
-      api.emit({ type: "message.delta", threadId: thread.id, messageId: reply.id, partIndex: 0, delta })
+      reply.parts = reply.parts.filter((part) => part.type !== "text").concat({ type: "text", text: reply.text })
+      api.emit({ type: "message.delta", threadId: thread.id, messageId: reply.id, partIndex: 1, delta })
       if (offset < content.length) return
 
       window.clearInterval(timer)
@@ -142,6 +117,15 @@ const stream = ({
     }, interval)
   })
 
-Object.assign(window, { streamingTyping: { stream, length: longAnswer.length } })
+Object.assign(window, {
+  streamingTyping: {
+    stream,
+    length: longAnswer.length,
+    get active() {
+      const reply = api.getState().messages.at(-1)
+      return reply?.id === "stream-reply" && reply.status === "streaming"
+    },
+  },
+})
 const root = document.getElementById("root")
-if (root) createRoot(root).render(<App kernel={{ services: { api } }} />)
+if (root) createRoot(root).render(<App kernel={{ services: { api: appApi } }} />)
