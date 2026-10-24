@@ -931,12 +931,16 @@ const MessageBubbleRow = ({
       part.text === "No one took over in time. Ask again when you can.",
   )
   const quietBrowserNarration = hasBrowserTools && message.status === "streaming"
+  const isCanceled = message.status === "canceled" || run?.status === "canceled"
   const getBrowserRunLabel = () => {
+    if (isCanceled) return null
     if (browserHandoffExpired) return t("incomplete", {}, locale)
+    if (message.status === "failed" || run?.status === "failed") return t("failed", {}, locale)
     if (quietBrowserNarration) return t("in progress", {}, locale)
 
     return t("finished", {}, locale)
   }
+  const browserRunLabel = hasBrowserTools ? getBrowserRunLabel() : null
   const foldBrowserFlow = hasBrowserTools && message.status !== "streaming" && !searchFocused
   const finalText = segments.filter((segment) => segment.type === "text").at(-1)
   const senderName = message.sender?.name ?? bot?.name ?? "touri"
@@ -1157,9 +1161,9 @@ const MessageBubbleRow = ({
             <span className="message-sender-kind">{t("Integração", {}, locale)}</span>
           )}
           <time dateTime={new Date(message.createdAt).toISOString()}>{messageClock.format(message.createdAt)}</time>
-          {hasBrowserTools && (
+          {browserRunLabel && (
             <span className="browser-run-state" role="status">
-              {getBrowserRunLabel()}
+              {browserRunLabel}
             </span>
           )}
           {message.role === "user" && message.delivery && message.delivery.status !== "acked" && (
@@ -1167,9 +1171,9 @@ const MessageBubbleRow = ({
               {t(deliveryLabels[message.delivery.status], {}, locale)}
             </span>
           )}
-          {message.status === "canceled" && (
+          {isCanceled && (
             <span className="run-status chat-terminal-status" role="status">
-              {t("Cancelado por você")}
+              {t("Cancelado por você", {}, locale)}
             </span>
           )}
         </div>

@@ -115,6 +115,13 @@ Normal finalization preserves the partial reply; if
 output preparation stalls, a bounded fallback still persists terminal state and retains the
 already stored history.
 
+Browser reply headers show one cancellation status when either the message or its run is canceled,
+never a simultaneous finished label. Failed browser turns show failure; expired handoffs retain
+their incomplete status. These labels use the selected Portuguese or English language. Bot-list
+previews preserve readable partial message text (or a text part when the message text is blank),
+using the cancellation label only when there is no readable reply. Existing Markdown compaction
+and the 90-character preview limit still apply.
+
 The runtime checks owned executions every 15 seconds and before listing active work. A provider
 that has exited (including an OS zombie with a missed exit notification), or a turn with no provider
 event for ten minutes, fails with an explanation in Portuguese and English. A pending human approval

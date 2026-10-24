@@ -20,20 +20,20 @@ export const latestPreview = ({
   const candidates = [...messages]
     .filter((message) => threadIds.includes(message.threadId))
     .sort((left, right) => right.createdAt - left.createdAt)
-  const latest = candidates.find((message) => textOf(message, runs, messages).length > 0)
-  return latest ? compact(textOf(latest, runs, messages)) : ""
+  const latest = candidates.find((message) => getPreviewText(message, runs, messages).length > 0)
+  return latest ? compact(getPreviewText(latest, runs, messages)) : ""
 }
 
-const textOf = (message: Message, runs: ReadonlyArray<Run>, messages: ReadonlyArray<Message>): string => {
-  if (message.status === "canceled") return t("Cancelado por você")
+const getPreviewText = (message: Message, runs: ReadonlyArray<Run>, messages: ReadonlyArray<Message>): string => {
   const error = runErrorFor(message)
   if (error) return error.title
-  if (message.role === "system") return localizeNotice(message.text)
+  if (message.role === "system" && message.text.trim()) return localizeNotice(message.text)
   const routineResult = getRoutineEmptyResultPreview(message, runs, messages)
   if (routineResult) return routineResult
   if (message.text.trim()) return message.text
   const text = message.parts.find((part) => part.type === "text" && part.text.trim())
   if (text?.type === "text") return text.text
+  if (message.status === "canceled") return t("Cancelado por você")
   const approval = [...message.parts].reverse().find((part) => part.type === "approval")
   if (approval?.type === "approval") {
     if (approval.decision === "pending") return "Aguardando sua aprovação"
