@@ -305,7 +305,10 @@ export const createKernel = ({
     slowStatements,
     getContext: () => ({
       activeRuns: (
-        database.query("SELECT count(*) AS count FROM runs WHERE status IN ('starting', 'running')").get() as {
+        database
+          .query(`SELECT count(*) AS count FROM runs r WHERE r.status IN ('starting', 'running')
+            AND NOT EXISTS (SELECT 1 FROM group_turns coordination WHERE coordination.run_id = r.id)`)
+          .get() as {
           count: number
         }
       ).count,
