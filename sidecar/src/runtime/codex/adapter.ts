@@ -446,7 +446,7 @@ export const createCodexAdapter = ({
       if (runStage) runStage("provider_frame_route", () => routeFrame(parsed, line.length * 2))
       else routeFrame(parsed, line.length * 2)
     }
-    const routeFrame = (parsed: unknown, bytes: number): void => {
+    const routeFrame = (parsed: unknown, bytes: number, replayed = false): void => {
       const response = responseRecord(parsed)
       if (response) {
         const waiter = responseWaiters.get(response.id)
@@ -483,7 +483,7 @@ export const createCodexAdapter = ({
         declineRequest()
         return
       }
-      if (isTurnFrame && !turnAcknowledged) {
+      if (isTurnFrame && !turnAcknowledged && !replayed) {
         // Bound both event count and retained UTF-16 payload while turn/start is in flight.
         if (pendingFrames.length >= 128 || pendingBytes + bytes > 1_048_576) {
           declineRequest()
@@ -773,15 +773,19 @@ export const createCodexAdapter = ({
         if (completed) return
         const turnResult = asRecord(turnResponse.result) ?? {}
         turnId = stringValue(asRecord(turnResult.turn)?.id) ?? stringValue(turnResult.turnId)
-        turnAcknowledged = true
         if (stopped) interrupt()
 
-        const buffered = pendingFrames
-        pendingFrames = []
-        pendingBytes = 0
-        buffered.forEach(({ frame, bytes }) => {
-          if (!completed) routeFrame(frame, bytes)
-        })
+        // Replay cursors stay local; live arrivals join the bounded buffer until it drains.
+        while (!completed && pendingFrames.length > 0) {
+          const [pending, ...remaining] = pendingFrames
+          if (!pending) break
+
+          pendingFrames = remaining
+          pendingBytes -= pending.bytes
+          routeFrame(pending.frame, pending.bytes, true)
+          if (!completed) await new Promise<void>((resolve) => setImmediate(resolve))
+        }
+        turnAcknowledged = true
       } catch (error) {
         const message = errorText(error)
         const errorClass = classifyProviderError(message)

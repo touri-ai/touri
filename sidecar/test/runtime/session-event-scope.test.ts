@@ -249,6 +249,49 @@ test("bounds pre-acknowledgement retained payload as well as event count", async
   expect(fixture.events.some((event) => event.type === "text_delta")).toBe(false)
 })
 
+test("acknowledgement replay yields to cancellation and preserves new frame order", async () => {
+  const fixture = makeFixture()
+  const checkpoint = Promise.withResolvers<number>()
+  const args = {
+    ...fixture.args,
+    onEvent: (event: ProviderEvent) => {
+      fixture.args.onEvent(event)
+      if (event.type !== "text_delta" || event.delta !== "0") return
+
+      setImmediate(() => {
+        checkpoint.resolve(fixture.events.filter((entry) => entry.type === "text_delta").length)
+        fixture.controller.abort()
+        fixture.send({
+          method: "item/agentMessage/delta",
+          params: { threadId: "parent", turnId: "current", delta: "last" },
+        })
+        fixture.send({ method: "turn/completed", params: { turnId: "current", status: "interrupted" } })
+      })
+    },
+  }
+  const running = fixture.adapter.startTurn(args)
+  const request = await fixture.nextRequest("turn/start")
+  const deltas = Array.from({ length: 64 }, (_, index) => String(index))
+  deltas.forEach((delta) => {
+    fixture.send({
+      method: "item/agentMessage/delta",
+      params: { threadId: "parent", turnId: "current", delta },
+    })
+  })
+  fixture.send({ id: "buffer-barrier", method: "item/tool/requestUserInput", params: { threadId: "auxiliary" } })
+  await fixture.nextRequest(undefined, "buffer-barrier")
+
+  fixture.acknowledge(request)
+
+  expect(await checkpoint.promise).toBeLessThan(deltas.length)
+  expect((await fixture.nextRequest("turn/interrupt")).params).toEqual({ threadId: "parent", turnId: "current" })
+  expect(await running).toMatchObject({ success: true, status: "interrupted" })
+  expect(fixture.events.filter((event) => event.type === "text_delta").map((event) => event.delta)).toEqual([
+    ...deltas,
+    "last",
+  ])
+})
+
 test("a scoped parent error still fails its own turn", async () => {
   const fixture = makeFixture()
   const running = fixture.adapter.startTurn(fixture.args)

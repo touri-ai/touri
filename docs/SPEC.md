@@ -88,6 +88,8 @@ change its Stop target, publish text/tool output, or create an approval in the p
 Events that race the turn acknowledgement wait in a buffer capped at 128 frames and 1 MiB
 of UTF-16 payload. Explicit conflicting identities, including nested protocol identities,
 are rejected. Foreign server requests receive a refusal rather than an unanswered approval.
+Replaying buffered events yields to I/O between deliveries, keeping cancellation responsive;
+new arrivals keep their order in the same bounded buffer until replay finishes.
 Legacy events without identities remain supported after acknowledgement; transport and
 session setup errors without a turn identity retain their existing handling.
 
