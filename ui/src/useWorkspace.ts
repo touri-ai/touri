@@ -1372,6 +1372,13 @@ export const useWorkspace = (
 
           return Object.assign({}, current, { notifications, notificationReads })
         }
+        // The browser card confirms control; older hosts also echo the person's takeover here.
+        if (
+          event.type === "notify" &&
+          event.title === "Browser takeover" &&
+          event.body.startsWith("The user took over the browser:")
+        )
+          return current
         // Older computer grants open their existing card; their native echo is not an error.
         if (
           event.type === "notify" &&

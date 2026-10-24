@@ -354,6 +354,14 @@ const request: ApiRequest = async <K extends keyof ApiRoutes>(
   }
   if (key === "POST /browser/tabs/:id/takeover/session") {
     updateTakeover(true, true)
+    if (params.get("legacyTakeoverNotice") === "true")
+      base.emit({
+        type: "notify",
+        level: "info",
+        title: "Browser takeover",
+        body: "The user took over the browser: The user requested browser takeover",
+        threadId: channel.id,
+      })
     return { sessionId: "channel-session", controlEpoch: "channel-control", viewEpoch: 0 } as ApiRoutes[K]["res"]
   }
   if (key === "POST /browser/tabs/:id/takeover/frame")
