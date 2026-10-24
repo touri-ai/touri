@@ -12,7 +12,6 @@ initializeTheme()
 const tabId = "browser-outcome-tab"
 const pageUrl = "https://travel.example.test/search"
 const handbacks: string[] = []
-Object.assign(window, { browserOutcome: { handbacks } })
 
 const api = createMockApi()
 const state = api.getState()
@@ -89,6 +88,25 @@ const reply: Message = {
 state.messages.push(...history, request, reply)
 thread.activeLeafId = reply.id
 
+// `?takeover=live` serves a newly loaded page whose take-over succeeds and streams frames.
+const live = new URLSearchParams(location.search).get("takeover") === "live"
+const liveImage = (() => {
+  const canvas = document.createElement("canvas")
+  canvas.width = 800
+  canvas.height = 500
+  const context = canvas.getContext("2d")
+  if (context) {
+    context.fillStyle = "#f8fafc"
+    context.fillRect(0, 0, 800, 500)
+    context.fillStyle = "#0f172a"
+    context.font = "30px sans-serif"
+    context.fillText("Busca de viagem fictícia", 40, 80)
+  }
+  return canvas.toDataURL("image/jpeg", 0.8)
+})()
+const releases: string[] = []
+Object.assign(window, { browserOutcome: { handbacks, releases } })
+
 const originalRequest = api.request
 api.request = (async (route: string, input?: unknown, pathValues?: Record<string, string>) => {
   if (route === "GET /browser/tabs")
@@ -99,13 +117,33 @@ api.request = (async (route: string, input?: unknown, pathValues?: Record<string
           ownerBotId: "bot-mark",
           url: pageUrl,
           title: "Busca de viagem",
-          state: "unloaded",
+          state: live ? "live" : "unloaded",
           openerTabId: null,
           heldByUser: false,
           lastUsedAt: now,
         },
       ],
     }
+  if (live && route === "GET /bots/:id/browser-preview")
+    return { image: liveImage, title: "Busca de viagem", url: pageUrl }
+  if (live && route === "POST /browser/tabs/:id/takeover/session")
+    return { sessionId: "synthetic-session", controlEpoch: "synthetic-control-epoch", viewEpoch: 0 }
+  if (live && route === "POST /browser/tabs/:id/takeover/frame")
+    return {
+      controlEpoch: "synthetic-control-epoch",
+      targetEpoch: 1,
+      viewEpoch: (input as { viewEpoch: number }).viewEpoch,
+      title: "Busca de viagem",
+      url: pageUrl,
+      image: liveImage,
+      width: 800,
+      height: 500,
+    }
+  if (live && route === "POST /browser/tabs/:id/takeover/input") return {}
+  if (live && route === "DELETE /browser/tabs/:id/takeover/session") {
+    releases.push(pathValues?.id ?? "")
+    return {}
+  }
   if (route === "GET /bots/:id/browser-preview") return new Promise<never>(() => {})
   if (route === "POST /browser/tabs/:id/takeover/session")
     throw new ApiError(

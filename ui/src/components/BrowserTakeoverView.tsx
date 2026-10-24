@@ -6,6 +6,7 @@ import { ApiError } from "../errors"
 import { type Locale, t } from "../i18n"
 import { useBrowserActivityControls } from "./BrowserActivityControls"
 import { getBrowserActivityUrl } from "./browserActivityPresentation"
+import { requestReveal } from "./revealEvent"
 
 type FrameMeta = Pick<BrowserTakeoverFrame, "title" | "url" | "width" | "height" | "targetEpoch" | "viewEpoch">
 type TouchGesture = {
@@ -25,6 +26,9 @@ const IDLE_FRAME_INTERVAL_MS = 1_000
 const ACTIVE_FRAME_WINDOW_MS = 8_000
 const MAX_PENDING_INPUTS = 32
 const TOUCH_SCROLL_INTERVAL_MS = 40
+
+// Session ids already revealed in this page; a bounded record of take-overs the person started.
+const revealedSessions = new Set<string>()
 
 export const BrowserTakeoverView = ({
   api,
@@ -53,6 +57,7 @@ export const BrowserTakeoverView = ({
 }) => {
   const canvas = useRef<HTMLCanvasElement>(null)
   const screen = useRef<HTMLDivElement>(null)
+  const view = useRef<HTMLElement>(null)
   const keyboard = useRef<HTMLTextAreaElement>(null)
   const renderedFrame = useRef<FrameMeta | null>(null)
   const latestFrameMetaRef = useRef<FrameMeta | null>(null)
@@ -70,6 +75,13 @@ export const BrowserTakeoverView = ({
   const released = useRef(false)
   const releasing = useRef(false)
   const handbackRef = useRef<() => Promise<void>>(async () => {})
+  // The history may have followed newer content past this card; bring the controls into view once per
+  // session, so a remount (virtualized row, channel wrapper) does not pull the person back mid-scroll.
+  useEffect(() => {
+    if (!view.current || revealedSessions.has(sessionId)) return
+    revealedSessions.add(sessionId)
+    requestReveal(view.current)
+  }, [sessionId])
   const browserControls = useBrowserActivityControls()
   const [frame, setFrame] = useState<FrameMeta | null>(null)
   const [fallbackImage, setFallbackImage] = useState("")
@@ -471,6 +483,7 @@ export const BrowserTakeoverView = ({
 
   return (
     <section
+      ref={view}
       className="browser-takeover-view"
       aria-label={t("Remote browser control", {}, locale)}
       data-full-view={fullView}
