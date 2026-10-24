@@ -80,6 +80,19 @@ subsequent chunks keep the bounded batching interval.
 The UI renders partial assistant text before completion and changes its preparation status on the first
 text update, even when the avatar's activity snapshot is one render behind.
 
+### Parent and auxiliary session events
+
+A running task publishes only events for its native parent session and acknowledged turn.
+Auxiliary completion and stale notifications from an earlier turn cannot finish the parent,
+change its Stop target, publish text/tool output, or create an approval in the parent.
+Events that race the turn acknowledgement wait in a buffer capped at 128 frames and 1 MiB
+of UTF-16 payload. Explicit conflicting identities, including nested protocol identities,
+are rejected. Foreign server requests receive a refusal rather than an unanswered approval.
+Replaying buffered events yields to I/O between deliveries, keeping cancellation responsive;
+new arrivals keep their order in the same bounded buffer until replay finishes.
+Legacy events without identities remain supported after acknowledgement; transport and
+session setup errors without a turn identity retain their existing handling.
+
 ## Cancellation and run liveness
 
 `POST /api/v1/runs/:id/cancel` waits for the stored run to become terminal. HTTP 200 means

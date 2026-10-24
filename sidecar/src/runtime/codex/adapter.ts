@@ -31,6 +31,12 @@ import { asRecord, classifyProviderError, resolveExecutable, stringValue } from 
 import { createWarmSessions } from "../warm-session"
 import { codexInputItems } from "./codexInputItems"
 import { codexAccessParams, outerFolderSandbox } from "./config"
+import {
+  getDeclinedServerRequest,
+  getNotificationScope,
+  isNotificationForTurn,
+  isTurnNotification,
+} from "./notification-scope"
 
 type RpcResponse = { id: number; result?: unknown; error?: { message?: string } }
 
@@ -352,6 +358,11 @@ export const createCodexAdapter = ({
     let externalSessionId = args.session?.externalSessionId ?? "codex-session"
     let rolloutPath: string | null = args.session?.rolloutPath ?? null
     let turnId: string | null = null
+    // Streaming state belongs to this attempt; acknowledgement selects the authoritative turn.
+    let turnSubmitted = false
+    let turnAcknowledged = false
+    let pendingFrames: Array<{ frame: Record<string, unknown>; bytes: number }> = []
+    let pendingBytes = 0
     let resuming = false
     const classifyError = (message: string): RunErrorClass => {
       const errorClass = classifyProviderError(message)
@@ -402,6 +413,8 @@ export const createCodexAdapter = ({
     const complete = (result: Parameters<typeof finish>[0]): void => {
       if (completed) return
       completed = true
+      pendingFrames = []
+      pendingBytes = 0
       expireApprovals()
       for (const waiter of responseWaiters.values()) waiter.reject(new Error("Codex turn ended"))
       responseWaiters.clear()
@@ -430,10 +443,10 @@ export const createCodexAdapter = ({
         complete({ success: false, errorCode: "cli_protocol", error: "Malformed Codex JSON frame" })
         return
       }
-      if (runStage) runStage("provider_frame_route", routeFrame, parsed)
-      else routeFrame(parsed)
+      if (runStage) runStage("provider_frame_route", () => routeFrame(parsed, line.length * 2))
+      else routeFrame(parsed, line.length * 2)
     }
-    const routeFrame = (parsed: unknown): void => {
+    const routeFrame = (parsed: unknown, bytes: number, replayed = false): void => {
       const response = responseRecord(parsed)
       if (response) {
         const waiter = responseWaiters.get(response.id)
@@ -451,6 +464,36 @@ export const createCodexAdapter = ({
       }
       const method = stringValue(frame.method)
       const params = asRecord(frame.params) ?? {}
+      const scope = getNotificationScope(params, method)
+      const hasRequestId = typeof frame.id === "number" || typeof frame.id === "string"
+      const declineRequest = () => {
+        if (!method || !hasRequestId) return
+
+        void writeLine({
+          stdin: spawned.stdin,
+          value: { jsonrpc: "2.0", id: frame.id, ...getDeclinedServerRequest(method) },
+        }).catch(() => undefined)
+      }
+      if (!isNotificationForTurn(scope, externalSessionId, turnId)) {
+        declineRequest()
+        return
+      }
+      const isTurnFrame = isTurnNotification(method) || hasRequestId || scope.turnIds.length > 0
+      if (isTurnFrame && !turnSubmitted) {
+        declineRequest()
+        return
+      }
+      if (isTurnFrame && !turnAcknowledged && !replayed) {
+        // Bound both event count and retained UTF-16 payload while turn/start is in flight.
+        if (pendingFrames.length >= 128 || pendingBytes + bytes > 1_048_576) {
+          declineRequest()
+          complete({ success: false, errorCode: "cli_protocol", error: "Resposta inesperada do provedor" })
+          return
+        }
+        pendingFrames = [...pendingFrames, { frame, bytes }]
+        pendingBytes += bytes
+        return
+      }
       if (method && /mcp|warning|error|codex\/event/i.test(method) && touriMcpStartupFailed(frame)) {
         complete({
           success: false,
@@ -461,7 +504,7 @@ export const createCodexAdapter = ({
       }
       if (method === "turn/started") {
         args.onPreparationStage?.("turnAcceptedAt")
-        turnId = stringValue(params.turnId) ?? stringValue(asRecord(params.turn)?.id) ?? stringValue(params.id)
+        turnId ??= scope.turnIds[0] ?? null
         if (turnId) args.onEvent({ type: "turn_started", externalTurnId: turnId })
         if (stopped) interrupt()
       } else if (method === "item/agentMessage/delta") {
@@ -714,6 +757,7 @@ export const createCodexAdapter = ({
         // Once submitted, the task may have effects even before its acknowledgement arrives.
         args.onPreparationStage?.("turnSubmittedAt")
         onTurnSubmitted()
+        turnSubmitted = true
         const turnResponse = await sendRequest("turn/start", {
           threadId: externalSessionId,
           input: codexInputItems({
@@ -726,8 +770,22 @@ export const createCodexAdapter = ({
           ...(args.bot.reasoningEffort ? { effort: args.bot.reasoningEffort } : {}),
         })
         args.onPreparationStage?.("turnAcceptedAt")
-        turnId ??= stringValue(asRecord(asRecord(turnResponse.result)?.turn)?.id)
+        if (completed) return
+        const turnResult = asRecord(turnResponse.result) ?? {}
+        turnId = stringValue(asRecord(turnResult.turn)?.id) ?? stringValue(turnResult.turnId)
         if (stopped) interrupt()
+
+        // Replay cursors stay local; live arrivals join the bounded buffer until it drains.
+        while (!completed && pendingFrames.length > 0) {
+          const [pending, ...remaining] = pendingFrames
+          if (!pending) break
+
+          pendingFrames = remaining
+          pendingBytes -= pending.bytes
+          routeFrame(pending.frame, pending.bytes, true)
+          if (!completed) await new Promise<void>((resolve) => setImmediate(resolve))
+        }
+        turnAcknowledged = true
       } catch (error) {
         const message = errorText(error)
         const errorClass = classifyProviderError(message)

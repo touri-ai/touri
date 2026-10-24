@@ -127,8 +127,8 @@ test("Codex approval retains its command, folder, reason and access while omitti
       method: "item/commandExecution/requestApproval",
       params: {
         itemId: "command-review",
-        threadId: "private-thread",
-        turnId: "private-turn",
+        threadId: "fixture-session",
+        turnId: "fixture-turn",
         startedAtMs: 12345,
         reason: "Sandbox failed to start: registered-fixture-secret",
         additionalPermissions: { network: true },
@@ -143,7 +143,7 @@ test("Codex approval retains its command, folder, reason and access while omitti
     additionalPermissions: { network: true },
   })
   expect(f.part.detail).not.toMatch(
-    /private-thread|private-turn|command-review|startedAtMs|12345|registered-fixture-secret/,
+    /fixture-session|fixture-turn|command-review|startedAtMs|12345|registered-fixture-secret/,
   )
 })
 
