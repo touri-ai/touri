@@ -159,6 +159,10 @@ application bundle. They preserve existing actions and keyboard access, includin
 while their module loads.
 Channel progress does not load the optional member-panel projection or its result-history helpers.
 Closing a loading channel panel restores focus to its trigger and leaves the conversation available.
+When creating or editing a channel or group, member names wrap instead of being truncated so bots
+with a shared name prefix remain visually distinguishable before and after selection. The member
+picker uses one column at viewport widths up to 620 px and two columns on wider screens. Existing
+accessible names and selection by bot ID remain intact.
 Empty-conversation welcome content and its styles load separately without holding back the composer.
 Avatar customization styles load with their existing deferred dialogs.
 Preview workspace styles load with that optional screen, preserving its responsive layouts.

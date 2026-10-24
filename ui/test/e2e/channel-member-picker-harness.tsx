@@ -13,5 +13,13 @@ const root = document.getElementById("root")
 initializeTheme()
 if (root)
   createRoot(root).render(
-    <GroupModal group={null} bots={bots} channelMode onClose={() => {}} onSave={async () => {}} />,
+    <GroupModal
+      group={null}
+      bots={bots}
+      channelMode
+      onClose={() => {}}
+      onSave={async (input) => {
+        window.dispatchEvent(new CustomEvent("channel-picker-save", { detail: input }))
+      }}
+    />,
   )
