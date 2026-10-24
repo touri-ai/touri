@@ -172,6 +172,8 @@ for (const viewport of [
     const streamed = page.evaluate(() => (window as StreamingWindow).streamingTyping.stream({ size: 20 }))
     await page.getByText("Aqui está o roteiro fictício completo").waitFor()
     await input.pressSequentially(draft.repeat(3), { delay: 40 })
+    if (process.env.TOURI_SCREENSHOT_DIR)
+      await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/typing-${viewport.width}.png` })
     await streamed
     const streamEnd = await page.evaluate(() => performance.now())
     const streamingTaskMs = (await getTaskMs()) - streamTaskStart
@@ -204,9 +206,6 @@ for (const viewport of [
     console.log(`streaming-history ${viewport.width}: ${JSON.stringify(result)}`)
     await writeFile(info.outputPath("metrics.json"), JSON.stringify(result))
 
-    if (process.env.TOURI_SCREENSHOT_DIR)
-      await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/streaming-history-${viewport.width}.png` })
-
     await expect(input).toHaveValue(draft.repeat(3))
     const reply = page.locator('[data-message-id="stream-reply"]')
     await expect(reply).toContainText("Etapa 60")
@@ -214,6 +213,10 @@ for (const viewport of [
     await expect(reply.locator("ol > li")).toHaveCount(60)
     await expect(reply.locator("tbody > tr")).toHaveCount(8)
     await expect(reply).toContainText("Cidade 8")
+    if (process.env.TOURI_SCREENSHOT_DIR) {
+      await reply.locator("table").scrollIntoViewIfNeeded()
+      await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/table-${viewport.width}.png` })
+    }
     // Earlier messages keep their props while one reply streams; only the streaming row renders again.
     expect(counts.bubbleCommits).toBeGreaterThan(10)
     expect(result.bubbleRendersPerCommit).toBeLessThan(3)

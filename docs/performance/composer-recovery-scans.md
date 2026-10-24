@@ -1,7 +1,7 @@
 # Composer streaming: recovery scans (#201)
 
 Base: `origin/main` at `2d0c718f6bf652fbc4f7feb55f137743bb2111a6`.
-Measurements: 2026-10-24, Node 22.23.1, Vitest 3.2.7, one gate worker.
+Measurements: 2026-10-24, Node 22.23.1, Vitest 3.2.7, one test process.
 All content is generated synthetic data.
 
 ## Measured issue and change
@@ -96,36 +96,35 @@ Renderer task time is elapsed task duration, not process CPU; the next animation
 frame is a presentation opportunity, not a physical display measurement. No raw
 profiles or traces are published.
 
-## Gate reproduction
+## Reproduction
 
-`TOURI_GATE` below denotes the required `touri-test.sh` supplied by the parent.
-Checks run sequentially, with no dependency installation or extra workers:
+Run the checks sequentially:
 
 ```sh
-TOURI_TEST_ONLY=streaming-recovery-work "$TOURI_GATE" vitest
-TOURI_TEST_ONLY=streaming-history.spec "$TOURI_GATE" e2e
-"$TOURI_GATE" typecheck
-"$TOURI_GATE" biome
-"$TOURI_GATE" sidecar
-TOURI_TEST_ONLY='streaming-|composer-|channel-branches|routine-conversation|run-error-detail|session-recovery-presentation' "$TOURI_GATE" vitest
+bun install --frozen-lockfile
+bunx tsc --noEmit -p tsconfig.base.json
+bunx biome check .
+(cd ui && NODE_OPTIONS=--no-experimental-webstorage bunx vitest run test/streaming-recovery-work.test.tsx)
+(cd ui && bunx playwright test test/e2e/streaming-history.spec.ts --workers=1)
+bun --cwd ui build
 ```
 
-The targeted Vitest selection passed 102 tests in 10 files. The browser selection
+The targeted UI selection passed 102 tests in 10 files. The browser selection
 covered rich/sparse streaming, composer performance, channel branches, recovery
 layout and restart recovery. Eighteen of nineteen cases passed on the first run.
 The throttled composer case exceeded its handler p95 limit once (20.8 ms versus
-16 ms). The baseline passed at 15.4 ms; a fresh fixed run through the gate passed
+16 ms). The baseline passed at 15.4 ms; a fresh fixed run passed
 at 11.5 ms, with all three cases in that file passing. No limit was changed.
 The fresh fixed composer case rendered only Composer for its 20 keystrokes,
 with React render p95 3.2 ms, next-frame p95 25.8 ms and initial load 4.81 seconds
 under four-times CPU throttling.
 
-All checks used the supplied gate sequentially. No Rust code changed; Rust/macOS
-checks are left to the supported environment. Four separately inspected mock
-screenshots accompany the PR: desktop/mobile typing during streaming and the
-expanded completed table with the draft retained.
-
-The final unfiltered gate selection passed typecheck, Biome, one selected
+No Rust code changed; Rust/macOS checks are left to the supported environment.
+Inspected mock screenshots accompany the PR at desktop and phone widths.
+The final unfiltered selection passed typecheck, Biome, one selected
 sidecar test file, and all 1,226 UI tests across 103 selected files. The browser
 selection above contains nineteen cases across six selected spec files; its
 one timing failure passed the fresh rerun without changing the limits.
+
+This optimization addresses redundant recovery lookups only. The broader
+streaming responsiveness work remains tracked in #201.
