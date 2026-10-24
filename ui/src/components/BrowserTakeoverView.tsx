@@ -83,29 +83,44 @@ export const BrowserTakeoverView = ({
     requestReveal(view.current)
   }, [sessionId])
   // A window that changes size (a narrower layout, the on-screen keyboard) can push the controls out of
-  // the conversation; bring them back then, while ordinary scrolling stays under the person's control.
+  // the conversation. Bring them back only when they were in view before the resize, so a person who
+  // scrolled away to read is not pulled back.
   useEffect(() => {
-    let frame: number | null = null
-    const keepControlsInView = () => {
-      if (frame !== null) return
-      frame = requestAnimationFrame(() => {
-        frame = null
-        const section = view.current
-        const controls = section?.querySelector(".browser-takeover-controls")
-        const history = section?.closest(".message-scroll")
-        if (!section || !controls || !history) return
-        const box = controls.getBoundingClientRect()
-        const area = history.getBoundingClientRect()
-        if (box.top >= area.top && box.bottom <= area.bottom) return
-        requestReveal(section)
+    const section = view.current
+    const history = section?.closest(".message-scroll")
+    if (!section || !history) return
+    const controlsInView = () => {
+      const box = section.querySelector(".browser-takeover-controls")?.getBoundingClientRect()
+      if (!box) return false
+      const area = history.getBoundingClientRect()
+      const visible = window.visualViewport
+      const top = Math.max(area.top, visible?.offsetTop ?? area.top)
+      const bottom = Math.min(area.bottom, visible ? visible.offsetTop + visible.height : area.bottom)
+      return box.top >= top && box.bottom <= bottom
+    }
+    let inView = controlsInView()
+    let pendingCheck: number | null = null
+    const onScroll = () => {
+      inView = controlsInView()
+    }
+    // Resize events run before the scroll they cause, so the state they read is the one before the resize.
+    const onResize = () => {
+      if (pendingCheck !== null) return
+      const wasInView = inView
+      pendingCheck = requestAnimationFrame(() => {
+        pendingCheck = null
+        inView = controlsInView()
+        if (wasInView && !inView) requestReveal(section)
       })
     }
-    window.addEventListener("resize", keepControlsInView)
-    window.visualViewport?.addEventListener("resize", keepControlsInView)
+    history.addEventListener("scroll", onScroll, { passive: true })
+    window.addEventListener("resize", onResize)
+    window.visualViewport?.addEventListener("resize", onResize)
     return () => {
-      if (frame !== null) cancelAnimationFrame(frame)
-      window.removeEventListener("resize", keepControlsInView)
-      window.visualViewport?.removeEventListener("resize", keepControlsInView)
+      if (pendingCheck !== null) cancelAnimationFrame(pendingCheck)
+      history.removeEventListener("scroll", onScroll)
+      window.removeEventListener("resize", onResize)
+      window.visualViewport?.removeEventListener("resize", onResize)
     }
   }, [])
   const browserControls = useBrowserActivityControls()
