@@ -113,6 +113,39 @@ describe("runtime projection", () => {
     expect(stateFor([run("running", { botId: "other" })])).toBe("idle")
     expect(mascotSignalFor({ botId: "b", paused: true, runs: [run("running")] }).state).toBe("sleeping")
   })
+  it("looks each message's run up once, so a long history costs the same on every streaming update", () => {
+    let idReads = 0
+    // A long conversation: every reply has finished; only the last one still streams.
+    const runs = Array.from({ length: 250 }, (_, index) => {
+      const value = run(index === 249 ? "running" : "succeeded", { queuedAt: index, finishedAt: index + 1 })
+      return Object.defineProperty(value, "id", {
+        get: () => {
+          idReads += 1
+          return `r${index}`
+        },
+      })
+    })
+    const messages = runs.flatMap((_, index) => [
+      message([], { id: `q${index}`, role: "user", status: "complete", runId: null, updatedAt: index }),
+      message([{ type: "text", text: "Resposta" } as MessagePart], {
+        id: `a${index}`,
+        status: index === 249 ? "streaming" : "complete",
+        runId: `r${index}`,
+        updatedAt: index,
+      }),
+    ])
+
+    expect(mascotSignalFor({ botId: "b", runs, messages }).state).toBe("typing")
+    // Linear in the history: each run id is read a bounded number of times, not once per message.
+    expect(idReads).toBeLessThanOrEqual(runs.length * 2)
+  })
+  it("reports a failed reply without a tracked run, but not one whose run succeeded", () => {
+    const failed = message([], { status: "failed", runId: "unknown", updatedAt: 40 })
+    const finished = run("succeeded", { finishedAt: 30 })
+
+    expect(stateFor([finished], [failed])).toBe("error")
+    expect(stateFor([finished], [{ ...failed, runId: "r" }])).toBe("idle")
+  })
   it("unresolved attention waits, and resolved attention resumes work", () => {
     const note = { botId: "b", kind: "approval", resolvedAt: null } as NotificationRecord
     expect(stateFor([run("running")], [], [note])).toBe("waiting-approval")
