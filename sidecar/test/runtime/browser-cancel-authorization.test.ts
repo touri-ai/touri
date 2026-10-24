@@ -57,6 +57,29 @@ test("canceling one waiting request leaves the running task and later requests u
   expect(fixture.getRun(fixture.last.id)?.status).toBe("queued")
 })
 
+test.each(["root", "child", "browser"] as const)(
+  "single-turn stop through a %s cancels browser children and releases waiting work",
+  async (target) => {
+    const fixture = await getFixture()
+    const browser = await fixture.startBrowser()
+    const peer = await fixture.startBrowser("peer")
+    const runIds = { root: fixture.active.id, child: fixture.coordinator.run.id, browser: browser.runId }
+
+    const response = await fixture.cancel(runIds[target], getPerson("requester"), "turn")
+
+    expect(response.status).toBe(200)
+    expect(fixture.coordinator.signal.aborted).toBe(true)
+    expect(browser.signal.aborted).toBe(true)
+    expect(peer.signal.aborted).toBe(true)
+    expect(fixture.channelRuns.get(browser.runId)?.status).toBe("canceled")
+    expect(fixture.channelRuns.get(peer.runId)?.status).toBe("canceled")
+    await fixture.waitForGroupStart(fixture.waiting.id)
+    expect(fixture.getRun(fixture.active.id)?.status).toBe("canceled")
+    expect(fixture.getRun(fixture.waiting.id)?.status).toBe("running")
+    expect(fixture.getRun(fixture.last.id)?.status).toBe("queued")
+  },
+)
+
 test("a single-turn stop checks protected children before canceling any work", async () => {
   const fixture = await getFixture()
   await fixture.startBrowser()
@@ -67,6 +90,22 @@ test("a single-turn stop checks protected children before canceling any work", a
   expectForbidden(response)
   fixture.expectUnchanged(before)
 })
+
+test.each(["root", "browser"] as const)(
+  "single-turn stop through a %s preflights protected browser peers",
+  async (target) => {
+    const fixture = await getFixture()
+    const browser = await fixture.startBrowser()
+    await fixture.startBrowser("peer", "requester", "other-responsible")
+    const before = fixture.getSnapshot()
+    const runId = target === "root" ? fixture.active.id : browser.runId
+
+    const response = await fixture.cancel(runId, getPerson("responsible"), "turn")
+
+    expectForbidden(response)
+    fixture.expectUnchanged(before)
+  },
+)
 
 test.each([null, "unexpected"])("an invalid cancellation scope %j cannot stop any task", async (scope) => {
   const fixture = await getFixture()

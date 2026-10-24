@@ -58,7 +58,6 @@ export const WorkScreen = ({
     <section className="workspace-screen r8-screen work-screen" aria-labelledby="work-title">
       <ScreenHeader id="work-title" title={t("Work")} description={t("Work description")} />
       <div className="screen-content">
-        {onStop && <p>{t("Work stop help")}</p>}
         {stopFailed && <p role="alert">{t("Work stop error")}</p>}
         {loading && <p role="status">{t("Work loading")}</p>}
         {!loading && runs.length === 0 && <p className="screen-card">{t("Work empty")}</p>}

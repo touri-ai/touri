@@ -1107,12 +1107,18 @@ export const createGroupRuntime = (
     return [frame.turn.run.id].concat(Array.from(frame.turn.children))
   }
   const cancel = (id: string, scope: "group" | "turn" = "group"): boolean => {
+    const turnCancellation = scope === "turn" ? getGroupCancellation(id, scope) : null
+    if (turnCancellation && turnCancellation.affected.length > 0) {
+      turnCancellation.affected.forEach(cancelTurn)
+      return true
+    }
+
     const browserRunId = kernel.services.use("browser.cancelRequest")?.({ runId: id })
     if (browserRunId) {
       engine.cancel(browserRunId)
       return true
     }
-    const { root, affected } = getGroupCancellation(id, scope)
+    const { root, affected } = turnCancellation ?? getGroupCancellation(id, scope)
     if (affected.length === 0) return !!db.query("SELECT run_id FROM group_turns WHERE run_id=?").get(root)
     // Conversation Stop retains its group scope; Work can stop one turn without losing queued requests.
     affected.forEach(cancelTurn)
@@ -1123,11 +1129,16 @@ export const createGroupRuntime = (
     getDecision: (runId: string) => ReturnType<ServiceMap["work.authorizeHttp"]>,
     scope: "group" | "turn" = "group",
   ) => {
-    const browser = kernel.services.use("browser.cancelRequest") ? getBrowserCancellationTarget(db, id) : null
+    const turnCancellation = scope === "turn" ? getGroupCancellation(id, scope) : null
+    const isBrowserRequest = !turnCancellation?.affected.length
+    const browser =
+      isBrowserRequest && kernel.services.use("browser.cancelRequest") ? getBrowserCancellationTarget(db, id) : null
     const targets = browser
       ? getBrowserCancellationRunIds(browser.runId)
       : [id].concat(
-          getGroupCancellation(id, scope).affected.flatMap((turn) => [turn.run.id].concat(Array.from(turn.children))),
+          (turnCancellation ?? getGroupCancellation(id, scope)).affected.flatMap((turn) =>
+            [turn.run.id].concat(Array.from(turn.children)),
+          ),
         )
     // Keep preflight and execution synchronous: aborting even an ordinary child can stop its browser peers.
     for (const runId of new Set(targets)) {

@@ -21,6 +21,11 @@ for (const viewport of [
     expect(
       (await new AxeBuilder({ page }).include(".work-screen").withTags(["wcag2a", "wcag2aa"]).analyze()).violations,
     ).toEqual([])
+    await page.emulateMedia({ colorScheme: "light" })
+    expect(
+      (await new AxeBuilder({ page }).include(".work-screen").withTags(["wcag2a", "wcag2aa"]).analyze()).violations,
+    ).toEqual([])
+    await page.emulateMedia({ colorScheme: "dark" })
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     if (process.env.TOURI_SCREENSHOT_DIR)
       await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/channel-waiting-${viewport.width}.png` })
