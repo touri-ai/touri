@@ -139,6 +139,16 @@ These observations are transient and contain no process identifiers or conversat
 active work, and treats missing activity from older servers conservatively. Malformed activity or
 an unreadable work response defers restart. No deployment timeout authorizes stopping healthy work.
 
+## Support report run identity
+
+The `states.activeRuns` and recent `runs` diagnostics include `kind`, `group_turn_id`, and
+`provider_started_at`. Persisted channel control records have `kind: coordination`; their linked
+member runs have `kind: execution` and identify the control record through `group_turn_id`.
+Direct executions have no parent. A null provider timestamp means no provider start was recorded;
+shared bot identity and lifecycle status alone do not establish duplicate provider execution.
+Both records remain available for history and cancellation. Recent diagnostics retain the latest
+20 runs, selecting that window before enriching identity through indexed relationship lookups.
+
 ## Decisions at a glance
 
 Channel navigation and headers are available at startup so the first click opens a stable surface.
