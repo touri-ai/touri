@@ -59,7 +59,7 @@ const requestFixture = async (body: unknown) =>
 for (const width of [1440, 390]) {
   test(`same unloaded tab fails safely after real engine restart at ${width}px`, async ({ page }, info) => {
     test.setTimeout(90_000)
-    await page.setViewportSize({ width, height: 900 })
+    await page.setViewportSize({ width, height: width < 500 ? 844 : 900 })
     await page.route("**/__browser-restart-fixture", async (route) => {
       const response = await requestFixture(JSON.parse(route.request().postData() ?? "{}"))
       await route.fulfill({ status: response.status, contentType: "application/json", body: await response.text() })
@@ -92,10 +92,22 @@ for (const width of [1440, 390]) {
         "Esta sessão do navegador está indisponível. Devolva o controle e peça ao bot para abrir novamente uma página pública. Nenhuma página foi reaberta.",
       ),
     ).toBeVisible({ timeout: 20_000 })
+    // The person sees the outcome where they clicked, before any assertion that could fail on old layouts.
+    await page.screenshot({ path: resolve(directory, `browser-restart-recovery-${width}.png`) })
     await expect(view).toHaveCount(0)
     await expect(page.getByText(/Você está no controle/)).toHaveCount(0)
     await expect(page.getByRole("button", { name: "Digitar no navegador" })).toHaveCount(0)
-    await page.screenshot({ path: resolve(directory, `browser-restart-recovery-${width}.png`), fullPage: true })
+    const outcome = page.getByRole("alert").filter({ hasText: "Esta sessão do navegador está indisponível." })
+    const handback = page.getByRole("button", { name: "Devolver para Lia" })
+    for (const element of [outcome, handback]) {
+      await expect(element).toBeInViewport({ ratio: 1 })
+      // Inside the scrolling action log the result would need a second, hidden scroll to be found.
+      expect(await element.evaluate((node) => node.closest(".browser-activity-log") === null)).toBe(true)
+    }
+    const takeoverBox = await takeover.boundingBox()
+    const outcomeBox = await outcome.boundingBox()
+    if (!takeoverBox || !outcomeBox) throw new Error("Missing takeover layout")
+    expect(outcomeBox.y).toBeGreaterThan(takeoverBox.y)
 
     await page.getByRole("button", { name: "Devolver para Lia" }).click()
     await expect(page.getByRole("button", { name: "Devolver para Lia" })).toHaveCount(0)

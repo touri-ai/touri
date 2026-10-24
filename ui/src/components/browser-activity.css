@@ -839,7 +839,16 @@
   }
 }
 
+.browser-activity-alert {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-8);
+  padding: 0 var(--space-12) var(--space-12);
+}
+.browser-activity-alert p {
+  margin: 0;
+  color: var(--text-danger);
+}
 .browser-activity-recovery-return {
   min-height: 44px;
-  margin-top: var(--space-8);
 }

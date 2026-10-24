@@ -656,6 +656,22 @@ export const BrowserActivityCard = ({
             </div>
           </header>
         )}
+        {/* The outcome sits under the control the person just used, outside the scrolling log. */}
+        {(error || (takeoverUnavailable && channel?.canControl !== false)) && (
+          <div className="browser-activity-alert">
+            {error && <p role="alert">{error}</p>}
+            {takeoverUnavailable && channel?.canControl !== false && (
+              <button
+                type="button"
+                className="button button-quiet browser-activity-recovery-return"
+                disabled={busy}
+                onClick={() => void returnUnavailableTakeover()}
+              >
+                {t("Hand back to {name}", { name: botName }, locale)}
+              </button>
+            )}
+          </div>
+        )}
         {expanded && (
           <div
             id={contentId}
@@ -774,17 +790,6 @@ export const BrowserActivityCard = ({
                 </p>
               )}
               {takeoverSession && held && <p role="status">{t("You have control of this browser tab.", {}, locale)}</p>}
-              {error && <p role="alert">{error}</p>}
-              {takeoverUnavailable && channel?.canControl !== false && (
-                <button
-                  type="button"
-                  className="button button-quiet browser-activity-recovery-return"
-                  disabled={busy}
-                  onClick={() => void returnUnavailableTakeover()}
-                >
-                  {t("Hand back to {name}", { name: botName }, locale)}
-                </button>
-              )}
               {finished && screenshot?.outputAttachmentId && (
                 <section className="browser-activity-final-shot" aria-label={t("Final browser screenshot", {}, locale)}>
                   <strong>{t("Final browser screenshot", {}, locale)}</strong>
