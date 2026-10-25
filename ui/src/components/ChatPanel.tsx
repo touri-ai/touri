@@ -530,9 +530,10 @@ export const VirtualMessageList = ({
     observedMessages.current = messages
     if (followBottom.current) return
     const previousIds = new Set(previous.map((message) => message.id))
-    const added = messages.filter((message) => !previousIds.has(message.id)).length
-    const reply = messages.at(-1)
     const oldReply = previous.at(-1)
+    const lastKnown = messages.findIndex((message) => message.id === oldReply?.id)
+    const added = messages.slice(lastKnown + 1).filter((message) => !previousIds.has(message.id)).length
+    const reply = messages.at(-1)
     if (added || reply?.text !== oldReply?.text || reply?.status !== oldReply?.status)
       setUnseenCount((count) => Math.max(1, count + added))
   }, [messages])

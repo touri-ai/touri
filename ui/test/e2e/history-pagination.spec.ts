@@ -199,6 +199,7 @@ for (const width of [1440, 390]) {
           }, anchor),
         )
         .toBeLessThan(2)
+      await expect(page.getByRole("button", { name: "Voltar ao fim", exact: true })).toBeVisible()
     }
     await showSidebar()
     await choose("Avisos fictícios", second)
