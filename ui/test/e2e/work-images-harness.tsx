@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client"
 import App from "../../src/App"
 import type { ApiRequest } from "../../src/api/client"
 import { createMockApi } from "../../src/api/mock"
+import { initializeTheme } from "../../src/design/theme"
 import "../../src/styles.css"
 
 const base = createMockApi()
@@ -103,6 +104,7 @@ localStorage.setItem(
   "touri.workspace.v1",
   JSON.stringify({ botId: bot.id, threadId: thread.id, route: { section: "bots", screen: "chat" } }),
 )
-localStorage.setItem("touri.appearance.v1", "light")
+localStorage.setItem("touri.appearance.v1", "dark")
+initializeTheme()
 const root = document.getElementById("root")
 if (root) createRoot(root).render(<App kernel={{ services: { api } }} />)

@@ -159,6 +159,7 @@ const checkImageAccessibility = async (page: Page, selector: string) => {
       localStorage.setItem("touri.appearance.v1", theme)
       window.dispatchEvent(new Event("touri:appearance"))
     }, theme)
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
     const audit = await new AxeBuilder({ page }).include(selector).analyze()
 
     expect(audit.violations).toEqual([])
