@@ -168,3 +168,39 @@ it("marks one informational notice read without resolving it and leaves pending 
   })
   expect(result.notifications.find((item) => item.id === pending.id)).toMatchObject({ resolvedAt: null })
 })
+
+it("syncs cleared recoveries across devices while preserving protected work and unrelated decisions", async () => {
+  const api = createMockApi({ scenario: "interrupted-tasks" })
+  const approval = api.notify({ kind: "approval", title: "Revisão fictícia", body: "Conferir", requestId: "pending" })
+  const { notifications } = await api.request("GET /notifications", {})
+  const desktop = renderHook(() => useWorkspace(api))
+  const mobile = renderHook(() => useWorkspace(api))
+  await waitFor(() => expect(desktop.result.current.data.loaded && mobile.result.current.data.loaded).toBe(true))
+
+  await act(async () => {
+    const result = await desktop.result.current.actions.dismissAllNotifications(notifications.map((item) => item.id))
+    expect(result.skipped).toBe(2)
+  })
+
+  const saved = mobile.result.current.data.notifications
+  expect(saved.filter((item) => item.readAt)).toHaveLength(2)
+  expect(saved.filter((item) => item.resolution === "dismissed")).toHaveLength(2)
+  expect(saved.find((item) => item.id === approval.id)).toMatchObject({ resolvedAt: null })
+  expect(saved.find((item) => item.requestId === "recovery:journal:process-demo")).toMatchObject({ resolvedAt: null })
+  expect(api.calls.some((call) => call.route === "POST /notifications/dismiss-all")).toBe(false)
+})
+
+it("distinguishes recovery review from other pending decisions after clearing the bell", async () => {
+  const api = createMockApi({ scenario: "interrupted-tasks" })
+  api.notify({ kind: "approval", title: "Revisão fictícia", body: "Conferir", requestId: "pending" })
+  render(<ConnectedBell api={api} />)
+  fireEvent.click(await screen.findByRole("button", { name: "Notificações, 4 precisam de atenção" }))
+
+  fireEvent.click(screen.getByRole("button", { name: "Limpar", exact: true }))
+
+  await waitFor(() => expect(screen.getAllByTestId("notification-row")).toHaveLength(2))
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Notificações que precisam de revisão em Tarefas interrompidas: 1.",
+  )
+  expect(screen.getByRole("status")).toHaveTextContent("Notificações que ainda precisam de atenção: 1.")
+})

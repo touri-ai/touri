@@ -1820,7 +1820,12 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
           task.notification.id === Number(pathValues.id) &&
           task.effects.some((effect) => effect.acknowledgeKey !== null),
       )
-      if (hasProtectedTask) throw new Error("Revise os efeitos incertos no centro de tarefas interrompidas.")
+      if (hasProtectedTask)
+        throw new ApiError(
+          409,
+          "Revise os efeitos incertos no centro de tarefas interrompidas.",
+          "ACKNOWLEDGEMENT_REQUIRED",
+        )
       const resolved = resolveNotification({ id: Number(pathValues.id), resolution: "dismissed" })
       if (!resolved) throw new Error("notification not found")
       return { notification: resolved } as ApiRoutes[typeof route]["res"]

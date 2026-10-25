@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test"
 
+test.afterEach(async ({ page }, info) => {
+  if (info.status !== info.expectedStatus)
+    await page.screenshot({ path: info.outputPath(`interrupted-tasks-${page.viewportSize()?.width}.png`) })
+})
+
 test("the first interrupted-task dialog returns focus after its details load", async ({ page }) => {
   const release = Promise.withResolvers<void>()
   await page.route("**/src/components/InterruptedTasks.tsx", async (route) => {
@@ -118,5 +123,64 @@ for (const viewport of [
     await expect(chat.locator(".message-error-history [role=alert]")).toContainText(
       "A resposta foi interrompida. Algumas ações podem ter sido concluídas.",
     )
+  })
+}
+
+for (const width of [1440, 390]) {
+  test(`notification bell stays responsive at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+    await page.goto("/?mockScenario=interrupted-tasks")
+    if (width === 390) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+    const bell = page.getByRole("button", { name: /Notificações,/ })
+    await bell.click()
+    await page.getByRole("button", { name: "Fechar notificações" }).click()
+
+    const timing = await page.evaluate(async () => {
+      const button = document.querySelector(".notification-bell")
+      if (!(button instanceof HTMLButtonElement)) throw new Error("Missing notification bell")
+      // The measurement owns these fixed-size buffers; observers stop after twenty interactions.
+      const samples: number[] = []
+      const longTasks: number[] = []
+      const shifts: number[] = []
+      const tasks = new PerformanceObserver((list) => {
+        list.getEntries().forEach((entry) => {
+          longTasks.push(entry.duration)
+        })
+      })
+      const layout = new PerformanceObserver((list) => {
+        list.getEntries().forEach((entry) => {
+          const shift = entry as PerformanceEntry & { value: number }
+          shifts.push(shift.value)
+        })
+      })
+      tasks.observe({ type: "longtask" })
+      layout.observe({ type: "layout-shift" })
+      const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      for (let index = 0; index < 20; index += 1) {
+        await frame()
+        const start = performance.now()
+        button.click()
+        await frame()
+        samples.push(performance.now() - start)
+        if (button.getAttribute("aria-expanded") !== String(index % 2 === 0))
+          throw new Error("Notification interaction did not complete in one frame")
+      }
+      await frame()
+      tasks.disconnect()
+      layout.disconnect()
+      samples.sort((left, right) => left - right)
+
+      return {
+        p95Ms: samples[Math.ceil(samples.length * 0.95) - 1],
+        maxMs: samples.reduce((maximum, sample) => Math.max(maximum, sample), 0),
+        longTasks: longTasks.filter((duration) => duration > 50).length,
+        cls: shifts.reduce((total, shift) => total + shift, 0),
+      }
+    })
+
+    console.info(`Notification interaction ${width}px: ${JSON.stringify(timing)}`)
+    expect(timing.p95Ms).toBeLessThan(100)
+    expect(timing.longTasks).toBe(0)
+    expect(timing.cls).toBeLessThan(0.01)
   })
 }
