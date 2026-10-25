@@ -647,6 +647,28 @@ describe("Work image messages", () => {
     )
     expect(request).not.toHaveBeenCalledWith("GET /bots/:id/images", { path: "shots/round-*.png" }, expect.anything())
   })
+
+  it("discovers newly created pattern images when the same message finishes streaming", async () => {
+    const { context, request } = fixture()
+    request.mockResolvedValueOnce({ paths: [] })
+    request.mockImplementation(async (route: unknown) =>
+      route === "GET /bots/:id/image-references" ? { paths: ["shots/round-final.png"] } : blob,
+    )
+    const content = "Evidência: shots/round-*.png"
+    const streaming = { ...context, imageVersion: "message:streaming" }
+    const complete = { ...context, imageVersion: "message:complete" }
+    const view = render(<MarkdownContent evidence={streaming} content={content} />)
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+
+    view.rerender(<MarkdownContent evidence={complete} content={content} />)
+
+    expect(await screen.findByRole("img", { name: "round-final.png" })).toBeVisible()
+    expect(request).toHaveBeenCalledWith(
+      "GET /bots/:id/images",
+      { path: "shots/round-final.png" },
+      { id: context.bot.id },
+    )
+  })
 })
 
 it("reuses bounded thumbnail results when revisiting a channel", async () => {

@@ -230,6 +230,8 @@ const MarkdownEvidence = ({ images, context }: { images: EvidenceImage[]; contex
   const api = context?.api
   const botId = context?.bot.id
   const base = context?.base
+  const imageVersion = context?.imageVersion
+  // biome-ignore lint/correctness/useExhaustiveDependencies: completion must rediscover files even when the pattern is unchanged
   useEffect(() => {
     setExpanded([])
     if (!api || !botId || !patternKey) return
@@ -250,7 +252,7 @@ const MarkdownEvidence = ({ images, context }: { images: EvidenceImage[]; contex
     return () => {
       alive = false
     }
-  }, [api, botId, base, patternKey])
+  }, [api, botId, base, imageVersion, patternKey])
   const concrete = images.filter((image) => !/[?*[\]{}]/.test(image.path))
   const unique = Array.from(new Map([...concrete, ...expanded].map((image) => [image.path, image])).values()).slice(
     0,

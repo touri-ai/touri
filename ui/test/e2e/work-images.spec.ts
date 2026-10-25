@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test"
+import AxeBuilder from "@axe-core/playwright"
+import { expect, type Page, test } from "@playwright/test"
 import type { Attachment, Bot, Message, Thread } from "@touri/contracts"
 import { createWorkGoldenServer } from "./work-golden-server"
 
@@ -33,6 +34,7 @@ for (const width of [1440, 390]) {
         .evaluate((thumbnail) => thumbnail.clientWidth)
       expect(attachmentWidth).toBeGreaterThan(200)
       expect(await page.locator("body").evaluate((body) => body.scrollWidth - innerWidth)).toBeLessThanOrEqual(1)
+      await checkImageAccessibility(page, ".evidence-gallery")
     }
     if (width === 390) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
     const navigation = await page.evaluate(async () => {
@@ -127,6 +129,7 @@ for (const width of [1440, 390]) {
     await page.locator(".evidence-thumbnail").first().click()
     const lightbox = page.getByRole("dialog", { name: "visao-do-canal.png" })
     await expect(lightbox.getByRole("img")).toBeVisible()
+    await checkImageAccessibility(page, ".evidence-lightbox")
     const lightboxPath = process.env.TOURI_WORK_EVIDENCE_DIR
       ? `${process.env.TOURI_WORK_EVIDENCE_DIR}/lightbox-${width}.png`
       : testInfo.outputPath(`lightbox-${width}.png`)
@@ -136,6 +139,19 @@ for (const width of [1440, 390]) {
     await expect(lightbox).not.toBeVisible()
     await expect(page.locator(".evidence-thumbnail").first()).toBeFocused()
   })
+}
+
+const checkImageAccessibility = async (page: Page, selector: string) => {
+  const original = await page.evaluate(() => document.documentElement.dataset.theme ?? "dark")
+  for (const theme of ["dark", "light", original]) {
+    await page.evaluate((theme) => {
+      localStorage.setItem("touri.appearance.v1", theme)
+      window.dispatchEvent(new Event("touri:appearance"))
+    }, theme)
+    const audit = await new AxeBuilder({ page }).include(selector).analyze()
+
+    expect(audit.violations).toEqual([])
+  }
 }
 
 let server: Awaited<ReturnType<typeof createWorkGoldenServer>> | null = null
