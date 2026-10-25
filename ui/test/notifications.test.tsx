@@ -287,15 +287,17 @@ it("clears ordinary notifications while preserving uncertain work in the recover
 
   fireEvent.click(within(bell).getByRole("button", { name: "Limpar", exact: true }))
 
-  expect(await within(bell).findByRole("status")).toHaveTextContent("Notificações que ainda precisam de atenção: 3.")
+  expect(await within(bell).findByRole("status")).toHaveTextContent(
+    "Notificações que precisam de revisão em Tarefas interrompidas: 1.",
+  )
   expect(within(bell).queryByRole("alert")).not.toBeInTheDocument()
-  await waitFor(() => expect(within(bell).getAllByTestId("notification-row")).toHaveLength(3))
+  await waitFor(() => expect(within(bell).getAllByTestId("notification-row")).toHaveLength(1))
   fireEvent.click(within(bell).getByRole("button", { name: "Tarefas interrompidas" }))
   const center = await screen.findByRole("dialog", { name: "Tarefas interrompidas", exact: true })
   const tasks = await within(center).findAllByTestId("interrupted-task")
   const task = tasks[0]
   if (!task) throw new Error("Missing synthetic recovery task")
-  expect(within(center).getAllByRole("checkbox")).toHaveLength(2)
+  expect(within(center).getAllByRole("checkbox")).toHaveLength(1)
   const acknowledgement = await within(task).findByRole("checkbox", {
     name: "Revisei os efeitos incertos e entendo que descartar não desfaz as ações.",
   })

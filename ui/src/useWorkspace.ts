@@ -43,6 +43,7 @@ import { useDoctorReport } from "./features/doctor/useDoctorReport"
 import { localizeNotice, t } from "./i18n"
 import { localResponseTimings } from "./localResponseTimings"
 import { useMachineParking } from "./machineIntents"
+import { clearNotifications } from "./notificationClearing"
 import { reconcileFailureNotifications } from "./sidebarAttention"
 import { getSidebarReadThreadIds } from "./sidebarThreads"
 import { getStorageScope } from "./storageScope"
@@ -2065,14 +2066,13 @@ export const useWorkspace = (
 
   const dismissAllNotifications = useCallback(
     async (ids: number[]) => {
-      const result = await api.request("POST /notifications/read", { ids })
-      setData((current) =>
-        Object.assign({}, current, {
-          notifications: result.notifications.reduce(upsertNotification, current.notifications),
-        }),
-      )
-
-      return result
+      return clearNotifications(api, ids, currentData.current.notifications, (notifications) => {
+        setData((current) =>
+          Object.assign({}, current, {
+            notifications: notifications.reduce(upsertNotification, current.notifications),
+          }),
+        )
+      })
     },
     [api],
   )

@@ -23,6 +23,7 @@ import {
 import type { RecoveryAction } from "../errorRecovery"
 import { dictionaries, localizeNotice, type TranslationKey, t } from "../i18n"
 import { markdownSummary } from "../markdownSummary"
+import { isRecoveryNotification } from "../notificationClearing"
 // r8-sidebar: shared attention projection; resolved and superseded failures stay in history.
 import { isFailureNotice, isReadyReviewNotice, pendingNotifications } from "../sidebarAttention"
 import { useAvatarBot } from "./AvatarRuntime"
@@ -324,6 +325,7 @@ export const NotificationBell = ({
   const [clearing, setClearing] = useState(false)
   const [clearError, setClearError] = useState(false)
   const [skippedCount, setSkippedCount] = useState(0)
+  const [skippedRecoveryCount, setSkippedRecoveryCount] = useState(0)
   useEffect(() => {
     onOpenChange?.(open)
     return () => onOpenChange?.(false)
@@ -373,7 +375,9 @@ export const NotificationBell = ({
     setClearError(false)
     try {
       const result = await actions.dismissAll(visible.map((item) => item.id))
+      const recoveryIds = new Set(visible.filter(isRecoveryNotification).map((item) => item.id))
       setSkippedCount(result?.skipped ?? 0)
+      setSkippedRecoveryCount(result?.skippedIds?.filter((id) => recoveryIds.has(id)).length ?? 0)
     } catch {
       setClearError(true)
     } finally {
@@ -482,9 +486,14 @@ export const NotificationBell = ({
             )}
             {skippedCount > 0 && (
               <p role="status">
-                {t("Notificações que ainda precisam de atenção: {count}.", {
-                  count: skippedCount,
-                })}
+                {skippedRecoveryCount > 0 &&
+                  t("Notificações que precisam de revisão em Tarefas interrompidas: {count}.", {
+                    count: skippedRecoveryCount,
+                  })}{" "}
+                {skippedCount > skippedRecoveryCount &&
+                  t("Notificações que ainda precisam de atenção: {count}.", {
+                    count: skippedCount - skippedRecoveryCount,
+                  })}
               </p>
             )}
             {clearError && (
