@@ -35,6 +35,18 @@ for (const { width, theme } of widths.flatMap((width) => ["light", "dark"].map((
       await page.screenshot({ path: screenshot, animations: "disabled" })
       await info.attach(`${screen}-${width}`, { path: screenshot, contentType: "image/png" })
 
+      if (screen === "new-bot") {
+        const undecided = root.getByRole("radio", { name: "Ainda não sei", exact: true })
+        const accent = await undecided.evaluate((radio) => getComputedStyle(radio).accentColor)
+
+        await expect(undecided).toBeChecked()
+        await expect(undecided.locator("..")).not.toHaveCSS("border-top-color", accent)
+      }
+      if (screen === "search") {
+        await expect(root.getByText("Novo canal", { exact: true })).toBeVisible()
+        await expect(root.getByText("Novo grupo", { exact: true })).toHaveCount(0)
+      }
+
       if (["bots-sidebar", "bot-row-click", "work-sidebar", "phone-drawer"].includes(screen)) {
         for (const row of await root.locator(".sidebar-row").all()) {
           const rowControls = row.locator(

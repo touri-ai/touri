@@ -822,3 +822,7 @@
 .bot-project-settings .model-picker-trigger {
   font-size: var(--fs-caption);
 }
+.bot-project-settings .composer-project-chip {
+  max-width: 100%;
+  min-height: var(--touch-target-size);
+}

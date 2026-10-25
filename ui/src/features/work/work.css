@@ -1,3 +1,21 @@
+.work-screen > .screen-content[hidden] {
+  display: none;
+}
+.work-screen .screen-content > p.screen-card {
+  padding: var(--screen-card-padding);
+}
+.work-sections {
+  display: flex;
+  gap: var(--space-8);
+}
+.work-sections button {
+  min-height: var(--touch-target-size);
+}
+.work-sections button[aria-pressed="true"] {
+  background: var(--surface-control);
+  border-color: var(--link);
+  color: var(--text);
+}
 .work-columns {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

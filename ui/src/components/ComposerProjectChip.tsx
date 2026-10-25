@@ -94,7 +94,7 @@ export const ComposerProjectChip = ({
       <button
         ref={trigger}
         type="button"
-        className="composer-model composer-project-chip"
+        className="outline-button composer-model composer-project-chip"
         aria-label={t("Project selection label", { name: label })}
         aria-haspopup="menu"
         aria-expanded={open && !active}

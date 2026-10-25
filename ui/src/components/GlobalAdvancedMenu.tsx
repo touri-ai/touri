@@ -11,7 +11,7 @@ type GlobalAdvancedMenuProps = {
   onProject: () => void
   onDoctor: () => void
   onImport: () => void
-  onSettings?: ((section: "work" | "api-models") => void) | undefined
+  onSettings?: ((section: "api-models") => void) | undefined
 }
 
 export const GlobalAdvancedMenu = ({
@@ -66,19 +66,14 @@ export const GlobalAdvancedMenu = ({
       </button>
       {open && (
         <nav id="sidebar-advanced-pages" className="sidebar-advanced-pages" aria-label={t("Advanced pages")}>
-          <Disclosure summary={t("Work")}>
-            <button
-              type="button"
-              className="sidebar-nav-item"
-              onClick={() => launch(() => onPage("work"))}
-              aria-current={page === "work" ? "page" : undefined}
-            >
-              {t("Work")}
-            </button>
-            <button type="button" className="sidebar-nav-item" onClick={() => launch(() => onSettings?.("work"))}>
-              {t("People")}
-            </button>
-          </Disclosure>
+          <button
+            type="button"
+            className="sidebar-nav-item"
+            onClick={() => launch(() => onPage("work"))}
+            aria-current={page === "work" ? "page" : undefined}
+          >
+            {t("Work")}
+          </button>
           <Disclosure summary={t("Ferramentas")}>
             <button
               type="button"

@@ -2,6 +2,24 @@ import { expect, test } from "@playwright/test"
 
 test.use({ reducedMotion: "reduce" })
 
+test("pending approval stays visible at the phone navigation breakpoint", async ({ page }, info) => {
+  await page.setViewportSize({ width: 610, height: 844 })
+  await page.goto("/test/e2e/approval-notice-harness.html")
+  await expect(page.getByRole("button", { name: "Abrir menu", exact: true })).toBeVisible()
+  await expect(page.locator("form.composer textarea")).toBeVisible()
+  const path = process.env.TOURI_E2E_EVIDENCE_DIR
+    ? `${process.env.TOURI_E2E_EVIDENCE_DIR}/approval-reminder-610.png`
+    : info.outputPath("approval-reminder-610.png")
+  await page.screenshot({ path, animations: "disabled" })
+  await info.attach("approval reminder at 610px", { path, contentType: "image/png" })
+
+  await expect(page.locator(".approval-notice")).toBeVisible()
+  await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+
+  await expect(page.locator(".approval-notice")).toBeHidden()
+  await expect(page.locator(".sidebar-needs-you")).toBeVisible()
+})
+
 for (const width of [1000, 760]) {
   test(`central approval reminder leaves header controls clickable at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 900 })

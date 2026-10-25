@@ -880,7 +880,7 @@ const AppContent = ({ kernel }: AppProps) => {
     if (command.kind === "action") {
       if (command.action === "new-group") {
         setEditingGroup(null)
-        setGroupModalChannelMode(sidebarMode === "work")
+        setGroupModalChannelMode(true)
       }
       if (command.action === "new-thread") {
         setRoute({ section: "bots", screen: "chat" })
@@ -1349,6 +1349,7 @@ const AppContent = ({ kernel }: AppProps) => {
                 />
               ) : section === "advanced" && advancedPage === "work" ? (
                 <WorkScreen
+                  api={api}
                   runs={data.workRuns}
                   onStop={(id) => actions.cancelRun(id, "turn")}
                   bots={data.bots}

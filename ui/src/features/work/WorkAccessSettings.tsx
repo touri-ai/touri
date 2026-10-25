@@ -1,10 +1,12 @@
 import type { ApiRoutes, BotGroup } from "@touri/contracts"
 import { useEffect, useState } from "react"
 import type { UiApi } from "../../api/client"
+import { Disclosure } from "../../components/Disclosure"
 import { SettingsGroup } from "../../components/SettingsLayout"
 import { userFacingError } from "../../errors"
 import { t } from "../../i18n"
 import { InvitePersonDialog } from "../people/InvitePersonDialog"
+import "../../components/settings.css"
 import "./work-access-settings.css"
 
 type Session = ApiRoutes["GET /session"]["res"]
@@ -61,7 +63,7 @@ const getReachabilityHint = (reachability: Reachability): string => {
 
 const getRoleLabel = (role: Person["role"]): string => t(role === "admin" ? "Role admin" : "Role member")
 
-export const WorkAccessSettings = ({ api }: { api: UiApi | undefined }) => {
+export const WorkAccessSettings = ({ api, embedded = false }: { api: UiApi | undefined; embedded?: boolean }) => {
   const [inviting, setInviting] = useState(false)
   const [channels, setChannels] = useState<BotGroup[]>([])
   const [session, setSession] = useState<Session | null>(null)
@@ -328,8 +330,137 @@ export const WorkAccessSettings = ({ api }: { api: UiApi | undefined }) => {
         </p>
       )}
 
-      {isAdmin && (
+      {session.person.role === "admin" && api && (
         <>
+          <button type="button" className="brand-button" onClick={() => setInviting(true)}>
+            {t("Convidar pessoa")}
+          </button>
+          {inviting && (
+            <InvitePersonDialog
+              channels={channels}
+              request={api.request}
+              onClose={() => {
+                setInviting(false)
+                void refreshPeople()
+              }}
+            />
+          )}
+        </>
+      )}
+      <SettingsGroup title={t("People and devices")}>
+        <div className="work-access-people">
+          <button
+            className="button button-quiet"
+            type="button"
+            onClick={() => void createPairingCode()}
+            disabled={busy !== null}
+          >
+            {busy === "pairing" ? t("Creating pairing code…") : t("Pair new device")}
+          </button>
+          {pairingCode && (
+            <p className="work-access-code" role="status">
+              {pairingCode}
+            </p>
+          )}
+          {isAdmin && (
+            <>
+              {people.length === 0 && <p>{t("No people yet")}</p>}
+              {people.map((person) => (
+                <article className="work-access-person" key={person.id}>
+                  <div className="work-access-person-heading">
+                    <div>
+                      <strong>{person.name}</strong>
+                      {person.email && <span>{person.email}</span>}
+                    </div>
+                    <span>{getRoleLabel(person.role)}</span>
+                  </div>
+                  <ul aria-label={t("Devices for {name}", { name: person.name })}>
+                    {person.devices.map((device) => (
+                      <li key={device.id}>
+                        <span>{device.name}</span>
+                        <time
+                          dateTime={device.lastSeenAt === null ? undefined : new Date(device.lastSeenAt).toISOString()}
+                        >
+                          {device.lastSeenAt === null
+                            ? t("Device not seen yet")
+                            : t("Last seen {time}", { time: new Date(device.lastSeenAt).toLocaleString() })}
+                        </time>
+                      </li>
+                    ))}
+                  </ul>
+                  {person.id !== session.person.id && (
+                    <button
+                      className="button button-quiet"
+                      type="button"
+                      onClick={() => void removePerson(person)}
+                      disabled={busy !== null}
+                    >
+                      {t("Remove person")}
+                    </button>
+                  )}
+                </article>
+              ))}
+            </>
+          )}
+        </div>
+      </SettingsGroup>
+
+      {isAdmin && (
+        <SettingsGroup title={t("Pending invites")}>
+          <div className="work-access-invites">
+            {invites.filter((invite) => invite.status === "pending").length === 0 && <p>{t("No pending invites")}</p>}
+            {invites
+              .filter((invite) => invite.status === "pending")
+              .map((invite) => (
+                <article className="work-access-invite" key={invite.id}>
+                  <div>
+                    <strong>{invite.name}</strong>
+                    <span>{invite.email}</span>
+                  </div>
+                  <time dateTime={new Date(invite.expiresAt).toISOString()}>
+                    {t("Invite expires {date}", { date: new Date(invite.expiresAt).toLocaleString() })}
+                  </time>
+                  <div className="work-access-actions">
+                    <button
+                      type="button"
+                      className="button button-quiet"
+                      onClick={() => void resendInvite(invite)}
+                      disabled={busy !== null}
+                    >
+                      {busy === `resend-${invite.id}` ? t("Resending invite…") : t("Resend invite")}
+                    </button>
+                    <button
+                      type="button"
+                      className="button button-quiet"
+                      onClick={() => void copyInviteLink(invite.id)}
+                      disabled={busy !== null}
+                    >
+                      {busy === `copy-${invite.id}` ? t("Copying invite link…") : t("Copy invite link")}
+                    </button>
+                    <button
+                      type="button"
+                      className="button button-quiet"
+                      onClick={() => void revokeInvite(invite.id)}
+                      disabled={busy !== null}
+                    >
+                      {t("Revoke invite")}
+                    </button>
+                  </div>
+                  {copyLink && copyLinkInviteId === invite.id && (
+                    <input
+                      aria-label={t("Invite link ready to copy")}
+                      readOnly
+                      value={copyLink}
+                      onFocus={(event) => event.currentTarget.select()}
+                    />
+                  )}
+                </article>
+              ))}
+          </div>
+        </SettingsGroup>
+      )}
+      {isAdmin && (
+        <Disclosure summary={t("People connection settings")} defaultOpen={!embedded}>
           <SettingsGroup title={t("Email delivery")}>
             <form className="work-access-form" onSubmit={(event) => void saveEmail(event)}>
               <label>
@@ -503,137 +634,7 @@ export const WorkAccessSettings = ({ api }: { api: UiApi | undefined }) => {
               </button>
             </form>
           </SettingsGroup>
-        </>
-      )}
-
-      {session.person.role === "admin" && api && (
-        <>
-          <button type="button" className="brand-button" onClick={() => setInviting(true)}>
-            {t("Convidar pessoa")}
-          </button>
-          {inviting && (
-            <InvitePersonDialog
-              channels={channels}
-              request={api.request}
-              onClose={() => {
-                setInviting(false)
-                void refreshPeople()
-              }}
-            />
-          )}
-        </>
-      )}
-      <SettingsGroup title={t("People and devices")}>
-        <div className="work-access-people">
-          <button
-            className="button button-quiet"
-            type="button"
-            onClick={() => void createPairingCode()}
-            disabled={busy !== null}
-          >
-            {busy === "pairing" ? t("Creating pairing code…") : t("Pair new device")}
-          </button>
-          {pairingCode && (
-            <p className="work-access-code" role="status">
-              {pairingCode}
-            </p>
-          )}
-          {isAdmin && (
-            <>
-              {people.length === 0 && <p>{t("No people yet")}</p>}
-              {people.map((person) => (
-                <article className="work-access-person" key={person.id}>
-                  <div className="work-access-person-heading">
-                    <div>
-                      <strong>{person.name}</strong>
-                      {person.email && <span>{person.email}</span>}
-                    </div>
-                    <span>{getRoleLabel(person.role)}</span>
-                  </div>
-                  <ul aria-label={t("Devices for {name}", { name: person.name })}>
-                    {person.devices.map((device) => (
-                      <li key={device.id}>
-                        <span>{device.name}</span>
-                        <time
-                          dateTime={device.lastSeenAt === null ? undefined : new Date(device.lastSeenAt).toISOString()}
-                        >
-                          {device.lastSeenAt === null
-                            ? t("Device not seen yet")
-                            : t("Last seen {time}", { time: new Date(device.lastSeenAt).toLocaleString() })}
-                        </time>
-                      </li>
-                    ))}
-                  </ul>
-                  {person.id !== session.person.id && (
-                    <button
-                      className="button button-quiet"
-                      type="button"
-                      onClick={() => void removePerson(person)}
-                      disabled={busy !== null}
-                    >
-                      {t("Remove person")}
-                    </button>
-                  )}
-                </article>
-              ))}
-            </>
-          )}
-        </div>
-      </SettingsGroup>
-
-      {isAdmin && (
-        <SettingsGroup title={t("Pending invites")}>
-          <div className="work-access-invites">
-            {invites.filter((invite) => invite.status === "pending").length === 0 && <p>{t("No pending invites")}</p>}
-            {invites
-              .filter((invite) => invite.status === "pending")
-              .map((invite) => (
-                <article className="work-access-invite" key={invite.id}>
-                  <div>
-                    <strong>{invite.name}</strong>
-                    <span>{invite.email}</span>
-                  </div>
-                  <time dateTime={new Date(invite.expiresAt).toISOString()}>
-                    {t("Invite expires {date}", { date: new Date(invite.expiresAt).toLocaleString() })}
-                  </time>
-                  <div className="work-access-actions">
-                    <button
-                      type="button"
-                      className="button button-quiet"
-                      onClick={() => void resendInvite(invite)}
-                      disabled={busy !== null}
-                    >
-                      {busy === `resend-${invite.id}` ? t("Resending invite…") : t("Resend invite")}
-                    </button>
-                    <button
-                      type="button"
-                      className="button button-quiet"
-                      onClick={() => void copyInviteLink(invite.id)}
-                      disabled={busy !== null}
-                    >
-                      {busy === `copy-${invite.id}` ? t("Copying invite link…") : t("Copy invite link")}
-                    </button>
-                    <button
-                      type="button"
-                      className="button button-quiet"
-                      onClick={() => void revokeInvite(invite.id)}
-                      disabled={busy !== null}
-                    >
-                      {t("Revoke invite")}
-                    </button>
-                  </div>
-                  {copyLink && copyLinkInviteId === invite.id && (
-                    <input
-                      aria-label={t("Invite link ready to copy")}
-                      readOnly
-                      value={copyLink}
-                      onFocus={(event) => event.currentTarget.select()}
-                    />
-                  )}
-                </article>
-              ))}
-          </div>
-        </SettingsGroup>
+        </Disclosure>
       )}
     </div>
   )

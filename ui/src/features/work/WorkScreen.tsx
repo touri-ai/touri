@@ -1,5 +1,6 @@
 import type { AppSettings, Bot, Run, Thread } from "@touri/contracts"
-import { type FormEvent, useEffect, useState } from "react"
+import { type FormEvent, lazy, Suspense, useEffect, useState } from "react"
+import type { UiApi } from "../../api/client"
 import { BotAvatar } from "../../components/BotAvatar"
 import { Button } from "../../components/Button"
 import { ScreenHeader } from "../../components/ScreenPrimitives"
@@ -10,7 +11,12 @@ import { getWorkStateLabel } from "./presentation"
 import "../../components/screens.css"
 import "./work.css"
 
+const WorkAccessSettings = lazy(() =>
+  import("./WorkAccessSettings").then((module) => ({ default: module.WorkAccessSettings })),
+)
+
 export const WorkScreen = ({
+  api,
   runs,
   bots,
   threads,
@@ -18,6 +24,7 @@ export const WorkScreen = ({
   onThread,
   onStop,
 }: {
+  api?: UiApi | undefined
   runs: Run[]
   bots: Bot[]
   threads: Thread[]
@@ -25,6 +32,8 @@ export const WorkScreen = ({
   onThread: (id: string) => void
   onStop?: (id: string) => Promise<void>
 }) => {
+  const [section, setSection] = useState<"tasks" | "people">("tasks")
+  const [hasVisitedPeople, setHasVisitedPeople] = useState(false)
   const [now, setNow] = useState(Date.now)
   const [stoppingRunId, setStoppingRunId] = useState<string | null>(null)
   const [stopFailed, setStopFailed] = useState(false)
@@ -42,10 +51,10 @@ export const WorkScreen = ({
     }
   }
   useEffect(() => {
-    if (runs.length === 0) return
+    if (runs.length === 0 || section !== "tasks") return
     const timer = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(timer)
-  }, [runs.length])
+  }, [runs.length, section])
   const running = runs.filter((run) => run.status === "starting" || run.status === "running")
   const ongoing = getOngoingWorkRuns(running)
   // Sort a fresh filtered array; the workspace snapshot stays untouched.
@@ -58,8 +67,40 @@ export const WorkScreen = ({
 
   return (
     <section className="workspace-screen r8-screen work-screen" aria-labelledby="work-title">
-      <ScreenHeader id="work-title" title={t("Work")} description={t("Work description")} />
-      <div className="screen-content">
+      <ScreenHeader
+        id="work-title"
+        title={t("Work")}
+        description={t("Work description")}
+        actions={
+          api && (
+            <nav className="work-sections" aria-label={t("Work sections")}>
+              <button
+                type="button"
+                className="outline-button"
+                aria-pressed={section === "tasks"}
+                onClick={() => {
+                  setNow(Date.now())
+                  setSection("tasks")
+                }}
+              >
+                {t("Work tasks")}
+              </button>
+              <button
+                type="button"
+                className="outline-button"
+                aria-pressed={section === "people"}
+                onClick={() => {
+                  setHasVisitedPeople(true)
+                  setSection("people")
+                }}
+              >
+                {t("People")}
+              </button>
+            </nav>
+          )
+        }
+      />
+      <div className="screen-content" hidden={section !== "tasks"}>
         {stopFailed && <p role="alert">{t("Work stop error")}</p>}
         {loading && <p role="status">{t("Work loading")}</p>}
         {!loading && runs.length === 0 && <p className="screen-card">{t("Work empty")}</p>}
@@ -134,6 +175,13 @@ export const WorkScreen = ({
           ))}
         </div>
       </div>
+      {hasVisitedPeople && (
+        <div className="screen-content" hidden={section !== "people"}>
+          <Suspense fallback={<p role="status">{t("Loading")}</p>}>
+            <WorkAccessSettings api={api} embedded />
+          </Suspense>
+        </div>
+      )}
     </section>
   )
 }

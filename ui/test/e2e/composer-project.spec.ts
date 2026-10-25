@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test"
 import { showBotDetails } from "./home-navigation"
 
-for (const width of [420, 720]) {
+for (const width of [390, 420, 720, 1440]) {
   test(`project picker stays inside a ${width}px window and unlinks by keyboard`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     await page.emulateMedia({ reducedMotion: "reduce" })
@@ -10,6 +10,11 @@ for (const width of [420, 720]) {
     const composer = page.getByRole("complementary", { name: "Painel de mark" })
     const chip = composer.getByRole("button", { name: /^Projeto do bot:/ })
     await expect(chip).toBeVisible()
+    if (process.env.TOURI_E2E_EVIDENCE_DIR)
+      await chip.screenshot({ path: `${process.env.TOURI_E2E_EVIDENCE_DIR}/project-control-${width}.png` })
+    const control = await chip.boundingBox()
+    expect(control?.height).toBeGreaterThanOrEqual(44)
+    await expect(chip).toHaveCSS("border-top-style", "solid")
     await chip.focus()
     await page.keyboard.press("Enter")
     const picker = page.locator(".composer-project-picker")

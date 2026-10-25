@@ -125,7 +125,7 @@ test("an owner invites a person who joins in a second browser context", async ({
   await expect(inviteDialog.getByRole("button", { name: "Copiar link", exact: true })).toBeVisible()
   await expect(inviteDialog.getByRole("button", { name: "Revogar", exact: true })).toBeVisible()
   const afterPath = getImagePath(testInfo, "people-invite-after.png")
-  await page.screenshot({ path: afterPath })
+  await page.screenshot({ path: afterPath, mask: [inviteDialog.locator("input[readonly]")] })
   await testInfo.attach("people-invite-after", { path: afterPath, contentType: "image/png" })
 
   const memberPage = await currentMemberContext.newPage()
@@ -139,7 +139,7 @@ test("an owner invites a person who joins in a second browser context", async ({
   await memberPage.getByLabel("Nome deste aparelho", { exact: true }).fill("Celular da Ana")
 
   const joinPath = getImagePath(testInfo, "people-invite-join.png")
-  await memberPage.screenshot({ path: joinPath })
+  await memberPage.screenshot({ path: joinPath, mask: [memberPage.getByLabel("Código do convite", { exact: true })] })
   await testInfo.attach("people-invite-join", { path: joinPath, contentType: "image/png" })
   await memberPage.getByRole("button", { name: "Entrar", exact: true }).click()
   await memberPage.waitForURL(`${new URL(currentServer.serverUrl).origin}/`)

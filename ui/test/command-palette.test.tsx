@@ -60,13 +60,26 @@ it("normalizes accents and case and fuzzy-matches labels", () => {
   expect(settings.some((entry) => entry.label === "Nuvem")).toBe(false)
 })
 
+it.each([
+  { locale: "pt-BR" as const, query: "novo canal", label: "Novo canal" },
+  { locale: "en" as const, query: "new channel", label: "New channel" },
+])("finds channel creation by its visible label in $locale", ({ locale, query, label }) => {
+  const index = buildPaletteIndex({ bots: [], threads: [], settings: [], hasBot: true, locale })
+
+  const results = searchPalette({ index, query, messages: [], recentIds: [] })
+
+  expect(results.flatMap((group) => group.items)).toContainEqual(
+    expect.objectContaining({ label, command: { kind: "action", action: "new-group" } }),
+  )
+})
+
 it("⌘K and Ctrl+K open, ⌘K toggles closed, and plain typing in the composer never opens it", async () => {
   const { composer } = await start()
   fireEvent.keyDown(composer, { key: "k" })
   expect(screen.queryByRole("dialog", { name: DIALOG })).toBeNull()
   const input = await openPalette()
   expect(screen.getByRole("dialog", { name: DIALOG })).toBeVisible()
-  expect(input).toHaveFocus()
+  await waitFor(() => expect(input).toHaveFocus())
   expect(input).toHaveAttribute("aria-expanded", "true")
   fireEvent.keyDown(input, { key: "k", metaKey: true })
   await closed()
@@ -172,7 +185,7 @@ it("navigates to pages and runs creation actions", async () => {
   fireEvent.keyDown(await search("integracoes"), { key: "Enter" })
   expect(await screen.findByRole("heading", { name: "Integrações" })).toBeVisible()
   fireEvent.keyDown(await search("novo grupo"), { key: "Enter" })
-  expect(await screen.findByRole("dialog", { name: /grupo/i })).toBeVisible()
+  expect(await screen.findByRole("dialog", { name: "Criar canal", exact: true })).toBeVisible()
 })
 
 it("never approves: approval cards are not palette results and Enter in the palette leaves them pending", async () => {

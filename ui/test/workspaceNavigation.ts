@@ -72,8 +72,6 @@ export const openGlobalPage = (name: string): void => {
     MCP: "Ferramentas",
     Integrações: "Ferramentas",
     "Modelos por API": "Ferramentas",
-    Trabalho: "Trabalho",
-    Pessoas: "Trabalho",
     Desempenho: "Diagnóstico",
     "Reportar problema": "Diagnóstico",
   }

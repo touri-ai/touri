@@ -1781,6 +1781,14 @@ Rules for every WP:
 
 #### UI navigation and pending requests
 
+Work opens on the first click on its destination in the main Advanced navigation; it never expands
+a submenu. People lives inside Work, alongside Tasks, and is absent from the top-level navigation.
+People loads on first selection and stays mounted when returning to Tasks, preserving drafts and
+avoiding repeated access-setting requests. Both section controls remain visible on desktop and phone.
+People and invitations come before connection setup, which is collapsed inside Work. Search creates
+a channel in either sidebar mode. Moved project controls retain a minimum 44-pixel target, and the
+approval reminder follows the sidebar's 620-pixel phone breakpoint.
+
 Clicking a bot opens its conversation; conversation management lives in its menu. Model and project controls live behind the bot panel’s Adjust disclosure, while
 the composer keeps attachment, text, voice and send controls. The panel shows the job once and a
 plain access summary before Adjust is opened. Secondary routine and approval actions keep their

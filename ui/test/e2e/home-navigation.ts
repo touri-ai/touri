@@ -28,14 +28,21 @@ export const showBotDetails = async (page: Page): Promise<void> => {
 }
 
 export const openGlobalPage = async (page: Page, name: string): Promise<void> => {
+  if (name === "Pessoas") {
+    await openGlobalPage(page, "Trabalho")
+    await page
+      .getByRole("navigation", { name: "Seções de Trabalho" })
+      .getByRole("button", { name, exact: true })
+      .click()
+    return
+  }
+
   await page.locator("button.sidebar-connect[aria-controls='sidebar-advanced-pages']").click()
   const menu = page.getByRole("navigation", { name: "Opções avançadas" })
   const groupByPage: Record<string, string> = {
     MCP: "Ferramentas",
     Integrações: "Ferramentas",
     "Modelos por API": "Ferramentas",
-    Trabalho: "Trabalho",
-    Pessoas: "Trabalho",
     Desempenho: "Diagnóstico",
     "Reportar problema": "Diagnóstico",
   }
