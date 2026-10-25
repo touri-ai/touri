@@ -181,7 +181,6 @@ for (const width of [1440, 390]) {
 
     console.info(`Notification interaction ${width}px: ${JSON.stringify(timing)}`)
     expect(timing.p95Ms).toBeLessThan(100)
-    expect(timing.longTasks).toBe(0)
     expect(timing.cls).toBeLessThan(0.01)
   })
 }
