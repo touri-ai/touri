@@ -13,9 +13,11 @@ import type {
   MessagePart,
   Provider,
   ReasoningEffort,
+  RouteHandler,
   RouteModule,
   RouteResponse,
   SendMessageInput,
+  ServiceMap,
   StoreApi,
   Thread,
   ThreadKind,
@@ -52,7 +54,7 @@ import { touriVersion } from "../version"
 import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemory } from "../vm/resources"
 import { getAttachmentDownload } from "./attachment-download"
 import { cleanupBotHome, updateBotHome, writeBotHome } from "./bot-home"
-import { type BotMetadataStatement, createBotMetadataWriter } from "./bot-metadata"
+import { type BotMetadataStatement, createBotEditQueue, createBotMetadataWriter } from "./bot-metadata"
 import { getHistoryPage, getHistoryQuery } from "./history-query"
 import { getIntegrationSender } from "./integration-sender"
 import { getMessageFromRow as asMessage } from "./message-row"
@@ -483,6 +485,16 @@ export const init = async (
   const threadTitleSearch = createThreadTitleSearch(database.filename)
   const reader = createStoreReader(database.filename)
   const metadataWriter = createBotMetadataWriter(database.filename)
+  const editQueue = createBotEditQueue()
+  const queueBotEdits =
+    (handler: RouteHandler): RouteHandler =>
+    (request) => {
+      const instructions = requestRecord(request.body)?.instructions
+      const instructionBytes = typeof instructions === "string" ? instructions.length * 2 : 0
+      return editQueue
+        .run({ botId: request.params.id ?? "", instructionBytes, signal: request.signal }, () => handler(request))
+        .catch(() => errorResponse(409, "BOT_EDIT_FAILED", "Não foi possível salvar as instruções. Tente novamente."))
+    }
   const botColumns = (database.query("PRAGMA table_info(bots)").all() as Array<{ name: string }>)
     .filter(({ name }) => name !== "instructions")
     .map(({ name }) => `"${name}"`)
@@ -525,6 +537,7 @@ export const init = async (
     dispose: () => {
       threadTitleSearch.dispose()
       reader.dispose()
+      editQueue.dispose()
       metadataWriter.dispose()
     },
   })
@@ -1382,7 +1395,7 @@ export const init = async (
     commit: async () => onCommit(await commitBotMetadataEdit({ botId, record, mustStopVm, signal })),
   })
 
-  kernel.services.provide("bots.rename", async ({ botId, name: value, signal = AbortSignal.timeout(15_000) }) => {
+  const renameBot: ServiceMap["bots.rename"] = async ({ botId, name: value, signal = AbortSignal.timeout(15_000) }) => {
     const row = await getBotMetadataRow(botId, signal)
     const bot = row ? asBot(row) : null
     if (!bot) return { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
@@ -1413,47 +1426,65 @@ export const init = async (
       return { success: true, bot: updated }
     }
     throw new Error("Bot configuration changed during rename")
-  })
+  }
 
   // MCP setup changes share PATCH's validation, storage and bot.updated event.
   // They must not stop a VM while its current turn is waiting for the tool.
-  kernel.services.provide(
-    "bots.configureAccess",
-    async ({ botId, patch, runId, signal = AbortSignal.timeout(15_000) }) => {
-      const isAdminRun = kernel.services.use("work.isAdminRun")
-      if (isAdminRun && (!runId || !isAdminRun(runId)))
-        return {
-          success: false,
-          errorCode: "DENIED",
-          error: "Somente administradores podem alterar permissões de bots.",
-        }
-      const row = await getBotMetadataRow(botId, signal)
-      const bot = row ? asBot(row) : null
-      if (!bot) return { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
-      const parsed = botFromBody({ body: { ...patch, name: bot.name, provider: bot.provider }, existing: bot })
-      if (!parsed.input || parsed.error)
-        return { success: false, errorCode: "INVALID_ARGS", error: parsed.error ?? "Configuração inválida." }
-      const machine = database.query("SELECT project_id FROM bot_machines WHERE bot_id = ?").get(botId) as {
-        project_id: string | null
-      } | null
-      if (patch.projectId && machine?.project_id && patch.projectId !== machine.project_id)
-        return {
-          success: false,
-          errorCode: "MACHINE_PROJECT_CHANGE",
-          error: "Recrie a máquina do zero antes de trocar o projeto; o volume atual foi preservado",
-        }
-      const updated = await commitBotMetadataEdit({
-        botId,
-        record: Object.assign({}, patch),
-        mustStopVm: false,
-        signal,
-      })
-      kernel.publish({ type: "bot.updated", bot: updated })
-      return updated
-        ? { success: true, bot: updated }
-        : { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
-    },
-  )
+  const configureBotAccess: ServiceMap["bots.configureAccess"] = async ({
+    botId,
+    patch,
+    runId,
+    signal = AbortSignal.timeout(15_000),
+  }) => {
+    const isAdminRun = kernel.services.use("work.isAdminRun")
+    if (isAdminRun && (!runId || !isAdminRun(runId)))
+      return {
+        success: false,
+        errorCode: "DENIED",
+        error: "Somente administradores podem alterar permissões de bots.",
+      }
+    const row = await getBotMetadataRow(botId, signal)
+    const bot = row ? asBot(row) : null
+    if (!bot) return { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
+    const parsed = botFromBody({
+      body: Object.assign({}, patch, { name: bot.name, provider: bot.provider }),
+      existing: bot,
+    })
+    if (!parsed.input || parsed.error)
+      return { success: false, errorCode: "INVALID_ARGS", error: parsed.error ?? "Configuração inválida." }
+    const machine = database.query("SELECT project_id FROM bot_machines WHERE bot_id = ?").get(botId) as {
+      project_id: string | null
+    } | null
+    if (patch.projectId && machine?.project_id && patch.projectId !== machine.project_id)
+      return {
+        success: false,
+        errorCode: "MACHINE_PROJECT_CHANGE",
+        error: "Recrie a máquina do zero antes de trocar o projeto; o volume atual foi preservado",
+      }
+    const updated = await commitBotMetadataEdit({
+      botId,
+      record: Object.assign({}, patch),
+      mustStopVm: false,
+      signal,
+    })
+    kernel.publish({ type: "bot.updated", bot: updated })
+    return updated
+      ? { success: true, bot: updated }
+      : { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
+  }
+
+  kernel.services.provide("bots.rename", (input) => {
+    const signal = input.signal ?? AbortSignal.timeout(15_000)
+    return editQueue.run({ botId: input.botId, instructionBytes: 0, signal }, () =>
+      renameBot(Object.assign({}, input, { signal })),
+    )
+  })
+  kernel.services.provide("bots.configureAccess", (input) => {
+    const signal = input.signal ?? AbortSignal.timeout(15_000)
+    return editQueue.run({ botId: input.botId, instructionBytes: 0, signal }, async () =>
+      configureBotAccess(Object.assign({}, input, { signal })),
+    )
+  })
 
   const saveAttachmentPerson = (attachmentId: string, personId: string | undefined, name: string): void => {
     if (!personId) return
@@ -1733,7 +1764,7 @@ export const init = async (
       {
         method: "PATCH",
         path: "/bots/:id",
-        handler: async ({ params, body, signal }) => {
+        handler: queueBotEdits(async ({ params, body, signal }) => {
           await refreshHostFolderAccess()
           await recovery.ensureBot(params.id ?? "")
           const row = await getBotMetadataRow(params.id ?? "", signal)
@@ -1791,7 +1822,7 @@ export const init = async (
           return updated
             ? jsonResponse(200, { bot: updated })
             : errorResponse(500, "STORE_ERROR", "Bot could not be updated")
-        },
+        }),
       },
       {
         method: "GET",

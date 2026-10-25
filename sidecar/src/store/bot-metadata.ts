@@ -126,6 +126,65 @@ export const createBotMetadataWriter = (filename: string, onReady?: (pid: number
   return { save, dispose }
 }
 
+/** Reserve request order before asynchronous validation, reads or filesystem preparation. */
+export const createBotEditQueue = ({ maxPending = 32, maxRetainedBytes = 64 * 1024 * 1024 } = {}) => {
+  // Admission counters and tails belong to this scheduler; cancellation keeps retained work accounted for.
+  const tails = new Map<string, Promise<void>>()
+  const shutdown = new AbortController()
+  let pending = 0
+  let retainedBytes = 0
+
+  const run = async <Value>(
+    {
+      botId,
+      instructionBytes,
+      signal,
+    }: {
+      botId: string
+      instructionBytes: number
+      signal: AbortSignal
+    },
+    action: () => Promise<Value>,
+  ): Promise<Value> => {
+    const combined = AbortSignal.any([signal, shutdown.signal])
+    combined.throwIfAborted()
+    if (pending >= maxPending || retainedBytes + instructionBytes > maxRetainedBytes)
+      throw new Error("Bot edit capacity exceeded")
+    pending += 1
+    retainedBytes += instructionBytes
+    let started = false
+    const previous = tails.get(botId) ?? Promise.resolve()
+    const result = previous.then(() => {
+      combined.throwIfAborted()
+      started = true
+      return action()
+    })
+    const tail = result
+      .then(
+        () => undefined,
+        () => undefined,
+      )
+      .finally(() => {
+        pending -= 1
+        retainedBytes -= instructionBytes
+        if (tails.get(botId) === tail) tails.delete(botId)
+      })
+    tails.set(botId, tail)
+    const cancelled = Promise.withResolvers<never>()
+    const cancel = (): void => {
+      if (!started) cancelled.reject(combined.reason)
+    }
+    combined.addEventListener("abort", cancel, { once: true })
+    try {
+      return await Promise.race([result, cancelled.promise])
+    } finally {
+      combined.removeEventListener("abort", cancel)
+    }
+  }
+
+  return { run, dispose: () => shutdown.abort(new Error("Bot edits closed")) }
+}
+
 const sendInstructions = async (stdin: Bun.FileSink, instructions: string, signal: AbortSignal): Promise<void> => {
   // Offsets are local framing state; escaped Unicode and surrogate pairs remain lossless.
   for (let offset = 0; offset < instructions.length; offset += 16_384) {

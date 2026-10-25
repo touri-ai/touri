@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { openDatabase } from "../../src/kernel/db"
 import { profileProviders } from "../../src/kernel/provider-profiles"
-import { type BotMetadataEdit, createBotMetadataWriter } from "../../src/store/bot-metadata"
+import { type BotMetadataEdit, createBotEditQueue, createBotMetadataWriter } from "../../src/store/bot-metadata"
 
 // Every fixture owns its helper and database until afterEach has released them.
 const cleanups = new Set<() => void | Promise<void>>()
@@ -113,4 +113,80 @@ test("a lost acknowledgement after COMMIT returns the atomically stored result",
   expect(f.database.query("SELECT instructions FROM bots WHERE id = ?").get("fixture")).toEqual({
     instructions: f.edit.instructions,
   })
+})
+
+test("complete same-bot edits start in arrival order before asynchronous preparation", async () => {
+  const edits = createBotEditQueue()
+  cleanups.add(edits.dispose)
+  const reached = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  cleanups.add(release.resolve)
+  const prepared = new Set<string>()
+  const saved = new Map<string, string>()
+  const firstText = "a".repeat(3 * 1024 * 1024)
+  const secondText = "b".repeat(3 * 1024 * 1024)
+  const signal = new AbortController().signal
+  const first = edits.run({ botId: "fixture", instructionBytes: firstText.length * 2, signal }, async () => {
+    prepared.add("first")
+    reached.resolve()
+    await release.promise
+    saved.set("fixture", firstText)
+  })
+  await reached.promise
+  const second = edits.run({ botId: "fixture", instructionBytes: secondText.length * 2, signal }, async () => {
+    prepared.add("second")
+    saved.set("fixture", secondText)
+  })
+
+  expect(prepared.has("second")).toBe(false)
+  release.resolve()
+  await Promise.all([first, second])
+
+  expect(Array.from(prepared)).toEqual(["first", "second"])
+  expect(saved.get("fixture")).toBe(secondText)
+})
+
+test("queued edit cancellation returns without starting preparation or blocking another bot", async () => {
+  const edits = createBotEditQueue()
+  cleanups.add(edits.dispose)
+  const release = Promise.withResolvers<void>()
+  cleanups.add(release.resolve)
+  const controller = new AbortController()
+  const prepared = new Set<string>()
+  const first = edits.run(
+    { botId: "fixture", instructionBytes: 0, signal: new AbortController().signal },
+    async () => release.promise,
+  )
+  const cancelled = edits.run({ botId: "fixture", instructionBytes: 0, signal: controller.signal }, async () => {
+    prepared.add("cancelled")
+  })
+  const failure = cancelled.catch((error: unknown) => error)
+
+  controller.abort(new Error("Synthetic cancellation"))
+  const error = await failure
+  await edits.run({ botId: "other", instructionBytes: 0, signal: new AbortController().signal }, async () => {
+    prepared.add("other")
+  })
+  release.resolve()
+  await first
+
+  expect(error).toBe(controller.signal.reason)
+  expect(Array.from(prepared)).toEqual(["other"])
+})
+
+test("admitted edits bound retained text and release their reservations after completion", async () => {
+  const edits = createBotEditQueue({ maxPending: 2, maxRetainedBytes: 8 })
+  cleanups.add(edits.dispose)
+  const release = Promise.withResolvers<void>()
+  cleanups.add(release.resolve)
+  const signal = new AbortController().signal
+  const first = edits.run({ botId: "fixture", instructionBytes: 6, signal }, async () => release.promise)
+
+  await expect(edits.run({ botId: "fixture", instructionBytes: 4, signal }, async () => {})).rejects.toThrow("capacity")
+  const second = edits.run({ botId: "fixture", instructionBytes: 2, signal }, async () => {})
+  await expect(edits.run({ botId: "other", instructionBytes: 0, signal }, async () => {})).rejects.toThrow("capacity")
+  release.resolve()
+  await Promise.all([first, second])
+
+  await expect(edits.run({ botId: "fixture", instructionBytes: 8, signal }, async () => "saved")).resolves.toBe("saved")
 })
