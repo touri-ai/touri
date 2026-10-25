@@ -197,6 +197,11 @@ scrolling the conversation. Keyboard, text input and paste events stay within th
 input reaches only the managed page and never becomes conversation text. This applies to desktop
 and phone layouts. Existing takeover authorization, input bounds and the release control remain in force.
 
+Browser activity cards reserve three subtitle lines so action updates do not move their controls
+on phones or desktops. Longer subtitles remain clamped within that space. The loaded takeover
+canvas exposes the same localized image role and accessible name as the fallback image, while
+handback and privacy controls remain visible and reachable.
+
 | Topic | Decision | Why (short) |
 |---|---|---|
 | Shell | Tauri v2, Rust core | Small, native, signed. Rust holds the TCC grants and Keychain access. |
@@ -1019,7 +1024,7 @@ echoed, and invalid requests do not create a group or conversation.
   - **"Open in agent browser"**: opens the same URL in a tab owned by the current bot, so the bot can inspect what the user sees
 - **Data store.** The preview uses its own persistent `WKWebsiteDataStore`, so the admin login survives restarts.
 - Native webviews draw above HTML, so the UI hides the preview while a modal is open (WP9 rule).
-- **`preview_open`** (agent tool): selects the port/process, emits `preview.available` and asks the UI to focus the Preview tab. It returns the URL.
+- **`preview_open`** (agent tool): selects an owned, running port/process, emits `preview.available` and asks the UI to focus the Preview tab. Success returns the selected URL only after event persistence and ordered subscriber delivery complete. Delivery has a finite deadline; a failed delivery cannot report success. Local-path validation and process ownership checks remain required.
 
 ### 4.5 Acceptance scenario: a multi-service repo (end-to-end, manual + scripted)
 1. Connect `~/code/my-app`. Add secrets the admin/server need (names from `.env.example`). Create bot "dev" (Codex, workspace-write).
@@ -1973,6 +1978,7 @@ Channel members retain their shared-reply frame until ordered message delivery a
 
 ## 14. Work image evidence
 
+- Attachment downloads read at most 15 MiB through the pinned, no-follow file worker under the attachment root, including imported records. Response MIME follows the raster signature in the first 12 bytes, never stored MIME metadata. Recognized rasters render inline; other bytes download as `application/octet-stream`. Both responses carry sandbox CSP, `nosniff` and `no-store`; missing, oversized or unsafe paths fail without exposing private paths.
 - Uploaded raster images, Markdown image references (including reference definitions) and workspace image paths appear as lazy thumbnails in the existing conversation. Code-formatted paths preserve spaces in filenames. Unavailable bare filenames remain text, without an automatic broken-image card or recovery controls; explicit image references retain their error feedback. Each gallery is a named group within its message, avoiding repeated navigation landmarks. Clicking a thumbnail opens the original in the existing image viewer; Escape closes it and returns focus. Ordinary attachments keep their download action. Captions, image controls and errors are available in Portuguese and English.
 - Uploaded images use authenticated attachment access independently of the selected bot and remain visible after history reload. Automatic channel notices preserve `attachmentIds`; the messages API also accepts `attachments` as an alias. Notices do not start a bot turn.
 - Workspace previews use the message author's bot, never an unrelated selected bot. Members need ownership of that bot to read workspace images; shared uploaded attachments retain conversation authorization. Preview reads require the bot workspace or an explicitly granted folder, even when the bot otherwise has unrestricted host access. Traversal, symlinks, non-raster files and images above 15 MiB are refused.

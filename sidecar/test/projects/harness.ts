@@ -100,7 +100,7 @@ const git = (cwd: string, args: Array<string>): void => {
   if (result.exitCode !== 0) throw new Error(new TextDecoder().decode(result.stderr))
 }
 
-export const createHarness = async (): Promise<Harness> => {
+export const createHarness = async ({ flushEvents }: Pick<Kernel, "flushEvents"> = {}): Promise<Harness> => {
   const release = await acquireHarness()
   const root = mkdtempSync(join(tmpdir(), "touri-wp5-"))
   const projectPath = join(root, "project")
@@ -142,6 +142,7 @@ export const createHarness = async (): Promise<Harness> => {
   const registrations = new Map<string, Registration>()
   const kernel: Kernel = {
     ...runtime.kernel,
+    flushEvents: flushEvents ?? runtime.kernel.flushEvents,
     registerTools: ({ tools }) => {
       for (const registration of tools) registrations.set(registration.name, registration)
       return { success: true, count: tools.length }

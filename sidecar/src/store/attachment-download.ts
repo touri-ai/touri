@@ -1,24 +1,17 @@
 import type { RouteResponse } from "@touri/contracts"
-import { getLocalImageAsync } from "../kernel/async-files"
+import { getAttachmentBytesAsync } from "../kernel/async-files"
 
-export const getAttachmentDownload = async (
-  attachment: { path: string; mime: string },
-  root: string,
-): Promise<RouteResponse> => {
-  if (!/^image\/(png|jpeg|webp|gif)$/.test(attachment.mime)) {
-    if (!(await Bun.file(attachment.path).exists())) return getMissingAttachment()
-
-    return { status: 200, file: attachment.path, mime: attachment.mime }
-  }
+export const getAttachmentDownload = async (attachment: { path: string }, root: string): Promise<RouteResponse> => {
   try {
-    const image = await getLocalImageAsync({ root, path: attachment.path })
+    const content = await getAttachmentBytesAsync({ root, path: attachment.path })
 
     return {
       status: 200,
-      mime: image.mime,
+      mime: content.mime,
+      disposition: content.mime === "application/octet-stream" ? "attachment" : "inline",
       stream: new ReadableStream<Uint8Array>({
         start(controller) {
-          controller.enqueue(image.bytes)
+          controller.enqueue(content.bytes)
           controller.close()
         },
       }),

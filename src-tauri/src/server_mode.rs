@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
-use std::sync::{Arc, Mutex, Once};
+use std::sync::{Arc, LazyLock, Mutex, Once};
 use std::time::{Duration, Instant};
 
 use axum::body::{to_bytes, Body};
@@ -231,10 +231,13 @@ async fn check_connection(client: &Client, url: &str, token: &str) -> Result<(),
     Ok(())
 }
 
+static SERVER_PROTOCOL: LazyLock<Value> = LazyLock::new(|| {
+    serde_json::from_str(include_str!("../../packages/contracts/protocol.json"))
+        .expect("bundled protocol metadata is valid JSON")
+});
+
 fn is_protocol_compatible(health: &Value) -> bool {
-    let protocol: Value =
-        serde_json::from_str(include_str!("../../packages/contracts/protocol.json"))
-            .expect("bundled protocol metadata is valid JSON");
+    let protocol = &*SERVER_PROTOCOL;
     if let Some(version) = health.get("protocolVersion") {
         return version.as_u64() == protocol["version"].as_u64();
     }
@@ -1342,16 +1345,23 @@ mod tests {
     #[test]
     fn wire_protocol_compatibility_is_independent_of_release_and_database_schema() {
         assert!(is_protocol_compatible(
-            &json!({"version":"99.0.0", "schemaVersion":999, "protocolVersion":1})
+            &json!({"version":"99.0.0", "schemaVersion":999, "protocolVersion":SERVER_PROTOCOL["version"]})
+        ));
+        assert!(!is_protocol_compatible(
+            &json!({"schemaVersion":46, "protocolVersion":SERVER_PROTOCOL["version"].as_u64().unwrap() - 1})
         ));
         assert!(is_protocol_compatible(&json!({"schemaVersion":46})));
         assert!(!is_protocol_compatible(&json!({"schemaVersion":47})));
         assert!(!is_protocol_compatible(
-            &json!({"schemaVersion":46, "protocolVersion":2})
+            &json!({"schemaVersion":46, "protocolVersion":get_incompatible_protocol_version()})
         ));
         assert!(!is_protocol_compatible(
             &json!({"schemaVersion":46, "protocolVersion":null})
         ));
+    }
+
+    fn get_incompatible_protocol_version() -> u64 {
+        SERVER_PROTOCOL["version"].as_u64().unwrap() + 1
     }
 
     #[derive(Default)]
@@ -1482,7 +1492,7 @@ mod tests {
             .unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         let fake = Arc::new(FakeServer {
-            protocol_version: Mutex::new(Some(1)),
+            protocol_version: Mutex::new(SERVER_PROTOCOL["version"].as_u64()),
             ..FakeServer::default()
         });
         let router = Router::new()
@@ -1647,7 +1657,7 @@ mod tests {
             .unwrap()
             .iter()
             .any(|(path, _)| path == "/api/v1/echo"));
-        *fake.protocol_version.lock().unwrap() = Some(1);
+        *fake.protocol_version.lock().unwrap() = SERVER_PROTOCOL["version"].as_u64();
         let compatible = client
             .post(format!("{}/api/v1/echo", endpoint.base_url))
             .bearer_auth(&endpoint.token)
@@ -1657,7 +1667,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(compatible.status(), StatusCode::OK);
-        *fake.protocol_version.lock().unwrap() = Some(2);
+        *fake.protocol_version.lock().unwrap() = Some(get_incompatible_protocol_version());
         let payload = client
             .post(format!("{}/api/v1/ws-ticket", endpoint.base_url))
             .bearer_auth(&endpoint.token)
@@ -1703,7 +1713,7 @@ mod tests {
             .unwrap();
         let fake = Arc::new(FakeServer {
             silent_socket: true,
-            protocol_version: Mutex::new(Some(1)),
+            protocol_version: Mutex::new(SERVER_PROTOCOL["version"].as_u64()),
             ..FakeServer::default()
         });
         let mode = ServerModeStatus {

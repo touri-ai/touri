@@ -1578,7 +1578,7 @@ export type RouteRequest = {
 export type RouteResponse =
   | { status: number; json: unknown }
   | { status: number; file: AbsolutePath; mime: string }
-  | { status: number; stream: ReadableStream<Uint8Array>; mime: string }
+  | { status: number; stream: ReadableStream<Uint8Array>; mime: string; disposition?: 'inline' | 'attachment' }
 
 export type RouteHandler = (req: RouteRequest) => Promise<RouteResponse>
 

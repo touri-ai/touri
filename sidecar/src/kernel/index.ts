@@ -529,6 +529,12 @@ export const createKernel = ({
             "Cache-Control": "no-store",
             "X-Accel-Buffering": "no",
             "X-Content-Type-Options": "nosniff",
+            ...(response.disposition
+              ? {
+                  "Content-Disposition": response.disposition,
+                  "Content-Security-Policy": "sandbox; default-src 'none'",
+                }
+              : {}),
             ...corsHeaders(request.headers.get("origin")),
           },
         })

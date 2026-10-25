@@ -434,9 +434,11 @@ export const createProjectTools = ({
       ...(typeof input?.process === "string" ? { processName: input.process } : {}),
       path: typeof input?.path === "string" ? input.path : "/",
     })
-    return opened.success
-      ? ok(opened.preview, "Preview disponível no touri. Abra o painel Preview para visualizar o aplicativo.")
-      : resultError(opened.errorCode, opened.error)
+    if (!opened.success) return resultError(opened.errorCode, opened.error)
+
+    await kernel.flushEvents?.()
+
+    return ok(opened.preview, "Preview disponível no touri. Abra o painel Preview para visualizar o aplicativo.")
   }
 
   return [

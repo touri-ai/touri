@@ -495,11 +495,13 @@ test("Doctor starts background compaction once; only explicit VACUUM shrinks all
   const scheduled = makeScheduledMaintenance(f, () => Bun.sleep(0), f.stages.run)
   f.runtime.kernel.services.provide("storage.maintenance", scheduled.maintenance)
   try {
-    insert(f, "old", [tool("x".repeat(500_000))])
+    // Legacy payloads must outweigh the current schema footprint for the reclamation ratio.
+    const legacyOutput = "x".repeat(2_000_000)
+    insert(f, "old", [tool(legacyOutput)])
     // Represent an existing schema-7 snapshot/event payload, before offloading.
     f.database
       .query("UPDATE messages SET parts_json = ?, updated_at = 1 WHERE id = 'old'")
-      .run(JSON.stringify([tool("x".repeat(500_000))]))
+      .run(JSON.stringify([tool(legacyOutput)]))
     f.runtime.kernel.publish({ type: "transcript.resync" })
     f.database.exec("PRAGMA wal_checkpoint(TRUNCATE)")
     const sizeBefore = statSync(join(f.root, "touri.db")).size
@@ -529,6 +531,7 @@ test("Doctor starts background compaction once; only explicit VACUUM shrinks all
     await scheduled.runNext()
     await wait()
     expect(statSync(join(f.root, "touri.db")).size).toBeLessThan(sizeBefore / 2)
+    expect(f.database.query("PRAGMA freelist_count").get()).toEqual({ freelist_count: 0 })
     expect(f.database.query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" })
     expect(f.store.search({ q: "preservado", limit: 10 })).toHaveLength(1)
   } finally {

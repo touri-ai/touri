@@ -6,6 +6,7 @@ import type { FileIoMessage, FileIoRequest, FileIoTask } from "./file-io-protoco
 import {
   atomicAppendFile,
   atomicWriteFile,
+  attachmentMime,
   createWorkspaceDirectory,
   ensurePrivateDirectory,
   movePrivateFile,
@@ -37,6 +38,11 @@ const rotateLog = ({
 const execute = (task: FileIoTask): unknown => {
   if (task.operation === "workspace-image") return getWorkspaceImage(task.args)
   if (task.operation === "read-image") return getLocalImageBytes(task.args.root, task.args.path)
+  if (task.operation === "read-attachment") {
+    const bytes = readBoundedFile({ root: task.args.root, path: task.args.path, maxBytes: 15 * 1024 * 1024 })
+
+    return { bytes, mime: attachmentMime(bytes.subarray(0, 12)) }
+  }
   if (task.operation === "flush") return undefined
   if (task.operation === "write") {
     atomicWriteFile(task.args)

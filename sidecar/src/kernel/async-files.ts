@@ -97,3 +97,9 @@ export const getLocalImageAsync = (args: {
   path: string
 }): Promise<{ bytes: Uint8Array; mime: string }> =>
   imageIo.run({ operation: "read-image", args }).then((result) => result as { bytes: Uint8Array; mime: string })
+
+export const getAttachmentBytesAsync = (args: {
+  root: string
+  path: string
+}): Promise<{ bytes: Uint8Array; mime: string }> =>
+  imageIo.run({ operation: "read-attachment", args }).then((result) => result as { bytes: Uint8Array; mime: string })

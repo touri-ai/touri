@@ -30,11 +30,16 @@ test("phone browser controls have usable touch targets and actions keep a stable
   await page.getByRole("button", { name: "Data de partida 24 de outubro" }).click()
 
   const updated = await card.boundingBox()
+  console.info(
+    "phone browser card geometry",
+    JSON.stringify({ initialHeight: initial?.height, updatedHeight: updated?.height }),
+  )
+  await page.screenshot({ path: getScreenshotPath("phone-card-updated.png"), fullPage: true })
+
   expect(initial).not.toBeNull()
   expect(updated).not.toBeNull()
   expect(Math.abs((updated?.height ?? 0) - (initial?.height ?? 0))).toBeLessThanOrEqual(1)
   await expect(log).toHaveCSS("height", "156px")
-  await page.screenshot({ path: getScreenshotPath("phone-card-updated.png"), fullPage: true })
 })
 
 test("phone handback stays reachable after typing and scrolling the private page", async ({ page }, info) => {
