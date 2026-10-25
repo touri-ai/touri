@@ -550,11 +550,41 @@ const AppContent = ({ kernel }: AppProps) => {
     (target: ApprovalTarget): void => {
       const owner = data.threads.find((thread) => thread.id === target.threadId)
       if (!owner) return
-      actions.selectThread(owner.id, { approvalId: target.approvalId })
+
+      const hasApprovalWindow =
+        data.selectedBotId === owner.botId &&
+        data.selectedThreadId === owner.id &&
+        data.historyThreadId === owner.id &&
+        data.messageFocus?.threadId === owner.id &&
+        data.messageFocus.approvalId === target.approvalId &&
+        data.historyFocusId === data.messageFocus.messageId
+
+      setPanelsByBot((current) => {
+        if (!current[owner.botId]) return current
+
+        const next = Object.assign({}, current, { [owner.botId]: false })
+        saveWorkspaceState({ panelsByBot: next })
+        return next
+      })
+      setExpandedBot(null)
+      if (!hasApprovalWindow) actions.selectThread(owner.id, { approvalId: target.approvalId })
       setApprovalFocus((current) => ({ ...target, request: (current?.request ?? 0) + 1 }))
-      setRoute({ section: "bots", screen: "chat" })
+      setRoute((current) => {
+        if (current.section === "bots" && current.screen === "chat") return current
+
+        return { section: "bots", screen: "chat" }
+      })
     },
-    [data.threads, actions.selectThread, setRoute],
+    [
+      data.threads,
+      data.selectedBotId,
+      data.selectedThreadId,
+      data.historyThreadId,
+      data.historyFocusId,
+      data.messageFocus,
+      actions.selectThread,
+      setRoute,
+    ],
   )
   const openNeedsYou = useCallback(
     (item: NotificationRecord): void => {

@@ -6,9 +6,11 @@ import { build } from "vite"
 export default async function setup(config: FullConfig) {
   const root = resolve(import.meta.dirname, "../..")
 
-  // Build once before browser workloads so compilation never contaminates their timing or memory samples.
-  await build({ root, configFile: resolve(root, "vite.config.ts"), build: { manifest: true } })
-  console.log("UI production build: passed")
+  // Focused production fixtures compile their own entry before starting the workload.
+  if (process.env.TOURI_E2E_FIXTURE_BUILDS_UI !== "1") {
+    await build({ root, configFile: resolve(root, "vite.config.ts"), build: { manifest: true } })
+    console.log("UI production build: passed")
+  }
 
   return async () => {
     const directory = process.env.TOURI_E2E_EVIDENCE_DIR
