@@ -213,9 +213,10 @@ it("keeps drafts across settings panes and links each navigation tab to its pane
   await waitFor(() =>
     expect(updateBot).toHaveBeenCalledWith(
       bot.id,
-      expect.objectContaining({ roleLine: "Pesquisa", instructions: bot.instructions, approvals: bot.approvals }),
+      expect.objectContaining({ roleLine: "Pesquisa", approvals: bot.approvals }),
     ),
   )
+  expect(updateBot).toHaveBeenCalledWith(bot.id, expect.not.objectContaining({ instructions: expect.any(String) }))
 })
 
 it("cycles focus inside the modal, closes with Escape and restores the opening button", async () => {
