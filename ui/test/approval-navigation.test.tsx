@@ -259,17 +259,28 @@ it("reviewing an off-page approval reads its own history window without changing
 
   const card = await screen.findByRole("article", { name: "Aprovação de ferramenta" })
   await waitFor(() => expect(card).toHaveFocus())
-  expect(
-    api.calls.some(
-      (call) =>
-        call.route === "GET /threads/:id/messages" &&
-        call.pathValues?.id === thread.id &&
-        (call.input as { around?: string; limit?: number }).around === reply.id &&
-        (call.input as { limit?: number }).limit === 40,
-    ),
-  ).toBe(true)
+  const contextReads = getApprovalContextReads(api, thread.id, reply.id).length
+  expect(contextReads).toBeGreaterThan(0)
+
+  fireEvent.click(screen.getByRole("button", { name: "Voltar ao fim", exact: true }))
+  await screen.findByText("Registro fictício 4999")
+  expect(screen.queryByRole("article", { name: "Aprovação de ferramenta" })).toBeNull()
+
+  fireEvent.click(screen.getByRole("button", { name: "Revisar aprovação de onb" }))
+
+  const reopened = await screen.findByRole("article", { name: "Aprovação de ferramenta" })
+  await waitFor(() => expect(reopened).toHaveFocus())
+  expect(getApprovalContextReads(api, thread.id, reply.id)).toHaveLength(contextReads + 1)
   expect(
     api.calls.filter((call) => call.route === "PATCH /threads/:id" && call.pathValues?.id === thread.id),
   ).toHaveLength(0)
   expect(api.getState().threads.find((row) => row.id === thread.id)?.activeLeafId).toBe(updated.activeLeafId)
 })
+
+const getApprovalContextReads = (api: ReturnType<typeof createMockApi>, threadId: string, messageId: string) =>
+  api.calls.filter((call) => {
+    if (call.route !== "GET /threads/:id/messages" || call.pathValues?.id !== threadId) return false
+    const input = call.input as { around?: string; limit?: number }
+
+    return input.around === messageId && input.limit === 40
+  })
