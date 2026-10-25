@@ -1,4 +1,12 @@
-import type { ApiRoutes, BrowserTabInfo, Message, NotificationRecord, Run, ToolCallPart } from "@touri/contracts"
+import type {
+  ApiRoutes,
+  BrowserChannelRun,
+  BrowserTabInfo,
+  Message,
+  NotificationRecord,
+  Run,
+  ToolCallPart,
+} from "@touri/contracts"
 import { useEffect } from "react"
 import { createRoot } from "react-dom/client"
 import App from "../../src/App"
@@ -10,6 +18,7 @@ import "../../src/styles.css"
 const base = createMockApi()
 const params = new URLSearchParams(location.search)
 const direct = params.get("direct") === "true"
+const work = params.get("work") === "true" && !direct
 const baseRequest = base.request
 const { bots } = base.getState()
 const bot = bots[0]
@@ -44,6 +53,7 @@ localStorage.setItem(
   "touri.workspace.v1",
   JSON.stringify({ botId: bot.id, threadId: channel.id, route: { section: "bots", screen: "chat" } }),
 )
+if (work) localStorage.setItem("touri.sidebar.mode", "work")
 
 const previewCanvas = document.createElement("canvas")
 previewCanvas.width = 800
@@ -62,10 +72,21 @@ const previewImage = previewCanvas.toDataURL("image/jpeg")
 
 const channelMessages: Message[] = []
 const channelRuns: Run[] = []
+// The synthetic API owns mutable state to model server responses and events.
 let takeoverNotice: NotificationRecord | null = null
 let messageNumber = 0
 let finishResumedAnswer: (() => void) | null = null
+let browserRun: BrowserChannelRun | null = null
+let previewRequests = 0
+let privateInputs = 0
 const getTimestamp = (): number => Date.now()
+
+const publishBrowserRun = (patch: Partial<BrowserChannelRun>): void => {
+  if (!browserRun) return
+
+  browserRun = Object.assign({}, browserRun, patch)
+  base.emit({ type: "browser.channel_run", run: browserRun })
+}
 const getMessage = ({
   id,
   role,
@@ -146,6 +167,7 @@ const resumeInChannel = (): void => {
   previousReply.updatedAt = getTimestamp()
   emitRun(previous)
   base.emit({ type: "message.updated", message: previousReply })
+  publishBrowserRun({ status: "running", controllerPersonId: null, controllerName: null })
 
   const markerText = "Retomado após a devolução do navegador"
   const marker = getMessage({
@@ -188,6 +210,7 @@ const resumeInChannel = (): void => {
   })
   run.replyMessageId = reply.id
   channelRuns.push(run)
+  publishBrowserRun({ activeRunId: run.id, runIds: [previous.id, run.id] })
   base.emit({ type: "message.created", message: reply })
   emitRun(run)
   if (direct)
@@ -207,6 +230,7 @@ const resumeInChannel = (): void => {
     run.finishedAt = getTimestamp()
     base.emit({ type: "message.updated", message: reply })
     emitRun(run)
+    publishBrowserRun({ status: "succeeded", finishedAt: getTimestamp() })
   }
 }
 
@@ -214,7 +238,19 @@ const harnessWindow: Window & {
   completeChannelResume?: () => void
   completeWaitingReply?: () => void
   expireChannelHandoff?: () => void
+  getChannelTakeoverState?: () => {
+    previewRequests: number
+    privateInputs: number
+    status: BrowserChannelRun["status"] | undefined
+    notificationResolved: boolean
+  }
 } = window
+harnessWindow.getChannelTakeoverState = () => ({
+  previewRequests,
+  privateInputs,
+  status: browserRun?.status,
+  notificationResolved: takeoverNotice?.resolvedAt !== null,
+})
 harnessWindow.completeChannelResume = () => finishResumedAnswer?.()
 harnessWindow.completeWaitingReply = () => {
   const run = channelRuns[0]
@@ -256,13 +292,21 @@ const request: ApiRequest = async <K extends keyof ApiRoutes>(
   pathValues: Record<string, string> = {},
 ): Promise<ApiRoutes[K]["res"]> => {
   const key = String(route)
+  if (key === "GET /session" && work)
+    return {
+      ok: true,
+      kind: "device",
+      person: { id: "owner", name: "Pessoa de teste", email: null, avatarSeed: "owner", role: "admin" },
+    } as ApiRoutes[K]["res"]
   if (key === "GET /browser/tabs") return { tabs: [{ ...browserTab }], lastFailure: null } as ApiRoutes[K]["res"]
-  if (key === "GET /bots/:id/browser-preview")
+  if (key === "GET /bots/:id/browser-preview") {
+    previewRequests += 1
     return {
       title: browserTab.title,
       url: browserTab.url,
       image: previewImage,
     } as ApiRoutes[K]["res"]
+  }
   if (key === "GET /threads/:id/messages" && pathValues.id === channel.id)
     return { messages: [...channelMessages], activeLeafId: channelMessages.at(-1)?.id ?? null } as ApiRoutes[K]["res"]
   if (key === "GET /threads/:id/runs" && pathValues.id === channel.id)
@@ -274,6 +318,7 @@ const request: ApiRequest = async <K extends keyof ApiRoutes>(
       ...existing,
       messages: [...existing.messages, ...channelMessages],
       runs: [...existing.runs, ...channelRuns],
+      browserRuns: browserRun ? [browserRun] : [],
     } as ApiRoutes[K]["res"]
   }
   if (key === "POST /threads/:id/messages" && pathValues.id === channel.id) {
@@ -323,6 +368,29 @@ const request: ApiRequest = async <K extends keyof ApiRoutes>(
     emitMessage(userMessage)
     emitMessage(reply)
     emitRun(run)
+    if (work && channel.groupId) {
+      browserRun = {
+        runId: run.id,
+        activeRunId: run.id,
+        runIds: [run.id],
+        groupId: channel.groupId,
+        threadId: channel.id,
+        botId: bot.id,
+        requesterPersonId: "owner",
+        requesterName: "Pessoa de teste",
+        responsiblePersonId: "owner",
+        controllerPersonId: null,
+        controllerName: null,
+        status: "needs_you",
+        queuePosition: null,
+        queuedAt: getTimestamp(),
+        startedAt: getTimestamp(),
+        needsYouAt: getTimestamp(),
+        escalatedAt: null,
+        finishedAt: null,
+      }
+      publishBrowserRun({})
+    }
     takeoverNotice = base.notify({
       kind: "takeover",
       botId: bot.id,
@@ -354,6 +422,7 @@ const request: ApiRequest = async <K extends keyof ApiRoutes>(
   }
   if (key === "POST /browser/tabs/:id/takeover/session") {
     updateTakeover(true, true)
+    publishBrowserRun({ status: "taken_over", controllerPersonId: "owner", controllerName: "Pessoa de teste" })
     if (params.get("legacyTakeoverNotice") === "true")
       base.emit({
         type: "notify",
@@ -363,6 +432,10 @@ const request: ApiRequest = async <K extends keyof ApiRoutes>(
         threadId: channel.id,
       })
     return { sessionId: "channel-session", controlEpoch: "channel-control", viewEpoch: 0 } as ApiRoutes[K]["res"]
+  }
+  if (key === "POST /browser/tabs/:id/takeover/input") {
+    privateInputs += 1
+    return {} as ApiRoutes[K]["res"]
   }
   if (key === "POST /browser/tabs/:id/takeover/frame")
     return {

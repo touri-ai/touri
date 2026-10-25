@@ -59,6 +59,7 @@ export const BrowserTakeoverView = ({
   const screen = useRef<HTMLDivElement>(null)
   const view = useRef<HTMLElement>(null)
   const keyboard = useRef<HTMLTextAreaElement>(null)
+  const handbackButton = useRef<HTMLButtonElement>(null)
   const renderedFrame = useRef<FrameMeta | null>(null)
   const latestFrameMetaRef = useRef<FrameMeta | null>(null)
   const loadedFallbackImage = useRef("")
@@ -82,15 +83,15 @@ export const BrowserTakeoverView = ({
     revealedSessions.add(sessionId)
     requestReveal(view.current)
   }, [sessionId])
-  // A window that changes size (a narrower layout, the on-screen keyboard) can push the controls out of
-  // the conversation. Bring them back only when they were in view before the resize, so a person who
+  // A window that changes size (a narrower layout, the on-screen keyboard) can push Hand back out of
+  // the conversation. Bring it back only when it was in view before the resize, so a person who
   // scrolled away to read is not pulled back.
   useEffect(() => {
     const section = view.current
     const history = section?.closest(".message-scroll")
     if (!section || !history) return
-    const controlsInView = () => {
-      const box = section.querySelector(".browser-takeover-controls")?.getBoundingClientRect()
+    const isHandbackInView = () => {
+      const box = handbackButton.current?.getBoundingClientRect()
       if (!box) return false
       const area = history.getBoundingClientRect()
       const visible = window.visualViewport
@@ -98,10 +99,10 @@ export const BrowserTakeoverView = ({
       const bottom = Math.min(area.bottom, visible ? visible.offsetTop + visible.height : area.bottom)
       return box.top >= top && box.bottom <= bottom
     }
-    let inView = controlsInView()
+    let inView = isHandbackInView()
     let pendingCheck: number | null = null
     const onScroll = () => {
-      inView = controlsInView()
+      inView = isHandbackInView()
     }
     // Resize events run before the scroll they cause, so the state they read is the one before the resize.
     const onResize = () => {
@@ -109,7 +110,7 @@ export const BrowserTakeoverView = ({
       const wasInView = inView
       pendingCheck = requestAnimationFrame(() => {
         pendingCheck = null
-        inView = controlsInView()
+        inView = isHandbackInView()
         if (wasInView && !inView) requestReveal(section)
       })
     }
@@ -547,10 +548,30 @@ export const BrowserTakeoverView = ({
           >
             <span aria-hidden="true">{fullView ? "↙" : "↗"}</span>
           </button>
-          <button type="button" className="button button-quiet" disabled={returning} onClick={() => void handback()}>
+          <button
+            ref={handbackButton}
+            type="button"
+            className="button button-quiet"
+            disabled={returning}
+            onClick={() => void handback()}
+          >
             {returning ? t("Returning control…", {}, locale) : t("Hand back to {name}", { name: botName }, locale)}
           </button>
         </header>
+        <div className="browser-takeover-footer">
+          <button
+            type="button"
+            className="button button-quiet"
+            disabled={!frameReady}
+            onPointerDown={(event) => {
+              event.preventDefault()
+              focusKeyboard()
+            }}
+            onClick={focusKeyboard}
+          >
+            {t("Type in the browser", {}, locale)}
+          </button>
+        </div>
         <p
           className="browser-takeover-privacy browser-takeover-privacy-sticky"
           role="status"
@@ -625,20 +646,6 @@ export const BrowserTakeoverView = ({
               ))}
             </ol>
           </section>
-          <div className="browser-takeover-footer">
-            <button
-              type="button"
-              className="button button-quiet"
-              disabled={!frameReady}
-              onPointerDown={(event) => {
-                event.preventDefault()
-                focusKeyboard()
-              }}
-              onClick={focusKeyboard}
-            >
-              {t("Type in the browser", {}, locale)}
-            </button>
-          </div>
         </aside>
       </div>
       <textarea

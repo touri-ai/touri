@@ -36,7 +36,11 @@ for (const viewport of [
     // Let the history settle as it does after the session starts; the test itself never scrolls.
     await page.waitForTimeout(400)
     if (process.env.TOURI_SCREENSHOT_DIR)
-      await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/takeover-live-${viewport.width}.png` })
+      await page.screenshot({
+        path: `${process.env.TOURI_SCREENSHOT_DIR}/takeover-live-${viewport.width}.png`,
+        mask: [page.locator(".composer-model")],
+        maskColor: "#28282b",
+      })
 
     for (const element of [handback, privacy]) {
       await expect(element).toBeInViewport({ ratio: 1 })
