@@ -6,8 +6,10 @@ test.use({ locale: "pt-BR", reducedMotion: "reduce" })
 const viewports = [
   { device: "desktop", width: 1440, height: 900, theme: "dark" },
   { device: "mobile", width: 390, height: 844, theme: "dark" },
+  { device: "compact", width: 1024, height: 900, theme: "dark" },
   { device: "desktop", width: 1440, height: 900, theme: "light" },
   { device: "mobile", width: 390, height: 844, theme: "light" },
+  { device: "compact", width: 1024, height: 900, theme: "light" },
 ]
 
 viewports.forEach(({ device, width, height, theme }) => {
@@ -21,7 +23,7 @@ viewports.forEach(({ device, width, height, theme }) => {
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     if (device === "mobile") await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
 
-    await page.getByRole("button", { name: "Abrir pendência de touri", exact: true }).click()
+    await page.getByRole("button", { name: /^Precisa de você.*Revisão pronta/, exact: true }).click()
     await expect(page.getByRole("textbox", { name: "Mensagem para avisos" })).toBeVisible()
     await expect(page.getByRole("region", { name: "Central de notificações" })).toHaveCount(0)
     if (device === "mobile") {

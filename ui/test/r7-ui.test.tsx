@@ -5,7 +5,7 @@ import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
 import { latestPreview } from "../src/botPreview"
 import { plural, t } from "../src/i18n"
-import { openConversations } from "./workspaceNavigation"
+import { openBotDetails, openConversations } from "./workspaceNavigation"
 
 const message = (text: string): Message => ({
   id: "r7-markdown",
@@ -112,9 +112,7 @@ it("renders structured Markdown in the Preview mini-chat with the main chat rend
   if (thread) thread.activeLeafId = saved.id
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
-  if (!screen.queryByRole("button", { name: "Preview do projeto" }))
-    fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
-  await screen.findByRole("complementary", { name: /^Painel de / })
+  await openBotDetails()
   fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
   await screen.findByRole("heading", { name: "Preview", exact: true })
 
@@ -131,7 +129,7 @@ it("renders structured Markdown in the Preview mini-chat with the main chat rend
 it("uses a pt-BR preferences title and separate labels for the shortcut and browser", async () => {
   render(<App kernel={{ services: { api: createMockApi() } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
-  fireEvent.click(screen.getByRole("button", { name: /Você Local/ }))
+  fireEvent.click(screen.getByRole("button", { name: "Você", exact: true }))
   const settings = await screen.findByRole("dialog", { name: "Configurações" })
   expect(within(settings).getByText("preferências locais")).toBeVisible()
   fireEvent.click(within(settings).getByText("Chat, barra lateral e atalhos"))

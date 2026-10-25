@@ -11,7 +11,7 @@ import {
 } from "../src/i18n"
 import { getSidebarDataByBot, getSidebarReadThreadIds, getSidebarThreads } from "../src/sidebarThreads"
 import { getRoutineSidebarFixture } from "./routine-sidebar-fixture"
-import { openConversations } from "./workspaceNavigation"
+import { openConversations, openWork } from "./workspaceNavigation"
 
 afterEach(() => {
   cleanup()
@@ -148,7 +148,7 @@ it("groups 28 routine executions without burying ordinary conversations and open
   expect(rows[1]).not.toHaveTextContent(/0 hoje/)
   expect(rows[1]).toHaveTextContent("11:45")
 
-  fireEvent.click(screen.getByRole("button", { name: /^Trabalhando · \d/ }))
+  openWork()
   await screen.findByRole("heading", { name: "Trabalho", exact: true })
 
   fireEvent.click(within(openConversations()).getByRole("button", { name: /^Rotinas/ }))
@@ -259,7 +259,7 @@ it("opens selected routine history across three bounded pages despite newer runs
   })
 
   expect(history).toHaveAttribute("data-open", "true")
-  expect(screen.getByRole("button", { name: "mark", exact: true })).toHaveAttribute("aria-pressed", "true")
+  expect(screen.getByRole("combobox", { name: "Bot", exact: true })).toHaveValue("bot-mark")
   expect(within(history).getByRole("combobox", { name: "Filtrar histórico por rotina" })).toHaveValue(targetRoutine.id)
   expect(within(history).queryByRole("option", { name: /Resumo de outro bot/ })).toBeNull()
   expect(within(history).getByRole("status")).toHaveTextContent("Execuções 1–50 de 128")

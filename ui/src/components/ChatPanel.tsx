@@ -91,6 +91,7 @@ import { mascotSignalFor } from "./mascotState"
 import { PanelIcon } from "./PanelIcon"
 import { PersonAvatar } from "./PersonAvatar"
 import { REVEAL_EVENT } from "./revealEvent"
+import { SidebarActionsMenu } from "./SidebarActionsMenu"
 import { getSessionRecoveryPresentation } from "./sessionRecoveryPresentation"
 import { ToolCallList } from "./ToolCallList"
 import { ToolText } from "./ToolOutput"
@@ -1263,6 +1264,7 @@ const MessageBubbleRow = ({
             )
           if (segment.type === "attachments")
             return <MessageAttachments key={segment.key} parts={segment.parts} api={api} />
+          if (hasBrowserTools) return null
           return (
             <TurnActivity
               key={segment.key}
@@ -1325,6 +1327,16 @@ const MessageBubbleRow = ({
                 )
               })
             : undefined}
+          <TurnActivity
+            message={{ ...message, parts }}
+            run={run}
+            bot={bot}
+            state={mascotState}
+            api={api}
+            locale={locale}
+            embedded
+            hideBrowserCard
+          />
         </BrowserTurnCard>
       )}
       {browserHandoffExpired && (
@@ -1465,7 +1477,6 @@ export const ChatPanel = ({
   groupMembers = [],
   channelMode = false,
   historyLoading = false,
-  workspaceMode = "bots",
   onEditGroup = () => {},
   browserRuns = [],
   onInviteToGroup,
@@ -1546,6 +1557,7 @@ export const ChatPanel = ({
       null,
     [runs, thread, groupProgress?.control, channelBrowserValue?.state.runId],
   )
+  const [repeatMenuOpen, setRepeatMenuOpen] = useState(false)
   const serviceRecovered = bot?.machine === "vm" && (machine?.status === "starting" || machine?.status === "running")
   const visibleRuns = useMemo(
     () =>
@@ -1573,7 +1585,6 @@ export const ChatPanel = ({
         <ChannelBrowserContext.Provider value={channelBrowserValue}>
           <section className="chat-panel" inert={chatIsCovered || undefined} aria-hidden={chatIsCovered || undefined}>
             <header className="chat-header" data-tauri-drag-region="deep">
-              <span className="chat-header-crumb">{t(workspaceMode === "work" ? "Direct messages" : "Bots")}</span>
               <div className="chat-bot-chip">
                 {bot && <BotAvatar bot={bot} size={18} />}
                 <h1 className="chat-page-heading">{bot?.name ?? "touri"}</h1>
@@ -1707,7 +1718,6 @@ export const ChatPanel = ({
                 />
               ) : (
                 <header className="chat-header" data-tauri-drag-region="deep">
-                  <span className="chat-header-crumb">{t(workspaceMode === "work" ? "Direct messages" : "Bots")}</span>
                   <div className="chat-bot-chip">
                     {bot ? (
                       <BotAvatar bot={bot} size={18} threadId={thread.id} state={activityState} />
@@ -1863,19 +1873,24 @@ export const ChatPanel = ({
                               },
                             ]
                           : []),
-                        ...(repeatDraft && onRepeatTask && !connectDataReply
+                        ...(repeatDraft &&
+                        onRepeatTask &&
+                        !connectDataReply &&
+                        !latestReply?.parts.some((part) => part.type === "approval" && part.decision === "pending")
                           ? [
                               {
                                 id: `repeat-${latestReply?.id}`,
                                 createdAt: (latestReply?.createdAt ?? 0) + 2,
                                 content: (
-                                  <button
-                                    type="button"
-                                    className="outline-button repeat-task-button"
-                                    onClick={() => onRepeatTask(repeatDraft)}
-                                  >
-                                    {t("Agendar esta tarefa")}
-                                  </button>
+                                  <SidebarActionsMenu
+                                    label={t("Message actions")}
+                                    triggerClassName="toolbar-icon message-more"
+                                    open={repeatMenuOpen}
+                                    onOpenChange={setRepeatMenuOpen}
+                                    actions={[
+                                      { label: t("Agendar esta tarefa"), onSelect: () => onRepeatTask(repeatDraft) },
+                                    ]}
+                                  />
                                 ),
                               },
                             ]

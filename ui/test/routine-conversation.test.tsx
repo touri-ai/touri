@@ -280,7 +280,9 @@ it("leaves ordinary conversations expanded and still offers scheduling", async (
   expect(screen.queryByRole("button", { name: "Instruções da rotina" })).toBeNull()
   expect(await screen.findByText("Leia as mensagens novas.")).toBeVisible()
   expect(screen.getByText("NO_NOTIFICATION")).toBeVisible()
-  expect(screen.getByRole("button", { name: "Agendar esta tarefa" })).toBeVisible()
+  expect(screen.queryByRole("menuitem", { name: "Agendar esta tarefa" })).toBeNull()
+  fireEvent.click(screen.getByRole("button", { name: "Ações da mensagem" }))
+  expect(screen.getByRole("menuitem", { name: "Agendar esta tarefa" })).toBeVisible()
 })
 
 it("hides the schedule suggestion for an existing routine execution", () => {

@@ -136,7 +136,7 @@ it("explains permission-only requests with read/write and network scope in plain
       api={createMockApi()}
     />,
   )
-  expect(screen.getByText("Permitir os acessos solicitados")).toBeVisible()
+  expect(screen.queryByText("Permitir os acessos solicitados")).toBeNull()
   expect(screen.getByText("Consultar a documentação")).toBeVisible()
   expect(definition("Leitura")).toHaveTextContent("/workspace/docs")
   expect(definition("Escrita")).toHaveTextContent("Nenhuma pasta solicitada")

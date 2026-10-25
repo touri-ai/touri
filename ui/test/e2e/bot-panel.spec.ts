@@ -1,10 +1,10 @@
 import { mkdirSync } from "node:fs"
 import { resolve } from "node:path"
 import AxeBuilder from "@axe-core/playwright"
-import { expect, test } from "@playwright/test"
-import { showBotAdvanced, showBotPanel } from "./home-navigation"
+import { expect, type Page, test } from "@playwright/test"
+import { showBotAdvanced, showBotDetails, showBotPanel } from "./home-navigation"
 
-const evidence = resolve(import.meta.dirname, "../../../docs/qa/bot-panel")
+const evidence = process.env.TOURI_E2E_EVIDENCE_DIR ?? resolve(import.meta.dirname, "../../../docs/qa/bot-panel")
 mkdirSync(evidence, { recursive: true })
 for (const theme of ["light", "dark"] as const)
   test(`bot panel workflow and screenshots · ${theme}`, async ({ page }) => {
@@ -16,43 +16,44 @@ for (const theme of ["light", "dark"] as const)
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     const panel = page.getByRole("complementary", { name: "Painel de mark" })
     await expect(panel).toBeVisible()
-    await page.screenshot({ path: `${evidence}/after-details-${theme}.png` })
+    await capturePanel(page, `${evidence}/after-details-${theme}.png`)
     await page.getByLabel("O que ele faz").fill("Planejamento de campanhas")
     await page.getByLabel("O que ele faz").press("Enter")
-    await expect(panel.getByText("Planejamento de campanhas", { exact: true })).toBeVisible()
+    await page.getByLabel("O que ele faz").press("Tab")
+    await expect(panel.getByRole("textbox", { name: "O que ele faz" })).toHaveValue("Planejamento de campanhas")
     await page.getByRole("tab", { name: "Detalhes" }).focus()
     await page.getByRole("tab", { name: "Detalhes" }).press("ArrowRight")
     await expect(page.getByRole("tab", { name: "Biblioteca" })).toBeFocused()
     await expect(page.getByRole("button", { name: /notas.md.*KB/ })).toBeVisible()
-    await page.screenshot({ path: `${evidence}/after-library-${theme}.png` })
+    await capturePanel(page, `${evidence}/after-library-${theme}.png`)
     await page.getByRole("button", { name: /notas.md.*KB/ }).click()
     await expect(page.getByRole("heading", { name: "Workspace do bot" })).toBeVisible()
-    await page.screenshot({ path: `${evidence}/after-file-${theme}.png` })
+    await capturePanel(page, `${evidence}/after-file-${theme}.png`)
     const download = page.waitForEvent("download")
     await page.getByRole("button", { name: "Baixar arquivo" }).click()
     expect((await download).suggestedFilename()).toBe("notas.md")
     await page.getByRole("tab", { name: "Computador", exact: true }).click()
     await expect(page.getByRole("button", { name: "Ligar computador" })).toBeVisible()
-    await page.screenshot({ path: `${evidence}/after-computer-stopped-${theme}.png` })
+    await capturePanel(page, `${evidence}/after-computer-stopped-${theme}.png`)
     await page.evaluate(() =>
       (window as unknown as { botPanelQa: { state: (status: string) => void } }).botPanelQa.state("starting"),
     )
     await expect(panel.getByText("Preparando a imagem Linux…")).toBeVisible()
-    await page.screenshot({ path: `${evidence}/after-computer-starting-${theme}.png` })
+    await capturePanel(page, `${evidence}/after-computer-starting-${theme}.png`)
     await page.evaluate(() =>
       (window as unknown as { botPanelQa: { state: (status: string) => void } }).botPanelQa.state("error"),
     )
     await expect(panel.getByRole("alert")).toBeVisible()
-    await page.screenshot({ path: `${evidence}/after-computer-error-${theme}.png` })
+    await capturePanel(page, `${evidence}/after-computer-error-${theme}.png`)
     await page.getByRole("button", { name: "Ligar computador" }).click()
     await expect(page.getByRole("button", { name: "Terminal", exact: true })).toBeVisible()
     await expect(page.getByRole("button", { name: "Assumir controle", exact: true })).toBeDisabled()
     await page.getByRole("button", { name: "Expandir" }).click()
     await expect(page.locator(".chat-panel")).toBeHidden()
-    await page.screenshot({ path: `${evidence}/after-computer-expanded-${theme}.png` })
+    await capturePanel(page, `${evidence}/after-computer-expanded-${theme}.png`)
     await page.getByRole("button", { name: "Terminal", exact: true }).click()
     await expect(page.getByLabel("Comando na VM")).toBeDisabled()
-    await page.screenshot({ path: `${evidence}/after-terminal-gated-${theme}.png` })
+    await capturePanel(page, `${evidence}/after-terminal-gated-${theme}.png`)
     const popup = page.waitForEvent("popup")
     await page.getByRole("button", { name: "Abrir em janela" }).click()
     const viewer = await popup
@@ -65,11 +66,12 @@ for (const theme of ["light", "dark"] as const)
     await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
     await expect(panel).toBeHidden()
     await page.getByRole("button", { name: "Painel do bot" }).click()
-    await expect(page.getByRole("button", { name: "Preview do projeto" })).toBeVisible()
+    await showBotDetails(page)
     await page.getByRole("button", { name: "Preview do projeto" }).click()
     await expect(page.getByRole("tab", { name: "Tela da VM" })).toHaveCount(0)
-    await page.screenshot({ path: `${evidence}/after-preview-${theme}.png` })
+    await capturePanel(page, `${evidence}/after-preview-${theme}.png`)
     await page.getByRole("button", { name: "Voltar ao chat" }).click()
+    await showBotDetails(page)
     await page.getByRole("button", { name: /^Modelo: Codex/ }).click()
     const settings = page.getByRole("dialog", { name: "Configurações de mark" })
     await expect(settings).toBeVisible()
@@ -82,10 +84,10 @@ for (const theme of ["light", "dark"] as const)
     await advancedSettings.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
     await advancedSettings.getByRole("tab", { name: "Computador", exact: true }).click()
     await expect(page.getByRole("heading", { name: "Computador", exact: true })).toBeVisible()
-    await page.screenshot({ path: `${evidence}/after-settings-${theme}.png` })
+    await capturePanel(page, `${evidence}/after-settings-${theme}.png`)
     await page.getByRole("button", { name: "Redefinir", exact: true }).click()
     await expect(page.getByRole("alertdialog", { name: "Redefinir computador do bot" })).toBeVisible()
-    await page.screenshot({ path: `${evidence}/after-reset-confirmation-${theme}.png` })
+    await capturePanel(page, `${evidence}/after-reset-confirmation-${theme}.png`)
     await page.keyboard.press("Escape")
     const results = await new AxeBuilder({ page }).include(".bot-workspace").analyze()
     expect(results.violations.filter((v) => ["critical", "serious"].includes(v.impact ?? ""))).toEqual([])
@@ -103,3 +105,14 @@ test("shell works when the bot has permission", async ({ page }) => {
   await expect(page.getByRole("log")).toContainText("/workspace")
   await expect(page.getByRole("button", { name: "Interromper controle" })).toHaveCount(0)
 })
+
+const capturePanel = (page: Page, path: string) =>
+  page.screenshot({
+    path,
+    animations: "disabled",
+    mask: [
+      page.locator(".model-picker-trigger-label"),
+      page.getByRole("button", { name: /^Modelo:/ }),
+      page.getByText(/^Usar login do/),
+    ],
+  })

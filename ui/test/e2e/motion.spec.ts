@@ -58,7 +58,7 @@ if (capture) {
         await page.getByRole("button", { name: "Fechar painel do bot" }).click()
         await expect(page.locator(".bot-panel")).toHaveCount(0)
         await screenshot("panel-closed")
-        await page.getByRole("button", { name: /Você Local/ }).click()
+        await page.getByRole("button", { name: "Você", exact: true }).click()
         await expect(page.getByRole("dialog", { name: "Configurações" })).toBeVisible()
         await screenshot("modal")
         await page.getByRole("button", { name: "Fechar diálogo" }).click()
@@ -83,7 +83,7 @@ test.describe("motion behavior", () => {
   })
 
   test("modal scales and fades, then removes inert content after a short exit", async ({ page }) => {
-    await page.getByRole("button", { name: /Você Local/ }).click()
+    await page.getByRole("button", { name: "Você", exact: true }).click()
     const enter = await probeReveal(page.locator('.motion-modal[data-motion-state="open"]'))
     expect(enter.duration).toBe(200)
     expect(enter.opacity).toBeGreaterThan(0)
@@ -236,7 +236,7 @@ test.describe("motion behavior", () => {
 
   for (const preference of ["system", "app"]) {
     test(`${preference} reduced motion stops running surfaces and skeleton shimmer`, async ({ page }) => {
-      await page.getByRole("button", { name: /Você Local/ }).click()
+      await page.getByRole("button", { name: "Você", exact: true }).click()
       if (preference === "system") await page.emulateMedia({ reducedMotion: "reduce" })
       else
         await page.evaluate(() => {

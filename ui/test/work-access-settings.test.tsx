@@ -84,6 +84,18 @@ describe("work access settings", () => {
     await waitFor(() => expect(request).toHaveBeenCalledWith("POST /email/test", { to: "admin@example.test" }))
   })
 
+  it("keeps people visible before connection setup inside Work", async () => {
+    const { api } = makeApi()
+    render(<WorkAccessSettings api={api} embedded />)
+    await screen.findByText("Ana")
+
+    expect(screen.getByRole("button", { name: "Convidar pessoa", exact: true })).toBeVisible()
+    expect(screen.getByLabelText("Endereço público")).not.toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: "Configurações de conexão", exact: true }))
+
+    expect(screen.getByLabelText("Endereço público")).toBeVisible()
+  })
+
   it("creates a short-lived pairing code from a signed-in device", async () => {
     const { request, api } = makeApi()
     render(<WorkAccessSettings api={api} />)

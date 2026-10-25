@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises"
 import { join } from "node:path"
 import { expect, test } from "@playwright/test"
 import type { createMockApi } from "../../src/api/mock"
+import { showBotDetails } from "./home-navigation"
 
 const views = [
   { name: "desktop", width: 1280, height: 900, theme: "light" },
@@ -16,7 +17,8 @@ views.forEach(({ name, width, height, theme }) => {
     await page.evaluate((theme) => {
       document.documentElement.dataset.theme = theme
     }, theme)
-    const trigger = page.locator(".composer .model-picker-trigger")
+    await showBotDetails(page)
+    const trigger = page.locator(".bot-panel .model-picker-trigger")
 
     await trigger.focus()
     await trigger.press("ArrowDown")
@@ -73,7 +75,7 @@ views.forEach(({ name, width, height, theme }) => {
       const api: ReturnType<typeof createMockApi> = Reflect.get(window, "r8ComposerApi")
       await api.request("PATCH /bots/:id", { provider: "claude", model: "sonnet" }, { id: "bot-mark" })
     }, theme)
-    await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
+    await showBotDetails(page)
     await page.getByRole("button", { name: /^Modelo:/ }).click()
     const dialog = page.getByRole("dialog", { name: "Configurações de mark" })
     await dialog.getByLabel("Provedor", { exact: true }).selectOption("codex")
@@ -105,7 +107,9 @@ views.forEach(({ name, width, height, theme }) => {
 
     await expect(dialog).toBeHidden()
     expect(await getStoredChoice()).toEqual({ provider: "codex", model: "gpt-6.1-sol" })
-    await page.getByRole("button", { name: "Fechar painel do bot", exact: true }).click()
+    await expect(
+      page.getByRole("form", { name: "Compor mensagem" }).getByRole("button", { name: /^Escolher modelo:/ }),
+    ).toHaveCount(0)
     await expect(page.getByRole("button", { name: "Escolher modelo: Codex · gpt-6.1-sol" })).toBeVisible()
     if (shots) await page.screenshot({ path: join(shots, `model-settings-saved-${name}.png`) })
   })
@@ -126,7 +130,7 @@ test("settings saves a different API model and the provider default", async ({ p
     await api.request("PATCH /bots/:id", { provider: "opencode", model: null }, { id: "bot-mark" })
     return model.id
   })
-  await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
+  await showBotDetails(page)
   await page.getByRole("button", { name: /^Modelo:/ }).click()
   const dialog = page.getByRole("dialog", { name: "Configurações de mark" })
   await dialog.getByLabel("Modelos por API", { exact: true }).selectOption({ label: "Demo API · demo-model" })

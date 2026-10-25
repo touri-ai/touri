@@ -16,10 +16,10 @@ const getPort = (server: Server): number => {
   return address.port
 }
 
-const listen = (server: Server) =>
+const listen = (server: Server, port = 0) =>
   new Promise<void>((done, reject) => {
     server.once("error", reject)
-    server.listen(0, "127.0.0.1", () => {
+    server.listen(port, "127.0.0.1", () => {
       server.off("error", reject)
       done()
     })
@@ -55,7 +55,7 @@ const getPairingCode = (dataDirectory: string): string => {
   return match[1]
 }
 
-export const createPeopleInviteServer = async () => {
+export const createPeopleInviteServer = async (port = Number(process.env.TOURI_INVITE_TEST_PORT ?? 0)) => {
   const fixtureDirectory = await mkdtemp(join(tmpdir(), "touri-invite-e2e-"))
   const dataDirectory = join(fixtureDirectory, "data")
   await mkdir(dataDirectory)
@@ -68,7 +68,7 @@ export const createPeopleInviteServer = async () => {
   await chmod(provider, 0o700)
   await writeFile(scenario, JSON.stringify({ deltas: ["Olá, Ana! Posso ajudar o time."] }))
   const reservation = createServer()
-  await listen(reservation)
+  await listen(reservation, port)
   const serverPort = getPort(reservation)
   await close(reservation)
   const serverUrl = `http://127.0.0.1:${serverPort}`

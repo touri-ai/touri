@@ -62,6 +62,22 @@ const result = (text: string, isFinal = true): SpeechResultEvent => ({
 })
 
 describe("optional browser dictation", () => {
+  it("opens consent from a channel menu request while keeping the idle microphone hidden", () => {
+    const { props, sessions, rerender } = setup()
+    rerender(<VoiceInput {...props} hiddenTrigger />)
+    expect(screen.queryByRole("button", { name: "Ditar mensagem", exact: true })).toBeNull()
+
+    rerender(<VoiceInput {...props} hiddenTrigger requestConsent={1} />)
+
+    expect(screen.getByRole("dialog")).toHaveTextContent(t("Dictation privacy"))
+    expect(sessions).toHaveLength(0)
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar", exact: true }))
+    expect(screen.queryByRole("dialog")).toBeNull()
+    rerender(<VoiceInput {...props} hiddenTrigger requestConsent={1} disabled />)
+    rerender(<VoiceInput {...props} hiddenTrigger requestConsent={1} />)
+    expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
   it.each(["pt-BR", "en"] as const)(
     "requires informed consent before creating a microphone session in %s",
     (locale) => {

@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
-import { openGlobalPage, showBotAdvanced, showBotChat, showBotRoutines } from "./home-navigation"
+import { openGlobalPage, showBotAdvanced, showBotChat, showBotDetails, showBotRoutines } from "./home-navigation"
 
 test("cold search keeps keyboard focus inside its loading dialog", async ({ page }, info) => {
   await page.setViewportSize({ width: 1440, height: 900 })
@@ -110,8 +110,7 @@ test("approved navigation exposes Cron, integrations, MCP and preview", async ({
   await openGlobalPage(page, "MCP")
   await expect(page.getByRole("heading", { name: "MCP" })).toBeVisible()
   await showBotChat(page)
-  if (!(await page.getByRole("button", { name: "Preview do projeto" }).isVisible()))
-    await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
+  await showBotDetails(page)
   await page.getByRole("button", { name: "Preview do projeto" }).click()
   await page.getByRole("button", { name: "Subir tudo" }).click()
   await expect(page.getByText("localhost:4310", { exact: true }).last()).toBeVisible()
@@ -122,8 +121,7 @@ test("connects a project, adds a process, and opens its detected preview", async
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto("/")
   await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
-  if (!(await page.getByRole("button", { name: "Preview do projeto" }).isVisible()))
-    await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
+  await showBotDetails(page)
   await page.getByRole("button", { name: "Preview do projeto" }).click()
   await page.getByRole("button", { name: "Menu do projeto" }).click()
   await page.getByRole("menuitem", { name: "Conectar projeto" }).click()
@@ -205,7 +203,7 @@ test("avatar choices survive settings reopening and appear on other surfaces", a
   await expect(page.getByRole("radio", { name: "Chifres Longos" })).toBeChecked()
 })
 
-test("r2 creates one bot/conversation/cron and refreshes Cron without changing selection", async ({ page }) => {
+test("r2 creates one bot/conversation/routine and changes filters without changing selection", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto("/")
   await page.getByRole("button", { name: "Criar bot" }).click()
@@ -229,8 +227,7 @@ test("r2 creates one bot/conversation/cron and refreshes Cron without changing s
   expect(threadId).toBeTruthy()
   await expect(page.getByRole("button", { name: "Conversas de seo-r2", exact: true })).toHaveCount(0)
   const botId = await bot.locator(".tb-avatar").first().getAttribute("data-bot-id")
-  if (!(await page.getByRole("button", { name: "Preview do projeto" }).isVisible()))
-    await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
+  await showBotDetails(page)
   await page.getByRole("button", { name: "Preview do projeto" }).click()
   await expect(page.getByText("Nenhum projeto para seo-r2").first()).toBeVisible()
   await expect(page.locator(".preview-process-entry")).toHaveCount(0)
@@ -245,7 +242,9 @@ test("r2 creates one bot/conversation/cron and refreshes Cron without changing s
   await page.getByRole("button", { name: "Voltar ao chat" }).click()
   await showBotRoutines(page, "seo-r2")
   await page.getByRole("button", { name: /Criar rotina/ }).click()
-  await expect(page.getByRole("combobox", { name: "Bot", exact: true })).toHaveValue(botId ?? "missing")
+  await expect(page.getByRole("dialog").getByRole("combobox", { name: "Bot", exact: true })).toHaveValue(
+    botId ?? "missing",
+  )
   await page.getByLabel("Nome", { exact: true }).fill("SEO semanal r2")
   await page.getByRole("textbox", { name: "Tarefa", exact: true }).fill("Liste as rotas")
   await page.getByRole("button", { name: "Revisar rotina", exact: true }).click()
@@ -257,7 +256,11 @@ test("r2 creates one bot/conversation/cron and refreshes Cron without changing s
 
   await expect(review).toHaveCount(0)
   await expect(page.locator(".routine-item").filter({ hasText: "SEO semanal r2" })).toHaveCount(1)
-  await page.getByRole("button", { name: "Atualizar", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Atualizar", exact: true })).toHaveCount(0)
+  const stateFilter = page.getByRole("combobox", { name: "estado", exact: true })
+  await stateFilter.selectOption("paused")
+  await expect(page.locator(".routine-item").filter({ hasText: "SEO semanal r2" })).toHaveCount(0)
+  await stateFilter.selectOption("all")
   await expect(page.getByRole("heading", { name: "Rotinas" })).toBeVisible()
   await expect(page.locator(".routine-item").filter({ hasText: "SEO semanal r2" })).toHaveCount(1)
   await page.getByRole("tab", { name: /^Bots/ }).click()

@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises"
 import { join } from "node:path"
 import { expect, test } from "@playwright/test"
-import { showBotChat, showBotPanel } from "./home-navigation"
+import { showBotChat, showBotDetails } from "./home-navigation"
 
 test.use({ reducedMotion: "reduce", colorScheme: "light" })
 
@@ -18,7 +18,7 @@ widths.forEach((width) => {
     await showBotChat(page)
     const sidebar = page.getByRole("dialog", { name: "Barra lateral", exact: true })
     if (await sidebar.isVisible()) await page.keyboard.press("Escape")
-    await showBotPanel(page)
+    await showBotDetails(page)
     await page.getByRole("button", { name: "Preview do projeto", exact: true }).click()
     await page.getByRole("tab", { name: "Logs", exact: true }).click()
 

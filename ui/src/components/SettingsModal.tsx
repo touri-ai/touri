@@ -4,11 +4,11 @@ import type { TauriInvoke, UiApi } from "../api/client"
 import { readTheme, setTheme, type ThemePreference } from "../design/theme"
 import { userFacingError } from "../errors"
 import {
+  API_MODELS_SETTINGS_SECTION,
   APP_SETTINGS_SECTIONS,
   type AppSettingsSectionId,
   SERVER_SETTINGS_SECTION,
   SETTINGS,
-  WORK_SETTINGS_SECTION,
 } from "../features/commandPalette/settingsRegistry"
 import { paletteShortcutLabel } from "../features/commandPalette/shortcut"
 import { useSettingFocus } from "../features/commandPalette/useSettingFocus"
@@ -46,9 +46,6 @@ const CloudPreferences = lazy(() =>
 )
 const ServerModeSettings = lazy(() =>
   import("../features/server/ServerModeSettings").then((module) => ({ default: module.ServerModeSettings })),
-)
-const WorkAccessSettings = lazy(() =>
-  import("../features/work/WorkAccessSettings").then((module) => ({ default: module.WorkAccessSettings })),
 )
 
 type SettingsModalProps = {
@@ -148,13 +145,11 @@ export const SettingsModal = ({
       setSaving(false)
     }
   }
-  const sections = [
-    ...APP_SETTINGS_SECTIONS,
-    ...(serverMode || (api && !api.isMock && !isNativeDesktop()) ? [WORK_SETTINGS_SECTION] : []),
-    ...(isNativeDesktop() ? [SERVER_SETTINGS_SECTION] : []),
-  ]
+  const extraSection = [API_MODELS_SETTINGS_SECTION, SERVER_SETTINGS_SECTION].find((entry) => entry.id === section)
+  const sections = [...APP_SETTINGS_SECTIONS, ...(extraSection ? [extraSection] : [])]
+
   const pane = (id: AppSettingsSectionId) => {
-    const entry = sections.find((candidate) => candidate.id === id)
+    const entry = [...sections, SERVER_SETTINGS_SECTION].find((candidate) => candidate.id === id)
     return { active: section, id, title: entry?.label ?? id, description: entry?.description ?? "" }
   }
   return (
@@ -168,11 +163,6 @@ export const SettingsModal = ({
         >
           <Suspense fallback={<SettingsPaneLoading />}>
             <ApiModelsSettings api={api} />
-          </Suspense>
-        </SettingsPane>
-        <SettingsPane {...pane("work")}>
-          <Suspense fallback={<SettingsPaneLoading />}>
-            <WorkAccessSettings api={api} />
           </Suspense>
         </SettingsPane>
         <SettingsPane {...pane("appearance")}>
@@ -373,6 +363,11 @@ export const SettingsModal = ({
           </SettingsDisclosure>
         </SettingsPane>
         <SettingsPane {...pane("diagnostics")}>
+          {isNativeDesktop() && (
+            <button type="button" className="text-button" onClick={() => setSection("advanced")}>
+              {t("Usar um servidor touri")}
+            </button>
+          )}
           <SettingsDisclosure
             title={t("Verificar e cuidar deste computador")}
             description={t("Verificações, armazenamento e funcionamento em segundo plano.")}
@@ -458,6 +453,11 @@ export const SettingsModal = ({
                     />
                   </SettingsRow>
                 </SettingsGroup>
+                {isNativeDesktop() && (
+                  <button className="button button-quiet" type="button" onClick={() => setSection("advanced")}>
+                    {t("Usar um servidor touri")}
+                  </button>
+                )}
                 {onImport && (
                   <button className="button button-quiet" type="button" onClick={onImport}>
                     {t("Import legacy app bots")}

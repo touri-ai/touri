@@ -87,6 +87,7 @@ test("menu remains available on global pages and desktop keeps its sidebar", asy
   const drawer = page.getByRole("dialog", { name: "Barra lateral" })
   await menu.click()
   await drawer.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
+  await drawer.getByRole("button", { name: "Ferramentas", exact: true }).click()
   await drawer.getByRole("button", { name: "MCP", exact: true }).click()
   await expect(drawer).not.toBeVisible()
   await expect(page.getByRole("heading", { name: "MCP", exact: true })).toBeVisible()

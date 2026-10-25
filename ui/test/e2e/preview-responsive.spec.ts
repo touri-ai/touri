@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test"
-import { showBotPanel } from "./home-navigation"
+import { showBotDetails, showBotPanel } from "./home-navigation"
 
 test.setTimeout(90_000)
 
@@ -23,6 +23,7 @@ themes.forEach((theme) => {
       }, theme)
 
       await showBotPanel(page)
+      await showBotDetails(page)
       await page.getByRole("button", { name: "Preview do projeto", exact: true }).click()
       const start = page.getByRole("button", { name: "Subir tudo", exact: true })
       await expect(start).toBeVisible()

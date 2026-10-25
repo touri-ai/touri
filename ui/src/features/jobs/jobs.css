@@ -44,6 +44,9 @@
   border-color: var(--brand);
   background: var(--surface-selected);
 }
+.job-option:has(input[value="not-sure-yet"]:checked) {
+  border-color: var(--border-strong);
+}
 .job-option:has(:focus-visible) {
   outline: 2px solid var(--brand);
   outline-offset: 2px;

@@ -81,6 +81,7 @@ for (const theme of ["light", "dark"]) {
     expect(await approved.evaluate((node) => node.closest(".turn-activity"))).toBeNull()
     await expect(page.locator(".turn-activity .tool-call-card")).toHaveCount(0)
     await page.screenshot({ path: `../docs/qa/approval-card/after-expanded-${theme}.png` })
+    await pending.getByRole("button", { name: "Mais opções de aprovação", exact: true }).click()
     await pending.getByRole("button", { name: "Permitir sempre nesta ferramenta" }).click()
     await expect(pending.getByRole("group", { name: /Permissão permanente para/ })).toContainText(
       /sem pedir aprovação novamente/,

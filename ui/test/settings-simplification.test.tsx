@@ -167,7 +167,6 @@ it("keeps app sections short and technical settings within their disclosure", as
     />,
   )
   expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
-    "Modelos por API",
     "Aparência",
     "Privacidade",
     "Atualizações",
@@ -251,6 +250,7 @@ it.each([
       onRole={vi.fn()}
     />,
   )
+  fireEvent.click(within(panel.container).getByRole("button", { name: "Ajustar", exact: true }))
   expect(panel.container.querySelector(".field-help")).toHaveTextContent(`${label};`)
   panel.unmount()
   await botSettings({ provider: "claude", access, approvals })

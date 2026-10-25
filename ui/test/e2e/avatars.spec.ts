@@ -128,6 +128,7 @@ test("group automatic colour and previewed head survive restoring and saving", a
   const dialog = page.getByRole("dialog", { name: "Criar canal", exact: true })
   await dialog.getByLabel("Nome do canal").fill("Equipe QA")
   await dialog.getByRole("checkbox", { name: "mark", exact: true }).check()
+  await dialog.getByRole("button", { name: /^Avançado/ }).click()
   await dialog.getByRole("button", { name: "Personalizar", exact: true }).click()
   await dialog.getByRole("button", { name: "Restaurar automático", exact: true }).click()
   const preview = dialog.locator(".avatar-picker-stage [data-avatar-body]")

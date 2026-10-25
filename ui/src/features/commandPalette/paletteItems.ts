@@ -1,5 +1,5 @@
 import type { Bot, Id, Message, Thread } from "@touri/contracts"
-import type { Locale } from "../../i18n"
+import { type Locale, type TranslationKey, t } from "../../i18n"
 import { markdownSummary } from "../../markdownSummary"
 import { getRoutineThreadTitle } from "../../routineThreadTitle"
 import { matchScore, normalizeSearch, queryTokens } from "./fuzzy"
@@ -40,19 +40,29 @@ const MESSAGE_SCAN_LIMIT = 2000
 
 type IndexedItem = PaletteItem & { label_n: string; extra_n: string }
 
-const ACTIONS: ReadonlyArray<{ action: PaletteActionId; label: string; detail: string; keywords: string }> = [
-  { action: "new-bot", label: "Novo bot", detail: "Criar um colega", keywords: "criar adicionar colega" },
-  { action: "new-group", label: "Novo grupo", detail: "Reunir bots em uma conversa", keywords: "criar equipe" },
+const ACTIONS: ReadonlyArray<{
+  action: PaletteActionId
+  label: TranslationKey
+  detail: TranslationKey
+  keywords: string
+}> = [
+  { action: "new-bot", label: "New bot", detail: "Create a teammate", keywords: "criar adicionar colega" },
+  {
+    action: "new-group",
+    label: "New channel",
+    detail: "Create a channel for people and bots",
+    keywords: "criar equipe grupo canal",
+  },
   {
     action: "new-thread",
-    label: "Nova conversa",
-    detail: "Com o bot selecionado",
+    label: "New conversation",
+    detail: "With the selected bot",
     keywords: "criar thread chat",
   },
   {
     action: "connect-project",
     label: "Conectar projeto",
-    detail: "Pasta ou repositório para o bot",
+    detail: "Folder or repository for the bot",
     keywords: "projetos projeto pasta repositorio git",
   },
 ]
@@ -127,8 +137,8 @@ export const buildPaletteIndex = ({
         {
           id: `action:${action.action}`,
           group: "actions",
-          label: action.label,
-          detail: action.detail,
+          label: t(action.label, {}, locale),
+          detail: t(action.detail, {}, locale),
           command: { kind: "action", action: action.action },
         },
         action.keywords,

@@ -208,7 +208,7 @@ it("opens the exact review conversation directly from the sidebar attention acti
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
-  fireEvent.click(await screen.findByRole("button", { name: "Abrir pendência de touri" }))
+  fireEvent.click(await screen.findByRole("button", { name: /^Precisa de você.*Revisão pronta/ }))
 
   await screen.findByRole("textbox", { name: "Mensagem para avisos" })
   expect(new URLSearchParams(window.location.search).get("thread")).toBe(thread.id)

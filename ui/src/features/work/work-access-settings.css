@@ -159,6 +159,10 @@
 }
 
 @media (max-width: 620px) {
+  .work-access-settings :is(button, input, select) {
+    min-height: var(--touch-target-size);
+  }
+
   .work-access-fields,
   .work-access-test-email {
     grid-template-columns: minmax(0, 1fr);

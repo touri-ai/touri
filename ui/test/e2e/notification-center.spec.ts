@@ -63,14 +63,8 @@ for (const width of [1440, 390]) {
       await expect(approval.locator(".ds-button-primary")).toHaveCount(1)
       await expect(approval.getByRole("button", { name: "Aprovar" })).toHaveCount(0)
 
-      const trigger = approval.getByRole("button", { name: "Detalhes técnicos" })
-      const body = await getStyle(approval.locator(".notification-body"))
-      expect((await getStyle(trigger)).size).toBe(body.size)
-      await expect(trigger).toHaveAttribute("aria-expanded", "false")
-      await expect(approval.locator("pre").last()).not.toBeVisible()
-      await trigger.click()
-      await expect(trigger).toHaveAttribute("aria-expanded", "true")
-      await trigger.click()
+      await expect(approval.getByRole("button", { name: "Detalhes técnicos" })).toHaveCount(0)
+      await expect(approval.locator("pre")).toHaveCount(0)
 
       if (capture) {
         await center.evaluate((element) => {
@@ -82,13 +76,13 @@ for (const width of [1440, 390]) {
   }
 }
 
-test("disclosure toggles from the keyboard", async ({ page }) => {
+test("review stays reachable from the keyboard without technical controls in the bell", async ({ page }) => {
   const center = await openCenter(page, 1440)
-  const trigger = center.locator('[data-kind="approval"]').getByRole("button", { name: "Detalhes técnicos" })
+  const primary = center.locator('[data-kind="approval"]').getByRole("button", { name: "Abrir e revisar" })
 
-  await trigger.focus()
+  await primary.focus()
   await page.keyboard.press("Enter")
-  await expect(trigger).toHaveAttribute("aria-expanded", "true")
-  await page.keyboard.press("Space")
-  await expect(trigger).toHaveAttribute("aria-expanded", "false")
+
+  await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+  await expect(center).toBeHidden()
 })

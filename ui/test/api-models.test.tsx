@@ -7,11 +7,11 @@ import { createMockApi } from "../src/api/mock"
 import { ApiModelPicker } from "../src/components/ApiModelPicker"
 import { ApiModelsSettings } from "../src/components/ApiModelsSettings"
 import { BotCreateModal, BotSettingsModal } from "../src/components/Modals"
-import { SettingsModal } from "../src/components/SettingsModal"
 import { errorRecovery } from "../src/errorRecovery"
 import { ApiError } from "../src/errors"
 import { t } from "../src/i18n"
 import type { WorkspaceActions } from "../src/useWorkspace"
+import { openGlobalPage } from "./workspaceNavigation"
 
 afterEach(() => {
   cleanup()
@@ -35,9 +35,10 @@ const addModel = async (api: ReturnType<typeof createMockApi>) =>
 
 it("exposes API models in Settings and adds, discovers, tests and removes a masked key", async () => {
   const api = createMockApi()
-  render(<SettingsModal api={api} settings={null} onSave={vi.fn()} onClose={vi.fn()} />)
-  fireEvent.click(screen.getByRole("tab", { name: "Modelos por API" }))
-  await screen.findByLabelText("Provedor da API")
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+  openGlobalPage("Modelos por API")
+  await screen.findByLabelText("Provedor da API", {}, { timeout: 30_000 })
 
   fill()
   expect(screen.getByLabelText("Chave de API")).toHaveAttribute("type", "password")

@@ -99,7 +99,6 @@ export const InvitePersonDialog = ({
   return (
     <Modal
       title={t("Convidar pessoa", {}, locale)}
-      eyebrow="touri"
       className="invite-dialog"
       onClose={() => {
         if (!busy) onClose()
@@ -139,7 +138,6 @@ export const InvitePersonDialog = ({
             onChange={(event) => setName(event.target.value)}
           />
           <label htmlFor={emailId}>{t("E-mail", {}, locale)}</label>
-          <p className="field-help">{t("Opcional. Sem e-mail, compartilhe o link ou código.", {}, locale)}</p>
           <input
             id={emailId}
             type="email"
@@ -148,6 +146,7 @@ export const InvitePersonDialog = ({
             disabled={busy !== null}
             onChange={(event) => setEmail(event.target.value)}
           />
+          <p className="field-help">{t("Opcional. Sem e-mail, compartilhe o link ou código.", {}, locale)}</p>
           <div role="radiogroup" aria-label={t("Papel", {}, locale)} className="invite-roles">
             <span className="invite-label">{t("Papel", {}, locale)}</span>
             {inviteRoles.map((option) => (

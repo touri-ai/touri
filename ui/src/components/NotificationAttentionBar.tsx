@@ -1,5 +1,6 @@
 import type { NotificationRecord } from "@touri/contracts"
 import { type TranslationKey, t } from "../i18n"
+import { isReadyReviewNotice } from "../sidebarAttention"
 import { BotAvatar } from "./BotAvatar"
 import { PanelIcon } from "./PanelIcon"
 import "./notification-attention-bar.css"
@@ -12,19 +13,17 @@ export const NotificationAttentionBar = ({
   onSelect: (notification: NotificationRecord) => void
 }) => {
   const pending = notifications.filter((item) => item.resolvedAt === null)
-  const first = pending[0]
+  const first = pending.find((item) => item.kind === "approval") ?? pending[0]
   if (!first) return null
 
-  const bots = pending
-    .filter((item, index, items) => items.findIndex((candidate) => candidate.botId === item.botId) === index)
-    .slice(0, 3)
+  const bots = Array.from(new Map([first].concat(pending).map((item) => [item.botId, item])).values()).slice(0, 3)
   const reason = getReason(first)
 
   return (
     <button
       type="button"
       className="sidebar-needs-you"
-      aria-label={t("Open pending item for {name}", { name: first.botName ?? "touri" })}
+      aria-description={t("Open pending item for {name}", { name: first.botName ?? "touri" })}
       title={t(reason, { name: first.botName ?? "touri" })}
       onClick={() => onSelect(first)}
     >
@@ -45,9 +44,8 @@ export const NotificationAttentionBar = ({
         ))}
       </span>
       <span className="sidebar-needs-you-copy">
-        <strong>{t("Precisa de você")}</strong>
-        <small>{t(reason, { name: first.botName ?? "touri" })}</small>
-      </span>
+        <strong>{t("Precisa de você")}</strong> <small>{t(reason, { name: first.botName ?? "touri" })}</small>
+      </span>{" "}
       {pending.length > 1 && <span className="sidebar-needs-you-count">{pending.length}</span>}
       <PanelIcon name="chevron-right" />
     </button>
@@ -55,6 +53,7 @@ export const NotificationAttentionBar = ({
 }
 
 const getReason = (item: NotificationRecord): TranslationKey => {
+  if (isReadyReviewNotice(item)) return "PR ready"
   if (item.kind === "approval") return "{name} wants your approval"
   if (item.kind === "question") return "{name} needs your answer"
   if (item.kind === "takeover") return "{name} needs your help"

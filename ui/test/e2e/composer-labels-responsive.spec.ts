@@ -2,45 +2,30 @@ import { expect, test } from "@playwright/test"
 
 const modelLabel = "Escolher modelo: Modelos por API · modelo-ficticio-de-planejamento-com-contexto-extenso-2026-10"
 
-test("desktop composer shows the complete long model name", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 })
-  await page.goto("/test/e2e/home-harness.html?scenario=long-composer")
-
-  const model = page.getByRole("button", { name: modelLabel })
-  const text = model.locator(".composer-model-name")
-
-  await expect(model).toBeVisible()
-  await expect(text).toHaveText("Modelos por API · modelo-ficticio-de-planejamento-com-contexto-extenso-2026-10")
-  expect(await text.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
-  expect((await model.boundingBox())?.width).toBeGreaterThan(200)
-})
-
-for (const theme of ["light", "dark"]) {
-  test(`phone composer keeps long selections accessible and truncates labels in ${theme}`, async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 })
-    await page.addInitScript((theme) => localStorage.setItem("touri.appearance.v1", theme), theme)
-    await page.goto("/test/e2e/home-harness.html?scenario=long-composer")
-    const model = page.getByRole("button", { name: modelLabel })
-    const project = page.getByRole("button", {
-      name: "Projeto do bot: Projeto fictício de planejamento e acessibilidade",
+for (const width of [1440, 390]) {
+  for (const theme of ["light", "dark"]) {
+    test(`keeps long settings accessible outside the composer at ${width} in ${theme}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.addInitScript((appearance) => localStorage.setItem("touri.appearance.v1", appearance), theme)
+      await page.goto("/test/e2e/home-harness.html?scenario=long-composer")
+      const composer = page.getByRole("form", { name: "Compor mensagem" })
+      await expect(composer.getByRole("button", { name: /^Escolher modelo:/ })).toHaveCount(0)
+      await expect(composer.getByRole("button", { name: /^Projeto do bot:/ })).toHaveCount(0)
+      await composer.getByRole("textbox").fill("Revisar o plano fictício.")
+      await expect(composer.getByRole("button", { name: "Enviar", exact: true })).toBeEnabled()
+      await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
+      await page.getByRole("button", { name: "Ajustar", exact: true }).click()
+      const model = page.getByRole("button", { name: modelLabel })
+      const project = page.getByRole("button", {
+        name: "Projeto do bot: Projeto fictício de planejamento e acessibilidade",
+      })
+      for (const control of [model, project]) {
+        await expect(control).toBeVisible()
+        await expect(control).toBeInViewport()
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1)
+      await project.click()
+      await expect(page.getByRole("menu", { name: "Projeto do bot", exact: true })).toBeVisible()
     })
-    const send = page.getByRole("button", { name: "Enviar", exact: true })
-
-    for (const control of [model, project]) {
-      await expect(control).toBeVisible()
-      const text = control.locator(".composer-model-name")
-      expect(await text.evaluate((element) => getComputedStyle(element).whiteSpace)).toBe("nowrap")
-      expect(await text.evaluate((element) => getComputedStyle(element).textOverflow)).toBe("ellipsis")
-      expect(await text.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeGreaterThan(1)
-      const labelBounds = await control.boundingBox()
-      const sendBounds = await send.boundingBox()
-      expect(labelBounds && sendBounds && labelBounds.x + labelBounds.width <= sendBounds.x).toBe(true)
-    }
-    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1)
-    await page.getByRole("textbox", { name: "Mensagem para mark" }).fill("Revisar o plano fictício.")
-    await expect(send).toBeEnabled()
-    await expect(send).toBeInViewport()
-    await project.click()
-    await expect(page.getByRole("menu", { name: "Projeto do bot", exact: true })).toBeVisible()
-  })
+  }
 }

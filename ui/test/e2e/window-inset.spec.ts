@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page, test } from "@playwright/test"
+import { showBotDetails } from "./home-navigation"
 
 test.setTimeout(90_000)
 
@@ -32,6 +33,7 @@ themes.forEach((theme) => {
         await banner.getByRole("button", { name: "Dispensar aviso" }).click()
         await expect(banner).toHaveCount(0)
         await checkTitlebar(page)
+        await showBotDetails(page)
         await page.getByRole("button", { name: /^Escolher modelo:/ }).click()
         const modelMenu = page.locator(".model-picker-popover")
         await checkBelowTitlebar(modelMenu)
@@ -52,6 +54,7 @@ themes.forEach((theme) => {
         await page.goto("/test/e2e/window-inset-harness.html?scene=menu")
         await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
 
+        await showBotDetails(page)
         await page.getByRole("button", { name: /^Projeto do bot:/ }).click()
         const picker = page.locator(".composer-project-picker")
         await checkBelowTitlebar(picker)

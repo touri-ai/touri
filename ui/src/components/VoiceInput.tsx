@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState } from "react"
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import { type Locale, t } from "../i18n"
 import {
   getSpeechRecognition,
@@ -10,6 +10,8 @@ import "./VoiceInput.css"
 
 export const VoiceInput = ({
   contextKey,
+  hiddenTrigger = false,
+  requestConsent = 0,
   disabled,
   onTranscript,
   onActiveChange,
@@ -17,6 +19,8 @@ export const VoiceInput = ({
   recognition = getSpeechRecognition(),
 }: {
   contextKey: string
+  hiddenTrigger?: boolean
+  requestConsent?: number
   disabled: boolean
   onTranscript: (text: string) => void
   onActiveChange: (active: boolean) => void
@@ -33,7 +37,17 @@ export const VoiceInput = ({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const callbacks = useRef({ onTranscript, onActiveChange })
   callbacks.current = { onTranscript, onActiveChange }
+  const button = useRef<HTMLButtonElement>(null)
+  useLayoutEffect(() => {
+    if (hiddenTrigger && active) button.current?.focus()
+  }, [hiddenTrigger, active])
   const descriptionId = useId()
+  const consentRequest = useRef(0)
+  useEffect(() => {
+    if (requestConsent === consentRequest.current) return
+    consentRequest.current = requestConsent
+    if (!disabled && recognition) setConsent(true)
+  }, [requestConsent, disabled, recognition])
 
   const release = () => {
     if (timer.current) clearTimeout(timer.current)
@@ -159,6 +173,8 @@ export const VoiceInput = ({
     <>
       <button
         type="button"
+        ref={button}
+        hidden={hiddenTrigger && !active}
         className={active ? "composer-stop composer-dictation" : "composer-icon composer-dictation"}
         aria-label={label}
         aria-pressed={active}

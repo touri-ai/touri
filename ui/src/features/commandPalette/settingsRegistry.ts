@@ -27,13 +27,6 @@ export type SectionDefinition<Id extends string> = {
 
 export const APP_SETTINGS_SECTIONS: ReadonlyArray<SectionDefinition<AppSettingsSectionId>> = [
   {
-    id: "api-models",
-    label: t("API models"),
-    description: t("Choose a provider and use your own API key."),
-    icon: "general",
-    keywords: ["api", "modelos", "chave", "deepseek", "glm", "openrouter"],
-  },
-  {
     id: "appearance",
     label: t("Aparência"),
     description: t("Deixe o touri confortável para o seu dia a dia."),
@@ -69,6 +62,14 @@ export const APP_SETTINGS_SECTIONS: ReadonlyArray<SectionDefinition<AppSettingsS
     keywords: ["doctor", "armazenamento", "relatório", "bug", "erro", "suporte", "memória", "vm"],
   },
 ]
+
+export const API_MODELS_SETTINGS_SECTION: SectionDefinition<AppSettingsSectionId> = {
+  id: "api-models",
+  label: t("API models"),
+  description: t("Choose a provider and use your own API key."),
+  icon: "general",
+  keywords: ["api", "modelos", "chave", "deepseek", "glm", "openrouter"],
+}
 
 export const SERVER_SETTINGS_SECTION: SectionDefinition<AppSettingsSectionId> = {
   id: "advanced",
@@ -309,6 +310,7 @@ export type PaletteDestination =
   | { kind: "bot-settings"; section: BotSettingsSectionId; settingId?: string }
   | { kind: "doctor"; settingId?: string }
   | { kind: "page"; page: TouriPage }
+  | { kind: "work-people" }
 
 export type SettingsIndexEntry = {
   id: string
@@ -371,6 +373,7 @@ const breadcrumb = (definition: SettingDefinition): string => {
 export const settingsIndex = ({ hasBot }: { hasBot: boolean }): Array<SettingsIndexEntry> => [
   ...[
     ...APP_SETTINGS_SECTIONS,
+    API_MODELS_SETTINGS_SECTION,
     ...(typeof window !== "undefined" && "__TAURI_INTERNALS__" in window ? [SERVER_SETTINGS_SECTION] : []),
   ].map((section) => ({
     id: `app-section:${section.id}`,
@@ -379,6 +382,13 @@ export const settingsIndex = ({ hasBot }: { hasBot: boolean }): Array<SettingsIn
     keywords: [...section.keywords, "preferências", "configurações"],
     destination: { kind: "app-settings", section: section.id } as const,
   })),
+  {
+    id: "app-section:work",
+    label: WORK_SETTINGS_SECTION.label,
+    detail: `${t("Work")} · ${WORK_SETTINGS_SECTION.description}`,
+    keywords: WORK_SETTINGS_SECTION.keywords,
+    destination: { kind: "work-people" },
+  },
   ...(hasBot
     ? BOT_SETTINGS_SECTIONS.map((section) => ({
         id: `bot-section:${section.id}`,

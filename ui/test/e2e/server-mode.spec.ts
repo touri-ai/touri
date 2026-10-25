@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises"
 import { resolve } from "node:path"
 import { expect, test } from "@playwright/test"
+import { showServerSettings } from "./home-navigation"
 import { createServerModeFixture } from "./server-mode-fixture"
 
 test.setTimeout(180_000)
@@ -36,7 +37,7 @@ test("desktop server mode pairs with a real isolated server and resyncs after a 
 
     await page.locator(".user-chip").click()
     const dialog = page.getByRole("dialog")
-    await dialog.getByRole("tab", { name: "Avançado", exact: true }).click()
+    await showServerSettings(page)
     await expect(dialog.getByText("Usar um servidor touri", { exact: true })).toBeVisible()
     await dialog.getByLabel("Endereço do servidor", { exact: true }).fill(server.serverUrl)
     const pairingCode = server.code()
@@ -88,7 +89,6 @@ test("desktop server mode pairs with a real isolated server and resyncs after a 
     await expect.poll(() => lateHealthReleased).toBe(true)
     await expect(page.getByText("Servidor offline. Tentando reconectar…")).toBeVisible()
     releaseRetries?.()
-    await expect(page.locator(".user-chip")).toContainText("Modo servidor")
     await expect(page.getByRole("textbox", { name: "Mensagem para Servidor de teste" })).toBeVisible({
       timeout: 10_000,
     })
@@ -100,7 +100,10 @@ test("desktop server mode pairs with a real isolated server and resyncs after a 
     })
     await page.unroute("**/api/v1/health")
     await page.locator(".user-chip").click()
-    await dialog.getByRole("tab", { name: "Avançado", exact: true }).click()
+    await showServerSettings(page)
+    const activeMode = dialog.getByRole("status").filter({ hasText: "Modo servidor ativo" })
+    await expect(activeMode).toBeVisible()
+    await expect(activeMode).toContainText(server.serverUrl)
     await expect(dialog.getByRole("button", { name: "Voltar ao modo local", exact: true })).toBeVisible()
     await dialog.getByRole("button", { name: "Testar conexão", exact: true }).click()
     await expect.poll(() => server.connectionTests).toBe(1)
@@ -145,15 +148,15 @@ test("desktop server mode pairs with a real isolated server and resyncs after a 
     expect(server.snapshotReads).toBeGreaterThan(snapshots)
 
     await page.locator(".user-chip").click()
-    await dialog.getByRole("tab", { name: "Avançado", exact: true }).click()
+    await showServerSettings(page)
     await dialog.getByRole("button", { name: "Voltar ao modo local", exact: true }).click()
     await expect.poll(() => server.localReturns).toBe(1)
     await expect(dialog.getByRole("status").filter({ hasText: /reiniciar/i })).toBeVisible()
     await page.reload()
-    await expect(page.locator(".user-chip")).toContainText("Local · grátis")
+    await expect(page.locator(".user-chip")).toHaveAccessibleName("Você")
     await expect(page.getByRole("textbox", { name: "Mensagem para Retomado no servidor" })).toBeVisible()
     await page.locator(".user-chip").click()
-    await dialog.getByRole("tab", { name: "Avançado", exact: true }).click()
+    await showServerSettings(page)
     await expect(dialog.getByLabel("Código de pareamento", { exact: true })).toBeVisible()
     await expect(dialog.getByRole("button", { name: "Voltar ao modo local", exact: true })).toHaveCount(0)
     // The one-time pairing code must not survive the settings flow in browser storage.

@@ -22,15 +22,13 @@ import { useIsServerMode } from "../features/server/serverMode"
 import { dropRejectionMessage, type FileDrop, listenForFileDrops } from "../fileDrops"
 import { type Locale, t } from "../i18n"
 import { useComposerMachineIntent } from "../machineIntents"
-import { getDraftWithTranscript } from "../speechRecognition"
+import { getDraftWithTranscript, getSpeechRecognition } from "../speechRecognition"
 import { useProviderLogin } from "../useProviderLogin"
 import type { ThreadCreationStatus } from "../workspaceState"
 import { useMascotComposer } from "./AvatarRuntime"
 import { BotAvatar } from "./BotAvatar"
 import { ComposerNotice } from "./ComposerNotice"
-import { ComposerProjectChip } from "./ComposerProjectChip"
 import { ErrorText } from "./ErrorDetails"
-import { ModelPicker } from "./ModelPicker"
 import { PanelIcon } from "./PanelIcon"
 import { useReveal } from "./Reveal"
 import { SidebarActionsMenu } from "./SidebarActionsMenu"
@@ -132,11 +130,6 @@ export const Composer = ({
   botActive = false,
   browserWorking = false,
   browserBotName,
-  projects = [],
-  onSaveModel,
-  onNotice,
-  onSelectProject,
-  onAddProject,
   queuedCount,
   hasPendingDelivery = queuedCount > 0,
   onSend,
@@ -214,6 +207,7 @@ export const Composer = ({
   const [dictating, setDictating] = useState(false)
   const [stoppingRunId, setStoppingRunId] = useState<string | null>(null)
   const [picking, setPicking] = useState(false)
+  const [voiceRequest, setVoiceRequest] = useState(0)
   const [teamMenuOpen, setTeamMenuOpen] = useState(false)
   const [dragging, setDragging] = useState(false)
   const sendingRef = useRef(false)
@@ -666,67 +660,55 @@ export const Composer = ({
             <Icon kind="attach" />
           </button>
           {groupName && (
-            <SidebarActionsMenu
-              label={t("Team actions")}
-              open={teamMenuOpen}
-              onOpenChange={setTeamMenuOpen}
-              triggerClassName="composer-icon composer-team-actions"
-              trigger={<PanelIcon name="people" />}
-              actions={[
-                { label: t("Perguntar a todos"), onSelect: () => void submit("ask_all"), disabled: blocked },
-                {
-                  label: t("Pedir resumo do time"),
-                  onSelect: () => void submit("summarize"),
-                  disabled: sending || Boolean(activeRun) || Boolean(threadCreation),
-                },
-                ...memberRuns.map((run) => ({
-                  id: run.id,
-                  label: t(
-                    "Stop {name}",
-                    { name: mentionBots.find((member) => member.id === run.botId)?.name ?? "touri" },
-                    locale,
-                  ),
-                  onSelect: () => void stop(run.id, "turn"),
-                  disabled: stoppingRunId === run.id,
-                })),
-              ]}
-            />
-          )}
-          {bot && bot.machine !== "cloud" && (
-            <>
-              {onSaveModel && onNotice && (
-                <ModelPicker
-                  key={`model:${bot.id}`}
-                  api={api}
-                  botId={bot.id}
-                  provider={bot.provider}
-                  value={bot.model}
-                  onSave={onSaveModel}
-                  onNotice={onNotice}
-                  className="composer-model"
-                  showProvider
-                  direction="up"
-                />
-              )}
-              {onSelectProject && (
-                <ComposerProjectChip
-                  key={bot.id}
-                  bot={bot}
-                  projects={projects}
-                  active={botActive || Boolean(activeRun)}
-                  onSelect={onSelectProject}
-                  onAdd={onAddProject}
-                />
-              )}
-            </>
+            <span hidden={dictating}>
+              <SidebarActionsMenu
+                label={t("Team actions")}
+                open={teamMenuOpen}
+                onOpenChange={setTeamMenuOpen}
+                triggerClassName="composer-icon composer-team-actions"
+                trigger={<PanelIcon name="people" />}
+                actions={[
+                  ...(getSpeechRecognition()
+                    ? [
+                        {
+                          label: t("Dictate message"),
+                          onSelect: () => setVoiceRequest((request) => request + 1),
+                          disabled: sending || Boolean(threadCreation),
+                        },
+                      ]
+                    : []),
+                  { label: t("Perguntar a todos"), onSelect: () => void submit("ask_all"), disabled: blocked },
+                  {
+                    label: t("Pedir resumo do time"),
+                    onSelect: () => void submit("summarize"),
+                    disabled: sending || Boolean(activeRun) || Boolean(threadCreation),
+                  },
+                  ...memberRuns.map((run) => ({
+                    id: run.id,
+                    label: t(
+                      "Stop {name}",
+                      { name: mentionBots.find((member) => member.id === run.botId)?.name ?? "touri" },
+                      locale,
+                    ),
+                    onSelect: () => void stop(run.id, "turn"),
+                    disabled: stoppingRunId === run.id,
+                  })),
+                ]}
+              />
+            </span>
           )}
         </div>
         <div className="composer-actions">
           <VoiceInput
+            hiddenTrigger={Boolean(groupName)}
+            requestConsent={voiceRequest}
             contextKey={`${bot?.id ?? "group"}:${threadId}`}
             disabled={cloudUnavailable || sending || Boolean(threadCreation)}
             locale={locale}
-            onActiveChange={setDictating}
+            onActiveChange={(active) => {
+              setDictating(active)
+              if (!active && dictating && groupName) inputRef.current?.focus()
+            }}
             onTranscript={(text) => onDraft(getDraftWithTranscript(draftRef.current, text))}
           />
           {activeRun && !showStop && !browserWorking && (

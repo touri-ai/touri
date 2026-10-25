@@ -15,7 +15,8 @@ for (const width of [1440, 390]) {
     await page.clock.fastForward(300)
     await page.evaluate("window.feedback.provider()")
     await expect(page.locator(".activity-mark")).toBeVisible()
-    if (width === 1440) await expect(page.getByText("Trabalhando · 1", { exact: true })).toBeVisible()
+    if (width === 1440)
+      await expect(page.locator('[data-bot-entry="bot-mark"]')).toHaveAttribute("data-activity", "working")
     await page.screenshot({
       path: getScreenshotPath(`starting-${width}.png`),
       mask: [page.locator(".composer-model")],
@@ -29,7 +30,8 @@ for (const width of [1440, 390]) {
     await expect(page.getByRole("alert").locator(".error-notice > p")).toBeVisible()
     await expect(page.getByRole("alert").locator(".error-notice > p")).toHaveText("Sem resposta após 2 minutos.")
     await expect(page.getByRole("button", { name: /Tentar novamente/i })).toBeVisible()
-    await expect(page.getByText(/Trabalhando · [1-9]/)).toHaveCount(0)
+    if (width === 1440)
+      await expect(page.locator('[data-bot-entry="bot-mark"]')).not.toHaveAttribute("data-activity", "working")
     await page.screenshot({
       path: getScreenshotPath(`failed-${width}.png`),
       mask: [page.locator(".composer-model")],

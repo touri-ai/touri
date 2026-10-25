@@ -6,6 +6,7 @@ import type { TauriInvoke } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { PreviewPane } from "../src/components/PreviewPane"
 import { NativePreview } from "../src/nativePreview"
+import { openBotDetails, openGlobalPage } from "./workspaceNavigation"
 
 const bounds = { x: 30, y: 90, width: 500, height: 300 }
 const preview: PreviewTarget = {
@@ -95,13 +96,11 @@ describe("P1-1 native preview ownership", () => {
 
   it("routes Logs, Navegador, search, project modal and Cron away from the native view", async () => {
     geometry()
-    const api = createMockApi()
+    const api = createMockApi({ scenario: "interrupted-tasks" })
     const invoke = nativeInvoke()
     render(<App kernel={{ services: { api, invoke } }} />)
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
-    if (!screen.queryByRole("button", { name: "Preview do projeto" }))
-      fireEvent.click(screen.getByRole("button", { name: "Painel do bot" }))
-    await screen.findByRole("complementary", { name: /^Painel de / })
+    await openBotDetails()
     fireEvent.click(screen.getByRole("button", { name: "Preview do projeto" }))
     act(() => api.emit({ type: "preview.available", preview }))
     await waitFor(() => expect(vi.mocked(invoke).mock.calls.some(([command]) => command === "preview_show")).toBe(true))
@@ -131,7 +130,7 @@ describe("P1-1 native preview ownership", () => {
     await waitFor(() =>
       expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === "preview_show")).toHaveLength(5),
     )
-    fireEvent.click(screen.getByRole("button", { name: "Notificações", exact: true }))
+    fireEvent.click(screen.getByRole("button", { name: /^Notificações/ }))
     fireEvent.click(screen.getByRole("button", { name: "Tarefas interrompidas", exact: true }))
     await screen.findByRole("dialog", { name: "Tarefas interrompidas", exact: true })
     await waitFor(() =>
@@ -143,7 +142,7 @@ describe("P1-1 native preview ownership", () => {
     )
 
     fireEvent.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
-    fireEvent.click(screen.getByRole("button", { name: "Integrações", exact: true }))
+    openGlobalPage("Integrações")
     await waitFor(() =>
       expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === "preview_hide")).toHaveLength(6),
     )

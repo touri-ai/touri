@@ -224,7 +224,7 @@ it("keeps VM environment, host access and browser controls named and exposed", a
 }, 30_000)
 
 it("updates where the bot sends automatic work from settings", async () => {
-  const { bot, actions } = await botSettings()
+  const { bot, actions } = await botSettings({}, "routines")
   const setting = screen.getByRole("radiogroup", { name: "Onde o bot responde" })
 
   expect(within(setting).getByRole("radio", { name: "Na conversa principal" })).toBeChecked()
@@ -257,17 +257,21 @@ it("keeps Cancel and Save in the dialog's accessible tree after expanding and co
   expect(onClose).toHaveBeenCalledOnce()
 }, 30_000)
 
-it("opens the bot routines list directly from the tab by pointer or keyboard", async () => {
+it("opens the bot routines list from its settings section by pointer or keyboard", async () => {
   const user = userEvent.setup()
   const { onOpenRoutines } = await botSettings()
   await user.click(screen.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }))
   const tab = screen.getByRole("tab", { name: "Rotinas" })
   await user.click(tab)
+  expect(onOpenRoutines).not.toHaveBeenCalled()
+  await user.click(screen.getByRole("button", { name: "Gerenciar rotinas" }))
   expect(onOpenRoutines).toHaveBeenCalledOnce()
   act(() => screen.getByRole("tab", { name: "Modelo" }).focus())
   await user.keyboard("{End}")
-  expect(onOpenRoutines).toHaveBeenCalledTimes(2)
   expect(tab).toHaveFocus()
+  await user.tab()
+  await user.click(screen.getByRole("button", { name: "Gerenciar rotinas" }))
+  expect(onOpenRoutines).toHaveBeenCalledTimes(2)
 }, 30_000)
 
 it("keeps fast conversation in advanced model settings and saves an explicit opt-out", async () => {

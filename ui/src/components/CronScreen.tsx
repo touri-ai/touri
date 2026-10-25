@@ -14,6 +14,7 @@ import { PanelIcon } from "./PanelIcon"
 import { RoutineEditor, routineHostNotice } from "./RoutineEditor"
 import { RoutineSchedule } from "./RoutineSchedule"
 import { ScreenHeader, ScreenState } from "./ScreenPrimitives"
+import { SidebarActionsMenu } from "./SidebarActionsMenu"
 import "./screens.css"
 
 type CronScreenProps = {
@@ -104,10 +105,10 @@ const CronScreen = ({
   routineRuns,
   messages,
   actions,
-  onReviewApprovals,
   onNotice,
   onOpenThread,
 }: CronScreenProps) => {
+  const [actionRoutineId, setActionRoutineId] = useState<string | null>(null)
   const listRef = useRef<HTMLElement>(null)
   const [historyOpen, setHistoryOpen] = useState(Boolean(history))
   const [historyFocusRequests, setHistoryFocusRequests] = useState(0)
@@ -115,6 +116,7 @@ const CronScreen = ({
   useEffect(() => {
     const focusList = () => {
       if (document.querySelector(".modal-card")) return false
+      if (document.activeElement?.closest('[role="menu"], [aria-haspopup="menu"][aria-expanded="true"]')) return true
       listRef.current?.focus()
       return true
     }
@@ -231,74 +233,55 @@ const CronScreen = ({
       aria-labelledby="cron-title"
     >
       <ScreenHeader
+        showBreadcrumb={false}
         id="cron-title"
         title={t("Routines")}
         description={`${t("Bot routine count", { count: routines.length })} · ${routineHostNotice(host)}`}
         actions={
-          <>
-            <button type="button" className="outline-button" onClick={() => void actions.refresh()}>
-              Atualizar
-            </button>
-            <button
-              type="button"
-              className="brand-button"
-              disabled={bots.length === 0}
-              onClick={() =>
-                setEditor({
-                  routine: null,
-                  botId: botFilter !== "all" ? botFilter : (selectedBotId ?? bots[0]?.id ?? ""),
-                  isNew: true,
-                })
-              }
-            >
-              <PanelIcon name="plus" />
-              {t("Criar cron")}
-            </button>
-          </>
+          <button
+            type="button"
+            className="brand-button"
+            disabled={bots.length === 0}
+            onClick={() =>
+              setEditor({
+                routine: null,
+                botId: botFilter !== "all" ? botFilter : (selectedBotId ?? bots[0]?.id ?? ""),
+                isNew: true,
+              })
+            }
+          >
+            <PanelIcon name="plus" />
+            {t("Criar cron")}
+          </button>
         }
       />
       <fieldset className="cron-filters">
         <legend className="visually-hidden">{t("Filtros de cron")}</legend>
-        <span className="filter-label">Bot</span>
-        <FilterButton active={botFilter === "all"} onClick={() => selectBotFilter("all")}>
-          {t("Todos os bots")}
-        </FilterButton>
-        {bots.map((bot) => (
-          <FilterButton key={bot.id} active={botFilter === bot.id} onClick={() => selectBotFilter(bot.id)}>
-            {bot.name}
-          </FilterButton>
-        ))}
-        <span className="filter-divider" />
-        <span className="filter-label">{t("estado")}</span>
-        {(["all", "active", "paused"] as const).map((state) => (
-          <FilterButton key={state} active={stateFilter === state} onClick={() => selectStateFilter(state)}>
-            {state === "all" ? t("Todos") : state === "active" ? "Ativas" : "Pausadas"}
-          </FilterButton>
-        ))}
+        <label>
+          {t("Bot")}
+          <select value={botFilter} onChange={(event) => selectBotFilter(event.target.value)}>
+            <option value="all">{t("Todos os bots")}</option>
+            {bots.map((bot) => (
+              <option key={bot.id} value={bot.id}>
+                {bot.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          {t("estado")}
+          <select
+            value={stateFilter}
+            onChange={(event) => selectStateFilter(event.target.value as "all" | "active" | "paused")}
+          >
+            <option value="all">{t("Todos")}</option>
+            <option value="active">{t("Active routines")}</option>
+            <option value="paused">{t("Paused routines")}</option>
+          </select>
+        </label>
       </fieldset>
       <div className="cron-content">
         <div className="cron-primary">
-          {pendingApprovals.length > 0 && (
-            <button
-              type="button"
-              className="approval-banner"
-              onClick={() => {
-                const target = pendingApprovals[0]
-                if (target) onReviewApprovals(target)
-              }}
-            >
-              <span className="approval-icon" aria-hidden="true">
-                <PanelIcon name="warning" />
-              </span>
-              <span>
-                <strong>{t("Pending approval count", { count: pendingApprovals.length })}</strong>
-                <small>{t("Revise antes de continuar as rotinas")}</small>
-              </span>
-              <span className="approval-link">
-                {t("Revisar")} <PanelIcon name="arrow-right" />
-              </span>
-            </button>
-          )}
           <section className="cron-card routine-queue">
             <div className="cron-card-heading">
               <strong>Rotinas</strong>
@@ -346,43 +329,32 @@ const CronScreen = ({
                         className="routine-actions"
                         aria-label={t("Ações da rotina {name}", { name: routine.name })}
                       >
-                        <button
-                          type="button"
-                          aria-label={`Rodar agora ${routine.name}`}
-                          disabled={busy}
-                          aria-busy={busy}
-                          onClick={() => void runNow(routine.id)}
-                        >
-                          {starting.has(routine.id) && (
-                            <span className="run-spinner" role="status" aria-label="Iniciando…">
-                              ◌
-                            </span>
-                          )}
-                          Rodar agora
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={routine.enabled ? `Pausar ${routine.name}` : `Retomar ${routine.name}`}
-                          onClick={() =>
-                            routine.enabled
-                              ? void actions
+                        <SidebarActionsMenu
+                          label={t("Ações da rotina {name}", { name: routine.name })}
+                          triggerClassName="outline-button"
+                          open={actionRoutineId === routine.id}
+                          onOpenChange={(open) => setActionRoutineId(open ? routine.id : null)}
+                          actions={[
+                            { label: t("Run now"), disabled: busy, onSelect: () => void runNow(routine.id) },
+                            {
+                              label: t(routine.enabled ? "Goal pause" : "Goal resume"),
+                              onSelect: () => {
+                                if (!routine.enabled) {
+                                  setEditor({ routine, botId: routine.botId, isNew: false })
+                                  return
+                                }
+                                void actions
                                   .toggleRoutine(routine)
                                   .catch((error: unknown) => onNotice(userFacingError(error)))
-                              : setEditor({ routine: { ...routine }, botId: routine.botId, isNew: false })
-                          }
-                        >
-                          {routine.enabled ? "Pausar" : "Retomar"}
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={`Editar ${routine.name}`}
-                          onClick={() => setEditor({ routine: { ...routine }, botId: routine.botId, isNew: false })}
-                        >
-                          Editar
-                        </button>
-                        <button type="button" className="routine-delete-button" onClick={() => setDeleting(routine)}>
-                          {t("Excluir rotina")}
-                        </button>
+                              },
+                            },
+                            {
+                              label: t("Editar"),
+                              onSelect: () => setEditor({ routine, botId: routine.botId, isNew: false }),
+                            },
+                            { label: t("Excluir rotina"), destructive: true, onSelect: () => setDeleting(routine) },
+                          ]}
+                        />
                       </fieldset>
                     </article>
                   )
@@ -605,20 +577,6 @@ const CronScreen = ({
     </section>
   )
 }
-
-const FilterButton = ({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) => (
-  <button type="button" aria-pressed={active} className={`filter-button ${active ? "active" : ""}`} onClick={onClick}>
-    {children}
-  </button>
-)
 
 const formatNextRun = (timestamp: number): string =>
   new Date(timestamp).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
