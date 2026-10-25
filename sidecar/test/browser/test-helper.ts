@@ -13,16 +13,19 @@ export const assertHeadlessLaunchArgs = ({ args }: { args: Array<string> }): voi
   const pipe = args.includes("--remote-debugging-pipe")
   // The production launcher falls back when legacy Bun cannot establish a pipe.
   // An ephemeral loopback port and the test's private profile are also isolated.
+  const portArg = args.find((arg) => /^--remote-debugging-port=[1-9]\d{0,4}$/u.test(arg))
+  const port = Number(portArg?.split("=")[1])
   const localPort =
     args.includes("--remote-debugging-address=127.0.0.1") &&
-    args.includes("--remote-debugging-port=0") &&
+    Number.isInteger(port) &&
+    port <= 65535 &&
     args.some((arg) => arg.startsWith("--user-data-dir="))
   if (
     (!pipe && !localPort) ||
     args.some(
       (arg) =>
         arg.startsWith("--remote-debugging-") &&
-        !["--remote-debugging-pipe", "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0"].includes(arg),
+        !["--remote-debugging-pipe", "--remote-debugging-address=127.0.0.1", portArg].includes(arg),
     )
   )
     throw new Error(`Chrome browser tests require an isolated CDP pipe or ephemeral loopback port: ${args.join(" ")}`)

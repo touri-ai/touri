@@ -4,7 +4,7 @@ import type { PerformanceStageRunner } from "../kernel/performance"
 import { abortVmWait } from "../vm/stage"
 import { connectCdpWebSocket } from "./cdp"
 import { createBrowserEngine } from "./engine"
-import { attachLocalChrome, type ChromeLauncher } from "./launcher"
+import { attachLocalChrome, type ChromeLauncher, createChromeLauncher, getChromeProfilePath } from "./launcher"
 import type { BrowserEngine, CdpClient } from "./types"
 import { raceBudget } from "./utils"
 
@@ -27,7 +27,8 @@ export const createRoutedBrowserEngine = (
     localLauncher?: ChromeLauncher
   } = {},
 ): BrowserEngine => {
-  const local = createBrowserEngine({ kernel, mode, ...(runStage ? { runStage } : {}) })
+  // Owned legacy tabs are loaded only by their bot engine after profile migration.
+  const local = createBrowserEngine({ kernel, mode, profile: "unowned", ...(runStage ? { runStage } : {}) })
   const attached = createBrowserEngine({
     kernel,
     profile: "local",
@@ -35,8 +36,30 @@ export const createRoutedBrowserEngine = (
     launcher: localLauncher,
     ...(runStage ? { runStage } : {}),
   })
-  const hostForBot = (botId: string | null) =>
-    botId && kernel.services.use("store.api")?.getBot({ botId })?.browser === "local" ? attached : local
+  const managed = new Map<string, BrowserEngine>()
+  const hostForBot = (botId: string | null): BrowserEngine => {
+    if (!botId) return local
+    if (kernel.services.use("store.api")?.getBot({ botId })?.browser === "local") return attached
+    const existing = managed.get(botId)
+    if (existing) return existing
+    // Validate before using the ID as either a profile path or a metadata scope.
+    getChromeProfilePath(kernel.paths, botId)
+    const profile = `bot:${botId}`
+    const database = kernel.db as Database
+    database
+      .query("UPDATE browser_tabs SET profile = ? WHERE owner_bot_id = ? AND profile = 'default'")
+      .run(profile, botId)
+    const engine = createBrowserEngine({
+      kernel,
+      mode,
+      profile,
+      persistentBotId: botId,
+      launcher: createChromeLauncher({ kernel, mode, botId }),
+      ...(runStage ? { runStage } : {}),
+    })
+    managed.set(botId, engine)
+    return engine
+  }
   type Guest = {
     engine: BrowserEngine
     lifetime: AbortController
@@ -145,6 +168,16 @@ export const createRoutedBrowserEngine = (
   const unsubscribe = kernel.subscribe(({ event }) => {
     if (event.type === "bot.deleted" || event.type === "bot.updated") {
       const botId = event.type === "bot.deleted" ? event.botId : event.bot.id
+      const managedEngine = managed.get(botId)
+      if (
+        managedEngine &&
+        (event.type === "bot.deleted" || event.bot.browser === "local" || event.bot.browser === "machine")
+      ) {
+        managed.delete(botId)
+        const stopped = managedEngine.shutdown().catch(() => undefined)
+        retiring.add(stopped)
+        void stopped.finally(() => retiring.delete(stopped))
+      }
       if (!isGuest(botId)) retire(botId, guests.get(botId), new Error("O navegador deste bot mudou."))
       return
     }
@@ -172,25 +205,34 @@ export const createRoutedBrowserEngine = (
         return async () => {
           unsubscribe()
           for (const [botId, guest] of guests) retire(botId, guest, new Error("Navegador encerrado."))
-          await Promise.all([local.shutdown(), attached.shutdown(), ...retiring])
+          await Promise.all([
+            local.shutdown(),
+            attached.shutdown(),
+            ...Array.from(managed.values(), (engine) => engine.shutdown()),
+            ...retiring,
+          ])
         }
       if (key === "tabsForBot")
         return (botId: string | null) => {
           if (botId) return (isGuest(botId) ? forBot(botId).engine : hostForBot(botId)).tabsForBot(botId)
           // Restore guest tab metadata for the workspace snapshot without booting a VM.
           const owners = (kernel.db as Database)
-            .query("SELECT DISTINCT owner_bot_id FROM browser_tabs WHERE profile LIKE 'vm:%' AND state != 'closed'")
+            .query("SELECT DISTINCT owner_bot_id FROM browser_tabs WHERE state != 'closed'")
             .all() as Array<{ owner_bot_id: string }>
-          for (const owner of owners) if (isGuest(owner.owner_bot_id)) forBot(owner.owner_bot_id)
-          return [local, attached, ...[...guests.values()].map(({ engine }) => engine)].flatMap((engine) =>
-            engine
-              .tabsForBot(null)
-              .filter(
-                (tab) =>
-                  tab.ownerBotId &&
-                  (isGuest(tab.ownerBotId) ? guests.get(tab.ownerBotId)?.engine : hostForBot(tab.ownerBotId)) ===
-                    engine,
-              ),
+          for (const owner of owners) {
+            if (isGuest(owner.owner_bot_id)) forBot(owner.owner_bot_id)
+            else hostForBot(owner.owner_bot_id)
+          }
+          return [local, attached, ...managed.values(), ...[...guests.values()].map(({ engine }) => engine)].flatMap(
+            (engine) =>
+              engine
+                .tabsForBot(null)
+                .filter(
+                  (tab) =>
+                    tab.ownerBotId &&
+                    (isGuest(tab.ownerBotId) ? guests.get(tab.ownerBotId)?.engine : hostForBot(tab.ownerBotId)) ===
+                      engine,
+                ),
           )
         }
       return (input: unknown) => {

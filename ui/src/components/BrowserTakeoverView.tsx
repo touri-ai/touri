@@ -1,6 +1,6 @@
 import type { BrowserTakeoverFrame, BrowserTakeoverInput } from "@touri/contracts"
 import type { KeyboardEvent, PointerEvent, WheelEvent } from "react"
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import { ApiError } from "../errors"
 import { type Locale, t } from "../i18n"
@@ -21,7 +21,7 @@ type TouchGesture = {
   lastSentAt: number
 }
 
-const ACTIVE_FRAME_INTERVAL_MS = 300
+const ACTIVE_FRAME_INTERVAL_MS = 100
 const IDLE_FRAME_INTERVAL_MS = 1_000
 const ACTIVE_FRAME_WINDOW_MS = 8_000
 const MAX_PENDING_INPUTS = 32
@@ -55,6 +55,9 @@ export const BrowserTakeoverView = ({
   onHandback: () => void
   onSessionEnded?: (() => void) | undefined
 }) => {
+  const dialog = useRef<HTMLDialogElement>(null)
+  const fullscreenHistory = useRef(false)
+  const viewportSize = useRef<{ width: number; height: number } | undefined>(undefined)
   const canvas = useRef<HTMLCanvasElement>(null)
   const screen = useRef<HTMLDivElement>(null)
   const view = useRef<HTMLElement>(null)
@@ -68,6 +71,7 @@ export const BrowserTakeoverView = ({
   const pendingInputs = useRef(0)
   const inputQueue = useRef(Promise.resolve())
   const lastInputAt = useRef(0)
+  const refreshFrame = useRef<() => void>(() => {})
   const sessionEndedRef = useRef(onSessionEnded)
   sessionEndedRef.current = onSessionEnded
   const localeRef = useRef(locale)
@@ -133,7 +137,70 @@ export const BrowserTakeoverView = ({
   const [error, setError] = useState<string | null>(null)
   const [returning, setReturning] = useState(false)
   const [fullView, setFullView] = useState(false)
+  const [inlineHeight, setInlineHeight] = useState<number>()
   localeRef.current = locale
+
+  const closeFullView = useCallback((): void => {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined)
+    if (dialog.current?.close) dialog.current.close()
+    else dialog.current?.removeAttribute("open")
+    if (fullscreenHistory.current) {
+      fullscreenHistory.current = false
+      window.history.back()
+    }
+    setFullView(false)
+  }, [])
+
+  const expandFullView = (): void => {
+    if (fullView) {
+      closeFullView()
+      return
+    }
+    setInlineHeight(view.current?.getBoundingClientRect().height)
+    window.history.pushState(Object.assign({}, window.history.state, { browserTakeover: sessionId }), "")
+    fullscreenHistory.current = true
+    if (dialog.current?.showModal) dialog.current.showModal()
+    else dialog.current?.setAttribute("open", "")
+    setFullView(true)
+    // Keep the request in the click's activation; unsupported mobile browsers retain the modal view.
+    void view.current?.requestFullscreen?.().catch(() => undefined)
+  }
+
+  useEffect(() => {
+    const onFullscreen = () => {
+      if (!document.fullscreenElement) closeFullView()
+    }
+    const onBack = () => {
+      fullscreenHistory.current = false
+      closeFullView()
+    }
+    document.addEventListener("fullscreenchange", onFullscreen)
+    window.addEventListener("popstate", onBack)
+    return () => {
+      document.removeEventListener("fullscreenchange", onFullscreen)
+      window.removeEventListener("popstate", onBack)
+    }
+  }, [closeFullView])
+
+  useEffect(() => {
+    const element = dialog.current
+    const viewport = window.visualViewport
+    if (!fullView || !element || !viewport) return
+    // The phone keyboard changes the visible area independently of the layout viewport.
+    const resize = () => {
+      element.style.setProperty("--takeover-visible-height", `${viewport.height}px`)
+      element.style.setProperty("--takeover-visible-top", `${viewport.offsetTop}px`)
+    }
+    resize()
+    viewport.addEventListener("resize", resize)
+    viewport.addEventListener("scroll", resize)
+    return () => {
+      viewport.removeEventListener("resize", resize)
+      viewport.removeEventListener("scroll", resize)
+      element.style.removeProperty("--takeover-visible-height")
+      element.style.removeProperty("--takeover-visible-top")
+    }
+  }, [fullView])
 
   const focusKeyboard = (): void => {
     keyboard.current?.focus({ preventScroll: true })
@@ -141,6 +208,9 @@ export const BrowserTakeoverView = ({
 
   useEffect(() => {
     let active = true
+    let polling = false
+    let refreshRequested = false
+    const lifetime = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
     let latestImage = ""
     let latestFrameId = 0
@@ -151,11 +221,20 @@ export const BrowserTakeoverView = ({
     const canvasElement = canvas.current
     const screenElement = screen.current
     const invalidateView = (): void => {
+      const bounds = screenElement?.getBoundingClientRect()
+      viewportSize.current = bounds
+        ? {
+            width: Math.min(3840, Math.max(240, Math.round(bounds.width))),
+            height: Math.min(2160, Math.max(240, Math.round(bounds.height))),
+          }
+        : undefined
       viewEpoch.current += 1
       renderedFrame.current = null
       workerFrameDrawn = false
       setFrameReady(false)
       setWorkerFrameReady(false)
+      lastInputAt.current = Date.now()
+      refreshFrame.current()
     }
     const resizeObserver =
       screenElement && typeof ResizeObserver !== "undefined" ? new ResizeObserver(invalidateView) : null
@@ -206,20 +285,28 @@ export const BrowserTakeoverView = ({
     }
 
     const poll = async (): Promise<void> => {
-      if (!active) return
+      if (!active || polling) return
       if (document.hidden && hasFrame) {
         timer = setTimeout(() => void poll(), 1_000)
         return
       }
+      polling = true
+      refreshRequested = false
       try {
         const next = await api.request(
           "POST /browser/tabs/:id/takeover/frame",
-          { sessionId, controlEpoch, viewEpoch: viewEpoch.current },
+          {
+            sessionId,
+            controlEpoch,
+            viewEpoch: viewEpoch.current,
+            ...(viewportSize.current ? { viewport: viewportSize.current } : {}),
+          },
           { id: tabId },
+          { signal: lifetime.signal },
         )
         if (!active) return
         if (next.viewEpoch !== viewEpoch.current) {
-          timer = setTimeout(() => void poll(), 0)
+          refreshRequested = true
           return
         }
         hasFrame = true
@@ -233,7 +320,7 @@ export const BrowserTakeoverView = ({
           viewEpoch: next.viewEpoch,
         }
         latestFrameMetaRef.current = nextFrame
-        setFallbackImage(next.image)
+        if (!workerFrameDrawn) setFallbackImage(next.image)
         if (!workerFrameDrawn) {
           if (loadedFallbackImage.current === next.image) {
             renderedFrame.current = nextFrame
@@ -271,15 +358,28 @@ export const BrowserTakeoverView = ({
           return
         }
         if (active) setError(t("The browser control connection was interrupted.", {}, localeRef.current))
+      } finally {
+        polling = false
+        const recentInput = Date.now() - lastInputAt.current < ACTIVE_FRAME_WINDOW_MS
+        const interval = recentInput ? ACTIVE_FRAME_INTERVAL_MS : IDLE_FRAME_INTERVAL_MS
+        const viewChanged = latestFrameMetaRef.current?.viewEpoch !== viewEpoch.current
+        if (active) timer = setTimeout(() => void poll(), refreshRequested && viewChanged ? 0 : interval)
       }
-      const recentInput = Date.now() - lastInputAt.current < ACTIVE_FRAME_WINDOW_MS
-      const interval = recentInput ? ACTIVE_FRAME_INTERVAL_MS : IDLE_FRAME_INTERVAL_MS
-      if (active) timer = setTimeout(() => void poll(), interval)
     }
 
+    refreshFrame.current = () => {
+      refreshRequested = true
+      clearTimeout(timer)
+      if (!polling) {
+        const changed = latestFrameMetaRef.current?.viewEpoch !== viewEpoch.current
+        timer = setTimeout(() => void poll(), changed ? 0 : ACTIVE_FRAME_INTERVAL_MS)
+      }
+    }
     void poll()
     return () => {
       active = false
+      lifetime.abort()
+      refreshFrame.current = () => {}
       connected.current = false
       clearTimeout(timer)
       resizeObserver?.disconnect()
@@ -289,17 +389,17 @@ export const BrowserTakeoverView = ({
     }
   }, [api, controlEpoch, sessionId, tabId])
 
-  const sendInput = (input: BrowserTakeoverInput): void => {
-    if (released.current || releasing.current) return
+  const sendInput = (input: BrowserTakeoverInput): boolean => {
+    if (released.current || releasing.current) return false
     const observedFrame = renderedFrame.current
     if (!observedFrame || observedFrame.viewEpoch !== viewEpoch.current) {
       setError(t("The browser view changed. Wait for the refreshed page.", {}, locale))
-      return
+      return false
     }
     lastInputAt.current = Date.now()
     if (pendingInputs.current >= MAX_PENDING_INPUTS) {
       setError(t("The browser is catching up. Try again in a moment.", {}, locale))
-      return
+      return false
     }
     pendingInputs.current += 1
     inputQueue.current = inputQueue.current
@@ -323,7 +423,10 @@ export const BrowserTakeoverView = ({
       })
       .then(
         () => {
-          if (connected.current) setError(null)
+          if (connected.current) {
+            setError(null)
+            refreshFrame.current()
+          }
         },
         () => {
           if (connected.current) setError(t("The browser did not receive that action.", {}, locale))
@@ -332,29 +435,39 @@ export const BrowserTakeoverView = ({
       .then(() => {
         pendingInputs.current -= 1
       })
+    return true
   }
 
-  const sendText = (value: string): void => {
-    if (!value) return
+  const sendText = (value: string): boolean => {
+    if (!value || released.current || releasing.current) return true
     if (value.length > 16_384) {
       setError(t("That text is too long to send to the browser.", {}, locale))
-      return
+      return false
     }
     if (new TextEncoder().encode(value).byteLength > 16_384) {
       setError(t("That text is too long to send to the browser.", {}, locale))
-      return
+      return false
     }
-    sendInput({ kind: "text", text: value })
+    return sendInput({ kind: "text", text: value })
+  }
+
+  const flushKeyboard = (): boolean => {
+    const input = keyboard.current
+    if (!input?.value) return true
+    if (!sendText(input.value)) return false
+    input.value = ""
+    return true
   }
 
   const handback = async (): Promise<void> => {
-    if (releasing.current || released.current) return
+    if (releasing.current || released.current || !flushKeyboard()) return
     releasing.current = true
     setReturning(true)
     try {
       await inputQueue.current
       await api.request("DELETE /browser/tabs/:id/takeover/session", { sessionId, controlEpoch }, { id: tabId })
       released.current = true
+      closeFullView()
       onHandback()
     } catch {
       setError(t("Could not return control to the bot. Try again.", {}, locale))
@@ -503,7 +616,16 @@ export const BrowserTakeoverView = ({
   }
   const keyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     event.stopPropagation()
+    if (event.key === "Escape" && fullView) {
+      event.preventDefault()
+      closeFullView()
+      return
+    }
     if (event.nativeEvent.isComposing) return
+    if (!flushKeyboard()) {
+      event.preventDefault()
+      return
+    }
     if (event.key.toLowerCase() === "v" && (event.ctrlKey || event.metaKey)) return
     event.preventDefault()
     const modifiers =
@@ -523,7 +645,7 @@ export const BrowserTakeoverView = ({
   const safeUrl = frame ? getBrowserActivityUrl(frame.url) : ""
   const connectionNotice = frame ? "" : ` · ${t("Connecting to the browser…", {}, locale)}`
 
-  return (
+  const browserView = (
     <section
       ref={view}
       className="browser-takeover-view"
@@ -544,7 +666,7 @@ export const BrowserTakeoverView = ({
             className="browser-activity-icon-button"
             aria-label={t(fullView ? "Collapse browser full screen" : "Expand browser to full screen", {}, locale)}
             aria-pressed={fullView}
-            onClick={() => setFullView((value) => !value)}
+            onClick={expandFullView}
           >
             <span aria-hidden="true">{fullView ? "↙" : "↗"}</span>
           </button>
@@ -589,7 +711,7 @@ export const BrowserTakeoverView = ({
           data-full-view={fullView}
           style={
             fullView
-              ? { aspectRatio: "auto", height: "min(72vh, 720px)" }
+              ? { aspectRatio: "auto", height: "100%" }
               : { aspectRatio: frame ? `${frame.width} / ${frame.height}` : "16 / 10" }
           }
           onPointerDown={pointerDown}
@@ -648,6 +770,7 @@ export const BrowserTakeoverView = ({
           </section>
         </aside>
       </div>
+      {/* Keep the phone keyboard focused while a resized frame is being refreshed. */}
       <textarea
         ref={keyboard}
         className="browser-takeover-keyboard"
@@ -656,7 +779,7 @@ export const BrowserTakeoverView = ({
         autoCapitalize="off"
         autoCorrect="off"
         spellCheck={false}
-        disabled={!frameReady}
+        disabled={!frame}
         onKeyDown={keyDown}
         onKeyUp={keyUp}
         onCompositionStart={() => {
@@ -665,19 +788,18 @@ export const BrowserTakeoverView = ({
         onInput={(event) => {
           event.stopPropagation()
           if (composing.current) return
-          sendText(event.currentTarget.value)
-          event.currentTarget.value = ""
+          if (sendText(event.currentTarget.value)) event.currentTarget.value = ""
         }}
         onPaste={(event) => {
           event.preventDefault()
           event.stopPropagation()
-          sendText(event.clipboardData.getData("text/plain"))
-          event.currentTarget.value = ""
+          const value = event.currentTarget.value + event.clipboardData.getData("text/plain")
+          if (sendText(value)) event.currentTarget.value = ""
+          else if (value.length <= 16_384) event.currentTarget.value = value
         }}
         onCompositionEnd={(event) => {
           composing.current = false
-          sendText(event.currentTarget.value || event.data)
-          event.currentTarget.value = ""
+          if (sendText(event.currentTarget.value || event.data)) event.currentTarget.value = ""
         }}
       />
       {error && (
@@ -691,5 +813,23 @@ export const BrowserTakeoverView = ({
         </span>
       )}
     </section>
+  )
+
+  return (
+    <div style={fullView && inlineHeight ? { height: inlineHeight } : undefined}>
+      <dialog
+        ref={dialog}
+        className="browser-takeover-dialog"
+        aria-label={t("Remote browser control", {}, locale)}
+        style={!fullView ? { display: "contents" } : undefined}
+        onCancel={(event) => {
+          event.preventDefault()
+          closeFullView()
+        }}
+        onClose={() => setFullView(false)}
+      >
+        {browserView}
+      </dialog>
+    </div>
   )
 }

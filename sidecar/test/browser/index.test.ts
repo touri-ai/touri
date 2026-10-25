@@ -90,6 +90,7 @@ test("remote browser takeover gives one device an interactive session and reject
   const runtime = createKernel({ appData: root })
   let botId = ""
   let receivedInput: unknown = null
+  let receivedViewport: { width: number; height: number } | undefined
   let frameCapture: Promise<void> | null = null
   let canHold = true
   let heldRunId: string | undefined
@@ -142,7 +143,8 @@ test("remote browser takeover gives one device an interactive session and reject
     },
     getWindowBounds: async () => null,
     tabsForBot: () => [{ ...tab, ownerBotId: botId }],
-    takeoverFrame: async () => {
+    takeoverFrame: async ({ viewport }) => {
+      receivedViewport = viewport
       await frameCapture
       return {
         targetEpoch: 4,
@@ -254,6 +256,23 @@ test("remote browser takeover gives one device an interactive session and reject
     expect(staleControl.status).toBe(403)
     expect(receivedInput).toBeNull()
 
+    for (const viewport of [
+      { width: 239, height: 650 },
+      { width: 390, height: 2161 },
+      { width: 3841, height: 650 },
+      { width: 390.5, height: 650 },
+    ]) {
+      const invalid = await request("/browser/tabs/t_remote/takeover/frame", {
+        sessionId,
+        controlEpoch,
+        viewEpoch: 0,
+        viewport,
+      })
+
+      expect(invalid.status).toBe(400)
+      expect(receivedViewport).toBeUndefined()
+    }
+
     const frame = await request("/browser/tabs/t_remote/takeover/frame", { sessionId, controlEpoch, viewEpoch: 0 })
     expect(frame.status).toBe(200)
     expect(await frame.json()).toMatchObject({ controlEpoch, targetEpoch: 4, viewEpoch: 0, width: 1280, height: 720 })
@@ -286,8 +305,10 @@ test("remote browser takeover gives one device an interactive session and reject
       sessionId,
       controlEpoch,
       viewEpoch: 1,
+      viewport: { width: 390, height: 650 },
     })
     expect(resizedFrame.status).toBe(200)
+    expect(receivedViewport).toEqual({ width: 390, height: 650 })
     expect(await resizedFrame.json()).toMatchObject({ controlEpoch, targetEpoch: 4, viewEpoch: 1 })
     const resumedAfterResize = await request("/browser/tabs/t_remote/takeover/session", {})
     expect(resumedAfterResize.status).toBe(200)

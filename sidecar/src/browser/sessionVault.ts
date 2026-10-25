@@ -2,7 +2,12 @@ import type { Database } from "bun:sqlite"
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto"
 import { join } from "node:path"
 import type { Kernel } from "@touri/contracts"
-import { ensurePrivateDirectoryAsync, removePrivateFileAsync, writePrivateFileAsync } from "../kernel/async-files"
+import {
+  ensurePrivateDirectoryAsync,
+  readPrivateFileAsync,
+  removePrivateFileAsync,
+  writePrivateFileAsync,
+} from "../kernel/async-files"
 import { getMeasuredStage } from "../kernel/background-task"
 import { TouriError } from "../kernel/errors"
 import { readPrivateFile } from "../kernel/files"
@@ -130,7 +135,7 @@ export const hasBotSession = (kernel: Kernel, botId: string): boolean =>
 
 export const loadBotSession = async (kernel: Kernel, botId: string): Promise<SavedSession> => {
   if (!SAFE_BOT_ID.test(botId)) return emptySession()
-  const raw = readPrivateFile({
+  const raw = await readPrivateFileAsync({
     root: kernel.paths.appData,
     path: sessionPath(kernel, botId),
     maxBytes: MAX_SESSION_BYTES * 2,
@@ -162,7 +167,7 @@ export const saveBotSession = async ({
   let key: Buffer
   try {
     // Even a save without a prior load must preserve an unreadable existing file.
-    const raw = readPrivateFile({
+    const raw = await readPrivateFileAsync({
       root: kernel.paths.appData,
       path: sessionPath(kernel, botId),
       maxBytes: MAX_SESSION_BYTES * 2,

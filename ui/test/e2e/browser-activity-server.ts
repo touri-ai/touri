@@ -231,6 +231,10 @@ const server = Bun.serve({
           }
         })()`),
       )
+    if (step === "public-navigation") {
+      await getFixturePageValue(`location.href = ${JSON.stringify(`${fixtureUrl}?public=1`)}`)
+      return Response.json({ navigated: true })
+    }
     if (step === "preview") {
       const preview = await engine.preview({ botId: ctx.botId, tabId, signal: ctx.signal })
       return Response.json(preview ? { ...preview, url: "https://travel.example.test" } : { image: "" })
