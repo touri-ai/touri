@@ -30,10 +30,12 @@ export const createServerModeFixture = async ({
   initialMode = "local",
   port = 0,
   executable,
+  directCli = false,
 }: {
   initialMode?: "local" | "server"
   port?: number
   executable?: string
+  directCli?: boolean
 } = {}) => {
   // Playwright's global setup builds this worktree's UI before any server fixture starts.
   const reservation = createServer()
@@ -213,7 +215,8 @@ export const createServerModeFixture = async ({
     child = spawn(
       executable ?? "bun",
       [
-        ...(executable ? [] : ["run", "touri"]),
+        // Direct startup lets the fixture's stop signal reach the actual server.
+        ...getServerEntry(executable, directCli),
         "serve",
         "--host",
         "127.0.0.1",
@@ -354,4 +357,11 @@ export const createServerModeFixture = async ({
       eventStreamPaused = false
     },
   }
+}
+
+const getServerEntry = (executable: string | undefined, directCli: boolean): string[] => {
+  if (executable) return []
+  if (directCli) return [join(root, "sidecar/src/cli/main.ts")]
+
+  return ["run", "touri"]
 }

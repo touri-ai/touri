@@ -91,12 +91,31 @@ test("run projections are restricted to visible messages, even when older runs s
   expect(runs[0]?.id).toBe("run-5000")
   expect(plan).toContain("runs_request")
   expect(plan).not.toMatch(/SCAN r\b/)
+
+  database.exec("UPDATE runs SET status = 'running' WHERE id = 'offscreen-member'")
+  const active = database.query(query.sql).all(...query.bindings) as Array<{ id: string }>
+
+  expect(active).toHaveLength(41)
+  expect(active.some((run) => run.id === "offscreen-member")).toBe(true)
+})
+
+test("run pages seek their own bounded message keys without waiting for a message response", async () => {
+  const database = await getFixture()
+  const query = getThreadRunsQuery("channel", true, undefined, { limit: 40, before: "message-4961" })
+
+  const rows = database.query(query.sql).all(...query.bindings) as Array<{ id: string }>
+  const plan = JSON.stringify(database.query(`EXPLAIN QUERY PLAN ${query.sql}`).all(...query.bindings))
+
+  expect(rows).toHaveLength(40)
+  expect(rows[0]?.id).toBe("run-4960")
+  expect(rows.at(-1)?.id).toBe("run-4921")
+  expect(plan).toContain("messages_thread_created")
+  expect(plan).not.toMatch(/SCAN r\b/)
 })
 
 test("indexed page queries and page-scoped run projections stay within the live CPU budget", async () => {
   const database = await getFixture()
-  const ids = Array.from({ length: 40 }, (_, index) => `message-${4961 + index}`)
-  const runs = getThreadRunsQuery("channel", false, ids)
+  const runs = getThreadRunsQuery("channel", true, undefined, { limit: 40 })
   const samples = Array.from({ length: 30 }, (_, index) => {
     const query = getHistoryQuery("channel", null, true, {
       limit: 40,

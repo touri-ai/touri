@@ -32,3 +32,14 @@ export const getHistoryQuery = (threadId: string, activeLeafId: string | null, a
     reverse: true,
   }
 }
+
+export const getHistoryPage = (query: Record<string, string>, activeLeafId: string | null): HistoryPage | undefined => {
+  if (query.limit === undefined) return undefined
+  const around = query.around || activeLeafId
+
+  return {
+    limit: Math.max(1, Math.min(50, Math.floor(Number(query.limit)) || 40)),
+    ...(query.before ? { before: query.before } : {}),
+    ...(around ? { around } : {}),
+  }
+}

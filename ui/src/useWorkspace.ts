@@ -1005,7 +1005,6 @@ export const useWorkspace = (
           // The request owns its overlap buffer; release it as soon as messages are readable.
           const replay = deltas.slice()
           load.historyReady = true
-          if (!messages.messages.length) load.runsReady = true
           load.deltas.length = 0
           loadedThreads.current.set(threadId, attempt)
           setData((current) => {
@@ -1050,17 +1049,13 @@ export const useWorkspace = (
           void loadThread(threadId, true)
         })
       const loadRuns = async (): Promise<void> => {
-        const page = await pageRequest
-        if (!isCurrentLoad() || !page.messages.length) return
         // Retry one read at a time; a terminal-heavy stream must not build a chain of pending promises.
         for (;;) {
           const runsAtStart = runRevision.current
           const terminalRevision = threadLoads.current.get(threadId)?.terminalRevision ?? 0
           const runs = await api.request(
             "GET /threads/:id/runs",
-            page.before === undefined
-              ? { all: true }
-              : { messageIds: page.messages.map((message) => message.id).join(",") },
+            { all: true, limit: historyPageSize, ...(focus ? { around: focus.messageId } : {}) },
             { id: threadId },
             { signal: controller.signal },
           )
@@ -2583,7 +2578,7 @@ const getMergedHistoryMessages = (snapshot: Message[], current: Message[]): Mess
   const snapshotIds = new Set(snapshot.map((message) => message.id))
   const restored = snapshot.map((message) => {
     const previous = currentById.get(message.id)
-    return previous ? (updateMessage([previous], message)[0] ?? message) : message
+    return updateMessage(previous ? [previous] : [], message)[0] ?? message
   })
   const merged = restored.concat(current.filter((message) => !snapshotIds.has(message.id)))
   // Sort a fresh collection: page order resolves timestamp ties, while overlapping live events keep their revisions.

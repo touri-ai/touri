@@ -15,6 +15,7 @@ import { deviceSession } from "../kernel/device-session"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import { buildChildEnv } from "../kernel/shell-env"
 import { getHostIdentity } from "../platform/host"
+import { getHistoryPage } from "../store/history-query"
 import { createStoreReader } from "../store/reader"
 import { createTeamTools } from "../teams/tools"
 import { createRuntimeEngine } from "./engine"
@@ -276,7 +277,12 @@ export const init = async (
           }
           const threadId = params.id ?? ""
           const rows = await reader.getRows<Record<string, unknown>>(
-            getThreadRunsQuery(threadId, query.all === "true", messageIds),
+            getThreadRunsQuery(
+              threadId,
+              query.all === "true",
+              messageIds,
+              getHistoryPage(query, isChannel ? null : (thread?.activeLeafId ?? null)),
+            ),
             signal,
           )
           const runs = rows.flatMap((row) => {

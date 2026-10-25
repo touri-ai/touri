@@ -20,7 +20,10 @@ export const createThreadHistoryCache = () => {
     const messages = history.messages.slice(-historyPageSize)
     const runIds = new Set(messages.flatMap((message) => (message.runId ? [message.runId] : [])))
     const runs = history.runs.filter(
-      (run) => runIds.has(run.id) || messages.some((message) => message.id === run.requestMessageId),
+      (run) =>
+        runIds.has(run.id) ||
+        messages.some((message) => message.id === run.requestMessageId) ||
+        ["queued", "starting", "running"].includes(run.status),
     )
     const page = {
       messages,

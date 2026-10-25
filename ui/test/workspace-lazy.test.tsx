@@ -77,7 +77,7 @@ test("134 threads across 15 bots request only the selected history and render be
   await act(async () => barrier.resolve())
 })
 
-test("selection evicts the visited transcript and reloads background events from durable history", async () => {
+test("selection retains a cached page and reloads background events from durable history", async () => {
   const api = createMockApi()
   offscreenMessage(api)
   const hook = renderHook(() => useWorkspace(api))
@@ -110,7 +110,7 @@ test("selection evicts the visited transcript and reloads background events from
   expect(hook.result.current.data.messages.every((message) => message.threadId === "thread-mark")).toBe(true)
   expect(
     api.calls.filter((call) => call.route === "GET /threads/:id/messages" && call.pathValues.id === "thread-mark"),
-  ).toHaveLength(2)
+  ).toHaveLength(1)
 })
 
 test("a thousand background replies retain only small activity summaries", async () => {

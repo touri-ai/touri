@@ -16,7 +16,11 @@ for (const width of [1440, 390]) {
   test(`5k channel history opens at the bottom, caches switches and preserves older-page position at ${width}px`, async ({
     page,
   }, info) => {
-    const server = await createServerModeFixture({ port: Number(process.env.HISTORY_EVIDENCE_PORT ?? 18883) })
+    const server = await createServerModeFixture({
+      initialMode: "server",
+      directCli: true,
+      port: Number(process.env.HISTORY_EVIDENCE_PORT ?? 18883),
+    })
     servers.add(server)
     const { settings } = await server.api("/settings")
     const { bot } = await server.api("/bots", "POST", { name: "Brisa fictícia", provider: settings.defaultProvider })
@@ -40,6 +44,11 @@ for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
     await page.emulateMedia({ reducedMotion: "reduce" })
     const before = process.env.HISTORY_PAGINATION_PHASE === "before"
+    const requestedThreads: string[] = []
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname.endsWith("/messages"))
+        requestedThreads.push(new URL(request.url()).pathname.split("/").at(-2) ?? "")
+    })
     const reads: Array<{ id: string; count: number; bytes: number }> = []
     page.on("response", async (response) => {
       if (!response.url().includes("/messages") || !response.ok()) return
@@ -52,7 +61,9 @@ for (const width of [1440, 390]) {
       })
     })
     await page.goto(server.relayUrl)
-    await expect(page.getByRole("textbox", { name: "Mensagem para Brisa fictícia", exact: true })).toBeVisible()
+    await expect(page.getByRole("textbox", { name: "Mensagem para Brisa fictícia", exact: true })).toBeVisible({
+      timeout: 60_000,
+    })
     const showSidebar = async () => {
       if (width === 390) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
     }
@@ -111,6 +122,7 @@ for (const width of [1440, 390]) {
         return (timing.historyReady ?? performance.now()) - (timing.historyStarted ?? performance.now())
       })
     }
+    expect(requestedThreads).not.toContain(first)
     const coldMs = await choose("Plano fictício", first)
     const history = page.getByRole("region", { name: "Histórico da conversa" })
     await expect

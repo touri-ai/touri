@@ -1201,7 +1201,7 @@ export type ApiRoutes = {
   'POST /threads/:id/goal': { req: GoalStart; res: { goal: Goal } }
   'PATCH /threads/:id/goal': { req: GoalControl; res: { goal: Goal } }
   'POST /threads/:id/prepare': { req: {}; res: { preparing: boolean } }
-  'GET /threads/:id/runs': { req: { all?: boolean; messageIds?: string }; res: { runs: Array<Run> } }
+  'GET /threads/:id/runs': { req: { all?: boolean; messageIds?: string; limit?: number; before?: Id; around?: Id }; res: { runs: Array<Run> } }
   /** Compact sidebar messages and latest/active runs; never a transcript snapshot. */
   'GET /workspace/activity': { req: Record<string, never>; res: { messages: Array<Message>; runs: Array<Run>; browserRuns: Array<BrowserChannelRun> } }
   'POST /runs/:id/cancel': { req: { scope?: 'group' | 'turn' }; res: { run: Run } }

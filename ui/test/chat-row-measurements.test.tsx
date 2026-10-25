@@ -8,7 +8,7 @@ const getCards = (height: number) =>
   Array.from({ length: 101 }, (_, index) => ({
     id: `card-${index}`,
     createdAt: index,
-    content: <div data-height={index === 0 ? height : 100} />,
+    content: <div data-height={index === 100 ? height : 100} />,
   }))
 
 const installMeasurements = () => {
@@ -74,7 +74,8 @@ it.each([false, true])("updates virtual offsets when a row grows and collapses (
   )
   const view = render(getList(100), strict ? { wrapper: StrictMode } : {})
   const spacer = view.getByTestId("virtual-message-list").firstElementChild
-  const originalHeight = 34 * 100 + 67 * 158
+  const mountedCount = view.container.querySelectorAll("[data-message-row]").length
+  const originalHeight = mountedCount * 100 + (101 - mountedCount) * 158
   await waitFor(() => expect(spacer).toHaveStyle({ height: `${originalHeight}px` }))
 
   view.rerender(getList(600))

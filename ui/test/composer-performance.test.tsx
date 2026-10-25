@@ -29,15 +29,15 @@ test("typing in a long conversation does not render transcript Markdown", async 
   bot.machine = "vm"
   const messages = createComposerPerformanceMessages(thread.id)
   // Completed provider replies are immutable. Use a live reply in the DOM-only
-  // renderer's first virtual window to exercise an actual incoming update.
-  const reply = messages[1]
+  // renderer's latest virtual window to exercise an actual incoming update.
+  const reply = messages.at(-1)
   if (!reply) throw new Error("Missing synthetic reply")
   reply.status = "streaming"
   state.messages.splice(0, state.messages.length, ...messages)
   thread.activeLeafId = messages.at(-1)?.id ?? null
   render(<App kernel={{ services: { api } }} />)
   const input = await screen.findByRole("textbox", { name: "Mensagem para mark" })
-  await screen.findByRole("heading", { name: "Synthetic review 1" })
+  await screen.findByRole("heading", { name: "Synthetic review 250" })
   // Settle focus/VM wake before measuring edits, as in the browser benchmark.
   await act(async () => fireEvent.focus(input))
   await waitFor(() => expect(MarkdownContent).toHaveBeenCalled())
@@ -59,7 +59,7 @@ test("typing in a long conversation does not render transcript Markdown", async 
       },
     }),
   )
-  await screen.findByText("Incoming synthetic reply")
+  await screen.findByText("Incoming synthetic reply", { selector: "p" })
   expect(input).toHaveValue("abc")
 })
 

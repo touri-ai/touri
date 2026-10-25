@@ -1369,23 +1369,11 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       ) as ApiRoutes[typeof route]["res"]
     }
     if (key === "GET /threads/:id/messages") {
-      const threadMessages = messages.filter((message) => message.threadId === pathValues.id)
-      const page = input as ApiRoutes["GET /threads/:id/messages"]["req"]
-      const thread = findThread(pathValues.id ?? "")
-      const around = page.around ?? (thread?.groupId ? null : thread?.activeLeafId)
-      const focused = around ? threadMessages.findIndex((message) => message.id === around) : -1
-      const end = page.before
-        ? threadMessages.findIndex((message) => message.id === page.before)
-        : focused >= 0
-          ? focused + 1
-          : threadMessages.length
-      const start = page.limit === undefined ? 0 : Math.max(0, end - page.limit)
-      const selected = threadMessages.slice(start, end)
-      return {
-        messages: selected,
-        activeLeafId: findThread(pathValues.id ?? "")?.activeLeafId ?? null,
-        ...(page.limit === undefined ? {} : { before: start > 0 ? (selected[0]?.id ?? null) : null }),
-      } as ApiRoutes[typeof route]["res"]
+      return getMockHistoryPage(
+        messages,
+        findThread(pathValues.id ?? ""),
+        input as ApiRoutes["GET /threads/:id/messages"]["req"],
+      ) as ApiRoutes[typeof route]["res"]
     }
     if (key === "GET /runs")
       return {
@@ -1434,8 +1422,10 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     }
     if (key === "POST /threads/:id/prepare") return { preparing: true }
     if (key === "GET /threads/:id/runs") {
-      const { messageIds } = input as ApiRoutes["GET /threads/:id/runs"]["req"]
-      const ids = messageIds ? new Set(messageIds.split(",")) : null
+      const page = input as ApiRoutes["GET /threads/:id/runs"]["req"]
+      const selected =
+        page.limit === undefined ? null : getMockHistoryPage(messages, findThread(pathValues.id ?? ""), page).messages
+      const ids = getMockRunMessageIds(page.messageIds, selected)
       return {
         runs: [...runs.values()].filter(
           (run) =>
@@ -1935,4 +1925,37 @@ function getMockTelegramStatus(enabled: boolean, tokenSaved: boolean): TelegramI
   if (!tokenSaved) return { state: "error", username: null, error: "Salve o token do bot do Telegram." }
 
   return { state: "connected", username: "touri_mock_bot", error: null }
+}
+
+const getMockHistoryPage = (
+  messages: Message[],
+  thread: Thread | undefined,
+  page: ApiRoutes["GET /threads/:id/messages"]["req"],
+): ApiRoutes["GET /threads/:id/messages"]["res"] => {
+  const rows = messages.filter((message) => message.threadId === thread?.id)
+  const around = page.around ?? (thread?.groupId ? null : thread?.activeLeafId)
+  const focused = around ? rows.findIndex((message) => message.id === around) : -1
+  const end = getMockPageEnd(rows, page.before, focused)
+  const start = page.limit === undefined ? 0 : Math.max(0, end - page.limit)
+  const selected = rows.slice(start, end)
+
+  return {
+    messages: selected,
+    activeLeafId: thread?.activeLeafId ?? null,
+    ...(page.limit === undefined ? {} : { before: start > 0 ? (selected[0]?.id ?? null) : null }),
+  }
+}
+
+const getMockPageEnd = (messages: Message[], before: string | undefined, focused: number): number => {
+  if (before) return messages.findIndex((message) => message.id === before)
+  if (focused >= 0) return focused + 1
+
+  return messages.length
+}
+
+const getMockRunMessageIds = (messageIds: string | undefined, messages: Message[] | null): Set<string> | null => {
+  if (messageIds) return new Set(messageIds.split(","))
+  if (messages) return new Set(messages.map((message) => message.id))
+
+  return null
 }

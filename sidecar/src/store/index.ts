@@ -52,7 +52,7 @@ import { getDefaultMaxConcurrentRuns } from "../runtime/concurrency"
 import { touriVersion } from "../version"
 import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemory } from "../vm/resources"
 import { cleanupBotHome, updateBotHome, writeBotHome } from "./bot-home"
-import { getHistoryQuery } from "./history-query"
+import { getHistoryPage, getHistoryQuery } from "./history-query"
 import { getIntegrationSender } from "./integration-sender"
 import { getMessageFromRow as asMessage } from "./message-row"
 import { getBotModel, MODEL_VALIDATION_ERROR } from "./model"
@@ -1904,15 +1904,7 @@ export const init = async (
               thread.id,
               thread.activeLeafId,
               query.all === "true",
-              query.limit === undefined
-                ? undefined
-                : {
-                    limit: Math.max(1, Math.min(50, Math.floor(Number(query.limit)) || 40)),
-                    ...(query.before ? { before: query.before } : {}),
-                    ...(query.around || (!thread.groupId && thread.activeLeafId)
-                      ? { around: query.around || thread.activeLeafId || "" }
-                      : {}),
-                  },
+              getHistoryPage(query, thread.groupId ? null : thread.activeLeafId),
             ),
             signal,
           )
