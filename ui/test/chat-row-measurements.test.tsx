@@ -90,9 +90,11 @@ it.each([false, true])("updates virtual offsets when a row grows and collapses (
   )
   const view = render(getList(100), strict ? { wrapper: StrictMode } : {})
   const spacer = view.getByTestId("virtual-message-list").firstElementChild
-  const mountedCount = view.container.querySelectorAll("[data-message-row]").length
-  const originalHeight = mountedCount * 100 + (101 - mountedCount) * 158
-  await waitFor(() => expect(spacer).toHaveStyle({ height: `${originalHeight}px` }))
+  await waitFor(() => {
+    const mountedCount = view.container.querySelectorAll("[data-message-row]").length
+    expect(spacer).toHaveStyle({ height: `${mountedCount * 100 + (101 - mountedCount) * 158}px` })
+  })
+  const originalHeight = Number.parseFloat((spacer as HTMLElement).style.height)
 
   view.rerender(getList(600))
   act(notifyResize)

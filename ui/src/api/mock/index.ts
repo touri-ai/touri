@@ -1471,9 +1471,18 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       run.replyMessageId = reply.id
       messages.push(userMessage, reply)
       runs.set(run.id, run)
+      const storedThread = findThread(pathValues.id ?? "")
+      const updatedThread = storedThread ? { ...storedThread, activeLeafId: reply.id, updatedAt: now() } : undefined
+      if (updatedThread)
+        threads.splice(
+          threads.findIndex((thread) => thread.id === updatedThread.id),
+          1,
+          updatedThread,
+        )
       emit({ type: "message.created", message: userMessage })
       emit({ type: "message.created", message: reply })
       emit({ type: "run.updated", run })
+      if (updatedThread) emit({ type: "thread.updated", thread: updatedThread })
       const deltas = [
         "Coloquei sua solicitação na fila local. ",
         "Vou manter o contexto da conversa, ",

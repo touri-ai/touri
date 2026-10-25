@@ -2146,14 +2146,19 @@ export const useWorkspace = (
         : await api.request("POST /threads/:id/messages", input, { id: selectedThread.id })
       localResponseTimings().observe({ type: "message.updated", message: response.message })
       if (response.run) localResponseTimings().observe({ type: "run.updated", run: response.run })
-      setData((current) => ({
-        ...current,
-        messages: updateMessage(current.messages, response.message),
-        threads: current.threads.map((thread) =>
-          thread.id === selectedThread.id ? { ...thread, activeLeafId: response.message.id } : thread,
-        ),
-        runs: response.run ? mergeRunRows(current.runs, [response.run]) : current.runs,
-      }))
+      setData((current) => {
+        const replyId = response.run?.replyMessageId
+        const activeLeafId =
+          replyId && current.messages.some((message) => message.id === replyId) ? replyId : response.message.id
+        return {
+          ...current,
+          messages: updateMessage(current.messages, response.message),
+          threads: current.threads.map((thread) =>
+            thread.id === selectedThread.id ? { ...thread, activeLeafId } : thread,
+          ),
+          runs: response.run ? mergeRunRows(current.runs, [response.run]) : current.runs,
+        }
+      })
     },
     [api, selectedThread, data.threadCreation, selectThread],
   )

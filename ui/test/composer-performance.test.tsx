@@ -41,6 +41,7 @@ test("typing in a long conversation does not render transcript Markdown", async 
   // Settle focus/VM wake before measuring edits, as in the browser benchmark.
   await act(async () => fireEvent.focus(input))
   await waitFor(() => expect(MarkdownContent).toHaveBeenCalled())
+  await act(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))))
   vi.mocked(MarkdownContent).mockClear()
 
   for (const value of ["a", "ab", "abc"]) fireEvent.change(input, { target: { value } })

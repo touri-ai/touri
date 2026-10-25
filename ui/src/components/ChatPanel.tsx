@@ -404,6 +404,7 @@ export const VirtualMessageList = ({
   }, [runs, routineRuns, routines])
   const [scrollTop, setScrollTop] = useState(0)
   const [rowHeights, setRowHeights] = useState<Record<string, number>>({})
+  const [windowReady, setWindowReady] = useState(false)
   const prependAnchor = useRef<{ id: string; top: number; firstId: string | undefined } | null>(null)
   const scrollRef = useRef<HTMLElement>(null)
   const spacerRef = useRef<HTMLDivElement>(null)
@@ -469,6 +470,12 @@ export const VirtualMessageList = ({
     return Array.from(entries).sort((a, b) => a.createdAt - b.createdAt)
   }, [messages, timelineCards])
   const isVirtualized = timeline.length > 20
+  useEffect(() => {
+    if (!isVirtualized || windowReady) return
+    // Paint the latest viewport first; mount the offscreen rows in a separate task.
+    const frame = requestAnimationFrame(() => setWindowReady(true))
+    return () => cancelAnimationFrame(frame)
+  }, [isVirtualized, windowReady])
   const messageTargetIndex =
     focusMessage && focusMessage !== focusedMessage.current
       ? timeline.findIndex((entry) => entry.id === focusMessage.messageId)
@@ -588,7 +595,7 @@ export const VirtualMessageList = ({
       observer.disconnect()
     }
   }, [measureRowOnNextFrame])
-  const visibleCount = 16
+  const visibleCount = !windowReady && followBottom.current ? 8 : 16
   const totalHeight = rowOffsets.at(-1) ?? 0
   const targetIndex = focusApproval
     ? timeline.findIndex((entry) =>
