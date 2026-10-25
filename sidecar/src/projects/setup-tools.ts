@@ -239,7 +239,7 @@ export const createSetupTools = ({
         if (!bot) return denied("Somente o próprio bot, sem delegação, pode alterar seu nome.")
         const rename = kernel.services.use("bots.rename")
         if (!rename) return denied("A configuração do bot está indisponível.")
-        const result = rename({ botId: bot.id, name: (args as { name: string }).name })
+        const result = await rename({ botId: bot.id, name: (args as { name: string }).name, signal: ctx.signal })
         if (!result.success) return result
         const message = `Bot renomeado de ${JSON.stringify(bot.name)} para ${JSON.stringify(result.bot.name)}.`
         notice(ctx, message)

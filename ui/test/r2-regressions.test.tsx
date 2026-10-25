@@ -401,9 +401,10 @@ describe("r2 regressions", () => {
     await waitFor(() =>
       expect(update).toHaveBeenCalledWith(
         bot.id,
-        expect.objectContaining({ roleLine: "Touri · Coder", title: "Analista", instructions: bot.instructions }),
+        expect.objectContaining({ roleLine: "Touri · Coder", title: "Analista" }),
       ),
     )
+    expect(update).toHaveBeenCalledWith(bot.id, expect.not.objectContaining({ instructions: expect.any(String) }))
   })
 
   it.each(["main", "routine"] as const)("P9: user turns in %s threads never render routine run copy", (kind) => {

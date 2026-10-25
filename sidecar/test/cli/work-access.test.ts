@@ -685,3 +685,18 @@ test("workspace image previews require bot ownership while shared channel attach
     ).toBe(404)
   }
 })
+
+test("instruction reads use the same bot scope as conversation history", () => {
+  const authorize = (botId: string) =>
+    access.authorizeHttp({
+      personId: "member",
+      role: "member",
+      method: "GET",
+      pathname: `/bots/${botId}/instructions`,
+      body: null,
+    })
+
+  expect(authorize("member-bot")).toBeNull()
+  expect(authorize("team-bot")).toBeNull()
+  expect(authorize("other-bot")).toMatchObject({ status: 404 })
+})

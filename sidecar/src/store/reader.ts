@@ -190,7 +190,7 @@ const getRowsFromStream = async (
         if (chunkedStrings) frames.append(value)
         else rows.push(value)
       })
-      await new Promise<void>((resolve) => setImmediate(resolve))
+      await new Promise<void>(deferWorkerReply)
     }
   }
   if (tail) throw new Error("STORE_READ_FAILED")

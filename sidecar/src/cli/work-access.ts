@@ -493,7 +493,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
     const groupThreads = /^\/groups\/([^/]+)\/threads$/u.exec(pathname)
     if (groupThreads && ["GET", "POST"].includes(verb))
       return canAccessGroup({ personId, role, groupId: groupThreads[1] ?? "" }) ? null : notFound
-    if (verb === "GET" && /^\/bots\/[^/]+\/threads$/u.test(pathname)) {
+    if (verb === "GET" && /^\/bots\/[^/]+\/(?:threads|instructions)$/u.test(pathname)) {
       const botId = pathname.split("/")[2] ?? ""
       return canAccessBot({ personId, role, botId }) ? null : notFound
     }

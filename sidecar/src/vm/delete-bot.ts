@@ -537,7 +537,7 @@ const deleteBotData = async (kernel: Kernel, botId: string): Promise<void> => {
     db.query(
       "INSERT INTO settings(key,value_json,updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at",
     ).run(`storage.deleted-attachments:${botId}`, "[]", Date.now())
-    db.query("DELETE FROM settings WHERE key = ?").run(`approval-grants:${botId}`)
+    db.query("DELETE FROM settings WHERE key IN (?, ?)").run(`approval-grants:${botId}`, `bot-metadata:${botId}`)
     db.query(
       "UPDATE bot_deletions SET phase = 'session', cursor = 0, error_code = NULL, updated_at = ? WHERE bot_id = ?",
     ).run(Date.now(), botId)

@@ -3,7 +3,7 @@ import { afterEach, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { type ApiRoutes, type RouteResponse, toolCatalog } from "@touri/contracts"
+import { type ApiRoutes, type RouteResponse, SERVER_PROTOCOL_VERSION, toolCatalog } from "@touri/contracts"
 import type { WebSocketOptions } from "bun"
 import { createKernel } from "../../src/kernel"
 import { flushFileIoAsync } from "../../src/kernel/async-files"
@@ -27,7 +27,7 @@ test("health includes bounded numeric lag stats without extra logs in normal ope
   const health = (await response.json()) as ApiRoutes["GET /health"]["res"]
 
   expect(response.status).toBe(200)
-  expect(health.protocolVersion).toBe(1)
+  expect(health.protocolVersion).toBe(SERVER_PROTOCOL_VERSION)
   expect(health.eventLoop).toEqual({ lagMs: 0, p99Ms: 0, maxMs: 0, samples: 0 })
   expect(await fixture.getLogs()).toEqual([])
 })

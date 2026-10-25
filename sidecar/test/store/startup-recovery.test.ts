@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test"
 import { openDatabase } from "../../src/kernel/db"
 import { profileProviders } from "../../src/kernel/provider-profiles"
+import { createStoreReader } from "../../src/store/reader"
 import { createStartupRecovery } from "../../src/store/startup-recovery"
 import { testKernel } from "../kernel/test-kernel"
 
@@ -51,6 +52,46 @@ test("lazy thread recovery yields while another connection holds the writer", as
   writer.exec("COMMIT")
   await repaired
   expect(fixture.db.query("SELECT text FROM messages WHERE id='reply'").get()).toEqual({ text: "Saved reply" })
+})
+
+test("shutdown settles a bot instruction read cancelled during recovery", async () => {
+  const fixture = getFixture()
+  const stopped = Promise.withResolvers<void>()
+  const reader = createStoreReader(fixture.kernel.paths.db, () => {
+    void recovery.dispose().then(stopped.resolve, stopped.reject)
+  })
+  const recovery = createStartupRecovery(fixture.kernel, undefined, async () => {}, reader)
+  cleanups.add(recovery.dispose)
+
+  await stopped.promise
+
+  await expect(recovery.dispose()).resolves.toBeUndefined()
+})
+
+test("a failed instruction read can recover on the next bot access", async () => {
+  const fixture = getFixture()
+  const interrupted = new Set<number>()
+  const recovered = new Set<string>()
+  const reader = createStoreReader(fixture.kernel.paths.db, (pid) => {
+    if (interrupted.size > 0) return
+
+    interrupted.add(pid)
+    process.kill(pid, "SIGKILL")
+  })
+  const recovery = createStartupRecovery(
+    fixture.kernel,
+    undefined,
+    async (_kernel, bot) => {
+      recovered.add(bot.id)
+    },
+    reader,
+  )
+  cleanups.add(recovery.dispose)
+  await recovery.ready
+
+  await recovery.ensureBot("bot")
+
+  expect(recovered.has("bot")).toBe(true)
 })
 
 const getFixture = () => {

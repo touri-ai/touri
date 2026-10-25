@@ -1016,6 +1016,27 @@ export const BotSettingsModal = ({
   const [title, setTitle] = useState(bot.title ?? "")
   const [deleting, setDeleting] = useState(false)
   const [instructions, setInstructions] = useState(bot.instructions)
+  const [instructionsChanged, setInstructionsChanged] = useState(false)
+  const [instructionsLoading, setInstructionsLoading] = useState(Boolean(bot.instructionsDeferred))
+  const [instructionsError, setInstructionsError] = useState<string | null>(null)
+  const [instructionsDeferred] = useState(Boolean(bot.instructionsDeferred))
+  useEffect(() => {
+    if (!instructionsDeferred || !api) return
+    const controller = new AbortController()
+    void api.request("GET /bots/:id/instructions", {}, { id: openedBotId }, { signal: controller.signal }).then(
+      ({ instructions }) => {
+        if (controller.signal.aborted) return
+        setInstructions(instructions)
+        setInstructionsLoading(false)
+      },
+      (error: unknown) => {
+        if (controller.signal.aborted) return
+        setInstructionsError(userFacingError(error))
+        setInstructionsLoading(false)
+      },
+    )
+    return () => controller.abort()
+  }, [api, openedBotId, instructionsDeferred])
   const [machineChanges, setMachine] = useState<
     Partial<Pick<Bot, "machine" | "machineIdleMinutes" | "vmProviderLogin" | "hostComputerUse">>
   >({})
@@ -1112,14 +1133,13 @@ export const BotSettingsModal = ({
     try {
       if (settings && vmMemory !== (settings.botVmMemoryMb ?? 1536))
         await actions.updateSettings({ botVmMemoryMb: vmMemory })
-      await actions.updateBot(bot.id, {
+      const patch: ApiRoutes["PATCH /bots/:id"]["req"] = {
         name: validName,
         ...avatar,
         ...machineChanges,
         browser,
         roleLine: roleLine.trim() || null,
         title: title.trim() || null,
-        instructions,
         provider,
         ...(provider !== bot.provider || (model || null) !== bot.model ? { model: model || null } : {}),
         access: access === "full-approved" ? "full" : (access as Bot["access"]),
@@ -1139,7 +1159,8 @@ export const BotSettingsModal = ({
               claudeAiConnectors: provider === "claude" && profile.claudeAiConnectors,
             }
           : { providerProfile: null, claudeAiConnectors: false }),
-      })
+      }
+      await actions.updateBot(bot.id, Object.assign({}, patch, instructionsChanged ? { instructions } : {}))
       onClose()
     } catch (error) {
       setSaveError(userFacingError(error))
@@ -1344,9 +1365,16 @@ export const BotSettingsModal = ({
                     id="soul"
                     className="soul-editor"
                     value={instructions}
-                    onChange={(event) => setInstructions(event.target.value)}
+                    disabled={instructionsLoading || instructionsError !== null}
+                    aria-busy={instructionsLoading}
+                    placeholder={instructionsLoading ? t("Loading bot instructions…") : undefined}
+                    onChange={(event) => {
+                      setInstructions(event.target.value)
+                      setInstructionsChanged(true)
+                    }}
                     aria-describedby="soul-help"
                   />
+                  {instructionsError && <p role="alert">{instructionsError}</p>}
                   <small id="soul-help" className="field-help">
                     {t("Detailed guidance for the bot. Saved as SOUL.md in the bot’s folder.")}{" "}
                     {t("Takes effect from the next message.")}

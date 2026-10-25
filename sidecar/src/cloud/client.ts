@@ -6,6 +6,7 @@ import {
   errorRegistry,
   type Kernel,
 } from "@touri/contracts"
+import { getBotEditBody } from "@touri/contracts/bot-edit-body"
 
 export class CloudError extends Error {
   constructor(readonly code: CloudErrorCode) {
@@ -131,17 +132,22 @@ export const createCloudClient = (kernel: Pick<Kernel, "callHost" | "addRedactio
     const credentialAccount = credentials ? account() : null
     let response: Response
     try {
+      const requestSignal = signal ?? AbortSignal.timeout(30_000)
+      const requestBody =
+        body === undefined
+          ? undefined
+          : await getBotEditBody(body, () => new Promise<void>((resolve) => setImmediate(resolve)), requestSignal)
       response = await fetch(url, {
         method,
         redirect: "error",
-        signal: signal ?? AbortSignal.timeout(30_000),
+        signal: requestSignal,
         headers: {
           "Content-Type": "application/json",
           "Touri-Cloud-Version": "1",
           ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
           ...(method !== "GET" ? { "Idempotency-Key": key } : {}),
         },
-        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+        ...(requestBody !== undefined ? { body: requestBody } : {}),
       })
     } catch {
       throw new CloudError("TOURI-E9000")

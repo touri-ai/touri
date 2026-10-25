@@ -719,8 +719,10 @@ export const createKernel = ({
       removePrivateFile({ root: paths.appData, path: handshakePath })
       shell.dispose()
       host.close()
-      await Promise.all([maintenanceStopped, bus.stop()])
+      const storageStopped = await Promise.allSettled([maintenanceStopped, bus.stop()])
       database.close()
+      const storageFailure = storageStopped.find((result) => result.status === "rejected")
+      if (storageFailure?.status === "rejected") throw storageFailure.reason
     })()
     return stopPromise
   }

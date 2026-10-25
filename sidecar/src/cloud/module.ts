@@ -16,6 +16,7 @@ import type {
   Run,
 } from "@touri/contracts"
 import { createRemoteProvider } from "../vm/remote"
+import { createCloudBotUpdates } from "./bot-updates"
 import { CloudError, createCloudClient } from "./client"
 import { cloudBotConfig, createCloudRuntime } from "./runtime"
 
@@ -348,18 +349,23 @@ export const initCloud = (kernel: Kernel) => {
       },
     ],
   })
+  const botUpdates = createCloudBotUpdates({
+    getInstructions: async (input) => kernel.services.use("bots.instructions")?.(input),
+    send: async (bot, signal) => {
+      await client.request("PATCH", `/v1/bots/${encodeURIComponent(bot.id)}`, cloudBotConfig(bot), signal)
+    },
+  })
   kernel.onHostNotification(({ method }) => {
     if (method === "app.willQuit") {
       disposed = true
+      botUpdates.dispose()
       closeStreams()
       remote.dispose()
     }
   })
   kernel.subscribe(({ event }) => {
     if (event.type === "bot.updated" && event.bot.machine === "cloud" && !event.bot.archivedAt)
-      void client
-        .request("PATCH", `/v1/bots/${encodeURIComponent(event.bot.id)}`, cloudBotConfig(event.bot))
-        .catch(() => undefined)
+      botUpdates.save(event.bot)
   })
   if (enabled() && kernel.services.use("store.settings")?.().cloudBaseUrl)
     void state()
@@ -377,6 +383,7 @@ export const initCloud = (kernel: Kernel) => {
     service,
     dispose: () => {
       disposed = true
+      botUpdates.dispose()
       closeStreams()
     },
   }

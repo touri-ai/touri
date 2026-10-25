@@ -2627,6 +2627,7 @@ export const ptBR = {
   "Creating…": "Criando…",
   "teammate configuration": "configuração do bot",
   "Bot instructions": "Instruções do bot",
+  "Loading bot instructions…": "Carregando instruções do bot…",
   "A summary of the bot’s work, e.g. research and compare sources.":
     "Resumo do trabalho do bot na equipe, por exemplo: pesquisar e comparar fontes.",
   "A short label for the bot, e.g. Researcher. Detailed tasks go in the instructions.":

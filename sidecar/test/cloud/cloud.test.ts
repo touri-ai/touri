@@ -471,3 +471,25 @@ test("web-side device revocation clears invalid host credentials so a new pairin
   expect((await request("GET", "/cloud/account")).body.connected).toBe(false)
   expect((await request("POST", "/cloud/pair", {})).status).toBe(200)
 })
+
+test("deferred bot events forward the full instructions to the explicitly connected cloud", async () => {
+  const f = await fixture()
+  await f.client.store(f.tokens)
+  const created = await f.request("POST", "/bots", {
+    name: "Bot fictício",
+    provider: "codex",
+    machine: "cloud",
+    cloudApiKey: "sk-test-no-provider",
+  })
+  const botId = created.body.bot.id as string
+  const instructions = "Orientação fictícia para o bot.\n".repeat(40_000)
+
+  const edited = await f.request("PATCH", `/bots/${botId}`, { instructions })
+  const deadline = performance.now() + 10_000
+  while (f.fake.bots.get(botId)?.instructions !== instructions && performance.now() < deadline)
+    await new Promise<void>((resolve) => setTimeout(resolve, 5))
+
+  expect(edited.status).toBe(200)
+  expect(edited.body.bot).toMatchObject({ instructions: "", instructionsDeferred: true })
+  expect(f.fake.bots.get(botId)?.instructions).toBe(instructions)
+}, 15_000)
