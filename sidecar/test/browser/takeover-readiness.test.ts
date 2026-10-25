@@ -18,6 +18,7 @@ const getFixture = async ({
   getPrivacy = () => ({ documentId: 1, url: "https://example.test/public", title: "Public", hasSensitiveEntry: false }),
   localBrowser = true,
   capture = async (_params: JsonObject): Promise<JsonObject> => ({ data: "ZmFrZQ==" }),
+  resize = async (): Promise<void> => {},
   attach = async (): Promise<JsonObject> => ({ sessionId: "owned-session" }),
   onDetach = (_sessionId: string): void => {},
 } = {}) => {
@@ -49,6 +50,7 @@ const getFixture = async ({
       if (method === "Target.attachToTarget") return (await attach()) as T
       if (method === "Target.detachFromTarget") onDetach(String(params.sessionId))
       if (method === "Page.captureScreenshot") return (await capture(params)) as T
+      if (method === "Emulation.setDeviceMetricsOverride") await resize()
       if (method === "Page.getLayoutMetrics")
         return { cssVisualViewport: { pageX: 0, pageY: 0, clientWidth: 800, clientHeight: 500 } } as T
       return {} as T
@@ -273,6 +275,34 @@ test("takeover resizes the remote viewport before capturing and restores it at h
   expect(resize).toHaveLength(1)
   expect(resize[0]?.params).toEqual({ width: 390, height: 650, mobile: false, deviceScaleFactor: 0 })
   expect(calls.some((call) => call.method === "Emulation.clearDeviceMetricsOverride")).toBe(true)
+})
+
+test.each(["after", "during"])("handback restores a canceled resize when returning %s completion", async (timing) => {
+  const started = Promise.withResolvers<void>()
+  const resized = Promise.withResolvers<void>()
+  const { engine, calls } = await getFixture({
+    resize: () => {
+      started.resolve()
+      return resized.promise
+    },
+  })
+  await engine.holdTakeoverForPerson({ tabId: "tab", personId: "authorized" })
+  const controller = new AbortController()
+  const frame = engine.takeoverFrame({
+    botId: "bot",
+    tabId: "tab",
+    signal: controller.signal,
+    viewport: { width: 390, height: 650 },
+  })
+  await started.promise
+
+  controller.abort()
+  const handback = timing === "during" ? engine.releaseTakeover("tab") : null
+  resized.resolve()
+  expect(await frame).toBeNull()
+  await (handback ?? engine.releaseTakeover("tab"))
+
+  expect(calls.filter((call) => call.method === "Emulation.clearDeviceMetricsOverride")).toHaveLength(1)
 })
 
 test("unknown private documents recover only after a committed replacement following handback", async () => {

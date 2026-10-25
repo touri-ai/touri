@@ -5018,6 +5018,8 @@ export const createBrowserEngine = ({
     takeoverRecoveries.get(tabId)?.abort()
     if (!tab.info.heldByUser) return true
     await protectTakeoverDocument(tab, true)
+    // A canceled frame can still be applying its viewport through CDP.
+    await pendingTakeoverViewports.get(tab)?.catch(() => undefined)
     if (takeoverViewports.has(tab) && client && tab.sessionId) {
       await client.call("Emulation.clearDeviceMetricsOverride", {}, tab.sessionId).catch(() => undefined)
       takeoverViewports.delete(tab)
@@ -5277,6 +5279,7 @@ export const createBrowserEngine = ({
   }
 
   const takeoverViewports = new WeakMap<TabState, { width: number; height: number; sessionId: string }>()
+  const pendingTakeoverViewports = new WeakMap<TabState, Promise<void>>()
 
   const takeoverFrame: BrowserEngine["takeoverFrame"] = async ({ tabId, botId, signal, viewport }) => {
     const owned = getTab({ tabId, botId, allowHeld: true })
@@ -5302,19 +5305,28 @@ export const createBrowserEngine = ({
         viewport.height > 2160
       )
         return null
-      await cdp.call(
-        "Emulation.setDeviceMetricsOverride",
-        {
-          width: viewport.width,
-          height: viewport.height,
-          deviceScaleFactor: 0,
-          mobile: false,
-        },
-        sessionId,
-      )
+      const resize = cdp
+        .call(
+          "Emulation.setDeviceMetricsOverride",
+          {
+            width: viewport.width,
+            height: viewport.height,
+            deviceScaleFactor: 0,
+            mobile: false,
+          },
+          sessionId,
+        )
+        .then(() => {
+          takeoverViewports.set(tab, Object.assign({}, viewport, { sessionId }))
+          tab.generation += 1
+        })
+      pendingTakeoverViewports.set(tab, resize)
+      try {
+        await resize
+      } finally {
+        if (pendingTakeoverViewports.get(tab) === resize) pendingTakeoverViewports.delete(tab)
+      }
       if (signal.aborted || !tab.info.heldByUser) return null
-      takeoverViewports.set(tab, Object.assign({}, viewport, { sessionId }))
-      tab.generation += 1
     }
     return captureCurrentBrowserControlFrame({
       getEpoch: () => tab.generation,
