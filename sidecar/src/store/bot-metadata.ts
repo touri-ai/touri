@@ -60,7 +60,11 @@ export const createBotMetadataWriter = (filename: string, onReady?: (pid: number
       // Cancellation can race COMMIT's acknowledgement. Its atomic marker decides whether
       // the home writer may roll back SOUL.md, even after the request disconnects.
       const rows = await reader.getRows<{ value_json: string }>(
-        { sql: "SELECT value_json FROM settings WHERE key = ?", bindings: [`bot-metadata:${edit.botId}`] },
+        {
+          sql: "SELECT value_json FROM settings WHERE key = ?",
+          bindings: [`bot-metadata:${edit.botId}`],
+          chunkedStrings: true,
+        },
         AbortSignal.timeout(5_000),
       )
       const marker = rows[0]

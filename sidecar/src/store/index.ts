@@ -495,7 +495,10 @@ export const init = async (
   const botMetadataSelect = `SELECT ${botMetadataColumns} FROM bots WHERE id = ? AND archived_at IS NULL
     AND NOT EXISTS (SELECT 1 FROM bot_deletions WHERE bot_id = bots.id)`
   const getBotMetadataRow = async (botId: string, signal: AbortSignal): Promise<RawBot | undefined> => {
-    const rows = await reader.getRows<RawBot>({ sql: botMetadataSelect, bindings: [botId] }, signal)
+    const rows = await reader.getRows<RawBot>(
+      { sql: botMetadataSelect, bindings: [botId], chunkedStrings: true },
+      signal,
+    )
     return rows[0]
   }
   const getBotInstructions = async ({
@@ -1662,6 +1665,7 @@ export const init = async (
               {
                 sql: BOTS_SQL.replace("SELECT *", `SELECT ${botMetadataColumns}`),
                 bindings: [],
+                chunkedStrings: true,
               },
               signal,
             )
@@ -1680,6 +1684,7 @@ export const init = async (
                 AND NOT EXISTS (SELECT 1 FROM bot_deletions WHERE bot_id = bots.id)
                 ORDER BY sort_order ASC, created_at ASC`,
               bindings: visibleBotIds,
+              chunkedStrings: true,
             },
             signal,
           )

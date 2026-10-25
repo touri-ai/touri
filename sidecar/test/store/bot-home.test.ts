@@ -1046,3 +1046,55 @@ test("renaming a bot with multi-megabyte instructions preserves the text and its
   expect(renamed.status).toBe(200)
   expect(f.database.query("SELECT instructions, instructions_hash FROM bots WHERE id = ?").get(bot.id)).toEqual(before)
 })
+
+test("unrelated event publication stays responsive during a near-limit instruction edit", async () => {
+  const f = await makeStore()
+  const created = await f.create()
+  if (!("json" in created)) throw new Error("Expected bot response")
+  const { bot } = created.json as { bot: { id: string } }
+  const publications = new Set<number>()
+  const timer = setInterval(() => {
+    const startedAt = performance.now()
+    f.kernel.publish({ type: "transcript.resync" })
+    publications.add(performance.now() - startedAt)
+  }, 5)
+  cleanups.add(() => clearInterval(timer))
+  const probe = startEventLoopLagProbe(1)
+  cleanups.add(probe.stop)
+
+  const response = await f.routes.handler({
+    params: { id: bot.id },
+    query: {},
+    body: { instructions: "x".repeat(32 * 1024 * 1024 - 1024) },
+    signal: new AbortController().signal,
+  })
+  clearInterval(timer)
+  probe.stop()
+  const samples = probe.getSamples()
+
+  console.info(
+    `Concurrent instruction edit: p99 ${getPercentile(samples, 0.99).toFixed(1)} ms; max ${getMaximum(samples).toFixed(1)} ms; event publication max ${getMaximum(Array.from(publications)).toFixed(1)} ms`,
+  )
+  expect(response.status).toBe(200)
+  expect(publications.size).toBeGreaterThan(0)
+  expect(getPercentile(samples, 0.99)).toBeLessThan(50)
+  expect(getMaximum(samples)).toBeLessThan(150)
+  expect(getMaximum(Array.from(publications))).toBeLessThan(50)
+})
+
+test("existing large descriptions remain readable and editable through framed metadata reads", async () => {
+  const f = await makeStore()
+  const created = await f.create()
+  if (!("json" in created)) throw new Error("Expected bot response")
+  const { bot } = created.json as { bot: { id: string } }
+  const description = "Descrição fictícia. ".repeat(40_000)
+  f.database.query("UPDATE bots SET description = ? WHERE id = ?").run(description, bot.id)
+  const signal = new AbortController().signal
+
+  const listed = await f.getRoute("GET", "/bots").handler({ params: {}, query: {}, body: null, signal })
+  const renamed = await f.routes.handler({ params: { id: bot.id }, query: {}, body: { name: "Novo nome" }, signal })
+
+  expect("json" in listed && listed.json).toMatchObject({ bots: [{ id: bot.id, description }] })
+  expect(renamed.status).toBe(200)
+  expect("json" in renamed && renamed.json).toMatchObject({ bot: { name: "Novo nome", description } })
+})
