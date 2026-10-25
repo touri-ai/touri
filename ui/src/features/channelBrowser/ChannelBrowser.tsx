@@ -1,4 +1,4 @@
-import type { Bot, BrowserChannelRun } from "@touri/contracts"
+import type { Bot, BrowserChannelRun, ChannelPerson } from "@touri/contracts"
 import { createContext, type ReactNode, useCallback, useContext } from "react"
 import { useBrowserActivityControls } from "../../components/BrowserActivityControls"
 import { type Locale, t } from "../../i18n"
@@ -8,6 +8,7 @@ import {
   type ChannelBrowserView,
   getChannelBrowserValue,
   getChannelBrowserView,
+  getChannelPersonLabel,
   getChannelQueueLabel,
   getChannelWorkingTitle,
 } from "./channelBrowserModel"
@@ -23,6 +24,7 @@ const EMPTY_BROWSER_BOTS: Bot[] = []
 export const ChannelBrowserRunsContext = createContext({
   runs: EMPTY_BROWSER_RUNS,
   bots: EMPTY_BROWSER_BOTS,
+  people: [] as ChannelPerson[],
   threadId: "",
   viewerId: "",
 })
@@ -37,22 +39,39 @@ export const ChannelBrowserScope = ({ runId, children }: { runId: string | null;
 
 export const ChannelBrowserContext = createContext<ChannelBrowserValue | null>(null)
 
-export const useChannelBrowserView = (): (ChannelBrowserView & { state: ChannelBrowserState }) | null => {
+export const useChannelBrowserView = (
+  locale: Locale = "pt-BR",
+): (ChannelBrowserView & { state: ChannelBrowserState; selfControl: boolean; controlLabel: string }) | null => {
   const value = useContext(ChannelBrowserContext)
   if (!value) return null
 
-  return Object.assign({}, getChannelBrowserView(value.state, value.viewerId), { state: value.state })
+  const getLabel = (id: string | null, name: string) => getChannelPersonLabel(id, name, value.viewerId, locale)
+  const state = Object.assign({}, value.state, {
+    requesterName: getLabel(value.state.requesterId, value.state.requesterName),
+    controllerName: getLabel(value.state.controllerId, value.state.controllerName ?? ""),
+    queue: value.state.queue.map((entry) =>
+      Object.assign({}, entry, {
+        requesterName: getLabel(entry.requesterId, entry.requesterName),
+      }),
+    ),
+  })
+
+  const view = getChannelBrowserView(state, value.viewerId)
+  const selfControl = Boolean(state.controllerId) && state.controllerId === value.viewerId
+  const controlLabel = selfControl
+    ? t("Browser self control", {}, locale)
+    : t("{person} is in control", { person: view.controlName }, locale)
+
+  return Object.assign({}, view, { state, selfControl, controlLabel })
 }
 
 export const ChannelHeaderChip = ({ locale = "pt-BR" }: { locale?: Locale }) => {
-  const channel = useChannelBrowserView()
+  const channel = useChannelBrowserView(locale)
   if (!channel) return null
 
   const bot = t("{name} in the browser", { name: channel.state.botName }, locale)
   const request = t("request from {person}", { person: channel.state.requesterName }, locale)
-  const controller = channel.state.controllerId
-    ? t("{person} is in control", { person: channel.controlName }, locale)
-    : ""
+  const controller = channel.state.controllerId ? channel.controlLabel : ""
   const label = [bot, request, controller].filter(Boolean).join(" · ")
 
   return (
@@ -78,29 +97,33 @@ export const ChannelVisibilityLabel = ({ locale = "pt-BR" }: { locale?: Locale }
 }
 
 export const ChannelControlNote = ({ locale = "pt-BR" }: { locale?: Locale }) => {
-  const channel = useChannelBrowserView()
+  const channel = useChannelBrowserView(locale)
   if (!channel?.state.controllerId) return null
 
   return (
     <span className="channel-visibility" role="status">
-      {t("{person} is in control", { person: channel.controlName }, locale)}
+      {channel.controlLabel}
     </span>
   )
 }
 
 export const ChannelHiddenPreview = ({ locale = "pt-BR" }: { locale?: Locale }) => {
-  const channel = useChannelBrowserView()
+  const channel = useChannelBrowserView(locale)
   if (!channel) return null
 
   return (
     <p className="channel-hidden-preview" role="status">
-      {t("Preview hidden for the channel while {person} types", { person: channel.controlName }, locale)}
+      {t(
+        channel.selfControl ? "Browser self hidden preview" : "Preview hidden for the channel while {person} types",
+        { person: channel.controlName },
+        locale,
+      )}
     </p>
   )
 }
 
 export const ChannelCardFooter = ({ locale = "pt-BR" }: { locale?: Locale }) => {
-  const channel = useChannelBrowserView()
+  const channel = useChannelBrowserView(locale)
   if (!channel) return null
 
   const queue = getChannelQueueLabel(channel.state.queue, locale)
@@ -156,7 +179,7 @@ export const ChannelComposerChip = ({
   stopping?: boolean | undefined
   locale?: Locale
 }) => {
-  const channel = useChannelBrowserView()
+  const channel = useChannelBrowserView(locale)
   const hold = useBrowserHold(botId)
   const browserControls = useBrowserActivityControls()
   const restoreStopFocus = useCallback(
@@ -220,12 +243,12 @@ export const ChannelComposerChip = ({
 }
 
 const getChannelComposerText = (
-  channel: (ChannelBrowserView & { state: ChannelBrowserState }) | null,
+  channel: (ChannelBrowserView & { state: ChannelBrowserState; selfControl: boolean; controlLabel: string }) | null,
   base: string,
   locale: Locale,
 ): string => {
   if (!channel) return base
-  if (channel.state.controllerId) return t("{person} is in control", { person: channel.controlName }, locale)
+  if (channel.state.controllerId) return channel.controlLabel
 
   return `${base} · ${t("for {person}", { person: channel.state.requesterName }, locale)}`
 }

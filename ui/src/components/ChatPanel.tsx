@@ -1476,9 +1476,11 @@ export const ChatPanel = ({
   routines = [],
   routineRuns = [],
 }: ChatPanelProps) => {
+  const channelPeople = useChannelPeople(api, group?.id ?? null)
   const channelBrowserValue = getChannelBrowserValue({
     runs: browserRuns,
     bots: groupMembers,
+    people: channelPeople,
     threadId: thread?.id ?? "",
     viewerId: currentPersonId ?? "",
   })
@@ -1499,7 +1501,6 @@ export const ChatPanel = ({
     })
     return () => window.cancelAnimationFrame(frame)
   }, [chatIsCovered])
-  const channelPeople = useChannelPeople(api, group?.id ?? null)
   const sharedChannelThreads = useMemo(
     () => (group ? getChannelThreads(channelThreads, group.id) : []),
     [group, channelThreads],
@@ -1535,7 +1536,13 @@ export const ChatPanel = ({
   if (!thread)
     return (
       <ChannelBrowserRunsContext.Provider
-        value={{ runs: browserRuns, bots: groupMembers, threadId: "", viewerId: currentPersonId ?? "" }}
+        value={{
+          runs: browserRuns,
+          bots: groupMembers,
+          people: channelPeople,
+          threadId: "",
+          viewerId: currentPersonId ?? "",
+        }}
       >
         <ChannelBrowserContext.Provider value={channelBrowserValue}>
           <section className="chat-panel" inert={chatIsCovered || undefined} aria-hidden={chatIsCovered || undefined}>
@@ -1649,7 +1656,13 @@ export const ChatPanel = ({
   )
   return (
     <ChannelBrowserRunsContext.Provider
-      value={{ runs: browserRuns, bots: groupMembers, threadId: thread?.id ?? "", viewerId: currentPersonId ?? "" }}
+      value={{
+        runs: browserRuns,
+        bots: groupMembers,
+        people: channelPeople,
+        threadId: thread?.id ?? "",
+        viewerId: currentPersonId ?? "",
+      }}
     >
       <ChannelBrowserContext.Provider value={channelBrowserValue}>
         <BrowserActivityControlsProvider>

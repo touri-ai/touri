@@ -1,4 +1,4 @@
-import type { Bot, BrowserChannelRun, BrowserChannelRunStatus, Message, Thread } from "@touri/contracts"
+import type { Bot, BrowserChannelRun, BrowserChannelRunStatus, ChannelPerson, Message, Thread } from "@touri/contracts"
 import { type Locale, t } from "../../i18n"
 
 export type ChannelBrowserQueueEntry = {
@@ -89,12 +89,14 @@ export const getChannelBrowserValue = ({
   threadId,
   viewerId,
   runId,
+  people = [],
 }: {
   runs: readonly BrowserChannelRun[]
   bots: readonly Bot[]
   threadId: string
   viewerId: string
   runId?: string | null
+  people?: readonly ChannelPerson[]
 }): { state: ChannelBrowserState; viewerId: string } | null => {
   const run = runs.find(
     (candidate) =>
@@ -107,13 +109,14 @@ export const getChannelBrowserValue = ({
   if (!run) return null
   const bot = bots.find((candidate) => candidate.id === run.botId)
   if (!bot) return null
+  const peopleById = new Map(people.map((person) => [person.id, person]))
   const queue = runs
     .filter((candidate) => candidate.botId === run.botId && candidate.status === "queued")
     // Sort only the new filtered array; shared activity stays unchanged.
     .sort((first, second) => first.queuedAt - second.queuedAt || first.runId.localeCompare(second.runId))
     .map((candidate) => ({
       requesterId: candidate.requesterPersonId ?? "",
-      requesterName: candidate.requesterName ?? "",
+      requesterName: getChannelPersonName(candidate.requesterPersonId, candidate.requesterName, peopleById),
     }))
 
   return {
@@ -124,11 +127,33 @@ export const getChannelBrowserValue = ({
       botId: run.botId,
       botName: bot.name,
       requesterId: run.requesterPersonId ?? "",
-      requesterName: run.requesterName ?? "",
+      requesterName: getChannelPersonName(run.requesterPersonId, run.requesterName, peopleById),
       controllerId: run.controllerPersonId,
-      controllerName: run.controllerName,
+      controllerName: getChannelPersonName(run.controllerPersonId, run.controllerName, peopleById),
       ownerId: run.responsiblePersonId ?? "",
       queue,
     },
   }
+}
+
+const getChannelPersonName = (
+  personId: string | null,
+  name: string | null,
+  people: ReadonlyMap<string, ChannelPerson>,
+): string => {
+  const person = personId ? people.get(personId) : undefined
+
+  return person?.handle?.trim() || person?.name.trim() || name?.trim() || ""
+}
+
+export const getChannelPersonLabel = (
+  personId: string | null,
+  name: string,
+  viewerId: string,
+  locale: Locale,
+): string => {
+  if (personId && personId === viewerId) return t("Browser self", {}, locale)
+  if (!name || name.toLowerCase() === "owner") return t("Person", {}, locale)
+
+  return name
 }

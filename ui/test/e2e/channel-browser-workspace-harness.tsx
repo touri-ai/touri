@@ -10,6 +10,7 @@ const params = new URLSearchParams(location.search)
 const fixture = await getChannelBrowserWorkspaceFixture({
   viewerId: params.get("viewer") ?? "owner",
   controllerId: params.get("controller") || null,
+  legacyIdentity: params.get("legacy") === "1",
 })
 
 const Harness = () => {

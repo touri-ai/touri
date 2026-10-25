@@ -21,15 +21,17 @@ test.describe("browser card in a channel", () => {
         await page.goto(`/test/e2e/channel-browser-harness.html?${scenario.query}`)
 
         await expect(page.getByText("Todos no canal veem")).toBeVisible()
-        const header =
-          scenario.name === "takeover-hidden-preview"
-            ? "Léo no navegador · pedido de Ana · Ana está no controle"
-            : "Léo no navegador · pedido de Ana"
+        const requester = scenario.name === "requester" ? "você" : "Ana"
+        const control = scenario.name === "takeover-hidden-preview" ? " · Ana está no controle" : ""
+        const header = `Léo no navegador · pedido de ${requester}${control}`
         await expect(page.getByRole("status", { name: header })).toBeVisible()
         await expect(page.getByTitle("Léo trabalhando aqui")).toBeVisible()
         if (scenario.name === "takeover-hidden-preview")
           await expect(page.locator(".composer-browser-status")).toContainText("Ana está no controle")
-        else await expect(page.locator(".composer-browser-status")).toContainText("para Ana")
+        else
+          await expect(page.locator(".composer-browser-status")).toContainText(
+            scenario.name === "requester" ? "para você" : "para Ana",
+          )
         await expect(
           page.locator(".channel-demo-reply").getByRole("article", { name: "Navegador do Léo" }),
         ).toBeVisible()

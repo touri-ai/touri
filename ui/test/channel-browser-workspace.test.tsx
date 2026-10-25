@@ -26,9 +26,9 @@ test.each([
     fireEvent.click(await screen.findByRole("tab", { name: /^Work,/ }))
     fireEvent.click(await screen.findByRole("button", { name: /^Viagens/ }))
 
-    const header = controllerId
-      ? "Léo no navegador · pedido de Ana · Carla está no controle"
-      : "Léo no navegador · pedido de Ana"
+    const requester = viewerId === "person-requester" ? "você" : "Ana"
+    const control = viewerId === controllerId ? "Você está no controle" : "Carla está no controle"
+    const header = `Léo no navegador · pedido de ${requester}${controllerId ? ` · ${control}` : ""}`
     expect(await screen.findByRole("status", { name: header })).toBeVisible()
     const card = await screen.findByRole("article", { name: "Navegador do Léo" })
     const composer = screen.getByRole("textbox", { name: "Mensagem para Viagens" })
@@ -65,7 +65,7 @@ test("live browser activity updates requester and controller in the production h
   )
 
   expect(
-    await screen.findByRole("status", { name: "Léo no navegador · pedido de Ana · Carla está no controle" }),
+    await screen.findByRole("status", { name: "Léo no navegador · pedido de você · Carla está no controle" }),
   ).toBeVisible()
   expect(screen.queryByRole("button", { name: "Parar Léo" })).toBeNull()
   expect(screen.queryByRole("button", { name: "Assumir", exact: true })).toBeNull()

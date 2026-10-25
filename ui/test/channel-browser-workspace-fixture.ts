@@ -5,9 +5,11 @@ import { createMockApi } from "../src/api/mock"
 export const getChannelBrowserWorkspaceFixture = async ({
   viewerId = "owner",
   controllerId = null,
+  legacyIdentity = false,
 }: {
   viewerId?: string
   controllerId?: string | null
+  legacyIdentity?: boolean
 } = {}) => {
   const base = createMockApi()
   const storedBot = base.getState().bots.find((candidate) => candidate.id === "bot-mark")
@@ -78,16 +80,17 @@ export const getChannelBrowserWorkspaceFixture = async ({
     startedAt: now - 1,
     finishedAt: null,
   }
+  const controllerName = legacyIdentity ? "Owner" : "Carla"
   const browserRun: BrowserChannelRun = {
     runId: run.id,
     groupId: group.id,
     threadId: thread.id,
     botId: bot.id,
     requesterPersonId: "person-requester",
-    requesterName: "Ana",
+    requesterName: legacyIdentity ? "Owner" : "Ana",
     responsiblePersonId: "owner",
     controllerPersonId: controllerId,
-    controllerName: controllerId ? "Carla" : null,
+    controllerName: controllerId ? controllerName : null,
     status: controllerId ? "taken_over" : "running",
     queuePosition: null,
     queuedAt: now - 2,
@@ -107,8 +110,20 @@ export const getChannelBrowserWorkspaceFixture = async ({
     if (route === "GET /groups/:id/people")
       return {
         people: [
-          { id: "owner", name: "Carla", avatarSeed: "carla", role: "admin" },
-          { id: "person-requester", name: "Ana", avatarSeed: "ana", role: "member" },
+          {
+            id: "owner",
+            name: "Carla",
+            handle: legacyIdentity ? "carla" : "Carla",
+            avatarSeed: "carla",
+            role: "admin",
+          },
+          {
+            id: "person-requester",
+            name: "Ana",
+            handle: legacyIdentity ? "ana" : "Ana",
+            avatarSeed: "ana",
+            role: "member",
+          },
           { id: "person-observer", name: "Bia", avatarSeed: "bia", role: "member" },
         ],
       } as ApiRoutes[typeof route]["res"]

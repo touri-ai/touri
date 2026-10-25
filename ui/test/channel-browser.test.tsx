@@ -216,7 +216,7 @@ describe("browser card in a channel", () => {
     renderCard(getState(), "user-ana")
 
     expect(screen.getByText("Todos no canal veem")).toBeVisible()
-    expect(screen.getByText(/Léo pausa e chama Ana, quem pediu/)).toBeVisible()
+    expect(screen.getByText(/Léo pausa e chama você, quem pediu/)).toBeVisible()
   })
 
   test("hides Assumir from people who are not allowed to take control", () => {
@@ -413,9 +413,9 @@ test("ChatPanel derives shared browser presentation from workspace browser runs"
     />,
   )
 
-  expect(await screen.findByRole("status", { name: "Léo no navegador · pedido de Ana" })).toBeVisible()
+  expect(await screen.findByRole("status", { name: "Léo no navegador · pedido de você" })).toBeVisible()
   expect(await screen.findByText("Todos no canal veem")).toBeVisible()
-  expect(screen.getByText("Léo está trabalhando · No navegador · para Ana")).toBeVisible()
+  expect(screen.getByText("Léo está trabalhando · No navegador · para você")).toBeVisible()
   expect(screen.getByText("Todos no canal veem").closest(".message-assistant")).toContainElement(
     screen.getByText(fixture.reply.text),
   )

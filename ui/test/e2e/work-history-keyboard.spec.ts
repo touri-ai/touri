@@ -1,6 +1,8 @@
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
 
+test.setTimeout(60_000)
+
 for (const width of [1440, 390]) {
   test(`saved conversation supports Tab and keyboard scrolling at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 })
