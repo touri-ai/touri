@@ -1829,6 +1829,19 @@ loading while a menu is in use, that menu keeps keyboard focus. Opening routines
 still focuses the routine list. Native connection settings remain reachable through Diagnostics →
 Use a touri server, with a destination label that describes what opens.
 
+Model and project labels use the full available width inside Adjust, including on a phone.
+Phone Settings shows every section in a two-column layout without horizontal clipping. Conversation
+management offers bulk selection only when at least two conversations are selectable; the Conversations
+menu entry has an icon. Live browser cards put the domain on its own wrapping line, retaining the
+existing privacy conditions. Browser assistance explains remote text sharing and possible charges
+beside its saved-key opt-in; empty API settings show no assistance controls.
+
+The standalone computer viewer provides a return link to the bot on the web. Its native Close action
+attempts to focus the main window and closes the viewer even if focusing fails. Those two window
+permissions are restricted to local computer viewer windows. A newly created bot offers collaboration
+only after its first completed assistant reply; group creation and routine activation still require
+explicit review.
+
 Each bot with a pending question, approval or failed task shows its waiting reason in the sidebar
 in place of the conversation preview. The shared attention card and bell use the same unresolved
 notifications. The card’s accessible name matches its visible reminder, and its description explains
