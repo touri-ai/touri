@@ -228,6 +228,9 @@ export const ptBR = {
     "Não foi possível falar com o servidor. Confira a conexão e tente de novo.",
   "Assisted browser choices are off or have no saved key. You can enable them in API model settings. The browser will keep working.":
     "A ajuda nas escolhas está desativada ou sem chave salva. Você pode ativá-la em Modelos por API. O navegador continuará funcionando.",
+  "Browser assistance consent":
+    "Desativado por padrão. Ao ativar, pequenos trechos de texto das páginas serão enviados a um modelo remoto com esta chave, o que pode gerar cobrança. O modelo do bot não muda. Você pode desativar a qualquer momento; o navegador continua funcionando.",
+  "Back to bot": "Voltar ao bot",
   "Use this key for assisted browser choices": "Usar esta chave para ajudar nas escolhas do navegador",
   "Assisted choices are off by default. Enabling sends short page labels to the remote JEV model (typesafe/jev-1.13) using this key and may spend credit. Your bot model stays the same. Turn this off anytime; the browser keeps working without it.":
     "A ajuda nas escolhas vem desativada. Ao ativar, pequenos rótulos da página são enviados ao modelo remoto JEV (typesafe/jev-1.13) com esta chave e podem consumir créditos. O modelo do bot continua o mesmo. Desative quando quiser; o navegador funciona sem essa ajuda.",
@@ -3491,6 +3494,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Abrir na Biblioteca": "Open in Library",
   Salvar: "Save",
   "Abrir Computador": "Open Computer",
+  "Browser assistance consent":
+    "Off by default. Enabling sends small pieces of page text to a remote model using this key and may incur charges. Your bot model stays the same. Turn it off anytime; the browser keeps working.",
   "Não foi possível parar o processo do bot. Verifique as permissões e tente novamente.":
     "The bot process could not be stopped. Check permissions and try again.",
   "Não foi possível salvar o encerramento da tarefa. Tente novamente.":

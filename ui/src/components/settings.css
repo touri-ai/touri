@@ -345,6 +345,10 @@
 .settings-modal .toggle-row strong {
   font-weight: var(--weight-medium);
 }
+.settings-modal .toggle-row .field-help {
+  display: block;
+  margin-top: var(--space-4);
+}
 .settings-modal .toggle-row small,
 .settings-modal .field-help {
   font-size: var(--fs-caption);
@@ -922,21 +926,21 @@
     flex-direction: column;
   }
   .settings-nav {
-    display: flex;
-    flex-wrap: nowrap;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     flex: none;
-    overflow-x: auto;
-    scroll-snap-type: x proximity;
+    gap: var(--space-4);
     padding: var(--space-8);
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }
   .settings-nav button {
-    width: auto;
+    width: 100%;
     margin: 0;
-    flex: none;
-    scroll-snap-align: start;
-    white-space: nowrap;
+    min-width: 0;
+    min-height: var(--touch-target-size);
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
   .settings-nav svg {
     display: none;

@@ -497,7 +497,6 @@ export const BrowserActivityCard = ({
     queued
       ? t("Waiting for the other browser request to finish.", {}, locale)
       : currentAction && getBrowserActivitySubtitleAction(currentAction, locale),
-    url,
   ]
     .filter(Boolean)
     .join(" · ")
@@ -616,7 +615,11 @@ export const BrowserActivityCard = ({
           <header className="browser-activity-header">
             <div className="browser-activity-heading">
               <strong>{title}</strong>
-              {subtitle && <span className="browser-activity-subtitle">{subtitle}</span>}
+              {(subtitle || url) && (
+                <span className="browser-activity-subtitle">
+                  {url && <span className="browser-activity-domain">{url}</span>} {subtitle}
+                </span>
+              )}
             </div>
             <ChannelVisibilityLabel locale={locale} />
             <ChannelControlNote locale={locale} />

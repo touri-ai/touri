@@ -11,6 +11,7 @@ export const TeamNextStep = ({
   bots,
   selectedBotId,
   followup,
+  followupReady = false,
   onChooseJob,
   onGroup,
   onRoutine,
@@ -20,6 +21,7 @@ export const TeamNextStep = ({
   bots: Bot[]
   selectedBotId: string | null
   followup: TeamFollowup | null
+  followupReady?: boolean
   onChooseJob: (job: JobTemplate) => void
   onGroup: (bot: Bot, partner: Bot) => void
   onRoutine: (bot: Bot) => void
@@ -32,9 +34,10 @@ export const TeamNextStep = ({
   const activeBots = bots.filter((bot) => !bot.archivedAt)
   const bot = activeBots.find((bot) => bot.id === followup?.botId && bot.id === selectedBotId)
   const partner = activeBots.find((bot) => bot.id === followup?.partnerId)
-  const canOfferFollowup = Boolean(bot && partner && !followupDismissed)
+  const canOfferFollowup = Boolean(bot && partner && followupReady && !followupDismissed)
   const canSuggestJobs = activeBots.length > 0 && activeBots.length < 3 && !jobsDismissed
 
+  if (bot && partner && !followupReady) return null
   if (!canOfferFollowup && !canSuggestJobs) return null
 
   const dismiss = (): void => {

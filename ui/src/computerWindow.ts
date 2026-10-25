@@ -34,3 +34,10 @@ export const openComputerWindow = async (botId: string): Promise<void> => {
   if (!viewer) throw new Error("Permita a abertura de janelas para entrar no computador.")
   viewer.opener = null
 }
+
+export const closeComputerWindow = async (): Promise<void> => {
+  const { getCurrentWindow, Window } = await import("@tauri-apps/api/window")
+  const main = await Window.getByLabel("main")
+  await main?.setFocus()
+  await getCurrentWindow().close()
+}
