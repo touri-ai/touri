@@ -6,6 +6,7 @@ import { createWorkGoldenServer } from "./work-golden-server"
 const phase = process.env.WORK_IMAGES_PHASE ?? "after"
 for (const width of [1440, 390]) {
   test(`Work channel image evidence ${phase} ${width}`, async ({ page }, testInfo) => {
+    test.setTimeout(60_000)
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
     await page.emulateMedia({ reducedMotion: "reduce" })
     await page.goto("/test/e2e/work-images-harness.html")

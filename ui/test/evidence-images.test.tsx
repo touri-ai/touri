@@ -606,6 +606,22 @@ it("defers image reads until a thumbnail enters the viewport", async () => {
 })
 
 describe("Work image messages", () => {
+  it("labels repeated message galleries as groups without duplicate page landmarks", async () => {
+    const { context } = fixture()
+    const parts = [{ type: "image" as const, attachmentId: "a".repeat(64), mime: "image/png", name: "audit.png" }]
+
+    render(
+      <>
+        <MessageAttachments parts={parts} api={context.api} />
+        <MessageAttachments parts={parts} api={context.api} />
+      </>,
+    )
+    await screen.findAllByRole("img", { name: "audit.png" })
+
+    expect(screen.getAllByRole("group", { name: "Imagens de evidência" })).toHaveLength(2)
+    expect(screen.queryByRole("region", { name: "Imagens de evidência" })).toBeNull()
+  })
+
   it("shows API image attachments without a selected bot and opens the lightbox", async () => {
     const { context, request } = fixture()
     const image = { type: "image" as const, attachmentId: "a".repeat(64), mime: "image/png", name: "audit.png" }
