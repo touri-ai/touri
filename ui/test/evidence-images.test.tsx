@@ -8,7 +8,7 @@ import { createMockApi } from "../src/api/mock"
 import { BotLibrary } from "../src/components/BotLibrary"
 import { VirtualMessageList } from "../src/components/ChatPanel"
 import { EvidenceContext, type EvidenceContextValue, EvidenceGallery } from "../src/components/EvidenceGallery"
-import { evidencePath } from "../src/components/evidenceMarkdown"
+import { evidenceImages, evidencePath } from "../src/components/evidenceMarkdown"
 import { getThumbnailSize, imageDimensions, loadImage, thumbnailBlob } from "../src/components/imageLoads"
 import { MarkdownContent } from "../src/components/MarkdownContent"
 import { MessageAttachments } from "../src/components/MessageAttachments"
@@ -738,3 +738,19 @@ it.each(["bot", "message"])(
     expect(request).toHaveBeenLastCalledWith("GET /bots/:id/images", { path: "screen.png" }, { id: next.bot.id })
   },
 )
+
+it("keeps image discovery responsive when prose contains a deeply nested non-image path", () => {
+  const value = `${"shots/".repeat(5_000)}plain.txt kept.png`
+  const tree = { type: "root", children: [{ type: "text", value }] }
+  const samples = Array.from({ length: 25 }, () => {
+    const started = process.cpuUsage()
+    const images = evidenceImages(tree)
+    const elapsed = process.cpuUsage(started)
+
+    expect(images.map((image) => image.path)).toEqual(["kept.png"])
+    return (elapsed.user + elapsed.system) / 1000
+  }).toSorted((left, right) => left - right)
+
+  expect(samples[Math.ceil(samples.length * 0.95) - 1]).toBeLessThan(50)
+  expect(samples.at(-1)).toBeLessThan(200)
+})

@@ -18,6 +18,7 @@ export type EvidenceNode = {
 }
 export const evidencePath = (path: string, imageSyntax = false): boolean =>
   !!path &&
+  path.length <= 4096 &&
   !/^[a-z][a-z0-9+.-]*:/i.test(path) &&
   !path.startsWith("//") &&
   !/[\\\0]/.test(path) &&
@@ -49,7 +50,7 @@ export const evidenceImages = (tree: EvidenceNode): EvidenceImage[] => {
       node.type === "text" || node.type === "inlineCode"
         ? [
             ...(node.value ?? "").matchAll(
-              /(?:^|[\s(`])(\/?(?:[\w.@-]+\/)*[^\s<>`"'()[\]]+?\.(?:png|jpe?g|gif|webp))(?=$|[\s.,;:!?)])/gi,
+              /(?:^|[\s(`])([^\s<>`"'()[\]]+?\.(?:png|jpe?g|gif|webp))(?=$|[\s.,;:!?)])/gi,
             ),
           ].map((match) => ({ path: match[1] ?? "", caption: "", imageSyntax: false }))
         : []
@@ -61,9 +62,14 @@ export const evidenceImages = (tree: EvidenceNode): EvidenceImage[] => {
     const path = decodedEvidencePath(reference.path, reference.imageSyntax)
     return path && !hasShellBraceAlternatives(path) ? [{ ...reference, path }] : []
   })
-  const firstReferences = validReferences.filter(
-    (reference, index) => validReferences.findIndex((candidate) => candidate.path === reference.path) === index,
-  )
+  // Local membership checks keep long file lists linear while preserving their first caption.
+  const seen = new Set<string>()
+  const firstReferences = validReferences.filter((reference) => {
+    if (seen.has(reference.path)) return false
+    seen.add(reference.path)
+
+    return true
+  })
   return firstReferences.slice(0, 12).map((reference) => {
     const image = validReferences.find((candidate) => candidate.path === reference.path && candidate.imageSyntax)
     const filename = reference.path.split("/").at(-1) ?? "Imagem"

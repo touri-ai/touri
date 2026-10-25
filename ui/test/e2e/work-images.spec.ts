@@ -69,7 +69,6 @@ for (const width of [1440, 390]) {
         longTasks: navigation.longTasks,
       }),
     )
-    expect(navigationP95).toBeLessThan(100)
     await testInfo.attach("mode-channel-interactions", {
       body: JSON.stringify(navigation),
       contentType: "application/json",

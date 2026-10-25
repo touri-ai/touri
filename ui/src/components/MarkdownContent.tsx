@@ -189,6 +189,8 @@ const getMarkdownRenderer = async () => {
     const isPreview = preview ?? false
     const images = useMemo(() => {
       if (!evidence && !imageApi) return []
+      if (!evidence && !/attachments|%/i.test(content)) return []
+      if (!/\.(?:png|jpe?g|gif|webp)\b|!\[|attachments|%/i.test(content)) return []
       const tree = unified().use(remarkParse).use(remarkGfm).parse(protectDiffFences(content)) as EvidenceNode
       if (isPreview) chatPreview()(tree)
       return evidenceImages(tree).flatMap((image): EvidenceImage[] => {
