@@ -45,7 +45,7 @@ for (const width of [1440, 1000, 760, 390]) {
     const review = getApprovalReview(page)
     const panel = page.getByRole("button", { name: "Painel do bot", exact: true })
     await expect(review).toBeVisible()
-    if (width > 640) await expect(page.locator(".approval-notice")).toBeHidden()
+    if (width > 620) await expect(page.locator(".approval-notice")).toBeHidden()
     await panel.click()
     await expect(page.locator("#bot-panel")).toBeVisible()
 
@@ -213,6 +213,7 @@ test("Work approval review stays within the interaction budget", async ({ page, 
     const after = await cdp.send("Performance.getMetrics")
     const cpuMs = (getTaskSeconds(after.metrics) - getTaskSeconds(before.metrics)) * 1000
     await page.evaluate((duration) => performance.mark("approval-thread-cpu", { detail: duration }), cpuMs)
+    await expect(page.locator('[data-approval-id="folder-review"]')).toBeFocused()
   }
   await cdp.send("Performance.disable")
   await cdp.detach()
