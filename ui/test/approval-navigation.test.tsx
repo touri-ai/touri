@@ -144,6 +144,26 @@ it.each(["Cron", "notification", "sidebar", "banner"])(
   },
 )
 
+it("review closes and persists the target bot panel before focusing the approval", async () => {
+  const api = createMockApi({ scenario: "approval-notice" })
+  const source = api.getState().threads.find((thread) => thread.botId === "bot-onb")
+  if (!source) throw new Error("Missing source conversation")
+
+  localStorage.setItem(
+    "touri.workspace.v1",
+    JSON.stringify({ botId: source.botId, threadId: source.id, panelsByBot: { "bot-mark": true } }),
+  )
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para onb" })
+
+  fireEvent.click(screen.getByRole("button", { name: "Revisar", exact: true }))
+
+  const card = await screen.findByRole("article", { name: "Aprovação de ferramenta" })
+  await waitFor(() => expect(card).toHaveFocus())
+  expect(document.getElementById("bot-panel")).toBeNull()
+  expect(JSON.parse(localStorage.getItem("touri.workspace.v1") ?? "{}").panelsByBot["bot-mark"]).toBe(false)
+})
+
 it("a routine waits for its own pending approval, then resumes and finishes", async () => {
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: () => {} })
   const { api, thread, reply, run } = await fixture()

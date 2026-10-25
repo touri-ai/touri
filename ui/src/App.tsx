@@ -550,6 +550,15 @@ const AppContent = ({ kernel }: AppProps) => {
     (target: ApprovalTarget): void => {
       const owner = data.threads.find((thread) => thread.id === target.threadId)
       if (!owner) return
+
+      setPanelsByBot((current) => {
+        if (!current[owner.botId]) return current
+
+        const next = Object.assign({}, current, { [owner.botId]: false })
+        saveWorkspaceState({ panelsByBot: next })
+        return next
+      })
+      setExpandedBot(null)
       actions.selectThread(owner.id, { approvalId: target.approvalId })
       setApprovalFocus((current) => ({ ...target, request: (current?.request ?? 0) + 1 }))
       setRoute({ section: "bots", screen: "chat" })
