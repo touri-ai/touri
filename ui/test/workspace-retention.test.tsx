@@ -441,6 +441,8 @@ test("streaming a 2k-message conversation keeps activity readers bounded without
   await waitFor(() => expect(hook.result.current.data.loading).toBe(false))
   act(() => hook.result.current.actions.selectThread("thread-mark"))
   await waitFor(() => expect(hook.result.current.data.messages.some((message) => message.id === latest.id)).toBe(true))
+  // This stress case intentionally retains history after the person has requested its older pages.
+  while (hook.result.current.data.historyBefore) await act(() => hook.result.current.actions.loadOlderMessages())
   act(() => {
     api.emit({ type: "run.updated", run: { ...latestRun, status: "running", finishedAt: null } })
   })

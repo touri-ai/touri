@@ -493,3 +493,37 @@ test("an unknown old delta during selected hover loading still opens the full la
   expect(hook.result.current.data.messages.at(-1)?.id).toBe(`${threadId}-4999`)
   expect(hook.result.current.data.messages.some((message) => message.id === old.id)).toBe(false)
 })
+
+test("a search inside the loaded page still exposes a return to the latest page", async () => {
+  const api = createMockApi()
+  const threadId = await getChannel(api, "Pesquisa fictícia")
+  const hook = renderHook(() => useWorkspace(api))
+  await waitFor(() => expect(hook.result.current.data.loaded).toBe(true))
+  act(() => hook.result.current.actions.selectThread(threadId))
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe(threadId))
+
+  act(() => hook.result.current.actions.selectThread(threadId, { messageId: `${threadId}-4990` }))
+
+  expect(hook.result.current.data.historyFocusId).toBe(`${threadId}-4990`)
+  act(() => hook.result.current.actions.selectThread(threadId))
+  expect(hook.result.current.data.historyFocusId).toBeNull()
+  expect(hook.result.current.data.messages.at(-1)?.id).toBe(`${threadId}-4999`)
+})
+
+test("sending from an older search restores latest history before adding the new turn", async () => {
+  const api = createMockApi()
+  const threadId = await getChannel(api, "Pesquisa fictícia")
+  const hook = renderHook(() => useWorkspace(api))
+  await waitFor(() => expect(hook.result.current.data.loaded).toBe(true))
+  act(() => hook.result.current.actions.selectThread(threadId))
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe(threadId))
+  act(() => hook.result.current.actions.selectThread(threadId, { messageId: `${threadId}-100` }))
+  await waitFor(() => expect(hook.result.current.data.messages.at(-1)?.id).toBe(`${threadId}-100`))
+
+  await act(() => hook.result.current.actions.sendMessage("Nova mensagem fictícia"))
+
+  expect(hook.result.current.data.messageFocus).toBeNull()
+  expect(hook.result.current.data.historyFocusId).toBeNull()
+  expect(hook.result.current.data.messages.some((message) => message.id === `${threadId}-4999`)).toBe(true)
+  expect(hook.result.current.data.messages.some((message) => message.text === "Nova mensagem fictícia")).toBe(true)
+})

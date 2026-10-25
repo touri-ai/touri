@@ -550,11 +550,11 @@ const AppContent = ({ kernel }: AppProps) => {
     (target: ApprovalTarget): void => {
       const owner = data.threads.find((thread) => thread.id === target.threadId)
       if (!owner) return
-      actions.selectLocation({ bot: owner.botId, thread: owner.id })
+      actions.selectThread(owner.id, { approvalId: target.approvalId })
       setApprovalFocus((current) => ({ ...target, request: (current?.request ?? 0) + 1 }))
       setRoute({ section: "bots", screen: "chat" })
     },
-    [data.threads, actions.selectLocation, setRoute],
+    [data.threads, actions.selectThread, setRoute],
   )
   const openNeedsYou = useCallback(
     (item: NotificationRecord): void => {
@@ -739,6 +739,7 @@ const AppContent = ({ kernel }: AppProps) => {
     }
     if (
       selectedGroup ||
+      focus.approvalId ||
       (data.historyContext?.messageId === focus.messageId && data.historyContext.onActivePath) ||
       activeMessagePath(data.messages, selectedThread?.activeLeafId ?? null).some(
         (message) => message.id === focus.messageId,
@@ -1461,7 +1462,9 @@ const AppContent = ({ kernel }: AppProps) => {
                               approvalFocus?.threadId === selectedThread?.id ? (approvalFocus ?? undefined) : undefined
                             }
                             focusMessage={
-                              data.historyThreadId === selectedThread?.id ? (data.messageFocus ?? undefined) : undefined
+                              data.historyThreadId === selectedThread?.id && !data.messageFocus?.approvalId
+                                ? (data.messageFocus ?? undefined)
+                                : undefined
                             }
                             panelOpen={panelOpen}
                             onTogglePanel={() => setPanelOpen(!panelOpen)}

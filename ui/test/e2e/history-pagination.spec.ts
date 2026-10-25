@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer"
 import { spawn } from "node:child_process"
 import { copyFile } from "node:fs/promises"
 import { resolve } from "node:path"
@@ -60,7 +61,7 @@ for (const width of [1440, 390]) {
       reads.push({
         id: new URL(response.url()).pathname.split("/").at(-2) ?? "",
         count: decoded.messages.length,
-        bytes: body.length,
+        bytes: Buffer.byteLength(body),
       })
     })
     await page.goto(server.relayUrl)
@@ -179,7 +180,8 @@ for (const width of [1440, 390]) {
           const bounds = element.getBoundingClientRect()
           return bounds.bottom > viewport.top && bounds.top < viewport.bottom
         })
-        return { id: row?.dataset.messageRow ?? "", top: (row?.getBoundingClientRect().top ?? 0) - viewport.top }
+        const body = row?.querySelector<HTMLElement>("[data-message-id]") ?? row
+        return { id: row?.dataset.messageRow ?? "", top: (body?.getBoundingClientRect().top ?? 0) - viewport.top }
       })
       expect(anchor.id).not.toBe("")
       releaseOlder.resolve()
@@ -193,8 +195,9 @@ for (const width of [1440, 390]) {
             const row = Array.from(list.querySelectorAll<HTMLElement>("[data-message-row]")).find(
               (element) => element.dataset.messageRow === anchor.id,
             )
-            return row
-              ? Math.abs(row.getBoundingClientRect().top - list.getBoundingClientRect().top - anchor.top)
+            const body = row?.querySelector<HTMLElement>("[data-message-id]") ?? row
+            return body
+              ? Math.abs(body.getBoundingClientRect().top - list.getBoundingClientRect().top - anchor.top)
               : Infinity
           }, anchor),
         )

@@ -214,6 +214,9 @@ const routineTriggerKeys: Record<RoutineRun["triggerSource"], TranslationKey> = 
 }
 const estimatedRowHeight = 158
 
+const getHistoryAnchorElement = (row: HTMLElement): HTMLElement =>
+  row.querySelector<HTMLElement>("[data-message-id]") ?? row
+
 const getMessageBranchKey = (message: MessageBranch): string =>
   JSON.stringify([message.threadId, message.parentId, message.role])
 
@@ -369,9 +372,14 @@ export const VirtualMessageList = ({
   const runsById = useMemo(() => new Map(runs.map((run) => [run.id, run])), [runs])
   const hasRoutineRuns = useMemo(() => runs.some(isRoutineRun), [runs])
   const branches = useMemo(
-    () => flatHistory ? new Map<string, MessageBranch[]>() : getMessageBranches(
-      Array.from(new Map([...allMessages, ...(branchOptions ?? [])].map((message) => [message.id, message])).values()),
-    ),
+    () =>
+      flatHistory
+        ? new Map<string, MessageBranch[]>()
+        : getMessageBranches(
+            Array.from(
+              new Map([...allMessages, ...(branchOptions ?? [])].map((message) => [message.id, message])).values(),
+            ),
+          ),
     [allMessages, branchOptions, flatHistory],
   )
   const routineRunHeaderByMessage = useMemo(() => {
@@ -612,10 +620,11 @@ export const VirtualMessageList = ({
     )
     if (!list || !row) return
 
-    const delta = row.getBoundingClientRect().top - list.getBoundingClientRect().top - anchor.top
+    const element = getHistoryAnchorElement(row)
+    const delta = element.getBoundingClientRect().top - list.getBoundingClientRect().top - anchor.top
     list.scrollTop += delta
     programmaticTop.current = { top: list.scrollTop, viewportHeight: list.clientHeight }
-    readingAnchor.current = { element: row, top: anchor.top, scrollTop: list.scrollTop }
+    readingAnchor.current = { element, top: anchor.top, scrollTop: list.scrollTop }
     prependAnchor.current = null
     setScrollTop(list.scrollTop)
   }, [messages])
@@ -638,7 +647,8 @@ export const VirtualMessageList = ({
     followBottom.current = false
     prependAnchor.current = {
       id: row.dataset.messageRow ?? "",
-      top: row.getBoundingClientRect().top - list.getBoundingClientRect().top,
+      // Anchor the message body: a prepended day divider can move within its row.
+      top: getHistoryAnchorElement(row).getBoundingClientRect().top - list.getBoundingClientRect().top,
       firstId: messages[0]?.id,
     }
     void onLoadOlderHistory().catch(() => {

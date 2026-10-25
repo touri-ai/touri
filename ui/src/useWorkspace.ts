@@ -59,7 +59,7 @@ type ProcessEntry = { spec: ProcessSpec; run: ProcessRunState | null }
 export type WorkspaceData = {
   groupsLoaded?: boolean
   readyGroupIds?: Id[]
-  messageFocus?: { threadId: Id; messageId: Id; request: number } | null
+  messageFocus?: { threadId: Id; messageId: Id; request: number; approvalId?: Id | undefined } | null
   historyContext?: MessageHistoryContext | undefined
   historyFocusId?: Id | null
   historyBefore?: Id | null | undefined
@@ -115,7 +115,10 @@ export type WorkspaceActions = {
   loadOlderMessages: () => Promise<void>
   prefetchThread: (threadId: Id) => void
   selectBot: (botId: Id) => void
-  selectThread: (threadId: Id, options?: { readRoutineGroup?: boolean; messageId?: Id | undefined }) => void
+  selectThread: (
+    threadId: Id,
+    options?: { readRoutineGroup?: boolean; messageId?: Id | undefined; approvalId?: Id | undefined },
+  ) => void
   createGroup: (input: GroupInput, id?: string) => Promise<void>
   createGroupThread: (id: string) => Promise<void>
   deleteGroup: (id: string) => Promise<void>
@@ -1970,8 +1973,23 @@ export const useWorkspace = (
   }, [])
 
   const selectThread = useCallback(
-    (threadId: Id, options?: { readRoutineGroup?: boolean; messageId?: Id | undefined }): void => {
+    (
+      threadId: Id,
+      options?: { readRoutineGroup?: boolean; messageId?: Id | undefined; approvalId?: Id | undefined },
+    ): void => {
       setData((current) => {
+        const approvalMessage = options?.approvalId
+          ? [...current.messages, ...current.activityMessages].find(
+              (message) =>
+                message.threadId === threadId &&
+                message.parts.some((part) => part.type === "approval" && part.approvalId === options.approvalId),
+            )
+          : undefined
+        const messageId = options?.messageId ?? approvalMessage?.id
+        const isMessageLoaded = Boolean(
+          messageId && current.messages.some((message) => message.id === messageId && message.threadId === threadId),
+        )
+        const replaceHistory = (messageId && !isMessageLoaded) || (!messageId && current.historyFocusId)
         const readIds = options?.readRoutineGroup
           ? getSidebarReadThreadIds(
               current.threads,
@@ -1985,18 +2003,16 @@ export const useWorkspace = (
           ...current,
           selectedBotId: current.threads.find((thread) => thread.id === threadId)?.botId ?? current.selectedBotId,
           selectedThreadId: threadId,
-          messages:
-            (options?.messageId && !current.messages.some((message) => message.id === options.messageId)) ||
-            (!options?.messageId && current.historyFocusId)
-              ? []
-              : current.messages,
-          historyThreadId:
-            (options?.messageId && !current.messages.some((message) => message.id === options.messageId)) ||
-            (!options?.messageId && current.historyFocusId)
-              ? null
-              : (current.historyThreadId ?? null),
-          messageFocus: options?.messageId
-            ? { threadId, messageId: options.messageId, request: (current.messageFocus?.request ?? 0) + 1 }
+          messages: replaceHistory ? [] : current.messages,
+          historyThreadId: replaceHistory ? null : (current.historyThreadId ?? null),
+          historyFocusId: messageId && isMessageLoaded ? messageId : (current.historyFocusId ?? null),
+          messageFocus: messageId
+            ? {
+                threadId,
+                messageId,
+                request: (current.messageFocus?.request ?? 0) + 1,
+                ...(options?.approvalId ? { approvalId: options.approvalId } : {}),
+              }
             : null,
           threadCreation: null,
           composerKey: null,
@@ -2114,6 +2130,7 @@ export const useWorkspace = (
       if (creatingThread.current || data.threadCreation || selectedThread?.id !== currentData.current.selectedThreadId)
         throw new Error(t("Criando conversa…"))
       if (!selectedThread || !text.trim()) return
+      if (currentData.current.messageFocus) selectThread(selectedThread.id)
       const clientNonce = crypto.randomUUID()
       localResponseTimings().begin(selectedThread.id, clientNonce)
       const input = {
@@ -2138,7 +2155,7 @@ export const useWorkspace = (
         runs: response.run ? mergeRunRows(current.runs, [response.run]) : current.runs,
       }))
     },
-    [api, selectedThread, data.threadCreation],
+    [api, selectedThread, data.threadCreation, selectThread],
   )
 
   const retryRun = useCallback(

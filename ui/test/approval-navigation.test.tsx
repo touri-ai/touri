@@ -212,3 +212,44 @@ it("reveals an approval outside the rendered virtual window and does not steal f
   expect(card.querySelector("button")).toHaveFocus()
   expect(reveal).toHaveBeenCalledOnce()
 })
+
+it("reviewing an off-page approval reads its own history window without changing the active branch", async () => {
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: () => {} })
+  const { api, thread, reply } = await fixture()
+  const later = Array.from({ length: 5000 }, (_, index) => ({
+    ...reply,
+    id: `later-${index}`,
+    parentId: index ? `later-${index - 1}` : null,
+    role: "user" as const,
+    status: "complete" as const,
+    runId: null,
+    text: `Registro fictício ${index}`,
+    parts: [],
+    createdAt: index + 2,
+    updatedAt: index + 2,
+  }))
+  const updated = { ...thread, activeLeafId: "later-4999" }
+  // Only the mock server owns these fixture arrays; the published thread remains immutable.
+  api.getState().messages.push(...later)
+  const index = api.getState().threads.findIndex((row) => row.id === thread.id)
+  api.getState().threads.splice(index, 1, updated)
+  act(() => api.emit({ type: "thread.updated", thread: updated }))
+
+  fireEvent.click(screen.getByRole("button", { name: "Revisar aprovação de onb" }))
+
+  const card = await screen.findByRole("article", { name: "Aprovação de ferramenta" })
+  await waitFor(() => expect(card).toHaveFocus())
+  expect(
+    api.calls.some(
+      (call) =>
+        call.route === "GET /threads/:id/messages" &&
+        call.pathValues?.id === thread.id &&
+        (call.input as { around?: string; limit?: number }).around === reply.id &&
+        (call.input as { limit?: number }).limit === 40,
+    ),
+  ).toBe(true)
+  expect(
+    api.calls.filter((call) => call.route === "PATCH /threads/:id" && call.pathValues?.id === thread.id),
+  ).toHaveLength(0)
+  expect(api.getState().threads.find((row) => row.id === thread.id)?.activeLeafId).toBe(updated.activeLeafId)
+})
