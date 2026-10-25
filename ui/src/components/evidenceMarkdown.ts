@@ -14,6 +14,7 @@ export type EvidenceNode = {
   value?: string
   url?: string
   alt?: string
+  identifier?: string
   children?: EvidenceNode[]
 }
 export const evidencePath = (path: string, imageSyntax = false): boolean =>
@@ -36,16 +37,21 @@ export const decodedEvidencePath = (path: string, imageSyntax = false): string |
 
 /** Operate on parsed nodes: fenced code, raw HTML and remote URLs never become evidence. */
 export const evidenceImages = (tree: EvidenceNode): EvidenceImage[] => {
+  const definitions = getReferenceDefinitions(tree)
   const references = (node: EvidenceNode): Array<{ path: string; caption: string; imageSyntax: boolean }> => {
-    if (node.type === "image") return [{ path: node.url ?? "", caption: node.alt ?? "", imageSyntax: true }]
-    if (node.type === "link")
+    const path = node.url ?? definitions.get(node.identifier ?? "") ?? ""
+    if (node.type === "image" || node.type === "imageReference")
+      return [{ path, caption: node.alt ?? "", imageSyntax: true }]
+    if (node.type === "link" || node.type === "linkReference")
       return [
         {
-          path: node.url ?? "",
+          path,
           caption: node.children?.map((child) => child.value ?? "").join("") ?? "",
           imageSyntax: false,
         },
       ]
+    if (node.type === "inlineCode" && decodedEvidencePath(node.value ?? ""))
+      return [{ path: node.value ?? "", caption: "", imageSyntax: false }]
     const barePaths =
       node.type === "text" || node.type === "inlineCode"
         ? [
@@ -76,4 +82,18 @@ export const evidenceImages = (tree: EvidenceNode): EvidenceImage[] => {
     const caption = image?.caption || reference.caption || filename
     return { path: reference.path, caption, filename, imageSyntax: Boolean(image) }
   })
+}
+
+const getReferenceDefinitions = (tree: EvidenceNode): ReadonlyMap<string, string> => {
+  // Local membership preserves the first Markdown definition and keeps lookup work linear.
+  const definitions = new Map<string, string>()
+  const collect = (node: EvidenceNode): void => {
+    if (node.type === "code" || node.type === "html") return
+    if (node.type === "definition" && node.identifier && node.url && !definitions.has(node.identifier))
+      definitions.set(node.identifier, node.url)
+    node.children?.forEach(collect)
+  }
+  collect(tree)
+
+  return definitions
 }

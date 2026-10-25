@@ -77,6 +77,26 @@ const fixture = () => {
 }
 
 describe("safe markdown evidence", () => {
+  it.each([
+    "![Tela][captura]\n\n[captura]: shots/screen%20one.png",
+    "![Tela][]\n\n[Tela]: shots/screen%20one.png",
+    "![Tela]\n\n[Tela]: shots/screen%20one.png",
+    "`shots/screen one.png`",
+    "`/workspace/shots/screen one.png`",
+    "[Arquivo][captura]\n\n[captura]: shots/screen%20one.png",
+  ])("previews reference definitions and code-formatted filenames with spaces: %s", async (content) => {
+    const { context, request } = fixture()
+
+    render(<MarkdownContent evidence={context} content={content} />)
+    expect(await screen.findByRole("img")).toBeVisible()
+
+    expect(request).toHaveBeenCalledWith(
+      "GET /bots/:id/images",
+      { path: content.includes("/workspace/") ? "/workspace/shots/screen one.png" : "shots/screen one.png" },
+      { id: context.bot.id },
+    )
+  })
+
   it("reserves thumbnail boxes while authenticated image reads are pending", async () => {
     const { context, request } = fixture()
     let finish: ((value: Blob) => void) | undefined

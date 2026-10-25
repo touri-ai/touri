@@ -68,8 +68,14 @@ test("does not turn unrestricted bot access into automatic host-file previews", 
 test("reads literal relative and absolute images asynchronously and refuses globs as file reads", async () => {
   const input = makeWorkspace()
   writeFileSync(join(input.workspace, "screen.png"), png)
+  writeFileSync(join(input.workspace, "screen one.png"), png)
 
-  for (const path of ["screen.png", join(input.workspace, "screen.png")]) {
+  for (const path of [
+    "screen.png",
+    join(input.workspace, "screen.png"),
+    "screen one.png",
+    join(input.workspace, "screen one.png"),
+  ]) {
     const result = await getWorkspaceImageAsync({ ...input, path })
 
     expect("bytes" in result && Buffer.from(result.bytes)).toEqual(png)
