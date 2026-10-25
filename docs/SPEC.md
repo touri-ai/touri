@@ -727,6 +727,17 @@ are appended to the current shared history path with the actual member's identit
 concurrent replies and newer user messages. These internal
 conversations are excluded from the bot's ordinary conversation list.
 
+Channel replies to list or comparison requests receive trusted guidance to present numbered
+options with the same criteria, confirmed ratings, periods, currencies and total prices, and an
+explanation of missing data. Channel history, people's identities and the request remain untrusted
+data; this presentation guidance does not select recipients or grant capabilities.
+
+Browser activity resolves requester, controller and waiting-request labels by person ID against
+the current channel roster, preferring a nonempty handle, then the display name, then the saved
+run name. References to the viewer use **você / you**, including control and hidden-preview copy;
+missing or legacy owner labels use the localized person fallback. Takeover, Stop and privacy
+authorization continue to use stable IDs, independently of displayed names.
+
 Shared conversations display a flat chronological history, both when loaded and as messages arrive.
 Independent messages from people, integrations and bots remain visible even when they share a parent
 or are roots. Shared history has no message-edit or branch-selection controls and skips branch sibling

@@ -18,9 +18,9 @@ for (const scenario of [
     await page.getByRole("tab", { name: /^Work,/ }).click()
     await page.getByRole("button", { name: /^Viagens/ }).click()
 
-    const header = scenario.controller
-      ? "Léo no navegador · pedido de Ana · Carla está no controle"
-      : "Léo no navegador · pedido de Ana"
+    const requester = scenario.viewer === "person-requester" ? "você" : "Ana"
+    const control = scenario.viewer === scenario.controller ? "Você está no controle" : "Carla está no controle"
+    const header = `Léo no navegador · pedido de ${requester}${scenario.controller ? ` · ${control}` : ""}`
     await expect(page.getByRole("status", { name: header })).toBeVisible()
     const card = page.getByRole("article", { name: "Navegador do Léo" })
     await expect(card.getByRole("button", { name: "Assumir", exact: true })).toHaveCount(scenario.canControl ? 1 : 0)
@@ -83,7 +83,7 @@ for (const width of [1440, 390]) {
       await page.getByRole("button", { name: /^Viagens/ }).click()
 
       const context = page.getByRole("status", {
-        name: "Léo no navegador · pedido de Ana · Carla está no controle",
+        name: "Léo no navegador · pedido de você · Carla está no controle",
       })
       await expect(context).toBeVisible()
       const fitsViewport = await context.evaluate((element) => {

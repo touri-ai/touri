@@ -27,12 +27,14 @@ for (const theme of ["dark", "light"]) {
           thumbnails.evaluateAll((images) => images.every((image) => (image as HTMLImageElement).naturalWidth > 0)),
         )
         .toBe(true)
-      if (phase === "after") await list.evaluate((element) => (element.scrollTop = element.scrollHeight))
+      if (phase !== "before") await list.evaluate((element) => (element.scrollTop = element.scrollHeight))
       await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve(undefined))))
       await page.evaluate(() => document.fonts.ready)
       if (capture)
         await page.screenshot({
-          path: testInfo.outputPath(`${phase}-${viewport.name}-${theme}.png`),
+          path: process.env.CHAT_IMAGE_EVIDENCE_DIR
+            ? `${process.env.CHAT_IMAGE_EVIDENCE_DIR}/${phase}-${viewport.name}-${theme}.png`
+            : testInfo.outputPath(`${phase}-${viewport.name}-${theme}.png`),
           animations: "disabled",
         })
       if (phase === "before") return
@@ -59,6 +61,34 @@ for (const theme of ["dark", "light"]) {
       expect(metrics).not.toBeNull()
       expect(metrics?.bottomGap).toBeLessThan(120)
       expect(metrics?.remainingScroll).toBeLessThan(2)
+
+      const geometry = await cards.evaluateAll((figures) =>
+        figures.map((figure) => {
+          const button = figure.querySelector(".evidence-thumbnail")
+          const image = button?.querySelector("img")
+          const caption = figure.querySelector("figcaption")
+          if (!button || !image || !caption) return null
+          const preview = button.getBoundingClientRect()
+          const label = caption.getBoundingClientRect()
+          const rendered = image.getBoundingClientRect()
+
+          return {
+            previewHeight: preview.height,
+            previewWidth: preview.width,
+            captionGap: label.top - preview.bottom,
+            imageHeight: rendered.height,
+            imageWidth: rendered.width,
+          }
+        }),
+      )
+      expect(
+        geometry.every((card) => card && card.previewHeight < 360 && card.captionGap >= 0 && card.captionGap < 12),
+      ).toBe(true)
+      expect(
+        geometry.every(
+          (card) => card && card.imageHeight <= card.previewHeight && card.imageWidth <= card.previewWidth,
+        ),
+      ).toBe(true)
 
       const previews = await page.locator(".evidence-thumbnail img").evaluateAll((images) =>
         images.map((image) => ({
