@@ -40,12 +40,20 @@ viewports.forEach(({ width, height }) => {
 
     await center.getByRole("button", { name: "Tarefas interrompidas", exact: true }).click()
     const recovery = page.getByRole("dialog", { name: "Tarefas interrompidas", exact: true })
-    await expect(recovery.getByTestId("interrupted-task")).toHaveCount(1)
+    await expect(recovery.getByTestId("interrupted-task")).toHaveCount(3)
+    const visibleTasks = recovery.locator('[data-testid="interrupted-task"]:visible')
+    await expect(visibleTasks).toHaveCount(1)
+    const resolved = recovery.getByRole("button", { name: "Interrupções resolvidas (2)", exact: true })
+    await expect(resolved).toBeVisible()
     const acknowledgement = recovery.getByRole("checkbox", {
       name: "Revisei os efeitos incertos e entendo que descartar não desfaz as ações.",
     })
     await expect(acknowledgement).toBeVisible()
     await expect(acknowledgement).not.toBeChecked()
+    await expect(recovery.getByRole("button", { name: "Descartar", exact: true })).toBeDisabled()
     if (directory) await recovery.screenshot({ path: join(directory, `notification-recovery-${width}.png`) })
+
+    await resolved.click()
+    await expect(visibleTasks).toHaveCount(3)
   })
 })
