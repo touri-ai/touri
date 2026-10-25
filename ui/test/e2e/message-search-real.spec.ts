@@ -115,8 +115,8 @@ for (const width of [1440, 390]) {
     await page.screenshot({ path, animations: "disabled", mask: [page.locator(".composer-model")] })
     await info.attach(imageName, { path, contentType: "image/png" })
     await previous.click()
-    await expect(page.locator('[data-message-row="real-search-4"]')).toBeVisible()
+    await expect(page.locator('[data-message-row="real-search-239"]')).toBeVisible()
     const { threads } = (await current.api(`/bots/${bot.id}/threads`)) as { threads: Thread[] }
-    expect(threads.find((thread) => thread.id === threadId)?.activeLeafId).toBe("real-search-4")
+    expect(threads.find((thread) => thread.id === threadId)?.activeLeafId).toBe("real-search-239")
   })
 }
