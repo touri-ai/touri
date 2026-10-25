@@ -55,6 +55,7 @@ import requestRunsSql from "./migrations/0049.sql" with { type: "text" }
 import fastConversationSql from "./migrations/0050.sql" with { type: "text" }
 import webPushSql from "./migrations/0051.sql" with { type: "text" }
 import notificationReadsSql from "./migrations/0052.sql" with { type: "text" }
+import imageEvidenceIndexesSql from "./migrations/image-evidence-indexes.sql" with { type: "text" }
 import type { PerformanceStageRunner } from "./performance"
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
@@ -102,9 +103,14 @@ export const openDatabase = ({
     ? (database.query("SELECT value FROM schema_meta WHERE key='schema_version'").get() as { value: string } | null)
     : null
   // A committed version is the migration checkpoint. Replaying old writes delays every current-store restart.
-  if (current?.value === String(SCHEMA_VERSION)) return database
+  if (current?.value === String(SCHEMA_VERSION)) {
+    if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'image_evidence_indexes_version'").get())
+      database.transaction(() => database.exec(imageEvidenceIndexesSql))()
+    return database
+  }
   if (current?.value === "51") {
     database.transaction(() => database.exec(notificationReadsSql))()
+    database.transaction(() => database.exec(imageEvidenceIndexesSql))()
     return database
   }
   if (current?.value === "50") {
@@ -112,6 +118,7 @@ export const openDatabase = ({
       database.exec(webPushSql)
       database.exec(notificationReadsSql)
     })()
+    database.transaction(() => database.exec(imageEvidenceIndexesSql))()
     return database
   }
   if (current?.value === "49") {
@@ -120,6 +127,7 @@ export const openDatabase = ({
       database.exec(webPushSql)
       database.exec(notificationReadsSql)
     })()
+    database.transaction(() => database.exec(imageEvidenceIndexesSql))()
     return database
   }
   if (current?.value === "46" || current?.value === "47" || current?.value === "48") {
@@ -132,6 +140,7 @@ export const openDatabase = ({
       database.exec(webPushSql)
       database.exec(notificationReadsSql)
     })()
+    database.transaction(() => database.exec(imageEvidenceIndexesSql))()
     return database
   }
 
@@ -404,6 +413,7 @@ export const openDatabase = ({
   database.transaction(() => applyFastConversationSchema(database))()
   database.transaction(() => database.exec(webPushSql))()
   database.transaction(() => database.exec(notificationReadsSql))()
+  database.transaction(() => database.exec(imageEvidenceIndexesSql))()
   return database
 }
 

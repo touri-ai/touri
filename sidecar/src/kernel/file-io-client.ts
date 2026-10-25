@@ -12,6 +12,7 @@ export const fileIoQueueLimit = 256
 export const fileIoByteLimit = 64 * 1024 * 1024
 export const logIoByteLimit = 8 * 1024 * 1024
 const batchByteLimit = 64 * 1024
+const imageReferenceByteLimit = 2 * 1024 * 1024
 
 /** Own the worker mailbox here so its memory and outstanding work stay bounded. */
 export const createFileIoLane = ({
@@ -19,6 +20,7 @@ export const createFileIoLane = ({
   batch = false,
   waitForCapacity = false,
   capacityTimeoutMs = 15_000,
+  taskTimeoutMs = 0,
   createWorker = startFileIoWorker,
 } = {}) => {
   // Mutable lifecycle state belongs to this one worker and its bounded mailbox.
@@ -32,10 +34,12 @@ export const createFileIoLane = ({
   let waitingBytes = 0
   let bytes = 0
   let dropped = 0
+  let taskTimer: ReturnType<typeof setTimeout> | undefined
   let startupTimer: ReturnType<typeof setTimeout> | undefined
   let scheduled: ReturnType<typeof setImmediate> | undefined
 
   const stop = (error?: Error): void => {
+    clearTimeout(taskTimer)
     clearTimeout(startupTimer)
     clearImmediate(scheduled)
     scheduled = undefined
@@ -68,6 +72,7 @@ export const createFileIoLane = ({
       return
     }
     if (data.requestId !== requestId || !active) return
+    clearTimeout(taskTimer)
     const finished = active
     active = undefined
     bytes -= finished.bytes
@@ -117,6 +122,7 @@ export const createFileIoLane = ({
     entries = remaining
     requestId += 1
     worker.ref()
+    if (taskTimeoutMs > 0) taskTimer = setTimeout(() => stop(new Error("File I/O operation timed out")), taskTimeoutMs)
     worker.postMessage({ ...next.task, requestId } satisfies FileIoRequest)
   }
 
@@ -231,6 +237,9 @@ export const createFileIoLane = ({
 }
 
 const getTaskBytes = (task: FileIoTask): number => {
+  // Reference discovery retains bounded paths and bot metadata, without a full raster buffer.
+  if (task.operation === "workspace-image" && task.args.pattern) return imageReferenceByteLimit
+  if (task.operation === "workspace-image" || task.operation === "read-image") return 15 * 1024 * 1024
   if (task.operation !== "write" && task.operation !== "append" && task.operation !== "append-log") return 0
   return typeof task.args.content === "string" ? Buffer.byteLength(task.args.content) : task.args.content.byteLength
 }

@@ -2,8 +2,8 @@ import type { Message } from "@touri/contracts"
 import { useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
 import { createMockApi } from "../../src/api/mock"
+import { AvatarRuntimeProvider } from "../../src/components/AvatarRuntime"
 import { VirtualMessageList } from "../../src/components/ChatPanel"
-import { EvidenceContext } from "../../src/components/EvidenceGallery"
 import "../../src/styles.css"
 
 const theme = new URLSearchParams(location.search).get("theme") ?? "dark"
@@ -93,10 +93,19 @@ const Fixture = () => {
     return (images.get(path) ?? new Blob([], { type: "image/png" })) as never
   }
   const bot = api.getState().bots[0]
-  if (!bot) throw new Error("Bot de exemplo indisponível")
+  const thread = api.getState().threads[0]
+  if (!bot || !thread) throw new Error("Conversa de exemplo indisponível")
+  const runtime = {
+    bots: [bot],
+    threads: [{ ...thread, id: "image-thread", botId: bot.id }],
+    messages,
+    runs: [],
+    notifications: [],
+    loading: false,
+  }
 
   return (
-    <EvidenceContext.Provider value={{ api, bot }}>
+    <AvatarRuntimeProvider value={runtime}>
       <main
         style={{
           display: "flex",
@@ -124,7 +133,7 @@ const Fixture = () => {
           }}
         />
       </main>
-    </EvidenceContext.Provider>
+    </AvatarRuntimeProvider>
   )
 }
 

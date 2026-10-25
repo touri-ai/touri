@@ -1,6 +1,7 @@
 import { readdirSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { removeBotHomeDirectory } from "../vm/bot-home-cleanup"
+import { getLocalImageBytes, getWorkspaceImage } from "../vm/evidence-local"
 import type { FileIoMessage, FileIoRequest, FileIoTask } from "./file-io-protocol"
 import {
   atomicAppendFile,
@@ -34,6 +35,8 @@ const rotateLog = ({
 }
 
 const execute = (task: FileIoTask): unknown => {
+  if (task.operation === "workspace-image") return getWorkspaceImage(task.args)
+  if (task.operation === "read-image") return getLocalImageBytes(task.args.root, task.args.path)
   if (task.operation === "flush") return undefined
   if (task.operation === "write") {
     atomicWriteFile(task.args)
@@ -104,7 +107,12 @@ const execute = (task: FileIoTask): unknown => {
 const toWorkerError = (error: unknown): { name: string; message: string; code?: string } => {
   if (!(error instanceof Error)) return { name: "Error", message: String(error) }
   const code = (error as Error & { code?: unknown }).code
-  return { name: error.name, message: error.message, ...(typeof code === "string" ? { code } : {}) }
+  return {
+    name: error.name,
+    message: error.message,
+    ...(typeof code === "string" ? { code } : {}),
+    ...("status" in error ? { code: `HTTP_${error.status}` } : {}),
+  }
 }
 
 self.onmessage = ({ data }: MessageEvent<FileIoRequest>): void => {

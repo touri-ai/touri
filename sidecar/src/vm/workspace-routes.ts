@@ -5,7 +5,7 @@ import { basename, resolve } from "node:path"
 import type { Kernel, RouteModule, VmRuntime, WorkspaceFile } from "@touri/contracts"
 
 import { openWorkspaceDirectory, openWorkspaceEntry } from "../kernel/files"
-import { evidenceImageRoute } from "./evidence-images"
+import { evidenceImageRoute, evidenceReferencesRoute } from "./evidence-images"
 import { cancelGuestShell, guestShell } from "./guest-shell"
 import {
   checkGuestFileError,
@@ -130,6 +130,7 @@ export const botWorkspaceRoutes = (kernel: Kernel, vm: VmRuntime): RouteModule["
   })
   return [
     evidenceImageRoute(kernel, vm),
+    evidenceReferencesRoute(kernel, vm),
     ...[false, true].map((content): RouteModule["routes"][number] => ({
       method: "GET",
       path: content ? "/bots/:id/files/content" : "/bots/:id/files",

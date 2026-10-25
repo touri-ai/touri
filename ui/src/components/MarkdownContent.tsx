@@ -13,6 +13,7 @@ import {
   useState,
 } from "react"
 import type { Components } from "react-markdown"
+import type { UiApi } from "../api/client"
 import { userFacingError } from "../errors"
 import { markdownSummary } from "../markdownSummary"
 import { hasShellBraceAlternatives, localFileLinks, localFilePath } from "../messageMarkdown"
@@ -28,6 +29,7 @@ import {
   evidenceImages,
   evidencePath,
 } from "./evidenceMarkdown"
+import { loadImage } from "./imageLoads"
 import { LocalFileLink } from "./LocalFileLink"
 import { MermaidDiagram } from "./MermaidDiagram"
 import { getMarkdownCodeHtml } from "./markdownHighlight"
@@ -40,8 +42,10 @@ type MarkdownRendererProps = {
   preview?: boolean
   streaming?: boolean
   evidence?: EvidenceContextValue | undefined
+  imageApi?: UiApi | undefined
 }
 
+const ImageApiContext = createContext<UiApi | undefined>(undefined)
 const CodeVisibilityContext = createContext(false)
 const StreamingContext = createContext(false)
 
@@ -155,6 +159,7 @@ const getMarkdownRenderer = async () => {
   const buildComponents = (preview: boolean, images: EvidenceImage[]): Components => ({
     img: ({ alt, src }) => {
       const path = src ? decodedEvidencePath(src, true) : null
+      if (path?.includes("*")) return <span>{src}</span>
       if (path && images.some((image) => image.path === path)) return null
       return <span>{alt}</span>
     },
@@ -181,13 +186,21 @@ const getMarkdownRenderer = async () => {
   const previewPlugins = [remarkGfm, chatPreview, localFileLinks]
   const Markdown = ({ content, preview }: MarkdownRendererProps) => {
     const evidence = useContext(EvidenceContext)
+    const imageApi = useContext(ImageApiContext) ?? evidence?.api
     const isPreview = preview ?? false
     const images = useMemo(() => {
-      if (!evidence) return []
+      if (!evidence && !imageApi) return []
+      if (!evidence && !/attachments|%/i.test(content)) return []
+      if (!/\.(?:png|jpe?g|gif|webp)\b|!\[|attachments|%/i.test(content)) return []
       const tree = unified().use(remarkParse).use(remarkGfm).parse(protectDiffFences(content)) as EvidenceNode
       if (isPreview) chatPreview()(tree)
-      return evidenceImages(tree)
-    }, [content, isPreview, evidence])
+      return evidenceImages(tree).flatMap((image): EvidenceImage[] => {
+        const id = /^\/(?:api\/v1\/)?attachments\/([a-f0-9]{64})$/i.exec(image.path)?.[1]
+        if (id && imageApi)
+          return [{ ...image, cacheKey: imageApi, read: () => imageApi.request("GET /attachments/:id", {}, { id }) }]
+        return evidence ? [image] : []
+      })
+    }, [content, isPreview, evidence, imageApi])
     const components = useMemo(() => buildComponents(isPreview, images), [isPreview, images])
     return (
       <>
@@ -199,7 +212,7 @@ const getMarkdownRenderer = async () => {
         >
           {protectDiffFences(content)}
         </ReactMarkdown>
-        {images.length > 0 && <EvidenceGallery images={images} inline />}
+        {images.length > 0 && <MarkdownEvidence images={images} context={evidence} />}
       </>
     )
   }
@@ -207,6 +220,51 @@ const getMarkdownRenderer = async () => {
 }
 
 const LazyMarkdown = lazy(getMarkdownRenderer)
+
+const MarkdownEvidence = ({ images, context }: { images: EvidenceImage[]; context: EvidenceContextValue | null }) => {
+  const [expanded, setExpanded] = useState<EvidenceImage[]>([])
+  const patternKey = images
+    .filter((image) => image.path.includes("*"))
+    .slice(0, 3)
+    .map((image) => image.path)
+    .join("\0")
+  const api = context?.api
+  const botId = context?.bot.id
+  const base = context?.base
+  const imageVersion = context?.imageVersion
+  // biome-ignore lint/correctness/useExhaustiveDependencies: completion must rediscover files even when the pattern is unchanged
+  useEffect(() => {
+    setExpanded([])
+    if (!api || !botId || !patternKey) return
+    let alive = true
+    void Promise.all(
+      patternKey.split("\0").map(async (path) => {
+        const result = await loadImage(async () => {
+          if (!alive) return { paths: [] }
+
+          return api.request("GET /bots/:id/image-references", { path, ...(base ? { base } : {}) }, { id: botId })
+        }).catch(() => ({ paths: [] }))
+
+        return result.paths
+          .slice(0, 6)
+          .map((path) => ({ path, filename: path.split("/").at(-1) || path, caption: path.split("/").at(-1) || path }))
+      }),
+    ).then((results) => {
+      if (alive) setExpanded(results.flat().slice(0, 6))
+    })
+    return () => {
+      alive = false
+    }
+  }, [api, botId, base, imageVersion, patternKey])
+  const concrete = images.filter((image) => !/[?*[\]{}]/.test(image.path))
+  const unique = Array.from(new Map([...concrete, ...expanded].map((image) => [image.path, image])).values()).slice(
+    0,
+    12,
+  )
+  if (!unique.length) return null
+
+  return <EvidenceGallery images={unique} inline />
+}
 
 const ShikiCode = ({
   language,
@@ -299,6 +357,7 @@ export const MarkdownContent = ({
   preview = false,
   streaming = false,
   evidence,
+  imageApi,
 }: MarkdownRendererProps) => {
   const displayed = useStreamingContent(content, streaming)
   const visibleOnly = !streaming && (content.length > 4000 || content.split("\n").length > 40)
@@ -325,7 +384,9 @@ export const MarkdownContent = ({
               </p>
             }
           >
-            {evidence ? <EvidenceContext.Provider value={evidence}>{markdown}</EvidenceContext.Provider> : markdown}
+            <ImageApiContext.Provider value={imageApi}>
+              {evidence ? <EvidenceContext.Provider value={evidence}>{markdown}</EvidenceContext.Provider> : markdown}
+            </ImageApiContext.Provider>
           </Suspense>
         </div>
       </CodeVisibilityContext.Provider>

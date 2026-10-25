@@ -1,5 +1,6 @@
+import type { Database } from "bun:sqlite"
 import { createHash } from "node:crypto"
-import type { Kernel, RouteModule, RouteResponse } from "@touri/contracts"
+import type { FilePart, ImagePart, Kernel, RouteModule, RouteResponse } from "@touri/contracts"
 import type { SecretStore } from "../cli/host/secretStore"
 import { deviceSession } from "../kernel/device-session"
 import type { PushDevice, PushStore } from "./push-store"
@@ -107,6 +108,11 @@ export const createReviewNotice = (kernel: Kernel, threadId: string, body: unkno
   )
     return invalidNotice()
   if (typeof input.text !== "string" || !input.text.trim() || input.text.length > 2000) return invalidNotice()
+  const attachmentIds = input.attachmentIds ?? []
+  if (!Array.isArray(attachmentIds) || attachmentIds.length > 50 || attachmentIds.some((id) => typeof id !== "string"))
+    return invalidNotice()
+  const attachments = getNoticeAttachments(kernel, attachmentIds)
+  if (attachments.length !== attachmentIds.length) return invalidNotice()
   const store = kernel.services.use("store.api")
   const emit = kernel.services.use("notify.emit")
   const thread = store?.getThread({ threadId })
@@ -129,7 +135,11 @@ export const createReviewNotice = (kernel: Kernel, threadId: string, body: unkno
           status: "complete",
           runId: null,
           text,
-          parts: [{ type: "notice", level: "info", code: "automation_notice", text }],
+          parts: [
+            { type: "notice", level: "info", code: "automation_notice", text },
+            { type: "text", text },
+            ...attachments,
+          ],
           sender: { id: "automation-notices", name: "touri" },
           source: "local",
         },
@@ -152,3 +162,21 @@ const invalidNotice = (): RouteResponse => ({
   status: 400,
   json: { errorCode: "INVALID_ARGS", error: "Invalid review notice" },
 })
+
+const getNoticeAttachments = (kernel: Kernel, ids: string[]): Array<FilePart | ImagePart> =>
+  ids.flatMap((attachmentId): Array<FilePart | ImagePart> => {
+    const attachment = (kernel.db as Database)
+      .query("SELECT mime, origin_path FROM attachments WHERE id = ?")
+      .get(attachmentId) as { mime: string; origin_path: string | null } | null
+    if (!attachment) return []
+    const name = (attachment.origin_path || attachmentId).split(/[\\/]/).at(-1) || attachmentId
+
+    return [
+      {
+        type: /^(image\/(png|jpeg|webp|gif))$/.test(attachment.mime) ? "image" : "file",
+        attachmentId,
+        mime: attachment.mime,
+        name,
+      },
+    ]
+  })

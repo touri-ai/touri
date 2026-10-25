@@ -1,22 +1,27 @@
+import type { WorkspaceImageInput, WorkspaceImageResult } from "../vm/evidence-local"
 import { createFileIoLane, logIoByteLimit } from "./file-io-client"
 import type { FileIoTask } from "./file-io-protocol"
 import type { FileWrite } from "./files"
 
 const requestIo = createFileIoLane({ waitForCapacity: true })
+const imageIo = createFileIoLane({ maxBytes: 32 * 1024 * 1024, waitForCapacity: true, taskTimeoutMs: 5000 })
 const backgroundIo = createFileIoLane({ maxBytes: logIoByteLimit, batch: true })
 const runFileIoTask = (task: FileIoTask): Promise<unknown> => requestIo.run(task)
 
 /** Await every accepted write before reading logs. */
 export const flushFileIoAsync = (): Promise<void> =>
-  Promise.all([requestIo.flush(), backgroundIo.flush()]).then(() => undefined)
+  Promise.all([requestIo.flush(), backgroundIo.flush(), imageIo.flush()]).then(() => undefined)
 
 /** Stop producers first; terminate both workers if durable writes exceed the deadline. */
 export const closeFileIoAsync = (timeoutMs = 5000): Promise<void> =>
-  Promise.all([requestIo.close(timeoutMs), backgroundIo.close(timeoutMs)]).then(() => undefined)
+  Promise.all([requestIo.close(timeoutMs), backgroundIo.close(timeoutMs), imageIo.close(timeoutMs)]).then(
+    () => undefined,
+  )
 
 export const getFileIoStats = () => ({
   request: requestIo.getStats(),
   background: backgroundIo.getStats(),
+  images: imageIo.getStats(),
 })
 
 export const appendBackgroundFileAsync = (args: FileWrite & { maxBytes?: number }): Promise<void> =>
@@ -83,3 +88,12 @@ export const replacePrivateSymlinkAsync = (args: { root: string; path: string; t
 
 export const removeBotHomeDirectoryAsync = (args: { root: string; path: string; botId: string }): Promise<void> =>
   backgroundIo.run({ operation: "remove-bot-home", args }).then(() => undefined)
+
+export const getWorkspaceImageAsync = (args: WorkspaceImageInput): Promise<WorkspaceImageResult> =>
+  imageIo.run({ operation: "workspace-image", args }).then((result) => result as WorkspaceImageResult)
+
+export const getLocalImageAsync = (args: {
+  root: string
+  path: string
+}): Promise<{ bytes: Uint8Array; mime: string }> =>
+  imageIo.run({ operation: "read-image", args }).then((result) => result as { bytes: Uint8Array; mime: string })

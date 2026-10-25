@@ -29,8 +29,6 @@ const validate = (path: string) => {
 
 /** Resolve grants for file and image readers; reads still use pinned, no-follow descriptors. */
 export const workspacePath = (kernel: Kernel, bot: Bot, path: string, base = "") => {
-  validate(path)
-  validate(base)
   const guest = bot.machine === "vm" || bot.machine === "cloud"
   const project =
     !guest && bot.projectId
@@ -38,7 +36,15 @@ export const workspacePath = (kernel: Kernel, bot: Bot, path: string, base = "")
           .query("SELECT path FROM projects WHERE id = ? AND archived_at IS NULL")
           .get(bot.projectId) as { path: string } | null)
       : null
-  const cwd = guest ? "/workspace" : bot.cwd || project?.path || bot.homeDir
+
+  return getWorkspacePath(guest ? "" : kernel.paths.appData, bot, path, base, project?.path)
+}
+
+export const getWorkspacePath = (appData: string, bot: Bot, path: string, base = "", projectPath?: string) => {
+  validate(path)
+  validate(base)
+  const guest = bot.machine === "vm" || bot.machine === "cloud"
+  const cwd = guest ? "/workspace" : bot.cwd || projectPath || bot.homeDir
   const candidate = resolve(cwd, base, path)
   const explicit = bot.machine === "cloud" ? [] : (bot.folders ?? [])
   const roots = guest
@@ -53,7 +59,7 @@ export const workspacePath = (kernel: Kernel, bot: Bot, path: string, base = "")
           : []),
       ]
     : [
-        ...[bot.homeDir, bot.cwd, project?.path]
+        ...[bot.homeDir, bot.cwd, projectPath]
           .filter((value): value is string => !!value)
           .map((source) => ({ source, target: source, explicit: false })),
         ...explicit.map((folder) => ({ source: folder.path, target: folder.path, explicit: true })),
@@ -67,7 +73,7 @@ export const workspacePath = (kernel: Kernel, bot: Bot, path: string, base = "")
   const suffix = relative(grant.source, candidate)
   if (guest) return { root: grant.target, path: suffix }
 
-  const exclusions = excludedBotFolders(kernel.paths.appData)
+  const exclusions = excludedBotFolders(appData)
   const permitted = [bot.homeDir, ...explicit.map((folder) => folder.path)].flatMap((root) => [
     root,
     canonicalPath(root),
@@ -103,8 +109,14 @@ export const workspacePath = (kernel: Kernel, bot: Bot, path: string, base = "")
 export const workspaceError = (error: unknown): { status: number; json: { error: string } } => {
   if (error instanceof WorkspacePathError) return { status: error.status, json: { error: error.message } }
   const code = (error as NodeJS.ErrnoException)?.code
+  const workerStatus = /^HTTP_(400|403|404)$/.exec(code ?? "")?.[1]
+  if (workerStatus) return workspaceError(new WorkspacePathError(Number(workerStatus)))
   if (code === "ENOENT") return { status: 404, json: { error: "Arquivo ou pasta não encontrado" } }
-  if (["EACCES", "EPERM", "ELOOP", "ENOTDIR"].includes(code ?? "") || error instanceof TouriError)
+  if (
+    ["EACCES", "EPERM", "ELOOP", "ENOTDIR"].includes(code ?? "") ||
+    code === "TOURI-E2000" ||
+    error instanceof TouriError
+  )
     return { status: 403, json: { error: "Acesso a esta pasta não autorizado" } }
   return { status: 422, json: { error: "Arquivo inválido ou acima do limite de tamanho" } }
 }

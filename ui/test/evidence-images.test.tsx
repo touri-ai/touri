@@ -1,14 +1,17 @@
 import { Blob as NodeBlob } from "node:buffer"
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import type { Message } from "@touri/contracts"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
 import { BotLibrary } from "../src/components/BotLibrary"
+import { VirtualMessageList } from "../src/components/ChatPanel"
 import { EvidenceContext, type EvidenceContextValue, EvidenceGallery } from "../src/components/EvidenceGallery"
-import { evidencePath } from "../src/components/evidenceMarkdown"
+import { evidenceImages, evidencePath } from "../src/components/evidenceMarkdown"
 import { getThumbnailSize, imageDimensions, loadImage, thumbnailBlob } from "../src/components/imageLoads"
 import { MarkdownContent } from "../src/components/MarkdownContent"
+import { MessageAttachments } from "../src/components/MessageAttachments"
 import { ToolOutput } from "../src/components/ToolOutput"
 import { ApiError } from "../src/errors"
 
@@ -20,6 +23,7 @@ const blob = new NodeBlob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], {
 const createUrl = vi.fn(() => `blob:fixture-${Math.random()}`)
 const revokeUrl = vi.fn()
 const bitmapClose = vi.fn()
+const referenceReadCleanups = new Set<() => void>()
 beforeEach(() => {
   Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: {} })
   saveInvoke.mockClear()
@@ -54,8 +58,13 @@ beforeEach(() => {
     this.removeAttribute("open")
   }
 })
-afterEach(() => {
+afterEach(async () => {
   cleanup()
+  referenceReadCleanups.forEach((release) => {
+    release()
+  })
+  referenceReadCleanups.clear()
+  await act(async () => undefined)
   vi.unstubAllGlobals()
   vi.clearAllMocks()
 })
@@ -63,7 +72,7 @@ const fixture = () => {
   const api = createMockApi()
   const bot = api.getState().bots[0]
   if (!bot) throw new Error("Missing fixture")
-  const request = vi.fn(async (..._args: unknown[]) => blob)
+  const request = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => blob)
   const context: EvidenceContextValue = {
     api: { ...api, request: request as never },
     bot: { ...bot, machine: "vm" },
@@ -74,7 +83,46 @@ const fixture = () => {
 }
 
 describe("safe markdown evidence", () => {
-  it("keeps planned filenames plain until the authenticated image read succeeds", async () => {
+  it("leaves an unavailable planned filename as text without a broken preview", async () => {
+    const { context, request } = fixture()
+    request.mockImplementation(async (_route, input) => {
+      if ((input as { path: string }).path === "planned.png") throw new ApiError(404, "Arquivo não encontrado")
+
+      return blob
+    })
+
+    const view = render(
+      <MarkdownContent evidence={context} content={"![Captura salva](/output/post.png) · Vou criar `planned.png`."} />,
+    )
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2))
+
+    expect(await screen.findByRole("img", { name: "Captura salva" })).toBeVisible()
+    expect(screen.getByText("planned.png", { selector: "code" })).toBeVisible()
+    expect(view.container.querySelectorAll("figure")).toHaveLength(1)
+    expect(screen.queryByText(/Prévia indisponível|Tentar novamente/)).toBeNull()
+  })
+
+  it.each([
+    "![Tela][captura]\n\n[captura]: shots/screen%20one.png",
+    "![Tela][]\n\n[Tela]: shots/screen%20one.png",
+    "![Tela]\n\n[Tela]: shots/screen%20one.png",
+    "`shots/screen one.png`",
+    "`/workspace/shots/screen one.png`",
+    "[Arquivo][captura]\n\n[captura]: shots/screen%20one.png",
+  ])("previews reference definitions and code-formatted filenames with spaces: %s", async (content) => {
+    const { context, request } = fixture()
+
+    render(<MarkdownContent evidence={context} content={content} />)
+    expect(await screen.findByRole("img")).toBeVisible()
+
+    expect(request).toHaveBeenCalledWith(
+      "GET /bots/:id/images",
+      { path: content.includes("/workspace/") ? "/workspace/shots/screen one.png" : "shots/screen one.png" },
+      { id: context.bot.id },
+    )
+  })
+
+  it("reserves thumbnail boxes while authenticated image reads are pending", async () => {
     const { context, request } = fixture()
     let finish: ((value: Blob) => void) | undefined
     request.mockImplementationOnce(
@@ -88,13 +136,13 @@ describe("safe markdown evidence", () => {
       <MarkdownContent evidence={context} content="Vou criar `post-01.png` e ![Post 2](post-02.png)." />,
     )
     await waitFor(() => expect(request).toHaveBeenCalledTimes(2))
-    expect(screen.queryByRole("button", { name: /Abrir captura/ })).toBeNull()
-    expect(view.container.querySelector("figure, img")).toBeNull()
-    expect(screen.queryByText(/Prévia indisponível|Tentar novamente|Carregando imagem/)).toBeNull()
+    expect(screen.getAllByRole("button", { name: /Abrir captura/ })).toHaveLength(2)
+    expect(view.container.querySelectorAll("figure")).toHaveLength(2)
+    expect(screen.getByText("Carregando imagem…")).toBeVisible()
     expect(screen.getByText("post-01.png", { selector: "code" })).toBeVisible()
     await act(async () => finish?.(blob))
     expect(await screen.findByRole("img", { name: "post-01.png" })).toBeVisible()
-    expect(screen.getAllByRole("button", { name: /Abrir captura/ })).toHaveLength(1)
+    expect(screen.getAllByRole("button", { name: /Abrir captura/ })).toHaveLength(2)
   })
 
   it("downloads Markdown image links through the authenticated endpoint without local-path navigation", async () => {
@@ -121,7 +169,7 @@ describe("safe markdown evidence", () => {
       />,
     )
 
-    const gallery = await screen.findByRole("region", { name: "Imagens de evidência" })
+    const gallery = await screen.findByRole("group", { name: "Imagens de evidência" })
     const card = gallery.querySelector("figure")
 
     expect(card).toHaveTextContent("mobile")
@@ -135,7 +183,7 @@ describe("safe markdown evidence", () => {
       const { context } = fixture()
       const view = render(<MarkdownContent evidence={context} content={`${prose}\n\n![tela](/workspace/tela.png)`} />)
 
-      await screen.findByRole("region", { name: "Imagens de evidência" })
+      await screen.findByRole("group", { name: "Imagens de evidência" })
 
       expect(screen.getByRole("button", { name: "tela.png" })).toBeVisible()
       expect(view.container.querySelector(".markdown-content > p")).toHaveTextContent(
@@ -210,7 +258,7 @@ describe("safe markdown evidence", () => {
         }
       />,
     )
-    const gallery = await screen.findByRole("region", { name: "Imagens de evidência" }, { timeout: 5000 })
+    const gallery = await screen.findByRole("group", { name: "Imagens de evidência" }, { timeout: 5000 })
     expect(gallery.querySelectorAll("figure")).toHaveLength(5)
     expect(gallery).toHaveTextContent("Tela inicial")
     await waitFor(() => expect(request).toHaveBeenCalledTimes(5))
@@ -242,7 +290,7 @@ describe("safe markdown evidence", () => {
       <MarkdownContent evidence={context} content={"![escape](%2e%2e/a.png)\n\n![remote](https%3A%2F%2Fx%2Fa.png)"} />,
     )
     await screen.findByText("escape")
-    expect(screen.queryByRole("region", { name: "Imagens de evidência" })).toBeNull()
+    expect(screen.queryByRole("group", { name: "Imagens de evidência" })).toBeNull()
     expect(request).not.toHaveBeenCalled()
   })
   it("uses report-directory relative paths from the Library", async () => {
@@ -269,7 +317,7 @@ describe("safe markdown evidence", () => {
     render(<BotLibrary api={api} bot={context.bot} />)
     fireEvent.click(await screen.findByRole("button", { name: /reports.*Pasta/ }))
     fireEvent.click(await screen.findByRole("button", { name: /report.md.*KB/ }))
-    expect(await screen.findByRole("region", { name: "Imagens de evidência" })).toBeVisible()
+    expect(await screen.findByRole("group", { name: "Imagens de evidência" })).toBeVisible()
     await waitFor(() =>
       expect(request).toHaveBeenCalledWith(
         "GET /bots/:id/images",
@@ -337,7 +385,7 @@ it("keeps tool image labels and download actions with their matching cards", asy
     />,
   )
 
-  const gallery = await screen.findByRole("region", { name: "Imagens de evidência" })
+  const gallery = await screen.findByRole("group", { name: "Imagens de evidência" })
   const cards = Array.from(gallery.querySelectorAll("figure"))
 
   expect(cards).toHaveLength(2)
@@ -361,7 +409,7 @@ it("redacts tool image captions before displaying labels and alternative text", 
     />,
   )
 
-  const gallery = await screen.findByRole("region", { name: "Imagens de evidência" })
+  const gallery = await screen.findByRole("group", { name: "Imagens de evidência" })
 
   expect(gallery).not.toHaveTextContent(secret)
   expect(gallery.querySelector("figcaption")).toHaveTextContent("[REDACTED]")
@@ -482,6 +530,23 @@ it("shows stopped VM availability and Computer action without starting a machine
   expect(context.onComputer).toHaveBeenCalled()
   expect(request.mock.calls.every((call) => (call as unknown as [string])[0] === "GET /bots/:id/images")).toBe(true)
 })
+
+it("offers a working retry when the channel cannot navigate to a stopped machine", async () => {
+  const { context, request } = fixture()
+  request.mockRejectedValue(new ApiError(409, "Stopped", "IMAGE_MACHINE_STOPPED"))
+  const channel = { ...context, onComputer: undefined }
+  render(<MarkdownContent evidence={channel} content="![Tela](/workspace/a.png)" />)
+  const retry = await screen.findByRole("button", { name: "Tentar novamente" })
+
+  fireEvent.click(retry)
+  await waitFor(() => expect(request).toHaveBeenCalledTimes(2))
+  fireEvent.click(screen.getByRole("button", { name: /Abrir captura/ }))
+
+  const lightbox = await screen.findByRole("dialog")
+  expect(await within(lightbox).findByText("Imagem disponível quando a máquina estiver ligada")).toBeVisible()
+  expect(screen.queryByRole("button", { name: "Abrir Computador" })).toBeNull()
+})
+
 it("keeps image sources stable across streamed text updates, uses data URLs only and stops reads on unmount", async () => {
   const { context, request } = fixture()
   const view = render(<MarkdownContent evidence={context} content="![Tela](/workspace/a.png)" />)
@@ -571,10 +636,8 @@ it("renders explicit images without extensions and resolves attachment route ref
       content={`![Sem extensão](/workspace/shot)\n\n![Anexo](/api/v1/attachments/${id})`}
     />,
   )
-  await screen.findByRole("region", { name: "Imagens de evidência" })
-  await waitFor(() =>
-    expect(request).toHaveBeenCalledWith("GET /bots/:id/images", { attachmentId: id }, { id: context.bot.id }),
-  )
+  await screen.findByRole("group", { name: "Imagens de evidência" })
+  await waitFor(() => expect(request).toHaveBeenCalledWith("GET /attachments/:id", {}, { id }))
   expect(request).toHaveBeenCalledWith("GET /bots/:id/images", { path: "/workspace/shot" }, { id: context.bot.id })
 })
 
@@ -593,7 +656,7 @@ it("defers image reads until a thumbnail enters the viewport", async () => {
     },
   )
   render(<MarkdownContent evidence={context} content="![Tela](/workspace/a.png)" />)
-  await screen.findByRole("region", { name: "Imagens de evidência" })
+  await screen.findByRole("group", { name: "Imagens de evidência" })
   expect(request).not.toHaveBeenCalled()
   act(() => visible?.([{ isIntersecting: true }]))
   const image = await screen.findByRole("img", { name: "Tela" })
@@ -602,4 +665,227 @@ it("defers image reads until a thumbnail enters the viewport", async () => {
   expect(createUrl).not.toHaveBeenCalled()
   expect(request).toHaveBeenCalledOnce()
   expect(disconnect).toHaveBeenCalled()
+})
+
+describe("Work image messages", () => {
+  it("shares bounded image admission across wildcard lookups from multiple messages", async () => {
+    const { context, request } = fixture()
+    const completions = Array.from({ length: 6 }, () => Promise.withResolvers<{ paths: string[] }>())
+    const getReferences = vi.fn<() => Promise<{ paths: string[] }>>()
+    getReferences.mockImplementation(() => {
+      const completion = completions[getReferences.mock.calls.length - 1]
+      if (!completion) throw new Error("Unexpected image lookup")
+
+      return completion.promise
+    })
+    completions.forEach(({ resolve }) => {
+      referenceReadCleanups.add(() => resolve({ paths: [] }))
+    })
+    request.mockImplementation(async (route: unknown) =>
+      route === "GET /bots/:id/image-references" ? getReferences() : blob,
+    )
+    const paths = Array.from({ length: 6 }, (_, index) => `shots/round-${index}-*.png`)
+    render(paths.map((path) => <MarkdownContent key={path} evidence={context} content={`Evidência: ${path}`} />))
+
+    await waitFor(() => expect(getReferences).toHaveBeenCalledTimes(3))
+    await act(async () => {
+      completions.slice(0, 3).forEach(({ resolve }) => {
+        resolve({ paths: [] })
+      })
+    })
+    await waitFor(() => expect(getReferences).toHaveBeenCalledTimes(6))
+    await act(async () => {
+      completions.slice(3).forEach(({ resolve }) => {
+        resolve({ paths: [] })
+      })
+    })
+
+    expect(request).toHaveBeenCalledTimes(6)
+  })
+
+  it("labels repeated message galleries as groups without duplicate page landmarks", async () => {
+    const { context } = fixture()
+    const parts = [{ type: "image" as const, attachmentId: "a".repeat(64), mime: "image/png", name: "audit.png" }]
+
+    render(
+      <>
+        <MessageAttachments parts={parts} api={context.api} />
+        <MessageAttachments parts={parts} api={context.api} />
+      </>,
+    )
+    await screen.findAllByRole("img", { name: "audit.png" })
+
+    expect(screen.getAllByRole("group", { name: "Imagens de evidência" })).toHaveLength(2)
+    expect(screen.queryByRole("region", { name: "Imagens de evidência" })).toBeNull()
+  })
+
+  it("shows API image attachments without a selected bot and opens the lightbox", async () => {
+    const { context, request } = fixture()
+    const image = { type: "image" as const, attachmentId: "a".repeat(64), mime: "image/png", name: "audit.png" }
+
+    render(<MessageAttachments parts={[image, image]} api={context.api} />)
+    const thumbnail = await screen.findByRole("img", { name: "audit.png" })
+    fireEvent.click(screen.getByRole("button", { name: /Abrir captura/ }))
+
+    expect(thumbnail).toBeVisible()
+    expect(screen.getByRole("dialog", { name: "audit.png" })).toBeVisible()
+    expect(request).toHaveBeenCalledWith("GET /attachments/:id", {}, { id: image.attachmentId })
+    expect(screen.getAllByRole("button", { name: /Abrir captura/ })).toHaveLength(1)
+  })
+
+  it("shows Markdown attachment images for integration messages without bot context", async () => {
+    const { context, request } = fixture()
+    const id = "b".repeat(64)
+
+    render(<MarkdownContent imageApi={context.api} content={`![Auditoria](/api/v1/attachments/${id})`} />)
+
+    expect(await screen.findByRole("img", { name: "Auditoria" })).toBeVisible()
+    expect(request).toHaveBeenCalledWith("GET /attachments/:id", {}, { id })
+  })
+
+  it("expands a filename pattern through authorization and never reads the literal glob", async () => {
+    const { context, request } = fixture()
+    request.mockImplementation(async (route: unknown) =>
+      route === "GET /bots/:id/image-references" ? { paths: ["shots/round-1.png", "shots/round-2.png"] } : blob,
+    )
+
+    render(<MarkdownContent evidence={context} content="Evidência: shots/round-*.png" />)
+
+    expect(await screen.findByRole("img", { name: "round-1.png" })).toBeVisible()
+    expect(await screen.findByRole("img", { name: "round-2.png" })).toBeVisible()
+    expect(request).toHaveBeenCalledWith(
+      "GET /bots/:id/image-references",
+      { path: "shots/round-*.png" },
+      { id: context.bot.id },
+    )
+    expect(request).not.toHaveBeenCalledWith("GET /bots/:id/images", { path: "shots/round-*.png" }, expect.anything())
+  })
+
+  it("discovers newly created pattern images when the same message finishes streaming", async () => {
+    const { context, request } = fixture()
+    request.mockResolvedValueOnce({ paths: [] })
+    request.mockImplementation(async (route: unknown) =>
+      route === "GET /bots/:id/image-references" ? { paths: ["shots/round-final.png"] } : blob,
+    )
+    const content = "Evidência: shots/round-*.png"
+    const streaming = { ...context, imageVersion: "message:streaming" }
+    const complete = { ...context, imageVersion: "message:complete" }
+    const view = render(<MarkdownContent evidence={streaming} content={content} />)
+    await waitFor(() => expect(request).toHaveBeenCalledOnce())
+
+    view.rerender(<MarkdownContent evidence={complete} content={content} />)
+
+    expect(await screen.findByRole("img", { name: "round-final.png" })).toBeVisible()
+    expect(request).toHaveBeenCalledWith(
+      "GET /bots/:id/images",
+      { path: "shots/round-final.png" },
+      { id: context.bot.id },
+    )
+  })
+})
+
+it("reuses bounded thumbnail results when revisiting a channel", async () => {
+  const { context, request } = fixture()
+  const parts = [{ type: "image" as const, attachmentId: "c".repeat(64), mime: "image/png", name: "cached.png" }]
+  const first = render(<MessageAttachments parts={parts} api={context.api} />)
+  await screen.findByRole("img", { name: "cached.png" })
+  first.unmount()
+
+  render(<MessageAttachments parts={parts} api={context.api} />)
+  await screen.findByRole("img", { name: "cached.png" })
+
+  expect(request).toHaveBeenCalledOnce()
+})
+
+it("does not offer a workspace-library action for an uploaded image under another bot context", async () => {
+  const { context } = fixture()
+  const parts = [{ type: "image" as const, attachmentId: "d".repeat(64), mime: "image/png", name: "uploaded.png" }]
+  render(
+    <EvidenceContext.Provider value={context}>
+      <MessageAttachments parts={parts} api={context.api} />
+    </EvidenceContext.Provider>,
+  )
+  await screen.findByRole("img", { name: "uploaded.png" })
+
+  fireEvent.click(screen.getByRole("button", { name: /Abrir captura/ }))
+
+  expect(screen.getByRole("dialog", { name: "uploaded.png" })).toBeVisible()
+  expect(screen.queryByRole("button", { name: "Abrir na Biblioteca" })).toBeNull()
+})
+
+it("does not inherit a selected bot's workspace for an automatic channel notice", async () => {
+  const { context, request } = fixture()
+  const text = "Resumo automático com `private-shot.png`"
+  const id = "e".repeat(64)
+  const message: Message = {
+    id: "automatic",
+    threadId: "channel",
+    parentId: null,
+    role: "assistant",
+    kind: "notice",
+    status: "complete",
+    runId: null,
+    text,
+    parts: [
+      { type: "notice", level: "info", code: "automation_notice", text },
+      { type: "text", text },
+      { type: "image", attachmentId: id, mime: "image/png", name: "uploaded.png" },
+    ],
+    sender: { id: "automation-notices", name: "Auditoria" },
+    source: "local",
+    createdAt: 1,
+    updatedAt: 1,
+  }
+
+  render(
+    <EvidenceContext.Provider value={context}>
+      <VirtualMessageList
+        messages={[message]}
+        api={context.api}
+        onSwitchBranch={vi.fn()}
+        onRetry={vi.fn(async () => {})}
+      />
+    </EvidenceContext.Provider>,
+  )
+  await screen.findByRole("img", { name: "uploaded.png" })
+
+  expect(screen.getByText("private-shot.png", { selector: "code" })).toBeVisible()
+  expect(request).toHaveBeenCalledWith("GET /attachments/:id", {}, { id })
+  expect(request).not.toHaveBeenCalledWith("GET /bots/:id/images", expect.anything(), expect.anything())
+})
+
+it.each(["bot", "message"])(
+  "does not reuse another %s's workspace thumbnail for the same relative filename",
+  async (scope) => {
+    const { context, request } = fixture()
+    const first = Object.assign({}, context, { imageVersion: "message-1" })
+    const next = Object.assign(
+      {},
+      first,
+      scope === "bot" ? { bot: Object.assign({}, context.bot, { id: "bot-other" }) } : { imageVersion: "message-2" },
+    )
+    const view = render(<MarkdownContent evidence={first} content="![Tela](screen.png)" />)
+    await screen.findByRole("img", { name: "Tela" })
+
+    view.rerender(<MarkdownContent evidence={next} content="![Tela](screen.png)" />)
+
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2))
+    expect(request).toHaveBeenLastCalledWith("GET /bots/:id/images", { path: "screen.png" }, { id: next.bot.id })
+  },
+)
+
+it("keeps image discovery responsive when prose contains a deeply nested non-image path", () => {
+  const value = `${"shots/".repeat(5_000)}plain.txt kept.png`
+  const tree = { type: "root", children: [{ type: "text", value }] }
+  const samples = Array.from({ length: 25 }, () => {
+    const started = process.cpuUsage()
+    const images = evidenceImages(tree)
+    const elapsed = process.cpuUsage(started)
+
+    expect(images.map((image) => image.path)).toEqual(["kept.png"])
+    return (elapsed.user + elapsed.system) / 1000
+  }).toSorted((left, right) => left - right)
+
+  expect(samples[Math.ceil(samples.length * 0.95) - 1]).toBeLessThan(50)
+  expect(samples.at(-1)).toBeLessThan(200)
 })

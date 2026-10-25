@@ -96,3 +96,27 @@ export const thumbnailBlob = async (blob: Blob): Promise<Blob> => {
     bitmap.close()
   }
 }
+
+// Weak ownership avoids retaining disconnected clients; each client keeps at most 12 small previews.
+const thumbnailCaches = new WeakMap<object, Map<string, { expires: number; image: Promise<string> }>>()
+export const getCachedThumbnail = (owner: object, path: string, read: () => Promise<string>): Promise<string> => {
+  const cache = thumbnailCaches.get(owner) ?? new Map<string, { expires: number; image: Promise<string> }>()
+  const existing = cache.get(path)
+  if (existing && existing.expires > Date.now()) return existing.image
+
+  // Cache bookkeeping is local to this bounded cache; failures must be retryable.
+  const image = read()
+    .then((result) => {
+      if (result.length > 1024 * 1024) cache.delete(path)
+      return result
+    })
+    .catch((error) => {
+      cache.delete(path)
+      throw error
+    })
+  if (cache.size >= 12) cache.delete(cache.keys().next().value ?? "")
+  cache.set(path, { expires: Date.now() + 60_000, image })
+  thumbnailCaches.set(owner, cache)
+
+  return image
+}

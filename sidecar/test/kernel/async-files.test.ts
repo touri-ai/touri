@@ -231,3 +231,15 @@ test("worker-backed failure assertions remain responsive after a completed write
 
   expect(await readFile(join(root, "next"), "utf8")).toBe("durable")
 })
+
+test("an image operation deadline terminates a stalled worker and settles its caller", async () => {
+  const source = `self.onmessage = ({data}) => { if (data.type === "start") self.postMessage({type:"ready"}) }`
+  const url = URL.createObjectURL(new Blob([source], { type: "application/javascript" }))
+  cleanups.add(async () => URL.revokeObjectURL(url))
+  const lane = getLane({ taskTimeoutMs: 25, createWorker: () => new Worker(url) })
+
+  const result = lane.run({ operation: "read-image", args: { root: "/workspace", path: "screen.png" } })
+
+  await expect(result).rejects.toThrow("operation timed out")
+  expect(lane.getStats().pending).toBe(0)
+})

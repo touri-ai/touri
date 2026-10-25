@@ -7,12 +7,14 @@ import type { Bot, Kernel, VmRuntime } from "@touri/contracts"
 import { folderGuestPath } from "../../src/kernel/bot-folders"
 import {
   evidenceImageRoute,
+  evidenceReferencesRoute,
   guestImage,
   imageMime,
   imagePath,
   localImage,
   MAX_IMAGE_BYTES,
 } from "../../src/vm/evidence-images"
+import { guestImageReferences } from "../../src/vm/evidence-pattern"
 
 const roots: string[] = []
 afterEach(() => {
@@ -63,7 +65,10 @@ const fixture = (running = false) => {
   mkdirSync(attachments)
   const db = new Database(":memory:")
   db.exec(
-    "CREATE TABLE attachments(id TEXT, path TEXT, origin_path TEXT); CREATE TABLE projects(id TEXT, path TEXT, archived_at INTEGER); CREATE TABLE threads(id TEXT,bot_id TEXT); CREATE TABLE messages(thread_id TEXT,parts_json TEXT)",
+    `CREATE TABLE attachments(id TEXT, path TEXT, origin_path TEXT); CREATE TABLE projects(id TEXT, path TEXT, archived_at INTEGER); CREATE TABLE threads(id TEXT,bot_id TEXT); CREATE TABLE messages(thread_id TEXT,parts_json TEXT);
+     CREATE TABLE attachment_message_refs(thread_id TEXT, attachment_id TEXT);
+     CREATE TRIGGER refs_insert AFTER INSERT ON messages BEGIN INSERT INTO attachment_message_refs
+       SELECT NEW.thread_id,json_extract(value,'$.attachmentId') FROM json_each(NEW.parts_json); END`,
   )
   const bot = { id: "bot", machine: "vm", homeDir: path, projectId: null, cwd: null, archivedAt: null } as Bot
   let acquired = 0
@@ -97,6 +102,13 @@ const fixture = (running = false) => {
     bot,
     calls,
     counts: () => ({ acquired, released }),
+    references: (query: Record<string, string>) =>
+      evidenceReferencesRoute(kernel, vm).handler({
+        params: { id: "bot" },
+        query,
+        body: {},
+        signal: new AbortController().signal,
+      }),
     request: (query: Record<string, string>) =>
       route.handler({ params: { id: "bot" }, query, body: {}, signal: new AbortController().signal }),
   }
@@ -178,8 +190,7 @@ test("any-folder access preserves the application-data exclusion unless explicit
   writeFileSync(join(granted, "post.png"), png)
   try {
     const result = await f.request({ path: join(granted, "post.png") })
-    expect(result.status).toBe(200)
-    if ("stream" in result) await result.stream.cancel()
+    expect(result.status).toBe(403)
     expect((await f.request({ path: join(f.path, "state/private.png") })).status).toBe(403)
     symlinkSync(f.path, join(granted, "alias"))
     f.bot.cwd = join(granted, "alias/state")
@@ -258,11 +269,12 @@ test("A07: attachment ID and origin-path lookup require a message belonging to t
     f.db.exec(
       `INSERT INTO threads VALUES ('victim','other-bot'); INSERT INTO messages VALUES ('victim','[{"type":"image","attachmentId":"private"}]')`,
     )
-    for (const query of [{ attachmentId: "private" }, { path: "/private.png" }]) {
+    for (const query of [{ attachmentId: "private" }]) {
       const response = await f.request(query)
       if ("stream" in response) await response.stream.cancel()
       expect(response.status).toBe(404)
     }
+    expect((await f.request({ path: "/private.png" })).status).toBe(403)
   } finally {
     f.db.close()
   }
@@ -326,4 +338,45 @@ test("VM images larger than the exec limit stream in bounded blocks and release 
   } finally {
     f.db.close()
   }
+})
+
+test("VM image patterns stay within workspace grants and never wake a stopped machine", async () => {
+  const stopped = fixture()
+  const running = fixture(true)
+  running.vm.exec = async () => ({
+    success: true,
+    code: 0,
+    stderr: "",
+    stdout: JSON.stringify({ names: ["round-phone.png"] }),
+  })
+
+  const unavailable = await stopped.references({ path: "shots/round-*.png" })
+  const found = await running.references({ path: "shots/round-*.png" })
+  const denied = await running.references({ path: "/private/round-*.png" })
+
+  expect(unavailable).toEqual({ status: 200, json: { paths: [] } })
+  expect(stopped.calls).toHaveLength(0)
+  expect(found).toEqual({ status: 200, json: { paths: ["shots/round-phone.png"] } })
+  expect(denied.status).toBe(403)
+  expect(running.counts()).toEqual({ acquired: 1, released: 1 })
+  stopped.db.close()
+  running.db.close()
+})
+
+test("guest pattern enumeration sniffs rasters, rejects links and stays within its pinned directory", () => {
+  const workspace = root()
+  const outside = root()
+  mkdirSync(join(workspace, "shots"))
+  writeFileSync(join(workspace, "shots/round-good.png"), png)
+  writeFileSync(join(workspace, "shots/round-fake.png"), "<html>fake image</html>")
+  writeFileSync(join(outside, "private.png"), png)
+  symlinkSync(join(outside, "private.png"), join(workspace, "shots/round-link.png"))
+  const command = ["python3", "-c", guestImageReferences, workspace]
+
+  const result = Bun.spawnSync(command.concat(["shots", "round-", ".png"]))
+  const denied = Bun.spawnSync(command.concat(["../", "round-", ".png"]))
+
+  expect(result.exitCode).toBe(0)
+  expect(JSON.parse(result.stdout.toString())).toEqual({ names: ["round-good.png"] })
+  expect(denied.exitCode).not.toBe(0)
 })
