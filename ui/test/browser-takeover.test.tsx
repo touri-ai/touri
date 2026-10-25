@@ -283,6 +283,7 @@ test("a reconnected browser view requests frames at its retained viewport epoch"
     "POST /browser/tabs/:id/takeover/frame",
     { sessionId: "synthetic-session", controlEpoch: "control-epoch", viewEpoch: 7 },
     { id: "synthetic-tab" },
+    { signal: expect.any(AbortSignal) },
   )
 })
 
@@ -523,4 +524,55 @@ test("maps phone full-screen clicks to the contained page and ignores its margin
   await Promise.resolve()
 
   expect(request.mock.calls.filter(([route]) => route === "POST /browser/tabs/:id/takeover/input")).toHaveLength(1)
+})
+
+test("phone text stays local and focused during a viewport refresh and is flushed before the next key", async () => {
+  const refreshed = Promise.withResolvers<void>()
+  const request = vi.fn(async (route: string, body?: unknown) => {
+    if (route !== "POST /browser/tabs/:id/takeover/frame") return {}
+    const viewEpoch = (body as { viewEpoch: number }).viewEpoch
+    if (viewEpoch > 0) await refreshed.promise
+    return Object.assign({}, getBrowserFrame(), { viewEpoch })
+  })
+  const api = Object.assign({}, createMockApi(), { request: request as ApiRequest })
+  const onHandback = vi.fn()
+  render(
+    <BrowserTakeoverView
+      api={api}
+      tabId="synthetic-tab"
+      sessionId="synthetic-session"
+      controlEpoch="control-epoch"
+      botName="Lia"
+      locale="pt-BR"
+      reason={null}
+      actions={[]}
+      onHandback={onHandback}
+    />,
+  )
+  await loadFirstBrowserFrame()
+  const keyboard = screen.getByRole("textbox", { name: "Entrada de teclado para o navegador" })
+  fireEvent.pointerDown(screen.getByRole("button", { name: "Digitar no navegador" }))
+
+  fireEvent(window, new Event("orientationchange"))
+  fireEvent.input(keyboard, { target: { value: "rascunho privado fictício" } })
+  fireEvent.click(screen.getByRole("button", { name: "Devolver para Lia" }))
+
+  expect(keyboard).toBeEnabled()
+  expect(keyboard).toHaveFocus()
+  expect(keyboard).toHaveValue("rascunho privado fictício")
+  expect(onHandback).not.toHaveBeenCalled()
+  expect(request.mock.calls.some(([route]) => route === "POST /browser/tabs/:id/takeover/input")).toBe(false)
+
+  refreshed.resolve()
+  await waitFor(() => expect(screen.getByRole("button", { name: "Digitar no navegador" })).toBeEnabled())
+  fireEvent.keyDown(keyboard, { key: "Enter", code: "Enter" })
+
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith(
+      "POST /browser/tabs/:id/takeover/input",
+      expect.objectContaining({ viewEpoch: 1, input: { kind: "text", text: "rascunho privado fictício" } }),
+      { id: "synthetic-tab" },
+    ),
+  )
+  expect(keyboard).toHaveValue("")
 })

@@ -1122,9 +1122,13 @@ test("Chrome window flags are derived from environment without hardcoded placeme
 })
 
 test("P2-3 port fallback is ephemeral and loopback-only", () => {
-  const args = deriveChromePortLaunchArgs({ profile: "/tmp/touri-browser-test", env: { TOURI_BROWSER_HEADLESS: "1" } })
+  const args = deriveChromePortLaunchArgs({
+    profile: "/tmp/touri-browser-test",
+    env: { TOURI_BROWSER_HEADLESS: "1" },
+    port: 18888,
+  })
   expect(args).toContain("--remote-debugging-address=127.0.0.1")
-  expect(args).toContain("--remote-debugging-port=0")
+  expect(args).toContain("--remote-debugging-port=18888")
   expect(args).not.toContain("--remote-debugging-pipe")
   expect(parseDevToolsActivePort("4321\n/devtools/browser/test\n")).toEqual({
     port: 4321,

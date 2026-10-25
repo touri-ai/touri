@@ -377,7 +377,7 @@ Every spawned child (CLIs, processes, Chrome) uses this env merged with the per-
   bots/<botId>/            bot home: SOUL.md, MEMORY.md, memory/log/YYYY-MM-DD.md, skills/<name>/SKILL.md
   attachments/<aa>/<sha256>.<ext>
   projects/<projectId>/    data dir: mongo/, redis/, logs/<process>/<processRunId>.log, tmp/
-  browser/profiles/default/   Chrome user-data-dir (cookies, logins)
+  bots/<botId>/browser/profile/  private managed Chrome user-data-dir (cookies, logins)
   browser/chrome/<version>/   Chrome for Testing (only if system Chrome is not used)
   browser/state.json          tab restore hints (authoritative copy is browser_tabs)
   sessions/codex/YYYY/MM/DD/rollout-*.jsonl   imported Codex rollouts (resume-by-path)
@@ -1012,14 +1012,17 @@ echoed, and invalid requests do not create a group or conversation.
 
 ### 5.1 Engine choice: direct CDP to a headed Chrome
 
-On a Linux server without a display, or in `touri serve`, the managed browser automatically runs
-headless. Host screen capture and input tools are neither advertised nor callable when the host
+Managed host browsers use stable system Chrome with a private persistent profile per bot. On
+Linux without a display, touri starts and owns a local Xvfb display with TCP disabled; stable
+Chrome and Xvfb must be installed. Server mode keeps the browser headful. An explicit
+`TOURI_BROWSER_HEADLESS=1` remains available for tests. Missing prerequisites fail explicitly.
+Host screen capture and input tools are neither advertised nor callable when the host
 cannot implement them, even if an imported bot has computer control enabled. The UI offers host
 screen control only in a supported native desktop; a supported isolated machine keeps its own
 screen capability and approvals.
 
-Managed tabs share one Chromium process and startup promise, with a separate browser context per
-bot. Each bot can keep at most eight tabs, including popups; excess popups are closed immediately.
+Each managed bot owns a Chrome process and startup promise, using its profile's default browser
+context. Each bot can keep at most eight tabs, including popups; excess popups are closed immediately.
 Cancelling one caller does not interrupt another caller sharing startup; startup is cancelled when
 all waiting callers leave.
 Reattaching a saved tab refreshes its use time when the CDP session becomes live, before activation
@@ -1094,20 +1097,20 @@ We choose **(b)**:
 
 Which binary:
 - **System Google Chrome** (`/Applications/Google Chrome.app`) by default if present: auto-updated, proprietary codecs, best sign-in compatibility.
-- Otherwise **Chrome for Testing**, pinned and downloaded on first use into `browser/chrome/<version>`. Before first launch we verify `codesign --verify --deep --strict` and Google's Team ID `EQHXZ8M8AV`.
+- **Chrome for Testing** remains an explicit development mode; normal managed launch does not download or substitute it. The macOS development download verifies the signed application before launch.
 - Setting: `browserExecutable`.
 
 Launch:
 
 ```
-<chrome> --user-data-dir=<appData>/browser/profiles/default --remote-debugging-pipe
-  --no-first-run --no-default-browser-check --disable-features=Translate --window-size=1280,860
-  --restore-last-session=false about:blank
+<chrome> --user-data-dir=<appData>/bots/<botId>/browser/profile
+  --no-first-run --no-default-browser-check --window-size=1280,860
+  --remote-debugging-address=127.0.0.1 --remote-debugging-port=<nonzero-port> about:blank
 ```
 
-- **Transport.** `--remote-debugging-pipe` (fds 3/4) means no TCP port is open. Fallback: `--remote-debugging-port=0`, read `DevToolsActivePort`, and connect to 127.0.0.1 only.
+- **Transport.** Managed bot launch chooses a nonzero debugging port bound only to loopback. Local OS processes can access this privileged endpoint. The unowned launcher retains pipe transport with a loopback-port fallback.
 - **Window.** Headed, so the user can watch. "Show agent browser" brings it to the front.
-- **Profile.** `touri` owns the persistent Chrome data directory and isolates bots in browser contexts, saving each bot's cookies and origin storage in its own session vault. `local` uses the user's default context and existing sign-ins; it never imports or exports that session.
+- **Profile.** Each `touri` bot owns a separate private directory with mode 0700. An empty profile imports the older encrypted session once; Chrome then persists its own cookies and storage. Normal shutdown closes Chrome before stopping its owned display so profile writes can finish. Native identity, locale, timezone, graphics defaults and the browser sandbox remain enabled. `local` uses the user's default context and existing sign-ins; it never imports or exports that session.
 - **Client.** A minimal in-house CDP client, about 300 lines: message ids, sessions, events, timeouts. Types come from the `devtools-protocol` package (BSD-3).
 
 ### 5.2 Tabs: agent-owned and persistent
@@ -1196,6 +1199,15 @@ Launch:
   conversation history keeps that result right below the card's sticky header instead of following
   new content to the end; "Voltar ao fim" returns to following. In a long, virtualized history the placement is retried after the result's row is measured, and a sticky card header is only compensated for when it actually overlaps the result. The same applies when a take-over starts: the history brings the control panel's top, with "Hand back" and the privacy note, into view below the conversation header instead of leaving it above the visible area. While the take-over is active, a window or visual-viewport resize (a narrower layout, the on-screen keyboard) that pushes those controls out of the visible history, or under the keyboard, brings them back if they were in view before the resize; a person who scrolled away is not pulled back. Placement respects the visual viewport's top edge when the on-screen keyboard also pans the visible area. A browser card's header stays at the top of its card in a virtualized history too, sticking to the top of the history only once the card's top has scrolled past it.
 - While a tab is held, every agent tool on it returns `TAB_HELD_BY_USER`.
+- Expanding remote control uses native fullscreen when available and a full-window modal otherwise.
+  Escape, Back and collapse return to the conversation without handing control to the bot. Expansion
+  preserves the conversation's height. The remote viewport follows the visible control area within
+  240–3840 pixels wide and 240–2160 pixels high; resizing invalidates stale input. Handback waits for
+  an in-flight viewport change, including one whose image request was canceled, and restores normal
+  browser dimensions before the bot resumes. Frame requests stay serial, pause in background tabs,
+  refresh at 100 ms during active input and 1 s while idle, and abort when the view unmounts. Image
+  decoding uses the existing canvas worker where supported. Phone text entered during a viewport
+  refresh stays local and focused until it can be sent with the refreshed view.
 - "Hand back" (UI button or tray) releases it. The generation bumps, the blocked `request_takeover` call returns a fresh snapshot, and its notes include "User handed back the tab; the page may have changed."
 - Take-over times out after `timeoutMs` (default 10 min), and the tool then returns the current snapshot with a note.
 - Shared previews are withheld during human control and secret entry. Cached and in-flight frames are
@@ -1205,6 +1217,10 @@ Launch:
   document before shared previews resume. Changing the original private document's route does not clear
   its protection. Decoded paths and hash routes for login/payment pages remain private, malformed routes
   fail closed, and ordinary query values and anchor names do not classify a page as sensitive.
+- Preview capture performs that verification without requiring a separate snapshot command. Unknown
+  private document identities require a committed replacement after handback; a same-document route
+  change or an unverified history restore cannot release protection. At most 32 verified safe document
+  identities are retained per tab, and disconnect clears that temporary clearance.
 - Post-takeover title and URL metadata remain blank, including after safe shared previews resume.
 
 **R9. Secure secret entry.**

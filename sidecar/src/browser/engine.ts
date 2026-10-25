@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite"
 import { AsyncLocalStorage } from "node:async_hooks"
+import { join } from "node:path"
 import type {
   BrowserActionRecord,
   BrowserDiagnostic,
@@ -17,6 +18,7 @@ import type {
 } from "@touri/contracts"
 import { approveSecretRelease } from "../approvals/secrets"
 import { getDelegation } from "../groups/security"
+import { privateFileExistsAsync, writePrivateFileAsync } from "../kernel/async-files"
 import { createBackgroundTask, getMeasuredStage, yieldBackground } from "../kernel/background-task"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import { hostPlatform } from "../platform"
@@ -33,6 +35,7 @@ import {
   type ChromeLauncher,
   createChromeLauncher,
   deriveChromeWindowConfig,
+  getChromeProfilePath,
   LocalBrowserUnavailableError,
 } from "./launcher"
 import { assignLegacyCookies } from "./legacyCookieMigration"
@@ -1435,6 +1438,7 @@ export const createBrowserEngine = ({
   launcher: suppliedLauncher,
   profile,
   discoverBotId,
+  persistentBotId,
   localBrowser = false,
   runStage,
   idleMs = BROWSER_IDLE_MS,
@@ -1445,6 +1449,7 @@ export const createBrowserEngine = ({
   launcher?: ChromeLauncher
   profile?: string
   discoverBotId?: string
+  persistentBotId?: string
   localBrowser?: boolean
   runStage?: PerformanceStageRunner
   idleMs?: number
@@ -1561,6 +1566,8 @@ export const createBrowserEngine = ({
     targetToTab.clear()
     targetSessions.clear()
     for (const tab of tabs) {
+      privatePreviewCandidates.delete(tab)
+      clearedPreviewDocuments.delete(tab)
       if (tab.info.state !== "live") continue
       // Disconnected pages can change outside CDP; invalidate captures and verify private entry again.
       tab.generation += 1
@@ -1619,7 +1626,12 @@ export const createBrowserEngine = ({
     tab.navigationVersion += 1
     tab.generation += 1
     tab.refs.clear()
-    if (navigationType !== "SameDocument") tab.secretMode = false
+    if (navigationType !== "SameDocument") {
+      tab.secretMode = false
+      // Unknown history stays protected even after a fresh public document becomes readable.
+      privatePreviewCandidates.delete(tab)
+      if (!tab.info.heldByUser && navigationType === "Navigation") privatePreviewCandidates.add(tab)
+    }
     enforceTabUrl(tab)
     if (navigationType !== "SameDocument") void restoreStorage(tab)
     publishTab(tab)
@@ -2092,13 +2104,13 @@ export const createBrowserEngine = ({
     if (!client || cookies.length === 0) return
     const params = cookies.map(cookieParam)
     const batch = await client
-      .call("Storage.setCookies", { cookies: params, browserContextId: contextId })
+      .call("Storage.setCookies", { cookies: params, ...(contextId ? { browserContextId: contextId } : {}) })
       .then(() => true)
       .catch(() => false)
     if (batch) return
     for (const cookie of params)
       await client
-        ?.call("Storage.setCookies", { cookies: [cookie], browserContextId: contextId })
+        ?.call("Storage.setCookies", { cookies: [cookie], ...(contextId ? { browserContextId: contextId } : {}) })
         .catch(() => undefined)
   }
 
@@ -2176,16 +2188,35 @@ export const createBrowserEngine = ({
     return created
   }
 
+  const restorePersistentContext = async (botId: string): Promise<string> => {
+    if (!client) throw new Error("Browser disconnected")
+    // Import legacy encrypted sessions only into an empty profile; Chrome owns future persistence.
+    const marker = join(getChromeProfilePath(kernel.paths, botId), ".touri-session-imported")
+    const root = kernel.paths.appData
+    if (await privateFileExistsAsync({ root, path: marker })) return ""
+    const cookies = cookiesOf(await client.call("Storage.getCookies"))
+    if (cookies.length === 0) {
+      const saved = await loadBotSession(kernel, botId)
+      await restoreCookies({ cookies: saved.cookies, contextId: "" })
+      pendingStorage.set(botId, saved.storage)
+    }
+    await writePrivateFileAsync({ root, path: marker, content: "1" })
+    return ""
+  }
+
   const browserContextFor = (botId: Id | null): Promise<string | null> => {
     if (discoverBotId || localBrowser) return Promise.resolve("")
     if (!client) return Promise.resolve(null)
     const key = botId ?? ""
+    if (persistentBotId && key !== persistentBotId) return Promise.resolve(null)
     const existing = browserContexts.get(key)
     if (existing) return existing
-    const created = createContext(key).catch((error) => {
-      browserContexts.delete(key)
-      throw error
-    })
+    const created = (persistentBotId ? restorePersistentContext(persistentBotId) : createContext(key)).catch(
+      (error) => {
+        browserContexts.delete(key)
+        throw error
+      },
+    )
     browserContexts.set(key, created)
     return created
   }
@@ -2754,9 +2785,13 @@ export const createBrowserEngine = ({
     return id !== null && Number.isSafeInteger(id) && id > 0 ? id : null
   }
 
+  const privatePreviewCandidates = new WeakSet<TabState>()
+  const clearedPreviewDocuments = new WeakMap<TabState, ReadonlyArray<number>>()
   const protectedDocumentVersions = new Map<Id, number>()
   const protectTakeoverDocument = async (tab: TabState, force = false): Promise<void> => {
     if (!force && protectedDocumentVersions.get(tab.info.tabId) === tab.navigationVersion) return
+    privatePreviewCandidates.delete(tab)
+    clearedPreviewDocuments.delete(tab)
     const version = tab.navigationVersion
     const document =
       client && tab.sessionId
@@ -2779,7 +2814,16 @@ export const createBrowserEngine = ({
     store.save(tab)
   }
 
-  const refreshTakeoverPrivacy = async (tab: TabState): Promise<boolean> => {
+  const pendingTakeoverPrivacy = new WeakMap<TabState, Promise<boolean>>()
+  const refreshTakeoverPrivacy = (tab: TabState): Promise<boolean> => {
+    const previous = pendingTakeoverPrivacy.get(tab)
+    if (previous) return previous
+    const pending = clearTakeoverPrivacy(tab).finally(() => pendingTakeoverPrivacy.delete(tab))
+    pendingTakeoverPrivacy.set(tab, pending)
+    return pending
+  }
+
+  const clearTakeoverPrivacy = async (tab: TabState): Promise<boolean> => {
     if (!tab.privateAfterTakeover || tab.info.heldByUser || tab.secretMode || !client || !tab.sessionId) return false
 
     const navigationVersion = tab.navigationVersion
@@ -2802,17 +2846,25 @@ export const createBrowserEngine = ({
     if (tab.navigationVersion !== navigationVersion || tab.info.heldByUser) return false
     if (typeof page?.url !== "string" || typeof page.title !== "string" || typeof page.hasSensitiveEntry !== "boolean")
       return false
+    const safeDocuments = clearedPreviewDocuments.get(tab) ?? []
+    const isTrustedReplacement =
+      privatePreviewCandidates.has(tab) || (documentId !== null && safeDocuments.includes(documentId))
+    const privateDocumentIds = isTrustedReplacement
+      ? tab.privateDocumentIds.filter((id) => id !== 0)
+      : tab.privateDocumentIds
     if (
       !canResumeAfterHumanTakeover({
         url: page.url,
         title: page.title,
         hasSensitiveEntry: page.hasSensitiveEntry,
         documentId: documentId ?? undefined,
-        privateDocumentIds: tab.privateDocumentIds,
+        privateDocumentIds,
       })
     )
       return false
 
+    if (documentId !== null && !safeDocuments.includes(documentId))
+      clearedPreviewDocuments.set(tab, safeDocuments.concat(documentId).slice(-32))
     tab.privateAfterTakeover = false
     tab.info.url = kernel.redact(page.url)
     tab.info.title = kernel.redact(page.title)
@@ -4966,6 +5018,13 @@ export const createBrowserEngine = ({
     takeoverRecoveries.get(tabId)?.abort()
     if (!tab.info.heldByUser) return true
     await protectTakeoverDocument(tab, true)
+    // A canceled frame can still be applying its viewport through CDP.
+    await pendingTakeoverViewports.get(tab)?.catch(() => undefined)
+    if (takeoverViewports.has(tab) && client && tab.sessionId) {
+      await client.call("Emulation.clearDeviceMetricsOverride", {}, tab.sessionId).catch(() => undefined)
+      takeoverViewports.delete(tab)
+      tab.generation += 1
+    }
     const takeover = clearTakeover({
       tab,
       resolution: "replied",
@@ -5190,13 +5249,13 @@ export const createBrowserEngine = ({
     const viewport = await layoutClip({ client: cdp, sessionId, fullPage: false, scale: 1 }).catch(() => null)
     if (!viewport || signal.aborted) return null
 
-    for (const scale of [0.65, 0.5, 0.35]) {
+    for (const scale of [1, 0.8, 0.65, 0.5, 0.35]) {
       const result = await cdpCall<unknown>(
         cdp,
         "Page.captureScreenshot",
         {
           format: "jpeg",
-          quality: 50,
+          quality: 60,
           captureBeyondViewport: false,
           fromSurface: true,
           clip: { x: viewport.x, y: viewport.y, width: viewport.width, height: viewport.height, scale },
@@ -5219,7 +5278,10 @@ export const createBrowserEngine = ({
     return null
   }
 
-  const takeoverFrame: BrowserEngine["takeoverFrame"] = async ({ tabId, botId, signal }) => {
+  const takeoverViewports = new WeakMap<TabState, { width: number; height: number; sessionId: string }>()
+  const pendingTakeoverViewports = new WeakMap<TabState, Promise<void>>()
+
+  const takeoverFrame: BrowserEngine["takeoverFrame"] = async ({ tabId, botId, signal, viewport }) => {
     const owned = getTab({ tabId, botId, allowHeld: true })
     if (!owned.success || !owned.value.info.heldByUser || owned.value.secretMode || !client || !owned.value.sessionId)
       return null
@@ -5229,6 +5291,43 @@ export const createBrowserEngine = ({
     const cdp = client
     const sessionId = tab.sessionId
     if (!cdp || !sessionId) return null
+    const previous = takeoverViewports.get(tab)
+    if (
+      viewport &&
+      (previous?.sessionId !== sessionId || previous.width !== viewport.width || previous.height !== viewport.height)
+    ) {
+      if (
+        !Number.isInteger(viewport.width) ||
+        !Number.isInteger(viewport.height) ||
+        viewport.width < 240 ||
+        viewport.height < 240 ||
+        viewport.width > 3840 ||
+        viewport.height > 2160
+      )
+        return null
+      const resize = cdp
+        .call(
+          "Emulation.setDeviceMetricsOverride",
+          {
+            width: viewport.width,
+            height: viewport.height,
+            deviceScaleFactor: 0,
+            mobile: false,
+          },
+          sessionId,
+        )
+        .then(() => {
+          takeoverViewports.set(tab, Object.assign({}, viewport, { sessionId }))
+          tab.generation += 1
+        })
+      pendingTakeoverViewports.set(tab, resize)
+      try {
+        await resize
+      } finally {
+        if (pendingTakeoverViewports.get(tab) === resize) pendingTakeoverViewports.delete(tab)
+      }
+      if (signal.aborted || !tab.info.heldByUser) return null
+    }
     return captureCurrentBrowserControlFrame({
       getEpoch: () => tab.generation,
       canRead: () =>
@@ -5445,6 +5544,7 @@ export const createBrowserEngine = ({
         .filter((tab) => tab.info.ownerBotId === botId && (!tabId || tab.info.tabId === tabId))
         .sort((a, b) => b.info.lastUsedAt - a.info.lastUsedAt)[0]
       if (tab?.info.state !== "live" || !tab.sessionId || tab.secretMode || tab.takeover) return null
+      await refreshTakeoverPrivacy(tab)
       const generation = tab.generation
       const isCurrent = () =>
         !retired &&

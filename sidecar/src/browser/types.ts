@@ -149,7 +149,12 @@ export type BrowserEngine = {
     tabId?: Id
     signal: AbortSignal
   }) => Promise<{ title: string; url: string; image: string } | null>
-  takeoverFrame: (args: { tabId: Id; botId: Id; signal: AbortSignal }) => Promise<BrowserTakeoverCapture | null>
+  takeoverFrame: (args: {
+    tabId: Id
+    botId: Id
+    signal: AbortSignal
+    viewport?: { width: number; height: number }
+  }) => Promise<BrowserTakeoverCapture | null>
   takeoverInput: (args: {
     tabId: Id
     botId: Id

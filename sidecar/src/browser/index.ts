@@ -42,7 +42,7 @@ const OPEN_DEFAULT_TIMEOUT_MS = 20000
 const TAKEOVER_TIMEOUT_MS = 600000
 const TAKEOVER_MINIMUM_TIMEOUT_MS = 120_000
 const TAKEOVER_SESSION_TTL_MS = 30 * 60_000
-const TAKEOVER_FRAME_INTERVAL_MS = 250
+const TAKEOVER_FRAME_INTERVAL_MS = 100
 const MAX_TAKEOVER_SESSIONS = 16
 
 type BrowserTakeoverSession = {
@@ -1178,6 +1178,22 @@ export const init = async (
           const tabId = request.params.id ?? ""
           const authorized = authorizeTakeoverSession(request)
           if (!authorized) return { status: 403, json: { error: "Esta sessão de controle não está ativa." } }
+          const viewportValue = argsRecord(request.body).viewport
+          const viewport = argsRecord(viewportValue)
+          const width = asNumber(viewport.width)
+          const height = asNumber(viewport.height)
+          if (
+            viewportValue !== undefined &&
+            (width === null ||
+              height === null ||
+              !Number.isInteger(width) ||
+              !Number.isInteger(height) ||
+              width < 240 ||
+              height < 240 ||
+              width > 3840 ||
+              height > 2160)
+          )
+            return { status: 400, json: { error: "Dimensões de navegador inválidas." } }
           const requestedViewEpoch = asNumber(argsRecord(request.body).viewEpoch)
           if (
             requestedViewEpoch === null ||
@@ -1204,6 +1220,7 @@ export const init = async (
             .takeoverFrame({
               tabId,
               botId: active.botId,
+              ...(width !== null && height !== null ? { viewport: { width, height } } : {}),
               signal: AbortSignal.any([request.signal, active.lifetime.signal]),
             })
             .catch(() => null)

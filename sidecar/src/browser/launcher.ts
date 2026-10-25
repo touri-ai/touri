@@ -1,4 +1,5 @@
 import { access, readFile } from "node:fs/promises"
+import { createServer } from "node:net"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import type { Kernel } from "@touri/contracts"
@@ -8,6 +9,7 @@ import { ensurePrivateDirectoryAsync } from "../kernel/async-files"
 import { poll } from "../kernel/policy"
 import { discardStream } from "../kernel/streams"
 import { connectCdpWebSocket, createCdpClient } from "./cdp"
+import { startBrowserDisplay } from "./display"
 import type { CdpClient } from "./types"
 
 type SpawnedChrome = Extract<ReturnType<Kernel["spawnTree"]>, { success: true }>
@@ -54,7 +56,6 @@ const integerPair = (value: string | undefined, { positive }: { positive: boolea
 
 export const deriveChromeWindowConfig = ({
   env = process.env,
-  platform = process.platform,
 }: {
   env?: Record<string, string | undefined>
   platform?: string
@@ -66,10 +67,7 @@ export const deriveChromeWindowConfig = ({
     height: size[1],
     left: position?.[0] ?? null,
     top: position?.[1] ?? null,
-    headless:
-      env.TOURI_BROWSER_HEADLESS === "1" ||
-      env.TOURI_HEADLESS === "1" ||
-      (platform === "linux" && !env.DISPLAY && !env.WAYLAND_DISPLAY),
+    headless: env.TOURI_BROWSER_HEADLESS === "1",
   }
 }
 
@@ -98,9 +96,7 @@ export const deriveChromeLaunchArgs = ({
     ...(config.headless ? ["--headless=new"] : []),
     "--no-first-run",
     "--no-default-browser-check",
-    "--disable-features=Translate",
     ...deriveChromeWindowArgs({ env }),
-    "--restore-last-session=false",
     "--remote-debugging-pipe",
     "about:blank",
   ]
@@ -108,18 +104,21 @@ export const deriveChromeLaunchArgs = ({
 
 export const deriveChromePortLaunchArgs = ({
   profile,
+  port,
   env = process.env,
 }: {
   profile: string
   env?: Record<string, string | undefined>
+  port: number
 }): Array<string> => {
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid Chrome debugging port")
   const pipeArgs = deriveChromeLaunchArgs({ profile, env })
   const pipeIndex = pipeArgs.indexOf("--remote-debugging-pipe")
   if (pipeIndex < 0) return pipeArgs
   return [
     ...pipeArgs.slice(0, pipeIndex),
     "--remote-debugging-address=127.0.0.1",
-    "--remote-debugging-port=0",
+    `--remote-debugging-port=${port}`,
     ...pipeArgs.slice(pipeIndex + 1),
   ]
 }
@@ -207,17 +206,22 @@ export const attachLocalChrome = ({
 const chromeExecutable = async ({
   kernel,
   mode,
+  env,
 }: {
   kernel: Kernel
   mode: "system-chrome" | "chrome-for-testing"
+  env: Record<string, string | undefined>
 }): Promise<string | null> => {
   if (process.platform !== "darwin") {
-    // Linux uses the distribution-maintained browser. Never download an Apple bundle.
+    // Use stable system Chrome; managed browsing never substitutes a testing build.
     return (
-      process.env.TOURI_CHROME_BIN ??
-      Bun.which("chromium") ??
-      Bun.which("chromium-browser") ??
-      Bun.which("google-chrome")
+      env.TOURI_CHROME_BIN ??
+      ((await access("/opt/google/chrome/chrome").then(
+        () => true,
+        () => false,
+      ))
+        ? "/opt/google/chrome/chrome"
+        : Bun.which("google-chrome"))
     )
   }
   if (
@@ -228,6 +232,7 @@ const chromeExecutable = async ({
     ))
   )
     return systemChrome
+  if (mode === "system-chrome") return null
   const result = await downloadChromeForTesting({
     root: kernel.paths.appData,
     destination: join(kernel.paths.browserDir, "chrome"),
@@ -248,17 +253,22 @@ export const createChromeLauncher = ({
   kernel,
   mode = "system-chrome",
   createClient = createCdpClient,
+  botId,
+  env: suppliedEnv = process.env,
 }: {
   kernel: Kernel
   mode?: "system-chrome" | "chrome-for-testing"
   createClient?: typeof createCdpClient
+  botId?: string
+  env?: Record<string, string | undefined>
 }): ChromeLauncher => {
   let active: { client: CdpClient; process: SpawnedChrome } | null = null
   let pending: ReturnType<ChromeLauncher["start"]> | null = null
   let generation = 0
+  let display: Awaited<ReturnType<typeof startBrowserDisplay>> = null
 
   const environment = async (): Promise<Record<string, string>> => {
-    return buildChildEnv({ base: await kernel.shellEnv(), overrides: process.env })
+    return buildChildEnv({ base: await kernel.shellEnv(), overrides: suppliedEnv })
   }
 
   const stopSpawned = async (process: SpawnedChrome): Promise<void> => {
@@ -270,22 +280,6 @@ export const createChromeLauncher = ({
       await pipe.read?.cancel().catch(() => undefined)
       await pipe.write?.abort().catch(() => undefined)
     }
-  }
-
-  const waitForActivePort = async (profile: string): Promise<{ port: number; path: string } | null> => {
-    const activePortPath = join(profile, "DevToolsActivePort")
-    return poll({
-      timeoutMs: 5000,
-      intervalMs: 50,
-      probe: async () => {
-        try {
-          return parseDevToolsActivePort(await readFile(activePortPath, "utf8"))
-        } catch {
-          return null
-        }
-      },
-      accept: (value) => value !== null,
-    })
   }
 
   const activate = async (
@@ -318,7 +312,8 @@ export const createChromeLauncher = ({
     profile: string
     env: Record<string, string>
   }): Promise<{ client: CdpClient; process: SpawnedChrome } | null> => {
-    const args = deriveChromePortLaunchArgs({ profile, env })
+    const port = await getChromeDebugPort()
+    const args = deriveChromePortLaunchArgs({ profile, env, port })
     const spawnedResult = kernel.spawnTree({ cmd: executable, args, cwd: kernel.paths.browserDir, env })
     if (!spawnedResult.success) return null
     const spawned = spawnedResult
@@ -326,17 +321,24 @@ export const createChromeLauncher = ({
     void discardStream(spawned.stderr)
     let client: CdpClient | null = null
     try {
-      const activePort = await Promise.race([waitForActivePort(profile), spawned.exited.then(() => null)])
-      if (!activePort) throw new Error("Chrome did not create DevToolsActivePort")
-      const response = await fetch(`http://127.0.0.1:${activePort.port}/json/version`, {
-        signal: AbortSignal.timeout(3000),
+      const ready = await poll({
+        timeoutMs: 5000,
+        intervalMs: 50,
+        probe: async () => {
+          if (await Promise.race([spawned.exited.then(() => true), Bun.sleep(0).then(() => false)])) return null
+          return fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(500) }).then(
+            (response) => (response.ok ? response : null),
+            () => null,
+          )
+        },
+        accept: (response) => response !== null,
       })
-      if (!response.ok) throw new Error(`Chrome DevTools endpoint returned ${response.status}`)
-      const version = record(await response.json())
-      const websocket = stringValue(version?.webSocketDebuggerUrl)
-      const websocketUrl = websocket ?? `ws://127.0.0.1:${activePort.port}${activePort.path}`
+      if (!ready) throw new Error("Chrome did not open its debugging endpoint")
+      const version = record(await ready.json())
+      const websocketUrl = stringValue(version?.webSocketDebuggerUrl)
+      if (!websocketUrl) throw new Error("Chrome debugging endpoint is missing")
       const parsed = new URL(websocketUrl)
-      if (parsed.hostname !== "127.0.0.1" || parsed.port !== String(activePort.port))
+      if (parsed.hostname !== "127.0.0.1" || parsed.port !== String(port))
         throw new Error("Chrome DevTools endpoint was not loopback-only")
       client = await connectCdpWebSocket({ url: parsed.toString(), connectTimeoutMs: 3000 })
       return await activate(spawned, client)
@@ -358,11 +360,23 @@ export const createChromeLauncher = ({
       await stale.client.close()
       await stopSpawned(stale.process)
     }
-    const executable = await chromeExecutable({ kernel, mode })
+    const baseEnv = await environment()
+    const executable = await chromeExecutable({ kernel, mode, env: baseEnv })
     if (!executable) return null
-    const env = await environment()
-    const profile = join(kernel.paths.browserDir, "profiles", "default")
+    if (
+      process.platform === "linux" &&
+      !baseEnv.DISPLAY &&
+      !baseEnv.WAYLAND_DISPLAY &&
+      !deriveChromeWindowConfig({ env: baseEnv }).headless
+    ) {
+      display ??= await startBrowserDisplay(kernel, baseEnv)
+      if (!display) return null
+    }
+    const env = display?.env ?? baseEnv
+    const profile = getChromeProfilePath(kernel.paths, botId)
     await ensurePrivateDirectoryAsync({ root: kernel.paths.appData, path: profile })
+    // Pipe transport enables Chrome's automation runtime; the normal debugging port preserves native defaults.
+    if (botId) return startPortFallback({ executable, profile, env })
     const args = deriveChromeLaunchArgs({ profile, env })
     const spawnedResult = kernel.spawnTree({ cmd: executable, args, cwd: kernel.paths.browserDir, env, extraFds: 2 })
     if (!spawnedResult.success) {
@@ -396,16 +410,35 @@ export const createChromeLauncher = ({
     }
   }
 
+  const stopActiveChrome = async (current: NonNullable<typeof active>): Promise<void> => {
+    // Closing Chrome normally flushes cookies, local storage and the rest of the persistent profile.
+    const timer = setTimeout(() => {
+      void current.client.close().catch(() => undefined)
+      current.process.kill("SIGTERM")
+    }, 3000)
+    try {
+      await current.client.call("Browser.close").catch(() => undefined)
+      await Promise.race([current.process.exited, Bun.sleep(3000)])
+    } finally {
+      clearTimeout(timer)
+      await current.client.close()
+      await stopSpawned(current.process)
+    }
+  }
+
   const stop = async (): Promise<void> => {
     generation += 1
     const current = active
     active = null
     if (current) {
-      await Promise.all([current.client.close(), stopSpawned(current.process)])
+      await stopActiveChrome(current)
     }
+    await display?.stop()
+    display = null
   }
 
-  const start: ChromeLauncher["start"] = () => {
+  const start: ChromeLauncher["start"] = ({ runningOnly = false } = {}) => {
+    if (runningOnly && !active && !pending) return Promise.resolve(null)
     if (pending) return pending
     const epoch = generation
     // One launch owns the profile, including fallback and cancellation cleanup.
@@ -418,11 +451,40 @@ export const createChromeLauncher = ({
         }
         return null
       })
-      .finally(() => {
+      .finally(async () => {
         pending = null
+        if (!active) {
+          await display?.stop()
+          display = null
+        }
       })
     return pending
   }
 
   return { start, stop }
 }
+
+export const getChromeProfilePath = (
+  paths: Pick<Kernel["paths"], "botsDir" | "browserDir">,
+  botId?: string,
+): string => {
+  if (botId === undefined) return join(paths.browserDir, "profiles", "default")
+  if (!/^[A-Za-z0-9_-]+$/u.test(botId)) throw new Error("Invalid browser bot ID")
+
+  return join(paths.botsDir, botId, "browser", "profile")
+}
+
+const getChromeDebugPort = (): Promise<number> =>
+  new Promise((accept, reject) => {
+    const server = createServer()
+    server.once("error", reject)
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address()
+      if (!address || typeof address === "string") {
+        server.close()
+        reject(new Error("Could not reserve a Chrome debugging port"))
+        return
+      }
+      server.close((error) => (error ? reject(error) : accept(address.port)))
+    })
+  })

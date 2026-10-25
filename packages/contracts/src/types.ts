@@ -1254,7 +1254,7 @@ export type ApiRoutes = {
     res: { sessionId: string; controlEpoch: string; viewEpoch: number }
   }
   'POST /browser/tabs/:id/takeover/frame': {
-    req: { sessionId: string; controlEpoch: string; viewEpoch: number }
+    req: { sessionId: string; controlEpoch: string; viewEpoch: number; viewport?: { width: number; height: number } }
     res: BrowserTakeoverFrame
   }
   'POST /browser/tabs/:id/takeover/input': {

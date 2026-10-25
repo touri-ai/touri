@@ -121,8 +121,10 @@ The standalone headless server retains `~/.touri`; `TOURI_APP_DATA` overrides ei
 Podman or Docker is optional for VM bots. If no working container engine is available,
 local bots remain available and the machine feature reports why it cannot start.
 
-Host computer use is hidden on Linux. Local browser automation needs an installed
-Chromium/Chrome or `TOURI_CHROME_BIN`. Interactive provider onboarding currently uses
+Host computer use is hidden on Linux. Managed browser automation needs stable system Chrome
+or an explicit `TOURI_CHROME_BIN`. Hosts without a display also need Xvfb; touri starts its own
+local display and keeps the browser headful, including in server mode. Each bot uses a private
+persistent profile. Interactive provider onboarding currently uses
 credential import. Linux OCI lifecycle/isolation contracts are tested, but live container
 onboarding could not be verified on the build host because it denies user namespaces.
 

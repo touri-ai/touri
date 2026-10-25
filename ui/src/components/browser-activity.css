@@ -866,3 +866,55 @@
 .browser-activity-recovery-return {
   min-height: 44px;
 }
+
+.browser-takeover-dialog:not([open]) {
+  position: static;
+  display: contents;
+}
+.browser-takeover-dialog[open] {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  max-width: none;
+  top: var(--takeover-visible-top, 0);
+  bottom: auto;
+  height: var(--takeover-visible-height, 100dvh);
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--surface-control);
+  color: var(--text-1);
+}
+.browser-takeover-view[data-full-view="true"] {
+  width: 100%;
+  height: var(--takeover-visible-height, 100%);
+  max-height: none;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  background: var(--surface-control);
+}
+.browser-takeover-layout-full {
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+.browser-takeover-layout-full .browser-takeover-reason,
+.browser-takeover-layout-full .browser-takeover-actions {
+  display: none;
+}
+.browser-takeover-layout-full .browser-takeover-aside {
+  display: block;
+}
+.browser-takeover-view[data-full-view="true"] .browser-takeover-toolbar {
+  flex-direction: row;
+  align-items: center;
+}
+.browser-takeover-view[data-full-view="true"] .browser-takeover-toolbar > div {
+  flex: 1;
+}
+.browser-takeover-view[data-full-view="true"] .browser-takeover-toolbar .button {
+  max-width: 130px;
+}
+.browser-takeover-canvas[hidden] {
+  display: none;
+}
