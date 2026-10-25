@@ -4,11 +4,9 @@ import { createCloudBotUpdates } from "../../src/cloud/bot-updates"
 
 const cleanups = new Set<() => void>()
 afterEach(() => {
-  Array.from(cleanups)
-    .reverse()
-    .forEach((cleanup) => {
-      cleanup()
-    })
+  cleanups.forEach((cleanup) => {
+    cleanup()
+  })
   cleanups.clear()
 })
 

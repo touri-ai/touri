@@ -261,9 +261,11 @@ test("synchronous publish and send survive a worker lock without an empty captur
   try {
     await locked.promise
 
+    const publishStartedAt = performance.now()
     expect(() =>
       bus.publish({ type: "import.progress", importId: "worker-lock", phase: "done", done: 1, total: 1 }),
     ).not.toThrow()
+    const publicationMs = performance.now() - publishStartedAt
     const inserted = f.store.insertMessage({
       message: {
         id: "sent-while-locked",
@@ -280,7 +282,9 @@ test("synchronous publish and send survive a worker lock without an empty captur
       },
     })
     await released.promise
+    await bus.flushAsync()
 
+    expect(publicationMs).toBeLessThan(50)
     expect(inserted.success).toBe(true)
     expect(captureFinishedWhileLocked).toBe(true)
     expect(
@@ -288,7 +292,7 @@ test("synchronous publish and send survive a worker lock without an empty captur
     ).toBe(true)
     expect((f.db.query("PRAGMA busy_timeout").get() as { timeout: number }).timeout).toBe(5_000)
   } finally {
-    bus.stop()
+    await bus.stop()
     worker.terminate()
     URL.revokeObjectURL(url)
     await f.close()
