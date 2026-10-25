@@ -1,4 +1,4 @@
-import { type Message, type SendMessageInput, SERVER_PROTOCOL_VERSION } from "@touri/contracts"
+import { type Message, SERVER_PROTOCOL_VERSION, type SendMessageInput } from "@touri/contracts"
 import { createRoot } from "react-dom/client"
 import App from "../../src/App"
 import { apiRouteKeys, createApiClient, webEndpoint } from "../../src/api/client"

@@ -1366,13 +1366,14 @@ export const BotSettingsModal = ({
                     className="soul-editor"
                     value={instructions}
                     disabled={instructionsLoading || instructionsError !== null}
+                    aria-busy={instructionsLoading}
+                    placeholder={instructionsLoading ? t("Loading bot instructions…") : undefined}
                     onChange={(event) => {
                       setInstructions(event.target.value)
                       setInstructionsChanged(true)
                     }}
                     aria-describedby="soul-help"
                   />
-                  {instructionsLoading && <p role="status">{t("Loading bot instructions…")}</p>}
                   {instructionsError && <p role="alert">{instructionsError}</p>}
                   <small id="soul-help" className="field-help">
                     {t("Detailed guidance for the bot. Saved as SOUL.md in the bot’s folder.")}{" "}
