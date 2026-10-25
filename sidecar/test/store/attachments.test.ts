@@ -8,16 +8,18 @@ import { createKernel } from "../../src/kernel"
 import { MAX_ATTACHMENT_BYTES } from "../../src/kernel/files"
 import { getDocumentInput } from "../../src/runtime/document-input"
 import { init } from "../../src/store"
+import { getMessageFromRow } from "../../src/store/message-row"
+import type { RawMessage } from "../../src/store/workspace-activity"
 
-const cleanup: Array<() => void> = []
-afterEach(() => {
-  for (const close of cleanup.splice(0)) close()
+const cleanup: Array<() => void | Promise<void>> = []
+afterEach(async () => {
+  for (const close of cleanup.splice(0)) await close()
 })
 const fixture = async () => {
   const root = mkdtempSync(join(tmpdir(), "touri-attachment-qa-"))
   const runtime = createKernel({ appData: root })
-  cleanup.push(() => {
-    runtime.stop()
+  cleanup.push(async () => {
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
   await init(runtime.kernel)
@@ -210,8 +212,8 @@ test("one message with many tool output files yields between reference batches",
   }))
   database
     .query(`INSERT INTO messages(id,thread_id,role,kind,status,text,parts_json,created_at,updated_at)
-    VALUES ('large-output','t','assistant','text','complete','Synthetic output',?,1,1)`)
-    .run(JSON.stringify(parts))
+    VALUES ('large-output','t','assistant','text','complete','Synthetic output',?,?,?)`)
+    .run(JSON.stringify(parts), Date.now(), Date.now())
   database.exec("DELETE FROM attachment_message_refs")
   let interleaved = false
   const timer = setInterval(() => {
@@ -249,3 +251,69 @@ const getImageDownloadFixture = async () => {
 
   return { ...current, attachment }
 }
+for (const change of ["retention", "delete"] as const) {
+  test(`a concurrent ${change} cannot resurrect historical attachment references`, async () => {
+    const f = await fixture()
+    const database = f.runtime.kernel.db as Database
+    const parts = Array.from({ length: 4096 }, (_, index) => ({
+      type: "command",
+      outputAttachmentId: `historical-${index}`,
+    }))
+    database
+      .query(`INSERT INTO messages(id,thread_id,role,kind,status,text,parts_json,created_at,updated_at)
+        VALUES ('changing-output','t','assistant','text','complete','Synthetic output',?,?,?)`)
+      .run(JSON.stringify(parts), Date.now(), Date.now())
+    database.exec("DELETE FROM attachment_message_refs")
+    let changed = false
+    const timer = setInterval(() => {
+      const row = database.query("SELECT count(*) AS count FROM attachment_message_refs").get() as { count: number }
+      if (changed || row.count === 0 || row.count === parts.length) return
+
+      changed = true
+      database.transaction(() => {
+        if (change === "delete") {
+          database.query("DELETE FROM messages WHERE id = 'changing-output'").run()
+          return
+        }
+
+        // Retention deliberately leaves transcript revisions and message timestamps unchanged.
+        database.exec("UPDATE transcript_maintenance SET projection_write = 1 WHERE id = 1")
+        database.query("UPDATE messages SET parts_json = '[]' WHERE id = 'changing-output'").run()
+        database.exec("UPDATE transcript_maintenance SET projection_write = 0 WHERE id = 1")
+      })()
+    }, 1)
+    cleanup.push(() => clearInterval(timer))
+
+    const response = await f.request("/threads/t/messages?all=true")
+    await response.arrayBuffer()
+
+    expect(response.status).toBe(200)
+    expect(changed).toBe(true)
+    expect(database.query("SELECT count(*) AS count FROM attachment_message_refs").get()).toEqual({ count: 0 })
+  })
+}
+
+test("superseded transcript snapshots cannot restore removed attachment access", async () => {
+  const f = await fixture()
+  const database = f.runtime.kernel.db as Database
+  const parts = JSON.stringify([{ type: "file", attachmentId: "removed-file", name: "synthetic.txt" }])
+  database
+    .query(`INSERT INTO messages(id,thread_id,role,kind,status,text,parts_json,created_at,updated_at)
+      VALUES ('old-snapshot','t','assistant','text','complete','Synthetic output',?,?,?)`)
+    .run(parts, Date.now(), Date.now())
+  const row = database.query("SELECT * FROM messages WHERE id = 'old-snapshot'").get() as RawMessage
+  const message = getMessageFromRow(row)
+  database
+    .query("INSERT INTO transcript_entries(thread_id,seq,generation,event_json,at) VALUES ('t',2,1,?,?)")
+    .run(JSON.stringify({ type: "message.updated", message }), Date.now())
+  database.exec(`UPDATE threads SET updated_seq = 2 WHERE id = 't';
+    UPDATE transcript_maintenance SET projection_write = 1 WHERE id = 1;
+    UPDATE messages SET parts_json = '[]' WHERE id = 'old-snapshot';
+    UPDATE transcript_maintenance SET projection_write = 0 WHERE id = 1;`)
+
+  const response = await f.request("/threads/t/transcript?since=0")
+  await response.arrayBuffer()
+
+  expect(response.status).toBe(200)
+  expect(database.query("SELECT count(*) AS count FROM attachment_message_refs").get()).toEqual({ count: 0 })
+})

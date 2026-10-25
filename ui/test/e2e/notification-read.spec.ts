@@ -30,10 +30,30 @@ viewports.forEach(({ width, height }) => {
     await expect(center.getByText("Informação fictícia", { exact: true })).toHaveCount(0)
     await expect(center.getByRole("button", { name: "Abrir e revisar", exact: true })).toBeVisible()
     await expect(center.getByRole("button", { name: "Tarefas interrompidas", exact: true })).toBeVisible()
-    await expect(center.getByRole("status")).toHaveText("Notificações que ainda precisam de atenção: 4.")
-    await expect(center.getByTestId("notification-row")).toHaveCount(4)
+    await expect(center.getByRole("status")).toHaveText(
+      "Notificações que precisam de revisão em Tarefas interrompidas: 1. Notificações que ainda precisam de atenção: 1.",
+    )
+    await expect(center.getByTestId("notification-row")).toHaveCount(2)
     if (directory) await center.screenshot({ path: join(directory, `notification-read-after-${width}.png`) })
     expect(await page.evaluate(() => localStorage.getItem("touri.notifications.cleared.v1"))).toBeNull()
     expect(await center.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
+
+    await center.getByRole("button", { name: "Tarefas interrompidas", exact: true }).click()
+    const recovery = page.getByRole("dialog", { name: "Tarefas interrompidas", exact: true })
+    await expect(recovery.getByTestId("interrupted-task")).toHaveCount(3)
+    const visibleTasks = recovery.locator('[data-testid="interrupted-task"]:visible')
+    await expect(visibleTasks).toHaveCount(1)
+    const resolved = recovery.getByRole("button", { name: "Interrupções resolvidas (2)", exact: true })
+    await expect(resolved).toBeVisible()
+    const acknowledgement = recovery.getByRole("checkbox", {
+      name: "Revisei os efeitos incertos e entendo que descartar não desfaz as ações.",
+    })
+    await expect(acknowledgement).toBeVisible()
+    await expect(acknowledgement).not.toBeChecked()
+    await expect(recovery.getByRole("button", { name: "Descartar", exact: true })).toBeDisabled()
+    if (directory) await recovery.screenshot({ path: join(directory, `notification-recovery-${width}.png`) })
+
+    await resolved.click()
+    await expect(visibleTasks).toHaveCount(3)
   })
 })

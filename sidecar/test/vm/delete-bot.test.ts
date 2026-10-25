@@ -158,6 +158,7 @@ const measureBotDeletion = async (f: Awaited<ReturnType<typeof fixture>>, bot: B
   const response = await f.rawRequest(`/bots/${bot.id}`, { name: bot.name }, "DELETE")
   const requestMs = performance.now() - started
   await waitForDeletionComplete(f.db, bot.id)
+  const completionMs = performance.now() - started
   clearInterval(probe)
   const maxTickMs = ticks.reduce((maximum, tick) => Math.max(maximum, tick), 0)
   const p99TickMs = getPercentile(ticks, 0.99)
@@ -166,7 +167,7 @@ const measureBotDeletion = async (f: Awaited<ReturnType<typeof fixture>>, bot: B
   expect(ticks.length).toBeGreaterThan(10)
   expect(p99TickMs).toBeLessThan(50)
 
-  return { requestMs, p99TickMs, maxTickMs }
+  return { requestMs, completionMs, p99TickMs, maxTickMs }
 }
 
 const makeCleanupFixture = async (collectBlobs = collectUnusedOutputBlobs) => {
@@ -1207,6 +1208,21 @@ test("purge pauses behind a retained WAL reader and resumes after it releases it
   expect(laterProgress).toEqual(retainedProgress)
   expect(f.db.query("SELECT count(*) AS count FROM messages").get()).toEqual({ count: 0 })
 }, 30_000)
+
+test("a 4096-message purge amortizes commits without starving live timers", async () => {
+  const f = await fixture()
+  const bot = await f.create("Bounded purge", "local")
+  const threadId = bot.mainThreadId ?? ""
+  seedSearchableMessages(f.db, threadId, 4096)
+
+  const result = await measureBotDeletion(f, bot)
+
+  console.info(`bot-deletion-batch-performance ${JSON.stringify(Object.assign({ messages: 4096 }, result))}`)
+  expect(result.completionMs).toBeLessThan(5000)
+  expect(f.db.query("SELECT id FROM messages WHERE thread_id = ?").all(threadId)).toEqual([])
+  expect(f.db.query("SELECT rowid FROM messages_fts WHERE thread_id = ?").all(threadId)).toEqual([])
+  expect(f.db.query("SELECT id FROM transcript_entries WHERE thread_id = ?").all(threadId)).toEqual([])
+})
 
 test("50k message deletion returns quickly, keeps the event loop responsive and purges FTS", async () => {
   const f = await fixture()

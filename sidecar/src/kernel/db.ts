@@ -55,13 +55,14 @@ import requestRunsSql from "./migrations/0049.sql" with { type: "text" }
 import fastConversationSql from "./migrations/0050.sql" with { type: "text" }
 import webPushSql from "./migrations/0051.sql" with { type: "text" }
 import notificationReadsSql from "./migrations/0052.sql" with { type: "text" }
+import attachmentRevisionSql from "./migrations/0053.sql" with { type: "text" }
 import imageEvidenceIndexesSql from "./migrations/image-evidence-indexes.sql" with { type: "text" }
 import type { PerformanceStageRunner } from "./performance"
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 52
+export const SCHEMA_VERSION = 53
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -108,8 +109,18 @@ export const openDatabase = ({
       database.transaction(() => database.exec(imageEvidenceIndexesSql))()
     return database
   }
+  if (current?.value === "52") {
+    database.transaction(() => {
+      applyAttachmentRevisionSchema(database)
+      database.exec(imageEvidenceIndexesSql)
+    })()
+    return database
+  }
   if (current?.value === "51") {
-    database.transaction(() => database.exec(notificationReadsSql))()
+    database.transaction(() => {
+      database.exec(notificationReadsSql)
+      applyAttachmentRevisionSchema(database)
+    })()
     database.transaction(() => database.exec(imageEvidenceIndexesSql))()
     return database
   }
@@ -117,6 +128,7 @@ export const openDatabase = ({
     database.transaction(() => {
       database.exec(webPushSql)
       database.exec(notificationReadsSql)
+      applyAttachmentRevisionSchema(database)
     })()
     database.transaction(() => database.exec(imageEvidenceIndexesSql))()
     return database
@@ -126,6 +138,7 @@ export const openDatabase = ({
       applyFastConversationSchema(database)
       database.exec(webPushSql)
       database.exec(notificationReadsSql)
+      applyAttachmentRevisionSchema(database)
     })()
     database.transaction(() => database.exec(imageEvidenceIndexesSql))()
     return database
@@ -139,6 +152,7 @@ export const openDatabase = ({
       applyFastConversationSchema(database)
       database.exec(webPushSql)
       database.exec(notificationReadsSql)
+      applyAttachmentRevisionSchema(database)
     })()
     database.transaction(() => database.exec(imageEvidenceIndexesSql))()
     return database
@@ -412,7 +426,10 @@ export const openDatabase = ({
   })()
   database.transaction(() => applyFastConversationSchema(database))()
   database.transaction(() => database.exec(webPushSql))()
-  database.transaction(() => database.exec(notificationReadsSql))()
+  database.transaction(() => {
+    database.exec(notificationReadsSql)
+    applyAttachmentRevisionSchema(database)
+  })()
   database.transaction(() => database.exec(imageEvidenceIndexesSql))()
   return database
 }
@@ -424,4 +441,14 @@ const applyFastConversationSchema = (database: Database): void => {
     return
   }
   database.exec(fastConversationSql)
+}
+
+const applyAttachmentRevisionSchema = (database: Database): void => {
+  const columns = database.query("PRAGMA table_info(messages)").all() as Array<{ name: string }>
+  if (columns.some(({ name }) => name === "attachment_revision")) {
+    database.exec("UPDATE schema_meta SET value = '53' WHERE key = 'schema_version'")
+    return
+  }
+
+  database.exec(attachmentRevisionSql)
 }

@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { createChromeLauncher, getChromeProfilePath } from "../../src/browser/launcher"
 import type { CdpClient } from "../../src/browser/types"
 import { createKernel } from "../../src/kernel"
+import { getSystemBrowserCapability } from "./system-browser-capability"
 
 const cleanups = new Set<() => Promise<void>>()
 afterEach(async () => {
@@ -15,9 +16,10 @@ afterEach(async () => {
   cleanups.clear()
 })
 
-const hasChrome = process.platform === "linux" && Boolean(Bun.which("google-chrome")) && Boolean(Bun.which("Xvfb"))
+const capability = await getSystemBrowserCapability()
+if (!capability.available) console.info(`System browser persistence: skipped — ${capability.reason}`)
 
-test.skipIf(!hasChrome)(
+test.skipIf(!capability.available)(
   "headful stable Chrome preserves a bot profile across real process restarts",
   async () => {
     const root = await mkdtemp(join(tmpdir(), "touri-persistent-chrome-"))
