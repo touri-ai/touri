@@ -85,7 +85,10 @@ test("Enter selects the historical message and a repeated selection reveals it a
   await expect(target).toBeInViewport()
   await page.locator(".chat-scroll-bottom").click()
   await expect(target).toHaveCount(0)
-  await (await openSearch(page)).press("Enter")
+  const repeated = await openSearch(page)
+  // The old row is outside the current page, so its result comes from the search API.
+  await expect(page.locator('[data-palette-item="message:search-history-8"]')).toBeVisible()
+  await repeated.press("Enter")
   await expect(target).toBeInViewport()
 })
 

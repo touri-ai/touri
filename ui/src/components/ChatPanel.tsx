@@ -6,6 +6,7 @@ import type {
   Id,
   MachineState,
   Message,
+  MessageBranch,
   Project,
   Routine,
   RoutineRun,
@@ -114,6 +115,10 @@ export { activeMessagePath } from "./activeMessagePath"
 
 type ChatPanelProps = {
   historyLoading?: boolean
+  onLatestHistory?: (() => void) | undefined
+  hasOlderHistory?: boolean | undefined
+  loadingOlderHistory?: boolean | undefined
+  onLoadOlderHistory?: (() => Promise<void>) | undefined
   channelThreads?: Thread[]
   channelMessages?: Message[]
   onSelectChannelThread?: ((threadId: string) => void) | undefined
@@ -147,6 +152,7 @@ type ChatPanelProps = {
   onNotice?: (message: string) => void
   onSelectProject?: (projectId: Id | null) => Promise<void>
   onAddProject?: () => void
+  branchOptions?: Array<MessageBranch> | undefined
   activePath?: Array<Message> | undefined
   goalRefreshRequest?: number
   onGoalChange?: () => void
@@ -177,15 +183,20 @@ type VirtualMessageListProps = {
   mainThread?: boolean
   routines?: Array<Routine>
   routineRuns?: Array<RoutineRun>
-  onSwitchBranch: (message: Message, siblings: Array<Message>, index: number) => void
+  onSwitchBranch: (message: Message, siblings: Array<MessageBranch>, index: number) => void
   onRetry: (runId: Id) => Promise<void>
   onEdit?: EditMessage | undefined
   onCancel?: ((runId: Id) => Promise<void>) | undefined
   editDisabled?: boolean
   showActivityStop?: boolean
   header?: ReactNode
+  branchOptions?: Array<MessageBranch> | undefined
   allMessages?: Array<Message>
   flatHistory?: boolean
+  hasOlderHistory?: boolean | undefined
+  loadingOlderHistory?: boolean | undefined
+  onLoadOlderHistory?: (() => Promise<void>) | undefined
+  onLatestHistory?: (() => void) | undefined
   timelineCards?: Array<{ id: string; createdAt: number; content: ReactNode }>
 }
 const emptyTimelineCards: NonNullable<VirtualMessageListProps["timelineCards"]> = []
@@ -203,12 +214,15 @@ const routineTriggerKeys: Record<RoutineRun["triggerSource"], TranslationKey> = 
 }
 const estimatedRowHeight = 158
 
-const getMessageBranchKey = (message: Message): string =>
+const getHistoryAnchorElement = (row: HTMLElement): HTMLElement =>
+  row.querySelector<HTMLElement>("[data-message-id]") ?? row
+
+const getMessageBranchKey = (message: MessageBranch): string =>
   JSON.stringify([message.threadId, message.parentId, message.role])
 
-const getMessageBranches = (messages: Message[]): Map<string, Message[]> => {
+const getMessageBranches = (messages: MessageBranch[]): Map<string, MessageBranch[]> => {
   // This render-local index avoids scanning all history once for every visible row.
-  const branches = new Map<string, Message[]>()
+  const branches = new Map<string, MessageBranch[]>()
   messages.forEach((message) => {
     if (message.kind === "notice") return
     const key = getMessageBranchKey(message)
@@ -218,6 +232,21 @@ const getMessageBranches = (messages: Message[]): Map<string, Message[]> => {
   })
 
   return branches
+}
+
+const getHistoryJumpLabel = (count: number, hasLatestPage: boolean, locale: Locale): string => {
+  if (hasLatestPage || count === 0) return t("Back to latest messages", {}, locale)
+  if (count === 1) return t("New message count", { count }, locale)
+
+  return t("New messages count", { count }, locale)
+}
+
+const getVirtualStart = (count: number, visibleCount: number, index: number, atBottom: boolean): number => {
+  if (count <= 20) return 0
+  const lastStart = Math.max(0, count - visibleCount)
+  if (atBottom) return lastStart
+
+  return Math.min(lastStart, Math.max(0, index - 4))
 }
 
 const getTimelineOffsets = (timeline: Array<{ id: string }>, heights: Record<string, number>): number[] => {
@@ -296,6 +325,7 @@ export const VirtualMessageList = ({
   routines = [],
   routineRuns = [],
   allMessages = sourceMessages,
+  branchOptions,
   flatHistory = false,
   onSwitchBranch,
   onRetry,
@@ -305,13 +335,17 @@ export const VirtualMessageList = ({
   showActivityStop = true,
   header,
   timelineCards = emptyTimelineCards,
+  hasOlderHistory = false,
+  loadingOlderHistory = false,
+  onLoadOlderHistory,
+  onLatestHistory,
 }: VirtualMessageListProps) => {
   // Rows keep stable callbacks so an unchanged message is not rendered again when another one streams.
   const latestCallbacks = useRef({ onSwitchBranch, onRetry, onEdit, onCancel })
   latestCallbacks.current = { onSwitchBranch, onRetry, onEdit, onCancel }
   const rowCallbacks = useMemo(
     () => ({
-      onSwitchBranch: (message: Message, siblings: Array<Message>, index: number) =>
+      onSwitchBranch: (message: Message, siblings: Array<MessageBranch>, index: number) =>
         latestCallbacks.current.onSwitchBranch(message, siblings, index),
       onRetry: (runId: Id) => latestCallbacks.current.onRetry(runId),
       onEdit: ((...args) => latestCallbacks.current.onEdit?.(...args)) as EditMessage,
@@ -338,8 +372,15 @@ export const VirtualMessageList = ({
   const runsById = useMemo(() => new Map(runs.map((run) => [run.id, run])), [runs])
   const hasRoutineRuns = useMemo(() => runs.some(isRoutineRun), [runs])
   const branches = useMemo(
-    () => (flatHistory ? new Map<string, Message[]>() : getMessageBranches(allMessages)),
-    [allMessages, flatHistory],
+    () =>
+      flatHistory
+        ? new Map<string, MessageBranch[]>()
+        : getMessageBranches(
+            Array.from(
+              new Map([...(branchOptions ?? []), ...allMessages].map((message) => [message.id, message])).values(),
+            ),
+          ),
+    [allMessages, branchOptions, flatHistory],
   )
   const routineRunHeaderByMessage = useMemo(() => {
     const routineRunsById = new Map(routineRuns.map((routineRun) => [routineRun.id, routineRun]))
@@ -363,6 +404,8 @@ export const VirtualMessageList = ({
   }, [runs, routineRuns, routines])
   const [scrollTop, setScrollTop] = useState(0)
   const [rowHeights, setRowHeights] = useState<Record<string, number>>({})
+  const [windowReady, setWindowReady] = useState(false)
+  const prependAnchor = useRef<{ id: string; top: number; firstId: string | undefined } | null>(null)
   const scrollRef = useRef<HTMLElement>(null)
   const spacerRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -426,7 +469,13 @@ export const VirtualMessageList = ({
     ]
     return Array.from(entries).sort((a, b) => a.createdAt - b.createdAt)
   }, [messages, timelineCards])
-  const isVirtualized = timeline.length > 100
+  const isVirtualized = timeline.length > 20
+  useEffect(() => {
+    if (!isVirtualized || windowReady) return
+    // Paint the latest viewport first; mount the offscreen rows in a separate task.
+    const frame = requestAnimationFrame(() => setWindowReady(true))
+    return () => cancelAnimationFrame(frame)
+  }, [isVirtualized, windowReady])
   const messageTargetIndex =
     focusMessage && focusMessage !== focusedMessage.current
       ? timeline.findIndex((entry) => entry.id === focusMessage.messageId)
@@ -496,9 +545,10 @@ export const VirtualMessageList = ({
     observedMessages.current = messages
     if (followBottom.current) return
     const previousIds = new Set(previous.map((message) => message.id))
-    const added = messages.filter((message) => !previousIds.has(message.id)).length
-    const reply = messages.at(-1)
     const oldReply = previous.at(-1)
+    const lastKnown = messages.findIndex((message) => message.id === oldReply?.id)
+    const added = messages.slice(lastKnown + 1).filter((message) => !previousIds.has(message.id)).length
+    const reply = messages.at(-1)
     if (added || reply?.text !== oldReply?.text || reply?.status !== oldReply?.status)
       setUnseenCount((count) => Math.max(1, count + added))
   }, [messages])
@@ -545,7 +595,7 @@ export const VirtualMessageList = ({
       observer.disconnect()
     }
   }, [measureRowOnNextFrame])
-  const visibleCount = 34
+  const visibleCount = !windowReady && followBottom.current ? 8 : 16
   const totalHeight = rowOffsets.at(-1) ?? 0
   const targetIndex = focusApproval
     ? timeline.findIndex((entry) =>
@@ -555,11 +605,68 @@ export const VirtualMessageList = ({
   const revealTarget = targetIndex >= 0 && focusApproval?.request !== focusedRequest.current
   const firstVisibleIndex = getTimelineIndex(rowOffsets, Math.max(0, scrollTop - estimatedRowHeight * 4))
   const selectedIndex = messageTargetIndex >= 0 ? messageTargetIndex : targetIndex
-  const revealIndex = messageTargetIndex >= 0 || revealTarget ? selectedIndex : firstVisibleIndex
-  const start =
-    timeline.length > 100 ? Math.min(Math.max(0, timeline.length - visibleCount), Math.max(0, revealIndex - 4)) : 0
-  const end = timeline.length > 100 ? Math.min(timeline.length, start + visibleCount) : timeline.length
+  const prepended = prependAnchor.current && prependAnchor.current.firstId !== messages[0]?.id
+  const anchorIndex = prepended ? timeline.findIndex((entry) => entry.id === prependAnchor.current?.id) : -1
+  const readingIndex = anchorIndex >= 0 ? anchorIndex : firstVisibleIndex
+  const revealIndex = messageTargetIndex >= 0 || revealTarget ? selectedIndex : readingIndex
+  const start = getVirtualStart(
+    timeline.length,
+    visibleCount,
+    revealIndex,
+    followBottom.current && !revealTarget && messageTargetIndex < 0,
+  )
+  const end = isVirtualized ? Math.min(timeline.length, start + visibleCount) : timeline.length
   const visible = timeline.slice(start, end)
+
+  useLayoutEffect(() => {
+    const anchor = prependAnchor.current
+    if (!anchor || anchor.firstId === messages[0]?.id) return
+    const list = scrollRef.current
+    const row = Array.from(list?.querySelectorAll<HTMLElement>("[data-message-row]") ?? []).find(
+      (element) => element.dataset.messageRow === anchor.id,
+    )
+    if (!list || !row) return
+
+    const element = getHistoryAnchorElement(row)
+    const delta = element.getBoundingClientRect().top - list.getBoundingClientRect().top - anchor.top
+    list.scrollTop += delta
+    programmaticTop.current = { top: list.scrollTop, viewportHeight: list.clientHeight }
+    readingAnchor.current = { element, top: anchor.top, scrollTop: list.scrollTop }
+    prependAnchor.current = null
+    setScrollTop(list.scrollTop)
+  }, [messages])
+
+  const loadOlder = (): void => {
+    const list = scrollRef.current
+    if (!list || !hasOlderHistory || loadingOlderHistory || !onLoadOlderHistory || prependAnchor.current) return
+    const viewport = list.getBoundingClientRect()
+    if (!viewport.height) return
+    const row = Array.from(list.querySelectorAll<HTMLElement>("[data-message-row]")).find((element) => {
+      const bounds = element.getBoundingClientRect()
+      return bounds.bottom > viewport.top && bounds.top < viewport.bottom
+    })
+    if (!row) {
+      // A scroll can precede React's virtual-window commit; anchor the rows in the new viewport.
+      requestAnimationFrame(loadOlder)
+      return
+    }
+
+    followBottom.current = false
+    prependAnchor.current = {
+      id: row.dataset.messageRow ?? "",
+      // Anchor the message body: a prepended day divider can move within its row.
+      top: getHistoryAnchorElement(row).getBoundingClientRect().top - list.getBoundingClientRect().top,
+      firstId: messages[0]?.id,
+    }
+    void onLoadOlderHistory().catch(() => {
+      prependAnchor.current = null
+    })
+  }
+
+  useLayoutEffect(() => {
+    // A fast response may finish before React commits the prepended rows; clear only after layout.
+    if (!loadingOlderHistory && prependAnchor.current?.firstId === messages[0]?.id) prependAnchor.current = null
+  }, [loadingOlderHistory, messages])
 
   useLayoutEffect(() => {
     if (!focusApproval || targetIndex < 0 || focusedRequest.current === focusApproval.request) return
@@ -573,11 +680,11 @@ export const VirtualMessageList = ({
     readingAnchor.current = null
     pendingReveal.current = null
     setAwayFromBottom(true)
-    if (timeline.length > 100) list.scrollTop = rowOffsets[targetIndex] ?? 0
+    if (isVirtualized) list.scrollTop = rowOffsets[targetIndex] ?? 0
     card.scrollIntoView?.({ block: "center", behavior: "instant" })
     card.focus({ preventScroll: true })
     setScrollTop(list.scrollTop)
-  }, [focusApproval, targetIndex, timeline.length, rowOffsets])
+  }, [focusApproval, targetIndex, isVirtualized, rowOffsets])
 
   useLayoutEffect(() => {
     if (!focusMessage || messageTargetIndex < 0) return
@@ -651,14 +758,20 @@ export const VirtualMessageList = ({
           setAwayFromBottom(!atBottom)
           if (atBottom) setUnseenCount(0)
           setScrollTop(list.scrollTop)
+          if (list.scrollTop < 120 && !atBottom) loadOlder()
         }}
       >
+        {hasOlderHistory && (
+          <button type="button" className="history-load-older" disabled={loadingOlderHistory} onClick={loadOlder}>
+            {t(loadingOlderHistory ? "Loading older messages…" : "Load older messages")}
+          </button>
+        )}
         {header}
-        <div ref={spacerRef} style={timeline.length > 100 ? { height: totalHeight, position: "relative" } : undefined}>
+        <div ref={spacerRef} style={isVirtualized ? { height: totalHeight, position: "relative" } : undefined}>
           <div
             ref={contentRef}
             style={
-              timeline.length > 100
+              isVirtualized
                 ? // Offset with `top`, not a transform: sticky card headers resolve against the untransformed
                   // layout and would otherwise be pushed to the bottom of their card.
                   { position: "absolute", top: rowOffsets[start] ?? 0, right: 0, left: 0 }
@@ -786,7 +899,7 @@ export const VirtualMessageList = ({
           </div>
         </div>
       </section>
-      {awayFromBottom && (
+      {(awayFromBottom || onLatestHistory) && (
         <button
           type="button"
           className="chat-scroll-bottom"
@@ -796,10 +909,12 @@ export const VirtualMessageList = ({
             readingAnchor.current = null
             pendingReveal.current = null
             followBottom.current = true
-            scrollToEnd(list, programmaticTop)
-            setScrollTop(list.scrollTop)
             setAwayFromBottom(false)
             setUnseenCount(0)
+            if (onLatestHistory) return onLatestHistory()
+
+            scrollToEnd(list, programmaticTop)
+            setScrollTop(list.scrollTop)
           }}
         >
           <svg
@@ -813,11 +928,7 @@ export const VirtualMessageList = ({
           >
             <path d="M12 4v16m-6-6 6 6 6-6" />
           </svg>
-          <span aria-live="polite">
-            {unseenCount > 0
-              ? `${unseenCount} ${unseenCount === 1 ? "nova mensagem" : "novas mensagens"}`
-              : "Voltar ao fim"}
-          </span>
+          <span aria-live="polite">{getHistoryJumpLabel(unseenCount, Boolean(onLatestHistory), locale)}</span>
         </button>
       )}
     </div>
@@ -915,9 +1026,9 @@ const MessageBubbleRow = ({
   routinePrompt: boolean
   routineHeader?: string | undefined
   api?: UiApi
-  siblings: Array<Message>
+  siblings: Array<MessageBranch>
   branchIndex: number
-  onSwitchBranch: (message: Message, siblings: Array<Message>, index: number) => void
+  onSwitchBranch: (message: Message, siblings: Array<MessageBranch>, index: number) => void
   onRetry: (runId: Id) => Promise<void>
   onEdit?: EditMessage | undefined
   onCancel?: ((runId: Id) => Promise<void>) | undefined
@@ -1477,6 +1588,10 @@ export const ChatPanel = ({
   groupMembers = [],
   channelMode = false,
   historyLoading = false,
+  hasOlderHistory = false,
+  loadingOlderHistory = false,
+  onLoadOlderHistory,
+  onLatestHistory,
   onEditGroup = () => {},
   browserRuns = [],
   onInviteToGroup,
@@ -1484,6 +1599,7 @@ export const ChatPanel = ({
   focusMessage,
   thread,
   activePath,
+  branchOptions,
   goalRefreshRequest = 0,
   onGoalChange,
   bot,
@@ -1805,12 +1921,17 @@ export const ChatPanel = ({
                       focusMessage={focusMessage}
                       key={composerKey ?? thread.id}
                       messages={visibleMessages}
+                      hasOlderHistory={hasOlderHistory}
+                      loadingOlderHistory={loadingOlderHistory}
+                      onLoadOlderHistory={onLoadOlderHistory}
+                      onLatestHistory={onLatestHistory}
                       api={api}
                       runs={runs}
                       mainThread={thread.kind === "main"}
                       routines={routines}
                       routineRuns={routineRuns}
                       allMessages={messages}
+                      branchOptions={branchOptions}
                       flatHistory={Boolean(group)}
                       onSwitchBranch={(_message, siblings, index) => {
                         const next = siblings[index]

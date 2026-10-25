@@ -2,6 +2,7 @@ import { constants, Database, type SQLQueryBindings } from "bun:sqlite"
 import { getRefEvent } from "../kernel/event-reference"
 import type { TranscriptRef } from "../kernel/transcript-events"
 import { getRecoveryCandidates, type RecoveryCursor } from "../notify/recovery-candidates"
+import { getMessageHistoryContext } from "./history-context"
 import { getMessageFromRow } from "./message-row"
 import type { MessageReferences, ReadQuery } from "./reader"
 import type { RawMessage } from "./workspace-activity"
@@ -19,6 +20,8 @@ type ReadInput = {
         bindings: SQLQueryBindings[]
         activeLeafId?: string | null
         reverse?: boolean
+        pageLimit?: number
+        context?: { threadId: string; messageId: string }
         chunkedStrings?: boolean
       }
     }
@@ -75,9 +78,18 @@ export const runStoreRead = async (): Promise<void> => {
     // Private accumulators bound peak memory; historical JSON never reaches the main loop as an object.
     const messages: string[] = []
     const references: MessageReferences[] = []
+    const pageIds: string[] = []
     let bytes = 0
+    let hasMore = false
+    let oldestId: string | null = null
     for (const row of statement.iterate(...input.query.bindings)) {
+      if (input.query.pageLimit !== undefined && messages.length >= input.query.pageLimit) {
+        hasMore = true
+        break
+      }
       const message = getMessageFromRow(row as RawMessage)
+      oldestId = message.id
+      if (input.query.context) pageIds.push(message.id)
       const serialized = JSON.stringify(message)
       bytes += Buffer.byteLength(serialized)
       if (bytes > 64 * 1024 * 1024) throw new Error("STORE_READ_LIMIT")
@@ -95,8 +107,13 @@ export const runStoreRead = async (): Promise<void> => {
       if (attachmentIds.length) references.push({ threadId: message.threadId, messageId: message.id, attachmentIds })
     }
     const ordered = input.query.reverse ? messages.reverse() : messages
+    const pagination =
+      input.query.pageLimit === undefined ? "" : `,"before":${JSON.stringify(hasMore ? oldestId : null)}`
+    const context = input.query.context
+      ? `,"context":${JSON.stringify(getMessageHistoryContext(database, input.query.context.threadId, input.query.activeLeafId ?? null, input.query.context.messageId, pageIds))}`
+      : ""
     const body = new TextEncoder().encode(
-      `{"messages":[${ordered.join(",")}],"activeLeafId":${JSON.stringify(input.query.activeLeafId ?? null)}}`,
+      `{"messages":[${ordered.join(",")}],"activeLeafId":${JSON.stringify(input.query.activeLeafId ?? null)}${pagination}${context}}`,
     )
     const referenceLines = references.map((reference) => JSON.stringify(reference))
     const header = new TextEncoder().encode(referenceLines.length ? `${referenceLines.join("\n")}\n` : "")

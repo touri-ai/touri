@@ -59,6 +59,7 @@ export const GroupSidebar = memo(
     channelWorking,
     selectedThreadId,
     onSelect,
+    onPrefetch,
     onCreate,
     onSearch,
     onEdit,
@@ -78,6 +79,7 @@ export const GroupSidebar = memo(
     attentionThreadIds?: ReadonlySet<string>
     selectedThreadId: string | null
     onSelect: (id: string) => void
+    onPrefetch?: ((id: string) => void) | undefined
     onCreate: () => void
     onSearch?: (() => void) | undefined
     onEdit: (group: BotGroup) => void
@@ -171,6 +173,7 @@ export const GroupSidebar = memo(
               selected={isSelected}
               selectedThreadId={isSelected ? selectedThreadId : null}
               onSelect={selectThread}
+              onPrefetch={onPrefetch}
               onEdit={onEdit}
               onNewThread={onNewThread}
               onDelete={onDelete}
@@ -247,6 +250,7 @@ const GroupSidebarEntry = memo(
     selected,
     selectedThreadId,
     onSelect,
+    onPrefetch,
     onEdit,
     onNewThread,
     onDelete,
@@ -266,6 +270,7 @@ const GroupSidebarEntry = memo(
     selected: boolean
     selectedThreadId: string | null
     onSelect: (id: string) => void
+    onPrefetch?: ((id: string) => void) | undefined
     onEdit: (group: BotGroup) => void
     onNewThread: (group: BotGroup) => void
     onDelete?: ((groupId: string) => Promise<void>) | undefined
@@ -286,6 +291,12 @@ const GroupSidebarEntry = memo(
     return (
       <div className={`group-sidebar-item ${selected ? "selected" : ""}`}>
         <SidebarRow
+          onPointerEnter={() => {
+            if (firstThreadId) onPrefetch?.(firstThreadId)
+          }}
+          onFocus={() => {
+            if (firstThreadId) onPrefetch?.(firstThreadId)
+          }}
           selected={selected}
           rowAttention={needsAttention ? "waiting" : undefined}
           className="group-select"

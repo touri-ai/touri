@@ -52,7 +52,7 @@ import { getDefaultMaxConcurrentRuns } from "../runtime/concurrency"
 import { touriVersion } from "../version"
 import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemory } from "../vm/resources"
 import { cleanupBotHome, updateBotHome, writeBotHome } from "./bot-home"
-import { getHistoryQuery } from "./history-query"
+import { getHistoryPage, getHistoryQuery } from "./history-query"
 import { getIntegrationSender } from "./integration-sender"
 import { getMessageFromRow as asMessage } from "./message-row"
 import { getBotModel, MODEL_VALIDATION_ERROR } from "./model"
@@ -1900,7 +1900,12 @@ export const init = async (
           const thread = getThread({ threadId: params.id ?? "" })
           if (!thread) return errorResponse(404, "NOT_FOUND", "Thread not found")
           const result = await reader.getMessages(
-            getHistoryQuery(thread.id, thread.activeLeafId, query.all === "true"),
+            getHistoryQuery(
+              thread.id,
+              thread.activeLeafId,
+              query.all === "true",
+              getHistoryPage(query, thread.groupId ? null : thread.activeLeafId),
+            ),
             signal,
           )
           for (const reference of result.references) {

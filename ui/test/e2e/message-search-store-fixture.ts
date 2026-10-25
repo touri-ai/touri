@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite"
 import { join } from "node:path"
+import { refreshMessageSearch } from "../../../sidecar/src/kernel/message-search"
 
 const [directory, threadId, scenario] = process.argv.slice(2)
 if (!directory || !threadId) throw new Error("Synthetic message history requires a conversation")
@@ -28,6 +29,8 @@ database.transaction(() => {
         message.createdAt,
         message.createdAt,
       )
+    // The fixture uses direct inserts; real message writes maintain this index transactionally.
+    refreshMessageSearch(database, { threadId, id: message.id, text: message.text })
   })
   database
     .query(
@@ -46,3 +49,6 @@ database.transaction(() => {
     .run(scenario === "branch" ? "real-search-other-branch" : "real-search-239", threadId)
 })()
 database.close()
+const auth = new Database(join(directory, "auth.db"))
+auth.query("UPDATE people SET name = 'Pessoa demo' WHERE id = 'owner'").run()
+auth.close()

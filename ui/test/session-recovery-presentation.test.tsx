@@ -80,8 +80,14 @@ const getRun = (overrides: Partial<Run> = {}): Run =>
     },
     overrides,
   )
-const getView = (messages: Message[], runs: Run[]) => (
-  <VirtualMessageList messages={messages} runs={runs} onSwitchBranch={vi.fn()} onRetry={vi.fn()} />
+const getView = (messages: Message[], runs: Run[], focusMessageId?: string) => (
+  <VirtualMessageList
+    messages={messages}
+    runs={runs}
+    focusMessage={focusMessageId ? { messageId: focusMessageId, request: 1 } : undefined}
+    onSwitchBranch={vi.fn()}
+    onRetry={vi.fn()}
+  />
 )
 
 it.each(["pt-BR", "en"] as const)(
@@ -235,7 +241,7 @@ it("leaves distant diagnostics visible instead of traversing growing history", (
     getMessage({ id: `user-${index}`, role: "user", runId: null, text: `Nota ${index}`, parts: [], createdAt: 2 }),
   )
 
-  render(getView([getMarker()].concat(intervening, getMessage()), [getRun()]))
+  render(getView([getMarker()].concat(intervening, getMessage()), [getRun()], "marker"))
 
   expect(screen.getByRole("note")).toHaveTextContent(sessionRecoveryDiagnosticText)
 })

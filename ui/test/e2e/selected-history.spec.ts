@@ -17,7 +17,10 @@ for (const { channel, width } of scenarios) {
   test(`selected history renders before held run metadata in ${channel ? "channel" : "bot"} at ${width}px`, async ({
     page,
   }, info) => {
-    const server = await createServerModeFixture({ port: 18867 })
+    const server = await createServerModeFixture({
+      port: Number(process.env.HISTORY_EVIDENCE_PORT ?? 18867),
+      directCli: true,
+    })
     servers.add(server)
     const settings = await server.api("/settings")
     const { bot } = await server.api("/bots", "POST", {

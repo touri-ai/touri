@@ -550,11 +550,11 @@ const AppContent = ({ kernel }: AppProps) => {
     (target: ApprovalTarget): void => {
       const owner = data.threads.find((thread) => thread.id === target.threadId)
       if (!owner) return
-      actions.selectLocation({ bot: owner.botId, thread: owner.id })
+      actions.selectThread(owner.id, { approvalId: target.approvalId })
       setApprovalFocus((current) => ({ ...target, request: (current?.request ?? 0) + 1 }))
       setRoute({ section: "bots", screen: "chat" })
     },
-    [data.threads, actions.selectLocation, setRoute],
+    [data.threads, actions.selectThread, setRoute],
   )
   const openNeedsYou = useCallback(
     (item: NotificationRecord): void => {
@@ -720,6 +720,7 @@ const AppContent = ({ kernel }: AppProps) => {
     thread: selectedThread,
     group: selectedGroup,
     messages: selectedMessages,
+    focusMessageId: data.messageFocus?.messageId,
     runs: data.runs,
     routineRuns: data.routineRuns,
     routines: data.routines,
@@ -738,6 +739,8 @@ const AppContent = ({ kernel }: AppProps) => {
     }
     if (
       selectedGroup ||
+      focus.approvalId ||
+      (data.historyContext?.messageId === focus.messageId && data.historyContext.onActivePath) ||
       activeMessagePath(data.messages, selectedThread?.activeLeafId ?? null).some(
         (message) => message.id === focus.messageId,
       )
@@ -750,6 +753,7 @@ const AppContent = ({ kernel }: AppProps) => {
   }, [
     data.messageFocus,
     data.historyThreadId,
+    data.historyContext,
     data.messages,
     selectedGroup,
     selectedThread?.activeLeafId,
@@ -1288,6 +1292,7 @@ const AppContent = ({ kernel }: AppProps) => {
             onProject={() => openModal("project")}
             onImport={() => openModal("import")}
             onSelect={actions.selectBot}
+            onPrefetchThread={actions.prefetchThread}
             onSelectThread={(threadId) => actions.selectThread(threadId, { readRoutineGroup: true })}
             onReviewApproval={reviewApproval}
             onNewThread={() => void actions.createThread()}
@@ -1425,6 +1430,14 @@ const AppContent = ({ kernel }: AppProps) => {
                         <RecoveryTasksContext.Provider value={interruptedWork.tasks}>
                           <ChatPanel
                             retry={retryChatPanel}
+                            hasOlderHistory={Boolean(data.historyBefore)}
+                            loadingOlderHistory={data.loadingOlderHistory}
+                            onLoadOlderHistory={actions.loadOlderMessages}
+                            onLatestHistory={
+                              data.historyFocusId && selectedThread
+                                ? () => actions.selectThread(selectedThread.id)
+                                : undefined
+                            }
                             historyLoading={
                               !data.threadCreation &&
                               (selectedThread ? data.historyThreadId !== selectedThread.id : !data.loaded)
@@ -1449,13 +1462,16 @@ const AppContent = ({ kernel }: AppProps) => {
                               approvalFocus?.threadId === selectedThread?.id ? (approvalFocus ?? undefined) : undefined
                             }
                             focusMessage={
-                              data.historyThreadId === selectedThread?.id ? (data.messageFocus ?? undefined) : undefined
+                              data.historyThreadId === selectedThread?.id && !data.messageFocus?.approvalId
+                                ? (data.messageFocus ?? undefined)
+                                : undefined
                             }
                             panelOpen={panelOpen}
                             onTogglePanel={() => setPanelOpen(!panelOpen)}
                             machine={data.machines.find((state) => state.botId === selectedBot?.id)}
                             thread={selectedThread}
                             activePath={activePath}
+                            branchOptions={data.historyContext?.siblings}
                             goalRefreshRequest={goalRefreshRequest}
                             onGoalChange={notifyGoalChange}
                             composerKey={data.composerKey ?? undefined}
@@ -1901,6 +1917,7 @@ export const getGoalSelection = ({
   thread,
   group,
   messages,
+  focusMessageId,
   runs,
   routineRuns,
   routines,
@@ -1909,11 +1926,12 @@ export const getGoalSelection = ({
   thread: Thread | null
   group: BotGroup | null
   messages: Message[]
+  focusMessageId?: Id | undefined
   runs: Run[]
   routineRuns: RoutineRun[]
   routines: Routine[]
 }) => {
-  const activePath = thread && !group ? activeMessagePath(messages, thread.activeLeafId) : messages
+  const activePath = thread && !group ? activeMessagePath(messages, focusMessageId ?? thread.activeLeafId) : messages
   const hasGoalThread =
     bot && thread?.botId === bot.id && !group && !isRoutineConversation({ thread, runs, routineRuns, routines })
   if (!hasGoalThread) return { activePath, goalThread: null, goalRequest: undefined, goalBusy: false }

@@ -1219,7 +1219,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
               (!query.botId || thread.botId === query.botId) &&
               tokens.every((token) => getNormalizedTitle(thread.title).includes(getNormalizedTitle(token))),
           )
-          .slice(0, 50)
+          .slice(0, 200)
           .map((thread) => ({
             id: thread.id,
             botId: thread.botId,
@@ -1369,11 +1369,11 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       ) as ApiRoutes[typeof route]["res"]
     }
     if (key === "GET /threads/:id/messages") {
-      const threadMessages = messages.filter((message) => message.threadId === pathValues.id)
-      return {
-        messages: threadMessages,
-        activeLeafId: findThread(pathValues.id ?? "")?.activeLeafId ?? null,
-      } as ApiRoutes[typeof route]["res"]
+      return getMockHistoryPage(
+        messages,
+        findThread(pathValues.id ?? ""),
+        input as ApiRoutes["GET /threads/:id/messages"]["req"],
+      ) as ApiRoutes[typeof route]["res"]
     }
     if (key === "GET /runs")
       return {
@@ -1421,10 +1421,19 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       return { goal: next } as ApiRoutes[typeof route]["res"]
     }
     if (key === "POST /threads/:id/prepare") return { preparing: true }
-    if (key === "GET /threads/:id/runs")
+    if (key === "GET /threads/:id/runs") {
+      const page = input as ApiRoutes["GET /threads/:id/runs"]["req"]
+      const selected =
+        page.limit === undefined ? null : getMockHistoryPage(messages, findThread(pathValues.id ?? ""), page).messages
+      const ids = getMockRunMessageIds(page.messageIds, selected)
       return {
-        runs: [...runs.values()].filter((run) => run.threadId === pathValues.id),
+        runs: [...runs.values()].filter(
+          (run) =>
+            run.threadId === pathValues.id &&
+            (!ids || ids.has(run.requestMessageId ?? "") || ids.has(run.replyMessageId ?? "")),
+        ),
       } as ApiRoutes[typeof route]["res"]
+    }
     // r8 composer: mirror the existing native attachment registration contract.
     if (key === "POST /attachments") {
       const request = input as ApiRoutes["POST /attachments"]["req"]
@@ -1462,9 +1471,13 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       run.replyMessageId = reply.id
       messages.push(userMessage, reply)
       runs.set(run.id, run)
+      const storedThread = findThread(pathValues.id ?? "")
+      const updatedThread = storedThread ? { ...storedThread, activeLeafId: reply.id, updatedAt: now() } : undefined
+      if (updatedThread) threads = threads.map((thread) => (thread.id === updatedThread.id ? updatedThread : thread))
       emit({ type: "message.created", message: userMessage })
       emit({ type: "message.created", message: reply })
       emit({ type: "run.updated", run })
+      if (updatedThread) emit({ type: "thread.updated", thread: updatedThread })
       const deltas = [
         "Coloquei sua solicitação na fila local. ",
         "Vou manter o contexto da conversa, ",
@@ -1916,4 +1929,98 @@ function getMockTelegramStatus(enabled: boolean, tokenSaved: boolean): TelegramI
   if (!tokenSaved) return { state: "error", username: null, error: "Salve o token do bot do Telegram." }
 
   return { state: "connected", username: "touri_mock_bot", error: null }
+}
+
+const getMockHistoryPage = (
+  messages: Message[],
+  thread: Thread | undefined,
+  page: ApiRoutes["GET /threads/:id/messages"]["req"],
+): ApiRoutes["GET /threads/:id/messages"]["res"] => {
+  const rows = messages.filter((message) => message.threadId === thread?.id)
+  if (page.limit === undefined) return { messages: rows, activeLeafId: thread?.activeLeafId ?? null }
+  const around = page.around ?? (thread?.groupId ? null : thread?.activeLeafId)
+  const focused = around ? rows.findIndex((message) => message.id === around) : -1
+  const path = thread?.groupId || !around ? rows : getMockHistoryPath(rows, around)
+  const end =
+    around && focused < 0
+      ? 0
+      : getMockPageEnd(
+          path,
+          page.before,
+          path.findIndex((message) => message.id === around),
+        )
+  const start = page.limit === undefined ? 0 : Math.max(0, end - page.limit)
+  const selected = path.slice(start, end)
+
+  return {
+    messages: selected,
+    activeLeafId: thread?.activeLeafId ?? null,
+    ...(page.context && around
+      ? { context: getMockHistoryContext(rows, thread?.activeLeafId ?? null, around, selected) }
+      : {}),
+    ...(page.limit === undefined ? {} : { before: start > 0 ? (selected[0]?.id ?? null) : null }),
+  }
+}
+
+const getMockPageEnd = (messages: Message[], before: string | undefined, focused: number): number => {
+  if (before)
+    return Math.max(
+      0,
+      messages.findIndex((message) => message.id === before),
+    )
+  if (focused >= 0) return focused + 1
+
+  return messages.length
+}
+
+const getMockRunMessageIds = (messageIds: string | undefined, messages: Message[] | null): Set<string> | null => {
+  if (messageIds) return new Set(messageIds.split(","))
+  if (messages) return new Set(messages.map((message) => message.id))
+
+  return null
+}
+
+const getMockHistoryContext = (messages: Message[], leafId: string | null, messageId: string, page: Message[]) => {
+  const byId = new Map(messages.map((message) => [message.id, message]))
+  const target = byId.get(messageId)
+  const ancestors = new Set<string>()
+  let current = leafId
+  while (current && !ancestors.has(current)) {
+    ancestors.add(current)
+    current = byId.get(current)?.parentId ?? null
+  }
+  return {
+    messageId,
+    onActivePath: ancestors.has(messageId),
+    siblings: target
+      ? messages
+          .filter(
+            (message) =>
+              page.some((target) => message.parentId === target.parentId && message.role === target.role) &&
+              message.kind !== "notice",
+          )
+          .slice(0, 200)
+          .map(({ id, threadId, parentId, role, kind, createdAt }) => ({
+            id,
+            threadId,
+            parentId,
+            role,
+            kind,
+            createdAt,
+          }))
+      : [],
+  }
+}
+
+const getMockHistoryPath = (messages: Message[], leafId: string): Message[] => {
+  const byId = new Map(messages.map((message) => [message.id, message]))
+  const path = new Map<string, Message>()
+  let id: string | null = leafId
+  while (id && !path.has(id)) {
+    const message = byId.get(id)
+    if (!message) break
+    path.set(id, message)
+    id = message.parentId
+  }
+  return Array.from(path.values()).reverse()
 }

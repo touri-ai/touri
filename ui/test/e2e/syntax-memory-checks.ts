@@ -26,7 +26,11 @@ viewports.forEach((viewport) => {
     await expect(block.getByRole("status")).toHaveText("Código copiado")
     await page.evaluate(() => document.fonts.ready)
     const screenshot = testInfo.outputPath(`${phase}-${viewport.width}.png`)
-    await page.screenshot({ path: screenshot })
+    await page.screenshot({
+      path: screenshot,
+      mask: [page.locator(".model-picker-trigger-label")],
+      maskColor: "#dddde2",
+    })
     await testInfo.attach(`${phase}-${viewport.width}`, { path: screenshot, contentType: "image/png" })
 
     const cdp = await context.newCDPSession(page)

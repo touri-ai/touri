@@ -8,7 +8,7 @@ const getCards = (height: number) =>
   Array.from({ length: 101 }, (_, index) => ({
     id: `card-${index}`,
     createdAt: index,
-    content: <div data-height={index === 0 ? height : 100} />,
+    content: <div data-height={index === 100 ? height : 100} />,
   }))
 
 const installMeasurements = () => {
@@ -62,6 +62,22 @@ it("the conversation history accepts keyboard focus for scrolling", () => {
   expect(history).toHaveFocus()
 })
 
+it("offers the latest page even when an older search page is at its bottom", () => {
+  const onLatestHistory = vi.fn()
+  const view = render(
+    <VirtualMessageList
+      messages={[]}
+      onLatestHistory={onLatestHistory}
+      onSwitchBranch={() => undefined}
+      onRetry={async () => undefined}
+    />,
+  )
+
+  fireEvent.click(view.getByRole("button", { name: "Voltar ao fim" }))
+
+  expect(onLatestHistory).toHaveBeenCalledTimes(1)
+})
+
 it.each([false, true])("updates virtual offsets when a row grows and collapses (strict: %s)", async (strict) => {
   const notifyResize = installMeasurements()
   const getList = (height: number) => (
@@ -74,8 +90,11 @@ it.each([false, true])("updates virtual offsets when a row grows and collapses (
   )
   const view = render(getList(100), strict ? { wrapper: StrictMode } : {})
   const spacer = view.getByTestId("virtual-message-list").firstElementChild
-  const originalHeight = 34 * 100 + 67 * 158
-  await waitFor(() => expect(spacer).toHaveStyle({ height: `${originalHeight}px` }))
+  await waitFor(() => {
+    const mountedCount = view.container.querySelectorAll("[data-message-row]").length
+    expect(spacer).toHaveStyle({ height: `${mountedCount * 100 + (101 - mountedCount) * 158}px` })
+  })
+  const originalHeight = Number.parseFloat((spacer as HTMLElement).style.height)
 
   view.rerender(getList(600))
   act(notifyResize)

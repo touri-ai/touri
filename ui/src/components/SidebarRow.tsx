@@ -36,6 +36,8 @@ export const SidebarRow = ({
   title,
   expanded,
   onClick,
+  onPointerEnter,
+  onFocus,
   onContextMenu,
 }: {
   selected: boolean
@@ -50,6 +52,8 @@ export const SidebarRow = ({
   title?: string | undefined
   expanded?: boolean | undefined
   onClick: () => void
+  onPointerEnter?: (() => void) | undefined
+  onFocus?: (() => void) | undefined
   onContextMenu?: (event: MouseEvent<HTMLButtonElement>) => void
 }) => (
   <div className={`sidebar-row ${rowClassName} ${selected ? "selected" : ""}`} data-attention={rowAttention}>
@@ -61,6 +65,8 @@ export const SidebarRow = ({
       aria-expanded={expanded}
       title={title}
       onClick={onClick}
+      onPointerEnter={onPointerEnter}
+      onFocus={onFocus}
       onContextMenu={onContextMenu}
     >
       <span className="sidebar-row-leading" aria-hidden="true">

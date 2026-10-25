@@ -3756,6 +3756,14 @@ a {
   padding-block: var(--space-16) 64px;
   overflow-anchor: none;
 }
+.history-load-older {
+  display: block;
+  min-height: 44px;
+  margin: 0 auto 12px;
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
 .chat-message-list .message-row {
   display: flow-root;
 }
