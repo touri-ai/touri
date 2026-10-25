@@ -117,7 +117,7 @@ interactionWidths.forEach((width) => {
 
     await page.keyboard.press("Enter")
 
-    await expect(menu.getByRole("menuitem", { name: "Nova conversa", exact: true })).toBeFocused()
+    await expect(menu.getByRole("menuitem", { name: "Avançado", exact: true })).toBeFocused()
     await expect(trigger).toHaveAttribute("aria-expanded", "true")
     expect(await getVisibleControlCount(row.locator(".bot-actions-menu"))).toBe(1)
 

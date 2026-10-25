@@ -310,6 +310,7 @@ export type PaletteDestination =
   | { kind: "bot-settings"; section: BotSettingsSectionId; settingId?: string }
   | { kind: "doctor"; settingId?: string }
   | { kind: "page"; page: TouriPage }
+  | { kind: "work-people" }
 
 export type SettingsIndexEntry = {
   id: string
@@ -373,7 +374,6 @@ export const settingsIndex = ({ hasBot }: { hasBot: boolean }): Array<SettingsIn
   ...[
     ...APP_SETTINGS_SECTIONS,
     API_MODELS_SETTINGS_SECTION,
-    WORK_SETTINGS_SECTION,
     ...(typeof window !== "undefined" && "__TAURI_INTERNALS__" in window ? [SERVER_SETTINGS_SECTION] : []),
   ].map((section) => ({
     id: `app-section:${section.id}`,
@@ -382,6 +382,13 @@ export const settingsIndex = ({ hasBot }: { hasBot: boolean }): Array<SettingsIn
     keywords: [...section.keywords, "preferências", "configurações"],
     destination: { kind: "app-settings", section: section.id } as const,
   })),
+  {
+    id: "app-section:work",
+    label: WORK_SETTINGS_SECTION.label,
+    detail: `${t("Work")} · ${WORK_SETTINGS_SECTION.description}`,
+    keywords: WORK_SETTINGS_SECTION.keywords,
+    destination: { kind: "work-people" },
+  },
   ...(hasBot
     ? BOT_SETTINGS_SECTIONS.map((section) => ({
         id: `bot-section:${section.id}`,

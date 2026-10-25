@@ -365,6 +365,24 @@ it("opens the Trabalho page, the Desempenho page and the projects dialog from th
   expect(await screen.findByRole("dialog", { name: /Conectar projeto/ })).toBeVisible()
 })
 
+it("opens People inside Work from search", async () => {
+  await start()
+
+  fireEvent.keyDown(await search("pessoas"), { key: "Enter" })
+  await closed()
+
+  expect(await screen.findByRole("heading", { name: "Trabalho", exact: true })).toBeVisible()
+  const sections = screen.getByRole("navigation", { name: "Seções de Trabalho" })
+  expect(within(sections).getByRole("button", { name: "Pessoas", exact: true })).toHaveAttribute("aria-pressed", "true")
+  expect(screen.queryByRole("dialog")).toBeNull()
+  fireEvent.click(within(sections).getByRole("button", { name: "Tarefas", exact: true }))
+
+  fireEvent.keyDown(await search("pessoas"), { key: "Enter" })
+  await closed()
+
+  expect(within(sections).getByRole("button", { name: "Pessoas", exact: true })).toHaveAttribute("aria-pressed", "true")
+})
+
 it.each(["doctor", "diagnostico", "verificar"])("indexes one localized diagnostics destination for %s", (query) => {
   const settings = settingsIndex({ hasBot: true })
   const index = buildPaletteIndex({ bots: [], threads: [], settings, hasBot: true })

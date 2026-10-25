@@ -213,6 +213,7 @@ const AppContent = ({ kernel }: AppProps) => {
   const [initialJob, setInitialJob] = useState<JobTemplate | null>(null)
   const [teamFollowup, setTeamFollowup] = useState<TeamFollowup | null>(null)
   const [settingsInitialSection, setSettingsInitialSection] = useState("appearance")
+  const [workPeopleRequest, setWorkPeopleRequest] = useState(0)
   const [settingFocus, setSettingFocus] = useState<string | null>(null)
   const [botSettingsSection, setBotSettingsSection] = useState<BotSettingsSectionId | undefined>(undefined)
   const [projectLinkBotId, setProjectLinkBotId] = useState<string | null>(null)
@@ -903,6 +904,12 @@ const AppContent = ({ kernel }: AppProps) => {
     setRoute({ section: "advanced", page: "cron", botId, ...(history ? { history } : {}) })
   }
   const openDestination = (destination: PaletteDestination): void => {
+    if (destination.kind === "work-people" || (destination.kind === "app-settings" && destination.section === "work")) {
+      closeModal()
+      setWorkPeopleRequest((request) => request + 1)
+      setRoute({ section: "advanced", page: "work" })
+      return
+    }
     if (destination.kind === "page") {
       setRoute({ section: "advanced", page: destination.page })
       return
@@ -1350,6 +1357,7 @@ const AppContent = ({ kernel }: AppProps) => {
               ) : section === "advanced" && advancedPage === "work" ? (
                 <WorkScreen
                   api={api}
+                  peopleRequest={workPeopleRequest}
                   runs={data.workRuns}
                   onStop={(id) => actions.cancelRun(id, "turn")}
                   bots={data.bots}

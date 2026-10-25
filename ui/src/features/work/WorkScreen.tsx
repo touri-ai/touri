@@ -17,6 +17,7 @@ const WorkAccessSettings = lazy(() =>
 
 export const WorkScreen = ({
   api,
+  peopleRequest = 0,
   runs,
   bots,
   threads,
@@ -25,6 +26,7 @@ export const WorkScreen = ({
   onStop,
 }: {
   api?: UiApi | undefined
+  peopleRequest?: number
   runs: Run[]
   bots: Bot[]
   threads: Thread[]
@@ -32,8 +34,14 @@ export const WorkScreen = ({
   onThread: (id: string) => void
   onStop?: (id: string) => Promise<void>
 }) => {
-  const [section, setSection] = useState<"tasks" | "people">("tasks")
-  const [hasVisitedPeople, setHasVisitedPeople] = useState(false)
+  const [section, setSection] = useState<"tasks" | "people">(peopleRequest > 0 ? "people" : "tasks")
+  const [hasVisitedPeople, setHasVisitedPeople] = useState(peopleRequest > 0)
+  useEffect(() => {
+    if (peopleRequest === 0) return
+
+    setHasVisitedPeople(true)
+    setSection("people")
+  }, [peopleRequest])
   const [now, setNow] = useState(Date.now)
   const [stoppingRunId, setStoppingRunId] = useState<string | null>(null)
   const [stopFailed, setStopFailed] = useState(false)

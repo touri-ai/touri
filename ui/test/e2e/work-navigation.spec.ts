@@ -117,3 +117,48 @@ for (const width of [1440, 390]) {
     })
   }
 }
+
+for (const width of [1440, 390]) {
+  test(`search opens People inside Work at ${width}px`, async ({ page, workServer: current }, info) => {
+    test.setTimeout(90_000)
+    const bot = seed.bots[0]
+    if (!bot) throw new Error("Missing bot fixture")
+    await current.api("/bots", "POST", { name: "Planejamento", provider: bot.provider })
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+    await page.goto(current.serverUrl)
+    await expect(page.getByRole("textbox", { name: "Mensagem para Planejamento" })).toBeVisible()
+    await page.keyboard.press("Control+k")
+    const search = page.getByRole("combobox", { name: "Buscar bots, conversas e configurações" })
+    await search.fill("pessoas")
+
+    await search.press("Enter")
+    await expect(search).toHaveCount(0)
+    await expect(page.getByRole("heading", { name: "Pessoas e dispositivos", exact: true })).toBeVisible()
+    const path = join(process.env.TOURI_E2E_EVIDENCE_DIR ?? info.outputDir, `people-search-${width}.png`)
+    await page.screenshot({ path, animations: "disabled" })
+    await info.attach("people-search", { path, contentType: "image/png" })
+
+    await expect(page.getByRole("heading", { name: "Trabalho", exact: true })).toBeVisible()
+    await expect(page.getByRole("dialog")).toHaveCount(0)
+    await expect(
+      page
+        .getByRole("navigation", { name: "Seções de Trabalho" })
+        .getByRole("button", { name: "Pessoas", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true")
+    await page
+      .getByRole("navigation", { name: "Seções de Trabalho" })
+      .getByRole("button", { name: "Tarefas", exact: true })
+      .click()
+
+    await page.keyboard.press("Control+k")
+    await search.fill("pessoas")
+    await search.press("Enter")
+
+    await expect(
+      page
+        .getByRole("navigation", { name: "Seções de Trabalho" })
+        .getByRole("button", { name: "Pessoas", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true")
+    await expect(page.getByRole("dialog")).toHaveCount(0)
+  })
+}

@@ -1783,6 +1783,8 @@ Rules for every WP:
 
 Work opens on the first click on its destination in the main Advanced navigation; it never expands
 a submenu. People lives inside Work, alongside Tasks, and is absent from the top-level navigation.
+Searching for People opens that section inside Work, including from Tasks;
+Preferences has no separate people-management pane.
 People loads on first selection and stays mounted when returning to Tasks, preserving drafts and
 avoiding repeated access-setting requests. Both section controls remain visible on desktop and phone.
 People and invitations come before connection setup, which is collapsed inside Work. Search creates
