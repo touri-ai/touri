@@ -58,6 +58,8 @@ const Thumbnail = ({
   const [error, setError] = useState("")
   const [revision, setRevision] = useState(0)
   const { notice, saveImage } = useSaveNotice()
+  const canOpenComputer =
+    error === t("Imagem disponível quando a máquina estiver ligada") && Boolean(context?.onComputer)
   useEffect(() => {
     if (!root.current) return
     if (typeof IntersectionObserver === "undefined") {
@@ -143,14 +145,12 @@ const Thumbnail = ({
           type="button"
           className="text-button"
           onClick={() => {
-            if (error === t("Imagem disponível quando a máquina estiver ligada")) context?.onComputer?.()
+            if (canOpenComputer) context?.onComputer?.()
             setRevision((value) => value + 1)
           }}
         >
           {" "}
-          {error === t("Imagem disponível quando a máquina estiver ligada")
-            ? t("Abrir Computador")
-            : t("Tentar novamente")}
+          {canOpenComputer ? t("Abrir Computador") : t("Tentar novamente")}
         </button>
       )}
       <button
@@ -362,7 +362,7 @@ export const ImageLightbox = ({
       {error ? (
         <p role="status">
           {error}{" "}
-          {error === t("Imagem disponível quando a máquina estiver ligada") && (
+          {error === t("Imagem disponível quando a máquina estiver ligada") && context?.onComputer && (
             <button type="button" onClick={() => context?.onComputer?.()}>
               {t("Abrir Computador")}
             </button>

@@ -1,7 +1,7 @@
 import { Blob as NodeBlob } from "node:buffer"
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { Message } from "@touri/contracts"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
@@ -485,6 +485,23 @@ it("shows stopped VM availability and Computer action without starting a machine
   expect(context.onComputer).toHaveBeenCalled()
   expect(request.mock.calls.every((call) => (call as unknown as [string])[0] === "GET /bots/:id/images")).toBe(true)
 })
+
+it("offers a working retry when the channel cannot navigate to a stopped machine", async () => {
+  const { context, request } = fixture()
+  request.mockRejectedValue(new ApiError(409, "Stopped", "IMAGE_MACHINE_STOPPED"))
+  const channel = { ...context, onComputer: undefined }
+  render(<MarkdownContent evidence={channel} content="![Tela](/workspace/a.png)" />)
+  const retry = await screen.findByRole("button", { name: "Tentar novamente" })
+
+  fireEvent.click(retry)
+  await waitFor(() => expect(request).toHaveBeenCalledTimes(2))
+  fireEvent.click(screen.getByRole("button", { name: /Abrir captura/ }))
+
+  const lightbox = await screen.findByRole("dialog")
+  expect(await within(lightbox).findByText("Imagem disponível quando a máquina estiver ligada")).toBeVisible()
+  expect(screen.queryByRole("button", { name: "Abrir Computador" })).toBeNull()
+})
+
 it("keeps image sources stable across streamed text updates, uses data URLs only and stops reads on unmount", async () => {
   const { context, request } = fixture()
   const view = render(<MarkdownContent evidence={context} content="![Tela](/workspace/a.png)" />)
