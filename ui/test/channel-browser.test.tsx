@@ -55,20 +55,19 @@ test.each([
   ["en", "user-ana", "Léo is waiting for you in the browser"],
   ["pt-BR", "user-owner", "Léo está aguardando Ana no navegador"],
   ["en", "user-owner", "Léo is waiting for Ana in the browser"],
-] as const)(
-  "a waiting channel names the person instead of claiming the bot is working in %s",
-  (locale, viewerId, copy) => {
-    const state = getState({ status: "needs_you" })
+  ["pt-BR", "user-observer", "Léo está aguardando Ana no navegador"],
+  ["en", "user-observer", "Léo is waiting for Ana in the browser"],
+] as const)("a waiting channel names the person in %s for %s", (locale, viewerId, copy) => {
+  const state = getState({ status: "needs_you" })
 
-    render(
-      <ChannelBrowserContext.Provider value={{ state, viewerId }}>
-        <ChannelComposerChip botName="Léo" locale={locale} />
-      </ChannelBrowserContext.Provider>,
-    )
+  render(
+    <ChannelBrowserContext.Provider value={{ state, viewerId }}>
+      <ChannelComposerChip botName="Léo" locale={locale} />
+    </ChannelBrowserContext.Provider>,
+  )
 
-    expect(screen.getByRole("status")).toHaveTextContent(copy)
-  },
-)
+  expect(screen.getByRole("status")).toHaveTextContent(copy)
+})
 
 const getPart = (callId: string, tool: string, inputJson: string): ToolCallPart => ({
   type: "tool_call",

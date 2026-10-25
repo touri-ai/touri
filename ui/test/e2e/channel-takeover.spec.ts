@@ -46,7 +46,8 @@ test("a channel browser handback resumes the bot and posts its answer in the sam
   await expect(browserCard).toBeVisible()
   await expect(composer).toBeVisible()
   await expect(browserCard.getByRole("button", { name: "Assumir", exact: true })).toBeVisible()
-  await expect(browserCard).toContainText("portal.example.test")
+  await expect(browserCard).toContainText("Prévia oculta enquanto o navegador espera você.")
+  await expect(browserCard).not.toContainText("portal.example.test")
   await saveScreenshot("channel-takeover-browser-card-after.png")
 
   await browserCard.getByRole("button", { name: "Assumir", exact: true }).click()

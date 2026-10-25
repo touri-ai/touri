@@ -1148,6 +1148,14 @@ Launch:
 **R8. Human take-over.**
 - `browser_request_takeover(tabId, reason)` marks the tab `held_by_user`, brings the Chrome window to the front, and notifies the user ("the bot needs you in the browser: <reason>").
 - The user can also take a tab from the app's Browser panel.
+- A persisted request waiting for a person expands its browser card immediately, even before
+  the tab snapshot arrives or after the provider turn ends. While waiting, the card stops shared
+  preview requests and progress animation, hides page metadata, and explains the pause in the
+  person's language. Known login, payment and form reasons use localized sentences; custom reasons
+  retain the existing sanitization. A channel's composer names the person the browser is waiting for.
+- During remote control, keyboard entry stays beside the sticky handback and privacy controls.
+  Resizing tracks the handback button's visibility even when the rest of the controls extend beyond
+  the visible history. Private typing stays outside the conversation and handback resumes the same request.
 - Person-initiated control is confirmed by the browser card without an additional top toast.
   The UI ignores legacy `notify` echoes with the exact `Browser takeover` title and
   `The user took over the browser:` body prefix. Existing notices, conversation history,

@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
+import AxeBuilder from "@axe-core/playwright"
 import { expect, type Locator, test } from "@playwright/test"
 
 test.use({ channel: "chromium", reducedMotion: "reduce" })
@@ -97,14 +98,20 @@ for (const viewport of [
     await expect(handback).toBeInViewport()
     await expect(control.getByRole("status", { name: "Privacidade do navegador" })).toBeInViewport()
     const reason = await control.locator(".browser-takeover-reason").textContent()
-    await screenshot("control")
     await expect(page.locator(".group-panel")).toHaveCount(groupPanelCount)
     await expect(page.locator(".notice-bar")).toHaveCount(0)
-    await expect(control.getByRole("img", { name: "Página atual do navegador" })).toBeVisible()
+    const browserPage = control.getByRole("application", { name: "Página atual do navegador" })
+    await expect(browserPage.locator("canvas:visible, img").first()).toBeVisible()
     const keyboard = control.getByRole("textbox", { name: "Entrada de teclado para o navegador" })
     await expect(keyboard).toBeEnabled()
+    await screenshot("control")
+    const accessibility = await new AxeBuilder({ page }).include(".browser-takeover-controls").analyze()
+    expect(accessibility.violations).toEqual([])
     await control.getByRole("button", { name: "Digitar no navegador" }).click()
     await expect(keyboard).toBeFocused()
+    await screenshot("keyboard")
+    await expect(handback).toBeInViewport({ ratio: 1 })
+    await expect(control.getByRole("status", { name: "Privacidade do navegador" })).toBeInViewport({ ratio: 1 })
     await page.keyboard.insertText("entrada privada fictícia")
     await expect
       .poll(() => page.evaluate(() => (window as TakeoverWindow).getChannelTakeoverState?.().privateInputs))
@@ -131,6 +138,7 @@ for (const viewport of [
     await expect(page.locator(".browser-activity-card")).toHaveCount(1)
     await expect(card).toContainText("Usou o navegador · 3 ações")
     await expect(page.getByTestId("virtual-message-list")).not.toContainText("entrada privada fictícia")
+    await screenshot("resumed")
 
     const p95Ms = getP95(interactionMs)
     const evidence = { viewport, hiddenWhileWaiting, previewRequests, reason, interactionMs, p95Ms, performance }
