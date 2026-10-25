@@ -154,8 +154,10 @@ test("background snapshots preserve message JSON, ancestry and attachment refere
   const result = await reader.getMessages(getHistoryQuery("thread-0", "message-2000", true), signal)
   const actual = JSON.parse(new TextDecoder().decode(result.body))
   const path = await reader.getMessages(getHistoryQuery("thread-0", "message-2"), signal)
+  const references = await reader.getAttachmentReferences(getHistoryQuery("thread-0", "message-2000", true), signal)
 
   expect(actual).toEqual({ messages: expected, activeLeafId: "message-2000" })
+  expect(references).toEqual(result.references)
   expect(JSON.parse(new TextDecoder().decode(path.body)).messages.map((message: { id: string }) => message.id)).toEqual(
     ["message-1", "message-2"],
   )
@@ -163,6 +165,7 @@ test("background snapshots preserve message JSON, ancestry and attachment refere
     threadId: "thread-0",
     messageId: "message-1",
     attachmentIds: ["fixture-file"],
+    revision: 0,
   })
 })
 

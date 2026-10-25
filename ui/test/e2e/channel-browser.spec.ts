@@ -10,6 +10,7 @@ const sizes = [
 const scenarios = [
   { name: "requester", query: "viewer=user-ana" },
   { name: "member-no-control", query: "viewer=user-hugo&queue=1" },
+  { name: "requester-observes-waiting-member", query: "viewer=user-ana&queue=1" },
   { name: "takeover-hidden-preview", query: "viewer=user-hugo&takeover=1" },
 ]
 
@@ -21,7 +22,8 @@ test.describe("browser card in a channel", () => {
         await page.goto(`/test/e2e/channel-browser-harness.html?${scenario.query}`)
 
         await expect(page.getByText("Todos no canal veem")).toBeVisible()
-        const requester = scenario.name === "requester" ? "você" : "Ana"
+        const isRequester = scenario.query.includes("viewer=user-ana")
+        const requester = isRequester ? "você" : "Ana"
         const control = scenario.name === "takeover-hidden-preview" ? " · Ana está no controle" : ""
         const header = `Léo no navegador · pedido de ${requester}${control}`
         await expect(page.getByRole("status", { name: header })).toBeVisible()
@@ -29,9 +31,7 @@ test.describe("browser card in a channel", () => {
         if (scenario.name === "takeover-hidden-preview")
           await expect(page.locator(".composer-browser-status")).toContainText("Ana está no controle")
         else
-          await expect(page.locator(".composer-browser-status")).toContainText(
-            scenario.name === "requester" ? "para você" : "para Ana",
-          )
+          await expect(page.locator(".composer-browser-status")).toContainText(isRequester ? "para você" : "para Ana")
         await expect(
           page.locator(".channel-demo-reply").getByRole("article", { name: "Navegador do Léo" }),
         ).toBeVisible()
@@ -54,15 +54,20 @@ test.describe("browser card in a channel", () => {
           expect(log?.y).toBeGreaterThanOrEqual((preview?.y ?? 0) + (preview?.height ?? 0))
         }
 
-        if (scenario.name === "requester") await expect(page.getByRole("button", { name: /Assumir/ })).toBeEnabled()
-        if (scenario.name !== "requester") {
+        if (isRequester) await expect(page.getByRole("button", { name: /Assumir/ })).toBeEnabled()
+        if (!isRequester) {
           await expect(page.getByRole("button", { name: /Assumir/ })).toHaveCount(0)
           if (scenario.name === "takeover-hidden-preview")
             await expect(page.getByText("Ana está no controle").first()).toBeVisible()
         }
         if (scenario.name === "takeover-hidden-preview")
           await expect(page.getByText("Prévia oculta para o canal enquanto Ana digita")).toBeVisible()
-        if (scenario.name === "member-no-control") await expect(page.getByText("Na fila: pedido de Hugo")).toBeVisible()
+        if (scenario.name === "member-no-control") {
+          await expect(page.getByText("Na fila: pedido de você", { exact: true })).toBeVisible()
+          await expect(page.getByText("Na fila: pedido de Hugo", { exact: true })).toHaveCount(0)
+        }
+        if (scenario.name === "requester-observes-waiting-member")
+          await expect(page.getByText("Na fila: pedido de Hugo", { exact: true })).toBeVisible()
 
         const screenshotName = `channel-${scenario.name}-${size.name}.png`
         const evidenceDirectory = process.env.TOURI_E2E_SCREENSHOTS_DIR

@@ -7,7 +7,7 @@ import { deferWorkerReply } from "../kernel/worker-reply"
 import type { Candidate, RecoveryCursor } from "../notify/recovery-candidates"
 
 export type ReadQuery = { sql: string; bindings: SQLQueryBindings[]; chunkedStrings?: boolean }
-export type MessageReferences = { threadId: string; messageId: string; attachmentIds: string[] }
+export type MessageReferences = { threadId: string; messageId: string; attachmentIds: string[]; revision: number }
 type MessageReply = { body: Uint8Array; references: MessageReferences[] }
 type ReadProcess = Bun.Subprocess<"pipe", "pipe", "ignore">
 
@@ -19,7 +19,7 @@ export const createStoreReader = (filename: string, onReady?: (pid: number) => v
 
   const getResult = async <Value>(
     input:
-      | { query: ReadQuery }
+      | { query: ReadQuery; attachmentReferencesOnly?: true }
       | { queries: ReadQuery[] }
       | { recovery: RecoveryCursor }
       | { references: TranscriptRef[]; maxBytes?: number | undefined },
@@ -109,6 +109,11 @@ export const createStoreReader = (filename: string, onReady?: (pid: number) => v
       },
       signal: AbortSignal,
     ): Promise<MessageReply> => getResult<MessageReply>({ query }, signal, true),
+    getAttachmentReferences: async (query: ReadQuery, signal: AbortSignal): Promise<MessageReferences[]> => {
+      const result = await getResult<MessageReply>({ query, attachmentReferencesOnly: true }, signal, true)
+
+      return result.references
+    },
     getRecoveryCandidates: (recovery: RecoveryCursor, signal: AbortSignal): Promise<Candidate[]> =>
       getResult<Candidate[]>({ recovery }, signal),
     getReferenceEvents: (references: TranscriptRef[], signal: AbortSignal, maxBytes?: number): Promise<UiEvent[]> =>

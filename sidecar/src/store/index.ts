@@ -669,6 +669,7 @@ export const init = async (
     messageId: string,
     attachmentIds: string[],
     signal: AbortSignal,
+    revision: number,
   ): Promise<void> => {
     if (attachmentIds.length === 0) return
 
@@ -677,24 +678,50 @@ export const init = async (
     )
     for (let offset = 0; offset < attachmentIds.length; offset += 32) {
       signal.throwIfAborted()
-      await writeDatabaseAsync(database, () =>
+      const indexed = await writeDatabaseAsync(database, () => {
+        const current = database
+          .query("SELECT attachment_revision FROM messages WHERE thread_id = ? AND id = ?")
+          .get(threadId, messageId) as { attachment_revision: number } | null
+        if (current?.attachment_revision !== revision) return false
+
         attachmentIds.slice(offset, offset + 32).forEach((attachmentId) => {
           insert.run(threadId, messageId, attachmentId)
-        }),
-      )
+        })
+        return true
+      })
+      if (!indexed) return
+
       await new Promise<void>((resolve) => setImmediate(resolve))
     }
   }
 
-  const indexMessageAttachments = (message: Message, signal: AbortSignal): Promise<void> =>
-    indexAttachmentIds(message.threadId, message.id, Array.from(new Set(getMessageAttachmentIds(message))), signal)
+  const indexHistoryAttachments = async (
+    threadId: string,
+    messages: Array<Message>,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const candidates = messages.filter(
+      (message) => message.threadId === threadId && getMessageAttachmentIds(message).length > 0,
+    )
+    if (candidates.length === 0) return
 
-  const indexHistoryAttachments = async (messages: Array<Message>, signal: AbortSignal): Promise<void> => {
-    for (let offset = 0; offset < messages.length; offset += 32) {
-      signal.throwIfAborted()
-      const batch = messages.slice(offset, offset + 32).filter((message) => getMessageAttachmentIds(message).length > 0)
-      for (const message of batch) await indexMessageAttachments(message, signal)
-      if (offset + 32 < messages.length) await new Promise<void>((resolve) => setImmediate(resolve))
+    // Historical events can contain superseded parts; index only a current, versioned snapshot.
+    const placeholders = candidates.map(() => "?").join(",")
+    const references = await reader.getAttachmentReferences(
+      {
+        sql: `SELECT * FROM messages WHERE thread_id = ? AND id IN (${placeholders})`,
+        bindings: [threadId].concat(candidates.map((message) => message.id)),
+      },
+      signal,
+    )
+    for (const reference of references) {
+      await indexAttachmentIds(
+        reference.threadId,
+        reference.messageId,
+        reference.attachmentIds,
+        signal,
+        reference.revision,
+      )
     }
   }
 
@@ -1998,6 +2025,7 @@ export const init = async (
             event: hydrateHistoryEvent(database, row.event_json),
           }))
           await indexHistoryAttachments(
+            thread.id,
             entries.flatMap(({ event }) =>
               event.type === "message.created" || event.type === "message.updated" ? [event.message] : [],
             ),
@@ -2042,7 +2070,13 @@ export const init = async (
             signal,
           )
           for (const reference of result.references) {
-            await indexAttachmentIds(reference.threadId, reference.messageId, reference.attachmentIds, signal)
+            await indexAttachmentIds(
+              reference.threadId,
+              reference.messageId,
+              reference.attachmentIds,
+              signal,
+              reference.revision,
+            )
           }
           signal.throwIfAborted()
           const stream = new ReadableStream<Uint8Array>({

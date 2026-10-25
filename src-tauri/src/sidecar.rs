@@ -32,7 +32,7 @@ pub struct SidecarHandshake {
     pub schema_version: u32,
 }
 
-pub const SIDECAR_SCHEMA_VERSION: u32 = 52;
+pub const SIDECAR_SCHEMA_VERSION: u32 = 53;
 const MAX_IDENTICAL_HANDSHAKE_FAILURES: usize = 3;
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(15);
 
@@ -1029,9 +1029,43 @@ mod tests {
         ))
         .expect("migrations dir")
         .filter_map(Result::ok)
-        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "sql"))
-        .count();
-        assert_eq!(migrations as u32, SIDECAR_SCHEMA_VERSION);
+        .filter_map(|entry| get_schema_migration_version(&entry.path()))
+        .collect::<std::collections::BTreeSet<_>>();
+        let expected = (1..=SIDECAR_SCHEMA_VERSION).collect::<std::collections::BTreeSet<_>>();
+
+        assert_eq!(migrations, expected);
+    }
+
+    #[test]
+    fn schema_migration_versions_distinguish_numbered_migrations_from_auxiliary_sql() {
+        assert_eq!(
+            get_schema_migration_version(std::path::Path::new("0053.sql")),
+            Some(53)
+        );
+        assert_eq!(
+            get_schema_migration_version(std::path::Path::new("image-evidence-indexes.sql")),
+            None
+        );
+        assert_eq!(
+            get_schema_migration_version(std::path::Path::new("0053.txt")),
+            None
+        );
+        assert_eq!(
+            get_schema_migration_version(std::path::Path::new("53.sql")),
+            None
+        );
+    }
+
+    fn get_schema_migration_version(path: &std::path::Path) -> Option<u32> {
+        let stem = path.file_stem()?.to_str()?;
+        if path.extension()?.to_str()? != "sql"
+            || stem.len() != 4
+            || !stem.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return None;
+        }
+
+        stem.parse().ok()
     }
 
     #[test]

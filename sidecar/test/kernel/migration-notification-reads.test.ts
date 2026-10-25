@@ -35,7 +35,7 @@ test("schema 51 upgrades without changing notification resolution and keeps rece
   const store = createNotificationStore({ db: database, now: () => 100 })
   const marked = store.markRead("person-demo", [notice])
 
-  expect(database.query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get()).toEqual({ value: "52" })
+  expect(database.query("SELECT value FROM schema_meta WHERE key = 'schema_version'").get()).toEqual({ value: "53" })
   expect(marked[0]).toMatchObject({ readAt: 100, resolvedAt: null, resolution: null })
   expect(store.get(notice.id)).toEqual(notice)
 })
