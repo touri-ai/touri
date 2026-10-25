@@ -3758,7 +3758,7 @@ a {
 }
 .history-load-older {
   display: block;
-  min-height: 36px;
+  min-height: 44px;
   margin: 0 auto 12px;
   color: var(--text-secondary);
   font: inherit;

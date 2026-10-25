@@ -1473,12 +1473,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       runs.set(run.id, run)
       const storedThread = findThread(pathValues.id ?? "")
       const updatedThread = storedThread ? { ...storedThread, activeLeafId: reply.id, updatedAt: now() } : undefined
-      if (updatedThread)
-        threads.splice(
-          threads.findIndex((thread) => thread.id === updatedThread.id),
-          1,
-          updatedThread,
-        )
+      if (updatedThread) threads = threads.map((thread) => (thread.id === updatedThread.id ? updatedThread : thread))
       emit({ type: "message.created", message: userMessage })
       emit({ type: "message.created", message: reply })
       emit({ type: "run.updated", run })
