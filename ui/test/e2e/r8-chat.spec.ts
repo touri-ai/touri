@@ -47,7 +47,11 @@ for (const width of [1440, 1100]) {
         }
         await page.evaluate(() => document.fonts.ready)
         await mkdir(directory, { recursive: true })
-        await page.screenshot({ path: `${directory}/${phase}-${view}${width === 1100 ? "-1100" : ""}-${theme}.png` })
+        await page.screenshot({
+          path: `${directory}/${phase}-${view}${width === 1100 ? "-1100" : ""}-${theme}.png`,
+          mask: [page.locator(".composer-model")],
+          maskColor: "#222222",
+        })
       })
     }
   }
