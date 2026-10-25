@@ -39,8 +39,9 @@ export const runBotMetadataWriter = async (): Promise<void> => {
     const connection = database
     const committed = connection
       .transaction(() => {
-        const current = connection.query(metadata.select).get(metadata.botId)
-        if (JSON.stringify(current) !== JSON.stringify(metadata.expected)) return undefined
+        const current = connection.query(metadata.select).get(metadata.botId) as Record<string, unknown> | null
+        if (!current || !Object.keys(metadata.expected).every((key) => current[key] === metadata.expected[key]))
+          return undefined
 
         const statement = getMetadataStatement(metadata.statement, instructions, instructionsHash)
         connection.query(statement.sql).run(...statement.bindings)

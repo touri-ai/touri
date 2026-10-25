@@ -1,5 +1,6 @@
 import type { SQLQueryBindings } from "bun:sqlite"
 import { fileURLToPath } from "node:url"
+import { deferWorkerReply } from "../kernel/worker-reply"
 import { createStoreReader } from "./reader"
 
 export type BotMetadataStatement = { sql: string; bindings: SQLQueryBindings[] }
@@ -45,6 +46,8 @@ export const createBotMetadataWriter = (filename: string, onReady?: (pid: number
     const abort = () => child.kill("SIGKILL")
     deadline.addEventListener("abort", abort, { once: true })
     const reply = getReply(child.stdout, () => onReady?.(child.pid))
+    // A helper may fail while its input is still being flushed.
+    void reply.catch(() => undefined)
     try {
       child.stdin.write(`${header}\n`)
       await child.stdin.flush()
@@ -129,7 +132,7 @@ const sendInstructions = async (stdin: Bun.FileSink, instructions: string, signa
     signal.throwIfAborted()
     stdin.write(`${JSON.stringify(instructions.slice(offset, offset + 16_384))}\n`)
     await stdin.flush()
-    await new Promise<void>((resolve) => setImmediate(resolve))
+    if (offset % (16 * 16_384) === 0) await new Promise<void>(deferWorkerReply)
   }
 }
 
@@ -138,16 +141,13 @@ const getReply = async (stdout: ReadableStream<Uint8Array>, onReady: () => void 
   const first = await reader.read()
   if (first.done || first.value[0] !== 82) throw new Error("Bot metadata helper failed")
   await onReady()
-  const remaining = new ReadableStream<Uint8Array>({
-    start(controller) {
-      if (first.value.byteLength > 1) controller.enqueue(first.value.subarray(1))
-    },
-    async pull(controller) {
-      const next = await reader.read()
-      if (next.done) controller.close()
-      else controller.enqueue(next.value)
-    },
-    cancel: () => reader.cancel(),
-  })
-  return new Response(remaining).text()
+  const decoder = new TextDecoder()
+  // The reply belongs to this edit; read EOF directly even when failure follows the ready byte.
+  const chunks = [decoder.decode(first.value.subarray(1), { stream: true })]
+  for (;;) {
+    const next = await reader.read()
+    if (next.done) return chunks.join("") + decoder.decode()
+
+    chunks.push(decoder.decode(next.value, { stream: true }))
+  }
 }

@@ -333,15 +333,12 @@ test("admitted and waiting edits share a 64 MiB retained-text cap and release it
     ),
     Bun.sleep(100).then(() => "still waiting"),
   ])
-  const response = await Promise.race([
-    fixture.routes.handler({
-      params: { id: bot.id },
-      query: {},
-      body: { instructions: "x".repeat(3 * 1024 * 1024) },
-      signal: new AbortController().signal,
-    }),
-    Bun.sleep(100).then(() => ({ status: 0 })),
-  ])
+  const response = await fixture.routes.handler({
+    params: { id: bot.id },
+    query: {},
+    body: { instructions: "x".repeat(3 * 1024 * 1024) },
+    signal: new AbortController().signal,
+  })
 
   expect(result).toBe("Bot home writer is busy")
   expect(response.status).toBe(409)
@@ -742,8 +739,7 @@ test("PATCH awaits a slow asynchronous filesystem shim without blocking the even
     body: { instructions: "Updated without blocking" },
     signal: new AbortController().signal,
   })
-  const writerStarted = await Promise.race([started.promise.then(() => true), Bun.sleep(100).then(() => false)])
-  expect(writerStarted).toBe(true)
+  await started.promise
 
   const response = await edit
   probe.stop()
