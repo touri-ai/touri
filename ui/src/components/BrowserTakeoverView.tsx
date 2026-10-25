@@ -724,6 +724,7 @@ export const BrowserTakeoverView = ({
           <canvas
             ref={canvas}
             className="browser-takeover-canvas"
+            role="img"
             aria-label={t("Live browser page", {}, locale)}
             hidden={!workerReady || !workerFrameReady}
           />

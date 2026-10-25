@@ -5,6 +5,7 @@ export type FileIoTask =
   | { operation: "flush" }
   | { operation: "workspace-image"; args: WorkspaceImageInput }
   | { operation: "read-image"; args: { root: string; path: string } }
+  | { operation: "read-attachment"; args: { root: string; path: string } }
   | { operation: "write"; args: FileWrite }
   | { operation: "append"; args: FileWrite & { maxBytes?: number } }
   | { operation: "ensure-directory"; args: { root: string; path?: string; mode?: number } }

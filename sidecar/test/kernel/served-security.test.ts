@@ -120,3 +120,41 @@ test("A02: verified raster is inline while a spoofed upload MIME is ignored", as
   expect(response.headers.get("content-disposition")).toBe("inline")
   expect(response.headers.get("content-type")).toBe("image/png")
 })
+
+test("A02: imported attachment disposition follows bounded bytes, never stored MIME", async () => {
+  const f = await fixture()
+  const database = f.runtime.kernel.db as Database
+  const fixtures = [
+    {
+      id: "imported-active",
+      bytes: Buffer.from("<html><script>alert(1)</script></html>"),
+      mime: "image/jpeg",
+      expected: "application/octet-stream",
+      disposition: "attachment",
+    },
+    {
+      id: "imported-raster",
+      bytes: Buffer.from([255, 216, 255, 224]),
+      mime: "text/html",
+      expected: "image/jpeg",
+      disposition: "inline",
+    },
+  ]
+  for (const attachment of fixtures) {
+    const path = join(f.root, "attachments", attachment.id)
+    await Bun.write(path, attachment.bytes)
+    database
+      .query("INSERT INTO attachments (id,path,mime,bytes,created_at) VALUES (?,?,?,?,?)")
+      .run(attachment.id, path, attachment.mime, attachment.bytes.length, Date.now())
+
+    const response = await f.call(`/attachments/${attachment.id}`)
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-type")).toBe(attachment.expected)
+    expect(response.headers.get("content-disposition")).toBe(attachment.disposition)
+    expect(response.headers.get("content-security-policy")).toBe("sandbox; default-src 'none'")
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff")
+    expect(response.headers.get("cache-control")).toBe("no-store")
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(attachment.bytes)
+  }
+})

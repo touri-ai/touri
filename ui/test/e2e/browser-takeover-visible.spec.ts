@@ -30,7 +30,8 @@ for (const viewport of [
     await takeover.click()
 
     const view = page.getByRole("region", { name: "Controle remoto do navegador" })
-    await expect(view.getByRole("img")).toBeVisible({ timeout: 20_000 })
+    // Wait for the worker renderer so a transient fallback image cannot hide a missing canvas role.
+    await expect(view.locator("canvas")).toBeVisible({ timeout: 20_000 })
     const handback = view.getByRole("button", { name: "Devolver para mark", exact: true })
     const privacy = view.getByRole("status", { name: "Privacidade do navegador" })
     // Let the history settle as it does after the session starts; the test itself never scrolls.
@@ -41,6 +42,8 @@ for (const viewport of [
         mask: [page.locator(".composer-model")],
         maskColor: "#28282b",
       })
+
+    await expect(view.getByRole("img")).toBeVisible({ timeout: 20_000 })
 
     for (const element of [handback, privacy]) {
       await expect(element).toBeInViewport({ ratio: 1 })

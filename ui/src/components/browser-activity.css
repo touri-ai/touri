@@ -920,6 +920,10 @@
 }
 
 .browser-activity-subtitle {
+  display: -webkit-box;
+  height: 3lh;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
   white-space: normal;
   overflow-wrap: anywhere;
 }

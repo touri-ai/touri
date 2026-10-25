@@ -1,10 +1,64 @@
 import type { Database } from "bun:sqlite"
-import { expect, test } from "bun:test"
+import { afterEach, expect, test } from "bun:test"
 import { writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { PreviewTarget, Project } from "@touri/contracts"
 import { saveProcessOwner } from "../../src/projects/ownership"
 import { createHarness, createServerFixture } from "./harness"
+
+// Resource ownership belongs to the test and is released even when an assertion fails.
+const cleanups = new Set<() => Promise<void>>()
+afterEach(async () => {
+  for (const close of cleanups) await close()
+  cleanups.clear()
+})
+
+test("preview_open waits for durable event delivery before reporting the selected URL", async () => {
+  const delivery = Promise.withResolvers<void>()
+  const flushing = Promise.withResolvers<void>()
+  const harness = await createHarness({
+    flushEvents: () => {
+      flushing.resolve()
+      return delivery.promise
+    },
+  })
+  cleanups.add(async () => {
+    delivery.resolve()
+    await harness.close()
+  })
+  const response = await harness.request("/projects", {
+    method: "POST",
+    body: JSON.stringify({ path: harness.projectPath }),
+    headers: { "Content-Type": "application/json" },
+  })
+  const { project } = (await response.json()) as { project: Project }
+  createServerFixture({ projectPath: harness.projectPath })
+  await harness.tool(
+    "process_define",
+    { name: "web", command: "bun server.ts", ready: { logRegex: "READY" }, restart: "never" },
+    project.id,
+  )
+  const published: PreviewTarget[] = []
+  const unsubscribe = harness.runtime.kernel.subscribe(({ event }) => {
+    if (event.type === "preview.available") published.push(event.preview)
+  })
+  cleanups.add(async () => unsubscribe())
+  expect(await harness.tool("process_start", { name: "web", waitMs: 10_000 }, project.id)).toMatchObject({
+    success: true,
+  })
+  await waitForPreview(published)
+  const completion = new Set<string>()
+
+  const opened = harness.tool("preview_open", { process: "web", path: "/chosen" }, project.id).then((result) => {
+    completion.add("returned")
+    return result
+  })
+  await Promise.race([flushing.promise, opened])
+
+  expect(completion.size).toBe(0)
+  delivery.resolve()
+  expect((await opened).success).toBe(true)
+})
 
 const waitForPreview = async (previews: PreviewTarget[]): Promise<void> => {
   const deadline = Date.now() + 5000

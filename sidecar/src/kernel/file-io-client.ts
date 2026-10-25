@@ -239,7 +239,8 @@ export const createFileIoLane = ({
 const getTaskBytes = (task: FileIoTask): number => {
   // Reference discovery retains bounded paths and bot metadata, without a full raster buffer.
   if (task.operation === "workspace-image" && task.args.pattern) return imageReferenceByteLimit
-  if (task.operation === "workspace-image" || task.operation === "read-image") return 15 * 1024 * 1024
+  if (task.operation === "workspace-image" || task.operation === "read-image" || task.operation === "read-attachment")
+    return 15 * 1024 * 1024
   if (task.operation !== "write" && task.operation !== "append" && task.operation !== "append-log") return 0
   return typeof task.args.content === "string" ? Buffer.byteLength(task.args.content) : task.args.content.byteLength
 }
