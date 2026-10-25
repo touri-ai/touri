@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite"
 import { walCheckpointSource } from "./wal-checkpoint-worker"
 
 const DEFAULT_INTERVAL_MS = 5_000
-const PAGE_INTERVAL_MS = 60_000
+const PAGE_INTERVAL_MS = 5_000
 const STARTUP_TIMEOUT_MS = 15_000
 
 export const createWalCheckpointer = ({

@@ -6,7 +6,7 @@ import type { TranscriptRef } from "../kernel/transcript-events"
 import { deferWorkerReply } from "../kernel/worker-reply"
 import type { Candidate, RecoveryCursor } from "../notify/recovery-candidates"
 
-type ReadQuery = { sql: string; bindings: SQLQueryBindings[]; chunkedStrings?: boolean }
+export type ReadQuery = { sql: string; bindings: SQLQueryBindings[]; chunkedStrings?: boolean }
 export type MessageReferences = { threadId: string; messageId: string; attachmentIds: string[] }
 type MessageReply = { body: Uint8Array; references: MessageReferences[] }
 type ReadProcess = Bun.Subprocess<"pipe", "pipe", "ignore">
@@ -20,6 +20,7 @@ export const createStoreReader = (filename: string, onReady?: (pid: number) => v
   const getResult = async <Value>(
     input:
       | { query: ReadQuery }
+      | { queries: ReadQuery[] }
       | { recovery: RecoveryCursor }
       | { references: TranscriptRef[]; maxBytes?: number | undefined },
     signal: AbortSignal,
@@ -62,7 +63,7 @@ export const createStoreReader = (filename: string, onReady?: (pid: number) => v
         messages,
         () => onReady?.(child.pid),
         "references" in input,
-        "query" in input && input.query.chunkedStrings === true,
+        "queries" in input || ("query" in input && input.query.chunkedStrings === true),
       )
       const [value, code] = await Promise.all([response, child.exited])
       if (abortReason) throw abortReason
@@ -91,6 +92,14 @@ export const createStoreReader = (filename: string, onReady?: (pid: number) => v
 
   return {
     getRows: <Row>(query: ReadQuery, signal: AbortSignal): Promise<Row[]> => getResult<Row[]>({ query }, signal),
+    getRowSets: async (queries: ReadQuery[], signal: AbortSignal): Promise<unknown[][]> => {
+      if (queries.length > 8) throw new Error("STORE_READ_LIMIT")
+
+      const rows = await getResult<Array<{ _storeReadSet: number } & Record<string, unknown>>>({ queries }, signal)
+      return queries.map((_, index) =>
+        rows.filter((row) => row._storeReadSet === index).map(({ _storeReadSet, ...row }) => row),
+      )
+    },
     getMessages: (
       query: ReadQuery & { activeLeafId: string | null; reverse?: boolean },
       signal: AbortSignal,

@@ -3,7 +3,7 @@ import { getRefEvent } from "../kernel/event-reference"
 import type { TranscriptRef } from "../kernel/transcript-events"
 import { getRecoveryCandidates, type RecoveryCursor } from "../notify/recovery-candidates"
 import { getMessageFromRow } from "./message-row"
-import type { MessageReferences } from "./reader"
+import type { MessageReferences, ReadQuery } from "./reader"
 import type { RawMessage } from "./workspace-activity"
 
 type ReadInput = {
@@ -11,6 +11,7 @@ type ReadInput = {
   messages: boolean
 } & (
   | { recovery: RecoveryCursor }
+  | { queries: ReadQuery[] }
   | { references: TranscriptRef[]; maxBytes?: number }
   | {
       query: {
@@ -47,6 +48,19 @@ export const runStoreRead = async (): Promise<void> => {
     if ("recovery" in input) {
       for (const candidate of getRecoveryCandidates(database, input.recovery))
         await writeReply(`${JSON.stringify(candidate)}\n`)
+      return
+    }
+    if ("queries" in input) {
+      if (input.queries.length > 8) throw new Error("STORE_READ_LIMIT")
+
+      // One owned snapshot avoids three process launches and cross-query revision changes.
+      database.exec("BEGIN")
+      const writer = createFrameWriter()
+      for (const [index, query] of input.queries.entries()) {
+        for (const row of database.query(query.sql).iterate(...query.bindings))
+          await writeRowFrames({ ...(row as Record<string, unknown>), _storeReadSet: index }, writer.write)
+      }
+      await writer.flush()
       return
     }
     const statement = database.query(input.query.sql)
@@ -100,17 +114,40 @@ export const runStoreRead = async (): Promise<void> => {
   }
 }
 
-const writeRowFrames = async (row: Record<string, unknown>): Promise<void> => {
+const writeRowFrames = async (
+  row: Record<string, unknown>,
+  write: (frame: string) => Promise<void> = writeReply,
+): Promise<void> => {
   const entries = Object.entries(row)
   const isLongString = (value: unknown): value is string => typeof value === "string" && value.length > 16_384
   const header = Object.fromEntries(entries.filter(([, value]) => !isLongString(value)))
-  await writeReply(`${JSON.stringify(header)}\n`)
+  await write(`${JSON.stringify(header)}\n`)
   for (const [key, value] of entries) {
     if (!isLongString(value)) continue
     for (let offset = 0; offset < value.length; offset += 16_384)
-      await writeReply(`${JSON.stringify([key, value.slice(offset, offset + 16_384)])}\n`)
+      await write(`${JSON.stringify([key, value.slice(offset, offset + 16_384)])}\n`)
   }
-  await writeReply("null\n")
+  await write("null\n")
+}
+
+const createFrameWriter = () => {
+  // Only this process owns the bounded frame buffer; flushing awaits pipe backpressure.
+  let frames = ""
+  const flush = async (): Promise<void> => {
+    if (!frames) return
+
+    const batch = frames
+    frames = ""
+    await writeReply(batch)
+  }
+
+  return {
+    write: async (frame: string): Promise<void> => {
+      frames += frame
+      if (frames.length >= 16_384) await flush()
+    },
+    flush,
+  }
 }
 
 const writeReply = (bytes: string | Uint8Array): Promise<void> =>
