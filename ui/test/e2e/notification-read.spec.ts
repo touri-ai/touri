@@ -46,5 +46,6 @@ viewports.forEach(({ width, height }) => {
     })
     await expect(acknowledgement).toBeVisible()
     await expect(acknowledgement).not.toBeChecked()
+    if (directory) await recovery.screenshot({ path: join(directory, `notification-recovery-${width}.png`) })
   })
 })
