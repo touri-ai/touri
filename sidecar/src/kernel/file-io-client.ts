@@ -12,6 +12,7 @@ export const fileIoQueueLimit = 256
 export const fileIoByteLimit = 64 * 1024 * 1024
 export const logIoByteLimit = 8 * 1024 * 1024
 const batchByteLimit = 64 * 1024
+const imageReferenceByteLimit = 2 * 1024 * 1024
 
 /** Own the worker mailbox here so its memory and outstanding work stay bounded. */
 export const createFileIoLane = ({
@@ -236,6 +237,8 @@ export const createFileIoLane = ({
 }
 
 const getTaskBytes = (task: FileIoTask): number => {
+  // Reference discovery retains bounded paths and bot metadata, without a full raster buffer.
+  if (task.operation === "workspace-image" && task.args.pattern) return imageReferenceByteLimit
   if (task.operation === "workspace-image" || task.operation === "read-image") return 15 * 1024 * 1024
   if (task.operation !== "write" && task.operation !== "append" && task.operation !== "append-log") return 0
   return typeof task.args.content === "string" ? Buffer.byteLength(task.args.content) : task.args.content.byteLength

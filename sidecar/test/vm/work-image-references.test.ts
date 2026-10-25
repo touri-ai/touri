@@ -41,6 +41,17 @@ test("expands only filename patterns in the workspace and explicit evidence gran
   )
 })
 
+test("admits simultaneous filename lookups without charging each one as a full image", async () => {
+  const input = makeWorkspace()
+  writeFileSync(join(input.workspace, "round-1.png"), png)
+
+  const results = await Promise.allSettled(
+    Array.from({ length: 6 }, () => getWorkspaceImageAsync({ ...input, path: "round-*.png", pattern: true })),
+  )
+
+  expect(results).toEqual(Array.from({ length: 6 }, () => ({ status: "fulfilled", value: { paths: ["round-1.png"] } })))
+})
+
 test("does not turn unrestricted bot access into automatic host-file previews", async () => {
   const input = makeWorkspace()
   writeFileSync(join(root, "private.png"), png)

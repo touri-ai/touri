@@ -23,6 +23,7 @@ const blob = new NodeBlob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], {
 const createUrl = vi.fn(() => `blob:fixture-${Math.random()}`)
 const revokeUrl = vi.fn()
 const bitmapClose = vi.fn()
+const referenceReadCleanups = new Set<() => void>()
 beforeEach(() => {
   Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: {} })
   saveInvoke.mockClear()
@@ -57,8 +58,13 @@ beforeEach(() => {
     this.removeAttribute("open")
   }
 })
-afterEach(() => {
+afterEach(async () => {
   cleanup()
+  referenceReadCleanups.forEach((release) => {
+    release()
+  })
+  referenceReadCleanups.clear()
+  await act(async () => undefined)
   vi.unstubAllGlobals()
   vi.clearAllMocks()
 })
@@ -643,6 +649,41 @@ it("defers image reads until a thumbnail enters the viewport", async () => {
 })
 
 describe("Work image messages", () => {
+  it("shares bounded image admission across wildcard lookups from multiple messages", async () => {
+    const { context, request } = fixture()
+    const completions = Array.from({ length: 6 }, () => Promise.withResolvers<{ paths: string[] }>())
+    const getReferences = vi.fn<() => Promise<{ paths: string[] }>>()
+    getReferences.mockImplementation(() => {
+      const completion = completions[getReferences.mock.calls.length - 1]
+      if (!completion) throw new Error("Unexpected image lookup")
+
+      return completion.promise
+    })
+    completions.forEach(({ resolve }) => {
+      referenceReadCleanups.add(() => resolve({ paths: [] }))
+    })
+    request.mockImplementation(async (route: unknown) =>
+      route === "GET /bots/:id/image-references" ? getReferences() : blob,
+    )
+    const paths = Array.from({ length: 6 }, (_, index) => `shots/round-${index}-*.png`)
+    render(paths.map((path) => <MarkdownContent key={path} evidence={context} content={`Evidência: ${path}`} />))
+
+    await waitFor(() => expect(getReferences).toHaveBeenCalledTimes(3))
+    await act(async () => {
+      completions.slice(0, 3).forEach(({ resolve }) => {
+        resolve({ paths: [] })
+      })
+    })
+    await waitFor(() => expect(getReferences).toHaveBeenCalledTimes(6))
+    await act(async () => {
+      completions.slice(3).forEach(({ resolve }) => {
+        resolve({ paths: [] })
+      })
+    })
+
+    expect(request).toHaveBeenCalledTimes(6)
+  })
+
   it("labels repeated message galleries as groups without duplicate page landmarks", async () => {
     const { context } = fixture()
     const parts = [{ type: "image" as const, attachmentId: "a".repeat(64), mime: "image/png", name: "audit.png" }]

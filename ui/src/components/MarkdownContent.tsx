@@ -29,6 +29,7 @@ import {
   evidenceImages,
   evidencePath,
 } from "./evidenceMarkdown"
+import { loadImage } from "./imageLoads"
 import { LocalFileLink } from "./LocalFileLink"
 import { MermaidDiagram } from "./MermaidDiagram"
 import { getMarkdownCodeHtml } from "./markdownHighlight"
@@ -238,9 +239,11 @@ const MarkdownEvidence = ({ images, context }: { images: EvidenceImage[]; contex
     let alive = true
     void Promise.all(
       patternKey.split("\0").map(async (path) => {
-        const result = await api
-          .request("GET /bots/:id/image-references", { path, ...(base ? { base } : {}) }, { id: botId })
-          .catch(() => ({ paths: [] }))
+        const result = await loadImage(async () => {
+          if (!alive) return { paths: [] }
+
+          return api.request("GET /bots/:id/image-references", { path, ...(base ? { base } : {}) }, { id: botId })
+        }).catch(() => ({ paths: [] }))
 
         return result.paths
           .slice(0, 6)
