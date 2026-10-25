@@ -171,6 +171,10 @@ application bundle. They preserve existing actions and keyboard access, includin
 while their module loads.
 Channel progress does not load the optional member-panel projection or its result-history helpers.
 Closing a loading channel panel restores focus to its trigger and leaves the conversation available.
+If the conversation module fails to load, **Recarregar esta área** / **Reload this area** makes
+one fresh import attempt without navigating away. A failed retry offers **Recarregar app** /
+**Reload app**, which reloads the application. Both recovery paths keep saved per-conversation
+drafts. Successful imports remain cached across channel and mode switches.
 When creating or editing a channel or group, member names wrap instead of being truncated so bots
 with a shared name prefix remain visually distinguishable before and after selection. The member
 picker uses one column at viewport widths up to 620 px and two columns on wider screens. Existing

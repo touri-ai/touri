@@ -27,6 +27,8 @@ type Props = {
   api?: UiApi | undefined
   app?: boolean
   dialog?: boolean
+  reloadApp?: boolean
+  onRetry?: () => void
   onClose?: (() => void) | undefined
 }
 
@@ -50,6 +52,7 @@ export class ErrorBoundary extends Component<Props, { error: Error | null }> {
   render() {
     const { error } = this.state
     if (!error) return this.props.children
+    const shouldReload = this.props.app || this.props.reloadApp
     const fallback = (
       <section
         className={`render-error ${this.props.app ? "render-error-app" : ""}`}
@@ -57,16 +60,25 @@ export class ErrorBoundary extends Component<Props, { error: Error | null }> {
         aria-label={`Erro em ${this.props.area}`}
       >
         <h2>{this.props.app ? "O app encontrou um erro" : `Não foi possível mostrar ${this.props.area}`}</h2>
-        <p>Suas conversas continuam salvas. Recarregue para tentar novamente.</p>
+        <p>
+          {this.props.reloadApp
+            ? t("The conversation could not be loaded again. Reload the app to try again. Saved drafts will be kept.")
+            : t("Your conversations are saved. Reload to try again.")}
+        </p>
         <button
           className="button button-brand"
           type="button"
           onClick={() => {
-            if (this.props.app) window.location.reload()
-            else this.setState({ error: null })
+            if (shouldReload) {
+              window.location.reload()
+              return
+            }
+
+            this.props.onRetry?.()
+            this.setState({ error: null })
           }}
         >
-          {this.props.app ? "Recarregar app" : "Recarregar esta área"}
+          {shouldReload ? t("Reload app") : t("Reload this area")}
         </button>
         <ReportErrorButton api={this.props.api} message={error.stack ?? error.message} fallbackCode="TOURI-E1000" />
         {this.props.onClose && (

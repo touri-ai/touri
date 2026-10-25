@@ -194,6 +194,7 @@ const AppContent = ({ kernel }: AppProps) => {
   const [retryingConnection, setRetryingConnection] = useState(false)
   const [panelsByBot, setPanelsByBot] = useState<Record<string, boolean>>(() => readWorkspaceState().panelsByBot ?? {})
   const [goalRefreshRequest, setGoalRefreshRequest] = useState(0)
+  const [retryChatPanel, setRetryChatPanel] = useState(false)
   const notifyGoalChange = useCallback(() => setGoalRefreshRequest((request) => request + 1), [])
   const [expandedBot, setExpandedBot] = useState<string | null>(null)
   const [libraryRequest, setLibraryRequest] = useState<{ botId: string; path: string; request: number } | null>(null)
@@ -1407,9 +1408,12 @@ const AppContent = ({ kernel }: AppProps) => {
                         key={data.composerKey ?? selectedThread?.id ?? selectedBot?.id ?? "chat"}
                         area="a conversa"
                         api={api}
+                        reloadApp={retryChatPanel}
+                        onRetry={() => setRetryChatPanel(true)}
                       >
                         <RecoveryTasksContext.Provider value={interruptedWork.tasks}>
                           <ChatPanel
+                            retry={retryChatPanel}
                             historyLoading={
                               !data.threadCreation &&
                               (selectedThread ? data.historyThreadId !== selectedThread.id : !data.loaded)
