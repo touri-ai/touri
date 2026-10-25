@@ -377,7 +377,7 @@ export const VirtualMessageList = ({
         ? new Map<string, MessageBranch[]>()
         : getMessageBranches(
             Array.from(
-              new Map([...allMessages, ...(branchOptions ?? [])].map((message) => [message.id, message])).values(),
+              new Map([...(branchOptions ?? []), ...allMessages].map((message) => [message.id, message])).values(),
             ),
           ),
     [allMessages, branchOptions, flatHistory],

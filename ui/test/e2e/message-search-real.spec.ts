@@ -81,4 +81,42 @@ for (const width of [1440, 390]) {
       await info.attach(`real message search ${width}`, { path, contentType: "image/png" })
     })
   }
+
+  test(`paged branch controls keep chronological order at ${width}px`, async ({ page }, info) => {
+    test.setTimeout(180_000)
+    const current = await createWorkGoldenServer()
+    server = current
+    const { settings } = await current.api("/settings")
+    const { bot } = (await current.api("/bots", "POST", {
+      name: "Brisa QA",
+      provider: settings.defaultProvider,
+      access: "read-only",
+      approvals: "on-request",
+    })) as { bot: Bot }
+    const threadId = bot.mainThreadId
+    if (!threadId) throw new Error("Missing synthetic conversation")
+    await current.restart((data) => seedHistory(data, threadId, "branch"))
+    await current.install(page)
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+    await page.emulateMedia({ reducedMotion: "reduce" })
+
+    await page.goto(`${current.serverUrl}/?bot=${bot.id}&thread=${threadId}`)
+
+    const target = page.locator('[data-message-row="real-search-other-branch"]')
+    await expect(target).toBeVisible({ timeout: 30_000 })
+    const previous = target.getByRole("button", { name: "Ramificação anterior" })
+    await expect(previous).toBeEnabled()
+    await expect(target.getByRole("button", { name: "Próxima ramificação" })).toBeDisabled()
+    await expect(target.locator(".branch-switcher")).toContainText("2/2")
+    const imageName = `history-branch-order-${width}.png`
+    const path = process.env.TOURI_SCREENSHOT_DIR
+      ? `${process.env.TOURI_SCREENSHOT_DIR}/${imageName}`
+      : info.outputPath(imageName)
+    await page.screenshot({ path, animations: "disabled", mask: [page.locator(".composer-model")] })
+    await info.attach(imageName, { path, contentType: "image/png" })
+    await previous.click()
+    await expect(page.locator('[data-message-row="real-search-4"]')).toBeVisible()
+    const { threads } = (await current.api(`/bots/${bot.id}/threads`)) as { threads: Thread[] }
+    expect(threads.find((thread) => thread.id === threadId)?.activeLeafId).toBe("real-search-4")
+  })
 }

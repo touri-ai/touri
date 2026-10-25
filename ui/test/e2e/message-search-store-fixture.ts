@@ -49,3 +49,6 @@ database.transaction(() => {
     .run(scenario === "branch" ? "real-search-other-branch" : "real-search-239", threadId)
 })()
 database.close()
+const auth = new Database(join(directory, "auth.db"))
+auth.query("UPDATE people SET name = 'Pessoa demo' WHERE id = 'owner'").run()
+auth.close()

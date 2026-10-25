@@ -63,6 +63,7 @@ export type WorkspaceData = {
   historyContext?: MessageHistoryContext | undefined
   historyFocusId?: Id | null
   historyBefore?: Id | null | undefined
+  historyRunsReady?: boolean
   loadingOlderHistory?: boolean
   historyThreadId?: Id | null
   historyNotice?: string | null
@@ -696,6 +697,7 @@ export const useWorkspace = (
             runs: mergeRunRows(next.runs, cached.runs),
             historyThreadId: next.selectedThreadId,
             historyBefore: cached.before,
+            historyRunsReady: cached.runsReady === true,
             historyFocusId: null,
             historyContext: cached.context,
             historyNotice: null,
@@ -708,6 +710,7 @@ export const useWorkspace = (
               ...restored,
               historyThreadId: null,
               historyBefore: undefined,
+              historyRunsReady: false,
               historyContext: undefined,
               loadingOlderHistory: false,
             }
@@ -764,7 +767,7 @@ export const useWorkspace = (
     historyCache.current.save(threadId, {
       messages: leaf ? data.messages.filter((message) => message.createdAt <= leaf.createdAt) : data.messages,
       runs: data.runs.filter((run) => run.threadId === threadId),
-      runsReady: !threadLoads.current.has(threadId) || Boolean(threadLoads.current.get(threadId)?.runsReady),
+      runsReady: data.historyRunsReady === true,
       before: data.historyBefore,
       activeLeafId: historyLeafId,
       context: data.historyContext,
@@ -775,6 +778,7 @@ export const useWorkspace = (
     data.historyBefore,
     data.historyFocusId,
     data.historyContext,
+    data.historyRunsReady,
     data.messages,
     data.runs,
     historyLeafId,
@@ -980,6 +984,7 @@ export const useWorkspace = (
                 runs: mergeRunRows(current.runs, cached.runs),
                 historyThreadId: threadId,
                 historyBefore: cached.before,
+                historyRunsReady: true,
                 historyFocusId: null,
                 historyContext: cached.context,
                 historyNotice: null,
@@ -992,6 +997,7 @@ export const useWorkspace = (
       // Repairs must release the previous reader before starting another message/run pair.
       pending?.controller.abort()
       const controller = new AbortController()
+      setData((current) => (current.historyRunsReady ? { ...current, historyRunsReady: false } : current))
       const deltas: Array<MessageStreamEvent> = []
       const isCurrentLoad = (): boolean =>
         attempt === generation.current &&
@@ -1141,6 +1147,7 @@ export const useWorkspace = (
           runNotice.current = null
           setData((current) => ({
             ...current,
+            historyRunsReady: true,
             notice:
               current.notice === previousNotice && current.historyNotice !== previousNotice ? null : current.notice,
             runs: mergeRunRows(
@@ -2717,8 +2724,8 @@ const getMergedHistoryMessages = (snapshot: Message[], current: Message[]): Mess
     return updateMessage(previous ? [previous] : [], message)[0] ?? message
   })
   const merged = restored.concat(current.filter((message) => !snapshotIds.has(message.id)))
-  // Sort a fresh collection: page order resolves timestamp ties, while overlapping live events keep their revisions.
-  return merged.sort((left, right) => left.createdAt - right.createdAt || (left.seq ?? 0) - (right.seq ?? 0))
+  // Sort only this fresh local array; stable time ordering preserves the server's insertion order for ties.
+  return merged.sort((left, right) => left.createdAt - right.createdAt)
 }
 
 const getHistoryMessageKey = (threadId: Id, messageId: Id): string => JSON.stringify([threadId, messageId])
