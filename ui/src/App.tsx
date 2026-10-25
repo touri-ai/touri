@@ -569,7 +569,11 @@ const AppContent = ({ kernel }: AppProps) => {
       setExpandedBot(null)
       if (!hasApprovalWindow) actions.selectThread(owner.id, { approvalId: target.approvalId })
       setApprovalFocus((current) => ({ ...target, request: (current?.request ?? 0) + 1 }))
-      setRoute({ section: "bots", screen: "chat" })
+      setRoute((current) => {
+        if (current.section === "bots" && current.screen === "chat") return current
+
+        return { section: "bots", screen: "chat" }
+      })
     },
     [
       data.threads,
