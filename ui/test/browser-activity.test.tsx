@@ -590,6 +590,71 @@ test("a persisted human pause keeps controls available before the held-tab event
   expect(screen.queryByRole("button", { name: /Usou o navegador/ })).toBeNull()
 })
 
+test("a persisted human pause never samples a preview while its tab snapshot is delayed", async () => {
+  const snapshot = Promise.withResolvers<{ tabs: Array<typeof tab> }>()
+  renderCard(
+    [getPart({ callId: "pending-login", tool: "browser_click", inputJson: '{"tabId":"browser-tab"}' })],
+    true,
+    () => snapshot.promise,
+    "local",
+    true,
+  )
+
+  expect(screen.getByText("Prévia oculta enquanto o navegador espera você.")).toBeVisible()
+  expect(screen.queryByRole("img", { name: "Página atual do navegador" })).toBeNull()
+  expect(startInlineFrameSource).not.toHaveBeenCalled()
+  expect(screen.queryByRole("progressbar")).toBeNull()
+
+  await act(async () => snapshot.resolve({ tabs: [] }))
+})
+
+test("a delayed human-pause projection expands a completed card before its tab arrives", async () => {
+  const parts = [getPart({ callId: "pending-login", tool: "browser_click", inputJson: '{"tabId":"browser-tab"}' })]
+  const snapshot = Promise.withResolvers<{ tabs: Array<typeof tab> }>()
+  const { api, bot, view, onOpenComputer } = renderCard(parts, true, () => snapshot.promise)
+
+  view.rerender(
+    <InlinePreviewContext.Provider value={{ api, bot, machine: undefined, activeCallId: undefined, onOpenComputer }}>
+      <BrowserActivityCard parts={parts} finished waitingForPerson createdAt={1} botName="Lia" />
+    </InlinePreviewContext.Provider>,
+  )
+
+  expect(await screen.findByText("Prévia oculta enquanto o navegador espera você.")).toBeVisible()
+  expect(screen.getByText("Por que Lia parou")).toBeVisible()
+  expect(startInlineFrameSource).not.toHaveBeenCalled()
+
+  await act(async () => snapshot.resolve({ tabs: [] }))
+})
+
+test.each([
+  ["login", "pt-BR", "O site pediu login para continuar."],
+  ["login", "en", "The site asked you to sign in before continuing."],
+  ["payment", "pt-BR", "O site pediu que você confira uma compra ou pagamento antes de continuar."],
+  ["form_submit", "pt-BR", "O site pediu para enviar um formulário antes de continuar."],
+  ["sensitive_action", "pt-BR", "O site pediu sua confirmação antes de continuar."],
+] as const)("takeover reason %s uses plain language in %s", async (reason, locale, copy) => {
+  renderCard(
+    [
+      getPart({
+        callId: "takeover",
+        tool: "browser_request_takeover",
+        inputJson: JSON.stringify({ tabId: "browser-tab", reason }),
+      }),
+    ],
+    true,
+    async () => ({ tabs: [{ ...tab, heldByUser: true, takeoverRequested: true }] }),
+    "local",
+    true,
+    locale,
+  )
+
+  fireEvent.click(await screen.findByRole("button", { name: t("Take over browser", {}, locale) }))
+
+  const control = await screen.findByRole("region", { name: t("Remote browser control", {}, locale) })
+  expect(within(control).getByText(copy)).toBeVisible()
+  expect(within(control).queryByText(reason, { exact: true })).toBeNull()
+})
+
 test("a completed provider turn keeps a pending human handoff available", async () => {
   const requestedTab = { ...tab, heldByUser: true, takeoverRequested: true }
   const parts = [

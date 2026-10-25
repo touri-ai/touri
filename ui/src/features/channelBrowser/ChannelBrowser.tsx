@@ -249,6 +249,12 @@ const getChannelComposerText = (
 ): string => {
   if (!channel) return base
   if (channel.state.controllerId) return channel.controlLabel
+  if (channel.state.status === "needs_you")
+    return t(
+      "{name} is waiting for {person} in the browser",
+      { name: channel.state.botName, person: channel.state.requesterName },
+      locale,
+    )
 
   return `${base} · ${t("for {person}", { person: channel.state.requesterName }, locale)}`
 }

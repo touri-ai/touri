@@ -99,7 +99,7 @@ export const BrowserActivityCard = ({
   const context = useContext(InlinePreviewContext)
   const browserControls = useBrowserActivityControls()
   const previewEnabled = useInlinePreviewPreference()
-  const channel = useChannelBrowserView()
+  const channel = useChannelBrowserView(locale)
   const browserTools = getBrowserActivityTools(parts)
   const hasTakeoverRequest = hasBrowserTakeoverRequest(browserTools)
   const queued = isBrowserRequestQueued(browserTools, runId)
@@ -126,11 +126,12 @@ export const BrowserActivityCard = ({
   const handbackRunId = useRef<Id | null | undefined>(undefined)
   const [privacyPending, setPrivacyPending] = useState(false)
   const held = heldTab?.tabId === activeTabId && heldTab?.held === true
+  const paused = held || waitingForPerson
   const heldRef = useRef(held)
   heldRef.current = held
-  const finished = sourceFinished && !waitingForPerson && !held && !takeoverSession && !resuming && !queued
+  const finished = sourceFinished && !paused && !takeoverSession && !resuming && !queued
   const preview =
-    !held && !channel?.previewHidden && previewFrame?.tabId === activeTabId ? previewFrame?.frame : undefined
+    !paused && !channel?.previewHidden && previewFrame?.tabId === activeTabId ? previewFrame?.frame : undefined
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [takeoverUnavailable, setTakeoverUnavailable] = useState(false)
@@ -193,8 +194,8 @@ export const BrowserActivityCard = ({
   }, [finished])
 
   useEffect(() => {
-    if (held && !finished) setExpanded(true)
-  }, [finished, held])
+    if (paused && !finished) setExpanded(true)
+  }, [finished, paused])
 
   useEffect(() => {
     const element = section.current
@@ -311,7 +312,7 @@ export const BrowserActivityCard = ({
       !visible ||
       hidden ||
       !expanded ||
-      held ||
+      paused ||
       finished ||
       channel?.previewHidden ||
       takeoverSession ||
@@ -347,7 +348,7 @@ export const BrowserActivityCard = ({
     channel?.previewHidden,
     expanded,
     finished,
-    held,
+    paused,
     hidden,
     locale,
     previewEnabled,
@@ -358,11 +359,11 @@ export const BrowserActivityCard = ({
   ])
 
   useEffect(() => {
-    if (held || channel?.previewHidden) {
+    if (paused || channel?.previewHidden) {
       setPrivacyPending(true)
       setPreviewFrame(undefined)
     }
-  }, [channel?.previewHidden, held])
+  }, [channel?.previewHidden, paused])
 
   // Refresh after each completed browser action; the source keeps sampling serial and throttled.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the action count is the trigger
@@ -374,11 +375,11 @@ export const BrowserActivityCard = ({
   useEffect(() => {
     setWaitedTooLong(false)
     const isPreviewPaused = !previewEnabled || channel?.previewHidden || hidden || !visible
-    if (finished || held || preview || !expanded || isPreviewPaused) return
+    if (finished || paused || preview || !expanded || isPreviewPaused) return
     const timer = window.setTimeout(() => setWaitedTooLong(true), WAITING_TIMEOUT_MS)
 
     return () => window.clearTimeout(timer)
-  }, [expanded, finished, held, preview, previewAttempt, previewEnabled, channel?.previewHidden, hidden, visible])
+  }, [expanded, finished, paused, preview, previewAttempt, previewEnabled, channel?.previewHidden, hidden, visible])
 
   // Preserve a user's scroll position when they inspect earlier browser actions.
   // biome-ignore lint/correctness/useExhaustiveDependencies: row count changes trigger this check
@@ -474,15 +475,14 @@ export const BrowserActivityCard = ({
   if (!browserTools.length) return null
 
   const screenshot = getBrowserActivityScreenshot(browserTools)
-  const finalPreview = !held && !channel?.previewHidden ? preview : undefined
+  const finalPreview = !paused && !channel?.previewHidden ? preview : undefined
   const actions = browserTools.slice(-MAX_VISIBLE_ACTIONS)
   const times = getBrowserActivityTimestamps(actions, createdAt)
   const takeoverActions = browserTools.slice(-5)
   const takeoverTimes = getBrowserActivityTimestamps(takeoverActions, createdAt)
   const currentAction = browserTools.at(-1)
-  const previewNotice = privacyPending
-    ? t("Your last page stays private until a new safe page is ready.", {}, locale)
-    : previewError
+  const requesterName = channel?.state.requesterName ?? t("Browser self", {}, locale)
+  const previewNotice = getPreviewNotice(paused, privacyPending, previewError, requesterName, locale)
   const title = t("Browser for {name}", { name: botName }, locale)
   const summary = t(
     browserTools.length === 1 ? "Used the browser · 1 action" : "Used the browser · {count} actions",
@@ -490,7 +490,7 @@ export const BrowserActivityCard = ({
     locale,
   )
   const url =
-    finished || held || channel?.previewHidden
+    finished || paused || channel?.previewHidden
       ? ""
       : getBrowserActivityShortUrl(preview?.url ?? "") || getBrowserActivityOpenUrl(browserTools)
   const subtitle = [
@@ -502,8 +502,10 @@ export const BrowserActivityCard = ({
   ]
     .filter(Boolean)
     .join(" · ")
-  const takeoverActive = held && !finished
-  const takeoverReason = heldTab?.reason ?? "requested"
+  const takeoverActive = paused && !finished
+  const fallbackReason = waitingForPerson ? "sensitive_action" : "requested"
+  const requestedReason = takeoverActive ? getBrowserTakeoverReason(browserTools) : null
+  const takeoverReason = requestedReason ?? heldTab?.reason ?? fallbackReason
   const reasonCopy = getTakeoverReasonCopy(takeoverReason, locale)
   const controlStatusCopy = t(
     channel?.state.controllerId
@@ -524,7 +526,7 @@ export const BrowserActivityCard = ({
             initialViewEpoch={takeoverViewEpoch}
             botName={botName}
             locale={locale}
-            reason={getBrowserTakeoverReason(browserTools) ?? reasonCopy}
+            reason={reasonCopy}
             actions={takeoverActions.map((part, index) => ({
               id: part.callId,
               icon: getBrowserActivityIcon(part),
@@ -567,11 +569,11 @@ export const BrowserActivityCard = ({
         ref={section}
         aria-label={title}
         data-finished={finished}
-        data-held={held}
+        data-held={paused}
         data-expanded={expanded}
         data-show-all-actions={finished || showAllActions}
       >
-        {!finished && !held && (
+        {!finished && !paused && (
           <span
             className="browser-activity-progress"
             role="progressbar"
@@ -748,15 +750,15 @@ export const BrowserActivityCard = ({
                 {actions.map((part, index) => (
                   <li
                     key={part.callId}
-                    data-current={part.callId === currentAction?.callId && !finished && !held}
-                    data-running={!finished && !held && isBrowserActivityRunning(part)}
-                    data-status={getBrowserActionState(part, held)}
+                    data-current={part.callId === currentAction?.callId && !finished && !paused}
+                    data-running={!finished && !paused && isBrowserActivityRunning(part)}
+                    data-status={getBrowserActionState(part, paused)}
                   >
                     <span className="browser-activity-action-icon" aria-hidden="true">
                       <BrowserIcon name={getBrowserIconName(getBrowserActivityKind(part))} />
                     </span>
                     <span className="browser-activity-action-label">
-                      {getBrowserActionLabel(part, held, finished, locale)}
+                      {getBrowserActionLabel(part, paused, finished, locale)}
                       {getBrowserActivityNotice(part, locale) && (
                         <small>{getBrowserActivityNotice(part, locale)}</small>
                       )}
@@ -764,10 +766,10 @@ export const BrowserActivityCard = ({
                     <span
                       className="browser-activity-action-state"
                       role="img"
-                      aria-label={getBrowserActionStatusLabel(part, held, locale)}
-                      data-status={getBrowserActionState(part, held)}
+                      aria-label={getBrowserActionStatusLabel(part, paused, locale)}
+                      data-status={getBrowserActionState(part, paused)}
                     >
-                      {part.ok === null && !held ? (
+                      {part.ok === null && !paused ? (
                         <span className="browser-activity-action-spinner" aria-hidden="true" />
                       ) : null}
                       {part.ok === false ? "!" : part.ok === true ? "✓" : null}
@@ -829,14 +831,29 @@ export const BrowserActivityCard = ({
   )
 }
 
-const getTakeoverReasonCopy = (reason: BrowserTakeoverReason, locale: Locale): string => {
+const getPreviewNotice = (
+  paused: boolean,
+  privacyPending: boolean,
+  error: string | null,
+  requesterName: string,
+  locale: Locale,
+): string | null => {
+  if (paused) return t("Preview hidden while the browser waits for {person}.", { person: requesterName }, locale)
+  if (privacyPending) return t("Your last page stays private until a new safe page is ready.", {}, locale)
+
+  return error
+}
+
+const getTakeoverReasonCopy = (reason: string, locale: Locale): string => {
   if (reason === "login") return t("The site asked you to sign in before continuing.", {}, locale)
   if (reason === "payment")
     return t("The site asked you to review a purchase or payment before continuing.", {}, locale)
   if (reason === "form_submit") return t("The site asked you to submit a form before continuing.", {}, locale)
   if (reason === "requested") return t("A person is controlling this browser tab; the bot is paused.", {}, locale)
 
-  return t("The site needs your confirmation before continuing.", {}, locale)
+  if (reason === "sensitive_action") return t("The site needs your confirmation before continuing.", {}, locale)
+
+  return reason
 }
 
 const getBrowserActionState = (part: ToolCallPart, held: boolean): "failed" | "complete" | "paused" | "in-progress" => {

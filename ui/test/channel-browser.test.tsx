@@ -15,6 +15,7 @@ import {
   getChannelWorking,
 } from "../src/features/channelBrowser/channelBrowserModel"
 import { InlinePreviewContext } from "../src/features/desktop/InlineLivePreview"
+import { type Locale, t } from "../src/i18n"
 import { getChannelBrowserWorkspaceFixture } from "./channel-browser-workspace-fixture"
 
 vi.mock("../src/features/desktop/inlineFrameSource", () => ({
@@ -48,6 +49,26 @@ const getState = (patch: Partial<ChannelBrowserState> = {}): ChannelBrowserState
   queue: [],
   ...patch,
 })
+
+test.each([
+  ["pt-BR", "user-ana", "Léo está aguardando você no navegador"],
+  ["en", "user-ana", "Léo is waiting for you in the browser"],
+  ["pt-BR", "user-owner", "Léo está aguardando Ana no navegador"],
+  ["en", "user-owner", "Léo is waiting for Ana in the browser"],
+] as const)(
+  "a waiting channel names the person instead of claiming the bot is working in %s",
+  (locale, viewerId, copy) => {
+    const state = getState({ status: "needs_you" })
+
+    render(
+      <ChannelBrowserContext.Provider value={{ state, viewerId }}>
+        <ChannelComposerChip botName="Léo" locale={locale} />
+      </ChannelBrowserContext.Provider>,
+    )
+
+    expect(screen.getByRole("status")).toHaveTextContent(copy)
+  },
+)
 
 const getPart = (callId: string, tool: string, inputJson: string): ToolCallPart => ({
   type: "tool_call",
@@ -91,7 +112,12 @@ const getMessage = (overrides: Partial<Message> = {}): Message => ({
   ...overrides,
 })
 
-const renderCard = (state: ChannelBrowserState, viewerId: string) => {
+const renderCard = (
+  state: ChannelBrowserState,
+  viewerId: string,
+  locale: Locale = "pt-BR",
+  waitingForPerson = false,
+) => {
   const api = createMockApi()
   const bot = api.getState().bots[0] ?? null
 
@@ -100,7 +126,14 @@ const renderCard = (state: ChannelBrowserState, viewerId: string) => {
       <InlinePreviewContext.Provider
         value={{ api, bot, machine: undefined, activeCallId: undefined, onOpenComputer: vi.fn() }}
       >
-        <BrowserActivityCard parts={browserParts} finished={false} createdAt={1} botName="Léo" />
+        <BrowserActivityCard
+          parts={browserParts}
+          finished={false}
+          waitingForPerson={waitingForPerson}
+          createdAt={1}
+          botName="Léo"
+          locale={locale}
+        />
       </InlinePreviewContext.Provider>
     </ChannelBrowserContext.Provider>,
   )
@@ -212,6 +245,16 @@ describe("getChannelQueueLabel", () => {
 })
 
 describe("browser card in a channel", () => {
+  test.each([
+    ["pt-BR", "Prévia oculta enquanto o navegador espera Ana."],
+    ["en", "Preview hidden while the browser waits for Ana."],
+  ] as const)("a waiting preview names the requester to an observer in %s", (locale, copy) => {
+    renderCard(getState({ status: "needs_you" }), "user-hugo", locale, true)
+
+    expect(screen.getByText(copy)).toBeVisible()
+    expect(screen.queryByRole("button", { name: t("Take over browser", {}, locale) })).toBeNull()
+  })
+
   test("tells everyone in the channel and explains login before the requester", () => {
     renderCard(getState(), "user-ana")
 

@@ -904,6 +904,8 @@ export const ptBR = {
   "Browser for {name}": "Navegador do {name}",
   "Why {name} paused": "Por que {name} parou",
   "The site asked you to sign in before continuing.": "O site pediu login para continuar.",
+  "Preview hidden while the browser waits for {person}.": "Prévia oculta enquanto o navegador espera {person}.",
+  "{name} is waiting for {person} in the browser": "{name} está aguardando {person} no navegador",
   "The site asked you to review a purchase or payment before continuing.":
     "O site pediu que você confira uma compra ou pagamento antes de continuar.",
   "The site asked you to submit a form before continuing.":
@@ -3567,6 +3569,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Expand browser to full screen": "Expand browser to full screen",
   "Collapse browser full screen": "Collapse full-screen browser",
   "Browser privacy": "Browser privacy",
+  "Preview hidden while the browser waits for {person}.": "Preview hidden while the browser waits for {person}.",
+  "{name} is waiting for {person} in the browser": "{name} is waiting for {person} in the browser",
   "What you type here stays out of chat, the bot, and history.":
     "What you type here stays out of chat, the bot, and history.",
   "Hand back to {name}": "Hand back to {name}",
