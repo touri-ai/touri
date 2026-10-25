@@ -535,6 +535,9 @@ Only an edited instruction field is sent back, so a deferred placeholder never e
 Protocol version 2 identifies this contract. The optional cloud connection resolves the complete
 instructions before forwarding an update.
 
+Same-bot settings edits retain request order through asynchronous preparation, filesystem writes and
+metadata publication, with bounded admission and cancellable waits.
+
 Instruction edits retain the existing request allowance and filesystem snapshot/rollback behavior.
 An isolated writer hashes and commits instructions and bot metadata in one SQLite transaction,
 compares a fresh metadata snapshot, and records an atomic acknowledgement. Cancellation stops the
