@@ -55,6 +55,7 @@ import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemor
 import { getAttachmentDownload } from "./attachment-download"
 import { cleanupBotHome, updateBotHome, writeBotHome } from "./bot-home"
 import { type BotMetadataStatement, createBotEditQueue, createBotMetadataWriter } from "./bot-metadata"
+import { getHistoryAttachmentMessageIds } from "./history-attachment-candidates"
 import { getHistoryPage, getHistoryQuery } from "./history-query"
 import { getIntegrationSender } from "./integration-sender"
 import { getMessageFromRow as asMessage } from "./message-row"
@@ -657,13 +658,6 @@ export const init = async (
     return thread
   }
 
-  const getMessageAttachmentIds = (message: Message): Array<string> =>
-    message.parts.flatMap((part) => {
-      if (part.type === "image" || part.type === "file") return [part.attachmentId]
-      if ("outputAttachmentId" in part && typeof part.outputAttachmentId === "string") return [part.outputAttachmentId]
-      return []
-    })
-
   const indexAttachmentIds = async (
     threadId: string,
     messageId: string,
@@ -700,9 +694,7 @@ export const init = async (
     messages: Array<Message>,
     signal: AbortSignal,
   ): Promise<void> => {
-    const candidates = messages.filter(
-      (message) => message.threadId === threadId && getMessageAttachmentIds(message).length > 0,
-    )
+    const candidates = await getHistoryAttachmentMessageIds(threadId, messages, signal)
     if (candidates.length === 0) return
 
     // Historical events can contain superseded parts; index only a current, versioned snapshot.
@@ -710,7 +702,7 @@ export const init = async (
     const references = await reader.getAttachmentReferences(
       {
         sql: `SELECT * FROM messages WHERE thread_id = ? AND id IN (${placeholders})`,
-        bindings: [threadId].concat(candidates.map((message) => message.id)),
+        bindings: [threadId].concat(candidates),
       },
       signal,
     )
