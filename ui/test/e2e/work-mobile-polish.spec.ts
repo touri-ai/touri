@@ -1,5 +1,6 @@
 import { mkdir } from "node:fs/promises"
 import { resolve } from "node:path"
+import AxeBuilder from "@axe-core/playwright"
 import { expect, type Page, type TestInfo, test } from "@playwright/test"
 import { openBotActions, openGlobalPage, showBotDetails } from "./home-navigation"
 
@@ -75,6 +76,58 @@ for (const viewport of [
       expect(tabsFit).toBe(true)
       await expect(page.locator(".api-model-settings")).not.toContainText("JEV")
       await expectNoOverflow(page)
+    })
+
+    test("preferences keeps every section visible and accessible", async ({ page }, info) => {
+      await page.goto("/test/e2e/work-mobile-harness.html")
+      await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+      await openDrawer(page)
+      await page.getByRole("button", { name: "Você", exact: true }).click()
+      const tabs = page.getByRole("dialog").getByRole("tablist").getByRole("tab")
+      await expect(tabs).toHaveCount(5)
+      for (const tab of await tabs.all()) await expect(tab).toBeInViewport()
+      const tabsFit = await page.locator(".settings-nav").evaluate((nav) => {
+        const bounds = nav.getBoundingClientRect()
+        return Array.from(nav.querySelectorAll("button")).every((tab) => {
+          const rect = tab.getBoundingClientRect()
+          return (
+            rect.top >= bounds.top &&
+            rect.bottom <= bounds.bottom &&
+            rect.left >= bounds.left &&
+            rect.right <= bounds.right
+          )
+        })
+      })
+      expect(tabsFit).toBe(true)
+      await capture(page, info, "preferences")
+
+      const accessibility = await new AxeBuilder({ page }).include(".settings-modal").analyze()
+      expect(
+        accessibility.violations.filter((violation) => ["serious", "critical"].includes(violation.impact ?? "")),
+      ).toEqual([])
+    })
+
+    test("saved browser assistance explains consent beside its switch", async ({ page }, info) => {
+      await page.goto("/test/e2e/work-mobile-harness.html")
+      await expect(page.getByRole("textbox", { name: "Mensagem para mark" })).toBeVisible()
+      await openDrawer(page)
+      await openGlobalPage(page, "Modelos por API")
+      await page.getByLabel("Provedor da API").selectOption("openrouter")
+      await page.getByLabel("Chave de API").fill("fixture-private-key")
+      await page.getByLabel("Identificador do modelo").fill("demo-model")
+      await page.getByRole("button", { name: "Salvar modelo por API" }).click()
+      await expect(page.getByLabel("Chave de API")).toHaveValue("")
+      const consent = page.getByRole("switch", { name: "Usar esta chave para ajudar nas escolhas do navegador" })
+      await expect(consent).toBeVisible()
+      await consent.scrollIntoViewIfNeeded()
+      await capture(page, info, "saved-consent")
+
+      await expect(consent).not.toBeChecked()
+      await expect(consent).toHaveAccessibleDescription(/modelo remoto.*gerar cobrança/)
+      const accessibility = await new AxeBuilder({ page }).include(".api-model-settings").analyze()
+      expect(
+        accessibility.violations.filter((violation) => ["serious", "critical"].includes(violation.impact ?? "")),
+      ).toEqual([])
     })
 
     test("conversation menu has an icon", async ({ page }, info) => {

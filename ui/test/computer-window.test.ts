@@ -97,5 +97,6 @@ test("viewer capability grants only its required local window controls", async (
   const { default: capability } = await import("../../src-tauri/capabilities/computer.json")
 
   expect(capability.windows).toEqual(["computer-*"])
+  expect(capability).not.toHaveProperty("remote")
   expect(capability.permissions).toEqual(["core:default", "core:window:allow-set-focus", "core:window:allow-close"])
 })
