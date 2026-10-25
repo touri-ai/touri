@@ -1178,6 +1178,7 @@ export type ApiRoutes = {
   'GET /machines': { req: {}; res: { capability: MachineCapability; machines: Array<MachineState> } }
   'POST /machines/service/start': { req: { botId?: Id }; res: { machine: MachineState | null } }
   'POST /bots/:id/machine/stop': { req: {}; res: { machine: MachineState } }
+  'GET /bots/:id/image-references': { req: { path: string; base?: string }; res: { paths: string[] } }
   'GET /bots/:id/images': { req: { path?: string; base?: string; attachmentId?: Id }; res: Blob }
   'GET /bots/:id/files': { req: { path?: string }; res: { files: Array<WorkspaceFile> } }
   'GET /bots/:id/files/content': { req: { path: string }; res: WorkspaceFileContent }
@@ -1197,7 +1198,7 @@ export type ApiRoutes = {
   'POST /threads/delete': { req: { ids: Array<Id> }; res: { threadIds: Array<Id>; phase: string } }
   'GET /threads/:id/transcript': { req: { since?: number; limit?: number }; res: { entries: Array<{ seq: number; generation: number; event: UiEvent }>; rejections: Array<TranscriptRejection>; lastSeq: number; generation: number; hasMore: boolean; resync: boolean } }
   'GET /threads/:id/messages': { req: { all?: boolean; limit?: number; before?: Id; around?: Id; context?: boolean }; res: { messages: Array<Message>; activeLeafId: Id | null; before?: Id | null; context?: MessageHistoryContext } }
-  'POST /threads/:id/messages': { req: SendMessageInput & { as?: IntegrationSenderInput }; res: { message: Message; run: Run | null } }
+  'POST /threads/:id/messages': { req: SendMessageInput & { as?: IntegrationSenderInput; attachments?: Id[] }; res: { message: Message; run: Run | null } }
   'GET /runs': { req: Record<string, never>; res: { runs: Array<Run>; draining?: boolean } }
   'GET /threads/:id/goal': { req: {}; res: { goal: Goal | null } }
   'POST /threads/:id/goal': { req: GoalStart; res: { goal: Goal } }
@@ -1766,7 +1767,7 @@ export type ServiceMap = {
   'computer.isActive': () => { active: boolean; botId: Id | null }
   'notify.emit': (input: NotifyInput) => NotificationRecord
   'notify.push': (notification: NotificationRecord) => void
-  'notify.channelNotice': (args: { threadId: Id; text: string }) => RouteResponse
+  'notify.channelNotice': (args: { threadId: Id; text: string; attachmentIds?: Id[] }) => RouteResponse
   'runtime.answerApproval': (args: { approvalId: Id; decision: 'approved' | 'denied'; standing?: boolean; message?: string; source?: 'card' | 'notification' }) => Promise<Result<{}, 'NOT_FOUND' | 'DENIED'>>
   'notify.resolve': (args: { requestId: string; resolution: NotifyResolution }) => void
 }
