@@ -4,6 +4,7 @@ export const historyPageSize = 40
 export type ThreadHistory = {
   messages: Message[]
   runs: Run[]
+  runsReady?: boolean | undefined
   before: string | null
   activeLeafId?: string | null | undefined
 }
@@ -28,6 +29,7 @@ export const createThreadHistoryCache = () => {
     const page = {
       messages,
       runs,
+      runsReady: history.runsReady ?? true,
       activeLeafId: history.activeLeafId,
       before: history.messages.length > messages.length ? (messages[0]?.id ?? null) : history.before,
     }

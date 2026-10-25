@@ -739,6 +739,7 @@ const AppContent = ({ kernel }: AppProps) => {
     }
     if (
       selectedGroup ||
+      (data.historyContext?.messageId === focus.messageId && data.historyContext.onActivePath) ||
       activeMessagePath(data.messages, selectedThread?.activeLeafId ?? null).some(
         (message) => message.id === focus.messageId,
       )
@@ -751,6 +752,7 @@ const AppContent = ({ kernel }: AppProps) => {
   }, [
     data.messageFocus,
     data.historyThreadId,
+    data.historyContext,
     data.messages,
     selectedGroup,
     selectedThread?.activeLeafId,
@@ -1430,6 +1432,11 @@ const AppContent = ({ kernel }: AppProps) => {
                             hasOlderHistory={Boolean(data.historyBefore)}
                             loadingOlderHistory={data.loadingOlderHistory}
                             onLoadOlderHistory={actions.loadOlderMessages}
+                            onLatestHistory={
+                              data.historyFocusId && selectedThread
+                                ? () => actions.selectThread(selectedThread.id)
+                                : undefined
+                            }
                             historyLoading={
                               !data.threadCreation &&
                               (selectedThread ? data.historyThreadId !== selectedThread.id : !data.loaded)
@@ -1461,6 +1468,7 @@ const AppContent = ({ kernel }: AppProps) => {
                             machine={data.machines.find((state) => state.botId === selectedBot?.id)}
                             thread={selectedThread}
                             activePath={activePath}
+                            branchOptions={data.historyContext?.siblings}
                             goalRefreshRequest={goalRefreshRequest}
                             onGoalChange={notifyGoalChange}
                             composerKey={data.composerKey ?? undefined}

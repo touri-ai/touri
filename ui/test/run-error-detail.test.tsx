@@ -122,7 +122,7 @@ it("resolves a legacy generic notice from the existing runs API and retries when
   expect(screen.getByText("Aguarde a máquina terminar de iniciar para tentar de novo.")).toBeVisible()
   expect(api.request).toHaveBeenCalledWith(
     "GET /threads/:id/runs",
-    { all: true },
+    { all: true, limit: 40 },
     { id: thread.id },
     { signal: expect.any(AbortSignal) },
   )

@@ -34,7 +34,7 @@ const startSyntaxMemoryFixture = () => {
     unread: 0,
   }))
   // Keep thirty highlighted blocks mounted together while history pages stay virtualized.
-  const messages = Array.from({ length: 20 }, (_, index) => getMessage(message, index))
+  const messages = Array.from({ length: 10 }, (_, index) => getMessage(message, index))
   const request: ApiRequest = async (route, input, paths = {}) => {
     if (route === "GET /bots") return { bots } as ApiRoutes[typeof route]["res"]
     if (route === "GET /bots/:id/threads")
@@ -91,15 +91,14 @@ const getMessage = (template: Message, index: number): Message => {
     const sample = samples[(Math.floor(index / 2) * 3 + offset) % samples.length]
     return sample ? [`\`\`\`${sample[0]}\n${sample[1]}\n\`\`\``] : []
   })
-  const text =
-    index % 2 ? `Exemplo ${Math.floor(index / 2) + 1}:\n\n${examples.join("\n\n")}` : "Mostre um exemplo de código."
+  const text = `Exemplo ${index + 1}:\n\n${examples.join("\n\n")}`
 
   return {
     ...template,
     id: `syntax-message-${index}`,
     threadId: "syntax-thread-0",
     parentId: index ? `syntax-message-${index - 1}` : null,
-    role: index % 2 ? "assistant" : "user",
+    role: "assistant",
     status: "complete",
     runId: null,
     text,

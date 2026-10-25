@@ -164,3 +164,30 @@ const getFixture = async (): Promise<Database> => {
 
   return database
 }
+
+test("an explicit old search returns bounded sibling keys and active-branch context without other reply bodies", async () => {
+  const database = await getFixture()
+  database.exec(`INSERT INTO messages(id,thread_id,parent_id,role,kind,status,text,parts_json,created_at,updated_at,seq,generation,updated_seq)
+    VALUES('sibling','channel','message-99','user','text','complete','Offscreen sibling body','[]',9999,9999,5001,1,5001)`)
+  const reader = createStoreReader(database.filename)
+  cleanups.add(reader.dispose)
+
+  const result = await reader.getMessages(
+    getHistoryQuery("channel", "message-5000", true, { limit: 40, around: "message-100", contextId: "message-100" }),
+    AbortSignal.timeout(15_000),
+  )
+  const page = JSON.parse(new TextDecoder().decode(result.body))
+  const branchResult = await reader.getMessages(
+    getHistoryQuery("channel", "sibling", true, { limit: 40, around: "message-100", contextId: "message-100" }),
+    AbortSignal.timeout(15_000),
+  )
+  const branch = JSON.parse(new TextDecoder().decode(branchResult.body))
+
+  expect(page.messages).toHaveLength(40)
+  expect(page.context.onActivePath).toBe(true)
+  expect(page.context.siblings.map((message: { id: string }) => message.id)).toEqual(["message-100", "sibling"])
+  expect(
+    page.context.siblings.every((message: Record<string, unknown>) => !("text" in message) && !("parts" in message)),
+  ).toBe(true)
+  expect(branch.context.onActivePath).toBe(false)
+})

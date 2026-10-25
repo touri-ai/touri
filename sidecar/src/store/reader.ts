@@ -101,7 +101,12 @@ export const createStoreReader = (filename: string, onReady?: (pid: number) => v
       )
     },
     getMessages: (
-      query: ReadQuery & { activeLeafId: string | null; reverse?: boolean; pageLimit?: number },
+      query: ReadQuery & {
+        activeLeafId: string | null
+        reverse?: boolean
+        pageLimit?: number
+        context?: { threadId: string; messageId: string }
+      },
       signal: AbortSignal,
     ): Promise<MessageReply> => getResult<MessageReply>({ query }, signal, true),
     getRecoveryCandidates: (recovery: RecoveryCursor, signal: AbortSignal): Promise<Candidate[]> =>

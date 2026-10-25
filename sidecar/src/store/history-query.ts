@@ -2,7 +2,7 @@ import { MESSAGE_PATH_CTE } from "../kernel/message-path"
 
 export const THREAD_MESSAGES_SQL = "SELECT * FROM messages WHERE thread_id = ? ORDER BY created_at ASC, rowid ASC"
 
-export type HistoryPage = { limit: number; before?: string; around?: string }
+export type HistoryPage = { limit: number; before?: string; around?: string; contextId?: string }
 
 export const getHistoryPageQuery = (threadId: string, page: HistoryPage) => ({
   // The chronology index includes rowid as its final key, including equal-timestamp imports.
@@ -20,7 +20,14 @@ export const getHistoryPageQuery = (threadId: string, page: HistoryPage) => ({
 })
 
 export const getHistoryQuery = (threadId: string, activeLeafId: string | null, all = false, page?: HistoryPage) => {
-  if (page) return { ...getHistoryPageQuery(threadId, page), activeLeafId, reverse: true, pageLimit: page.limit }
+  if (page)
+    return {
+      ...getHistoryPageQuery(threadId, page),
+      activeLeafId,
+      reverse: true,
+      pageLimit: page.limit,
+      ...(page.contextId ? { context: { threadId, messageId: page.contextId } } : {}),
+    }
   if (all) return { sql: THREAD_MESSAGES_SQL, bindings: [threadId], activeLeafId, reverse: false }
   if (!activeLeafId) return { sql: "SELECT * FROM messages WHERE 0", bindings: [], activeLeafId, reverse: false }
 
@@ -41,5 +48,6 @@ export const getHistoryPage = (query: Record<string, string>, activeLeafId: stri
     limit: Math.max(1, Math.min(50, Math.floor(Number(query.limit)) || 40)),
     ...(query.before ? { before: query.before } : {}),
     ...(around ? { around } : {}),
+    ...(query.context === "true" && query.around ? { contextId: query.around } : {}),
   }
 }

@@ -1,5 +1,5 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
-import type { Message } from "@touri/contracts"
+import type { ApiRoutes, Message } from "@touri/contracts"
 import { afterEach, expect, test } from "vitest"
 import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
@@ -146,6 +146,208 @@ test("switching to an older DM branch keeps a bounded page and caches that selec
   expect(api.calls.filter((call) => call.route === "GET /threads/:id/messages")).toHaveLength(reads)
 })
 
+test("updates to an unloaded old reply stay in activity without refetching or polluting the latest page", async () => {
+  const api = createMockApi()
+  const threadId = await getChannel(api, "Atividade fictícia")
+  const old = getStoredMessage(api, threadId, 0)
+  Object.assign(old, {
+    role: "assistant",
+    status: "streaming",
+    runId: "old-stream",
+    text: "Antiga",
+    parts: [{ type: "text", text: "Antiga" }],
+    updatedSeq: 1,
+  })
+  const hook = renderHook(() => useWorkspace(api))
+  await waitFor(() => expect(hook.result.current.data.loaded).toBe(true))
+  act(() => hook.result.current.actions.selectThread(threadId))
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe(threadId))
+  const reads = api.calls.filter((call) => call.route === "GET /threads/:id/messages").length
+
+  act(() => api.emit({ type: "message.updated", message: { ...old, text: "Antiga atualizada", updatedSeq: 2 } }))
+  Array.from({ length: 20 }, (_, index) => index).forEach((index) => {
+    act(() =>
+      api.emit({
+        type: "message.delta",
+        threadId,
+        messageId: old.id,
+        partIndex: 0,
+        offset: 16 + index,
+        delta: ".",
+        updatedSeq: index + 3,
+      }),
+    )
+  })
+
+  expect(hook.result.current.data.messages).toHaveLength(40)
+  expect(hook.result.current.data.messages[0]?.id).toBe(`${threadId}-4960`)
+  expect(hook.result.current.data.messages.at(-1)?.id).toBe(`${threadId}-4999`)
+  expect(api.calls.filter((call) => call.route === "GET /threads/:id/messages")).toHaveLength(reads)
+})
+
+test("a gap in an older loaded reply reads one message and preserves the older-page cursor", async () => {
+  const api = createMockApi()
+  const threadId = await getChannel(api, "Reparo fictício")
+  const old = getStoredMessage(api, threadId, 4930)
+  Object.assign(old, {
+    role: "assistant",
+    status: "streaming",
+    text: "Oi",
+    parts: [{ type: "text", text: "Oi" }],
+    updatedSeq: 1,
+  })
+  const hook = renderHook(() => useWorkspace(api))
+  await waitFor(() => expect(hook.result.current.data.loaded).toBe(true))
+  act(() => hook.result.current.actions.selectThread(threadId))
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe(threadId))
+  await act(() => hook.result.current.actions.loadOlderMessages())
+  const before = hook.result.current.data.historyBefore
+  Object.assign(old, { text: "Oi mundo", parts: [{ type: "text", text: "Oi mundo" }], updatedSeq: 2 })
+
+  act(() =>
+    api.emit({
+      type: "message.delta",
+      threadId,
+      messageId: old.id,
+      partIndex: 0,
+      offset: 8,
+      delta: "!",
+      updatedSeq: 3,
+    }),
+  )
+  await waitFor(() =>
+    expect(hook.result.current.data.messages.find((message) => message.id === old.id)?.text).toBe("Oi mundo!"),
+  )
+
+  const last = api.calls.filter((call) => call.route === "GET /threads/:id/messages").at(-1)
+  expect(last?.input).toMatchObject({ limit: 1, around: old.id })
+  expect(hook.result.current.data.messages).toHaveLength(80)
+  expect(hook.result.current.data.historyBefore).toBe(before)
+})
+
+test("an unknown old stream is looked up once and subsequent deltas stay offscreen", async () => {
+  const api = createMockApi()
+  const threadId = await getChannel(api, "Replay fictício")
+  const old = getStoredMessage(api, threadId, 0)
+  Object.assign(old, {
+    role: "assistant",
+    status: "streaming",
+    runId: "unknown-old-stream",
+    text: "Oi!",
+    parts: [{ type: "text", text: "Oi!" }],
+    updatedSeq: 2,
+  })
+  const request: ApiRequest = async (route, input, path, transport) => {
+    if (route === "GET /workspace/activity")
+      return { ...(await api.request("GET /workspace/activity", {})), messages: [] } as never
+    return api.request(route, input, path, transport)
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(hook.result.current.data.loaded).toBe(true))
+  act(() => hook.result.current.actions.selectThread(threadId))
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe(threadId))
+  const reads = api.calls.filter((call) => call.route === "GET /threads/:id/messages").length
+
+  act(() =>
+    api.emit({
+      type: "message.delta",
+      threadId,
+      messageId: old.id,
+      partIndex: 0,
+      offset: 2,
+      delta: "!",
+      updatedSeq: 2,
+    }),
+  )
+  await waitFor(() =>
+    expect(hook.result.current.data.activityMessages.some((message) => message.id === old.id)).toBe(true),
+  )
+  Array.from({ length: 20 }, (_, index) => index).forEach((index) => {
+    act(() =>
+      api.emit({
+        type: "message.delta",
+        threadId,
+        messageId: old.id,
+        partIndex: 0,
+        offset: 3 + index,
+        delta: ".",
+        updatedSeq: index + 3,
+      }),
+    )
+  })
+
+  expect(hook.result.current.data.messages).toHaveLength(40)
+  expect(api.calls.filter((call) => call.route === "GET /threads/:id/messages")).toHaveLength(reads + 1)
+})
+
+test("simultaneous repairs serialize their reads and carry each message's overlapping delta", async () => {
+  const api = createMockApi()
+  const threadId = await getChannel(api, "Reparos paralelos fictícios")
+  const replies = [4930, 4940].map((index) => getStoredMessage(api, threadId, index))
+  replies.forEach((reply) => {
+    Object.assign(reply, {
+      role: "assistant",
+      status: "streaming",
+      text: "Oi",
+      parts: [{ type: "text", text: "Oi" }],
+      updatedSeq: 1,
+    })
+  })
+  const held = Promise.withResolvers<void>()
+  const started = Promise.withResolvers<void>()
+  const request: ApiRequest = async (route, input, path, transport) => {
+    const response = await api.request(route, input, path, transport)
+    const page = input as ApiRoutes["GET /threads/:id/messages"]["req"]
+    if (route === "GET /threads/:id/messages" && page.limit === 1 && page.around === replies[0]?.id) {
+      started.resolve()
+      await held.promise
+    }
+    return response
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(hook.result.current.data.loaded).toBe(true))
+  act(() => hook.result.current.actions.selectThread(threadId))
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe(threadId))
+  await act(() => hook.result.current.actions.loadOlderMessages())
+  replies.forEach((reply) => {
+    Object.assign(reply, { text: "Oi mundo", parts: [{ type: "text", text: "Oi mundo" }], updatedSeq: 2 })
+  })
+
+  act(() =>
+    replies.forEach((reply) => {
+      api.emit({
+        type: "message.delta",
+        threadId,
+        messageId: reply.id,
+        partIndex: 0,
+        offset: 8,
+        delta: "!",
+        updatedSeq: 3,
+      })
+    }),
+  )
+  await started.promise
+  await act(async () => held.resolve())
+  await waitFor(() =>
+    expect(
+      replies.every(
+        (reply) => hook.result.current.data.messages.find((message) => message.id === reply.id)?.text === "Oi mundo!",
+      ),
+    ).toBe(true),
+  )
+
+  expect(hook.result.current.data.messages).toHaveLength(80)
+})
+
+const getStoredMessage = (api: ReturnType<typeof createMockApi>, threadId: string, index: number): Message => {
+  const message = api.getState().messages.find((message) => message.id === `${threadId}-${index}`)
+  if (!message) throw new Error("Missing synthetic message")
+
+  return message
+}
+
 const getChannel = async (api: ReturnType<typeof createMockApi>, name: string): Promise<string> => {
   const { thread } = await api.request("POST /groups", {
     name,
@@ -174,4 +376,49 @@ const getMessage = (threadId: string, index: number): Message => ({
   source: "local",
   createdAt: index + 1,
   updatedAt: index + 1,
+})
+
+test("an unavailable old search is read once and does not restart history loading", async () => {
+  const api = createMockApi()
+  const threadId = await getChannel(api, "Pesquisa fictícia")
+  const hook = renderHook(() => useWorkspace(api))
+  await waitFor(() => expect(hook.result.current.data.loaded).toBe(true))
+  act(() => hook.result.current.actions.selectThread(threadId, { messageId: "removed-message" }))
+  await waitFor(() => expect(hook.result.current.data.historyFocusId).toBe("removed-message"))
+
+  const thread = api.getState().threads.find((thread) => thread.id === threadId)
+  if (!thread) throw new Error("Missing synthetic thread")
+  act(() => api.emit({ type: "thread.updated", thread: { ...thread, unread: 1 } }))
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe(threadId))
+  expect(
+    api.calls.filter((call) => call.route === "GET /threads/:id/messages" && call.pathValues?.id === threadId),
+  ).toHaveLength(1)
+  expect(hook.result.current.data.messages).toEqual([])
+})
+
+test("a hover page opens before held run metadata and never downloads its messages twice", async () => {
+  const api = createMockApi()
+  const threadId = await getChannel(api, "Canal fictício")
+  const held = Promise.withResolvers<void>()
+  const reads: string[] = []
+  const request: ApiRequest = async (route, input, path, transport) => {
+    const response = await api.request(route, input, path, transport)
+    if (path?.id === threadId) {
+      reads.push(route)
+      if (route === "GET /threads/:id/runs") await held.promise
+    }
+    return response
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(hook.result.current.data.loaded).toBe(true))
+  act(() => hook.result.current.actions.prefetchThread(threadId))
+  await waitFor(() => expect(reads).toContain("GET /threads/:id/messages"))
+  act(() => hook.result.current.actions.selectThread(threadId))
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe(threadId))
+
+  expect(hook.result.current.data.messages).toHaveLength(40)
+  expect(reads.filter((route) => route === "GET /threads/:id/messages")).toHaveLength(1)
+  expect(reads.filter((route) => route === "GET /threads/:id/runs")).toHaveLength(1)
+  await act(async () => held.resolve())
 })

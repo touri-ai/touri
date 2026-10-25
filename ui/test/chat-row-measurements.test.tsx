@@ -62,6 +62,22 @@ it("the conversation history accepts keyboard focus for scrolling", () => {
   expect(history).toHaveFocus()
 })
 
+it("offers the latest page even when an older search page is at its bottom", () => {
+  const onLatestHistory = vi.fn()
+  const view = render(
+    <VirtualMessageList
+      messages={[]}
+      onLatestHistory={onLatestHistory}
+      onSwitchBranch={() => undefined}
+      onRetry={async () => undefined}
+    />,
+  )
+
+  fireEvent.click(view.getByRole("button", { name: "Voltar ao fim" }))
+
+  expect(onLatestHistory).toHaveBeenCalledTimes(1)
+})
+
 it.each([false, true])("updates virtual offsets when a row grows and collapses (strict: %s)", async (strict) => {
   const notifyResize = installMeasurements()
   const getList = (height: number) => (

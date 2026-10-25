@@ -2,6 +2,7 @@ import { constants, Database, type SQLQueryBindings } from "bun:sqlite"
 import { getRefEvent } from "../kernel/event-reference"
 import type { TranscriptRef } from "../kernel/transcript-events"
 import { getRecoveryCandidates, type RecoveryCursor } from "../notify/recovery-candidates"
+import { getMessageHistoryContext } from "./history-context"
 import { getMessageFromRow } from "./message-row"
 import type { MessageReferences, ReadQuery } from "./reader"
 import type { RawMessage } from "./workspace-activity"
@@ -20,6 +21,7 @@ type ReadInput = {
         activeLeafId?: string | null
         reverse?: boolean
         pageLimit?: number
+        context?: { threadId: string; messageId: string }
         chunkedStrings?: boolean
       }
     }
@@ -105,8 +107,11 @@ export const runStoreRead = async (): Promise<void> => {
     const ordered = input.query.reverse ? messages.reverse() : messages
     const pagination =
       input.query.pageLimit === undefined ? "" : `,"before":${JSON.stringify(hasMore ? oldestId : null)}`
+    const context = input.query.context
+      ? `,"context":${JSON.stringify(getMessageHistoryContext(database, input.query.context.threadId, input.query.activeLeafId ?? null, input.query.context.messageId))}`
+      : ""
     const body = new TextEncoder().encode(
-      `{"messages":[${ordered.join(",")}],"activeLeafId":${JSON.stringify(input.query.activeLeafId ?? null)}${pagination}}`,
+      `{"messages":[${ordered.join(",")}],"activeLeafId":${JSON.stringify(input.query.activeLeafId ?? null)}${pagination}${context}}`,
     )
     const referenceLines = references.map((reference) => JSON.stringify(reference))
     const header = new TextEncoder().encode(referenceLines.length ? `${referenceLines.join("\n")}\n` : "")

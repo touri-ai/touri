@@ -11,6 +11,9 @@ export const ptBR = {
     "Suas conversas continuam salvas. Recarregue para tentar novamente.",
   "The conversation could not be loaded again. Reload the app to try again. Saved drafts will be kept.":
     "Não foi possível carregar a conversa novamente. Recarregue o app para tentar de novo. Os rascunhos salvos serão mantidos.",
+  "Back to latest messages": "Voltar ao fim",
+  "New message count": "{count} nova mensagem",
+  "New messages count": "{count} novas mensagens",
   "Load older messages": "Carregar mensagens anteriores",
   "Loading older messages…": "Carregando mensagens anteriores…",
   "Não foi possível parar o processo do bot. Verifique as permissões e tente novamente.":
@@ -3449,6 +3452,9 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Back to latest messages": "Back to latest messages",
+  "New message count": "{count} new message",
+  "New messages count": "{count} new messages",
   "Load older messages": "Load older messages",
   "Loading older messages…": "Loading older messages…",
   "Não foi possível parar o processo do bot. Verifique as permissões e tente novamente.":

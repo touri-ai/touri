@@ -12,6 +12,7 @@ import type {
   MachineCapability,
   MachineState,
   Message,
+  MessageHistoryContext,
   NotificationRecord,
   PreviewTarget,
   ProcessRunState,
@@ -59,6 +60,7 @@ export type WorkspaceData = {
   groupsLoaded?: boolean
   readyGroupIds?: Id[]
   messageFocus?: { threadId: Id; messageId: Id; request: number } | null
+  historyContext?: MessageHistoryContext | undefined
   historyFocusId?: Id | null
   historyBefore?: Id | null | undefined
   loadingOlderHistory?: boolean
@@ -408,6 +410,8 @@ type ThreadLoad = {
   historyReady?: boolean
   runsReady?: boolean
   terminalRevision: number
+  repairMessageId: Id | null
+  deferredDeltas: MessageStreamEvent[]
 }
 const bufferStreamEvent = (load: ThreadLoad | undefined, event: MessageStreamEvent): void => {
   if (!load || load.overflow || load.historyReady) return
@@ -690,13 +694,20 @@ export const useWorkspace = (
             historyThreadId: next.selectedThreadId,
             historyBefore: cached.before,
             historyFocusId: null,
+            historyContext: undefined,
             historyNotice: null,
             loadingOlderHistory: false,
           }
         : next
       const selected =
         resetHistory && !cached
-          ? { ...restored, historyThreadId: null, historyBefore: undefined, loadingOlderHistory: false }
+          ? {
+              ...restored,
+              historyThreadId: null,
+              historyBefore: undefined,
+              historyContext: undefined,
+              loadingOlderHistory: false,
+            }
           : restored
       const focused = selected.messageFocus?.threadId === selected.selectedThreadId
 
@@ -724,6 +735,14 @@ export const useWorkspace = (
   const serviceNotice = useRef<string | null>(null)
   const runNotice = useRef<string | null>(null)
   const threadLoads = useRef(new Map<Id, ThreadLoad>())
+  const messageRepairs = useRef(new Map<string, { threadId: Id; messageId: Id }>())
+  const unloadedStreams = useRef(new Set<string>())
+  const recordUnloadedStream = useCallback((threadId: Id, messageId: Id): void => {
+    unloadedStreams.current.add(getHistoryMessageKey(threadId, messageId))
+    if (unloadedStreams.current.size <= 64) return
+    const oldest = unloadedStreams.current.values().next().value
+    if (oldest) unloadedStreams.current.delete(oldest)
+  }, [])
   const historySelection = data.threads.find((thread) => thread.id === data.selectedThreadId)
   const historyLeafId = historySelection?.groupId ? null : historySelection?.activeLeafId
   useEffect(() => {
@@ -733,7 +752,6 @@ export const useWorkspace = (
       data.historyThreadId !== threadId ||
       data.historyBefore === undefined ||
       data.historyFocusId ||
-      (threadLoads.current.has(threadId) && !threadLoads.current.get(threadId)?.runsReady) ||
       loadedThreads.current.get(threadId) !== generation.current
     )
       return
@@ -743,6 +761,7 @@ export const useWorkspace = (
     historyCache.current.save(threadId, {
       messages: leaf ? data.messages.filter((message) => message.createdAt <= leaf.createdAt) : data.messages,
       runs: data.runs.filter((run) => run.threadId === threadId),
+      runsReady: !threadLoads.current.has(threadId) || Boolean(threadLoads.current.get(threadId)?.runsReady),
       before: data.historyBefore,
       activeLeafId: historyLeafId,
     })
@@ -836,20 +855,13 @@ export const useWorkspace = (
           { id: threadId },
           { signal: controller.signal },
         )
-        .then(async (page) => {
+        .then((page) => {
           if (controller.signal.aborted || attempt !== generation.current || page.before === undefined) return
-          const runs = page.messages.length
-            ? await api.request(
-                "GET /threads/:id/runs",
-                { messageIds: page.messages.map((message) => message.id).join(",") },
-                { id: threadId },
-                { signal: controller.signal },
-              )
-            : { runs: [] }
-          if (controller.signal.aborted || attempt !== generation.current) return
+          // Hover warms messages only; run metadata must never hold up a channel click.
           historyCache.current.save(threadId, {
             messages: page.messages,
-            runs: runs.runs,
+            runs: [],
+            runsReady: false,
             before: page.before,
             activeLeafId: page.activeLeafId,
           })
@@ -938,7 +950,7 @@ export const useWorkspace = (
   )
 
   const loadThread = useCallback(
-    function loadThread(threadId: Id, force = false): Promise<void> {
+    function loadThread(threadId: Id, force = false, repairMessageId?: Id): Promise<void> {
       if (currentData.current.selectedThreadId !== threadId) return Promise.resolve()
       const attempt = generation.current
       const thread = currentData.current.threads.find((thread) => thread.id === threadId)
@@ -951,7 +963,7 @@ export const useWorkspace = (
       if (!force && prefetched) return prefetched.promise.then(() => loadThread(threadId))
       const cached =
         !force && !focus ? historyCache.current.get(threadId, groupId ? undefined : thread?.activeLeafId) : undefined
-      if (cached) {
+      if (cached && cached.runsReady !== false) {
         loadedThreads.current.set(threadId, attempt)
         setData((current) =>
           current.selectedThreadId === threadId
@@ -962,6 +974,7 @@ export const useWorkspace = (
                 historyThreadId: threadId,
                 historyBefore: cached.before,
                 historyFocusId: null,
+                historyContext: undefined,
                 historyNotice: null,
               }
             : current,
@@ -990,12 +1003,22 @@ export const useWorkspace = (
         }))
       }
       const requestedIds = new Set(currentData.current.messages.map((message) => message.id))
-      const pageRequest = api.request(
-        "GET /threads/:id/messages",
-        { all: true, limit: historyPageSize, ...(focus ? { around: focus.messageId } : {}) },
-        { id: threadId },
-        { signal: controller.signal },
-      )
+      const pageTarget = repairMessageId ?? focus?.messageId
+      const pageInput = {
+        all: true,
+        limit: repairMessageId ? 1 : historyPageSize,
+        ...(pageTarget ? { around: pageTarget } : {}),
+        ...(!repairMessageId && focus ? { context: true } : {}),
+      }
+      if (repairMessageId) messageRepairs.current.delete(getHistoryMessageKey(threadId, repairMessageId))
+      const pageRequest = cached
+        ? Promise.resolve({
+            messages: cached.messages,
+            activeLeafId: cached.activeLeafId ?? null,
+            before: cached.before,
+            context: undefined,
+          })
+        : api.request("GET /threads/:id/messages", pageInput, { id: threadId }, { signal: controller.signal })
       const messagesRequest = pageRequest
         .then((messages) => {
           const load = threadLoads.current.get(threadId)
@@ -1007,33 +1030,66 @@ export const useWorkspace = (
           const replay = deltas.slice()
           load.historyReady = true
           load.deltas.length = 0
+          load.deferredDeltas.length = 0
           loadedThreads.current.set(threadId, attempt)
+          const snapshot = repairMessageId
+            ? messages.messages.filter((message) => message.id === repairMessageId)
+            : messages.messages
+          snapshot.forEach((message) => {
+            messageRepairs.current.delete(getHistoryMessageKey(threadId, message.id))
+          })
+          load.deferredDeltas = replay.filter((event) =>
+            messageRepairs.current.has(getHistoryMessageKey(event.threadId, event.messageId)),
+          )
+          if (
+            repairMessageId &&
+            (!snapshot.length || snapshot.some((message) => isUnloadedHistoryMessage(currentData.current, message)))
+          )
+            recordUnloadedStream(threadId, repairMessageId)
           setData((current) => {
             if (groupId && !current.groups.some((group) => group.id === groupId)) return current
             if (current.selectedThreadId !== threadId) return current
 
-            const branchLeaf = !groupId
-              ? messages.messages.find((message) => message.id === messages.activeLeafId)
+            const branchLeaf =
+              !groupId && !repairMessageId
+                ? snapshot.find((message) => message.id === messages.activeLeafId)
+                : undefined
+            const offscreen = repairMessageId
+              ? snapshot.find((message) => isUnloadedHistoryMessage(current, message))
               : undefined
-            const previous = branchLeaf
-              ? current.messages.filter(
-                  (message) => message.createdAt <= branchLeaf.createdAt || !requestedIds.has(message.id),
-                )
-              : current.messages
+            const pageMessages = offscreen ? [] : snapshot
+            const previous = current.messages.filter((message) => {
+              if (branchLeaf && requestedIds.has(message.id) && message.createdAt > branchLeaf.createdAt) return false
+              if (
+                messages.before &&
+                !repairMessageId &&
+                !requestedIds.has(message.id) &&
+                pageMessages[0] &&
+                message.createdAt < pageMessages[0].createdAt
+              )
+                return false
+
+              return true
+            })
+            const retainWindow = current.historyThreadId === threadId && current.historyBefore !== undefined
             const canClearNotice =
               current.notice !== runNotice.current &&
               (current.notice === serviceNotice.current || current.notice === current.historyNotice)
             return {
               ...current,
               historyThreadId: threadId,
-              historyBefore: messages.before,
-              historyFocusId: focus?.messageId ?? null,
+              historyBefore: retainWindow ? current.historyBefore : messages.before,
+              historyContext: repairMessageId ? current.historyContext : messages.context,
+              historyFocusId: repairMessageId ? (current.historyFocusId ?? null) : (focus?.messageId ?? null),
+              activityMessages: offscreen
+                ? updateMessage(current.activityMessages, activityMessage(offscreen))
+                : current.activityMessages,
               historyNotice: null,
               messages: (api.pendingMessages?.() ?? [])
                 .filter((message) => message.threadId === threadId)
                 .reduce(
                   updateMessage,
-                  getMergedHistoryMessages(replay.reduce(applyStreamEvent, messages.messages), previous),
+                  getMergedHistoryMessages(replay.reduce(applyStreamEvent, pageMessages), previous),
                 ),
               notice: canClearNotice ? null : current.notice,
             }
@@ -1044,10 +1100,18 @@ export const useWorkspace = (
           const load = threadLoads.current.get(threadId)
           if (!isCurrentLoad() || !load) return
           load.historyReady = true
-          if (!load.overflow) return
-
-          // Overflow recovery belongs to messages, even while run metadata is still pending.
-          void loadThread(threadId, true)
+          if (load.overflow) {
+            void loadThread(threadId, true, repairMessageId)
+            return
+          }
+          const next = Array.from(messageRepairs.current.values()).find((repair) => repair.threadId === threadId)
+          if (!next) return
+          void loadThread(threadId, true, next.messageId)
+          const pending = threadLoads.current.get(threadId)
+          load.deferredDeltas.forEach((event) => {
+            bufferStreamEvent(pending, event)
+          })
+          load.deferredDeltas.length = 0
         })
       const loadRuns = async (): Promise<void> => {
         // Retry one read at a time; a terminal-heavy stream must not build a chain of pending promises.
@@ -1056,7 +1120,7 @@ export const useWorkspace = (
           const terminalRevision = threadLoads.current.get(threadId)?.terminalRevision ?? 0
           const runs = await api.request(
             "GET /threads/:id/runs",
-            { all: true, limit: historyPageSize, ...(focus ? { around: focus.messageId } : {}) },
+            pageInput,
             { id: threadId },
             { signal: controller.signal },
           )
@@ -1096,10 +1160,12 @@ export const useWorkspace = (
         bytes: 0,
         overflow: false,
         terminalRevision: pending?.terminalRevision ?? 0,
+        repairMessageId: repairMessageId ?? null,
+        deferredDeltas: [],
       })
       return promise
     },
-    [api],
+    [api, recordUnloadedStream],
   )
 
   const load = useCallback(async (): Promise<void> => {
@@ -1108,6 +1174,8 @@ export const useWorkspace = (
     const threadsAtStart = new Map(currentData.current.threads.map((thread) => [thread.id, thread]))
     const attempt = ++generation.current
     historyCache.current.clear()
+    messageRepairs.current.clear()
+    unloadedStreams.current.clear()
     prefetchedThreads.current.forEach(({ controller }) => {
       controller.abort()
     })
@@ -1436,6 +1504,7 @@ export const useWorkspace = (
         if (load) {
           load.controller.abort()
           load.deltas.length = 0
+          load.deferredDeltas.length = 0
         }
         threadLoads.current.delete(event.threadId)
         setData((current) => getWorkspaceWithoutThread(current, event.threadId, event.botId))
@@ -1454,6 +1523,8 @@ export const useWorkspace = (
         historyCache.current.remove(changedThreadId)
       }
       if (typeof changedThreadId === "string") prefetchedThreads.current.get(changedThreadId)?.controller.abort()
+      if (event.type === "message.updated" && isUnloadedHistoryMessage(currentData.current, event.message))
+        recordUnloadedStream(event.message.threadId, event.message.id)
       if (event.type === "message.delta" || event.type === "message.parts")
         bufferStreamEvent(threadLoads.current.get(event.threadId), event)
       if (event.type === "run.updated") {
@@ -1504,15 +1575,16 @@ export const useWorkspace = (
             },
             event.thread,
           )
-        if (event.type === "message.created" || event.type === "message.updated")
+        if (event.type === "message.created" || event.type === "message.updated") {
+          const unloaded = event.type === "message.updated" && isUnloadedHistoryMessage(current, event.message)
           return {
             ...current,
             messages:
-              event.message.threadId === current.selectedThreadId
+              event.message.threadId === current.selectedThreadId && !unloaded
                 ? updateMessage(current.messages, event.message)
                 : current.messages,
             activityMessages:
-              event.message.threadId === current.selectedThreadId
+              event.message.threadId === current.selectedThreadId && !unloaded
                 ? current.activityMessages
                 : updateMessage(current.activityMessages, activityMessage(event.message)),
             threads:
@@ -1522,10 +1594,19 @@ export const useWorkspace = (
                   )
                 : current.threads,
           }
+        }
         if (event.type === "message.delta" || event.type === "message.parts") {
           if (event.threadId !== current.selectedThreadId)
             return { ...current, activityMessages: updateActivityStream(current.activityMessages, event) }
           const message = current.messages.find((row) => row.id === event.messageId && row.threadId === event.threadId)
+          const summary = current.activityMessages.find(
+            (row) => row.id === event.messageId && row.threadId === event.threadId,
+          )
+          const unloaded =
+            !message &&
+            (unloadedStreams.current.has(getHistoryMessageKey(event.threadId, event.messageId)) ||
+              isUnloadedHistoryMessage(current, summary))
+          if (unloaded) return { ...current, activityMessages: updateActivityStream(current.activityMessages, event) }
           const part = event.type === "message.delta" ? message?.parts[event.partIndex] : undefined
           const length = part?.type === "text" || part?.type === "reasoning" ? part.text.length : 0
           const gap =
@@ -1533,16 +1614,23 @@ export const useWorkspace = (
               ? event.offset !== undefined && event.offset > length
               : hasPartGap(message?.parts.length ?? 0, event.parts)
           if (!message || gap) {
-            // Unopened threads have no snapshot to repair; selection fetches their current history.
-            if (
-              event.threadId === current.selectedThreadId &&
-              (!threadLoads.current.has(event.threadId) || threadLoads.current.get(event.threadId)?.historyReady)
-            )
-              queueMicrotask(() => {
-                if (currentData.current.selectedThreadId !== event.threadId) return
-                void loadThread(event.threadId, true)
-                bufferStreamEvent(threadLoads.current.get(event.threadId), event)
-              })
+            queueMicrotask(() => {
+              if (currentData.current.selectedThreadId !== event.threadId) return
+              const load = threadLoads.current.get(event.threadId)
+              const key = getHistoryMessageKey(event.threadId, event.messageId)
+              if (
+                (!load || load.historyReady || load.repairMessageId !== event.messageId) &&
+                messageRepairs.current.size < 64
+              )
+                messageRepairs.current.set(key, { threadId: event.threadId, messageId: event.messageId })
+              if (!load || load.historyReady) {
+                const next = Array.from(messageRepairs.current.values()).find(
+                  (repair) => repair.threadId === event.threadId,
+                )
+                if (next) void loadThread(event.threadId, true, next.messageId)
+              }
+              bufferStreamEvent(threadLoads.current.get(event.threadId), event)
+            })
           }
           return {
             ...current,
@@ -1723,6 +1811,8 @@ export const useWorkspace = (
       active = false
       generation.current += 1
       historyCache.current.clear()
+      messageRepairs.current.clear()
+      unloadedStreams.current.clear()
       prefetchedThreads.current.forEach(({ controller }) => {
         controller.abort()
       })
@@ -1733,6 +1823,7 @@ export const useWorkspace = (
       for (const load of threadLoads.current.values()) {
         load.controller.abort()
         load.deltas.length = 0
+        load.deferredDeltas.length = 0
       }
       threadLoads.current.clear()
       loadedThreads.current.clear()
@@ -1744,7 +1835,7 @@ export const useWorkspace = (
       document.removeEventListener("visibilitychange", visibility)
       window.removeEventListener("online", refreshOnReturn)
     }
-  }, [api, enabled, load, loadThread, removeGroup, personId])
+  }, [api, enabled, load, loadThread, removeGroup, personId, recordUnloadedStream])
 
   const selectedBot = useMemo(
     () => data.bots.find((bot) => bot.id === data.selectedBotId) ?? null,
@@ -1761,6 +1852,8 @@ export const useWorkspace = (
       olderHistoryLoad.current.controller.abort()
       olderHistoryLoad.current = null
     }
+    for (const [key, repair] of messageRepairs.current)
+      if (repair.threadId !== data.selectedThreadId) messageRepairs.current.delete(key)
     for (const id of loadedThreads.current.keys()) if (id !== data.selectedThreadId) loadedThreads.current.delete(id)
     for (const [id, load] of threadLoads.current) {
       if (id === data.selectedThreadId) continue
@@ -1777,10 +1870,14 @@ export const useWorkspace = (
     )
     if (enabled && (!data.loading || channelReady) && data.selectedThreadId && !data.threadCreation) {
       const focus = data.messageFocus?.threadId === data.selectedThreadId ? data.messageFocus : null
-      const missingFocus = focus && !data.messages.some((message) => message.id === focus.messageId)
+      const missingFocus =
+        focus &&
+        data.historyFocusId !== focus.messageId &&
+        !data.messages.some((message) => message.id === focus.messageId)
       const focusedWindowClosed = !focus && Boolean(data.historyFocusId)
       const thread = data.threads.find((thread) => thread.id === data.selectedThreadId)
       const missingBranch =
+        !focus &&
         !thread?.groupId &&
         thread?.activeLeafId &&
         loadedThreads.current.get(thread.id) === generation.current &&
@@ -2068,6 +2165,13 @@ export const useWorkspace = (
       const response = await api.request("PATCH /threads/:id", { activeLeafId: leafId }, { id: threadId })
       setData((current) => {
         const updated = getWorkspaceWithUpdatedThread(current, response.thread)
+        if (current.historyFocusId && current.messageFocus?.messageId !== leafId)
+          return {
+            ...updated,
+            messages: [],
+            historyThreadId: null,
+            messageFocus: { threadId, messageId: leafId, request: (current.messageFocus?.request ?? 0) + 1 },
+          }
         return current.messages.some((message) => message.id === leafId)
           ? updated
           : { ...updated, historyThreadId: null }
@@ -2584,4 +2688,26 @@ const getMergedHistoryMessages = (snapshot: Message[], current: Message[]): Mess
   const merged = restored.concat(current.filter((message) => !snapshotIds.has(message.id)))
   // Sort a fresh collection: page order resolves timestamp ties, while overlapping live events keep their revisions.
   return merged.sort((left, right) => left.createdAt - right.createdAt || (left.seq ?? 0) - (right.seq ?? 0))
+}
+
+const getHistoryMessageKey = (threadId: Id, messageId: Id): string => JSON.stringify([threadId, messageId])
+
+const isUnloadedHistoryMessage = (data: WorkspaceData, message: Message | undefined): boolean => {
+  if (
+    !message ||
+    message.threadId !== data.selectedThreadId ||
+    !data.historyBefore ||
+    data.historyThreadId !== message.threadId
+  )
+    return false
+  const first = data.messages[0]
+  if (!first || data.messages.some((row) => row.id === message.id)) return false
+  if (message.createdAt < first.createdAt) return true
+
+  return (
+    message.createdAt === first.createdAt &&
+    message.seq !== undefined &&
+    first.seq !== undefined &&
+    message.seq < first.seq
+  )
 }

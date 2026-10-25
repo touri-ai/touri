@@ -19,7 +19,7 @@ for (const width of [1440, 390]) {
     const server = await createServerModeFixture({
       initialMode: "server",
       directCli: true,
-      port: Number(process.env.HISTORY_EVIDENCE_PORT ?? 18883),
+      port: Number(process.env.HISTORY_EVIDENCE_PORT ?? 18897),
     })
     servers.add(server)
     const { settings } = await server.api("/settings")
@@ -40,6 +40,9 @@ for (const width of [1440, 390]) {
     await server.stop()
     await seedHistory(server.dataDir, [first, second, bot.mainThreadId])
     await server.start()
+    // Warm the initial DM only; neither measured channel has been read or prefetched.
+    const initialHistory = await server.api(`/threads/${bot.mainThreadId}/messages?all=true&limit=40`)
+    expect(initialHistory.messages.length).toBe(process.env.HISTORY_PAGINATION_PHASE === "before" ? 5000 : 40)
     await server.install(page)
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
     await page.emulateMedia({ reducedMotion: "reduce" })

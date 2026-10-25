@@ -6,6 +6,7 @@ import type {
   Id,
   MachineState,
   Message,
+  MessageBranch,
   Project,
   Routine,
   RoutineRun,
@@ -114,6 +115,7 @@ export { activeMessagePath } from "./activeMessagePath"
 
 type ChatPanelProps = {
   historyLoading?: boolean
+  onLatestHistory?: (() => void) | undefined
   hasOlderHistory?: boolean | undefined
   loadingOlderHistory?: boolean | undefined
   onLoadOlderHistory?: (() => Promise<void>) | undefined
@@ -150,6 +152,7 @@ type ChatPanelProps = {
   onNotice?: (message: string) => void
   onSelectProject?: (projectId: Id | null) => Promise<void>
   onAddProject?: () => void
+  branchOptions?: Array<MessageBranch> | undefined
   activePath?: Array<Message> | undefined
   goalRefreshRequest?: number
   onGoalChange?: () => void
@@ -180,18 +183,20 @@ type VirtualMessageListProps = {
   mainThread?: boolean
   routines?: Array<Routine>
   routineRuns?: Array<RoutineRun>
-  onSwitchBranch: (message: Message, siblings: Array<Message>, index: number) => void
+  onSwitchBranch: (message: Message, siblings: Array<MessageBranch>, index: number) => void
   onRetry: (runId: Id) => Promise<void>
   onEdit?: EditMessage | undefined
   onCancel?: ((runId: Id) => Promise<void>) | undefined
   editDisabled?: boolean
   showActivityStop?: boolean
   header?: ReactNode
+  branchOptions?: Array<MessageBranch> | undefined
   allMessages?: Array<Message>
   flatHistory?: boolean
   hasOlderHistory?: boolean | undefined
   loadingOlderHistory?: boolean | undefined
   onLoadOlderHistory?: (() => Promise<void>) | undefined
+  onLatestHistory?: (() => void) | undefined
   timelineCards?: Array<{ id: string; createdAt: number; content: ReactNode }>
 }
 const emptyTimelineCards: NonNullable<VirtualMessageListProps["timelineCards"]> = []
@@ -209,12 +214,12 @@ const routineTriggerKeys: Record<RoutineRun["triggerSource"], TranslationKey> = 
 }
 const estimatedRowHeight = 158
 
-const getMessageBranchKey = (message: Message): string =>
+const getMessageBranchKey = (message: MessageBranch): string =>
   JSON.stringify([message.threadId, message.parentId, message.role])
 
-const getMessageBranches = (messages: Message[]): Map<string, Message[]> => {
+const getMessageBranches = (messages: MessageBranch[]): Map<string, MessageBranch[]> => {
   // This render-local index avoids scanning all history once for every visible row.
-  const branches = new Map<string, Message[]>()
+  const branches = new Map<string, MessageBranch[]>()
   messages.forEach((message) => {
     if (message.kind === "notice") return
     const key = getMessageBranchKey(message)
@@ -224,6 +229,13 @@ const getMessageBranches = (messages: Message[]): Map<string, Message[]> => {
   })
 
   return branches
+}
+
+const getHistoryJumpLabel = (count: number, hasLatestPage: boolean, locale: Locale): string => {
+  if (hasLatestPage || count === 0) return t("Back to latest messages", {}, locale)
+  if (count === 1) return t("New message count", { count }, locale)
+
+  return t("New messages count", { count }, locale)
 }
 
 const getVirtualStart = (count: number, visibleCount: number, index: number, atBottom: boolean): number => {
@@ -310,6 +322,7 @@ export const VirtualMessageList = ({
   routines = [],
   routineRuns = [],
   allMessages = sourceMessages,
+  branchOptions,
   flatHistory = false,
   onSwitchBranch,
   onRetry,
@@ -322,13 +335,14 @@ export const VirtualMessageList = ({
   hasOlderHistory = false,
   loadingOlderHistory = false,
   onLoadOlderHistory,
+  onLatestHistory,
 }: VirtualMessageListProps) => {
   // Rows keep stable callbacks so an unchanged message is not rendered again when another one streams.
   const latestCallbacks = useRef({ onSwitchBranch, onRetry, onEdit, onCancel })
   latestCallbacks.current = { onSwitchBranch, onRetry, onEdit, onCancel }
   const rowCallbacks = useMemo(
     () => ({
-      onSwitchBranch: (message: Message, siblings: Array<Message>, index: number) =>
+      onSwitchBranch: (message: Message, siblings: Array<MessageBranch>, index: number) =>
         latestCallbacks.current.onSwitchBranch(message, siblings, index),
       onRetry: (runId: Id) => latestCallbacks.current.onRetry(runId),
       onEdit: ((...args) => latestCallbacks.current.onEdit?.(...args)) as EditMessage,
@@ -355,8 +369,10 @@ export const VirtualMessageList = ({
   const runsById = useMemo(() => new Map(runs.map((run) => [run.id, run])), [runs])
   const hasRoutineRuns = useMemo(() => runs.some(isRoutineRun), [runs])
   const branches = useMemo(
-    () => (flatHistory ? new Map<string, Message[]>() : getMessageBranches(allMessages)),
-    [allMessages, flatHistory],
+    () => flatHistory ? new Map<string, MessageBranch[]>() : getMessageBranches(
+      Array.from(new Map([...allMessages, ...(branchOptions ?? [])].map((message) => [message.id, message])).values()),
+    ),
+    [allMessages, branchOptions, flatHistory],
   )
   const routineRunHeaderByMessage = useMemo(() => {
     const routineRunsById = new Map(routineRuns.map((routineRun) => [routineRun.id, routineRun]))
@@ -624,10 +640,15 @@ export const VirtualMessageList = ({
       top: row.getBoundingClientRect().top - list.getBoundingClientRect().top,
       firstId: messages[0]?.id,
     }
-    void onLoadOlderHistory().finally(() => {
+    void onLoadOlderHistory().catch(() => {
       prependAnchor.current = null
     })
   }
+
+  useLayoutEffect(() => {
+    // A fast response may finish before React commits the prepended rows; clear only after layout.
+    if (!loadingOlderHistory && prependAnchor.current?.firstId === messages[0]?.id) prependAnchor.current = null
+  }, [loadingOlderHistory, messages])
 
   useLayoutEffect(() => {
     if (!focusApproval || targetIndex < 0 || focusedRequest.current === focusApproval.request) return
@@ -860,7 +881,7 @@ export const VirtualMessageList = ({
           </div>
         </div>
       </section>
-      {awayFromBottom && (
+      {(awayFromBottom || onLatestHistory) && (
         <button
           type="button"
           className="chat-scroll-bottom"
@@ -870,10 +891,12 @@ export const VirtualMessageList = ({
             readingAnchor.current = null
             pendingReveal.current = null
             followBottom.current = true
-            scrollToEnd(list, programmaticTop)
-            setScrollTop(list.scrollTop)
             setAwayFromBottom(false)
             setUnseenCount(0)
+            if (onLatestHistory) return onLatestHistory()
+
+            scrollToEnd(list, programmaticTop)
+            setScrollTop(list.scrollTop)
           }}
         >
           <svg
@@ -887,11 +910,7 @@ export const VirtualMessageList = ({
           >
             <path d="M12 4v16m-6-6 6 6 6-6" />
           </svg>
-          <span aria-live="polite">
-            {unseenCount > 0
-              ? `${unseenCount} ${unseenCount === 1 ? "nova mensagem" : "novas mensagens"}`
-              : "Voltar ao fim"}
-          </span>
+          <span aria-live="polite">{getHistoryJumpLabel(unseenCount, Boolean(onLatestHistory), locale)}</span>
         </button>
       )}
     </div>
@@ -989,9 +1008,9 @@ const MessageBubbleRow = ({
   routinePrompt: boolean
   routineHeader?: string | undefined
   api?: UiApi
-  siblings: Array<Message>
+  siblings: Array<MessageBranch>
   branchIndex: number
-  onSwitchBranch: (message: Message, siblings: Array<Message>, index: number) => void
+  onSwitchBranch: (message: Message, siblings: Array<MessageBranch>, index: number) => void
   onRetry: (runId: Id) => Promise<void>
   onEdit?: EditMessage | undefined
   onCancel?: ((runId: Id) => Promise<void>) | undefined
@@ -1554,6 +1573,7 @@ export const ChatPanel = ({
   hasOlderHistory = false,
   loadingOlderHistory = false,
   onLoadOlderHistory,
+  onLatestHistory,
   onEditGroup = () => {},
   browserRuns = [],
   onInviteToGroup,
@@ -1561,6 +1581,7 @@ export const ChatPanel = ({
   focusMessage,
   thread,
   activePath,
+  branchOptions,
   goalRefreshRequest = 0,
   onGoalChange,
   bot,
@@ -1885,12 +1906,14 @@ export const ChatPanel = ({
                       hasOlderHistory={hasOlderHistory}
                       loadingOlderHistory={loadingOlderHistory}
                       onLoadOlderHistory={onLoadOlderHistory}
+                      onLatestHistory={onLatestHistory}
                       api={api}
                       runs={runs}
                       mainThread={thread.kind === "main"}
                       routines={routines}
                       routineRuns={routineRuns}
                       allMessages={messages}
+                      branchOptions={branchOptions}
                       flatHistory={Boolean(group)}
                       onSwitchBranch={(_message, siblings, index) => {
                         const next = siblings[index]

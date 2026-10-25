@@ -17,6 +17,8 @@ import type { HostKind } from "./host"
 /* ------------------------------------------------------------------------------------------ */
 
 export type Id = string
+export type MessageBranch = Pick<Message, 'id' | 'threadId' | 'parentId' | 'role' | 'kind' | 'createdAt'>
+export type MessageHistoryContext = { messageId: Id; onActivePath: boolean; siblings: Array<MessageBranch> }
 export type EpochMs = number
 export type AbsolutePath = string
 
@@ -1194,7 +1196,7 @@ export type ApiRoutes = {
   'DELETE /threads/:id': { req: {}; res: { threadId: Id; phase: string } }
   'POST /threads/delete': { req: { ids: Array<Id> }; res: { threadIds: Array<Id>; phase: string } }
   'GET /threads/:id/transcript': { req: { since?: number; limit?: number }; res: { entries: Array<{ seq: number; generation: number; event: UiEvent }>; rejections: Array<TranscriptRejection>; lastSeq: number; generation: number; hasMore: boolean; resync: boolean } }
-  'GET /threads/:id/messages': { req: { all?: boolean; limit?: number; before?: Id; around?: Id }; res: { messages: Array<Message>; activeLeafId: Id | null; before?: Id | null } }
+  'GET /threads/:id/messages': { req: { all?: boolean; limit?: number; before?: Id; around?: Id; context?: boolean }; res: { messages: Array<Message>; activeLeafId: Id | null; before?: Id | null; context?: MessageHistoryContext } }
   'POST /threads/:id/messages': { req: SendMessageInput & { as?: IntegrationSenderInput }; res: { message: Message; run: Run | null } }
   'GET /runs': { req: Record<string, never>; res: { runs: Array<Run>; draining?: boolean } }
   'GET /threads/:id/goal': { req: {}; res: { goal: Goal | null } }

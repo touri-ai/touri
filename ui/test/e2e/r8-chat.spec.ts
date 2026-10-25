@@ -41,8 +41,9 @@ for (const width of [1440, 1100]) {
         if (view === "history") {
           if (phase === "after") await expect(page.getByRole("button", { name: "Voltar ao fim" })).toBeVisible()
           await page.evaluate(() => (window as unknown as { r8Chat: { append: () => void } }).r8Chat.append())
-          await expect(page.locator(".message-assistant").last().locator("strong")).toHaveText("Resposta final:")
-          if (phase === "after") await expect(page.getByRole("button", { name: "1 nova mensagem" })).toBeVisible()
+          // A reply outside the reading window stays virtualized until the person returns to the end.
+          await expect(page.getByRole("button", { name: "1 nova mensagem" })).toBeVisible()
+          await expect(page.locator(".message-assistant").filter({ hasText: "Resposta final:" })).toHaveCount(0)
         }
         await page.evaluate(() => document.fonts.ready)
         await mkdir(directory, { recursive: true })
