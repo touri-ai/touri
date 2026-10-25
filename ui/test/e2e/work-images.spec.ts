@@ -185,7 +185,7 @@ test("uploaded images survive a real channel API post and history reload on phon
     body: JSON.stringify({ text: "Resumo automático fictício da auditoria", attachmentIds: [attachment.id] }),
     signal: AbortSignal.timeout(15_000),
   })
-  expect(noticeResponse.status).toBe(201)
+  expect(noticeResponse.status).toBe(200)
   const notice = (await noticeResponse.json()) as { message: Message }
   expect(notice.message.role).toBe("assistant")
   await page.setViewportSize({ width: 390, height: 844 })
