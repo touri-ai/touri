@@ -15,7 +15,7 @@ for (const theme of ["dark", "light"]) {
       await page.goto(`/test/e2e/chat-image-harness.html?theme=${theme}`)
       await expect(page.locator('[data-message-id="image-reply"]')).toBeAttached()
       const list = page.locator("[data-testid='virtual-message-list']")
-      const gallery = page.getByRole("region", { name: "Imagens de evidência" })
+      const gallery = page.getByRole("group", { name: "Imagens de evidência" })
       await expect(gallery).toBeAttached()
       await gallery.scrollIntoViewIfNeeded()
       const thumbnails = page.locator(".evidence-gallery img")
@@ -127,7 +127,7 @@ for (const theme of ["dark", "light"]) {
 test("remeasures mounted transcript rows when streamed content grows and collapses", async ({ page }) => {
   test.skip(phase === "before", "Baseline has no variable row measurements")
   await page.goto("/test/e2e/chat-image-harness.html?theme=dark")
-  const gallery = page.getByRole("region", { name: "Imagens de evidência" })
+  const gallery = page.getByRole("group", { name: "Imagens de evidência" })
   await expect(gallery.locator("img")).toHaveCount(2)
   await gallery.scrollIntoViewIfNeeded()
   const list = page.getByTestId("virtual-message-list")

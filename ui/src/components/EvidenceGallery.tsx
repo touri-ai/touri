@@ -174,7 +174,9 @@ export const EvidenceGallery = ({ images, inline = false }: { images: EvidenceIm
   const items = useMemo(() => images, [identity, images[0]?.cacheKey])
   return (
     <>
+      {/* biome-ignore lint/a11y/useSemanticElements: message images form a group of media, not a form fieldset. */}
       <section
+        role="group"
         className="evidence-gallery"
         data-image-count={Math.min(3, items.length)}
         aria-label={t("Imagens de evidência")}

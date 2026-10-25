@@ -124,7 +124,7 @@ describe("safe markdown evidence", () => {
       />,
     )
 
-    const gallery = await screen.findByRole("region", { name: "Imagens de evidência" })
+    const gallery = await screen.findByRole("group", { name: "Imagens de evidência" })
     const card = gallery.querySelector("figure")
 
     expect(card).toHaveTextContent("mobile")
@@ -138,7 +138,7 @@ describe("safe markdown evidence", () => {
       const { context } = fixture()
       const view = render(<MarkdownContent evidence={context} content={`${prose}\n\n![tela](/workspace/tela.png)`} />)
 
-      await screen.findByRole("region", { name: "Imagens de evidência" })
+      await screen.findByRole("group", { name: "Imagens de evidência" })
 
       expect(screen.getByRole("button", { name: "tela.png" })).toBeVisible()
       expect(view.container.querySelector(".markdown-content > p")).toHaveTextContent(
@@ -213,7 +213,7 @@ describe("safe markdown evidence", () => {
         }
       />,
     )
-    const gallery = await screen.findByRole("region", { name: "Imagens de evidência" }, { timeout: 5000 })
+    const gallery = await screen.findByRole("group", { name: "Imagens de evidência" }, { timeout: 5000 })
     expect(gallery.querySelectorAll("figure")).toHaveLength(5)
     expect(gallery).toHaveTextContent("Tela inicial")
     await waitFor(() => expect(request).toHaveBeenCalledTimes(5))
@@ -245,7 +245,7 @@ describe("safe markdown evidence", () => {
       <MarkdownContent evidence={context} content={"![escape](%2e%2e/a.png)\n\n![remote](https%3A%2F%2Fx%2Fa.png)"} />,
     )
     await screen.findByText("escape")
-    expect(screen.queryByRole("region", { name: "Imagens de evidência" })).toBeNull()
+    expect(screen.queryByRole("group", { name: "Imagens de evidência" })).toBeNull()
     expect(request).not.toHaveBeenCalled()
   })
   it("uses report-directory relative paths from the Library", async () => {
@@ -272,7 +272,7 @@ describe("safe markdown evidence", () => {
     render(<BotLibrary api={api} bot={context.bot} />)
     fireEvent.click(await screen.findByRole("button", { name: /reports.*Pasta/ }))
     fireEvent.click(await screen.findByRole("button", { name: /report.md.*KB/ }))
-    expect(await screen.findByRole("region", { name: "Imagens de evidência" })).toBeVisible()
+    expect(await screen.findByRole("group", { name: "Imagens de evidência" })).toBeVisible()
     await waitFor(() =>
       expect(request).toHaveBeenCalledWith(
         "GET /bots/:id/images",
@@ -340,7 +340,7 @@ it("keeps tool image labels and download actions with their matching cards", asy
     />,
   )
 
-  const gallery = await screen.findByRole("region", { name: "Imagens de evidência" })
+  const gallery = await screen.findByRole("group", { name: "Imagens de evidência" })
   const cards = Array.from(gallery.querySelectorAll("figure"))
 
   expect(cards).toHaveLength(2)
@@ -364,7 +364,7 @@ it("redacts tool image captions before displaying labels and alternative text", 
     />,
   )
 
-  const gallery = await screen.findByRole("region", { name: "Imagens de evidência" })
+  const gallery = await screen.findByRole("group", { name: "Imagens de evidência" })
 
   expect(gallery).not.toHaveTextContent(secret)
   expect(gallery.querySelector("figcaption")).toHaveTextContent("[REDACTED]")
@@ -574,7 +574,7 @@ it("renders explicit images without extensions and resolves attachment route ref
       content={`![Sem extensão](/workspace/shot)\n\n![Anexo](/api/v1/attachments/${id})`}
     />,
   )
-  await screen.findByRole("region", { name: "Imagens de evidência" })
+  await screen.findByRole("group", { name: "Imagens de evidência" })
   await waitFor(() => expect(request).toHaveBeenCalledWith("GET /attachments/:id", {}, { id }))
   expect(request).toHaveBeenCalledWith("GET /bots/:id/images", { path: "/workspace/shot" }, { id: context.bot.id })
 })
@@ -594,7 +594,7 @@ it("defers image reads until a thumbnail enters the viewport", async () => {
     },
   )
   render(<MarkdownContent evidence={context} content="![Tela](/workspace/a.png)" />)
-  await screen.findByRole("region", { name: "Imagens de evidência" })
+  await screen.findByRole("group", { name: "Imagens de evidência" })
   expect(request).not.toHaveBeenCalled()
   act(() => visible?.([{ isIntersecting: true }]))
   const image = await screen.findByRole("img", { name: "Tela" })
