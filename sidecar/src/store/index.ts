@@ -1571,7 +1571,6 @@ export const init = async (
                 }
               : undefined
           const { messages, runs, browserRuns } = await getWorkspaceActivity(
-            database,
             reader,
             signal,
             scope,

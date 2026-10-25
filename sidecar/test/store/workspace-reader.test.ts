@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite"
-import { afterEach, expect, spyOn, test } from "bun:test"
+import { afterEach, expect, mock, spyOn, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -20,11 +20,16 @@ afterEach(async () => {
   cleanups.clear()
 })
 
-test("workspace route never queries historical previews on the request connection", async () => {
+test("workspace route never queries previews, run metadata or browser cards on the request connection", async () => {
   const fixture = await getFixture()
   const query = fixture.database.query.bind(fixture.database)
   const guard = spyOn(fixture.database, "query").mockImplementation((sql) => {
-    if (sql.includes("WITH visible AS MATERIALIZED")) throw new Error("LIVE_HISTORY_QUERY")
+    if (
+      sql.includes("WITH visible AS MATERIALIZED") ||
+      sql.includes("runs_active_workspace") ||
+      sql.includes("FROM browser_channel_runs c")
+    )
+      throw new Error("LIVE_WORKSPACE_QUERY")
     return query(sql)
   })
   cleanups.add(() => guard.mockRestore())
@@ -41,18 +46,24 @@ test.each([
   { personId: "member", channelIds: ["team"] },
   { personId: "outsider", channelIds: [] },
   { personId: "owner", channelIds: [] },
-])("async workspace previews preserve synchronous scope and projection: %j", async (scope) => {
+])("async workspace activity preserves synchronous scope and projection: %j", async (scope) => {
   const fixture = await getFixture()
-  const reader = createStoreReader(fixture.database.filename)
+  const onReady = mock(() => {})
+  const reader = createStoreReader(fixture.database.filename, onReady)
   cleanups.add(reader.dispose)
   const expected = readWorkspaceActivity(fixture.database, scope)
 
-  const actual = await getWorkspaceActivity(fixture.database, reader, new AbortController().signal, scope)
+  const actual = await getWorkspaceActivity(reader, new AbortController().signal, scope)
 
   expect(actual).toEqual(expected)
+  expect(onReady).toHaveBeenCalledTimes(1)
   if (scope?.personId === "member")
     expect(actual.messages.map((message) => message.id).sort()).toEqual(["own-preview", "team-preview"])
-  if (scope?.personId === "outsider") expect(actual.messages).toEqual([])
+  if (scope?.personId === "member") {
+    expect(actual.runs.map((run) => run.id).sort()).toEqual(["own-run", "team-run"])
+    expect(actual.browserRuns.map((run) => run.runId)).toEqual(["team-run"])
+  }
+  if (scope?.personId === "outsider") expect(actual).toEqual({ messages: [], runs: [], browserRuns: [] })
 })
 
 test("workspace previews preserve large approval details across bounded reader frames", async () => {
@@ -69,6 +80,18 @@ test("workspace previews preserve large approval details across bounded reader f
   expect(preview.parts).toEqual(parts)
 })
 
+test("run metadata preserves long historical error strings across bounded frames", async () => {
+  const fixture = await getFixture()
+  const detail = "Synthetic historical failure 🌿\n".repeat(40_000)
+  fixture.database.query("UPDATE runs SET error_message = ? WHERE id = 'own-run'").run(detail)
+
+  const response = await fixture.get("/workspace/activity")
+
+  expect(response.status).toBe(200)
+  const activity = await response.json()
+  expect(activity.runs.find((run: { id: string }) => run.id === "own-run")?.errorMessage).toBe(detail)
+})
+
 test("health responds and cancellation kills a held workspace reader", async () => {
   const fixture = await getFixture()
   const ready = Promise.withResolvers<number>()
@@ -78,7 +101,7 @@ test("health responds and cancellation kills a held workspace reader", async () 
   })
   cleanups.add(reader.dispose)
   const controller = new AbortController()
-  const result = getWorkspaceActivity(fixture.database, reader, controller.signal)
+  const result = getWorkspaceActivity(reader, controller.signal)
   const observed = result.catch((error: Error) => error.message)
   const pid = await ready.promise
 
@@ -123,9 +146,7 @@ test("same synthetic preview workload records blocking and async timer delay", a
   const scope = { personId: "member", channelIds: ["team"] }
 
   const before = await getMeasurement(() => readWorkspaceActivity(fixture.database, scope))
-  const after = await getMeasurement(() =>
-    getWorkspaceActivity(fixture.database, reader, new AbortController().signal, scope),
-  )
+  const after = await getMeasurement(() => getWorkspaceActivity(reader, new AbortController().signal, scope))
 
   expect(after.value).toEqual(before.value)
   console.info(
@@ -133,6 +154,56 @@ test("same synthetic preview workload records blocking and async timer delay", a
       workload: "2003 threads; 14003 synthetic messages; same database and scope; warm cache",
       before: before.timings,
       after: after.timings,
+    }),
+  )
+}, 30000)
+
+test("cold activity with 60000 historical runs keeps concurrent health and timer drift within budget", async () => {
+  const fixture = await getFixture()
+  await fixture.stop()
+  const database = openDatabase({ filename: fixture.database.filename })
+  database.exec(`
+    WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<60000)
+    INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at)
+    SELECT 'history-'||x,'team','bot','fixture','user','succeeded',x FROM n;
+    INSERT INTO browser_channel_runs(run_id,current_run_id,group_id,thread_id,bot_id,status,queued_at)
+    SELECT id,id,'team','team','bot','succeeded',queued_at FROM runs WHERE id LIKE 'history-%';
+    PRAGMA wal_checkpoint(TRUNCATE);
+  `)
+  database.close()
+  const runtime = createKernel({ appData: fixture.root })
+  cleanups.add(runtime.stop)
+  await initStore(runtime.kernel)
+  const get = getRequest(runtime.handshake.port)
+  const started = performance.now()
+  const activity = get("/workspace/activity").then(async (response) => {
+    expect(response.status).toBe(200)
+    return response.json()
+  })
+  const healthSamples: number[] = []
+
+  const measured = await getMeasurement(async () => {
+    for (const _ of Array.from({ length: 50 })) {
+      const start = performance.now()
+      expect((await get("/health")).status).toBe(200)
+      healthSamples.push(performance.now() - start)
+      await new Promise<void>((resolve) => setTimeout(resolve, 5))
+    }
+    return activity
+  })
+
+  const sorted = healthSamples.slice().sort((left, right) => left - right)
+  expect(measured.value.runs.some((run: { id: string }) => run.id === "history-60000")).toBe(true)
+  expect(measured.value.browserRuns.map((run: { runId: string }) => run.runId)).toEqual(["team-run"])
+  expect(sorted[47]).toBeLessThan(100)
+  expect(measured.timings.p99TimerDelayMs).toBeLessThan(50)
+  expect(measured.timings.maxTimerDelayMs).toBeLessThan(200)
+  console.info(
+    JSON.stringify({
+      workload: "60000 historical browser runs; cold connections; 50 concurrent health reads; 2 ms drift sampling",
+      elapsedMs: performance.now() - started,
+      healthP95Ms: sorted[47],
+      timings: measured.timings,
     }),
   )
 }, 30000)
@@ -152,7 +223,15 @@ const getMeasurement = async <Value>(read: () => Value | Promise<Value>) => {
     await new Promise<void>((resolve) => setTimeout(resolve, 10))
     const sorted = samples.sort((left, right) => left - right)
 
-    return { value, timings: { durationMs, maxTimerDelayMs: sorted.at(-1) ?? 0, samples: samples.length } }
+    return {
+      value,
+      timings: {
+        durationMs,
+        maxTimerDelayMs: sorted.at(-1) ?? 0,
+        p99TimerDelayMs: sorted[Math.ceil(sorted.length * 0.99) - 1] ?? 0,
+        samples: samples.length,
+      },
+    }
   } finally {
     clearInterval(timer)
   }
@@ -168,12 +247,16 @@ const getFixture = async () => {
   seedWorkspace(database)
   return {
     database,
-    get: (path: string) =>
-      fetch(`http://127.0.0.1:${runtime.handshake.port}/api/v1${path}`, {
-        headers: { Authorization: "Bearer dev-ui-token", Origin: "tauri://localhost" },
-      }),
+    root,
+    stop: runtime.stop,
+    get: getRequest(runtime.handshake.port),
   }
 }
+
+const getRequest = (port: number) => (path: string) =>
+  fetch(`http://127.0.0.1:${port}/api/v1${path}`, {
+    headers: { Authorization: "Bearer dev-ui-token", Origin: "tauri://localhost" },
+  })
 
 const seedWorkspace = (database: Database): void => {
   database.exec(`
@@ -188,5 +271,11 @@ const seedWorkspace = (database: Database): void => {
       VALUES ('own-preview','own','assistant','text','complete','Resposta fictícia',2,2),
       ('private-preview','private','assistant','text','complete','Privada fictícia',2,2),
       ('team-preview','team','assistant','text','complete','Equipe fictícia',2,2);
+    INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at)
+      VALUES ('own-run','own','bot','fixture','user','failed',1),
+        ('private-run','private','bot','fixture','user','failed',1),
+        ('team-run','team','bot','fixture','user','queued',1);
+    INSERT INTO browser_channel_runs(run_id,current_run_id,group_id,thread_id,bot_id,status,queued_at)
+      VALUES ('team-run','team-run','team','team','bot','queued',1);
   `)
 }

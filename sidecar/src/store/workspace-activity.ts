@@ -146,21 +146,23 @@ const asBrowserChannelRun = (
 
 type WorkspaceScope = { personId: string; channelIds: ReadonlyArray<string> }
 type WorkspaceActivity = { messages: RawMessage[]; runs: Run[]; browserRuns: Array<BrowserChannelRun> }
-type StoreReader = Pick<ReturnType<typeof createStoreReader>, "getRows">
+type StoreReader = Pick<ReturnType<typeof createStoreReader>, "getRowSets">
 
 export const getWorkspaceActivity = async (
-  database: Database,
   reader: StoreReader,
   signal: AbortSignal,
   scope?: WorkspaceScope,
   personName: (personId: string) => string | null = () => null,
 ): Promise<WorkspaceActivity> => {
   const queries = getWorkspaceQueries(scope)
-  // Share the existing reader's bounded concurrency, deadlines and native-query cancellation.
-  const messages = await reader.getRows<RawMessage>(queries.messages, signal)
+  // One reader slot owns all activity SQL, its snapshot, deadline and native cancellation.
+  const [messages = [], runs = [], browserRuns = []] = await reader.getRowSets(
+    [queries.messages, queries.runs, queries.browserRuns],
+    signal,
+  )
   signal.throwIfAborted()
 
-  return getActivityWithMetadata(database, queries, messages, personName)
+  return getActivityFromRows(messages as RawMessage[], runs, browserRuns as RawBrowserChannelRun[], personName)
 }
 
 export const readWorkspaceActivity = (
@@ -180,7 +182,6 @@ const getActivityWithMetadata = (
   messages: RawMessage[],
   personName: (personId: string) => string | null,
 ): WorkspaceActivity => {
-  // Existing indexed run metadata reads remain separate from historical preview I/O.
   const runs = database.query(queries.runs.sql).all(...queries.runs.bindings)
   const browserRuns = database
     .query(queries.browserRuns.sql)

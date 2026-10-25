@@ -5,7 +5,7 @@ export const walCheckpointSource = `import { Database, constants as sqliteFlags 
 let database;
 let timer;
 let lastPageMaintenance = 0;
-let pageIntervalMs = 60_000;
+let pageIntervalMs = 5_000;
 
 const stop = () => {
   clearInterval(timer);
@@ -30,6 +30,23 @@ const vacuum = (requestId) => {
   }
 };
 
+const reclaimPages = () => {
+  if (database.query("PRAGMA auto_vacuum").get().auto_vacuum !== 2) return;
+
+  const started = performance.now();
+  const initial = database.query("PRAGMA freelist_count").get().freelist_count;
+  // Private counters bound each pass; every 32-page transaction releases the writer.
+  let remaining = initial;
+  for (let batch = 0; batch < 8 && remaining > 0 && performance.now() - started < 8; batch++) {
+    database.exec("PRAGMA incremental_vacuum(32)");
+    const next = database.query("PRAGMA freelist_count").get().freelist_count;
+    if (next >= remaining) break;
+    remaining = next;
+  }
+  if (remaining < initial)
+    self.postMessage({ type: "pages-reclaimed", pages: initial - remaining });
+};
+
 const checkpoint = () => {
   if (!database) return;
   try {
@@ -38,8 +55,7 @@ const checkpoint = () => {
     const now = Date.now();
     if (now - lastPageMaintenance >= pageIntervalMs) {
       lastPageMaintenance = now;
-      if (database.query("PRAGMA auto_vacuum").get().auto_vacuum === 2)
-        database.exec("PRAGMA incremental_vacuum(32)");
+      reclaimPages();
     }
   } catch (error) {
     if (typeof error?.code === "string" && error.code.startsWith("SQLITE_BUSY")) return;
