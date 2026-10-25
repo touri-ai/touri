@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { resolve } from "node:path"
+import AxeBuilder from "@axe-core/playwright"
 import { test as base, expect, type Page } from "@playwright/test"
 import { build, preview } from "vite"
 
@@ -155,13 +156,15 @@ for (const width of [1440, 390]) {
     await page.reload()
     const retry = page.getByRole("button", { name: "Recarregar esta área", exact: true })
     await expect(retry).toBeVisible()
+    expect((await new AxeBuilder({ page }).include(".render-error").analyze()).violations).toEqual([])
     await captureEvidence(page, `lazy-chat-before-${width}`)
     await page.unroute(chunkPattern)
     let navigations = 0
     page.on("framenavigated", (frame) => {
       if (frame === page.mainFrame()) navigations += 1
     })
-    await retry.click()
+    await retry.focus()
+    await page.keyboard.press("Enter")
 
     await expect(getComposer(page)).toHaveValue("Rascunho sintético para recuperação")
     expect(navigations).toBe(0)
@@ -169,21 +172,28 @@ for (const width of [1440, 390]) {
   })
 }
 
-test("reloads the app after a second import failure and restores the draft", async ({ page, conversationApp }) => {
-  test.setTimeout(90_000)
-  await page.setViewportSize({ width: 390, height: 844 })
-  await page.addInitScript(() => localStorage.setItem("touri.sidebar.mode", "work"))
-  await page.goto(conversationApp)
-  await getComposer(page).fill("Rascunho sintético após recarregar")
-  await page.route(chunkPattern, (route) => route.abort("failed"))
-  await page.reload()
+for (const width of [1440, 390]) {
+  test(`reloads the app after a second import failure and restores the draft at ${width}px`, async ({
+    page,
+    conversationApp,
+  }) => {
+    test.setTimeout(90_000)
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+    await page.addInitScript(() => localStorage.setItem("touri.sidebar.mode", "work"))
+    await page.goto(conversationApp)
+    await getComposer(page).fill("Rascunho sintético após recarregar")
+    await page.route(chunkPattern, (route) => route.abort("failed"))
+    await page.reload()
 
-  await page.getByRole("button", { name: "Recarregar esta área", exact: true }).click()
+    await page.getByRole("button", { name: "Recarregar esta área", exact: true }).click()
 
-  const reload = page.getByRole("button", { name: "Recarregar app", exact: true })
-  await expect(reload).toBeInViewport()
-  await captureEvidence(page, "lazy-chat-reload-390")
-  await page.unroute(chunkPattern)
-  await reload.click()
-  await expect(getComposer(page)).toHaveValue("Rascunho sintético após recarregar")
-})
+    const reload = page.getByRole("button", { name: "Recarregar app", exact: true })
+    await expect(reload).toBeInViewport()
+    expect((await new AxeBuilder({ page }).include(".render-error").analyze()).violations).toEqual([])
+    await captureEvidence(page, `lazy-chat-reload-${width}`)
+    await page.unroute(chunkPattern)
+    await reload.click()
+    await expect(getComposer(page)).toHaveValue("Rascunho sintético após recarregar")
+    await captureEvidence(page, `lazy-chat-reloaded-${width}`)
+  })
+}
