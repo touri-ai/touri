@@ -1019,6 +1019,12 @@ test("multi-megabyte instruction edits keep bot responses and durable events bou
   expect(await new Response(text.stream).text()).toBe(instructions)
   const storedBot = f.kernel.services.use("store.api")?.getBot({ botId: bot.id })
   if (!storedBot) throw new Error("Expected stored bot")
+  const missingRevision = await f.kernel.services.use("bots.instructions")?.({
+    botId: bot.id,
+    instructionsHash: "synthetic-stale-hash",
+    signal,
+  })
+  expect(missingRevision).toBeUndefined()
   f.kernel.publish({ type: "bot.updated", bot: storedBot })
   const largest = f.database
     .query("SELECT max(length(event_json)) AS bytes FROM ui_event_log WHERE event_json LIKE '%bot.updated%'")
@@ -1051,7 +1057,7 @@ test("unrelated event publication stays responsive during a near-limit instructi
   const publications = new Set<number>()
   const timer = setInterval(() => {
     const startedAt = performance.now()
-    f.kernel.publish({ type: "transcript.resync" })
+    f.kernel.publish({ type: "import.progress", importId: "fixture", phase: "saving", done: 1, total: 1 })
     publications.add(performance.now() - startedAt)
   }, 5)
   cleanups.add(() => clearInterval(timer))

@@ -1693,7 +1693,7 @@ export type ServiceMap = {
     responsiblePersonId?: Id
   }) => Promise<Result<{ bot: Bot }>>
   'approvals.completeTeam': (input: { approvalId: Id; ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId'>; result: TeamCreationResult }) => Promise<void>
-  'bots.instructions': (input: { botId: Id; signal: AbortSignal }) => Promise<string | undefined>
+  'bots.instructions': (input: { botId: Id; instructionsHash?: string; signal: AbortSignal }) => Promise<string | undefined>
   'bots.rename': (input: { botId: Id; name: string; signal?: AbortSignal }) => Promise<Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS'>>
   'bots.configureAccess': (input: { botId: Id; patch: Partial<Pick<Bot, 'projectId' | 'folders' | 'browserEnabled' | 'browser' | 'computerUse'>>; runId?: Id; signal?: AbortSignal }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE' | 'DENIED'> | Promise<Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE' | 'DENIED'>>
   'diagnostics.errors': () => Array<{ code: string; at: number }>

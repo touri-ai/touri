@@ -3,6 +3,7 @@ import type { UiEvent, UiEventEnvelope } from "@touri/contracts"
 import type { ServerWebSocket } from "bun"
 import { createStoreReader } from "../store/reader"
 import { onDatabaseCommit } from "./database-write"
+import { createEventLogWriter } from "./event-log-writer"
 import { getRefEvent, isMessageRef } from "./event-reference"
 import { boundedProcessLog } from "./output-blobs"
 import type { PerformanceStage, PerformanceStageRunner } from "./performance"
@@ -498,6 +499,7 @@ export const createEventBus = (
     void runRetentionMaintenance()
   }
   const flushAsync = async (): Promise<void> => {
+    await eventWriter?.flushAsync()
     const through = head()
     if (!database || delivered >= through) return
     const deadline = performance.now() + 5_000
@@ -509,24 +511,26 @@ export const createEventBus = (
     if (stopped && delivered < through) throw new Error("EVENT_DELIVERY_STOPPED")
   }
 
-  const writeEvent = (event: UiEvent): void => {
-    if (!database) return
-    const at = Date.now()
-    const payload = JSON.stringify(event.type === "process.log" ? boundedProcessLog(event) : event)
-    const inserted = database.query("INSERT INTO ui_event_log(at, event_json) VALUES (?, ?)").run(at, payload)
-    if (!isControlEvent(event)) return
-    const envelope = { seq: Number(inserted.lastInsertRowid), at, event: JSON.parse(payload) as UiEvent }
+  const onEventSaved = (envelope: UiEventEnvelope): void => {
+    if (!database || stopped) return
     const notify = (): void => {
       // Internal run/approval coordination cannot wait behind a cold transcript read.
-      if (envelope.seq <= delivered || earlyControls.has(envelope.seq) || stopped) return
+      if (!isControlEvent(envelope.event) || envelope.seq <= delivered || earlyControls.has(envelope.seq) || stopped)
+        return
       // At the replay bound, normal durable delivery owns the remaining callbacks.
       if (earlyControls.size >= REPLAY_LIMITS.events) return
       earlyControls.add(envelope.seq)
       measureStage("workspace_event_delivery", () => notifyListeners(envelope, true), undefined)
     }
     if (database.inTransaction) onDatabaseCommit(database, notify)
-    else notify()
+    else {
+      notify()
+      if (!scheduled) flush()
+    }
   }
+  const eventWriter = database ? createEventLogWriter(database, onEventSaved) : undefined
+  const writeEvent = (event: UiEvent): void =>
+    eventWriter?.save(event.type === "process.log" ? boundedProcessLog(event) : event)
   const publish = (input: UiEvent): void => {
     const event =
       input.type === "bot.updated" && input.bot.instructions.length > 8_192
@@ -655,7 +659,7 @@ export const createEventBus = (
       sockets = []
       publications = []
       earlyControls.clear()
-      await retention?.dispose()
+      await Promise.all([retention?.dispose(), eventWriter?.flushAsync()])
     },
   }
 }

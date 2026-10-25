@@ -533,7 +533,8 @@ returns the complete text as a cancellable plain-text stream. Settings show a lo
 state and prevent instruction edits until it finishes; saving other settings omits instructions.
 Only an edited instruction field is sent back, so a deferred placeholder never erases stored text.
 Protocol version 2 identifies this contract. The optional cloud connection resolves the complete
-instructions before forwarding an update.
+instructions before forwarding an update. Remote updates are serialized per bot and coalesce
+superseded waiting snapshots; a deferred read must match the event's instruction hash.
 
 Same-bot settings edits retain request order through asynchronous preparation, filesystem writes and
 metadata publication, with bounded admission and cancellable waits.
@@ -543,6 +544,11 @@ An isolated writer hashes and commits instructions and bot metadata in one SQLit
 compares a fresh metadata snapshot, and records an atomic acknowledgement. Cancellation stops the
 writer and checks that acknowledgement before deciding whether to restore SOUL.md. Shutdown
 cancels outstanding recovery reads and waits for them to settle before closing the database.
+Complete edits of the same bot reserve their arrival order before asynchronous preparation;
+renames and access changes share that ordering. Admission bounds retained instruction text.
+Live event publication never waits synchronously for that writer's SQLite lock. Contended event
+inserts retry asynchronously in order with bounded admission and a finite deadline. Events reach
+subscribers only after persistence; explicit flush and shutdown wait for admitted inserts.
 
 ### 3.3 Sessions: one native session per thread
 - **Resume.** `provider_sessions` has at most one `active` row per (thread, provider).

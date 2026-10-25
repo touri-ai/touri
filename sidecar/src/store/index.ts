@@ -515,16 +515,19 @@ export const init = async (
   }
   const getBotInstructions = async ({
     botId,
+    instructionsHash,
     signal,
   }: {
     botId: string
+    instructionsHash?: string
     signal: AbortSignal
   }): Promise<string | undefined> => {
     const rows = await reader.getRows<{ instructions: string }>(
       {
         sql: `SELECT instructions FROM bots WHERE id = ? AND archived_at IS NULL
-        AND NOT EXISTS (SELECT 1 FROM bot_deletions WHERE bot_id = bots.id)`,
-        bindings: [botId],
+        AND NOT EXISTS (SELECT 1 FROM bot_deletions WHERE bot_id = bots.id)
+        AND (? IS NULL OR instructions_hash = ?)`,
+        bindings: [botId, instructionsHash ?? null, instructionsHash ?? null],
         chunkedStrings: true,
       },
       signal,
