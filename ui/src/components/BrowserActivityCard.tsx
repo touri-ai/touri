@@ -329,8 +329,7 @@ export const BrowserActivityCard = ({
         setPreviewFrame({ tabId: activeTabId, frame })
       },
       () => setPreviewError(t("Browser preview unavailable. Open the browser to reconnect.", {}, locale)),
-      (reason) =>
-        setPreviewError(reason ? t("Browser preview unavailable. Open the browser to reconnect.", {}, locale) : null),
+      (reason) => setPreviewError(reason ? t("Reconnecting browser preview…", {}, locale) : null),
       { intervalMs: 700, onReset: () => setPreviewFrame(undefined) },
     )
     frameSource.current = source
@@ -726,7 +725,11 @@ export const BrowserActivityCard = ({
                     {t("Retry preview", {}, locale)}
                   </button>
                 )}
-                {preview?.src && previewError && <small role="status">{previewError}</small>}
+                {preview?.src && previewError && (
+                  <small className="browser-activity-preview-status" role="status">
+                    {previewError}
+                  </small>
+                )}
               </div>
             )}
             <div

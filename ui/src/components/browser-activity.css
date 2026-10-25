@@ -190,11 +190,25 @@
   grid-template-columns: minmax(0, 1fr);
 }
 .browser-activity-preview {
+  position: relative;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--surface-control);
+}
+.browser-activity-preview-status {
+  position: absolute;
+  z-index: 1;
+  right: var(--space-8);
+  bottom: var(--space-8);
+  left: var(--space-8);
+  padding: var(--space-4) var(--space-8);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: var(--fs-meta);
 }
 .browser-activity-window {
   display: grid;

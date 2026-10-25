@@ -44,6 +44,7 @@ export const startInlineFrameSource = (
   const isTabPreview = bot.machine === "local" || Boolean(tabId)
   let generation = 0
   let held = false
+  let hasTabEvent = false
   const lifetime = new AbortController()
   let captureController: AbortController | undefined
   let active = true
@@ -163,7 +164,7 @@ export const startInlineFrameSource = (
           "GET /bots/:id/browser-preview",
           tabId ? { tabId } : {},
           { id: bot.id },
-          { signal: AbortSignal.any([lifetime.signal, captureController.signal]) },
+          { signal: AbortSignal.any([lifetime.signal, captureController.signal, AbortSignal.timeout(10_000)]) },
         )
         if (!active || held || generation !== startedGeneration) return
         const processed = await processFrame({ image: result.image, title: result.title, url: result.url })
@@ -241,13 +242,23 @@ export const startInlineFrameSource = (
   }
   // Metadata events share the viewer's existing browser tab pipeline.
   unsubscribe = api.subscribe(({ event }) => {
-    if (event.type !== "browser.tab" || event.tab.ownerBotId !== bot.id || (tabId && event.tab.tabId !== tabId)) return
+    if (
+      !active ||
+      event.type !== "browser.tab" ||
+      event.tab.ownerBotId !== bot.id ||
+      (tabId && event.tab.tabId !== tabId)
+    )
+      return
 
+    hasTabEvent = true
     const changedPage = page.url !== event.tab.url
+    const wasHeld = held
     page = event.tab
-    generation += 1
-    held = event.tab.heldByUser || event.tab.state !== "live"
-    if (held || changedPage) options.onReset?.()
+    held = event.tab.heldByUser || event.tab.state === "closed"
+    // Metadata updates must not starve an in-flight capture. Only page/privacy transitions invalidate it.
+    if (held || wasHeld !== held || changedPage) generation += 1
+    // An unloaded tab can reconnect automatically; retain its last safe frame while sampling retries.
+    if (held) options.onReset?.()
     if (held) {
       captureController?.abort()
       clearTimeout(timer)
@@ -266,7 +277,7 @@ export const startInlineFrameSource = (
       const tab = tabs
         .filter((tab) => tab.state === "live" && (!tabId || tab.tabId === tabId))
         .sort((a, b) => b.lastUsedAt - a.lastUsedAt)[0]
-      if (active && tab) page = tab
+      if (active && tab && !hasTabEvent) page = tab
     })
     .catch(() => {})
   void start().catch((error: unknown) => fail(userFacingError(error)))
