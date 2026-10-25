@@ -50,7 +50,8 @@ test("team actions retain approvals and confirmed replies on desktop and phone",
     page.getByText(
       "Coloquei sua solicitação na fila local. Vou manter o contexto da conversa, e o próximo passo está pronto.",
     ),
-  ).toBeVisible()
+  ).toHaveCount(2)
+  await expect(page.locator(".message-assistant .message-role")).toHaveText(["mark", "onb"])
   const turn = await page.evaluate(() => {
     const qa = window as typeof window & {
       groupsQa: {

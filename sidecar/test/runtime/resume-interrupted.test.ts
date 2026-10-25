@@ -25,6 +25,7 @@ import * as folderAccess from "../../src/runtime/folder-access"
 import { SESSION_RECOVERY_MESSAGE } from "../../src/runtime/session-recovery"
 import { createWorkState } from "../../src/runtime/work-state"
 import { init as initStore } from "../../src/store"
+import { getCompleteJsonlRecords } from "../fakes/jsonl"
 import { fakeProviderSpawn } from "../fakes/provider-spawn"
 
 type Engine = ReturnType<typeof createRuntimeEngine>
@@ -170,12 +171,7 @@ exec '${process.execPath}' '${fake}' "$@"
       .activePath({ threadId: "t" })
       .filter((message) => message.parts.some((part) => part.type === "notice" && part.code === "run_resumed"))
   const frames = (): Array<{ method: string; params: Record<string, unknown> }> =>
-    existsSync(requests)
-      ? readFileSync(requests, "utf8")
-          .trim()
-          .split("\n")
-          .map((line) => JSON.parse(line))
-      : []
+    existsSync(requests) ? getCompleteJsonlRecords(readFileSync(requests, "utf8")) : []
   const disableResume = (): void => {
     first.db
       .query(

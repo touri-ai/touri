@@ -29,6 +29,7 @@ import type {
 import { canMarkNotificationRead, toolCatalog } from "@touri/contracts"
 import { avatarColorFor, avatarShapeFor } from "@touri/contracts/avatar"
 import rootPackage from "../../../../package.json"
+import { getMentionedPeople } from "../../../../sidecar/src/groups/people"
 import seedJson from "../../../../sidecar/test/fixtures/ui-seed.json"
 import { ApiError } from "../../errors"
 import type { ApiRequest, UiApi } from "../client"
@@ -54,6 +55,30 @@ type MockApi = UiApi & {
 
 const seed = seedJson as Seed
 const now = (): number => Date.now()
+
+const getGroupRecipients = (
+  group: BotGroup,
+  bots: Bot[],
+  input: ApiRoutes["POST /threads/:id/messages"]["req"],
+): string[] => {
+  if (input.groupAction === "ask_all") return group.memberIds
+  if (input.groupAction === "summarize") return [group.coordinatorBotId ?? group.memberIds[0] ?? ""]
+
+  return getMentionedPeople(
+    input.text,
+    bots.filter((bot) => group.memberIds.includes(bot.id)),
+  ).map((bot) => bot.id)
+}
+
+const getLatestThreadMessageId = (messages: readonly Message[], threadId: Id): Id | undefined => {
+  // The current request is at the tail; avoid copying a growing mock history for each recipient.
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message?.threadId === threadId) return message.id
+  }
+
+  return undefined
+}
 
 const createBot = (input: Seed["bots"][number], index: number, projectId: Id | null): Bot => ({
   teamBuilder: false,
@@ -754,6 +779,63 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
   const apiModels = new Map<string, ApiModel>()
   let groups: BotGroup[] = []
   const telegram = new Map<string, TelegramIntegration>()
+  const startMockReply = (userMessage: Message, botId: string, parentId: string): Run => {
+    const thread = findThread(userMessage.threadId)
+    const bot = thread?.groupId && !thread.groupThreadId ? bots.find((candidate) => candidate.id === botId) : undefined
+    const replyId = `message-${messages.length + 1}`
+    const run: Run = {
+      ...createRun({ id: `run-${runs.size + 1}`, threadId: userMessage.threadId, botId, status: "queued" }),
+      requestMessageId: userMessage.id,
+      replyMessageId: replyId,
+    }
+    const reply: Message = {
+      ...createMessage({
+        id: replyId,
+        threadId: userMessage.threadId,
+        role: "assistant",
+        text: "",
+        status: "streaming",
+        runId: run.id,
+        parentId,
+      }),
+      sender: bot ? { id: bot.id, name: bot.name } : null,
+    }
+    messages = [...messages, reply]
+    runs.set(run.id, run)
+    emit({ type: "message.created", message: reply })
+    emit({ type: "run.updated", run })
+    const deltas = [
+      "Coloquei sua solicitação na fila local. ",
+      "Vou manter o contexto da conversa, ",
+      "e o próximo passo está pronto.",
+    ]
+    deltas.forEach((delta, index) => {
+      setTimeout(() => {
+        const current = messages.find((message) => message.id === reply.id)
+        const currentRun = findRun(run.id)
+        if (!current || !currentRun) return
+
+        const text = current.text + delta
+        const complete = index === deltas.length - 1
+        const updated: Message = {
+          ...current,
+          text,
+          parts: [{ type: "text", text }],
+          status: complete ? "complete" : "streaming",
+        }
+        messages = messages.map((message) => (message.id === updated.id ? updated : message))
+        emit({ type: "message.delta", threadId: updated.threadId, messageId: updated.id, partIndex: 0, delta })
+        if (!complete) return
+
+        const finished: Run = { ...currentRun, status: "succeeded", finishedAt: now() }
+        runs.set(finished.id, finished)
+        emit({ type: "message.updated", message: updated })
+        emit({ type: "run.updated", run: finished })
+      }, index * 25)
+    })
+
+    return run
+  }
   const request: ApiRequest = async (route, input, pathValues = {}) => {
     const recordedInput =
       String(route).includes("/api-models") && input && typeof input === "object"
@@ -1462,50 +1544,22 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
         text: messageInput.text,
         parentId: messageInput.parentId,
       })
-      const run = createRun({ id: `run-${runs.size + 1}`, threadId: pathValues.id ?? "", botId, status: "queued" })
-      const reply = createMessage({
-        id: `message-${messages.length + 2}`,
-        threadId: pathValues.id ?? "",
-        role: "assistant",
-        text: "",
-        status: "streaming",
-        runId: run.id,
-        parentId: userMessage.id,
-      })
-      run.requestMessageId = userMessage.id
-      run.replyMessageId = reply.id
-      messages.push(userMessage, reply)
-      runs.set(run.id, run)
-      const storedThread = findThread(pathValues.id ?? "")
-      const updatedThread = storedThread ? { ...storedThread, activeLeafId: reply.id, updatedAt: now() } : undefined
-      if (updatedThread) threads = threads.map((thread) => (thread.id === updatedThread.id ? updatedThread : thread))
+      const thread = findThread(userMessage.threadId)
+      const group =
+        thread?.groupId && !thread.groupThreadId ? groups.find((group) => group.id === thread.groupId) : undefined
+      const recipients = group ? getGroupRecipients(group, bots, messageInput) : [botId]
+      messages = [...messages, userMessage]
       emit({ type: "message.created", message: userMessage })
-      emit({ type: "message.created", message: reply })
-      emit({ type: "run.updated", run })
-      if (updatedThread) emit({ type: "thread.updated", thread: updatedThread })
-      const deltas = [
-        "Coloquei sua solicitação na fila local. ",
-        "Vou manter o contexto da conversa, ",
-        "e o próximo passo está pronto.",
-      ]
-      deltas.forEach((delta, index) => {
-        setTimeout(() => {
-          const current = messages.find((message) => message.id === reply.id)
-          const currentRun = findRun(run.id)
-          if (!current || !currentRun) return
-          current.text += delta
-          current.parts = [{ type: "text", text: current.text }]
-          emit({ type: "message.delta", threadId: current.threadId, messageId: current.id, partIndex: 0, delta })
-          if (index === deltas.length - 1) {
-            current.status = "complete"
-            currentRun.status = "succeeded"
-            currentRun.finishedAt = now()
-            emit({ type: "message.updated", message: current })
-            emit({ type: "run.updated", run: currentRun })
-          }
-        }, index * 25)
+      const replies = recipients.map((recipient) => {
+        const parentId = getLatestThreadMessageId(messages, userMessage.threadId) ?? userMessage.id
+        return startMockReply(userMessage, recipient, parentId)
       })
-      return { message: userMessage, run } as ApiRoutes[typeof route]["res"]
+      const activeLeafId = replies.at(-1)?.replyMessageId ?? userMessage.id
+      const updatedThread = thread ? { ...thread, activeLeafId, updatedAt: now() } : undefined
+      if (updatedThread) threads = threads.map((thread) => (thread.id === updatedThread.id ? updatedThread : thread))
+      if (updatedThread) emit({ type: "thread.updated", thread: updatedThread })
+
+      return { message: userMessage, run: replies[0] ?? null } as ApiRoutes[typeof route]["res"]
     }
     if (key === "POST /runs/:id/cancel") {
       const run = findRun(pathValues.id ?? "")

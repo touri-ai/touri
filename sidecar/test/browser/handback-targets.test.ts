@@ -141,6 +141,19 @@ test.skipIf(!browserExecutable)(
   120_000,
 )
 
+test.skipIf(!browserExecutable)(
+  "a fresh disposable profile completes its first HTTP navigation",
+  async () => {
+    const fixture = await getFixture()
+
+    const opened = getSnapshot(await fixture.callTool("browser_open", { url: `${fixture.base}/dashboard` }))
+
+    expect(opened.url).toBe(`${fixture.base}/dashboard`)
+    expect(opened.elements.some((element) => element.name === "Sign in")).toBe(true)
+  },
+  60_000,
+)
+
 const getSnapshot = (result: ToolResult): BrowserSnapshot => {
   if (!result.success || !result.structured) throw new Error(`Expected a browser snapshot: ${JSON.stringify(result)}`)
 
@@ -193,6 +206,8 @@ const getFixture = async () => {
       "--no-sandbox",
       "--disable-dev-shm-usage",
       "--no-first-run",
+      // Disposable profiles must not wait for an interactive desktop keyring to unlock.
+      "--password-store=basic",
       "--remote-debugging-address=127.0.0.1",
       "--remote-debugging-port=0",
       `--user-data-dir=${profile}`,
