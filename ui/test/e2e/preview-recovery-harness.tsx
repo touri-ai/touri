@@ -42,6 +42,9 @@ const getImage = () => {
 }
 const request: ApiRequest = async (route, input, path, transport) => {
   if (route === "POST /threads/:id/messages") {
+    const message = input as ApiRoutes[typeof route]["req"]
+    if (!message.text.startsWith("@Léo ")) throw new Error("Synthetic browser task requires an explicit bot mention")
+
     state.started = true
     // Deliver the stream after the send response, as the real transport does.
     window.setTimeout(() => {
@@ -61,7 +64,7 @@ const request: ApiRequest = async (route, input, path, transport) => {
         runId: null,
         role: "user",
         parts: [],
-        text: "Confira a página de demonstração.",
+        text: "@Léo confira a página de demonstração.",
       }),
       thread: Object.assign({}, fixture.thread, { activeLeafId: fixture.reply.id }),
       run: fixture.run,

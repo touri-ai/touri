@@ -918,6 +918,10 @@ echoed, and invalid requests do not create a group or conversation.
   For a typical Node project, the expected hints are Node ≥ 22.12, pnpm, MongoDB, Redis. touri **does not install toolchains itself**. The bot does it with its shell (brew, corepack, fnm/mise), and Doctor shows what is missing.
 - Multiple bots may share a project. The processes belong to the project, not to a bot.
 - Turn preparation uses stored project paths, process state and secret names through the internal `projects.info` turn scope, without repository inspection or discovery subprocesses. VM context uses guest paths and only that bot's processes. Working-directory validation, folder permissions and approvals still apply; explicit full project queries retain repository details, hints and previews.
+- Navigation and Preview process controls follow the selected project and computer. Switching a bot
+  to another computer clears the old controls immediately; delayed reads and process creation cannot
+  replace the new selection. Preview targets are identified by project, computer and URL, so identical
+  URLs on different computers remain separate.
 
 ### 4.2 Secrets
 - **Storage.**
@@ -1032,6 +1036,12 @@ shows a clear failure with **Retry preview**. Retrying starts a fresh first-fram
 task's stop control remains available. A preview hidden for privacy or disabled in preferences does
 not start this deadline or offer a retry. Background tabs and offscreen cards pause the deadline
 until the reader returns. Failure status is announced to assistive technology.
+After the first authorized image, navigation and temporary capture failures keep that image visible
+while serial captures retry automatically, including when a tab is unloaded. Capture requests have
+a ten-second deadline and stop when the viewer closes. Metadata-only events do not discard an
+in-flight image; a late initial tab snapshot cannot overwrite newer events. A translated reconnection
+status stays inside the image area without changing the card height. Human takeover and tab closure
+purge cached images and pending decoding before any shared preview can resume.
 All recovery copy is available in Portuguese and English.
 
 `Bot.browser` selects the launcher per bot: `touri` (**Chrome do touri**, default), `local`

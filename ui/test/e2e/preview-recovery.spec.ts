@@ -82,7 +82,7 @@ for (const width of [390, 1440]) {
     await openWorkChannel(page)
     const modeMetrics = await measureModeSwitches(page)
     const composer = page.getByRole("textbox", { name: "Mensagem para Viagens", exact: true })
-    await composer.fill("Confira a página de demonstração.")
+    await composer.fill("@Léo confira a página de demonstração.")
     await composer.press("Enter")
     const card = page.getByRole("article", { name: "Navegador do Léo" })
     const image = card.getByRole("img", { name: "Página atual do navegador" })
