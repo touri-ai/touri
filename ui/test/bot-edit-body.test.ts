@@ -28,3 +28,24 @@ it("preserves requests with only instruction text and keeps small edits simple",
   expect(JSON.parse(await new Response(body).text())).toEqual(input)
   expect(small).toBe('{"name":"Bot de teste"}')
 })
+
+it("bounds synchronous byte encoding even when JSON escaping expands the instruction text", async () => {
+  const encodedSizes = new Set<number>()
+  // Constructor observations are local to this request; existing Blob segments need no text encoding.
+  class MeasuredBlob extends NodeBlob {
+    constructor(
+      parts: ConstructorParameters<typeof NodeBlob>[0] = [],
+      options?: ConstructorParameters<typeof NodeBlob>[1],
+    ) {
+      super(parts, options)
+      encodedSizes.add(parts.reduce((size, part) => size + (typeof part === "string" ? part.length : 0), 0))
+    }
+  }
+  vi.stubGlobal("Blob", MeasuredBlob)
+  const input = { instructions: "\u0001".repeat(1_000_000) }
+
+  const body = await getBotEditBody(input, async () => {})
+
+  expect(Math.max(...encodedSizes)).toBeLessThan(2 * 1024 * 1024)
+  expect(JSON.parse(await new Response(body).text())).toEqual(input)
+})

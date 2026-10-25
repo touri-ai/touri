@@ -11,18 +11,24 @@ export const getBotEditBody = async (
 
   const metadata = Object.fromEntries(Object.entries(input).filter(([key]) => key !== "instructions"))
   const header = JSON.stringify(metadata)
-  const parts: string[] = [header.slice(0, -1), header === "{}" ? '"instructions":"' : ',"instructions":"']
+  const parts: BlobPart[] = [header.slice(0, -1), header === "{}" ? '"instructions":"' : ',"instructions":"']
   const instructions = input.instructions
-  // The parts and offsets belong only to this request. Each escape operation is bounded.
+  // Framing state belongs only to this request; sixteen slices bound each byte conversion.
+  let chunks: string[] = []
   for (let offset = 0; offset < instructions.length; ) {
     signal?.throwIfAborted()
     let end = Math.min(offset + 16_384, instructions.length)
     const last = instructions.charCodeAt(end - 1)
     if (end < instructions.length && last >= 0xd800 && last <= 0xdbff) end -= 1
-    parts.push(JSON.stringify(instructions.slice(offset, end)).slice(1, -1))
+    chunks.push(JSON.stringify(instructions.slice(offset, end)).slice(1, -1))
     offset = end
-    if (parts.length % 16 === 0) await yieldTask()
+    if (chunks.length === 16) {
+      parts.push(new Blob(chunks))
+      chunks = []
+      await yieldTask()
+    }
   }
+  if (chunks.length > 0) parts.push(new Blob(chunks))
   parts.push('"}')
   return new Blob(parts, { type: "application/json" })
 }

@@ -7,7 +7,7 @@ import type { WorkspaceActions } from "../src/useWorkspace"
 
 afterEach(cleanup)
 
-const makeEditor = (instructions: Promise<{ instructions: string }>) => {
+const makeEditor = (instructions: Promise<{ instructions: string }>, initialSection?: "model") => {
   const base = createMockApi()
   const original = base.getState().bots[0]
   if (!original) throw new Error("Missing fixture")
@@ -27,7 +27,7 @@ const makeEditor = (instructions: Promise<{ instructions: string }>) => {
       routines={[]}
       actions={actions}
       onClose={() => {}}
-      initialSection="general"
+      initialSection={initialSection}
     />,
   )
   return { updateBot }
@@ -46,7 +46,7 @@ it("never saves the deferred placeholder while the full text is loading", async 
 })
 
 it("loads full instructions for editing and only includes them when changed", async () => {
-  const { updateBot } = makeEditor(Promise.resolve({ instructions: "Texto completo fictício" }))
+  const { updateBot } = makeEditor(Promise.resolve({ instructions: "Texto completo fictício" }), "model")
   const editor = await screen.findByRole("textbox", { name: "Instruções do bot" })
   await waitFor(() => expect(editor).toHaveValue("Texto completo fictício"))
 
