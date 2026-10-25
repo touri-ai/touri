@@ -117,6 +117,16 @@ const Thumbnail = ({
         setRevision((value) => value + 1)
     })
   }, [inline, src, context])
+  // Bare filenames can describe future work; failed speculative reads need no recovery controls.
+  if (
+    inline &&
+    error &&
+    !image.imageSyntax &&
+    !image.path.includes("/") &&
+    error !== t("Imagem disponível quando a máquina estiver ligada")
+  )
+    return null
+
   return (
     <figure ref={root} className="evidence-image">
       <button

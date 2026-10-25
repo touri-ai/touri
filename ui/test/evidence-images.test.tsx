@@ -83,6 +83,25 @@ const fixture = () => {
 }
 
 describe("safe markdown evidence", () => {
+  it("leaves an unavailable planned filename as text without a broken preview", async () => {
+    const { context, request } = fixture()
+    request.mockImplementation(async (_route, input) => {
+      if ((input as { path: string }).path === "planned.png") throw new ApiError(404, "Arquivo não encontrado")
+
+      return blob
+    })
+
+    const view = render(
+      <MarkdownContent evidence={context} content={"![Captura salva](/output/post.png) · Vou criar `planned.png`."} />,
+    )
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2))
+
+    expect(await screen.findByRole("img", { name: "Captura salva" })).toBeVisible()
+    expect(screen.getByText("planned.png", { selector: "code" })).toBeVisible()
+    expect(view.container.querySelectorAll("figure")).toHaveLength(1)
+    expect(screen.queryByText(/Prévia indisponível|Tentar novamente/)).toBeNull()
+  })
+
   it.each([
     "![Tela][captura]\n\n[captura]: shots/screen%20one.png",
     "![Tela][]\n\n[Tela]: shots/screen%20one.png",
