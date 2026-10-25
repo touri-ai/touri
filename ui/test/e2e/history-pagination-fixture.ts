@@ -4,7 +4,7 @@ import { join } from "node:path"
 const [directory, ...threadIds] = process.argv.slice(2)
 if (!directory || !threadIds.length) throw new Error("Synthetic history fixture requires isolated threads")
 const database = new Database(join(directory, "touri.db"))
-const now = Date.now()
+const now = Date.now() - 5000
 // One-shot setup with the isolated server stopped; no request shares this synthetic transaction.
 database.transaction(() => {
   threadIds.forEach((threadId) => {
@@ -12,14 +12,16 @@ database.transaction(() => {
     const provider = database.query("SELECT provider FROM bots WHERE id = ?").get(thread.bot_id) as { provider: string }
     Array.from({ length: 2500 }, (_, index) => index).forEach((turn) => {
       database
-        .query(`INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at,request_message_id,reply_message_id)
-        VALUES(?,?,?,?,'user','succeeded',?,?,?)`)
+        .query(`INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at,started_at,finished_at,request_message_id,reply_message_id)
+        VALUES(?,?,?,?,'user','succeeded',?,?,?,?,?)`)
         .run(
           `history-run-${threadId}-${turn}`,
           threadId,
           thread.bot_id,
           provider.provider,
           now + turn * 2,
+          now + turn * 2,
+          now + turn * 2 + 1,
           `history-${threadId}-${turn * 2}`,
           `history-${threadId}-${turn * 2 + 1}`,
         )
@@ -60,6 +62,9 @@ database.transaction(() => {
     })
     database.query("UPDATE threads SET active_leaf_id = ? WHERE id = ?").run(`history-${threadId}-4999`, threadId)
   })
+  // Materialized fixture history must not be replayed as fresh work when the server restarts.
+  database.exec(`UPDATE schema_meta SET value = CAST(COALESCE((SELECT MAX(id) FROM transcript_entries), 0) AS TEXT)
+    WHERE key = 'transcript_event_checkpoint'`)
 })()
 database.close()
 const auth = new Database(join(directory, "auth.db"))

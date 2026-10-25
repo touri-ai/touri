@@ -856,7 +856,8 @@ export const useWorkspace = (
         })
         .catch(() => undefined)
         .finally(() => {
-          prefetchedThreads.current.delete(threadId)
+          if (prefetchedThreads.current.get(threadId)?.controller === controller)
+            prefetchedThreads.current.delete(threadId)
         })
       prefetchedThreads.current.set(threadId, { controller, promise })
     },

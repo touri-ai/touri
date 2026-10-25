@@ -69,6 +69,8 @@ for (const width of [1440, 390]) {
     }
     await showSidebar()
     await page.getByRole("tab", { name: /^Work,/ }).click()
+    const switchMetrics: Array<{ longTasks: number[]; cls: number }> = []
+    const connectionsBefore = server.eventConnections
     const choose = async (name: string, threadId: string): Promise<number> => {
       await page.evaluate((id) => {
         const timing = window as Window & {
@@ -117,10 +119,24 @@ for (const width of [1440, 390]) {
           element.closest("button")?.click()
         })
       await expect(page.locator(`[data-message-id="history-${threadId}-4999"]`)).toBeVisible()
-      return page.evaluate(() => {
-        const timing = window as Window & { historyStarted?: number; historyReady?: number | undefined }
-        return (timing.historyReady ?? performance.now()) - (timing.historyStarted ?? performance.now())
+      await page.evaluate(
+        () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
+      )
+      const measured = await page.evaluate(() => {
+        const timing = window as Window & {
+          historyStarted?: number
+          historyReady?: number | undefined
+          historyLongTasks?: number[]
+          historyCls?: number
+        }
+        return {
+          ms: (timing.historyReady ?? performance.now()) - (timing.historyStarted ?? performance.now()),
+          longTasks: timing.historyLongTasks ?? [],
+          cls: timing.historyCls ?? 0,
+        }
       })
+      switchMetrics.push(measured)
+      return measured.ms
     }
     expect(requestedThreads).not.toContain(first)
     const coldMs = await choose("Plano fictício", first)
@@ -196,6 +212,9 @@ for (const width of [1440, 390]) {
       coldMs,
       cachedP95Ms: ordered[9],
       cachedMs,
+      cachedLongTasks: switchMetrics.slice(2).flatMap((sample) => sample.longTasks),
+      cachedCls: Math.max(0, ...switchMetrics.slice(2).map((sample) => sample.cls)),
+      extraEventConnections: server.eventConnections - connectionsBefore,
       ...coldMetrics,
       reads: reads.filter((read) => read.id === first),
       workload: "5000 synthetic messages and 2500 runs per channel/DM; real isolated server",
@@ -211,6 +230,9 @@ for (const width of [1440, 390]) {
       expect(ordered[9]).toBeLessThan(100)
       expect(coldMetrics.longTasks).toEqual([])
       expect(coldMetrics.cls).toBeLessThan(0.01)
+      expect(metrics.cachedLongTasks).toEqual([])
+      expect(metrics.cachedCls).toBeLessThan(0.01)
+      expect(metrics.extraEventConnections).toBe(0)
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   })
