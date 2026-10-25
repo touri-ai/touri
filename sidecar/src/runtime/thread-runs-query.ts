@@ -26,9 +26,9 @@ export const getThreadRunsQuery = (threadId: string, all = false, messageIds?: s
 
 const getRunRootsQuery = (threadId: string, all: boolean, messageIds?: string[], page?: HistoryPage) => {
   if (page) {
-    const query = getHistoryPageQuery(threadId, page)
+    const query = getHistoryPageQuery(threadId, page, true)
     return {
-      page: query.sql.replace("SELECT * FROM messages", "SELECT id, thread_id, run_id FROM messages"),
+      page: query.sql,
       sql: `SELECT run_id AS id FROM page WHERE run_id IS NOT NULL
         UNION SELECT r.id FROM page m CROSS JOIN runs r INDEXED BY runs_request
         WHERE r.thread_id = m.thread_id AND r.request_message_id = m.id`,

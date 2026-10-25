@@ -185,9 +185,30 @@ test("an explicit old search returns bounded sibling keys and active-branch cont
 
   expect(page.messages).toHaveLength(40)
   expect(page.context.onActivePath).toBe(true)
-  expect(page.context.siblings.map((message: { id: string }) => message.id)).toEqual(["message-100", "sibling"])
+  expect(page.context.siblings.map((message: { id: string }) => message.id)).toEqual(
+    expect.arrayContaining(["message-100", "sibling"]),
+  )
   expect(
     page.context.siblings.every((message: Record<string, unknown>) => !("text" in message) && !("parts" in message)),
   ).toBe(true)
   expect(branch.context.onActivePath).toBe(false)
+})
+
+test("a DM page follows only forty ancestors of a new reply on an old branch", async () => {
+  const database = await getFixture()
+  database.exec(`INSERT INTO messages(id,thread_id,parent_id,role,kind,status,text,parts_json,created_at,updated_at,seq,generation,updated_seq)
+    VALUES('fork','channel','message-100','user','text','complete','Fork fixture','[]',9999,9999,5001,1,5001)`)
+  const first = getHistoryQuery("channel", "fork", true, { limit: 40, pathFrom: "fork" })
+  const rows = database.query(first.sql).all(...first.bindings) as Row[]
+  const older = getHistoryQuery("channel", "fork", true, { limit: 40, pathFrom: "fork", before: "message-62" })
+  const oldRows = database.query(older.sql).all(...older.bindings) as Row[]
+  const runs = getThreadRunsQuery("channel", true, undefined, { limit: 40, pathFrom: "fork" })
+  const runRows = database.query(runs.sql).all(...runs.bindings) as Array<{ id: string }>
+
+  expect(rows).toHaveLength(41)
+  expect(rows[0]?.id).toBe("fork")
+  expect(rows[39]?.id).toBe("message-62")
+  expect(oldRows[0]?.id).toBe("message-61")
+  expect(runRows).toHaveLength(39)
+  expect(runRows.some((run) => run.id === "run-101")).toBe(false)
 })

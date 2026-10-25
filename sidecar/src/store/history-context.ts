@@ -8,20 +8,27 @@ export const getMessageHistoryContext = (
   threadId: string,
   activeLeafId: string | null,
   messageId: string,
+  pageIds: string[] = [messageId],
 ): MessageHistoryContext => {
-  const target = database
-    .query("SELECT parent_id, role FROM messages WHERE thread_id = ? AND id = ?")
-    .get(threadId, messageId) as { parent_id: string | null; role: string } | null
-  const active = database
-    .query(`${MESSAGE_PATH_CTE} SELECT 1 FROM branch WHERE id = ? LIMIT 1`)
-    .get(threadId, activeLeafId, threadId, messageId, messageId, messageId)
-  const siblings = target
+  const active =
+    activeLeafId === messageId ||
+    Boolean(
+      database
+        .query(`${MESSAGE_PATH_CTE} SELECT 1 FROM branch WHERE id = ? LIMIT 1`)
+        .get(threadId, activeLeafId, threadId, messageId, messageId, messageId),
+    )
+  const slots = pageIds.map(() => "?").join(",")
+  const siblings = pageIds.length
     ? (database
-        .query(
-          `SELECT id, thread_id AS threadId, parent_id AS parentId, role, kind, created_at AS createdAt FROM messages WHERE thread_id = ? AND parent_id IS ? AND role = ? AND kind <> 'notice' ORDER BY created_at, rowid LIMIT 50`,
-        )
-        .all(threadId, target.parent_id, target.role) as MessageHistoryContext["siblings"])
+        .query(`SELECT DISTINCT m.id, m.thread_id AS threadId,
+    m.parent_id AS parentId, m.role, m.kind, m.created_at AS createdAt
+    FROM messages target CROSS JOIN messages m
+    WHERE target.thread_id = ? AND target.id IN (${slots})
+      AND m.thread_id = target.thread_id AND m.parent_id IS target.parent_id
+      AND m.role = target.role AND m.kind <> 'notice'
+    ORDER BY m.created_at,m.rowid LIMIT 200`)
+        .all(threadId, ...pageIds) as MessageHistoryContext["siblings"])
     : []
 
-  return { messageId, onActivePath: Boolean(active), siblings }
+  return { messageId, onActivePath: active, siblings }
 }

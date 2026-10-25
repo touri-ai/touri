@@ -1,10 +1,11 @@
-import type { Message, Run } from "@touri/contracts"
+import type { Message, MessageHistoryContext, Run } from "@touri/contracts"
 
 export const historyPageSize = 40
 export type ThreadHistory = {
   messages: Message[]
   runs: Run[]
   runsReady?: boolean | undefined
+  context?: MessageHistoryContext | undefined
   before: string | null
   activeLeafId?: string | null | undefined
 }
@@ -26,10 +27,20 @@ export const createThreadHistoryCache = () => {
         messages.some((message) => message.id === run.requestMessageId) ||
         ["queued", "starting", "running"].includes(run.status),
     )
+    const parents = new Set(messages.map((message) => JSON.stringify([message.parentId, message.role])))
+    const context = history.context
+      ? {
+          ...history.context,
+          siblings: history.context.siblings
+            .filter((message) => parents.has(JSON.stringify([message.parentId, message.role])))
+            .slice(0, 200),
+        }
+      : undefined
     const page = {
       messages,
       runs,
       runsReady: history.runsReady ?? true,
+      context,
       activeLeafId: history.activeLeafId,
       before: history.messages.length > messages.length ? (messages[0]?.id ?? null) : history.before,
     }
@@ -51,7 +62,8 @@ export const createThreadHistoryCache = () => {
           1024,
         0,
       ) +
-      runs.length * 4096
+      runs.length * 4096 +
+      (context?.siblings.length ?? 0) * 512
     remove(threadId)
     if (bytes > 4 * 1024 * 1024) return
 

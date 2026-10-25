@@ -40,6 +40,8 @@ for (const width of [1440, 390]) {
       const thread = threads[0]
       if (!thread) throw new Error("Missing synthetic conversation")
       await current.restart((data) => seedHistory(data, thread.id, scenario))
+      const search = (await current.api("/search?q=nota-qa.txt")) as { hits: Array<{ messageId: string }> }
+      expect(search.hits.some((hit) => hit.messageId === "real-search-8")).toBe(true)
       await current.install(page)
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
       await page.emulateMedia({ reducedMotion: "reduce" })

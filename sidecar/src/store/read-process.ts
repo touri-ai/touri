@@ -78,6 +78,7 @@ export const runStoreRead = async (): Promise<void> => {
     // Private accumulators bound peak memory; historical JSON never reaches the main loop as an object.
     const messages: string[] = []
     const references: MessageReferences[] = []
+    const pageIds: string[] = []
     let bytes = 0
     let hasMore = false
     let oldestId: string | null = null
@@ -88,6 +89,7 @@ export const runStoreRead = async (): Promise<void> => {
       }
       const message = getMessageFromRow(row as RawMessage)
       oldestId = message.id
+      if (input.query.context) pageIds.push(message.id)
       const serialized = JSON.stringify(message)
       bytes += Buffer.byteLength(serialized)
       if (bytes > 64 * 1024 * 1024) throw new Error("STORE_READ_LIMIT")
@@ -108,7 +110,7 @@ export const runStoreRead = async (): Promise<void> => {
     const pagination =
       input.query.pageLimit === undefined ? "" : `,"before":${JSON.stringify(hasMore ? oldestId : null)}`
     const context = input.query.context
-      ? `,"context":${JSON.stringify(getMessageHistoryContext(database, input.query.context.threadId, input.query.activeLeafId ?? null, input.query.context.messageId))}`
+      ? `,"context":${JSON.stringify(getMessageHistoryContext(database, input.query.context.threadId, input.query.activeLeafId ?? null, input.query.context.messageId, pageIds))}`
       : ""
     const body = new TextEncoder().encode(
       `{"messages":[${ordered.join(",")}],"activeLeafId":${JSON.stringify(input.query.activeLeafId ?? null)}${pagination}${context}}`,

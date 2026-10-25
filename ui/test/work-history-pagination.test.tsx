@@ -422,3 +422,74 @@ test("a hover page opens before held run metadata and never downloads its messag
   expect(reads.filter((route) => route === "GET /threads/:id/runs")).toHaveLength(1)
   await act(async () => held.resolve())
 })
+
+test("a new DM reply on an old fork opens its ancestors and retains sibling controls in cache", async () => {
+  const api = createMockApi()
+  const { thread } = await api.request("POST /threads", { botId: "bot-mark", title: "Ramo fictício" })
+  const history = Array.from({ length: 5000 }, (_, index) => getMessage(thread.id, index))
+  const fork = { ...getMessage(thread.id, 5000), id: "new-fork", parentId: `${thread.id}-100` }
+  api.getState().messages.push(...history, fork)
+  await api.request("PATCH /threads/:id", { activeLeafId: fork.id }, { id: thread.id })
+  const other = await getChannel(api, "Outro canal fictício")
+  const hook = renderHook(() => useWorkspace(api))
+  await waitFor(() => expect(hook.result.current.data.loaded).toBe(true))
+  act(() => hook.result.current.actions.selectThread(thread.id))
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe(thread.id))
+
+  expect(hook.result.current.data.messages).toHaveLength(40)
+  expect(hook.result.current.data.messages[0]?.id).toBe(`${thread.id}-62`)
+  expect(hook.result.current.data.messages.at(-1)?.id).toBe(fork.id)
+  expect(hook.result.current.data.historyContext?.siblings.map((message) => message.id)).toContain(`${thread.id}-101`)
+  act(() => hook.result.current.actions.selectThread(other))
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe(other))
+  act(() => hook.result.current.actions.selectThread(thread.id))
+  expect(hook.result.current.data.messages).toHaveLength(40)
+  expect(hook.result.current.data.historyContext?.siblings.map((message) => message.id)).toContain(`${thread.id}-101`)
+})
+
+test("an unknown old delta during selected hover loading still opens the full latest page", async () => {
+  const api = createMockApi()
+  const threadId = await getChannel(api, "Canal fictício")
+  const old = getStoredMessage(api, threadId, 0)
+  Object.assign(old, {
+    role: "assistant",
+    status: "streaming",
+    text: "Oi",
+    parts: [{ type: "text", text: "Oi" }],
+    updatedSeq: 1,
+  })
+  const held = Promise.withResolvers<void>()
+  const started = Promise.withResolvers<void>()
+  let reads = 0
+  const request: ApiRequest = async (route, input, path, transport) => {
+    const snapshot = await api.request(route, input, path, transport)
+    if (route === "GET /threads/:id/messages" && path?.id === threadId && ++reads === 1) {
+      started.resolve()
+      await held.promise
+    }
+    return snapshot
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(hook.result.current.data.loaded).toBe(true))
+  act(() => hook.result.current.actions.prefetchThread(threadId))
+  await started.promise
+  act(() => hook.result.current.actions.selectThread(threadId))
+  act(() =>
+    api.emit({
+      type: "message.delta",
+      threadId,
+      messageId: old.id,
+      partIndex: 0,
+      offset: 2,
+      delta: "!",
+      updatedSeq: 2,
+    }),
+  )
+  await act(async () => held.resolve())
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe(threadId))
+  await waitFor(() => expect(hook.result.current.data.messages).toHaveLength(40))
+
+  expect(hook.result.current.data.messages.at(-1)?.id).toBe(`${threadId}-4999`)
+  expect(hook.result.current.data.messages.some((message) => message.id === old.id)).toBe(false)
+})

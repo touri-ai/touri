@@ -694,7 +694,7 @@ export const useWorkspace = (
             historyThreadId: next.selectedThreadId,
             historyBefore: cached.before,
             historyFocusId: null,
-            historyContext: undefined,
+            historyContext: cached.context,
             historyNotice: null,
             loadingOlderHistory: false,
           }
@@ -764,12 +764,14 @@ export const useWorkspace = (
       runsReady: !threadLoads.current.has(threadId) || Boolean(threadLoads.current.get(threadId)?.runsReady),
       before: data.historyBefore,
       activeLeafId: historyLeafId,
+      context: data.historyContext,
     })
   }, [
     data.selectedThreadId,
     data.historyThreadId,
     data.historyBefore,
     data.historyFocusId,
+    data.historyContext,
     data.messages,
     data.runs,
     historyLeafId,
@@ -851,7 +853,7 @@ export const useWorkspace = (
       const promise = api
         .request(
           "GET /threads/:id/messages",
-          { all: true, limit: historyPageSize },
+          { all: true, limit: historyPageSize, context: true },
           { id: threadId },
           { signal: controller.signal },
         )
@@ -864,6 +866,7 @@ export const useWorkspace = (
             runsReady: false,
             before: page.before,
             activeLeafId: page.activeLeafId,
+            context: page.context,
           })
         })
         .catch(() => undefined)
@@ -891,7 +894,7 @@ export const useWorkspace = (
     try {
       const page = await api.request(
         "GET /threads/:id/messages",
-        { all: true, limit: historyPageSize, before },
+        { all: true, limit: historyPageSize, before, context: true },
         { id: threadId },
         { signal: controller.signal },
       )
@@ -900,6 +903,7 @@ export const useWorkspace = (
         ...current,
         messages: getMergedHistoryMessages(page.messages, current.messages),
         historyBefore: page.before ?? null,
+        historyContext: getMergedHistoryContext(current.historyContext, page.context),
       }))
       if (!page.messages.length) return
       const { runs } = await api.request(
@@ -974,7 +978,7 @@ export const useWorkspace = (
                 historyThreadId: threadId,
                 historyBefore: cached.before,
                 historyFocusId: null,
-                historyContext: undefined,
+                historyContext: cached.context,
                 historyNotice: null,
               }
             : current,
@@ -1004,19 +1008,19 @@ export const useWorkspace = (
       }
       const requestedIds = new Set(currentData.current.messages.map((message) => message.id))
       const pageTarget = repairMessageId ?? focus?.messageId
-      const pageInput = {
+      const runPage = {
         all: true,
         limit: repairMessageId ? 1 : historyPageSize,
         ...(pageTarget ? { around: pageTarget } : {}),
-        ...(!repairMessageId && focus ? { context: true } : {}),
       }
+      const pageInput = { ...runPage, ...(!repairMessageId && (!groupId || focus) ? { context: true } : {}) }
       if (repairMessageId) messageRepairs.current.delete(getHistoryMessageKey(threadId, repairMessageId))
       const pageRequest = cached
         ? Promise.resolve({
             messages: cached.messages,
             activeLeafId: cached.activeLeafId ?? null,
             before: cached.before,
-            context: undefined,
+            context: cached.context,
           })
         : api.request("GET /threads/:id/messages", pageInput, { id: threadId }, { signal: controller.signal })
       const messagesRequest = pageRequest
@@ -1120,7 +1124,7 @@ export const useWorkspace = (
           const terminalRevision = threadLoads.current.get(threadId)?.terminalRevision ?? 0
           const runs = await api.request(
             "GET /threads/:id/runs",
-            pageInput,
+            runPage,
             { id: threadId },
             { signal: controller.signal },
           )
@@ -1627,7 +1631,12 @@ export const useWorkspace = (
                 const next = Array.from(messageRepairs.current.values()).find(
                   (repair) => repair.threadId === event.threadId,
                 )
-                if (next) void loadThread(event.threadId, true, next.messageId)
+                if (next) {
+                  const ready =
+                    currentData.current.historyThreadId === event.threadId &&
+                    currentData.current.historyBefore !== undefined
+                  void loadThread(event.threadId, true, ready ? next.messageId : undefined)
+                }
               }
               bufferStreamEvent(threadLoads.current.get(event.threadId), event)
             })
@@ -2710,4 +2719,15 @@ const isUnloadedHistoryMessage = (data: WorkspaceData, message: Message | undefi
     first.seq !== undefined &&
     message.seq < first.seq
   )
+}
+
+const getMergedHistoryContext = (
+  previous: MessageHistoryContext | undefined,
+  next: MessageHistoryContext | undefined,
+): MessageHistoryContext | undefined => {
+  if (!next) return previous
+  const siblings = Array.from(
+    new Map([...(previous?.siblings ?? []), ...next.siblings].map((message) => [message.id, message])).values(),
+  )
+  return { ...next, siblings }
 }

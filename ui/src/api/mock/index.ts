@@ -1219,7 +1219,7 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
               (!query.botId || thread.botId === query.botId) &&
               tokens.every((token) => getNormalizedTitle(thread.title).includes(getNormalizedTitle(token))),
           )
-          .slice(0, 50)
+          .slice(0, 200)
           .map((thread) => ({
             id: thread.id,
             botId: thread.botId,
@@ -1936,15 +1936,23 @@ const getMockHistoryPage = (
   if (page.limit === undefined) return { messages: rows, activeLeafId: thread?.activeLeafId ?? null }
   const around = page.around ?? (thread?.groupId ? null : thread?.activeLeafId)
   const focused = around ? rows.findIndex((message) => message.id === around) : -1
-  const end = around && focused < 0 ? 0 : getMockPageEnd(rows, page.before, focused)
+  const path = thread?.groupId || !around ? rows : getMockHistoryPath(rows, around)
+  const end =
+    around && focused < 0
+      ? 0
+      : getMockPageEnd(
+          path,
+          page.before,
+          path.findIndex((message) => message.id === around),
+        )
   const start = page.limit === undefined ? 0 : Math.max(0, end - page.limit)
-  const selected = rows.slice(start, end)
+  const selected = path.slice(start, end)
 
   return {
     messages: selected,
     activeLeafId: thread?.activeLeafId ?? null,
-    ...(page.context && page.around
-      ? { context: getMockHistoryContext(rows, thread?.activeLeafId ?? null, page.around) }
+    ...(page.context && around
+      ? { context: getMockHistoryContext(rows, thread?.activeLeafId ?? null, around, selected) }
       : {}),
     ...(page.limit === undefined ? {} : { before: start > 0 ? (selected[0]?.id ?? null) : null }),
   }
@@ -1968,7 +1976,7 @@ const getMockRunMessageIds = (messageIds: string | undefined, messages: Message[
   return null
 }
 
-const getMockHistoryContext = (messages: Message[], leafId: string | null, messageId: string) => {
+const getMockHistoryContext = (messages: Message[], leafId: string | null, messageId: string, page: Message[]) => {
   const byId = new Map(messages.map((message) => [message.id, message]))
   const target = byId.get(messageId)
   const ancestors = new Set<string>()
@@ -1984,9 +1992,10 @@ const getMockHistoryContext = (messages: Message[], leafId: string | null, messa
       ? messages
           .filter(
             (message) =>
-              message.parentId === target.parentId && message.role === target.role && message.kind !== "notice",
+              page.some((target) => message.parentId === target.parentId && message.role === target.role) &&
+              message.kind !== "notice",
           )
-          .slice(0, 50)
+          .slice(0, 200)
           .map(({ id, threadId, parentId, role, kind, createdAt }) => ({
             id,
             threadId,
@@ -1997,4 +2006,17 @@ const getMockHistoryContext = (messages: Message[], leafId: string | null, messa
           }))
       : [],
   }
+}
+
+const getMockHistoryPath = (messages: Message[], leafId: string): Message[] => {
+  const byId = new Map(messages.map((message) => [message.id, message]))
+  const path = new Map<string, Message>()
+  let id: string | null = leafId
+  while (id && !path.has(id)) {
+    const message = byId.get(id)
+    if (!message) break
+    path.set(id, message)
+    id = message.parentId
+  }
+  return Array.from(path.values()).reverse()
 }

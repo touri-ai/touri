@@ -39,6 +39,8 @@ database.transaction(() => {
                 inputJson: '{"path":"/fixture/document.txt"}',
                 outputJson: JSON.stringify({ text: "Documento fictício conferido. ".repeat(index >= 4960 ? 1400 : 1) }),
                 ok: true,
+                resolution: "succeeded",
+                resolvedAt: now + index,
               },
               { type: "text", text },
             ]
@@ -61,6 +63,13 @@ database.transaction(() => {
         )
     })
     database.query("UPDATE threads SET active_leaf_id = ? WHERE id = ?").run(`history-${threadId}-4999`, threadId)
+    // Completed history includes settled tool results, as a normal terminal transition would persist.
+    database
+      .query(`INSERT INTO tool_resolutions(run_id,call_id,thread_id,part_json,resolution,resolved_at)
+      SELECT run_id,json_extract(parts_json,'$[0].callId'),thread_id,json_extract(parts_json,'$[0]'),'succeeded',updated_at
+      FROM messages WHERE thread_id = ? AND role = 'assistant'`)
+      .run(threadId)
+    database.query("DELETE FROM tool_recovery_pending WHERE thread_id = ?").run(threadId)
   })
   // Materialized fixture history must not be replayed as fresh work when the server restarts.
   database.exec(`UPDATE schema_meta SET value = CAST(COALESCE((SELECT MAX(id) FROM transcript_entries), 0) AS TEXT)
