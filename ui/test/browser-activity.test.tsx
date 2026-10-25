@@ -181,7 +181,7 @@ test("shows live browser steps and keeps typed values and URL credentials and qu
   expect(screen.getByText("Navegador do Lia")).toBeVisible()
   expect(screen.getByText("Preencheu um campo")).toBeVisible()
   expect(screen.getByText("Clicou em Lisboa, Portugal")).toBeVisible()
-  expect(screen.getByText("Lia · clicou em Lisboa, Portugal · travel.example.test")).toBeVisible()
+  expect(screen.getByText("Lia · clicou em Lisboa, Portugal")).toBeVisible()
   expect(screen.getByRole("progressbar", { name: "Progresso do navegador" })).toBeVisible()
   expect(screen.getByRole("button", { name: "Ampliar tela do navegador" })).toBeVisible()
   expect(screen.getByRole("button", { name: "Recolher cartão do navegador" })).toBeVisible()
@@ -358,8 +358,10 @@ test("shows one sanitized browser URL in the live subtitle", async () => {
 
   renderCard(parts, false)
 
-  const subtitle = await screen.findByText("Lia · abriu uma página · travel.example.test")
-  expect(subtitle).toBeVisible()
+  const domain = await screen.findByText("travel.example.test")
+
+  expect(domain).toBeVisible()
+  expect(domain.closest(".browser-activity-subtitle")).toHaveTextContent("Lia · abriu uma página")
   expect(screen.getAllByText(/travel\.example\.test/)).toHaveLength(1)
   expect(screen.queryByRole("group", { name: "Endereço do navegador" })).toBeNull()
 })

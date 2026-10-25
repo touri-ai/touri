@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test"
 
 test.use({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce" })
 
-test("phone settings navigation scrolls every tab into view for touch and keyboard", async ({ page }) => {
+test("phone settings navigation exposes every tab for touch and keyboard", async ({ page }) => {
   await page.goto("/test/e2e/r8-settings-harness.html")
   await page.getByRole("button", { name: "Abrir menu" }).click()
   await page.getByRole("button", { name: "Você", exact: true }).click()
@@ -27,9 +27,9 @@ test("phone settings navigation scrolls every tab into view for touch and keyboa
     }
   })
 
-  expect(layout.scrollWidth).toBeGreaterThan(layout.clientWidth)
-  expect(layout.rows).toBe(1)
-  expect(layout.tabsFit).toBe(false)
+  expect(layout.scrollWidth).toBe(layout.clientWidth)
+  expect(layout.rows).toBeGreaterThan(1)
+  expect(layout.tabsFit).toBe(true)
 
   const diagnosis = tablist.getByRole("tab", { name: "Diagnóstico", exact: true })
   await diagnosis.click()

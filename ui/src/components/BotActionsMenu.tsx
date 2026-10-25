@@ -144,6 +144,7 @@ export const BotActionsMenu = ({
             </button>
             {onConversations && (
               <button type="button" role="menuitem" aria-haspopup="dialog" onClick={() => launch(onConversations)}>
+                <PanelIcon name="conversations" />
                 <span>{t("Conversations")}</span>
               </button>
             )}

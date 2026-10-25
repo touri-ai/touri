@@ -78,7 +78,9 @@ it("starts a new conversation for the bot whose menu was used, even when another
 })
 
 it("opens selection and archived conversations from the bot menu", async () => {
-  render(<App kernel={{ services: { api: createMockApi() } }} />)
+  const api = createMockApi()
+  await api.request("POST /threads", { botId: "bot-mark", title: "Segunda conversa" })
+  render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
   chooseBotAction("Selecionar conversas…")
@@ -133,4 +135,18 @@ it("labels the new controls in both languages", () => {
   expect(t("Team actions", {}, "en")).toBe("Team actions")
   expect(t("Select conversations…", {}, "pt-BR")).toBe("Selecionar conversas…")
   expect(t("See all conversations", {}, "pt-BR")).toBe("Ver todas")
+})
+
+it("only offers bulk selection when at least two conversations exist", async () => {
+  const api = createMockApi()
+  render(<App kernel={{ services: { api } }} />)
+  await screen.findByRole("textbox", { name: "Mensagem para mark" })
+
+  fireEvent.click(screen.getByRole("button", { name: "Ações de mark" }))
+
+  expect(screen.queryByRole("menuitem", { name: "Selecionar conversas…" })).toBeNull()
+  const conversations = screen.getByRole("menuitem", { name: "Conversas", exact: true })
+  expect(conversations.querySelector("svg")).not.toBeNull()
+  fireEvent.click(conversations)
+  expect(screen.getByRole("button", { name: "Selecionar", exact: true })).toBeDisabled()
 })

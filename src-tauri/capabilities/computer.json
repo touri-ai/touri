@@ -3,5 +3,5 @@
   "identifier": "computer-viewer",
   "description": "Local bot computer viewer windows",
   "windows": ["computer-*"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "core:window:allow-set-focus", "core:window:allow-close"]
 }

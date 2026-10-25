@@ -6,8 +6,9 @@ import { createMockApi } from "../../src/api/mock"
 import { installMotionTokens } from "../../src/design/spring"
 import { initializeTheme } from "../../src/design/theme"
 import "../../src/styles.css"
+import { getReplyNavigationApi } from "../reply-navigation-fixture"
 
-const api = createMockApi()
+const api = getReplyNavigationApi(createMockApi())
 const state = api.getState()
 state.bots.splice(0)
 state.threads.splice(0)

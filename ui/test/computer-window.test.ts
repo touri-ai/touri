@@ -3,6 +3,33 @@ import { afterEach, expect, test, vi } from "vitest"
 const windows = vi.hoisted(() => ({
   created: [] as Array<{ label: string; options: Record<string, unknown>; setFocus: ReturnType<typeof vi.fn> }>,
 }))
+const nativeWindows = vi.hoisted(() => ({
+  close: vi.fn(async () => {}),
+  focusMain: vi.fn(async () => {}),
+}))
+vi.mock("@tauri-apps/api/window", async () => {
+  const { default: capability } = await import("../../src-tauri/capabilities/computer.json")
+  const requirePermission = (permission: string) => {
+    if (!capability.permissions.includes(permission)) throw new Error("Window operation is not authorized")
+  }
+
+  return {
+    Window: {
+      getByLabel: vi.fn(async () => ({
+        setFocus: async () => {
+          requirePermission("core:window:allow-set-focus")
+          await nativeWindows.focusMain()
+        },
+      })),
+    },
+    getCurrentWindow: () => ({
+      close: async () => {
+        requirePermission("core:window:allow-close")
+        await nativeWindows.close()
+      },
+    }),
+  }
+})
 vi.mock("@tauri-apps/api/webviewWindow", () => ({
   WebviewWindow: class {
     static getByLabel = vi.fn(async () => null)
@@ -18,6 +45,7 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
 }))
 afterEach(() => {
   windows.created.splice(0)
+  vi.clearAllMocks()
   Reflect.deleteProperty(window, "__TAURI_INTERNALS__")
 })
 
@@ -31,4 +59,44 @@ test("Abrir em janela opens the computer entry without credentials and brings it
   expect(String(created?.options.url)).not.toMatch(/token|ticket/i)
   // An occluded window reports document.hidden; the viewer must still be in front of the user.
   expect(created?.setFocus).toHaveBeenCalledOnce()
+})
+
+test("closing a computer viewer returns focus to the main window", async () => {
+  const { closeComputerWindow } = await import("../src/computerWindow")
+
+  await closeComputerWindow()
+
+  expect(nativeWindows.focusMain).toHaveBeenCalledOnce()
+  expect(nativeWindows.close).toHaveBeenCalledOnce()
+  expect(nativeWindows.focusMain.mock.invocationCallOrder[0]).toBeLessThan(
+    nativeWindows.close.mock.invocationCallOrder[0] ?? 0,
+  )
+})
+
+test("closing the viewer still works after the main window is gone", async () => {
+  const { Window } = await import("@tauri-apps/api/window")
+  const { closeComputerWindow } = await import("../src/computerWindow")
+  vi.spyOn(Window, "getByLabel").mockResolvedValueOnce(null)
+
+  await closeComputerWindow()
+
+  expect(nativeWindows.focusMain).not.toHaveBeenCalled()
+  expect(nativeWindows.close).toHaveBeenCalledOnce()
+})
+
+test("closing the viewer still works when focusing the main window fails", async () => {
+  const { closeComputerWindow } = await import("../src/computerWindow")
+  nativeWindows.focusMain.mockRejectedValueOnce(new Error("Synthetic focus failure"))
+
+  await closeComputerWindow()
+
+  expect(nativeWindows.close).toHaveBeenCalledOnce()
+})
+
+test("viewer capability grants only its required local window controls", async () => {
+  const { default: capability } = await import("../../src-tauri/capabilities/computer.json")
+
+  expect(capability.windows).toEqual(["computer-*"])
+  expect(capability).not.toHaveProperty("remote")
+  expect(capability.permissions).toEqual(["core:default", "core:window:allow-set-focus", "core:window:allow-close"])
 })

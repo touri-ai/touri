@@ -50,7 +50,7 @@ import { PanelIcon } from "./components/PanelIcon"
 import { SidebarDrawer } from "./components/SidebarDrawer"
 import { getWindowChrome, WindowFrame } from "./components/WindowFrame"
 import { installComputerKillSwitch } from "./computerKillSwitch"
-import { openComputerWindow } from "./computerWindow"
+import { closeComputerWindow, openComputerWindow } from "./computerWindow"
 import { type DeepLink, parseDeepLink } from "./deepLink"
 import { navigatePage } from "./design/navigation"
 import { errorRecovery, type RecoveryAction } from "./errorRecovery"
@@ -1174,6 +1174,22 @@ const AppContent = ({ kernel }: AppProps) => {
             {workspaceNotice}
             <header>
               <h1>Computador de {selectedBot?.name ?? "bot"}</h1>
+              {isNativeDesktop() ? (
+                <button
+                  type="button"
+                  className="button button-quiet"
+                  onClick={() => void closeComputerWindow().catch(showNotice)}
+                >
+                  {t("Fechar")}
+                </button>
+              ) : (
+                <a
+                  className="button button-quiet"
+                  href={`?bot=${encodeURIComponent(selectedBot?.id ?? requestedComputer)}`}
+                >
+                  {t("Back to bot")}
+                </a>
+              )}
             </header>
             {selectedBot?.id === requestedComputer ? (
               <ErrorBoundary key={selectedBot.id} area="o computador" api={api}>
@@ -1319,6 +1335,11 @@ const AppContent = ({ kernel }: AppProps) => {
                   bots={data.bots}
                   selectedBotId={data.selectedBotId}
                   followup={teamFollowup}
+                  followupReady={
+                    teamFollowup !== null &&
+                    selectedBot?.id === teamFollowup.botId &&
+                    selectedMessages.some((message) => message.role === "assistant" && message.status === "complete")
+                  }
                   onChooseJob={(job) => {
                     openModal("bot")
                     setInitialJob(job)

@@ -1370,6 +1370,7 @@ const BotEntryView = ({
                   type="button"
                   className="thread-list-tool"
                   aria-pressed={selectionMode}
+                  disabled={!selectionMode && selectableThreads.length < 2}
                   onClick={() => {
                     setSelectionMode(!selectionMode)
                     setSelectionPage(0)

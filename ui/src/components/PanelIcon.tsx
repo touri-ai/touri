@@ -22,8 +22,10 @@ export type PanelIconName =
   | "arrow-right"
   | "check"
   | "people"
+  | "conversations"
 
 const paths: Record<PanelIconName, string> = {
+  conversations: "M4 4h16v12H9l-5 4V4Z",
   close: "m6 6 12 12M18 6 6 18",
   folder: "M3 7V5h7l2 2h9v13H3V7Z",
   file: "M14 3H5v18h14V8l-5-5Zm0 0v5h5M8 12h8M8 16h6",

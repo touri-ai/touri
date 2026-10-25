@@ -111,6 +111,10 @@ const submitBot = async (page: Page, name: string) => {
   await dialog.getByRole("button", { name: "Criar bot", exact: true }).click()
   await expect(page.getByRole("textbox", { name: `Mensagem para ${name}` })).toBeVisible()
   await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole("button", { name: /Trabalhar em grupo com/ })).toHaveCount(0)
+  await page.getByRole("textbox", { name: `Mensagem para ${name}` }).fill("Organize uma tarefa de exemplo.")
+  await page.getByRole("button", { name: "Enviar", exact: true }).click()
+  await expect(page.getByText(/e o próximo passo está pronto/)).toBeVisible()
 }
 
 const getGroupWrites = (page: Page) =>

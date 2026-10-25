@@ -80,11 +80,6 @@ export const ApiModelsSettings = ({ api }: { api: UiApi | undefined }) => {
           onRecheck={() => setRevision((current) => current + 1)}
         />
       )}
-      <p id={`${id}-decision-help`} className="field-help">
-        {t(
-          "Assisted choices are off by default. Enabling sends short page labels to the remote JEV model (typesafe/jev-1.13) using this key and may spend credit. Your bot model stays the same. Turn this off anytime; the browser keeps working without it.",
-        )}
-      </p>
       <SettingsGroup title={t("Saved API models")}>
         {models.length === 0 && (
           <p className="api-model-empty">{t("No API models yet. Add your first model below.")}</p>
@@ -100,13 +95,19 @@ export const ApiModelsSettings = ({ api }: { api: UiApi | undefined }) => {
               {model.preset === "openrouter" && (
                 <label className="toggle-row" htmlFor={`${id}-decision-${model.id}`}>
                   <span>
-                    <strong>{t("Use this key for assisted browser choices")}</strong>
+                    <strong id={`${id}-decision-label-${model.id}`}>
+                      {t("Use this key for assisted browser choices")}
+                    </strong>
+                    <span id={`${id}-decision-help-${model.id}`} className="field-help">
+                      {t("Browser assistance consent")}
+                    </span>
                   </span>
                   <SettingsSwitch
                     id={`${id}-decision-${model.id}`}
                     checked={model.browserDecisions === true}
                     disabled={busy || !api}
-                    aria-describedby={`${id}-decision-help`}
+                    aria-labelledby={`${id}-decision-label-${model.id}`}
+                    aria-describedby={`${id}-decision-help-${model.id}`}
                     onChange={(event) => {
                       const enabled = event.target.checked
                       void run(async () => {

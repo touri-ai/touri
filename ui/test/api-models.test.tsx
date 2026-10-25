@@ -209,11 +209,22 @@ it("browser assistance requires a visible opt-in and can be disabled without del
   const consent = await screen.findByRole("switch", { name: "Usar esta chave para ajudar nas escolhas do navegador" })
 
   expect(consent).not.toBeChecked()
-  expect(consent).toHaveAccessibleDescription(/modelo remoto JEV.*consumir créditos/)
+  expect(consent).toHaveAccessibleDescription(/modelo remoto.*gerar cobrança/)
   fireEvent.click(consent)
   await waitFor(() => expect(consent).toBeChecked())
   fireEvent.click(consent)
   await waitFor(() => expect(consent).not.toBeChecked())
   expect((await api.request("GET /api-models", {})).models).toHaveLength(1)
   expect(document.body.textContent).not.toContain("fixture-private-key")
+})
+
+it("keeps browser assistance explanations out of empty API settings", async () => {
+  const api = createMockApi()
+
+  render(<ApiModelsSettings api={api} />)
+  await screen.findByText("Nenhum modelo por API ainda. Adicione o primeiro abaixo.")
+
+  expect(screen.queryByText(t("Browser assistance consent"))).toBeNull()
+  expect(screen.queryByRole("switch")).toBeNull()
+  expect(document.body.textContent).not.toContain("JEV")
 })

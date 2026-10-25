@@ -8,6 +8,7 @@ import { JobPicker } from "../src/features/jobs/JobPicker"
 import { TeamNextStep } from "../src/features/jobs/TeamNextStep"
 import { dictionaries, t } from "../src/i18n"
 import { getTeamRoutineDraft } from "../src/routineDraft"
+import { getReplyNavigationApi } from "./reply-navigation-fixture"
 
 afterEach(cleanup)
 
@@ -22,6 +23,7 @@ it.each(["pt-BR", "en"] as const)("offers an accessible routine draft and dismis
       bots={bots}
       selectedBotId={bot.id}
       followup={{ botId: bot.id, partnerId: partner.id }}
+      followupReady
       onChooseJob={vi.fn()}
       onGroup={vi.fn()}
       onRoutine={openRoutine}
@@ -269,7 +271,7 @@ it("recognizes an existing English job when creating another bot in Portuguese",
 })
 
 const makeEmptyApi = async () => {
-  const api = createMockApi()
+  const api = getReplyNavigationApi(createMockApi())
   const bots = api.getState().bots.map(({ id, name }) => ({ id, name }))
   for (const bot of bots)
     await api.request("DELETE /bots/:id", { name: bot.name, deleteVolumes: false }, { id: bot.id })
@@ -304,4 +306,31 @@ const submitBot = async (name: string) => {
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Criar bot", exact: true }))
   await screen.findByRole("textbox", { name: `Mensagem para ${name}` })
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+  expect(screen.queryByRole("button", { name: /Trabalhar em grupo com/ })).toBeNull()
+  fireEvent.change(screen.getByRole("textbox", { name: `Mensagem para ${name}` }), {
+    target: { value: "Organize uma tarefa de exemplo." },
+  })
+  fireEvent.click(screen.getByRole("button", { name: "Enviar", exact: true }))
+  await screen.findByText(/e o próximo passo está pronto/)
 }
+
+it("waits for a first completed reply before offering collaboration", () => {
+  const bots = createMockApi().getState().bots.slice(0, 2)
+  const [partner, bot] = bots
+  if (!bot || !partner) throw new Error("Missing bot fixtures")
+  const props = {
+    bots,
+    selectedBotId: bot.id,
+    followup: { botId: bot.id, partnerId: partner.id },
+    onChooseJob: vi.fn(),
+    onGroup: vi.fn(),
+    onRoutine: vi.fn(),
+    onDismissFollowup: vi.fn(),
+  }
+
+  const { rerender } = render(<TeamNextStep {...props} followupReady={false} />)
+
+  expect(document.querySelector(".team-next-step")).toBeNull()
+  rerender(<TeamNextStep {...props} followupReady />)
+  expect(screen.getByRole("button", { name: `Trabalhar em grupo com ${partner.name}?` })).toBeVisible()
+})

@@ -918,3 +918,12 @@
 .browser-takeover-canvas[hidden] {
   display: none;
 }
+
+.browser-activity-subtitle {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.browser-activity-domain {
+  display: block;
+  color: var(--text);
+}
