@@ -1,4 +1,4 @@
-import type { MachineState, McpServer, Message, RoutineRun } from "@touri/contracts"
+import type { ApiRoutes, MachineState, McpServer, Message, RoutineRun } from "@touri/contracts"
 import { createRoot } from "react-dom/client"
 import App from "../../src/App"
 import { createMockApi } from "../../src/api/mock"
@@ -195,6 +195,17 @@ api.request = async (route, input, path) => {
   if (route === "GET /mcp/tools" && failMcp) {
     failMcp = false
     throw new Error("Falha de conexão")
+  }
+  if (route === "GET /projects/:id/processes") {
+    const scope = input as ApiRoutes[typeof route]["req"]
+    const { processes } = await request(route, input, path)
+
+    // This fixture runs its bot in a VM, so process metadata must identify that computer too.
+    return {
+      processes: processes.map((entry) =>
+        Object.assign({}, entry, { spec: Object.assign({}, entry.spec, { vmBotId: scope.vmBotId ?? null }) }),
+      ),
+    } as never
   }
   if (route === "GET /processes/:id/logs") {
     if (failLogs) {
