@@ -16,6 +16,7 @@ import { maxAttachmentBytes } from "../attachmentFiles"
 import { ApiError, isServiceUnavailable } from "../errors"
 import { t } from "../i18n"
 import { scopedStorageKey } from "../storageScope"
+import { getBotEditBody } from "./botEditBody"
 import { type ConnectionStatus, getConnectionErrorCode, getWhileActive, isSessionRejected } from "./connectionStatus"
 import { createSendJournal } from "./sendJournal"
 
@@ -82,6 +83,7 @@ export const apiRouteKeys = [
   "GET /storage/bot-deletions",
   "GET /bots",
   "POST /bots",
+  "GET /bots/:id/instructions",
   "PATCH /bots/:id",
   "DELETE /bots/:id",
   "GET /bots/:id/mcp",
@@ -554,6 +556,8 @@ export const createApiClient = ({
           .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
           .join("&")
       : ""
+    const body =
+      route === "PATCH /bots/:id" ? await getBotEditBody(input, undefined, transport.signal) : JSON.stringify(input)
     const send = (): Promise<Response> => {
       const url = `${endpoint.baseUrl}/api/v1${path}${query ? `?${query}` : ""}`
       const headers = { ...authHeaders(endpoint.token), ...(!isGet ? { "Content-Type": "application/json" } : {}) }
@@ -564,7 +568,7 @@ export const createApiClient = ({
         signal: transport.signal
           ? AbortSignal.any([transport.signal, AbortSignal.timeout(30_000)])
           : AbortSignal.timeout(30_000),
-        ...(!isGet ? { body: JSON.stringify(input) } : {}),
+        ...(!isGet ? { body } : {}),
       })
     }
     let response: Response
@@ -614,6 +618,8 @@ export const createApiClient = ({
       throw error
     }
     if (isBlobRoute(String(route))) return (await response.blob()) as ApiRoutes[typeof route]["res"]
+    if (route === "GET /bots/:id/instructions")
+      return { instructions: await response.text() } as ApiRoutes[typeof route]["res"]
     const result = await response.json()
     if (route === "GET /health") {
       incompatible = !isServerProtocolCompatible(result)

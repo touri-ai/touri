@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite"
 import type {
+  Bot,
   CloudAccount,
   CloudAccountState,
   CloudAuthorization,
@@ -355,11 +356,19 @@ export const initCloud = (kernel: Kernel) => {
       remote.dispose()
     }
   })
+  const updateCloudBot = async (bot: Bot): Promise<void> => {
+    const signal = AbortSignal.timeout(30_000)
+    const instructions = bot.instructionsDeferred
+      ? await kernel.services.use("bots.instructions")?.({ botId: bot.id, signal })
+      : bot.instructions
+    // A missing/deleted bot cannot turn a deferred placeholder into a remote erase.
+    if (instructions === undefined || disposed) return
+    const fullBot = Object.assign({}, bot, { instructions, instructionsDeferred: false })
+    await client.request("PATCH", `/v1/bots/${encodeURIComponent(bot.id)}`, cloudBotConfig(fullBot), signal)
+  }
   kernel.subscribe(({ event }) => {
     if (event.type === "bot.updated" && event.bot.machine === "cloud" && !event.bot.archivedAt)
-      void client
-        .request("PATCH", `/v1/bots/${encodeURIComponent(event.bot.id)}`, cloudBotConfig(event.bot))
-        .catch(() => undefined)
+      void updateCloudBot(event.bot).catch(() => undefined)
   })
   if (enabled() && kernel.services.use("store.settings")?.().cloudBaseUrl)
     void state()

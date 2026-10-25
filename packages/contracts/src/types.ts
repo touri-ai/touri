@@ -1138,7 +1138,7 @@ export type ApiRoutes = {
   'GET /storage/bot-deletions': { req: {}; res: { deletions: Array<{ botId: Id; phase: string; processed: number; errorCode: string | null; createdAt: EpochMs; updatedAt: EpochMs }> } }
   'GET /bots': { req: {}; res: { bots: Array<Bot> } }
   'POST /bots': { req: CreateBotInput; res: { bot: Bot } }
-  'GET /bots/:id/instructions': { req: {}; res: { instructions: string; instructionsHash: string } }
+  'GET /bots/:id/instructions': { req: {}; res: { instructions: string } }
   'PATCH /bots/:id': { req: Partial<Omit<CreateBotInput, 'jobId'> & { paused: boolean }>; res: { bot: Bot } }
   'DELETE /bots/:id': { req: { name: string; deleteVolumes?: boolean }; res: { botId: Id; phase: string } }
   'GET /bots/:id/mcp': { req: {}; res: { servers: Array<McpServer> } }
@@ -1693,8 +1693,9 @@ export type ServiceMap = {
     responsiblePersonId?: Id
   }) => Promise<Result<{ bot: Bot }>>
   'approvals.completeTeam': (input: { approvalId: Id; ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId'>; result: TeamCreationResult }) => Promise<void>
-  'bots.rename': (input: { botId: Id; name: string }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS'>
-  'bots.configureAccess': (input: { botId: Id; patch: Partial<Pick<Bot, 'projectId' | 'folders' | 'browserEnabled' | 'browser' | 'computerUse'>>; runId?: Id }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE' | 'DENIED'> | Promise<Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE' | 'DENIED'>>
+  'bots.instructions': (input: { botId: Id; signal: AbortSignal }) => Promise<string | undefined>
+  'bots.rename': (input: { botId: Id; name: string; signal?: AbortSignal }) => Promise<Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS'>>
+  'bots.configureAccess': (input: { botId: Id; patch: Partial<Pick<Bot, 'projectId' | 'folders' | 'browserEnabled' | 'browser' | 'computerUse'>>; runId?: Id; signal?: AbortSignal }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE' | 'DENIED'> | Promise<Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE' | 'DENIED'>>
   'diagnostics.errors': () => Array<{ code: string; at: number }>
   'groups.runtime': {
     enqueue: (args: { threadId: Id; requestMessageId: Id; trigger: RunTrigger; routineRunId?: Id; requesterPersonId?: Id }) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED' | 'DELEGATION_LIMIT' | 'RUNTIME_DRAINING'>

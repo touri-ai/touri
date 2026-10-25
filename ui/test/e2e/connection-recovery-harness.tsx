@@ -1,4 +1,4 @@
-import type { Message, SendMessageInput } from "@touri/contracts"
+import { type Message, type SendMessageInput, SERVER_PROTOCOL_VERSION } from "@touri/contracts"
 import { createRoot } from "react-dom/client"
 import App from "../../src/App"
 import { apiRouteKeys, createApiClient, webEndpoint } from "../../src/api/client"
@@ -56,7 +56,8 @@ const api = createApiClient({
     if (!server.get("available")) throw new TypeError("Synthetic server unavailable")
     if (!server.get("session")) return Response.json({ errorCode: "UNAUTHORIZED" }, { status: 401 })
     if (url.pathname.endsWith("/ws-ticket")) return Response.json({ ticket: "synthetic-ticket" })
-    if (url.pathname.endsWith("/health")) return Response.json({ ok: true, schemaVersion: 46, protocolVersion: 1 })
+    if (url.pathname.endsWith("/health"))
+      return Response.json({ ok: true, schemaVersion: 46, protocolVersion: SERVER_PROTOCOL_VERSION })
     if (/\/threads\/[^/]+\/runs$/.test(url.pathname)) return Response.json({ runs: [] })
 
     const route = getRoute(init?.method ?? "GET", url.pathname)

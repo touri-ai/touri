@@ -11,6 +11,11 @@ const main = async (): Promise<void> => {
     await prepareDatabase()
     return
   }
+  if (process.argv[2] === "bot-metadata") {
+    const { runBotMetadataWriter } = await import("../store/bot-metadata-process")
+    await runBotMetadataWriter()
+    return
+  }
   if (process.argv[2] === "store-read") {
     const { runStoreRead } = await import("../store/read-process")
     await runStoreRead()

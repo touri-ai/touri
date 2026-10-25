@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./avatar": "./src/avatar.ts",
+    "./bot-edit-body": "./src/bot-edit-body.ts",
     "./approval-summary": "./src/approval-summary.ts",
     "./redaction": "./src/redaction.ts",
     "./run-failure": "./src/run-failure.ts",

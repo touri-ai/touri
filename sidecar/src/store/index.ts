@@ -52,6 +52,7 @@ import { touriVersion } from "../version"
 import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemory } from "../vm/resources"
 import { getAttachmentDownload } from "./attachment-download"
 import { cleanupBotHome, updateBotHome, writeBotHome } from "./bot-home"
+import { type BotMetadataStatement, createBotMetadataWriter } from "./bot-metadata"
 import { getHistoryPage, getHistoryQuery } from "./history-query"
 import { getIntegrationSender } from "./integration-sender"
 import { getMessageFromRow as asMessage } from "./message-row"
@@ -89,6 +90,7 @@ type RawBot = {
   avatar_shape: Bot["avatarShape"]
   avatar_seed: string | null
   instructions: string
+  instructions_deferred?: number
   instructions_hash: string
   provider: string
   model: string | null
@@ -245,6 +247,7 @@ const asBot = (row: RawBot): Bot => ({
   avatarShape: row.avatar_shape ?? null,
   avatarSeed: row.avatar_seed ?? null,
   instructions: row.instructions,
+  instructionsDeferred: row.instructions_deferred === 1,
   instructionsHash: row.instructions_hash,
   provider: asProvider(row.provider, "codex"),
   model: row.model,
@@ -479,11 +482,47 @@ export const init = async (
   const database = kernel.db as Database
   const threadTitleSearch = createThreadTitleSearch(database.filename)
   const reader = createStoreReader(database.filename)
+  const metadataWriter = createBotMetadataWriter(database.filename)
+  const botColumns = (database.query("PRAGMA table_info(bots)").all() as Array<{ name: string }>)
+    .filter(({ name }) => name !== "instructions")
+    .map(({ name }) => `"${name}"`)
+  const botMetadataColumns = botColumns
+    .concat(
+      "CASE WHEN length(CAST(instructions AS BLOB)) <= 8192 THEN instructions ELSE '' END AS instructions",
+      "length(CAST(instructions AS BLOB)) > 8192 AS instructions_deferred",
+    )
+    .join(", ")
+  const botMetadataSelect = `SELECT ${botMetadataColumns} FROM bots WHERE id = ? AND archived_at IS NULL
+    AND NOT EXISTS (SELECT 1 FROM bot_deletions WHERE bot_id = bots.id)`
+  const getBotMetadataRow = async (botId: string, signal: AbortSignal): Promise<RawBot | undefined> => {
+    const rows = await reader.getRows<RawBot>({ sql: botMetadataSelect, bindings: [botId] }, signal)
+    return rows[0]
+  }
+  const getBotInstructions = async ({
+    botId,
+    signal,
+  }: {
+    botId: string
+    signal: AbortSignal
+  }): Promise<string | undefined> => {
+    const rows = await reader.getRows<{ instructions: string }>(
+      {
+        sql: `SELECT instructions FROM bots WHERE id = ? AND archived_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM bot_deletions WHERE bot_id = bots.id)`,
+        bindings: [botId],
+        chunkedStrings: true,
+      },
+      signal,
+    )
+    return rows[0]?.instructions
+  }
+  kernel.services.provide("bots.instructions", getBotInstructions)
   kernel.services.provide("storage.threadTitles", {
     getRoutineTitles: (threadIds, signal) => getRoutineThreadTitles(reader, threadIds, signal),
     dispose: () => {
       threadTitleSearch.dispose()
       reader.dispose()
+      metadataWriter.dispose()
     },
   })
   const recovery = createStartupRecovery(kernel, runStage)
@@ -1191,22 +1230,15 @@ export const init = async (
     return bot
   }
 
-  const saveBot = ({
+  const getBotStatement = ({
     bot,
     input,
     paused,
-    updateInstructions,
   }: {
     bot: Bot
     input: CreateBotInput
     paused: boolean | undefined
-    updateInstructions?: boolean
-  }): Bot | null => {
-    const stored = database.query("SELECT instructions FROM bots WHERE id = ? AND archived_at IS NULL").get(bot.id) as {
-      instructions: string
-    } | null
-    if (!stored) return null
-    const instructions = updateInstructions ? (input.instructions ?? bot.instructions) : stored.instructions
+  }): BotMetadataStatement => {
     const fields: Array<string> = [
       "name = ?",
       "provider = ?",
@@ -1216,8 +1248,6 @@ export const init = async (
       "color = ?",
       "avatar_shape = ?",
       "avatar_seed = ?",
-      "instructions = ?",
-      "instructions_hash = ?",
       "model = ?",
       "reasoning_effort = ?",
       "access = ?",
@@ -1240,8 +1270,6 @@ export const init = async (
       input.color ?? null,
       input.avatarShape ?? null,
       input.avatarSeed ?? null,
-      instructions,
-      sha256(instructions),
       input.model ?? null,
       input.reasoningEffort ?? null,
       input.access ?? bot.access,
@@ -1255,96 +1283,105 @@ export const init = async (
       now(),
       ...(paused === undefined ? [] : [paused ? 1 : 0]),
     ]
-    const updated = database.transaction(() => {
-      const result = database.query(`UPDATE bots SET ${fields.join(", ")} WHERE id = ?`).run(...values, bot.id)
-      if (!result.changes) return null
-      database
-        .query(
-          "UPDATE bots SET machine = ?, machine_idle_minutes = ?, vm_provider_login = ?, host_computer_use = ?, cloud_target = ?, browser = ? WHERE id = ?",
-        )
-        .run(
-          input.machine === "cloud" ? "local" : (input.machine ?? bot.machine),
-          input.machineIdleMinutes ?? bot.machineIdleMinutes,
-          input.vmProviderLogin ? 1 : 0,
-          input.hostComputerUse ? 1 : 0,
-          input.machine === "cloud" ? 1 : 0,
-          input.browser ?? bot.browser,
-          bot.id,
-        )
-      database
-        .query("UPDATE bots SET folders_json = ?, any_folder_access = ? WHERE id = ?")
-        .run(JSON.stringify(input.folders ?? []), input.anyFolderAccess ? 1 : 0, bot.id)
-      database
-        .query("UPDATE bots SET provider_profile = ?, claude_ai_connectors = ? WHERE id = ?")
-        .run(input.providerProfile ?? null, input.claudeAiConnectors ? 1 : 0, bot.id)
-      return getBot({ botId: bot.id })
-    })()
-    return updated
+    const storageFields = fields.concat(
+      "machine = ?",
+      "machine_idle_minutes = ?",
+      "vm_provider_login = ?",
+      "host_computer_use = ?",
+      "cloud_target = ?",
+      "browser = ?",
+      "folders_json = ?",
+      "any_folder_access = ?",
+      "provider_profile = ?",
+      "claude_ai_connectors = ?",
+    )
+    const storageValues = values.concat(
+      input.machine === "cloud" ? "local" : (input.machine ?? bot.machine),
+      input.machineIdleMinutes ?? bot.machineIdleMinutes,
+      input.vmProviderLogin ? 1 : 0,
+      input.hostComputerUse ? 1 : 0,
+      input.machine === "cloud" ? 1 : 0,
+      input.browser ?? bot.browser,
+      JSON.stringify(input.folders ?? []),
+      input.anyFolderAccess ? 1 : 0,
+      input.providerProfile ?? null,
+      input.claudeAiConnectors ? 1 : 0,
+      bot.id,
+    )
+    // One UPDATE avoids rewriting the same large SQLite row four times.
+    return { sql: `UPDATE bots SET ${storageFields.join(", ")} WHERE id = ?`, bindings: storageValues }
   }
 
-  const patchBot = ({
-    bot,
-    input,
-    paused,
-  }: {
-    bot: Bot
-    input: CreateBotInput
-    paused: boolean | undefined
-  }): Bot | null => {
-    const updated = saveBot({ bot, input, paused })
-    if (updated) kernel.publish({ type: "bot.updated", bot: updated })
-    return updated
-  }
-
-  const commitBotInstructionEdit = ({
+  const commitBotMetadataEdit = async ({
     botId,
     record,
     mustStopVm,
+    signal,
   }: {
     botId: string
     record: Record<string, unknown>
     mustStopVm: boolean
-  }): Bot => {
-    const latestBot = getBot({ botId })
-    if (!latestBot) throw new Error("Bot could not be updated")
-    const latest = botFromBody({
-      body: { ...record, provider: record.provider ?? latestBot.provider },
-      existing: latestBot,
-    })
-    if (!latest.input || latest.error) throw new Error(latest.error ?? "Invalid bot")
-    const machineChanged =
-      latest.input.machine !== latestBot.machine ||
-      latest.input.provider !== latestBot.provider ||
-      latest.input.projectId !== latestBot.projectId
-    if (machineChanged && !mustStopVm) throw new Error("Bot configuration changed during the instruction edit")
+    signal: AbortSignal
+  }): Promise<Bot> => {
+    // Revalidate a fresh snapshot after home I/O. The helper compares it inside BEGIN IMMEDIATE,
+    // so concurrent renames/permission changes cannot be overwritten by a stale edit.
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      signal.throwIfAborted()
+      const expected = await getBotMetadataRow(botId, signal)
+      if (!expected) throw new Error("Bot could not be updated")
+      const latestBot = asBot(expected)
+      const latest = botFromBody({
+        body: Object.assign({}, record, { provider: record.provider ?? latestBot.provider }),
+        existing: latestBot,
+      })
+      if (!latest.input || latest.error) throw new Error(latest.error ?? "Invalid bot")
+      const machineChanged =
+        latest.input.machine !== latestBot.machine ||
+        latest.input.provider !== latestBot.provider ||
+        latest.input.projectId !== latestBot.projectId
+      if (machineChanged && !mustStopVm) throw new Error("Bot configuration changed during the instruction edit")
 
-    const updated = saveBot({
-      bot: latestBot,
-      input: latest.input,
-      paused: record.paused as boolean | undefined,
-      updateInstructions: true,
-    })
-    if (!updated) throw new Error("Bot could not be updated")
-    return updated
+      const committed = await metadataWriter.save(
+        {
+          botId,
+          select: botMetadataSelect,
+          expected: Object.assign({}, expected),
+          statement: getBotStatement({
+            bot: latestBot,
+            input: latest.input,
+            paused: record.paused as boolean | undefined,
+          }),
+          instructions: Object.hasOwn(record, "instructions") ? latest.input.instructions : undefined,
+        },
+        signal,
+      )
+      if (!committed) continue
+
+      // No fallible read follows COMMIT: its acknowledged snapshot is authoritative.
+      return asBot(committed as RawBot)
+    }
+    throw new Error("Bot configuration changed during the instruction edit")
   }
 
   const prepareBotInstructionEdit = ({
     botId,
     record,
     mustStopVm,
+    signal,
     onCommit,
   }: {
     botId: string
     record: Record<string, unknown>
     mustStopVm: boolean
+    signal: AbortSignal
     onCommit: (bot: Bot) => void
-  }): { commit: () => void } => {
-    if (!getBot({ botId })) throw new Error("Bot could not be updated")
-    return { commit: () => onCommit(commitBotInstructionEdit({ botId, record, mustStopVm })) }
-  }
+  }): { commit: () => Promise<void> } => ({
+    commit: async () => onCommit(await commitBotMetadataEdit({ botId, record, mustStopVm, signal })),
+  })
 
-  kernel.services.provide("bots.rename", ({ botId, name: value }) => {
-    const bot = getBot({ botId })
+  kernel.services.provide("bots.rename", async ({ botId, name: value, signal = AbortSignal.timeout(15_000) }) => {
+    const row = await getBotMetadataRow(botId, signal)
+    const bot = row ? asBot(row) : null
     if (!bot) return { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
     const name = normalizeBotName(value)
     if (!name)
@@ -1353,43 +1390,67 @@ export const init = async (
         errorCode: "INVALID_ARGS",
         error: "Use de 1 a 80 caracteres, sem quebras de linha ou caracteres de controle.",
       }
-    // Identity changes must not reconfigure or stop a machine during its own turn.
-    database.query("UPDATE bots SET name = ?, updated_at = ? WHERE id = ?").run(name, now(), botId)
-    const updated = getBot({ botId })
-    if (!updated) return { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
-    kernel.publish({ type: "bot.updated", bot: updated })
-    return { success: true, bot: updated }
+    // Renaming must work even when another configuration field needs attention.
+    // Compare each fresh snapshot inside the helper without reconfiguring a live machine.
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const expected = await getBotMetadataRow(botId, signal)
+      if (!expected) return { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
+      const committed = await metadataWriter.save(
+        {
+          botId,
+          select: botMetadataSelect,
+          expected: Object.assign({}, expected),
+          statement: { sql: "UPDATE bots SET name = ?, updated_at = ? WHERE id = ?", bindings: [name, now(), botId] },
+        },
+        signal,
+      )
+      if (!committed) continue
+      const updated = asBot(committed as RawBot)
+      kernel.publish({ type: "bot.updated", bot: updated })
+      return { success: true, bot: updated }
+    }
+    throw new Error("Bot configuration changed during rename")
   })
 
   // MCP setup changes share PATCH's validation, storage and bot.updated event.
   // They must not stop a VM while its current turn is waiting for the tool.
-  kernel.services.provide("bots.configureAccess", ({ botId, patch, runId }) => {
-    const isAdminRun = kernel.services.use("work.isAdminRun")
-    if (isAdminRun && (!runId || !isAdminRun(runId)))
-      return {
-        success: false,
-        errorCode: "DENIED",
-        error: "Somente administradores podem alterar permissões de bots.",
-      }
-    const bot = getBot({ botId })
-    if (!bot) return { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
-    const parsed = botFromBody({ body: { ...patch, name: bot.name, provider: bot.provider }, existing: bot })
-    if (!parsed.input || parsed.error)
-      return { success: false, errorCode: "INVALID_ARGS", error: parsed.error ?? "Configuração inválida." }
-    const machine = database.query("SELECT project_id FROM bot_machines WHERE bot_id = ?").get(botId) as {
-      project_id: string | null
-    } | null
-    if (patch.projectId && machine?.project_id && patch.projectId !== machine.project_id)
-      return {
-        success: false,
-        errorCode: "MACHINE_PROJECT_CHANGE",
-        error: "Recrie a máquina do zero antes de trocar o projeto; o volume atual foi preservado",
-      }
-    const updated = patchBot({ bot, input: parsed.input, paused: undefined })
-    return updated
-      ? { success: true, bot: updated }
-      : { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
-  })
+  kernel.services.provide(
+    "bots.configureAccess",
+    async ({ botId, patch, runId, signal = AbortSignal.timeout(15_000) }) => {
+      const isAdminRun = kernel.services.use("work.isAdminRun")
+      if (isAdminRun && (!runId || !isAdminRun(runId)))
+        return {
+          success: false,
+          errorCode: "DENIED",
+          error: "Somente administradores podem alterar permissões de bots.",
+        }
+      const row = await getBotMetadataRow(botId, signal)
+      const bot = row ? asBot(row) : null
+      if (!bot) return { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
+      const parsed = botFromBody({ body: { ...patch, name: bot.name, provider: bot.provider }, existing: bot })
+      if (!parsed.input || parsed.error)
+        return { success: false, errorCode: "INVALID_ARGS", error: parsed.error ?? "Configuração inválida." }
+      const machine = database.query("SELECT project_id FROM bot_machines WHERE bot_id = ?").get(botId) as {
+        project_id: string | null
+      } | null
+      if (patch.projectId && machine?.project_id && patch.projectId !== machine.project_id)
+        return {
+          success: false,
+          errorCode: "MACHINE_PROJECT_CHANGE",
+          error: "Recrie a máquina do zero antes de trocar o projeto; o volume atual foi preservado",
+        }
+      const updated = await commitBotMetadataEdit({
+        botId,
+        record: Object.assign({}, patch),
+        mustStopVm: false,
+        signal,
+      })
+      kernel.publish({ type: "bot.updated", bot: updated })
+      return updated
+        ? { success: true, bot: updated }
+        : { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
+    },
+  )
 
   const saveAttachmentPerson = (attachmentId: string, personId: string | undefined, name: string): void => {
     if (!personId) return
@@ -1597,7 +1658,13 @@ export const init = async (
         handler: async ({ signal }) => {
           const person = deviceSession(signal)?.person
           if (!person || person.role === "admin") {
-            const rows = database.query(BOTS_SQL).all() as Array<RawBot>
+            const rows = await reader.getRows<RawBot>(
+              {
+                sql: BOTS_SQL.replace("SELECT *", `SELECT ${botMetadataColumns}`),
+                bindings: [],
+              },
+              signal,
+            )
             return jsonResponse(200, { bots: rows.map(asBot) })
           }
           const visibleBotIds = kernel.services.use("work.accessibleBotIds")?.({
@@ -1607,13 +1674,15 @@ export const init = async (
           if (!visibleBotIds) return errorResponse(503, "WORK_ACCESS_UNAVAILABLE", "Acesso ao espaço indisponível")
           if (visibleBotIds.length === 0) return jsonResponse(200, { bots: [] })
           const placeholders = visibleBotIds.map(() => "?").join(",")
-          const rows = database
-            .query(
-              `SELECT * FROM bots WHERE id IN (${placeholders}) AND archived_at IS NULL
+          const rows = await reader.getRows<RawBot>(
+            {
+              sql: `SELECT ${botMetadataColumns} FROM bots WHERE id IN (${placeholders}) AND archived_at IS NULL
                 AND NOT EXISTS (SELECT 1 FROM bot_deletions WHERE bot_id = bots.id)
                 ORDER BY sort_order ASC, created_at ASC`,
-            )
-            .all(...visibleBotIds) as Array<RawBot>
+              bindings: visibleBotIds,
+            },
+            signal,
+          )
           return jsonResponse(200, { bots: rows.map(asBot) })
         },
       },
@@ -1635,13 +1704,36 @@ export const init = async (
         },
       },
       {
+        method: "GET",
+        path: "/bots/:id/instructions",
+        handler: async ({ params, signal }) => {
+          const instructions = await getBotInstructions({ botId: params.id ?? "", signal })
+          if (instructions === undefined) return errorResponse(404, "NOT_FOUND", "Bot not found")
+          const encoder = new TextEncoder()
+          let offset = 0
+          const stream = new ReadableStream<Uint8Array>({
+            pull(controller) {
+              if (signal.aborted) return controller.error(new Error("Instruction read cancelled"))
+              if (offset >= instructions.length) return controller.close()
+              let end = Math.min(offset + 16_384, instructions.length)
+              const last = instructions.charCodeAt(end - 1)
+              if (end < instructions.length && last >= 0xd800 && last <= 0xdbff) end -= 1
+              controller.enqueue(encoder.encode(instructions.slice(offset, end)))
+              offset = end
+            },
+          })
+          return { status: 200, stream, mime: "text/plain; charset=utf-8" }
+        },
+      },
+      {
         method: "PATCH",
         path: "/bots/:id",
         handler: async ({ params, body, signal }) => {
           await refreshHostFolderAccess()
           await recovery.ensureBot(params.id ?? "")
-          const bot = getBot({ botId: params.id ?? "" })
-          if (!bot) return errorResponse(404, "NOT_FOUND", "Bot not found")
+          const row = await getBotMetadataRow(params.id ?? "", signal)
+          if (!row) return errorResponse(404, "NOT_FOUND", "Bot not found")
+          const bot = asBot(row)
           const record = requestRecord(body)
           if (!record) return errorResponse(400, "INVALID_ARGS", "Request body must be an object")
           const parsed = botFromBody({
@@ -1679,7 +1771,7 @@ export const init = async (
               committedBot = updatedBot
             }
             const editError = await writeEditedHome(kernel, bot.id, instructions, signal, () =>
-              prepareBotInstructionEdit({ botId: bot.id, record, mustStopVm, onCommit: setCommittedBot }),
+              prepareBotInstructionEdit({ botId: bot.id, record, mustStopVm, signal, onCommit: setCommittedBot }),
             ).then(
               () => null,
               () => errorResponse(409, "BOT_EDIT_FAILED", "Não foi possível salvar as instruções. Tente novamente."),
@@ -1688,7 +1780,8 @@ export const init = async (
             updated = committedBot
             if (updated) kernel.publish({ type: "bot.updated", bot: updated })
           } else {
-            updated = patchBot({ bot, input, paused: record.paused as boolean | undefined })
+            updated = await commitBotMetadataEdit({ botId: bot.id, record, mustStopVm, signal })
+            kernel.publish({ type: "bot.updated", bot: updated })
           }
           return updated
             ? jsonResponse(200, { bot: updated })

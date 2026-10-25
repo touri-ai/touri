@@ -890,7 +890,7 @@ for (const size of [200 * 1024, 3 * 1024 * 1024, 32 * 1024 * 1024 - 1024]) {
         path: join(kernel.paths.botsDir, botId, "SOUL.md"),
         content: instructions,
       })
-      edit.commit()
+      await edit.commit()
     }
     const asynchronousShim = getSlowInstructionEditor(35)
 
@@ -906,8 +906,6 @@ for (const size of [200 * 1024, 3 * 1024 * 1024, 32 * 1024 * 1024 - 1024]) {
 
     expect(before.maxMs).toBeGreaterThanOrEqual(25)
     expect(after.samples).toBeGreaterThan(10)
-    // Preserve the existing responsiveness budget; larger probes also expose pre-existing SQLite/event publication stalls.
-    if (size !== 200 * 1024) return
     expect(after.p99Ms).toBeLessThan(50)
     expect(after.maxMs).toBeLessThan(150)
   })
@@ -992,5 +990,59 @@ const makeStore = async (writeHome?: typeof writeBotHome, writeEditedHome?: type
     await stopBotHomeWriter(kernel)
     await runtime.stop()
   }
-  return { root, database: kernel.db as Database, create, routes: getRoute("PATCH", "/bots/:id"), stop }
+  return {
+    root,
+    kernel,
+    database: kernel.db as Database,
+    getRoute,
+    create,
+    routes: getRoute("PATCH", "/bots/:id"),
+    stop,
+  }
 }
+
+test("multi-megabyte instruction edits keep bot responses and durable events bounded", async () => {
+  const f = await makeStore()
+  const created = await f.create()
+  if (!("json" in created)) throw new Error("Expected bot response")
+  const { bot } = created.json as { bot: { id: string } }
+  const instructions = "Orientação fictícia 😀\n".repeat(160_000)
+  const signal = new AbortController().signal
+
+  const edited = await f.routes.handler({ params: { id: bot.id }, query: {}, body: { instructions }, signal })
+  const listed = await f.getRoute("GET", "/bots").handler({ params: {}, query: {}, body: null, signal })
+  const text = await f
+    .getRoute("GET", "/bots/:id/instructions")
+    .handler({ params: { id: bot.id }, query: {}, body: null, signal })
+
+  expect(edited.status).toBe(200)
+  expect("json" in edited && edited.json).toMatchObject({ bot: { instructions: "", instructionsDeferred: true } })
+  expect(JSON.stringify(edited).length).toBeLessThan(65_536)
+  expect(JSON.stringify(listed).length).toBeLessThan(65_536)
+  if (!("stream" in text)) throw new Error("Expected streamed instruction text")
+  expect(await new Response(text.stream).text()).toBe(instructions)
+  const storedBot = f.kernel.services.use("store.api")?.getBot({ botId: bot.id })
+  if (!storedBot) throw new Error("Expected stored bot")
+  f.kernel.publish({ type: "bot.updated", bot: storedBot })
+  const largest = f.database
+    .query("SELECT max(length(event_json)) AS bytes FROM ui_event_log WHERE event_json LIKE '%bot.updated%'")
+    .get() as { bytes: number }
+  expect(largest.bytes).toBeLessThan(65_536)
+  expect(f.database.query("SELECT instructions FROM bots WHERE id = ?").get(bot.id)).toEqual({ instructions })
+})
+
+test("renaming a bot with multi-megabyte instructions preserves the text and its hash", async () => {
+  const f = await makeStore()
+  const created = await f.create()
+  if (!("json" in created)) throw new Error("Expected bot response")
+  const { bot } = created.json as { bot: { id: string } }
+  const signal = new AbortController().signal
+  const instructions = "Instrução fictícia.\n".repeat(180_000)
+  await f.routes.handler({ params: { id: bot.id }, query: {}, body: { instructions }, signal })
+  const before = f.database.query("SELECT instructions, instructions_hash FROM bots WHERE id = ?").get(bot.id)
+
+  const renamed = await f.routes.handler({ params: { id: bot.id }, query: {}, body: { name: "Novo nome" }, signal })
+
+  expect(renamed.status).toBe(200)
+  expect(f.database.query("SELECT instructions, instructions_hash FROM bots WHERE id = ?").get(bot.id)).toEqual(before)
+})

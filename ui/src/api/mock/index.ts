@@ -1282,6 +1282,11 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       emit({ type: "thread.updated", thread })
       return { bot: updatedBot } as ApiRoutes[typeof route]["res"]
     }
+    if (key === "GET /bots/:id/instructions") {
+      const bot = bots.find((candidate) => candidate.id === pathValues.id)
+      if (!bot) throw new Error("bot not found")
+      return { instructions: bot.instructions } as ApiRoutes[typeof route]["res"]
+    }
     if (key === "PATCH /bots/:id") {
       const bot = bots.find((candidate) => candidate.id === pathValues.id)
       if (!bot) throw new Error("bot not found")

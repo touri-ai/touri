@@ -49,7 +49,7 @@ export const updateBotHome = async (
   botId: string,
   instructions: string,
   signal: AbortSignal,
-  prepare: () => { commit: () => void },
+  prepare: () => { commit: () => void | Promise<void> },
   writer = getWriter(kernel),
 ): Promise<void> => {
   await writer.run({ operation: "edit", botId, instructions }, signal, {
@@ -196,8 +196,8 @@ export const createBotHomeWriter = ({
     command: BotHomeCommand,
     signal: AbortSignal,
     options?: {
-      prepare?: () => { commit?: () => void }
-      commit?: () => void
+      prepare?: () => { commit?: () => void | Promise<void> }
+      commit?: () => void | Promise<void>
       onRollbackFailure?: () => void
     },
   ): Promise<void> => {
@@ -207,7 +207,7 @@ export const createBotHomeWriter = ({
       if (isEdit) await executeWithHelper({ operation: "snapshot", botId: command.botId }, signal)
       await executeWithHelper(command, signal)
       signal.throwIfAborted()
-      commit?.()
+      await commit?.()
     } catch (error) {
       if (isEdit) await finishEdit("rollback", command.botId, options?.onRollbackFailure)
       throw signal.aborted ? signal.reason : error
@@ -219,8 +219,8 @@ export const createBotHomeWriter = ({
     command: BotHomeCommand,
     signal?: AbortSignal,
     options?: {
-      prepare?: () => { commit?: () => void }
-      commit?: () => void
+      prepare?: () => { commit?: () => void | Promise<void> }
+      commit?: () => void | Promise<void>
       onRollbackFailure?: () => void
     },
   ): Promise<void> => {

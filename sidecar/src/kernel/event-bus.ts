@@ -527,7 +527,13 @@ export const createEventBus = (
     if (database.inTransaction) onDatabaseCommit(database, notify)
     else notify()
   }
-  const publish = (event: UiEvent): void => {
+  const publish = (input: UiEvent): void => {
+    const event =
+      input.type === "bot.updated" && input.bot.instructions.length > 8_192
+        ? Object.assign({}, input, {
+            bot: Object.assign({}, input.bot, { instructions: "", instructionsDeferred: true }),
+          })
+        : input
     if (stopped) return
     if (!database) {
       deliver({ seq: ++sequence, at: Date.now(), event })

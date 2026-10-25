@@ -5,6 +5,7 @@ import { writeDatabaseAsync } from "../kernel/database-write"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import { materializeTranscriptBatch } from "../kernel/transcript-storage"
 import { reconcileBotHome } from "./bot-home"
+import { createStoreReader } from "./reader"
 
 export const createStartupRecovery = (
   kernel: Kernel,
@@ -12,6 +13,7 @@ export const createStartupRecovery = (
   reconcileHome = reconcileBotHome,
 ) => {
   const database = kernel.db as Database
+  const reader = createStoreReader(database.filename)
   const bots = new Map<string, Promise<void>>()
   const threads = new Map<string, Promise<void>>()
   let stopped = false
@@ -24,10 +26,15 @@ export const createStartupRecovery = (
     if (pending) return pending
 
     const ready = (async () => {
-      const bot = database.query("SELECT id, instructions FROM bots WHERE id = ?").get(botId) as {
-        id: string
-        instructions: string
-      } | null
+      const rows = await reader.getRows<{ id: string; instructions: string }>(
+        {
+          sql: "SELECT id, instructions FROM bots WHERE id = ?",
+          bindings: [botId],
+          chunkedStrings: true,
+        },
+        AbortSignal.timeout(15_000),
+      )
+      const bot = rows[0]
       if (!bot || stopped) return
 
       await measure("store_bot_home_startup_recovery", () => reconcileHome(kernel, bot))
@@ -86,6 +93,7 @@ export const createStartupRecovery = (
     ensureThread,
     dispose: async () => {
       stopped = true
+      reader.dispose()
       await ready
       await Promise.all(Array.from(threads.values()).concat(Array.from(bots.values())))
     },

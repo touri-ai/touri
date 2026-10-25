@@ -1,3 +1,4 @@
+import { SERVER_PROTOCOL_VERSION } from "@touri/contracts"
 import { afterEach, expect, test, vi } from "vitest"
 import { createApiClient, type Endpoint } from "../src/api/client"
 
@@ -107,7 +108,9 @@ test("an incompatible protocol reports the update state without opening another 
   const fixture = makeClient()
   await vi.advanceTimersByTimeAsync(0)
   fixture.getSocket(0).dispatchEvent(new Event("open"))
-  fixture.fetchImpl.mockResolvedValue(Response.json({ ok: true, schemaVersion: 99, protocolVersion: 2 }))
+  fixture.fetchImpl.mockResolvedValue(
+    Response.json({ ok: true, schemaVersion: 99, protocolVersion: SERVER_PROTOCOL_VERSION + 1 }),
+  )
 
   fixture.getSocket(0).dispatchEvent(new Event("close"))
   await vi.advanceTimersByTimeAsync(250)
@@ -151,7 +154,9 @@ test("a required update remains available when the device loses and regains its 
   const fixture = makeClient()
   await vi.advanceTimersByTimeAsync(0)
   fixture.getSocket(0).dispatchEvent(new Event("open"))
-  fixture.fetchImpl.mockResolvedValue(Response.json({ ok: true, schemaVersion: 99, protocolVersion: 2 }))
+  fixture.fetchImpl.mockResolvedValue(
+    Response.json({ ok: true, schemaVersion: 99, protocolVersion: SERVER_PROTOCOL_VERSION + 1 }),
+  )
   fixture.getSocket(0).dispatchEvent(new Event("close"))
   await vi.advanceTimersByTimeAsync(250)
   const online = makeOnlineSignal(false)
@@ -332,7 +337,8 @@ test("native vault recovery keeps its trusted error identifier available to sett
   expect(fixture.api.getConnectionStatus?.()).toMatchObject({ state: "unavailable", errorCode: "VAULT_LOCKED" })
 })
 
-const getHealthyResponse = () => Response.json({ ok: true, schemaVersion: 46, protocolVersion: 1, ticket: "fixture" })
+const getHealthyResponse = () =>
+  Response.json({ ok: true, schemaVersion: 46, protocolVersion: SERVER_PROTOCOL_VERSION, ticket: "fixture" })
 
 const makeClient = (options: { resolveEndpoint?: () => Promise<Endpoint>; endpoint?: Endpoint } = {}) => {
   vi.useFakeTimers()

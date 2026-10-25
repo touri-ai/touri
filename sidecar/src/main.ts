@@ -289,6 +289,11 @@ const main = async (): Promise<void> => {
     await prepareDatabase()
     return
   }
+  if (mode === "bot-metadata") {
+    const { runBotMetadataWriter } = await import("./store/bot-metadata-process")
+    await runBotMetadataWriter()
+    return
+  }
   if (mode === "store-read") {
     const { runStoreRead } = await import("./store/read-process")
     await runStoreRead()
