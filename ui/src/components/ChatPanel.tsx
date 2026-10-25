@@ -114,6 +114,9 @@ export { activeMessagePath } from "./activeMessagePath"
 
 type ChatPanelProps = {
   historyLoading?: boolean
+  hasOlderHistory?: boolean | undefined
+  loadingOlderHistory?: boolean | undefined
+  onLoadOlderHistory?: (() => Promise<void>) | undefined
   channelThreads?: Thread[]
   channelMessages?: Message[]
   onSelectChannelThread?: ((threadId: string) => void) | undefined
@@ -186,6 +189,9 @@ type VirtualMessageListProps = {
   header?: ReactNode
   allMessages?: Array<Message>
   flatHistory?: boolean
+  hasOlderHistory?: boolean | undefined
+  loadingOlderHistory?: boolean | undefined
+  onLoadOlderHistory?: (() => Promise<void>) | undefined
   timelineCards?: Array<{ id: string; createdAt: number; content: ReactNode }>
 }
 const emptyTimelineCards: NonNullable<VirtualMessageListProps["timelineCards"]> = []
@@ -218,6 +224,14 @@ const getMessageBranches = (messages: Message[]): Map<string, Message[]> => {
   })
 
   return branches
+}
+
+const getVirtualStart = (count: number, visibleCount: number, index: number, atBottom: boolean): number => {
+  if (count <= 20) return 0
+  const lastStart = Math.max(0, count - visibleCount)
+  if (atBottom) return lastStart
+
+  return Math.min(lastStart, Math.max(0, index - 4))
 }
 
 const getTimelineOffsets = (timeline: Array<{ id: string }>, heights: Record<string, number>): number[] => {
@@ -305,6 +319,9 @@ export const VirtualMessageList = ({
   showActivityStop = true,
   header,
   timelineCards = emptyTimelineCards,
+  hasOlderHistory = false,
+  loadingOlderHistory = false,
+  onLoadOlderHistory,
 }: VirtualMessageListProps) => {
   // Rows keep stable callbacks so an unchanged message is not rendered again when another one streams.
   const latestCallbacks = useRef({ onSwitchBranch, onRetry, onEdit, onCancel })
@@ -363,6 +380,7 @@ export const VirtualMessageList = ({
   }, [runs, routineRuns, routines])
   const [scrollTop, setScrollTop] = useState(0)
   const [rowHeights, setRowHeights] = useState<Record<string, number>>({})
+  const prependAnchor = useRef<{ id: string; top: number; firstId: string | undefined } | null>(null)
   const scrollRef = useRef<HTMLElement>(null)
   const spacerRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -426,7 +444,7 @@ export const VirtualMessageList = ({
     ]
     return Array.from(entries).sort((a, b) => a.createdAt - b.createdAt)
   }, [messages, timelineCards])
-  const isVirtualized = timeline.length > 100
+  const isVirtualized = timeline.length > 20
   const messageTargetIndex =
     focusMessage && focusMessage !== focusedMessage.current
       ? timeline.findIndex((entry) => entry.id === focusMessage.messageId)
@@ -545,7 +563,7 @@ export const VirtualMessageList = ({
       observer.disconnect()
     }
   }, [measureRowOnNextFrame])
-  const visibleCount = 34
+  const visibleCount = 16
   const totalHeight = rowOffsets.at(-1) ?? 0
   const targetIndex = focusApproval
     ? timeline.findIndex((entry) =>
@@ -555,11 +573,61 @@ export const VirtualMessageList = ({
   const revealTarget = targetIndex >= 0 && focusApproval?.request !== focusedRequest.current
   const firstVisibleIndex = getTimelineIndex(rowOffsets, Math.max(0, scrollTop - estimatedRowHeight * 4))
   const selectedIndex = messageTargetIndex >= 0 ? messageTargetIndex : targetIndex
-  const revealIndex = messageTargetIndex >= 0 || revealTarget ? selectedIndex : firstVisibleIndex
-  const start =
-    timeline.length > 100 ? Math.min(Math.max(0, timeline.length - visibleCount), Math.max(0, revealIndex - 4)) : 0
-  const end = timeline.length > 100 ? Math.min(timeline.length, start + visibleCount) : timeline.length
+  const prepended = prependAnchor.current && prependAnchor.current.firstId !== messages[0]?.id
+  const anchorIndex = prepended ? timeline.findIndex((entry) => entry.id === prependAnchor.current?.id) : -1
+  const readingIndex = anchorIndex >= 0 ? anchorIndex : firstVisibleIndex
+  const revealIndex = messageTargetIndex >= 0 || revealTarget ? selectedIndex : readingIndex
+  const start = getVirtualStart(
+    timeline.length,
+    visibleCount,
+    revealIndex,
+    followBottom.current && !revealTarget && messageTargetIndex < 0,
+  )
+  const end = isVirtualized ? Math.min(timeline.length, start + visibleCount) : timeline.length
   const visible = timeline.slice(start, end)
+
+  useLayoutEffect(() => {
+    const anchor = prependAnchor.current
+    if (!anchor || anchor.firstId === messages[0]?.id) return
+    const list = scrollRef.current
+    const row = Array.from(list?.querySelectorAll<HTMLElement>("[data-message-row]") ?? []).find(
+      (element) => element.dataset.messageRow === anchor.id,
+    )
+    if (!list || !row) return
+
+    const delta = row.getBoundingClientRect().top - list.getBoundingClientRect().top - anchor.top
+    list.scrollTop += delta
+    programmaticTop.current = { top: list.scrollTop, viewportHeight: list.clientHeight }
+    readingAnchor.current = { element: row, top: anchor.top, scrollTop: list.scrollTop }
+    prependAnchor.current = null
+    setScrollTop(list.scrollTop)
+  }, [messages])
+
+  const loadOlder = (): void => {
+    const list = scrollRef.current
+    if (!list || !hasOlderHistory || loadingOlderHistory || !onLoadOlderHistory || prependAnchor.current) return
+    const viewport = list.getBoundingClientRect()
+    if (!viewport.height) return
+    const row = Array.from(list.querySelectorAll<HTMLElement>("[data-message-row]")).find((element) => {
+      const bounds = element.getBoundingClientRect()
+      return bounds.bottom > viewport.top && bounds.top < viewport.bottom
+    })
+    if (!row) {
+      // A scroll can precede React's virtual-window commit; anchor the rows in the new viewport.
+      requestAnimationFrame(loadOlder)
+      return
+    }
+
+    followBottom.current = false
+    prependAnchor.current = {
+      id: row.dataset.messageRow ?? "",
+      top: row.getBoundingClientRect().top - list.getBoundingClientRect().top,
+      firstId: messages[0]?.id,
+    }
+    void onLoadOlderHistory().finally(() => {
+      prependAnchor.current = null
+    })
+  }
 
   useLayoutEffect(() => {
     if (!focusApproval || targetIndex < 0 || focusedRequest.current === focusApproval.request) return
@@ -573,11 +641,11 @@ export const VirtualMessageList = ({
     readingAnchor.current = null
     pendingReveal.current = null
     setAwayFromBottom(true)
-    if (timeline.length > 100) list.scrollTop = rowOffsets[targetIndex] ?? 0
+    if (isVirtualized) list.scrollTop = rowOffsets[targetIndex] ?? 0
     card.scrollIntoView?.({ block: "center", behavior: "instant" })
     card.focus({ preventScroll: true })
     setScrollTop(list.scrollTop)
-  }, [focusApproval, targetIndex, timeline.length, rowOffsets])
+  }, [focusApproval, targetIndex, isVirtualized, rowOffsets])
 
   useLayoutEffect(() => {
     if (!focusMessage || messageTargetIndex < 0) return
@@ -651,14 +719,20 @@ export const VirtualMessageList = ({
           setAwayFromBottom(!atBottom)
           if (atBottom) setUnseenCount(0)
           setScrollTop(list.scrollTop)
+          if (list.scrollTop < 120 && !atBottom) loadOlder()
         }}
       >
+        {hasOlderHistory && (
+          <button type="button" className="history-load-older" disabled={loadingOlderHistory} onClick={loadOlder}>
+            {t(loadingOlderHistory ? "Loading older messages…" : "Load older messages")}
+          </button>
+        )}
         {header}
-        <div ref={spacerRef} style={timeline.length > 100 ? { height: totalHeight, position: "relative" } : undefined}>
+        <div ref={spacerRef} style={isVirtualized ? { height: totalHeight, position: "relative" } : undefined}>
           <div
             ref={contentRef}
             style={
-              timeline.length > 100
+              isVirtualized
                 ? // Offset with `top`, not a transform: sticky card headers resolve against the untransformed
                   // layout and would otherwise be pushed to the bottom of their card.
                   { position: "absolute", top: rowOffsets[start] ?? 0, right: 0, left: 0 }
@@ -1477,6 +1551,9 @@ export const ChatPanel = ({
   groupMembers = [],
   channelMode = false,
   historyLoading = false,
+  hasOlderHistory = false,
+  loadingOlderHistory = false,
+  onLoadOlderHistory,
   onEditGroup = () => {},
   browserRuns = [],
   onInviteToGroup,
@@ -1805,6 +1882,9 @@ export const ChatPanel = ({
                       focusMessage={focusMessage}
                       key={composerKey ?? thread.id}
                       messages={visibleMessages}
+                      hasOlderHistory={hasOlderHistory}
+                      loadingOlderHistory={loadingOlderHistory}
+                      onLoadOlderHistory={onLoadOlderHistory}
                       api={api}
                       runs={runs}
                       mainThread={thread.kind === "main"}

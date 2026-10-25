@@ -254,6 +254,9 @@ export const init = async (
         method: "GET",
         path: "/threads/:id/runs",
         handler: async ({ params, query, signal }) => {
+          const messageIds = query.messageIds?.split(",")
+          if (messageIds && (messageIds.length > 50 || messageIds.some((id) => !id || id.length > 200)))
+            return { status: 400, json: { error: "INVALID_ARGS" } }
           const thread = kernel.services.use("store.api")?.getThread({ threadId: params.id ?? "" })
           const isChannel = Boolean(thread?.groupId && !thread.groupThreadId)
           if (
@@ -267,13 +270,13 @@ export const init = async (
               status: 200,
               json: await cloud.request(
                 "GET",
-                `/v1/threads/${encodeURIComponent(thread.id)}/runs${query.all === "true" ? "?all=true" : ""}`,
+                `/v1/threads/${encodeURIComponent(thread.id)}/runs${Object.keys(query).length ? `?${new URLSearchParams(query)}` : ""}`,
               ),
             }
           }
           const threadId = params.id ?? ""
           const rows = await reader.getRows<Record<string, unknown>>(
-            getThreadRunsQuery(threadId, query.all === "true"),
+            getThreadRunsQuery(threadId, query.all === "true", messageIds),
             signal,
           )
           const runs = rows.flatMap((row) => {

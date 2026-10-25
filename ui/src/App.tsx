@@ -720,6 +720,7 @@ const AppContent = ({ kernel }: AppProps) => {
     thread: selectedThread,
     group: selectedGroup,
     messages: selectedMessages,
+    focusMessageId: data.messageFocus?.messageId,
     runs: data.runs,
     routineRuns: data.routineRuns,
     routines: data.routines,
@@ -1288,6 +1289,7 @@ const AppContent = ({ kernel }: AppProps) => {
             onProject={() => openModal("project")}
             onImport={() => openModal("import")}
             onSelect={actions.selectBot}
+            onPrefetchThread={actions.prefetchThread}
             onSelectThread={(threadId) => actions.selectThread(threadId, { readRoutineGroup: true })}
             onReviewApproval={reviewApproval}
             onNewThread={() => void actions.createThread()}
@@ -1425,6 +1427,9 @@ const AppContent = ({ kernel }: AppProps) => {
                         <RecoveryTasksContext.Provider value={interruptedWork.tasks}>
                           <ChatPanel
                             retry={retryChatPanel}
+                            hasOlderHistory={Boolean(data.historyBefore)}
+                            loadingOlderHistory={data.loadingOlderHistory}
+                            onLoadOlderHistory={actions.loadOlderMessages}
                             historyLoading={
                               !data.threadCreation &&
                               (selectedThread ? data.historyThreadId !== selectedThread.id : !data.loaded)
@@ -1901,6 +1906,7 @@ export const getGoalSelection = ({
   thread,
   group,
   messages,
+  focusMessageId,
   runs,
   routineRuns,
   routines,
@@ -1909,11 +1915,12 @@ export const getGoalSelection = ({
   thread: Thread | null
   group: BotGroup | null
   messages: Message[]
+  focusMessageId?: Id | undefined
   runs: Run[]
   routineRuns: RoutineRun[]
   routines: Routine[]
 }) => {
-  const activePath = thread && !group ? activeMessagePath(messages, thread.activeLeafId) : messages
+  const activePath = thread && !group ? activeMessagePath(messages, focusMessageId ?? thread.activeLeafId) : messages
   const hasGoalThread =
     bot && thread?.botId === bot.id && !group && !isRoutineConversation({ thread, runs, routineRuns, routines })
   if (!hasGoalThread) return { activePath, goalThread: null, goalRequest: undefined, goalBusy: false }

@@ -1370,9 +1370,21 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     }
     if (key === "GET /threads/:id/messages") {
       const threadMessages = messages.filter((message) => message.threadId === pathValues.id)
+      const page = input as ApiRoutes["GET /threads/:id/messages"]["req"]
+      const thread = findThread(pathValues.id ?? "")
+      const around = page.around ?? (thread?.groupId ? null : thread?.activeLeafId)
+      const focused = around ? threadMessages.findIndex((message) => message.id === around) : -1
+      const end = page.before
+        ? threadMessages.findIndex((message) => message.id === page.before)
+        : focused >= 0
+          ? focused + 1
+          : threadMessages.length
+      const start = page.limit === undefined ? 0 : Math.max(0, end - page.limit)
+      const selected = threadMessages.slice(start, end)
       return {
-        messages: threadMessages,
+        messages: selected,
         activeLeafId: findThread(pathValues.id ?? "")?.activeLeafId ?? null,
+        ...(page.limit === undefined ? {} : { before: start > 0 ? (selected[0]?.id ?? null) : null }),
       } as ApiRoutes[typeof route]["res"]
     }
     if (key === "GET /runs")
@@ -1421,10 +1433,17 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
       return { goal: next } as ApiRoutes[typeof route]["res"]
     }
     if (key === "POST /threads/:id/prepare") return { preparing: true }
-    if (key === "GET /threads/:id/runs")
+    if (key === "GET /threads/:id/runs") {
+      const { messageIds } = input as ApiRoutes["GET /threads/:id/runs"]["req"]
+      const ids = messageIds ? new Set(messageIds.split(",")) : null
       return {
-        runs: [...runs.values()].filter((run) => run.threadId === pathValues.id),
+        runs: [...runs.values()].filter(
+          (run) =>
+            run.threadId === pathValues.id &&
+            (!ids || ids.has(run.requestMessageId ?? "") || ids.has(run.replyMessageId ?? "")),
+        ),
       } as ApiRoutes[typeof route]["res"]
+    }
     // r8 composer: mirror the existing native attachment registration contract.
     if (key === "POST /attachments") {
       const request = input as ApiRoutes["POST /attachments"]["req"]

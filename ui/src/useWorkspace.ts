@@ -47,6 +47,7 @@ import { clearNotifications } from "./notificationClearing"
 import { reconcileFailureNotifications } from "./sidebarAttention"
 import { getSidebarReadThreadIds } from "./sidebarThreads"
 import { getStorageScope } from "./storageScope"
+import { createThreadHistoryCache, historyPageSize } from "./threadHistory"
 import { getWorkChannelCache, saveWorkChannelCache } from "./workChannelCache"
 import { updateActivityStream } from "./workspaceMemory"
 import { activeRun, activityMessage, getRetainedActivity, retainWorkspace } from "./workspaceRetention"
@@ -58,6 +59,9 @@ export type WorkspaceData = {
   groupsLoaded?: boolean
   readyGroupIds?: Id[]
   messageFocus?: { threadId: Id; messageId: Id; request: number } | null
+  historyFocusId?: Id | null
+  historyBefore?: Id | null | undefined
+  loadingOlderHistory?: boolean
   historyThreadId?: Id | null
   historyNotice?: string | null
   channelNotice?: string | null
@@ -106,6 +110,8 @@ type NotificationReadReceipt = Extract<UiEvent, { type: "notifications.read" }>[
 export type WorkspaceActions = {
   refresh: () => Promise<void>
   refreshDoctor: () => Promise<void>
+  loadOlderMessages: () => Promise<void>
+  prefetchThread: (threadId: Id) => void
   selectBot: (botId: Id) => void
   selectThread: (threadId: Id, options?: { readRoutineGroup?: boolean; messageId?: Id | undefined }) => void
   createGroup: (input: GroupInput, id?: string) => Promise<void>
@@ -400,6 +406,7 @@ type ThreadLoad = {
   bytes: number
   overflow: boolean
   historyReady?: boolean
+  runsReady?: boolean
   terminalRevision: number
 }
 const bufferStreamEvent = (load: ThreadLoad | undefined, event: MessageStreamEvent): void => {
@@ -656,6 +663,8 @@ export const useWorkspace = (
   personId = "owner",
 ): Workspace => {
   const diagnosis = useDoctorReport(api, enabled && role === "admin")
+  const historyCache = useRef(createThreadHistoryCache())
+  const prefetchedThreads = useRef(new Map<Id, { controller: AbortController; promise: Promise<void> }>())
   const [data, setData] = useReducer(
     (current: WorkspaceData, update: (current: WorkspaceData) => WorkspaceData) => {
       const next = update(current)
@@ -663,7 +672,32 @@ export const useWorkspace = (
       const selectionChanged = next.selectedThreadId !== current.selectedThreadId
       const resetHistory = selectionChanged && next.historyThreadId !== next.selectedThreadId
 
-      const selected = resetHistory ? { ...next, historyThreadId: null } : next
+      const selectedHistory = next.threads.find((thread) => thread.id === next.selectedThreadId)
+      const cached =
+        (selectionChanged || (current.historyFocusId && !next.messageFocus)) &&
+        next.selectedThreadId &&
+        next.messageFocus?.threadId !== next.selectedThreadId
+          ? historyCache.current.get(
+              next.selectedThreadId,
+              selectedHistory?.groupId ? undefined : selectedHistory?.activeLeafId,
+            )
+          : undefined
+      const restored = cached
+        ? {
+            ...next,
+            messages: cached.messages,
+            runs: mergeRunRows(next.runs, cached.runs),
+            historyThreadId: next.selectedThreadId,
+            historyBefore: cached.before,
+            historyFocusId: null,
+            historyNotice: null,
+            loadingOlderHistory: false,
+          }
+        : next
+      const selected =
+        resetHistory && !cached
+          ? { ...restored, historyThreadId: null, historyBefore: undefined, loadingOlderHistory: false }
+          : restored
       const focused = selected.messageFocus?.threadId === selected.selectedThreadId
 
       return retainWorkspace(focused ? selected : { ...selected, messageFocus: null }, current)
@@ -690,6 +724,38 @@ export const useWorkspace = (
   const serviceNotice = useRef<string | null>(null)
   const runNotice = useRef<string | null>(null)
   const threadLoads = useRef(new Map<Id, ThreadLoad>())
+  const historySelection = data.threads.find((thread) => thread.id === data.selectedThreadId)
+  const historyLeafId = historySelection?.groupId ? null : historySelection?.activeLeafId
+  useEffect(() => {
+    const threadId = data.selectedThreadId
+    if (
+      !threadId ||
+      data.historyThreadId !== threadId ||
+      data.historyBefore === undefined ||
+      data.historyFocusId ||
+      (threadLoads.current.has(threadId) && !threadLoads.current.get(threadId)?.runsReady) ||
+      loadedThreads.current.get(threadId) !== generation.current
+    )
+      return
+
+    const leaf = historyLeafId ? data.messages.find((message) => message.id === historyLeafId) : undefined
+    if (historyLeafId && !leaf) return
+    historyCache.current.save(threadId, {
+      messages: leaf ? data.messages.filter((message) => message.createdAt <= leaf.createdAt) : data.messages,
+      runs: data.runs.filter((run) => run.threadId === threadId),
+      before: data.historyBefore,
+      activeLeafId: historyLeafId,
+    })
+  }, [
+    data.selectedThreadId,
+    data.historyThreadId,
+    data.historyBefore,
+    data.historyFocusId,
+    data.messages,
+    data.runs,
+    historyLeafId,
+  ])
+  const olderHistoryLoad = useRef<{ threadId: Id; controller: AbortController } | null>(null)
   const projectGeneration = useRef(0)
   const [projectRevision, setProjectRevision] = useState(0)
   useEffect(() => {
@@ -752,6 +818,98 @@ export const useWorkspace = (
     })
   }, [data.loading, data.selectedBotId, data.selectedThreadId, data.threadCreation])
 
+  const prefetchThread = useCallback(
+    (threadId: Id): void => {
+      if (
+        threadId === currentData.current.selectedThreadId ||
+        historyCache.current.get(threadId) ||
+        prefetchedThreads.current.has(threadId)
+      )
+        return
+      if (prefetchedThreads.current.size >= 2) return
+      const controller = new AbortController()
+      const attempt = generation.current
+      const promise = api
+        .request(
+          "GET /threads/:id/messages",
+          { all: true, limit: historyPageSize },
+          { id: threadId },
+          { signal: controller.signal },
+        )
+        .then(async (page) => {
+          if (controller.signal.aborted || attempt !== generation.current || page.before === undefined) return
+          const runs = page.messages.length
+            ? await api.request(
+                "GET /threads/:id/runs",
+                { messageIds: page.messages.map((message) => message.id).join(",") },
+                { id: threadId },
+                { signal: controller.signal },
+              )
+            : { runs: [] }
+          if (controller.signal.aborted || attempt !== generation.current) return
+          historyCache.current.save(threadId, {
+            messages: page.messages,
+            runs: runs.runs,
+            before: page.before,
+            activeLeafId: page.activeLeafId,
+          })
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          prefetchedThreads.current.delete(threadId)
+        })
+      prefetchedThreads.current.set(threadId, { controller, promise })
+    },
+    [api],
+  )
+
+  const loadOlderMessages = useCallback(async (): Promise<void> => {
+    const { selectedThreadId: threadId, historyBefore: before, loadingOlderHistory } = currentData.current
+    if (!threadId || !before || loadingOlderHistory || olderHistoryLoad.current) return
+    const attempt = generation.current
+    const controller = new AbortController()
+    olderHistoryLoad.current = { threadId, controller }
+    const timer = setTimeout(() => controller.abort(), 15_000)
+    const isCurrent = (): boolean =>
+      attempt === generation.current &&
+      currentData.current.selectedThreadId === threadId &&
+      olderHistoryLoad.current?.controller === controller
+    setData((current) => ({ ...current, loadingOlderHistory: true }))
+    try {
+      const page = await api.request(
+        "GET /threads/:id/messages",
+        { all: true, limit: historyPageSize, before },
+        { id: threadId },
+        { signal: controller.signal },
+      )
+      if (!isCurrent()) return
+      setData((current) => ({
+        ...current,
+        messages: getMergedHistoryMessages(page.messages, current.messages),
+        historyBefore: page.before ?? null,
+      }))
+      if (!page.messages.length) return
+      const { runs } = await api.request(
+        "GET /threads/:id/runs",
+        { messageIds: page.messages.map((message) => message.id).join(",") },
+        { id: threadId },
+        { signal: controller.signal },
+      )
+      if (!isCurrent()) return
+      setData((current) => ({ ...current, runs: mergeRunRows(current.runs, runs) }))
+    } catch (error) {
+      if (!isCurrent()) return
+      setData((current) => ({
+        ...current,
+        notice: t("Service request failed", { error: getServiceErrorMessage(error) }),
+      }))
+    } finally {
+      clearTimeout(timer)
+      if (isCurrent()) setData((current) => ({ ...current, loadingOlderHistory: false }))
+      if (olderHistoryLoad.current?.controller === controller) olderHistoryLoad.current = null
+    }
+  }, [api])
+
   const loadProject = useCallback(
     async (projectId: Id | null, vmBotId?: Id): Promise<void> => {
       const projectAttempt = ++projectGeneration.current
@@ -780,11 +938,35 @@ export const useWorkspace = (
 
   const loadThread = useCallback(
     function loadThread(threadId: Id, force = false): Promise<void> {
+      if (currentData.current.selectedThreadId !== threadId) return Promise.resolve()
       const attempt = generation.current
-      const groupId = currentData.current.threads.find((thread) => thread.id === threadId)?.groupId
+      const thread = currentData.current.threads.find((thread) => thread.id === threadId)
+      const groupId = thread?.groupId
+      const focus = currentData.current.messageFocus?.threadId === threadId ? currentData.current.messageFocus : null
       const pending = threadLoads.current.get(threadId)
       if (pending?.attempt === attempt && (!force || !pending.historyReady)) return pending.promise
       if (!force && loadedThreads.current.get(threadId) === attempt) return Promise.resolve()
+      const prefetched = prefetchedThreads.current.get(threadId)
+      if (!force && prefetched) return prefetched.promise.then(() => loadThread(threadId))
+      const cached =
+        !force && !focus ? historyCache.current.get(threadId, groupId ? undefined : thread?.activeLeafId) : undefined
+      if (cached) {
+        loadedThreads.current.set(threadId, attempt)
+        setData((current) =>
+          current.selectedThreadId === threadId
+            ? {
+                ...current,
+                messages: cached.messages,
+                runs: mergeRunRows(current.runs, cached.runs),
+                historyThreadId: threadId,
+                historyBefore: cached.before,
+                historyFocusId: null,
+                historyNotice: null,
+              }
+            : current,
+        )
+        return Promise.resolve()
+      }
 
       // Repairs must release the previous reader before starting another message/run pair.
       pending?.controller.abort()
@@ -806,8 +988,14 @@ export const useWorkspace = (
           historyNotice: history ? notice : (current.historyNotice ?? null),
         }))
       }
-      const messagesRequest = api
-        .request("GET /threads/:id/messages", { all: true }, { id: threadId }, { signal: controller.signal })
+      const requestedIds = new Set(currentData.current.messages.map((message) => message.id))
+      const pageRequest = api.request(
+        "GET /threads/:id/messages",
+        { all: true, limit: historyPageSize, ...(focus ? { around: focus.messageId } : {}) },
+        { id: threadId },
+        { signal: controller.signal },
+      )
+      const messagesRequest = pageRequest
         .then((messages) => {
           const load = threadLoads.current.get(threadId)
           if (!isCurrentLoad() || !load) return
@@ -817,24 +1005,35 @@ export const useWorkspace = (
           // The request owns its overlap buffer; release it as soon as messages are readable.
           const replay = deltas.slice()
           load.historyReady = true
+          if (!messages.messages.length) load.runsReady = true
           load.deltas.length = 0
           loadedThreads.current.set(threadId, attempt)
           setData((current) => {
             if (groupId && !current.groups.some((group) => group.id === groupId)) return current
             if (current.selectedThreadId !== threadId) return current
 
+            const branchLeaf = !groupId
+              ? messages.messages.find((message) => message.id === messages.activeLeafId)
+              : undefined
+            const previous = branchLeaf
+              ? current.messages.filter(
+                  (message) => message.createdAt <= branchLeaf.createdAt || !requestedIds.has(message.id),
+                )
+              : current.messages
             const canClearNotice =
               current.notice !== runNotice.current &&
               (current.notice === serviceNotice.current || current.notice === current.historyNotice)
             return {
               ...current,
               historyThreadId: threadId,
+              historyBefore: messages.before,
+              historyFocusId: focus?.messageId ?? null,
               historyNotice: null,
               messages: (api.pendingMessages?.() ?? [])
                 .filter((message) => message.threadId === threadId)
                 .reduce(
                   updateMessage,
-                  replay.reduce(applyStreamEvent, messages.messages).reduce(updateMessage, current.messages),
+                  getMergedHistoryMessages(replay.reduce(applyStreamEvent, messages.messages), previous),
                 ),
               notice: canClearNotice ? null : current.notice,
             }
@@ -851,13 +1050,17 @@ export const useWorkspace = (
           void loadThread(threadId, true)
         })
       const loadRuns = async (): Promise<void> => {
+        const page = await pageRequest
+        if (!isCurrentLoad() || !page.messages.length) return
         // Retry one read at a time; a terminal-heavy stream must not build a chain of pending promises.
         for (;;) {
           const runsAtStart = runRevision.current
           const terminalRevision = threadLoads.current.get(threadId)?.terminalRevision ?? 0
           const runs = await api.request(
             "GET /threads/:id/runs",
-            { all: true },
+            page.before === undefined
+              ? { all: true }
+              : { messageIds: page.messages.map((message) => message.id).join(",") },
             { id: threadId },
             { signal: controller.signal },
           )
@@ -866,6 +1069,7 @@ export const useWorkspace = (
           // A single watermark outlives pruned terminal rows without retaining completed IDs.
           if (load.terminalRevision !== terminalRevision) continue
 
+          load.runsReady = true
           const previousNotice = runNotice.current
           runNotice.current = null
           setData((current) => ({
@@ -907,6 +1111,11 @@ export const useWorkspace = (
     // The server authorizes fresh reads while session identity retries; only the local cache must wait.
     const threadsAtStart = new Map(currentData.current.threads.map((thread) => [thread.id, thread]))
     const attempt = ++generation.current
+    historyCache.current.clear()
+    prefetchedThreads.current.forEach(({ controller }) => {
+      controller.abort()
+    })
+    prefetchedThreads.current.clear()
     const channelCacheIdentity = { scope: getStorageScope(), personId }
     setData((current) => ({ ...current, groupsLoaded: false, readyGroupIds: [] }))
     // Pending callbacks share these request-owned arrays, so clear them before abandoning the loads.
@@ -1223,6 +1432,8 @@ export const useWorkspace = (
         return
       }
       if (event.type === "thread.deleted") {
+        historyCache.current.remove(event.threadId)
+        prefetchedThreads.current.get(event.threadId)?.controller.abort()
         privateThreads.current.delete(event.threadId)
         loadedThreads.current.delete(event.threadId)
         const load = threadLoads.current.get(event.threadId)
@@ -1235,9 +1446,18 @@ export const useWorkspace = (
         return
       }
       if (event.type === "group.deleted") {
+        historyCache.current.clear()
+        prefetchedThreads.current.forEach(({ controller }) => {
+          controller.abort()
+        })
         removeGroup(event.groupId)
         return
       }
+      const changedThreadId = getHistoryEventThreadId(event)
+      if (typeof changedThreadId === "string" && changedThreadId !== currentData.current.selectedThreadId) {
+        historyCache.current.remove(changedThreadId)
+      }
+      if (typeof changedThreadId === "string") prefetchedThreads.current.get(changedThreadId)?.controller.abort()
       if (event.type === "message.delta" || event.type === "message.parts")
         bufferStreamEvent(threadLoads.current.get(event.threadId), event)
       if (event.type === "run.updated") {
@@ -1506,6 +1726,13 @@ export const useWorkspace = (
     return () => {
       active = false
       generation.current += 1
+      historyCache.current.clear()
+      prefetchedThreads.current.forEach(({ controller }) => {
+        controller.abort()
+      })
+      prefetchedThreads.current.clear()
+      olderHistoryLoad.current?.controller.abort()
+      olderHistoryLoad.current = null
       // Pending callbacks share these request-owned arrays, so clear them before abandoning the loads.
       for (const load of threadLoads.current.values()) {
         load.controller.abort()
@@ -1534,6 +1761,10 @@ export const useWorkspace = (
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: refresh and reconnect also refresh the selected transcript
   useEffect(() => {
+    if (olderHistoryLoad.current && olderHistoryLoad.current.threadId !== data.selectedThreadId) {
+      olderHistoryLoad.current.controller.abort()
+      olderHistoryLoad.current = null
+    }
     for (const id of loadedThreads.current.keys()) if (id !== data.selectedThreadId) loadedThreads.current.delete(id)
     for (const [id, load] of threadLoads.current) {
       if (id === data.selectedThreadId) continue
@@ -1548,8 +1779,18 @@ export const useWorkspace = (
         thread.groupId &&
         (data.groupsLoaded || data.readyGroupIds?.includes(thread.groupId)),
     )
-    if (enabled && (!data.loading || channelReady) && data.selectedThreadId && !data.threadCreation)
-      void loadThread(data.selectedThreadId)
+    if (enabled && (!data.loading || channelReady) && data.selectedThreadId && !data.threadCreation) {
+      const focus = data.messageFocus?.threadId === data.selectedThreadId ? data.messageFocus : null
+      const missingFocus = focus && !data.messages.some((message) => message.id === focus.messageId)
+      const focusedWindowClosed = !focus && Boolean(data.historyFocusId)
+      const thread = data.threads.find((thread) => thread.id === data.selectedThreadId)
+      const missingBranch =
+        !thread?.groupId &&
+        thread?.activeLeafId &&
+        loadedThreads.current.get(thread.id) === generation.current &&
+        !data.messages.some((message) => message.id === thread.activeLeafId)
+      void loadThread(data.selectedThreadId, Boolean(missingFocus || focusedWindowClosed || missingBranch))
+    }
   }, [
     enabled,
     data.loading,
@@ -1557,6 +1798,7 @@ export const useWorkspace = (
     data.readyGroupIds,
     data.threads,
     data.selectedThreadId,
+    data.messageFocus,
     data.threadCreation,
     projectRevision,
     loadThread,
@@ -1641,6 +1883,16 @@ export const useWorkspace = (
           ...current,
           selectedBotId: current.threads.find((thread) => thread.id === threadId)?.botId ?? current.selectedBotId,
           selectedThreadId: threadId,
+          messages:
+            (options?.messageId && !current.messages.some((message) => message.id === options.messageId)) ||
+            (!options?.messageId && current.historyFocusId)
+              ? []
+              : current.messages,
+          historyThreadId:
+            (options?.messageId && !current.messages.some((message) => message.id === options.messageId)) ||
+            (!options?.messageId && current.historyFocusId)
+              ? null
+              : (current.historyThreadId ?? null),
           messageFocus: options?.messageId
             ? { threadId, messageId: options.messageId, request: (current.messageFocus?.request ?? 0) + 1 }
             : null,
@@ -1818,7 +2070,12 @@ export const useWorkspace = (
   const switchBranch = useCallback(
     async (threadId: Id, leafId: Id): Promise<void> => {
       const response = await api.request("PATCH /threads/:id", { activeLeafId: leafId }, { id: threadId })
-      setData((current) => getWorkspaceWithUpdatedThread(current, response.thread))
+      setData((current) => {
+        const updated = getWorkspaceWithUpdatedThread(current, response.thread)
+        return current.messages.some((message) => message.id === leafId)
+          ? updated
+          : { ...updated, historyThreadId: null }
+      })
     },
     [api],
   )
@@ -2199,6 +2456,8 @@ export const useWorkspace = (
     actions: {
       refresh: load,
       refreshDoctor: diagnosis.refresh,
+      loadOlderMessages,
+      prefetchThread,
       selectBot,
       selectThread,
       createGroup,
@@ -2308,4 +2567,25 @@ const getOptionalWorkspaceRead = async <Value, Fallback>(
     if (!(error instanceof ApiError) || error.status !== 403) throw error
     return forbidden
   }
+}
+
+const getHistoryEventThreadId = (event: UiEvent): string | null => {
+  if ("message" in event) return event.message.threadId
+  if ("threadId" in event && typeof event.threadId === "string") return event.threadId
+  if (event.type === "run.updated") return event.run.threadId
+  if (event.type === "thread.updated") return event.thread.id
+
+  return null
+}
+
+const getMergedHistoryMessages = (snapshot: Message[], current: Message[]): Message[] => {
+  const currentById = new Map(current.map((message) => [message.id, message]))
+  const snapshotIds = new Set(snapshot.map((message) => message.id))
+  const restored = snapshot.map((message) => {
+    const previous = currentById.get(message.id)
+    return previous ? (updateMessage([previous], message)[0] ?? message) : message
+  })
+  const merged = restored.concat(current.filter((message) => !snapshotIds.has(message.id)))
+  // Sort a fresh collection: page order resolves timestamp ties, while overlapping live events keep their revisions.
+  return merged.sort((left, right) => left.createdAt - right.createdAt || (left.seq ?? 0) - (right.seq ?? 0))
 }

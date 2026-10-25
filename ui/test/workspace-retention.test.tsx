@@ -298,7 +298,7 @@ test("active streams reload on open and retain snapshot overlap and reasoning pa
   expect(hook.result.current.data.messages[0]?.parts[1]).toEqual({ type: "reasoning", text: "Generated reasoning" })
 })
 
-test("group history reloads with sender identity while private member transcripts stay offscreen", async () => {
+test("cached group history retains sender identity while private member transcripts stay offscreen", async () => {
   const api = createMockApi()
   const { thread } = await api.request("POST /groups", {
     name: "Generated team",
@@ -337,7 +337,7 @@ test("group history reloads with sender identity while private member transcript
   )
   expect(
     api.calls.filter((call) => call.route === "GET /threads/:id/messages" && call.pathValues.id === thread.id),
-  ).toHaveLength(2)
+  ).toHaveLength(1)
 })
 
 test("opening an evicted conversation restores the full pending send from the durable client journal", async () => {

@@ -1900,7 +1900,20 @@ export const init = async (
           const thread = getThread({ threadId: params.id ?? "" })
           if (!thread) return errorResponse(404, "NOT_FOUND", "Thread not found")
           const result = await reader.getMessages(
-            getHistoryQuery(thread.id, thread.activeLeafId, query.all === "true"),
+            getHistoryQuery(
+              thread.id,
+              thread.activeLeafId,
+              query.all === "true",
+              query.limit === undefined
+                ? undefined
+                : {
+                    limit: Math.max(1, Math.min(50, Math.floor(Number(query.limit)) || 40)),
+                    ...(query.before ? { before: query.before } : {}),
+                    ...(query.around || (!thread.groupId && thread.activeLeafId)
+                      ? { around: query.around || thread.activeLeafId || "" }
+                      : {}),
+                  },
+            ),
             signal,
           )
           for (const reference of result.references) {

@@ -19,6 +19,7 @@ type ReadInput = {
         bindings: SQLQueryBindings[]
         activeLeafId?: string | null
         reverse?: boolean
+        pageLimit?: number
         chunkedStrings?: boolean
       }
     }
@@ -76,8 +77,15 @@ export const runStoreRead = async (): Promise<void> => {
     const messages: string[] = []
     const references: MessageReferences[] = []
     let bytes = 0
+    let hasMore = false
+    let oldestId: string | null = null
     for (const row of statement.iterate(...input.query.bindings)) {
+      if (input.query.pageLimit !== undefined && messages.length >= input.query.pageLimit) {
+        hasMore = true
+        break
+      }
       const message = getMessageFromRow(row as RawMessage)
+      oldestId = message.id
       const serialized = JSON.stringify(message)
       bytes += Buffer.byteLength(serialized)
       if (bytes > 64 * 1024 * 1024) throw new Error("STORE_READ_LIMIT")
@@ -95,8 +103,10 @@ export const runStoreRead = async (): Promise<void> => {
       if (attachmentIds.length) references.push({ threadId: message.threadId, messageId: message.id, attachmentIds })
     }
     const ordered = input.query.reverse ? messages.reverse() : messages
+    const pagination =
+      input.query.pageLimit === undefined ? "" : `,"before":${JSON.stringify(hasMore ? oldestId : null)}`
     const body = new TextEncoder().encode(
-      `{"messages":[${ordered.join(",")}],"activeLeafId":${JSON.stringify(input.query.activeLeafId ?? null)}}`,
+      `{"messages":[${ordered.join(",")}],"activeLeafId":${JSON.stringify(input.query.activeLeafId ?? null)}${pagination}}`,
     )
     const referenceLines = references.map((reference) => JSON.stringify(reference))
     const header = new TextEncoder().encode(referenceLines.length ? `${referenceLines.join("\n")}\n` : "")

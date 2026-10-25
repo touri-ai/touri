@@ -111,6 +111,7 @@ type SidebarProps = {
   onProject: () => void
   onImport: () => void
   onSelect: (id: Id) => void
+  onPrefetchThread?: ((id: Id) => void) | undefined
   onSelectThread: (id: Id) => void
   onReviewApproval: (target: ApprovalTarget) => void
   onNewThread: () => void
@@ -665,6 +666,7 @@ export const Sidebar = (props: SidebarProps) => {
                 channelWorking={channelWorking}
                 selectedThreadId={props.selectedThreadId}
                 onSelect={selectThread}
+                onPrefetch={props.onPrefetchThread}
                 onCreate={createChannel}
                 onInvite={props.onInvitePerson ? invitePerson : undefined}
                 messages={messages}
@@ -675,7 +677,17 @@ export const Sidebar = (props: SidebarProps) => {
                 onNewThread={createChannelThread}
               />
             )}
-            <div className="bot-groups work-mode-dms">{renderBotEntries("work")}</div>
+            <div
+              className="bot-groups work-mode-dms"
+              onPointerOver={(event) => {
+                if (!(event.target instanceof Element)) return
+                const row = event.target.closest<HTMLElement>("[data-work-bot-entry]")
+                const bot = props.bots.find((bot) => bot.id === row?.dataset.workBotEntry)
+                if (bot?.mainThreadId) props.onPrefetchThread?.(bot.mainThreadId)
+              }}
+            >
+              {renderBotEntries("work")}
+            </div>
           </Suspense>
         </div>
       </div>
