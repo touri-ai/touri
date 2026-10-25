@@ -52,11 +52,11 @@ for (const width of [1440, 1000, 760, 390]) {
     await review.click()
     const card = page.locator('[data-approval-id="folder-review"]')
     await expect(card).toBeVisible()
-    const screenshot = info.outputPath(`work-approval-${width}.png`)
+    const screenshot = process.env.WORK_APPROVAL_CAPTURE
+      ? `${process.env.WORK_APPROVAL_CAPTURE}/review-${width}.png`
+      : info.outputPath(`work-approval-${width}.png`)
     await page.screenshot({ path: screenshot, animations: "disabled" })
     await info.attach(`Work approval ${width}`, { path: screenshot, contentType: "image/png" })
-    if (process.env.WORK_APPROVAL_CAPTURE)
-      await page.screenshot({ path: `${process.env.WORK_APPROVAL_CAPTURE}/review-${width}.png` })
 
     await expect(page.locator("#bot-panel")).toHaveCount(0)
     await expect(panel).toHaveAttribute("aria-expanded", "false")
@@ -95,11 +95,11 @@ for (const width of [1440, 760, 390]) {
 
     const card = page.locator('[data-approval-id="folder-review"]')
     await expect(card).toBeVisible()
-    const screenshot = info.outputPath(`work-channel-approval-${width}.png`)
+    const screenshot = process.env.WORK_APPROVAL_CAPTURE
+      ? `${process.env.WORK_APPROVAL_CAPTURE}/channel-review-${width}.png`
+      : info.outputPath(`work-channel-approval-${width}.png`)
     await page.screenshot({ path: screenshot, animations: "disabled" })
     await info.attach(`Work channel approval ${width}`, { path: screenshot, contentType: "image/png" })
-    if (process.env.WORK_APPROVAL_CAPTURE)
-      await page.screenshot({ path: `${process.env.WORK_APPROVAL_CAPTURE}/channel-review-${width}.png` })
 
     await expect(page.locator("#bot-panel")).toHaveCount(0)
     await expect(card).toBeFocused()
