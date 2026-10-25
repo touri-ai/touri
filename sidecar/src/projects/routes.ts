@@ -1,6 +1,6 @@
 import { existsSync, realpathSync, statSync } from "node:fs"
 import { basename, isAbsolute, join } from "node:path"
-import type { Kernel, ProjectInfo, RouteModule } from "@touri/contracts"
+import type { Kernel, Project, ProjectInfo, RouteModule } from "@touri/contracts"
 import { discoverProjects } from "./discovery"
 import { cloneName, cloneProject, cloneSource, gitStatus, inspectGit, projectHints } from "./git"
 import { processCwd } from "./paths"
@@ -38,15 +38,18 @@ const readProjectInfo = async ({
   supervisor,
   projectId,
   botId,
+  scope,
 }: {
   kernel: Kernel
   store: ProjectStore
   supervisor: Supervisor
   projectId: string
   botId?: string
+  scope?: "turn"
 }): Promise<ProjectInfo | null> => {
   const project = store.getProject(projectId)
   if (project === null) return null
+  if (scope === "turn") return getTurnProjectInfo({ kernel, store, supervisor, project, botId })
   if (botId && kernel.services.use("store.api")?.getBot({ botId })?.machine === "vm") {
     const vm = kernel.services.use("vm.runtime")
     if (!vm) return null
@@ -412,6 +415,39 @@ export const createProjectInfo =
     kernel: Kernel
     store: ProjectStore
     supervisor: Supervisor
-  }): ((args: { projectId: string; botId?: string }) => Promise<ProjectInfo | null>) =>
+  }): ((args: { projectId: string; botId?: string; scope?: "turn" }) => Promise<ProjectInfo | null>) =>
   (args) =>
     readProjectInfo({ kernel, store, supervisor, ...args })
+
+/** Turn preparation needs stored paths and process state, never repository discovery or subprocesses. */
+const getTurnProjectInfo = ({
+  kernel,
+  store,
+  supervisor,
+  project,
+  botId,
+}: {
+  kernel: Kernel
+  store: ProjectStore
+  supervisor: Supervisor
+  project: Project
+  botId: string | undefined
+}): ProjectInfo => {
+  const guest = botId && kernel.services.use("store.api")?.getBot({ botId })?.machine === "vm"
+
+  return {
+    project: guest ? { ...project, path: "/workspace", dataDir: "/workspace/.touri/data" } : project,
+    git: null,
+    hints: [],
+    processes: supervisor
+      .list({ projectId: project.id })
+      .filter(({ spec }) => !guest || spec.vmBotId === botId)
+      .map(({ spec, run }) => ({
+        name: spec.name,
+        status: run?.status ?? "not-started",
+        ports: run?.ports.map((port) => port.port) ?? [],
+      })),
+    previews: [],
+    secretNames: store.listSecrets({ projectId: project.id }).map((secret) => secret.name),
+  }
+}

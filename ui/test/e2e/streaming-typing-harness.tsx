@@ -13,7 +13,7 @@ const thread = api.getState().threads.find((item) => item.id === "thread-mark")
 if (!thread) throw new Error("Fixture conversation is missing")
 
 const historyMode = new URLSearchParams(location.search).get("history")
-const turns = historyMode === "rich" ? 250 : 13
+const turns = historyMode === "rich" ? 1_000 : 13
 const history = historyMode
   ? getStreamingHistory(thread.id, thread.activeLeafId ?? null, turns)
   : { messages: [], runs: [] }

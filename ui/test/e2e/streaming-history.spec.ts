@@ -14,6 +14,8 @@ type Counts = {
   longTasks: number[]
   frames: number[]
   streamingFrames: number[]
+  handlers: number[]
+  replyLengths: number[]
 }
 type StreamingWindow = Window & {
   streamingCounts: Counts
@@ -22,6 +24,7 @@ type StreamingWindow = Window & {
 
 /** Counts message bubble renders per React commit; reused fibers are skipped without walking them. */
 const installCounter = () => {
+  localStorage.setItem("touri.sidebar.mode", "work")
   // Local probe counters avoid adding allocation overhead to the measured callbacks.
   type Fiber = {
     flags: number
@@ -41,6 +44,8 @@ const installCounter = () => {
     longTasks: [],
     frames: [],
     streamingFrames: [],
+    handlers: [],
+    replyLengths: [],
   })
   const counts = getCounts(false)
   const seen = new WeakMap<Fiber, Fiber>()
@@ -100,12 +105,32 @@ const installCounter = () => {
   new PerformanceObserver((list) => {
     if (counts.enabled) for (const entry of list.getEntries()) counts.longTasks.push(entry.duration)
   }).observe({ entryTypes: ["longtask"] })
+  const inputStarts = new WeakMap<Event, number>()
+  document.addEventListener(
+    "input",
+    (event) => {
+      if (counts.enabled && event.target instanceof HTMLTextAreaElement) inputStarts.set(event, performance.now())
+    },
+    true,
+  )
+  document.addEventListener("input", (event) => {
+    const start = inputStarts.get(event)
+    if (start === undefined) return
+
+    queueMicrotask(() => counts.handlers.push(performance.now() - start))
+  })
   document.addEventListener(
     "keydown",
     (event) => {
       if (!counts.enabled || !(event.target instanceof HTMLTextAreaElement) || event.key.length !== 1) return
       const start = performance.now()
       const active = (window as StreamingWindow).streamingTyping.active
+      if (active && counts.streamingFrames.length % 20 === 0) {
+        const answer = Array.from(document.querySelectorAll('[data-message-id="stream-reply"] .markdown-content')).find(
+          (element) => element.textContent?.includes("Aqui está"),
+        )
+        counts.replyLengths.push(answer?.textContent?.length ?? 0)
+      }
       requestAnimationFrame(() => {
         const elapsed = performance.now() - start
         counts.frames.push(elapsed)
@@ -132,8 +157,8 @@ for (const viewport of [
     await page.addInitScript(installCounter)
     await page.goto("/test/e2e/streaming-typing-harness.html?history=rich")
     const input = page.getByRole("textbox", { name: "Mensagem para mark", exact: true })
-    await expect(input).toBeVisible()
-    await expect(page.getByText("Pergunta 249", { exact: true })).toBeVisible()
+    await expect(input).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText("Pergunta 999", { exact: true })).toBeVisible()
     await input.click()
     const cdp = await page.context().newCDPSession(page)
     await cdp.send("Performance.enable")
@@ -167,23 +192,44 @@ for (const viewport of [
     const idleCounts = await stopProbe()
     await input.fill("")
     await resetCounts()
+    await cdp.send("Profiler.enable")
+    await cdp.send("Profiler.start")
     const streamTaskStart = await getTaskMs()
     const streamStart = await page.evaluate(() => performance.now())
     const streamed = page.evaluate(() => (window as StreamingWindow).streamingTyping.stream({ size: 20 }))
-    await page.getByText("Aqui está o roteiro fictício completo").waitFor()
+    await page
+      .locator('[data-message-id="stream-reply"] .markdown-content')
+      .filter({ hasText: "Aqui está o roteiro fictício completo" })
+      .first()
+      .waitFor()
     await input.pressSequentially(draft.repeat(3), { delay: 40 })
     if (process.env.TOURI_SCREENSHOT_DIR)
       await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/typing-${viewport.width}.png` })
     await streamed
     const streamEnd = await page.evaluate(() => performance.now())
+    const { profile } = await cdp.send("Profiler.stop")
+    const self = new Map<string, number>()
+    const interval = (profile.endTime - profile.startTime) / Math.max(1, profile.samples?.length ?? 1)
+    const byId = new Map(profile.nodes.map((node) => [node.id, node]))
+    for (const id of profile.samples ?? []) {
+      const node = byId.get(id)
+      if (!node) continue
+      const name = `${node.callFrame.functionName || "(anon)"} ${node.callFrame.url.split("/").at(-1)}:${node.callFrame.lineNumber}`
+      self.set(name, (self.get(name) ?? 0) + interval / 1000)
+    }
+    const top = [...self.entries()].sort((a, b) => b[1] - a[1]).slice(0, 40)
+    console.log(`profile ${viewport.width}: ${JSON.stringify(top)}`)
     const streamingTaskMs = (await getTaskMs()) - streamTaskStart
     const counts = await stopProbe()
     const result = {
-      historyMessages: 500,
-      historyTools: 3000,
-      finishedRuns: 250,
+      historyMessages: 2000,
+      historyTools: 12000,
+      finishedRuns: 1000,
       idleKeys: idleCounts.frames.length,
       streamingKeys: counts.streamingFrames.length,
+      replyGrowthWhileTyping: Math.max(0, ...counts.replyLengths) - Math.min(...counts.replyLengths),
+      idleHandlerP95: getPercentile(idleCounts.handlers, 0.95),
+      streamingHandlerP95: getPercentile(counts.handlers, 0.95),
       idleInputFrameP99: getPercentile(idleCounts.frames, 0.99),
       inputFrameP99: getPercentile(counts.streamingFrames, 0.99),
       inputFrameMax: Math.max(0, ...counts.streamingFrames),
@@ -223,7 +269,9 @@ for (const viewport of [
     expect(result.idleKeys).toBeGreaterThan(50)
     expect(result.streamingKeys).toBeGreaterThan(150)
     // Scheduling and frame delivery vary on the shared host; detect sustained or severe stalls.
-    expect(result.inputFrameP99).toBeLessThan(250)
+    expect(result.replyGrowthWhileTyping).toBeGreaterThan(100)
+    expect(result.streamingHandlerP95).toBeLessThan(16)
+    expect(result.inputFrameP99).toBeLessThan(100)
     expect(result.inputFrameMax).toBeLessThan(2000)
   })
 }

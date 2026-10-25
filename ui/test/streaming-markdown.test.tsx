@@ -43,6 +43,16 @@ describe("streaming Markdown", () => {
     expect(remarkGfm).toHaveBeenCalledTimes(parses)
   })
 
+  it.each(["", " \n"])("shows the first streamed word after %j without waiting for the batching timer", (prefix) => {
+    vi.useFakeTimers()
+    const view = render(<StreamingText content={prefix} streaming />)
+
+    view.rerender(<StreamingText content={`${prefix}Primeira palavra`} streaming />)
+
+    expect(screen.getByTestId("text")).toHaveTextContent("Primeira palavra")
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it("keeps the latest text at a bounded cadence without waiting for the stream to stop", () => {
     vi.useFakeTimers()
     const view = render(<StreamingText content="Início" streaming />)

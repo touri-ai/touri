@@ -220,7 +220,9 @@ export const composeDeveloperInstructions = async ({
 }): Promise<string> => {
   const projectService = !greetingOnly && bot.projectId ? kernel.services.use("projects.info") : null
   const project =
-    projectService && bot.projectId ? await projectService({ projectId: bot.projectId, botId: bot.id }) : null
+    projectService && bot.projectId
+      ? await projectService({ projectId: bot.projectId, botId: bot.id, scope: "turn" })
+      : null
   onPreparationStage?.("projectReadyAt")
   const grouped = !!thread.groupId
   const delegation = getDelegation(kernel, thread.id)

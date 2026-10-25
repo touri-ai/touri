@@ -7,6 +7,7 @@ import { pendingApprovalTargets } from "../src/approvalNavigation"
 import { computeBotActivity } from "../src/botActivity"
 import { useWorkspace } from "../src/useWorkspace"
 import { retainWorkspace } from "../src/workspaceRetention"
+import { getStreamingHistory } from "./e2e/streaming-history-fixture"
 import { createRetentionWorkload, retainedStateBudget, retentionBotCount } from "./fixtures/retentionWorkload"
 
 afterEach(cleanup)
@@ -400,4 +401,82 @@ test("a history request overflowing its stream buffer reloads instead of retaini
   await waitFor(() =>
     expect(hook.result.current.data.messages.find((message) => message.id === stored.id)?.text).toBe(stored.text),
   )
+})
+
+test("streaming a 2k-message conversation keeps activity readers bounded without losing history or approvals", async () => {
+  const api = createMockApi()
+  const history = getStreamingHistory("thread-mark", null, 1_000)
+  const latest = history.messages.at(-1)
+  const latestRun = history.runs.at(-1)
+  if (!latest || !latestRun) throw new Error("Missing synthetic history")
+  const historicalReply = history.messages[1]
+  if (!historicalReply) throw new Error("Missing historical reply")
+  const pending: Message = {
+    ...historicalReply,
+    id: "historical-pending-approval",
+    parts: [
+      {
+        type: "approval",
+        approvalId: "synthetic-approval",
+        botId: "bot-mark",
+        request: "command",
+        detail: "Synthetic details",
+        decision: "pending",
+        createdAt: 1,
+      },
+    ],
+  }
+  // The mock adapter owns mutable seed state; initialize it before subscription.
+  api.getState().messages.push(...history.messages.slice(0, -1), { ...latest, status: "streaming" }, pending)
+  const request: ApiRequest = async (route, input, path, transport) => {
+    const result = await api.request(route, input, path, transport)
+    if (route !== "GET /threads/:id/runs" || path?.id !== "thread-mark") return result
+
+    return Object.assign({}, result, {
+      runs: history.runs.slice(0, -1).concat({ ...latestRun, status: "running", finishedAt: null }),
+    })
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(hook.result.current.data.loading).toBe(false))
+  act(() => hook.result.current.actions.selectThread("thread-mark"))
+  await waitFor(() => expect(hook.result.current.data.messages.some((message) => message.id === latest.id)).toBe(true))
+  act(() => {
+    api.emit({ type: "run.updated", run: { ...latestRun, status: "running", finishedAt: null } })
+  })
+
+  Array.from({ length: 20 }).forEach((_, index) => {
+    act(() =>
+      api.emit({ type: "message.delta", threadId: "thread-mark", messageId: latest.id, partIndex: 12, delta: "." }),
+    )
+
+    const data = hook.result.current.data
+    const activity = data.activityMessages.filter((message) => message.threadId === "thread-mark")
+    expect(activity.length).toBeLessThanOrEqual(6)
+    expect(activity.find((message) => message.id === latest.id)?.text).toBe(`${latest.text}${".".repeat(index + 1)}`)
+    expect(pendingApprovalTargets(activity)).toContainEqual({
+      threadId: "thread-mark",
+      approvalId: "synthetic-approval",
+    })
+    expect(data.messages.filter((message) => message.id.startsWith("history-"))).toHaveLength(2_000)
+  })
+  const finalText = `${latest.text}${".".repeat(20)} final`
+  const finalReply: Message = {
+    ...latest,
+    status: "complete",
+    text: finalText,
+    parts: latest.parts.filter((part) => part.type !== "text").concat({ type: "text", text: finalText }),
+    updatedAt: Date.now(),
+  }
+
+  act(() => {
+    api.emit({ type: "message.delta", threadId: "thread-mark", messageId: latest.id, partIndex: 12, delta: " final" })
+    api.emit({ type: "message.updated", message: finalReply })
+    api.emit({ type: "run.updated", run: { ...latestRun, status: "succeeded", finishedAt: Date.now() } })
+  })
+  expect(hook.result.current.data.messages.find((message) => message.id === latest.id)?.text).toBe(finalText)
+  act(() =>
+    api.emit({ type: "message.delta", threadId: "thread-mark", messageId: latest.id, partIndex: 12, delta: " late" }),
+  )
+  expect(hook.result.current.data.messages.find((message) => message.id === latest.id)?.text).toBe(finalText)
 })

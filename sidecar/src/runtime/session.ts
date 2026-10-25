@@ -54,7 +54,8 @@ export const workingDirectory = async ({
   thread: Thread
 }): Promise<{ cwd: string; projectDataDir: string | null }> => {
   const projectService = bot.projectId ? kernel.services.use("projects.info") : null
-  const info = projectService && bot.projectId ? await projectService({ projectId: bot.projectId }) : null
+  const info =
+    projectService && bot.projectId ? await projectService({ projectId: bot.projectId, scope: "turn" }) : null
   const candidates = [thread.cwdOverride, bot.cwd, info?.project.path].filter(
     (value): value is string => typeof value === "string" && value.length > 0,
   )

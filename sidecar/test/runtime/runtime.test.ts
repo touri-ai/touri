@@ -17,7 +17,7 @@ import { createRuntimePersistence } from "../../src/runtime/persistence"
 import type { ChildProcess } from "../../src/runtime/provider-io"
 import { createRoutineScheduler } from "../../src/runtime/routines/scheduler"
 import { init as initStore } from "../../src/store"
-import { getPercentile } from "../fakes/latency"
+import { getPercentile, startEventLoopLagProbe } from "../fakes/latency"
 import { fakeProviderSpawn } from "../fakes/provider-spawn"
 import { createTestStore, type TestStore } from "./fake-store"
 
@@ -3181,8 +3181,11 @@ runtimeTest.serial("first notes example completes in Portuguese without a connec
 
 describe("turn latency milestones", () => {
   let value: Fixture | undefined
+  let lagProbe: ReturnType<typeof startEventLoopLagProbe> | undefined
 
   afterEach(async () => {
+    lagProbe?.stop()
+    lagProbe = undefined
     if (value) await closeFixture(value)
     value = undefined
   })
@@ -3278,6 +3281,81 @@ describe("turn latency milestones", () => {
     expect(dispatchMs[2]).toBeLessThan(1_000)
     expect(textMs[1]).toBeLessThan(1_000)
     expect(textMs[2]).toBeLessThan(5_000)
+  })
+
+  test("linked project turns dispatch without waiting for repository inspection", async () => {
+    const current = await fixture({ scenario: { deltas: ["Resposta sintética."] } })
+    value = current
+    current.store.bots.set(current.bot.id, { ...current.bot, projectId: "project-synthetic" })
+    const history = Array.from(
+      { length: 2_000 },
+      (_, index): Message => ({
+        id: `history-${index}`,
+        threadId: current.thread.id,
+        parentId: index === 0 ? null : `history-${index - 1}`,
+        role: index % 2 === 0 ? "user" : "assistant",
+        kind: "text",
+        status: "complete",
+        runId: null,
+        text: `Mensagem sintética ${index}`,
+        parts: [{ type: "text", text: `Mensagem sintética ${index}` }],
+        sender: null,
+        source: "local",
+        createdAt: index + 1,
+        updatedAt: index + 1,
+      }),
+    )
+    // Seed the fixture's server-owned history before measuring live turns.
+    history.forEach((message) => {
+      current.store.messages.set(message.id, message)
+    })
+    current.store.updateThread({ threadId: current.thread.id, patch: { activeLeafId: history.at(-1)?.id ?? null } })
+    expect(current.store.activePath({ threadId: current.thread.id })).toHaveLength(2_000)
+    const scopes: Array<string | undefined> = []
+    current.runtime.kernel.services.provide("projects.info", async ({ scope }) => {
+      scopes.push(scope)
+      if (scope !== "turn") throw new Error("Repository inspection must not delay a turn")
+
+      return {
+        project: {
+          id: "project-synthetic",
+          name: "Synthetic",
+          path: current.bot.homeDir,
+          dataDir: current.bot.homeDir,
+          gitRemote: null,
+          defaultBranch: null,
+          createdAt: 1,
+          updatedAt: 1,
+          archivedAt: null,
+        },
+        processes: [],
+        secretNames: [],
+        git: null,
+        hints: [],
+        previews: [],
+      }
+    })
+
+    lagProbe = startEventLoopLagProbe()
+    const runs: Run[] = []
+    for (const text of ["oi", "Confira a pasta de trabalho", ...Array.from({ length: 18 }, () => "oi")])
+      runs.push(await sendTurn(current, text))
+
+    expect(scopes.length).toBeGreaterThan(runs.length)
+    expect(scopes.every((scope) => scope === "turn")).toBe(true)
+    expect(runs.every((run) => run.status === "succeeded")).toBe(true)
+    const dispatchMs = runs.map((run) => (run.usage?.timings?.dispatchReadyAt ?? Infinity) - run.queuedAt)
+    const firstTokenMs = runs.map((run) => (run.usage?.timings?.firstTokenAt ?? Infinity) - run.queuedAt)
+    const lagMs = lagProbe.getSamples()
+    const lagP99 = getPercentile(lagMs, 0.99)
+    console.log(
+      "linked-project-latency",
+      JSON.stringify({ historyMessages: history.length, dispatchMs, firstTokenMs, lagP99 }),
+    )
+    expect(lagP99).toBeLessThan(50)
+    expect(Math.max(0, ...lagMs)).toBeLessThan(500)
+    expect(getPercentile(dispatchMs, 0.95)).toBeLessThan(300)
+    expect(getPercentile(firstTokenMs, 0.95)).toBeLessThan(1_000)
   })
 
   test("a canceled waiting turn records finish without inventing provider milestones", async () => {

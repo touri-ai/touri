@@ -87,7 +87,7 @@ const hasRunRetentionChanged = (runs: Run[], previous: Run[] | undefined, select
 }
 
 /** Five sidebar slots per thread, plus outstanding requests and streams. */
-const getRetainedActivity = (messages: Message[], runs: Run[]): Message[] => {
+export const getRetainedActivity = (messages: Message[], runs: Run[]): Message[] => {
   // Local buckets avoid repeatedly copying the bounded activity collection during pruning.
   const threads = new Map<string, Message[]>()
   messages.forEach((message) => {
