@@ -80,6 +80,16 @@ for (const width of [1440, 390]) {
       .first()
       .click()
     await expect(page.getByTestId("virtual-message-list")).toBeVisible()
+    if (phase === "after") {
+      for (const thumbnail of await page.locator(".evidence-thumbnail").all()) {
+        await thumbnail.scrollIntoViewIfNeeded()
+        await expect(thumbnail.locator("img")).toBeVisible()
+      }
+    }
+    // Measure the gallery after the separately recorded navigation and lazy image loads have settled.
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+    )
     const measurements = await page.evaluate(async () => {
       const samples: number[] = []
       const shifts: number[] = []
