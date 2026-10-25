@@ -160,6 +160,8 @@ export type Bot = {
   avatarShape?: AvatarShape | null
   avatarSeed?: string | null
   instructions: string
+  /** Large instruction text is fetched separately by the editor; never save this placeholder. */
+  instructionsDeferred?: boolean
   instructionsHash: string
   provider: Provider
   model: string | null
@@ -1136,6 +1138,7 @@ export type ApiRoutes = {
   'GET /storage/bot-deletions': { req: {}; res: { deletions: Array<{ botId: Id; phase: string; processed: number; errorCode: string | null; createdAt: EpochMs; updatedAt: EpochMs }> } }
   'GET /bots': { req: {}; res: { bots: Array<Bot> } }
   'POST /bots': { req: CreateBotInput; res: { bot: Bot } }
+  'GET /bots/:id/instructions': { req: {}; res: { instructions: string; instructionsHash: string } }
   'PATCH /bots/:id': { req: Partial<Omit<CreateBotInput, 'jobId'> & { paused: boolean }>; res: { bot: Bot } }
   'DELETE /bots/:id': { req: { name: string; deleteVolumes?: boolean }; res: { botId: Id; phase: string } }
   'GET /bots/:id/mcp': { req: {}; res: { servers: Array<McpServer> } }
