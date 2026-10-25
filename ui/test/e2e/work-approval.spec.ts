@@ -42,13 +42,14 @@ for (const width of [1440, 1000, 760, 390]) {
   test(`Work approval review exposes its card and keyboard controls at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 844 })
     await page.goto("/test/e2e/work-approval-harness.html")
-    const notice = page.locator(".approval-notice")
+    const review = getApprovalReview(page)
     const panel = page.getByRole("button", { name: "Painel do bot", exact: true })
-    await expect(notice).toBeVisible()
+    await expect(review).toBeVisible()
+    if (width > 640) await expect(page.locator(".approval-notice")).toBeHidden()
     await panel.click()
     await expect(page.locator("#bot-panel")).toBeVisible()
 
-    await notice.getByRole("button", { name: "Revisar", exact: true }).click()
+    await review.click()
     const card = page.locator('[data-approval-id="folder-review"]')
     await expect(card).toBeVisible()
     const screenshot = info.outputPath(`work-approval-${width}.png`)
@@ -86,11 +87,11 @@ for (const width of [1440, 760, 390]) {
   test(`Work channel review exposes its approval at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 844 })
     await page.goto("/test/e2e/work-approval-harness.html?channel")
-    const notice = page.locator(".approval-notice")
-    await expect(notice).toBeVisible()
+    const review = getApprovalReview(page)
+    await expect(review).toBeVisible()
     await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
 
-    await notice.getByRole("button", { name: "Revisar", exact: true }).click()
+    await review.click()
 
     const card = page.locator('[data-approval-id="folder-review"]')
     await expect(card).toBeVisible()
@@ -110,21 +111,22 @@ for (const source of ["desktop", "phone"] as const) {
   test(`Work approval resolved on ${source} syncs to both open sessions`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 844 })
     await page.goto("/test/e2e/work-approval-harness.html")
-    await expect(page.locator(".approval-notice")).toBeVisible()
+    await expect(getApprovalReview(page)).toBeVisible()
     const popup = page.waitForEvent("popup")
     await page.evaluate(() => window.open("/test/e2e/work-approval-harness.html?peer"))
     const phone = await popup
     await phone.setViewportSize({ width: 390, height: 844 })
-    await expect(phone.locator(".approval-notice")).toBeVisible()
+    await expect(getApprovalReview(phone)).toBeVisible()
     // Both full app instances subscribe to the same synthetic host; no reload or polling.
-    await page.locator(".notice-review").click()
-    await phone.locator(".notice-review").click()
+    await getApprovalReview(page).click()
+    await getApprovalReview(phone).click()
     const sender = source === "desktop" ? page : phone
 
     await sender.getByRole("button", { name: "Aprovar", exact: true }).click()
 
     for (const session of [page, phone]) {
       await expect(session.getByRole("button", { name: "Aprovar", exact: true })).toHaveCount(0)
+      await expect(session.locator(".sidebar-needs-you")).toHaveCount(0)
       await expect(session.locator(".approval-notice")).toHaveText("Autorizado. Retomando a tarefa.")
       await expect(session.getByRole("button", { name: "Notificações, 1 precisa de atenção" })).toHaveCount(0)
     }
@@ -134,10 +136,10 @@ for (const source of ["desktop", "phone"] as const) {
 test("Work approval review stays within the interaction budget", async ({ page, approvalApp }, info) => {
   await page.setViewportSize({ width: 760, height: 844 })
   await page.goto(approvalApp)
-  await expect(page.locator(".approval-notice")).toBeVisible()
+  await expect(getApprovalReview(page)).toBeVisible()
   await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
   await expect(page.locator(".bot-panel-tabs")).toBeVisible()
-  await page.locator(".notice-review").click()
+  await getApprovalReview(page).click()
   await expect(page.locator('[data-approval-id="folder-review"]')).toBeVisible()
   await page.evaluate(() => document.fonts.ready.then(() => undefined))
   const cdp = await page.context().newCDPSession(page)
@@ -160,7 +162,7 @@ test("Work approval review stays within the interaction budget", async ({ page, 
     const layout = new PerformanceObserver((list) => recordShifts(list.getEntries()))
     const measureReview = (event: MouseEvent) => {
       if (!(event.target instanceof Element)) return
-      if (!event.target.closest('button[aria-label="Revisar aprovação de mark"]')) return
+      if (!event.target.closest("button.sidebar-needs-you")) return
 
       const started = event.timeStamp
       requestAnimationFrame(() =>
@@ -193,7 +195,7 @@ test("Work approval review stays within the interaction budget", async ({ page, 
     const panel = page.getByRole("button", { name: "Painel do bot", exact: true })
     if ((await panel.getAttribute("aria-expanded")) !== "true") await clickControl(page, panel)
     await expect(page.locator(".bot-panel-tabs")).toBeVisible()
-    const review = page.getByRole("button", { name: "Revisar aprovação de mark", exact: true })
+    const review = getApprovalReview(page)
     await review.hover()
     await page.evaluate(() => window.dispatchEvent(new Event("touri:prepare-approval-probe")))
     await expect
@@ -299,3 +301,6 @@ const startApprovalPreview = async (root: string, outDir: string) => {
 
   throw new Error("No free approval preview port")
 }
+
+const getApprovalReview = (page: Page) =>
+  page.locator(".sidebar-needs-you:visible, .approval-notice:visible .notice-review")
