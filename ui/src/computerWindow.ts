@@ -38,6 +38,6 @@ export const openComputerWindow = async (botId: string): Promise<void> => {
 export const closeComputerWindow = async (): Promise<void> => {
   const { getCurrentWindow, Window } = await import("@tauri-apps/api/window")
   const main = await Window.getByLabel("main")
-  await main?.setFocus()
+  await main?.setFocus().catch(() => undefined)
   await getCurrentWindow().close()
 }

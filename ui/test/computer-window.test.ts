@@ -7,10 +7,29 @@ const nativeWindows = vi.hoisted(() => ({
   close: vi.fn(async () => {}),
   focusMain: vi.fn(async () => {}),
 }))
-vi.mock("@tauri-apps/api/window", () => ({
-  Window: { getByLabel: vi.fn(async () => ({ setFocus: nativeWindows.focusMain })) },
-  getCurrentWindow: () => ({ close: nativeWindows.close }),
-}))
+vi.mock("@tauri-apps/api/window", async () => {
+  const { default: capability } = await import("../../src-tauri/capabilities/computer.json")
+  const requirePermission = (permission: string) => {
+    if (!capability.permissions.includes(permission)) throw new Error("Window operation is not authorized")
+  }
+
+  return {
+    Window: {
+      getByLabel: vi.fn(async () => ({
+        setFocus: async () => {
+          requirePermission("core:window:allow-set-focus")
+          await nativeWindows.focusMain()
+        },
+      })),
+    },
+    getCurrentWindow: () => ({
+      close: async () => {
+        requirePermission("core:window:allow-close")
+        await nativeWindows.close()
+      },
+    }),
+  }
+})
 vi.mock("@tauri-apps/api/webviewWindow", () => ({
   WebviewWindow: class {
     static getByLabel = vi.fn(async () => null)
@@ -63,4 +82,20 @@ test("closing the viewer still works after the main window is gone", async () =>
 
   expect(nativeWindows.focusMain).not.toHaveBeenCalled()
   expect(nativeWindows.close).toHaveBeenCalledOnce()
+})
+
+test("closing the viewer still works when focusing the main window fails", async () => {
+  const { closeComputerWindow } = await import("../src/computerWindow")
+  nativeWindows.focusMain.mockRejectedValueOnce(new Error("Synthetic focus failure"))
+
+  await closeComputerWindow()
+
+  expect(nativeWindows.close).toHaveBeenCalledOnce()
+})
+
+test("viewer capability grants only its required local window controls", async () => {
+  const { default: capability } = await import("../../src-tauri/capabilities/computer.json")
+
+  expect(capability.windows).toEqual(["computer-*"])
+  expect(capability.permissions).toEqual(["core:default", "core:window:allow-set-focus", "core:window:allow-close"])
 })
