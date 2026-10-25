@@ -757,6 +757,10 @@ existing bot conversations, permissions and provider sessions are preserved.
 Human channel messages dispatch only to explicitly mentioned bots, in mention order.
 Mentioning a person never dispatches a bot. The explicit everyone and summary actions select
 their own recipients; routines retain the coordinator / mentioned-members / all-members order.
+The UI mock follows the same mention matching for its channel bot roster: a message without a
+matching bot mention remains in history and returns `run: null`; each mentioned member receives
+one reply in first-mention order. Direct messages and explicit everyone/summary actions retain
+their recipients in the mock.
 Multiword names can be quoted (`@"Dev Bot"`). Turns addressed to different members may run
 concurrently within a group, subject to the runtime concurrency limit. Requests sharing a recipient
 retain their order across group conversations, including requests naming several members. Delegated
