@@ -46,6 +46,9 @@ test.each([
   expect(runs.map((run) => run.botId)).toEqual(recipients)
   expect(messages.filter((message) => message.role === "user")).toEqual([result.message])
   expect(messages.filter((message) => message.role === "assistant")).toHaveLength(recipients.length)
+  expect(messages.filter((message) => message.role === "assistant").map((message) => message.sender)).toEqual(
+    recipients.map((id) => ({ id, name: api.getState().bots.find((bot) => bot.id === id)?.name })),
+  )
   expect(result.run?.botId ?? null).toBe(recipients[0] ?? null)
   expect(runs.every((run) => run.status === "succeeded")).toBe(true)
 })
@@ -70,8 +73,10 @@ test("direct messages still start the recipient bot without a mention", async ()
     { id: "thread-onb" },
   )
   await vi.runAllTimersAsync()
+  const { messages } = await api.request("GET /threads/:id/messages", {}, { id: "thread-onb" })
 
   expect(result.run).toMatchObject({ botId: "bot-onb" })
+  expect(messages.find((message) => message.id === result.run?.replyMessageId)?.sender).toBeNull()
 })
 
 test.each([
@@ -92,7 +97,11 @@ test.each([
     await api.request("POST /threads/:id/messages", input, { id: thread.id })
     await vi.runAllTimersAsync()
     const { runs } = await api.request("GET /threads/:id/runs", {}, { id: thread.id })
+    const { messages } = await api.request("GET /threads/:id/messages", {}, { id: thread.id })
 
     expect(runs.map((run) => run.botId)).toEqual(recipients)
+    expect(messages.filter((message) => message.role === "assistant").map((message) => message.sender?.id)).toEqual(
+      recipients,
+    )
   },
 )

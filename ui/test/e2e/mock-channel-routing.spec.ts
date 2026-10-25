@@ -78,6 +78,12 @@ for (const viewport of [
     await expect.poll(async () => (await getRuns()).map((run) => run.botId)).toEqual(["bot-onb"])
     await expect.poll(async () => (await getRuns()).every((run) => run.status === "succeeded")).toBe(true)
     await expect(page.getByTestId("virtual-message-list").getByText(/e o próximo passo está pronto/)).toBeVisible()
+    const [run] = await getRuns()
+    if (!run?.replyMessageId) throw new Error("Missing synthetic reply identity")
+
+    const reply = page.locator(`[data-message-id="${run.replyMessageId}"]`)
+    await page.screenshot({ path: join(directory, `mock-recipient-${viewport.width}.png`), animations: "disabled" })
+    await expect(reply.locator(".message-role")).toHaveText("onb")
   })
 }
 

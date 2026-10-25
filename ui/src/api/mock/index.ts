@@ -780,21 +780,26 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
   let groups: BotGroup[] = []
   const telegram = new Map<string, TelegramIntegration>()
   const startMockReply = (userMessage: Message, botId: string, parentId: string): Run => {
+    const thread = findThread(userMessage.threadId)
+    const bot = thread?.groupId && !thread.groupThreadId ? bots.find((candidate) => candidate.id === botId) : undefined
     const replyId = `message-${messages.length + 1}`
     const run: Run = {
       ...createRun({ id: `run-${runs.size + 1}`, threadId: userMessage.threadId, botId, status: "queued" }),
       requestMessageId: userMessage.id,
       replyMessageId: replyId,
     }
-    const reply = createMessage({
-      id: replyId,
-      threadId: userMessage.threadId,
-      role: "assistant",
-      text: "",
-      status: "streaming",
-      runId: run.id,
-      parentId,
-    })
+    const reply: Message = {
+      ...createMessage({
+        id: replyId,
+        threadId: userMessage.threadId,
+        role: "assistant",
+        text: "",
+        status: "streaming",
+        runId: run.id,
+        parentId,
+      }),
+      sender: bot ? { id: bot.id, name: bot.name } : null,
+    }
     messages = [...messages, reply]
     runs.set(run.id, run)
     emit({ type: "message.created", message: reply })
