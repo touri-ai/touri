@@ -5,6 +5,12 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "Reload app": "Recarregar app",
+  "Reload this area": "Recarregar esta área",
+  "Your conversations are saved. Reload to try again.":
+    "Suas conversas continuam salvas. Recarregue para tentar novamente.",
+  "The conversation could not be loaded again. Reload the app to try again. Saved drafts will be kept.":
+    "Não foi possível carregar a conversa novamente. Recarregue o app para tentar de novo. Os rascunhos salvos serão mantidos.",
   "Não foi possível parar o processo do bot. Verifique as permissões e tente novamente.":
     "Não foi possível parar o processo do bot. Verifique as permissões e tente novamente.",
   "Não foi possível salvar o encerramento da tarefa. Tente novamente.":
