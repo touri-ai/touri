@@ -527,6 +527,20 @@ Delivery:
 
 Changing a SOUL takes effect on the next turn without replacing the session.
 
+Bot lists, edit responses and update events defer instructions larger than 8 KiB with
+`instructionsDeferred: true`. The authenticated, bot-scoped `GET /bots/:id/instructions`
+returns the complete text as a cancellable plain-text stream. Settings show a localized loading
+state and prevent instruction edits until it finishes; saving other settings omits instructions.
+Only an edited instruction field is sent back, so a deferred placeholder never erases stored text.
+Protocol version 2 identifies this contract. The optional cloud connection resolves the complete
+instructions before forwarding an update.
+
+Instruction edits retain the existing request allowance and filesystem snapshot/rollback behavior.
+An isolated writer hashes and commits instructions and bot metadata in one SQLite transaction,
+compares a fresh metadata snapshot, and records an atomic acknowledgement. Cancellation stops the
+writer and checks that acknowledgement before deciding whether to restore SOUL.md. Shutdown
+cancels outstanding recovery reads and waits for them to settle before closing the database.
+
 ### 3.3 Sessions: one native session per thread
 - **Resume.** `provider_sessions` has at most one `active` row per (thread, provider).
   - Codex: `thread/resume {threadId, path?: rolloutPath, cwd, developerInstructions, ...}`.

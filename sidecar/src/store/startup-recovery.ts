@@ -11,9 +11,9 @@ export const createStartupRecovery = (
   kernel: Kernel,
   runStage?: PerformanceStageRunner,
   reconcileHome = reconcileBotHome,
+  reader = createStoreReader((kernel.db as Database).filename),
 ) => {
   const database = kernel.db as Database
-  const reader = createStoreReader(database.filename)
   const bots = new Map<string, Promise<void>>()
   const threads = new Map<string, Promise<void>>()
   let stopped = false
@@ -38,7 +38,10 @@ export const createStartupRecovery = (
       if (!bot || stopped) return
 
       await measure("store_bot_home_startup_recovery", () => reconcileHome(kernel, bot))
-    })()
+    })().catch((error: unknown) => {
+      bots.delete(botId)
+      throw error
+    })
     bots.set(botId, ready)
     return ready
   }
@@ -84,7 +87,7 @@ export const createStartupRecovery = (
       await yieldBackground()
     }
   }).catch(() => {
-    kernel.log({ level: "error", module: "store", msg: "STORE_STARTUP_RECOVERY_FAILED" })
+    if (!stopped) kernel.log({ level: "error", module: "store", msg: "STORE_STARTUP_RECOVERY_FAILED" })
   })
 
   return {
@@ -95,7 +98,7 @@ export const createStartupRecovery = (
       stopped = true
       reader.dispose()
       await ready
-      await Promise.all(Array.from(threads.values()).concat(Array.from(bots.values())))
+      await Promise.allSettled(Array.from(threads.values()).concat(Array.from(bots.values())))
     },
   }
 }
