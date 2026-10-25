@@ -1,4 +1,4 @@
-import type { Bot, UiEventEnvelope } from "@touri/contracts"
+import type { Bot, BrowserTabInfo, UiEventEnvelope } from "@touri/contracts"
 import { afterEach, expect, test, vi } from "vitest"
 import type { UiApi } from "../src/api/client"
 import { startInlineFrameSource } from "../src/features/desktop/inlineFrameSource"
@@ -410,4 +410,105 @@ test("a worker frame from before takeover cannot return after public preview is 
 
   expect(reset).toHaveBeenCalledOnce()
   expect(frame).not.toHaveBeenCalled()
+})
+
+const recoverySources = new Set<() => void>()
+afterEach(() => {
+  recoverySources.forEach((stop) => {
+    stop()
+  })
+  recoverySources.clear()
+})
+
+const getRecoveryFixture = () => {
+  vi.useFakeTimers()
+  installPreviewWorker(false)
+  const listener = { current: (_envelope: UiEventEnvelope) => {} }
+  const tab: BrowserTabInfo & { ownerBotId: string } = {
+    tabId: "recovery-tab",
+    ownerBotId: "recovery-bot",
+    title: "Synthetic page",
+    url: "https://example.test",
+    state: "live",
+    openerTabId: null,
+    heldByUser: false,
+    lastUsedAt: 1,
+  }
+  const api = {
+    request: vi.fn(async (route: string) =>
+      route === "GET /browser/tabs"
+        ? { tabs: [tab] }
+        : { image: "data:image/jpeg;base64,ZmFrZQ==", title: tab.title, url: tab.url },
+    ),
+    subscribe: (next: typeof listener.current) => {
+      listener.current = next
+      return () => {}
+    },
+    isMock: false,
+  } as UiApi
+  const frame = vi.fn()
+  const reset = vi.fn()
+  const stop = startInlineFrameSource(
+    api,
+    { id: tab.ownerBotId, machine: "local" },
+    tab.tabId,
+    frame,
+    vi.fn(),
+    undefined,
+    {
+      onReset: reset,
+    },
+  )
+  recoverySources.add(stop)
+  const emitTab = (changes: Partial<BrowserTabInfo> = {}) =>
+    listener.current({ seq: 1, at: 1, event: { type: "browser.tab", tab: Object.assign({}, tab, changes) } })
+  const deliverFrame = () => {
+    const worker = mock.workers.at(-1)
+    const message = worker?.sent.at(-1)?.message
+    if (!worker || !message) throw new Error("Missing pending recovery frame")
+    worker.dispatchEvent(
+      new MessageEvent("message", { data: Object.assign({}, message, { src: "data:image/jpeg;base64,ZmFrZQ==" }) }),
+    )
+  }
+
+  return { api, frame, reset, emitTab, deliverFrame }
+}
+
+test("metadata arriving during decoding does not discard an authorized preview frame", async () => {
+  const fixture = getRecoveryFixture()
+  await vi.advanceTimersByTimeAsync(0)
+
+  fixture.emitTab({ title: "Updated title", lastUsedAt: 2 })
+  fixture.deliverFrame()
+  await vi.advanceTimersByTimeAsync(0)
+
+  expect(fixture.frame).toHaveBeenCalledOnce()
+  expect(fixture.reset).not.toHaveBeenCalled()
+})
+
+test("navigation keeps the last safe image until a replacement is ready", async () => {
+  const fixture = getRecoveryFixture()
+  await vi.advanceTimersByTimeAsync(0)
+  fixture.deliverFrame()
+  await vi.advanceTimersByTimeAsync(0)
+
+  fixture.emitTab({ url: "https://example.test/results" })
+
+  expect(fixture.frame).toHaveBeenCalledOnce()
+  expect(fixture.reset).not.toHaveBeenCalled()
+})
+
+test("a reconnecting tab keeps polling and recovers without a new metadata event", async () => {
+  const fixture = getRecoveryFixture()
+  await vi.advanceTimersByTimeAsync(0)
+  fixture.deliverFrame()
+  await vi.advanceTimersByTimeAsync(0)
+
+  fixture.emitTab({ state: "unloaded" })
+  await vi.advanceTimersByTimeAsync(1_000)
+  fixture.deliverFrame()
+  await vi.advanceTimersByTimeAsync(0)
+
+  expect(fixture.frame).toHaveBeenCalledTimes(2)
+  expect(fixture.reset).not.toHaveBeenCalled()
 })

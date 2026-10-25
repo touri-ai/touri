@@ -595,21 +595,25 @@ const lastActiveThread = (threads: Thread[], runs: Run[], botId: Id, rememberedI
 const isWorkRun = (run: Run): boolean =>
   run.status === "queued" || (run.kind !== "coordination" && ["starting", "running"].includes(run.status))
 
-const getProcessScope = (bot: Bot | undefined): string | null => {
-  if (!bot) return null
-  if (bot.machine === "local") return "local"
+const getProcessVmBotId = (bot: Bot | undefined): Id | null => (bot?.machine === "vm" ? bot.id : null)
 
-  return `${bot.machine}:${bot.id}`
+const isProcessScopeCurrent = (current: WorkspaceData, projectId: Id, vmBotId?: Id | null): boolean => {
+  const bot = current.bots.find((candidate) => candidate.id === current.selectedBotId)
+
+  return (
+    current.activeProjectId === projectId &&
+    bot?.projectId === projectId &&
+    getProcessVmBotId(bot) === (vmBotId ?? null)
+  )
 }
 
-/** Keep a process list only when both its project and computer scope still match the selected bot. */
+/** Navigation and Preview use the same project/computer identity, including bot updates in place. */
 const getProcessesForBot = (current: WorkspaceData, bot: Bot | undefined): ProcessEntry[] => {
   if (!bot?.projectId || current.activeProjectId !== bot.projectId) return []
 
-  const previousBot = current.bots.find((candidate) => candidate.id === current.selectedBotId)
-  if (getProcessScope(previousBot) !== getProcessScope(bot)) return []
-
-  return current.processes
+  return current.processes.filter(
+    (entry) => entry.spec.projectId === bot.projectId && (entry.spec.vmBotId ?? null) === getProcessVmBotId(bot),
+  )
 }
 
 const getDraftThread = (botId: Id, groupId?: Id): Thread => {
@@ -759,12 +763,12 @@ export const useWorkspace = (
         const response = await api.request("GET /projects/:id/processes", vmBotId ? { vmBotId } : {}, { id: projectId })
         if (attempt !== generation.current || projectAttempt !== projectGeneration.current) return
         setData((current) =>
-          current.activeProjectId === projectId ? { ...current, processes: response.processes } : current,
+          isProcessScopeCurrent(current, projectId, vmBotId) ? { ...current, processes: response.processes } : current,
         )
       } catch {
         if (attempt !== generation.current || projectAttempt !== projectGeneration.current) return
         setData((current) =>
-          current.activeProjectId === projectId
+          isProcessScopeCurrent(current, projectId, vmBotId)
             ? { ...current, processes: [], notice: t("Project processes are unavailable.") }
             : current,
         )
@@ -1257,7 +1261,13 @@ export const useWorkspace = (
           }
         if (event.type === "group.updated") return { ...current, groups: uniqueById([...current.groups, event.group]) }
         if (event.type === "thread.updated" && event.thread.groupThreadId) return current
-        if (event.type === "bot.updated") return { ...current, bots: uniqueById([...current.bots, event.bot]) }
+        if (event.type === "bot.updated")
+          return {
+            ...current,
+            bots: uniqueById([...current.bots, event.bot]),
+            processes:
+              event.bot.id === current.selectedBotId ? getProcessesForBot(current, event.bot) : current.processes,
+          }
         if (event.type === "bot.deleted") return withoutBot(current, event.botId)
         if (event.type === "project.created")
           return { ...current, projects: uniqueById([...current.projects, event.project]) }
@@ -1353,7 +1363,15 @@ export const useWorkspace = (
         if (event.type === "preview.available")
           return {
             ...current,
-            previews: [...current.previews.filter((preview) => preview.url !== event.preview.url), event.preview],
+            previews: [
+              ...current.previews.filter(
+                (preview) =>
+                  preview.url !== event.preview.url ||
+                  preview.projectId !== event.preview.projectId ||
+                  (preview.vmBotId ?? null) !== (event.preview.vmBotId ?? null),
+              ),
+              event.preview,
+            ],
           }
         if (event.type === "import.progress")
           return { ...current, importProgress: { phase: event.phase, done: event.done, total: event.total } }
@@ -1963,16 +1981,13 @@ export const useWorkspace = (
       input: ApiRoutes["PUT /projects/:id/processes/:name"]["req"],
     ): Promise<void> => {
       const bot = data.bots.find((bot) => bot.id === data.selectedBotId)
-      const vmBotId = bot?.machine === "vm" ? bot.id : null
+      const vmBotId = getProcessVmBotId(bot)
       await api.request("PUT /projects/:id/processes/:name", { ...input, vmBotId }, { id: projectId, name })
-      const response = await api.request("GET /projects/:id/processes", vmBotId ? { vmBotId } : {}, { id: projectId })
-      setData((current) => ({
-        ...current,
-        activeProjectId: projectId,
-        processes: response.processes,
-      }))
+      if (!isProcessScopeCurrent(currentData.current, projectId, vmBotId)) return
+
+      await loadProject(projectId, vmBotId ?? undefined)
     },
-    [api, data.bots, data.selectedBotId],
+    [api, data.bots, data.selectedBotId, loadProject],
   )
 
   const startProcess = useCallback(

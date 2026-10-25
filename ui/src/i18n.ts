@@ -816,6 +816,7 @@ export const ptBR = {
   "The browser did not send a preview in time. Retry the preview or stop the task.":
     "O navegador não enviou a prévia no prazo. Tente carregar a prévia novamente ou pare a tarefa.",
   "Retry preview": "Tentar carregar prévia novamente",
+  "Reconnecting browser preview…": "Reconectando a prévia do navegador…",
   "O navegador encerrou por possível falta de memória. Feche abas ou libere memória no servidor e tente novamente.":
     "O navegador encerrou por possível falta de memória. Feche abas ou libere memória no servidor e tente novamente.",
   "O processo do navegador encerrou inesperadamente. Tente abrir a página novamente.":
@@ -4135,6 +4136,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "The browser did not send a preview in time. Retry the preview or stop the task.":
     "The browser did not send a preview in time. Retry the preview or stop the task.",
   "Retry preview": "Retry preview",
+  "Reconnecting browser preview…": "Reconnecting browser preview…",
   "O navegador encerrou por possível falta de memória. Feche abas ou libere memória no servidor e tente novamente.":
     "The browser stopped, possibly because it ran out of memory. Close tabs or free server memory and retry.",
   "O processo do navegador encerrou inesperadamente. Tente abrir a página novamente.":
