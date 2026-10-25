@@ -14,6 +14,7 @@ import type {
 } from "@touri/contracts"
 import { failureRetryHint, sanitizeDiagnostic } from "@touri/contracts/run-failure"
 import {
+  type ComponentProps,
   Fragment,
   lazy,
   memo,
@@ -201,6 +202,23 @@ const routineTriggerKeys: Record<RoutineRun["triggerSource"], TranslationKey> = 
 }
 const estimatedRowHeight = 158
 
+const getMessageBranchKey = (message: Message): string =>
+  JSON.stringify([message.threadId, message.parentId, message.role])
+
+const getMessageBranches = (messages: Message[]): Map<string, Message[]> => {
+  // This render-local index avoids scanning all history once for every visible row.
+  const branches = new Map<string, Message[]>()
+  messages.forEach((message) => {
+    if (message.kind === "notice") return
+    const key = getMessageBranchKey(message)
+    const siblings = branches.get(key) ?? []
+    siblings.push(message)
+    branches.set(key, siblings)
+  })
+
+  return branches
+}
+
 const getTimelineOffsets = (timeline: Array<{ id: string }>, heights: Record<string, number>): number[] => {
   const offsets = [0]
   let offset = 0
@@ -317,6 +335,11 @@ export const VirtualMessageList = ({
     messages[0]?.threadId ?? "",
   )
   const runsById = useMemo(() => new Map(runs.map((run) => [run.id, run])), [runs])
+  const hasRoutineRuns = useMemo(() => runs.some(isRoutineRun), [runs])
+  const branches = useMemo(
+    () => (flatHistory ? new Map<string, Message[]>() : getMessageBranches(allMessages)),
+    [allMessages, flatHistory],
+  )
   const routineRunHeaderByMessage = useMemo(() => {
     const routineRunsById = new Map(routineRuns.map((routineRun) => [routineRun.id, routineRun]))
     const routinesById = new Map(routines.map((routine) => [routine.id, routine]))
@@ -661,7 +684,7 @@ export const VirtualMessageList = ({
                     </p>
                   </div>
                 )
-              const run = runs.find((run) => run.id === saved.runId)
+              const run = runsById.get(saved.runId ?? "")
               const finished = run && ["succeeded", "failed", "canceled", "interrupted"].includes(run.status)
               const message: Message =
                 finished && saved.status === "streaming"
@@ -684,88 +707,79 @@ export const VirtualMessageList = ({
                           : saved.parts,
                     }
                   : saved
-              const siblings = flatHistory
-                ? []
-                : allMessages.filter(
-                    (candidate) =>
-                      candidate.threadId === message.threadId &&
-                      candidate.parentId === message.parentId &&
-                      candidate.role === message.role &&
-                      candidate.kind !== "notice",
-                  )
+              const siblings = flatHistory ? [] : (branches.get(getMessageBranchKey(message)) ?? [])
               const branchIndex = flatHistory ? 0 : siblings.findIndex((candidate) => candidate.id === message.id)
               return (
-                <div key={message.id} className="message-row" data-message-row={message.id}>
-                  {(index === 0 || !sameCalendarDay(visible[index - 1]?.createdAt ?? 0, message.createdAt)) && (
-                    <div className="day-divider">
-                      <span>{formatDaySeparator(message.createdAt)}</span>
-                    </div>
+                <MessageBubble
+                  key={message.id}
+                  dayLabel={
+                    index === 0 || !sameCalendarDay(visible[index - 1]?.createdAt ?? 0, message.createdAt)
+                      ? formatDaySeparator(message.createdAt)
+                      : null
+                  }
+                  inserted={insertedMessages.has(message.id)}
+                  vmBotId={vmBotId}
+                  currentPersonId={currentPersonId}
+                  machine={machine}
+                  message={message}
+                  searchFocused={focusMessage?.messageId === message.id}
+                  run={run}
+                  browserActivity={browserContinuations.activities.get(message.id)}
+                  hideBrowserActivity={browserContinuations.hidden.has(message.id)}
+                  routineReply={hasRoutineRuns && getRoutineReplyRun(message, runs, allMessages) !== undefined}
+                  routinePrompt={
+                    !mainThread &&
+                    hasRoutineRuns &&
+                    message.role === "user" &&
+                    runs.some((candidate) => isRoutineRun(candidate) && candidate.requestMessageId === message.id)
+                  }
+                  routineHeader={routineRunHeaderByMessage.get(message.id)}
+                  automaticRecovery={Boolean(
+                    run?.groupTurnId &&
+                      ["cli_crash", "oom", "machine_service_unavailable", "app_restart"].includes(
+                        run.errorClass ?? "",
+                      ) &&
+                      runs.some(
+                        (candidate) =>
+                          (candidate.id === run.groupTurnId &&
+                            ["queued", "starting", "running"].includes(candidate.status)) ||
+                          (candidate.threadId === run.threadId &&
+                            candidate.botId === run.botId &&
+                            isSameChannelRequest(run, candidate, runsById) &&
+                            (candidate.queuedAt > run.queuedAt ||
+                              (candidate.queuedAt === run.queuedAt && candidate.id > run.id))),
+                      ),
                   )}
-                  <MessageBubble
-                    inserted={insertedMessages.has(message.id)}
-                    vmBotId={vmBotId}
-                    currentPersonId={currentPersonId}
-                    machine={machine}
-                    message={message}
-                    searchFocused={focusMessage?.messageId === message.id}
-                    run={run}
-                    browserActivity={browserContinuations.activities.get(message.id)}
-                    hideBrowserActivity={browserContinuations.hidden.has(message.id)}
-                    routineReply={getRoutineReplyRun(message, runs, allMessages) !== undefined}
-                    routinePrompt={
-                      !mainThread &&
-                      message.role === "user" &&
-                      runs.some((candidate) => isRoutineRun(candidate) && candidate.requestMessageId === message.id)
-                    }
-                    routineHeader={routineRunHeaderByMessage.get(message.id)}
-                    automaticRecovery={Boolean(
-                      run?.groupTurnId &&
-                        ["cli_crash", "oom", "machine_service_unavailable", "app_restart"].includes(
-                          run.errorClass ?? "",
-                        ) &&
-                        runs.some(
-                          (candidate) =>
-                            (candidate.id === run.groupTurnId &&
-                              ["queued", "starting", "running"].includes(candidate.status)) ||
-                            (candidate.threadId === run.threadId &&
-                              candidate.botId === run.botId &&
-                              isSameChannelRequest(run, candidate, runsById) &&
-                              (candidate.queuedAt > run.queuedAt ||
-                                (candidate.queuedAt === run.queuedAt && candidate.id > run.id))),
-                        ),
-                    )}
-                    recovered={
-                      message.status === "failed" &&
-                      (runs.some(
+                  recovered={
+                    message.status === "failed" &&
+                    (runs.some(
+                      (later) =>
+                        later.threadId === message.threadId &&
+                        later.status === "succeeded" &&
+                        (!run?.groupTurnId || isSameChannelRequest(run, later, runsById)) &&
+                        (later.finishedAt ?? later.startedAt ?? later.queuedAt) >
+                          (run?.finishedAt ?? message.updatedAt),
+                    ) ||
+                      allMessages.some(
                         (later) =>
                           later.threadId === message.threadId &&
-                          later.status === "succeeded" &&
-                          (!run?.groupTurnId || isSameChannelRequest(run, later, runsById)) &&
-                          (later.finishedAt ?? later.startedAt ?? later.queuedAt) >
-                            (run?.finishedAt ?? message.updatedAt),
-                      ) ||
-                        allMessages.some(
-                          (later) =>
-                            later.threadId === message.threadId &&
-                            later.role === "assistant" &&
-                            later.status === "complete" &&
-                            (!run?.groupTurnId ||
-                              isSameChannelRequest(run, runsById.get(later.runId ?? ""), runsById)) &&
-                            later.createdAt > (run?.finishedAt ?? message.updatedAt),
-                        ))
-                    }
-                    {...(api ? { api } : {})}
-                    siblings={siblings}
-                    branchIndex={branchIndex}
-                    onSwitchBranch={rowCallbacks.onSwitchBranch}
-                    onRetry={rowCallbacks.onRetry}
-                    onEdit={onEdit ? rowCallbacks.onEdit : undefined}
-                    onCancel={onCancel ? rowCallbacks.onCancel : undefined}
-                    editDisabled={editDisabled}
-                    showActivityStop={showActivityStop}
-                    onImageLoad={measureRowOnNextFrame}
-                  />
-                </div>
+                          later.role === "assistant" &&
+                          later.status === "complete" &&
+                          (!run?.groupTurnId || isSameChannelRequest(run, runsById.get(later.runId ?? ""), runsById)) &&
+                          later.createdAt > (run?.finishedAt ?? message.updatedAt),
+                      ))
+                  }
+                  {...(api ? { api } : {})}
+                  siblings={siblings}
+                  branchIndex={branchIndex}
+                  onSwitchBranch={rowCallbacks.onSwitchBranch}
+                  onRetry={rowCallbacks.onRetry}
+                  onEdit={onEdit ? rowCallbacks.onEdit : undefined}
+                  onCancel={onCancel ? rowCallbacks.onCancel : undefined}
+                  editDisabled={editDisabled}
+                  showActivityStop={showActivityStop}
+                  onImageLoad={measureRowOnNextFrame}
+                />
               )
             })}
           </div>
@@ -1422,7 +1436,19 @@ const sameBubbleProps = (previous: Record<string, unknown>, next: Record<string,
     return Object.is(before, after)
   })
 
-const MessageBubble = memo(MessageBubbleRow, sameBubbleProps)
+/** Keep row chrome inside the memo boundary so layout passes reuse unchanged elements too. */
+const MessageRow = ({ dayLabel, ...props }: ComponentProps<typeof MessageBubbleRow> & { dayLabel: string | null }) => (
+  <div className="message-row" data-message-row={props.message.id}>
+    {dayLabel && (
+      <div className="day-divider">
+        <span>{dayLabel}</span>
+      </div>
+    )}
+    <MessageBubbleRow {...props} />
+  </div>
+)
+
+const MessageBubble = memo(MessageRow, sameBubbleProps)
 
 export const ChatPanel = ({
   currentPersonId = "owner",

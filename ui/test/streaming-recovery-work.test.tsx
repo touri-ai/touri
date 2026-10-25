@@ -8,87 +8,104 @@ import { getStreamingHistory, longAnswer } from "./e2e/streaming-history-fixture
 
 afterEach(cleanup)
 
-it.each([13, 250])("does not search successful history for recovery during deltas with %i turns", async (turns) => {
-  const history = getStreamingHistory("thread", null, turns)
-  const latest = history.messages.at(-1)
-  const latestRun = history.runs.at(-1)
-  if (!latest || !latestRun) throw new Error("Missing synthetic reply")
-  // A local counter avoids allocating a spy record for every historical candidate read.
-  let historicalReads = 0
-  const observedRuns = history.runs.slice(0, -1).map((run) =>
-    Object.defineProperty(Object.assign({}, run), "finishedAt", {
-      get: () => {
-        historicalReads += 1
-        return run.finishedAt
-      },
-    }),
-  )
-  const activeRun = Object.assign({}, latestRun, { status: "running" as const, finishedAt: null })
-  const runs = observedRuns.concat(activeRun)
-  const plainRuns = history.runs.slice(0, -1).concat(activeRun)
-  // Profiler uses an imperative callback; this bounded recorder stays local to the test.
-  const renderDurations: number[] = []
-  const onRetry = vi.fn(async () => {})
-  const onSwitchBranch = vi.fn()
-  const getMessages = (text: string): Message[] =>
-    history.messages.slice(0, -1).concat(
-      Object.assign({}, latest, {
-        status: "streaming" as const,
-        text,
-        parts: latest.parts.filter((part) => part.type !== "text").concat({ type: "text", text }),
+it.each([13, 250, 1_000])(
+  "does not search successful history for recovery during deltas with %i turns",
+  async (turns) => {
+    const history = getStreamingHistory("thread", null, turns)
+    // Count reads without allocating a spy call for each historical candidate.
+    let branchReads = 0
+    const messages = history.messages.map((message) =>
+      Object.defineProperty(Object.assign({}, message), "parentId", {
+        get: () => {
+          branchReads += 1
+          return message.parentId
+        },
       }),
     )
-  const getView = (text: string, currentRuns: Run[]) => (
-    <Profiler id="streaming-list" onRender={(_id, _phase, duration) => renderDurations.push(duration)}>
-      <VirtualMessageList
-        messages={getMessages(text)}
-        runs={currentRuns}
-        onRetry={onRetry}
-        onSwitchBranch={onSwitchBranch}
-      />
-    </Profiler>
-  )
-  const view = render(getView("Resposta", runs))
-  const list = screen.getByTestId("virtual-message-list")
-  Object.defineProperties(list, {
-    clientHeight: { value: 900 },
-    scrollHeight: { value: turns * 2 * 158 },
-  })
-  fireEvent.scroll(list, { target: { scrollTop: turns * 2 * 158 - 900 } })
-  historicalReads = 0
-  const texts = Array.from({ length: 30 }, (_, index) => longAnswer.slice(0, 80 + index * 20))
+    const latest = messages.at(-1)
+    const latestRun = history.runs.at(-1)
+    if (!latest || !latestRun) throw new Error("Missing synthetic reply")
+    // A local counter avoids allocating a spy record for every historical candidate read.
+    let historicalReads = 0
+    const observedRuns = history.runs.slice(0, -1).map((run) =>
+      Object.defineProperty(Object.assign({}, run), "finishedAt", {
+        get: () => {
+          historicalReads += 1
+          return run.finishedAt
+        },
+      }),
+    )
+    const activeRun = Object.assign({}, latestRun, { status: "running" as const, finishedAt: null })
+    const runs = observedRuns.concat(activeRun)
+    const plainRuns = history.runs.slice(0, -1).concat(activeRun)
+    // Profiler uses an imperative callback; this bounded recorder stays local to the test.
+    const renderDurations: number[] = []
+    const onRetry = vi.fn(async () => {})
+    const onSwitchBranch = vi.fn()
+    const getMessages = (text: string): Message[] =>
+      messages.slice(0, -1).concat(
+        Object.assign({}, latest, {
+          status: "streaming" as const,
+          text,
+          parts: latest.parts.filter((part) => part.type !== "text").concat({ type: "text", text }),
+        }),
+      )
+    const getView = (text: string, currentRuns: Run[]) => (
+      <Profiler id="streaming-list" onRender={(_id, _phase, duration) => renderDurations.push(duration)}>
+        <VirtualMessageList
+          messages={getMessages(text)}
+          runs={currentRuns}
+          onRetry={onRetry}
+          onSwitchBranch={onSwitchBranch}
+        />
+      </Profiler>
+    )
+    const view = render(getView("Resposta", runs))
+    const list = screen.getByTestId("virtual-message-list")
+    Object.defineProperties(list, {
+      clientHeight: { value: 900 },
+      scrollHeight: { value: turns * 2 * 158 },
+    })
+    fireEvent.scroll(list, { target: { scrollTop: turns * 2 * 158 - 900 } })
+    historicalReads = 0
+    branchReads = 0
+    const texts = Array.from({ length: 30 }, (_, index) => longAnswer.slice(0, 80 + index * 20))
 
-  texts.forEach((text) => {
-    view.rerender(getView(text, runs))
-  })
-  const historicalRecoveryReads = historicalReads
-  // Measure actual process CPU separately, with ordinary run properties and the identical deltas.
-  view.rerender(getView("Resposta", plainRuns))
-  const renderStart = renderDurations.length
-  const cpuStart = cpuUsage()
-  texts.forEach((text) => {
-    view.rerender(getView(text, plainRuns))
-  })
-  const cpu = cpuUsage(cpuStart)
-  const renders = renderDurations.slice(renderStart)
-  const orderedRenders = renders.toSorted((left, right) => left - right)
+    texts.forEach((text) => {
+      view.rerender(getView(text, runs))
+    })
+    const historicalRecoveryReads = historicalReads
+    const historicalBranchReads = branchReads
+    // Measure actual process CPU separately, with ordinary run properties and the identical deltas.
+    view.rerender(getView("Resposta", plainRuns))
+    const renderStart = renderDurations.length
+    const cpuStart = cpuUsage()
+    texts.forEach((text) => {
+      view.rerender(getView(text, plainRuns))
+    })
+    const cpu = cpuUsage(cpuStart)
+    const renders = renderDurations.slice(renderStart)
+    const orderedRenders = renders.toSorted((left, right) => left - right)
 
-  console.log(
-    JSON.stringify({
-      turns,
-      deltas: texts.length,
-      historicalRecoveryReads,
-      cpuMs: (cpu.user + cpu.system) / 1000,
-      renderCommits: renders.length,
-      renderMs: renders.reduce((sum, duration) => sum + duration, 0),
-      renderP99Ms: orderedRenders[Math.ceil(orderedRenders.length * 0.99) - 1] ?? 0,
-    }),
-  )
-  await waitFor(() =>
-    expect(view.container.querySelector(`[data-message-id="${latest.id}"]`)?.textContent).toContain("Etapa 1"),
-  )
-  expect(historicalRecoveryReads).toBe(0)
-})
+    console.log(
+      JSON.stringify({
+        turns,
+        deltas: texts.length,
+        historicalRecoveryReads,
+        historicalBranchReads,
+        cpuMs: (cpu.user + cpu.system) / 1000,
+        renderCommits: renders.length,
+        renderMs: renders.reduce((sum, duration) => sum + duration, 0),
+        renderP99Ms: orderedRenders[Math.ceil(orderedRenders.length * 0.99) - 1] ?? 0,
+      }),
+    )
+    await waitFor(() =>
+      expect(view.container.querySelector(`[data-message-id="${latest.id}"]`)?.textContent).toContain("Etapa 1"),
+    )
+    expect(historicalRecoveryReads).toBe(0)
+    expect(historicalBranchReads).toBeLessThan(messages.length * texts.length * 3)
+  },
+)
 
 it.each(["failed", "streaming"] as const)("collapses recovered errors with stored status %s", (status) => {
   const history = getStreamingHistory("thread", null, 1)

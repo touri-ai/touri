@@ -27,7 +27,7 @@ import type {
 } from "@touri/contracts"
 import { canMarkNotificationRead } from "@touri/contracts"
 import { isApprovalNoticeTitle } from "@touri/contracts/approval-summary"
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react"
+import { startTransition, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react"
 import type { UiApi } from "./api/client"
 import {
   countPendingRequests,
@@ -48,7 +48,7 @@ import { getSidebarReadThreadIds } from "./sidebarThreads"
 import { getStorageScope } from "./storageScope"
 import { getWorkChannelCache, saveWorkChannelCache } from "./workChannelCache"
 import { updateActivityStream } from "./workspaceMemory"
-import { activeRun, activityMessage, retainWorkspace } from "./workspaceRetention"
+import { activeRun, activityMessage, getRetainedActivity, retainWorkspace } from "./workspaceRetention"
 import { readWorkspaceState, saveWorkspaceState, type ThreadCreationStatus } from "./workspaceState"
 
 type ProcessEntry = { spec: ProcessSpec; run: ProcessRunState | null }
@@ -1245,7 +1245,7 @@ export const useWorkspace = (
           if (load) load.terminalRevision = revision
         }
       }
-      setData((current) => {
+      const updateWorkspace = (current: WorkspaceData): WorkspaceData => {
         if (event.type === "machine.updated")
           return {
             ...current,
@@ -1413,7 +1413,15 @@ export const useWorkspace = (
                 : current.computerGrantRequest,
           }
         return current
-      })
+      }
+      // Keep ordered live patches together while allowing typing to interrupt their render.
+      // Recovery snapshots must not overtake buffered patches from an in-flight history read.
+      const livePatch = event.type === "message.delta" || event.type === "message.parts"
+      if (livePatch && !threadLoads.current.has(event.threadId)) {
+        startTransition(() => setData(updateWorkspace))
+        return
+      }
+      setData(updateWorkspace)
     })
     // Browsers can suspend a socket without closing it. Refresh attention on return even when
     // there was no reconnect frame; never re-send a request or a decision during recovery.
@@ -2143,8 +2151,9 @@ export const useWorkspace = (
         continue
       rows.set(key, message)
     }
-    return reconcileApprovalMessages([...rows.values()], data.notifications)
-  }, [data.activityMessages, data.messages, data.notifications])
+    // The selected transcript stays complete; sidebar and avatar readers need only current activity.
+    return getRetainedActivity(reconcileApprovalMessages([...rows.values()], data.notifications), data.runs)
+  }, [data.activityMessages, data.messages, data.notifications, data.runs])
 
   const approvalMessages = useMemo(
     () => reconcileApprovalMessages(data.messages, data.notifications),
