@@ -158,6 +158,14 @@ shared bot identity and lifecycle status alone do not establish duplicate provid
 Both records remain available for history and cancellation. Recent diagnostics retain the latest
 20 runs, selecting that window before enriching identity through indexed relationship lookups.
 
+Runtime persistence reads by run ID, thread, or original request retain the same identity after a
+restart: a linked member has `kind: execution`, its coordination parent in `groupTurnId`, and the
+visible channel in `groupThreadId`. Its `threadId` remains the internal execution conversation.
+Direct executions have no `groupTurnId` and a null `groupThreadId`. Replaying an active or completed
+user request returns the existing run with these links; it does not start another execution.
+These reads use indexed relationships and preserve their thread/request filters, ordering, and
+existing result limits.
+
 Event-loop lag warnings count only `starting` and `running` execution records in `activeRuns`.
 Persisted channel coordination records in `group_turns` are excluded, so one linked member execution
 counts once. Independent starting executions still count; queued and terminal records do not.

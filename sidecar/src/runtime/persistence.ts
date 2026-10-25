@@ -210,6 +210,15 @@ const canUseDatabase = (value: unknown): value is Database => {
   }
 }
 
+export const RUN_IDENTITY_SELECT = `SELECT r.*, link.turn_id AS group_turn_id,
+  CASE WHEN EXISTS(SELECT 1 FROM group_turns coordination WHERE coordination.run_id = r.id)
+    THEN 'coordination' ELSE 'execution' END AS run_kind,
+  COALESCE(root.thread_id, t.group_thread_id) AS group_thread_id
+  FROM runs r
+  LEFT JOIN threads t ON t.id = r.thread_id
+  LEFT JOIN group_run_links link ON link.run_id = r.id
+  LEFT JOIN runs root ON root.id = link.turn_id`
+
 export const RUN_SNAPSHOT_SELECT = `SELECT r.*, link.turn_id AS group_turn_id,
   CASE WHEN EXISTS(SELECT 1 FROM group_turns coordination WHERE coordination.run_id = r.id)
     THEN 'coordination' ELSE 'execution' END AS run_kind,
@@ -252,14 +261,7 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
   const getRun = (id: Id): Run | null => {
     if (!db) return runs.get(id) ?? null
     try {
-      const found = toRun(
-        db
-          .query(`SELECT r.*,
-            CASE WHEN EXISTS(SELECT 1 FROM group_turns coordination WHERE coordination.run_id = r.id)
-              THEN 'coordination' ELSE 'execution' END AS run_kind
-            FROM runs r WHERE r.id = ?`)
-          .get(id),
-      )
+      const found = toRun(db.query(`${RUN_IDENTITY_SELECT} WHERE r.id = ?`).get(id))
       if (!found) {
         runs.delete(id)
         return null
@@ -296,10 +298,7 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
       const found = toRun(
         db
           .query(
-            `SELECT r.*,
-              CASE WHEN EXISTS(SELECT 1 FROM group_turns coordination WHERE coordination.run_id = r.id)
-                THEN 'coordination' ELSE 'execution' END AS run_kind
-              FROM runs r WHERE r.thread_id = ? AND r.request_message_id = ?${activeOnly ? " AND r.status IN ('queued', 'starting', 'running')" : ""} ORDER BY r.queued_at DESC, r.rowid DESC LIMIT 1`,
+            `${RUN_IDENTITY_SELECT} WHERE r.thread_id = ? AND r.request_message_id = ?${activeOnly ? " AND r.status IN ('queued', 'starting', 'running')" : ""} ORDER BY r.queued_at DESC, r.rowid DESC LIMIT 1`,
           )
           .get(threadId, requestMessageId),
       )
@@ -334,10 +333,7 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
     if (db) {
       const rows = db
         .query(
-          `SELECT r.*,
-            CASE WHEN EXISTS(SELECT 1 FROM group_turns coordination WHERE coordination.run_id = r.id)
-              THEN 'coordination' ELSE 'execution' END AS run_kind
-            FROM runs r WHERE r.thread_id = ? ORDER BY r.queued_at DESC, r.rowid DESC${options?.all ? "" : " LIMIT 50"}`,
+          `${RUN_IDENTITY_SELECT} WHERE r.thread_id = ? ORDER BY r.queued_at DESC, r.rowid DESC${options?.all ? "" : " LIMIT 50"}`,
         )
         .all(threadId)
       return rows.map(toRun).filter((run): run is Run => run !== null)

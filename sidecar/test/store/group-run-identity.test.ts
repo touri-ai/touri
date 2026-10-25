@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { openDatabase } from "../../src/kernel/db"
-import { createRuntimePersistence, WORK_RUNS_SQL } from "../../src/runtime/persistence"
+import { createRuntimePersistence, RUN_IDENTITY_SELECT, WORK_RUNS_SQL } from "../../src/runtime/persistence"
 import { readWorkspaceActivity, WORKSPACE_RUNS_SQL } from "../../src/store/workspace-activity"
 
 const cleanups = new Set<() => void>()
@@ -73,11 +73,59 @@ test.each(["running", "succeeded"] as const)("%s request replay derives run kind
   })
   const active = persistence.getRunForRequest({ threadId: "channel", requestMessageId: "request" })
   const missing = persistence.getRunForRequest({ threadId: "channel", requestMessageId: "missing" })
+  const byId = createRuntimePersistence({ database: db }).getRun("execution")
+  const byThread = createRuntimePersistence({ database: db }).listRuns("participant")[0]
 
   expect(coordination).toMatchObject({ id: "turn", kind: "coordination", status })
   expect(execution).toMatchObject({ id: "execution", kind: "execution", status })
+  expect(execution).toMatchObject({ threadId: "participant", groupTurnId: "turn", groupThreadId: "channel" })
+  expect(byId).toMatchObject({ threadId: "participant", groupTurnId: "turn", groupThreadId: "channel" })
+  expect(byThread).toMatchObject({ threadId: "participant", groupTurnId: "turn", groupThreadId: "channel" })
   expect(active).toEqual(status === "running" ? coordination : null)
   expect(missing).toBeNull()
+})
+
+test("ordinary persisted executions do not acquire a channel identity", () => {
+  const db = getDatabase("running")
+  db.exec(`
+    INSERT INTO threads(id,bot_id,title,created_at,updated_at) VALUES ('direct','bot','Demo direct',1,1);
+    INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,request_message_id,queued_at)
+      VALUES ('direct-run','direct','bot','codex','user','running','direct-request',3);
+  `)
+
+  const persistence = createRuntimePersistence({ database: db })
+  const reads = [
+    persistence.getRun("direct-run"),
+    persistence.listRuns("direct")[0],
+    persistence.getRunForRequest({ threadId: "direct", requestMessageId: "direct-request" }),
+  ]
+
+  reads.forEach((run) => {
+    expect(run).toMatchObject({ id: "direct-run", threadId: "direct", kind: "execution", groupThreadId: null })
+    expect(run?.groupTurnId).toBeUndefined()
+  })
+})
+
+test("persisted run identity probes indexed relationships without scanning channel history", () => {
+  const db = getDatabase("running")
+  const queries = [
+    { sql: "WHERE r.id = ?", bindings: ["execution"] },
+    {
+      sql: "WHERE r.thread_id = ? AND r.request_message_id = ? ORDER BY r.queued_at DESC, r.rowid DESC LIMIT 1",
+      bindings: ["participant", "request"],
+    },
+    { sql: "WHERE r.thread_id = ? ORDER BY r.queued_at DESC, r.rowid DESC LIMIT 50", bindings: ["participant"] },
+  ]
+
+  const plans = queries.map(({ sql, bindings }) =>
+    db.query(`EXPLAIN QUERY PLAN ${RUN_IDENTITY_SELECT} ${sql}`).all(...bindings),
+  ) as Array<Array<{ detail: string }>>
+
+  plans.forEach((plan) => {
+    expect(plan.some(({ detail }) => /SEARCH coordination .*\(run_id=\?\)/.test(detail))).toBe(true)
+    expect(plan.some(({ detail }) => /SEARCH link .*\(run_id=\?\)/.test(detail))).toBe(true)
+    expect(plan.some(({ detail }) => /SCAN|TEMP B-TREE/.test(detail))).toBe(false)
+  })
 })
 
 test("workspace run kinds use the coordination primary key instead of scanning history", () => {
