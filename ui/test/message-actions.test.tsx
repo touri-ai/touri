@@ -1,3 +1,4 @@
+import { Blob as NodeBlob } from "node:buffer"
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { Message } from "@touri/contracts"
@@ -35,7 +36,7 @@ const attached = [
 describe("sent attachments", () => {
   it("keeps names and authenticated downloads after history is remounted, including old unnamed images", async () => {
     const api = createMockApi()
-    const contents = new Blob(["conteúdo enviado"], { type: "text/plain" })
+    const contents = new NodeBlob(["conteúdo enviado"], { type: "text/plain" })
     const request = vi.spyOn(api, "request").mockResolvedValue(contents as never)
     const props = {
       messages: [message({ parts: [...attached, { type: "image", attachmentId: "old-image", mime: "image/png" }] })],
@@ -48,20 +49,33 @@ describe("sent attachments", () => {
     render(<VirtualMessageList {...props} />)
     const list = screen.getByRole("list", { name: "Arquivos enviados" })
     expect(list).toHaveTextContent("teste-anexo.txt")
-    expect(list).toHaveTextContent("teste-imagem.png")
-    expect(list).toHaveTextContent("Imagem anexada")
+    expect(screen.getByText("teste-imagem.png", { selector: "figcaption" })).toBeVisible()
+    expect(screen.getByText("Imagem anexada", { selector: "figcaption" })).toBeVisible()
     for (const [name, id] of [
       ["teste-anexo.txt", "text-id"],
       ["teste-imagem.png", "image-id"],
     ]) {
-      fireEvent.click(within(list).getByRole("button", { name: `Baixar ${name}` }))
+      const button = getAttachmentDownloadButton(name)
+      await waitFor(() => expect(button).toBeEnabled())
+      fireEvent.click(button)
       await waitFor(() => expect(saveBlob).toHaveBeenCalledWith(contents, name))
       expect(request).toHaveBeenCalledWith("GET /attachments/:id", {}, { id })
-      await waitFor(() => expect(within(list).getByRole("button", { name: `Baixar ${name}` })).toBeEnabled())
+      await waitFor(() => expect(button).toBeEnabled())
     }
-    expect(screen.getByRole("status")).toHaveTextContent("Salvo em /downloads/anexo")
+    expect(
+      screen.getAllByRole("status").some((notice) => notice.textContent?.includes("Salvo em /downloads/anexo")),
+    ).toBe(true)
   })
 })
+
+const getAttachmentDownloadButton = (name: string): HTMLElement => {
+  const fileButton = screen.queryByRole("button", { name: `Baixar ${name}` })
+  if (fileButton) return fileButton
+  const image = screen.getByText(name, { selector: "figcaption" }).closest("figure")
+  if (!image) throw new Error("Missing image attachment")
+
+  return within(image).getByRole("button", { name: "Baixar imagem" })
+}
 
 describe("user prompt editing", () => {
   it("withholds edits in flat group history while keeping every member's reply visible", async () => {

@@ -1049,18 +1049,23 @@ const MessageBubbleRow = ({
   const messageClass = message.role === "user" ? personMessageClass : "message-assistant"
   const parentEvidence = useContext(EvidenceContext)
   const bot = senderBot ?? threadBot
+  const evidenceBot = senderBot ?? (message.sender ? undefined : threadBot)
+  const imageVersion = `${message.id}:${message.status === "streaming" ? "streaming" : message.updatedAt}`
   const evidence = useMemo(
     () =>
-      parentEvidence
+      evidenceBot && api
         ? {
-            ...parentEvidence,
-            bot: bot ?? parentEvidence.bot,
+            api,
+            bot: evidenceBot,
+            imageVersion,
             onLayoutChange: () => onImageLoad(message.id),
-            onLibrary: (path: string) => parentEvidence.onLibrary?.(path, bot?.id ?? parentEvidence.bot.id),
-            onComputer: () => parentEvidence.onComputer?.(bot?.id ?? parentEvidence.bot.id),
+            onLibrary: parentEvidence?.onLibrary
+              ? (path: string) => parentEvidence.onLibrary?.(path, evidenceBot.id)
+              : undefined,
+            onComputer: parentEvidence?.onComputer ? () => parentEvidence.onComputer?.(evidenceBot.id) : undefined,
           }
         : undefined,
-    [parentEvidence, bot, message.id, onImageLoad],
+    [api, parentEvidence, evidenceBot, imageVersion, message.id, onImageLoad],
   )
   const root = useRef<HTMLElement>(null)
   const [answers, setAnswers] = useState<Record<string, "approved" | "denied">>({})
@@ -1134,12 +1139,12 @@ const MessageBubbleRow = ({
         className="chat-long-content"
         label={t("Mostrar mais")}
         expandedLabel={t("Mostrar menos")}
-        preview={<MarkdownContent content={answer} evidence={evidence} preview />}
+        preview={<MarkdownContent content={answer} evidence={evidence} imageApi={api} preview />}
       >
-        <MarkdownContent content={answer} evidence={evidence} />
+        <MarkdownContent content={answer} evidence={evidence} imageApi={api} />
       </ChatDisclosure>
     ) : (
-      <MarkdownContent content={answer} evidence={evidence} streaming={message.status === "streaming"} />
+      <MarkdownContent content={answer} evidence={evidence} imageApi={api} streaming={message.status === "streaming"} />
     )
   }
   const matchedApprovals = approvalTools(parts)
@@ -1282,7 +1287,7 @@ const MessageBubbleRow = ({
         </div>
       )
     )
-  return (
+  const bubble = (
     <article
       ref={root}
       className={`message-bubble ${messageClass}${routinePrompt ? " message-routine-prompt" : ""}${quietBrowserNarration ? " message-browser-narration" : ""}`}
@@ -1414,7 +1419,7 @@ const MessageBubbleRow = ({
         ) : message.role === "tool" ? (
           <ToolText text={text} />
         ) : (
-          <MarkdownContent content={message.role === "system" ? localizeNotice(text) : text} />
+          <MarkdownContent content={message.role === "system" ? localizeNotice(text) : text} imageApi={api} />
         )
       ) : null}
       {hasBrowserTools && !hideBrowserActivity && (
@@ -1546,6 +1551,8 @@ const MessageBubbleRow = ({
       )}
     </article>
   )
+
+  return <EvidenceContext.Provider value={evidence ?? null}>{bubble}</EvidenceContext.Provider>
 }
 
 /** Rebuilt lists hold the same messages: compare them by element so an unchanged row skips rendering. */

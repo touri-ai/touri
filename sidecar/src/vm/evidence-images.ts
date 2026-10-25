@@ -1,7 +1,10 @@
+import type { Database } from "bun:sqlite"
 import { closeSync, fstatSync, readSync } from "node:fs"
-import { dirname, isAbsolute, relative, resolve } from "node:path"
-import type { Kernel, RouteModule, VmRuntime } from "@touri/contracts"
+import { dirname, isAbsolute, join, relative, resolve } from "node:path"
+import type { Bot, Kernel, RouteModule, RouteResponse, VmRuntime } from "@touri/contracts"
+import { getLocalImageAsync, getWorkspaceImageAsync } from "../kernel/async-files"
 import { openWorkspaceDirectory, openWorkspaceEntry } from "../kernel/files"
+import { getImagePattern, guestImageReferences } from "./evidence-pattern"
 import {
   checkGuestFileError,
   guestFileErrors,
@@ -111,7 +114,7 @@ export const evidenceImageRoute = (kernel: Kernel, vm: VmRuntime): RouteModule["
     const bot = kernel.services.use("store.api")?.getBot({ botId: params.id ?? "" })
     if (!bot || bot.archivedAt) return { status: 404, json: { error: "Bot não encontrado" } }
     try {
-      const db = kernel.db as import("bun:sqlite").Database
+      const db = kernel.db as Database
       const attachment = query.attachmentId
         ? (db.query("SELECT id,path FROM attachments WHERE id = ?").get(query.attachmentId) as {
             id: string
@@ -119,28 +122,50 @@ export const evidenceImageRoute = (kernel: Kernel, vm: VmRuntime): RouteModule["
           } | null)
         : query.path
           ? (db
-              .query(`SELECT a.id,a.path FROM attachments a WHERE a.path = ? OR a.origin_path = ?
-                ORDER BY EXISTS(SELECT 1 FROM messages m JOIN threads t ON t.id = m.thread_id, json_tree(m.parts_json) part
-                  WHERE t.bot_id = ? AND part.key IN ('attachmentId','outputAttachmentId') AND part.value = a.id) DESC LIMIT 1`)
-              .get(query.path, query.path, bot.id) as {
-              id: string
-              path: string
-            } | null)
+              .query(`WITH candidates AS MATERIALIZED (
+              SELECT id,path FROM attachments WHERE path = ?
+              UNION ALL SELECT id,path FROM attachments WHERE origin_path = ? LIMIT 64
+            ) SELECT a.id,a.path FROM candidates a WHERE EXISTS (
+              SELECT 1 FROM attachment_message_refs refs JOIN threads t ON t.id = refs.thread_id
+              WHERE refs.attachment_id = a.id AND t.bot_id = ?
+            ) LIMIT 1`)
+              .get(query.path, query.path, bot.id) as { id: string; path: string } | null)
           : null
       if (query.attachmentId && !attachment) return { status: 404, json: { error: "Anexo não encontrado" } }
       if (attachment) {
         const owned = db
-          .query(`SELECT 1 FROM messages m JOIN threads t ON t.id = m.thread_id,
-          json_tree(m.parts_json) part WHERE t.bot_id = ? AND part.key IN ('attachmentId','outputAttachmentId') AND part.value = ? LIMIT 1`)
+          .query(`SELECT 1 FROM attachment_message_refs refs JOIN threads t ON t.id = refs.thread_id
+          WHERE t.bot_id = ? AND refs.attachment_id = ? LIMIT 1`)
           .get(bot.id, attachment.id)
         if (!owned) return { status: 404, json: { error: "Anexo não encontrado para este bot" } }
-        return localImage(kernel.paths.attachmentsDir, imagePath(kernel.paths.attachmentsDir, attachment.path))
+        return getImageResponse(
+          await getLocalImageAsync({
+            root: kernel.paths.attachmentsDir,
+            path: imagePath(kernel.paths.attachmentsDir, attachment.path),
+          }),
+        )
       }
       if (!query.path) throw new WorkspacePathError(400)
-      const { root, path } = workspacePath(kernel, bot, query.path, query.base)
-      if (!path) throw new WorkspacePathError(400)
-      if (bot.machine !== "vm" && bot.machine !== "cloud")
-        return localImage("/", [root.slice(1), path].filter(Boolean).join("/"))
+      if (bot.machine !== "vm" && bot.machine !== "cloud") {
+        const project = bot.projectId
+          ? (db.query("SELECT path FROM projects WHERE id = ? AND archived_at IS NULL").get(bot.projectId) as {
+              path: string
+            } | null)
+          : null
+        const result = await getWorkspaceImageAsync({
+          appData: kernel.paths.appData,
+          bot,
+          path: query.path,
+          base: query.base,
+          projectPath: project?.path,
+        })
+        if (!("bytes" in result)) throw new WorkspacePathError(400)
+        requestSignal.throwIfAborted()
+
+        return getImageResponse(result)
+      }
+      const { root, path } = workspacePath(kernel, { ...bot, anyFolderAccess: false }, query.path, query.base)
+      if (!path || /[?*[\]{}]/.test(path)) throw new WorkspacePathError(400)
       if (!vm.states().some((state) => state.botId === bot.id && state.status === "running"))
         return {
           status: 409,
@@ -211,3 +236,92 @@ export const evidenceImageRoute = (kernel: Kernel, vm: VmRuntime): RouteModule["
     }
   },
 })
+
+const getImageResponse = ({ bytes, mime }: { bytes: Uint8Array; mime: string }): RouteResponse => ({
+  status: 200,
+  mime,
+  stream: new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(bytes)
+      controller.close()
+    },
+  }),
+})
+
+export const evidenceReferencesRoute = (kernel: Kernel, vm: VmRuntime): RouteModule["routes"][number] => ({
+  method: "GET",
+  path: "/bots/:id/image-references",
+  handler: async ({ params, query, signal }) => {
+    const bot = kernel.services.use("store.api")?.getBot({ botId: params.id ?? "" })
+    if (!bot || bot.archivedAt) return { status: 404, json: { error: "Bot não encontrado" } }
+    if (!query.path?.includes("*")) return { status: 400, json: { error: "Padrão inválido" } }
+    const project = bot.projectId
+      ? ((kernel.db as Database)
+          .query("SELECT path FROM projects WHERE id = ? AND archived_at IS NULL")
+          .get(bot.projectId) as { path: string } | null)
+      : null
+    try {
+      signal.throwIfAborted()
+      if (bot.machine === "vm" || bot.machine === "cloud")
+        return await getGuestImageReferenceResponse(kernel, vm, bot, query.path, query.base, signal)
+      const result = await getWorkspaceImageAsync({
+        appData: kernel.paths.appData,
+        bot,
+        projectPath: project?.path,
+        path: query.path,
+        base: query.base,
+        pattern: true,
+      })
+      signal.throwIfAborted()
+
+      return { status: 200, json: "paths" in result ? result : { paths: [] } }
+    } catch (error) {
+      return workspaceError(error)
+    }
+  },
+})
+
+const getGuestImageReferenceResponse = async (
+  kernel: Kernel,
+  vm: VmRuntime,
+  bot: Bot,
+  source: string,
+  base: string | undefined,
+  signal: AbortSignal,
+): Promise<RouteResponse> => {
+  const pattern = getImagePattern(source)
+  const { root, path } = workspacePath(
+    kernel,
+    Object.assign({}, bot, { anyFolderAccess: false }),
+    dirname(source),
+    base,
+  )
+  if (!vm.states().some((state) => state.botId === bot.id && state.status === "running"))
+    return { status: 200, json: { paths: [] } }
+  const deadline = AbortSignal.any([signal, AbortSignal.timeout(10_000)])
+  const release = await vm.acquire({ botId: bot.id, runningOnly: true, signal: deadline })
+  try {
+    const result = await vm.exec({
+      botId: bot.id,
+      command: "python3",
+      args: ["-c", guestImageReferences, root, path, pattern.prefix, pattern.suffix],
+      signal: deadline,
+    })
+    if (!result.success) throw new WorkspacePathError(404)
+    if (result.stdout.length > 8192) throw new WorkspacePathError(400)
+    checkGuestFileError(result.stdout)
+    const parsed = (JSON.parse(result.stdout) as { names?: unknown }).names
+    if (!Array.isArray(parsed) || parsed.length > 6 || !parsed.every(isGuestImageName))
+      throw new WorkspacePathError(400)
+    const names = parsed.filter(
+      (name) => name.toLowerCase().startsWith(pattern.prefix) && name.toLowerCase().endsWith(pattern.suffix),
+    )
+
+    return { status: 200, json: { paths: names.map((name) => join(dirname(source), name)) } }
+  } finally {
+    await release()
+  }
+}
+
+const isGuestImageName = (name: unknown): name is string =>
+  typeof name === "string" && name.length <= 255 && !/[/\\\0]/.test(name) && name !== "." && name !== ".."

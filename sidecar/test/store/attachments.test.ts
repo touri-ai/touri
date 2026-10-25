@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite"
 import { afterEach, expect, test } from "bun:test"
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Attachment, Message } from "@touri/contracts"
@@ -226,3 +226,26 @@ test("one message with many tool output files yields between reference batches",
   expect(interleaved).toBe(true)
   expect(database.query("SELECT count(*) AS count FROM attachment_message_refs").get()).toEqual({ count: total })
 })
+
+test("image downloads refuse replaced symlinks instead of exposing a host image", async () => {
+  const fixture = await getImageDownloadFixture()
+  const outside = join(fixture.runtime.kernel.paths.appData, "private-image.png")
+  writeFileSync(outside, png)
+  unlinkSync(fixture.attachment.path)
+  symlinkSync(outside, fixture.attachment.path)
+
+  const response = await fixture.request(`/attachments/${fixture.attachment.id}`)
+
+  expect(response.status).toBe(404)
+})
+
+const getImageDownloadFixture = async () => {
+  const current = await fixture()
+  const uploaded = await current.request("/attachments", "POST", {
+    name: "screen.png",
+    dataBase64: png.toString("base64"),
+  })
+  const { attachment } = (await uploaded.json()) as { attachment: Attachment }
+
+  return { ...current, attachment }
+}

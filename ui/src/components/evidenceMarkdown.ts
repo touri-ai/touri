@@ -1,6 +1,14 @@
 import { hasShellBraceAlternatives } from "../messageMarkdown"
 
-export type EvidenceImage = { path: string; caption: string; filename: string; src?: string; imageSyntax?: boolean }
+export type EvidenceImage = {
+  path: string
+  caption: string
+  filename: string
+  src?: string
+  imageSyntax?: boolean
+  read?: () => Promise<Blob>
+  cacheKey?: object
+}
 export type EvidenceNode = {
   type: string
   value?: string
@@ -56,7 +64,7 @@ export const evidenceImages = (tree: EvidenceNode): EvidenceImage[] => {
   const firstReferences = validReferences.filter(
     (reference, index) => validReferences.findIndex((candidate) => candidate.path === reference.path) === index,
   )
-  return firstReferences.map((reference) => {
+  return firstReferences.slice(0, 12).map((reference) => {
     const image = validReferences.find((candidate) => candidate.path === reference.path && candidate.imageSyntax)
     const filename = reference.path.split("/").at(-1) ?? "Imagem"
     const caption = image?.caption || reference.caption || filename

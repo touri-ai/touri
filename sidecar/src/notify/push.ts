@@ -139,9 +139,12 @@ export const initWebPush = async ({
     void tick()
   }
   kernel.services.provide("notify.push", enqueue)
-  kernel.services.provide("notify.channelNotice", ({ threadId, text }) => {
+  kernel.services.provide("notify.channelNotice", ({ threadId, text, attachmentIds = [] }) => {
     const result = createReviewNotice(kernel, threadId, {
-      eventId: createHash("sha256").update(text).digest("hex"),
+      eventId: createHash("sha256")
+        .update(attachmentIds.length ? JSON.stringify([text, attachmentIds]) : text)
+        .digest("hex"),
+      attachmentIds,
       text,
       kind:
         /\bREADY\b/u.test(text) && /https:\/\/github\.com\/[^\s/]+\/[^\s/]+\/pull\/\d+/u.test(text)

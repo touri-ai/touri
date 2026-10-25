@@ -5,7 +5,7 @@ import { ApiError } from "../errors"
 import { t } from "../i18n"
 import { useSaveNotice } from "../useSaveNotice"
 import type { EvidenceImage } from "./evidenceMarkdown"
-import { loadImage, thumbnailBlob } from "./imageLoads"
+import { getCachedThumbnail, loadImage, thumbnailBlob } from "./imageLoads"
 import "./evidence-images.css"
 import { blobDataUrl } from "../blobDataUrl"
 
@@ -13,9 +13,10 @@ export type EvidenceContextValue = {
   api: UiApi
   bot: Bot
   base?: string
+  imageVersion?: string
   onLayoutChange?: () => void
-  onLibrary?: (path: string, botId?: string) => void
-  onComputer?: (botId?: string) => void
+  onLibrary?: ((path: string, botId?: string) => void) | undefined
+  onComputer?: ((botId?: string) => void) | undefined
 }
 export const EvidenceContext = createContext<EvidenceContextValue | null>(null)
 const INLINE_IMAGE = /^data:([^;,]*);base64,(.*)$/s
@@ -26,6 +27,7 @@ const inlineImage = (src: string): Blob | null => {
   return new Blob([bytes], { type: match[1] || "image/png" })
 }
 export const readImage = async (image: EvidenceImage, context: EvidenceContextValue | null): Promise<Blob> => {
+  if (image.read) return image.read()
   if (image.src) return inlineImage(image.src) ?? (await fetch(image.src)).blob()
   if (!context) throw new Error("Imagem indisponível")
   const attachmentId = /^\/(?:api\/v1\/)?attachments\/([a-f0-9]{64})$/i.exec(image.path)?.[1]
@@ -82,19 +84,24 @@ const Thumbnail = ({
     setSrc(null)
     void loadImage(async () => {
       if (!alive) return
-      const blob = await readImage(image, context)
-      if (!alive) return
-      const small = await thumbnailBlob(blob).catch(() => blob)
-      if (!alive) return
-      const dataUrl = await blobDataUrl(small)
+      const owner = image.src ? image : (image.cacheKey ?? context?.api ?? image)
+      const key = image.read
+        ? image.path
+        : JSON.stringify([context?.bot.id, context?.base, context?.imageVersion, image.path])
+      const dataUrl = await getCachedThumbnail(owner, key, async () => {
+        const blob = await readImage(image, context)
+        const small = await thumbnailBlob(blob).catch(() => blob)
+
+        return blobDataUrl(small)
+      })
       if (!alive) return
       setSrc(dataUrl)
     }).catch((reason) => {
       if (alive)
         setError(
           stoppedError(reason)
-            ? "Imagem disponível quando a máquina estiver ligada"
-            : "Prévia indisponível. Clique para abrir a imagem.",
+            ? t("Imagem disponível quando a máquina estiver ligada")
+            : t("Prévia indisponível. Clique para abrir a imagem."),
         )
     })
     return () => {
@@ -108,26 +115,12 @@ const Thumbnail = ({
         setRevision((value) => value + 1)
     })
   }, [inline, src, context])
-  if (inline && !src)
-    return (
-      <span ref={root}>
-        {image.filename}
-        {error.startsWith("Imagem disponível") && (
-          <span role="status">
-            {error}{" "}
-            <button type="button" onClick={() => context?.onComputer?.()}>
-              Abrir Computador
-            </button>
-          </span>
-        )}
-      </span>
-    )
   return (
     <figure ref={root} className="evidence-image">
       <button
         type="button"
         className="evidence-thumbnail"
-        aria-label={`Abrir captura ${index + 1} em tamanho original`}
+        aria-label={t("Abrir captura {index} em tamanho original", { index: index + 1 })}
         onClick={open}
       >
         {src ? (
@@ -135,14 +128,13 @@ const Thumbnail = ({
             src={src}
             alt={image.caption}
             loading="lazy"
-            onLoad={() => context?.onLayoutChange?.()}
             onError={() => {
               setSrc(null)
-              setError("Prévia indisponível. Clique para abrir a imagem.")
+              setError(t("Prévia indisponível. Clique para abrir a imagem."))
             }}
           />
         ) : (
-          <span>{error || "Carregando imagem…"}</span>
+          <span>{error || t("Carregando imagem…")}</span>
         )}
       </button>
       <figcaption>{image.caption}</figcaption>
@@ -151,23 +143,24 @@ const Thumbnail = ({
           type="button"
           className="text-button"
           onClick={() => {
-            if (error.startsWith("Imagem disponível")) context?.onComputer?.()
+            if (error === t("Imagem disponível quando a máquina estiver ligada")) context?.onComputer?.()
             setRevision((value) => value + 1)
           }}
         >
           {" "}
-          {error.startsWith("Imagem disponível") ? "Abrir Computador" : "Tentar novamente"}
+          {error === t("Imagem disponível quando a máquina estiver ligada")
+            ? t("Abrir Computador")
+            : t("Tentar novamente")}
         </button>
       )}
-      {(image.src || src) && (
-        <button
-          type="button"
-          className="text-button"
-          onClick={() => void saveImage(() => readImage(image, context), image.filename)}
-        >
-          {t("Baixar imagem")}
-        </button>
-      )}
+      <button
+        type="button"
+        className="text-button"
+        disabled={!image.src && !src}
+        onClick={() => void saveImage(() => readImage(image, context), image.filename)}
+      >
+        {t("Baixar imagem")}
+      </button>
       {notice && <p role="status">{notice}</p>}
     </figure>
   )
@@ -176,12 +169,16 @@ const Thumbnail = ({
 export const EvidenceGallery = ({ images, inline = false }: { images: EvidenceImage[]; inline?: boolean }) => {
   const context = useContext(EvidenceContext)
   const [selected, setSelected] = useState<number | null>(null)
-  const identity = JSON.stringify(images)
+  const identity = JSON.stringify(images.map(({ path, caption, filename, src }) => ({ path, caption, filename, src })))
   // biome-ignore lint/correctness/useExhaustiveDependencies: preserve image object identities while streaming surrounding markdown
-  const items = useMemo(() => images, [identity])
+  const items = useMemo(() => images, [identity, images[0]?.cacheKey])
   return (
     <>
-      <section className="evidence-gallery" aria-label="Imagens de evidência">
+      <section
+        className="evidence-gallery"
+        data-image-count={Math.min(3, items.length)}
+        aria-label={t("Imagens de evidência")}
+      >
         {items.map((image, index) => (
           <Thumbnail
             key={image.path}
@@ -295,8 +292,8 @@ export const ImageLightbox = ({
         if (alive)
           setError(
             stoppedError(reason)
-              ? "Imagem disponível quando a máquina estiver ligada"
-              : "Não foi possível abrir esta imagem",
+              ? t("Imagem disponível quando a máquina estiver ligada")
+              : t("Não foi possível abrir esta imagem"),
           )
       })
     return () => {
@@ -311,25 +308,25 @@ export const ImageLightbox = ({
           {image.caption} · {index + 1}/{images.length}
         </strong>
         <button type="button" onClick={close}>
-          Fechar imagem
+          {t("Fechar imagem")}
         </button>
       </header>
-      <nav aria-label="Controles da imagem">
+      <nav aria-label={t("Controles da imagem")}>
         <button
           type="button"
           disabled={images.length < 2}
           onClick={() => select((index + images.length - 1) % images.length)}
         >
-          Anterior
+          {t("Anterior")}
         </button>
         <button type="button" disabled={images.length < 2} onClick={() => select((index + 1) % images.length)}>
-          Próxima
+          {t("Próxima")}
         </button>
         <button type="button" onClick={() => changeZoom(-0.5)}>
-          Diminuir zoom
+          {t("Diminuir zoom")}
         </button>
         <button type="button" onClick={() => changeZoom(0.5)}>
-          Aumentar zoom
+          {t("Aumentar zoom")}
         </button>
         <button
           type="button"
@@ -338,9 +335,9 @@ export const ImageLightbox = ({
             setPan({ x: 0, y: 0 })
           }}
         >
-          Ajustar imagem
+          {t("Ajustar imagem")}
         </button>
-        {context?.onLibrary && !image.src && (
+        {context?.onLibrary && !image.src && !image.read && (
           <button
             type="button"
             onClick={() => {
@@ -348,22 +345,24 @@ export const ImageLightbox = ({
               close()
             }}
           >
-            Abrir na Biblioteca
+            {t("Abrir na Biblioteca")}
           </button>
         )}
-        {src && (
-          <button type="button" onClick={() => void saveImage(() => readImage(image, context), image.filename)}>
-            Salvar
-          </button>
-        )}
+        <button
+          type="button"
+          disabled={!src}
+          onClick={() => void saveImage(() => readImage(image, context), image.filename)}
+        >
+          {t("Salvar")}
+        </button>
       </nav>
       {notice && <p role="status">{notice}</p>}
       {error ? (
         <p role="status">
           {error}{" "}
-          {error.startsWith("Imagem disponível") && (
+          {error === t("Imagem disponível quando a máquina estiver ligada") && (
             <button type="button" onClick={() => context?.onComputer?.()}>
-              Abrir Computador
+              {t("Abrir Computador")}
             </button>
           )}
         </p>

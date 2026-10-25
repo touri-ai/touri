@@ -438,3 +438,52 @@ test("the outbox uses indexed due and retention queries", async () => {
   expect(JSON.stringify(due)).toContain("push_deliveries_due")
   expect(JSON.stringify(expiry)).toContain("push_deliveries_expiry")
 })
+
+test("automatic channel summaries retain uploaded image attachments and reject missing attachment ids", async () => {
+  const fixture = await getFixture()
+  const automated = new AbortController().signal
+  bindDeviceSession(automated, { deviceId: "phone", person: getPerson(), active: () => true, automation: "notices" })
+  const uploaded = await fixture.call(
+    "POST",
+    "/attachments",
+    {
+      name: "demo-screen.png",
+      dataBase64: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).toString("base64"),
+    },
+    automated,
+  )
+  if (!uploaded || !("json" in uploaded)) throw new Error("Missing upload response")
+  const attachment = (uploaded.json as { attachment: { id: string } }).attachment
+
+  const response = await fixture.call(
+    "POST",
+    `/threads/${fixture.channel.id}/messages`,
+    {
+      text: "Captura fictícia da auditoria",
+      attachments: [attachment.id],
+    },
+    automated,
+  )
+  const rejected = await fixture.call(
+    "POST",
+    `/threads/${fixture.channel.id}/messages`,
+    {
+      text: "Anexo inexistente",
+      attachmentIds: ["missing"],
+    },
+    automated,
+  )
+
+  expect(response?.status).toBe(201)
+  if (!response || !("json" in response)) throw new Error("Missing message response")
+  expect((response.json as { message: { parts: unknown[] } }).message.parts).toContainEqual({
+    type: "image",
+    attachmentId: attachment.id,
+    name: "demo-screen.png",
+    mime: "image/png",
+  })
+  const parts = (response.json as { message: { parts: Array<{ type: string }> } }).message.parts
+  expect(parts.findIndex((part) => part.type === "text")).toBeLessThan(parts.findIndex((part) => part.type === "image"))
+  expect(rejected?.status).toBe(400)
+  expect(fixture.database.query("SELECT count(*) AS total FROM runs").get()).toEqual({ total: 0 })
+})

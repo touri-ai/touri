@@ -1,6 +1,5 @@
 import type { Database } from "bun:sqlite"
 import { createHash } from "node:crypto"
-import { existsSync } from "node:fs"
 import { homedir } from "node:os"
 import { extname, isAbsolute, join } from "node:path"
 import type {
@@ -51,6 +50,7 @@ import { getHostIdentity } from "../platform/host"
 import { getDefaultMaxConcurrentRuns } from "../runtime/concurrency"
 import { touriVersion } from "../version"
 import { DEFAULT_BOT_VM_MEMORY_MB, DEFAULT_MACHINE_IDLE_MINUTES, validBotVmMemory } from "../vm/resources"
+import { getAttachmentDownload } from "./attachment-download"
 import { cleanupBotHome, updateBotHome, writeBotHome } from "./bot-home"
 import { getHistoryPage, getHistoryQuery } from "./history-query"
 import { getIntegrationSender } from "./integration-sender"
@@ -1458,7 +1458,8 @@ export const init = async (
       body.parentId === null || body.parentId === undefined ? null : isString(body.parentId) ? body.parentId : null
     if (body.parentId !== undefined && body.parentId !== null && parentId === null)
       return { input: null, error: "parentId must be a string or null" }
-    const attachmentIds = body.attachmentIds === undefined ? [] : body.attachmentIds
+    const requestedAttachments = body.attachmentIds === undefined ? body.attachments : body.attachmentIds
+    const attachmentIds = requestedAttachments === undefined ? [] : requestedAttachments
     if (!Array.isArray(attachmentIds) || attachmentIds.length > 50 || attachmentIds.some((value) => !isString(value)))
       return { input: null, error: "attachmentIds must be an array of ids" }
     return {
@@ -1928,6 +1929,9 @@ export const init = async (
         handler: async ({ params, body, signal }) => {
           const record = requestRecord(body)
           if (!record) return errorResponse(400, "INVALID_ARGS", "Request body must be an object")
+          const parsed = messageFromRequest({ threadId: params.id ?? "", body: record })
+          if (!parsed.input || parsed.error)
+            return errorResponse(400, "INVALID_ARGS", parsed.error ?? "Invalid message")
           const session = deviceSession(signal)
           if (
             record.as === undefined &&
@@ -1937,11 +1941,12 @@ export const init = async (
           ) {
             const announce = kernel.services.use("notify.channelNotice")
             if (announce && typeof record.text === "string")
-              return announce({ threadId: params.id ?? "", text: record.text })
+              return announce({
+                threadId: params.id ?? "",
+                text: record.text,
+                attachmentIds: parsed.input.attachmentIds,
+              })
           }
-          const parsed = messageFromRequest({ threadId: params.id ?? "", body: record })
-          if (!parsed.input || parsed.error)
-            return errorResponse(400, "INVALID_ARGS", parsed.error ?? "Invalid message")
           const authenticatedInput = withAuthenticatedSender(signal, parsed.input)
           const thread = getThread({ threadId: parsed.input.threadId })
           const integration =
@@ -2100,8 +2105,8 @@ export const init = async (
           const raw = database
             .query("SELECT * FROM attachments WHERE id = ?")
             .get(params.id ?? "") as RawAttachment | null
-          if (!raw || !existsSync(raw.path)) return errorResponse(404, "NOT_FOUND", "Attachment not found")
-          return { status: 200, file: raw.path, mime: raw.mime }
+          if (!raw) return errorResponse(404, "NOT_FOUND", "Attachment not found")
+          return getAttachmentDownload(raw, kernel.paths.attachmentsDir)
         },
       },
       {

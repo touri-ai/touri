@@ -653,3 +653,35 @@ test("only the owner of a private conversation can prepare its provider", () => 
   expect(getDecision("other-dm")).toMatchObject({ status: 404 })
   expect(getDecision("team-chat")).toMatchObject({ status: 403 })
 })
+
+test("workspace image previews require bot ownership while shared channel attachments keep their own access boundary", () => {
+  for (const action of ["images", "image-references"]) {
+    expect(
+      access.authorizeHttp({
+        personId: "member",
+        role: "member",
+        method: "GET",
+        pathname: `/bots/member-bot/${action}`,
+        body: null,
+      }),
+    ).toBeNull()
+    expect(
+      access.authorizeHttp({
+        personId: "member",
+        role: "member",
+        method: "GET",
+        pathname: `/bots/team-bot/${action}`,
+        body: null,
+      })?.status,
+    ).toBe(404)
+    expect(
+      access.authorizeHttp({
+        personId: "member",
+        role: "member",
+        method: "GET",
+        pathname: `/bots/other-bot/${action}`,
+        body: null,
+      })?.status,
+    ).toBe(404)
+  }
+})
