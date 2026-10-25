@@ -79,13 +79,14 @@ for (const width of [1440, 390]) {
     const bell = page.getByRole("region", { name: "Central de notificações" })
 
     await bell.getByRole("button", { name: "Limpar", exact: true }).click()
+    await expect(bell.getByRole("button", { name: "Limpar", exact: true })).toBeEnabled()
+    if (process.env.TOURI_SCREENSHOT_DIR)
+      await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/recovery-bell-${width}.png` })
 
     await expect(bell.getByRole("status")).toContainText(
       "Notificações que precisam de revisão em Tarefas interrompidas: 1.",
     )
     await expect(bell.getByTestId("notification-row")).toHaveCount(1)
-    if (process.env.TOURI_SCREENSHOT_DIR)
-      await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/recovery-bell-${width}.png` })
     await bell.getByRole("button", { name: "Fechar notificações" }).click()
     if (width === 390) await page.getByRole("button", { name: "Fechar menu", exact: true }).click()
     const chat = page.getByTestId("virtual-message-list")
