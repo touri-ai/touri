@@ -82,19 +82,29 @@ for (const width of [1440, 1000, 760, 390]) {
   })
 }
 
-test("Work channel approval review reaches the card without a covering panel", async ({ page }) => {
-  await page.setViewportSize({ width: 760, height: 844 })
-  await page.goto("/test/e2e/work-approval-harness.html?channel")
-  const notice = page.locator(".approval-notice")
-  await expect(notice).toBeVisible()
-  await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
+for (const width of [1440, 760, 390]) {
+  test(`Work channel review exposes its approval at ${width}px`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 844 })
+    await page.goto("/test/e2e/work-approval-harness.html?channel")
+    const notice = page.locator(".approval-notice")
+    await expect(notice).toBeVisible()
+    await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
 
-  await notice.getByRole("button", { name: "Revisar", exact: true }).click()
+    await notice.getByRole("button", { name: "Revisar", exact: true }).click()
 
-  await expect(page.locator("#bot-panel")).toHaveCount(0)
-  await expect(page.locator('[data-approval-id="folder-review"]')).toBeFocused()
-  await expect(page.locator(".group-header")).toContainText("Planejamento")
-})
+    const card = page.locator('[data-approval-id="folder-review"]')
+    await expect(card).toBeVisible()
+    const screenshot = info.outputPath(`work-channel-approval-${width}.png`)
+    await page.screenshot({ path: screenshot, animations: "disabled" })
+    await info.attach(`Work channel approval ${width}`, { path: screenshot, contentType: "image/png" })
+    if (process.env.WORK_APPROVAL_CAPTURE)
+      await page.screenshot({ path: `${process.env.WORK_APPROVAL_CAPTURE}/channel-review-${width}.png` })
+
+    await expect(page.locator("#bot-panel")).toHaveCount(0)
+    await expect(card).toBeFocused()
+    await expect(page.locator(".group-header")).toContainText("Planejamento")
+  })
+}
 
 for (const source of ["desktop", "phone"] as const) {
   test(`Work approval resolved on ${source} syncs to both open sessions`, async ({ page }) => {
@@ -154,7 +164,10 @@ test("Work approval review stays within the interaction budget", async ({ page, 
 
       const started = event.timeStamp
       requestAnimationFrame(() =>
-        requestAnimationFrame(() => performance.measure("approval-review", { start: started, end: performance.now() })),
+        requestAnimationFrame(() => {
+          performance.measure("approval-review", { start: started, end: performance.now() })
+          console.debug("approval-review-complete")
+        }),
       )
     }
     const prepareReview = () =>
@@ -182,20 +195,19 @@ test("Work approval review stays within the interaction budget", async ({ page, 
     await expect(page.locator(".bot-panel-tabs")).toBeVisible()
     const review = page.getByRole("button", { name: "Revisar aprovação de mark", exact: true })
     await review.hover()
-    const bounds = await review.boundingBox()
-    if (!bounds) throw new Error("Missing approval control geometry")
-
     await page.evaluate(() => window.dispatchEvent(new Event("touri:prepare-approval-probe")))
     await expect
       .poll(() => page.evaluate(() => performance.getEntriesByName("approval-setup-ready").length))
       .toBe(index + 1)
 
-    // Native pointer input keeps actionability polling outside the measured browser task.
-    const before = await cdp.send("Performance.getMetrics")
-    await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
-    await page.waitForFunction((count) => performance.getEntriesByName("approval-review").length === count, index + 1, {
-      polling: "raf",
+    // Resolve geometry before sampling; completion arrives without injecting browser polling work.
+    const point = await getControlPoint(review)
+    const completed = page.waitForEvent("console", {
+      predicate: (message) => message.type() === "debug" && message.text() === "approval-review-complete",
     })
+    const before = await cdp.send("Performance.getMetrics")
+    await page.mouse.click(point.x, point.y)
+    await completed
     const after = await cdp.send("Performance.getMetrics")
     const cpuMs = (getTaskSeconds(after.metrics) - getTaskSeconds(before.metrics)) * 1000
     await page.evaluate((duration) => performance.mark("approval-thread-cpu", { detail: duration }), cpuMs)
@@ -246,8 +258,10 @@ test("Work approval review stays within the interaction budget", async ({ page, 
   })
   console.log(`Work approval interaction: ${JSON.stringify(measurements)}`)
 
+  expect(measurements.samples).toBe(20)
   expect(measurements.p95Ms).toBeLessThan(100)
   expect(measurements.maxMs).toBeLessThan(500)
+  expect(measurements.cpuP95Ms).toBeLessThan(16)
   expect(measurements.cpuMaxMs).toBeLessThan(50)
   expect(measurements.longTasks).toHaveLength(0)
   expect(measurements.overlappingLongTasks).toHaveLength(0)
@@ -255,10 +269,15 @@ test("Work approval review stays within the interaction budget", async ({ page, 
 })
 
 const clickControl = async (page: Page, control: Locator) => {
+  const point = await getControlPoint(control)
+  await page.mouse.click(point.x, point.y)
+}
+
+const getControlPoint = async (control: Locator) => {
   const bounds = await control.boundingBox()
   if (!bounds) throw new Error("Missing control geometry")
 
-  await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+  return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }
 }
 
 const getTaskSeconds = (metrics: Array<{ name: string; value: number }>): number => {
