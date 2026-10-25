@@ -188,7 +188,7 @@ describe("group deletion", () => {
         "POST /threads/:id/messages",
         {
           threadId: thread.id,
-          text: "Mensagem fictícia do grupo.",
+          text: "@mark Mensagem fictícia do grupo.",
           parentId: null,
           attachmentIds: [],
         },
@@ -276,7 +276,7 @@ describe("group deletion", () => {
       "POST /threads/:id/messages",
       {
         threadId: thread.id,
-        text: "Histórico fictício do grupo.",
+        text: "@mark Histórico fictício do grupo.",
         parentId: null,
         attachmentIds: [],
       },
@@ -319,7 +319,7 @@ describe("group deletion", () => {
       "POST /threads/:id/messages",
       {
         threadId: thread.id,
-        text: "Histórico fictício a apagar.",
+        text: "@mark Histórico fictício a apagar.",
         parentId: null,
         attachmentIds: [],
       },

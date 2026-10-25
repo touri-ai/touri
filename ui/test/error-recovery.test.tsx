@@ -435,7 +435,10 @@ it.each([false, true])("read recovery never retries a task (visible failed reply
     api.emit({ type: "run.updated", run })
     if (hasReply) api.emit({ type: "message.created", message: { ...failed(diagnostic), threadId: thread.id } })
   })
-  const retry = await screen.findByRole("button", { name: "Tentar novamente", exact: true })
+  const readFailure = await screen.findByText("Não foi possível carregar a conversa. Tente novamente.")
+  const readNotice = readFailure.closest<HTMLElement>(".error-notice")
+  if (!readNotice) throw new Error("Missing history recovery notice")
+  const retry = within(readNotice).getByRole("button", { name: "Tentar novamente", exact: true })
   failing = false
   fireEvent.click(retry)
 

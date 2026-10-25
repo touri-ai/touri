@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { BotGroup, Message, Run } from "@touri/contracts"
 import { describe, expect, it, vi } from "vitest"
 import App from "../src/App"
@@ -257,8 +257,12 @@ describe("group coordination", () => {
       text: "@mark @onb Revisem este plano",
       groupAction: "ask_all",
     })
-    await screen.findByText(
-      "Coloquei sua solicitação na fila local. Vou manter o contexto da conversa, e o próximo passo está pronto.",
+    await waitFor(() =>
+      expect(
+        screen.getAllByText(
+          "Coloquei sua solicitação na fila local. Vou manter o contexto da conversa, e o próximo passo está pronto.",
+        ),
+      ).toHaveLength(2),
     )
     fireEvent.change(input, { target: { value: "Meu próximo pedido" } })
     fireEvent.click(screen.getByRole("button", { name: "Ações do time" }))

@@ -73,6 +73,8 @@ test.skipIf(!hasBrowser).each(["ana", "owner"])(
         "--no-sandbox",
         "--disable-dev-shm-usage",
         "--no-first-run",
+        // Disposable profiles must not wait for an interactive desktop keyring to unlock.
+        "--password-store=basic",
         "--remote-debugging-address=127.0.0.1",
         "--remote-debugging-port=0",
         `--user-data-dir=${profile}`,
