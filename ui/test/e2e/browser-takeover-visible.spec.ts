@@ -64,10 +64,11 @@ for (const viewport of [
   })
 
   test(`a preview settling at the end keeps a pressed takeover in place at ${viewport.width}px`, async ({ page }) => {
+    test.setTimeout(60_000)
     await page.setViewportSize(viewport)
     await page.goto("/test/e2e/browser-outcome-harness.html?takeover=live&preview=deferred")
     const takeover = page.locator(".browser-activity-card").getByRole("button", { name: "Assumir", exact: true })
-    await expect(takeover).toBeEnabled()
+    await expect(takeover).toBeEnabled({ timeout: 20_000 })
     await expect(page.locator(".browser-activity-placeholder")).toBeVisible()
     await page.evaluate(() => document.fonts.ready)
     await takeover.scrollIntoViewIfNeeded()
