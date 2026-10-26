@@ -1103,7 +1103,13 @@ test.each([false, true])("service timeout reaches the turn as E8001 with prewarm
     .query("INSERT OR REPLACE INTO settings(key, value_json, updated_at) VALUES ('resumeInterruptedTurns', 'false', 1)")
     .run()
   const serviceStarted = deferred()
+  const turnStarting = deferred()
   const releaseService = deferred()
+  const stopWatching = (f.runtime.kernel.subscribeRuntime ?? f.runtime.kernel.subscribe)(({ event }) => {
+    if (event.type === "run.updated" && event.run.threadId === bot.mainThreadId && event.run.status === "starting")
+      turnStarting.resolve()
+  })
+  cleanups.push(async () => stopWatching())
   let startRequests = 0
   f.fake.provider.startService = async () => {
     startRequests++
@@ -1119,7 +1125,7 @@ test.each([false, true])("service timeout reaches the turn as E8001 with prewarm
   const warming = prewarm ? f.vm.service.intent({ botId: bot.id, intent: "composer-focus" }).catch(() => {}) : null
   const { engine, run, store } = enqueueVmTurn(f, bot)
   try {
-    await serviceStarted.promise
+    await Promise.all([serviceStarted.promise, turnStarting.promise])
     expect(run.status).toBe("starting")
     expect(f.vm.service.states()[0]).toMatchObject({ status: "starting", error: null })
     releaseService.resolve()
