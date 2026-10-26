@@ -159,7 +159,17 @@ export const createSetupTools = ({
   ) => {
     const configure = kernel.services.use("bots.configureAccess")
     if (!configure) return denied("A configuração do bot está indisponível.")
-    const result = await configure({ botId: bot.id, patch, ...(context.runId ? { runId: context.runId } : {}) })
+    const isCurrent = () => {
+      const latest = self(context)
+      return !!latest && snapshot(latest) === snapshot(bot)
+    }
+    const result = await configure({
+      botId: bot.id,
+      patch,
+      signal: context.signal,
+      isCurrent,
+      ...(context.runId ? { runId: context.runId } : {}),
+    })
     if (!result.success) return result
     const automatic =
       approvedContext && snapshot(bot) !== snapshot(result.bot)

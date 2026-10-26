@@ -1355,11 +1355,15 @@ export const init = async (
     record,
     mustStopVm,
     signal,
+    allowProjectChange = false,
+    isCurrent,
   }: {
     botId: string
     record: Record<string, unknown>
     mustStopVm: boolean
     signal: AbortSignal
+    allowProjectChange?: boolean
+    isCurrent?: (() => boolean) | undefined
   }): Promise<Bot> => {
     // Revalidate a fresh snapshot after home I/O. The helper compares it inside BEGIN IMMEDIATE,
     // so concurrent renames/permission changes cannot be overwritten by a stale edit.
@@ -1367,6 +1371,7 @@ export const init = async (
       signal.throwIfAborted()
       const expected = await getBotMetadataRow(botId, signal)
       if (!expected) throw new Error("Bot could not be updated")
+      if (isCurrent?.() === false) throw new Error("Bot configuration changed during the instruction edit")
       const latestBot = asBot(expected)
       const latest = botFromBody({
         body: Object.assign({}, record, { provider: record.provider ?? latestBot.provider }),
@@ -1376,7 +1381,7 @@ export const init = async (
       const machineChanged =
         latest.input.machine !== latestBot.machine ||
         latest.input.provider !== latestBot.provider ||
-        latest.input.projectId !== latestBot.projectId
+        (!allowProjectChange && latest.input.projectId !== latestBot.projectId)
       if (machineChanged && !mustStopVm) throw new Error("Bot configuration changed during the instruction edit")
 
       const committed = await metadataWriter.save(
@@ -1457,6 +1462,7 @@ export const init = async (
     patch,
     runId,
     signal = AbortSignal.timeout(15_000),
+    isCurrent,
   }) => {
     const isAdminRun = kernel.services.use("work.isAdminRun")
     if (isAdminRun && (!runId || !isAdminRun(runId)))
@@ -1468,6 +1474,8 @@ export const init = async (
     const row = await getBotMetadataRow(botId, signal)
     const bot = row ? asBot(row) : null
     if (!bot) return { success: false, errorCode: "NOT_FOUND", error: "Bot não encontrado." }
+    if (isCurrent?.() === false)
+      return { success: false, errorCode: "DENIED", error: "O acesso não foi aprovado ou a configuração mudou." }
     const parsed = botFromBody({
       body: Object.assign({}, patch, { name: bot.name, provider: bot.provider }),
       existing: bot,
@@ -1488,6 +1496,9 @@ export const init = async (
       record: Object.assign({}, patch),
       mustStopVm: false,
       signal,
+      // Approved setup takes effect on the next turn without stopping its caller's VM.
+      allowProjectChange: true,
+      isCurrent,
     })
     kernel.publish({ type: "bot.updated", bot: updated })
     return updated
