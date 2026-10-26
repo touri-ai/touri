@@ -51,3 +51,13 @@ test.skipIf(process.platform === "win32")("a database symlink is still refused b
 
   await expect(rows).rejects.toThrow("STORE_READ_FAILED")
 })
+
+test.skipIf(process.platform === "win32")("a directory symlink is still refused by the read-only helper", async () => {
+  const fixture = await makeFixture()
+  const alias = join(fixture.root, "alias")
+  await symlink(fixture.root, alias, "dir")
+
+  const rows = getRows(join(alias, "touri.db"))
+
+  await expect(rows).rejects.toThrow("STORE_READ_FAILED")
+})

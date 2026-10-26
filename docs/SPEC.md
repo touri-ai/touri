@@ -16,6 +16,11 @@ legacy app bots, chats and routines so you can switch over.
 
 Release CLI and desktop sidecar builds embed ESM bytecode with the pinned Bun toolchain. This avoids repeating bundle parsing when request-owned history readers start. Reader capacity, deadlines, cancellation and SQL scopes are unchanged; each read still owns its process and can interrupt native SQLite with SIGKILL.
 
+Isolated history readers accept macOS system-directory aliases (`/var/`, `/tmp/` and `/etc/`) by
+normalizing those prefixes before opening SQLite. They keep read-only, query-only and NOFOLLOW
+protections: arbitrary database or directory symlinks remain denied. Normalization performs no
+filesystem resolution and preserves the existing readiness, deadlines and cancellation behavior.
+
 Runs publish and persist `usage.timings` in `usage_json`: `queuedAt`, `processSpawnedAt`,
 `providerReadyAt`, `firstTokenAt` and `finishedAt` are epoch milliseconds. Missing milestones
 mean the turn has not reached that stage (including cancellation before spawning). First token
