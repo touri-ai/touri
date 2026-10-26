@@ -223,6 +223,8 @@ Conversation history always reserves the same 64 px navigation space outside its
 including while the jump-to-latest button is hidden. Showing or hiding that button must not resize
 the history or move a pressed control before pointer release, including when the first browser
 preview arrives. The jump button stays outside the scroll viewport on desktop and phone layouts.
+When row measurements or viewport resizing clamp a requested scroll position, its native scroll
+event preserves the revealed control's anchor instead of being treated as manual scrolling.
 
 | Topic | Decision | Why (short) |
 |---|---|---|

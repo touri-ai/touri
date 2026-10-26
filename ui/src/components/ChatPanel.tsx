@@ -739,9 +739,10 @@ export const VirtualMessageList = ({
           const list = event.currentTarget
           const expected = programmaticTop.current
           programmaticTop.current = null
-          // Hiding the jump button enlarges the viewport and clamps the requested position.
+          // Row measurements and viewport changes can clamp a programmatic scroll before its event arrives.
+          const maximumTop = Math.max(0, list.scrollHeight - list.clientHeight)
           const expectedTop = expected
-            ? Math.max(0, expected.top - Math.max(0, list.clientHeight - expected.viewportHeight))
+            ? Math.min(maximumTop, Math.max(0, expected.top - Math.max(0, list.clientHeight - expected.viewportHeight)))
             : null
           if (expectedTop !== null && Math.abs(list.scrollTop - expectedTop) <= 1) {
             setScrollTop(list.scrollTop)
