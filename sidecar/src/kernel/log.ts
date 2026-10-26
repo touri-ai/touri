@@ -41,7 +41,12 @@ export const createLogger = ({
       content: encoded,
       maxBytes: maxLogBytes,
       retainedGenerations,
-    }).catch(() => undefined)
+    }).catch((error: unknown) => {
+      if (process.env.TOURI_SMOKE_DIAGNOSTICS !== "1") return
+      const code = error instanceof Error && "code" in error ? error.code : "LOG_WRITE_FAILED"
+      if (typeof code === "string" && /^[A-Z0-9_-]{1,64}$/.test(code))
+        process.stderr.write(`Smoke log write failure: ${code}\n`)
+    })
     if (entry.level === "error" || entry.level === "warn") process.stderr.write(`${line}\n`)
   }
 }

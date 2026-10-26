@@ -54,6 +54,7 @@ export const createWalCheckpointer = ({
   }
   const reportError = (): void => {
     if (stopped || reportedError) return
+    if (process.env.TOURI_SMOKE_DIAGNOSTICS === "1") process.stderr.write("Smoke checkpoint worker failed\n")
     reportedError = true
     restoreAutocheckpoint()
     finish()
@@ -87,6 +88,7 @@ export const createWalCheckpointer = ({
       if (data?.type !== "ready") return
 
       clearTimeout(startupTimer)
+      if (process.env.TOURI_SMOKE_DIAGNOSTICS === "1") process.stderr.write("Smoke checkpoint worker ready\n")
       onReady?.()
       worker?.unref()
     }
@@ -97,6 +99,7 @@ export const createWalCheckpointer = ({
     worker.addEventListener("close", reportError)
     startupTimer = setTimeout(reportError, STARTUP_TIMEOUT_MS)
     worker.postMessage({ type: "start", filename: database.filename, intervalMs, pageIntervalMs })
+    if (process.env.TOURI_SMOKE_DIAGNOSTICS === "1") process.stderr.write("Smoke checkpoint worker created\n")
   } catch {
     reportError()
   }
