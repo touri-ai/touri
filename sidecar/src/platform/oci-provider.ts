@@ -175,12 +175,11 @@ export const createOciProvider = ({
       return { success, ...ref(id), connection: value }
     },
     async connection({ id, authKeyId }) {
-      const ports = []
       for (const guestPort of [9876, 9222]) {
         const result = await forwarding.forwardPort({ id, guestPort })
         if (!result.success) return result
-        ports.push(result)
       }
+      const ports = Array.from(forwarding.portsByVm.get(id)?.values() ?? [])
       if (authKeyId) keys.set(id, authKeyId)
       return { success: true, ...machineConnection({ id, provider: engine, ports, authKeyId: keys.get(id) ?? null }) }
     },

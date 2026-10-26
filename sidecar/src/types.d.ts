@@ -19,3 +19,15 @@ declare module "*.cjs" {
   const source: string
   export default source
 }
+declare module "*.desktop" {
+  const content: string
+  export default content
+}
+declare module "*/tint2rc" {
+  const content: string
+  export default content
+}
+declare module "*.conf" {
+  const content: string
+  export default content
+}

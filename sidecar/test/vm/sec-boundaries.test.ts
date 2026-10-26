@@ -41,7 +41,7 @@ test("B09 browser profile is isolated from the agent and protected at boot", () 
 test("B11 network enforcement must precede guest readiness", () => {
   expect(init.indexOf("network-policy.py")).toBeGreaterThan(-1)
   expect(init.indexOf("network-policy.py")).toBeLessThan(init.indexOf("touch /tmp/touri-ready"))
-  expect(BOT_IMAGE).toBe("touri-bot:8")
+  expect(BOT_IMAGE).toBe("touri-bot:9")
 })
 
 test("B05 guest state write refuses a linked parent without modifying its target", async () => {

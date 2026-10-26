@@ -840,3 +840,77 @@ test("the empty screen localizes assisted-decision fallback without internal mar
   expect(document.body.textContent).not.toContain("TOURI_BROWSER_DECISION_HINT")
   expect(document.body.textContent).not.toContain("Two targets match.")
 })
+
+test("human control uses one keyboard field for typing and native paste", async () => {
+  const f = fixture()
+  render(<DesktopPanel bot={bot} api={f.api} />)
+  await connected()
+  fireEvent.click(screen.getByRole("button", { name: "Assumir controle" }))
+  await waitFor(() => expect(viewers).toHaveLength(2))
+  await connected()
+
+  expect(screen.getAllByRole("textbox")).toHaveLength(1)
+  fireEvent.paste(screen.getByLabelText("Digitar na VM"), {
+    clipboardData: { getData: () => "echo 'Olá, ação!'" },
+  })
+
+  await waitFor(() =>
+    expect(f.request).toHaveBeenCalledWith("POST /desktop/:id/text", { text: "echo 'Olá, ação!'" }, { id: "session" }),
+  )
+  expect(viewers.at(-1)?.sendKey).not.toHaveBeenCalled()
+})
+
+test("native paste uses the guest clipboard without duplicating accented text", async () => {
+  const f = fixture()
+  render(<DesktopPanel bot={bot} api={f.api} />)
+  await connected()
+  fireEvent.click(screen.getByRole("button", { name: "Assumir controle" }))
+  await waitFor(() => expect(viewers).toHaveLength(2))
+  await connected()
+
+  fireEvent.paste(screen.getByLabelText("Digitar na VM"), {
+    clipboardData: { getData: () => "ação ç á 日本" },
+  })
+
+  await waitFor(() =>
+    expect(f.request).toHaveBeenCalledWith("POST /desktop/:id/text", { text: "ação ç á 日本" }, { id: "session" }),
+  )
+  expect(viewers.at(-1)?.sendKey).not.toHaveBeenCalled()
+})
+
+test("screen zoom keeps the current takeover and enables panning without changing guest resolution", async () => {
+  const f = fixture()
+  render(<DesktopPanel bot={bot} api={f.api} />)
+  await connected()
+  const viewer = viewers.at(-1) as (typeof viewers)[number] & {
+    scaleViewport: boolean
+    clipViewport: boolean
+    dragViewport: boolean
+  }
+
+  fireEvent.click(screen.getByRole("button", { name: "Ampliar tela" }))
+
+  expect(viewer.scaleViewport).toBe(false)
+  expect(viewer.clipViewport).toBe(true)
+  expect(viewer.dragViewport).toBe(true)
+  expect(viewers).toHaveLength(1)
+  fireEvent.click(screen.getByRole("button", { name: "Ajustar à tela" }))
+  expect(viewer.scaleViewport).toBe(true)
+  expect(viewer.clipViewport).toBe(false)
+})
+
+test("oversized native paste stays local and explains the input limit", async () => {
+  const f = fixture()
+  render(<DesktopPanel bot={bot} api={f.api} />)
+  await connected()
+  fireEvent.click(screen.getByRole("button", { name: "Assumir controle" }))
+  await waitFor(() => expect(viewers).toHaveLength(2))
+  await connected()
+
+  fireEvent.paste(screen.getByLabelText("Digitar na VM"), {
+    clipboardData: { getData: () => "a".repeat(16_385) },
+  })
+
+  expect(screen.getByRole("alert")).toHaveTextContent("Cole até 16.384 caracteres por vez.")
+  expect(f.request.mock.calls.some(([route]) => route === "POST /desktop/:id/text")).toBe(false)
+})

@@ -5,6 +5,15 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "Cole até 16.384 caracteres por vez.": "Cole até 16.384 caracteres por vez.",
+  "Ampliar tela": "Ampliar tela",
+  "Ajustar à tela": "Ajustar à tela",
+  "Tela do computador de {name}": "Tela do computador de {name}",
+  "Tela do computador": "Tela do computador",
+  "Digitar na VM": "Digitar na VM",
+  "Digite aqui ou clique na tela para usar o teclado": "Digite aqui ou clique na tela para usar o teclado",
+  "⌘ equivale a Ctrl. Use Ctrl+Shift+C e Ctrl+Shift+V no terminal.":
+    "⌘ equivale a Ctrl. Use Ctrl+Shift+C e Ctrl+Shift+V no terminal.",
   "Reload app": "Recarregar app",
   "Reload this area": "Recarregar esta área",
   "Your conversations are saved. Reload to try again.":
@@ -3473,6 +3482,15 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Cole até 16.384 caracteres por vez.": "Paste up to 16,384 characters at a time.",
+  "Ampliar tela": "Zoom in",
+  "Ajustar à tela": "Fit to screen",
+  "Tela do computador de {name}": "{name}'s computer screen",
+  "Tela do computador": "Computer screen",
+  "Digitar na VM": "Type on the computer",
+  "Digite aqui ou clique na tela para usar o teclado": "Type here or click the screen to use the keyboard",
+  "⌘ equivale a Ctrl. Use Ctrl+Shift+C e Ctrl+Shift+V no terminal.":
+    "⌘ acts as Ctrl. Use Ctrl+Shift+C and Ctrl+Shift+V in the terminal.",
   "Back to latest messages": "Back to latest messages",
   "New message count": "{count} new message",
   "New messages count": "{count} new messages",

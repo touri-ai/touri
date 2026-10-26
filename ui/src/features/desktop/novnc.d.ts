@@ -3,6 +3,8 @@ declare module "@novnc/novnc" {
     constructor(target: HTMLElement, channel: string | WebSocket, options?: { shared?: boolean })
     viewOnly: boolean
     scaleViewport: boolean
+    clipViewport: boolean
+    dragViewport: boolean
     resizeSession: boolean
     focusOnClick: boolean
     disconnect(): void

@@ -45,7 +45,7 @@ exec /usr/bin/tini -- /bin/sh -c '
   }
   # Start protected even before the sidecar supplies its current boot secret.
   /usr/sbin/runuser -u node -- node /usr/local/lib/touri/vnc-password.cjs || fail "Senha da tela não foi preparada"
-  Xvfb :99 -auth /var/lib/touri-browser/.Xauthority -screen 0 1440x900x24 -nolisten tcp > /run/touri-xvfb.log 2>&1 &
+  Xvfb :99 -noreset -auth /var/lib/touri-browser/.Xauthority -screen 0 1440x900x24 -nolisten tcp > /run/touri-xvfb.log 2>&1 &
   xvfb=$!
   trap "rm -f /tmp/touri-ready; kill $xvfb 2>/dev/null || true" EXIT
   attempt=0
@@ -58,6 +58,18 @@ exec /usr/bin/tini -- /bin/sh -c '
     [ "$attempt" -lt 100 ] || fail "Xvfb não iniciou em 10 s"
     sleep 0.1
   done
+  # An untrusted X cookie lets the agent desktop draw its own windows without
+  # reading the isolated browser windows, input or trusted display credential.
+  install -d -m 0755 -o 0 -g 0 /run/touri-desktop
+  xauth -f /run/touri-desktop/authority generate :99 . untrusted timeout 0 || fail "Área de trabalho não foi preparada"
+  chown 0:0 /run/touri-desktop/authority
+  chmod 0644 /run/touri-desktop/authority
+  /usr/sbin/runuser -u browser -- openbox --config-file /usr/local/lib/touri/openbox.conf > /run/touri-window-manager.log 2>&1 &
+  manager=$!
+  python3 /usr/local/lib/touri/desktop-launcher.py > /run/touri-desktop.log 2>&1 &
+  desktop=$!
+  /usr/sbin/runuser -u browser -- tint2 -c /usr/local/lib/touri/tint2rc > /run/touri-panel.log 2>&1 &
+  panel=$!
   /usr/sbin/runuser -u node -- node /usr/local/lib/touri/mcp-bridge.cjs &
   bridge=$!
   # Only the existing exec-based port-forward can reach this guest loopback listener.
@@ -65,7 +77,7 @@ exec /usr/bin/tini -- /bin/sh -c '
   vnc=$!
   python3 /usr/local/lib/touri/display-heartbeat.py &
   heartbeat=$!
-  trap "rm -f /tmp/touri-ready; kill $xvfb $bridge $vnc $heartbeat 2>/dev/null || true" EXIT
+  trap "rm -f /tmp/touri-ready; kill $xvfb $bridge $vnc $heartbeat $manager $desktop $panel 2>/dev/null || true" EXIT
   attempt=0
   until ss -ltn | grep -q "127.0.0.1:5900"; do
     kill -0 "$vnc" 2>/dev/null || fail "Servidor da tela não iniciou"
@@ -74,7 +86,7 @@ exec /usr/bin/tini -- /bin/sh -c '
     sleep 0.1
   done
   touch /tmp/touri-ready
-  while kill -0 "$xvfb" 2>/dev/null && kill -0 "$bridge" 2>/dev/null && kill -0 "$vnc" 2>/dev/null && kill -0 "$heartbeat" 2>/dev/null; do sleep 1; done
+  while kill -0 "$xvfb" 2>/dev/null && kill -0 "$bridge" 2>/dev/null && kill -0 "$vnc" 2>/dev/null && kill -0 "$heartbeat" 2>/dev/null && kill -0 "$manager" 2>/dev/null && kill -0 "$desktop" 2>/dev/null && kill -0 "$panel" 2>/dev/null; do sleep 1; done
   rm -f /tmp/touri-ready
   kill "$bridge" 2>/dev/null || true
   fail "Um serviço da máquina encerrou inesperadamente"

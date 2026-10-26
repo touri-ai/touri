@@ -70,6 +70,14 @@ export const createDesktopKeyboard = (target: KeyboardTarget, mac: boolean) => {
   }
   return {
     release,
+    paste: (value: string) => {
+      if (!value) return pending
+      release()
+      if (target.pasteText) enqueue(() => target.pasteText?.(value))
+      else text(value)
+
+      return pending
+    },
     reset: () => {
       generation++
       release(true)

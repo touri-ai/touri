@@ -202,6 +202,18 @@ scrolling the conversation. Keyboard, text input and paste events stay within th
 input reaches only the managed page and never becomes conversation text. This applies to desktop
 and phone layouts. Existing takeover authorization, input bounds and the release control remain in force.
 
+The isolated computer includes a lightweight desktop with Terminal and Files launchers. Terminal
+starts in the bot's home as its unprivileged user and preserves shell state until its window closes.
+Agent applications use untrusted display authorization; the browser's trusted credential stays private.
+The launch service accepts only the two fixed applications and drops privileges before starting them.
+Refreshing Linux connection descriptors retains existing private display forwards.
+
+During computer takeover, a single keyboard field accepts typing, composed text and native clipboard
+paste. Paste reaches only the authenticated, controlled desktop session; returning control or stopping
+computer use disables input. Native paste is limited to 16,384 characters per operation, within the
+server's existing 64 KiB bound. Terminal keeps its copy/paste shortcuts. Zoom and fit controls preserve
+the current session and allow panning on phones without changing the guest's resolution.
+
 Browser activity cards reserve three subtitle lines so action updates do not move their controls
 on phones or desktops. Longer subtitles remain clamped within that space. The loaded takeover
 canvas exposes the same localized image role and accessible name as the fallback image, while

@@ -1,0 +1,5 @@
+[Desktop Entry]
+Type=Application
+Name=Terminal
+Icon=utilities-terminal
+Exec=/bin/sh -c "printf terminal | socat -u STDIN UNIX-SENDTO:/run/touri-desktop/launcher"

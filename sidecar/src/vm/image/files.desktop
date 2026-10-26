@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Arquivos
+Name[en]=Files
+Icon=system-file-manager
+Exec=/bin/sh -c "printf files | socat -u STDIN UNIX-SENDTO:/run/touri-desktop/launcher"
