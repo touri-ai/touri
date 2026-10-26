@@ -111,7 +111,11 @@ const liveImage = (() => {
   return canvas.toDataURL("image/jpeg", 0.8)
 })()
 const releases: string[] = []
-Object.assign(window, { browserOutcome: { handbacks, releases } })
+const takeoverRequests = new Set<number>()
+const previewReady = Promise.withResolvers<void>()
+Object.assign(window, {
+  browserOutcome: { handbacks, releases, takeoverRequests, showPreview: () => previewReady.resolve() },
+})
 
 const originalRequest = api.request
 api.request = (async (route: string, input?: unknown, pathValues?: Record<string, string>) => {
@@ -131,10 +135,14 @@ api.request = (async (route: string, input?: unknown, pathValues?: Record<string
         },
       ],
     }
-  if (live && route === "GET /bots/:id/browser-preview")
+  if (live && route === "GET /bots/:id/browser-preview") {
+    if (params.get("preview") === "deferred") await previewReady.promise
     return { image: liveImage, title: "Busca de viagem", url: pageUrl }
-  if (live && route === "POST /browser/tabs/:id/takeover/session")
+  }
+  if (live && route === "POST /browser/tabs/:id/takeover/session") {
+    takeoverRequests.add(performance.now())
     return { sessionId: "synthetic-session", controlEpoch: "synthetic-control-epoch", viewEpoch: 0 }
+  }
   if (live && route === "POST /browser/tabs/:id/takeover/frame")
     return {
       controlEpoch: "synthetic-control-epoch",

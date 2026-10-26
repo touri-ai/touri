@@ -1,4 +1,4 @@
-import { expect, type Locator, test } from "@playwright/test"
+import { expect, type Locator, type Page, test } from "@playwright/test"
 
 test.use({ channel: "chromium", reducedMotion: "reduce" })
 
@@ -62,4 +62,77 @@ for (const viewport of [
     ).toBeVisible()
     await expect(input).toHaveValue("Rascunho que deve continuar aqui")
   })
+
+  test(`a preview settling near the latest messages keeps takeover clickable at ${viewport.width}px`, async ({
+    page,
+  }) => {
+    test.setTimeout(60_000)
+    await page.setViewportSize(viewport)
+    await page.goto("/test/e2e/browser-outcome-harness.html?takeover=live&preview=deferred")
+    await expect(page.getByRole("textbox", { name: "Mensagem para mark", exact: true })).toBeVisible({
+      timeout: 20_000,
+    })
+    const takeover = page.locator(".browser-activity-card").getByRole("button", { name: "Assumir", exact: true })
+    await expect(takeover).toBeEnabled({ timeout: 20_000 })
+    const history = page.locator(".message-scroll")
+    await expect(page.locator(".browser-activity-placeholder")).toBeVisible()
+    await page.evaluate(() => document.fonts.ready)
+    await history.evaluate((list) => list.scrollTo(0, list.scrollHeight - list.clientHeight - 54))
+    await expect(page.locator(".chat-scroll-bottom")).toBeVisible()
+    await history.evaluate((list) => list.scrollTo(0, list.scrollHeight - list.clientHeight - 54))
+    await nextFrames(page)
+    const historyBounds = await history.boundingBox()
+    const jumpBounds = await page.locator(".chat-scroll-bottom").boundingBox()
+    if (!historyBounds || !jumpBounds) throw new Error("Missing history navigation")
+    expect(historyBounds.y + historyBounds.height).toBeLessThanOrEqual(jumpBounds.y)
+    const point = await takeover.boundingBox()
+    if (!point) throw new Error("Missing takeover control")
+    await page.mouse.move(point.x + point.width / 2, point.y + point.height / 2)
+    await page.mouse.down()
+    await nextFrames(page)
+    const before = await takeover.boundingBox()
+    const heightBefore = await history.evaluate((list) => list.clientHeight)
+    if (!before) throw new Error("Missing pressed takeover control")
+
+    await page.evaluate(() => {
+      const outcome = (window as Window & { browserOutcome?: { showPreview: () => void } }).browserOutcome
+      outcome?.showPreview()
+    })
+    await expect(page.getByRole("img", { name: "Página atual do navegador" })).toBeVisible()
+    await nextFrames(page)
+    const after = await takeover.boundingBox()
+    const heightAfter = await history.evaluate((list) => list.clientHeight)
+    if (!after) throw new Error("Missing takeover control after preview")
+    if (process.env.TOURI_SCREENSHOT_DIR)
+      await page.screenshot({
+        path: `${process.env.TOURI_SCREENSHOT_DIR}/takeover-preview-${viewport.width}.png`,
+        mask: [page.locator(".composer-model")],
+        maskColor: "#28282b",
+      })
+    await page.mouse.up()
+
+    console.log(
+      JSON.stringify({
+        width: viewport.width,
+        takeoverShiftPx: Math.abs(after.y - before.y),
+        historyHeightChangePx: heightAfter - heightBefore,
+      }),
+    )
+    expect(heightAfter).toBe(heightBefore)
+    expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(1)
+    const view = page.getByRole("region", { name: "Controle remoto do navegador" })
+    await expect(view.getByRole("button", { name: "Devolver para mark", exact: true })).toBeVisible()
+    expect(
+      await page.evaluate(
+        () =>
+          (window as Window & { browserOutcome?: { takeoverRequests: Set<number> } }).browserOutcome?.takeoverRequests
+            .size,
+      ),
+    ).toBe(1)
+  })
 }
+
+const nextFrames = (page: Page) =>
+  page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  )

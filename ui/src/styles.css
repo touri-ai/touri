@@ -3748,8 +3748,6 @@ a {
   flex: 1;
   min-height: 0;
   min-width: 0;
-}
-.chat-message-list:has(.chat-scroll-bottom) {
   padding-bottom: 64px;
 }
 .chat-message-list .message-scroll {

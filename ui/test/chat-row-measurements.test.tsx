@@ -3,6 +3,7 @@ import { StrictMode } from "react"
 import { afterEach, expect, it, vi } from "vitest"
 import * as browserRequestMessages from "../src/components/browserRequestMessages"
 import { VirtualMessageList } from "../src/components/ChatPanel"
+import { requestReveal } from "../src/components/revealEvent"
 
 const getCards = (height: number) =>
   Array.from({ length: 101 }, (_, index) => ({
@@ -78,6 +79,34 @@ it("offers the latest page even when an older search page is at its bottom", () 
   expect(onLatestHistory).toHaveBeenCalledTimes(1)
 })
 
+it("keeps a revealed control anchored when row measurements clamp a programmatic scroll", () => {
+  const notifyResize = installMeasurements()
+  const view = render(
+    <VirtualMessageList
+      messages={[]}
+      timelineCards={[{ id: "browser-control", createdAt: 0, content: <button type="button">Devolver</button> }]}
+      onSwitchBranch={() => undefined}
+      onRetry={async () => undefined}
+    />,
+  )
+  const history = view.getByRole("region", { name: "Histórico da conversa" })
+  const control = view.getByRole("button", { name: "Devolver" })
+  const setScrollHeight = installHistoryLayout(history, control)
+  history.scrollTop = 10
+  fireEvent.scroll(history)
+  fireEvent.click(view.getByRole("button", { name: "Voltar ao fim" }))
+  act(() => requestReveal(control))
+  expect(history.scrollTop).toBe(554)
+
+  setScrollHeight(930)
+  fireEvent.scroll(history)
+  setScrollHeight(1000)
+  act(notifyResize)
+
+  expect(history.scrollTop).toBe(554)
+  expect(control.getBoundingClientRect().top).toBe(8)
+})
+
 it.each([false, true])("updates virtual offsets when a row grows and collapses (strict: %s)", async (strict) => {
   const notifyResize = installMeasurements()
   const getList = (height: number) => (
@@ -106,3 +135,27 @@ it.each([false, true])("updates virtual offsets when a row grows and collapses (
 
   await waitFor(() => expect(spacer).toHaveStyle({ height: `${originalHeight}px` }))
 })
+
+const installHistoryLayout = (history: HTMLElement, control: HTMLElement) => {
+  // These local setters emulate the browser clamping scrollTop when measured rows shrink.
+  let scrollHeight = 1000
+  let scrollTop = 0
+  Object.defineProperties(history, {
+    clientHeight: { configurable: true, get: () => 400 },
+    scrollHeight: { configurable: true, get: () => scrollHeight },
+    scrollTop: {
+      configurable: true,
+      get: () => scrollTop,
+      set: (value: number) => {
+        scrollTop = Math.max(0, Math.min(value, scrollHeight - 400))
+      },
+    },
+  })
+  vi.spyOn(history, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 400, 400))
+  vi.spyOn(control, "getBoundingClientRect").mockImplementation(() => new DOMRect(0, 562 - scrollTop, 100, 44))
+
+  return (height: number) => {
+    scrollHeight = height
+    scrollTop = Math.min(scrollTop, scrollHeight - 400)
+  }
+}
