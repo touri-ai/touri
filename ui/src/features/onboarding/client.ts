@@ -8,18 +8,23 @@ export type OnboardingRequest = <K extends OnboardingRoute>(
   signal?: AbortSignal,
 ) => Promise<ApiRoutes[K]["res"]>
 
+export class OnboardingUnsupportedError extends Error {}
+
+type FetchRequest = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+
 export const createOnboardingRequest =
-  (invoke: TauriInvoke): OnboardingRequest =>
+  (invoke: TauriInvoke, fetchRequest: FetchRequest = fetch): OnboardingRequest =>
   async (route, input, signal) => {
     const endpoint = await resolveSidecarEndpoint(invoke)
     const [method, path] = route.split(" ")
-    const response = await fetch(`${endpoint.baseUrl}/api/v1${path}`, {
+    const response = await fetchRequest(`${endpoint.baseUrl}/api/v1${path}`, {
       method: method ?? "GET",
       headers: { Authorization: `Bearer ${endpoint.token}`, "Content-Type": "application/json" },
       ...(method === "POST" ? { body: JSON.stringify(input) } : {}),
       signal: AbortSignal.any([signal ?? new AbortController().signal, AbortSignal.timeout(20_000)]),
       redirect: "error",
     })
+    if (response.status === 404 && route === "GET /onboarding") throw new OnboardingUnsupportedError()
     if (!response.ok) throw new Error("ONBOARDING_REQUEST_FAILED")
     return response.json()
   }

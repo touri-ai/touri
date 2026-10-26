@@ -302,15 +302,17 @@ jobs:
 
   api-models:
     runs-on: ubuntu-latest
+    # Use the same pinned browser and system libraries as the complete browser suite.
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:bc72a8df40831ded821e3cbc79c318c21b44d6e51dff9fd89ace7a8249c5b462
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install archive tool
+        run: apt-get update && apt-get install -y --no-install-recommends unzip
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: 1.4.3
-      - name: Install browser for API model setup
-        working-directory: ui
-        run: bunx playwright install --with-deps chromium
       # Optimization during the flow would reload and reset the in-memory mock service.
       - name: Prepare development dependencies before stateful browser checks
         working-directory: ui

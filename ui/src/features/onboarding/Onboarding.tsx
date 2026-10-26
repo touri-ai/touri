@@ -11,6 +11,7 @@ import {
   getResumingLocalSetup,
   hasCompletedOnboarding,
   type OnboardingRequest,
+  OnboardingUnsupportedError,
   scheduleLocalSetup,
 } from "./client"
 import "./onboarding.css"
@@ -60,6 +61,7 @@ export const OnboardingBoundary = ({
         setOpen(false)
       }}
       revisiting={revisit}
+      onUnsupported={() => setOpen(false)}
     />
   )
   const chrome = getWindowChrome({
@@ -77,12 +79,14 @@ export const Onboarding = ({
   onComplete,
   initialStep = "welcome",
   revisiting = false,
+  onUnsupported,
 }: {
   request: OnboardingRequest
   invoke: TauriInvoke
   onComplete: () => void
   initialStep?: Step
   revisiting?: boolean
+  onUnsupported?: () => void
 }) => {
   const [step, setStep] = useState<Step>(initialStep)
   const [status, setStatus] = useState<OnboardingStatus | null>(null)
@@ -108,9 +112,13 @@ export const Onboarding = ({
         setRemote(next.remoteUrl !== null)
         if (next.completed && !revisiting) onComplete()
       })
-      .catch(() => undefined)
+      .catch((error: unknown) => {
+        if (controller.signal.aborted || revisiting) return
+        // Existing runtimes can serve the workspace without desktop first-run routes.
+        if (error instanceof OnboardingUnsupportedError) onUnsupported?.()
+      })
     return () => controller.abort()
-  }, [request, revisiting, onComplete])
+  }, [request, revisiting, onComplete, onUnsupported])
   // biome-ignore lint/correctness/useExhaustiveDependencies: move focus only when the screen changes.
   useEffect(() => {
     heading.current?.focus()
