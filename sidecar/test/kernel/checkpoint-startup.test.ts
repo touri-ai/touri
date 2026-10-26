@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, realpath, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -12,10 +12,35 @@ afterEach(async () => {
   cleanups.clear()
 })
 
-test("a standalone checkpoint worker starts and stops without unrelated event-loop activity", async () => {
-  const root = await mkdtemp(join(tmpdir(), "touri-checkpoint-startup-"))
-  cleanups.add(() => rm(root, { recursive: true, force: true }))
-  const child = Bun.spawn([process.execPath, join(import.meta.dir, "checkpoint-startup.fixture.ts"), root], {
+const compiledModes = [false, true]
+compiledModes.forEach((compiled) => {
+  test(`a ${compiled ? "bytecode" : "source"} checkpoint worker starts and stops without unrelated activity`, async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), "touri-checkpoint-startup-")))
+    cleanups.add(() => rm(root, { recursive: true, force: true }))
+    const fixture = join(import.meta.dir, "checkpoint-startup.fixture.ts")
+    const binary = join(root, process.platform === "win32" ? "fixture.exe" : "fixture")
+    if (compiled) {
+      const build = await run([
+        process.execPath,
+        "build",
+        "--compile",
+        "--bytecode",
+        "--format=esm",
+        fixture,
+        "--outfile",
+        binary,
+      ])
+      if (build.code !== 0) throw new Error(`Checkpoint fixture build failed: ${build.errors}`)
+    }
+
+    const result = await run(compiled ? [binary, root] : [process.execPath, fixture, root])
+
+    expect(result).toEqual({ code: 0, output: "checkpoint worker started and stopped\n", errors: "" })
+  }, 30_000)
+})
+
+const run = async (cmd: string[]) => {
+  const child = Bun.spawn(cmd, {
     stdout: "pipe",
     stderr: "pipe",
     timeout: 10_000,
@@ -32,5 +57,5 @@ test("a standalone checkpoint worker starts and stops without unrelated event-lo
     new Response(child.stderr).text(),
   ])
 
-  expect({ code, output, errors }).toEqual({ code: 0, output: "checkpoint worker started and stopped\n", errors: "" })
-}, 15_000)
+  return { code, output, errors }
+}
