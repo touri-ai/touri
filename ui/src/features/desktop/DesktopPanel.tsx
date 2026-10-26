@@ -63,6 +63,12 @@ export const DesktopPanel = ({
   const [controlling, setControlling] = useState(false)
   const lastConnection = useRef<string | null>(null)
   const [browserFailure, setBrowserFailure] = useState<BrowserFailureInfo | null>(null)
+  const [pasteText, setPasteText] = useState("")
+  const [pasting, setPasting] = useState(false)
+  const sendText = useRef<(text: string) => Promise<void>>(async () => {})
+  const [fitScreen, setFitScreen] = useState(true)
+  const fitViewport = useRef(true)
+  const resizeDisplay = useRef<(fit: boolean) => void>(() => {})
 
   useEffect(() => {
     onControlChange?.(controlling)
@@ -180,12 +186,29 @@ export const DesktopPanel = ({
       if (!document.hidden) sampleNow?.()
     }
     const canType = () => connected && displayed && viewer !== null && !viewer.viewOnly
+    sendText.current = async (text) => {
+      if (canType()) await keyboard.paste(text)
+    }
+    const paste = (event: ClipboardEvent) => {
+      if (!canType()) return
+      event.preventDefault()
+      const text = event.clipboardData?.getData("text/plain") ?? ""
+      if (text.length > 16_384) {
+        setError(t("Cole até 16.384 caracteres por vez."))
+        return
+      }
+      void keyboard.paste(text)
+      textarea.value = ""
+    }
     const pointerInput = (event: Event) => {
       if (canType() && event.target instanceof HTMLCanvasElement) monitor.input(performance.now())
     }
     // noVNC stops propagation; capture input on its canvas before its handlers run.
     const pointerEvents = ["mousedown", "mouseup", "mousemove", "wheel", "gesturestart", "gesturemove", "gestureend"]
     const keydown = (event: KeyboardEvent) => {
+      // Let the browser provide local clipboard text instead of pasting stale
+      // guest clipboard contents before its native paste event arrives.
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "v") return
       if (canType()) keyboard.keydown(event)
     }
     const keyup = (event: KeyboardEvent) => {
@@ -222,6 +245,7 @@ export const DesktopPanel = ({
     textarea.addEventListener("compositionend", compositionend)
     textarea.addEventListener("input", textInput)
     textarea.addEventListener("blur", blur)
+    textarea.addEventListener("paste", paste)
     // noVNC captures the pointer on mousedown, so the click lands outside the canvas; focus first.
     container.addEventListener("mousedown", focusInput, true)
     container.addEventListener("focusin", focusInput)
@@ -275,7 +299,16 @@ export const DesktopPanel = ({
       const currentViewer = viewer
       // Input remains off until a real guest image has arrived.
       viewer.viewOnly = true
-      viewer.scaleViewport = true
+      viewer.scaleViewport = fitViewport.current
+      viewer.clipViewport = !fitViewport.current
+      viewer.dragViewport = !fitViewport.current
+      resizeDisplay.current = (fit) => {
+        fitViewport.current = fit
+        if (!viewer) return
+        viewer.scaleViewport = fit
+        viewer.clipViewport = !fit
+        viewer.dragViewport = !fit
+      }
       viewer.resizeSession = false
       viewer.focusOnClick = false
       viewer.addEventListener("connect", () => {
@@ -331,6 +364,7 @@ export const DesktopPanel = ({
       textarea.removeEventListener("compositionend", compositionend)
       textarea.removeEventListener("input", textInput)
       textarea.removeEventListener("blur", blur)
+      textarea.removeEventListener("paste", paste)
       container.removeEventListener("mousedown", focusInput, true)
       container.removeEventListener("focusin", focusInput)
       for (const event of pointerEvents) container.removeEventListener(event, pointerInput, true)
@@ -397,9 +431,9 @@ export const DesktopPanel = ({
     }
   }
   return (
-    <section className="desktop-panel" aria-label={`Tela da VM de ${bot.name}`}>
+    <section className="desktop-panel" aria-label={t("Tela do computador de {name}", { name: bot.name })}>
       <header className="desktop-toolbar">
-        <h2 className="desktop-title">Tela da VM</h2>
+        <h2 className="desktop-title">{t("Tela do computador")}</h2>
         <span className="desktop-mode" role="status">
           {controlling ? t("Você está no controle") : t("Acompanhar a tela")}
         </span>
@@ -435,6 +469,18 @@ export const DesktopPanel = ({
           )}
           <button type="button" className="button button-quiet" disabled={paused || returning} onClick={reconnect}>
             {reconnecting ? t("Reconectando tela…") : t("Reconectar tela")}
+          </button>
+          <button
+            type="button"
+            className="button button-quiet"
+            disabled={phase !== "ready"}
+            aria-pressed={!fitScreen}
+            onClick={() => {
+              resizeDisplay.current(!fitScreen)
+              setFitScreen(!fitScreen)
+            }}
+          >
+            {fitScreen ? t("Ampliar tela") : t("Ajustar à tela")}
           </button>
         </div>
       </header>
@@ -518,21 +564,50 @@ export const DesktopPanel = ({
                 )}
           </p>
         )}
-        <label htmlFor={`desktop-input-${bot.id}`}>Digitar na VM</label>
+        <label htmlFor={`desktop-input-${bot.id}`}>{t("Digitar na VM")}</label>
         <textarea
           ref={input}
           id={`desktop-input-${bot.id}`}
           rows={1}
           disabled={!controlling || phase !== "ready"}
           placeholder={
-            controlling ? "Digite aqui ou clique na tela para usar o teclado" : t("Assuma o controle para digitar")
+            controlling ? t("Digite aqui ou clique na tela para usar o teclado") : t("Assuma o controle para digitar")
           }
           aria-describedby={`desktop-help-${bot.id}`}
           autoCapitalize="off"
           autoCorrect="off"
           spellCheck={false}
         />
-        <small id={`desktop-help-${bot.id}`}>⌘ equivale a Ctrl na VM. Texto composto é enviado ao confirmar.</small>
+        <small id={`desktop-help-${bot.id}`}>
+          {t("⌘ equivale a Ctrl. Use Ctrl+Shift+C e Ctrl+Shift+V no terminal.")}
+        </small>
+        {controlling && (
+          <form
+            className="desktop-paste"
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (pasting || !pasteText || phase !== "ready") return
+              setPasting(true)
+              void sendText.current(pasteText).finally(() => setPasting(false))
+            }}
+          >
+            <label htmlFor={`desktop-paste-${bot.id}`}>{t("Colar texto no computador")}</label>
+            <textarea
+              id={`desktop-paste-${bot.id}`}
+              rows={2}
+              value={pasteText}
+              maxLength={16384}
+              onChange={(event) => setPasteText(event.target.value)}
+              disabled={pasting || phase !== "ready"}
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+            />
+            <button className="button button-quiet" type="submit" disabled={pasting || !pasteText || phase !== "ready"}>
+              {t("Colar na tela")}
+            </button>
+          </form>
+        )}
       </div>
     </section>
   )

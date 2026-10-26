@@ -2,9 +2,9 @@ FROM node:22-bookworm-slim
 ARG CODEX_VERSION=0.162.1
 ARG CLAUDE_VERSION=2.1.296
 ARG OPENCODE_VERSION=1.18.13
-RUN apt-get update && apt-get install -y --no-install-recommends git python3 python3-pil curl ca-certificates chromium xvfb x11vnc xdotool imagemagick socat procps iproute2 nftables chromium-sandbox tini && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends git python3 python3-pil curl ca-certificates chromium xvfb x11vnc xdotool imagemagick socat procps iproute2 nftables chromium-sandbox tini openbox tint2 xterm pcmanfm xauth fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
 RUN npm install -g pnpm@10 @openai/codex@${CODEX_VERSION} @anthropic-ai/claude-code@${CLAUDE_VERSION} opencode-ai@${OPENCODE_VERSION}
-COPY x-authority.py network-policy.py init.sh mcp-bridge.cjs mcp-stdio.cjs connection.cjs computer.py display-heartbeat.py vnc-password.cjs /usr/local/lib/touri/
+COPY x-authority.py network-policy.py init.sh mcp-bridge.cjs mcp-stdio.cjs connection.cjs computer.py display-heartbeat.py vnc-password.cjs desktop-launcher.py openbox.conf tint2rc terminal.desktop terminal.sh files.desktop /usr/local/lib/touri/
 # Build-context files are private on the host; guest services use separate identities.
 RUN chmod 0644 /usr/local/lib/touri/* && chmod 0755 /usr/local/lib/touri/init.sh /usr/local/lib/touri/computer.py /usr/local/lib/touri/display-heartbeat.py && mkdir -p /workspace /run/touri-auth
 RUN useradd -u 1001 -m -d /var/lib/touri-browser browser && chmod 0700 /var/lib/touri-browser && chmod 4755 /usr/lib/chromium/chrome-sandbox

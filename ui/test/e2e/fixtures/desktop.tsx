@@ -7,6 +7,7 @@ import { installComputerKillSwitch } from "../../../src/computerKillSwitch"
 import { ComputerUseSettings } from "../../../src/features/computer/ComputerUseSettings"
 import { DesktopPanel } from "../../../src/features/desktop/DesktopPanel"
 import "../../../src/styles.css"
+import "../../../src/components/bot-panel.css"
 
 const params = new URLSearchParams(location.search)
 if (params.has("headless")) {
@@ -38,8 +39,9 @@ if (params.has("headless")) {
   installComputerKillSwitch(api)
   const { bots } = await api.request("GET /bots", {})
   const bot = bots.find((entry) => entry.id === params.get("bot"))
+  const machines = params.has("running") ? (await api.request("GET /machines", {})).machines : []
   const Computer = () => {
-    const [machine, setMachine] = useState<MachineState>()
+    const [machine, setMachine] = useState<MachineState | undefined>(machines.find((entry) => entry.botId === bot?.id))
     useEffect(
       () =>
         api.subscribe(({ event }) => {
@@ -50,5 +52,6 @@ if (params.has("headless")) {
     return bot ? <BotComputer api={api} bot={bot} machine={machine} autoOpen /> : null
   }
   const root = document.getElementById("root")
+  if (root && params.has("running")) root.classList.add("computer-window")
   if (root && bot) createRoot(root).render(params.has("computer") ? <Computer /> : <DesktopPanel api={api} bot={bot} />)
 }

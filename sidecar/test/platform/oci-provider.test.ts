@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { afterEach, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -6,6 +6,11 @@ import { createOciProvider } from "../../src/platform/oci-provider"
 import type { VmCommandOutput } from "../../src/vm/command"
 
 const ok = (stdout = ""): VmCommandOutput => ({ code: 0, stdout, stderr: "" })
+const displayProviders = new Set<ReturnType<typeof createOciProvider>>()
+afterEach(async () => {
+  await Promise.all(Array.from(displayProviders, (provider) => provider.destroy({ id: "touri-display" })))
+  displayProviders.clear()
+})
 const fixture = () => {
   const calls: string[][] = []
   const provider = createOciProvider({
@@ -148,5 +153,26 @@ test("parse Docker/Podman inspect and retain mounted workspace during upgrades",
     source: "touri-data",
     target: "/workspace",
     readOnly: false,
+  })
+})
+
+test("connection descriptors retain a private display forward opened after startup", async () => {
+  const { provider } = fixture()
+  displayProviders.add(provider)
+  const initial = await provider.connection({ id: "touri-display" })
+  expect(initial.success).toBe(true)
+
+  const display = await provider.forwardPort({ id: "touri-display", guestPort: 5900 })
+  const refreshed = await provider.connection({ id: "touri-display" })
+
+  expect(display.success).toBe(true)
+  expect(refreshed.success).toBe(true)
+  if (!display.success || !refreshed.success || !display.url) throw new Error("Display connection missing")
+  expect(refreshed.ports.find((port) => port.guestPort === 5900)).toEqual({
+    guestPort: 5900,
+    hostPort: 0,
+    hostIp: "127.0.0.1",
+    protocol: "tcp",
+    url: display.url,
   })
 })

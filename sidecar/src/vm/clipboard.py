@@ -3,6 +3,7 @@ import ctypes as C
 import ctypes.util
 import os
 import select
+import subprocess
 import sys
 import time
 
@@ -50,6 +51,20 @@ xt.XTestFakeKeyEvent.argtypes = [C.c_void_p, C.c_uint, C.c_int, C.c_ulong]
 display = x.XOpenDisplay(os.environ.get('DISPLAY', ':99').encode())
 if not display:
     raise RuntimeError('Display do guest indisponível')
+input_display = display
+terminal = False
+# The selection must share the focused application's trust level. Keep input
+# injection on the private connection; never give the shell that credential.
+focus = subprocess.run(['xdotool', 'getwindowfocus', 'getwindowpid'], capture_output=True, timeout=2)
+if focus.returncode == 0 and focus.stdout.strip().isdigit():
+    process = '/proc/' + focus.stdout.decode().strip()
+    terminal = open(process + '/comm').read(128).strip() == 'xterm'
+    if os.stat(process).st_uid == 1000:
+        os.environ['XAUTHORITY'] = '/run/touri-desktop/authority'
+        display = x.XOpenDisplay(os.environ.get('DISPLAY', ':99').encode())
+        if not display:
+            x.XCloseDisplay(input_display)
+            raise RuntimeError('Área de trabalho indisponível')
 try:
     window = x.XCreateSimpleWindow(display, x.XDefaultRootWindow(display), 0, 0, 1, 1, 0, 0, 0)
     clipboard, utf8, targets, string = [x.XInternAtom(display, name, 0) for name in [b'CLIPBOARD', b'UTF8_STRING', b'TARGETS', b'STRING']]
@@ -58,10 +73,13 @@ try:
     x.XFlush(display)
     if x.XGetSelectionOwner(display, clipboard) != window:
         raise RuntimeError('Não foi possível preparar a colagem no guest')
-    ctrl, v = [x.XKeysymToKeycode(display, symbol) for symbol in [0xffe3, ord('v')]]
-    for key, down in [(ctrl, 1), (v, 1), (v, 0), (ctrl, 0)]:
-        xt.XTestFakeKeyEvent(display, key, down, 0)
-    x.XFlush(display)
+    ctrl, shift, v = [x.XKeysymToKeycode(input_display, symbol) for symbol in [0xffe3, 0xffe1, ord('v')]]
+    # A shell binds Ctrl+V to literal-next-character; ordinary applications use
+    # Ctrl+V, while the terminal launcher configures Ctrl+Shift+V for paste.
+    keys = [(ctrl, 1)] + ([(shift, 1)] if terminal else []) + [(v, 1), (v, 0)] + ([(shift, 0)] if terminal else []) + [(ctrl, 0)]
+    for key, down in keys:
+        xt.XTestFakeKeyEvent(input_display, key, down, 0)
+    x.XFlush(input_display)
     deadline, served = time.monotonic() + 4, False
     while time.monotonic() < deadline:
         if not x.XPending(display):
@@ -91,3 +109,5 @@ try:
         raise RuntimeError('O aplicativo do guest não aceitou a colagem')
 finally:
     x.XCloseDisplay(display)
+    if input_display != display:
+        x.XCloseDisplay(input_display)
