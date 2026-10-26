@@ -63,12 +63,17 @@ export const nativeFileOperation = <T>(
   try {
     response = JSON.parse(child.stdout)
   } catch {
+    if (process.env.TOURI_SMOKE_DIAGNOSTICS === "1")
+      process.stderr.write(`Smoke native filesystem invalid response: exit ${child.exitCode}\n`)
     throw new TouriError("TOURI-E2001")
   }
-  if (!response.ok)
+  if (!response.ok) {
+    if (process.env.TOURI_SMOKE_DIAGNOSTICS === "1")
+      process.stderr.write(`Smoke native filesystem failure: exit ${child.exitCode}\n`)
     throw new TouriError(
       response.code === "TOURI-E2000" ? "TOURI-E2000" : response.code === "TOURI-E2002" ? "TOURI-E2002" : "TOURI-E2001",
     )
+  }
   return response.value as T
 }
 

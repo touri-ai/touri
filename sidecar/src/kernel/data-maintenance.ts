@@ -585,7 +585,7 @@ export const createStorageMaintenance = ({
     } catch (error) {
       if (stopped) return
       if (process.env.TOURI_SMOKE_DIAGNOSTICS === "1") {
-        const code = error instanceof Error && "code" in error ? error.code : "MAINTENANCE_FAILED"
+        const code = error instanceof Error && "code" in error ? error.code : error instanceof Error && error.message
         if (typeof code === "string" && /^[A-Z0-9_-]{1,64}$/.test(code))
           process.stderr.write(`Smoke maintenance failure: ${code}\n`)
       }

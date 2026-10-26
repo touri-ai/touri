@@ -2,7 +2,7 @@ import { TouriError } from "../kernel/errors"
 
 // Keep the synchronous filesystem contract without entering the HTTP event loop
 // while a native helper runs. Child I/O and exit handling stay on this worker.
-const source = `self.onmessage = async ({ data }) => {
+const source = `const execute = async (data) => {
   const { buffer, command, input, env, deadline } = data;
   const state = new Int32Array(buffer, 0, 4);
   const bytes = new Uint8Array(buffer, 16);
@@ -40,6 +40,11 @@ const source = `self.onmessage = async ({ data }) => {
     Atomics.store(state, 2, length);
     if (Atomics.compareExchange(state, 0, 0, status) === 0) Atomics.notify(state, 0);
   }
+};
+
+// Subprocess I/O must not await completion inside a worker inbox continuation.
+self.onmessage = ({ data }) => {
+  setTimeout(() => { void execute(data); }, 0);
 };`
 
 let worker: Worker | undefined
@@ -76,8 +81,12 @@ export const runHelperBlocking = ({
   const state = new Int32Array(buffer, 0, 4)
   try {
     helperWorker().postMessage({ buffer, command, input, env, deadline: Date.now() + timeoutMs })
-    Atomics.wait(state, 0, 0, timeoutMs)
+    const outcome = Atomics.wait(state, 0, 0, timeoutMs)
     if (Atomics.load(state, 0) !== 1) {
+      if (env.TOURI_SMOKE_DIAGNOSTICS === "1")
+        process.stderr.write(
+          `Smoke helper failure: ${outcome}, state ${Atomics.load(state, 0)}, exit ${Atomics.load(state, 1)}, bytes ${Atomics.load(state, 2)}\n`,
+        )
       Atomics.compareExchange(state, 0, 0, -1)
       throw new TouriError("TOURI-E2001")
     }
