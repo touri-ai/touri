@@ -38,12 +38,21 @@ fn desktop_csp_keeps_preview_frames_on_data_images_only() {
 
 /// "Abrir em janela" creates `computer-<bot>` from the main window and focuses it, so it is
 /// not left occluded (WebKit then reports the document hidden). The popout keeps only the
-/// default core permissions; it never gets the main window's privileged commands.
+/// core events and explicit focus/close permissions; it never gets the main window's
+/// privileged commands.
 #[test]
 fn computer_popout_windows_have_core_events_and_main_can_focus_them() {
     let computer = read_json("capabilities/computer.json");
     assert_eq!(strings(&computer["windows"]), vec!["computer-*"]);
-    assert_eq!(strings(&computer["permissions"]), vec!["core:default"]);
+    assert_eq!(
+        strings(&computer["permissions"]),
+        vec![
+            "core:default",
+            "core:window:allow-set-focus",
+            "core:window:allow-close",
+        ]
+    );
+    assert!(computer.get("remote").is_none());
     let main = read_json("capabilities/main.json");
     let main_permissions = strings(&main["permissions"]);
     assert!(main_permissions.contains(&"core:webview:allow-create-webview-window"));
