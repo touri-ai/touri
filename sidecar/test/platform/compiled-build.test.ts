@@ -39,17 +39,24 @@ test.skipIf(!["linux", "win32"].includes(process.platform) || process.arch !== "
       ],
       directory,
     )
-    const smoke = await run([process.execPath, "scripts/smoke-sidecar.ts", binary], root)
+    const smoke = await run(
+      [process.execPath, "scripts/smoke-sidecar.ts", binary],
+      root,
+      Object.assign({}, process.env, { TOURI_SMOKE_DIAGNOSTICS: "1" }),
+    )
 
     expect(smoke).toContain("Compiled sidecar smoke passed")
+    const diagnostics = smoke.split("\n").filter((line) => line.startsWith("Smoke "))
+    if (diagnostics.length) console.info(diagnostics.join("\n"))
   },
   180_000,
 )
 
-const run = async (cmd: string[], cwd: string): Promise<string> => {
+const run = async (cmd: string[], cwd: string, env = process.env): Promise<string> => {
   const child = Bun.spawn({
     cmd,
     cwd,
+    env,
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
