@@ -33,11 +33,11 @@ test.skipIf(!["linux", "win32"].includes(process.platform) || process.arch !== "
         "--bytecode",
         "--format=esm",
         `--target=${target}`,
-        ...entries.map((entry) => `sidecar/src/${entry}.ts`),
+        ...entries.map((entry) => join(root, "sidecar/src", `${entry}.ts`)),
         "--outfile",
         binary,
       ],
-      root,
+      directory,
     )
     const smoke = await run([process.execPath, "scripts/smoke-sidecar.ts", binary], root)
 

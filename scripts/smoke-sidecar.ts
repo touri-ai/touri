@@ -35,7 +35,6 @@ const env: NodeJS.ProcessEnv = {
   TOURI_E2E_REAL_CLI: "0",
   TOURI_OPENCODE_REAL: "0",
   TOURI_DOCTOR_SKIP_PROVIDER_PROBES: "1",
-  TOURI_SMOKE_DIAGNOSTICS: "1",
 }
 if (windows) {
   env.TOURI_DESKTOP_HELPER = process.env.TOURI_DESKTOP_HELPER ?? resolve("src-tauri/target/debug/touri.exe")
