@@ -1132,6 +1132,25 @@ test("VM setup takes effect from the next message without invoking any VM runtim
   expect(f.currentBot()?.folders).toEqual([{ path: f.path, access: "read-write" }])
 })
 
+test("an access edit rechecks consent after asynchronous metadata reads", async () => {
+  const f = await fixture({}, "fixture-project")
+  const configure = f.runtime.kernel.services.use("bots.configureAccess")
+  if (!configure) throw new Error("Missing access service")
+  const validity = new Set(["approved"])
+  const before = f.currentBot()
+
+  const changed = configure({
+    botId: f.bot.id,
+    patch: { folders: [{ path: f.path, access: "read-only" }] },
+    isCurrent: () => validity.has("approved"),
+  })
+  validity.clear()
+  const result = await changed
+
+  expect(result).toMatchObject({ success: false, errorCode: "DENIED" })
+  expect(f.currentBot()).toEqual(before)
+})
+
 test("simultaneous approvals cannot overwrite a configuration changed by another tool call", async () => {
   const f = await fixture()
   const first = f.call("folder_access_request", { path: f.path, mode: "read" })

@@ -1695,7 +1695,7 @@ export type ServiceMap = {
   'approvals.completeTeam': (input: { approvalId: Id; ctx: Pick<ToolContext, 'botId' | 'threadId' | 'runId'>; result: TeamCreationResult }) => Promise<void>
   'bots.instructions': (input: { botId: Id; instructionsHash?: string; signal: AbortSignal }) => Promise<string | undefined>
   'bots.rename': (input: { botId: Id; name: string; signal?: AbortSignal }) => Promise<Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS'>>
-  'bots.configureAccess': (input: { botId: Id; patch: Partial<Pick<Bot, 'projectId' | 'folders' | 'browserEnabled' | 'browser' | 'computerUse'>>; runId?: Id; signal?: AbortSignal }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE' | 'DENIED'> | Promise<Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE' | 'DENIED'>>
+  'bots.configureAccess': (input: { botId: Id; patch: Partial<Pick<Bot, 'projectId' | 'folders' | 'browserEnabled' | 'browser' | 'computerUse'>>; runId?: Id; signal?: AbortSignal; isCurrent?: () => boolean }) => Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE' | 'DENIED'> | Promise<Result<{ bot: Bot }, 'NOT_FOUND' | 'INVALID_ARGS' | 'MACHINE_PROJECT_CHANGE' | 'DENIED'>>
   'diagnostics.errors': () => Array<{ code: string; at: number }>
   'groups.runtime': {
     enqueue: (args: { threadId: Id; requestMessageId: Id; trigger: RunTrigger; routineRunId?: Id; requesterPersonId?: Id }) => Result<{ run: Run }, 'THREAD_NOT_FOUND' | 'BOT_PAUSED' | 'DELEGATION_LIMIT' | 'RUNTIME_DRAINING'>
