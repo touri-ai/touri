@@ -130,10 +130,11 @@ export const createNotifyRoutes = ({
     return { status: 200, json: {} }
   }
 
-  const sendMessage = ({ botId, body }: { botId: string; body: unknown }): RouteResponse => {
+  const sendMessage = async ({ botId, body }: { botId: string; body: unknown }): Promise<RouteResponse> => {
     const input = record(body)
     const messageText = text(input.text).trim()
     if (!messageText) return fail(400, "INVALID_ARGS", "text is required")
+    await kernel.flushEvents?.({ persistOnly: true })
     const storeApi = kernel.services.use("store.api")
     const bot = storeApi?.getBot({ botId })
     if (!bot || !storeApi?.sendMessage) return fail(404, "NOT_FOUND", "Bot not found")
