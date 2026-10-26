@@ -9,7 +9,7 @@ const target = windows
   : process.arch === "arm64"
     ? "aarch64-unknown-linux-gnu"
     : "x86_64-unknown-linux-gnu"
-const binary = resolve(`src-tauri/binaries/touri-sidecar-${target}`)
+const binary = resolve(process.argv[2] ?? `src-tauri/binaries/touri-sidecar-${target}`)
 if (!existsSync(binary)) throw new Error("Build the native platform sidecar before running its compiled smoke")
 mkdirSync("src-tauri/target", { recursive: true })
 const root = mkdtempSync(resolve("src-tauri/target/sidecar-smoke-"))

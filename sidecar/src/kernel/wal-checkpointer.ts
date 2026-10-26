@@ -4,6 +4,7 @@ import { walCheckpointSource } from "./wal-checkpoint-worker"
 const DEFAULT_INTERVAL_MS = 5_000
 const PAGE_INTERVAL_MS = 5_000
 const STARTUP_TIMEOUT_MS = 15_000
+type RefableWorker = Worker & { ref: () => void; unref: () => void }
 
 export const createWalCheckpointer = ({
   database,
@@ -24,7 +25,7 @@ export const createWalCheckpointer = ({
     .wal_autocheckpoint
   const fallbackPages = previousPages > 0 ? previousPages : 1_000
   // Mutable handles belong only to this connection's maintenance lifecycle.
-  let worker: Worker | undefined
+  let worker: RefableWorker | undefined
   let workerUrl: string | undefined
   let stopped = false
   let reportedError = false
@@ -63,7 +64,9 @@ export const createWalCheckpointer = ({
   try {
     database.exec("PRAGMA wal_autocheckpoint = 0")
     workerUrl = URL.createObjectURL(new Blob([walCheckpointSource], { type: "application/javascript" }))
-    worker = createWorker(workerUrl)
+    worker = createWorker(workerUrl) as RefableWorker
+    // Startup must make progress without an unrelated request waking the worker mailbox.
+    worker.ref()
     worker.onmessage = ({ data }: MessageEvent<{ type?: string; requestId?: number; error?: string }>): void => {
       if (data?.type === "stopped") {
         finish()
@@ -87,6 +90,7 @@ export const createWalCheckpointer = ({
       clearTimeout(startupTimer)
       if (process.env.TOURI_SMOKE_DIAGNOSTICS === "1") process.stderr.write("Smoke checkpoint worker ready\n")
       onReady?.()
+      worker?.unref()
     }
     worker.onerror = (event): void => {
       event.preventDefault()
@@ -94,7 +98,6 @@ export const createWalCheckpointer = ({
     }
     worker.addEventListener("close", reportError)
     startupTimer = setTimeout(reportError, STARTUP_TIMEOUT_MS)
-    startupTimer.unref()
     worker.postMessage({ type: "start", filename: database.filename, intervalMs, pageIntervalMs })
   } catch {
     reportError()
@@ -120,7 +123,6 @@ export const createWalCheckpointer = ({
       }
 
       stopTimer = setTimeout(finish, 1_000)
-      stopTimer.unref()
       try {
         worker.postMessage({ type: "stop" })
       } catch {

@@ -24,6 +24,7 @@ const result = Bun.spawnSync(
     "60000",
     "sidecar/test/platform",
     "sidecar/test/kernel/async-files.test.ts",
+    "sidecar/test/kernel/checkpoint-startup.test.ts",
     "sidecar/test/kernel/file-io-startup.test.ts",
     "sidecar/test/kernel/linux-file-io-fsync.test.ts",
     "sidecar/test/cli/auth-writer.test.ts",
