@@ -1,4 +1,4 @@
-import type { Database } from "bun:sqlite"
+import { Database } from "bun:sqlite"
 import { afterEach, expect, mock, test } from "bun:test"
 import { existsSync } from "node:fs"
 import { mkdtemp, rm } from "node:fs/promises"
@@ -47,3 +47,43 @@ test("shutdown cancels independent services before waiting for SQLite owners", a
   await stopped
   expect(() => (runtime.kernel.db as Database).query("SELECT 1").get()).toThrow()
 })
+
+test("a deferred shutdown observer still receives persistence failure after the database closes", async () => {
+  const root = await mkdtemp(join(tmpdir(), "touri-shutdown-failure-"))
+  const runtime = createKernel({ appData: root })
+  const database = runtime.kernel.db as Database
+  const lock = new Database(database.filename)
+  cleanups.add(async () => {
+    if (lock.inTransaction) lock.exec("ROLLBACK")
+    lock.close()
+    await runtime.stop().catch(() => undefined)
+    await rm(root, { recursive: true, force: true })
+  })
+  database.exec(
+    "CREATE TRIGGER reject_event BEFORE INSERT ON ui_event_log BEGIN SELECT RAISE(FAIL, 'synthetic failure'); END",
+  )
+  lock.exec("BEGIN IMMEDIATE")
+  runtime.kernel.publish({ type: "import.progress", importId: "fixture", phase: "saving", done: 1, total: 1 })
+
+  const stopped = runtime.stop()
+  lock.exec("COMMIT")
+  await getDatabaseClosed(database)
+  await new Promise<void>((resolve) => setImmediate(resolve))
+
+  expect(runtime.stop()).toBe(stopped)
+  await expect(stopped).rejects.toThrow("EVENT_PERSISTENCE_FAILED")
+  expect(lock.query("SELECT count(*) AS count FROM ui_event_log").get()).toEqual({ count: 0 })
+})
+
+const getDatabaseClosed = async (database: Database): Promise<void> => {
+  const deadline = performance.now() + 5_000
+  for (;;) {
+    try {
+      database.query("SELECT 1").get()
+    } catch {
+      return
+    }
+    if (performance.now() >= deadline) throw new Error("Shutdown did not close the database")
+    await new Promise<void>((resolve) => setTimeout(resolve, 1))
+  }
+}

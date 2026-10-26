@@ -9,9 +9,10 @@ import { applyUpgradeBaselines } from "../../src/kernel/upgradeBaselines"
 import { composeDeveloperInstructions } from "../../src/runtime/instructions"
 import { init as initStore } from "../../src/store"
 
-const cleanup: Array<() => void> = []
-afterEach(() => {
-  for (const close of cleanup.splice(0)) close()
+const cleanup = new Set<() => Promise<void>>()
+afterEach(async () => {
+  for (const close of cleanup) await close()
+  cleanup.clear()
 })
 
 const fixture = async ({
@@ -23,8 +24,8 @@ const fixture = async ({
 } = {}) => {
   const root = mkdtempSync(join(tmpdir(), "touri-r7-persona-"))
   const runtime = createKernel({ appData: root })
-  cleanup.push(() => {
-    runtime.stop()
+  cleanup.add(async () => {
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
   await initStore(runtime.kernel)

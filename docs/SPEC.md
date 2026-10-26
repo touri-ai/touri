@@ -578,6 +578,9 @@ recreating the machine before switching projects.
 Live event publication never waits synchronously for that writer's SQLite lock. Contended event
 inserts retry asynchronously in order with bounded admission and a finite deadline. Events reach
 subscribers only after persistence; explicit flush and shutdown wait for admitted inserts.
+Repeated kernel shutdown calls return the same promise. Deferred persistence failures remain
+observed internally even when the initiator attaches its observer later; awaiting shutdown still
+rejects with the persistence failure after the database closes.
 
 ### 3.3 Sessions: one native session per thread
 - **Resume.** `provider_sessions` has at most one `active` row per (thread, provider).
