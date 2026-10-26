@@ -1309,6 +1309,8 @@ export type ApiRoutes = {
 
 export type DiscoveredServer = { name: string; url: string; source: 'local' | 'tailnet' }
 export type OnboardingStatus = {
+  localUrl?: string
+  runtimeUrl?: string
   completed: boolean
   hasData: boolean
   tailscale: 'ready' | 'missing' | 'signed-out' | 'unavailable'
