@@ -100,18 +100,48 @@ test.each(["SIGSEGV", "SIGABRT"])("browser crash signal %s remains a failure", a
   )
 })
 
+test("a killed probe can close its pipe before its process exit is reported", async () => {
+  const fixture = getProbeFixture({ exitCode: 137, exitAfterDisconnect: true })
+
+  const capability = await getBrowserProbeCapability(fixture)
+
+  expect(capability).toEqual({ available: false, reason: "System browser probe was killed (exit 137)" })
+  expect(fixture.stops.size).toBe(1)
+})
+
+test("a crash reported after pipe closure retains its signal", async () => {
+  const fixture = getProbeFixture({ exitCode: null, signal: "SIGSEGV", exitAfterDisconnect: true })
+
+  await expect(getBrowserProbeCapability(fixture)).rejects.toThrow(
+    "System browser capability probe failed (signal SIGSEGV)",
+  )
+})
+
+test("pipe closure without process exit remains a protocol failure after cleanup", async () => {
+  const fixture = getProbeFixture({ disconnectWithoutExit: true })
+
+  const probe = getBrowserProbeCapability(Object.assign({}, fixture, { timeoutMs: 25 }))
+
+  await expect(probe).rejects.toThrow("debugging pipe closed")
+  expect(fixture.stops.size).toBe(1)
+})
+
 const getProbeFixture = ({
   exitCode = 0,
   stderr = "",
   rendererReady = true,
   unresponsive = false,
   signal = null,
+  exitAfterDisconnect = false,
+  disconnectWithoutExit = false,
 }: {
   exitCode?: number | null
   stderr?: string
   rendererReady?: boolean
   unresponsive?: boolean
   signal?: string | null
+  exitAfterDisconnect?: boolean
+  disconnectWithoutExit?: boolean
 } = {}) => {
   const exited = Promise.withResolvers<{ code: number | null; signal?: string | null }>()
   const input = Promise.withResolvers<ReadableStreamDefaultController<Uint8Array>>()
@@ -124,8 +154,14 @@ const getProbeFixture = ({
       commands.add(command.method)
       if (unresponsive) return
       const controller = await input.promise
+      if (disconnectWithoutExit) {
+        controller.close()
+        return
+      }
       if (exitCode !== 0) {
-        exited.resolve({ code: exitCode, signal })
+        const result = { code: exitCode, signal }
+        if (exitAfterDisconnect) setImmediate(() => exited.resolve(result))
+        else exited.resolve(result)
         controller.close()
         return
       }
@@ -148,6 +184,7 @@ const getProbeFixture = ({
     stops,
     stop: () => {
       stops.add("stopped")
+      if (exitAfterDisconnect) return
       exited.resolve({ code: 137 })
     },
   }

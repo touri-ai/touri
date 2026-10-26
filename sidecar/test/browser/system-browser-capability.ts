@@ -84,11 +84,15 @@ export const getBrowserProbeCapability = async ({
 
     return { available: true }
   } catch (error) {
+    const probeTimedOut = timedOut
+    // Pipe EOF and process exit notifications can arrive in either order.
+    const exit = naturalExit ?? (client.isClosed() && !probeTimedOut ? await processExit : undefined)
     clearTimeout(deadline)
-    const exit = naturalExit
     stop()
     const [, stderr] = await Promise.all([processExit, diagnostics])
-    if (timedOut) return { available: false, reason: "System browser probe exceeded its startup deadline" }
+    if (probeTimedOut) return { available: false, reason: "System browser probe exceeded its startup deadline" }
+    // Cleanup after a disconnected pipe must not disguise the original protocol failure.
+    if (timedOut) throw error
     if (!exit) throw error
     if (exit.code === null) {
       if (["SIGKILL", "SIGTERM", "9", "15"].includes(exit.signal ?? ""))
