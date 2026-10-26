@@ -1102,9 +1102,13 @@ test.each([false, true])("service timeout reaches the turn as E8001 with prewarm
   database
     .query("INSERT OR REPLACE INTO settings(key, value_json, updated_at) VALUES ('resumeInterruptedTurns', 'false', 1)")
     .run()
+  const serviceStarted = deferred()
+  const releaseService = deferred()
   let startRequests = 0
   f.fake.provider.startService = async () => {
     startRequests++
+    serviceStarted.resolve()
+    await releaseService.promise
     return { success: true }
   }
   f.fake.provider.status = async () => ({
@@ -1115,9 +1119,11 @@ test.each([false, true])("service timeout reaches the turn as E8001 with prewarm
   const warming = prewarm ? f.vm.service.intent({ botId: bot.id, intent: "composer-focus" }).catch(() => {}) : null
   const { engine, run, store } = enqueueVmTurn(f, bot)
   try {
-    await Bun.sleep(30)
+    await serviceStarted.promise
     expect(run.status).toBe("starting")
     expect(f.vm.service.states()[0]).toMatchObject({ status: "starting", error: null })
+    releaseService.resolve()
+
     await waitForTerminal(run)
     expect(startRequests).toBe(1)
     expect(run).toMatchObject({ status: "failed", errorClass: "machine_service_unavailable" })
@@ -1149,6 +1155,7 @@ test.each([false, true])("service timeout reaches the turn as E8001 with prewarm
       await reopened.shutdown()
     }
   } finally {
+    releaseService.resolve()
     await engine.shutdown()
     await warming
   }
