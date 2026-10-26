@@ -50,14 +50,27 @@ export const getBrowserProbeCapability = async ({
   exited,
   diagnostics,
   stop,
+  timeoutMs = 5_000,
 }: {
   pipe: CdpPipe
-  exited: Promise<{ code: number | null }>
+  exited: Promise<{ code: number | null; signal?: string | null }>
   diagnostics: Promise<string>
   stop: () => void
+  timeoutMs?: number
 }): Promise<Capability> => {
-  const client = createCdpClient({ pipe, timeoutMs: 5000 })
-  const deadline = setTimeout(() => void client.close().catch(() => undefined), 5000)
+  const client = createCdpClient({ pipe, timeoutMs })
+  // Keep the natural exit distinct from the signal sent by our own cleanup.
+  let naturalExit: { code: number | null; signal?: string | null } | undefined
+  const processExit = exited.then((result) => {
+    naturalExit = result
+    return result
+  })
+  let timedOut = false
+  const deadline = setTimeout(() => {
+    timedOut = true
+    stop()
+    void client.close().catch(() => undefined)
+  }, timeoutMs)
   try {
     // Execute in a renderer to verify its sandbox, without waiting for page dumping or browser shutdown.
     const { targetId } = await client.call<{ targetId: string }>("Target.createTarget", { url: "about:blank" })
@@ -71,9 +84,22 @@ export const getBrowserProbeCapability = async ({
 
     return { available: true }
   } catch (error) {
+    const probeTimedOut = timedOut
+    // Pipe EOF and process exit notifications can arrive in either order.
+    const exit = naturalExit ?? (client.isClosed() && !probeTimedOut ? await processExit : undefined)
+    clearTimeout(deadline)
     stop()
-    const [exit, stderr] = await Promise.all([exited, diagnostics])
-    const capability = getBrowserSandboxCapability(exit.code ?? -1, stderr)
+    const [, stderr] = await Promise.all([processExit, diagnostics])
+    if (probeTimedOut) return { available: false, reason: "System browser probe exceeded its startup deadline" }
+    // Cleanup after a disconnected pipe must not disguise the original protocol failure.
+    if (timedOut) throw error
+    if (!exit) throw error
+    if (exit.code === null) {
+      if (["SIGKILL", "SIGTERM", "9", "15"].includes(exit.signal ?? ""))
+        return { available: false, reason: `System browser probe was terminated (signal ${exit.signal})` }
+      throw new Error(`System browser capability probe failed (signal ${exit.signal ?? "unknown"})`)
+    }
+    const capability = getBrowserSandboxCapability(exit.code, stderr)
     if (capability.available) throw error
 
     return capability
@@ -88,6 +114,8 @@ export const getBrowserSandboxCapability = (exitCode: number, diagnostics: strin
   if (exitCode === 0) return { available: true }
   if (/No usable sandbox|Failed to move to new namespace|Running as root without --no-sandbox/u.test(diagnostics))
     return { available: false, reason: "Host cannot start the system browser with its sandbox enabled" }
+  if ([124, 137, 143].includes(exitCode))
+    return { available: false, reason: `System browser probe was killed (exit ${exitCode})` }
 
   throw new Error(`System browser capability probe failed (exit ${exitCode})`)
 }
