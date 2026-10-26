@@ -1,4 +1,5 @@
 import { TouriError } from "../kernel/errors"
+import { deferWorkerReply } from "../kernel/worker-reply"
 
 // Keep the synchronous filesystem contract without entering the HTTP event loop
 // while a native helper runs. Child I/O and exit handling stay on this worker.
@@ -54,11 +55,11 @@ type Helper = { worker: RefableWorker; ready: Promise<void>; stop: () => void }
 
 // This module owns one native helper worker and its bounded startup lifecycle.
 let helper: Helper | undefined
-const createHelperWorker = (): Helper => {
+const createHelperWorker = (createWorker = (url: string) => new Worker(url, { smol: true })): Helper => {
   if (helper) return helper
 
   const url = URL.createObjectURL(new Blob([source], { type: "application/javascript" }))
-  const worker = createNativeWorker(url)
+  const worker = createNativeWorker(url, createWorker)
   const ready = Promise.withResolvers<void>()
   let stopped = false
   const stop = (): void => {
@@ -68,14 +69,17 @@ const createHelperWorker = (): Helper => {
     clearTimeout(deadline)
     worker.terminate()
     URL.revokeObjectURL(url)
-    ready.reject(new TouriError("TOURI-E2001"))
+    deferWorkerReply(() => ready.reject(new TouriError("TOURI-E2001")))
   }
   const deadline = setTimeout(stop, 10_000)
   worker.onmessage = ({ data }): void => {
     if (data !== "ready" || stopped) return
     clearTimeout(deadline)
-    worker.unref()
-    ready.resolve()
+    deferWorkerReply(() => {
+      if (stopped) return
+      worker.unref()
+      ready.resolve()
+    })
   }
   worker.onerror = (event): void => {
     event.preventDefault()
@@ -88,16 +92,17 @@ const createHelperWorker = (): Helper => {
   return helper
 }
 
-const createNativeWorker = (url: string): RefableWorker => {
+const createNativeWorker = (url: string, createWorker: (url: string) => Worker): RefableWorker => {
   try {
-    return new Worker(url, { smol: true }) as RefableWorker
+    return createWorker(url) as RefableWorker
   } catch {
     URL.revokeObjectURL(url)
     throw new TouriError("TOURI-E2001")
   }
 }
 
-export const startHelperWorker = (): Promise<void> => createHelperWorker().ready
+export const startHelperWorker = (createWorker?: (url: string) => Worker): Promise<void> =>
+  createHelperWorker(createWorker).ready
 
 export const stopHelperWorker = (): void => {
   helper?.stop()

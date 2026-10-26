@@ -10,6 +10,30 @@ afterEach(stopHelperWorker)
 const env = buildChildEnv()
 const echo = [process.execPath, "-e", "process.stdout.write(await Bun.stdin.text())"]
 
+test("native helper readiness consumers wait for a turn outside the worker inbox", async () => {
+  // Only this fixture's notification handle and turn marker change.
+  let worker: Worker | undefined
+  let crossedTurn = false
+  const nextTurn = new Promise<void>((resolve) => {
+    setTimeout(() => {
+      crossedTurn = true
+      resolve()
+    }, 0)
+  })
+  const ready = startHelperWorker((url) => {
+    worker = new Worker(url, { smol: true })
+    return worker
+  })
+  const observed = ready.then(() => crossedTurn)
+  if (!worker?.onmessage) throw new Error("Missing helper inbox")
+
+  worker.onmessage.call(worker, new MessageEvent("message", { data: "ready" }))
+  const deliveredAfterTurn = await observed
+  await nextTurn
+
+  expect(deliveredAfterTurn).toBe(true)
+})
+
 test("cold native helper readiness precedes its first blocking reply and supports restart", async () => {
   await startHelperWorker()
   const first = runHelperBlocking({ command: echo, input: "first-ç", env })
