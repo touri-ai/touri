@@ -693,28 +693,35 @@ export const BrowserActivityCard = ({
               <div className={`browser-activity-preview${fullView ? " browser-activity-preview-full" : ""}`}>
                 {channel?.previewHidden ? (
                   <ChannelHiddenPreview locale={locale} />
-                ) : preview?.src ? (
-                  <div className="browser-activity-window">
-                    <div className="browser-activity-chrome" aria-hidden="true">
-                      <span className="browser-activity-chrome-lock" />
-                      <span className="browser-activity-chrome-live" />
-                      {t("Live", {}, locale)}
-                    </div>
-                    <BrowserPreviewImage src={preview.src} alt={t("Current browser page", {}, locale)} />
-                  </div>
                 ) : previewEnabled ? (
-                  <p className="browser-activity-placeholder" role="status">
-                    {previewNotice ??
-                      t(
-                        waitedTooLong
-                          ? "The browser did not send a preview in time. Retry the preview or stop the task."
-                          : activeTabId
-                            ? "Waiting for the browser page…"
-                            : "Preparing the browser…",
-                        {},
-                        locale,
+                  <div className="browser-activity-window">
+                    {/* Reserve the chrome while loading so following history cannot move a pressed control. */}
+                    <div className="browser-activity-chrome" aria-hidden="true">
+                      {preview?.src && (
+                        <>
+                          <span className="browser-activity-chrome-lock" />
+                          <span className="browser-activity-chrome-live" />
+                          {t("Live", {}, locale)}
+                        </>
                       )}
-                  </p>
+                    </div>
+                    {preview?.src ? (
+                      <BrowserPreviewImage src={preview.src} alt={t("Current browser page", {}, locale)} />
+                    ) : (
+                      <p className="browser-activity-placeholder" role="status">
+                        {previewNotice ??
+                          t(
+                            waitedTooLong
+                              ? "The browser did not send a preview in time. Retry the preview or stop the task."
+                              : activeTabId
+                                ? "Waiting for the browser page…"
+                                : "Preparing the browser…",
+                            {},
+                            locale,
+                          )}
+                      </p>
+                    )}
+                  </div>
                 ) : null}
                 {waitedTooLong && previewEnabled && !channel?.previewHidden && !preview?.src && (
                   <button

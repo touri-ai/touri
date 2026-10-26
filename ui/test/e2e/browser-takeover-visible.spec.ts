@@ -34,8 +34,8 @@ for (const viewport of [
     await expect(view.locator("canvas")).toBeVisible({ timeout: 20_000 })
     const handback = view.getByRole("button", { name: "Devolver para mark", exact: true })
     const privacy = view.getByRole("status", { name: "Privacidade do navegador" })
-    // Let the history settle as it does after the session starts; the test itself never scrolls.
-    await page.waitForTimeout(400)
+    await page.evaluate(() => document.fonts.ready)
+    await nextFrames(page)
     if (process.env.TOURI_SCREENSHOT_DIR)
       await page.screenshot({
         path: `${process.env.TOURI_SCREENSHOT_DIR}/takeover-live-${viewport.width}.png`,
@@ -61,6 +61,61 @@ for (const viewport of [
       page.locator(".browser-activity-card").getByRole("button", { name: "Assumir", exact: true }),
     ).toBeVisible()
     await expect(input).toHaveValue("Rascunho que deve continuar aqui")
+  })
+
+  test(`a preview settling at the end keeps a pressed takeover in place at ${viewport.width}px`, async ({ page }) => {
+    test.setTimeout(60_000)
+    await page.setViewportSize(viewport)
+    await page.goto("/test/e2e/browser-outcome-harness.html?takeover=live&preview=deferred")
+    const takeover = page.locator(".browser-activity-card").getByRole("button", { name: "Assumir", exact: true })
+    await expect(takeover).toBeEnabled({ timeout: 20_000 })
+    await expect(page.locator(".browser-activity-placeholder")).toBeVisible()
+    await page.evaluate(() => document.fonts.ready)
+    await takeover.scrollIntoViewIfNeeded()
+    await nextFrames(page)
+    const preview = page.locator(".browser-activity-preview")
+    const heightBefore = await preview.evaluate((element) => element.clientHeight)
+    const before = await takeover.boundingBox()
+    if (!before) throw new Error("Missing takeover control")
+    await page.mouse.move(before.x + before.width / 2, before.y + 4)
+    await page.mouse.down()
+
+    await page.evaluate(() => {
+      const outcome = (window as Window & { browserOutcome?: { showPreview: () => void } }).browserOutcome
+      outcome?.showPreview()
+    })
+    await expect(page.getByRole("img", { name: "Página atual do navegador" })).toBeVisible()
+    await nextFrames(page)
+    const after = await takeover.boundingBox()
+    if (!after) throw new Error("Missing pressed takeover control")
+    if (process.env.TOURI_SCREENSHOT_DIR)
+      await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/takeover-pressed-${viewport.width}.png` })
+    const shift = Math.abs(after.y - before.y)
+    const heightAfter = await preview.evaluate((element) => element.clientHeight)
+    console.log(
+      JSON.stringify({
+        width: viewport.width,
+        pressedTakeoverShiftPx: shift,
+        previewHeightChangePx: heightAfter - heightBefore,
+      }),
+    )
+    await page.mouse.up()
+
+    expect(heightAfter).toBe(heightBefore)
+    expect(shift).toBeLessThanOrEqual(1)
+    const view = page.getByRole("region", { name: "Controle remoto do navegador" })
+    await expect(view.getByRole("button", { name: "Devolver para mark", exact: true })).toBeVisible()
+    await nextFrames(page)
+    const measurements = await page.evaluate(() => {
+      const outcome = (
+        window as Window & {
+          browserOutcome?: { takeoverMeasurements: Map<number, { renderMs: number; longTasks: number[] }> }
+        }
+      ).browserOutcome
+      return Array.from(outcome?.takeoverMeasurements.values() ?? [])
+    })
+    expect(measurements).toHaveLength(1)
+    console.log(JSON.stringify({ width: viewport.width, takeoverMeasurements: measurements }))
   })
 
   test(`a preview settling near the latest messages keeps takeover clickable at ${viewport.width}px`, async ({

@@ -447,6 +447,8 @@ const runReplay = async (count: number, historyMessages = 0, switchBranch = fals
     if (Date.now() > deadline) throw new Error("Synthetic provider replay timed out")
     await Bun.sleep(5)
   }
+  // Terminal status is published before the execution releases its state and writer callbacks.
+  await engine.waitForDrain()
   expect(queued.run.status).toBe("succeeded")
   const performanceResult = stages.getResult()
   const dispatch = getDispatchAttribution(performanceResult.stages)
@@ -471,7 +473,6 @@ const runReplay = async (count: number, historyMessages = 0, switchBranch = fals
   )
   store.flushWrites?.()
   await store.flushWritesAsync?.()
-  await Bun.sleep(5)
   const reply = store.activePath({ threadId }).find((message) => message.runId === queued.run.id)
   if (!reply) throw new Error("Synthetic provider reply missing")
   expect(reply.parentId).toBe(request.message.id)
@@ -613,6 +614,18 @@ test("Provider event cost stays independent of conversation history", async () =
   const resultPerEventMs = result.runtimeEventMs / result.runtimeEventCalls
   const recentPerFrameMs = recent.providerDispatchMs / recent.providerDispatchCalls
   const resultPerFrameMs = result.providerDispatchMs / result.providerDispatchCalls
+  console.error(
+    `provider-history-scaling ${JSON.stringify({
+      recentPerEventMs,
+      resultPerEventMs,
+      recentPerFrameMs,
+      resultPerFrameMs,
+      recentRetainedStates: recent.retainedRunStates,
+      resultRetainedStates: result.retainedRunStates,
+      p99TimerLagMs: result.p99TimerLagMs,
+      maxBlockMs: result.maxBlockMs,
+    })}`,
+  )
   const recentPathLookups = recent.stages.find(({ name }) => name === "runtime_request_path_lookup")?.calls ?? 0
   const resultPathLookups = result.stages.find(({ name }) => name === "runtime_request_path_lookup")?.calls ?? 0
 

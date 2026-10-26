@@ -112,9 +112,16 @@ const liveImage = (() => {
 })()
 const releases: string[] = []
 const takeoverRequests = new Set<number>()
+const takeoverMeasurements = new Map<number, { renderMs: number; longTasks: number[] }>()
 const previewReady = Promise.withResolvers<void>()
 Object.assign(window, {
-  browserOutcome: { handbacks, releases, takeoverRequests, showPreview: () => previewReady.resolve() },
+  browserOutcome: {
+    handbacks,
+    releases,
+    takeoverRequests,
+    takeoverMeasurements,
+    showPreview: () => previewReady.resolve(),
+  },
 })
 
 const originalRequest = api.request
@@ -140,7 +147,9 @@ api.request = (async (route: string, input?: unknown, pathValues?: Record<string
     return { image: liveImage, title: "Busca de viagem", url: pageUrl }
   }
   if (live && route === "POST /browser/tabs/:id/takeover/session") {
-    takeoverRequests.add(performance.now())
+    const startedAt = performance.now()
+    takeoverRequests.add(startedAt)
+    measureTakeover(startedAt)
     return { sessionId: "synthetic-session", controlEpoch: "synthetic-control-epoch", viewEpoch: 0 }
   }
   if (live && route === "POST /browser/tabs/:id/takeover/frame")
@@ -175,3 +184,32 @@ api.request = (async (route: string, input?: unknown, pathValues?: Record<string
 
 const root = document.getElementById("root")
 if (root) createRoot(root).render(<App kernel={{ services: { api } }} />)
+
+// Bounded, synthetic interaction evidence; each observer disconnects after the requested view mounts.
+const measureTakeover = (startedAt: number): void => {
+  const tasks = new Set<PerformanceEntry>()
+  const longTasks = new PerformanceObserver((entries) => {
+    entries.getEntries().forEach((entry) => {
+      tasks.add(entry)
+    })
+  })
+  longTasks.observe({ type: "longtask" })
+  const mount = new MutationObserver(() => {
+    if (!document.querySelector(".browser-takeover-view")) return
+    mount.disconnect()
+    requestAnimationFrame(() => {
+      const renderMs = performance.now() - startedAt
+      requestAnimationFrame(() => {
+        longTasks.takeRecords().forEach((entry) => {
+          tasks.add(entry)
+        })
+        longTasks.disconnect()
+        takeoverMeasurements.set(startedAt, {
+          renderMs,
+          longTasks: Array.from(tasks).map((entry) => entry.duration),
+        })
+      })
+    })
+  })
+  mount.observe(document.body, { childList: true, subtree: true })
+}

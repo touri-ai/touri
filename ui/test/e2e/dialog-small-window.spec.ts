@@ -194,16 +194,27 @@ for (const size of sizes) {
 test("animated modal layer covers the viewport midway and after opening", async ({ page }, info) => {
   await page.setViewportSize({ width: 900, height: 560 })
   await page.emulateMedia({ reducedMotion: "no-preference" })
+  const contentReady = Promise.withResolvers<void>()
+  await page.route(/\/src\/components\/Modals\.tsx(?:\?|$)/, async (route) => {
+    await contentReady.promise
+    await route.continue()
+  })
   await openWorkspace(page)
   await botMenu(page, "Avançado")
+  const loading = page.getByRole("dialog", { name: "Carregando…", exact: true })
+  await checkLayer(page, loading)
+  contentReady.resolve()
+  // The loading shell is replaced when the lazy module resolves; measure the actual settings dialog.
+  const dialog = page.getByRole("dialog", { name: "Configurações de mark", exact: true })
+  await expect(dialog).toBeVisible()
   const layer = page.locator('.motion-modal[data-motion-state="open"]')
-  const dialog = page.getByRole("dialog")
   await layer.evaluate((node) => {
+    const element = node as HTMLElement
     for (const animation of node.getAnimations()) animation.finish()
-    ;(node as HTMLElement).style.setProperty("--reveal", "0")
+    element.style.setProperty("--reveal", "0")
     getComputedStyle(node).getPropertyValue("--reveal")
     for (const animation of node.getAnimations()) animation.finish()
-    ;(node as HTMLElement).style.setProperty("--reveal", "1")
+    element.style.setProperty("--reveal", "1")
     getComputedStyle(node).getPropertyValue("--reveal")
     const animation = node.getAnimations()[0]
     if (!animation) throw new Error("Modal reveal did not animate")

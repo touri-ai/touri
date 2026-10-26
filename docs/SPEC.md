@@ -215,7 +215,10 @@ server's existing 64 KiB bound. Terminal keeps its copy/paste shortcuts. Zoom an
 the current session and allow panning on phones without changing the guest's resolution.
 
 Browser activity cards reserve three subtitle lines so action updates do not move their controls
-on phones or desktops. Longer subtitles remain clamped within that space. The loaded takeover
+on phones or desktops. Longer subtitles remain clamped within that space. While a preview loads,
+its window chrome and image area reserve the same height as the loaded preview, so a pressed
+takeover control stays in place until pointer release. Loading text keeps zero paragraph margins.
+The loaded takeover
 canvas exposes the same localized image role and accessible name as the fallback image, while
 handback and privacy controls remain visible and reachable.
 
