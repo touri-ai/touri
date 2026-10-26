@@ -130,7 +130,7 @@ export const createNotifyRoutes = ({
     return { status: 200, json: {} }
   }
 
-  const sendMessage = ({ botId, body }: { botId: string; body: unknown }): RouteResponse => {
+  const sendMessage = async ({ botId, body }: { botId: string; body: unknown }): Promise<RouteResponse> => {
     const input = record(body)
     const messageText = text(input.text).trim()
     if (!messageText) return fail(400, "INVALID_ARGS", "text is required")
@@ -150,6 +150,7 @@ export const createNotifyRoutes = ({
     const parentId = existing
       ? (JSON.parse(existing.request_json) as { parentId: string | null }).parentId
       : thread.activeLeafId
+    await kernel.flushEvents?.({ persistOnly: true })
     return storeApi.sendMessage({
       threadId,
       parentId,

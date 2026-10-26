@@ -498,8 +498,9 @@ export const createEventBus = (
 
     void runRetentionMaintenance()
   }
-  const flushAsync = async (): Promise<void> => {
+  const flushAsync = async ({ persistOnly = false }: { persistOnly?: boolean } = {}): Promise<void> => {
     await eventWriter?.flushAsync()
+    if (persistOnly) return
     const through = head()
     if (!database || delivered >= through) return
     const deadline = performance.now() + 5_000

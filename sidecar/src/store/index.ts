@@ -2146,6 +2146,8 @@ export const init = async (
             return jsonResponse(200, await cloud.send(input))
           }
           await recovery.ensureThread(input.threadId)
+          // A synchronous send transaction cannot overtake previously admitted events.
+          await kernel.flushEvents?.({ persistOnly: true })
           return (
             storeApi.sendMessage?.(input) ?? errorResponse(503, "RUNTIME_UNAVAILABLE", "Serviço de envio indisponível")
           )
