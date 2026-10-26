@@ -74,13 +74,16 @@ for (const width of [1440, 390]) {
     await keyboard.press("Enter")
     await expect.poll(() => getProof(), { timeout: 15_000 }).toContain(`Olá, ação ç ~ ^ @! ${width}`)
     await keyboard.press("Control+c")
-    await page
-      .getByLabel("Colar texto no computador")
-      .fill("printf 'colado\\n' >> ~/terminal-proof.txt; cat ~/terminal-proof.txt")
+    await expect(page.getByRole("textbox")).toHaveCount(1)
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"])
+    await page.evaluate(
+      (text) => navigator.clipboard.writeText(text),
+      "printf 'colado\\n' >> ~/terminal-proof.txt; cat ~/terminal-proof.txt",
+    )
     const pasted = page.waitForResponse(
       (response) => response.url().endsWith("/text") && response.request().method() === "POST",
     )
-    await page.getByRole("button", { name: "Colar na tela", exact: true }).click()
+    await keyboard.press("Control+v")
     expect((await pasted).ok()).toBe(true)
     await keyboard.press("Enter")
     await expect.poll(() => getProof()).toContain("colado")

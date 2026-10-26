@@ -14,8 +14,6 @@ export const ptBR = {
   "Digite aqui ou clique na tela para usar o teclado": "Digite aqui ou clique na tela para usar o teclado",
   "⌘ equivale a Ctrl. Use Ctrl+Shift+C e Ctrl+Shift+V no terminal.":
     "⌘ equivale a Ctrl. Use Ctrl+Shift+C e Ctrl+Shift+V no terminal.",
-  "Colar texto no computador": "Colar texto no computador",
-  "Colar na tela": "Colar na tela",
   "Reload app": "Recarregar app",
   "Reload this area": "Recarregar esta área",
   "Your conversations are saved. Reload to try again.":
@@ -3493,8 +3491,6 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Digite aqui ou clique na tela para usar o teclado": "Type here or click the screen to use the keyboard",
   "⌘ equivale a Ctrl. Use Ctrl+Shift+C e Ctrl+Shift+V no terminal.":
     "⌘ acts as Ctrl. Use Ctrl+Shift+C and Ctrl+Shift+V in the terminal.",
-  "Colar texto no computador": "Paste text on the computer",
-  "Colar na tela": "Paste on screen",
   "Back to latest messages": "Back to latest messages",
   "New message count": "{count} new message",
   "New messages count": "{count} new messages",

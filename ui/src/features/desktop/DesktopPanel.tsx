@@ -63,9 +63,6 @@ export const DesktopPanel = ({
   const [controlling, setControlling] = useState(false)
   const lastConnection = useRef<string | null>(null)
   const [browserFailure, setBrowserFailure] = useState<BrowserFailureInfo | null>(null)
-  const [pasteText, setPasteText] = useState("")
-  const [pasting, setPasting] = useState(false)
-  const sendText = useRef<(text: string) => Promise<void>>(async () => {})
   const [fitScreen, setFitScreen] = useState(true)
   const fitViewport = useRef(true)
   const resizeDisplay = useRef<(fit: boolean) => void>(() => {})
@@ -186,9 +183,6 @@ export const DesktopPanel = ({
       if (!document.hidden) sampleNow?.()
     }
     const canType = () => connected && displayed && viewer !== null && !viewer.viewOnly
-    sendText.current = async (text) => {
-      if (canType()) await keyboard.paste(text)
-    }
     const paste = (event: ClipboardEvent) => {
       if (!canType()) return
       event.preventDefault()
@@ -581,33 +575,6 @@ export const DesktopPanel = ({
         <small id={`desktop-help-${bot.id}`}>
           {t("⌘ equivale a Ctrl. Use Ctrl+Shift+C e Ctrl+Shift+V no terminal.")}
         </small>
-        {controlling && (
-          <form
-            className="desktop-paste"
-            onSubmit={(event) => {
-              event.preventDefault()
-              if (pasting || !pasteText || phase !== "ready") return
-              setPasting(true)
-              void sendText.current(pasteText).finally(() => setPasting(false))
-            }}
-          >
-            <label htmlFor={`desktop-paste-${bot.id}`}>{t("Colar texto no computador")}</label>
-            <textarea
-              id={`desktop-paste-${bot.id}`}
-              rows={2}
-              value={pasteText}
-              maxLength={16384}
-              onChange={(event) => setPasteText(event.target.value)}
-              disabled={pasting || phase !== "ready"}
-              autoCapitalize="off"
-              autoCorrect="off"
-              spellCheck={false}
-            />
-            <button className="button button-quiet" type="submit" disabled={pasting || !pasteText || phase !== "ready"}>
-              {t("Colar na tela")}
-            </button>
-          </form>
-        )}
       </div>
     </section>
   )

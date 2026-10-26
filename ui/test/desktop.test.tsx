@@ -841,18 +841,18 @@ test("the empty screen localizes assisted-decision fallback without internal mar
   expect(document.body.textContent).not.toContain("Two targets match.")
 })
 
-test("paste box sends text only after an explicit click during human control", async () => {
+test("human control uses one keyboard field for typing and native paste", async () => {
   const f = fixture()
   render(<DesktopPanel bot={bot} api={f.api} />)
   await connected()
-  expect(screen.queryByLabelText("Colar texto no computador")).toBeNull()
   fireEvent.click(screen.getByRole("button", { name: "Assumir controle" }))
   await waitFor(() => expect(viewers).toHaveLength(2))
   await connected()
 
-  fireEvent.change(screen.getByLabelText("Colar texto no computador"), { target: { value: "echo 'Olá, ação!'" } })
-  expect(f.request.mock.calls.some(([route]) => route === "POST /desktop/:id/text")).toBe(false)
-  fireEvent.click(screen.getByRole("button", { name: "Colar na tela" }))
+  expect(screen.getAllByRole("textbox")).toHaveLength(1)
+  fireEvent.paste(screen.getByLabelText("Digitar na VM"), {
+    clipboardData: { getData: () => "echo 'Olá, ação!'" },
+  })
 
   await waitFor(() =>
     expect(f.request).toHaveBeenCalledWith("POST /desktop/:id/text", { text: "echo 'Olá, ação!'" }, { id: "session" }),

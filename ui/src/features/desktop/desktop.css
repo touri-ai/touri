@@ -95,17 +95,6 @@
   color: var(--text-2);
 }
 
-.desktop-paste {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: var(--space-8);
-  align-items: center;
-}
-
-.desktop-paste label {
-  grid-column: 1 / -1;
-}
-
 .desktop-panel .toolbar-actions {
   display: flex;
   flex-wrap: wrap;
