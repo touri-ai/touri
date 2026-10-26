@@ -551,6 +551,11 @@ writer and checks that acknowledgement before deciding whether to restore SOUL.m
 cancels outstanding recovery reads and waits for them to settle before closing the database.
 Complete edits of the same bot reserve their arrival order before asynchronous preparation;
 renames and access changes share that ordering. Admission bounds retained instruction text.
+Approved project links and folder changes take effect on the next message without stopping the
+current VM. Access setup carries the caller's cancellation and rechecks the reviewed configuration
+after asynchronous metadata reads and before each commit attempt. Concurrent approvals cannot
+overwrite a configuration changed since review. An existing VM project volume still requires
+recreating the machine before switching projects.
 Live event publication never waits synchronously for that writer's SQLite lock. Contended event
 inserts retry asynchronously in order with bounded admission and a finite deadline. Events reach
 subscribers only after persistence; explicit flush and shutdown wait for admitted inserts.
