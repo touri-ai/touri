@@ -3,6 +3,7 @@ import { basename, dirname, join, relative, resolve } from "node:path"
 import type { Bot, Kernel } from "@touri/contracts"
 import { canonicalPath, excludedBotFolders, folderGuestPath, withinFolder } from "../kernel/bot-folders"
 import { TouriError } from "../kernel/errors"
+import { canonicalSystemPath } from "../platform/posix"
 
 export class WorkspacePathError extends Error {
   constructor(readonly status: number) {
@@ -96,7 +97,7 @@ export const getWorkspacePath = (appData: string, bot: Bot, path: string, base =
   }
   if (lstatSync(grant.target).isSymbolicLink()) throw new WorkspacePathError(403)
   const root = realpathSync(grant.target)
-  if (grant.explicit && root !== resolve(grant.target)) throw new WorkspacePathError(403)
+  if (grant.explicit && root !== resolve(canonicalSystemPath(grant.target))) throw new WorkspacePathError(403)
   if (denied(join(root, suffix))) throw new WorkspacePathError(403)
   let current = root
   for (const part of suffix.split("/").filter(Boolean)) {

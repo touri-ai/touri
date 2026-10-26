@@ -1,7 +1,13 @@
-import { closeSync, fstatSync, opendirSync, readSync } from "node:fs"
+import { closeSync, fstatSync, readSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import type { Bot } from "@touri/contracts"
-import { openWorkspaceDirectory, openWorkspaceEntry, rasterMime, readBoundedFile } from "../kernel/files"
+import {
+  getWorkspaceEntryNames,
+  openWorkspaceDirectory,
+  openWorkspaceEntry,
+  rasterMime,
+  readBoundedFile,
+} from "../kernel/files"
 import { getImagePattern } from "./evidence-pattern"
 import { getWorkspacePath, WorkspacePathError } from "./workspace-path"
 
@@ -47,30 +53,19 @@ const getPatternImages = (root: string, directory: string, pattern: string): str
 }
 
 const getDirectoryMatches = (fd: number, pattern: string, prefix: string, suffix: string): string[] => {
-  const handle = opendirSync(`${process.platform === "linux" ? "/proc/self/fd" : "/dev/fd"}/${fd}`)
-  try {
-    const matches: string[] = []
-    for (let count = 0; count < 512 && matches.length < 6; count += 1) {
-      const entry = handle.readSync()
-      if (!entry) break
-      const name = entry.name.toLowerCase()
-      if (
-        !entry.isFile() ||
-        name.length < prefix.length + suffix.length ||
-        !name.startsWith(prefix) ||
-        !name.endsWith(suffix)
-      )
-        continue
-      try {
-        if (!isRasterEntry(fd, entry.name)) continue
-        // Local accumulation is bounded to six validated results inside this worker operation.
-        matches.push(join(dirname(pattern), entry.name))
-      } catch {}
-    }
-    return matches
-  } finally {
-    handle.closeSync()
+  // Every result is opened relative to the same pinned directory with O_NOFOLLOW.
+  const matches: string[] = []
+  for (const entry of getWorkspaceEntryNames(fd)) {
+    const name = entry.toLowerCase()
+    if (name.length < prefix.length + suffix.length || !name.startsWith(prefix) || !name.endsWith(suffix)) continue
+    try {
+      if (!isRasterEntry(fd, entry)) continue
+      // Local accumulation is bounded to six validated results inside this worker operation.
+      matches.push(join(dirname(pattern), entry))
+      if (matches.length === 6) break
+    } catch {}
   }
+  return matches
 }
 
 const isRasterEntry = (directory: number, name: string): boolean => {

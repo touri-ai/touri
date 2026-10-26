@@ -29,12 +29,14 @@ import {
   createWorkspaceChildDirectory,
   createWorkspaceDirectory,
   ensurePrivateDirectory,
+  getWorkspaceEntryNames,
   openWorkspaceDirectory,
   prepareDatabaseFile,
   readPrivateFile,
 } from "../../src/kernel/files"
 
 const roots: Array<string> = []
+const directories = new Set<number>()
 const fixture = () => {
   const parent = mkdtempSync(join(tmpdir(), "touri-storage-"))
   roots.push(parent)
@@ -45,6 +47,8 @@ const fixture = () => {
   return { root, outside, parent }
 }
 afterEach(() => {
+  directories.forEach(closeSync)
+  directories.clear()
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 
@@ -60,6 +64,22 @@ test.skipIf(process.platform === "win32")("selected folder creation uses the pla
   } finally {
     closeSync(fd)
   }
+})
+
+test.skipIf(process.platform === "win32")("directory enumeration stays on its pinned handle after replacement", () => {
+  const { root, outside } = fixture()
+  writeFileSync(join(root, "original.png"), "synthetic image")
+  writeFileSync(join(outside, "outside.png"), "private synthetic image")
+  const directory = openWorkspaceDirectory({ root, path: "" })
+  directories.add(directory)
+
+  renameSync(root, `${root}-original`)
+  symlinkSync(outside, root)
+  const names = getWorkspaceEntryNames(directory)
+  const stillOpen = fstatSync(directory).isDirectory()
+
+  expect(names).toEqual(["original.png"])
+  expect(stillOpen).toBe(true)
 })
 
 test("workspace directory creation preserves existing modes and refuses escape links", () => {

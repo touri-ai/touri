@@ -20,6 +20,7 @@ import {
   closeOnExec,
   direntNameOffset,
   errnoSymbol,
+  hasLegacyDirectoryAbi,
   libcLibrary,
   quotaExceeded,
   removeDirectoryFlag,
@@ -30,18 +31,34 @@ import { TouriError } from "./errors"
 // Node's path APIs cannot pin ancestor directories during rename. These small POSIX
 // calls keep every operation relative to an O_NOFOLLOW directory descriptor.
 const openNative = () =>
-  dlopen(libcLibrary, {
-    openat: { args: ["i32", "cstring", "i32", "u32"], returns: "i32" },
-    mkdirat: { args: ["i32", "cstring", "u32"], returns: "i32" },
-    renameat: { args: ["i32", "cstring", "i32", "cstring"], returns: "i32" },
-    unlinkat: { args: ["i32", "cstring", "i32"], returns: "i32" },
-    symlinkat: { args: ["cstring", "i32", "cstring"], returns: "i32" },
-    dup: { args: ["i32"], returns: "i32" },
-    fdopendir: { args: ["i32"], returns: "ptr" },
-    readdir: { args: ["ptr"], returns: "ptr" },
-    closedir: { args: ["ptr"], returns: "i32" },
-    [errnoSymbol]: { args: [], returns: "ptr" },
-  }).symbols
+  Object.assign(
+    dlopen(libcLibrary, {
+      openat: { args: ["i32", "cstring", "i32", "u32"], returns: "i32" },
+      mkdirat: { args: ["i32", "cstring", "u32"], returns: "i32" },
+      renameat: { args: ["i32", "cstring", "i32", "cstring"], returns: "i32" },
+      unlinkat: { args: ["i32", "cstring", "i32"], returns: "i32" },
+      symlinkat: { args: ["cstring", "i32", "cstring"], returns: "i32" },
+      dup: { args: ["i32"], returns: "i32" },
+      closedir: { args: ["ptr"], returns: "i32" },
+      [errnoSymbol]: { args: [], returns: "ptr" },
+    }).symbols,
+    openDirectoryNative(),
+  )
+
+const openDirectoryNative = () => {
+  if (!hasLegacyDirectoryAbi)
+    return dlopen(libcLibrary, {
+      fdopendir: { args: ["i32"], returns: "ptr" },
+      readdir: { args: ["ptr"], returns: "ptr" },
+    }).symbols
+
+  const { symbols } = dlopen(libcLibrary, {
+    fdopendir$INODE64: { args: ["i32"], returns: "ptr" },
+    readdir$INODE64: { args: ["ptr"], returns: "ptr" },
+  })
+  return { fdopendir: symbols.fdopendir$INODE64, readdir: symbols.readdir$INODE64 }
+}
+
 let cachedNative: ReturnType<typeof openNative> | undefined
 const native = () => (cachedNative ??= openNative())
 
@@ -84,6 +101,30 @@ export const openWorkspaceDirectory = ({ root, path }: { root: string; path: str
   } catch (error) {
     closeSync(fd)
     throw error
+  }
+}
+
+/** Enumerate a pinned directory inside the file worker without reopening a descriptor path. */
+export const getWorkspaceEntryNames = (directory: number): string[] => {
+  const duplicate = native().dup(directory)
+  if (duplicate < 0) throw failure()
+  const stream = native().fdopendir(duplicate)
+  if (!stream) {
+    closeSync(duplicate)
+    throw failure()
+  }
+  try {
+    // Worker-local accumulation is capped independently of the directory's size.
+    const names: string[] = []
+    for (let count = 0; count < 512; count += 1) {
+      const entry = native().readdir(stream)
+      if (!entry) break
+      const name = new CString(entry, direntNameOffset).toString()
+      if (name !== "." && name !== "..") names.push(name)
+    }
+    return names
+  } finally {
+    native().closedir(stream)
   }
 }
 

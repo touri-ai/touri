@@ -7,6 +7,8 @@ export const closeOnExec = apple ? 0x1000000 : 0x80000
 export const wouldBlock = apple ? 35 : 11
 export const quotaExceeded = apple ? 69 : 122
 export const direntNameOffset = apple ? 21 : 19
+// Intel macOS retains both inode ABIs; these symbols match the 64-bit dirent layout.
+export const hasLegacyDirectoryAbi = apple && process.arch === "x64"
 export const removeDirectoryFlag = apple ? 0x80 : 0x200
 export const defaultShell = apple ? "/bin/zsh" : "/bin/bash"
 export const extraToolDirectories = apple ? ["/opt/homebrew/bin", "/opt/homebrew/sbin"] : []
