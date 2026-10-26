@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite"
 import { walCheckpointSource } from "./wal-checkpoint-worker"
+import { deferWorkerReply } from "./worker-reply"
 
 const DEFAULT_INTERVAL_MS = 5_000
 const PAGE_INTERVAL_MS = 5_000
@@ -89,8 +90,12 @@ export const createWalCheckpointer = ({
 
       clearTimeout(startupTimer)
       if (process.env.TOURI_SMOKE_DIAGNOSTICS === "1") process.stderr.write("Smoke checkpoint worker ready\n")
-      onReady?.()
-      worker?.unref()
+      // Readiness consumers may start another worker and await its first durable write.
+      deferWorkerReply(() => {
+        if (stopped || reportedError) return
+        onReady?.()
+        worker?.unref()
+      })
     }
     worker.onerror = (event): void => {
       event.preventDefault()

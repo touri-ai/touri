@@ -17,6 +17,31 @@ afterEach(async () => {
   cleanups.clear()
 })
 
+test("readiness consumers run after the worker inbox callback returns", async () => {
+  const { database } = await getFixture()
+  const ready = Promise.withResolvers<boolean>()
+  // Capture only this fixture's notification scope and owned worker handle.
+  let notifying = true
+  let worker: Worker | undefined
+  const checkpointer = createWalCheckpointer({
+    database,
+    onReady: () => ready.resolve(notifying),
+    onError: () => ready.reject(new Error("Checkpoint worker failed")),
+    createWorker: (url) => {
+      worker = new Worker(url, { smol: true, ref: false })
+      return worker
+    },
+  })
+  cleanups.add(() => checkpointer.dispose({ closing: true }))
+  if (!worker?.onmessage) throw new Error("Missing checkpoint inbox")
+
+  worker.onmessage.call(worker, new MessageEvent("message", { data: { type: "ready" } }))
+  notifying = false
+  const ranInsideInbox = await ready.promise
+
+  expect(ranInsideInbox).toBe(false)
+})
+
 test("the embedded worker checkpoints WAL frames so the next write resets its size", async () => {
   const { database, walPath } = await getFixture()
   const ready = Promise.withResolvers<void>()

@@ -12,7 +12,7 @@ afterEach(async () => {
   cleanups.clear()
 })
 
-test("a bytecode file worker persists its first native log write", async () => {
+test("a bytecode checkpoint callback persists its first native log write without unrelated input", async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "touri-nested-helper-")))
   cleanups.add(() => rm(root, { recursive: true, force: true }))
   const binary = join(root, process.platform === "win32" ? "fixture.exe" : "fixture")
