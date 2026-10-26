@@ -26,37 +26,23 @@ test.skipIf(!["linux", "win32"].includes(process.platform) || process.arch !== "
       "workspace-attention-worker-entry",
     ]
     await run(
-      [
-        process.execPath,
-        "build",
-        "--compile",
-        "--bytecode",
-        "--format=esm",
-        `--target=${target}`,
-        ...entries.map((entry) => join(root, "sidecar/src", `${entry}.ts`)),
-        "--outfile",
-        binary,
-      ],
+      [process.execPath, "build", "--compile", "--bytecode", "--format=esm", `--target=${target}`].concat(
+        entries.map((entry) => join(root, "sidecar/src", `${entry}.ts`)),
+        ["--outfile", binary],
+      ),
       directory,
     )
-    const smoke = await run(
-      [process.execPath, "scripts/smoke-sidecar.ts", binary],
-      root,
-      Object.assign({}, process.env, { TOURI_SMOKE_DIAGNOSTICS: "1" }),
-    )
+    const smoke = await run([process.execPath, "scripts/smoke-sidecar.ts", binary], root)
 
     expect(smoke).toContain("Compiled sidecar smoke passed")
-    const diagnostics = smoke.split("\n").filter((line) => line.startsWith("Smoke "))
-    if (diagnostics.length) console.info(diagnostics.join("\n"))
   },
   180_000,
 )
 
-const run = async (cmd: string[], cwd: string, env = process.env): Promise<string> => {
+const run = async (cmd: string[], cwd: string): Promise<string> => {
   const child = Bun.spawn({
     cmd,
     cwd,
-    env,
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",

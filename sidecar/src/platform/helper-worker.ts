@@ -5,7 +5,6 @@ import { TouriError } from "../kernel/errors"
 const source = `const execute = async (data) => {
   const { buffer, command, input, env, deadline } = data;
   const state = new Int32Array(buffer, 0, 4);
-  Atomics.store(state, 3, 1);
   const bytes = new Uint8Array(buffer, 16);
   if (Atomics.load(state, 0) !== 0) return;
   let child;
@@ -15,27 +14,22 @@ const source = `const execute = async (data) => {
   let exitCode = 1;
   try {
     child = Bun.spawn({ cmd: command, stdin: input === undefined ? "ignore" : "pipe", stdout: "pipe", stderr: "ignore", env });
-    Atomics.store(state, 3, 2);
     const exited = child.exited;
     timer = setInterval(() => {
       if (Date.now() >= deadline || Atomics.load(state, 0) < 0) { try { child.kill("SIGKILL"); } catch {} }
     }, 20);
     if (input !== undefined) { child.stdin.write(input); child.stdin.end(); }
-    Atomics.store(state, 3, 3);
     const reader = child.stdout.getReader();
     try {
       while (true) {
         const chunk = await reader.read();
         if (chunk.done) break;
-        Atomics.store(state, 3, 4);
         if (length + chunk.value.length > bytes.length) throw new Error("reply limit");
         bytes.set(chunk.value, length);
         length += chunk.value.length;
       }
     } finally { reader.releaseLock(); }
-    Atomics.store(state, 3, 5);
     exitCode = await exited;
-    Atomics.store(state, 3, 6);
     // A deadline kill can settle before the waiting caller wakes up.
     // Publish failure even when that child exit was otherwise handled normally.
     status = Date.now() < deadline ? 1 : 2;
@@ -88,12 +82,8 @@ export const runHelperBlocking = ({
   const state = new Int32Array(buffer, 0, 4)
   try {
     helperWorker().postMessage({ buffer, command, input, env, deadline: Date.now() + timeoutMs })
-    const outcome = Atomics.wait(state, 0, 0, timeoutMs)
+    Atomics.wait(state, 0, 0, timeoutMs)
     if (Atomics.load(state, 0) !== 1) {
-      if (process.env.TOURI_SMOKE_DIAGNOSTICS === "1")
-        process.stderr.write(
-          `Smoke helper failure: ${outcome}, state ${Atomics.load(state, 0)}, stage ${Atomics.load(state, 3)}, exit ${Atomics.load(state, 1)}, bytes ${Atomics.load(state, 2)}\n`,
-        )
       Atomics.compareExchange(state, 0, 0, -1)
       throw new TouriError("TOURI-E2001")
     }

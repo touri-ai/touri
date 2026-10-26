@@ -711,11 +711,7 @@ jobs:
         run: |
           for ($attempt = 1; $attempt -le 5; $attempt++) {
             bun run test:sidecar:smoke
-            if ($LASTEXITCODE -ne 0) {
-              $env:TOURI_SMOKE_DIAGNOSTICS = "1"
-              bun run test:sidecar:smoke
-              exit 1
-            }
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
       - name: Report Windows caches
         if: needs.changes.outputs.native == 'true'

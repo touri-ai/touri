@@ -35,7 +35,6 @@ const env: NodeJS.ProcessEnv = {
   TOURI_E2E_REAL_CLI: "0",
   TOURI_OPENCODE_REAL: "0",
   TOURI_DOCTOR_SKIP_PROVIDER_PROBES: "1",
-  TOURI_SMOKE_DIAGNOSTICS: process.env.TOURI_SMOKE_DIAGNOSTICS ?? "0",
 }
 if (windows) {
   env.TOURI_DESKTOP_HELPER = process.env.TOURI_DESKTOP_HELPER ?? resolve("src-tauri/target/debug/touri.exe")
@@ -142,13 +141,6 @@ try {
   } else if (child.exitCode !== 0) {
     console.error(`Compiled sidecar shutdown exited with code ${child.exitCode}`)
     process.exitCode = 1
-  }
-  if (env.TOURI_SMOKE_DIAGNOSTICS === "1" && process.exitCode !== 1) {
-    const diagnostics = readFileSync(join(root, "stderr.log"), "utf8")
-      .slice(-4000)
-      .split("\n")
-      .filter((line) => line.startsWith("Smoke "))
-    if (diagnostics.length) console.log(diagnostics.join("\n"))
   }
   await removeSmokeDirectory(root)
 }

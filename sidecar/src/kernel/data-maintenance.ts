@@ -582,13 +582,8 @@ export const createStorageMaintenance = ({
       status = { running: false, processed: progress.cursor, total: progress.total }
       maintenanceFailures = 0
       timer = schedule(step, DAY)
-    } catch (error) {
+    } catch {
       if (stopped) return
-      if (process.env.TOURI_SMOKE_DIAGNOSTICS === "1") {
-        const code = error instanceof Error && "code" in error ? error.code : error instanceof Error && error.message
-        if (typeof code === "string" && /^[A-Z0-9_-]{1,64}$/.test(code))
-          process.stderr.write(`Smoke maintenance failure: ${code}\n`)
-      }
       maintenanceFailures += 1
       onError()
       status = { ...status, running: false, error: "Não foi possível compactar os dados. Tente novamente." }
