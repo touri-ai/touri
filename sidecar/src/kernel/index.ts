@@ -730,6 +730,8 @@ export const createKernel = ({
       const storageFailure = storageStopped.find((result) => result.status === "rejected")
       if (storageFailure?.status === "rejected") throw storageFailure.reason
     })()
+    // Shutdown can outlive its initiator; keep failures observable without an unhandled rejection.
+    void stopPromise.catch(() => undefined)
     return stopPromise
   }
 
