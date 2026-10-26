@@ -134,6 +134,7 @@ export const createNotifyRoutes = ({
     const input = record(body)
     const messageText = text(input.text).trim()
     if (!messageText) return fail(400, "INVALID_ARGS", "text is required")
+    await kernel.flushEvents?.({ persistOnly: true })
     const storeApi = kernel.services.use("store.api")
     const bot = storeApi?.getBot({ botId })
     if (!bot || !storeApi?.sendMessage) return fail(404, "NOT_FOUND", "Bot not found")
@@ -150,7 +151,6 @@ export const createNotifyRoutes = ({
     const parentId = existing
       ? (JSON.parse(existing.request_json) as { parentId: string | null }).parentId
       : thread.activeLeafId
-    await kernel.flushEvents?.({ persistOnly: true })
     return storeApi.sendMessage({
       threadId,
       parentId,

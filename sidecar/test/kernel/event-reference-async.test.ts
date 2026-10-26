@@ -50,6 +50,32 @@ test("a held live reference read leaves input and health responsive and preserve
   )
 })
 
+test("persistence-only flush completes while reference delivery is held", async () => {
+  const fixture = await getFixture()
+  const read = Promise.withResolvers<UiEvent[]>()
+  const reading = Promise.withResolvers<void>()
+  const bus = createEventBus(fixture.database, undefined, {
+    getReferenceEvents: () => {
+      reading.resolve()
+      return read.promise
+    },
+  })
+  cleanups.add(() => bus.stop())
+  cleanups.add(() => read.resolve([getDelta()]))
+  const client = getClient()
+  bus.add(client.socket)
+  fixture.saveReference()
+  bus.publish(getMarker("after-reference"))
+  await reading.promise
+
+  await bus.flushAsync({ persistOnly: true })
+
+  expect(client.getEvents()).toEqual([])
+  read.resolve([getDelta()])
+  await bus.flushAsync()
+  expect(client.getEvents().map(({ event }) => event)).toEqual([getDelta(), getMarker("after-reference")])
+})
+
 test("committed control callbacks do not wait behind cold history while socket order stays intact", async () => {
   const fixture = await getFixture()
   const read = Promise.withResolvers<UiEvent[]>()
