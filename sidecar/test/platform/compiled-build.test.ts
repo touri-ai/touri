@@ -1,10 +1,23 @@
-import { expect, test } from "bun:test"
-import { resolve } from "node:path"
+import { afterEach, expect, test } from "bun:test"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join, resolve } from "node:path"
 
-test.skipIf(process.platform !== "linux" || process.arch !== "x64")(
+const directories = new Set<string>()
+afterEach(async () => {
+  for (const directory of directories) await rm(directory, { recursive: true, force: true })
+  directories.clear()
+})
+
+test.skipIf(!["linux", "win32"].includes(process.platform) || process.arch !== "x64")(
   "the bytecode native sidecar completes its compiled worker and persisted-reply smoke",
   async () => {
     const root = resolve(import.meta.dir, "../../..")
+    const windows = process.platform === "win32"
+    const target = windows ? "bun-windows-x64" : "bun-linux-x64-baseline"
+    const directory = await mkdtemp(join(tmpdir(), "touri-compiled-build-"))
+    directories.add(directory)
+    const binary = join(directory, windows ? "fixture-sidecar.exe" : "fixture-sidecar")
     const entries = [
       "main",
       "file-io-worker-entry",
@@ -13,20 +26,13 @@ test.skipIf(process.platform !== "linux" || process.arch !== "x64")(
       "workspace-attention-worker-entry",
     ]
     await run(
-      [
-        process.execPath,
-        "build",
-        "--compile",
-        "--bytecode",
-        "--format=esm",
-        "--target=bun-linux-x64-baseline",
-        ...entries.map((entry) => `sidecar/src/${entry}.ts`),
-        "--outfile",
-        "src-tauri/binaries/touri-sidecar-x86_64-unknown-linux-gnu",
-      ],
-      root,
+      [process.execPath, "build", "--compile", "--bytecode", "--format=esm", `--target=${target}`].concat(
+        entries.map((entry) => join(root, "sidecar/src", `${entry}.ts`)),
+        ["--outfile", binary],
+      ),
+      directory,
     )
-    const smoke = await run([process.execPath, "scripts/smoke-sidecar.ts"], root)
+    const smoke = await run([process.execPath, "scripts/smoke-sidecar.ts", binary], root)
 
     expect(smoke).toContain("Compiled sidecar smoke passed")
   },

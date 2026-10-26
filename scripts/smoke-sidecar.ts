@@ -9,7 +9,7 @@ const target = windows
   : process.arch === "arm64"
     ? "aarch64-unknown-linux-gnu"
     : "x86_64-unknown-linux-gnu"
-const binary = resolve(`src-tauri/binaries/touri-sidecar-${target}`)
+const binary = resolve(process.argv[2] ?? `src-tauri/binaries/touri-sidecar-${target}`)
 if (!existsSync(binary)) throw new Error("Build the native platform sidecar before running its compiled smoke")
 mkdirSync("src-tauri/target", { recursive: true })
 const root = mkdtempSync(resolve("src-tauri/target/sidecar-smoke-"))
@@ -124,6 +124,9 @@ try {
 } catch (error) {
   console.error(error)
   if (existsSync(join(root, "stderr.log"))) console.error(readFileSync(join(root, "stderr.log"), "utf8").slice(-4000))
+  const logPath = join(appData, "logs", "sidecar.log")
+  if (existsSync(logPath)) console.error(readFileSync(logPath, "utf8").slice(-8000))
+  else console.error("Compiled sidecar did not persist its diagnostic log")
   process.exitCode = 1
 } finally {
   if (windows) child.stdin.end()

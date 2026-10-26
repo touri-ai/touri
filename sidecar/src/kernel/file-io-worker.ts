@@ -1,5 +1,6 @@
 import { readdirSync, statSync } from "node:fs"
 import { join } from "node:path"
+import { startHelperWorker } from "../platform/helper-worker"
 import { removeBotHomeDirectory } from "../vm/bot-home-cleanup"
 import { getLocalImageBytes, getWorkspaceImage } from "../vm/evidence-local"
 import type { FileIoMessage, FileIoRequest, FileIoTask } from "./file-io-protocol"
@@ -16,6 +17,7 @@ import {
   removePrivateFile,
   replacePrivateSymlink,
 } from "./files"
+import { deferWorkerReply } from "./worker-reply"
 
 const rotateLog = ({
   root,
@@ -123,14 +125,27 @@ const toWorkerError = (error: unknown): { name: string; message: string; code?: 
 
 self.onmessage = ({ data }: MessageEvent<FileIoRequest>): void => {
   if ("type" in data && data.type === "start") {
-    self.postMessage({ type: "ready" } satisfies FileIoMessage)
+    if (process.platform !== "win32") {
+      self.postMessage({ type: "ready" } satisfies FileIoMessage)
+      return
+    }
+    // A cold nested worker must finish bootstrap before this thread can block on its reply.
+    deferWorkerReply(() => {
+      void startHelperWorker().then(
+        () => deferWorkerReply(() => self.postMessage({ type: "ready" } satisfies FileIoMessage)),
+        () => self.close(),
+      )
+    })
     return
   }
   if (!("requestId" in data)) return
-  try {
-    const result = execute(data)
-    self.postMessage({ requestId: data.requestId, result } satisfies FileIoMessage)
-  } catch (error) {
-    self.postMessage({ requestId: data.requestId, error: toWorkerError(error) } satisfies FileIoMessage)
-  }
+  // Cold native helper I/O must start outside the worker inbox continuation.
+  deferWorkerReply(() => {
+    try {
+      const result = execute(data)
+      self.postMessage({ requestId: data.requestId, result } satisfies FileIoMessage)
+    } catch (error) {
+      self.postMessage({ requestId: data.requestId, error: toWorkerError(error) } satisfies FileIoMessage)
+    }
+  })
 }

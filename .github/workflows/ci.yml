@@ -708,7 +708,11 @@ jobs:
       - if: needs.changes.outputs.native == 'true'
         run: bun run test:sidecar:portable
       - if: needs.changes.outputs.native == 'true'
-        run: bun run test:sidecar:smoke
+        run: |
+          for ($attempt = 1; $attempt -le 5; $attempt++) {
+            bun run test:sidecar:smoke
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
       - name: Report Windows caches
         if: needs.changes.outputs.native == 'true'
         shell: bash
