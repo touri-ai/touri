@@ -1,4 +1,5 @@
 export type WriteCommand =
+  | { type: "save-owner-profile"; name: string; email: string }
   | { type: "create-pairing"; codeHash: string; personId: string; at: number; expiresAt: number }
   | {
       type: "claim-pairing"

@@ -61,6 +61,7 @@ export type CreateEmailSignInResult = { success: true; token: string; expiresAt:
 export type ClaimEmailSignInResult = { success: true; device: Device; person: Person; token: string } | AuthError
 
 export type AuthStore = {
+  saveOwnerProfile: (profile: { name: string; email: string }) => Promise<boolean>
   createPairingCode: () => Promise<CreatePairingCodeSuccess>
   createPersonPairingCode: (personId: string) => Promise<CreatePairingCodeResult>
   claimPairingCode: (args: { code: string; deviceName: string }) => Promise<ClaimPairingCodeResult>
@@ -650,6 +651,7 @@ export const openAuthStore = async ({
 
   return {
     createPairingCode,
+    saveOwnerProfile: async (profile) => Boolean(await writer.write({ type: "save-owner-profile", ...profile })),
     createPersonPairingCode,
     claimPairingCode,
     verifyDeviceToken,

@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from "react"
 import { createTauriInvoke, type TauriInvoke } from "../../api/client"
 import { VaultAccessButton } from "../../components/VaultAccessButton"
 import { t } from "../../i18n"
+import { LocalServerAccess } from "../onboarding/LocalServerAccess"
 import { isNativeDesktop, serverModeError, serverModeErrorCode, useServerMode } from "./serverMode"
 
 const nativeInvoke = createTauriInvoke()
@@ -58,6 +59,14 @@ export const ServerModeSettings = ({
   return (
     <section className="server-mode-settings settings-group" aria-label={t("Usar um servidor touri")}>
       <h3>{t("Usar um servidor touri")}</h3>
+      <button
+        type="button"
+        className="button button-quiet"
+        onClick={() => window.dispatchEvent(new Event("touri-open-onboarding"))}
+      >
+        {t("setup.reopen")}
+      </button>
+      {status?.mode === "local" && <LocalServerAccess invoke={invokeCommand} />}
       <p className="field-help">
         {t(
           "Seus bots, conversas, arquivos e logins ficam no servidor escolhido. Este aparelho mostra a interface, sem iniciar bots locais.",

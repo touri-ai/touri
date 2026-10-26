@@ -11,6 +11,7 @@ import {
 import type { ServerWebSocket } from "bun"
 import { retryDeletedBrowserSessionKeys } from "../browser/sessionVault"
 import { compressBufferedResponse } from "../cli/web/compression"
+import { isDirectLoopback } from "../cli/web/loopback"
 import { getHostIdentity } from "../platform/host"
 import { stopBotHomeWriter } from "../store/bot-home"
 import { touriVersion } from "../version"
@@ -56,7 +57,8 @@ export type WebMode = {
   hostname: string
   port: number
   intercept: (args: WebInterceptArgs) => Promise<Response | null>
-  host: (deps: { publish: Kernel["publish"]; log: Kernel["log"] }) => Kernel["callHost"]
+  nativeDesktop?: boolean
+  host?: (deps: { publish: Kernel["publish"]; log: Kernel["log"] }) => Kernel["callHost"]
   listen?: (options: Bun.Serve.Options<KernelSocketData>) => Bun.Server<KernelSocketData>
 }
 
@@ -240,7 +242,7 @@ export const createKernel = ({
       for (const listener of notifications) listener(notification)
     },
   })
-  const host = web ? { callHost: web.host({ publish: bus.publish, log }), close: () => undefined } : socketHost
+  const host = web?.host ? { callHost: web.host({ publish: bus.publish, log }), close: () => undefined } : socketHost
   const processSpawn = (input: Parameters<typeof spawnTree>[0]) => spawnTree(input)
   const shell = createShellEnv({ spawn: processSpawn })
 
@@ -389,13 +391,21 @@ export const createKernel = ({
       const ticket = ticketValue ? tickets.consume(ticketValue, url.pathname) : null
       if (ticketValue && !ticket) return jsonResponse(401, { errorCode: "UNAUTHORIZED" })
       if (ticket?.session) bindDeviceSession(request.signal, ticket.session)
-      const early = web
+      if (web?.nativeDesktop && request.method === "OPTIONS" && isAllowedOrigin(request.headers.get("origin")))
+        return corsPreflight(request, bunServer.port ?? 0)
+      const isNativeRequest = Boolean(
+        web?.nativeDesktop &&
+          isDirectLoopback({ clientIp: bunServer.requestIP(request)?.address ?? null, headers: request.headers }) &&
+          (bearer(request) === uiToken || (ticket !== null && !ticket.session)),
+      )
+      const isWebRequest = web && !isNativeRequest
+      const early = isWebRequest
         ? await web.intercept({ request, url, clientIp: bunServer.requestIP(request)?.address ?? null })
         : null
       if (early) return early
-      if (!web && request.method === "OPTIONS") return corsPreflight(request, bunServer.port ?? 0)
+      if (!isWebRequest && request.method === "OPTIONS") return corsPreflight(request, bunServer.port ?? 0)
       const session = deviceSession(request.signal)
-      const failure = web
+      const failure = isWebRequest
         ? null
         : authFailure({
             request,
@@ -405,7 +415,7 @@ export const createKernel = ({
             authenticatedTicket: ticket !== null,
           })
       if (failure) return failure
-      if (!web && isWebSocket && !ticket) return jsonResponse(401, { errorCode: "UNAUTHORIZED" })
+      if (!isWebRequest && isWebSocket && !ticket) return jsonResponse(401, { errorCode: "UNAUTHORIZED" })
       if (request.method === "POST" && url.pathname === "/api/v1/ws-ticket") {
         const origin = request.headers.get("origin")
         const body = await parseBody(request)

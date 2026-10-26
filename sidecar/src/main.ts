@@ -120,7 +120,10 @@ const getLoadedModule = async (module: ModuleLoader) => {
 
 const runServe = async (): Promise<void> => {
   const lease = await acquireRuntimeLock(createAppPaths())
-  const runtime = createKernel()
+  const { createDesktopWeb } = await import("./onboarding/desktop")
+  const desktop = await createDesktopWeb(createAppPaths().appData)
+  const runtime = createKernel({ web: desktop.web })
+  await desktop.init(runtime.kernel, runtime.handshake.port)
   let initialization = Promise.resolve()
   let stopping = false
   const shutdown = (): void => {
@@ -134,6 +137,7 @@ const runServe = async (): Promise<void> => {
       runtime.emitHostNotification({ method: "app.willQuit", params: {} })
       await runtime.kernel.services.use("vm.shutdown")?.()
       await runtime.stop()
+      await desktop.close()
       await closeFileIoAsync()
       lease.release()
       process.exit(0)
