@@ -16,6 +16,7 @@ import {
   removePrivateFile,
   replacePrivateSymlink,
 } from "./files"
+import { deferWorkerReply } from "./worker-reply"
 
 const rotateLog = ({
   root,
@@ -127,10 +128,13 @@ self.onmessage = ({ data }: MessageEvent<FileIoRequest>): void => {
     return
   }
   if (!("requestId" in data)) return
-  try {
-    const result = execute(data)
-    self.postMessage({ requestId: data.requestId, result } satisfies FileIoMessage)
-  } catch (error) {
-    self.postMessage({ requestId: data.requestId, error: toWorkerError(error) } satisfies FileIoMessage)
-  }
+  // Cold native helper I/O must start outside the worker inbox continuation.
+  deferWorkerReply(() => {
+    try {
+      const result = execute(data)
+      self.postMessage({ requestId: data.requestId, result } satisfies FileIoMessage)
+    } catch (error) {
+      self.postMessage({ requestId: data.requestId, error: toWorkerError(error) } satisfies FileIoMessage)
+    }
+  })
 }
