@@ -11,6 +11,7 @@ const env = buildChildEnv()
 const echo = [process.execPath, "-e", "process.stdout.write(await Bun.stdin.text())"]
 
 test("native helper readiness consumers wait for a turn outside the worker inbox", async () => {
+  stopHelperWorker()
   // Only this fixture's notification handle and turn marker change.
   let worker: Worker | undefined
   let crossedTurn = false
