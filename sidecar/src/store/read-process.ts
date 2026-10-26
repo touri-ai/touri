@@ -2,6 +2,7 @@ import { constants, Database, type SQLQueryBindings } from "bun:sqlite"
 import { getRefEvent } from "../kernel/event-reference"
 import type { TranscriptRef } from "../kernel/transcript-events"
 import { getRecoveryCandidates, type RecoveryCursor } from "../notify/recovery-candidates"
+import { canonicalSystemPath } from "../platform/posix"
 import { getMessageHistoryContext } from "./history-context"
 import { getMessageFromRow } from "./message-row"
 import type { MessageReferences, ReadQuery } from "./reader"
@@ -33,7 +34,10 @@ export const runStoreRead = async (): Promise<void> => {
   let database: Database | undefined
   try {
     const input = JSON.parse(await Bun.stdin.text()) as ReadInput
-    database = new Database(input.filename, constants.SQLITE_OPEN_READONLY | constants.SQLITE_OPEN_NOFOLLOW)
+    database = new Database(
+      canonicalSystemPath(input.filename),
+      constants.SQLITE_OPEN_READONLY | constants.SQLITE_OPEN_NOFOLLOW,
+    )
     database.exec("PRAGMA busy_timeout = 0; PRAGMA query_only = ON; PRAGMA cache_size = -8192")
     await writeReply(new Uint8Array([82]))
     if ("references" in input) {
