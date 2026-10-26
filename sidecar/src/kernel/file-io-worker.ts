@@ -130,10 +130,12 @@ self.onmessage = ({ data }: MessageEvent<FileIoRequest>): void => {
       return
     }
     // A cold nested worker must finish bootstrap before this thread can block on its reply.
-    void startHelperWorker().then(
-      () => deferWorkerReply(() => self.postMessage({ type: "ready" } satisfies FileIoMessage)),
-      () => self.close(),
-    )
+    deferWorkerReply(() => {
+      void startHelperWorker().then(
+        () => deferWorkerReply(() => self.postMessage({ type: "ready" } satisfies FileIoMessage)),
+        () => self.close(),
+      )
+    })
     return
   }
   if (!("requestId" in data)) return
