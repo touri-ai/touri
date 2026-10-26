@@ -330,6 +330,10 @@ Tokens are never written to disk, except the per-thread MCP token files (rewritt
   identity fields, another installation or an online account. Completion persists locally;
   installations with bots or user settings and already paired desktops skip welcome.
   Maintenance checkpoints alone do not count as user data.
+- If an existing runtime returns HTTP 404 for `GET /onboarding`, automatic desktop first use
+  opens the workspace without persisting onboarding completion. Explicitly reopened server
+  setup stays available. Authentication failures, server errors and failed setup actions do
+  not trigger this compatibility fallback; cancellation and the request deadline still apply.
 - The secondary **Usar meu servidor** / **Use my server** action offers connecting to an existing
   server or running on this computer. Configuration can be reopened from the server settings.
   Connecting validates the address, then uses the existing one-use pairing code and native vault.
