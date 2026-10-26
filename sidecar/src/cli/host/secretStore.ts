@@ -8,7 +8,7 @@ export type SecretStore = {
   getAsync: (account: string) => Promise<string | null>
   set: (args: { account: string; value: string }) => Promise<void>
   delete: (account: string) => Promise<void>
-  keyOrigin: "env" | "file"
+  keyOrigin: "env" | "file" | "system"
 }
 
 type Envelope = { v: 1; iv: string; tag: string; data: string }

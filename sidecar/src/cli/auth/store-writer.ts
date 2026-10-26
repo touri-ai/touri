@@ -11,6 +11,13 @@ const isActiveAdmin = (db: NonNullable<typeof database>, personId: string): bool
 const execute = (command: WriteCommand): unknown => {
   const db = database
   if (!db) throw new Error("The authentication writer is not ready")
+  if (command.type === "save-owner-profile") {
+    return (
+      db
+        .query("UPDATE people SET name = ?, email = ? WHERE id = 'owner' AND removed_at IS NULL")
+        .run(command.name, command.email || null).changes === 1
+    )
+  }
   if (command.type === "create-pairing") {
     if (!db.query("SELECT 1 FROM people WHERE id = ? AND removed_at IS NULL LIMIT 1").get(command.personId))
       return false

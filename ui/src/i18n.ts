@@ -5,6 +5,71 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "setup.ownRuntime":
+    "Este é o touri que já está rodando neste computador. Volte e escolha Começar neste computador; para usar outro servidor, informe o endereço dele.",
+  "setup.welcome": "Seus bots, perto de você",
+  "setup.welcomeDetail": "Converse, acompanhe o trabalho e continue de onde parou. Tudo começa no seu computador.",
+  "setup.localStart": "Começar neste computador",
+  "setup.starting": "Preparando seu espaço…",
+  "setup.noAccount": "Sem conta, sem instalação extra. Seus dados ficam com você.",
+  "setup.ownServer": "Usar meu servidor",
+  "setup.myServer": "Meu servidor",
+  "setup.serverDetail": "Escolha onde seus bots trabalham e suas conversas ficam guardadas.",
+  "setup.connectTitle": "Conectar ao meu servidor",
+  "setup.connectDetail": "Use outro computador ou um servidor que já está ligado.",
+  "setup.runHere": "Rodar neste {computer}",
+  "setup.runDetail": "Este computador cuida dos seus bots. Comece com um clique.",
+  "setup.addressHelp": "Cole o endereço do touri, o mesmo que você abre no navegador.",
+  "setup.pairHelp":
+    "No touri do servidor, abra Configurações → Usar um servidor touri → Gerar código para outro aparelho. No terminal, você também pode executar touri pair.",
+  "setup.pairPrivacy": "O código é de uso único. A conexão fica no cofre deste aparelho; o app reinicia ao conectar.",
+  "setup.pair": "Parear e continuar",
+  "setup.found": "Servidores encontrados",
+  "setup.foundHelp": "A busca é privada. Nenhuma conversa é enviada.",
+  "setup.searching": "Procurando servidores… Você já pode colar um endereço.",
+  "setup.empty": "Nenhum servidor encontrado. Confira se o outro computador está ligado e cole o endereço acima.",
+  "setup.discoveryHelp":
+    "A busca procura neste computador e na sua rede privada Tailscale. Para encontrar outro aparelho, entre na mesma rede nos dois.",
+  "setup.searchAgain": "Buscar novamente",
+  "setup.use": "Usar",
+  "setup.useServer": "Usar {name}",
+  "setup.thisComputer": "Este computador",
+  "setup.runningHere": "O touri está rodando aqui",
+  "setup.tailnet": "Na sua rede privada Tailscale",
+  "setup.builtIn":
+    "O touri roda dentro do app, com banco de dados incluído. Tudo fica em uma pasta neste computador. Nada mais para instalar.",
+  "setup.name": "Seu nome",
+  "setup.email": "Seu email",
+  "setup.teamIdentity": "Seu nome e email aparecem para a equipe. Ficam neste computador; não criam uma conta online.",
+  "setup.remote": "Acessar do celular e da equipe",
+  "setup.remoteHelp":
+    "Usa o Tailscale, uma rede privada entre seus aparelhos. Cada novo aparelho precisa de um código para entrar no touri.",
+  "setup.checkingNetwork": "Verificando sua rede privada…",
+  "setup.networkReady": "Rede pronta. Ao ativar e começar, o touri prepara um endereço seguro.",
+  "setup.networkMissing":
+    "Para ativar: instale o Tailscale neste computador e entre na sua rede. Você pode começar localmente agora.",
+  "setup.networkSignedOut": "Para ativar: abra o Tailscale e entre na sua rede. Depois, verifique novamente.",
+  "setup.networkUnavailable":
+    "Não foi possível verificar o Tailscale. Abra o app, confira a conexão e verifique novamente.",
+  "setup.agents":
+    "Os bots trabalham neste computador, nas próprias pastas. Nenhum bot executa comandos antes de você criá-lo e configurar suas permissões. O uso do navegador exige sua autorização. Sua IA recebe o conteúdo necessário para responder.",
+  "setup.alwaysOn":
+    "Feito para você ou uma equipe pequena enquanto este computador estiver ligado. Para funcionar o tempo todo, use um servidor sempre ligado.",
+  "setup.migrate":
+    "Você pode levar seus dados para outro servidor depois. O guia de mudança explica como preservar suas conversas.",
+  "setup.keepData": "Seus dados locais foram encontrados. Vamos continuar usando a mesma pasta, sem apagar nada.",
+  "setup.start": "Começar",
+  "setup.startError": "Não foi possível preparar seu espaço. Tente novamente; seus dados continuam guardados.",
+  "setup.remoteError":
+    "Não foi possível ativar o acesso remoto. Confira o Tailscale e se o endereço já está em uso. Tente novamente ou desative a opção para começar localmente.",
+  "setup.accessReady": "Pronto para acessar de outro aparelho",
+  "setup.phoneHelp": "No celular ou outro computador da sua rede privada, abra este endereço:",
+  "setup.codeExpires": "Use este código para entrar. Ele expira em cinco minutos e funciona uma vez.",
+  "setup.openHome": "Abrir meu espaço",
+  "setup.reopen": "Configurar onde o touri roda",
+  "setup.newCode": "Gerar código para outro aparelho",
+  "setup.guide": "Ver guia de mudança de servidor",
+
   "Cole até 16.384 caracteres por vez.": "Cole até 16.384 caracteres por vez.",
   "Ampliar tela": "Ampliar tela",
   "Ajustar à tela": "Ajustar à tela",
@@ -3482,6 +3547,72 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "setup.ownRuntime":
+    "This is touri already running on this computer. Go back and choose Start on this computer; to use another server, enter its address.",
+  "setup.welcome": "Your bots, by your side",
+  "setup.welcomeDetail": "Talk, follow the work and pick up where you left off. It all starts on your computer.",
+  "setup.localStart": "Start on this computer",
+  "setup.starting": "Preparing your space…",
+  "setup.noAccount": "No account, no extra installation. Your data stays with you.",
+  "setup.ownServer": "Use my server",
+  "setup.myServer": "My server",
+  "setup.serverDetail": "Choose where your bots work and your conversations are stored.",
+  "setup.connectTitle": "Connect to my server",
+  "setup.connectDetail": "Use another computer or a server that is already running.",
+  "setup.runHere": "Run on this {computer}",
+  "setup.runDetail": "This computer takes care of your bots. Start with one click.",
+  "setup.addressHelp": "Paste your touri address, the same one you open in your browser.",
+  "setup.pairHelp":
+    "On the server, open Settings → Use a touri server → Create a code for another device. You can also run touri pair in the terminal.",
+  "setup.pairPrivacy":
+    "The code works once. The connection is kept in this device’s vault; the app restarts when connected.",
+  "setup.pair": "Pair and continue",
+  "setup.found": "Found servers",
+  "setup.foundHelp": "Discovery is private. No conversations are sent.",
+  "setup.searching": "Looking for servers… You can already paste an address.",
+  "setup.empty": "No servers found. Check that the other computer is on and paste its address above.",
+  "setup.discoveryHelp":
+    "Discovery checks this computer and your private Tailscale network. To find another device, join the same network on both.",
+  "setup.searchAgain": "Search again",
+  "setup.use": "Use",
+  "setup.useServer": "Use {name}",
+  "setup.thisComputer": "This computer",
+  "setup.runningHere": "touri is running here",
+  "setup.tailnet": "On your private Tailscale network",
+  "setup.builtIn":
+    "touri runs inside the app, with its database included. Everything stays in one folder on this computer. Nothing else to install.",
+  "setup.name": "Your name",
+  "setup.email": "Your email",
+  "setup.teamIdentity":
+    "Your team sees your name and email. They stay on this computer and do not create an online account.",
+  "setup.remote": "Access from your phone and team",
+  "setup.remoteHelp":
+    "Uses Tailscale, a private network between your devices. Each new device needs a code to join touri.",
+  "setup.checkingNetwork": "Checking your private network…",
+  "setup.networkReady": "Network ready. Enable this and start to prepare a secure address.",
+  "setup.networkMissing":
+    "To enable: install Tailscale on this computer and sign in to your network. You can start locally now.",
+  "setup.networkSignedOut": "To enable: open Tailscale and sign in to your network. Then check again.",
+  "setup.networkUnavailable": "Could not check Tailscale. Open the app, check your connection and try again.",
+  "setup.agents":
+    "Bots work on this computer in their own folders. No bot runs commands before you create it and configure its permissions. Browser use requires your authorization. Your AI receives the content needed to reply.",
+  "setup.alwaysOn":
+    "Made for you or a small team while this computer is on. For continuous use, choose an always-on server.",
+  "setup.migrate":
+    "You can move your data to another server later. The moving guide explains how to preserve your conversations.",
+  "setup.keepData": "Your local data was found. We will keep using the same folder without deleting anything.",
+  "setup.start": "Start",
+  "setup.startError": "Could not prepare your space. Try again; your data is still saved.",
+  "setup.remoteError":
+    "Could not enable remote access. Check Tailscale and whether the address is already in use. Try again or turn this off to start locally.",
+  "setup.accessReady": "Ready to access from another device",
+  "setup.phoneHelp": "On your phone or another computer on your private network, open this address:",
+  "setup.codeExpires": "Use this code to sign in. It expires in five minutes and works once.",
+  "setup.openHome": "Open my space",
+  "setup.reopen": "Choose where touri runs",
+  "setup.newCode": "Create a code for another device",
+  "setup.guide": "Read the server moving guide",
+
   "Cole até 16.384 caracteres por vez.": "Paste up to 16,384 characters at a time.",
   "Ampliar tela": "Zoom in",
   "Ajustar à tela": "Fit to screen",

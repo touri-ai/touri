@@ -1,4 +1,7 @@
+import { readFile, writeFile } from "node:fs/promises"
+import { resolve } from "node:path"
 import { assertBunToolchain } from "./bun-toolchain"
+import { buildEmbeddedUi, getEmbeddedUiSource } from "./embedded-ui"
 
 /** Bun target -> Tauri externalBin target triple. Never infer a target from the build host when cross-compiling. */
 const targets: Record<string, { bun: string; triple: string }> = {
@@ -13,22 +16,31 @@ const name = process.argv[2] ?? `${process.platform === "win32" ? "windows-msvc"
 const target = targets[name]
 if (!target) throw new Error(`Unsupported sidecar target: ${name}`)
 assertBunToolchain()
-const child = Bun.spawnSync(
-  [
-    process.execPath,
-    "build",
-    "--compile",
-    "--bytecode",
-    "--format=esm",
-    `--target=${target.bun}`,
-    "./sidecar/src/main.ts",
-    "./sidecar/src/file-io-worker-entry.ts",
-    "./sidecar/src/auth-writer-worker-entry.ts",
-    "./sidecar/src/atomic-download-worker-entry.ts",
-    "./sidecar/src/workspace-attention-worker-entry.ts",
-    "--outfile",
-    `src-tauri/binaries/touri-sidecar-${target.triple}${name.startsWith("windows") ? ".exe" : ""}`,
-  ],
-  { stdout: "inherit", stderr: "inherit" },
-)
-process.exitCode = child.exitCode
+await buildEmbeddedUi(resolve("ui"))
+const stubPath = resolve("sidecar/src/cli/web/embeddedUi.ts")
+const original = await readFile(stubPath, "utf8")
+await writeFile(stubPath, await getEmbeddedUiSource(resolve("ui/dist"), resolve("sidecar/src/cli/web")))
+try {
+  // This one-shot compiler process has no app requests, turns or streaming callbacks.
+  const child = Bun.spawnSync(
+    [
+      process.execPath,
+      "build",
+      "--compile",
+      "--bytecode",
+      "--format=esm",
+      `--target=${target.bun}`,
+      "./sidecar/src/main.ts",
+      "./sidecar/src/file-io-worker-entry.ts",
+      "./sidecar/src/auth-writer-worker-entry.ts",
+      "./sidecar/src/atomic-download-worker-entry.ts",
+      "./sidecar/src/workspace-attention-worker-entry.ts",
+      "--outfile",
+      `src-tauri/binaries/touri-sidecar-${target.triple}${name.startsWith("windows") ? ".exe" : ""}`,
+    ],
+    { stdout: "inherit", stderr: "inherit" },
+  )
+  process.exitCode = child.exitCode
+} finally {
+  await writeFile(stubPath, original)
+}
