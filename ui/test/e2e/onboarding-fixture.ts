@@ -214,7 +214,7 @@ export const createOnboardingFixture = async ({ uiDirectory = ui }: { uiDirector
   }
   const relayPort = await listen(fixture)
   const url = `http://127.0.0.1:${relayPort}`
-  const install = async (page: Page) => {
+  const install = async (page: Page, theme: "light" | "dark" = "light") => {
     await page.exposeBinding("__onboardingInvoke", async (_source, command: string, args: Record<string, unknown>) => {
       commands.push(command)
       if (command === "server_mode_status") return { mode, url: mode === "server" ? remoteBase : null }
@@ -237,7 +237,7 @@ export const createOnboardingFixture = async ({ uiDirectory = ui }: { uiDirector
       }
       return null
     })
-    await page.addInitScript(() => {
+    await page.addInitScript((theme) => {
       const native = window as typeof window & {
         __onboardingInvoke: (command: string, args: Record<string, unknown>) => Promise<unknown>
         __TAURI_INTERNALS__: unknown
@@ -253,14 +253,14 @@ export const createOnboardingFixture = async ({ uiDirectory = ui }: { uiDirector
             : native.__onboardingInvoke(command, args),
       }
       native.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => undefined }
-      localStorage.setItem("touri.appearance.v1", "light")
+      localStorage.setItem("touri.appearance.v1", theme)
       const observer = new MutationObserver(() => {
         if (!document.querySelector(".setup-welcome h1")) return
         performance.mark("onboarding-welcome")
         observer.disconnect()
       })
       observer.observe(document, { childList: true, subtree: true })
-    })
+    }, theme)
   }
   const getCode = async () => {
     const result = await promisify(execFile)(

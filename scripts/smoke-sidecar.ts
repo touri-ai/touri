@@ -48,16 +48,21 @@ const child = Bun.spawn({
   stdout: Bun.file(join(root, "stdout.log")),
   stderr: Bun.file(join(root, "stderr.log")),
 })
+// Diagnostic state belongs only to this disposable, one-shot fixture.
+let phase = "private handshake"
+let lastApiStatus: number | null = null
 const wait = async (ready: () => boolean | Promise<boolean>, timeoutMs = 60_000) => {
   const deadline = Date.now() + timeoutMs
   while (!(await ready())) {
-    if (child.exitCode !== null || Date.now() > deadline) throw new Error("Compiled sidecar smoke did not become ready")
+    if (child.exitCode !== null || Date.now() > deadline)
+      throw new Error(`Compiled sidecar smoke did not become ready: ${phase}; API HTTP ${lastApiStatus ?? "unused"}`)
     await Bun.sleep(50)
   }
 }
 try {
   const handshakePath = join(appData, "run", "handshake.json")
   await wait(() => existsSync(handshakePath), 120_000)
+  phase = "checkpoint worker"
   const logPath = join(appData, "logs", "sidecar.log")
   await wait(
     () => existsSync(logPath) && readFileSync(logPath, "utf8").includes('"msg":"WAL checkpoint worker started"'),
@@ -71,9 +76,11 @@ try {
       headers: { Authorization: `Bearer ${token}`, Origin: "tauri://localhost", "Content-Type": "application/json" },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
+    lastApiStatus = response.status
     if (!response.ok) throw new Error(`Fixture API failed: ${path} (${response.status})`)
     return response.json() as Promise<T>
   }
+  phase = "machine capability API"
   await wait(async () => {
     try {
       await api("/machines")
@@ -95,6 +102,7 @@ try {
     text: "Return the fixture reply",
     sendId: "compiled-platform-fixture",
   })
+  phase = "persisted provider reply"
   await wait(async () => {
     const { runs } = await api<{ runs: Array<{ id: string; status: string }> }>(`/threads/${bot.mainThreadId}/runs`)
     const run = runs.find((value: { id: string }) => value.id === sent.run.id)

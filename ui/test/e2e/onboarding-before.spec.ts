@@ -23,7 +23,7 @@ test("first-run before: main UI on desktop and phone with disposable local data"
   const directory = await mkdtemp(join(tmpdir(), "touri-onboarding-before-"))
   disposables.add(() => rm(directory, { recursive: true, force: true }))
   const sources = await Promise.all(
-    ["App.tsx", "index.ts", "i18n.ts"].map(async (file) => {
+    ["App.tsx", "index.ts", "i18n.ts", "features/server/ServerModeSettings.tsx"].map(async (file) => {
       const { stdout } = await promisify(execFile)("git", ["show", `origin/main:ui/src/${file}`], {
         cwd: root,
         maxBuffer: 2_000_000,
@@ -49,15 +49,27 @@ test("first-run before: main UI on desktop and phone with disposable local data"
   await fixture.install(page)
   const evidence = process.env.TOURI_E2E_EVIDENCE_DIR ?? join(root, "docs/qa/onboarding")
   await mkdir(evidence, { recursive: true })
-  for (const [device, width, height] of [
-    ["desktop", 1440, 900],
-    ["phone", 390, 844],
+  for (const [device, width, height, theme] of [
+    ["desktop", 1440, 900, "light"],
+    ["phone", 390, 844, "light"],
+    ["desktop-dark", 1440, 900, "dark"],
+    ["phone-dark", 390, 844, "dark"],
   ] as const) {
     await page.setViewportSize({ width, height })
     await page.goto(fixture.url)
+    await page.evaluate((theme) => {
+      localStorage.setItem("touri.appearance.v1", theme)
+      window.dispatchEvent(new Event("storage"))
+    }, theme)
     await expect(page.getByRole("button", { name: "Criar meu primeiro bot" })).toBeVisible()
     await expect(page.getByRole("button", { name: /Começar neste computador/ })).toHaveCount(0)
     const path = join(evidence, `${device}-before.png`)
     await testInfo.attach(`${device}-before`, { body: await page.screenshot({ path }), contentType: "image/png" })
+    await page.getByRole("button", { name: "Usar um servidor touri", exact: true }).click()
+    await expect(page.getByRole("region", { name: "Usar um servidor touri", exact: true })).toBeVisible()
+    await testInfo.attach(`${device}-settings-before`, {
+      body: await page.screenshot({ path: join(evidence, `${device}-settings-before.png`) }),
+      contentType: "image/png",
+    })
   }
 })
