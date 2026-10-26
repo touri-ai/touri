@@ -24,18 +24,19 @@ test("a sandbox refusal during the protocol handshake remains an explicit capabi
   expect(fixture.stops.size).toBe(1)
 })
 
-test("a crashed browser during the protocol handshake remains a test failure", async () => {
+test("a killed browser during the protocol handshake explains the skipped integration", async () => {
   const fixture = getProbeFixture({ exitCode: 137 })
 
-  await expect(getBrowserProbeCapability(fixture)).rejects.toThrow("System browser capability probe failed (exit 137)")
+  const capability = await getBrowserProbeCapability(fixture)
 
+  expect(capability).toEqual({ available: false, reason: "System browser probe was killed (exit 137)" })
   expect(fixture.stops.size).toBe(1)
 })
 
 test("a responsive browser without a working renderer cannot pass the sandbox probe", async () => {
   const fixture = getProbeFixture({ rendererReady: false })
 
-  await expect(getBrowserProbeCapability(fixture)).rejects.toThrow("System browser capability probe failed (exit 137)")
+  await expect(getBrowserProbeCapability(fixture)).rejects.toThrow("System browser renderer did not respond")
 
   expect(Array.from(fixture.commands)).toContain("Runtime.evaluate")
   expect(fixture.stops.size).toBe(1)
@@ -56,11 +57,63 @@ test("unknown browser failures remain test failures", () => {
   expect(() => getBrowserSandboxCapability(1, "Unexpected startup failure")).toThrow(
     "System browser capability probe failed (exit 1)",
   )
-  expect(() => getBrowserSandboxCapability(137, "")).toThrow("System browser capability probe failed (exit 137)")
 })
 
-const getProbeFixture = ({ exitCode = 0, stderr = "", rendererReady = true } = {}) => {
-  const exited = Promise.withResolvers<{ code: number }>()
+test.each([124, 137, 143])("a killed or expired capability probe reports exit %s", (exitCode) => {
+  expect(getBrowserSandboxCapability(exitCode, "")).toEqual({
+    available: false,
+    reason: `System browser probe was killed (exit ${exitCode})`,
+  })
+})
+
+test("a startup deadline kills the probe and reports an explicit capability reason", async () => {
+  const fixture = getProbeFixture({ unresponsive: true })
+
+  const capability = await getBrowserProbeCapability(Object.assign({}, fixture, { timeoutMs: 25 }))
+
+  expect(capability).toEqual({ available: false, reason: "System browser probe exceeded its startup deadline" })
+  expect(fixture.stops.size).toBe(1)
+})
+
+test("slow cleanup cannot turn a renderer failure into a capability timeout", async () => {
+  const fixture = getProbeFixture({ rendererReady: false })
+  const diagnostics = new Promise<string>((resolve) => setTimeout(() => resolve(""), 60))
+
+  const probe = getBrowserProbeCapability(Object.assign({}, fixture, { diagnostics, timeoutMs: 25 }))
+
+  await expect(probe).rejects.toThrow("System browser renderer did not respond")
+})
+
+test.each(["SIGKILL", "SIGTERM"])("external termination by %s reports a capability reason", async (signal) => {
+  const fixture = getProbeFixture({ exitCode: null, signal })
+
+  const capability = await getBrowserProbeCapability(fixture)
+
+  expect(capability).toEqual({ available: false, reason: `System browser probe was terminated (signal ${signal})` })
+})
+
+test.each(["SIGSEGV", "SIGABRT"])("browser crash signal %s remains a failure", async (signal) => {
+  const fixture = getProbeFixture({ exitCode: null, signal })
+
+  await expect(getBrowserProbeCapability(fixture)).rejects.toThrow(
+    `System browser capability probe failed (signal ${signal})`,
+  )
+})
+
+const getProbeFixture = ({
+  exitCode = 0,
+  stderr = "",
+  rendererReady = true,
+  unresponsive = false,
+  signal = null,
+}: {
+  exitCode?: number | null
+  stderr?: string
+  rendererReady?: boolean
+  unresponsive?: boolean
+  signal?: string | null
+} = {}) => {
+  const exited = Promise.withResolvers<{ code: number | null; signal?: string | null }>()
   const input = Promise.withResolvers<ReadableStreamDefaultController<Uint8Array>>()
   const commands = new Set<string>()
   const stops = new Set<string>()
@@ -69,9 +122,10 @@ const getProbeFixture = ({ exitCode = 0, stderr = "", rendererReady = true } = {
     write: async (bytes) => {
       const command = JSON.parse(new TextDecoder().decode(bytes).replace(/\0$/u, "")) as { id: number; method: string }
       commands.add(command.method)
+      if (unresponsive) return
       const controller = await input.promise
       if (exitCode !== 0) {
-        exited.resolve({ code: exitCode })
+        exited.resolve({ code: exitCode, signal })
         controller.close()
         return
       }
