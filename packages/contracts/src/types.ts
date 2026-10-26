@@ -1298,8 +1298,21 @@ export type ApiRoutes = {
   'GET /bots/:id/mem0': { req: {}; res: { settings: Mem0Settings } }
   'PUT /bots/:id/mem0': { req: Mem0SettingsPatch; res: { settings: Mem0Settings } }
   'POST /bots/:id/mem0/test': { req: {}; res: { ok: boolean; error?: string } }
+  'GET /onboarding': { req: {}; res: OnboardingStatus }
+  'POST /onboarding': { req: { name?: string; email?: string; remote: boolean }; res: { completed: true; url: string | null } }
+  'GET /onboarding/servers': { req: {}; res: { servers: Array<DiscoveredServer>; tailscale: OnboardingStatus['tailscale'] } }
+  'POST /onboarding/probe': { req: { url: string }; res: { found: boolean } }
+  'POST /onboarding/pair-code': { req: {}; res: { code: string; expiresAt: number } }
   'GET /settings': { req: {}; res: { settings: AppSettings } }
   'PATCH /settings': { req: Partial<AppSettings>; res: { settings: AppSettings } }
+}
+
+export type DiscoveredServer = { name: string; url: string; source: 'local' | 'tailnet' }
+export type OnboardingStatus = {
+  completed: boolean
+  hasData: boolean
+  tailscale: 'ready' | 'missing' | 'signed-out' | 'unavailable'
+  remoteUrl: string | null
 }
 
 export type AppSettings = {
