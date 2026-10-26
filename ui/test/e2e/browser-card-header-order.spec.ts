@@ -53,14 +53,17 @@ for (const viewport of [
 
       // Reading further down the card, the header still sticks to the top of the history.
       // In a long history the revealed refusal leaves room below, so the card's top can pass the header's spot.
-      const passed = await page.locator(".message-scroll").evaluate((list) => {
-        const card = list.querySelector(".browser-activity-card")
-        if (!card) return false
-        const spot = list.getBoundingClientRect().top + Number.parseFloat(getComputedStyle(list).paddingTop)
-        list.scrollBy(0, Math.ceil(card.getBoundingClientRect().top - spot) + 40)
-        return card.getBoundingClientRect().top < spot - 1
-      })
-      if (history === "long") expect(passed).toBe(true)
+      const scrollPastHeader = () =>
+        page.locator(".message-scroll").evaluate((list) => {
+          const card = list.querySelector(".browser-activity-card")
+          if (!card) return false
+          const spot = list.getBoundingClientRect().top + Number.parseFloat(getComputedStyle(list).paddingTop)
+          list.scrollBy(0, Math.ceil(card.getBoundingClientRect().top - spot) + 40)
+          return card.getBoundingClientRect().top < spot - 1
+        })
+      // Virtual row measurements can still change the scroll range after the outcome appears.
+      if (history === "long") await expect.poll(scrollPastHeader).toBe(true)
+      else await scrollPastHeader()
       await expect.poll(async () => (await getHeaderSpot(page)).inPlace).toBe(true)
 
       await page.locator(".browser-activity-recovery-return").dispatchEvent("click")

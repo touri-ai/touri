@@ -82,6 +82,9 @@ const fixture = async (patch: Partial<Bot> = {}, projectName = "Hodler", host: H
     db.query("UPDATE bots SET machine = 'vm' WHERE id = ?").run(bot.id)
     bot.machine = "vm"
   }
+  // Bootstrap events belong to fixture setup, not to the operation being observed.
+  await runtime.kernel.flushEvents?.()
+
   const cards: ApprovalPart[] = []
   const events: UiEvent[] = []
   runtime.kernel.subscribe(({ event }) => events.push(event))
@@ -1165,6 +1168,8 @@ test("an access edit rechecks consent again before committing metadata", async (
   })
 
   await expect(changed).rejects.toThrow("Bot configuration changed")
+  await f.runtime.kernel.flushEvents?.()
+
   expect(f.currentBot()).toEqual(before)
   expect(f.events.some((event) => event.type === "bot.updated")).toBe(false)
 })
@@ -1216,6 +1221,9 @@ for (const machine of ["local", "vm"] as const)
       success: true,
       structured: { name: "Bia QA Renomeada" },
     })
+    // Metadata persistence can finish before the durable subscriber catches up.
+    await f.runtime.kernel.flushEvents?.()
+
     expect(f.currentBot()).toEqual({ ...before, name: "Bia QA Renomeada", updatedAt: expect.any(Number) })
     expect(f.cards).toEqual([])
     expect(f.events).toContainEqual(
