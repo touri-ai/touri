@@ -136,6 +136,7 @@ const runServe = async (): Promise<void> => {
       await runtime.kernel.services.use("runtime.shutdown")?.()
       runtime.emitHostNotification({ method: "app.willQuit", params: {} })
       await runtime.kernel.services.use("vm.shutdown")?.()
+      await desktop.stop()
       await runtime.stop()
       await desktop.close()
       await closeFileIoAsync()

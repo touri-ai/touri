@@ -1,3 +1,4 @@
+import { createHeadlessHost } from "../../../sidecar/src/cli/host/headlessHost"
 import type { RunCommand } from "../../../sidecar/src/cli/tailscale"
 import { createKernel } from "../../../sidecar/src/kernel"
 import { initModules } from "../../../sidecar/src/main"
@@ -8,6 +9,19 @@ const directory = process.env.TOURI_APP_DATA
 const port = Number(process.env.TOURI_ONBOARDING_TEST_PORT)
 if (!directory || port < 18800 || port > 18899) throw new Error("Isolated staging configuration required")
 let target: string | null = null
+const vault = new Map<string, string>()
+// These counters and values belong only to the synthetic host and delivery adapters.
+const deliveries = { push: 0, email: 0, pushKeyReads: 0 }
+const secrets = {
+  keyOrigin: "system" as const,
+  get: (account: string) => vault.get(account) ?? null,
+  getAsync: async (account: string) => {
+    if (account === "notify.push.keys") deliveries.pushKeyReads += 1
+    return vault.get(account) ?? null
+  },
+  set: async ({ account, value }: { account: string; value: string }) => void vault.set(account, value),
+  delete: async (account: string) => void vault.delete(account),
+}
 const run: RunCommand = async (_command, args) => {
   if (args[0] === "status")
     return {
@@ -37,6 +51,15 @@ const desktop = await createDesktopWeb(directory, {
   port,
   localServerUrl: process.env.TOURI_ONBOARDING_LOCAL_URL ?? null,
   run,
+  emailDependencies: {
+    sendSmtp: async () => {
+      deliveries.email += 1
+    },
+  },
+  pushSend: async () => {
+    deliveries.push += 1
+    return 201
+  },
   probe: async (url, signal) => {
     if (url === "https://studio.example.ts.net:8445") return true
     if (url === "https://sleeping.example.ts.net:8445") {
@@ -47,12 +70,17 @@ const desktop = await createDesktopWeb(directory, {
     return probeServer(url, signal)
   },
 })
-const runtime = createKernel({ appData: directory, web: desktop.web })
+const runtime = createKernel({ appData: directory, web: { ...desktop.web, host: createHeadlessHost({ secrets }) } })
 await desktop.init(runtime.kernel, runtime.handshake.port)
 await initModules(runtime)
+runtime.kernel.registerRoutes({
+  name: "synthetic-delivery-counts",
+  routes: [{ method: "GET", path: "/qa/remote-services", handler: async () => ({ status: 200, json: deliveries }) }],
+})
 process.stdout.write("ready\n")
 const stop = async () => {
   await runtime.kernel.services.use("runtime.shutdown")?.()
+  await desktop.stop()
   await runtime.stop()
   await desktop.close()
   process.exit(0)

@@ -272,6 +272,32 @@ export const createOnboardingFixture = async ({ uiDirectory = ui }: { uiDirector
     if (!code) throw new Error("The isolated server did not create a pairing code")
     return code
   }
+  const pairDesktop = async () => {
+    const pairing = await api("/onboarding/pair-code", "POST", {})
+    const response = await fetch(`${base}/pair`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: pairing.code, client: true, name: "Synthetic phone" }),
+      signal: AbortSignal.timeout(5000),
+    })
+    if (!response.ok) throw new Error("Synthetic phone pairing failed")
+    const device = (await response.json()) as { token: string }
+
+    return (path: string, method = "GET", body?: unknown) =>
+      fetch(`${base}/api/v1${path}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${device.token}`,
+          "Content-Type": "application/json",
+          "X-Touri-Client": "onboarding-test",
+          "X-Forwarded-Host": "local.example.ts.net:8445",
+          "X-Forwarded-Proto": "https",
+          Origin: "https://local.example.ts.net:8445",
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        signal: AbortSignal.timeout(10_000),
+      })
+  }
   return {
     url,
     base: remoteBase,
@@ -281,6 +307,7 @@ export const createOnboardingFixture = async ({ uiDirectory = ui }: { uiDirector
     dispose,
     commands,
     getCode,
+    pairDesktop,
     get eventConnections() {
       return eventConnections
     },

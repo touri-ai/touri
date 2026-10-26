@@ -320,6 +320,36 @@ The desktop shell and sidecar must agree on the current schema version, includin
 
 Tokens are never written to disk, except the per-thread MCP token files (rewritten each boot).
 
+### First use and desktop server access
+
+- A fresh desktop installation opens a welcome screen with **Começar neste computador** /
+  **Start on this computer** as its single primary action. It opens the existing home without
+  identity fields, another installation or an online account. Completion persists locally;
+  installations with bots or user settings and already paired desktops skip welcome.
+  Maintenance checkpoints alone do not count as user data.
+- The secondary **Usar meu servidor** / **Use my server** action offers connecting to an existing
+  server or running on this computer. Configuration can be reopened from the server settings.
+  Connecting validates the address, then uses the existing one-use pairing code and native vault.
+  Pairing clears entered codes after attempts and refuses the desktop's own runtime address.
+- Discovery checks the fixed local server address and verified private-network candidates only.
+  It displays results as probes finish, caps candidates and concurrency, and cancels when leaving
+  the screen. No conversation content or credentials are sent in discovery probes.
+- Running here records the user's team identity in the existing local authentication database.
+  Optional phone access explicitly enables private HTTPS access to the same runtime and data.
+  Missing or signed-out network software has actionable help; local use remains available.
+  Disabling remote access removes only this runtime's network handler. Restart restores only
+  its recorded handler and preserves unrelated services. Moving servers is manual; see
+  [the migration guide](moving-your-server.md). Connecting elsewhere does not copy or erase data.
+- The desktop web transport retains device pairing, revocation, browser-origin checks and
+  member authorization. Onboarding endpoints require the direct native desktop credential;
+  paired devices cannot change desktop onboarding. Compiled desktop binaries embed fresh UI assets.
+- After explicit phone-access setup, the desktop initializes the existing authenticated push
+  subscription and delivery service, using the system vault for its keys and subscriptions.
+  Local-only startup does not read or create push keys. Restored remote installations resume
+  delivery, and shutdown drains/stops push before closing the runtime database. Each device still
+  opts into notifications. Configured email sign-in uses the existing sender and local vault,
+  preserving identical accepted responses and the existing redemption rules.
+
 ### Fast conversational replies (schema 50)
 
 - Under **Avançado → Modelo** / **Advanced → Model**, each bot has **Resposta rápida para conversa** / **Fast conversational replies** (`fastConversation`, default `true`). An explicit allowlist recognizes text-only user greetings, thanks and short questions about the bot. Mixed requests, attachments, confirmations, continuations, routines and retries keep the configured reasoning effort and tools. Conversation turns use `low` effort and a brief tool-free prompt; JSON-RPC turns replace the coding-agent base instructions with a concise conversational base and disable reasoning summaries; identity and reviewed memory retain their trust boundaries.

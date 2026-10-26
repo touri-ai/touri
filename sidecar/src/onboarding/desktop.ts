@@ -3,6 +3,8 @@ import { join } from "node:path"
 import type { DiscoveredServer, Kernel, OnboardingStatus } from "@touri/contracts"
 import { createRateLimiter } from "../cli/auth/rateLimit"
 import { type AuthStore, isValidEmail, openAuthStore } from "../cli/auth/store"
+import type { EmailDependencies } from "../cli/email"
+import { createEmailSignInSender } from "../cli/email-signin"
 import type { SecretStore } from "../cli/host/secretStore"
 import { exposeOnTailscale, type RunCommand, runCommand, stopTailscaleAccess } from "../cli/tailscale"
 import { createWebGate, type MemberAuthorizer } from "../cli/web/gate"
@@ -11,6 +13,8 @@ import { initWorkMode } from "../cli/work"
 import type { WebMode } from "../kernel"
 import { readPrivateFileAsync, writePrivateFileAsync } from "../kernel/async-files"
 import { deviceSession } from "../kernel/device-session"
+import { initWebPush } from "../notify/push"
+import type { sendWebPush } from "../notify/push-transport"
 import { getServerCandidates, probeServer } from "./discovery"
 
 type Preferences = { completed: boolean; remoteUrl: string | null; remotePort?: number | undefined }
@@ -18,7 +22,14 @@ type Preferences = { completed: boolean; remoteUrl: string | null; remotePort?: 
 /** The desktop and remote devices share one runtime, store and existing authenticated web transport. */
 export const createDesktopWeb = async (
   appData: string,
-  options: { port?: number; run?: RunCommand; probe?: typeof probeServer; localServerUrl?: string | null } = {},
+  options: {
+    port?: number
+    run?: RunCommand
+    probe?: typeof probeServer
+    localServerUrl?: string | null
+    emailDependencies?: EmailDependencies
+    pushSend?: typeof sendWebPush
+  } = {},
 ) => {
   const authStore = await openAuthStore({ filename: join(appData, "auth.db") })
   let host: Kernel["callHost"] | null = null
@@ -52,16 +63,50 @@ export const createDesktopWeb = async (
     ui: resolveUiAssets({ uiDir: null, fallbackDir: join(import.meta.dir, "../../../ui/dist") }),
     trustedProxy: true,
     limiter: createRateLimiter({ maxFailures: 8, windowMs: 60_000 }),
+    requestEmailSignIn: createEmailSignInSender({
+      authStore,
+      secrets,
+      ...(options.emailDependencies ? { dependencies: options.emailDependencies } : {}),
+    }),
     authorizeMember: (input) => authorization.authorize?.(input) ?? null,
   })
   const web: WebMode = { hostname: "127.0.0.1", port: options.port ?? 0, nativeDesktop: true, intercept }
+  // Keep one initialization per desktop; local-only startup never opens the push vault entry.
+  let push: ReturnType<typeof initWebPush> | null = null
+  const startRemoteServices = async (kernel: Kernel) => {
+    if (!push)
+      push = initWebPush({ kernel, authStore, secrets, ...(options.pushSend ? { send: options.pushSend } : {}) }).catch(
+        (error: unknown) => {
+          push = null
+          throw error
+        },
+      )
+    await push
+  }
   const init = async (kernel: Kernel, port: number) => {
     host = kernel.callHost
-    initWorkMode({ kernel, authStore, secrets, authorization })
-    await initDesktopOnboarding({ kernel, authStore, port, ...options })
+    initWorkMode({
+      kernel,
+      authStore,
+      secrets,
+      authorization,
+      ...(options.emailDependencies ? { emailDependencies: options.emailDependencies } : {}),
+    })
+    await initDesktopOnboarding({
+      kernel,
+      authStore,
+      port,
+      ...options,
+      startRemoteServices: () => startRemoteServices(kernel),
+    })
   }
 
-  return { web, init, close: () => authStore.close() }
+  const stop = async () => {
+    const ready = await push?.catch(() => null)
+    await ready?.stop()
+  }
+
+  return { web, init, stop, close: () => authStore.close() }
 }
 
 export const initDesktopOnboarding = async ({
@@ -71,6 +116,7 @@ export const initDesktopOnboarding = async ({
   run = runCommand,
   probe = probeServer,
   localServerUrl = "http://127.0.0.1:8795",
+  startRemoteServices,
 }: {
   kernel: Kernel
   authStore: AuthStore
@@ -78,6 +124,7 @@ export const initDesktopOnboarding = async ({
   run?: RunCommand
   probe?: typeof probeServer
   localServerUrl?: string | null
+  startRemoteServices: () => Promise<void>
 }) => {
   const filename = join(kernel.paths.appData, "onboarding.json")
   let preferences = await getPreferences(kernel.paths.appData)
@@ -118,6 +165,7 @@ export const initDesktopOnboarding = async ({
   }
   const restoreRemote = async () => {
     if (!preferences.remoteUrl) return
+    await startRemoteServices()
     const exposed = await exposeOnTailscale({ localPort: port, run, previousLocalPort: preferences.remotePort })
     if (exposed.success) await savePreferences({ ...preferences, remoteUrl: exposed.url, remotePort: port })
     // Do not publish subprocess diagnostics or private network identifiers in logs.
@@ -189,6 +237,7 @@ export const initDesktopOnboarding = async ({
             await restoration
             signal.throwIfAborted()
             if (input.name && !(await authStore.saveOwnerProfile(input))) throw new Error("PROFILE_SAVE_FAILED")
+            if (input.remote) await startRemoteServices()
             const exposed = input.remote
               ? await exposeOnTailscale({
                   localPort: port,

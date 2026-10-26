@@ -8,9 +8,15 @@ import type { RunCommand } from "../../src/cli/tailscale"
 import { createKernel, type KernelRuntime } from "../../src/kernel"
 import { createDesktopWeb } from "../../src/onboarding/desktop"
 
-const fixtures = new Set<{ runtime: KernelRuntime; close: () => Promise<void>; directory: string }>()
+const fixtures = new Set<{
+  runtime: KernelRuntime
+  stop: () => Promise<void>
+  close: () => Promise<void>
+  directory: string
+}>()
 afterEach(async () => {
   for (const fixture of fixtures) {
+    await fixture.stop()
     await fixture.runtime.stop()
     await fixture.close()
     await rm(fixture.directory, { recursive: true, force: true })
@@ -23,7 +29,7 @@ const start = async (host?: Kernel["callHost"], prepare?: (kernel: Kernel) => vo
   const run: RunCommand = async () => ({ code: 127, stdout: "", stderr: "" })
   const desktop = await createDesktopWeb(directory, { run, localServerUrl: null })
   const runtime = createKernel({ appData: directory, web: { ...desktop.web, ...(host ? { host: () => host } : {}) } })
-  const fixture = { runtime, close: desktop.close, directory }
+  const fixture = { runtime, stop: desktop.stop, close: desktop.close, directory }
   fixtures.add(fixture)
   prepare?.(runtime.kernel)
   await desktop.init(runtime.kernel, runtime.handshake.port)
