@@ -298,7 +298,8 @@ export const createStreamWriter = ({
           failed.add(event)
         })
         try {
-          kernel.publish({ type: "transcript.resync" })
+          // Shutdown abandonment must not start another durable write against the blocked database.
+          if (!stopped) kernel.publish({ type: "transcript.resync" })
         } catch {
           // A failed subscriber cannot restart a quarantined batch.
         }
