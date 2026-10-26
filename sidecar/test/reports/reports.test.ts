@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite"
-import { afterEach, expect, test } from "bun:test"
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { afterEach, expect, mock, test } from "bun:test"
+import { mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs"
+import { rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
@@ -22,9 +23,13 @@ import { init as initReports, validateReportInput } from "../../src/reports"
 import { buildReport, tailLog } from "../../src/reports/bundle"
 import { init as initStore } from "../../src/store"
 
-const cleanup: Array<() => void> = []
-afterEach(() => {
-  while (cleanup.length) cleanup.pop()?.()
+const cleanup = new Set<() => void | Promise<void>>()
+afterEach(async () => {
+  await Array.from(cleanup).reduceRight(async (previous, dispose) => {
+    await previous
+    await dispose()
+  }, Promise.resolve())
+  cleanup.clear()
 })
 const input = (): ReportInput => ({
   title: "Falha ao executar",
@@ -39,13 +44,14 @@ const input = (): ReportInput => ({
   images: [],
   repository: "https://github.com/touri/test",
 })
-const fixture = async () => {
+const fixture = async (remove = rm) => {
   const root = mkdtempSync(join(tmpdir(), "touri-report-test-"))
   const runtime = createKernel({ appData: root })
-  cleanup.push(() => {
-    runtime.stop()
-    rmSync(root, { recursive: true, force: true })
-  })
+  const dispose = async () => {
+    await runtime.stop()
+    await remove(root, { recursive: true, force: true })
+  }
+  cleanup.add(dispose)
   await initReports(runtime.kernel)
   const db = runtime.kernel.db as Database
   runtime.kernel.services.provide("doctor", {
@@ -74,8 +80,29 @@ const fixture = async () => {
     })
     return { status: response.status, body: await response.json() }
   }
-  return { root, runtime, db, request }
+  return { root, runtime, db, request, dispose }
 }
+
+test("report disposal retains its database until asynchronous runtime shutdown finishes", async () => {
+  const remove = mock(rm)
+  const { runtime, root, dispose } = await fixture(remove)
+  const entered = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  cleanup.add(release.resolve)
+  runtime.kernel.services.provide("runtime.shutdown", async () => {
+    entered.resolve()
+    await release.promise
+  })
+
+  const disposing = dispose()
+  await entered.promise
+  expect(remove).not.toHaveBeenCalled()
+  expect(await Bun.file(join(root, "touri.db")).exists()).toBe(true)
+  release.resolve()
+  await disposing
+
+  expect(await Bun.file(join(root, "touri.db")).exists()).toBe(false)
+})
 
 test("A14 masks multiline private keys, broader credential labels and non-home paths", async () => {
   const { root, runtime } = await fixture()
@@ -378,7 +405,7 @@ test("upload uses authenticated multipart with idempotent report IDs, not JSON, 
   const { runtime, request } = await fixture()
   await initStore(runtime.kernel)
   const fake = createFakeCloud()
-  cleanup.push(() => fake.stop())
+  cleanup.add(() => fake.stop())
   await request("PATCH", "/settings", { cloud: true, cloudBaseUrl: fake.baseUrl })
   const vault = new Map<string, string>()
   runtime.kernel.callHost = (async (method: string, params: { account: string; value: string }) => {
@@ -390,7 +417,7 @@ test("upload uses authenticated multipart with idempotent report IDs, not JSON, 
     return { success: false, errorCode: "HOST_UNAVAILABLE", error: "unavailable" }
   }) as typeof runtime.kernel.callHost
   const cloud = initCloud(runtime.kernel)
-  cleanup.push(cloud.dispose)
+  cleanup.add(cloud.dispose)
   await cloud.provider.client.store(fake.issueTokens())
   const account = runtime.kernel.services.use("cloud.account")
   if (!account) throw new Error("Missing cloud account")

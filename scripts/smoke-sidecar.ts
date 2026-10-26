@@ -62,6 +62,13 @@ const wait = async (ready: () => boolean | Promise<boolean>, timeoutMs = 60_000)
 try {
   const handshakePath = join(appData, "run", "handshake.json")
   await wait(() => existsSync(handshakePath), 120_000)
+  phase = "checkpoint worker"
+  const logPath = join(appData, "logs", "sidecar.log")
+  await wait(
+    () => existsSync(logPath) && readFileSync(logPath, "utf8").includes('"msg":"WAL checkpoint worker started"'),
+  )
+  if (readFileSync(logPath, "utf8").includes('"msg":"WAL checkpoint worker failed;'))
+    throw new Error("Compiled checkpoint worker entered fallback")
   const { port, token } = JSON.parse(readFileSync(handshakePath, "utf8"))
   const api = async <T>(path: string, body?: unknown): Promise<T> => {
     const response = await fetch(`http://127.0.0.1:${port}/api/v1${path}`, {
@@ -82,13 +89,6 @@ try {
       return false
     }
   })
-  phase = "checkpoint worker"
-  const logPath = join(appData, "logs", "sidecar.log")
-  await wait(
-    () => existsSync(logPath) && readFileSync(logPath, "utf8").includes('"msg":"WAL checkpoint worker started"'),
-  )
-  if (readFileSync(logPath, "utf8").includes('"msg":"WAL checkpoint worker failed;'))
-    throw new Error("Compiled checkpoint worker entered fallback")
   const { bot } = await api<{ bot: { id: string; machine: string; mainThreadId: string } }>("/bots", {
     name: "Platform fixture",
     provider: "codex",
