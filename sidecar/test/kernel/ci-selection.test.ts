@@ -71,6 +71,18 @@ test("verified downloads are saved before later checks can fail", () => {
   expect(workspace).toContain("uses: actions/cache/save@")
 })
 
+test("API model checks reuse the pinned browser runtime instead of downloading system libraries", () => {
+  const apiModels = jobs.get("api-models") ?? ""
+  const browsers = jobs.get("browser-e2e") ?? ""
+  const getImage = (job: string) => /^\s+image:\s+(\S+)/m.exec(job)?.[1]
+
+  const image = getImage(apiModels)
+
+  expect(image).toBe(getImage(browsers))
+  expect(image).toMatch(/@sha256:[a-f0-9]{64}$/)
+  expect(apiModels).not.toContain("playwright install --with-deps")
+})
+
 test("UI and documentation PRs skip native work; native, policy and workflow PRs run it", () => {
   expect(needsNative("pull_request", ["ui/src/App.tsx", "README.md"])).toBe(false)
   for (const path of [
