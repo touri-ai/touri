@@ -659,9 +659,12 @@ test("shutdown warns about busy buffered writes and cancels retries before closi
   blocker.exec("BEGIN IMMEDIATE")
   const log = spyOn(f.runtime.kernel, "log")
   cleanups.add(() => log.mockRestore())
+  const publish = spyOn(f.runtime.kernel, "publish")
+  cleanups.add(() => publish.mockRestore())
 
   await f.runtime.stop()
 
+  expect(publish.mock.calls.map(([event]) => event)).not.toContainEqual({ type: "transcript.resync" })
   expect(log.mock.calls.map(([entry]) => entry)).toContainEqual({
     level: "warn",
     module: "store",
