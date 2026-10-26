@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { getEmbeddedUiSource } from "../../../scripts/embedded-ui"
+import { buildEmbeddedUi, getEmbeddedUiSource } from "../../../scripts/embedded-ui"
 
 const directories = new Set<string>()
 afterEach(async () => {
@@ -24,4 +24,24 @@ test("embeds the UI with portable relative imports and no build-machine paths", 
   expect(source).toContain('"./../ui/index.html"')
   expect(source).toContain('"assets/app.js"')
   expect(source).not.toContain(directory)
+})
+
+test("runs the UI build in its directory before embedding fresh assets", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "touri-onboarding-assets-"))
+  directories.add(directory)
+  await writeFile(join(directory, "package.json"), JSON.stringify({ scripts: { build: "bun build.ts" } }))
+  await writeFile(join(directory, "build.ts"), 'await Bun.write("built.txt", "fresh assets")')
+
+  await buildEmbeddedUi(directory)
+
+  expect(await Bun.file(join(directory, "built.txt")).text()).toBe("fresh assets")
+})
+
+test("refuses to embed stale assets after a failed UI build", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "touri-onboarding-assets-"))
+  directories.add(directory)
+  await writeFile(join(directory, "package.json"), JSON.stringify({ scripts: { build: "bun build.ts" } }))
+  await writeFile(join(directory, "build.ts"), "process.exit(1)")
+
+  await expect(buildEmbeddedUi(directory)).rejects.toThrow("successful UI build")
 })

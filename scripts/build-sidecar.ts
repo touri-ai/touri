@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises"
 import { resolve } from "node:path"
 import { assertBunToolchain } from "./bun-toolchain"
-import { getEmbeddedUiSource } from "./embedded-ui"
+import { buildEmbeddedUi, getEmbeddedUiSource } from "./embedded-ui"
 
 /** Bun target -> Tauri externalBin target triple. Never infer a target from the build host when cross-compiling. */
 const targets: Record<string, { bun: string; triple: string }> = {
@@ -16,8 +16,7 @@ const name = process.argv[2] ?? `${process.platform === "win32" ? "windows-msvc"
 const target = targets[name]
 if (!target) throw new Error(`Unsupported sidecar target: ${name}`)
 assertBunToolchain()
-const uiBuild = Bun.spawn([process.execPath, "--cwd", "ui", "run", "build"], { stdout: "inherit", stderr: "inherit" })
-if ((await uiBuild.exited) !== 0) throw new Error("The desktop server needs a successful UI build")
+await buildEmbeddedUi(resolve("ui"))
 const stubPath = resolve("sidecar/src/cli/web/embeddedUi.ts")
 const original = await readFile(stubPath, "utf8")
 await writeFile(stubPath, await getEmbeddedUiSource(resolve("ui/dist"), resolve("sidecar/src/cli/web")))

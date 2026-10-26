@@ -1,6 +1,15 @@
 import { readdir } from "node:fs/promises"
 import { join, relative } from "node:path"
 
+export const buildEmbeddedUi = async (directory: string): Promise<void> => {
+  const child = Bun.spawn([process.execPath, "run", "build"], {
+    cwd: directory,
+    stdout: "inherit",
+    stderr: "inherit",
+  })
+  if ((await child.exited) !== 0) throw new Error("The desktop server needs a successful UI build")
+}
+
 /** Build-time assets are bundled into the desktop server; no runtime download is needed. */
 export const getEmbeddedUiSource = async (directory: string, importDirectory: string): Promise<string> => {
   const files = await getFiles(directory)
