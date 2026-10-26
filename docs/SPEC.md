@@ -219,6 +219,11 @@ on phones or desktops. Longer subtitles remain clamped within that space. The lo
 canvas exposes the same localized image role and accessible name as the fallback image, while
 handback and privacy controls remain visible and reachable.
 
+Conversation history always reserves the same 64 px navigation space outside its scroll viewport,
+including while the jump-to-latest button is hidden. Showing or hiding that button must not resize
+the history or move a pressed control before pointer release, including when the first browser
+preview arrives. The jump button stays outside the scroll viewport on desktop and phone layouts.
+
 | Topic | Decision | Why (short) |
 |---|---|---|
 | Shell | Tauri v2, Rust core | Small, native, signed. Rust holds the TCC grants and Keychain access. |
