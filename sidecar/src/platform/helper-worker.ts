@@ -46,23 +46,61 @@ const source = `const execute = async (data) => {
 // Subprocess I/O must not await completion inside a worker inbox continuation.
 self.onmessage = ({ data }) => {
   setTimeout(() => { void execute(data); }, 0);
-};`
+};
+self.postMessage("ready");`
 
-let worker: Worker | undefined
-let workerUrl: string | undefined
-const helperWorker = () => {
-  if (!worker) {
-    workerUrl = URL.createObjectURL(new Blob([source], { type: "application/javascript" }))
-    worker = new Worker(workerUrl, { smol: true, ref: false })
+type RefableWorker = Worker & { ref: () => void; unref: () => void }
+type Helper = { worker: RefableWorker; ready: Promise<void>; stop: () => void }
+
+// This module owns one native helper worker and its bounded startup lifecycle.
+let helper: Helper | undefined
+const createHelperWorker = (): Helper => {
+  if (helper) return helper
+
+  const url = URL.createObjectURL(new Blob([source], { type: "application/javascript" }))
+  const worker = createNativeWorker(url)
+  const ready = Promise.withResolvers<void>()
+  let stopped = false
+  const stop = (): void => {
+    if (stopped) return
+    stopped = true
+    if (helper?.worker === worker) helper = undefined
+    clearTimeout(deadline)
+    worker.terminate()
+    URL.revokeObjectURL(url)
+    ready.reject(new TouriError("TOURI-E2001"))
   }
-  return worker
+  const deadline = setTimeout(stop, 10_000)
+  worker.onmessage = ({ data }): void => {
+    if (data !== "ready" || stopped) return
+    clearTimeout(deadline)
+    worker.unref()
+    ready.resolve()
+  }
+  worker.onerror = (event): void => {
+    event.preventDefault()
+    stop()
+  }
+  worker.addEventListener("close", stop)
+  // Synchronous startup callers cannot await this acknowledgement, but still own cleanup.
+  void ready.promise.catch(() => undefined)
+  helper = { worker, ready: ready.promise, stop }
+  return helper
 }
 
+const createNativeWorker = (url: string): RefableWorker => {
+  try {
+    return new Worker(url, { smol: true }) as RefableWorker
+  } catch {
+    URL.revokeObjectURL(url)
+    throw new TouriError("TOURI-E2001")
+  }
+}
+
+export const startHelperWorker = (): Promise<void> => createHelperWorker().ready
+
 export const stopHelperWorker = (): void => {
-  worker?.terminate()
-  worker = undefined
-  if (workerUrl) URL.revokeObjectURL(workerUrl)
-  workerUrl = undefined
+  helper?.stop()
 }
 
 export const runHelperBlocking = ({
@@ -80,8 +118,10 @@ export const runHelperBlocking = ({
 }): { stdout: string; exitCode: number } => {
   const buffer = new SharedArrayBuffer(16 + maxResponseBytes)
   const state = new Int32Array(buffer, 0, 4)
+  const current = createHelperWorker()
+  current.worker.ref()
   try {
-    helperWorker().postMessage({ buffer, command, input, env, deadline: Date.now() + timeoutMs })
+    current.worker.postMessage({ buffer, command, input, env, deadline: Date.now() + timeoutMs })
     Atomics.wait(state, 0, 0, timeoutMs)
     if (Atomics.load(state, 0) !== 1) {
       Atomics.compareExchange(state, 0, 0, -1)
@@ -93,5 +133,7 @@ export const runHelperBlocking = ({
     }
   } catch {
     throw new TouriError("TOURI-E2001")
+  } finally {
+    current.worker.unref()
   }
 }
