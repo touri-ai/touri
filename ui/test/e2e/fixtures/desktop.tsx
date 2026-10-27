@@ -1,7 +1,7 @@
 import type { Bot, MachineState } from "@touri/contracts"
 import { useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
-import { createApiClient } from "../../../src/api/client"
+import { createApiClient, type UiApi } from "../../../src/api/client"
 import { BotComputer } from "../../../src/components/BotComputer"
 import { installComputerKillSwitch } from "../../../src/computerKillSwitch"
 import { ComputerUseSettings } from "../../../src/features/computer/ComputerUseSettings"
@@ -10,7 +10,29 @@ import "../../../src/styles.css"
 import "../../../src/components/bot-panel.css"
 
 const params = new URLSearchParams(location.search)
-if (params.has("headless")) {
+const imageUpdate = params.get("notice")
+if (imageUpdate === "updated" || imageUpdate === "rolled-back") {
+  const root = document.getElementById("root")
+  const machine: MachineState = {
+    botId: "notice",
+    status: "running",
+    progress: null,
+    error: null,
+    memoryMb: 1024,
+    createdMs: 1,
+    startMs: 1,
+    imageUpdate,
+  }
+  const api = { request: async () => ({}), subscribe: () => () => {} } as UiApi
+  if (root) {
+    root.classList.add("computer-window", "bot-panel-expanded")
+    createRoot(root).render(
+      <main>
+        <BotComputer api={api} bot={{ id: "notice", name: "Lia", machine: "vm" } as Bot} machine={machine} />
+      </main>,
+    )
+  }
+} else if (params.has("headless")) {
   const root = document.getElementById("root")
   if (root)
     createRoot(root).render(

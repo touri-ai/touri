@@ -2070,7 +2070,7 @@ Channel members retain their shared-reply frame until ordered message delivery a
 ### Existing computer image updates
 
 `MachineState.imageUpdate` optionally reports `updated` or `rolled-back`. The desktop and phone
-computer panel translate this notice. Older clients can ignore the optional field.
+computer panel translate this notice and keep it visible when expanded. Older clients can ignore the optional field.
 On the next idle acquisition, the runtime inspects the provider image against `BOT_IMAGE`;
 `bot_machines.vm_id` selects the container and `volume` records persistent workspace/home and
 browser mounts. A replacement reuses these mounts and retains the stopped original until guest
