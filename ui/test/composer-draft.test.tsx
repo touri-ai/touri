@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, expect, test, vi } from "vitest"
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), convertFileSrc: (path: string) => path }))
-vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(vi.fn()) }))
+vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => undefined) }))
 vi.mock("@tauri-apps/api/webview", () => ({
   getCurrentWebview: () => ({ onDragDropEvent: vi.fn().mockResolvedValue(vi.fn()) }),
 }))
@@ -14,6 +14,7 @@ import { openConversations } from "./workspaceNavigation"
 
 afterEach(() => {
   cleanup()
+  vi.restoreAllMocks()
   Reflect.deleteProperty(window, "__TAURI_INTERNALS__")
 })
 
@@ -105,18 +106,17 @@ test("storage failure keeps the editable text and tells the user to copy it befo
   const api = fixture(true)
   mount(api)
   const input = await composer()
-  const save = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+  vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
     throw new Error("Storage full")
   })
-  try {
-    fireEvent.change(input, { target: { value: "Texto recuperável" } })
-    expect(input).toHaveValue("Texto recuperável")
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "Não foi possível salvar o rascunho. Copie sua mensagem antes de fechar o touri.",
-    )
-  } finally {
-    save.mockRestore()
-  }
+
+  fireEvent.change(input, { target: { value: "Texto recuperável" } })
+
+  expect(input).toHaveValue("Texto recuperável")
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "Não foi possível salvar o rascunho. Copie sua mensagem antes de fechar o touri.",
+  )
+  expect(screen.getByRole("alert")).toHaveAttribute("data-unsaved-draft", "true")
 })
 
 test("sending after navigation clears the old draft and keeps an identical new draft", async () => {

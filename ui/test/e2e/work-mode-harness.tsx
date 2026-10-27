@@ -2,9 +2,12 @@ import { createRoot } from "react-dom/client"
 import App from "../../src/App"
 import { installMotionTokens } from "../../src/design/spring"
 import { initializeTheme } from "../../src/design/theme"
+import { installBrowserLazyAssetRecovery } from "../../src/lazyAssetRecovery"
 import "../../src/styles.css"
 import { getRoutineSidebarFixture } from "../routine-sidebar-fixture"
 import { installWorkBrowserFixture } from "./work-browser-fixture"
+
+if (new URLSearchParams(location.search).has("assetRecovery")) installBrowserLazyAssetRecovery()
 
 type FixtureApi = Awaited<ReturnType<typeof getRoutineSidebarFixture>>["api"]
 

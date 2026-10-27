@@ -16,7 +16,7 @@ test("keeps pending attachments when a lazy stylesheet fails", () => {
   installLazyAssetRecovery({
     target,
     getStorage: () => window.sessionStorage,
-    hasPendingAttachments: () => true,
+    canReload: () => false,
     reload,
   })
 
@@ -34,7 +34,7 @@ test("retries a failed lazy stylesheet once and exposes a repeated failure", () 
   installLazyAssetRecovery({
     target,
     getStorage: () => window.sessionStorage,
-    hasPendingAttachments: () => false,
+    canReload: () => true,
     reload,
   })
 
@@ -57,7 +57,7 @@ test("allows another recovery after the retry marker expires", () => {
   installLazyAssetRecovery({
     target,
     getStorage: () => window.sessionStorage,
-    hasPendingAttachments: () => false,
+    canReload: () => true,
     reload,
   })
 
@@ -70,4 +70,33 @@ test("allows another recovery after the retry marker expires", () => {
 
   expect(reload).toHaveBeenCalledTimes(2)
   expect(laterError.defaultPrevented).toBe(true)
+})
+
+test.each(["missing", "read fails", "write fails"])("leaves errors visible when retry storage is %s", (failure) => {
+  vi.useFakeTimers()
+  const target = new EventTarget()
+  const reload = vi.fn()
+  const event = new Event("vite:preloadError", { cancelable: true })
+  const storage = {
+    getItem: () => {
+      if (failure === "read fails") throw new Error("Synthetic read failure")
+
+      return null
+    },
+    setItem: () => {
+      if (failure === "write fails") throw new Error("Synthetic write failure")
+    },
+    removeItem: () => undefined,
+  }
+  installLazyAssetRecovery({
+    target,
+    getStorage: () => (failure === "missing" ? undefined : storage),
+    canReload: () => true,
+    reload,
+  })
+
+  target.dispatchEvent(event)
+
+  expect(reload).not.toHaveBeenCalled()
+  expect(event.defaultPrevented).toBe(false)
 })
