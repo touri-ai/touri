@@ -2,6 +2,8 @@ import type { Database } from "bun:sqlite"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { connectCdpWebSocket } from "../../../sidecar/src/browser/cdp"
+import type { CdpClient } from "../../../sidecar/src/browser/types"
 import { init as initComputer } from "../../../sidecar/src/computer"
 import { allowedOrigins, createKernel } from "../../../sidecar/src/kernel"
 import { createOciProvider } from "../../../sidecar/src/platform/oci-provider"
@@ -109,6 +111,8 @@ if (previousImage) {
     throw new Error("Previous image was not upgraded")
   console.log("UPGRADE_EVIDENCE: previous image 8 replaced with image 9")
 }
+let guestBrowser: CdpClient | undefined
+let resumed = false
 
 runtime.kernel.registerRoutes({
   name: "terminal-evidence",
@@ -125,6 +129,69 @@ runtime.kernel.registerRoutes({
       method: "POST",
       path: "/terminal-evidence",
       handler: async ({ body }) => {
+        const action = (body as { action?: string }).action
+        if (action === "wait-for-handback") {
+          const input = runtime.kernel.services.use("computer.input")
+          if (!input?.human(bot.id)) return { status: 409, json: {} }
+          resumed = false
+          void input.run(
+            {
+              botId: bot.id,
+              threadId: "keyboard-proof",
+              runId: null,
+              projectId: null,
+              cwd: root,
+              signal: AbortSignal.timeout(60_000),
+            },
+            async () => {
+              resumed = true
+              return { success: true, content: [] }
+            },
+          )
+
+          return { status: 200, json: { stdout: "waiting" } }
+        }
+        if (action === "handback-status") return { status: 200, json: { stdout: String(resumed) } }
+        if (action === "browser-open") {
+          const endpoint = await startEvidenceBrowser()
+          if (!endpoint) throw new Error("Guest browser missing")
+          const host = new URL(endpoint)
+          const prefix = host.pathname.slice(0, host.pathname.indexOf("/devtools/"))
+          const response = await fetch(`http://${host.host}${prefix}/json/list`, { signal: AbortSignal.timeout(5_000) })
+          const tabs = (await response.json()) as Array<{ type: string; webSocketDebuggerUrl: string }>
+          const tab = tabs.find((entry) => entry.type === "page")
+          if (!tab) throw new Error("Guest page missing")
+          const target = new URL(tab.webSocketDebuggerUrl)
+          target.host = host.host
+          target.pathname = `${prefix}${target.pathname}`
+          guestBrowser = await connectCdpWebSocket({ url: target.toString() })
+          await guestBrowser.call("Page.navigate", {
+            url: `data:text/html,${encodeURIComponent('<title>Teclado</title><label>Texto de teste<textarea autofocus style="width:90%;height:200px;font-size:24px"></textarea></label>')}`,
+          })
+
+          return { status: 200, json: { stdout: "opened" } }
+        }
+        if (action === "browser-focus" || action === "browser-value") {
+          if (!guestBrowser) return { status: 409, json: {} }
+          if (action === "browser-focus") await guestBrowser.call("Page.bringToFront", {})
+          const result = await guestBrowser.call<{ result?: { value?: string } }>("Runtime.evaluate", {
+            expression:
+              action === "browser-focus"
+                ? 'document.querySelector("textarea")?.focus(); document.readyState'
+                : 'document.querySelector("textarea")?.value',
+            returnByValue: true,
+          })
+
+          return { status: 200, json: { stdout: result.result?.value ?? "" } }
+        }
+        if (action === "cpu") {
+          const result = await vm.service.exec({ botId: bot.id, command: "cat", args: ["/sys/fs/cgroup/cpu.stat"] })
+
+          return {
+            status: 200,
+            json: { stdout: JSON.stringify({ sidecar: process.cpuUsage(), guest: result.stdout }) },
+          }
+        }
         if ((body as { action?: string }).action === "windows") {
           const id = vm.service.states().find((state) => state.botId === bot.id)?.connection?.machineId
           if (!id) return { status: 409, json: {} }
@@ -173,6 +240,7 @@ runtime.kernel.registerRoutes({
 console.log(`TERMINAL_FIXTURE:${port}:${bot.id}`)
 
 const stop = async () => {
+  await guestBrowser?.close()
   await desktop.service.closeBot(bot.id)
   desktop.service.dispose()
   await release()
@@ -184,3 +252,42 @@ const stop = async () => {
 }
 process.once("SIGTERM", () => void stop())
 process.once("SIGINT", () => void stop())
+
+// Only a fixed synthetic page is loaded in this opt-in, disposable test browser.
+// Production launch and its sandbox policy remain untouched.
+const startEvidenceBrowser = async () => {
+  const signal = AbortSignal.timeout(30_000)
+  if (process.env.TOURI_TERMINAL_TEST_BROWSER_NO_SANDBOX !== "1")
+    return vm.service.browserEndpoint({ botId: bot.id, signal })
+  const id = vm.service.states().find((state) => state.botId === bot.id)?.connection?.machineId
+  if (!id) throw new Error("Missing test guest")
+  await provider.exec({
+    id,
+    user: "1001",
+    env: { DISPLAY: ":99", XAUTHORITY: "/var/lib/touri-browser/.Xauthority", HOME: "/var/lib/touri-browser" },
+    command: "chromium",
+    args: [
+      "--no-sandbox",
+      "--disable-gpu",
+      "--disable-dev-shm-usage",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--disable-background-networking",
+      "--disable-component-update",
+      "--disable-sync",
+      "--remote-debugging-address=127.0.0.1",
+      "--remote-debugging-port=9222",
+      "--user-data-dir=/var/lib/touri-browser/keyboard-proof",
+      "about:blank",
+    ],
+    detach: true,
+    signal,
+  })
+  for (const attempt of Array.from({ length: 30 }, (_, index) => index)) {
+    signal.throwIfAborted()
+    const endpoint = await vm.service.browserEndpoint({ botId: bot.id, runningOnly: true, signal })
+    if (endpoint) return endpoint
+    await Bun.sleep(Math.min(500, 50 * (attempt + 1)))
+  }
+  throw new Error("Disposable test browser did not start")
+}
