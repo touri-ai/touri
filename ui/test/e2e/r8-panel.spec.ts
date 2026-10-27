@@ -16,9 +16,18 @@ const mockDesktop = async (page: Page) => {
     .context()
     .route("**/@novnc_novnc.js*", (route) => route.fulfill({ contentType: "text/javascript", body: framebuffer }))
   await page.context().addInitScript(() => {
-    window.WebSocket = class extends EventTarget {
-      close() {}
-    } as unknown as typeof WebSocket
+    Object.defineProperty(window, "WebSocket", {
+      value: class extends EventTarget {
+        static OPEN = 1
+        readyState = 1
+
+        send(message: string) {
+          document.documentElement.setAttribute("data-test-desktop-visibility", message)
+        }
+
+        close() {}
+      },
+    })
   })
 }
 
@@ -97,6 +106,34 @@ type PanelQa = {
 }
 
 if (phase === "after") {
+  for (const width of [1440, 390]) {
+    test(`viewer visibility preserves observation · ${width}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 844 })
+      await mockDesktop(page)
+      await page.goto("/test/e2e/fixtures/r8-panel.html")
+      await showBotPanel(page)
+      await page.getByRole("tab", { name: "Computador", exact: true }).click()
+      await page.getByRole("button", { name: "Ligar computador", exact: true }).click()
+      const display = page.locator('.desktop-display[data-phase="ready"]')
+      const visibility = page.locator("html")
+      await expect(display).toBeVisible()
+      await expect(visibility).toHaveAttribute("data-test-desktop-visibility", "desktop:resume")
+
+      await setDocumentHidden(page, true)
+
+      await expect(visibility).toHaveAttribute("data-test-desktop-visibility", "desktop:pause")
+      await expect(page.getByLabel("Digitar na VM")).toBeDisabled()
+
+      await setDocumentHidden(page, false)
+
+      await expect(visibility).toHaveAttribute("data-test-desktop-visibility", "desktop:resume")
+      await expect(display).toBeVisible()
+      await expect(page.getByRole("button", { name: "Assumir controle", exact: true })).toBeEnabled()
+      await expect(page.getByLabel("Digitar na VM")).toBeDisabled()
+      await page.screenshot({ path: `${evidence}/after-desktop-visibility-${width}.png` })
+    })
+  }
+
   for (const theme of ["light", "dark"] as const) {
     for (const width of [1440, 1100]) {
       test(`library recovery, origins and connection · ${theme} · ${width}`, async ({ page }) => {
@@ -180,3 +217,9 @@ if (phase === "after") {
     }
   }
 }
+
+const setDocumentHidden = (page: Page, hidden: boolean) =>
+  page.evaluate((value) => {
+    Object.defineProperty(document, "hidden", { configurable: true, value })
+    document.dispatchEvent(new Event("visibilitychange"))
+  }, hidden)
