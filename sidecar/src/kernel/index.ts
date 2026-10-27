@@ -15,7 +15,7 @@ import { isDirectLoopback } from "../cli/web/loopback"
 import { getHostIdentity } from "../platform/host"
 import { stopBotHomeWriter } from "../store/bot-home"
 import { touriVersion } from "../version"
-import { getFileIoStats } from "./async-files"
+import { getFileIoStats, writePrivateFileAsync } from "./async-files"
 import { createBackgroundTask, getMeasuredStage, yieldBackground } from "./background-task"
 import { createStorageMaintenance } from "./data-maintenance"
 import { openDatabase, SCHEMA_VERSION } from "./db"
@@ -66,6 +66,7 @@ export type KernelRuntime = {
   kernel: Kernel
   runStage: PerformanceStageRunner
   handshake: SidecarHandshake
+  markReady: () => Promise<void>
   stop: () => Promise<void>
   emitHostNotification: (notification: HostNotification) => void
 }
@@ -193,10 +194,12 @@ const parseBody = async (request: Request): Promise<unknown> => {
 export const createKernel = ({
   appData,
   web,
+  deferReady = false,
   stageTracker = createPerformanceStageTracker(),
 }: {
   appData?: string
   web?: WebMode
+  deferReady?: boolean
   stageTracker?: PerformanceStageTracker
 } = {}): KernelRuntime => {
   const paths = appData === undefined ? createAppPaths() : createAppPaths({ appData })
@@ -367,6 +370,7 @@ export const createKernel = ({
   }, 250)
   revocationTimer.unref()
   const uiToken = process.env.TOURI_UI_TOKEN || developmentUiToken()
+  let ready = !deferReady
   const listen = web?.listen ?? Bun.serve<KernelSocketData>
   const server = listen({
     hostname: web?.hostname ?? "127.0.0.1",
@@ -415,6 +419,15 @@ export const createKernel = ({
             authenticatedTicket: ticket !== null,
           })
       if (failure) return failure
+      if (!ready && apiPrefixOf(url.pathname) !== null) {
+        const response = jsonResponse(
+          503,
+          { code: "TOURI-E1009", errorCode: "SERVER_CONNECTION_FAILED" },
+          request.headers.get("origin"),
+        )
+        response.headers.set("Retry-After", "1")
+        return response
+      }
       if (!isWebRequest && isWebSocket && !ticket) return jsonResponse(401, { errorCode: "UNAUTHORIZED" })
       if (request.method === "POST" && url.pathname === "/api/v1/ws-ticket") {
         const origin = request.headers.get("origin")
@@ -694,11 +707,18 @@ export const createKernel = ({
   services.provide("storage.maintenance", storageMaintenance)
 
   const handshakePath = join(paths.runDir, "handshake.json")
-  atomicWriteFile({
+  const handshakeFile = {
     root: paths.appData,
     path: handshakePath,
     content: JSON.stringify({ port: server.port ?? 0, token: uiToken, pid: process.pid, version }),
-  })
+  }
+  if (ready) atomicWriteFile(handshakeFile)
+  const markReady = async (): Promise<void> => {
+    if (ready) return
+
+    await writePrivateFileAsync(handshakeFile)
+    ready = true
+  }
 
   let stopPromise: Promise<void> | undefined
   const stop = (): Promise<void> => {
@@ -748,6 +768,7 @@ export const createKernel = ({
   return {
     kernel,
     runStage: stageTracker.run,
+    markReady,
     handshake: {
       type: "touri-sidecar-ready",
       port: server.port ?? 0,
