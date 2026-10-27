@@ -384,8 +384,8 @@ export const createThreadDeletionManager = (
     scheduled = undefined
     retryTimer = undefined
     disposePromise = (async () => {
-      await activeJob
-      await stopWorker()
+      // Start cancellation before waiting: a batch may need forced termination to settle.
+      await Promise.all([activeJob, stopWorker()])
     })()
     return disposePromise
   }

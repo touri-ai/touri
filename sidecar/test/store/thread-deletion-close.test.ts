@@ -158,6 +158,37 @@ workerBarriers.forEach((barrier) => {
   })
 })
 
+test("dispose terminates an unresponsive batch before awaiting its completion", async () => {
+  const fixture = getFixture("events")
+  const exited = mock(() => {})
+  const source = `self.onmessage = ({ data }) => {
+    if (data.type === "start") self.postMessage({ type: "ready" });
+    if (data.type === "batch") self.postMessage({ type: "held" });
+  };`
+  const workerUrl = URL.createObjectURL(new Blob([source], { type: "application/javascript" }))
+  cleanups.add(() => URL.revokeObjectURL(workerUrl))
+  const createWorker = () => {
+    const worker = new Worker(workerUrl, { smol: true, ref: false })
+    worker.addEventListener("close", exited)
+    worker.addEventListener("message", ({ data }: MessageEvent<{ type: string }>) => {
+      if (data.type === "held") fixture.started.resolve()
+    })
+    cleanups.add(() => worker.terminate())
+    return worker
+  }
+  const manager = createThreadDeletionManager(fixture.kernel, undefined, undefined, createWorker)
+  cleanups.add(() => manager.dispose())
+  await fixture.started.promise
+
+  await manager.dispose()
+
+  expect(exited).toHaveBeenCalledTimes(1)
+  expect(fixture.getJob()).toEqual({ phase: "events", error_code: null })
+  expect(fixture.log.mock.calls).toEqual([
+    [{ level: "warn", module: "store", msg: "Thread deletion worker shutdown required termination" }],
+  ])
+})
+
 test("runtime shutdown keeps SQLite open until the active deletion settles", async () => {
   const fixture = getFixture("drain")
   const runtime = createKernel({
