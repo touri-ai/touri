@@ -120,6 +120,13 @@ Normal finalization preserves the partial reply; if
 output preparation stalls, a bounded fallback still persists terminal state and retains the
 already stored history.
 
+Terminal output preparation owns its attachment files until the winning terminal transaction
+settles, including cancellation during a failed turn. Orphan collection on the same database
+connection defers while publication is active. A publication waits for any already accepted
+removal before preparing its files, so it can recreate an attachment before committing a reference.
+Failed publication and removal release their ownership for later attempts; no database transaction
+stays open across file I/O.
+
 Browser reply headers show one cancellation status when either the message or its run is canceled,
 never a simultaneous finished label. Failed browser turns show failure; expired handoffs retain
 their incomplete status. These labels use the selected Portuguese or English language. Bot-list
@@ -2100,6 +2107,12 @@ yielding between lock attempts instead of blocking the event loop. Provider oper
 outside transactions; the committed journal is durable before the original container is removed.
 Persisting the installed network policy during boot or a live policy update uses the same bounded
 writer retries, without changing policy validation or the deny-by-default network rules.
+Persisted running turns also defer replacement through an indexed active-run lookup. After the
+turn ends, the next idle acquisition can update the image. Activity and computer metadata writes
+during boot, connection setup, acquisition and release use bounded asynchronous writer retries,
+so a brief writer conflict does not by itself roll back a healthy candidate. Acquisition rechecks
+cancellation after waiting for the writer and before assigning a lease; release drops the lease
+and revokes turn access before waiting to persist activity.
 
 ### Computer takeover keyboard and screen demand
 

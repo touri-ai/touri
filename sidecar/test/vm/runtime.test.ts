@@ -2910,11 +2910,12 @@ test("persisted running turns defer image updates without scanning the bot histo
     "running",
     Date.now(),
   )
-  const plan = db
-    .query(
-      "EXPLAIN QUERY PLAN SELECT 1 FROM runs INDEXED BY runs_status WHERE bot_id = ? AND status = 'running' LIMIT 1",
-    )
-    .all(bot.id) as Array<{ detail: string }>
+  const planStatement = db.prepare(
+    "EXPLAIN QUERY PLAN SELECT 1 FROM runs INDEXED BY runs_status WHERE bot_id = ? AND status = 'running' LIMIT 1",
+  )
+  const plan = planStatement.all(bot.id) as Array<{ detail: string }>
+  // A diagnostic cursor must not pin a read snapshot across the asynchronous computer boot.
+  planStatement.finalize()
   const offset = f.fake.calls.length
 
   await (await f.vm.service.acquire({ botId: bot.id }))()
@@ -2927,6 +2928,56 @@ test("persisted running turns defer image updates without scanning the bot histo
   await (await f.vm.service.acquire({ botId: bot.id }))()
 
   expect(f.vm.service.states()[0]?.imageUpdate).toBe("updated")
+})
+
+test("deferred image update yields to a writer during candidate connection activity", async () => {
+  const { f, bot, original } = await getOldComputer()
+  await f.runtime.kernel.services.use("storage.maintenance")?.dispose()
+  const database = f.runtime.kernel.db as Database
+  database.exec("PRAGMA busy_timeout = 0")
+  const writer = new Database(database.filename)
+  cleanups.push(async () => {
+    if (writer.inTransaction) writer.exec("ROLLBACK")
+    writer.close()
+  })
+  database
+    .query("INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at) VALUES (?,?,?,?,?,?,?)")
+    .run("synthetic-active-run", bot.mainThreadId, bot.id, bot.provider, "user", "running", Date.now())
+  await (await f.vm.service.acquire({ botId: bot.id }))()
+  expect(f.fake.configs.get(original.name)?.image).toBe("touri-bot:8")
+  database.query("UPDATE runs SET status = 'succeeded' WHERE id = ?").run("synthetic-active-run")
+  const spawn = f.fake.provider.spawn
+  const released = deferred()
+  f.fake.provider.spawn = (input) => {
+    const child = spawn(input)
+    if (!child.success || input.id === original.name || input.command !== "python3") return child
+
+    const sink = child.stdin.getWriter()
+    return {
+      ...child,
+      stdin: new WritableStream({
+        write: (chunk) => sink.write(chunk),
+        close: async () => {
+          await sink.close()
+          writer.exec("BEGIN IMMEDIATE")
+          // The writer can release only after the live path returns control to the event loop.
+          setImmediate(() => {
+            writer.exec("COMMIT")
+            released.resolve()
+          })
+        },
+      }),
+    }
+  }
+
+  await (await f.vm.service.acquire({ botId: bot.id }))()
+  await released.promise
+
+  expect(f.vm.service.states()[0]).toMatchObject({ status: "running", imageUpdate: "updated" })
+  const replacement = f.fake.calls.filter((call) => call.action === "create").at(-1)?.input as VmCreateOptions
+  expect(replacement.image).toBe(BOT_IMAGE)
+  expect(replacement.volumes).toEqual(original.volumes)
+  expect(f.fake.machines.has(original.name)).toBe(false)
 })
 
 test.each(["image upgrade", "live policy update"] as const)(
