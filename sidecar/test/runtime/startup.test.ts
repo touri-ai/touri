@@ -486,3 +486,58 @@ test("an explicit service refusal before acceptance does not create a continuati
   })
   expect(fixture.startTurn).toHaveBeenCalledTimes(1)
 })
+
+test.each([false, true])("a refused service never persists recovery (saved session: %s)", async (savedSession) => {
+  const fixture = await getStartupFixture({
+    resume: true,
+    startTurn: async (args) => {
+      if (savedSession) args.onEvent({ type: "session", externalSessionId: "refused-session", rolloutPath: null })
+
+      return { success: false, errorCode: "machine_service_unavailable", error: "Synthetic service refusal" }
+    },
+  })
+  const run = fixture.enqueue()
+
+  await waitForStartup(() => fixture.persistence.getRun(run.id)?.status === "failed")
+  await fixture.engine.waitForDrain()
+  await fixture.engine.shutdown()
+  const reopened = fixture.open()
+  await reopened.ready
+  await reopened.waitForDrain()
+
+  expect(reopened.listRuns("t")).toHaveLength(1)
+  expect(fixture.persistence.getRun(run.id)).toMatchObject({
+    status: "failed",
+    externalTurnId: null,
+    errorClass: "machine_service_unavailable",
+  })
+  expect(fixture.startTurn).toHaveBeenCalledTimes(1)
+  expect(fixture.db.query("SELECT * FROM automatic_resume_jobs").all()).toEqual([])
+  expect(fixture.db.query("SELECT * FROM run_continuations").all()).toEqual([])
+  expect(reopened.getWorkRuns()).toEqual([])
+})
+
+test("a service interruption after acceptance still uses bounded recovery", async () => {
+  const fixture = await getStartupFixture({
+    resume: true,
+    startTurn: async (args) => {
+      args.onEvent({ type: "turn_started", externalTurnId: "accepted-service-turn" })
+
+      return { success: false, errorCode: "machine_service_unavailable", error: "Synthetic service interruption" }
+    },
+  })
+  fixture.enqueue()
+
+  await waitForStartup(() => fixture.startTurn.mock.calls.length === 3)
+  await fixture.engine.waitForDrain()
+
+  expect(fixture.engine.listRuns("t")).toHaveLength(3)
+  expect(fixture.startTurn).toHaveBeenCalledTimes(3)
+  expect(
+    fixture.engine
+      .listRuns("t")
+      .every((run) => run.status === "failed" && run.errorClass === "machine_service_unavailable"),
+  ).toBe(true)
+  expect(fixture.db.query("SELECT * FROM run_continuations").all()).toHaveLength(2)
+  expect(fixture.engine.getWorkRuns()).toEqual([])
+})
