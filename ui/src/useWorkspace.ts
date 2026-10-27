@@ -1756,10 +1756,15 @@ export const useWorkspace = (
           }
         return current
       }
-      // Keep ordered live patches together while allowing typing to interrupt their render.
+      // Only the open transcript needs interruptible rendering. Background patches share the
+      // terminal update priority so obsolete events are not retained and replayed after completion.
       // Recovery snapshots must not overtake buffered patches from an in-flight history read.
       const livePatch = event.type === "message.delta" || event.type === "message.parts"
-      if (livePatch && !threadLoads.current.has(event.threadId)) {
+      if (
+        livePatch &&
+        event.threadId === currentData.current.selectedThreadId &&
+        !threadLoads.current.has(event.threadId)
+      ) {
         startTransition(() => setData(updateWorkspace))
         return
       }
