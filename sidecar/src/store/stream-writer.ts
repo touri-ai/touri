@@ -262,13 +262,11 @@ export const createStreamWriter = ({
     )
     void persistence
       .submit(eligible.map(getCleanEvent), { files, attachments })
-      .then(({ events, rejected, quarantined }) => {
+      .then(async ({ events, rejected, quarantined }) => {
         if (quarantined)
           eligible.forEach((event) => {
             failed.add(event)
           })
-        inFlight = []
-        inFlightBytes = 0
         const durationMs = performance.now() - startedAt
         if (durationMs > STREAM_WRITE_LIMITS.delayMs) {
           try {
@@ -289,6 +287,11 @@ export const createStreamWriter = ({
           projection.lastEvent = JSON.stringify(event)
         }
         for (const event of rejected) projections.delete(keyOf(event.rejection.threadId, event.rejection.messageId))
+        // A commit can precede the bus's bounded delivery batches. Keep admission and drain
+        // ownership until subscribers have received this batch, before a snapshot can supersede it.
+        await kernel.flushEvents?.()
+        inFlight = []
+        inFlightBytes = 0
       })
       .catch(() => {
         inFlight = []

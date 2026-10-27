@@ -217,6 +217,8 @@ const getFixture = async (threadIds: ReadonlyArray<string>) => {
   const kernel: Kernel = {
     ...runtime.kernel,
     publish: (event) => stageTimings.measure("event_bus_publish", () => bus.publish(event)),
+    flushEvents: bus.flushAsync,
+    subscribeRuntime: bus.subscribeRuntime,
     subscribe: bus.subscribe,
     registerRoutes: (module) => {
       module.routes.forEach((route) => {
