@@ -9,6 +9,19 @@ afterEach(async () => {
   roots.clear()
 })
 
+test("proxy logs cannot persist browser connection tickets from failed upstream requests", async () => {
+  const config = await readFile(join(import.meta.dir, "../../../docs/self-host/nginx.conf"), "utf8")
+
+  const directives = config
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => !line.startsWith("#"))
+  const errorLogs = directives.filter((line) => line.startsWith("error_log "))
+
+  expect(errorLogs).toEqual(["error_log /dev/null;"])
+  expect(directives).toContain("access_log off;")
+})
+
 test("container build context excludes local environment files while preserving application sources", async () => {
   const ignore = await readFile(join(import.meta.dir, "../../../.dockerignore"), "utf8")
   const rules = ignore.split("\n").filter((rule) => rule && !rule.startsWith("#"))

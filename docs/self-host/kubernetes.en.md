@@ -69,6 +69,10 @@ connection per request. Probes use HTTPS through nginx. The 90-second terminatio
 60 seconds for draining and 20 for cleanup; the native sidecar stays alive until the app finishes.
 Never increase replicas or share a live data directory between servers.
 
+Proxy access and error logs are disabled: upstream errors can include request URLs containing
+short-lived browser connection tickets. Diagnose availability with the probes, pod events and
+application logs; keep those diagnostics private too.
+
 Allow DNS and HTTPS egress for selected providers, CLI sign-in, git repositories, MCP services and
 sites bots need. Bots do not need access to the Kubernetes API. Preserve authentication when testing
 connectivity and account for these destinations in any egress policy.

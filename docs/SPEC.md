@@ -25,6 +25,9 @@ completes and again when draining; otherwise it returns `{ "ok": true }` with HT
 `HEAD` has the same status and no body. It preserves the public liveness endpoint's transport,
 method and URL-credential restrictions without database or filesystem access. `/healthz`
 remains independent of readiness. The proxy stays alive through application shutdown.
+Proxy access and error logging are disabled because upstream error entries can include URLs
+with short-lived browser connection tickets. Availability diagnostics use probes, pod events
+and application logs instead.
 
 Chrome sandboxing stays enabled. Recognized namespace failures produce fixed, sanitized
 guidance in browser tool results and `touri doctor`; diagnostics retain at most 32 KiB while

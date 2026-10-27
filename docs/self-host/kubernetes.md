@@ -74,6 +74,10 @@ e não abrem SQLite por requisição. As probes passam pelo nginx com HTTPS. O t
 é 90 segundos: até 60 de drenagem e 20 de limpeza. O sidecar nativo mantém o proxy enquanto a
 aplicação termina. Nunca aumente as réplicas nem monte o mesmo diretório em dois servidores ativos.
 
+Os logs de acesso e erro do proxy ficam desativados: erros do upstream podem incluir URLs com
+tickets temporários de conexão do navegador. Use as probes, os eventos do pod e os logs da aplicação
+para diagnosticar disponibilidade; mantenha esses diagnósticos privados também.
+
 Permita DNS e saída HTTPS para os provedores escolhidos, autenticação das CLIs, repositórios git,
 serviços MCP e sites que os bots usarão. Não é necessário abrir o Kubernetes API para os bots.
 Restrições de saída devem considerar esses destinos; não desative autenticação para testar a rede.
