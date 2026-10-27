@@ -1,0 +1,147 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: touri-headless
+spec:
+  clusterIP: None
+  selector: { app: touri }
+  ports:
+    - { name: https, port: 443, targetPort: https }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: touri
+spec:
+  selector: { app: touri }
+  ports:
+    - { name: https, port: 443, targetPort: https }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: touri
+spec:
+  serviceName: touri-headless
+  replicas: 1
+  selector:
+    matchLabels: { app: touri }
+  template:
+    metadata:
+      labels: { app: touri }
+    spec:
+      automountServiceAccountToken: false
+      hostUsers: false
+      terminationGracePeriodSeconds: 90
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: { type: RuntimeDefault }
+      initContainers:
+        # fsGroup makes the volume writable; the app needs to own its private data directory.
+        - name: prepare-data
+          image: touri-self-host:local
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c", "umask 077; mkdir -p /volume/data; chmod 700 /volume/data"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: data, mountPath: /volume }
+        # Native sidecar stays alive until the application has finished draining.
+        - name: https
+          image: nginx:1.28-alpine
+          restartPolicy: Always
+          command: ["nginx", "-g", "daemon off;"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          ports:
+            - { name: https, containerPort: 8443 }
+          startupProbe:
+            tcpSocket: { port: https }
+            periodSeconds: 2
+            failureThreshold: 30
+          resources:
+            requests: { cpu: 50m, memory: 32Mi }
+            limits: { cpu: "1", memory: 128Mi }
+          volumeMounts:
+            - { name: nginx-config, mountPath: /etc/nginx/nginx.conf, subPath: nginx.conf, readOnly: true }
+            - { name: tls, mountPath: /etc/nginx/tls, readOnly: true }
+            - { name: nginx-tmp, mountPath: /tmp }
+      containers:
+        - name: touri
+          image: touri-self-host:local
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: HOME, value: /data/home }
+            # Prefer namespaces. Only after accepting the documented risk:
+            # - { name: TOURI_BROWSER_NO_SANDBOX, value: "1" }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          startupProbe:
+            httpGet: { path: /healthz, port: 8443, scheme: HTTPS }
+            periodSeconds: 2
+            failureThreshold: 90
+          readinessProbe:
+            httpGet: { path: /readyz, port: 8443, scheme: HTTPS }
+            periodSeconds: 2
+            failureThreshold: 1
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8443, scheme: HTTPS }
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            requests: { cpu: 500m, memory: 1Gi }
+            limits: { cpu: "2", memory: 4Gi }
+          volumeMounts:
+            - { name: data, mountPath: /data, subPath: data }
+            - { name: app-tmp, mountPath: /tmp }
+            - { name: shm, mountPath: /dev/shm }
+      volumes:
+        - name: nginx-config
+          configMap: { name: touri-nginx }
+        - name: tls
+          secret: { secretName: touri-tls, defaultMode: 0440 }
+        - name: app-tmp
+          emptyDir: { sizeLimit: 1Gi }
+        - name: nginx-tmp
+          emptyDir: { sizeLimit: 64Mi }
+        - name: shm
+          emptyDir: { medium: Memory, sizeLimit: 512Mi }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: { storage: 20Gi }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: touri
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [touri.example.com]
+      secretName: touri-tls
+  rules:
+    - host: touri.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: touri
+                port: { name: https }

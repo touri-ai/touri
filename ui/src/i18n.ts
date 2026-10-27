@@ -5,6 +5,18 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "A verificação de namespaces Linux não se aplica a este sistema.":
+    "A verificação de namespaces Linux não se aplica a este sistema.",
+  "Namespaces de usuário e rede disponíveis; a proteção do navegador permanece ativa.":
+    "Namespaces de usuário e rede disponíveis; a proteção do navegador permanece ativa.",
+
+  "O navegador precisa de namespaces de usuário. No Kubernetes, use hostUsers: false e permita os namespaces no runtime do contêiner. Como último recurso, o operador pode definir TOURI_BROWSER_NO_SANDBOX=1, que desativa a proteção do navegador.":
+    "O navegador precisa de namespaces de usuário. No Kubernetes, use hostUsers: false e permita os namespaces no runtime do contêiner. Como último recurso, o operador pode definir TOURI_BROWSER_NO_SANDBOX=1, que desativa a proteção do navegador.",
+  "TOURI_BROWSER_NO_SANDBOX=1: a proteção do navegador está desativada. Páginas maliciosas podem acessar os dados e as credenciais do processo.":
+    "TOURI_BROWSER_NO_SANDBOX=1: a proteção do navegador está desativada. Páginas maliciosas podem acessar os dados e as credenciais do processo.",
+  "Instale util-linux para verificar os namespaces do navegador.":
+    "Instale util-linux para verificar os namespaces do navegador.",
+
   "Browser navigation": "Navegação do navegador",
   "Go back": "Voltar página",
   "Go forward": "Avançar página",
@@ -3571,6 +3583,17 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "A verificação de namespaces Linux não se aplica a este sistema.":
+    "The Linux namespace check does not apply to this system.",
+  "Namespaces de usuário e rede disponíveis; a proteção do navegador permanece ativa.":
+    "User and network namespaces are available; browser protection remains enabled.",
+
+  "O navegador precisa de namespaces de usuário. No Kubernetes, use hostUsers: false e permita os namespaces no runtime do contêiner. Como último recurso, o operador pode definir TOURI_BROWSER_NO_SANDBOX=1, que desativa a proteção do navegador.":
+    "The browser needs user namespaces. On Kubernetes, use hostUsers: false and allow namespaces in the container runtime. As a last resort, the operator can set TOURI_BROWSER_NO_SANDBOX=1, which disables browser protection.",
+  "TOURI_BROWSER_NO_SANDBOX=1: a proteção do navegador está desativada. Páginas maliciosas podem acessar os dados e as credenciais do processo.":
+    "TOURI_BROWSER_NO_SANDBOX=1: browser protection is disabled. Malicious pages may access process data and credentials.",
+  "Instale util-linux para verificar os namespaces do navegador.": "Install util-linux to check browser namespaces.",
+
   "Browser navigation": "Browser navigation",
   "Go back": "Go back",
   "Go forward": "Go forward",

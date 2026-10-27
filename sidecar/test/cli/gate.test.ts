@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { createRateLimiter } from "../../src/cli/auth/rateLimit"
 import { openAuthStore } from "../../src/cli/auth/store"
 import { createSecretStore } from "../../src/cli/host/secretStore"
+import { createStartupAvailability } from "../../src/cli/startupAvailability"
 import { createWebGate, deviceCookieName } from "../../src/cli/web/gate"
 import { isDirectLoopback } from "../../src/cli/web/loopback"
 import { directoryAssets, embeddedAssets, type UiAsset, type UiAssets } from "../../src/cli/web/uiAssets"
@@ -63,6 +64,47 @@ const makeGate = async ({ trustedProxy = false }: { trustedProxy?: boolean } = {
   }
   return { call, pair, store, intercept, secrets, limiter }
 }
+
+test("readiness through the HTTPS proxy needs no identity or database access", async () => {
+  const fixture = await makeGate({ trustedProxy: true })
+  const store = new Proxy(fixture.store, {
+    get: () => {
+      throw new Error("Readiness must not access the authentication store")
+    },
+  })
+  const boundary = createWebGate({
+    store,
+    secrets: fixture.secrets,
+    ui,
+    limiter: fixture.limiter,
+    trustedProxy: true,
+  })
+  const availability = createStartupAvailability(boundary)
+  const url = new URL("http://127.0.0.1:18800/readyz")
+  const headers = { "x-forwarded-proto": "https", "x-forwarded-host": "touri.example.com" }
+  const args = { request: new Request(url, { headers }), url, clientIp: "127.0.0.1" }
+
+  const starting = await availability.intercept(args)
+  availability.markReady()
+  const ready = await availability.intercept(args)
+  const head = await availability.intercept({ ...args, request: new Request(url, { method: "HEAD", headers }) })
+  const post = await availability.intercept({ ...args, request: new Request(url, { method: "POST", headers }) })
+  const insecure = await availability.intercept({ request: new Request(url), url, clientIp: "203.0.113.1" })
+  const tokenUrl = new URL("/readyz?token=synthetic", url)
+  const token = await availability.intercept({ ...args, request: new Request(tokenUrl, { headers }), url: tokenUrl })
+  availability.beginDrain()
+  const draining = await availability.intercept(args)
+
+  expect(starting?.status).toBe(503)
+  expect(ready?.status).toBe(200)
+  expect(await ready?.json()).toEqual({ ok: true })
+  expect(head?.status).toBe(200)
+  expect(await head?.text()).toBe("")
+  expect(post?.status).toBe(405)
+  expect(insecure?.status).toBe(426)
+  expect(token?.status).toBe(401)
+  expect(draining?.status).toBe(503)
+})
 
 test("public liveness omits diagnostics and preserves transport and credential restrictions", async () => {
   const { call, intercept } = await makeGate()

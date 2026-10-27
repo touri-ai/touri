@@ -118,6 +118,8 @@ performance. To try the fallback manually with an installed package, run
 
 Desktop data lives in `$XDG_DATA_HOME/touri` (default `~/.local/share/touri`).
 The standalone headless server retains `~/.touri`; `TOURI_APP_DATA` overrides either location.
+For a persistent single-replica deployment, see [touri on Kubernetes](docs/self-host/kubernetes.en.md)
+([Português](docs/self-host/kubernetes.md)), including HTTPS, pairing and browser sandbox requirements.
 Podman or Docker is optional for VM bots. If no working container engine is available,
 local bots remain available and the machine feature reports why it cannot start.
 

@@ -14,6 +14,28 @@ test("managed Linux browsers stay headful without a display and in server mode",
   )
 })
 
+test.each([undefined, "", "0", "true"])("sandbox opt-out requires exactly 1 (received %s)", (value) => {
+  const args = deriveChromePortLaunchArgs({
+    profile: "/data/browser/profile",
+    port: 18888,
+    env: { TOURI_BROWSER_NO_SANDBOX: value },
+  })
+
+  expect(args).not.toContain("--no-sandbox")
+  expect(args).not.toContain("--disable-dev-shm-usage")
+})
+
+test("operator can explicitly opt out of the sandbox and use disk-backed shared memory", () => {
+  const args = deriveChromePortLaunchArgs({
+    profile: "/data/browser/profile",
+    port: 18888,
+    env: { TOURI_BROWSER_NO_SANDBOX: "1", TOURI_BROWSER_DISABLE_DEV_SHM_USAGE: "1" },
+  })
+
+  expect(args).toContain("--no-sandbox")
+  expect(args).toContain("--disable-dev-shm-usage")
+})
+
 test("browser exit status distinguishes possible memory exhaustion from crashes", () => {
   expect(getChromeExitCause({ code: 137, signal: null })).toBe("memory")
   expect(getChromeExitCause({ code: null, signal: "SIGKILL" })).toBe("memory")

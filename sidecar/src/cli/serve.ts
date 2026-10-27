@@ -143,7 +143,10 @@ const startServer = async (options: ServeOptions, stopStderr: () => Promise<void
 
   registerServeShutdown({
     drainTimeoutMs: options.drainTimeoutMs,
-    beginDrain: () => runtime.kernel.services.use("runtime.beginDrain")?.(),
+    beginDrain: () => {
+      availability.beginDrain()
+      return runtime.kernel.services.use("runtime.beginDrain")?.()
+    },
     shutdown: async () => {
       await runtime.kernel.services.use("runtime.shutdown")?.({ appRestart: true })
     },

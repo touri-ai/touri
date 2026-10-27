@@ -12,6 +12,30 @@ legacy app bots, chats and routines so you can switch over.
 
 ---
 
+## Single-instance server deployment
+
+The optional Linux amd64 image and `docs/self-host/kubernetes.yaml` run one server for one
+person or a small trusted team. The application listens on loopback behind an HTTPS proxy;
+pairing remains mandatory. `HOME=/data/home` and `--data-dir /data` keep CLI configuration,
+sessions, browser profiles and application state together on the persistent volume. Bots are
+ordinary processes sharing a user, not isolation boundaries between untrusted people.
+
+Public `GET /readyz` returns only `{ "ok": false }` with HTTP 503 until runtime initialization
+completes and again when draining; otherwise it returns `{ "ok": true }` with HTTP 200.
+`HEAD` has the same status and no body. It preserves the public liveness endpoint's transport,
+method and URL-credential restrictions without database or filesystem access. `/healthz`
+remains independent of readiness. The proxy stays alive through application shutdown.
+
+Chrome sandboxing stays enabled. Recognized namespace failures produce fixed, sanitized
+guidance in browser tool results and `touri doctor`; diagnostics retain at most 32 KiB while
+stderr continues draining for the process lifetime. After a failed launch stops Chrome,
+diagnosis waits at most 500 ms for descendants holding stderr before canceling the read.
+Only the explicit operator setting `TOURI_BROWSER_NO_SANDBOX=1` adds `--no-sandbox`, with a
+doctor warning about process data and credential exposure. There is no automatic retry without
+sandboxing. `TOURI_BROWSER_DISABLE_DEV_SHM_USAGE=1` independently uses temporary files for
+shared memory. Desktop defaults remain unchanged. The bilingual deployment guide covers
+TLS, namespace requirements, credential-grade backups and restoration before upgrades.
+
 ## Turn latency
 
 Release CLI and desktop sidecar builds embed ESM bytecode with the pinned Bun toolchain. This avoids repeating bundle parsing when request-owned history readers start. Reader capacity, deadlines, cancellation and SQL scopes are unchanged; each read still owns its process and can interrupt native SQLite with SIGKILL.
