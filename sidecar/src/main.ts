@@ -122,7 +122,7 @@ const runServe = async (): Promise<void> => {
   const lease = await acquireRuntimeLock(createAppPaths())
   const { createDesktopWeb } = await import("./onboarding/desktop")
   const desktop = await createDesktopWeb(createAppPaths().appData)
-  const runtime = createKernel({ web: desktop.web })
+  const runtime = createKernel({ web: desktop.web, deferReady: true })
   await desktop.init(runtime.kernel, runtime.handshake.port)
   let initialization = Promise.resolve()
   let stopping = false
@@ -158,7 +158,9 @@ const runServe = async (): Promise<void> => {
   watchParent(shutdown)
   watchShutdownRequest(shutdown)
   if (stopping) return
-  initialization = initModules(runtime)
+  initialization = initModules(runtime).then(async () => {
+    if (!stopping) await runtime.markReady()
+  })
   await initialization
   if (!stopping) process.stdout.write(`${JSON.stringify(runtime.handshake)}\n`)
 }
