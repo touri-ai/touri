@@ -5,6 +5,16 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "Não foi possível recuperar o computador anterior. Tente ligar novamente.":
+    "Não foi possível recuperar o computador anterior. Tente ligar novamente.",
+  "Máquina ocupada; pare os turnos e devolva o controle antes de reiniciar":
+    "Máquina ocupada; pare os turnos e devolva o controle antes de reiniciar",
+  "Aguarde os turnos terminarem e devolva o controle para aplicar as pastas da máquina.":
+    "Aguarde os turnos terminarem e devolva o controle para aplicar as pastas da máquina.",
+  "Máquina ocupada; aguarde os turnos antes de atualizar": "Máquina ocupada; aguarde os turnos antes de atualizar",
+  "Computador atualizado: agora com Terminal e Arquivos": "Computador atualizado: agora com Terminal e Arquivos",
+  "A atualização não iniciou. Seu computador anterior e seus arquivos foram preservados.":
+    "A atualização não iniciou. Seu computador anterior e seus arquivos foram preservados.",
   "setup.ownRuntime":
     "Este é o touri que já está rodando neste computador. Volte e escolha Começar neste computador; para usar outro servidor, informe o endereço dele.",
   "setup.welcome": "Seus bots, perto de você",
@@ -3547,6 +3557,16 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Não foi possível recuperar o computador anterior. Tente ligar novamente.":
+    "Could not recover the previous computer. Try starting it again.",
+  "Máquina ocupada; pare os turnos e devolva o controle antes de reiniciar":
+    "Computer busy; stop the tasks and return control before restarting",
+  "Aguarde os turnos terminarem e devolva o controle para aplicar as pastas da máquina.":
+    "Wait for tasks to finish and return control before applying the computer folders.",
+  "Máquina ocupada; aguarde os turnos antes de atualizar": "Computer busy; wait for tasks to finish before updating",
+  "Computador atualizado: agora com Terminal e Arquivos": "Computer updated: now with Terminal and Files",
+  "A atualização não iniciou. Seu computador anterior e seus arquivos foram preservados.":
+    "The update did not start. Your previous computer and files were preserved.",
   "setup.ownRuntime":
     "This is touri already running on this computer. Go back and choose Start on this computer; to use another server, enter its address.",
   "setup.welcome": "Your bots, by your side",

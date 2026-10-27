@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import type { Bot } from "@touri/contracts"
+import type { Bot, MachineState } from "@touri/contracts"
 import { afterEach, expect, test, vi } from "vitest"
 import type { UiApi } from "../src/api/client"
 import { BotComputer } from "../src/components/BotComputer"
@@ -89,3 +89,31 @@ test("native desktop retains its permission controls", async () => {
   expect(screen.getAllByRole("button", { name: t("Grant") })).toHaveLength(2)
   expect(screen.queryByText(noDesktop)).not.toBeInTheDocument()
 })
+
+test.each(["updated", "rolled-back"] as const)(
+  "computer shows the %s outcome in its accessible status",
+  (imageUpdate) => {
+    const machine: MachineState = {
+      botId: "vm",
+      status: "running",
+      progress: null,
+      error: null,
+      memoryMb: 1024,
+      createdMs: 1,
+      startMs: 1,
+      imageUpdate,
+    }
+    const api = { request: vi.fn(async () => ({})), subscribe: () => () => {} } as UiApi
+
+    render(<BotComputer api={api} bot={{ id: "vm", name: "Lia", machine: "vm" } as Bot} machine={machine} />)
+
+    const text =
+      imageUpdate === "updated"
+        ? "Computador atualizado: agora com Terminal e Arquivos"
+        : "A atualização não iniciou. Seu computador anterior e seus arquivos foram preservados."
+    expect(screen.getByText(text)).toHaveAttribute("role", "status")
+    expect(t(text, {}, "en")).toContain(
+      imageUpdate === "updated" ? "Terminal and Files" : "previous computer and files",
+    )
+  },
+)

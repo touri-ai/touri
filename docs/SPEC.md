@@ -2066,3 +2066,16 @@ Channel members retain their shared-reply frame until ordered message delivery a
 - A single filename wildcard can resolve up to six raster images after examining at most 512 directory entries. Directory wildcards and recursive patterns are refused; unresolved patterns remain text. Discovery refreshes when the message completes, so images created during the reply appear without reloading. Remote discovery reads only an already-running machine and never starts one. A stopped-machine preview offers computer navigation only when that action is available; otherwise its recovery action retries the image read.
 - Local pattern discovery enumerates a pinned directory handle on Linux and macOS, retaining the original directory if its path is replaced. Explicit grants accept macOS system path aliases beneath `/var`, `/tmp` and `/etc`; arbitrary symlinks in grant roots or their ancestors remain refused. Each discovered image is validated through a no-follow read relative to the pinned handle.
 - Thumbnails reserve their layout space before loading, share bounded loading concurrency with pattern discovery and retain at most 12 small previews per client for 60 seconds. Workspace cache keys include bot, message version and path. Local image reads and directory enumeration run in the file I/O worker with bounded admission and deadlines; filename discovery reserves metadata capacity rather than a full image buffer, so simultaneous lookups do not discard valid evidence. Attachment-path lookups use indexes and maintained message references.
+
+### Existing computer image updates
+
+`MachineState.imageUpdate` optionally reports `updated` or `rolled-back`. The desktop and phone
+computer panel translate this notice and keep it visible when expanded. Older clients can ignore the optional field.
+On the next idle acquisition, the runtime inspects the provider image against `BOT_IMAGE`;
+`bot_machines.vm_id` selects the container and `volume` records persistent workspace/home and
+browser mounts. A replacement reuses these mounts and retains the stopped original until guest
+readiness, network policy and sealed connection setup succeed. The `settings` key `vm-upgrade:<botId>`
+journals the original metadata and candidate ID before changing that pointer. Interrupted updates
+roll back before another start; committed updates finish removing only the old container.
+`vm-image-notice:<botId>` retains the outcome across reconnects. No user volume is deleted during
+an update. Turn leases, guest operations, live viewers and persisted human control defer updates.

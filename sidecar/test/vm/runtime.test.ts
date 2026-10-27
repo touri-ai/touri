@@ -712,7 +712,7 @@ test.each([BOT_IMAGE, `docker.io/library/${BOT_IMAGE}`])(
   },
 )
 
-test("legacy rootfs workspace migrates before deletion, and a failed recreation retries the same bind", async () => {
+test("failed legacy recreation restores the original container and retries its migrated workspace", async () => {
   const f = await fixture()
   const bot = await f.bot()
   await (await f.vm.service.acquire({ botId: bot.id }))()
@@ -721,20 +721,19 @@ test("legacy rootfs workspace migrates before deletion, and a failed recreation 
   const create = f.fake.provider.create
   f.fake.provider.create = async () => ({ success: false, errorCode: "COMMAND_FAILED", error: "recreate failed" })
   const offset = f.fake.calls.length
-  await expect(f.vm.service.acquire({ botId: bot.id })).rejects.toThrow("recreate failed")
-  const calls = f.fake.calls.slice(offset)
-  expect(calls.findIndex((call) => call.action === "migrateWorkspace")).toBeLessThan(
-    calls.findIndex((call) => call.action === "destroy"),
-  )
-  const meta = (f.runtime.kernel.db as Database)
-    .query("SELECT volume FROM bot_machines WHERE bot_id = ?")
-    .get(bot.id) as { volume: string }
-  const mount = (JSON.parse(meta.volume) as VmCreateOptions["volumes"])?.[0]
-  expect(mount).toMatchObject({ type: "bind", target: "/workspace" })
-  f.fake.provider.create = create
+
   await (await f.vm.service.acquire({ botId: bot.id }))()
+
+  expect(f.fake.calls.slice(offset).some((call) => call.action === "migrateWorkspace")).toBe(true)
+  expect(f.fake.configs.get(original.name)?.image).toBe("touri-bot:1")
+  expect(f.vm.service.states()[0]?.imageUpdate).toBe("rolled-back")
+  f.fake.provider.create = create
+
+  await (await f.vm.service.acquire({ botId: bot.id }))()
+
   const replacement = f.fake.calls.filter((call) => call.action === "create").at(-1)?.input as VmCreateOptions
-  expect(replacement.volumes).toContainEqual(mount)
+  expect(replacement.volumes).toContainEqual(expect.objectContaining({ type: "bind", target: "/workspace" }))
+  expect(f.fake.configs.has(original.name)).toBe(false)
 })
 
 test("failed legacy migration preserves the original container and its metadata", async () => {
@@ -2696,4 +2695,235 @@ test("turn setup writes its token and instructions concurrently before starting 
   } finally {
     bothStarted.resolve()
   }
+})
+
+const getOldComputer = async () => {
+  const f = await fixture(true, { ready: 200 })
+  const bot = await f.bot()
+  await (await f.vm.service.acquire({ botId: bot.id }))()
+  const original = f.fake.calls.find((call) => call.action === "create")?.input as VmCreateOptions
+  f.fake.configs.set(original.name, { ...original, image: "touri-bot:8" })
+
+  return { f, bot, original }
+}
+
+test("image 8 update keeps home, browser profile and settings and deletes the original only after readiness", async () => {
+  const { f, bot, original } = await getOldComputer()
+  const savedFiles = [
+    ["/workspace/report.txt", "report"],
+    ["/workspace/.home/.config/settings.json", "preferences"],
+    ["/var/lib/touri-browser/profile/Preferences", "browser preferences"],
+  ] as const
+  savedFiles.forEach(([path, content]) => {
+    f.fake.files.set(path, content)
+  })
+  const exec = f.fake.provider.exec
+  f.fake.provider.exec = async (input) => {
+    if (input.id !== original.name && input.command === "/bin/sh" && input.args?.includes(GUEST_READY_COMMAND)) {
+      expect(f.fake.configs.has(original.name)).toBe(true)
+      expect(f.fake.machines.get(original.name)).toBe("stopped")
+    }
+    return exec(input)
+  }
+
+  await (await f.vm.service.acquire({ botId: bot.id }))()
+
+  const replacement = f.fake.calls.filter((call) => call.action === "create").at(-1)?.input as VmCreateOptions
+  expect(replacement.image).toBe(BOT_IMAGE)
+  expect(replacement.volumes).toEqual(original.volumes)
+  expect(f.connectionKeys.has(original.name)).toBe(false)
+  expect(f.connectionKeys.size).toBe(1)
+  savedFiles.forEach(([path, content]) => {
+    expect(f.fake.files.get(path)).toBe(content)
+  })
+  expect(f.fake.configs.has(original.name)).toBe(false)
+  expect(f.vm.service.states()[0]?.imageUpdate).toBe("updated")
+})
+
+test.each(["create", "start", "readiness", "connection"] as const)(
+  "image update rolls back when candidate %s fails",
+  async (stage) => {
+    const { f, bot, original } = await getOldComputer()
+    const create = f.fake.provider.create
+    const start = f.fake.provider.start
+    const exec = f.fake.provider.exec
+    const connection = f.fake.provider.connection
+    const failure = { success: false as const, errorCode: "COMMAND_FAILED" as const, error: "synthetic failure" }
+    if (stage === "create") f.fake.provider.create = async () => failure
+    if (stage === "start")
+      f.fake.provider.start = (input) => (input.id === original.name ? start(input) : Promise.resolve(failure))
+    if (stage === "readiness")
+      f.fake.provider.exec = (input) =>
+        input.id !== original.name && input.args?.includes(GUEST_READY_COMMAND) ? Promise.resolve(failure) : exec(input)
+    if (stage === "connection")
+      f.fake.provider.connection = (input) =>
+        input.id === original.name ? connection(input) : Promise.resolve(failure)
+    f.fake.files.set("/workspace/keep.txt", "preserved")
+
+    await (await f.vm.service.acquire({ botId: bot.id }))()
+
+    expect(f.fake.configs.get(original.name)?.image).toBe("touri-bot:8")
+    expect(f.fake.machines.get(original.name)).toBe("running")
+    expect(f.fake.files.get("/workspace/keep.txt")).toBe("preserved")
+    expect(f.vm.service.states()[0]).toMatchObject({ status: "running", imageUpdate: "rolled-back" })
+    expect(f.fake.machines.size).toBe(1)
+    f.fake.provider.create = create
+  },
+)
+
+test.each(["turn", "human", "viewer", "operation"] as const)("image update waits for active %s", async (kind) => {
+  const { f, bot, original } = await getOldComputer()
+  if (kind === "human") {
+    await initComputer(f.runtime.kernel)
+    await f.runtime.kernel.services.use("computer.input")?.take(bot.id, new AbortController().signal)
+  }
+  const release = kind === "turn" ? await f.vm.service.acquire({ botId: bot.id, runningOnly: true }) : undefined
+  const releaseViewer = kind === "viewer" ? f.vm.service.holdViewer?.(bot.id) : undefined
+  const entered = deferred()
+  const finish = deferred()
+  const exec = f.fake.provider.exec
+  f.fake.provider.exec = async (input) => {
+    if (input.command === "sleep") {
+      entered.resolve()
+      await finish.promise
+    }
+    return exec(input)
+  }
+  const operation = kind === "operation" ? f.vm.service.exec({ botId: bot.id, command: "sleep" }) : undefined
+  if (operation) await entered.promise
+  const offset = f.fake.calls.length
+
+  await (await f.vm.service.acquire({ botId: bot.id }))()
+
+  expect(f.fake.calls.slice(offset).some((call) => ["create", "destroy", "stop"].includes(call.action))).toBe(false)
+  expect(f.fake.configs.get(original.name)?.image).toBe("touri-bot:8")
+  finish.resolve()
+  await operation
+  await release?.()
+  releaseViewer?.()
+  f.runtime.kernel.services.use("computer.input")?.handBack(bot.id)
+
+  await (await f.vm.service.acquire({ botId: bot.id }))()
+
+  expect(f.fake.configs.has(original.name)).toBe(false)
+  expect(f.vm.service.states()[0]?.imageUpdate).toBe("updated")
+})
+
+test("interrupted image update restores the original metadata before another start", async () => {
+  const { f, bot, original } = await getOldComputer()
+  const db = f.runtime.kernel.db as Database
+  const previous = db.query("SELECT * FROM bot_machines WHERE bot_id = ?").get(bot.id)
+  const candidate = "touri-interrupted-candidate"
+  await f.fake.provider.stop({ id: original.name })
+  await f.fake.provider.create({ ...original, name: candidate })
+  db.query("INSERT INTO settings(key,value_json,updated_at) VALUES (?,?,?)").run(
+    `vm-upgrade:${bot.id}`,
+    JSON.stringify({ previous, candidate, committed: false }),
+    Date.now(),
+  )
+  db.query("UPDATE bot_machines SET vm_id = ? WHERE bot_id = ?").run(candidate, bot.id)
+
+  await (await f.vm.service.acquire({ botId: bot.id }))()
+
+  expect(f.fake.machines.has(candidate)).toBe(false)
+  expect(f.fake.machines.get(original.name)).toBe("running")
+  expect(f.vm.service.states()[0]?.imageUpdate).toBe("rolled-back")
+})
+
+test("a stopped old computer can update when a tab already has a presence connection", async () => {
+  const { f, bot, original } = await getOldComputer()
+  await f.vm.service.stop({ botId: bot.id })
+  const release = f.vm.service.holdViewer?.(bot.id)
+
+  await (await f.vm.service.acquire({ botId: bot.id }))()
+
+  expect(f.fake.configs.has(original.name)).toBe(false)
+  expect(f.vm.service.states()[0]?.imageUpdate).toBe("updated")
+  release?.()
+})
+
+test("candidate cleanup failure keeps the journal and never restarts the original with shared volumes", async () => {
+  const { f, bot, original } = await getOldComputer()
+  const start = f.fake.provider.start
+  const destroy = f.fake.provider.destroy
+  f.fake.provider.start = (input) =>
+    input.id === original.name
+      ? start(input)
+      : Promise.resolve({
+          success: false,
+          errorCode: "COMMAND_FAILED",
+          error: "candidate failed",
+        })
+  f.fake.provider.destroy = async () => ({ success: false, errorCode: "COMMAND_FAILED", error: "cleanup failed" })
+
+  await expect(f.vm.service.acquire({ botId: bot.id })).rejects.toThrow("recuperar o computador anterior")
+
+  expect(f.fake.machines.get(original.name)).toBe("stopped")
+  const pending = (f.runtime.kernel.db as Database)
+    .query("SELECT value_json FROM settings WHERE key = ?")
+    .get(`vm-upgrade:${bot.id}`)
+  expect(pending).not.toBeNull()
+  f.fake.provider.destroy = destroy
+
+  await (await f.vm.service.acquire({ botId: bot.id }))()
+
+  expect(f.fake.machines.size).toBe(1)
+  expect(f.fake.machines.get(original.name)).toBe("running")
+})
+
+test("committed update cleanup can retry without rolling back a healthy computer", async () => {
+  const { f, bot, original } = await getOldComputer()
+  const destroy = f.fake.provider.destroy
+  f.fake.provider.destroy = (input) =>
+    input.id === original.name
+      ? Promise.resolve({
+          success: false,
+          errorCode: "COMMAND_FAILED",
+          error: "old cleanup failed",
+        })
+      : destroy(input)
+
+  await (await f.vm.service.acquire({ botId: bot.id }))()
+
+  const candidate = f.vm.service.states()[0]?.connection?.machineId
+  expect(candidate).not.toBe(original.name)
+  expect(f.vm.service.states()[0]).toMatchObject({ status: "running", imageUpdate: "updated" })
+  expect(f.fake.machines.get(original.name)).toBe("stopped")
+  f.fake.provider.destroy = destroy
+
+  await (await f.vm.service.acquire({ botId: bot.id }))()
+
+  expect(f.fake.machines.has(original.name)).toBe(false)
+  expect(f.vm.service.states()[0]?.connection?.machineId).toBe(candidate)
+})
+
+test("persisted running turns defer image updates without scanning the bot history", async () => {
+  const { f, bot, original } = await getOldComputer()
+  const db = f.runtime.kernel.db as Database
+  db.query("INSERT INTO runs(id,thread_id,bot_id,provider,trigger,status,queued_at) VALUES (?,?,?,?,?,?,?)").run(
+    "synthetic-active-run",
+    bot.mainThreadId,
+    bot.id,
+    bot.provider,
+    "user",
+    "running",
+    Date.now(),
+  )
+  const plan = db
+    .query(
+      "EXPLAIN QUERY PLAN SELECT 1 FROM runs INDEXED BY runs_status WHERE bot_id = ? AND status = 'running' LIMIT 1",
+    )
+    .all(bot.id) as Array<{ detail: string }>
+  const offset = f.fake.calls.length
+
+  await (await f.vm.service.acquire({ botId: bot.id }))()
+
+  expect(plan.some((step) => step.detail.includes("runs_status"))).toBe(true)
+  expect(f.fake.calls.slice(offset).some((call) => ["create", "destroy", "stop"].includes(call.action))).toBe(false)
+  expect(f.fake.configs.get(original.name)?.image).toBe("touri-bot:8")
+  db.query("UPDATE runs SET status = 'succeeded' WHERE id = ?").run("synthetic-active-run")
+
+  await (await f.vm.service.acquire({ botId: bot.id }))()
+
+  expect(f.vm.service.states()[0]?.imageUpdate).toBe("updated")
 })

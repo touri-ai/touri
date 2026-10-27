@@ -790,8 +790,11 @@
   transform: translateX(-50%);
   margin: 0;
 }
-.bot-panel-expanded .computer-summary p:not([role="alert"]) {
+.bot-panel-expanded .computer-summary p:not([role="alert"]):not([role="status"]) {
   display: none;
+}
+.bot-panel-expanded .computer-summary p[role="status"] {
+  order: 1;
 }
 /* End r8 panel expanded navigation. */
 
