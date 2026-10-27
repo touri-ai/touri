@@ -5,6 +5,7 @@ import { createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { createInterface } from "node:readline"
+import AxeBuilder from "@axe-core/playwright"
 import { expect, type Page, test } from "@playwright/test"
 import { build } from "vite"
 
@@ -139,6 +140,41 @@ const clickTarget = async (
 
 for (const width of [1440, 390]) {
   for (const theme of ["light", "dark"]) {
+    test(`typed browser input keeps the address and whole reason ${width} ${theme}`, async ({ page }, info) => {
+      test.setTimeout(60_000)
+      const phase = baseline ? "before" : "after"
+      const evidence = evidenceRoot ?? info.outputDir
+      const reason = "Validação do touri: teste clique, rolagem e digitação nesta aba da página de teste local"
+      await mkdir(evidence, { recursive: true })
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+      await page.addInitScript((transport) => Object.assign(window, { browserControlTransport: transport }), {
+        endpoint,
+        token,
+        probeUrl: `${endpoint}${probePath}`,
+      })
+
+      await page.goto(
+        `${endpoint}/viewer/test/e2e/browser-control-harness.html?theme=${theme}&reason=${encodeURIComponent(reason)}`,
+      )
+      await page.getByRole("button", { name: "Assumir navegador de teste" }).click()
+      await clickTarget(page, "nameBounds", width === 390)
+      await page.keyboard.type("teste local", { delay: 40 })
+      await expect.poll(async () => (await getState()).name).toBe("teste local")
+      await page.locator(".browser-takeover-reason").scrollIntoViewIfNeeded()
+      await page.screenshot({ path: join(evidence, `review-${phase}-${width}-${theme}.png`) })
+
+      await expect.soft(page.getByRole("textbox", { name: "Endereço do navegador" })).toHaveValue(`${endpoint}/page`)
+      await expect.soft(page.locator(".browser-takeover-reason")).toHaveText(reason)
+      // The transparent 1px keyboard proxy has no visible text; check all visible controls instead.
+      const accessibility = await new AxeBuilder({ page })
+        .include(".browser-takeover-view")
+        .exclude(".browser-takeover-keyboard")
+        .analyze()
+      expect(accessibility.violations).toEqual([])
+      await page.getByRole("button", { name: "Devolver para Lia" }).click()
+      await expect.poll(async () => (await getState()).continued).toBe(true)
+    })
+
     test(`browser control local form, scrolling and continuation ${width} ${theme}`, async ({ page }, info) => {
       test.setTimeout(150_000)
       const phase = baseline ? "before" : "after"
@@ -323,8 +359,11 @@ for (const width of [1440, 390]) {
         await expect.poll(async () => (await getState()).selection.length).toBeGreaterThan(5)
       }
       await clickTarget(page, "nameBounds", width === 390)
-      await page.keyboard.type("teste local")
+      // Human cadence sends one character per batch; none of them may become an app-wide redaction.
+      await page.keyboard.type("teste local", { delay: 40 })
       await expect.poll(async () => (await getState()).name).toBe("teste local")
+      await page.screenshot({ path: join(evidence, `typed-${phase}-${width}-${theme}.png`) })
+      await expect(page.getByRole("textbox", { name: "Endereço do navegador" })).toHaveValue(`${endpoint}/page`)
       await page.keyboard.press("Control+A")
       await page.getByRole("textbox", { name: "Entrada de teclado para o navegador" }).evaluate((element) => {
         const transfer = new DataTransfer()

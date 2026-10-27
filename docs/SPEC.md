@@ -2157,3 +2157,11 @@ requires the active controller, allowing Back/Forward/Reload before the next ima
 continues on the same page. Only the authorized controller receives the address origin/path; credentials,
 query strings and fragments are omitted. Private previews, bot reads and history retain their protection.
 The input contract adds scoped navigation and pointer phases; there is no database schema change.
+
+Human typing is protected as whole entries when the person leaves a field or returns control, rather
+than registering each incoming character as a process-wide redaction value. Only entries of at least
+eight characters enter that registry; short input remains private through the existing document,
+field-value, preview and bot-read restrictions. Rejected stale input cannot alter the collected entry.
+Uninterrupted input is collected in segments of at most 16,384 characters, protecting the previous
+segment before starting the next. Handoff reasons retain up to 240 sanitized characters and shorten
+longer explanations at a word boundary with an ellipsis.
