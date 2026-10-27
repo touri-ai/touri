@@ -32,7 +32,9 @@ export const DraftComposer = ({ draftRef, draftIdentity, onSend, ...props }: Dra
   return (
     <>
       {draftSaveFailed && (
-        <p role="alert">{t("Não foi possível salvar o rascunho. Copie sua mensagem antes de fechar o touri.")}</p>
+        <p role="alert" data-unsaved-draft="true">
+          {t("Não foi possível salvar o rascunho. Copie sua mensagem antes de fechar o touri.")}
+        </p>
       )}
       <Composer
         {...props}

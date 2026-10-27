@@ -222,6 +222,13 @@ If the conversation module fails to load, **Recarregar esta área** / **Reload t
 one fresh import attempt without navigating away. A failed retry offers **Recarregar app** /
 **Reload app**, which reloads the application. Both recovery paths keep saved per-conversation
 drafts. Successful imports remain cached across channel and mode switches.
+When a deployed build invalidates a lazy module or its stylesheet, the UI attempts one automatic
+page reload. A session marker suppresses another automatic reload for 30 seconds after startup;
+a repeated failure remains visible through the existing recovery boundary. Recovery never reloads
+while the browser reports offline, the composer contains attachments or a draft persistence failure
+is visible: it must preserve the loaded workspace and in-memory work. Unavailable session storage
+also leaves the error visible instead of risking a reload loop. This asset recovery does not authorize
+an incompatible protocol update.
 When creating or editing a channel or group, member names wrap instead of being truncated so bots
 with a shared name prefix remain visually distinguishable before and after selection. The member
 picker uses one column at viewport widths up to 620 px and two columns on wider screens. Existing

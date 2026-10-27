@@ -2,10 +2,18 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { resolve } from "node:path"
 import AxeBuilder from "@axe-core/playwright"
-import { test as base, expect, type Page } from "@playwright/test"
+import { test as base, expect, type JSHandle, type Page, type Request } from "@playwright/test"
 import { build, preview } from "vite"
 
-const test = base.extend<object, { conversationApp: string }>({
+const test = base.extend<{ failDraftStorage: () => Promise<void> }, { conversationApp: string }>({
+  failDraftStorage: async ({ page }, use) => {
+    // The browser owns this patch; the fixture keeps its restore handle for teardown.
+    let restore: JSHandle<() => void> | undefined
+    await use(async () => {
+      restore = await installDraftStorageFailure(page)
+    })
+    await restore?.evaluate((restore) => restore())
+  },
   conversationApp: [
     async ({ browserName }, use) => {
       const root = resolve(import.meta.dirname, "../..")
@@ -197,3 +205,148 @@ for (const width of [1440, 390]) {
     await captureEvidence(page, `lazy-chat-reloaded-${width}`)
   })
 }
+
+for (const width of [1440, 390]) {
+  test(`automatically recovers stale styles without losing a saved draft at ${width}px`, async ({
+    page,
+    conversationApp,
+  }) => {
+    test.setTimeout(90_000)
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+    await page.emulateMedia({ reducedMotion: "reduce" })
+    await page.addInitScript(() => localStorage.setItem("touri.sidebar.mode", "work"))
+    await page.goto(conversationApp)
+    await getComposer(page).fill("Rascunho sintético após atualizar")
+    const stylesheet = "**/assets/ChatPanel-*.css"
+    await page.route(stylesheet, (route) => route.abort("failed"))
+
+    await page.reload()
+    await expect(page.getByRole("button", { name: "Recarregar esta área", exact: true })).toBeVisible()
+    await captureEvidence(page, `stale-assets-before-${width}`)
+    await page.unroute(stylesheet)
+    await page.route(stylesheet, (route) => route.abort("failed"), { times: 1 })
+    // Browser callbacks append to a local observation log to count full-page navigations.
+    const navigations: string[] = []
+    page.on("request", (request) => {
+      if (isDocumentNavigation(request, page)) navigations.push(request.url())
+    })
+
+    await page.goto(`${conversationApp}?assetRecovery`)
+
+    await expect(getComposer(page)).toHaveValue("Rascunho sintético após atualizar")
+    expect(navigations).toHaveLength(2)
+    await captureEvidence(page, `stale-assets-after-${width}`)
+    expect((await new AxeBuilder({ page }).include(".composer").analyze()).violations).toEqual([])
+  })
+}
+
+test("exposes persistent asset failures after exactly one automatic reload", async ({ page, conversationApp }) => {
+  test.setTimeout(90_000)
+  await page.route("**/assets/ChatPanel-*.css", (route) => route.abort("failed"))
+  // Browser callbacks append to a local observation log to count full-page navigations.
+  const navigations: string[] = []
+  page.on("request", (request) => {
+    if (isDocumentNavigation(request, page)) navigations.push(request.url())
+  })
+
+  await page.goto(`${conversationApp}?assetRecovery`)
+
+  await expect(page.getByRole("button", { name: "Recarregar esta área", exact: true })).toBeVisible()
+  expect(navigations).toHaveLength(2)
+  expect(await page.evaluate(() => sessionStorage.getItem("touri.lazy-asset-recovery"))).toBe("1")
+})
+
+test("keeps an unsaved draft when local storage fails and a preload error occurs", async ({
+  page,
+  conversationApp,
+  failDraftStorage,
+}) => {
+  test.setTimeout(90_000)
+  await page.goto(`${conversationApp}?assetRecovery`)
+  await expect(getComposer(page)).toBeVisible()
+  await failDraftStorage()
+  await getComposer(page).fill("Texto sintético mantido na memória")
+  const navigated = page
+    .waitForRequest((request) => isDocumentNavigation(request, page), { timeout: 1_000 })
+    .then(
+      () => true,
+      () => false,
+    )
+
+  const prevented = await page.evaluate(() => {
+    const failure = new Event("vite:preloadError", { cancelable: true })
+    window.dispatchEvent(failure)
+
+    return failure.defaultPrevented
+  })
+
+  expect(prevented).toBe(false)
+  expect(await navigated).toBe(false)
+  await expect(getComposer(page)).toHaveValue("Texto sintético mantido na memória")
+  await expect(page.locator('[data-unsaved-draft="true"]')).toBeVisible()
+})
+
+test("keeps a pending attachment when a preload error occurs", async ({ page, conversationApp }) => {
+  test.setTimeout(90_000)
+  await page.goto(`${conversationApp}?assetRecovery`)
+  await expect(getComposer(page)).toBeVisible()
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "synthetic-note.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("Synthetic attachment"),
+  })
+  await expect(page.locator(".attachment-strip li")).toBeVisible()
+  const navigated = page
+    .waitForRequest((request) => isDocumentNavigation(request, page), { timeout: 1_000 })
+    .then(
+      () => true,
+      () => false,
+    )
+
+  const prevented = await page.evaluate(() => {
+    const failure = new Event("vite:preloadError", { cancelable: true })
+    window.dispatchEvent(failure)
+
+    return failure.defaultPrevented
+  })
+
+  expect(prevented).toBe(false)
+  expect(await navigated).toBe(false)
+  await expect(page.locator(".attachment-strip li")).toContainText("synthetic-note.txt")
+})
+
+test("keeps the loaded conversation when an asset fails while offline", async ({ page, conversationApp }) => {
+  test.setTimeout(90_000)
+  await page.goto(`${conversationApp}?assetRecovery`)
+  await getComposer(page).fill("Rascunho sintético sem rede")
+  await page.context().setOffline(true)
+
+  const prevented = await page.evaluate(() => {
+    const failure = new Event("vite:preloadError", { cancelable: true })
+    window.dispatchEvent(failure)
+
+    return failure.defaultPrevented
+  })
+
+  expect(prevented).toBe(false)
+  await expect(getComposer(page)).toHaveValue("Rascunho sintético sem rede")
+})
+
+const isDocumentNavigation = (request: Request, page: Page): boolean =>
+  request.isNavigationRequest() && request.frame() === page.mainFrame()
+
+const installDraftStorageFailure = (page: Page) =>
+  page.evaluateHandle(() => {
+    const setItem = Storage.prototype.setItem
+    Object.defineProperty(Storage.prototype, "setItem", {
+      configurable: true,
+      value(this: Storage, key: string, value: string) {
+        if (this === localStorage && key.includes("touri.composer-draft.v1:")) {
+          throw new DOMException("Synthetic storage failure", "QuotaExceededError")
+        }
+        setItem.call(this, key, value)
+      },
+    })
+
+    return () => Object.defineProperty(Storage.prototype, "setItem", { configurable: true, value: setItem })
+  })

@@ -5,7 +5,10 @@ import { initializeTheme } from "./design/theme"
 import { setDocumentLanguage } from "./documentLanguage"
 import { DEFAULT_LOCALE } from "./i18n"
 import { init } from "./index"
+import { installBrowserLazyAssetRecovery } from "./lazyAssetRecovery"
 import "./styles.css"
+
+installBrowserLazyAssetRecovery()
 
 installMotionTokens(document.documentElement)
 initializeTheme()
