@@ -46,6 +46,17 @@ const runtime = createKernel({
 await initStore(runtime.kernel)
 await initComputer(runtime.kernel)
 const provider = createOciProvider({ engine: "docker", binary, dataDir: root })
+const vm = createVmRuntime({
+  kernel: runtime.kernel,
+  provider,
+  hostHome: root,
+  capability: { available: true, provider: "docker", reason: null },
+})
+runtime.kernel.services.provide("vm.runtime", vm.service)
+const desktop = createDesktopGateway(runtime.kernel, vm.service, vm.paste)
+runtime.kernel.services.provide("vm.desktop", desktop.service)
+runtime.kernel.registerRoutes(desktop.routes)
+runtime.kernel.registerRoutes({ name: "terminal-machine", routes: machineActionRoutes(runtime.kernel, vm.service) })
 const endpoint = `http://127.0.0.1:${port}`
 const response = await fetch(`${endpoint}/api/v1/bots`, {
   method: "POST",
@@ -53,7 +64,7 @@ const response = await fetch(`${endpoint}/api/v1/bots`, {
   body: JSON.stringify({ name: "Lia", machine: "vm", provider: "codex", computerUse: true }),
 })
 const { bot } = (await response.json()) as { bot: { id: string } }
-if (!bot) throw new Error("Fixture bot creation failed")
+if (!bot) throw new Error(`Fixture bot creation failed (${response.status})`)
 // Opt in to a real previous-image computer, then restart the runtime against its persisted metadata.
 const previousImage = process.env.TOURI_TERMINAL_PREVIOUS_IMAGE
 if (previousImage) {
@@ -88,17 +99,6 @@ if (previousImage) {
   await release()
   await previous.dispose()
 }
-const vm = createVmRuntime({
-  kernel: runtime.kernel,
-  provider,
-  hostHome: root,
-  capability: { available: true, provider: "docker", reason: null },
-})
-runtime.kernel.services.provide("vm.runtime", vm.service)
-const desktop = createDesktopGateway(runtime.kernel, vm.service, vm.paste)
-runtime.kernel.services.provide("vm.desktop", desktop.service)
-runtime.kernel.registerRoutes(desktop.routes)
-runtime.kernel.registerRoutes({ name: "terminal-machine", routes: machineActionRoutes(runtime.kernel, vm.service) })
 const release = await vm.service.acquire({ botId: bot.id })
 if (previousImage) {
   const machine = (runtime.kernel.db as Database)
