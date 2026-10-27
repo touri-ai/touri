@@ -966,6 +966,12 @@ Switching between saved conversations cancels an earlier channel click that is s
 A failed channel-list read preserves the last known channels, offers Retry and does not prevent direct conversations from loading. Empty channel and conversation invitations appear
 only after the corresponding first read succeeds; pending reads show an accessible skeleton.
 A failed history read offers Retry, which reloads saved state without replaying a message or restarting the service.
+The main history reader prepares at most one idle read-only helper before interaction. It waits for
+private input without opening SQLite or retaining conversation data. Reads still own separate processes,
+deadlines and cancellation, with at most two active reads; disposal stops both active and idle helpers.
+Failed preparation falls back to an ordinary read without consuming read capacity. Secondary readers
+remain lazy. A failed WAL worker contains errors while restoring SQLite autocheckpointing, releases
+maintenance resources and reports once whether restoration succeeded, without exposing stored content.
 A matching task notification or failed reply cannot hide this recovery or turn it into a task retry.
 The channel header starts loading while history is pending; the message area keeps its skeleton until history succeeds.
 The composer becomes available together with its header, including while deferred UI modules load.
@@ -2145,6 +2151,9 @@ stay in a collapsed details strip; the reason comes from the sanitized bot reque
 same persistent page in a full-screen dialog automatically. The toolbar provides an editable address,
 back, forward, reload, loading feedback and expansion; clicking the page focuses remote keyboard input.
 Mouse dragging selects remote text, wheel/touch gestures scroll, and paste/composition stay outside chat.
+The remote keyboard field stays visually clipped and focusable, with explicit theme text/background
+colors; it never fades the text through opacity. Full-screen control uses the same defined text token
+in light and dark themes, including at phone widths.
 
 The optional `stream` flag on the existing authorized takeover frame request consumes pushed CDP
 screencast images rather than taking repeated screenshots. Reads remain serial, image payloads and

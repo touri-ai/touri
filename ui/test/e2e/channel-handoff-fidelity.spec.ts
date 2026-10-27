@@ -97,7 +97,7 @@ for (const { surface, width } of views) {
 
 const expectAccessibleCard = async (page: Page): Promise<void> => {
   const results = await new AxeBuilder({ page })
-    .include(".browser-activity-card, .browser-run-state, .chat-terminal-status")
+    .include(".browser-activity-card, .browser-takeover-view, .browser-run-state, .chat-terminal-status")
     .analyze()
 
   expect(results.violations.filter((violation) => ["serious", "critical"].includes(violation.impact ?? ""))).toEqual([])
