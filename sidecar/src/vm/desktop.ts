@@ -1,19 +1,26 @@
 import { randomBytes } from "node:crypto"
 import { createConnection, type Socket } from "node:net"
-import type { DesktopSocket, Kernel, RouteModule, VmDesktop, VmRuntime } from "@touri/contracts"
+import {
+  type DesktopSocket,
+  desktopStreamVisibility,
+  type Kernel,
+  type RouteModule,
+  type VmDesktop,
+  type VmRuntime,
+} from "@touri/contracts"
 import { createBackgroundTask, getMeasuredStage, yieldBackground } from "../kernel/background-task"
 import { type DeviceSession, deviceSession, socketDeviceContext } from "../kernel/device-session"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import clipboard from "./clipboard.py" with { type: "text" }
+import { DesktopFrames } from "./desktop-frames"
 import { DesktopInputGate } from "./desktop-protocol"
 import { VncAuthenticator } from "./vnc-auth"
 
 type Session = {
   device?: DeviceSession | undefined
   preview: boolean
-  frameTimer?: ReturnType<typeof setTimeout> | undefined
+  frames?: DesktopFrames
   frameRequest?: Buffer | undefined
-  lastFrameAt?: number
   botId: string
   control: boolean
   claimed: boolean
@@ -82,7 +89,7 @@ export const createDesktopGateway = (
     sessions.delete(id)
     clearTimeout(session.timer)
     session.inputAbort?.abort()
-    clearTimeout(session.frameTimer)
+    session.frames?.dispose()
     session.viewer?.close(1000, "Conexão da tela encerrada")
     if (session.guest && !session.guest.destroyed) {
       session.guest.end(session.auth?.authenticated ? session.gate.releases() : Buffer.alloc(0))
@@ -109,7 +116,9 @@ export const createDesktopGateway = (
       (!session.control || bot?.machine === "vm")
     )
   }
-  const unsubscribe = kernel.subscribe(({ event }) => {
+  // Lifecycle decisions cannot wait for deferred UI delivery.
+  const subscribe = kernel.subscribeRuntime ?? kernel.subscribe
+  const unsubscribe = subscribe(({ event }) => {
     if (event.type === "bot.updated" || event.type === "machine.updated") {
       for (const [id, session] of sessions)
         if (
@@ -151,29 +160,19 @@ export const createDesktopGateway = (
       }
       clearTimeout(session.timer)
       session.viewer = viewer
+      session.frames = new DesktopFrames(getFrameInterval(session), (request) => {
+        if (!sessions.has(id) || !valid(session) || !session.auth?.authenticated) return
+        if (session.guest && !session.guest.write(request) && session.guest.writableLength > 1_048_576) close(id)
+      })
       session.gate = new DesktopInputGate(
         (phase) => {
           if (viewer.send(phase === "version" ? Buffer.from([1, 1]) : Buffer.alloc(4)) === 0) close(id)
         },
-        session.preview
-          ? (packet) => {
-              const full = session.frameRequest?.[1] === 0 || packet[1] === 0
-              session.frameRequest = packet
-              if (full) packet[1] = 0
-              if (session.frameTimer) return
-              session.frameTimer = setTimeout(
-                () => {
-                  session.frameTimer = undefined
-                  const request = session.frameRequest
-                  session.frameRequest = undefined
-                  if (!request || !sessions.has(id) || !valid(session) || !session.auth?.authenticated) return
-                  session.lastFrameAt = Date.now()
-                  session.guest?.write(request)
-                },
-                Math.max(0, 1_000 - (Date.now() - (session.lastFrameAt ?? 0))),
-              )
-            }
-          : undefined,
+        (packet) => {
+          const full = session.frameRequest?.[1] === 0 || packet[1] === 0
+          session.frameRequest = packet
+          if (full) packet[1] = 0
+        },
       )
       // No URL supplied by the caller reaches this connection: only the runtime's loopback forward.
       const guest = createConnection(session.path ? { path: session.path } : { host: "127.0.0.1", port: session.port })
@@ -205,8 +204,16 @@ export const createDesktopGateway = (
     },
     message: (id, bytes) => {
       const session = sessions.get(id)
-      if (!session?.guest || !session.auth?.authenticated || !valid(session) || typeof bytes === "string") {
+      if (!session?.guest || !session.auth?.authenticated || !valid(session)) {
         close(id)
+        return
+      }
+      if (typeof bytes === "string") {
+        if (bytes === desktopStreamVisibility.pause || bytes === desktopStreamVisibility.resume) {
+          session.frames?.setVisible(bytes === desktopStreamVisibility.resume)
+          return
+        }
+        close(id, "invalid viewer message")
         return
       }
       try {
@@ -214,7 +221,11 @@ export const createDesktopGateway = (
         if (!sessions.has(id)) return
         if (process.env.TOURI_DESKTOP_TRACE === "1")
           log("Desktop input gate", { control: session.control, received: bytes.length, forwarded: data.length })
-        if (data.length && !session.guest.write(data) && session.guest.writableLength > 1_048_576) close(id)
+        if (data.length && !session.guest.write(data) && session.guest.writableLength > 1_048_576) return close(id)
+        // Requests follow earlier initialization/encoding records from the same packet.
+        const request = session.frameRequest
+        session.frameRequest = undefined
+        if (request && sessions.has(id)) session.frames?.request(request)
       } catch (error) {
         kernel.log({ level: "warn", module: "vm-desktop", msg: kernel.redact(String(error)) })
         close(id)
@@ -442,4 +453,11 @@ export const createDesktopGateway = (
     ],
   }
   return { service, routes }
+}
+
+const getFrameInterval = (session: Pick<Session, "control" | "preview">) => {
+  if (session.control) return 0
+  if (session.preview) return 1_000
+
+  return 500
 }

@@ -2,6 +2,8 @@ import type { Database } from "bun:sqlite"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { connectCdpWebSocket } from "../../../sidecar/src/browser/cdp"
+import type { CdpClient } from "../../../sidecar/src/browser/types"
 import { init as initComputer } from "../../../sidecar/src/computer"
 import { allowedOrigins, createKernel } from "../../../sidecar/src/kernel"
 import { createOciProvider } from "../../../sidecar/src/platform/oci-provider"
@@ -109,6 +111,8 @@ if (previousImage) {
     throw new Error("Previous image was not upgraded")
   console.log("UPGRADE_EVIDENCE: previous image 8 replaced with image 9")
 }
+let guestBrowser: CdpClient | undefined
+let resumed = false
 
 runtime.kernel.registerRoutes({
   name: "terminal-evidence",
@@ -125,6 +129,69 @@ runtime.kernel.registerRoutes({
       method: "POST",
       path: "/terminal-evidence",
       handler: async ({ body }) => {
+        const action = (body as { action?: string }).action
+        if (action === "wait-for-handback") {
+          const input = runtime.kernel.services.use("computer.input")
+          if (!input?.human(bot.id)) return { status: 409, json: {} }
+          resumed = false
+          void input.run(
+            {
+              botId: bot.id,
+              threadId: "keyboard-proof",
+              runId: null,
+              projectId: null,
+              cwd: root,
+              signal: AbortSignal.timeout(60_000),
+            },
+            async () => {
+              resumed = true
+              return { success: true, content: [] }
+            },
+          )
+
+          return { status: 200, json: { stdout: "waiting" } }
+        }
+        if (action === "handback-status") return { status: 200, json: { stdout: String(resumed) } }
+        if (action === "browser-open") {
+          const endpoint = await vm.service.browserEndpoint({ botId: bot.id, signal: AbortSignal.timeout(30_000) })
+          if (!endpoint) throw new Error("Guest browser missing")
+          const host = new URL(endpoint)
+          const prefix = host.pathname.slice(0, host.pathname.indexOf("/devtools/"))
+          const response = await fetch(`http://${host.host}${prefix}/json/list`, { signal: AbortSignal.timeout(5_000) })
+          const tabs = (await response.json()) as Array<{ type: string; webSocketDebuggerUrl: string }>
+          const tab = tabs.find((entry) => entry.type === "page")
+          if (!tab) throw new Error("Guest page missing")
+          const target = new URL(tab.webSocketDebuggerUrl)
+          target.host = host.host
+          target.pathname = `${prefix}${target.pathname}`
+          guestBrowser = await connectCdpWebSocket({ url: target.toString() })
+          await guestBrowser.call("Page.navigate", {
+            url: `data:text/html,${encodeURIComponent('<title>Teclado</title><label>Texto de teste<textarea autofocus style="width:90%;height:200px;font-size:24px"></textarea></label>')}`,
+          })
+
+          return { status: 200, json: { stdout: "opened" } }
+        }
+        if (action === "browser-focus" || action === "browser-value") {
+          if (!guestBrowser) return { status: 409, json: {} }
+          if (action === "browser-focus") await guestBrowser.call("Page.bringToFront", {})
+          const result = await guestBrowser.call<{ result?: { value?: string } }>("Runtime.evaluate", {
+            expression:
+              action === "browser-focus"
+                ? 'document.querySelector("textarea")?.focus(); document.readyState'
+                : 'document.querySelector("textarea")?.value',
+            returnByValue: true,
+          })
+
+          return { status: 200, json: { stdout: result.result?.value ?? "" } }
+        }
+        if (action === "cpu") {
+          const result = await vm.service.exec({ botId: bot.id, command: "cat", args: ["/sys/fs/cgroup/cpu.stat"] })
+
+          return {
+            status: 200,
+            json: { stdout: JSON.stringify({ sidecar: process.cpuUsage(), guest: result.stdout }) },
+          }
+        }
         if ((body as { action?: string }).action === "windows") {
           const id = vm.service.states().find((state) => state.botId === bot.id)?.connection?.machineId
           if (!id) return { status: 409, json: {} }
@@ -173,6 +240,7 @@ runtime.kernel.registerRoutes({
 console.log(`TERMINAL_FIXTURE:${port}:${bot.id}`)
 
 const stop = async () => {
+  await guestBrowser?.close()
   await desktop.service.closeBot(bot.id)
   desktop.service.dispose()
   await release()

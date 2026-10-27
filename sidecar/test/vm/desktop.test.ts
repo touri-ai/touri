@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { createConnection, createServer, type Socket } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { Bot } from "@touri/contracts"
+import { type Bot, desktopStreamVisibility, type Kernel, type UiEventEnvelope } from "@touri/contracts"
 import type { WebSocketOptions } from "bun"
 import { init as initComputer } from "../../src/computer"
 import { createKernel } from "../../src/kernel"
@@ -103,7 +103,7 @@ test("protocol handshake rejects incompatible clients and bounds held key state"
   expect(() => gate.push(packet, true)).toThrow("limite")
 })
 
-const fixture = async (computerUse = false) => {
+const fixture = async (computerUse = false, getDesktopKernel: (kernel: Kernel) => Kernel = (kernel) => kernel) => {
   const root = mkdtempSync(join(tmpdir(), "touri-desktop-test-"))
   const runtime = createKernel({ appData: root })
   await initStore(runtime.kernel)
@@ -165,7 +165,7 @@ const fixture = async (computerUse = false) => {
       return { hostPort: address.port, url: `http://127.0.0.1:${address.port}`, password: "touri123" }
     },
   }
-  const desktop = createDesktopGateway(runtime.kernel, desktopVm)
+  const desktop = createDesktopGateway(getDesktopKernel(runtime.kernel), desktopVm)
   runtime.kernel.services.provide("vm.desktop", desktop.service)
   runtime.kernel.registerRoutes(desktop.routes)
   const request = (path: string, body: unknown = {}, method = "POST") =>
@@ -771,3 +771,57 @@ test.each(["return", "takeover"])(
     expect(heldBeforeDrain).toBe(true)
   },
 )
+
+test("an authenticated hidden viewer holds requests until resume and cannot gain input", async () => {
+  const f = await fixture()
+  const session = await f.session()
+  let ready = false
+  expect(f.desktop.service.claim(session.sessionId)).toBe(true)
+  f.desktop.service.open(session.sessionId, {
+    send: () => {
+      ready = true
+      return 1
+    },
+    close: () => {},
+  })
+  await until(() => ready)
+  f.desktop.service.message(session.sessionId, handshake)
+  await until(() => Buffer.concat(f.received).length === 1)
+
+  f.desktop.service.message(session.sessionId, desktopStreamVisibility.pause)
+  f.desktop.service.message(session.sessionId, Buffer.concat([update, key()]))
+  await Bun.sleep(30)
+
+  expect(Buffer.concat(f.received)).toEqual(Buffer.from([1]))
+  f.desktop.service.message(session.sessionId, desktopStreamVisibility.resume)
+  await until(() => Buffer.concat(f.received).length > 1)
+  expect(Buffer.concat(f.received)).toEqual(Buffer.concat([Buffer.from([1]), update]))
+})
+
+test("a deferred startup notification cannot close a newer session; current runtime stops still close it", async () => {
+  let deliverUi: (envelope: UiEventEnvelope) => void = () => {}
+  const f = await fixture(true, (kernel) => ({
+    ...kernel,
+    subscribe: (listener) => {
+      deliverUi = listener
+      return () => {}
+    },
+  }))
+  const session = await f.session(true)
+  const machine = f.vm.service.states().find((state) => state.botId === f.bot.id)
+  if (!machine) throw new Error("Missing running machine")
+
+  deliverUi({ seq: 1, at: Date.now(), event: { type: "machine.updated", machine: { ...machine, status: "starting" } } })
+
+  expect(f.desktop.service.claim(session.sessionId)).toBe(true)
+  let closed = false
+  f.desktop.service.open(session.sessionId, {
+    send: () => 1,
+    close: () => {
+      closed = true
+    },
+  })
+  f.runtime.kernel.publish({ type: "machine.updated", machine: { ...machine, status: "stopped" } })
+  await f.runtime.kernel.flushEvents?.()
+  await until(() => closed)
+})

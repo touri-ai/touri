@@ -1,4 +1,4 @@
-import type { Bot, BrowserFailureInfo } from "@touri/contracts"
+import { type Bot, type BrowserFailureInfo, desktopStreamVisibility } from "@touri/contracts"
 import { useEffect, useRef, useState } from "react"
 import type { UiApi } from "../../api/client"
 import { browserFailureCause } from "../../components/browserToolPresentation"
@@ -7,7 +7,9 @@ import { computerKillSwitchEvent } from "../../computerKillSwitch"
 import { t } from "../../i18n"
 import { useComputerPresence } from "../../machineIntents"
 import { createDesktopKeyboard } from "./keyboard"
+import { saveKeyboardLayout, useKeyboardLayout } from "./keyboardLayout"
 import { DisplayLiveness, isEmptyDisplay } from "./liveness"
+import { getInitialQuality, getStreamQuality } from "./streamQuality"
 import { VmCapabilityNotice } from "./VmCapabilityNotice"
 import { withTimeout } from "./withTimeout"
 import "./desktop.css"
@@ -48,6 +50,9 @@ export const DesktopPanel = ({
   const manualAvailable = bot.machine === "vm"
   const slot = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
+  const layout = useKeyboardLayout(bot.id)
+  const keyboardLayout = useRef(layout)
+  keyboardLayout.current = layout
   const [phase, setPhase] = useState<Phase>("connecting")
   const [error, setError] = useState<string | null>(null)
   const [emptyDisplay, setEmptyDisplay] = useState(false)
@@ -109,6 +114,13 @@ export const DesktopPanel = ({
     let retries = 0
     let monitor = new DisplayLiveness(performance.now())
     let sampleNow: (() => void) | null = null
+    let inView = true
+    let quality = getInitialQuality(performance.now())
+    const updateVisibility = () => {
+      if (!socket || !connected || socket.readyState !== WebSocket.OPEN) return
+      const visible = !document.hidden && inView
+      socket.send(visible ? desktopStreamVisibility.resume : desktopStreamVisibility.pause)
+    }
     const keyboard = createDesktopKeyboard(
       {
         sendKey: (symbol, code, down) => {
@@ -130,6 +142,7 @@ export const DesktopPanel = ({
         },
       },
       /Mac|iPhone|iPad/.test(navigator.platform),
+      () => keyboardLayout.current,
     )
     const releaseSession = () => {
       const id = sessionId
@@ -176,10 +189,12 @@ export const DesktopPanel = ({
       }
     }
     const visibility = () => {
+      quality = { ...quality, bytes: 0, startedAt: performance.now() }
       // Browsers suspend timers in hidden windows; allow a fresh display sample on return.
       keyboard.reset()
       textarea.value = ""
       monitor = new DisplayLiveness(performance.now())
+      updateVisibility()
       if (!document.hidden) sampleNow?.()
     }
     const canType = () => connected && displayed && viewer !== null && !viewer.viewOnly
@@ -202,7 +217,7 @@ export const DesktopPanel = ({
     const keydown = (event: KeyboardEvent) => {
       // Let the browser provide local clipboard text instead of pasting stale
       // guest clipboard contents before its native paste event arrives.
-      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "v") return
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "v") return
       if (canType()) keyboard.keydown(event)
     }
     const keyup = (event: KeyboardEvent) => {
@@ -244,6 +259,14 @@ export const DesktopPanel = ({
     container.addEventListener("mousedown", focusInput, true)
     container.addEventListener("focusin", focusInput)
     for (const event of pointerEvents) container.addEventListener(event, pointerInput, true)
+    const observer =
+      typeof IntersectionObserver === "undefined"
+        ? null
+        : new IntersectionObserver((entries) => {
+            inView = entries.some((entry) => entry.isIntersecting)
+            visibility()
+          })
+    observer?.observe(container)
     document.addEventListener("visibilitychange", visibility)
     window.addEventListener(computerKillSwitchEvent, revoke)
     setPhase("connecting")
@@ -283,6 +306,11 @@ export const DesktopPanel = ({
       socket = new WebSocket(socketUrl)
       const currentSocket = socket
       socket.binaryType = "arraybuffer"
+      socket.addEventListener("message", (event: MessageEvent<ArrayBuffer>) => {
+        if (!connected || !viewer || socket !== currentSocket || document.hidden || !inView) return
+        quality = getStreamQuality(quality, event.data.byteLength, performance.now())
+        if (viewer.qualityLevel !== quality.quality) viewer.qualityLevel = quality.quality
+      })
       socket.addEventListener("close", (event) => {
         if (!active || socket !== currentSocket) return
         console.warn("Conexão da tela encerrada", { botId: bot.id, code: event.code })
@@ -309,6 +337,7 @@ export const DesktopPanel = ({
         if (!active || failed || viewer !== currentViewer) return
         clearTimeout(handshakeTimer)
         connected = true
+        quality = getInitialQuality(performance.now())
         lastConnection.current = bot.id
         monitor = new DisplayLiveness(performance.now())
         // All keyboard input goes through the composition-aware textarea.
@@ -316,7 +345,7 @@ export const DesktopPanel = ({
         if (canvas) canvas.tabIndex = -1
         // An occluded window (e.g. a popout behind the main window) still shows its first image.
         const sample = () => {
-          if (!active || failed || !connected || !viewer || (document.hidden && displayed)) return
+          if (!active || failed || !connected || !viewer || ((document.hidden || !inView) && displayed)) return
           const at = performance.now()
           try {
             const image = viewer.getImageData()
@@ -328,6 +357,7 @@ export const DesktopPanel = ({
               setReconnecting(false)
               viewer.viewOnly = !session.control
               setControlling(session.control)
+              updateVisibility()
               retries = 0
             }
             if (!monitor.alive(at)) fail(displayed ? undefined : FIRST_IMAGE_TIMEOUT_MESSAGE)
@@ -362,6 +392,7 @@ export const DesktopPanel = ({
       container.removeEventListener("mousedown", focusInput, true)
       container.removeEventListener("focusin", focusInput)
       for (const event of pointerEvents) container.removeEventListener(event, pointerInput, true)
+      observer?.disconnect()
       document.removeEventListener("visibilitychange", visibility)
       window.removeEventListener(computerKillSwitchEvent, revoke)
     }
@@ -429,7 +460,7 @@ export const DesktopPanel = ({
       <header className="desktop-toolbar">
         <h2 className="desktop-title">{t("Tela do computador")}</h2>
         <span className="desktop-mode" role="status">
-          {controlling ? t("Você está no controle") : t("Acompanhar a tela")}
+          {getOwnershipLabel(controlling, humanControl, bot.name)}
         </span>
         <div className="toolbar-actions">
           {manualAvailable && (
@@ -478,7 +509,7 @@ export const DesktopPanel = ({
           </button>
         </div>
       </header>
-      <VmCapabilityNotice bot={bot} />
+      {!controlling && <VmCapabilityNotice bot={bot} />}
       {manualAvailable && humanControl && (
         <p className="desktop-observe-note" role="status">
           {controlling
@@ -558,7 +589,19 @@ export const DesktopPanel = ({
                 )}
           </p>
         )}
-        <label htmlFor={`desktop-input-${bot.id}`}>{t("Digitar na VM")}</label>
+        <div className="desktop-input-options">
+          <label htmlFor={`desktop-input-${bot.id}`}>{t("Digitar na VM")}</label>
+          <label className="desktop-layout">
+            <span className="visually-hidden">{t("Layout do teclado")}</span>
+            <select
+              value={layout}
+              onChange={(event) => saveKeyboardLayout(bot.id, event.target.value === "br" ? "br" : "us")}
+            >
+              <option value="br">{t("Português (ABNT2)")}</option>
+              <option value="us">{t("English (US)")}</option>
+            </select>
+          </label>
+        </div>
         <textarea
           ref={input}
           id={`desktop-input-${bot.id}`}
@@ -578,4 +621,11 @@ export const DesktopPanel = ({
       </div>
     </section>
   )
+}
+
+const getOwnershipLabel = (controlling: boolean, humanControl: boolean, name: string) => {
+  if (controlling) return t("Você está no controle · {name} aguarda", { name })
+  if (humanControl) return t("{name} aguarda você devolver o controle", { name })
+
+  return t("Acompanhar a tela")
 }

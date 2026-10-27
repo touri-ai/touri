@@ -1364,6 +1364,11 @@ export const ptBR = {
   "Devolver ao bot": "Devolver ao bot",
   "Você está no controle. O bot aguarda você terminar.": "Você está no controle. O bot aguarda você terminar.",
   "Você está no controle": "Você está no controle",
+  "Você está no controle · {name} aguarda": "Você está no controle · {name} aguarda",
+  "{name} aguarda você devolver o controle": "{name} aguarda você devolver o controle",
+  "Layout do teclado": "Layout do teclado",
+  "Português (ABNT2)": "Português (ABNT2)",
+  "English (US)": "English (US)",
   "Assumir controle": "Assumir controle",
   "Acompanhar a tela": "Acompanhar a tela",
   "Um comando de cada vez no computador do bot. Limite: 25 s e 64 KB de saída. Pastas e variáveis não ficam salvas.":
@@ -4761,6 +4766,11 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Devolver ao bot": "Return to bot",
   "Você está no controle. O bot aguarda você terminar.": "You are in control. The bot is waiting for you to finish.",
   "Você está no controle": "You are in control",
+  "Você está no controle · {name} aguarda": "You are in control · {name} waits",
+  "{name} aguarda você devolver o controle": "{name} is waiting for you to hand back control",
+  "Layout do teclado": "Keyboard layout",
+  "Português (ABNT2)": "Portuguese (ABNT2)",
+  "English (US)": "English (US)",
   "Assumir controle": "Take control",
   "Acompanhar a tela": "Watch the screen",
   "Um comando de cada vez no computador do bot. Limite: 25 s e 64 KB de saída. Pastas e variáveis não ficam salvas.":

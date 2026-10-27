@@ -190,3 +190,31 @@
   border-bottom: 1px solid var(--border);
   background: var(--surface-control);
 }
+
+.desktop-input-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+}
+
+.desktop-layout select {
+  max-width: 100%;
+  min-height: 32px;
+  padding: var(--space-4) var(--space-8);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  background: var(--surface-control);
+  font: inherit;
+}
+
+.desktop-input-observe .desktop-input-options {
+  display: none;
+}
+
+.desktop-mode {
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}

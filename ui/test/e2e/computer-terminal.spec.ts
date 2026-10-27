@@ -49,7 +49,7 @@ test.afterAll(async () => {
 for (const width of [1440, 390]) {
   test(`real desktop terminal accepts commands, accents and paste at ${width}px`, async ({ page }, info) => {
     test.setTimeout(240_000)
-    await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 })
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
     await page.goto(
       `/test/e2e/fixtures/desktop.html?computer&running&endpoint=${encodeURIComponent(endpoint)}&bot=${botId}`,
     )
@@ -94,7 +94,7 @@ for (const width of [1440, 390]) {
     const pasted = page.waitForResponse(
       (response) => response.url().endsWith("/text") && response.request().method() === "POST",
     )
-    await keyboard.press("Control+v")
+    await keyboard.press(width === 390 ? "Control+Shift+v" : "Control+v")
     expect((await pasted).ok()).toBe(true)
     await keyboard.press("Enter")
     await expect.poll(() => getProof()).toContain("colado")

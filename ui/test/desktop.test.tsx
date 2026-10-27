@@ -44,6 +44,9 @@ const fixture = () => {
       : {},
   )
   class Socket extends EventTarget {
+    static OPEN = 1
+    readyState = 1
+    send = vi.fn()
     close = vi.fn()
     constructor(public url: string) {
       super()
@@ -807,12 +810,12 @@ test("takeover keeps pointer and keyboard input off until its own first frame", 
   await act(async () => viewer.dispatchEvent(new Event("connect")))
   expect(viewer.viewOnly).toBe(true)
   expect(screen.getByLabelText("Digitar na VM")).toBeDisabled()
-  expect(screen.queryByText("Você está no controle")).toBeNull()
+  expect(screen.queryByText("Você está no controle · Tela aguarda")).toBeNull()
   viewer.getImageData = () => pulse(2)
   await act(async () => vi.advanceTimersByTimeAsync(1_000))
   expect(viewer.viewOnly).toBe(false)
   expect(screen.getByLabelText("Digitar na VM")).toBeEnabled()
-  expect(screen.getByText("Você está no controle")).toBeInTheDocument()
+  expect(screen.getByText("Você está no controle · Tela aguarda")).toBeInTheDocument()
 })
 
 test("the empty screen localizes assisted-decision fallback without internal markers", async () => {
@@ -913,4 +916,100 @@ test("oversized native paste stays local and explains the input limit", async ()
 
   expect(screen.getByRole("alert")).toHaveTextContent("Cole até 16.384 caracteres por vez.")
   expect(f.request.mock.calls.some(([route]) => route === "POST /desktop/:id/text")).toBe(false)
+})
+
+test("ABNT2 AltGr produces text without forwarding synthetic Control and Alt", () => {
+  const sendKey = vi.fn()
+  const keyboard = createDesktopKeyboard({ sendKey }, false)
+  keyboard.keydown(new KeyboardEvent("keydown", { key: "Control", code: "ControlLeft", ctrlKey: true }))
+  keyboard.keydown(new KeyboardEvent("keydown", { key: "AltGraph", code: "AltRight", ctrlKey: true, altKey: true }))
+  const alternate = new KeyboardEvent("keydown", { key: "²", code: "Digit2", ctrlKey: true, altKey: true })
+
+  keyboard.keydown(alternate)
+  keyboard.input("²", false)
+  keyboard.keyup(new KeyboardEvent("keyup", { key: "AltGraph", code: "AltRight" }))
+
+  expect(sendKey.mock.calls).toEqual([
+    [0xffe3, null, true],
+    [0xffe3, null, false],
+    [178, null],
+  ])
+  expect(alternate.defaultPrevented).toBe(false)
+})
+
+test("dead key composition commits Brazilian accents and literal accent symbols once", () => {
+  const sendKey = vi.fn()
+  const keyboard = createDesktopKeyboard({ sendKey }, false)
+  const dead = new KeyboardEvent("keydown", { key: "Dead", code: "Quote" })
+
+  keyboard.keydown(dead)
+  keyboard.compositionstart()
+  keyboard.compositionend("áãêç")
+  keyboard.input("áãêç", false)
+  keyboard.input("~^`´", false)
+
+  expect(sendKey.mock.calls.map(([symbol]) => symbol)).toEqual([225, 227, 234, 231, 126, 94, 96, 180])
+  expect(dead.defaultPrevented).toBe(false)
+})
+
+test("a selected ABNT2 profile handles systems that report AltGr as Ctrl+Alt", () => {
+  const sendKey = vi.fn()
+  const keyboard = createDesktopKeyboard({ sendKey }, false, () => "br")
+  const event = new KeyboardEvent("keydown", { key: "q", code: "KeyQ", ctrlKey: true, altKey: true, cancelable: true })
+
+  keyboard.keydown(event)
+
+  expect(event.defaultPrevented).toBe(true)
+  expect(sendKey).toHaveBeenCalledExactlyOnceWith(47, null)
+})
+
+test("layout changes persist across a viewer remount without reconnecting or granting control", async () => {
+  const f = fixture()
+  const view = render(<DesktopPanel bot={bot} api={f.api} />)
+  await connected()
+  fireEvent.change(screen.getByLabelText("Layout do teclado"), { target: { value: "br" } })
+
+  expect(viewers).toHaveLength(1)
+  expect(screen.getByLabelText("Digitar na VM")).toBeDisabled()
+  view.unmount()
+  render(<DesktopPanel bot={bot} api={f.api} />)
+  await connected()
+
+  expect(screen.getByLabelText("Layout do teclado")).toHaveValue("br")
+  expect(
+    f.request.mock.calls.filter(([route]) => route === "POST /bots/:id/desktop").every(([, body]) => !body.control),
+  ).toBe(true)
+})
+
+test("hiding pauses screen demand and showing resumes without giving the computer back", async () => {
+  const f = fixture()
+  render(<DesktopPanel bot={bot} api={f.api} />)
+  await connected()
+  const socket = f.sockets.at(-1)
+  if (!socket) throw new Error("Missing socket")
+
+  vi.spyOn(document, "hidden", "get").mockReturnValue(true)
+  fireEvent(document, new Event("visibilitychange"))
+
+  expect(socket.send).toHaveBeenLastCalledWith("desktop:pause")
+  vi.spyOn(document, "hidden", "get").mockReturnValue(false)
+  fireEvent(document, new Event("visibilitychange"))
+  expect(socket.send).toHaveBeenLastCalledWith("desktop:resume")
+  expect(f.request.mock.calls.some(([route]) => route === "POST /bots/:id/desktop/return")).toBe(false)
+})
+
+test.each(["a", "c", "v", "x", "z"])("Mac Command+%s maps to Control and releases its letter", (key) => {
+  const sendKey = vi.fn()
+  const keyboard = createDesktopKeyboard({ sendKey }, true)
+
+  keyboard.keydown(new KeyboardEvent("keydown", { key: "Meta", code: "MetaLeft" }))
+  keyboard.keydown(new KeyboardEvent("keydown", { key, code: `Key${key.toUpperCase()}`, metaKey: true }))
+  keyboard.keyup(new KeyboardEvent("keyup", { key: "Meta", code: "MetaLeft" }))
+
+  expect(sendKey.mock.calls).toEqual([
+    [0xffe3, null, true],
+    [key.codePointAt(0), null, true],
+    [0xffe3, null, false],
+    [key.codePointAt(0), null, false],
+  ])
 })

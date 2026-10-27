@@ -1,3 +1,5 @@
+import type { KeyboardLayout } from "./keyboardLayout"
+
 type KeyboardTarget = {
   sendKey: (keysym: number, code: string | null, down?: boolean) => void
   pasteText?: (text: string) => Promise<void>
@@ -19,7 +21,7 @@ const namedKeys: Record<string, number> = {
   Insert: 0xff63,
   Delete: 0xffff,
 }
-const symbolFor = (text: string): number => {
+const getSymbol = (text: string): number => {
   if (text === "\n" || text === "\r") return namedKeys.Enter ?? 0xff0d
   if (text === "\t") return namedKeys.Tab ?? 0xff09
   const point = text.codePointAt(0) ?? 0
@@ -27,8 +29,13 @@ const symbolFor = (text: string): number => {
 }
 
 /** A local textarea commits composed text once; physical shortcuts are sent separately. */
-export const createDesktopKeyboard = (target: KeyboardTarget, mac: boolean) => {
+export const createDesktopKeyboard = (
+  target: KeyboardTarget,
+  mac: boolean,
+  getLayout: () => KeyboardLayout = () => "us",
+) => {
   const held = new Map<string, number>()
+  let altGraph = false
   let composing = false
   let committedComposition: string | null = null
   let pending = Promise.resolve()
@@ -48,7 +55,7 @@ export const createDesktopKeyboard = (target: KeyboardTarget, mac: boolean) => {
   }
   const text = (value: string) => {
     const send = () => {
-      for (const character of value) target.sendKey(symbolFor(character), null)
+      for (const character of value) target.sendKey(getSymbol(character), null)
     }
     if (target.pasteText && [...value].some((character) => (character.codePointAt(0) ?? 0) > 0xff)) {
       release()
@@ -82,11 +89,26 @@ export const createDesktopKeyboard = (target: KeyboardTarget, mac: boolean) => {
       generation++
       release(true)
       composing = false
+      altGraph = false
       committedComposition = null
     },
     keydown: (event: KeyboardEvent) => {
       if (event.isComposing || event.keyCode === 229 || composing || event.key === "Dead") return
       committedComposition = null
+      if (event.key === "AltGraph" || event.getModifierState("AltGraph")) {
+        altGraph = true
+        release()
+        return
+      }
+      if (altGraph && event.ctrlKey && event.altKey) return
+      // Some systems report ABNT2 AltGr as Ctrl+Alt instead of AltGraph.
+      const alternate = getLayout() === "br" && event.ctrlKey && event.altKey ? getAlternate(event) : undefined
+      if (alternate) {
+        event.preventDefault()
+        release()
+        text(alternate)
+        return
+      }
       let symbol = namedKeys[event.key]
       if (/^F([1-9]|1[0-2])$/.test(event.key)) symbol = 0xffbd + Number(event.key.slice(1))
       if (event.key === "Control" || (mac && event.key === "Meta")) symbol = 0xffe3
@@ -94,7 +116,7 @@ export const createDesktopKeyboard = (target: KeyboardTarget, mac: boolean) => {
       else if (event.key === "Alt" && !mac) symbol = 0xffe9
       else if (event.key === "Shift") symbol = 0xffe1
       else if ((event.ctrlKey || event.metaKey || (!mac && event.altKey)) && [...event.key].length === 1)
-        symbol = symbolFor(event.key)
+        symbol = getSymbol(event.key)
       if (symbol === undefined) return
       event.preventDefault()
       const code = event.code || event.key
@@ -102,6 +124,7 @@ export const createDesktopKeyboard = (target: KeyboardTarget, mac: boolean) => {
       held.set(code, symbol)
     },
     keyup: (event: KeyboardEvent) => {
+      if (event.key === "AltGraph" || event.code === "AltRight") altGraph = false
       const key = event.code || event.key
       const symbol = held.get(key)
       if (symbol === undefined) return
@@ -129,4 +152,23 @@ export const createDesktopKeyboard = (target: KeyboardTarget, mac: boolean) => {
       return true
     },
   }
+}
+
+const abntAlternates: Record<string, string> = {
+  Digit1: "¹",
+  Digit2: "²",
+  Digit3: "³",
+  Digit4: "£",
+  Digit5: "¢",
+  Digit6: "¬",
+  KeyQ: "/",
+  KeyW: "?",
+  KeyE: "°",
+  KeyC: "₢",
+}
+
+const getAlternate = (event: KeyboardEvent) => {
+  if ([...event.key].length === 1 && (event.key.codePointAt(0) ?? 0) > 0x7f) return event.key
+
+  return abntAlternates[event.code]
 }
