@@ -793,6 +793,9 @@
 .bot-panel-expanded .computer-summary p:not([role="alert"]):not([role="status"]) {
   display: none;
 }
+.bot-panel-expanded .computer-summary p[role="status"] {
+  order: 1;
+}
 /* End r8 panel expanded navigation. */
 
 .bot-details-advanced {

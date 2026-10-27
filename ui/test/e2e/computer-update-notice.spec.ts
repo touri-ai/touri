@@ -12,6 +12,10 @@ for (const width of [1440, 390]) {
       await expect(notice).toHaveCount(1)
       await page.screenshot({ path: info.outputPath(`computer-${outcome}-${width}.png`), fullPage: true })
       await expect(notice).toBeVisible()
+      const noticeBounds = await notice.boundingBox()
+      const openBounds = await page.getByRole("button", { name: "Acompanhar a tela", exact: true }).boundingBox()
+      if (!noticeBounds || !openBounds) throw new Error("Computer notice or primary action is missing")
+      expect(openBounds.y).toBeLessThan(noticeBounds.y)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
       const accessibility = await new AxeBuilder({ page }).include(".computer-summary").analyze()
       expect(accessibility.violations.filter((entry) => ["serious", "critical"].includes(entry.impact ?? ""))).toEqual(
