@@ -96,6 +96,7 @@ const getFixture = async ({
   return {
     engine,
     calls,
+    redact: runtime.kernel.redact,
     emit: (event: CdpEvent) => onEvent(event),
     disconnect: () => {
       closed = true
@@ -431,6 +432,35 @@ test("human navigation rejects non-web schemes and pointer coordinates outside t
   expect(calls.some((call) => call.method === "Page.navigate" || call.method === "Input.dispatchMouseEvent")).toBe(
     false,
   )
+})
+
+test("typed takeover text protects whole entries without redacting single characters", async () => {
+  const { engine, calls, redact } = await getFixture()
+  await requestTakeover(engine)
+  await engine.holdTakeoverForPerson({ tabId: "tab", personId: "authorized" })
+  const frame = await engine.takeoverFrame({ tabId: "tab", botId: "bot", signal: new AbortController().signal })
+  if (!frame) throw new Error("Synthetic frame missing")
+  const observed = {
+    tabId: "tab",
+    botId: "bot",
+    targetEpoch: frame.targetEpoch,
+    width: frame.width,
+    height: frame.height,
+    signal: new AbortController().signal,
+  }
+  const typeText = (text: string) => engine.takeoverInput({ ...observed, input: { kind: "text", text } })
+  const pressKey = (key: string) =>
+    engine.takeoverInput({ ...observed, input: { kind: "key", phase: "down", key, code: key, modifiers: 0 } })
+
+  for (const character of "synthetic-entry-73x") await typeText(character)
+  await pressKey("Backspace")
+  await pressKey("Tab")
+  await typeText("ab")
+  await engine.releaseTakeover("tab")
+
+  expect(calls.filter((call) => call.method === "Input.insertText")).toHaveLength(20)
+  expect(redact("output https://example.test/a/b")).toBe("output https://example.test/a/b")
+  expect(redact("value synthetic-entry-73 sent")).toBe("value [REDACTED] sent")
 })
 
 test("oversized live images retain interactive screenshot fallback without restarting capture", async () => {

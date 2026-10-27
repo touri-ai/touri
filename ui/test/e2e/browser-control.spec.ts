@@ -323,8 +323,11 @@ for (const width of [1440, 390]) {
         await expect.poll(async () => (await getState()).selection.length).toBeGreaterThan(5)
       }
       await clickTarget(page, "nameBounds", width === 390)
-      await page.keyboard.type("teste local")
+      // Human cadence sends one character per batch; none of them may become an app-wide redaction.
+      await page.keyboard.type("teste local", { delay: 40 })
       await expect.poll(async () => (await getState()).name).toBe("teste local")
+      await page.screenshot({ path: join(evidence, `typed-${phase}-${width}-${theme}.png`) })
+      await expect(page.getByRole("textbox", { name: "Endereço do navegador" })).toHaveValue(`${endpoint}/page`)
       await page.keyboard.press("Control+A")
       await page.getByRole("textbox", { name: "Entrada de teclado para o navegador" }).evaluate((element) => {
         const transfer = new DataTransfer()

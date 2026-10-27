@@ -7,6 +7,7 @@ import type {
   BrowserElement,
   BrowserErrorCode,
   BrowserSnapshot,
+  BrowserTakeoverInput,
   BrowserTakeoverReason,
   BrowserTarget,
   GroupDelegation,
@@ -800,6 +801,9 @@ const SELECT_FIELD_CONTENTS = `function(){const t=this;if(typeof t.select==="fun
 const FIELD_IS_EMPTY = `function(){const t=this;if("value" in t)return String(t.value||"")==="";return (t.textContent||"")===""}`
 const FORCE_CLEAR_FIELD = `function(){const t=this;if("value" in t){const proto=t instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;const setter=Object.getOwnPropertyDescriptor(proto,"value")?.set;if(setter)setter.call(t,"");else t.value=""}else{t.textContent=""}t.dispatchEvent(new InputEvent("input",{bubbles:true,inputType:"deleteContentBackward"}));t.dispatchEvent(new Event("change",{bubbles:true}));return true}`
 const BACKSPACE_KEY_CODE = 8
+// Shorter typed entries are ordinary words and characters; masking them everywhere corrupts output.
+const MIN_PROTECTED_TYPED_ENTRY_LENGTH = 8
+const TYPED_ENTRY_NEUTRAL_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "Dead", "Process"])
 
 const callOnNode = async (client: CdpClient, node: NodeRef, functionDeclaration: string): Promise<unknown> => {
   const resolved = cdpResult(
@@ -4826,6 +4830,7 @@ export const createBrowserEngine = ({
     resolution: "replied" | "expired" | "canceled"
     handbackNote: string
   }): NonNullable<TabState["takeover"]> | null => {
+    protectTypedEntry(tab)
     const takeover = tab.takeover
     if (!takeover) return null
     stopTakeoverStream(tab)
@@ -5296,6 +5301,38 @@ export const createBrowserEngine = ({
 
   const takeoverViewports = new WeakMap<TabState, { width: number; height: number; sessionId: string }>()
   const pendingTakeoverViewports = new WeakMap<TabState, Promise<void>>()
+  // Human typing arrives in small batches, often one character each. Registering each batch as a
+  // redaction value masked those characters in every bot reply, log and structured key of the process.
+  // Collect one entry until the person leaves the field, then protect the whole entry.
+  const typedEntries = new WeakMap<TabState, string>()
+  const protectTypedEntry = (tab: TabState): void => {
+    const entry = typedEntries.get(tab)?.trim() ?? ""
+    typedEntries.delete(tab)
+    if (entry.length >= MIN_PROTECTED_TYPED_ENTRY_LENGTH) kernel.addRedactionValue(entry)
+  }
+  const trackTypedEntry = (tab: TabState, input: BrowserTakeoverInput): void => {
+    const entry = typedEntries.get(tab) ?? ""
+    if (input.kind === "text") {
+      typedEntries.set(tab, entry + input.text)
+      return
+    }
+    if (input.kind === "wheel" || (input.kind === "pointer" && input.phase !== "down")) return
+    if (input.kind !== "key") {
+      protectTypedEntry(tab)
+      return
+    }
+    if (input.phase === "up" || TYPED_ENTRY_NEUTRAL_KEYS.has(input.key)) return
+    const plain = (input.modifiers & 7) === 0
+    if (plain && input.key === "Backspace") {
+      typedEntries.set(tab, entry.slice(0, -1))
+      return
+    }
+    if (plain && input.key.length === 1) {
+      typedEntries.set(tab, entry + input.key)
+      return
+    }
+    protectTypedEntry(tab)
+  }
 
   const takeoverFrame: BrowserEngine["takeoverFrame"] = async ({ tabId, botId, signal, viewport, stream }) => {
     const owned = getTab({ tabId, botId, allowHeld: true })
@@ -5429,6 +5466,7 @@ export const createBrowserEngine = ({
           operationSignal.throwIfAborted()
           if (!tab.info.heldByUser || tab.secretMode) return false
           if (operationSignal.aborted) return false
+          trackTypedEntry(tab, input)
           if (input.kind === "navigate") {
             const url = input.action === "goto" ? normalizeBrowserUrl(input.url ?? "") : undefined
             if (url === null) return false
@@ -5465,7 +5503,6 @@ export const createBrowserEngine = ({
           takeoverStreams.get(tab)?.source.refresh()
           if (input.kind === "text") {
             await protectTakeoverDocument(tab, true)
-            kernel.addRedactionValue(input.text)
             await cdp.call("Input.insertText", { text: input.text }, sessionId)
             return true
           }
