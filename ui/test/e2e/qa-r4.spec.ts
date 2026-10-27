@@ -3,14 +3,20 @@ import { resolve } from "node:path"
 import { expect, type Page, test } from "@playwright/test"
 import { showBotPanel } from "./home-navigation"
 
+const ownershipStatus = "Você está no controle · mark aguarda"
 const frame = readFileSync(resolve(import.meta.dirname, "fixtures/qa-r4-desktop.js"), "utf8")
 const evidence = resolve(import.meta.dirname, "../../../docs/evidence/qa-r4")
 const mockFrames = async (page: Page) => {
   await page.route("**/@novnc_novnc.js*", (route) => route.fulfill({ contentType: "text/javascript", body: frame }))
   await page.addInitScript(() => {
-    window.WebSocket = class extends EventTarget {
-      close() {}
-    } as unknown as typeof WebSocket
+    Object.assign(window, {
+      WebSocket: class extends EventTarget {
+        static readonly OPEN = 1
+        readonly readyState = 1
+        send() {}
+        close() {}
+      },
+    })
     localStorage.removeItem("touri.workspace.v1")
   })
 }
@@ -90,17 +96,17 @@ test("takeover waits for a frame and reconnection gives bounded feedback", async
   await expect(
     page.getByText("O bot está aguardando. O controle ficará disponível quando a imagem chegar."),
   ).toBeVisible()
-  await expect(page.getByText("Você está no controle", { exact: true })).toHaveCount(0)
+  await expect(page.getByText(ownershipStatus, { exact: true })).toHaveCount(0)
   await expect(page.getByLabel("Digitar na VM")).toBeDisabled()
   await shot(page, "takeover-awaiting-frame")
   await setFrame(page, "page")
-  await expect(page.getByText("Você está no controle", { exact: true })).toBeVisible()
+  await expect(page.getByText(ownershipStatus, { exact: true })).toBeVisible()
   await expect(page.getByLabel("Digitar na VM")).toBeEnabled()
   await setFrame(page, "none")
   await page.getByRole("button", { name: "Reconectar tela", exact: true }).click()
   await expect(page.getByRole("button", { name: "Reconectando tela…" })).toBeVisible()
   await expect(page.getByLabel("Digitar na VM")).toBeDisabled()
-  await expect(page.getByText("Você está no controle", { exact: true })).toHaveCount(0)
+  await expect(page.getByText(ownershipStatus, { exact: true })).toHaveCount(0)
   await expect(
     page.getByText("A tela da VM conectou, mas não enviou nenhuma imagem. Tente reconectar a tela."),
   ).toBeVisible({ timeout: 12_000 })
