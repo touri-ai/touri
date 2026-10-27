@@ -1265,3 +1265,17 @@ test("daily maintenance uses its injected clock and reschedules an early callbac
   expect(getProgress().completedAt).toBe(scheduled.getNow())
   expect(scheduled.getNextDelay()).toBe(86400_000)
 })
+
+test("a clock rollback keeps the daily maintenance delay within the timer limit", async () => {
+  const scan = await makeScanFixture()
+  const scheduled = makeScheduledMaintenance(scan, () => Bun.sleep(0), scan.stages.run, undefined, Date.UTC(2026, 9, 1))
+  await scheduled.runNext()
+  const completedAt = scheduled.getNow()
+
+  await scheduled.runNext(undefined, -30 * 86400_000)
+
+  expect(scheduled.getNow()).toBe(completedAt - 30 * 86400_000)
+  expect(scheduled.getNextDelay()).toBe(86400_000)
+  expect(scheduled.maintenance.snapshot().running).toBe(false)
+  expect(scheduled.getErrors()).toBe(0)
+})

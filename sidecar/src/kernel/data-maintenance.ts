@@ -527,7 +527,7 @@ export const createStorageMaintenance = ({
       }
       if (!status.running) {
         if (progress.completedAt && progress.completedAt > getNow() - DAY) {
-          timer = schedule(step, progress.completedAt + DAY - getNow())
+          timer = schedule(step, Math.min(DAY, progress.completedAt + DAY - getNow()))
           return
         }
         status = { running: true, processed: progress.cursor, total: progress.total }
