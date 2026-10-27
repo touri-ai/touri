@@ -1033,9 +1033,11 @@ const makeScheduledMaintenance = (
   yieldBatch: () => Promise<void>,
   runStage: PerformanceStageRunner,
   attachmentReferenceTimeoutMs = 10 * 60_000,
+  initialNow = Date.now(),
 ) => {
   // Only this fixture owns the next callback; tests advance it without waiting a day.
   let scheduled: { action: () => Promise<void>; delay: number; timer: ReturnType<typeof setTimeout> } | undefined
+  let now = initialNow
   let errors = 0
   const logs: string[] = []
   const maintenance = createStorageMaintenance({
@@ -1049,6 +1051,7 @@ const makeScheduledMaintenance = (
     yieldBatch,
     runStage,
     attachmentReferenceTimeoutMs,
+    getNow: () => now,
     log: ({ msg }) => logs.push(msg),
     schedule: (action, delay) => {
       const timer = setTimeout(() => {}, 86400_000)
@@ -1065,15 +1068,18 @@ const makeScheduledMaintenance = (
     getErrors: () => errors,
     getLogs: () => logs,
     getNextDelay,
-    runNext: async (isReady = () => (getNextDelay() ?? 0) >= 1000) => {
+    getNow: () => now,
+    runNext: async (isReady = () => (getNextDelay() ?? 0) >= 1000, elapsed?: number) => {
+      const resumedAt = now + (elapsed ?? scheduled?.delay ?? 0)
       // Compaction and retention can require several short preparation ticks.
       for (let pass = 0; pass < 100; pass++) {
         const next = scheduled
         if (!next) throw new Error("Missing maintenance callback")
         clearTimeout(next.timer)
         scheduled = undefined
+        now += pass === 0 && elapsed !== undefined ? elapsed : next.delay
         await next.action()
-        if (isReady()) return
+        if (isReady()) return resumedAt
       }
       throw new Error("Maintenance did not finish its bounded preparation")
     },
@@ -1167,40 +1173,109 @@ test("a commit after the reference worker reads a batch defers without an error 
   expect(existsSync(orphan.path)).toBe(false)
 })
 
-test("repeated worker deferrals back off to a cap and return to the daily schedule", async () => {
-  const scan = await makeScanFixture()
-  makeOutputCandidates(scan, 1)
-  insert(scan, "seed", [])
-  const writer = new Database(scan.database.filename)
-  scanCleanups.add(() => {
-    writer.close()
-  })
-  let scanning = false
-  const scheduled = makeScheduledMaintenance(
-    scan,
-    async () => {
-      if (!scanning) return
-      writer.query("UPDATE messages SET text = text || '.' WHERE id = 'seed'").run()
-    },
-    (stage, action, input) => {
-      if (stage === "storage_message_compaction_batch") scanning = false
-      if (stage === "storage_attachment_reference_scan") scanning = true
-      return scan.stages.run(stage, action, input)
-    },
-  )
+test.each([false, true])(
+  "repeated worker deferrals back off to a cap and return to the daily schedule (completed preparation fault: %s)",
+  async (failCompletedPreparation) => {
+    const scan = await makeScanFixture()
+    makeOutputCandidates(scan, 1)
+    insert(scan, "seed", [])
+    const writer = new Database(scan.database.filename)
+    scanCleanups.add(() => {
+      writer.close()
+    })
+    let scanning = false
+    let failPreparation = false
+    let compactionBatches = 0
+    let retentionBatches = 0
+    const scheduled = makeScheduledMaintenance(
+      scan,
+      async () => {
+        if (!scanning) return
+        writer.query("UPDATE messages SET text = text || '.' WHERE id = 'seed'").run()
+      },
+      (stage, action, input) => {
+        if (failPreparation && stage === "transcript_retention")
+          throw new Error("Synthetic completed retention failure")
+        if (stage === "storage_message_compaction_batch") {
+          scanning = false
+          compactionBatches += 1
+        }
+        if (stage === "transcript_retention") retentionBatches += 1
+        if (stage === "storage_attachment_candidate_scan") scanning = false
+        if (stage === "storage_attachment_reference_scan") scanning = true
+        return scan.stages.run(stage, action, input)
+      },
+    )
 
-  for (const delay of [1000, 2000, 4000, 8000, 16_000, 32_000, 60_000, 86400_000]) {
     await scheduled.runNext()
 
-    expect(scheduled.getNextDelay()).toBe(delay)
+    expect(scheduled.getNextDelay()).toBe(1000)
     expect(scheduled.getErrors()).toBe(0)
     expect(scheduled.maintenance.snapshot().error).toBeUndefined()
-  }
+    const preparation = { compactionBatches, retentionBatches }
+    failPreparation = failCompletedPreparation
 
-  expect(scheduled.maintenance.snapshot().running).toBe(false)
-  expect(scan.database.query("SELECT COUNT(*) AS n FROM attachments").get()).toEqual({ n: 1 })
+    for (const delay of [2000, 4000, 8000, 16_000, 32_000, 60_000, 86400_000]) {
+      await scheduled.runNext()
+
+      expect(scheduled.getNextDelay()).toBe(delay)
+      expect(scheduled.getErrors()).toBe(0)
+      expect(scheduled.maintenance.snapshot().error).toBeUndefined()
+    }
+
+    expect({ compactionBatches, retentionBatches }).toEqual(preparation)
+    expect(scheduled.maintenance.snapshot().running).toBe(false)
+    expect(scan.database.query("SELECT COUNT(*) AS n FROM attachments").get()).toEqual({ n: 1 })
+
+    failPreparation = false
+    await scheduled.runNext()
+
+    expect(scheduled.getNextDelay()).toBe(1000)
+    expect(compactionBatches).toBeGreaterThan(preparation.compactionBatches)
+    expect(retentionBatches).toBeGreaterThan(preparation.retentionBatches)
+  },
+)
+
+test("daily maintenance uses its injected clock and reschedules an early callback for the remaining interval", async () => {
+  const scan = await makeScanFixture()
+  const scheduled = makeScheduledMaintenance(scan, () => Bun.sleep(0), scan.stages.run, undefined, Date.UTC(2026, 9, 1))
 
   await scheduled.runNext()
 
-  expect(scheduled.getNextDelay()).toBe(1000)
+  const completedAt = scheduled.getNow()
+  const getProgress = () => {
+    const row = scan.database
+      .query("SELECT value_json FROM settings WHERE key = 'storage.maintenance.progress'")
+      .get() as {
+      value_json: string
+    }
+    return JSON.parse(row.value_json) as { completedAt: number }
+  }
+  expect(getProgress().completedAt).toBe(completedAt)
+  expect(scheduled.getNextDelay()).toBe(86400_000)
+
+  await scheduled.runNext(undefined, 43200_000)
+
+  expect(getProgress().completedAt).toBe(completedAt)
+  expect(scheduled.getNextDelay()).toBe(43200_000)
+
+  const resumedAt = await scheduled.runNext()
+
+  expect(resumedAt).toBe(completedAt + 86400_000)
+  expect(getProgress().completedAt).toBe(scheduled.getNow())
+  expect(scheduled.getNextDelay()).toBe(86400_000)
+})
+
+test("a clock rollback keeps the daily maintenance delay within the timer limit", async () => {
+  const scan = await makeScanFixture()
+  const scheduled = makeScheduledMaintenance(scan, () => Bun.sleep(0), scan.stages.run, undefined, Date.UTC(2026, 9, 1))
+  await scheduled.runNext()
+  const completedAt = scheduled.getNow()
+
+  await scheduled.runNext(undefined, -30 * 86400_000)
+
+  expect(scheduled.getNow()).toBe(completedAt - 30 * 86400_000)
+  expect(scheduled.getNextDelay()).toBe(86400_000)
+  expect(scheduled.maintenance.snapshot().running).toBe(false)
+  expect(scheduled.getErrors()).toBe(0)
 })

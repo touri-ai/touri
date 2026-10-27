@@ -112,7 +112,7 @@ const liveImage = (() => {
 })()
 const releases: string[] = []
 const takeoverRequests = new Set<number>()
-const takeoverMeasurements = new Map<number, { renderMs: number; longTasks: number[] }>()
+const takeoverMeasurements = new Map<number, { renderMs: number; longTasks: number[]; cls: number }>()
 const previewReady = Promise.withResolvers<void>()
 Object.assign(window, {
   browserOutcome: {
@@ -188,6 +188,13 @@ if (root) createRoot(root).render(<App kernel={{ services: { api } }} />)
 // Bounded, synthetic interaction evidence; each observer disconnects after the requested view mounts.
 const measureTakeover = (startedAt: number): void => {
   const tasks = new Set<PerformanceEntry>()
+  const shifts = new Set<PerformanceEntry & { value: number; hadRecentInput: boolean }>()
+  const layoutShifts = new PerformanceObserver((entries) => {
+    entries.getEntries().forEach((entry) => {
+      shifts.add(entry as PerformanceEntry & { value: number; hadRecentInput: boolean })
+    })
+  })
+  layoutShifts.observe({ type: "layout-shift" })
   const longTasks = new PerformanceObserver((entries) => {
     entries.getEntries().forEach((entry) => {
       tasks.add(entry)
@@ -204,9 +211,14 @@ const measureTakeover = (startedAt: number): void => {
           tasks.add(entry)
         })
         longTasks.disconnect()
+        layoutShifts.takeRecords().forEach((entry) => {
+          shifts.add(entry as PerformanceEntry & { value: number; hadRecentInput: boolean })
+        })
+        layoutShifts.disconnect()
         takeoverMeasurements.set(startedAt, {
           renderMs,
           longTasks: Array.from(tasks).map((entry) => entry.duration),
+          cls: Array.from(shifts).reduce((total, shift) => total + (shift.hadRecentInput ? 0 : shift.value), 0),
         })
       })
     })

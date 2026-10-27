@@ -8,7 +8,7 @@ const widths = [1440, 390]
 
 widths.forEach((width) => {
   test(`person takeover stays quiet at ${width}px`, async ({ page }) => {
-    await page.setViewportSize({ width, height: 900 })
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
     await page.goto("/test/e2e/channel-takeover-harness.html?legacyTakeoverNotice=true")
     const composer = page.getByRole("textbox", { name: "Mensagem para Equipe de viagens" })
     await composer.fill("@Planejamento confira o portal de demonstração e me chame para entrar.")

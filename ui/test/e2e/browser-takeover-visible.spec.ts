@@ -109,12 +109,13 @@ for (const viewport of [
     const measurements = await page.evaluate(() => {
       const outcome = (
         window as Window & {
-          browserOutcome?: { takeoverMeasurements: Map<number, { renderMs: number; longTasks: number[] }> }
+          browserOutcome?: { takeoverMeasurements: Map<number, { renderMs: number; longTasks: number[]; cls: number }> }
         }
       ).browserOutcome
       return Array.from(outcome?.takeoverMeasurements.values() ?? [])
     })
     expect(measurements).toHaveLength(1)
+    expect(measurements.every((measurement) => measurement.cls === 0)).toBe(true)
     console.log(JSON.stringify({ width: viewport.width, takeoverMeasurements: measurements }))
   })
 
