@@ -1297,6 +1297,13 @@ Launch:
 - Each tab has a FIFO queue, so only one CDP operation runs per tab at a time. Different tabs run in parallel.
 - Every tool call has a deadline: `timeoutMs` (default 10,000, max 30,000), plus a 5s backstop for cleanup.
 - On deadline the tool calls `Page.stopLoading`, releases the queue, and returns `DEADLINE_EXCEEDED` with a snapshot when one can be taken within 2s.
+- VM browser operations consume committed runtime lifecycle notifications before deferred history
+  delivery. The router initializes its observed machine states from the runtime, so a delayed first
+  running notification does not invalidate an already running browser. After acquiring a VM lease,
+  an operation waits for earlier lifecycle events to persist before selecting its browser engine,
+  without waiting for history delivery. This wait shares the operation's deadline and cancellation;
+  a canceled wait releases the lease. Restarted connections are retired, a stuck launcher retains
+  `DEADLINE_EXCEEDED` with the reconnect guidance, and a later call reconnects without host fallback.
 - **Settle after an action.**
   1. If a navigation started, wait for `load` (within the deadline).
   2. Wait for DOM quiet: no mutations for 250 ms, at most 1.5s. This uses a `MutationObserver` installed via `Runtime.addBinding`.
