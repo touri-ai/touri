@@ -42,6 +42,7 @@ import {
 import { assignLegacyCookies } from "./legacyCookieMigration"
 import { describeNavigationFailure, isChromeErrorPage, isLoadableUrl, networkErrorCode, stripHash } from "./navigation"
 import { withOneTransientRetry } from "./retry"
+import { BrowserSandboxUnavailableError } from "./sandbox"
 import { createBrowserScreencast } from "./screencast"
 import {
   emptySession,
@@ -649,6 +650,7 @@ const causeHint = (message: string): string => {
 }
 
 const browserError = (error: unknown): BrowserFailure => {
+  if (error instanceof BrowserSandboxUnavailableError) return { errorCode: "ENGINE_UNAVAILABLE", error: error.message }
   if (error instanceof LocalBrowserUnavailableError) return { errorCode: error.errorCode, error: error.message }
   const message = errorMessage(error)
   if (/out of memory|oom/i.test(message))

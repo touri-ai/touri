@@ -10,6 +10,7 @@ import { poll } from "../kernel/policy"
 import { discardStream } from "../kernel/streams"
 import { connectCdpWebSocket, createCdpClient } from "./cdp"
 import { startBrowserDisplay } from "./display"
+import { BrowserSandboxUnavailableError, startChromeSandboxDiagnostic } from "./sandbox"
 import type { CdpClient } from "./types"
 
 type SpawnedChrome = Extract<ReturnType<Kernel["spawnTree"]>, { success: true }>
@@ -94,6 +95,8 @@ export const deriveChromeLaunchArgs = ({
   return [
     `--user-data-dir=${profile}`,
     ...(config.headless ? ["--headless=new"] : []),
+    ...(env.TOURI_BROWSER_NO_SANDBOX === "1" ? ["--no-sandbox"] : []),
+    ...(env.TOURI_BROWSER_DISABLE_DEV_SHM_USAGE === "1" ? ["--disable-dev-shm-usage"] : []),
     "--no-first-run",
     "--no-default-browser-check",
     ...deriveChromeWindowArgs({ env }),
@@ -318,7 +321,7 @@ export const createChromeLauncher = ({
     if (!spawnedResult.success) return null
     const spawned = spawnedResult
     void discardStream(spawned.stdout)
-    void discardStream(spawned.stderr)
+    const sandboxDenied = startChromeSandboxDiagnostic(spawned.stderr)
     let client: CdpClient | null = null
     try {
       const ready = await poll({
@@ -346,6 +349,7 @@ export const createChromeLauncher = ({
       const exit = await Promise.race([spawned.exited, Bun.sleep(0).then(() => null)])
       await client?.close()
       await stopSpawned(spawned)
+      if (await sandboxDenied()) throw new BrowserSandboxUnavailableError()
       if (getChromeExitCause(exit) === "memory") throw new Error("Browser process terminated: possible out of memory")
       if (getChromeExitCause(exit) === "crash") throw new Error(`Browser process crashed (exit ${exit?.code})`)
       return null
@@ -390,11 +394,12 @@ export const createChromeLauncher = ({
     }
     const spawned = spawnedResult
     void discardStream(spawned.stdout)
-    void discardStream(spawned.stderr)
+    const sandboxDenied = startChromeSandboxDiagnostic(spawned.stderr)
     const input = spawned.extra[0]?.write
     const output = spawned.extra[1]?.read
     if (!input || !output) {
       await stopSpawned(spawned)
+      if (await sandboxDenied()) throw new BrowserSandboxUnavailableError()
       return startPortFallback({ executable, profile, env })
     }
     let client: CdpClient | null = null
@@ -405,6 +410,7 @@ export const createChromeLauncher = ({
       const exit = await Promise.race([spawned.exited, Bun.sleep(0).then(() => null)])
       await client?.close()
       await stopSpawned(spawned)
+      if (await sandboxDenied()) throw new BrowserSandboxUnavailableError()
       if (getChromeExitCause(exit) === "memory") throw new Error("Browser process terminated: possible out of memory")
       return startPortFallback({ executable, profile, env })
     }

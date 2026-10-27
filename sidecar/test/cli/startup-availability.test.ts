@@ -1,5 +1,6 @@
 import { expect, mock, test } from "bun:test"
 import { createStartupAvailability } from "../../src/cli/startupAvailability"
+import type { WebInterceptArgs } from "../../src/kernel"
 
 const getRequest = (path: string) => {
   const url = new URL(path, "http://127.0.0.1:18795")
@@ -41,4 +42,36 @@ test("ready requests still pass through existing authentication", async () => {
 
   expect(response?.status).toBe(401)
   expect(dispatch).toHaveBeenCalledTimes(1)
+})
+
+test("readiness is false during startup and drain, while liveness stays independent", async () => {
+  const dispatch = mock(async (_args: WebInterceptArgs) => Response.json({ ok: true }))
+  const availability = createStartupAvailability(dispatch)
+
+  const starting = await availability.intercept(getRequest("/readyz"))
+  availability.markReady()
+  const ready = await availability.intercept(getRequest("/readyz"))
+  availability.beginDrain()
+  const draining = await availability.intercept(getRequest("/readyz"))
+  const live = await availability.intercept(getRequest("/healthz"))
+
+  expect(starting?.status).toBe(503)
+  expect(await starting?.json()).toEqual({ ok: false })
+  expect(ready?.status).toBe(200)
+  expect(await ready?.json()).toEqual({ ok: true })
+  expect(draining?.status).toBe(503)
+  expect(draining?.headers.get("Cache-Control")).toBe("no-store")
+  expect(await draining?.json()).toEqual({ ok: false })
+  expect(live?.status).toBe(200)
+  expect(dispatch.mock.calls.every(([args]) => args.url.pathname === "/healthz")).toBe(true)
+})
+
+test("readiness preserves transport and method failures from the public health boundary", async () => {
+  const dispatch = mock(async () => new Response(null, { status: 426 }))
+  const availability = createStartupAvailability(dispatch)
+  availability.markReady()
+
+  const response = await availability.intercept(getRequest("/readyz"))
+
+  expect(response?.status).toBe(426)
 })

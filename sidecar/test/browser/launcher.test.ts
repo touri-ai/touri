@@ -2,8 +2,10 @@ import { afterEach, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import type { Kernel } from "@touri/contracts"
 import { createCdpClient } from "../../src/browser/cdp"
 import { createChromeLauncher } from "../../src/browser/launcher"
+import { BrowserSandboxUnavailableError } from "../../src/browser/sandbox"
 import { createKernel } from "../../src/kernel"
 
 let root: string | null = null
@@ -57,4 +59,43 @@ test("Chrome launcher preserves the CDP client's default timeout for startup cal
 
   expect(await currentLauncher.start()).not.toBeNull()
   expect(timeouts).toEqual([undefined])
+})
+
+test("a denied namespace produces a safe diagnosis without an automatic unsandboxed retry", async () => {
+  root = mkdtempSync(join(tmpdir(), "touri-chrome-sandbox-"))
+  runtime = createKernel({ appData: root })
+  const calls: Array<Array<string>> = []
+  const kernel = {
+    ...runtime.kernel,
+    spawnTree: (input: Parameters<Kernel["spawnTree"]>[0]) => {
+      calls.push(input.args ?? [])
+      return {
+        success: true as const,
+        target: "local" as const,
+        pid: 1,
+        pgid: 1,
+        stdout: new Blob([]).stream(),
+        stderr: new Blob(["private prefix: Failed to move to new namespace: Operation not permitted"]).stream(),
+        stdin: new WritableStream<Uint8Array>(),
+        extra: [
+          { write: new WritableStream<Uint8Array>(), read: null },
+          { read: new Blob([]).stream(), write: null },
+        ],
+        exited: Promise.resolve({ code: 1, signal: null }),
+        kill: () => {},
+      }
+    },
+  }
+  launcher = createChromeLauncher({
+    kernel,
+    env: { TOURI_CHROME_BIN: "chrome-fixture", TOURI_BROWSER_HEADLESS: "1" },
+    createClient: () => {
+      throw new Error("Debugging pipe closed")
+    },
+  })
+
+  await expect(launcher.start()).rejects.toBeInstanceOf(BrowserSandboxUnavailableError)
+
+  expect(calls).toHaveLength(1)
+  expect(calls[0]).not.toContain("--no-sandbox")
 })

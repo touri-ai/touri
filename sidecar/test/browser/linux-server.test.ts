@@ -1,6 +1,7 @@
 import { afterEach, expect, mock, test } from "bun:test"
 import type { Bot, ToolContext, ToolRegistration } from "@touri/contracts"
 import { createBrowserEngine } from "../../src/browser/engine"
+import { BrowserSandboxUnavailableError, browserSandboxMessage } from "../../src/browser/sandbox"
 import type { CdpClient, CdpEvent, JsonObject } from "../../src/browser/types"
 import type { McpCallerContext } from "../../src/mcp/auth"
 import { createToolRouter } from "../../src/mcp/router"
@@ -110,6 +111,17 @@ const getFixture = async (idleMs = 300_000) => {
 
   return { f, bot, ctx, engine, launch, launchStarted, start, stop, calls, state, listeners, blocked }
 }
+
+test("browser tool returns actionable namespace guidance to the bot", async () => {
+  const fixture = await getFixture()
+  fixture.start.mockImplementation(async () => {
+    throw new BrowserSandboxUnavailableError()
+  })
+
+  const result = await fixture.engine.open({ url: "about:blank", ctx: fixture.ctx, timeoutMs: 2500 })
+
+  expect(result).toMatchObject({ success: false, errorCode: "ENGINE_UNAVAILABLE", error: browserSandboxMessage })
+})
 
 test("unsupported host screen tools are neither listed nor callable despite a saved enabled flag", async () => {
   if (process.platform === "darwin") return

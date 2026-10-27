@@ -5,6 +5,7 @@ import { codexSessionsCheck } from "../doctor/codex-sessions"
 import { createAppPaths, resolveMcpSocketPath } from "../kernel/paths"
 import { createAppleContainerProvider } from "../vm"
 import type { CliCommand } from "./args"
+import { getBrowserSandboxCheck } from "./browserSandboxCheck"
 import { computerUseDisabledReason } from "./host/headlessHost"
 import { runCommand } from "./tailscale"
 import { cliVersion } from "./version"
@@ -93,6 +94,7 @@ export const collectDoctorChecks = async ({
         : "encrypted file is created on first use",
     },
     { name: "computer use", level: "warn", detail: computerUseDisabledReason },
+    await getBrowserSandboxCheck(),
     await portCheck(port),
     ...tools,
     { name: codexSessions.id, level: "ok", detail: codexSessions.detail },
