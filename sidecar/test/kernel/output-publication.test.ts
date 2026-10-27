@@ -14,20 +14,24 @@ test("a publisher waits for an already accepted removal before recreating an out
   const database = makeDatabase()
   const removing = Promise.withResolvers<void>()
   const release = Promise.withResolvers<void>()
-  const recreated = Promise.withResolvers<void>()
+  // Record the order of this test's asynchronous file lifecycle.
+  const completed = new Set<string>()
   const collection = tryCollectOutput(database, async () => {
     removing.resolve()
     await release.promise
+    completed.add("removal")
   })
   await removing.promise
-  const publication = withOutputPublication(database, async () => recreated.resolve())
+  const publication = withOutputPublication(database, async () => {
+    completed.add("publication")
+  })
 
   expect(await tryCollectOutput(database, async () => {})).toBe(false)
   release.resolve()
   await publication
 
   expect(await collection).toBe(true)
-  await recreated.promise
+  expect(Array.from(completed)).toEqual(["removal", "publication"])
   expect(await tryCollectOutput(database, async () => {})).toBe(true)
 })
 
