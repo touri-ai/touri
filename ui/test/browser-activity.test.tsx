@@ -353,6 +353,22 @@ test("sanitizes a takeover reason before showing it", () => {
   expect(getBrowserTakeoverReason([part])).toBe("Confirm with [email] at [number]")
 })
 
+test("keeps the bot's whole handoff reason instead of cutting it mid-word", () => {
+  const reason = "Validação do touri: teste clique, rolagem e digitação nesta aba da página de teste local"
+  const long = `Confira a página de exemplo e ${"conclua a etapa de verificação ".repeat(12)}`
+  const getReason = (value: string) =>
+    getBrowserTakeoverReason([
+      getPart({ callId: "takeover", tool: "browser_request_takeover", inputJson: JSON.stringify({ reason: value }) }),
+    ])
+
+  const shortened = getReason(long) ?? ""
+
+  expect(getReason(reason)).toBe(reason)
+  expect(shortened).toMatch(/…$/)
+  expect(shortened.length).toBeLessThanOrEqual(240)
+  expect(long.startsWith(`${shortened.slice(0, -1)} `)).toBe(true)
+})
+
 test("shows one sanitized browser URL in the live subtitle", async () => {
   const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
 

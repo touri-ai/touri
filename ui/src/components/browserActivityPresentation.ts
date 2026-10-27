@@ -5,7 +5,7 @@ import { asToolRecord, parseToolValue, toolIdentity, toolLeaf } from "./toolPres
 
 const MAX_INPUT_LENGTH = 12_000
 const MAX_OUTPUT_LENGTH = 16_000
-const MAX_LABEL_LENGTH = 72
+const MAX_REASON_LENGTH = 240
 const MAX_TARGET_LENGTH = 32
 
 const getBrowserAction = (part: ToolCallPart): string =>
@@ -43,17 +43,22 @@ const getArgs = (part: ToolCallPart): Record<string, unknown> | null => {
   return asToolRecord(parseToolValue(redactToolText(part.inputJson)))
 }
 
-const getSafeLabel = (value: unknown): string | null => {
-  if (typeof value !== "string") return null
-
-  const label = redactToolText(value)
+const getSafeText = (value: string): string =>
+  redactToolText(value)
     .replace(/\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b/gi, "[email]")
     .replace(/\b(?:\+?\d[\d\s().-]{7,}\d)\b/g, "[number]")
     .replace(/[\r\n\t]+/g, " ")
     .trim()
-    .slice(0, MAX_LABEL_LENGTH)
 
-  return label || null
+/** The bot's own explanation is the point of the handoff: keep it whole, shortening only at a word. */
+const getSafeReason = (value: unknown): string | null => {
+  if (typeof value !== "string") return null
+  const reason = getSafeText(value)
+  if (reason.length <= MAX_REASON_LENGTH) return reason || null
+  const cut = reason.slice(0, MAX_REASON_LENGTH - 1)
+  const wordEnd = cut.lastIndexOf(" ")
+
+  return `${(wordEnd > 0 ? cut.slice(0, wordEnd) : cut).trimEnd()}…`
 }
 
 const getOutputTabId = (part: ToolCallPart): string | undefined => {
@@ -126,7 +131,7 @@ export const getBrowserTakeoverReason = (parts: readonly ToolCallPart[]): string
     if (latest || getBrowserAction(part) !== "request_takeover") return latest
     return part
   }, undefined)
-  return takeover ? getSafeLabel(getArgs(takeover)?.reason) : null
+  return takeover ? getSafeReason(getArgs(takeover)?.reason) : null
 }
 
 /** Only expose a short, redacted target name for actions that point to a visible element. */
