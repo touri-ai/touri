@@ -21,6 +21,7 @@ import { LearningCard } from "./LearningCard"
 import { MarkdownContent } from "./MarkdownContent"
 import { mcpPresets } from "./McpCatalog"
 import { Mem0Card } from "./Mem0Card"
+import { useNotificationsOpen } from "./NotificationVisibility"
 import { PanelIcon } from "./PanelIcon"
 import { ScreenServerPolicies, useScreenConnections } from "./ScreenConnections"
 import { ScreenHeader, ScreenState } from "./ScreenPrimitives"
@@ -369,6 +370,7 @@ export const PreviewScreen = ({
   onConnectProject,
   onNotice,
 }: PreviewScreenProps) => {
+  const notificationsOpen = useNotificationsOpen()
   const [tab, setTab] = useState<"preview" | "logs" | "browser">("preview")
   const [draft, setDraft] = useState("")
   const [logs, setLogs] = useState<Array<string>>([])
@@ -611,7 +613,7 @@ export const PreviewScreen = ({
             (preview ? (
               <PreviewPane
                 preview={preview}
-                modalOpen={modalOpen || projectMenuOpen}
+                modalOpen={modalOpen || notificationsOpen || projectMenuOpen}
                 invokeCommand={invokeCommand}
                 onOpenAgentBrowser={(url) => onNotice(t("Open agent URL", { url }))}
               />

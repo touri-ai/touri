@@ -13,6 +13,7 @@ import { DeferredGoalPanel as GoalPanel } from "./DeferredGoalPanel"
 import { Disclosure } from "./Disclosure"
 import { ErrorText } from "./ErrorDetails"
 import { MotionSkeleton, useSegmentedControl } from "./Motion"
+import { useNotificationsOpen } from "./NotificationVisibility"
 import { PanelIcon } from "./PanelIcon"
 import { usePhoneViewport } from "./usePhoneViewport"
 
@@ -85,6 +86,7 @@ export const BotPanel = ({
   goalRefreshRequest?: number
   onGoalChange?: () => void
 }) => {
+  const notificationsOpen = useNotificationsOpen()
   const host = useHost(api)
   const phone = usePhoneViewport()
   const closeButton = useRef<HTMLButtonElement>(null)
@@ -371,7 +373,7 @@ export const BotPanel = ({
               api={api}
               bot={bot}
               machine={machine}
-              paused={paused}
+              paused={paused || notificationsOpen}
               activeTurns={activeTurns}
               expanded={expanded}
               onExpand={onExpand}
