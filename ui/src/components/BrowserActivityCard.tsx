@@ -1,5 +1,5 @@
 import type { BrowserTabInfo, BrowserTakeoverReason, Id, MessagePart, ToolCallPart } from "@touri/contracts"
-import { type ReactNode, useContext, useEffect, useId, useRef, useState } from "react"
+import { type ReactNode, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import { ApiError } from "../errors"
 import {
   ChannelCardFooter,
@@ -122,7 +122,8 @@ export const BrowserActivityCard = ({
   const [takeoverViewEpoch, setTakeoverViewEpoch] = useState(0)
   const takeoverTabId = useRef(activeTabId)
   const [resuming, setResuming] = useState(false)
-  const resumedRunId = useRef<string | null>(null)
+  const observingHandback = takeoverSession !== null || resuming
+  const resumption = useRef<{ runId: Id | null; completed: boolean } | null>(null)
   const handbackRunId = useRef<Id | null | undefined>(undefined)
   const [privacyPending, setPrivacyPending] = useState(false)
   const held = heldTab?.tabId === activeTabId && heldTab?.held === true
@@ -160,27 +161,33 @@ export const BrowserActivityCard = ({
   useEffect(() => {
     if (takeoverTabId.current === activeTabId) return
     takeoverTabId.current = activeTabId
+    resumption.current = null
     setTakeoverSession(null)
     setControlEpoch(null)
     setTakeoverViewEpoch(0)
   }, [activeTabId])
 
   useEffect(() => {
-    if (!sourceFinished || (resuming && runId !== handbackRunId.current)) setResuming(false)
+    if (!sourceFinished || (resuming && runId !== handbackRunId.current)) {
+      resumption.current = null
+      setResuming(false)
+    }
   }, [sourceFinished, resuming, runId])
 
-  useEffect(() => {
-    if (!api || !resuming) return
+  useLayoutEffect(() => {
+    if (!api || !observingHandback) return
+    // Subscribe before controls become interactive; keep the listener across the release response.
     return api.subscribe(({ event }) => {
-      if (event.type !== "run.updated" || event.run.botId !== botId) return
+      const pending = resumption.current
+      if (!pending || pending.completed || event.type !== "run.updated" || event.run.botId !== botId) return
       if (threadId && event.run.threadId !== threadId && event.run.groupThreadId !== threadId) return
       const active = ["queued", "starting", "running"].includes(event.run.status)
-      if (!resumedRunId.current && event.run.trigger === "retry" && active) resumedRunId.current = event.run.id
-      if (event.run.id !== resumedRunId.current || active) return
-      resumedRunId.current = null
-      setResuming(false)
+      const resumedRunId = pending.runId ?? (event.run.trigger === "retry" && active ? event.run.id : null)
+      if (event.run.id !== resumedRunId) return
+      resumption.current = { runId: resumedRunId, completed: !active }
+      if (!active) setResuming(false)
     })
-  }, [api, botId, resuming, threadId])
+  }, [api, botId, observingHandback, threadId])
 
   useEffect(() => {
     const updateVisibility = () => setHidden(document.hidden)
@@ -389,6 +396,20 @@ export const BrowserActivityCard = ({
     if (nearBottom) list.scrollTop = list.scrollHeight
   }, [browserTools.length, finished])
 
+  const startHandback = (): void => {
+    handbackRunId.current = runId
+    resumption.current = sourceFinished && held ? { runId: null, completed: false } : null
+  }
+  const cancelHandback = (): void => {
+    resumption.current = null
+  }
+  const finishHandback = (): void => {
+    setResuming(resumption.current !== null && !resumption.current.completed)
+    setTakeoverSession(null)
+    setControlEpoch(null)
+    setTakeoverViewEpoch(0)
+    if (activeTabId) setHeldTab({ tabId: activeTabId, held: false, reason: null })
+  }
   const toggleTakeover = async (): Promise<void> => {
     if (!api || !activeTabId || busy || queued) return
     setBusy(true)
@@ -397,17 +418,13 @@ export const BrowserActivityCard = ({
     try {
       if (takeoverSession) {
         if (!controlEpoch) throw new Error("Missing browser control epoch")
+        startHandback()
         await api.request(
           "DELETE /browser/tabs/:id/takeover/session",
           { sessionId: takeoverSession, controlEpoch },
           { id: activeTabId },
         )
-        handbackRunId.current = runId
-        setResuming(sourceFinished && held)
-        setTakeoverSession(null)
-        setControlEpoch(null)
-        setTakeoverViewEpoch(0)
-        setHeldTab({ tabId: activeTabId, held: false, reason: null })
+        finishHandback()
         return
       }
 
@@ -421,6 +438,7 @@ export const BrowserActivityCard = ({
       setTakeoverViewEpoch(nextViewEpoch)
       setHeldTab({ tabId: activeTabId, held: true, reason: heldTab?.reason ?? "requested" })
     } catch (error) {
+      cancelHandback()
       const unavailable = error instanceof ApiError && error.errorCode === "BROWSER_TAKEOVER_UNAVAILABLE"
       setTakeoverUnavailable(unavailable)
       const message = unavailable
@@ -533,20 +551,16 @@ export const BrowserActivityCard = ({
               active: part.ok === null,
             }))}
             onSessionEnded={() => {
+              cancelHandback()
               setTakeoverSession(null)
               setControlEpoch(null)
               setTakeoverViewEpoch(0)
               setResuming(false)
               setHeldTab({ tabId: activeTabId, held: false, reason: null })
             }}
-            onHandback={() => {
-              handbackRunId.current = runId
-              setResuming(sourceFinished && held)
-              setTakeoverSession(null)
-              setControlEpoch(null)
-              setTakeoverViewEpoch(0)
-              setHeldTab({ tabId: activeTabId, held: false, reason: null })
-            }}
+            onHandbackStart={startHandback}
+            onHandbackError={cancelHandback}
+            onHandback={finishHandback}
           />
         </article>
       </div>

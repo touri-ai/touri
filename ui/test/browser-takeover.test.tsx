@@ -221,6 +221,45 @@ test("handback drains accepted phone typing, paste and keyboard input before ret
   expect(document.body.textContent).not.toContain("texto colado privado")
 })
 
+test("a failed handback cancels observation and a retry starts it again", async () => {
+  const release = vi.fn().mockRejectedValueOnce(new Error("Synthetic release failure")).mockResolvedValue({})
+  const request = vi.fn(async (route: string) => {
+    if (route === "POST /browser/tabs/:id/takeover/frame") return getBrowserFrame()
+    if (route === "DELETE /browser/tabs/:id/takeover/session") return release()
+    return {}
+  }) as ApiRequest
+  const api = Object.assign({}, createMockApi(), { request })
+  const onHandbackStart = vi.fn()
+  const onHandbackError = vi.fn()
+  const onHandback = vi.fn()
+  render(
+    <BrowserTakeoverView
+      api={api}
+      tabId="synthetic-tab"
+      sessionId="synthetic-session"
+      controlEpoch="control-epoch"
+      botName="Lia"
+      locale="pt-BR"
+      reason={null}
+      actions={[]}
+      onHandbackStart={onHandbackStart}
+      onHandbackError={onHandbackError}
+      onHandback={onHandback}
+    />,
+  )
+
+  fireEvent.click(screen.getByRole("button", { name: "Devolver para Lia" }))
+
+  await waitFor(() => expect(onHandbackError).toHaveBeenCalledOnce())
+  expect(onHandbackStart).toHaveBeenCalledOnce()
+  expect(onHandback).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole("button", { name: "Devolver para Lia" }))
+
+  await waitFor(() => expect(onHandback).toHaveBeenCalledOnce())
+  expect(onHandbackStart).toHaveBeenCalledTimes(2)
+  expect(onHandbackError).toHaveBeenCalledOnce()
+})
+
 test("keeps the privacy notice visible and lets a person expand the browser view", async () => {
   const api = createMockApi()
   const request = vi.fn(async (route: string) => {
