@@ -172,7 +172,7 @@ test("an unexpected worker exit restores a positive checkpoint threshold and rep
 test("an asynchronous worker startup error enables fallback without a second report on exit", async () => {
   const { database } = await getFixture()
   const failed = Promise.withResolvers<void>()
-  const onError = mock(failed.resolve)
+  const onError = mock(() => failed.resolve())
   const checkpointer = createWalCheckpointer({
     database,
     onError,
@@ -189,6 +189,81 @@ test("an asynchronous worker startup error enables fallback without a second rep
 
   expect(getAutocheckpointPages(database)).toBe(1_000)
   expect(onError).toHaveBeenCalledTimes(1)
+})
+
+const restoreFailures = ["message", "error", "close", "dispose"] as const
+restoreFailures.forEach((failure) => {
+  test(`a failed autocheckpoint restore during ${failure} releases maintenance and reports once`, async () => {
+    const { database } = await getFixture()
+    const ready = Promise.withResolvers<void>()
+    const onError = mock(() => {})
+    // The fake owns only the restore failure; reads and worker checkpoints still use real SQLite.
+    const failingDatabase = {
+      filename: database.filename,
+      query: database.query.bind(database),
+      exec: (sql: string) => {
+        if (sql === "PRAGMA wal_autocheckpoint = 1000") throw new Error("Synthetic disk I/O error")
+        return database.exec(sql)
+      },
+    }
+    let worker: Worker | undefined
+    const checkpointer = createWalCheckpointer({
+      database: failingDatabase,
+      onReady: ready.resolve,
+      onError,
+      createWorker: (url) => {
+        worker = new Worker(url, { smol: true, ref: false })
+        return worker
+      },
+    })
+    cleanups.add(() => checkpointer.dispose({ closing: true }))
+    await ready.promise
+    const ownedWorker = worker
+    if (!ownedWorker) throw new Error("Missing checkpoint worker")
+    const closed = Promise.withResolvers<void>()
+    ownedWorker.addEventListener("close", () => closed.resolve(), { once: true })
+    const failureEvent = new ErrorEvent("error", { cancelable: true })
+    const reportFailure = () => {
+      if (failure === "dispose") return checkpointer.dispose()
+      if (failure === "close") return ownedWorker.terminate()
+      if (failure === "error") return ownedWorker.onerror?.call(ownedWorker, failureEvent)
+      return ownedWorker.onmessage?.call(ownedWorker, new MessageEvent("message", { data: { type: "error" } }))
+    }
+
+    expect(reportFailure).not.toThrow()
+    await closed.promise
+    await checkpointer.dispose()
+    ownedWorker.dispatchEvent(new Event("close"))
+
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(onError).toHaveBeenCalledWith({ autocheckpointRestored: false })
+    if (failure === "error") expect(failureEvent.defaultPrevented).toBe(true)
+    await expect(checkpointer.vacuum()).rejects.toThrow("WAL worker is unavailable")
+    database.exec("INSERT INTO fixture(payload) VALUES ('still alive')")
+    expect(database.query("SELECT COUNT(*) AS count FROM fixture").get()).toEqual({ count: 1 })
+  })
+})
+
+test("startup cleanup contains a restore failure after worker construction fails", async () => {
+  const { database } = await getFixture()
+  const onError = mock(() => {})
+  const createCheckpointer = () =>
+    createWalCheckpointer({
+      database,
+      onError,
+      createWorker: () => {
+        database.close()
+        throw new Error("Synthetic worker startup failure")
+      },
+    })
+
+  const checkpointer = createCheckpointer()
+  cleanups.add(() => checkpointer.dispose({ closing: true }))
+  await checkpointer.dispose({ closing: true })
+
+  expect(onError).toHaveBeenCalledTimes(1)
+  expect(onError).toHaveBeenCalledWith({ autocheckpointRestored: false })
+  await expect(checkpointer.vacuum()).rejects.toThrow("WAL worker is unavailable")
 })
 
 test("disposing a healthy checkpointer restores SQLite maintenance for a still-open connection", async () => {

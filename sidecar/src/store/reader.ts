@@ -11,11 +11,46 @@ export type MessageReferences = { threadId: string; messageId: string; attachmen
 type MessageReply = { body: Uint8Array; references: MessageReferences[] }
 type ReadProcess = Bun.Subprocess<"pipe", "pipe", "ignore">
 
-export const createStoreReader = (filename: string, onReady?: (pid: number) => void) => {
+export const createStoreReader = (
+  filename: string,
+  onReady?: (pid: number) => void,
+  { prewarm = false, startProcess = startStoreRead }: { prewarm?: boolean; startProcess?: typeof startStoreRead } = {},
+) => {
   // Each request owns a process: SIGKILL also interrupts native SQLite, unlike a JS waiter.
   const pending = new Map<ReadProcess, () => void>()
   const slots = createReadSlots()
   let disposed = false
+  let idle: ReadProcess | undefined
+
+  const prewarmProcess = (): void => {
+    if (!prewarm || disposed || idle) return
+
+    try {
+      // One unreferenced helper waits for stdin without opening SQLite or retaining history.
+      const child = startProcess(filename)
+      idle = child
+      child.unref()
+      void child.exited.then(() => {
+        if (idle === child) idle = undefined
+      })
+    } catch {
+      // Requests still use the ordinary error path if background preparation is unavailable.
+    }
+  }
+  prewarmProcess()
+
+  const startRequestProcess = (release: () => void): ReadProcess => {
+    const prepared = idle
+    idle = undefined
+    try {
+      const child = prepared?.exitCode === null ? prepared : startProcess(filename)
+      child.ref()
+      return child
+    } catch {
+      release()
+      throw new Error("STORE_READ_FAILED")
+    }
+  }
 
   const getResult = async <Value>(
     input:
@@ -37,13 +72,7 @@ export const createStoreReader = (filename: string, onReady?: (pid: number) => v
       release()
       throw new Error("STORE_READ_ABORTED")
     }
-    const devArgs = Bun.isStandaloneExecutable ? [] : [fileURLToPath(new URL("./read-process.ts", import.meta.url))]
-    const child = Bun.spawn([process.execPath, ...devArgs, "store-read"], {
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "ignore",
-      env: { ...process.env, TOURI_APP_DATA: dirname(filename) },
-    })
+    const child = startRequestProcess(release)
     // Only this request owns its cancellation reason and process lifecycle.
     let abortReason: Error | undefined
     const kill = (code: string): void => {
@@ -79,12 +108,15 @@ export const createStoreReader = (filename: string, onReady?: (pid: number) => v
       signal.removeEventListener("abort", abort)
       pending.delete(child)
       release()
+      prewarmProcess()
     }
   }
 
   const dispose = (): void => {
     disposed = true
     slots.dispose()
+    idle?.kill("SIGKILL")
+    idle = undefined
     pending.forEach((abort) => {
       abort()
     })
@@ -120,6 +152,17 @@ export const createStoreReader = (filename: string, onReady?: (pid: number) => v
       getResult<UiEvent[]>({ references, maxBytes }, signal),
     dispose,
   }
+}
+
+const startStoreRead = (filename: string): ReadProcess => {
+  const devArgs = Bun.isStandaloneExecutable ? [] : [fileURLToPath(new URL("./read-process.ts", import.meta.url))]
+
+  return Bun.spawn([process.execPath, ...devArgs, "store-read"], {
+    stdin: "pipe",
+    stdout: "pipe",
+    stderr: "ignore",
+    env: Object.assign({}, process.env, { TOURI_APP_DATA: dirname(filename) }),
+  })
 }
 
 const getProcessReply = async (

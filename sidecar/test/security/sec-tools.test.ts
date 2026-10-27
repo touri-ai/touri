@@ -36,10 +36,11 @@ const fixture = async () => {
   const root = mkdtempSync(join(tmpdir(), "touri-sec-tools-"))
   const runtime = createKernel({ appData: root })
   mkdirSync(join(root, "data"), { recursive: true })
-  cleanup.push(() => {
-    runtime.stop()
+  const dispose = async (): Promise<void> => {
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
-  })
+  }
+  cleanup.push(dispose)
   await initStore(runtime.kernel)
   const db = runtime.kernel.db as Database
   db.query("INSERT INTO projects(id,name,path,data_dir,created_at,updated_at) VALUES ('project','test',?,?,1,1)").run(
@@ -132,6 +133,7 @@ const fixture = async () => {
   return {
     root,
     runtime,
+    dispose,
     kernel,
     db,
     vault,
@@ -212,6 +214,25 @@ const browserFixture = async (f: Awaited<ReturnType<typeof fixture>>) => {
       listener({ method: "Page.frameNavigated", params: { frame: { id: "top", url } }, sessionId: "page-session" }),
   }
 }
+
+test("security fixture retains its database until asynchronous shutdown completes", async () => {
+  const f = await fixture()
+  const stopping = Promise.withResolvers<void>()
+  const released = Promise.withResolvers<void>()
+  f.kernel.services.provide("runtime.shutdown", async () => {
+    stopping.resolve()
+    await released.promise
+  })
+  cleanup.push(() => released.resolve())
+
+  const disposed = f.dispose()
+  await stopping.promise
+
+  expect(await Bun.file(f.db.filename).exists()).toBe(true)
+  released.resolve()
+  await disposed
+  expect(await Bun.file(f.db.filename).exists()).toBe(false)
+})
 
 test("A01/B01 built-in mutations reject read-only callers at the router boundary", async () => {
   const f = await fixture()

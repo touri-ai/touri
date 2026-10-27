@@ -2,7 +2,7 @@ import { Buffer } from "node:buffer"
 import { spawn } from "node:child_process"
 import { copyFile } from "node:fs/promises"
 import { resolve } from "node:path"
-import { expect, test } from "@playwright/test"
+import { expect, type Page, type TestInfo, test } from "@playwright/test"
 import { createServerModeFixture } from "./server-mode-fixture"
 
 type Server = Awaited<ReturnType<typeof createServerModeFixture>>
@@ -75,7 +75,15 @@ for (const width of [1440, 390]) {
     await page.getByRole("tab", { name: /^Work,/ }).click()
     const switchMetrics: Array<{ longTasks: number[]; cls: number }> = []
     const connectionsBefore = server.eventConnections
+    const underLoad = process.env.HISTORY_PAGINATION_LOAD === "true"
     const choose = async (name: string, threadId: string): Promise<number> => {
+      // One independent, bounded read overlaps each measured interaction in the load run.
+      const backgroundRead = underLoad
+        ? server.api(`/threads/${bot.mainThreadId}/runs?all=true&limit=40`).then(
+            () => true,
+            () => false,
+          )
+        : Promise.resolve(true)
       await page.evaluate((id) => {
         const timing = window as Window & {
           historyStarted?: number
@@ -140,6 +148,7 @@ for (const width of [1440, 390]) {
         }
       })
       switchMetrics.push(measured)
+      expect(await backgroundRead).toBe(true)
       return measured.ms
     }
     expect(requestedThreads).not.toContain(first)
@@ -152,15 +161,7 @@ for (const width of [1440, 390]) {
       const timing = window as Window & { historyLongTasks?: number[]; historyCls?: number }
       return { longTasks: timing.historyLongTasks ?? [], cls: timing.historyCls ?? 0 }
     })
-    const imageName = `history-page-${before ? "before" : "after"}-${width}.png`
-    const imagePath = info.outputPath(imageName)
-    await page.screenshot({
-      path: imagePath,
-      mask: [page.locator(".model-picker-trigger-label")],
-      maskColor: "#dddde2",
-    })
-    await info.attach(imageName, { path: imagePath, contentType: "image/png" })
-    if (process.env.TOURI_EVIDENCE_DIR) await copyFile(imagePath, resolve(process.env.TOURI_EVIDENCE_DIR, imageName))
+    await saveHistoryScreenshot(page, info, before, width)
     if (!before) {
       await expect.poll(() => reads.find((read) => read.id === first)?.count).toBe(40)
       const olderRequested = Promise.withResolvers<void>()
@@ -216,6 +217,7 @@ for (const width of [1440, 390]) {
     const metrics = {
       phase: before ? "before" : "after",
       width,
+      underLoad,
       coldMs,
       cachedP95Ms: ordered[9],
       cachedMs,
@@ -224,6 +226,26 @@ for (const width of [1440, 390]) {
       extraEventConnections: server.eventConnections - connectionsBefore,
       ...coldMetrics,
       reads: reads.filter((read) => read.id === first),
+      requests: await page.evaluate(() =>
+        performance
+          .getEntriesByType("resource")
+          .filter((entry) => /\/(messages|runs)(\?|$)/.test(entry.name))
+          .map((entry) => {
+            const resource = entry as PerformanceResourceTiming
+            return {
+              path: new URL(resource.name).pathname,
+              durationMs: resource.duration,
+              waitingMs: resource.responseStart - resource.requestStart,
+              transferMs: resource.responseEnd - resource.responseStart,
+            }
+          }),
+      ),
+      browserCardRequests: await page.evaluate(() =>
+        performance
+          .getEntriesByType("resource")
+          .filter((entry) => /Browser(ActivityCard|TakeoverView)/.test(entry.name))
+          .map((entry) => new URL(entry.name).pathname),
+      ),
       workload: "5000 synthetic messages and 2500 runs per channel/DM; real isolated server",
     }
     console.log(JSON.stringify(metrics))
@@ -240,9 +262,24 @@ for (const width of [1440, 390]) {
       expect(metrics.cachedLongTasks).toEqual([])
       expect(metrics.cachedCls).toBeLessThan(0.01)
       expect(metrics.extraEventConnections).toBe(0)
+      expect(metrics.browserCardRequests).toEqual([])
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   })
+}
+
+const saveHistoryScreenshot = async (page: Page, info: TestInfo, before: boolean, width: number): Promise<void> => {
+  if (process.env.TOURI_E2E_SKIP_SCREENSHOTS === "1") return
+
+  const imageName = `history-page-${before ? "before" : "after"}-${width}.png`
+  const imagePath = info.outputPath(imageName)
+  await page.screenshot({
+    path: imagePath,
+    mask: [page.locator(".model-picker-trigger-label")],
+    maskColor: "#dddde2",
+  })
+  await info.attach(imageName, { path: imagePath, contentType: "image/png" })
+  if (process.env.TOURI_EVIDENCE_DIR) await copyFile(imagePath, resolve(process.env.TOURI_EVIDENCE_DIR, imageName))
 }
 
 const seedHistory = (directory: string, threadIds: string[]): Promise<void> =>

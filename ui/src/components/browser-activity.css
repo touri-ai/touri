@@ -438,7 +438,9 @@
   height: 1px;
   padding: 0;
   border: 0;
-  opacity: 0.01;
+  clip-path: inset(50%);
+  background: var(--surface-control);
+  color: var(--text);
   pointer-events: none;
 }
 .browser-takeover-error {
@@ -904,7 +906,7 @@
   padding: 0;
   border: 0;
   background: var(--surface-control);
-  color: var(--text-1);
+  color: var(--text);
 }
 .browser-takeover-view[data-full-view="true"] {
   width: 100%;

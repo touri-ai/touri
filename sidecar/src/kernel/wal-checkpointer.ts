@@ -15,8 +15,8 @@ export const createWalCheckpointer = ({
   pageIntervalMs = PAGE_INTERVAL_MS,
   createWorker = (url) => new Worker(url, { smol: true, ref: false }),
 }: {
-  database: Database
-  onError: () => void
+  database: Pick<Database, "filename" | "query" | "exec">
+  onError: (status: { autocheckpointRestored: boolean }) => void
   onReady?: () => void
   intervalMs?: number
   pageIntervalMs?: number
@@ -49,16 +49,21 @@ export const createWalCheckpointer = ({
     workerUrl = undefined
     closed.resolve()
   }
-  const restoreAutocheckpoint = (): void => {
-    // Setting the threshold does no checkpoint I/O. Degraded commits use SQLite's safety net.
-    database.exec(`PRAGMA wal_autocheckpoint = ${fallbackPages}`)
+  const restoreAutocheckpoint = (): boolean => {
+    try {
+      database.exec(`PRAGMA wal_autocheckpoint = ${fallbackPages}`)
+      return true
+    } catch {
+      // A lost backing file or damaged connection must not escape a worker/timer error callback.
+      return false
+    }
   }
   const reportError = (): void => {
     if (stopped || reportedError) return
     reportedError = true
-    restoreAutocheckpoint()
+    const autocheckpointRestored = restoreAutocheckpoint()
     finish()
-    onError()
+    onError({ autocheckpointRestored })
   }
 
   try {
@@ -118,7 +123,12 @@ export const createWalCheckpointer = ({
       if (stopped) return closed.promise
       stopped = true
       // Shutdown closes the connection next; it may already have lost its backing file.
-      if (!closing) restoreAutocheckpoint()
+      if (!closing && !restoreAutocheckpoint() && !reportedError) {
+        reportedError = true
+        finish()
+        onError({ autocheckpointRestored: false })
+        return closed.promise
+      }
       clearTimeout(startupTimer)
       if (!worker) {
         finish()
