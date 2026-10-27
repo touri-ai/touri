@@ -427,10 +427,8 @@ test("the composer takeover action opens the active browser session", async () =
   const api = createMockApi()
   const request = vi.fn(async (route: string) => {
     if (route === "GET /browser/tabs") return { tabs: [tab] }
-    if (route === "POST /browser/tabs/:id/takeover/session") {
-      sessionHeld = true
+    if (route === "POST /browser/tabs/:id/takeover/session")
       return { sessionId: "synthetic-session", controlEpoch: "synthetic-control-epoch", viewEpoch: 0 }
-    }
     return {}
   }) as ApiRequest
   api.request = request
@@ -458,6 +456,7 @@ test("the composer takeover action opens the active browser session", async () =
   await waitFor(() =>
     expect(request).toHaveBeenCalledWith("POST /browser/tabs/:id/takeover/session", {}, { id: "browser-tab" }),
   )
+  expect(await screen.findByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
 })
 
 test("take-over holds the browser, opens its view, and the finished card collapses with the final image", async () => {
@@ -522,6 +521,61 @@ test("take-over holds the browser, opens its view, and the finished card collaps
   expect(document.body.textContent).not.toContain("fixture-password")
   expect(document.body.textContent).not.toContain("fixture-token")
 })
+
+test.each(["running", "succeeded"] as const)(
+  "handback observes a continuation that is %s before the release response",
+  async (status) => {
+    const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
+    const { api, bot, request, view, onOpenComputer } = renderCard(parts, false)
+    fireEvent.click(await screen.findByRole("button", { name: "Assumir" }))
+    expect(await screen.findByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
+    view.rerender(
+      <InlinePreviewContext.Provider value={{ api, bot, machine: undefined, activeCallId: undefined, onOpenComputer }}>
+        <BrowserActivityCard parts={parts} finished createdAt={1} threadId="thread-mark" botName="Lia" />
+      </InlinePreviewContext.Provider>,
+    )
+    const release = Promise.withResolvers<void>()
+    const releasing = Promise.withResolvers<void>()
+    const originalRequest = request.getMockImplementation()
+    const continuation = {
+      id: "handback-continuation",
+      botId: bot?.id,
+      threadId: "thread-mark",
+      trigger: "retry",
+      status: "running",
+    } as Run
+    request.mockImplementation(async (...args) => {
+      const response = await originalRequest?.(...args)
+      if (args[0] !== "DELETE /browser/tabs/:id/takeover/session") return response
+      releasing.resolve()
+      await release.promise
+      return response
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "Devolver para Lia" }))
+    await act(async () => releasing.promise)
+    act(() => {
+      const unrelated = [
+        Object.assign({}, continuation, { id: "other-bot", botId: "bot-other" }),
+        Object.assign({}, continuation, { id: "other-thread", threadId: "thread-other" }),
+      ]
+      unrelated.forEach((run) => {
+        api.emit({ type: "run.updated", run })
+        api.emit({ type: "run.updated", run: Object.assign({}, run, { status: "succeeded" }) })
+      })
+      api.emit({ type: "run.updated", run: continuation })
+      if (status === "succeeded") api.emit({ type: "run.updated", run: Object.assign({}, continuation, { status }) })
+    })
+    await act(async () => release.resolve())
+    if (status === "running") {
+      expect(screen.queryByText("Usou o navegador · 1 ação")).toBeNull()
+      act(() => api.emit({ type: "run.updated", run: Object.assign({}, continuation, { status: "succeeded" }) }))
+    }
+
+    expect(screen.getByText("Usou o navegador · 1 ação")).toBeVisible()
+    expect(screen.queryByRole("log", { name: "Atividade do navegador" })).toBeNull()
+  },
+)
 
 test("a bot-requested takeover explains why it paused and keeps browser input out of chat", async () => {
   const heldTab = { ...tab, heldByUser: true, takeoverReason: "login" }

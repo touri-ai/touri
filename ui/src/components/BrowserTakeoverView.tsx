@@ -41,6 +41,8 @@ export const BrowserTakeoverView = ({
   reason,
   actions,
   onHandback,
+  onHandbackStart,
+  onHandbackError,
   onSessionEnded,
 }: {
   api: UiApi
@@ -53,6 +55,8 @@ export const BrowserTakeoverView = ({
   reason: string | null
   actions: Array<{ id: string; icon: string; label: string; time: string; active: boolean }>
   onHandback: () => void
+  onHandbackStart?: (() => void) | undefined
+  onHandbackError?: (() => void) | undefined
   onSessionEnded?: (() => void) | undefined
 }) => {
   const dialog = useRef<HTMLDialogElement>(null)
@@ -463,6 +467,7 @@ export const BrowserTakeoverView = ({
     if (releasing.current || released.current || !flushKeyboard()) return
     releasing.current = true
     setReturning(true)
+    onHandbackStart?.()
     try {
       await inputQueue.current
       await api.request("DELETE /browser/tabs/:id/takeover/session", { sessionId, controlEpoch }, { id: tabId })
@@ -470,6 +475,7 @@ export const BrowserTakeoverView = ({
       closeFullView()
       onHandback()
     } catch {
+      onHandbackError?.()
       setError(t("Could not return control to the bot. Try again.", {}, locale))
       releasing.current = false
     } finally {
