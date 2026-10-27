@@ -5359,7 +5359,9 @@ export const createBrowserEngine = ({
         const previous = takeoverStreams.get(tab)
         if (
           previous &&
-          (previous.epoch !== tab.generation || previous.sessionId !== sessionId || previous.source.isStopped())
+          (previous.epoch !== tab.generation ||
+            previous.sessionId !== sessionId ||
+            (previous.source.isStopped() && !previous.source.needsScreenshot()))
         )
           stopTakeoverStream(tab)
         if (!takeoverStreams.has(tab)) {
@@ -5374,7 +5376,11 @@ export const createBrowserEngine = ({
           })
           takeoverStreams.set(tab, { epoch, sessionId, source })
         }
-        const image = await takeoverStreams.get(tab)?.source.read(signal)
+        const source = takeoverStreams.get(tab)?.source
+        if (!source) return null
+        const pushed = await source.read(signal)
+        // Dense pages can exceed the live-image cap; reuse the bounded scaling path until the page changes.
+        const image = source.needsScreenshot() ? await captureTakeoverPage(tab, cdp, sessionId, signal) : pushed
         if (!image) return null
         return {
           ...image,

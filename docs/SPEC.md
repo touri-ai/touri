@@ -2149,6 +2149,8 @@ Mouse dragging selects remote text, wheel/touch gestures scroll, and paste/compo
 The optional `stream` flag on the existing authorized takeover frame request consumes pushed CDP
 screencast images rather than taking repeated screenshots. Reads remain serial, image payloads and
 pending decoding stay bounded, idle viewing slows down, and hidden viewers stop requesting frames.
+An oversized live image stops the screencast and uses bounded, scaled screenshots until the page or
+viewport changes, so visually dense pages remain interactive without repeated stream restarts.
 The remote layout viewport follows the displayed page size; control/view/target epochs still fence
 coordinate-based input and frames after a resize, navigation or controller change. Navigation itself
 requires the active controller, allowing Back/Forward/Reload before the next image has arrived. Handback drains accepted input and

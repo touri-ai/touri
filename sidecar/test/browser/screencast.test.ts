@@ -72,3 +72,15 @@ test("stop discards private images and detaches listeners", async () => {
   expect(listeners.size).toBe(0)
   expect(calls.at(-1)?.method).toBe("Page.stopScreencast")
 })
+
+test("oversized images stop capture and request a bounded screenshot fallback", async () => {
+  const { source, emit, listeners, calls } = await getFixture()
+
+  emit(1, "owned", "x".repeat(450_001))
+
+  expect(source.isStopped()).toBe(true)
+  expect(await source.read(new AbortController().signal)).toBeNull()
+  expect(source.needsScreenshot()).toBe(true)
+  expect(listeners.size).toBe(0)
+  expect(calls.at(-1)?.method).toBe("Page.stopScreencast")
+})

@@ -21,6 +21,7 @@ const getFixture = async ({
   resize = async (): Promise<void> => {},
   attach = async (): Promise<JsonObject> => ({ sessionId: "owned-session" }),
   onDetach = (_sessionId: string): void => {},
+  screencastData = "",
 } = {}) => {
   const root = await mkdtemp(join(tmpdir(), "touri-takeover-readiness-"))
   const runtime = createKernel({ appData: root })
@@ -50,6 +51,12 @@ const getFixture = async ({
       if (method === "Target.attachToTarget") return (await attach()) as T
       if (method === "Target.detachFromTarget") onDetach(String(params.sessionId))
       if (method === "Page.captureScreenshot") return (await capture(params)) as T
+      if (method === "Page.startScreencast" && screencastData)
+        onEvent({
+          method: "Page.screencastFrame",
+          sessionId: "owned-session",
+          params: { sessionId: 1, data: screencastData },
+        })
       if (method === "Emulation.setDeviceMetricsOverride") await resize()
       if (method === "Page.getLayoutMetrics")
         return { cssVisualViewport: { pageX: 0, pageY: 0, clientWidth: 800, clientHeight: 500 } } as T
@@ -424,4 +431,21 @@ test("human navigation rejects non-web schemes and pointer coordinates outside t
   expect(calls.some((call) => call.method === "Page.navigate" || call.method === "Input.dispatchMouseEvent")).toBe(
     false,
   )
+})
+
+test("oversized live images retain interactive screenshot fallback without restarting capture", async () => {
+  const { engine, calls } = await getFixture({ screencastData: "x".repeat(450_001) })
+  await requestTakeover(engine)
+  await engine.holdTakeoverForPerson({ tabId: "tab", personId: "authorized" })
+  const request = { tabId: "tab", botId: "bot", signal: new AbortController().signal, stream: true }
+
+  const first = await engine.takeoverFrame(request)
+  const second = await engine.takeoverFrame(request)
+
+  expect(first?.image).toBe("data:image/jpeg;base64,ZmFrZQ==")
+  expect(second?.image).toBe(first?.image)
+  expect(first?.width).toBe(800)
+  expect(first?.height).toBe(500)
+  expect(calls.filter((call) => call.method === "Page.startScreencast")).toHaveLength(1)
+  expect(calls.some((call) => call.method === "Page.stopScreencast")).toBe(true)
 })

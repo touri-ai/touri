@@ -17,6 +17,7 @@ export const createBrowserScreencast = async ({
   let pending: { frame: Frame; ids: number[] } | null = null
   let last: Frame | null = null
   let stopped = false
+  let screenshotRequired = false
   let wake: (() => void) | undefined
   let acknowledgements = Promise.resolve()
   let idleTimer: ReturnType<typeof setTimeout> | undefined
@@ -25,7 +26,8 @@ export const createBrowserScreencast = async ({
     const { data, sessionId: id } = event.params
     if (typeof id !== "number") return
     if (typeof data !== "string" || data.length > 450_000) {
-      void client.call("Page.screencastFrameAck", { sessionId: id }, sessionId).catch(() => undefined)
+      screenshotRequired = true
+      stop()
       return
     }
     pending = {
@@ -98,5 +100,5 @@ export const createBrowserScreencast = async ({
       .catch(stop)
   }
 
-  return { read, stop, refresh, isStopped: () => stopped }
+  return { read, stop, refresh, isStopped: () => stopped, needsScreenshot: () => screenshotRequired }
 }
