@@ -53,3 +53,22 @@ test("cancellation interrupts inspection before the next candidate batch", async
     "Synthetic cancellation",
   )
 })
+
+test("cancellation during inspection stops before reading another candidate", async () => {
+  const controller = new AbortController()
+  const inspected = new Set<string>()
+  const messages = Array.from({ length: 96 }, (_, index) => ({
+    id: `message-${index}`,
+    threadId: "thread",
+    get parts() {
+      inspected.add(`message-${index}`)
+      controller.abort(new Error("Synthetic cancellation"))
+      return getParts()
+    },
+  }))
+
+  const result = getHistoryAttachmentMessageIds("thread", messages, controller.signal)
+
+  await expect(result).rejects.toThrow("Synthetic cancellation")
+  expect(Array.from(inspected)).toEqual(["message-0"])
+})

@@ -597,7 +597,7 @@ export const createVmRuntime = ({
               vm_id: `touri-${namespace}-${randomBytes(12).toString("hex")}`,
               volume: JSON.stringify(hostMounts ? [...withoutHostFolderMounts(mounts), ...hostMounts] : mounts),
             }
-            upgrade = upgrades.begin(meta, candidate)
+            upgrade = await upgrades.begin(meta, candidate)
             meta = candidate
             status = "missing"
           } finally {

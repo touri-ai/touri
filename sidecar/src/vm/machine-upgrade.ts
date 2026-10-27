@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite"
+import { writeDatabaseAsync } from "../kernel/database-write"
 import type { VmProvider } from "./types"
 
 export type MachineMetadata = {
@@ -51,31 +52,31 @@ export const createMachineUpgrades = (
     // Never start both containers with the same writable volumes.
     await remove(upgrade.candidate)
     const previous = upgrade.previous
-    db.transaction(() => {
+    await writeDatabaseAsync(db, () => {
       db.query(
         "UPDATE bot_machines SET vm_id = ?, volume = ?, folder_fingerprint = ?, project_id = ? WHERE bot_id = ?",
       ).run(previous.vm_id, previous.volume, previous.folder_fingerprint, previous.project_id, botId)
       clear(botId)
-    })()
+    })
   }
   const finish = async (botId: string, upgrade: Upgrade) => {
-    save(botId, { ...upgrade, committed: true })
+    await writeDatabaseAsync(db, () => save(botId, { ...upgrade, committed: true }))
     await remove(upgrade.previous.vm_id)
-    clear(botId)
+    await writeDatabaseAsync(db, () => clear(botId))
   }
 
   return {
     getPending,
-    begin: (previous: MachineMetadata, candidate: MachineMetadata) => {
+    begin: async (previous: MachineMetadata, candidate: MachineMetadata) => {
       const upgrade = { previous, candidate: candidate.vm_id, committed: false }
-      db.transaction(() => {
+      await writeDatabaseAsync(db, () => {
         save(previous.bot_id, upgrade)
         db.query("UPDATE bot_machines SET vm_id = ?, volume = ? WHERE bot_id = ?").run(
           candidate.vm_id,
           candidate.volume,
           previous.bot_id,
         )
-      })()
+      })
 
       return upgrade
     },

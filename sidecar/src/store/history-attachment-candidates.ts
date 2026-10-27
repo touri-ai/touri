@@ -1,4 +1,5 @@
 import type { Message } from "@touri/contracts"
+import { deferWorkerReply } from "../kernel/worker-reply"
 
 type Candidate = Pick<Message, "id" | "threadId" | "parts">
 
@@ -12,10 +13,15 @@ export const getHistoryAttachmentMessageIds = async (
     signal.throwIfAborted()
     const batch = messages
       .slice(offset, offset + 32)
-      .filter((message) => message.threadId === threadId && hasAttachments(message))
+      .filter((message) => {
+        signal.throwIfAborted()
+        return message.threadId === threadId && hasAttachments(message)
+      })
       .map(({ id }) => id)
     candidates = candidates.concat(batch)
-    if (offset + 32 < messages.length) await new Promise<void>((resolve) => setImmediate(resolve))
+    // Use the timer task boundary also used by worker replies; nested promise waits
+    // can strand setImmediate continuations until unrelated I/O wakes the runtime.
+    if (offset + 32 < messages.length) await new Promise<void>((resolve) => deferWorkerReply(resolve))
   }
   signal.throwIfAborted()
 
