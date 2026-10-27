@@ -197,6 +197,15 @@ const LocalBotComputer = ({
                 "Este bot trabalha no computador local. O controle depende das permissões do sistema e de uma autorização temporária.",
               )}
         </p>
+        {bot.machine === "vm" && machine?.imageUpdate && (
+          <p role="status">
+            {t(
+              machine.imageUpdate === "updated"
+                ? "Computador atualizado: agora com Terminal e Arquivos"
+                : "A atualização não iniciou. Seu computador anterior e seus arquivos foram preservados.",
+            )}
+          </p>
+        )}
         {status === "error" && machine?.error && (
           <div role="alert">
             <ErrorNotice

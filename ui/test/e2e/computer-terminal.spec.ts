@@ -1,6 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process"
 import { createServer } from "node:net"
-import { resolve } from "node:path"
+import { join, resolve } from "node:path"
 import { createInterface } from "node:readline"
 import { expect, test } from "@playwright/test"
 
@@ -57,7 +57,18 @@ for (const width of [1440, 390]) {
     await expect(takeover).toBeEnabled({ timeout: 60_000 })
     await takeover.click()
     await expect(page.getByLabel("Digitar na VM")).toBeEnabled({ timeout: 30_000 })
-    await page.screenshot({ path: info.outputPath(`terminal-before-${width}.png`), fullPage: true })
+    if (process.env.TOURI_TERMINAL_PREVIOUS_IMAGE) {
+      await expect(page.getByText("Computador atualizado: agora com Terminal e Arquivos")).toBeVisible()
+      expect(await getEvidence({ command: "upgrade-proof" })).toBe(
+        'workspace preservedhome preservedprofile preserved{"session":{"restore_on_startup":1}}',
+      )
+    }
+    await page.screenshot({
+      path: process.env.TOURI_TERMINAL_EVIDENCE
+        ? join(process.env.TOURI_TERMINAL_EVIDENCE, `terminal-before-${width}.png`)
+        : info.outputPath(`terminal-before-${width}.png`),
+      fullPage: true,
+    })
     const terminals = (await getEvidence({ action: "windows" })).trim().split("\n").length
     expect(terminals).toBeGreaterThan(0)
 
@@ -91,7 +102,12 @@ for (const width of [1440, 390]) {
       await page.getByRole("button", { name: "Ampliar tela", exact: true }).click()
       await expect(page.getByRole("button", { name: "Ajustar à tela", exact: true })).toBeVisible()
     }
-    await page.screenshot({ path: info.outputPath(`terminal-after-${width}.png`), fullPage: true })
+    await page.screenshot({
+      path: process.env.TOURI_TERMINAL_EVIDENCE
+        ? join(process.env.TOURI_TERMINAL_EVIDENCE, `terminal-after-${width}.png`)
+        : info.outputPath(`terminal-after-${width}.png`),
+      fullPage: true,
+    })
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.getByRole("button", { name: "Devolver ao bot", exact: true }).click()
     await expect(keyboard).toBeDisabled()

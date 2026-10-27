@@ -39,7 +39,7 @@ export type MachineConnection = {
   bridge: { guestPort: number; socketPath: string; connectionFile: string }
   authKeyId: string | null
 }
-export type MachineState = { cloud?: { state: import('./cloud').CloudState; generation: number; usage: import('./cloud').CloudUsage }; botId: Id; status: 'stopped' | 'starting' | 'running' | 'error'; progress: string | null; pauseReason?: 'inactivity' | null; error: string | null; errorCode?: string | null; memoryMb: number; createdMs: number | null; startMs: number | null; connection?: MachineConnection | null }
+export type MachineState = { imageUpdate?: 'updated' | 'rolled-back' | null; cloud?: { state: import('./cloud').CloudState; generation: number; usage: import('./cloud').CloudUsage }; botId: Id; status: 'stopped' | 'starting' | 'running' | 'error'; progress: string | null; pauseReason?: 'inactivity' | null; error: string | null; errorCode?: string | null; memoryMb: number; createdMs: number | null; startMs: number | null; connection?: MachineConnection | null }
 export type MachineCapability = { available: boolean; reason: string | null; provider: string | null }
 export type RowSource = 'local' | 'legacy'
 

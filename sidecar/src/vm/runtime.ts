@@ -51,6 +51,7 @@ import {
 import { botFolderMounts, withoutHostFolderMounts } from "./folder-mounts"
 import { GUEST_WRITE_COMMAND } from "./guest-write"
 import { BOT_DNS, BOT_IMAGE } from "./image"
+import { createMachineUpgrades, type MachineMetadata } from "./machine-upgrade"
 import { ProviderLoginError, providerLoginSource, readProviderLogin, VAULT_READ_DEADLINE_MS } from "./provider-login"
 import { redactVmEvents } from "./redact-events"
 import { DEFAULT_BOT_VM_MEMORY_MB, validBotVmMemory } from "./resources"
@@ -61,15 +62,7 @@ import { abortVmWait, vmStage } from "./stage"
 import type { VmProvider, VmVolumeSpec } from "./types"
 import { vncPasswordFile } from "./vnc-auth"
 
-type Metadata = {
-  bot_id: string
-  vm_id: string
-  volume: string
-  project_id: string | null
-  folder_fingerprint: string
-  created_ms: number | null
-  start_ms: number | null
-}
+type Metadata = MachineMetadata
 const unwrap = <T>(result: Result<T>): T => {
   if (!result.success) {
     if (isMachineServiceFailure(result.errorCode)) throw new MachineServiceError(result.errorCode, result.error)
@@ -128,6 +121,21 @@ export const createVmRuntime = ({
 }) => {
   const limits = { boot: 600_000, ready: 90_000, auth: 15_000, exec: 30_000, ...timeouts }
   const db = kernel.db as Database
+  const upgrades = createMachineUpgrades(db, provider, now, connectionKeys.remove)
+  const getImageUpdate = (botId: string): "updated" | "rolled-back" | null => {
+    const row = db.query("SELECT value_json FROM settings WHERE key = ?").get(`vm-image-notice:${botId}`) as {
+      value_json: string
+    } | null
+
+    return row ? (JSON.parse(row.value_json) as "updated" | "rolled-back") : null
+  }
+  const saveImageUpdate = (botId: string, result: "updated" | "rolled-back") => {
+    db.query("INSERT OR REPLACE INTO settings(key, value_json, updated_at) VALUES (?, ?, ?)").run(
+      `vm-image-notice:${botId}`,
+      JSON.stringify(result),
+      now(),
+    )
+  }
   const states = new Map<string, MachineState>()
   const locks = new Map<string, Promise<unknown>>()
   const users = new Map<string, number>()
@@ -215,6 +223,7 @@ export const createVmRuntime = ({
       createdMs: metadata(botId)?.created_ms ?? null,
       startMs: metadata(botId)?.start_ms ?? null,
       connection: null,
+      imageUpdate: getImageUpdate(botId),
     }
   const update = (botId: string, patch: Partial<MachineState>) => {
     const state = {
@@ -450,7 +459,42 @@ export const createVmRuntime = ({
         }
       },
     })
-  const boot = async (botId: string, signal?: AbortSignal, applyFolders = false) => {
+  const isUpgradeBusy = (botId: string) =>
+    Boolean(
+      users.get(botId) ||
+        operations.get(botId) ||
+        children.get(botId)?.size ||
+        (stateFor(botId).status === "running" && connectedViewers.get(botId)) ||
+        kernel.services.use("computer.input")?.human(botId) ||
+        // Search active runs instead of scanning this bot's growing history.
+        db
+          .query("SELECT 1 FROM runs INDEXED BY runs_status WHERE bot_id = ? AND status = 'running' LIMIT 1")
+          .get(botId),
+    )
+  const recoverUpgrade = async (botId: string) => {
+    const pending = upgrades.getPending(botId)
+    if (!pending) return false
+    if (pending.committed) {
+      await upgrades.finish(botId, pending).catch(() => {
+        kernel.log({ level: "warn", module: "vm", msg: "VM_UPGRADE_CLEANUP_RETRY" })
+      })
+      return false
+    }
+    if (isUpgradeBusy(botId)) throw new Error("Máquina ocupada; aguarde os turnos antes de atualizar")
+
+    await stopResources(botId)
+    await upgrades.rollback(botId, pending)
+    saveImageUpdate(botId, "rolled-back")
+    return true
+  }
+  const boot = async (
+    botId: string,
+    signal?: AbortSignal,
+    applyFolders = false,
+    allowUpgrade = true,
+  ): Promise<MachineState> => {
+    if (await recoverUpgrade(botId)) return boot(botId, signal, false, false)
+    let upgrade: ReturnType<typeof upgrades.getPending> = null
     const bot = botFor(botId)
     if (!capability.available) throw new Error(capability.reason ?? "sem virtualização neste host")
     let meta = metadata(botId)
@@ -508,9 +552,14 @@ export const createVmRuntime = ({
         const inspected = unwrap(await provider.inspect({ id: meta.vm_id, ...(signal ? { signal } : {}) }))
         if (inspected.memoryMb !== undefined) memoryMb = inspected.memoryMb
         signal?.throwIfAborted()
-        if (!imageMatches(inspected.image) || !dnsMatches(inspected.dns) || (applyFolders && foldersChanged)) {
+        if (applyFolders && foldersChanged && isUpgradeBusy(botId))
+          throw new Error("Aguarde os turnos terminarem e devolva o controle para aplicar as pastas da máquina.")
+        if (
+          allowUpgrade &&
+          (!imageMatches(inspected.image) || !dnsMatches(inspected.dns) || (applyFolders && foldersChanged)) &&
+          !isUpgradeBusy(botId)
+        ) {
           try {
-            if (users.get(botId)) throw new Error("Máquina ocupada; aguarde os turnos antes de atualizar")
             const progress =
               applyFolders && foldersChanged
                 ? "Aplicando as pastas do bot…"
@@ -523,6 +572,7 @@ export const createVmRuntime = ({
               data: { botId, stage: "upgrade", previousImage: inspected.image, image: BOT_IMAGE },
             })
             await ensureImage()
+            if (isUpgradeBusy(botId)) return boot(botId, signal, false, false)
             await stopResources(botId)
             if (status === "running") unwrap(await provider.stop({ id: meta.vm_id }))
             signal?.throwIfAborted()
@@ -542,10 +592,13 @@ export const createVmRuntime = ({
               mounts = [...mounts, migrated]
             }
             signal?.throwIfAborted()
-            meta.volume = JSON.stringify(hostMounts ? [...withoutHostFolderMounts(mounts), ...hostMounts] : mounts)
-            db.query("UPDATE bot_machines SET volume = ? WHERE bot_id = ?").run(meta.volume, botId)
-            unwrap(await provider.destroy({ id: meta.vm_id }))
-            signal?.throwIfAborted()
+            const candidate = {
+              ...meta,
+              vm_id: `touri-${namespace}-${randomBytes(12).toString("hex")}`,
+              volume: JSON.stringify(hostMounts ? [...withoutHostFolderMounts(mounts), ...hostMounts] : mounts),
+            }
+            upgrade = upgrades.begin(meta, candidate)
+            meta = candidate
             status = "missing"
           } finally {
             await provider.stopBuilder?.()
@@ -574,7 +627,7 @@ export const createVmRuntime = ({
             image: BOT_IMAGE,
             dns: BOT_DNS,
             cpus: 2,
-            memoryMb: memoryPreference(),
+            memoryMb,
             cwd: "/workspace",
             env: guestEnv,
             entrypoint: "/usr/local/lib/touri/init.sh",
@@ -586,7 +639,6 @@ export const createVmRuntime = ({
           hostMounts ? folderFingerprint : meta.folder_fingerprint,
           botId,
         )
-        memoryMb = memoryPreference()
       }
       const start = now()
       signal?.throwIfAborted()
@@ -682,8 +734,16 @@ export const createVmRuntime = ({
       const startMs = now() - start
       const createdMs = meta.created_ms ?? now() - first
       db.query("UPDATE bot_machines SET created_ms = ?, start_ms = ? WHERE bot_id = ?").run(createdMs, startMs, botId)
+      if (upgrade) {
+        saveImageUpdate(botId, "updated")
+        await upgrades.finish(botId, upgrade).catch(() => {
+          kernel.log({ level: "warn", module: "vm", msg: "VM_UPGRADE_CLEANUP_RETRY" })
+        })
+        upgrade = null
+      }
       touch(botId)
       return update(botId, {
+        imageUpdate: getImageUpdate(botId),
         status: "running",
         progress: null,
         error: null,
@@ -696,6 +756,13 @@ export const createVmRuntime = ({
       bridges.get(botId)?.()
       bridges.delete(botId)
       connections.delete(botId)
+      if (upgrade && !upgrades.getPending(botId)?.committed) {
+        await stopResources(botId)
+        await upgrades.rollback(botId, upgrade)
+        saveImageUpdate(botId, "rolled-back")
+        signal?.throwIfAborted()
+        return boot(botId, signal, false, false)
+      }
       throw error
     }
   }
@@ -1083,7 +1150,9 @@ export const createVmRuntime = ({
   }
   const restart: VmRuntime["restart"] = ({ botId, reset = false, projectId }) =>
     serial(botId, async () => {
-      if (users.get(botId)) throw new Error("Máquina ocupada; pare os turnos antes de reiniciar")
+      if (isUpgradeBusy(botId))
+        throw new Error("Máquina ocupada; pare os turnos e devolva o controle antes de reiniciar")
+      await recoverUpgrade(botId)
       if (
         projectId !== undefined &&
         (!reset ||
@@ -1125,6 +1194,7 @@ export const createVmRuntime = ({
   const destroy: VmRuntime["destroy"] = ({ botId, deleteVolumes = true }) =>
     serial(botId, async () => {
       if (users.get(botId)) throw new TouriError("TOURI-E8004")
+      await recoverUpgrade(botId)
       await stopResources(botId)
       const meta = metadata(botId)
       if (meta) {
