@@ -2583,7 +2583,13 @@ export const createRuntimeEngine = ({
     errorMessage: string
   }): Promise<void> => {
     const errorClass = refineErrorClass(reportedErrorClass, errorMessage)
-    const crashed = canAutomaticallyResumeFailure(errorClass, errorMessage) && !state.cancelRequested && isLive(run)
+    // Service refusal before acceptance is a failed request, not an interrupted turn.
+    const serviceRefused = errorClass === "machine_service_unavailable" && !state.turnStarted
+    const crashed =
+      !serviceRefused &&
+      canAutomaticallyResumeFailure(errorClass, errorMessage) &&
+      !state.cancelRequested &&
+      isLive(run)
     const plan = crashed ? planContinuation({ run, reason: "provider_crash", lastActivityAt: Date.now() }) : null
     const committed = await finalizeFailure({
       run,
