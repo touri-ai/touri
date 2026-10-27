@@ -163,11 +163,11 @@ export const createVmRuntime = ({
   const withActivity = async <T>(botId: string, action: () => Promise<T>): Promise<T> => {
     operations.set(botId, (operations.get(botId) ?? 0) + 1)
     try {
-      touch(botId)
+      await writeDatabaseAsync(db, () => touch(botId))
       return await action()
     } finally {
       operations.set(botId, Math.max(0, (operations.get(botId) ?? 1) - 1))
-      touch(botId)
+      await writeDatabaseAsync(db, () => touch(botId))
     }
   }
   const acquiring = new Map<string, number>()
@@ -485,7 +485,7 @@ export const createVmRuntime = ({
 
     await stopResources(botId)
     await upgrades.rollback(botId, pending)
-    saveImageUpdate(botId, "rolled-back")
+    await writeDatabaseAsync(db, () => saveImageUpdate(botId, "rolled-back"))
     return true
   }
   const boot = async (
@@ -535,8 +535,11 @@ export const createVmRuntime = ({
           created_ms: null,
           start_ms: null,
         }
-        db.query("INSERT INTO bot_machines(bot_id, vm_id, volume) VALUES (?, ?, ?)").run(botId, id, meta.volume)
-        touch(botId)
+        const volume = meta.volume
+        await writeDatabaseAsync(db, () => {
+          db.query("INSERT INTO bot_machines(bot_id, vm_id, volume) VALUES (?, ?, ?)").run(botId, id, volume)
+          touch(botId)
+        })
       }
       let status = unwrap(await provider.status({ id: meta.vm_id, ...(signal ? { signal } : {}) })).status
       const folderFingerprint = botFolderFingerprint(bot)
@@ -615,7 +618,10 @@ export const createVmRuntime = ({
           mounts.push({ type: "volume", source: `${meta.vm_id}-browser`, target: "/var/lib/touri-browser" })
         }
         meta.volume = JSON.stringify(mounts)
-        db.query("UPDATE bot_machines SET volume = ? WHERE bot_id = ?").run(meta.volume, botId)
+        const volume = meta.volume
+        await writeDatabaseAsync(db, () =>
+          db.query("UPDATE bot_machines SET volume = ? WHERE bot_id = ?").run(volume, botId),
+        )
         for (const mount of mounts)
           if (mount.type === "volume")
             unwrap(await provider.createVolume({ name: mount.source, ...(signal ? { signal } : {}) }))
@@ -636,9 +642,9 @@ export const createVmRuntime = ({
             volumes: mounts,
           }),
         )
-        db.query("UPDATE bot_machines SET folder_fingerprint = ? WHERE bot_id = ?").run(
-          hostMounts ? folderFingerprint : meta.folder_fingerprint,
-          botId,
+        const installedFingerprint = hostMounts ? folderFingerprint : meta.folder_fingerprint
+        await writeDatabaseAsync(db, () =>
+          db.query("UPDATE bot_machines SET folder_fingerprint = ? WHERE bot_id = ?").run(installedFingerprint, botId),
         )
       }
       const start = now()
@@ -730,19 +736,25 @@ export const createVmRuntime = ({
           },
         })
         signal?.throwIfAborted()
-        db.query("UPDATE bot_machines SET project_id = ? WHERE bot_id = ?").run(bot.projectId, botId)
+        await writeDatabaseAsync(db, () =>
+          db.query("UPDATE bot_machines SET project_id = ? WHERE bot_id = ?").run(bot.projectId, botId),
+        )
       }
       const startMs = now() - start
       const createdMs = meta.created_ms ?? now() - first
-      db.query("UPDATE bot_machines SET created_ms = ?, start_ms = ? WHERE bot_id = ?").run(createdMs, startMs, botId)
+      await writeDatabaseAsync(db, () =>
+        db
+          .query("UPDATE bot_machines SET created_ms = ?, start_ms = ? WHERE bot_id = ?")
+          .run(createdMs, startMs, botId),
+      )
       if (upgrade) {
-        saveImageUpdate(botId, "updated")
+        await writeDatabaseAsync(db, () => saveImageUpdate(botId, "updated"))
         await upgrades.finish(botId, upgrade).catch(() => {
           kernel.log({ level: "warn", module: "vm", msg: "VM_UPGRADE_CLEANUP_RETRY" })
         })
         upgrade = null
       }
-      touch(botId)
+      await writeDatabaseAsync(db, () => touch(botId))
       return update(botId, {
         imageUpdate: getImageUpdate(botId),
         status: "running",
@@ -760,7 +772,7 @@ export const createVmRuntime = ({
       if (upgrade && !upgrades.getPending(botId)?.committed) {
         await stopResources(botId)
         await upgrades.rollback(botId, upgrade)
-        saveImageUpdate(botId, "rolled-back")
+        await writeDatabaseAsync(db, () => saveImageUpdate(botId, "rolled-back"))
         signal?.throwIfAborted()
         return boot(botId, signal, false, false)
       }
@@ -836,8 +848,12 @@ export const createVmRuntime = ({
               await ensure(botId, signal, applyFolders)
             else await waitReady(botId, signal)
             signal.throwIfAborted()
+            await writeDatabaseAsync(db, () => {
+              signal.throwIfAborted()
+              touch(botId)
+            })
+            signal.throwIfAborted()
             users.set(botId, (users.get(botId) ?? 0) + 1)
-            touch(botId)
           },
           signal,
         )
@@ -863,8 +879,8 @@ export const createVmRuntime = ({
       // Refcounts contain no awaits. Cleanup cannot wait behind a stalled port
       // forward or another bot operation when the user presses Stop.
       users.set(botId, Math.max(0, (users.get(botId) ?? 1) - 1))
-      touch(botId)
       if (!users.get(botId)) revoke(botId)
+      await writeDatabaseAsync(db, () => touch(botId))
       if (!users.get(botId) && parkRequested.has(botId))
         void serial(botId, () => park(botId)).catch((error) =>
           kernel.log({ level: "warn", module: "vm", msg: kernel.redact(String(error)) }),

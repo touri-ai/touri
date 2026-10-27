@@ -45,6 +45,7 @@ import { writeDatabaseAsync } from "../kernel/database-write"
 import { folderAccessUnavailable, folderGrantProblem, refreshHostFolderAccess } from "../kernel/folder-capability"
 import { hasPathHistory } from "../kernel/message-path"
 import { externalizeMessagePartsAsync } from "../kernel/output-blobs"
+import { withOutputPublication } from "../kernel/output-publication"
 import type { PerformanceStage, PerformanceStageRunner } from "../kernel/performance"
 import { providerProfileEnv } from "../kernel/provider-profiles"
 import { redactStructured } from "../kernel/redact"
@@ -742,7 +743,8 @@ export const createRuntimeEngine = ({
     }
 
     // Abort and provider completion can converge; only one preparation may replace a run's snapshot at a time.
-    const operation = finishLiveRunNow(run, prepare, finish, messageId)
+    const publish = () => finishLiveRunNow(run, prepare, finish, messageId)
+    const operation = kernel.db instanceof Database ? withOutputPublication(kernel.db, publish) : publish()
     finalizations.set(run.id, operation)
     try {
       return await operation

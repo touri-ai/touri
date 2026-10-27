@@ -11,6 +11,7 @@ import {
 } from "./attachment-reference-scan"
 import { historyMigrationStatus } from "./history-backfill"
 import { externalizeMessagePartsAsync, OUTPUT_BLOB_ORIGIN } from "./output-blobs"
+import { tryCollectOutput } from "./output-publication"
 import type { PerformanceStageRunner } from "./performance"
 import { createStorageUpgrade } from "./storage-upgrade"
 import { createTranscriptRetention } from "./transcript-retention"
@@ -307,10 +308,16 @@ export const collectUnusedOutputBlobs = async (
       if (changes() !== observed) return defer(removed)
 
       for (const blob of candidates.filter((blob) => unreferenced.has(blob.id))) {
-        await measure("storage_attachment_orphan_scan", async () => {
-          await removePrivateFileAsync({ root: appData, path: blob.path })
-          database.query("DELETE FROM attachments WHERE id=?").run(blob.id)
+        const collected = await tryCollectOutput(database, async () => {
+          if (changes() !== observed) throw new AttachmentReferenceScanDeferred("changed")
+
+          await measure("storage_attachment_orphan_scan", async () => {
+            await removePrivateFileAsync({ root: appData, path: blob.path })
+            database.query("DELETE FROM attachments WHERE id=?").run(blob.id)
+          })
         })
+        if (!collected) return defer(removed)
+
         removed += 1
         observed = changes()
         if (yieldBatch) await yieldBatch()
@@ -349,12 +356,19 @@ export const collectUnusedOutputBlobs = async (
         const stat = file.isFile() && id ? await lstat(path) : null
         // lstat can yield to a writer; recheck metadata and the generation before deletion.
         if (changes() !== observed) return defer(removed)
-        await measure("storage_attachment_orphan_scan", async () => {
-          if (!stat?.isFile() || !id || stat.mtimeMs > now - DAY || attachmentExists.get(id)) return
+        const collected = await measure("storage_attachment_orphan_scan", () =>
+          tryCollectOutput(database, async () => {
+            if (changes() !== observed) throw new AttachmentReferenceScanDeferred("changed")
+            if (!stat?.isFile() || !id || stat.mtimeMs > now - DAY || attachmentExists.get(id)) return
 
-          await removePrivateFileAsync({ root: appData, path })
-          removed += 1
+            await removePrivateFileAsync({ root: appData, path })
+            removed += 1
+          }),
+        ).catch((error: unknown) => {
+          if (error instanceof AttachmentReferenceScanDeferred) return false
+          throw error
         })
+        if (!collected) return defer(removed)
         if (scanned % 50 === 0) {
           if (yieldBatch) await yieldBatch()
           if (changes() !== observed) return defer(removed)

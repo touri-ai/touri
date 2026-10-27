@@ -14,6 +14,7 @@ import type {
   UiEvent,
 } from "@touri/contracts"
 import { createKernel } from "../../src/kernel"
+import { collectUnusedOutputBlobs } from "../../src/kernel/data-maintenance"
 import {
   createPerformanceStageTracker,
   type PerformanceStage,
@@ -114,6 +115,7 @@ const fixture = async (
   const queued = engine.enqueue({ threadId: "t", requestMessageId: request.message.id, trigger: "user" })
   if (!queued.success) throw new Error(queued.error)
   return {
+    root,
     events,
     store,
     db,
@@ -208,6 +210,69 @@ test.each(["runtime_part_finalization", "runtime_output_preparation"] as const)(
     expect(f.db.query("SELECT status FROM runs").all()).toEqual([{ status: "canceled" }])
   },
 )
+
+test("canceled failed-turn output stays published while orphan collection overlaps terminal preparation", async () => {
+  const collected = Promise.withResolvers<number | Error>()
+  const output = "synthetic retained output\n".repeat(512)
+  let preparingOutput = false
+  let collecting = false
+  const f = await fixture(
+    async ({ onEvent }) => {
+      onEvent({
+        type: "item",
+        part: {
+          type: "command",
+          callId: "shell",
+          command: "sample",
+          cwd: "/workspace",
+          exitCode: null,
+          outputTail: output,
+        },
+      })
+      onEvent({ type: "turn_completed", status: "failed", errorClass: "tool_error", errorMessage: "Fixture failure" })
+    },
+    "Conclua a tarefa.",
+    {
+      cancelAt: "runtime_output_preparation",
+      afterStage: (stage) => {
+        if (stage === "runtime_output_preparation") preparingOutput = true
+        if (!preparingOutput || collecting || stage !== "runtime_part_finalization") return
+
+        collecting = true
+        writer.exec("BEGIN IMMEDIATE")
+        void collectUnusedOutputBlobs(f.db, f.root).then(
+          (removed) => {
+            writer.exec("COMMIT")
+            collected.resolve(removed)
+          },
+          (error: Error) => {
+            writer.exec("COMMIT")
+            collected.resolve(error)
+          },
+        )
+      },
+    },
+  )
+  cleanups.add(f.close)
+  f.db.exec("PRAGMA busy_timeout = 0")
+  const writer = new Database(f.db.filename)
+  cleanups.add(async () => writer.close())
+  const append = spyOn(f.store, "appendParts").mockImplementation(() => {})
+  cleanups.add(async () => append.mockRestore())
+
+  const reply = await f.finish()
+  const removed = await collected.promise
+
+  expect(reply.status).toBe("canceled")
+  const command = reply.parts.find((part) => part.type === "command")
+  if (!command?.outputAttachmentId) throw new Error("Output reference missing")
+  const attachment = f.db.query("SELECT path FROM attachments WHERE id = ?").get(command.outputAttachmentId) as {
+    path: string
+  } | null
+  if (!attachment) throw new Error("Output attachment missing")
+  expect(await Bun.file(attachment.path).text()).toBe(output)
+  expect(removed).toBe(0)
+})
 
 test.each(["runtime_part_finalization", "runtime_output_preparation"] as const)(
   "cancellation during failed-turn %s externalizes output before the terminal write",
