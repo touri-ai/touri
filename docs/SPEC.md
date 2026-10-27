@@ -202,10 +202,15 @@ scrolling the conversation. Keyboard, text input and paste events stay within th
 input reaches only the managed page and never becomes conversation text. This applies to desktop
 and phone layouts. Existing takeover authorization, input bounds and the release control remain in force.
 
-The isolated computer includes a lightweight desktop with Terminal and Files launchers. Terminal
-starts in the bot's home as its unprivileged user and preserves shell state until its window closes.
-Agent applications use untrusted display authorization; the browser's trusted credential stays private.
-The launch service accepts only the two fixed applications and drops privileges before starting them.
+The isolated computer includes a lightweight desktop with Browser, Terminal and Files launchers,
+44-pixel icons and running-window indicators. Browser opens the bot's existing private profile or
+restores and focuses its window, including when minimized, without adding a tab. Handback preserves
+the person's tabs and session state for the bot. Dock and automation startup share a private lock.
+Terminal starts in the bot's home as its unprivileged user and preserves shell state until its window
+closes. Agent applications use untrusted display authorization; the browser's trusted credential stays
+private. The launch service accepts only three fixed requests, with no arguments or URLs. Separate
+browser and agent workers drop privileges before serving requests; the agent cannot access the
+browser profile, trusted display credential, debugging endpoint or public launcher socket.
 Refreshing Linux connection descriptors retains existing private display forwards.
 
 During computer takeover, a single keyboard field accepts typing, composed text and native clipboard
