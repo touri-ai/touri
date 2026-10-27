@@ -2097,6 +2097,8 @@ Admission and rollback commit the journal and machine pointer atomically. Admiss
 commit marking and journal removal acquire the SQLite writer with bounded asynchronous retries,
 yielding between lock attempts instead of blocking the event loop. Provider operations remain
 outside transactions; the committed journal is durable before the original container is removed.
+Persisting the installed network policy during boot or a live policy update uses the same bounded
+writer retries, without changing policy validation or the deny-by-default network rules.
 
 ### Computer takeover keyboard and screen demand
 
