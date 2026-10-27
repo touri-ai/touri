@@ -118,7 +118,8 @@ export const DesktopPanel = ({
     let quality = getInitialQuality(performance.now())
     const updateVisibility = () => {
       if (!socket || !connected || socket.readyState !== WebSocket.OPEN) return
-      const visible = !document.hidden && inView
+      // Readiness still needs its first image in an occluded window.
+      const visible = !displayed || (!document.hidden && inView)
       socket.send(visible ? desktopStreamVisibility.resume : desktopStreamVisibility.pause)
     }
     const keyboard = createDesktopKeyboard(

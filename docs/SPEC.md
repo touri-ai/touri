@@ -2084,3 +2084,18 @@ journals the original metadata and candidate ID before changing that pointer. In
 roll back before another start; committed updates finish removing only the old container.
 `vm-image-notice:<botId>` retains the outcome across reconnects. No user volume is deleted during
 an update. Turn leases, guest operations, live viewers and persisted human control defer updates.
+
+### Computer takeover keyboard and screen demand
+
+The computer viewer remembers a Portuguese (ABNT2) or English (US) keyboard profile per bot on
+this device, defaulting from the system languages. The selector appears only during human control.
+Composition commits accented and dead-key text once; ABNT2 also handles systems reporting AltGr
+as Ctrl+Alt. Existing Mac shortcuts and terminal Ctrl+Shift+V remain available. Ownership names
+the waiting bot and keeps explicit handback; hiding the viewer never resumes automation.
+
+Human control requests images immediately, observers at most every 500 ms and chat previews at
+most every second. A hidden or offscreen viewer retains one request and resumes on return. The
+initial readiness image remains allowed while hidden; full refresh requests survive coalescing.
+Quality changes require sustained received traffic, separate upgrade/downgrade thresholds and a
+six-second hold period; idle screens do not imply a slow connection. Session lifecycle checks use
+committed runtime notifications so deferred startup UI delivery cannot close a newer session.

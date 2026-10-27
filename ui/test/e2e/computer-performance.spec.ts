@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises"
 import { createServer } from "node:net"
 import { resolve } from "node:path"
 import { createInterface } from "node:readline"
+import AxeBuilder from "@axe-core/playwright"
 import { expect, type Page, test } from "@playwright/test"
 
 let child: ChildProcess | undefined
@@ -101,8 +102,15 @@ test("real computer keyboard, frame timing and CPU evidence", async ({ page }) =
       await page.getByRole("button", { name: "Assumir controle", exact: true }).click()
       await expect(keyboard).toBeEnabled({ timeout: 30_000 })
       await keyboard.press("Control+c")
-      if (phase !== "before")
+      if (phase !== "before") {
         await expect(page.getByText("Você está no controle · Lia aguarda", { exact: true })).toBeVisible()
+        const layout = await page.getByLabel("Layout do teclado").boundingBox()
+        expect(layout?.height).toBeGreaterThanOrEqual(44)
+        const accessibility = await new AxeBuilder({ page }).include(".desktop-panel").analyze()
+        expect(accessibility.violations.filter(({ impact }) => impact === "serious" || impact === "critical")).toEqual(
+          [],
+        )
+      }
       await page.screenshot({
         path: test.info().outputPath(`computer-${phase}-${width}-${colorScheme}.png`),
         fullPage: true,

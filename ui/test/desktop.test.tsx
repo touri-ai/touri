@@ -1029,3 +1029,24 @@ test("terminal Ctrl+Shift+V reaches the guest instead of becoming a local paste"
 
   expect(viewers.at(-1)?.sendKey).toHaveBeenCalledWith(86, null, true)
 })
+
+test("hiding before the first image keeps readiness requests enabled", async () => {
+  vi.useFakeTimers()
+  const f = fixture()
+  render(<DesktopPanel bot={bot} api={f.api} />)
+  await act(async () => vi.advanceTimersByTimeAsync(0))
+  const viewer = viewers.at(-1)
+  const socket = f.sockets.at(-1)
+  if (!viewer || !socket) throw new Error("Missing viewer")
+  viewer.getImageData = () => ({ ...pulse(0), data: new Uint8ClampedArray(8 * 8 * 4) })
+  await act(async () => viewer.dispatchEvent(new Event("connect")))
+
+  vi.spyOn(document, "hidden", "get").mockReturnValue(true)
+  fireEvent(document, new Event("visibilitychange"))
+
+  expect(socket.send).not.toHaveBeenCalledWith("desktop:pause")
+  viewer.getImageData = () => pulse(1)
+  await act(async () => vi.advanceTimersByTimeAsync(1_000))
+  expect(socket.send).toHaveBeenLastCalledWith("desktop:pause")
+  expect(screen.getByRole("button", { name: "Assumir controle" })).toBeEnabled()
+})

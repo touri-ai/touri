@@ -201,7 +201,7 @@
 
 .desktop-layout select {
   max-width: 100%;
-  min-height: 32px;
+  min-height: 44px;
   padding: var(--space-4) var(--space-8);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
