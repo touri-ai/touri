@@ -21,20 +21,55 @@ test("workspace retention: 30 bots bound browser heap and reload evicted history
   const baselineBytes = await heap()
   // A fixed two-sample series stays local to this browser measurement.
   const samples: number[] = []
+  const waves = []
   for (let wave = 0; wave < 2; wave++) {
-    await page.evaluate(async () => {
+    const metrics = await page.evaluate(async () => {
       const fixture = window.retentionWorkload
+      // Samples and observers belong only to this bounded synthetic wave.
+      const dispatchMs: number[] = []
+      const longTasks: number[] = []
+      const shifts: number[] = []
+      const tasks = new PerformanceObserver((list) => {
+        longTasks.push(...list.getEntries().map((entry) => entry.duration))
+      })
+      const layout = new PerformanceObserver((list) => {
+        const entries = list.getEntries() as Array<PerformanceEntry & { value: number }>
+        shifts.push(...entries.map((entry) => entry.value))
+      })
+      tasks.observe({ type: "longtask" })
+      layout.observe({ type: "layout-shift" })
       for (let round = 0; round < 20; round++) {
+        const started = performance.now()
         fixture.round()
+        dispatchMs.push(performance.now() - started)
         await new Promise<void>((done) => setTimeout(done, 0))
       }
       await new Promise(requestAnimationFrame)
       await new Promise(requestAnimationFrame)
+      tasks.disconnect()
+      layout.disconnect()
+      const sorted = dispatchMs.toSorted((left, right) => left - right)
+
+      return {
+        dispatchP95Ms: sorted[Math.ceil(sorted.length * 0.95) - 1],
+        longTasksOver50Ms: longTasks.filter((duration) => duration > 50).length,
+        maxLongTaskMs: Math.max(0, ...longTasks),
+        cls: shifts.reduce((sum, value) => sum + value, 0),
+      }
     })
+    waves.push(metrics)
     samples.push(await heap())
   }
   const budgetBytes = 8 * 1024 * 1024
-  const measurements = { bots: 30, backgroundBots: 29, turnsPerBackgroundBot: 40, baselineBytes, samples, budgetBytes }
+  const measurements = {
+    bots: 30,
+    backgroundBots: 29,
+    turnsPerBackgroundBot: 40,
+    baselineBytes,
+    samples,
+    budgetBytes,
+    waves,
+  }
   console.log("Workspace retention heap:", JSON.stringify(measurements))
   await testInfo.attach("workspace-retention-budget.json", {
     body: JSON.stringify(measurements),

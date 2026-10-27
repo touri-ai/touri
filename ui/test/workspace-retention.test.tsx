@@ -1,5 +1,6 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import type { Message } from "@touri/contracts"
+import { useLayoutEffect } from "react"
 import { afterEach, expect, test, vi } from "vitest"
 import type { ApiRequest } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
@@ -19,6 +20,35 @@ const deferred = () => {
   })
   return { promise, resolve }
 }
+
+test("a completed background wave commits once without replaying obsolete stream updates", async () => {
+  const workload = createRetentionWorkload()
+  const committed = vi.fn()
+  const hook = renderHook(() => {
+    const workspace = useWorkspace(workload.api)
+    useLayoutEffect(() => committed(workspace.data), [workspace.data])
+
+    return workspace
+  })
+  await waitFor(() => expect(hook.result.current.data.messages).toHaveLength(1))
+  await act(async () => undefined)
+  committed.mockClear()
+
+  act(() => workload.round())
+
+  expect(committed).toHaveBeenCalledTimes(1)
+  expect(hook.result.current.data.messages).toEqual([workload.message(0, 0)])
+  expect(
+    hook.result.current.data.activityMessages.filter((message) => message.threadId !== "retention-thread-0"),
+  ).toEqual(
+    Array.from({ length: 29 }, (_, index) => {
+      const message = workload.message(index + 1, 1)
+
+      return Object.assign({}, message, { text: message.text.slice(0, 512), parts: [] })
+    }),
+  )
+  expect(workload.historyRequests.slice(1)).toEqual(Array.from({ length: 29 }, () => 0))
+})
 
 test("open conversation tokens preserve unchanged background messages and runs", async () => {
   const workload = createRetentionWorkload()

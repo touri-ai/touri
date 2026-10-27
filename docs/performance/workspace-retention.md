@@ -17,6 +17,13 @@ Pruning runs only when a collection exceeds its retention slots or outstanding w
 Messages and arrays retain their identity whenever their contents already meet the limits.
 Updates to the open run do not inspect background ordering or rebuild background retention buckets.
 
+Background stream patches and completed-message/run updates use the same rendering priority.
+Splitting a background wave across priorities makes the reducer replay already completed turns
+and retain their event payloads in its pending update list. Only the open transcript uses
+interruptible stream rendering; an in-flight history read still preserves its ordered replay.
+The retention unit test requires one committed render for a complete background wave, while
+checking that the visible conversation and all background summaries remain correct.
+
 ## Reproducible workload
 
 The synthetic fixture creates 30 bots, opens bot 0, and delivers 40 turns from each of the other
@@ -28,7 +35,8 @@ Histories are reconstructed on request so the fixture does not retain the payloa
   streams, delayed responses, group sender identity and identity preservation during streaming.
 - `ui/test/e2e/workspace-retention.spec.ts` drives the app with mock data, collects browser garbage
   before sampling heap, and limits growth above the loaded-app baseline to 8 MiB. Reopening an
-  evicted conversation must request and restore its complete history.
+  evicted conversation must request and restore its complete history. Each wave also records
+  dispatch p95, long tasks and layout shifts alongside its heap sample.
 
 These budgets measure serialized client state and browser heap. They do not establish native
 process RSS, transport memory, or the cost of a large open transcript. Outstanding work, routine
