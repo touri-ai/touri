@@ -10,7 +10,7 @@ afterEach(async () => {
   directories.clear()
 })
 
-test("the upgrade image ships a persistent unprivileged terminal and both desktop launchers", async () => {
+test("the upgrade image ships a persistent unprivileged terminal and three desktop launchers", async () => {
   const root = await mkdtemp(join(tmpdir(), "touri-terminal-image-"))
   directories.add(root)
 
@@ -25,19 +25,24 @@ test("the upgrade image ships a persistent unprivileged terminal and both deskto
         "tint2rc",
         "terminal.desktop",
         "files.desktop",
+        "chrome.desktop",
+        "browser-flags.json",
       ].map(async (name) => [name, await readFile(join(context, name), "utf8")]),
     ),
   )
 
-  expect(BOT_IMAGE).toBe("touri-bot:9")
+  expect(BOT_IMAGE).toBe("touri-bot:10")
   expect(files.Containerfile).toContain("openbox tint2 xterm pcmanfm")
   expect(files["init.sh"]).toContain("untrusted timeout 0")
   expect(files["init.sh"]).toContain("Xvfb :99 -noreset")
   expect(files["init.sh"]).toContain("python3 /usr/local/lib/touri/desktop-launcher.py")
-  expect(files["desktop-launcher.py"]).toContain("HOME='/workspace/.home'")
+  expect(files["desktop-launcher.py"]).toContain("'/workspace/.home'")
   expect(files["desktop-launcher.py"]).toContain("os.setuid(1000)")
   expect(files["terminal.sh"]).toContain("/bin/bash --noprofile --norc -i")
   expect(files.tint2rc).toContain("launcher_item_app = /usr/local/lib/touri/terminal.desktop")
   expect(files.tint2rc).toContain("launcher_item_app = /usr/local/lib/touri/files.desktop")
+  expect(files.tint2rc).toContain("launcher_item_app = /usr/local/lib/touri/chrome.desktop")
+  expect(files["chrome.desktop"]).toContain("printf chrome | socat")
+  expect(JSON.parse(files["browser-flags.json"] ?? "[]")).toContain("--user-data-dir=/var/lib/touri-browser/profile")
   expect(files["desktop-launcher.py"]).toContain("['pcmanfm', '/workspace']")
 })

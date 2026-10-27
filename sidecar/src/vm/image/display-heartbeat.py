@@ -42,7 +42,21 @@ background = bind("XSetWindowBackground", [c.c_ulong, c.c_ulong])
 clear = bind("XClearWindow", [c.c_ulong])
 raise_window = bind("XRaiseWindow", [c.c_ulong])
 flush = bind("XFlush", [])
-background(display, root, 0xdce6f2)
+# Publish a real root pixmap so the panel can blend its rounded surface without
+# a compositor. It stays alive on this display connection, with no redraw loop.
+depth = bind("XDefaultDepth", [c.c_int])(display, screen)
+pixmap = bind("XCreatePixmap", [c.c_ulong, c.c_uint, c.c_uint, c.c_uint], c.c_ulong)(display, root, width, height, depth)
+gc = bind("XCreateGC", [c.c_ulong, c.c_ulong, c.c_void_p], c.c_void_p)(display, pixmap, 0, None)
+bind("XSetForeground", [c.c_void_p, c.c_ulong])(display, gc, 0xdce6f2)
+bind("XFillRectangle", [c.c_ulong, c.c_void_p, c.c_int, c.c_int, c.c_uint, c.c_uint])(display, pixmap, gc, 0, 0, width, height)
+bind("XFreeGC", [c.c_void_p])(display, gc)
+bind("XSetWindowBackgroundPixmap", [c.c_ulong, c.c_ulong])(display, root, pixmap)
+atom = bind("XInternAtom", [c.c_char_p, c.c_int], c.c_ulong)(display, b"_XROOTPMAP_ID", 0)
+pixmap_id = c.c_ulong(pixmap)
+# Core atom 20 is PIXMAP; property format 32 uses native unsigned-long storage.
+bind("XChangeProperty", [c.c_ulong, c.c_ulong, c.c_ulong, c.c_int, c.c_int, c.c_void_p, c.c_int])(
+    display, root, atom, 20, 32, 0, c.byref(pixmap_id), 1
+)
 clear(display, root)
 sequence = 0
 while True:

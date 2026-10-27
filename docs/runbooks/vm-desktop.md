@@ -54,7 +54,7 @@ no guest com `Page.bringToFront`; navegação/autofocus por CDP não bastam para
 entregar entrada X11 à página. Também verifica pixels da janela do guest,
 Unicode, atalho no textarea, notificação do host em outra janela e frames congelados.
 
-A imagem é `touri-bot:6`, com `-rfbauth`, `-norc`, `-xkb` e `-add_keysyms` no init.
+A imagem atual é `touri-bot:10`, com `-rfbauth`, `-norc`, `-xkb` e `-add_keysyms` no init.
 A `:4` iniciava sem senha e supervisionava o PID do x11vnc: substituí-lo durante
 o boot encerraria o guest. A nova imagem permite iniciar protegido, sem uma
 migração de `.x11vncrc` e um reinício adicional em runtime. O runtime existente
@@ -79,3 +79,23 @@ Validação:
   A página que captura `Olá 日本` aguarda o carregamento e o foco antes de enviar
   teclas. A UI usa Latin-1 até U+00FF e `0x01000000 + codepoint` para os demais
   caracteres; x11vnc adiciona keysyms ausentes ao mapa X11, inclusive texto de IME.
+
+### Dock e navegador (imagem 10)
+
+O dock oferece **Navegador / Browser**, **Terminal** e **Arquivos / Files**, com
+ícones de 44 pixels. Os botões à direita do separador mostram as janelas abertas;
+a linha inferior destaca o aplicativo e sua janela ativa. O fundo arredondado
+usa o pixmap do desktop para transparência sem compositor.
+
+Navegador abre o mesmo perfil privado usado pelas ferramentas do bot. Um novo
+clique restaura e foca a janela existente, inclusive quando minimizada. Ao devolver
+o controle, o bot encontra as abas e a sessão que a pessoa deixou abertas.
+A abertura pelo dock e pela automação compartilha um lock privado para evitar
+limpeza de arquivos de singleton durante uma inicialização concorrente.
+
+O socket público continua aceitando apenas nomes fixos: `terminal`, `files` e
+`chrome`, sem argumentos ou URLs. O broker do navegador usa UID 1001; um processo
+separado, UID 1000, recebe somente os pedidos de Terminal e Arquivos por um socket
+herdado. Ambos descartam privilégios antes de atender pedidos. A credencial X
+confiável, o perfil e a porta de depuração continuam inacessíveis ao usuário do
+terminal; os aplicativos do agente mantêm a autorização X não confiável.

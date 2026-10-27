@@ -22,6 +22,9 @@ export const BROWSER_FLAGS = [
  * only by unlinking the three well-known names through a no-follow directory descriptor.
  */
 export const CLEAR_STALE_PROFILE_LOCKS_COMMAND = `import os,subprocess,sys
+# Image 10 serializes cleanup and startup inside its browser-identity helper.
+if os.path.isfile('/usr/local/lib/touri/browser-flags.json'):
+ print('managed');sys.exit(0)
 alive=subprocess.run(['pgrep','-u','1001','-x','chromium'],stdout=subprocess.DEVNULL).returncode==0
 if alive:
  print('running');sys.exit(0)
@@ -38,7 +41,8 @@ print('cleared' if cleared else 'clean')`
 
 export const BROWSER_RUNNING_COMMAND = "pgrep -u 1001 -x chromium >/dev/null"
 export const BROWSER_STOP_COMMAND = "pkill -u 1001 -x chromium; pkill -u 1001 -f chrome_crashpad; true"
-export const BROWSER_LAUNCH_SHELL = `: > ${BROWSER_LOG}; exec chromium "$@" >> ${BROWSER_LOG} 2>&1`
+export const BROWSER_LAUNCH_SHELL = `if test -f /usr/local/lib/touri/browser-flags.json; then exec python3 /usr/local/lib/touri/desktop-launcher.py --start-browser >> ${BROWSER_LOG} 2>&1; fi
+: > ${BROWSER_LOG}; exec chromium "$@" >> ${BROWSER_LOG} 2>&1`
 export const BROWSER_LOG_TAIL_COMMAND = `tail -c 400 ${BROWSER_LOG} 2>/dev/null || true`
 
 export type BrowserStartFailure = "exited" | "unresponsive"
