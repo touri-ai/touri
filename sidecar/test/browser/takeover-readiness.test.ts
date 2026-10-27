@@ -58,6 +58,8 @@ const getFixture = async ({
           params: { sessionId: 1, data: screencastData },
         })
       if (method === "Emulation.setDeviceMetricsOverride") await resize()
+      if (method === "Page.getNavigationHistory")
+        return { currentIndex: 0, entries: [{ id: 1, url: "https://example.test/public" }] } as T
       if (method === "Page.getLayoutMetrics")
         return { cssVisualViewport: { pageX: 0, pageY: 0, clientWidth: 800, clientHeight: 500 } } as T
       return {} as T
@@ -461,6 +463,65 @@ test("typed takeover text protects whole entries without redacting single charac
   expect(calls.filter((call) => call.method === "Input.insertText")).toHaveLength(20)
   expect(redact("output https://example.test/a/b")).toBe("output https://example.test/a/b")
   expect(redact("value synthetic-entry-73 sent")).toBe("value [REDACTED] sent")
+})
+
+test("rejected stale text and unavailable history cannot alter the protected typed entry", async () => {
+  const { engine, calls, redact } = await getFixture()
+  await requestTakeover(engine)
+  await engine.holdTakeoverForPerson({ tabId: "tab", personId: "authorized" })
+  const frame = await engine.takeoverFrame({ tabId: "tab", botId: "bot", signal: new AbortController().signal })
+  if (!frame) throw new Error("Synthetic frame missing")
+  const observed = {
+    tabId: "tab",
+    botId: "bot",
+    targetEpoch: frame.targetEpoch,
+    width: frame.width,
+    height: frame.height,
+    signal: new AbortController().signal,
+  }
+
+  const rejected = await engine.takeoverInput({
+    ...observed,
+    targetEpoch: frame.targetEpoch - 1,
+    input: { kind: "text", text: "stale-prefix" },
+  })
+  await engine.takeoverInput({ ...observed, input: { kind: "text", text: "synthe" } })
+  const unavailable = await engine.takeoverInput({ ...observed, input: { kind: "navigate", action: "back" } })
+  await engine.takeoverInput({ ...observed, input: { kind: "text", text: "tic-entry-73" } })
+  await engine.releaseTakeover("tab")
+
+  expect(rejected).toBe(false)
+  expect(unavailable).toBe(false)
+  expect(calls.filter((call) => call.method === "Input.insertText")).toHaveLength(2)
+  expect(redact("value synthetic-entry-73 sent")).toBe("value [REDACTED] sent")
+  expect(redact("stale-prefix")).toBe("stale-prefix")
+})
+
+test("long uninterrupted typing protects bounded segments before handback", async () => {
+  const { engine, redact } = await getFixture()
+  await requestTakeover(engine)
+  await engine.holdTakeoverForPerson({ tabId: "tab", personId: "authorized" })
+  const frame = await engine.takeoverFrame({ tabId: "tab", botId: "bot", signal: new AbortController().signal })
+  if (!frame) throw new Error("Synthetic frame missing")
+  const observed = {
+    tabId: "tab",
+    botId: "bot",
+    targetEpoch: frame.targetEpoch,
+    width: frame.width,
+    height: frame.height,
+    signal: new AbortController().signal,
+  }
+  const first = "a".repeat(16_384)
+  const next = "synthetic-next-entry"
+
+  await engine.takeoverInput({ ...observed, input: { kind: "text", text: first } })
+  await engine.takeoverInput({ ...observed, input: { kind: "text", text: next } })
+  const protectedBeforeHandback = redact(first)
+  await engine.releaseTakeover("tab")
+
+  expect(protectedBeforeHandback).toBe("[REDACTED]")
+  expect(redact(next)).toBe("[REDACTED]")
+  expect(redact("output https://example.test/a/b")).toBe("output https://example.test/a/b")
 })
 
 test("oversized live images retain interactive screenshot fallback without restarting capture", async () => {

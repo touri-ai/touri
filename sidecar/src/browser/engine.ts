@@ -803,6 +803,7 @@ const FORCE_CLEAR_FIELD = `function(){const t=this;if("value" in t){const proto=
 const BACKSPACE_KEY_CODE = 8
 // Shorter typed entries are ordinary words and characters; masking them everywhere corrupts output.
 const MIN_PROTECTED_TYPED_ENTRY_LENGTH = 8
+const MAX_PROTECTED_TYPED_ENTRY_LENGTH = 16_384
 const TYPED_ENTRY_NEUTRAL_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "Dead", "Process"])
 
 const callOnNode = async (client: CdpClient, node: NodeRef, functionDeclaration: string): Promise<unknown> => {
@@ -5310,10 +5311,19 @@ export const createBrowserEngine = ({
     typedEntries.delete(tab)
     if (entry.length >= MIN_PROTECTED_TYPED_ENTRY_LENGTH) kernel.addRedactionValue(entry)
   }
-  const trackTypedEntry = (tab: TabState, input: BrowserTakeoverInput): void => {
+  const appendTypedEntry = (tab: TabState, text: string): void => {
     const entry = typedEntries.get(tab) ?? ""
+    // Bound retained input and each later redaction scan even when the person never leaves the field.
+    if (entry.length + text.length > MAX_PROTECTED_TYPED_ENTRY_LENGTH) {
+      protectTypedEntry(tab)
+      typedEntries.set(tab, text)
+      return
+    }
+    typedEntries.set(tab, entry + text)
+  }
+  const trackTypedEntry = (tab: TabState, input: BrowserTakeoverInput): void => {
     if (input.kind === "text") {
-      typedEntries.set(tab, entry + input.text)
+      appendTypedEntry(tab, input.text)
       return
     }
     if (input.kind === "wheel" || (input.kind === "pointer" && input.phase !== "down")) return
@@ -5324,11 +5334,11 @@ export const createBrowserEngine = ({
     if (input.phase === "up" || TYPED_ENTRY_NEUTRAL_KEYS.has(input.key)) return
     const plain = (input.modifiers & 7) === 0
     if (plain && input.key === "Backspace") {
-      typedEntries.set(tab, entry.slice(0, -1))
+      typedEntries.set(tab, (typedEntries.get(tab) ?? "").slice(0, -1))
       return
     }
     if (plain && input.key.length === 1) {
-      typedEntries.set(tab, entry + input.key)
+      appendTypedEntry(tab, input.key)
       return
     }
     protectTypedEntry(tab)
@@ -5466,7 +5476,6 @@ export const createBrowserEngine = ({
           operationSignal.throwIfAborted()
           if (!tab.info.heldByUser || tab.secretMode) return false
           if (operationSignal.aborted) return false
-          trackTypedEntry(tab, input)
           if (input.kind === "navigate") {
             const url = input.action === "goto" ? normalizeBrowserUrl(input.url ?? "") : undefined
             if (url === null) return false
@@ -5480,9 +5489,11 @@ export const createBrowserEngine = ({
               )
               const entry = history.entries[history.currentIndex + (input.action === "back" ? -1 : 1)]
               if (!entry || !normalizeBrowserUrl(entry.url)) return false
+              protectTypedEntry(tab)
               await cdp.call("Page.navigateToHistoryEntry", { entryId: entry.id }, sessionId)
               return true
             }
+            protectTypedEntry(tab)
             if (input.action === "reload") await cdp.call("Page.reload", { ignoreCache: false }, sessionId)
             else await cdp.call("Page.navigate", { url }, sessionId)
             return true
@@ -5500,6 +5511,7 @@ export const createBrowserEngine = ({
           operationSignal.throwIfAborted()
           if (!tab.info.heldByUser) return false
 
+          trackTypedEntry(tab, input)
           takeoverStreams.get(tab)?.source.refresh()
           if (input.kind === "text") {
             await protectTakeoverDocument(tab, true)

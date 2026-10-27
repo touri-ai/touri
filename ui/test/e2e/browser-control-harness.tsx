@@ -3,10 +3,25 @@ import { createRoot } from "react-dom/client"
 import type { ApiRequest } from "../../src/api/client"
 import { createMockApi } from "../../src/api/mock"
 import { BrowserTakeoverView } from "../../src/components/BrowserTakeoverView"
+import { getBrowserTakeoverReason } from "../../src/components/browserActivityPresentation"
 import "../../src/styles.css"
 import "../../src/components/browser-activity.css"
 
-document.documentElement.dataset.theme = new URLSearchParams(location.search).get("theme") ?? "dark"
+const params = new URLSearchParams(location.search)
+document.documentElement.dataset.theme = params.get("theme") ?? "dark"
+const reason = getBrowserTakeoverReason([
+  {
+    type: "tool_call",
+    callId: "synthetic-takeover",
+    tool: "browser_request_takeover",
+    summary: "",
+    inputJson: JSON.stringify({ reason: params.get("reason") ?? "Conclua a verificação fictícia para continuar." }),
+    outputJson: "{}",
+    startedAt: 1,
+    resolvedAt: null,
+    ok: null,
+  },
+])
 const transport = (window as Window & { browserControlTransport: { endpoint: string; token: string } })
   .browserControlTransport
 const requestFixture = (input: object) =>
@@ -55,7 +70,7 @@ const App = () => {
             initialViewEpoch={session.viewEpoch}
             botName="Lia"
             locale="pt-BR"
-            reason="Conclua a verificação fictícia para continuar."
+            reason={reason}
             actions={[
               {
                 id: "test",
