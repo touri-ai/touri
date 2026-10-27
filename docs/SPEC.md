@@ -1329,6 +1329,12 @@ Launch:
   decoding uses the existing canvas worker where supported. Phone text entered during a viewport
   refresh stays local and focused until it can be sent with the refreshed view.
 - "Hand back" (UI button or tray) releases it. The generation bumps, the blocked `request_takeover` call returns a fresh snapshot, and its notes include "User handed back the tab; the page may have changed."
+- Before handback drains accepted private input or sends the release request, the activity card
+  starts observing the continuation for the same bot and conversation. It preserves start and
+  completion events received before the release response, then collapses to the finished action
+  summary and final image when that continuation ends. A failed handback cancels that observation
+  and leaves control available for retry; losing the session or changing tabs also clears it.
+  Finished historical cards do not subscribe for continuations.
 - Take-over times out after `timeoutMs` (default 10 min), and the tool then returns the current snapshot with a note.
 - Shared previews are withheld during human control and secret entry. Cached and in-flight frames are
   invalidated on disconnect and main-frame navigation, including history and hash-route changes;
