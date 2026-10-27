@@ -1,4 +1,4 @@
-import type { Database } from "bun:sqlite"
+import { Database } from "bun:sqlite"
 import { afterEach, expect, test } from "bun:test"
 import { randomBytes } from "node:crypto"
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -21,6 +21,7 @@ import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { sessionFingerprint } from "../../src/runtime/session"
 import { startVmTurn } from "../../src/runtime/vm-turn"
 import { init as initStore } from "../../src/store"
+import { defaultEgressPolicy, readEgressPolicy } from "../../src/vm/egress-policy"
 import { BOT_IMAGE } from "../../src/vm/image"
 import { machineActionRoutes } from "../../src/vm/machine-actions"
 import { ProviderLoginError, providerLoginAccount, readProviderLogin } from "../../src/vm/provider-login"
@@ -2927,3 +2928,50 @@ test("persisted running turns defer image updates without scanning the bot histo
 
   expect(f.vm.service.states()[0]?.imageUpdate).toBe("updated")
 })
+
+test.each(["image upgrade", "live policy update"] as const)(
+  "%s yields to a writer before persisting its installed network policy",
+  async (action) => {
+    const writers = new Set<Database>()
+    const continuations = new Set<ReturnType<typeof setTimeout>>()
+    cleanups.push(async () => {
+      continuations.forEach(clearTimeout)
+      writers.forEach((writer) => {
+        if (writer.inTransaction) writer.exec("ROLLBACK")
+        writer.close()
+      })
+    })
+    const { f: fixture, bot, original } = await getOldComputer()
+    const database = fixture.runtime.kernel.db as Database
+    database.exec("PRAGMA busy_timeout = 0")
+    const writer = new Database(database.filename)
+    writers.add(writer)
+    const exec = fixture.fake.provider.exec
+    const released = deferred()
+    fixture.fake.provider.exec = async (input) => {
+      const result = await exec(input)
+      if (input.args?.[0] !== "/usr/local/lib/touri/network-policy.py") return result
+
+      writer.exec("BEGIN IMMEDIATE")
+      continuations.add(
+        setTimeout(() => {
+          writer.exec("COMMIT")
+          released.resolve()
+        }, 0),
+      )
+      return result
+    }
+
+    if (action === "image upgrade") await (await fixture.vm.service.acquire({ botId: bot.id }))()
+    else await fixture.vm.applyNetworkPolicy(bot.id)
+    await released.promise
+
+    expect(fixture.vm.service.states()[0]).toMatchObject({
+      status: "running",
+      imageUpdate: action === "image upgrade" ? "updated" : null,
+    })
+    expect(fixture.fake.machines.has(original.name)).toBe(action === "live policy update")
+    expect(database.inTransaction).toBe(false)
+    expect(readEgressPolicy(fixture.runtime.kernel, bot.id, true)).toEqual(defaultEgressPolicy())
+  },
+)

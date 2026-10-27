@@ -17,6 +17,7 @@ import { getApiRequiredHosts } from "../api-models/runtime"
 import { ensurePrivateDirectoryAsync, removePrivateFileAsync, writePrivateFileAsync } from "../kernel/async-files"
 import { createBackgroundTask, getMeasuredStage, yieldBackground } from "../kernel/background-task"
 import { botFolderFingerprint } from "../kernel/bot-folders"
+import { writeDatabaseAsync } from "../kernel/database-write"
 import { TouriError } from "../kernel/errors"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import { isIdle } from "../kernel/policy"
@@ -597,7 +598,7 @@ export const createVmRuntime = ({
               vm_id: `touri-${namespace}-${randomBytes(12).toString("hex")}`,
               volume: JSON.stringify(hostMounts ? [...withoutHostFolderMounts(mounts), ...hostMounts] : mounts),
             }
-            upgrade = upgrades.begin(meta, candidate)
+            upgrade = await upgrades.begin(meta, candidate)
             meta = candidate
             status = "missing"
           } finally {
@@ -664,7 +665,7 @@ export const createVmRuntime = ({
         signal,
         providerHosts(botFor(botId)).concat(getApiRequiredHosts(kernel, botFor(botId).model)),
       )
-      saveEgressPolicy(kernel, botId, activePolicy, true)
+      await writeDatabaseAsync(db, () => saveEgressPolicy(kernel, botId, activePolicy, true))
       if (!liveStaging.has(botId)) await clearStagedCredentials(botId)
       signal?.throwIfAborted()
       if (status !== "running" || !connections.has(botId)) {
@@ -1743,7 +1744,7 @@ export const createVmRuntime = ({
           undefined,
           providerHosts(botFor(botId)).concat(getApiRequiredHosts(kernel, botFor(botId).model)),
         )
-        saveEgressPolicy(kernel, botId, policy, true)
+        await writeDatabaseAsync(db, () => saveEgressPolicy(kernel, botId, policy, true))
       } catch (error) {
         await stopResources(botId)
         update(botId, { status: "error", error: String(error) })
