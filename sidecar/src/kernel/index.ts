@@ -742,7 +742,7 @@ export const createKernel = ({
       const store = services.use("store.api")
       if (store && !store.closeStreamWriterIfIdle?.()) await store.flushWritesAsync?.({ stopping: true })
       services.use("storage.botDeletion")?.dispose()
-      services.use("storage.threadDeletion")?.dispose()
+      const threadDeletionStopped = services.use("storage.threadDeletion")?.dispose()
       services.use("storage.threadTitles")?.dispose()
       stopHistoryBackfill()
       const attentionStopped = stopWorkspaceAttentionBackfill()
@@ -755,7 +755,7 @@ export const createKernel = ({
       removePrivateFile({ root: paths.appData, path: handshakePath })
       shell.dispose()
       host.close()
-      const storageStopped = await Promise.allSettled([maintenanceStopped, bus.stop()])
+      const storageStopped = await Promise.allSettled([threadDeletionStopped, maintenanceStopped, bus.stop()])
       database.close()
       const storageFailure = storageStopped.find((result) => result.status === "rejected")
       if (storageFailure?.status === "rejected") throw storageFailure.reason

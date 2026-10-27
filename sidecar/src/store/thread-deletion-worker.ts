@@ -222,6 +222,12 @@ const processBatch = (threadId) => {
 };
 
 self.onmessage = ({ data }) => {
+  if (data.type === "stop") {
+    database?.close();
+    database = undefined;
+    self.close();
+    return;
+  }
   if (data.type === "start") {
     try {
       database = new Database(data.filename, constants.SQLITE_OPEN_READWRITE | constants.SQLITE_OPEN_NOFOLLOW);
