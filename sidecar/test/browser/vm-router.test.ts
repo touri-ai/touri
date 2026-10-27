@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite"
 import { afterEach, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -70,7 +71,7 @@ const fakeCdp = (targetId: string) => {
     closes: () => closes,
   }
 }
-const fixture = async () => {
+const fixture = async ({ deferBrowserEvents = false, publishInitialState = true } = {}) => {
   const root = mkdtempSync(join(tmpdir(), "touri-browser-hang-"))
   const runtime = createKernel({ appData: root })
   await initStore(runtime.kernel)
@@ -97,6 +98,7 @@ const fixture = async () => {
   const endpoints: Array<Parameters<VmRuntime["browserEndpoint"]>[0]> = []
   const acquisitions: Array<Parameters<VmRuntime["acquire"]>[0]> = []
   const transports: Array<ReturnType<typeof fakeCdp>> = []
+  const eventWriters = new Set<Database>()
   const vm = {
     states: () => [machine],
     acquire: async (input) => {
@@ -121,6 +123,8 @@ const fixture = async () => {
   const browser = createRoutedBrowserEngine(
     {
       ...runtime.kernel,
+      // Ordinary delivery can yield behind history; internal control delivery remains live.
+      subscribe: deferBrowserEvents ? () => () => {} : runtime.kernel.subscribe,
       spawnTree: () => {
         hostSpawns++
         return { success: false, errorCode: "SPAWN_FAILED", error: "host forbidden" }
@@ -133,7 +137,7 @@ const fixture = async () => {
     machine = { ...machine, ...patch }
     runtime.kernel.publish({ type: "machine.updated", machine })
   }
-  publish({})
+  if (publishInitialState) publish({})
   const ctx: ToolContext = {
     botId: bot.id,
     threadId: bot.mainThreadId ?? "",
@@ -143,6 +147,9 @@ const fixture = async () => {
     signal: new AbortController().signal,
   }
   cleanups.push(async () => {
+    eventWriters.forEach((writer) => {
+      writer.close()
+    })
     await browser.shutdown()
     runtime.stop()
     rmSync(root, { recursive: true, force: true })
@@ -157,6 +164,16 @@ const fixture = async () => {
     acquisitions,
     transports,
     publish,
+    holdEventWrites: () => {
+      const writer = new Database(runtime.kernel.paths.db)
+      writer.exec("BEGIN IMMEDIATE")
+      eventWriters.add(writer)
+      return () => {
+        writer.exec("ROLLBACK")
+        writer.close()
+        eventWriters.delete(writer)
+      }
+    },
     browserStopped: () => {
       browserRunning = false
     },
@@ -420,6 +437,114 @@ for (const stage of ["CDP", "acquire", "launcher"] as const) {
       f.vm.browserEndpoint = endpoint
       expect((await bounded(f.browser.list({ botId: f.bot.id }))).success).toBe(true)
     }
+  })
+}
+
+test("an initial running notification does not retire an already running VM's pending launcher", async () => {
+  const f = await fixture({ publishInitialState: false })
+  const endpoint = f.vm.browserEndpoint
+  f.vm.browserEndpoint = () => {
+    f.publish({})
+    return new Promise(() => {})
+  }
+
+  const result = await bounded(f.browser.list({ botId: f.bot.id }))
+
+  expect(result).toMatchObject({
+    success: false,
+    errorCode: "DEADLINE_EXCEEDED",
+    error: expect.stringContaining("O navegador da VM não respondeu"),
+  })
+  f.vm.browserEndpoint = endpoint
+  expect((await bounded(f.browser.list({ botId: f.bot.id }))).success).toBe(true)
+  expect(f.hostSpawns()).toBe(0)
+})
+
+test("a deadline releases the VM lease while lifecycle persistence is still waiting", async () => {
+  const f = await fixture()
+  const releaseWriter = f.holdEventWrites()
+  f.publish({ status: "starting" })
+  f.publish({ status: "running" })
+
+  const result = await bounded(f.browser.list({ botId: f.bot.id }))
+
+  expect(result).toMatchObject({
+    success: false,
+    errorCode: "DEADLINE_EXCEEDED",
+    error: expect.stringContaining("O navegador da VM não respondeu"),
+  })
+  expect(f.acquisitions).toHaveLength(1)
+  expect(f.releases()).toBe(1)
+  expect(f.transports).toHaveLength(0)
+  releaseWriter()
+  expect((await bounded(f.browser.list({ botId: f.bot.id }))).success).toBe(true)
+  expect(f.hostSpawns()).toBe(0)
+})
+
+test("a VM restart is persisted before selecting its replacement browser engine", async () => {
+  const f = await fixture()
+  expect((await f.browser.list({ botId: f.bot.id })).success).toBe(true)
+  f.transports[0]?.freeze()
+  const releaseWriter = f.holdEventWrites()
+  const acquire = f.vm.acquire
+  const acquired = deferred<void>()
+  f.vm.acquire = async (input) => {
+    const release = await acquire(input)
+    acquired.resolve()
+    return release
+  }
+  f.publish({ status: "starting" })
+  f.publish({ status: "running" })
+
+  const work = f.browser.list({ botId: f.bot.id })
+  await acquired.promise
+  releaseWriter()
+  const result = await bounded(work)
+
+  expect(result).toMatchObject({
+    success: true,
+    structured: { tabs: [expect.objectContaining({ title: "page-2" })] },
+  })
+  expect(f.transports[0]?.closes()).toBe(1)
+  expect(f.transports).toHaveLength(2)
+  expect(f.releases()).toBe(f.acquisitions.length)
+  expect(f.hostSpawns()).toBe(0)
+})
+
+for (const operation of ["list", "open", "snapshot"] as const) {
+  test(`a VM restart invalidates ${operation} before deferred browser event delivery`, async () => {
+    const f = await fixture({ deferBrowserEvents: true })
+    expect((await f.browser.list({ botId: f.bot.id })).success).toBe(true)
+    const tabId = f.browser.tabsForBot(f.bot.id)[0]?.tabId ?? ""
+    const endpoint = f.vm.browserEndpoint
+    const reached = deferred<AbortSignal | undefined>()
+    f.vm.browserEndpoint = ({ signal }) => {
+      reached.resolve(signal)
+      return new Promise(() => {})
+    }
+    f.publish({ status: "starting" })
+    f.publish({ status: "running" })
+
+    const result = await bounded(
+      operation === "list"
+        ? f.browser.list({ botId: f.bot.id })
+        : operation === "open"
+          ? f.browser.open({ url: "about:blank", ctx: f.ctx, timeoutMs: 1000 })
+          : f.browser.snapshot({ botId: f.bot.id, tabId, image: "never", signal: f.ctx.signal }),
+    )
+
+    expect(result).toMatchObject({
+      success: false,
+      errorCode: "DEADLINE_EXCEEDED",
+      error: expect.stringContaining("O navegador da VM não respondeu"),
+    })
+    expect((await reached.promise)?.aborted).toBe(true)
+    expect(f.transports).toHaveLength(1)
+    f.vm.browserEndpoint = endpoint
+    expect((await bounded(f.browser.list({ botId: f.bot.id }))).success).toBe(true)
+    expect(f.transports).toHaveLength(2)
+    expect(f.releases()).toBe(f.acquisitions.length)
+    expect(f.hostSpawns()).toBe(0)
   })
 }
 
