@@ -825,3 +825,37 @@ test("a deferred startup notification cannot close a newer session; current runt
   await f.runtime.kernel.flushEvents?.()
   await until(() => closed)
 })
+
+test("granting a session waits for earlier lifecycle persistence without waiting for UI delivery", async () => {
+  let releasePersistence: (() => void) | undefined
+  const f = await fixture(true, (kernel) => ({
+    ...kernel,
+    flushEvents: async (options) => {
+      if (!options?.persistOnly) return kernel.flushEvents?.(options)
+      await new Promise<void>((resolve) => {
+        releasePersistence = resolve
+      })
+      await kernel.flushEvents?.(options)
+    },
+  }))
+
+  const pending = f.session(true)
+  await until(() => releasePersistence !== undefined)
+  const machine = f.vm.service.states().find((state) => state.botId === f.bot.id)
+  if (!machine) throw new Error("Missing running machine")
+  f.runtime.kernel.publish({ type: "machine.updated", machine: { ...machine, status: "starting" } })
+  releasePersistence?.()
+  const session = await pending
+
+  expect(f.desktop.service.claim(session.sessionId)).toBe(true)
+  let closed = false
+  f.desktop.service.open(session.sessionId, {
+    send: () => 1,
+    close: () => {
+      closed = true
+    },
+  })
+  f.runtime.kernel.publish({ type: "machine.updated", machine: { ...machine, status: "stopped" } })
+  await f.runtime.kernel.flushEvents?.()
+  expect(closed).toBe(true)
+})

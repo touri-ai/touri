@@ -2098,4 +2098,5 @@ most every second. A hidden or offscreen viewer retains one request and resumes 
 initial readiness image remains allowed while hidden; full refresh requests survive coalescing.
 Quality changes require sustained received traffic, separate upgrade/downgrade thresholds and a
 six-second hold period; idle screens do not imply a slow connection. Session lifecycle checks use
-committed runtime notifications so deferred startup UI delivery cannot close a newer session.
+committed runtime notifications and await earlier lifecycle persistence before granting a session,
+without waiting for UI history delivery. Delayed startup notifications cannot close a newer session.

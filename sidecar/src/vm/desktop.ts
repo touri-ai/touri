@@ -314,6 +314,8 @@ export const createDesktopGateway = (
               control,
               signal: controller.signal,
             })
+            // Earlier lifecycle events must commit before they can revoke a newly granted session.
+            await kernel.flushEvents?.({ persistOnly: true })
             controller.signal.throwIfAborted()
             const currentBot = botFor(botId)
             if (
