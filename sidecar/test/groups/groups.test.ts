@@ -1479,6 +1479,8 @@ test("real provider runtime delegates with concurrency cap 1, isolated sessions 
   )
   const dev = f.data.participant(group, f.thread.id, f.bots[1]?.id ?? "")
   await until(() => f.store.activePath({ threadId: dev.id }).some((m) => m.parts.some((p) => p.type === "approval")))
+  // The source projection can precede live delivery to the shared-copy subscriber.
+  await f.store.flushWritesAsync?.({ threadId: dev.id })
   expect(resolved).toBe(false)
   expect(
     f.store

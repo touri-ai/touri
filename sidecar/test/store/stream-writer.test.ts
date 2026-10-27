@@ -68,6 +68,38 @@ afterEach(async () => {
   cleanups.clear()
 })
 
+test("a committed stream batch stays in flight until live delivery is acknowledged", async () => {
+  const f = await fixture()
+  cleanups.add(f.close)
+  const requested = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const flushEvents = f.runtime.kernel.flushEvents
+  const delivery = spyOn(f.runtime.kernel, "flushEvents").mockImplementation(async () => {
+    await flushEvents?.()
+    requested.resolve()
+    await release.promise
+  })
+  cleanups.add(() => delivery.mockRestore())
+  cleanups.add(() => release.resolve())
+  f.store.appendDelta({ threadId: "t", messageId: "a", partIndex: 0, delta: "Entrega confirmada" })
+
+  const draining = f.store.flushWritesAsync?.()
+  if (!draining) throw new Error("Missing asynchronous stream drain")
+  const boundary = await Promise.race([
+    requested.promise.then(() => "awaiting delivery"),
+    draining.then(() => "drained"),
+  ])
+
+  expect(boundary).toBe("awaiting delivery")
+  expect(f.database.query("SELECT text FROM messages WHERE id = 'a'").get()).toEqual({ text: "Entrega confirmada" })
+  release.resolve()
+  await draining
+  expect(delivery).toHaveBeenCalledTimes(1)
+  expect(f.events.filter(({ event }) => event.type === "message.delta").map(({ event }) => event)).toMatchObject([
+    { messageId: "a", delta: "Entrega confirmada" },
+  ])
+})
+
 test("one worker commit publishes the message projection, journal and tool resolution together", async () => {
   const f = await fixture()
   try {
