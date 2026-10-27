@@ -1013,3 +1013,19 @@ test.each(["a", "c", "v", "x", "z"])("Mac Command+%s maps to Control and release
     [key.codePointAt(0), null, false],
   ])
 })
+
+test("terminal Ctrl+Shift+V reaches the guest instead of becoming a local paste", async () => {
+  const f = fixture()
+  render(<DesktopPanel bot={bot} api={f.api} />)
+  await connected()
+  fireEvent.click(screen.getByRole("button", { name: "Assumir controle" }))
+  await waitFor(() => expect(viewers).toHaveLength(2))
+  await connected()
+  const input = screen.getByLabelText("Digitar na VM")
+
+  fireEvent.keyDown(input, { key: "Control", code: "ControlLeft", ctrlKey: true })
+  fireEvent.keyDown(input, { key: "Shift", code: "ShiftLeft", ctrlKey: true, shiftKey: true })
+  fireEvent.keyDown(input, { key: "V", code: "KeyV", ctrlKey: true, shiftKey: true })
+
+  expect(viewers.at(-1)?.sendKey).toHaveBeenCalledWith(86, null, true)
+})

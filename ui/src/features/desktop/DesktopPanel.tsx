@@ -217,7 +217,8 @@ export const DesktopPanel = ({
     const keydown = (event: KeyboardEvent) => {
       // Let the browser provide local clipboard text instead of pasting stale
       // guest clipboard contents before its native paste event arrives.
-      if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "v") return
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "v")
+        return
       if (canType()) keyboard.keydown(event)
     }
     const keyup = (event: KeyboardEvent) => {

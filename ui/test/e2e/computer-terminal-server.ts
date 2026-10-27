@@ -153,7 +153,7 @@ runtime.kernel.registerRoutes({
         }
         if (action === "handback-status") return { status: 200, json: { stdout: String(resumed) } }
         if (action === "browser-open") {
-          const endpoint = await vm.service.browserEndpoint({ botId: bot.id, signal: AbortSignal.timeout(30_000) })
+          const endpoint = await startEvidenceBrowser()
           if (!endpoint) throw new Error("Guest browser missing")
           const host = new URL(endpoint)
           const prefix = host.pathname.slice(0, host.pathname.indexOf("/devtools/"))
@@ -252,3 +252,42 @@ const stop = async () => {
 }
 process.once("SIGTERM", () => void stop())
 process.once("SIGINT", () => void stop())
+
+// Only a fixed synthetic page is loaded in this opt-in, disposable test browser.
+// Production launch and its sandbox policy remain untouched.
+const startEvidenceBrowser = async () => {
+  const signal = AbortSignal.timeout(30_000)
+  if (process.env.TOURI_TERMINAL_TEST_BROWSER_NO_SANDBOX !== "1")
+    return vm.service.browserEndpoint({ botId: bot.id, signal })
+  const id = vm.service.states().find((state) => state.botId === bot.id)?.connection?.machineId
+  if (!id) throw new Error("Missing test guest")
+  await provider.exec({
+    id,
+    user: "1001",
+    env: { DISPLAY: ":99", XAUTHORITY: "/var/lib/touri-browser/.Xauthority", HOME: "/var/lib/touri-browser" },
+    command: "chromium",
+    args: [
+      "--no-sandbox",
+      "--disable-gpu",
+      "--disable-dev-shm-usage",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--disable-background-networking",
+      "--disable-component-update",
+      "--disable-sync",
+      "--remote-debugging-address=127.0.0.1",
+      "--remote-debugging-port=9222",
+      "--user-data-dir=/var/lib/touri-browser/keyboard-proof",
+      "about:blank",
+    ],
+    detach: true,
+    signal,
+  })
+  for (const attempt of Array.from({ length: 30 }, (_, index) => index)) {
+    signal.throwIfAborted()
+    const endpoint = await vm.service.browserEndpoint({ botId: bot.id, runningOnly: true, signal })
+    if (endpoint) return endpoint
+    await Bun.sleep(Math.min(500, 50 * (attempt + 1)))
+  }
+  throw new Error("Disposable test browser did not start")
+}

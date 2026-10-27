@@ -94,7 +94,7 @@ for (const width of [1440, 390]) {
     const pasted = page.waitForResponse(
       (response) => response.url().endsWith("/text") && response.request().method() === "POST",
     )
-    await keyboard.press(width === 390 ? "Control+Shift+v" : "Control+v")
+    await keyboard.press("Control+v")
     expect((await pasted).ok()).toBe(true)
     await keyboard.press("Enter")
     await expect.poll(() => getProof()).toContain("colado")

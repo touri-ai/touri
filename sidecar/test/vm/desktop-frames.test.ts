@@ -1,16 +1,9 @@
-import { afterEach, expect, test } from "bun:test"
+import { expect, test } from "bun:test"
 import { DesktopFrames } from "../../src/vm/desktop-frames"
 
-const controllers: DesktopFrames[] = []
-afterEach(() => {
-  controllers.splice(0).forEach((controller) => {
-    controller.dispose()
-  })
-})
 const getController = (interval: number) => {
   const sent: Buffer[] = []
   const controller = new DesktopFrames(interval, (packet) => sent.push(packet))
-  controllers.push(controller)
 
   return { controller, sent }
 }

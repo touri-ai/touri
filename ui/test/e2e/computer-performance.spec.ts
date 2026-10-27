@@ -66,24 +66,24 @@ test("real computer keyboard, frame timing and CPU evidence", async ({ page }) =
   if (phase !== "before") await page.getByLabel("Layout do teclado").selectOption("br")
   await keyboard.fill(`printf '%s\\n' '${text}' > ~/terminal-proof.txt`)
   await keyboard.press("Enter")
-  await expect.poll(() => getEvidence({ command: "cat /workspace/.home/terminal-proof.txt" })).toBe(`${text}\n`)
+  await expect.poll(() => requestEvidence({ command: "cat /workspace/.home/terminal-proof.txt" })).toBe(`${text}\n`)
   await page.locator(".desktop-canvas canvas").click({ position: { x: 200, y: 160 } })
   await page.keyboard.type("printf '%s\\n' '")
   await page.keyboard.insertText(text)
   await page.keyboard.type("' >> ~/terminal-proof.txt")
   await page.keyboard.press("Enter")
   await expect
-    .poll(() => getEvidence({ command: "cat /workspace/.home/terminal-proof.txt" }))
+    .poll(() => requestEvidence({ command: "cat /workspace/.home/terminal-proof.txt" }))
     .toBe(`${text}\n${text}\n`)
 
-  const latency = await getLatency(page)
+  const latency = await measureInputLatency(page)
   await keyboard.fill("for i in $(seq 1 400); do printf '\\rframe %04d' $i; sleep 0.05; done")
   await keyboard.press("Enter")
-  const control = await getMetrics(page)
+  const control = await measureScreenActivity(page)
   await page.getByRole("button", { name: "Devolver ao bot", exact: true }).click()
   await expect(keyboard).toBeDisabled()
   await expect(page.getByRole("button", { name: "Assumir controle", exact: true })).toBeEnabled({ timeout: 30_000 })
-  const watching = await getMetrics(page)
+  const watching = await measureScreenActivity(page)
   const metrics = { phase, latency, control, watching }
   console.log(`COMPUTER_METRICS ${JSON.stringify(metrics)}`)
   if (evidence) {
@@ -134,19 +134,19 @@ test("real computer keyboard, frame timing and CPU evidence", async ({ page }) =
 })
 
 const verifyBrowserAndHandback = async (page: Page) => {
-  await getEvidence({ action: "browser-open" })
-  await expect.poll(() => getEvidence({ action: "browser-focus" }), { timeout: 30_000 }).toBe("complete")
+  await requestEvidence({ action: "browser-open" })
+  await expect.poll(() => requestEvidence({ action: "browser-focus" }), { timeout: 30_000 }).toBe("complete")
   await page.getByRole("button", { name: "Assumir controle", exact: true }).click()
   const keyboard = page.getByLabel("Digitar na VM")
   await expect(keyboard).toBeEnabled({ timeout: 30_000 })
   await keyboard.focus()
   await page.keyboard.insertText(`${text} €`)
-  await expect.poll(() => getEvidence({ action: "browser-value" }), { timeout: 15_000 }).toBe(`${text} €`)
+  await expect.poll(() => requestEvidence({ action: "browser-value" }), { timeout: 15_000 }).toBe(`${text} €`)
   await keyboard.evaluate((element) => {
     element.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }))
     element.dispatchEvent(new CompositionEvent("compositionend", { data: " ação", bubbles: true }))
   })
-  await expect.poll(() => getEvidence({ action: "browser-value" })).toBe(`${text} € ação`)
+  await expect.poll(() => requestEvidence({ action: "browser-value" })).toBe(`${text} € ação`)
   await keyboard.evaluate((element) => {
     element.dispatchEvent(
       new KeyboardEvent("keydown", {
@@ -159,27 +159,42 @@ const verifyBrowserAndHandback = async (page: Page) => {
       }),
     )
   })
-  await expect.poll(() => getEvidence({ action: "browser-value" })).toBe(`${text} € ação/`)
+  await expect.poll(() => requestEvidence({ action: "browser-value" })).toBe(`${text} € ação/`)
 
-  expect(await getEvidence({ action: "wait-for-handback" })).toBe("waiting")
-  expect(await getEvidence({ action: "handback-status" })).toBe("false")
+  expect(await requestEvidence({ action: "wait-for-handback" })).toBe("waiting")
+  expect(await requestEvidence({ action: "handback-status" })).toBe("false")
   await page.getByRole("button", { name: "Devolver ao bot", exact: true }).click()
-  await expect.poll(() => getEvidence({ action: "handback-status" })).toBe("true")
+  await expect.poll(() => requestEvidence({ action: "handback-status" })).toBe("true")
   await expect(keyboard).toBeDisabled()
 }
 
-const getLatency = async (page: Page) => {
-  await page.getByLabel("Digitar na VM").fill("read -r -p 'PROBE> ' value")
-  await page.getByLabel("Digitar na VM").press("Enter")
+const measureInputLatency = async (page: Page) => {
+  const keyboard = page.getByLabel("Digitar na VM")
+  // Repeating each echo distinguishes a real character from cursor/heartbeat pixels.
+  const copies = Array.from({ length: 16 }, () => '"$key"').join(" ")
+  await keyboard.fill(
+    `printf 'latency-ready\\n' >> ~/terminal-proof.txt; while IFS= read -rsn1 key; do printf '\\r'; printf '%s' ${copies}; done`,
+  )
+  await keyboard.press("Enter")
+  await expect
+    .poll(() => requestEvidence({ command: "cat /workspace/.home/terminal-proof.txt" }))
+    .toContain("latency-ready")
   const samples = []
-  for (const index of Array.from({ length: 12 }, (_, index) => index)) {
-    await page.evaluate(() => {
+  for (const index of Array.from({ length: 13 }, (_, index) => index)) {
+    await keyboard.evaluate((element) => {
       const canvas = document.querySelector("canvas")
       if (!canvas) throw new Error("Missing canvas")
       const pixels = canvas.getContext("2d")?.getImageData(0, 0, canvas.width, canvas.height).data
-      Object.assign(window, { computerPixels: pixels, computerInputAt: performance.now() })
+      Object.assign(window, { computerPixels: pixels })
+      element.addEventListener(
+        "beforeinput",
+        () => {
+          Object.assign(window, { computerInputAt: performance.now() })
+        },
+        { once: true },
+      )
     })
-    await page.keyboard.type(`sample${index}`)
+    await page.keyboard.type(index % 2 ? "w" : "m")
     await page.waitForFunction(
       () => {
         const state = window as typeof window & {
@@ -187,25 +202,31 @@ const getLatency = async (page: Page) => {
           computerInputAt: number
           computerLatency: number
         }
+        const at = performance.now()
         const canvas = document.querySelector("canvas")
         const pixels = canvas?.getContext("2d")?.getImageData(0, 0, canvas.width, canvas.height).data
-        if (!pixels) return false
-        const changed = pixels.reduce((sum, value, index) => sum + Number(value !== state.computerPixels[index]), 0)
-        if (changed < 800) return false
-        state.computerLatency = performance.now() - state.computerInputAt
-        return true
+        if (!pixels || !state.computerInputAt) return false
+        // Stop once the glyph echo is identified; pixel comparison time is not latency.
+        let changed = 0
+        for (let offset = 0; offset < pixels.length; offset += 1) {
+          if (pixels[offset] !== state.computerPixels[offset]) changed += 1
+          if (changed < 800) continue
+          state.computerLatency = at - state.computerInputAt
+          return true
+        }
+        return false
       },
       undefined,
-      { polling: "raf" },
+      { polling: "raf", timeout: 10_000 },
     )
     samples.push(await page.evaluate(() => (window as typeof window & { computerLatency: number }).computerLatency))
   }
-  await page.keyboard.press("Enter")
-  return samples
+  await keyboard.press("Control+c")
+  return samples.slice(1)
 }
 
-const getMetrics = async (page: Page) => {
-  const before = JSON.parse(await getEvidence({ action: "cpu" })) as {
+const measureScreenActivity = async (page: Page) => {
+  const before = JSON.parse(await requestEvidence({ action: "cpu" })) as {
     sidecar: { user: number; system: number }
     guest: string
   }
@@ -233,7 +254,7 @@ const getMetrics = async (page: Page) => {
     })
     return frames.slice(1).map((at, index) => at - (frames[index] ?? at))
   })
-  const after = JSON.parse(await getEvidence({ action: "cpu" })) as typeof before
+  const after = JSON.parse(await requestEvidence({ action: "cpu" })) as typeof before
   const getGuest = (value: string) => Number(/usage_usec (\d+)/.exec(value)?.[1] ?? 0)
   return {
     intervals,
@@ -243,13 +264,14 @@ const getMetrics = async (page: Page) => {
   }
 }
 
-const getEvidence = async (body: { action?: string; command?: string }): Promise<string> => {
+const requestEvidence = async (body: { action?: string; command?: string }): Promise<string> => {
   const response = await fetch(`${endpoint}/api/v1/terminal-evidence`, {
     method: "POST",
     headers: { Authorization: "Bearer dev-ui-token", "Content-Type": "application/json" },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(15_000),
   })
+  if (!response.ok) throw new Error(`Computer evidence request failed (${response.status})`)
   const result = (await response.json()) as { stdout?: string }
   return result.stdout ?? ""
 }
