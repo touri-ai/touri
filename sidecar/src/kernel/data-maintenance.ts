@@ -450,10 +450,16 @@ export const createStorageMaintenance = ({
   const walCheckpointer = createWalCheckpointer({
     database,
     onReady: () => log?.({ level: "info", module: "store", msg: "WAL checkpoint worker started" }),
-    onError: () => {
+    onError: ({ autocheckpointRestored }) => {
       if (!log) return onError()
 
-      log({ level: "warn", module: "store", msg: "WAL checkpoint worker failed; SQLite auto-checkpointing restored" })
+      log({
+        level: "warn",
+        module: "store",
+        msg: autocheckpointRestored
+          ? "WAL checkpoint worker failed; SQLite auto-checkpointing restored"
+          : "WAL checkpoint worker failed; SQLite auto-checkpointing could not be restored",
+      })
     },
   })
   let manual = false

@@ -8,7 +8,16 @@ export default async function setup(config: FullConfig) {
 
   // Focused production fixtures compile their own entry before starting the workload.
   if (process.env.TOURI_E2E_FIXTURE_BUILDS_UI !== "1") {
-    await build({ root, configFile: resolve(root, "vite.config.ts"), build: { manifest: true } })
+    await build({
+      root,
+      configFile: resolve(root, "vite.config.ts"),
+      build: {
+        manifest: true,
+        rollupOptions: {
+          input: [resolve(root, "index.html"), resolve(root, "test/e2e/channel-takeover-harness.html")],
+        },
+      },
+    })
     console.log("UI production build: passed")
   }
 

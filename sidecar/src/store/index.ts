@@ -484,7 +484,7 @@ export const init = async (
   installDoctor(kernel)
   const database = kernel.db as Database
   const threadTitleSearch = createThreadTitleSearch(database.filename)
-  const reader = createStoreReader(database.filename)
+  const reader = createStoreReader(database.filename, undefined, { prewarm: true })
   const metadataWriter = createBotMetadataWriter(database.filename)
   const editQueue = createBotEditQueue()
   const queueBotEdits =
