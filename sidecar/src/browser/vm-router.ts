@@ -68,7 +68,12 @@ export const createRoutedBrowserEngine = (
   }
   const guests = new Map<string, Guest>()
   const retiring = new Set<Promise<void>>()
-  const machines = new Map<string, MachineState>()
+  const machines = new Map<string, MachineState>(
+    kernel.services
+      .use("vm.runtime")
+      ?.states()
+      .map((machine) => [machine.botId, machine]),
+  )
   const emptyBrowser = (): ToolResult => ({
     success: true,
     content: [{ type: "text", text: "[]\nNavegador ainda não aberto. Use browser_open para abrir uma página na VM." }],
@@ -165,7 +170,8 @@ export const createRoutedBrowserEngine = (
     guests.set(botId, guest)
     return guest
   }
-  const unsubscribe = kernel.subscribe(({ event }) => {
+  // Retire stale connections before deferred history delivery lets another operation use them.
+  const unsubscribe = (kernel.subscribeRuntime ?? kernel.subscribe)(({ event }) => {
     if (event.type === "bot.deleted" || event.type === "bot.updated") {
       const botId = event.type === "bot.deleted" ? event.botId : event.bot.id
       const managedEngine = managed.get(botId)
@@ -296,6 +302,8 @@ export const createRoutedBrowserEngine = (
                   ...(key === "list" ? { runningOnly: true } : {}),
                 })
                 try {
+                  // A contended event write can defer even internal lifecycle notifications.
+                  await abortVmWait(controller.signal, async () => kernel.flushEvents?.({ persistOnly: true }))
                   controller.signal.throwIfAborted()
                   // Acquisition can recreate or boot the VM and invalidate its old engine.
                   guest = forBot(botId)
