@@ -431,6 +431,7 @@ export const VirtualMessageList = ({
       return
     }
     if (alignRevealed(list, element)) pendingReveal.current = null
+    programmaticTop.current = { top: list.scrollTop, viewportHeight: list.clientHeight }
     readingAnchor.current = {
       element,
       top: element.getBoundingClientRect().top - list.getBoundingClientRect().top,
@@ -569,7 +570,10 @@ export const VirtualMessageList = ({
       const anchor = readingAnchor.current
       if (anchor?.element.isConnected) {
         const delta = anchor.element.getBoundingClientRect().top - list.getBoundingClientRect().top - anchor.top
-        if (Math.abs(delta) > 0.5) list.scrollTop += delta
+        if (Math.abs(delta) > 0.5) {
+          list.scrollTop += delta
+          programmaticTop.current = { top: list.scrollTop, viewportHeight: list.clientHeight }
+        }
         anchor.scrollTop = list.scrollTop
       } else if (followBottom.current) {
         scrollToEnd(list, programmaticTop)

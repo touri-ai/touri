@@ -79,7 +79,7 @@ it("offers the latest page even when an older search page is at its bottom", () 
   expect(onLatestHistory).toHaveBeenCalledTimes(1)
 })
 
-it("keeps a revealed control anchored when row measurements clamp a programmatic scroll", () => {
+it.each([false, true])("keeps a revealed control anchored after a clamped scroll (following: %s)", (following) => {
   const notifyResize = installMeasurements()
   const view = render(
     <VirtualMessageList
@@ -94,17 +94,28 @@ it("keeps a revealed control anchored when row measurements clamp a programmatic
   const setScrollHeight = installHistoryLayout(history, control)
   history.scrollTop = 10
   fireEvent.scroll(history)
-  fireEvent.click(view.getByRole("button", { name: "Voltar ao fim" }))
+  if (following) fireEvent.click(view.getByRole("button", { name: "Voltar ao fim" }))
   act(() => requestReveal(control))
   expect(history.scrollTop).toBe(554)
 
-  setScrollHeight(930)
-  fireEvent.scroll(history)
-  setScrollHeight(1000)
-  act(notifyResize)
+  const clampHistory = () => {
+    setScrollHeight(930)
+    fireEvent.scroll(history)
+    setScrollHeight(1000)
+    act(notifyResize)
+  }
+
+  clampHistory()
+  clampHistory()
 
   expect(history.scrollTop).toBe(554)
   expect(control.getBoundingClientRect().top).toBe(8)
+
+  history.scrollTop = 300
+  fireEvent.scroll(history)
+  act(notifyResize)
+
+  expect(history.scrollTop).toBe(300)
 })
 
 it.each([false, true])("updates virtual offsets when a row grows and collapses (strict: %s)", async (strict) => {

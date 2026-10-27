@@ -392,6 +392,7 @@ export const createStorageMaintenance = ({
   runStage,
   yieldBatch = () => Bun.sleep(0),
   schedule = setTimeout,
+  getNow = Date.now,
   attachmentReferenceTimeoutMs = 10 * 60_000,
 }: {
   database: Database
@@ -403,6 +404,7 @@ export const createStorageMaintenance = ({
   runStage?: PerformanceStageRunner
   yieldBatch?: () => Promise<void>
   schedule?: (action: () => Promise<void>, delay: number) => ReturnType<typeof setTimeout>
+  getNow?: () => number
   attachmentReferenceTimeoutMs?: number
 }) => {
   const stored = database.query("SELECT value_json FROM settings WHERE key = ?").get(progressKey) as {
@@ -442,6 +444,7 @@ export const createStorageMaintenance = ({
   })
   let manual = false
   let vacuum = false
+  let collecting = false
   let collectionDeferrals = 0
   let maintenanceFailures = 0
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -450,7 +453,7 @@ export const createStorageMaintenance = ({
       database
         .query(`INSERT INTO settings(key,value_json,updated_at) VALUES (?,?,?)
     ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`)
-        .run(progressKey, JSON.stringify(value), Date.now()),
+        .run(progressKey, JSON.stringify(value), getNow()),
     )
   // This lifecycle owns the timer and in-flight flag; host latency never delays a compaction step.
   const retryController = new AbortController()
@@ -473,6 +476,35 @@ export const createStorageMaintenance = ({
       }
     }, 100)
   }
+  const prepareCollection = async (): Promise<boolean> => {
+    const next = runStage
+      ? await runStage("storage_message_compaction_batch", () =>
+          compactMessageBatch({ database, appData, cursor: progress.cursor, total: progress.total, now: getNow() }),
+        )
+      : await compactMessageBatch({ database, appData, cursor: progress.cursor, total: progress.total, now: getNow() })
+    if (stopped) return false
+    progress = database.transaction(() => {
+      const committed = { ...progress, cursor: next.cursor, changed: progress.changed || next.changed }
+      save(committed)
+      return committed
+    })()
+    status = { running: true, processed: progress.cursor, total: progress.total }
+    if (progress.cursor < progress.total) {
+      timer = schedule(step, 10)
+      return false
+    }
+    // Capture the recovery tail before pruning. Snapshots/files retain detail;
+    // removing replay entries causes clients to refresh from those snapshots.
+    if (progress.changed || manual) publishResync()
+    const compact = () => retention.run(manual)
+    const more = await (runStage ? runStage("transcript_retention", compact) : compact())
+    if (stopped) return false
+    if (more) {
+      timer = schedule(step, 10)
+      return false
+    }
+    return true
+  }
   const step = async () => {
     if (stopped) return
     try {
@@ -494,8 +526,8 @@ export const createStorageMaintenance = ({
         progress = { cursor: 0, total: 0, completedAt: 0 }
       }
       if (!status.running) {
-        if (progress.completedAt > Date.now() - DAY) {
-          timer = schedule(step, DAY)
+        if (progress.completedAt && progress.completedAt > getNow() - DAY) {
+          timer = schedule(step, progress.completedAt + DAY - getNow())
           return
         }
         status = { running: true, processed: progress.cursor, total: progress.total }
@@ -507,37 +539,16 @@ export const createStorageMaintenance = ({
           completedAt: 0,
         }
       }
-      const next = runStage
-        ? await runStage("storage_message_compaction_batch", () =>
-            compactMessageBatch({ database, appData, cursor: progress.cursor, total: progress.total }),
-          )
-        : await compactMessageBatch({ database, appData, cursor: progress.cursor, total: progress.total })
-      if (stopped) return
-      progress = database.transaction(() => {
-        const committed = { ...progress, cursor: next.cursor, changed: progress.changed || next.changed }
-        save(committed)
-        return committed
-      })()
-      status = { running: true, processed: progress.cursor, total: progress.total }
-      if (progress.cursor < progress.total) {
-        timer = schedule(step, 10)
-        return
-      }
-      // Capture the recovery tail before pruning. Snapshots/files retain detail;
-      // removing replay entries causes clients to refresh from those snapshots.
-      if (progress.changed || manual) publishResync()
-      const compact = () => retention.run(manual)
-      const more = await (runStage ? runStage("transcript_retention", compact) : compact())
-      if (stopped) return
-      if (more) {
-        timer = schedule(step, 10)
-        return
+      // Resume collection without reopening completed retention and its independent error retry.
+      if (!collecting) {
+        if (!(await prepareCollection())) return
+        collecting = true
       }
       let deferred = false
       await collectUnusedOutputBlobs(
         database,
         appData,
-        Date.now(),
+        getNow(),
         async () => {
           await yieldBatch()
           if (stopped) throw new Error("Manutenção encerrada")
@@ -563,12 +574,14 @@ export const createStorageMaintenance = ({
         collectionDeferrals += 1
         const delay = getStorageCollectionRetryDelay(collectionDeferrals)
         if (delay === DAY) {
+          collecting = false
           collectionDeferrals = 0
           status = { running: false, processed: progress.cursor, total: progress.total }
         }
         timer = schedule(step, delay)
         return
       }
+      collecting = false
       collectionDeferrals = 0
       if (vacuum) {
         if (runStage) await runStage("storage_vacuum", () => walCheckpointer.vacuum())
@@ -577,7 +590,7 @@ export const createStorageMaintenance = ({
       if (progress.changed || manual) publishResync()
       manual = false
       vacuum = false
-      progress = { ...progress, completedAt: Date.now() }
+      progress = { ...progress, completedAt: getNow() }
       save()
       status = { running: false, processed: progress.cursor, total: progress.total }
       maintenanceFailures = 0
@@ -600,6 +613,7 @@ export const createStorageMaintenance = ({
       clearTimeout(timer)
       progress = { cursor: 0, total: 0, completedAt: 0 }
       status = { running: true, processed: 0, total: 0 }
+      collecting = false
       collectionDeferrals = 0
       maintenanceFailures = 0
       manual = true

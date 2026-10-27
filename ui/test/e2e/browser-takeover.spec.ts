@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test"
 test.use({ video: { mode: "on", size: { width: 1440, height: 900 } }, reducedMotion: "reduce" })
 
 for (const viewport of [
-  { name: "compact-desktop", width: 1024, height: 700 },
+  { name: "desktop", width: 1440, height: 700 },
   { name: "phone", width: 390, height: 844 },
 ]) {
   test(`server browser takeover stays interactive and private: ${viewport.name}`, async ({ page }, testInfo) => {
