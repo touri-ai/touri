@@ -5,7 +5,21 @@ import { initializeTheme } from "./design/theme"
 import { setDocumentLanguage } from "./documentLanguage"
 import { DEFAULT_LOCALE } from "./i18n"
 import { init } from "./index"
+import { installLazyAssetRecovery } from "./lazyAssetRecovery"
 import "./styles.css"
+
+installLazyAssetRecovery({
+  target: window,
+  getStorage: () => {
+    try {
+      return window.sessionStorage
+    } catch {
+      return undefined
+    }
+  },
+  hasPendingAttachments: () => document.querySelector(".attachment-strip li") !== null,
+  reload: () => window.location.reload(),
+})
 
 installMotionTokens(document.documentElement)
 initializeTheme()
