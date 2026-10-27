@@ -154,6 +154,7 @@ export type BrowserEngine = {
     botId: Id
     signal: AbortSignal
     viewport?: { width: number; height: number }
+    stream?: boolean
   }) => Promise<BrowserTakeoverCapture | null>
   takeoverInput: (args: {
     tabId: Id

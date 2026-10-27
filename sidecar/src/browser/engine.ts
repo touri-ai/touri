@@ -41,6 +41,7 @@ import {
 import { assignLegacyCookies } from "./legacyCookieMigration"
 import { describeNavigationFailure, isChromeErrorPage, isLoadableUrl, networkErrorCode, stripHash } from "./navigation"
 import { withOneTransientRetry } from "./retry"
+import { createBrowserScreencast } from "./screencast"
 import {
   emptySession,
   loadBotSession,
@@ -1760,6 +1761,9 @@ export const createBrowserEngine = ({
       if (tab.info.heldByUser) void protectTakeoverDocument(tab)
       return
     }
+    if (event.method === "Page.frameStartedLoading" && event.sessionId === tab.sessionId) loadingTakeoverTabs.add(tab)
+    if (event.method === "Page.frameStoppedLoading" && event.sessionId === tab.sessionId)
+      loadingTakeoverTabs.delete(tab)
     if (event.method === "Page.loadEventFired") {
       recordDiagnostic(tab, { at: Date.now(), kind: "load", level: "info", text: "Page loaded" })
       return
@@ -4824,6 +4828,7 @@ export const createBrowserEngine = ({
   }): NonNullable<TabState["takeover"]> | null => {
     const takeover = tab.takeover
     if (!takeover) return null
+    stopTakeoverStream(tab)
     takeoverRecoveries.get(tab.info.tabId)?.abort()
     if (takeover.timer) clearTimeout(takeover.timer)
     if (takeover.signal && takeover.onAbort) takeover.signal.removeEventListener("abort", takeover.onAbort)
@@ -5017,6 +5022,7 @@ export const createBrowserEngine = ({
     if (!tab) return false
     takeoverRecoveries.get(tabId)?.abort()
     if (!tab.info.heldByUser) return true
+    stopTakeoverStream(tab)
     await protectTakeoverDocument(tab, true)
     // A canceled frame can still be applying its viewport through CDP.
     await pendingTakeoverViewports.get(tab)?.catch(() => undefined)
@@ -5278,10 +5284,20 @@ export const createBrowserEngine = ({
     return null
   }
 
+  const takeoverStreams = new Map<
+    TabState,
+    { epoch: number; sessionId: string; source: Awaited<ReturnType<typeof createBrowserScreencast>> }
+  >()
+  const loadingTakeoverTabs = new WeakSet<TabState>()
+  const stopTakeoverStream = (tab: TabState) => {
+    takeoverStreams.get(tab)?.source.stop()
+    takeoverStreams.delete(tab)
+  }
+
   const takeoverViewports = new WeakMap<TabState, { width: number; height: number; sessionId: string }>()
   const pendingTakeoverViewports = new WeakMap<TabState, Promise<void>>()
 
-  const takeoverFrame: BrowserEngine["takeoverFrame"] = async ({ tabId, botId, signal, viewport }) => {
+  const takeoverFrame: BrowserEngine["takeoverFrame"] = async ({ tabId, botId, signal, viewport, stream }) => {
     const owned = getTab({ tabId, botId, allowHeld: true })
     if (!owned.success || !owned.value.info.heldByUser || owned.value.secretMode || !client || !owned.value.sessionId)
       return null
@@ -5305,6 +5321,7 @@ export const createBrowserEngine = ({
         viewport.height > 2160
       )
         return null
+      stopTakeoverStream(tab)
       const resize = cdp
         .call(
           "Emulation.setDeviceMetricsOverride",
@@ -5337,7 +5354,42 @@ export const createBrowserEngine = ({
         !tab.secretMode &&
         tab.info.state === "live" &&
         tab.sessionId === sessionId,
-      capture: () => captureTakeoverPage(tab, cdp, sessionId, signal),
+      capture: async () => {
+        if (!stream) return captureTakeoverPage(tab, cdp, sessionId, signal)
+        const previous = takeoverStreams.get(tab)
+        if (
+          previous &&
+          (previous.epoch !== tab.generation ||
+            previous.sessionId !== sessionId ||
+            (previous.source.isStopped() && !previous.source.needsScreenshot()))
+        )
+          stopTakeoverStream(tab)
+        if (!takeoverStreams.has(tab)) {
+          const bounds = await layoutClip({ client: cdp, sessionId, fullPage: false, scale: 1 })
+          if (!bounds) return null
+          const epoch = tab.generation
+          const source = await createBrowserScreencast({
+            client: cdp,
+            sessionId,
+            width: bounds.width,
+            height: bounds.height,
+          })
+          takeoverStreams.set(tab, { epoch, sessionId, source })
+        }
+        const source = takeoverStreams.get(tab)?.source
+        if (!source) return null
+        const pushed = await source.read(signal)
+        // Dense pages can exceed the live-image cap; reuse the bounded scaling path until the page changes.
+        const image = source.needsScreenshot() ? await captureTakeoverPage(tab, cdp, sessionId, signal) : pushed
+        if (!image) return null
+        return {
+          ...image,
+          // Only the authorized human receives this metadata; previews/history remain private.
+          url: kernel.redact(getControllerBrowserUrl(tab.info.url)),
+          title: "",
+          loading: loadingTakeoverTabs.has(tab),
+        }
+      },
     })
   }
 
@@ -5360,7 +5412,10 @@ export const createBrowserEngine = ({
     const sessionId = tab.sessionId
     if (!cdp || !sessionId) return false
     const withinUnit = (value: number): boolean => Number.isFinite(value) && value >= 0 && value <= 1
-    if ((input.kind === "click" || input.kind === "wheel") && (!withinUnit(input.x) || !withinUnit(input.y)))
+    if (
+      (input.kind === "click" || input.kind === "wheel" || input.kind === "pointer") &&
+      (!withinUnit(input.x) || !withinUnit(input.y))
+    )
       return false
     if (input.kind === "text" && (Buffer.byteLength(input.text) > 16_384 || input.text.includes("\0"))) return false
     if (input.kind === "key" && (!input.key || input.key.length > 40 || !input.code || input.code.length > 40))
@@ -5374,12 +5429,40 @@ export const createBrowserEngine = ({
           operationSignal.throwIfAborted()
           if (!tab.info.heldByUser || tab.secretMode) return false
           if (operationSignal.aborted) return false
+          if (input.kind === "navigate") {
+            const url = input.action === "goto" ? normalizeBrowserUrl(input.url ?? "") : undefined
+            if (url === null) return false
+            await protectTakeoverDocument(tab, true)
+            stopTakeoverStream(tab)
+            if (input.action === "back" || input.action === "forward") {
+              const history = await cdp.call<{ currentIndex: number; entries: Array<{ id: number; url: string }> }>(
+                "Page.getNavigationHistory",
+                {},
+                sessionId,
+              )
+              const entry = history.entries[history.currentIndex + (input.action === "back" ? -1 : 1)]
+              if (!entry || !normalizeBrowserUrl(entry.url)) return false
+              await cdp.call("Page.navigateToHistoryEntry", { entryId: entry.id }, sessionId)
+              return true
+            }
+            if (input.action === "reload") await cdp.call("Page.reload", { ignoreCache: false }, sessionId)
+            else await cdp.call("Page.navigate", { url }, sessionId)
+            return true
+          }
+
           if (tab.generation !== targetEpoch) return false
-          const viewport = await layoutClip({ client: cdp, sessionId, fullPage: false, scale: 1 }).catch(() => null)
+          if (pendingTakeoverViewports.has(tab)) return false
+          const controlled = takeoverViewports.get(tab)
+          const hasControlledViewport =
+            controlled?.sessionId === sessionId && controlled.width === width && controlled.height === height
+          const viewport = hasControlledViewport
+            ? controlled
+            : await layoutClip({ client: cdp, sessionId, fullPage: false, scale: 1 }).catch(() => null)
           if (!viewport || viewport.width !== width || viewport.height !== height) return false
           operationSignal.throwIfAborted()
           if (!tab.info.heldByUser) return false
 
+          takeoverStreams.get(tab)?.source.refresh()
           if (input.kind === "text") {
             await protectTakeoverDocument(tab, true)
             kernel.addRedactionValue(input.text)
@@ -5389,7 +5472,7 @@ export const createBrowserEngine = ({
 
           if (input.kind === "key") {
             const text =
-              input.phase === "down" && input.key.length === 1 && input.modifiers === 0 ? input.key : undefined
+              input.phase === "down" && input.key.length === 1 && (input.modifiers & 7) === 0 ? input.key : undefined
             await cdp.call(
               "Input.dispatchKeyEvent",
               {
@@ -5397,6 +5480,10 @@ export const createBrowserEngine = ({
                 key: input.key,
                 code: input.code,
                 modifiers: input.modifiers,
+                windowsVirtualKeyCode: getTakeoverKeyCode(input.key, input.code),
+                ...(input.phase === "down" && input.modifiers === 2 && input.key.toLowerCase() === "a"
+                  ? { commands: ["selectAll"] }
+                  : {}),
                 ...(text === undefined ? {} : { text }),
               },
               sessionId,
@@ -5411,6 +5498,23 @@ export const createBrowserEngine = ({
             await cdp.call(
               "Input.dispatchMouseEvent",
               { type: "mouseWheel", x, y, deltaX: input.deltaX, deltaY: input.deltaY },
+              sessionId,
+            )
+            return true
+          }
+
+          if (input.kind === "pointer") {
+            const type = { down: "mousePressed", move: "mouseMoved", up: "mouseReleased" }[input.phase]
+            await cdp.call(
+              "Input.dispatchMouseEvent",
+              {
+                type,
+                x,
+                y,
+                button: input.button,
+                buttons: input.phase === "up" ? 0 : { left: 1, right: 2, middle: 4 }[input.button],
+                clickCount: input.phase === "move" ? 0 : 1,
+              },
               sessionId,
             )
             return true
@@ -5455,6 +5559,8 @@ export const createBrowserEngine = ({
   const performShutdown = async (): Promise<void> => {
     if (retired) return
     retired = true
+    for (const stream of takeoverStreams.values()) stream.source.stop()
+    takeoverStreams.clear()
     for (const recovery of takeoverRecoveries.values()) recovery.abort()
     takeoverRecoveries.clear()
     clearInterval(idleTimer)
@@ -5610,4 +5716,39 @@ export const createBrowserEngine = ({
     tabsForBot,
     shutdown,
   }
+}
+
+const getControllerBrowserUrl = (value: string): string => {
+  try {
+    const url = new URL(value)
+    if (!["http:", "https:"].includes(url.protocol)) return ""
+    return `${url.origin}${url.pathname}`
+  } catch {
+    return ""
+  }
+}
+
+const TAKEOVER_KEY_CODES: Readonly<Record<string, number>> = {
+  Backspace: 8,
+  Tab: 9,
+  Enter: 13,
+  Shift: 16,
+  Control: 17,
+  Alt: 18,
+  Escape: 27,
+  PageUp: 33,
+  PageDown: 34,
+  End: 35,
+  Home: 36,
+  ArrowLeft: 37,
+  ArrowUp: 38,
+  ArrowRight: 39,
+  ArrowDown: 40,
+  Delete: 46,
+}
+const getTakeoverKeyCode = (key: string, code: string): number => {
+  if (TAKEOVER_KEY_CODES[key] !== undefined) return TAKEOVER_KEY_CODES[key]
+  if (/^Key[A-Z]$/u.test(code)) return code.charCodeAt(3)
+  if (/^Digit[0-9]$/u.test(code)) return code.charCodeAt(5)
+  return key === " " ? 32 : 0
 }

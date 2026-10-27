@@ -277,6 +277,16 @@ test("remote browser takeover gives one device an interactive session and reject
     expect(frame.status).toBe(200)
     expect(await frame.json()).toMatchObject({ controlEpoch, targetEpoch: 4, viewEpoch: 0, width: 1280, height: 720 })
 
+    const pushedFrame = await request("/browser/tabs/t_remote/takeover/frame", {
+      sessionId,
+      controlEpoch,
+      viewEpoch: 0,
+      stream: true,
+    })
+
+    expect(pushedFrame.status).toBe(200)
+    expect(await pushedFrame.json()).toMatchObject({ controlEpoch, targetEpoch: 4, viewEpoch: 0 })
+
     const staleTarget = await request("/browser/tabs/t_remote/takeover/input", {
       sessionId,
       controlEpoch,
@@ -362,6 +372,19 @@ test("remote browser takeover gives one device an interactive session and reject
     })
     expect(oversizedInput.status).toBe(400)
     expect(receivedInput).toEqual({ kind: "key", phase: "down", key: "Enter", code: "Enter", modifiers: 0 })
+
+    const navigated = await request("/browser/tabs/t_remote/takeover/input", {
+      sessionId,
+      controlEpoch,
+      targetEpoch: 0,
+      viewEpoch: 0,
+      width: 0,
+      height: 0,
+      input: { kind: "navigate", action: "back" },
+    })
+
+    expect(navigated.status).toBe(200)
+    expect(receivedInput).toEqual({ kind: "navigate", action: "back" })
 
     const ended = await request("/browser/tabs/t_remote/takeover/session", { sessionId, controlEpoch }, "DELETE")
     expect(ended.status).toBe(200)

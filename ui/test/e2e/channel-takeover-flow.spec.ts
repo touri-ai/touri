@@ -134,7 +134,11 @@ for (const viewport of [
       notificationResolved: true,
     })
     await page.evaluate(() => (window as TakeoverWindow).completeChannelResume?.())
-    await expect(page.getByText("O portal de demonstração está pronto para continuar.", { exact: true })).toBeVisible()
+    await expect(
+      page
+        .getByTestId("virtual-message-list")
+        .getByText("O portal de demonstração está pronto para continuar.", { exact: true }),
+    ).toBeVisible()
     await expect(page.locator(".browser-activity-card")).toHaveCount(1)
     await expect(card).toContainText("Usou o navegador · 3 ações")
     await expect(page.getByTestId("virtual-message-list")).not.toContainText("entrada privada fictícia")

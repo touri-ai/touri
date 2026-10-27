@@ -82,7 +82,8 @@ keyboardWidths.forEach((width) => {
     await expect(takeOver).toBeEnabled({ timeout: 40_000 })
     await takeOver.click()
     const control = page.getByRole("region", { name: "Controle remoto do navegador" })
-    await control.getByRole("button", { name: "Expandir navegador em tela cheia" }).click()
+    if (width > 600) await control.getByRole("button", { name: "Expandir navegador em tela cheia" }).click()
+    await expect(control).toHaveAttribute("data-full-view", "true")
     const screen = control.locator(".browser-takeover-screen")
     await expect(screen.locator("canvas:visible, img").first()).toBeVisible()
     await expect(control.getByRole("button", { name: "Digitar no navegador" })).toBeEnabled()
@@ -137,7 +138,7 @@ keyboardWidths.forEach((width) => {
           return (await response.json()) as { takeoverInputAttempts: number; takeoverInputCount: number }
         }),
       )
-      .toMatchObject({ takeoverInputAttempts: 2, takeoverInputCount: 2 })
+      .toMatchObject({ takeoverInputAttempts: 3, takeoverInputCount: 3 })
     await expect
       .poll(() =>
         page.evaluate(async () => {

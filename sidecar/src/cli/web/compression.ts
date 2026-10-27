@@ -47,6 +47,10 @@ export const compressBufferedResponse = async (
   response: Response,
   variants?: () => Promise<CompressedVariants>,
 ): Promise<Response> => {
+  if (isBrowserFrameRequest(request)) {
+    response.headers.set("Cache-Control", "no-store, no-transform")
+    return response
+  }
   const head = request.method === "HEAD"
   const unchanged = () => (head ? new Response(null, response) : response)
   if (
@@ -85,4 +89,9 @@ export const compressBufferedResponse = async (
   response.headers.set("Content-Encoding", encoding)
   response.headers.set("Content-Length", String(compressed.byteLength))
   return new Response(head ? null : compressed, response)
+}
+
+const isBrowserFrameRequest = (request: Request): boolean => {
+  if (request.method !== "POST") return false
+  return /^\/(?:api\/(?:v1\/)?)?browser\/tabs\/[^/]+\/takeover\/frame$/u.test(new URL(request.url).pathname)
 }

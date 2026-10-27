@@ -151,7 +151,7 @@ test.describe("full browser activity flow", () => {
       const privacy = takeoverView.getByRole("status", { name: "Privacidade do navegador" })
       await expect(remoteScreen).toBeVisible()
       await expect(privacy).toBeVisible()
-      await expect(privacy).toHaveCSS("position", "sticky")
+      await expect(takeoverView.locator(".browser-takeover-controls")).toHaveCSS("position", "sticky")
       await remoteScreen.scrollIntoViewIfNeeded()
       await remoteScreen.evaluate(
         () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
@@ -169,7 +169,7 @@ test.describe("full browser activity flow", () => {
             return ((await response.json()) as { takeoverInputCount: number }).takeoverInputCount
           }),
         )
-        .toBe(1)
+        .toBe(2)
       await page
         .getByRole("region", { name: "Controle remoto do navegador" })
         .getByRole("button", { name: /Devolver para/ })
@@ -198,8 +198,8 @@ test.describe("full browser activity flow", () => {
       expect(fixtureStats).toEqual({
         decisionCount: 4,
         failedSteps: [],
-        takeoverInputCount: 1,
-        takeoverInputAttempts: 1,
+        takeoverInputCount: 2,
+        takeoverInputAttempts: 2,
       })
       await expect(page.getByText("Voo direto", { exact: false })).toBeVisible()
       await expect(page.getByText("Uma conexão", { exact: false })).toBeVisible()
@@ -275,7 +275,7 @@ for (const viewport of [
     const privacy = takeoverView.getByRole("status", { name: "Privacidade do navegador" })
     await expect(browserScreen).toBeVisible()
     await expect(privacy).toBeVisible()
-    await expect(privacy).toHaveCSS("position", "sticky")
+    await expect(takeoverView.locator(".browser-takeover-controls")).toHaveCSS("position", "sticky")
     const screenWidth = await browserScreen.evaluate((element) => element.getBoundingClientRect().width)
     const layoutWidth = await takeoverView
       .locator(".browser-takeover-layout")
@@ -286,8 +286,8 @@ for (const viewport of [
       fullPage: true,
     })
 
-    const expand = takeoverView.getByRole("button", { name: "Expandir navegador em tela cheia" })
-    await expand.click()
+    if (viewport.width > 600)
+      await takeoverView.getByRole("button", { name: "Expandir navegador em tela cheia" }).click()
     await expect(takeoverView).toHaveAttribute("data-full-view", "true")
     const fullScreenHeight = await browserScreen.evaluate((element) => element.getBoundingClientRect().height)
     expect(fullScreenHeight).toBeGreaterThan(viewport.height * 0.6)

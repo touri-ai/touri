@@ -71,7 +71,7 @@ test("keeps remote keyboard events inside the takeover control", async () => {
   await waitFor(() =>
     expect(request).toHaveBeenCalledWith(
       "POST /browser/tabs/:id/takeover/input",
-      expect.objectContaining({ input: { kind: "text", text: "colagem fictícia" } }),
+      expect.objectContaining({ input: { kind: "text", text: "texto fictíciocolagem fictícia" } }),
       { id: "synthetic-tab" },
     ),
   )
@@ -102,12 +102,12 @@ test("sends private browser typing only to the remote input route and returns co
     />,
   )
 
-  await waitFor(() => expect(document.body.textContent).toContain("https://exemplo.test"))
+  await waitFor(() =>
+    expect(screen.getByRole("textbox", { name: "Endereço do navegador" })).toHaveValue("https://exemplo.test/entrar"),
+  )
   await loadFirstBrowserFrame()
   const keyboard = await screen.findByRole("textbox", { name: "Entrada de teclado para o navegador" })
-  const browserUrl = document.querySelector(".browser-takeover-toolbar span")
-  expect(browserUrl).toHaveAttribute("title", "https://exemplo.test")
-  expect(document.body.textContent).not.toContain("/entrar")
+  expect(screen.getByRole("textbox", { name: "Endereço do navegador" })).toHaveValue("https://exemplo.test/entrar")
   expect(document.body.textContent).not.toContain("senha")
   expect(document.body.textContent).not.toContain("segredo")
   fireEvent.input(keyboard, { target: { value: "valor privado de teste" } })
@@ -206,8 +206,7 @@ test("handback drains accepted phone typing, paste and keyboard input before ret
   ]
   expect(actions).toEqual([
     getInputRequest({ kind: "text", text: "entrada privada inicial" }),
-    getInputRequest({ kind: "text", text: "entrada privada final" }),
-    getInputRequest({ kind: "text", text: "texto colado privado" }),
+    getInputRequest({ kind: "text", text: "entrada privada finaltexto colado privado" }),
     getInputRequest({ kind: "key", phase: "down", key: "Enter", code: "Enter", modifiers: 0 }),
     getInputRequest({ kind: "key", phase: "up", key: "Enter", code: "Enter", modifiers: 0 }),
     [
@@ -260,7 +259,7 @@ test("a failed handback cancels observation and a retry starts it again", async 
   expect(onHandbackError).toHaveBeenCalledOnce()
 })
 
-test("keeps the privacy notice visible and lets a person expand the browser view", async () => {
+test("keeps one privacy notice in details and lets a person expand the browser view", async () => {
   const api = createMockApi()
   const request = vi.fn(async (route: string) => {
     if (route === "POST /browser/tabs/:id/takeover/frame") return Object.assign({}, getBrowserFrame(), { url: "" })
@@ -282,8 +281,9 @@ test("keeps the privacy notice visible and lets a person expand the browser view
     />,
   )
 
+  fireEvent.click(document.querySelector(".browser-takeover-aside summary") as HTMLElement)
   const privacy = screen.getByRole("status", { name: "Privacidade do navegador" })
-  expect(privacy).toHaveTextContent("O que você digitar aqui não vai para o chat, o bot nem o histórico.")
+  expect(privacy).toHaveTextContent("Você está no controle · Lia está pausado")
   expect(screen.getAllByText("O que você digitar aqui não vai para o chat, o bot nem o histórico.")).toHaveLength(1)
   await screen.findByText("Você está no controle · Lia está pausado", { exact: true })
   expect(screen.queryByText("Conectando ao navegador…")).toBeNull()
@@ -320,7 +320,7 @@ test("a reconnected browser view requests frames at its retained viewport epoch"
   await loadFirstBrowserFrame()
   expect(request).toHaveBeenCalledWith(
     "POST /browser/tabs/:id/takeover/frame",
-    { sessionId: "synthetic-session", controlEpoch: "control-epoch", viewEpoch: 7 },
+    { sessionId: "synthetic-session", controlEpoch: "control-epoch", stream: true, viewEpoch: 7 },
     { id: "synthetic-tab" },
     { signal: expect.any(AbortSignal) },
   )
@@ -554,7 +554,7 @@ test("maps phone full-screen clicks to the contained page and ignores its margin
   await waitFor(() =>
     expect(request).toHaveBeenCalledWith(
       "POST /browser/tabs/:id/takeover/input",
-      expect.objectContaining({ input: { kind: "click", x: 0.25, y: 0.25, button: "left" } }),
+      expect.objectContaining({ input: { kind: "pointer", phase: "down", x: 0.25, y: 0.25, button: "left" } }),
       { id: "synthetic-tab" },
     ),
   )
