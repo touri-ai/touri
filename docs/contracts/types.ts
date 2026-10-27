@@ -1155,7 +1155,7 @@ export type ServiceMap = {
   'storage.maintenance': { start: (vacuum?: boolean) => boolean; snapshot: () => StorageMaintenanceStatus; dispose: () => void }
   'storage.botDeletion': { dispose: () => void }
   'storage.threadTitles': { dispose: () => void }
-  'storage.threadDeletion': { dispose: () => void }
+  'storage.threadDeletion': { dispose: () => Promise<void> }
   'mcp.botTools': (bot: Bot) => Array<string>
 
   'cloud.settingsChanged': () => void

@@ -1745,7 +1745,7 @@ export type ServiceMap = {
   'storage.botDeletion': { dispose: () => void }
   'notify.recovery': { ready: Promise<void>; dispose: () => Promise<void> }
   'storage.threadTitles': { dispose: () => void; getRoutineTitles: (threadIds: readonly Id[], signal: AbortSignal) => Promise<ReadonlyMap<Id, RoutineThreadTitle>> }
-  'storage.threadDeletion': { dispose: () => void }
+  'storage.threadDeletion': { dispose: () => Promise<void> }
   'mcp.botTools': (bot: Bot) => Array<string>
 
   'cloud.settingsChanged': () => void

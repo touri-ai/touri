@@ -41,6 +41,7 @@ const FILE_BATCH_SIZE = 16
 const ATTACHMENT_BATCH_SIZE = 50
 const PREVIEW_MESSAGE_LIMIT = 1000
 const WORKER_START_TIMEOUT_MS = 15_000
+const WORKER_STOP_TIMEOUT_MS = 1_000
 const errorResponse = (status: number, errorCode: string, error: string): RouteResponse => ({
   status,
   json: { errorCode, error },
@@ -50,10 +51,14 @@ export const createThreadDeletionManager = (
   kernel: Kernel,
   collectBlobs: typeof collectUnusedOutputBlobs = collectUnusedOutputBlobs,
   drainThread: (threadId: string) => Promise<void> = async () => {},
+  createWorker: (url: string) => Worker = (url) => new Worker(url, { smol: true, ref: false }),
 ) => {
   const database = kernel.db as Database
   let disposed = false
-  let running = false
+  // These handles belong to this manager; shutdown owns every asynchronous continuation.
+  let activeJob: Promise<void> | undefined
+  let disposePromise: Promise<void> | undefined
+  const shutdown = new AbortController()
   let scheduled: ReturnType<typeof setImmediate> | undefined
   let retryTimer: ReturnType<typeof setTimeout> | undefined
   let worker: Worker | undefined
@@ -64,6 +69,7 @@ export const createThreadDeletionManager = (
   let rejectWorkerReady: ((error: Error) => void) | undefined
   let pendingBatch: PendingBatch | undefined
   let batchId = 0
+  let workerExited: Promise<void> = Promise.resolve()
 
   const clearWorker = (): void => {
     if (workerStartupTimer) clearTimeout(workerStartupTimer)
@@ -73,6 +79,7 @@ export const createThreadDeletionManager = (
     if (workerUrl) URL.revokeObjectURL(workerUrl)
     workerUrl = undefined
     workerReady = undefined
+    rejectWorkerReady?.(new Error("Thread deletion worker stopped"))
     resolveWorkerReady = undefined
     rejectWorkerReady = undefined
     pendingBatch?.reject(new Error("Thread deletion worker stopped"))
@@ -92,7 +99,10 @@ export const createThreadDeletionManager = (
     if (workerReady) return workerReady
 
     workerUrl = URL.createObjectURL(new Blob([threadDeletionWorkerSource], { type: "application/javascript" }))
-    worker = new Worker(workerUrl, { smol: true, ref: false })
+    worker = createWorker(workerUrl)
+    const current = worker
+    const exited = Promise.withResolvers<void>()
+    workerExited = exited.promise
     workerReady = new Promise<void>((resolve, reject) => {
       resolveWorkerReady = resolve
       rejectWorkerReady = reject
@@ -131,7 +141,8 @@ export const createThreadDeletionManager = (
       failWorker(new Error("Thread deletion worker failed"))
     }
     worker.addEventListener("close", () => {
-      if (!disposed && worker) failWorker(new Error("Thread deletion worker closed"))
+      exited.resolve()
+      if (worker === current) failWorker(new Error("Thread deletion worker closed"))
     })
     workerStartupTimer = setTimeout(
       () => failWorker(new Error("Thread deletion worker did not start")),
@@ -143,6 +154,7 @@ export const createThreadDeletionManager = (
 
   const processBatch = async (threadId: string): Promise<BatchResult> => {
     await ensureWorker()
+    if (disposed) return { done: false, phase: "stopped" }
     if (!worker) throw new Error("Thread deletion worker is unavailable")
 
     const id = String(++batchId)
@@ -168,6 +180,7 @@ export const createThreadDeletionManager = (
       return shared ? [] : [session.rollout_path]
     })
     await Promise.all(paths.map((path) => removePrivateFileAsync({ root: kernel.paths.appData, path })))
+    if (disposed) return false
     database.transaction(() => {
       sessions.forEach(({ id }) => {
         database.query("UPDATE provider_sessions SET rollout_path = NULL WHERE id = ?").run(id)
@@ -199,7 +212,7 @@ export const createThreadDeletionManager = (
         () => {
           deferred = true
         },
-        AbortSignal.timeout(10_000),
+        AbortSignal.any([shutdown.signal, AbortSignal.timeout(10_000)]),
         10_000,
       )
       if (disposed || deferred) return false
@@ -217,6 +230,7 @@ export const createThreadDeletionManager = (
 
   const finishJob = async (job: DeletionJob): Promise<void> => {
     const collected = await removeThreadAttachments(job.thread_id)
+    if (disposed) return
     if (!collected) {
       database
         .query("UPDATE thread_deletions SET error_code = 'ATTACHMENT_CLEANUP', updated_at = ? WHERE thread_id = ?")
@@ -236,9 +250,27 @@ export const createThreadDeletionManager = (
     database.query("DELETE FROM thread_deletions WHERE thread_id = ?").run(job.thread_id)
   }
 
+  const saveJobFailure = (error: unknown): boolean => {
+    try {
+      const job = database
+        .query("SELECT thread_id FROM thread_deletions ORDER BY created_at, thread_id LIMIT 1")
+        .get() as { thread_id: string } | null
+      if (!job) return true
+
+      const busy = error instanceof Error && error.message === "SQLITE_BUSY"
+      database
+        .query("UPDATE thread_deletions SET error_code = ?, updated_at = ? WHERE thread_id = ?")
+        .run(busy ? "SQLITE_BUSY" : "THREAD_DELETE_FAILED", Date.now(), job.thread_id)
+      return true
+    } catch {
+      // A closed connection or missing backing file can also reject the status write.
+      kernel.log({ level: "warn", module: "store", msg: "Thread deletion status could not be saved" })
+      return false
+    }
+  }
+
   const runJobs = async (): Promise<void> => {
-    if (disposed || running) return
-    running = true
+    if (disposed) return
     try {
       while (!disposed) {
         const job = database
@@ -254,6 +286,7 @@ export const createThreadDeletionManager = (
           if (active || kernel.services.use("runtime.activeRun")?.({ threadId: job.thread_id }))
             throw new Error("Thread still has active work")
           await drainThread(job.thread_id)
+          if (disposed) return
           database.transaction(() => {
             database
               .query("UPDATE threads SET archived_at = coalesce(archived_at, ?), updated_at = ? WHERE id = ?")
@@ -274,6 +307,7 @@ export const createThreadDeletionManager = (
         }
         if (job.phase === "files") {
           const more = await removeSessionFiles(job.thread_id)
+          if (disposed) return
           if (!more)
             database
               .query(
@@ -285,6 +319,7 @@ export const createThreadDeletionManager = (
         }
         if (job.phase === "drain") {
           await drainThread(job.thread_id)
+          if (disposed) return
           database
             .query(
               "UPDATE thread_deletions SET phase = 'events', error_code = NULL, updated_at = ? WHERE thread_id = ?",
@@ -299,41 +334,60 @@ export const createThreadDeletionManager = (
       }
     } catch (error) {
       if (disposed) return
-      const job = database
-        .query("SELECT thread_id FROM thread_deletions ORDER BY created_at, thread_id LIMIT 1")
-        .get() as { thread_id: string } | null
-      if (job) {
-        const busy = error instanceof Error && error.message === "SQLITE_BUSY"
-        database
-          .query("UPDATE thread_deletions SET error_code = ?, updated_at = ? WHERE thread_id = ?")
-          .run(busy ? "SQLITE_BUSY" : "THREAD_DELETE_FAILED", Date.now(), job.thread_id)
-      }
+      if (!saveJobFailure(error)) return
       kernel.log({ level: "warn", module: "store", msg: "Thread deletion deferred" })
       if (retryTimer) clearTimeout(retryTimer)
       retryTimer = setTimeout(() => {
         retryTimer = undefined
         schedule()
       }, 1000)
-    } finally {
-      running = false
     }
   }
 
   const schedule = (): void => {
-    if (disposed || running || scheduled || retryTimer) return
+    if (disposed || activeJob || scheduled || retryTimer) return
     scheduled = setImmediate(() => {
       scheduled = undefined
-      void runJobs()
+      activeJob = runJobs()
+        .catch(() => kernel.log({ level: "warn", module: "store", msg: "Thread deletion failed" }))
+        .finally(() => {
+          activeJob = undefined
+        })
     })
   }
 
-  const dispose = (): void => {
+  const stopWorker = async (): Promise<void> => {
+    const current = worker
+    const stopTimer = current
+      ? setTimeout(() => {
+          kernel.log({ level: "warn", module: "store", msg: "Thread deletion worker shutdown required termination" })
+          current.terminate()
+        }, WORKER_STOP_TIMEOUT_MS)
+      : undefined
+    try {
+      current?.postMessage({ type: "stop" })
+    } catch {
+      current?.terminate()
+    }
+    // Termination is asynchronous too: wait for the connection's owner to exit.
+    await workerExited
+    clearTimeout(stopTimer)
+    clearWorker()
+  }
+
+  const dispose = (): Promise<void> => {
+    if (disposePromise) return disposePromise
     disposed = true
+    shutdown.abort()
     if (scheduled) clearImmediate(scheduled)
     if (retryTimer) clearTimeout(retryTimer)
     scheduled = undefined
     retryTimer = undefined
-    clearWorker()
+    disposePromise = (async () => {
+      // Start cancellation before waiting: a batch may need forced termination to settle.
+      await Promise.all([activeJob, stopWorker()])
+    })()
+    return disposePromise
   }
 
   schedule()
