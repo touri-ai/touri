@@ -280,3 +280,21 @@ test("encoded, partial and no-transform bodies bypass compression", async () => 
     expect(await original.text()).toBe(script)
   }
 })
+
+test.each([
+  "/browser/tabs/synthetic/takeover/frame",
+  "/api/browser/tabs/synthetic/takeover/frame",
+  "/api/v1/browser/tabs/synthetic/takeover/frame",
+])("live browser frame bypasses synchronous recompression and caching at %s", async (path) => {
+  const image = "synthetic-encoded-image".repeat(1000)
+  const request = new Request(`http://localhost${path}`, {
+    method: "POST",
+    headers: { "Accept-Encoding": "br, gzip" },
+  })
+
+  const response = await compressBufferedResponse(request, Response.json({ image }))
+
+  expect(response.headers.get("content-encoding")).toBeNull()
+  expect(response.headers.get("cache-control")).toBe("no-store, no-transform")
+  expect(await response.json()).toEqual({ image })
+})

@@ -48,7 +48,7 @@ test("phone handback stays reachable after typing and scrolling the private page
   await page.getByRole("button", { name: "Iniciar busca de viagem" }).click()
   await page.locator(".browser-activity-card").getByRole("button", { name: "Assumir", exact: true }).click()
   const control = page.getByRole("region", { name: "Controle remoto do navegador" })
-  await control.getByRole("button", { name: "Expandir navegador em tela cheia" }).click()
+  await expect(control).toHaveAttribute("data-full-view", "true")
   await expect(control.getByRole("button", { name: "Digitar no navegador" })).toBeEnabled()
   await control.scrollIntoViewIfNeeded()
 

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Verificação fictícia</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px system-ui; color: #172033; background: #f4f6fa; }
+  header { padding: 20px; background: #fff; border-bottom: 1px solid #cbd5e1; }
+  main { max-width: 900px; margin: auto; padding: 24px; }
+  label { display: grid; gap: 8px; margin: 18px 0; }
+  input, button, a { min-height: 44px; font: inherit; }
+  input { padding: 10px; border: 1px solid #64748b; border-radius: 6px; }
+  button, a { display: inline-flex; padding: 10px 16px; border: 0; border-radius: 6px; background: #2058b0; color: white; align-items: center; }
+  section { margin-top: 24px; padding: 20px; background: white; border: 1px solid #cbd5e1; border-radius: 8px; }
+  #animation { height: 8px; width: 70%; background: #2058b0; animation: progress 1s linear infinite alternate; }
+  @keyframes progress { to { width: 30%; } }
+  .space { height: 1300px; background: linear-gradient(#f4f6fa, #dbeafe); }
+</style>
+<header>touri · página local de teste</header>
+<main>
+<h1>Verificação fictícia</h1>
+<p id="selection">Selecione este texto de teste com o mouse.</p>
+<div id="animation"></div>
+<button id="click">Testar clique</button> <output id="count">0</output>
+<label>Nome de teste<input id="name" autocomplete="off" aria-label="Nome de teste"></label>
+<section><label><span>Verificação humana simulada</span><input id="captcha" type="checkbox" aria-label="Verificação fictícia"></label><p>Sem serviço externo. Marque para continuar.</p></section>
+<a id="next" href="?next=1">Próxima página</a>
+<div class="space"></div>
+<section id="bottom">Fim da página longa</section>
+</main>
+<script>
+  let clicks = 0
+  document.querySelector('#click').onclick = () => {
+    clicks += 1
+    document.querySelector('#count').textContent = String(clicks)
+    document.querySelector('#click').style.background = clicks % 2 ? '#238636' : '#2058b0'
+  }
+  if (location.search) document.querySelector('h1').textContent = 'Próxima página de teste'
+</script>
+</html>

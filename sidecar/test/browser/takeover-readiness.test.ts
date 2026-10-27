@@ -394,3 +394,34 @@ test("the same phone viewport is applied again after the controller reconnects t
   expect(attachments).toBe(2)
   expect(calls.filter((call) => call.method === "Emulation.setDeviceMetricsOverride")).toHaveLength(2)
 })
+
+test("human navigation rejects non-web schemes and pointer coordinates outside the observed view", async () => {
+  const { engine, calls } = await getFixture()
+  await requestTakeover(engine)
+  await engine.holdTakeoverForPerson({ tabId: "tab", personId: "authorized" })
+  const frame = await engine.takeoverFrame({ tabId: "tab", botId: "bot", signal: new AbortController().signal })
+  if (!frame) throw new Error("Synthetic frame missing")
+  const observed = {
+    tabId: "tab",
+    botId: "bot",
+    targetEpoch: frame.targetEpoch,
+    width: frame.width,
+    height: frame.height,
+    signal: new AbortController().signal,
+  }
+
+  const navigation = await engine.takeoverInput({
+    ...observed,
+    input: { kind: "navigate", action: "goto", url: "file:///workspace/private" },
+  })
+  const pointer = await engine.takeoverInput({
+    ...observed,
+    input: { kind: "pointer", phase: "down", x: 2, y: 0.5, button: "left" },
+  })
+
+  expect(navigation).toBe(false)
+  expect(pointer).toBe(false)
+  expect(calls.some((call) => call.method === "Page.navigate" || call.method === "Input.dispatchMouseEvent")).toBe(
+    false,
+  )
+})

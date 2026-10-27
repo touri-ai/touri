@@ -872,6 +872,8 @@ const getPreviewNotice = (
 }
 
 const getTakeoverReasonCopy = (reason: string, locale: Locale): string => {
+  if (["captcha", "verification", "challenge"].includes(reason))
+    return t("The site needs you to complete a verification step.", {}, locale)
   if (reason === "login") return t("The site asked you to sign in before continuing.", {}, locale)
   if (reason === "payment")
     return t("The site asked you to review a purchase or payment before continuing.", {}, locale)

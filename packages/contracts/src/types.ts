@@ -831,6 +831,7 @@ export type BrowserTakeoverFrame = {
   image: string
   width: number
   height: number
+  loading?: boolean
 }
 
 export type BrowserTakeoverCapture = Omit<BrowserTakeoverFrame, "controlEpoch" | "viewEpoch">
@@ -840,6 +841,8 @@ export type BrowserTakeoverInput =
   | { kind: 'wheel'; x: number; y: number; deltaX: number; deltaY: number }
   | { kind: 'key'; phase: 'down' | 'up'; key: string; code: string; modifiers: number }
   | { kind: 'text'; text: string }
+  | { kind: 'pointer'; phase: 'down' | 'move' | 'up'; x: number; y: number; button: 'left' | 'right' | 'middle' }
+  | { kind: 'navigate'; action: 'goto' | 'back' | 'forward' | 'reload'; url?: string }
 
 /* ------------------------------------------------------------------------------------------ */
 /* MCP tool router (WP4) and handlers (WP5, WP6, WP7, WP3)                                     */
@@ -1260,7 +1263,7 @@ export type ApiRoutes = {
     res: { sessionId: string; controlEpoch: string; viewEpoch: number }
   }
   'POST /browser/tabs/:id/takeover/frame': {
-    req: { sessionId: string; controlEpoch: string; viewEpoch: number; viewport?: { width: number; height: number } }
+    req: { sessionId: string; controlEpoch: string; viewEpoch: number; viewport?: { width: number; height: number }; stream?: boolean }
     res: BrowserTakeoverFrame
   }
   'POST /browser/tabs/:id/takeover/input': {

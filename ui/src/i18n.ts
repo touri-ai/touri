@@ -5,6 +5,13 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "Browser navigation": "Navegação do navegador",
+  "Go back": "Voltar página",
+  "Go forward": "Avançar página",
+  "Reload page": "Recarregar página",
+  "Loading page…": "Carregando página…",
+  "Browser details": "Detalhes do navegador",
+  "The site needs you to complete a verification step.": "O site precisa que você conclua uma verificação.",
   "Não foi possível recuperar o computador anterior. Tente ligar novamente.":
     "Não foi possível recuperar o computador anterior. Tente ligar novamente.",
   "Máquina ocupada; pare os turnos e devolva o controle antes de reiniciar":
@@ -3564,6 +3571,13 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Browser navigation": "Browser navigation",
+  "Go back": "Go back",
+  "Go forward": "Go forward",
+  "Reload page": "Reload page",
+  "Loading page…": "Loading page…",
+  "Browser details": "Browser details",
+  "The site needs you to complete a verification step.": "The site needs you to complete a verification step.",
   "Não foi possível recuperar o computador anterior. Tente ligar novamente.":
     "Could not recover the previous computer. Try starting it again.",
   "Máquina ocupada; pare os turnos e devolva o controle antes de reiniciar":

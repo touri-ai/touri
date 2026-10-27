@@ -2137,3 +2137,21 @@ Quality changes require sustained received traffic, separate upgrade/downgrade t
 six-second hold period; idle screens do not imply a slow connection. Session lifecycle checks use
 committed runtime notifications and await earlier lifecycle persistence before granting a session,
 without waiting for UI history delivery. Delayed startup notifications cannot close a newer session.
+
+### Human browser control
+
+During human control, the live page occupies the card width. The handoff reason and previous actions
+stay in a collapsed details strip; the reason comes from the sanitized bot request. A phone opens the
+same persistent page in a full-screen dialog automatically. The toolbar provides an editable address,
+back, forward, reload, loading feedback and expansion; clicking the page focuses remote keyboard input.
+Mouse dragging selects remote text, wheel/touch gestures scroll, and paste/composition stay outside chat.
+
+The optional `stream` flag on the existing authorized takeover frame request consumes pushed CDP
+screencast images rather than taking repeated screenshots. Reads remain serial, image payloads and
+pending decoding stay bounded, idle viewing slows down, and hidden viewers stop requesting frames.
+The remote layout viewport follows the displayed page size; control/view/target epochs still fence
+coordinate-based input and frames after a resize, navigation or controller change. Navigation itself
+requires the active controller, allowing Back/Forward/Reload before the next image has arrived. Handback drains accepted input and
+continues on the same page. Only the authorized controller receives the address origin/path; credentials,
+query strings and fragments are omitted. Private previews, bot reads and history retain their protection.
+The input contract adds scoped navigation and pointer phases; there is no database schema change.

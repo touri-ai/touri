@@ -6,7 +6,10 @@ test.use({ channel: "chromium", reducedMotion: "reduce" })
 const getPlacement = (locator: Locator) =>
   locator.evaluate((element) => {
     const box = element.getBoundingClientRect()
-    const list = document.querySelector(".message-scroll")?.getBoundingClientRect()
+    const fullscreen = element.closest('[data-full-view="true"]')
+    const list = fullscreen
+      ? { top: 0, bottom: window.innerHeight }
+      : document.querySelector(".message-scroll")?.getBoundingClientRect()
     const visibleBottom = window.visualViewport
       ? window.visualViewport.offsetTop + window.visualViewport.height
       : Infinity
@@ -97,22 +100,12 @@ for (const history of ["short", "long"] as const)
 test("an on-screen keyboard covering the visible handback brings it back above the keyboard", async ({ page }) => {
   test.setTimeout(60_000)
   const { input, view, handback } = await takeOver(page, { width: 390, height: 844 }, true)
-  const history = page.locator(".message-scroll")
-
-  // The person reads a little higher up; the handback stays visible, lower in the history. The history is
-  // scrolled directly because a wheel over the live frame goes to the remote page.
-  await history.evaluate((list) => list.scrollBy(0, -300))
-  await expect.poll(async () => (await handback.boundingBox())?.y ?? 0).toBeGreaterThan(300)
-  expect(await getPlacement(handback)).toEqual(reachable)
-
-  // The keyboard opens: only the visual viewport shrinks, up to just above the handback.
-  const top = (await handback.boundingBox())?.y ?? 0
-  await page.evaluate((height) => {
+  await page.evaluate(() => {
     const visible = window.visualViewport
     if (!visible) throw new Error("no visual viewport")
-    Object.defineProperty(visible, "height", { configurable: true, get: () => height })
+    Object.defineProperty(visible, "height", { configurable: true, get: () => 400 })
     visible.dispatchEvent(new Event("resize"))
-  }, Math.floor(top) - 1)
+  })
   await expect.poll(() => getPlacement(handback)).toEqual(reachable)
 
   await handBack(page, input, view, handback)

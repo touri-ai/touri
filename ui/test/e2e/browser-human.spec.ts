@@ -109,26 +109,30 @@ for (const width of [1440, 390]) {
       observer.observe({ entryTypes: ["longtask", "layout-shift"] })
       Object.assign(window, { humanBrowserMetrics: { samples, observer, getCls: () => cls } })
     })
-    await view.getByRole("button", { name: "Expandir navegador em tela cheia" }).evaluate((button) => {
-      button.addEventListener(
-        "click",
-        () => {
-          const start = performance.now()
-          requestAnimationFrame(() => Object.assign(window, { humanBrowserInteractionMs: performance.now() - start }))
-        },
-        { once: true },
-      )
-    })
-    await view.getByRole("button", { name: "Expandir navegador em tela cheia" }).click()
+    if (width > 600 || baseline) {
+      await view.getByRole("button", { name: "Expandir navegador em tela cheia" }).evaluate((button) => {
+        button.addEventListener(
+          "click",
+          () => {
+            const start = performance.now()
+            requestAnimationFrame(() => Object.assign(window, { humanBrowserInteractionMs: performance.now() - start }))
+          },
+          { once: true },
+        )
+      })
+      await view.getByRole("button", { name: "Expandir navegador em tela cheia" }).click()
+    }
     if (!baseline) {
-      await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBe(true)
+      await expect(view).toHaveAttribute("data-full-view", "true")
+      if (width > 600) await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBe(true)
       const screen = view.getByRole("application", { name: "Página atual do navegador" })
       const result = await page.waitForResponse(async (response) => {
         if (!response.url().endsWith("/__browser-activity-fixture") || !response.ok()) return false
         const body = response.request().postDataJSON()
         return (
           body.step === "takeover-frame" &&
-          body.viewport?.width === Math.round((await screen.boundingBox())?.width ?? 0)
+          body.viewport?.width === Math.round((await screen.boundingBox())?.width ?? 0) &&
+          body.viewport?.height === Math.round((await screen.boundingBox())?.height ?? 0)
         )
       })
       const frame = await result.json()
@@ -224,7 +228,7 @@ for (const width of [1440, 390]) {
     const view = page.getByRole("region", { name: "Controle remoto do navegador" })
     if (width === 390)
       await view.evaluate((element) => Object.defineProperty(element, "requestFullscreen", { value: undefined }))
-    await view.getByRole("button", { name: "Expandir navegador em tela cheia" }).click()
+    if (width > 600 || baseline) await view.getByRole("button", { name: "Expandir navegador em tela cheia" }).click()
     if (!baseline) {
       await expect.poll(async () => (await view.boundingBox())?.width).toBe(width)
       await expect(view.getByRole("button", { name: /Devolver para/ })).toBeInViewport()

@@ -84,10 +84,28 @@ const browserTakeoverInput = (value: unknown): BrowserTakeoverInput | null => {
     if (modifiers < 0 || modifiers > 15) return null
     return { kind: "key", phase: input.phase, key, code, modifiers }
   }
-  if (input.kind !== "click" && input.kind !== "wheel") return null
+  if (input.kind === "navigate") {
+    if (!["goto", "back", "forward", "reload"].includes(String(input.action))) return null
+    if (input.action !== "goto") return { kind: "navigate", action: input.action as "back" | "forward" | "reload" }
+    const url = asString(input.url)
+    if (!url || url.length > 4096) return null
+    return { kind: "navigate", action: "goto", url }
+  }
+  if (input.kind !== "click" && input.kind !== "wheel" && input.kind !== "pointer") return null
   const x = asNumber(input.x)
   const y = asNumber(input.y)
   if (x === null || y === null || x < 0 || x > 1 || y < 0 || y > 1) return null
+  if (input.kind === "pointer") {
+    if (!["down", "move", "up"].includes(String(input.phase))) return null
+    if (!["left", "right", "middle"].includes(String(input.button))) return null
+    return {
+      kind: "pointer",
+      phase: input.phase as "down" | "move" | "up",
+      x,
+      y,
+      button: input.button as "left" | "right" | "middle",
+    }
+  }
   if (input.kind === "click") {
     const button = asString(input.button)
     if (button !== null && !["left", "right", "middle"].includes(button)) return null
@@ -1204,7 +1222,8 @@ export const init = async (
           const now = Date.now()
           if (
             authorized.session.frameInFlight ||
-            (requestedViewEpoch === authorized.session.viewEpoch &&
+            (argsRecord(request.body).stream !== true &&
+              requestedViewEpoch === authorized.session.viewEpoch &&
               now - authorized.session.lastFrameAt < TAKEOVER_FRAME_INTERVAL_MS)
           )
             return { status: 429, json: { error: "Aguarde a próxima imagem do navegador." } }
@@ -1220,6 +1239,7 @@ export const init = async (
             .takeoverFrame({
               tabId,
               botId: active.botId,
+              stream: argsRecord(request.body).stream === true,
               ...(width !== null && height !== null ? { viewport: { width, height } } : {}),
               signal: AbortSignal.any([request.signal, active.lifetime.signal]),
             })
@@ -1248,22 +1268,23 @@ export const init = async (
           const authorized = authorizeTakeoverSession(request)
           if (!authorized) return { status: 403, json: { error: "Esta sessão de controle não está ativa." } }
           const body = argsRecord(request.body)
+          const input = browserTakeoverInput(body.input)
+          if (!input) return { status: 400, json: { error: "Ação de navegador inválida." } }
           const targetEpoch = asNumber(body.targetEpoch)
           const viewEpoch = asNumber(body.viewEpoch)
           const width = asNumber(body.width)
           const height = asNumber(body.height)
           if (
-            targetEpoch === null ||
-            targetEpoch !== authorized.session.targetEpoch ||
-            viewEpoch !== authorized.session.viewEpoch ||
-            width === null ||
-            width !== authorized.session.frameWidth ||
-            height === null ||
-            height !== authorized.session.frameHeight
+            input.kind !== "navigate" &&
+            (targetEpoch === null ||
+              targetEpoch !== authorized.session.targetEpoch ||
+              viewEpoch !== authorized.session.viewEpoch ||
+              width === null ||
+              width !== authorized.session.frameWidth ||
+              height === null ||
+              height !== authorized.session.frameHeight)
           )
             return { status: 409, json: { error: "A visualização mudou. Atualize a página do navegador." } }
-          const input = browserTakeoverInput(argsRecord(request.body).input)
-          if (!input) return { status: 400, json: { error: "Ação de navegador inválida." } }
           if (authorized.session.pendingInputs >= 32)
             return { status: 429, json: { error: "O navegador está recebendo muitas ações. Tente novamente." } }
           renewTakeoverSession(tabId, {
@@ -1276,9 +1297,9 @@ export const init = async (
               .takeoverInput({
                 tabId,
                 botId: authorized.session.botId,
-                targetEpoch,
-                width,
-                height,
+                targetEpoch: targetEpoch ?? 0,
+                width: width ?? 0,
+                height: height ?? 0,
                 input,
                 signal: AbortSignal.any([request.signal, authorized.session.lifetime.signal]),
               })
