@@ -165,7 +165,11 @@ for (const width of [1440, 390]) {
 
       await expect.soft(page.getByRole("textbox", { name: "Endereço do navegador" })).toHaveValue(`${endpoint}/page`)
       await expect.soft(page.locator(".browser-takeover-reason")).toHaveText(reason)
-      const accessibility = await new AxeBuilder({ page }).include(".browser-takeover-view").analyze()
+      // The transparent 1px keyboard proxy has no visible text; check all visible controls instead.
+      const accessibility = await new AxeBuilder({ page })
+        .include(".browser-takeover-view")
+        .exclude(".browser-takeover-keyboard")
+        .analyze()
       expect(accessibility.violations).toEqual([])
       await page.getByRole("button", { name: "Devolver para Lia" }).click()
       await expect.poll(async () => (await getState()).continued).toBe(true)
