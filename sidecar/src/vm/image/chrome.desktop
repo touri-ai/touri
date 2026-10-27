@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Navegador
+Name[pt_BR]=Navegador
+Name[en]=Browser
+Icon=web-browser
+Exec=/bin/sh -c "printf chrome | socat -u STDIN UNIX-SENDTO:/run/touri-desktop/launcher"

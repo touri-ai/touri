@@ -241,6 +241,8 @@ export const ptBR = {
     "Nenhum navegador executável foi encontrado. Instale um navegador compatível no computador do bot e verifique novamente.",
 
   Navegador: "Navegador",
+  Terminal: "Terminal",
+  Arquivos: "Arquivos",
   "Código do convite": "Código do convite",
   "Opcional. Sem e-mail, compartilhe o link ou código.": "Opcional. Sem e-mail, compartilhe o link ou código.",
   "Abra /join no endereço do time e informe o código. Válido por 24 horas, para uma pessoa.":
@@ -3865,6 +3867,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Delete automatic conversations older than {days} days?": "Delete automatic conversations older than {days} days?",
   "Select up to {count} conversations.": "Select up to {count} conversations.",
   Navegador: "Browser",
+  Terminal: "Terminal",
+  Arquivos: "Files",
   "Código do convite": "Invitation code",
   "Opcional. Sem e-mail, compartilhe o link ou código.": "Optional. Without email, share the link or code.",
   "Abra /join no endereço do time e informe o código. Válido por 24 horas, para uma pessoa.":
