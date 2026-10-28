@@ -1,4 +1,4 @@
-import { Database } from "bun:sqlite"
+import type { Database } from "bun:sqlite"
 import { afterEach, expect, spyOn, test } from "bun:test"
 import { randomBytes } from "node:crypto"
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -13,6 +13,8 @@ import { createRoutedBrowserEngine } from "../../src/browser/vm-router"
 import { init as initComputer } from "../../src/computer"
 import { createKernel } from "../../src/kernel"
 import { flushFileIoAsync } from "../../src/kernel/async-files"
+import { retryDatabaseWriteAsync } from "../../src/kernel/database-write"
+import { openDatabase } from "../../src/kernel/db"
 import { authenticateMcp } from "../../src/mcp/auth"
 import { createProjectStore } from "../../src/projects/repository"
 import { createSupervisor } from "../../src/projects/supervisor"
@@ -3045,7 +3047,7 @@ test("deferred image update yields to a writer during candidate connection activ
   await f.runtime.kernel.services.use("storage.maintenance")?.dispose()
   const database = f.runtime.kernel.db as Database
   database.exec("PRAGMA busy_timeout = 0")
-  const writer = new Database(database.filename)
+  const writer = openDatabase({ filename: database.filename })
   cleanups.push(async () => {
     if (writer.inTransaction) writer.exec("ROLLBACK")
     writer.close()
@@ -3069,7 +3071,7 @@ test("deferred image update yields to a writer during candidate connection activ
         write: (chunk) => sink.write(chunk),
         close: async () => {
           await sink.close()
-          writer.exec("BEGIN IMMEDIATE")
+          await retryDatabaseWriteAsync(writer, () => writer.exec("BEGIN IMMEDIATE"))
           // The writer can release only after the live path returns control to the event loop.
           setImmediate(() => {
             writer.exec("COMMIT")
@@ -3090,49 +3092,62 @@ test("deferred image update yields to a writer during candidate connection activ
   expect(f.fake.machines.has(original.name)).toBe(false)
 })
 
-test.each(["image upgrade", "live policy update"] as const)(
-  "%s yields to a writer before persisting its installed network policy",
-  async (action) => {
-    const writers = new Set<Database>()
-    const continuations = new Set<ReturnType<typeof setTimeout>>()
-    cleanups.push(async () => {
-      continuations.forEach(clearTimeout)
-      writers.forEach((writer) => {
-        if (writer.inTransaction) writer.exec("ROLLBACK")
-        writer.close()
-      })
+test.each(
+  (["image upgrade", "live policy update"] as const).flatMap((action) =>
+    Array.from({ length: action === "image upgrade" ? 100 : 1 }, (_, iteration) => [action, iteration] as const),
+  ),
+)("%s yields to a writer before persisting its installed network policy (contention case %i)", async (action) => {
+  const writers = new Set<Database>()
+  const continuations = new Set<ReturnType<typeof setImmediate>>()
+  cleanups.push(async () => {
+    continuations.forEach(clearImmediate)
+    writers.forEach((writer) => {
+      if (writer.inTransaction) writer.exec("ROLLBACK")
+      writer.close()
     })
-    const { f: fixture, bot, original } = await getOldComputer()
-    const database = fixture.runtime.kernel.db as Database
-    database.exec("PRAGMA busy_timeout = 0")
-    const writer = new Database(database.filename)
-    writers.add(writer)
-    const exec = fixture.fake.provider.exec
-    const released = deferred()
-    fixture.fake.provider.exec = async (input) => {
-      const result = await exec(input)
-      if (input.args?.[0] !== "/usr/local/lib/touri/network-policy.py") return result
+  })
+  const { f: fixture, bot, original } = await getOldComputer()
+  const database = fixture.runtime.kernel.db as Database
+  database.exec("PRAGMA busy_timeout = 0")
+  const writer = openDatabase({ filename: database.filename })
+  writers.add(writer)
+  const blocker = openDatabase({ filename: database.filename })
+  writers.add(blocker)
+  const exec = fixture.fake.provider.exec
+  const released = deferred()
+  fixture.fake.provider.exec = async (input) => {
+    const result = await exec(input)
+    if (input.args?.[0] !== "/usr/local/lib/touri/network-policy.py") return result
+    if (action === "image upgrade" && input.id === original.name) return result
 
-      writer.exec("BEGIN IMMEDIATE")
-      continuations.add(
-        setTimeout(() => {
-          writer.exec("COMMIT")
-          released.resolve()
-        }, 0),
-      )
-      return result
-    }
-
-    if (action === "image upgrade") await (await fixture.vm.service.acquire({ botId: bot.id }))()
-    else await fixture.vm.applyNetworkPolicy(bot.id)
-    await released.promise
-
-    expect(fixture.vm.service.states()[0]).toMatchObject({
-      status: "running",
-      imageUpdate: action === "image upgrade" ? "updated" : null,
+    blocker.exec("BEGIN IMMEDIATE")
+    writer.exec("PRAGMA busy_timeout = 0")
+    expect(() => writer.exec("BEGIN IMMEDIATE")).toThrow("database is locked")
+    writer.exec("PRAGMA busy_timeout = 5000")
+    continuations.add(setImmediate(() => blocker.exec("COMMIT")))
+    await retryDatabaseWriteAsync(writer, () => writer.exec("BEGIN IMMEDIATE")).catch((error) => {
+      released.resolve()
+      throw error
     })
-    expect(fixture.fake.machines.has(original.name)).toBe(action === "live policy update")
-    expect(database.inTransaction).toBe(false)
-    expect(readEgressPolicy(fixture.runtime.kernel, bot.id, true)).toEqual(defaultEgressPolicy())
-  },
-)
+    continuations.add(
+      setImmediate(() => {
+        writer.exec("COMMIT")
+        released.resolve()
+      }),
+    )
+    return result
+  }
+
+  if (action === "image upgrade") await (await fixture.vm.service.acquire({ botId: bot.id }))()
+  else await fixture.vm.applyNetworkPolicy(bot.id)
+  await released.promise
+
+  expect(fixture.vm.service.states()[0]).toMatchObject({
+    status: "running",
+    imageUpdate: action === "image upgrade" ? "updated" : null,
+  })
+  expect(fixture.fake.machines.has(original.name)).toBe(action === "live policy update")
+  expect(database.inTransaction).toBe(false)
+  expect(readEgressPolicy(fixture.runtime.kernel, bot.id, true)).toEqual(defaultEgressPolicy())
+  expect(writer.query("PRAGMA busy_timeout").get()).toEqual({ timeout: 5000 })
+})
