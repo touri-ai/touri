@@ -732,6 +732,9 @@ export const createKernel = ({
     if (stopPromise) return stopPromise
     stopping = true
     stopPromise = (async () => {
+      services.use("vm.desktop")?.dispose()
+      services.use("doctor")?.dispose()
+      removePrivateFile({ root: paths.appData, path: handshakePath })
       const shutdownRuntime = services.use("runtime.shutdown")
       if (shutdownRuntime) await shutdownRuntime({ appRestart: true })
       const producersStopped = stopDatabaseTasks(database)
@@ -746,19 +749,18 @@ export const createKernel = ({
       for (const socket of liveSockets) socket.close(1001, "Servidor encerrado")
       liveSockets.clear()
       server.stop(true)
-      await Promise.allSettled(pendingHandlers)
       const shutdownBrowser = services.use("browser.shutdown")
       if (shutdownBrowser) await shutdownBrowser()
       const store = services.use("store.api")
       if (store && !store.closeStreamWriterIfIdle?.()) await store.flushWritesAsync?.({ stopping: true })
+      // A canceled history handler may itself be waiting for the stream writer to close.
+      await Promise.allSettled(pendingHandlers)
       const botDeletionStopped = services.use("storage.botDeletion")?.dispose()
       const threadDeletionStopped = services.use("storage.threadDeletion")?.dispose()
       const metadataStopped = services.use("storage.threadTitles")?.dispose()
       stopHistoryBackfill()
       const attentionStopped = stopWorkspaceAttentionBackfill()
       const maintenanceStopped = storageMaintenance.dispose({ closing: true })
-      services.use("vm.desktop")?.dispose()
-      services.use("doctor")?.dispose()
       await Promise.allSettled([metadataStopped])
       const homeWriterStopped = stopBotHomeWriter(kernel)
       if (homeWriterStopped) await homeWriterStopped
@@ -772,7 +774,6 @@ export const createKernel = ({
         maintenanceStopped,
       ])
       const busStopped = await Promise.allSettled([bus.stop()])
-      removePrivateFile({ root: paths.appData, path: handshakePath })
       shell.dispose()
       host.close()
       database.close()

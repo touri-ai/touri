@@ -41,6 +41,7 @@ export const createWalCheckpointer = ({
   const finish = (): void => {
     clearTimeout(startupTimer)
     clearTimeout(stopTimer)
+    worker?.ref()
     worker?.terminate()
     worker = undefined
     pendingVacuum.forEach(({ reject }) => {
@@ -138,6 +139,7 @@ export const createWalCheckpointer = ({
         return closed.promise
       }
 
+      worker.ref()
       stopTimer = setTimeout(finish, 1_000)
       try {
         worker.postMessage({ type: "stop" })

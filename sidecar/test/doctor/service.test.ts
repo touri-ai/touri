@@ -143,13 +143,14 @@ test("authenticated /doctor responds immediately, supports refresh, and kernel s
     const ready = (await (await fetch(url, { headers })).json()) as DoctorReport
     expect(ready).toMatchObject({ running: false, checks: [{ id: "http-example", status: "warn" }] })
     expect(await (await fetch(`${url}?refresh=true`, { headers })).json()).toMatchObject({ running: true })
-    runtime.stop()
+    const stopping = runtime.stop()
     expect(probeSignal?.aborted).toBe(true)
     refreshPending.resolve([])
     await service.settled()
+    await stopping
   } finally {
-    // stop is called exactly once; unrelated processes and containers are untouched.
-    if (!probeSignal?.aborted) runtime.stop()
+    // Shutdown must finish before its synthetic storage is removed.
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   }
 })

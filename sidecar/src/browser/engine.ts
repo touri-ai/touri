@@ -1501,6 +1501,7 @@ export const createBrowserEngine = ({
   let sessionTimer: ReturnType<typeof setInterval> | null = null
   let sessionTask: ReturnType<typeof createBackgroundTask> | undefined
   let legacyMigration: Promise<void> | null = null
+  const sessionShutdown = new AbortController()
   const windowConfig = deriveChromeWindowConfig({ env: process.env })
 
   const queueTakeoverInput = <T>(tabId: Id, operation: () => Promise<T>): Promise<T> => {
@@ -2149,6 +2150,7 @@ export const createBrowserEngine = ({
   const legacyCookies = async (): Promise<void> => {
     if (sql("SELECT key FROM settings WHERE key = ?").get(SESSIONS_MIGRATED_KEY)) return
     const listing = await client?.call<unknown>("Storage.getCookies", {}).catch(() => null)
+    operationSignals.getStore()?.throwIfAborted()
     const rows = sql(
       "SELECT owner_bot_id, url FROM browser_tabs WHERE owner_bot_id IS NOT NULL AND profile = 'default'",
     ).all() as Array<{
@@ -2162,11 +2164,14 @@ export const createBrowserEngine = ({
     }
     const ownedHosts = Object.fromEntries(hostsByBot)
     for (const [botId, assigned] of Object.entries(assignLegacyCookies({ cookies: cookiesOf(listing), ownedHosts }))) {
+      operationSignals.getStore()?.throwIfAborted()
       if (!botExists(botId)) continue
       const existing = await loadBotSession(kernel, botId)
+      operationSignals.getStore()?.throwIfAborted()
       if (existing.cookies.length > 0) continue
       await saveBotSession({ kernel, botId, session: { cookies: assigned, storage: {} } }).catch(() => false)
     }
+    operationSignals.getStore()?.throwIfAborted()
     sql("INSERT INTO settings(key,value_json,updated_at) VALUES (?,?,?)").run(SESSIONS_MIGRATED_KEY, "true", Date.now())
   }
 
@@ -2176,7 +2181,7 @@ export const createBrowserEngine = ({
       "browser_session_save",
       async () => {
         if (retired) return
-        await saveSessions()
+        await operationSignals.run(sessionShutdown.signal, saveSessions)
       },
       runStage,
     )
@@ -2187,7 +2192,9 @@ export const createBrowserEngine = ({
 
   const createContext = async (botId: string): Promise<string | null> => {
     if (!client) return null
-    legacyMigration ??= legacyCookies().catch(() => undefined)
+    const signal = operationSignals.getStore()
+    const migrationSignal = signal ? AbortSignal.any([signal, sessionShutdown.signal]) : sessionShutdown.signal
+    legacyMigration ??= operationSignals.run(migrationSignal, legacyCookies).catch(() => undefined)
     await legacyMigration
     // Do not create an empty context that could later replace a locked saved session.
     const saved = botId === "" ? emptySession() : await loadBotSession(kernel, botId)
@@ -2260,6 +2267,7 @@ export const createBrowserEngine = ({
     if (listing === null) return
     const previous: SavedSession = savedSessions.get(botId) ?? emptySession()
     const current = await collectStorage(botId)
+    if (operationSignals.getStore()?.aborted) return
     const storage = Object.fromEntries(
       Object.entries({ ...previous.storage, ...current }).filter(([, items]) => Object.keys(items).length > 0),
     )
@@ -2273,7 +2281,7 @@ export const createBrowserEngine = ({
     const limit = contextOwners.size
     let saved = 0
     for (const [botId, contextId] of contextOwners) {
-      if (saved >= limit) return
+      if (saved >= limit || operationSignals.getStore()?.aborted) return
 
       saved += 1
 
@@ -5612,6 +5620,7 @@ export const createBrowserEngine = ({
   const performShutdown = async (): Promise<void> => {
     if (retired) return
     retired = true
+    sessionShutdown.abort()
     for (const stream of takeoverStreams.values()) stream.source.stop()
     takeoverStreams.clear()
     for (const recovery of takeoverRecoveries.values()) recovery.abort()
@@ -5632,9 +5641,12 @@ export const createBrowserEngine = ({
     sessionTimer = null
     await sessionTask?.dispose()
     await legacyMigration
-    const sessionsSaved = contextOwners.size > 0 ? saveSessions() : Promise.resolve()
+    const saveController = new AbortController()
+    const sessionsSaved =
+      contextOwners.size > 0 ? operationSignals.run(saveController.signal, saveSessions) : Promise.resolve()
     if (contextOwners.size > 0)
       await raceBudget({ work: sessionsSaved, ms: SESSION_SHUTDOWN_BUDGET_MS }).catch(() => undefined)
+    saveController.abort()
     if (localBrowser && client) {
       const current = client
       await raceBudget({

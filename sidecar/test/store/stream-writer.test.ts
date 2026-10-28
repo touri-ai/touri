@@ -715,6 +715,45 @@ test("shutdown warns about busy buffered writes and cancels retries before closi
   expect(f.events.filter(({ event }) => event.type === "message.delta")).toHaveLength(0)
 }, 10_000)
 
+test("shutdown settles an HTTP handler waiting for a contended stream drain", async () => {
+  const f = await fixture()
+  cleanups.add(f.close)
+  await f.runtime.kernel.services.use("storage.maintenance")?.dispose()
+  f.store.appendDelta({ threadId: "t", messageId: "a", partIndex: 0, delta: "Preservar" })
+  const blocker = new SqliteDatabase(join(f.root, "touri.db"))
+  cleanups.add(() => blocker.close())
+  blocker.exec("BEGIN IMMEDIATE")
+  const firstDrain = f.store.flushWritesAsync?.({ threadId: "t", messageId: "a" })
+  void firstDrain?.catch(() => undefined)
+  f.store.appendDelta({ threadId: "t", messageId: "b", partIndex: 0, delta: "Pendente" })
+  const started = Promise.withResolvers<void>()
+  const finished = Promise.withResolvers<void>()
+  f.runtime.kernel.registerRoutes({
+    name: "synthetic-drain",
+    routes: [
+      {
+        method: "GET",
+        path: "/synthetic-drain",
+        handler: async () => {
+          started.resolve()
+          await f.store.flushWritesAsync?.({ threadId: "t", messageId: "b" }).finally(finished.resolve)
+          return { status: 200, json: {} }
+        },
+      },
+    ],
+  })
+  const request = fetch(`http://127.0.0.1:${f.runtime.handshake.port}/api/v1/synthetic-drain`, {
+    headers: { Authorization: "Bearer dev-ui-token", Origin: "tauri://localhost" },
+  }).catch(() => undefined)
+  await started.promise
+
+  await f.runtime.stop()
+  await finished.promise
+  await request
+
+  expect(f.events.filter(({ event }) => event.type === "message.delta")).toHaveLength(0)
+}, 10_000)
+
 test("a subsequent flush drains parts mirrored after the first flush watermark", async () => {
   const f = await fixture()
   const unsubscribe = f.runtime.kernel.subscribe(({ event }) => {

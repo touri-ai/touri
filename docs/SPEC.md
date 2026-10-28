@@ -444,7 +444,7 @@ SQLite durability and write diagnostics (#454):
 - A live stream batch remains in flight, counting against admission limits, until its committed events have been delivered to subscribers. The asynchronous write drain acknowledges both persistence and live delivery before a terminal snapshot can replace the stream. Delivery still yields in bounded batches; writes accepted after the drain watermark remain outside that drain.
 - When shutdown cannot drain buffered stream writes within its deadline, it keeps the unsaved-write warning and stops the writer. Rejections of abandoned batches must not publish a new durable resync event after the writer has stopped. Batch failures while the writer remains live still request resync; abandoned writes are never reported as committed.
 - `kernel/wal-checkpoint-worker.ts` uses its own NORMAL connection, with automatic checkpointing and lock waits disabled. It checkpoints the existing WAL off the event loop. If that worker fails, the main connection restores automatic checkpointing; commits may then pay checkpoint costs. Authentication is deliberately separate: `cli/auth/database.ts` keeps WAL/FULL on the auth worker, so pairing-code consumption and revocation retain their stronger durability. Read-only attachment scans and legacy-source readers do not commit. The one-shot legacy import CLI opens a separate connection with SQLite's default FULL setting; that offline path is outside the live main-connection latency fix.
-- Shutdown starts storage maintenance disposal alongside independent desktop/Doctor cancellation. It joins admitted producers, metadata/home writes, deletion and maintenance before stopping event delivery, removing the private handshake and closing SQLite. Checkpoint shutdown retains its bounded stop protocol and awaits actual worker exit. Repeated shutdown calls share the same completion promise.
+- Shutdown immediately cancels independent desktop/Doctor work and removes the private handshake. It joins admitted producers, metadata/home writes, deletion and maintenance before stopping event delivery and closing SQLite. Checkpoint shutdown retains its bounded stop protocol, keeps the worker referenced and awaits actual worker exit. Repeated shutdown calls share the same completion promise.
 - The checkpoint worker remains referenced until its readiness acknowledgement, with a referenced 15-second startup deadline. Its one-second stop deadline also remains referenced so shutdown can finish without unrelated HTTP traffic. Idle checkpointing remains unreferenced; worker failures still restore SQLite automatic checkpointing.
 - Checkpoint readiness consumers run after the worker inbox callback returns, so their first durable log write can start another worker without awaiting it inside that inbox.
 - The file worker dispatches accepted operations from a timer turn outside its message callback. Cold native helper I/O must complete without an unrelated request waking the process; file authorization, ordering, byte limits and operation deadlines remain unchanged.
@@ -682,13 +682,19 @@ observed internally even when the initiator attaches its observer later; awaitin
 rejects with the persistence failure after the database closes.
 
 Shutdown refuses new HTTP work, cancels active requests and waits for their handlers and
-connection-owned producers before closing SQLite. Metadata edits, deletion jobs, maintenance,
+connection-owned producers before closing SQLite. It stops stream persistence before joining
+handlers so a history read waiting for a contended stream drain cannot prevent shutdown.
+Metadata edits, deletion jobs, maintenance,
 browser session saves, imports and process supervision retain ownership until admitted work
 settles. Worker stop acknowledgements do not release that ownership: shutdown also awaits
 actual worker exit, including replaced generations. Scheduled event delivery is canceled;
 background storage failures are contained and logged without raw storage diagnostics.
 Temporary delivery read failures keep the durable cursor and resume through the existing retry;
 they do not disable subsequent publications or leave connected clients without updates.
+Independent host and health probes are canceled immediately. Browser session collection receives
+cancellation and retains its existing three-second final-save budget; canceled collection never
+overwrites a saved session with partial data. Worker-exit continuations settle outside the worker
+callback so a compiled process completes cleanup even when no unrelated input arrives.
 
 ### 3.3 Sessions: one native session per thread
 - **Resume.** `provider_sessions` has at most one `active` row per (thread, provider).
