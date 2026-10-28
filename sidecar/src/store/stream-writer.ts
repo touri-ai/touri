@@ -628,6 +628,7 @@ export const createStreamWriter = ({
     const hasWatermark = (): boolean =>
       pending.some((event) => watermark.has(event)) || inFlight.some((event) => watermark.has(event))
     while (hasWatermark() && Date.now() < deadline) {
+      if (stopped) throw new Error("Stream writer is closed")
       if (!flushing) flush()
       const remainingMs = Math.min(20, deadline - Date.now())
       await new Promise((resolve) => setTimeout(resolve, Math.max(1, remainingMs)))

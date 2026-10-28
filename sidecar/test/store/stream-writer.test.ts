@@ -693,15 +693,24 @@ test("shutdown warns about busy buffered writes and cancels retries before closi
   cleanups.add(() => log.mockRestore())
   const publish = spyOn(f.runtime.kernel, "publish")
   cleanups.add(() => publish.mockRestore())
+  const firstDrain = f.store.flushWritesAsync?.({ threadId: "t", messageId: "a" })
+  void firstDrain?.catch(() => undefined)
+  f.store.appendDelta({ threadId: "t", messageId: "b", partIndex: 0, delta: "Pendente" })
+  const pendingDrain = f.store.flushWritesAsync?.({ threadId: "t", messageId: "b" })
+  if (!pendingDrain) throw new Error("Missing asynchronous stream drain")
+  const drained = pendingDrain.catch((error: unknown) => error)
 
   await f.runtime.stop()
+  const failure = await drained
 
+  expect(failure).toBeInstanceOf(Error)
+  expect(failure instanceof Error && failure.message).toBe("Stream writer is closed")
   expect(publish.mock.calls.map(([event]) => event)).not.toContainEqual({ type: "transcript.resync" })
   expect(log.mock.calls.map(([entry]) => entry)).toContainEqual({
     level: "warn",
     module: "store",
     msg: "Shutdown could not persist buffered stream writes; database remains busy",
-    data: { events: 1, bytes: Buffer.byteLength("Preservar") },
+    data: { events: 2, bytes: Buffer.byteLength("PreservarPendente") },
   })
   expect(f.events.filter(({ event }) => event.type === "message.delta")).toHaveLength(0)
 }, 10_000)
