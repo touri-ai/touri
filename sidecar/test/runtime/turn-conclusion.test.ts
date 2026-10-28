@@ -213,6 +213,8 @@ test.each(["runtime_part_finalization", "runtime_output_preparation"] as const)(
 
 test("canceled failed-turn output stays published while orphan collection overlaps terminal preparation", async () => {
   const collected = Promise.withResolvers<number | Error>()
+  const collectionStages = createPerformanceStageTracker()
+  const deferrals = new Set<string>()
   const output = "synthetic retained output\n".repeat(512)
   let preparingOutput = false
   let collecting = false
@@ -240,7 +242,9 @@ test("canceled failed-turn output stays published while orphan collection overla
 
         collecting = true
         writer.exec("BEGIN IMMEDIATE")
-        void collectUnusedOutputBlobs(f.db, f.root).then(
+        void collectUnusedOutputBlobs(f.db, f.root, Date.now(), null, new Set(), collectionStages.run, (reason) =>
+          deferrals.add(reason),
+        ).then(
           (removed) => {
             writer.exec("COMMIT")
             collected.resolve(removed)
@@ -272,6 +276,10 @@ test("canceled failed-turn output stays published while orphan collection overla
   if (!attachment) throw new Error("Output attachment missing")
   expect(await Bun.file(attachment.path).text()).toBe(output)
   expect(removed).toBe(0)
+  expect(collectionStages.snapshot()).toEqual([])
+  expect(Array.from(deferrals)).toEqual(["changed"])
+  expect(await collectUnusedOutputBlobs(f.db, f.root)).toBe(0)
+  expect(await Bun.file(attachment.path).text()).toBe(output)
 })
 
 test.each(["runtime_part_finalization", "runtime_output_preparation"] as const)(

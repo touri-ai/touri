@@ -32,6 +32,9 @@ export const tryCollectOutput = async (database: Database, collect: () => Promis
   return true
 }
 
+export const hasOutputPublication = (database: Database): boolean =>
+  (publications.get(database)?.publishers.size ?? 0) > 0
+
 const ensurePublication = (database: Database): Publication => {
   const existing = publications.get(database)
   if (existing) return existing
