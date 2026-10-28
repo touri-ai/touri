@@ -149,6 +149,38 @@ test("committed batches save their validated projection without replaying their 
   expect(replayed.size).toBe(0)
 })
 
+test("a delta without an explicit type preserves reasoning and keeps it out of response search", async () => {
+  const fixture = await getFixture(undefined, (database) => {
+    database
+      .query("UPDATE messages SET parts_json = ? WHERE thread_id = 'thread' AND id = 'reply'")
+      .run(JSON.stringify([{ type: "reasoning", text: "Análise", estimatedTokens: 12 }]))
+  })
+  await fixture.persistence.ready
+  const delta = {
+    type: "message.delta" as const,
+    threadId: "thread",
+    messageId: "reply",
+    partIndex: 0,
+    delta: " complementar",
+    generation: 1,
+    updatedAt: 2,
+  }
+
+  const committed = await fixture.persistence.submit([delta])
+
+  expect(committed.events).toHaveLength(1)
+  const message = fixture.database
+    .query("SELECT text, parts_json FROM messages WHERE thread_id = 'thread' AND id = 'reply'")
+    .get() as { text: string; parts_json: string }
+  expect(message.text).toBe("")
+  expect(JSON.parse(message.parts_json)).toEqual([
+    { type: "reasoning", text: "Análise complementar", estimatedTokens: 12 },
+  ])
+  expect(fixture.database.query("SELECT text FROM messages_fts WHERE messages_fts MATCH 'complementar'").all()).toEqual(
+    [],
+  )
+})
+
 test("a rejected delta leaves the message projection and timestamps unchanged", async () => {
   const fixture = await getFixture()
   await fixture.persistence.ready

@@ -342,7 +342,7 @@ const writeBatch = (batch) => {
       }
       const text = part && typeof part.text === "string" ? part.text : "";
       event.offset = text.length;
-      const type = event.partType ?? "text";
+      const type = event.partType ?? (part?.type === "reasoning" ? "reasoning" : "text");
       projection.parts[event.partIndex] = { ...(part?.type === type ? part : {}), type, text: text + event.delta };
       if (type === "text") projection.text += event.delta;
     } else {
