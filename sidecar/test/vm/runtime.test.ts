@@ -1462,6 +1462,63 @@ test("Stop joins canceled VM preparation before starting terminal history writes
   await context.vm.service.restart({ botId: bot.id })
 })
 
+test("Stop joins VM resource release after canceled instruction loading", async () => {
+  const context = await fixture(true)
+  const bot = await context.bot({ vmProviderLogin: true })
+  const entered = Promise.withResolvers<void>()
+  const cleaning = Promise.withResolvers<void>()
+  const releaseCleanup = Promise.withResolvers<void>()
+  let cleanupFinished = false
+  let cancellationRequested = false
+  let finalizedBeforeCleanup = false
+  const providerExec = context.fake.provider.exec
+  const exec = spyOn(context.fake.provider, "exec").mockImplementation((input) => {
+    if (input.command !== "head") return providerExec(input)
+
+    entered.resolve()
+    return new Promise(() => {})
+  })
+  const prepareTurn = context.vm.service.prepareTurn
+  const preparation = spyOn(context.vm.service, "prepareTurn").mockImplementation(async (input) => {
+    const prepared = await prepareTurn(input)
+    return Object.assign({}, prepared, {
+      release: async () => {
+        cleaning.resolve()
+        await releaseCleanup.promise
+        await prepared.release()
+        cleanupFinished = true
+      },
+    })
+  })
+  const { engine, run, store } = enqueueVmTurn(context, bot)
+  const flushWrites = store.flushWritesAsync
+  const flush = spyOn(store, "flushWritesAsync").mockImplementation(async (input) => {
+    if (cancellationRequested) finalizedBeforeCleanup ||= !cleanupFinished
+    await flushWrites?.(input)
+  })
+  cleanups.push(async () => {
+    releaseCleanup.resolve()
+    await engine.shutdown()
+    exec.mockRestore()
+    preparation.mockRestore()
+    flush.mockRestore()
+  })
+  await entered.promise
+
+  cancellationRequested = true
+  engine.cancel(run.id)
+  await cleaning.promise
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  releaseCleanup.resolve()
+  await engine.cancelAndWait(run.id)
+
+  expect(cleanupFinished).toBe(true)
+  expect(finalizedBeforeCleanup).toBe(false)
+  expect(run.status).toBe("canceled")
+  expect(store.activePath({ threadId: run.threadId }).at(-1)?.status).toBe("canceled")
+  await context.vm.service.restart({ botId: bot.id })
+})
+
 test("vault timeout revokes staging and a late host response cannot provision credentials", async () => {
   const f = await fixture(true, { auth: 40 })
   const bot = await f.bot({ vmProviderLogin: true })

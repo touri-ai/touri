@@ -149,6 +149,8 @@ already stored history.
 
 When Stop interrupts VM preparation, terminal history waits for that preparation's
 credential revocation and activity release within the existing two-second finalization budget.
+This ownership continues after preparation returns, through instruction loading and provider
+startup, until the prepared turn's resources have been released.
 If cleanup exceeds that budget, the bounded fallback still ends the run; machine operations
 remain subject to the VM's existing activity checks until cleanup finishes.
 
