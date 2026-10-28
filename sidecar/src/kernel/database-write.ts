@@ -19,12 +19,8 @@ const isBusy = (error: unknown): boolean =>
 
 /** Acquire the writer slot before reading, and yield between bounded lock attempts. */
 export const writeDatabaseAsync = async <Value>(database: Database, write: () => Value): Promise<Value> => {
-  const deadline = performance.now() + 5_000
-  const busyTimeout = (database.query("PRAGMA busy_timeout").get() as { timeout: number }).timeout
   const transaction = database.transaction(write)
   const attempt = (): { result: Value; callbacks: Set<() => void> } => {
-    // Let the async retry yield instead of waiting inside SQLite on this thread.
-    database.exec("PRAGMA busy_timeout = 0")
     const parent = commitCallbacks.get(database)
     const ownsCommit = !database.inTransaction
     const callbacks = new Set<() => void>()
@@ -39,22 +35,49 @@ export const writeDatabaseAsync = async <Value>(database: Database, write: () =>
     } finally {
       if (parent) commitCallbacks.set(database, parent)
       else commitCallbacks.delete(database)
-      database.exec(`PRAGMA busy_timeout = ${busyTimeout}`)
     }
   }
-  for (;;) {
-    let committed: ReturnType<typeof attempt>
-    try {
-      committed = attempt()
-    } catch (error) {
-      if (!isBusy(error) || performance.now() >= deadline) throw error
-      await new Promise<void>((resolve) => setTimeout(resolve, 10))
-      continue
-    }
+  return retryDatabaseWriteAsync(database, attempt, (committed) => {
     // A delivery error cannot retry a transaction that already committed.
     committed.callbacks.forEach((callback) => {
       callback()
     })
     return committed.result
+  })
+}
+
+/** Retry only replay-safe writes; callers own transaction boundaries and commit delivery. */
+export function retryDatabaseWriteAsync<Value>(database: Database, write: () => Value): Promise<Value>
+export function retryDatabaseWriteAsync<Value, Result>(
+  database: Database,
+  write: () => Value,
+  afterWrite: (value: Value) => Result,
+): Promise<Result>
+export async function retryDatabaseWriteAsync<Value, Result>(
+  database: Database,
+  write: () => Value,
+  afterWrite?: (value: Value) => Result,
+): Promise<Value | Result> {
+  const deadline = performance.now() + 5_000
+  const busyTimeout = (database.query("PRAGMA busy_timeout").get() as { timeout: number }).timeout
+  const attempt = (): Value => {
+    // Let the async retry yield instead of waiting inside SQLite on this thread.
+    database.exec("PRAGMA busy_timeout = 0")
+    try {
+      return write()
+    } finally {
+      database.exec(`PRAGMA busy_timeout = ${busyTimeout}`)
+    }
+  }
+  for (;;) {
+    let result: Value
+    try {
+      result = attempt()
+    } catch (error) {
+      if (!isBusy(error) || performance.now() >= deadline) throw error
+      await new Promise<void>((resolve) => setTimeout(resolve, 10))
+      continue
+    }
+    return afterWrite ? afterWrite(result) : result
   }
 }
