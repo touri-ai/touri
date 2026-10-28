@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import App from "../src/App"
 import { createMockApi } from "../src/api/mock"
 import { getRoutineSidebarFixture } from "./routine-sidebar-fixture"
@@ -10,10 +10,13 @@ const clearSidebarMode = (): void => window.localStorage.removeItem("touri.sideb
 
 // Compile deferred surfaces before timing the navigation assertions.
 beforeAll(async () => {
-  await import("../src/components/Groups")
+  await Promise.all([import("../src/components/Groups"), import("../src/components/ChatPanel")])
 }, 60_000)
 beforeEach(clearSidebarMode)
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+})
 
 describe("sidebar work mode", () => {
   it("keeps channel requests reachable without duplicating the bot-row action in Bots mode", async () => {
@@ -151,6 +154,9 @@ describe("sidebar work mode", () => {
   })
 
   it("collapses thirty automatic threads into one routine row that opens its history", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    // Keep the 29-second fixture history inside one day in the routine timezone.
+    vi.setSystemTime(new Date("2026-10-28T15:00:00.000Z"))
     const { api, routines } = await getRoutineSidebarFixture(30, { todayRuns: true })
     const routine = routines[0]
     if (!routine) throw new Error("Missing routine fixture")
@@ -158,7 +164,7 @@ describe("sidebar work mode", () => {
     await screen.findByRole("textbox", { name: "Mensagem para mark" })
 
     const conversations = openConversations()
-    const routineRow = within(conversations).getByRole("button", { name: /^Rotinas/ })
+    const routineRow = await within(conversations).findByRole("button", { name: /^Rotinas\s*30 hoje$/ })
     expect(routineRow).toHaveTextContent(/Rotinas\s*30 hoje/)
     expect(conversations.querySelectorAll(".thread-row")).toHaveLength(2)
 
