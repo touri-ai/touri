@@ -452,6 +452,7 @@ test("slow synthetic reference storage does not consume the live event-loop budg
   })
   cleanups.add(() => bus.stop())
   fixture.saveReference()
+  const observation = Promise.withResolvers<{ health: unknown; p99Ms: number; maxMs: number }>()
   const cpu = await profile(async () => {
     statements.reset()
     stages.reset()
@@ -518,11 +519,14 @@ test("slow synthetic reference storage does not consume the live event-loop budg
         },
       }),
     )
-    expect(health).toEqual({ ok: true })
-    expect(p99Ms).toBeLessThan(50)
-    expect(maxMs).toBeLessThan(500)
+    observation.resolve({ health, p99Ms, maxMs })
   }, 1_000)
   console.info(JSON.stringify({ referenceCpu: { functions: cpu.functions } }))
+  const { health, p99Ms, maxMs } = await observation.promise
+
+  expect(health).toEqual({ ok: true })
+  expect(p99Ms).toBeLessThan(50)
+  expect(maxMs).toBeLessThan(500)
 })
 
 test("a failed live reader retries the same cursor and stop aborts the next in-flight read", async () => {
