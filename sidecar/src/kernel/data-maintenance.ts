@@ -11,7 +11,7 @@ import {
 } from "./attachment-reference-scan"
 import { historyMigrationStatus } from "./history-backfill"
 import { externalizeMessagePartsAsync, OUTPUT_BLOB_ORIGIN } from "./output-blobs"
-import { tryCollectOutput } from "./output-publication"
+import { hasOutputPublication, tryCollectOutput } from "./output-publication"
 import type { PerformanceStageRunner } from "./performance"
 import { createStorageUpgrade } from "./storage-upgrade"
 import { createTranscriptRetention } from "./transcript-retention"
@@ -223,9 +223,9 @@ export const collectUnusedOutputBlobs = async (
   const measure = <Value>(stage: Parameters<PerformanceStageRunner>[0], action: () => Value): Value =>
     runStage ? runStage(stage, action) : action()
 
-  // Bot deletion can request collection while the backup worker is reading.
-  // Keep its referenced files intact until their backup pins are committed.
-  if (isStorageUpgradePending(database)) {
+  // Defer before scanning: terminal preparation may not have committed its output references yet.
+  // Backup publication also needs its files intact until its pins commit.
+  if (hasOutputPublication(database) || isStorageUpgradePending(database)) {
     onDeferred("changed")
     return 0
   }
