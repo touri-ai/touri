@@ -1623,6 +1623,7 @@ export const cleanupExpiredLegacyStaging = async ({
       .all(cursor, maxEntries),
   ) as Array<{ cursor: number; id: string; status: string }>
   let removed = 0
+  let deferredCursor: number | undefined
   for (const row of rows) {
     await Bun.sleep(0)
     const previousCursor = cursor
@@ -1660,6 +1661,7 @@ export const cleanupExpiredLegacyStaging = async ({
     } catch {
       continue
     } // Retry next traversal; never claim removal on a filesystem failure.
+    removed += 1
     const { staging: _staging, ...retained } = report
     // A concurrent retry owns its fresh report and staging; do not overwrite it.
     try {
@@ -1672,10 +1674,9 @@ export const cleanupExpiredLegacyStaging = async ({
       )
     } catch (error) {
       if (!isSqliteBusy(error)) throw error
-      cursor = previousCursor
-      break
+      // A busy metadata write must not retain the rest of the expired snapshots.
+      deferredCursor ??= previousCursor
     }
-    removed += 1
   }
   try {
     writeWithoutBusyWait(database, () =>
@@ -1683,7 +1684,7 @@ export const cleanupExpiredLegacyStaging = async ({
         .query(
           "INSERT INTO settings(key,value_json,updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at",
         )
-        .run(cursorKey, JSON.stringify(rows.length < maxEntries ? 0 : cursor), now),
+        .run(cursorKey, JSON.stringify(deferredCursor ?? (rows.length < maxEntries ? 0 : cursor)), now),
     )
   } catch (error) {
     if (!isSqliteBusy(error)) throw error

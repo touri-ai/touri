@@ -1607,6 +1607,7 @@ Each imported text gets an FTS row.
 - Nothing local is ever deleted by an import.
 - `dryRun` runs the whole pipeline in a transaction that is rolled back, and returns the same `ImportReport`.
 - Progress is reported through `import.progress` events. Staging is deleted on success and kept for 7 days on failure.
+- Failed staging becomes eligible for cleanup at its persisted millisecond deadline. Cleanup visits at most 32 import records per pass, yields between records and removes expired snapshots asynchronously. A busy metadata write does not stop the rest of the batch or hide completed filesystem removals from the returned count. Metadata writes never wait for a SQLite writer; the existing scheduled pass resumes from the earliest deferred record, preserving unrelated report fields and reports changed by a concurrent retry.
 
 ### 7.4 Cut-over runbook (shown in the wizard's last step)
 1. Import (dry run → real), then verify counts against the source: the per-bot thread and message counts, minus dropped kinds.
