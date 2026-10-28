@@ -97,6 +97,105 @@ const createSourceWorker = (source: string): Worker => {
   return worker
 }
 
+test("committed batches save their validated projection without replaying their own journal", async () => {
+  const replayed = new Set<number>()
+  const fixture = await getFixture(() => {
+    const source = streamPersistenceWorkerSource.replace(
+      '    const event = JSON.parse(row.event_json);\n    if (event.type === "message.parts")',
+      '    self.postMessage({ type: "test-projection-replay", seq: row.delta_seq });\n    const event = JSON.parse(row.event_json);\n    if (event.type === "message.parts")',
+    )
+    expect(source).not.toBe(streamPersistenceWorkerSource)
+    const worker = createSourceWorker(source)
+    worker.addEventListener("message", ({ data }) => {
+      if (data.type === "test-projection-replay") replayed.add(data.seq)
+    })
+    return worker
+  })
+  await fixture.persistence.ready
+  const part = { type: "text" as const, text: "Resposta inicial" }
+  const events = [
+    {
+      type: "message.parts" as const,
+      threadId: "thread",
+      messageId: "reply",
+      generation: 1,
+      updatedAt: 10,
+      parts: [{ partIndex: 0, part }],
+    },
+    Object.assign({}, getDelta("thread", " preservada"), { updatedAt: 11 }),
+    getDelta("other", "Independente"),
+  ]
+
+  const committed = await fixture.persistence.submit(events)
+
+  expect(committed.events).toHaveLength(3)
+  expect(
+    fixture.database
+      .query("SELECT text,parts_json,updated_at,updated_seq FROM messages WHERE thread_id = 'thread'")
+      .get(),
+  ).toEqual({
+    text: "Resposta inicial preservada",
+    parts_json: JSON.stringify([{ type: "text", text: "Resposta inicial preservada" }]),
+    updated_at: 11,
+    updated_seq: committed.events[1]?.updatedSeq,
+  })
+  expect(fixture.database.query("SELECT text FROM messages WHERE thread_id = 'other'").get()).toEqual({
+    text: "Independente",
+  })
+  expect(fixture.database.query("SELECT text FROM messages_fts WHERE messages_fts MATCH 'preservada'").all()).toEqual([
+    { text: "Resposta inicial preservada" },
+  ])
+  expect(fixture.database.query("SELECT count(*) AS count FROM transcript_pending_deltas").get()).toEqual({ count: 0 })
+  expect(replayed.size).toBe(0)
+})
+
+test("a delta without an explicit type preserves reasoning and keeps it out of response search", async () => {
+  const fixture = await getFixture(undefined, (database) => {
+    database
+      .query("UPDATE messages SET parts_json = ? WHERE thread_id = 'thread' AND id = 'reply'")
+      .run(JSON.stringify([{ type: "reasoning", text: "Análise", estimatedTokens: 12 }]))
+  })
+  await fixture.persistence.ready
+  const delta = {
+    type: "message.delta" as const,
+    threadId: "thread",
+    messageId: "reply",
+    partIndex: 0,
+    delta: " complementar",
+    generation: 1,
+    updatedAt: 2,
+  }
+
+  const committed = await fixture.persistence.submit([delta])
+
+  expect(committed.events).toHaveLength(1)
+  const message = fixture.database
+    .query("SELECT text, parts_json FROM messages WHERE thread_id = 'thread' AND id = 'reply'")
+    .get() as { text: string; parts_json: string }
+  expect(message.text).toBe("")
+  expect(JSON.parse(message.parts_json)).toEqual([
+    { type: "reasoning", text: "Análise complementar", estimatedTokens: 12 },
+  ])
+  expect(fixture.database.query("SELECT text FROM messages_fts WHERE messages_fts MATCH 'complementar'").all()).toEqual(
+    [],
+  )
+})
+
+test("a rejected delta leaves the message projection and timestamps unchanged", async () => {
+  const fixture = await getFixture()
+  await fixture.persistence.ready
+  const getMessage = () =>
+    fixture.database.query("SELECT * FROM messages WHERE thread_id = 'thread' AND id = 'reply'").get()
+  const before = getMessage()
+  const delta = Object.assign({}, getDelta(), { partIndex: 4, updatedAt: 100 })
+
+  const committed = await fixture.persistence.submit([delta])
+
+  expect(committed.events).toHaveLength(0)
+  expect(committed.rejected).toMatchObject([{ rejection: { reason: "validation" } }])
+  expect(getMessage()).toEqual(before)
+})
+
 const getOutputBatch = (fixture: Awaited<ReturnType<typeof getFixture>>, output = "synthetic".repeat(2048)) => {
   const plan = planStreamMessageParts({
     database: fixture.database,

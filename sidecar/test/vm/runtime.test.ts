@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite"
-import { afterEach, expect, test } from "bun:test"
+import { afterEach, expect, spyOn, test } from "bun:test"
 import { randomBytes } from "node:crypto"
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { createServer, type Socket } from "node:net"
@@ -1408,6 +1408,59 @@ test.each(["boot", "ready", "auth", "exec", "instructions", "forward-port"] as c
     }
   },
 )
+
+test("Stop joins canceled VM preparation before starting terminal history writes", async () => {
+  const context = await fixture(true)
+  const bot = await context.bot({ vmProviderLogin: true })
+  const entered = Promise.withResolvers<void>()
+  const cleaning = Promise.withResolvers<void>()
+  const releaseCleanup = Promise.withResolvers<void>()
+  let cleanupFinished = false
+  let cancellationRequested = false
+  let finalizedBeforeCleanup = false
+  const forward = spyOn(context.fake.provider, "forwardPort").mockImplementation(() => {
+    entered.resolve()
+    return new Promise(() => {})
+  })
+  const prepareTurn = context.vm.service.prepareTurn
+  const preparation = spyOn(context.vm.service, "prepareTurn").mockImplementation(async (input) => {
+    try {
+      return await prepareTurn(input)
+    } finally {
+      cleaning.resolve()
+      await releaseCleanup.promise
+      cleanupFinished = true
+    }
+  })
+  const { engine, run, store } = enqueueVmTurn(context, bot)
+  const flushWrites = store.flushWritesAsync
+  const flush = spyOn(store, "flushWritesAsync").mockImplementation(async (input) => {
+    if (cancellationRequested) finalizedBeforeCleanup ||= !cleanupFinished
+    await flushWrites?.(input)
+  })
+  cleanups.push(async () => {
+    releaseCleanup.resolve()
+    await engine.shutdown()
+    forward.mockRestore()
+    preparation.mockRestore()
+    flush.mockRestore()
+  })
+  await entered.promise
+
+  cancellationRequested = true
+  engine.cancel(run.id)
+  await cleaning.promise
+  // Let cancellation's runnable continuations reach persistence while cleanup is held.
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  releaseCleanup.resolve()
+  await engine.cancelAndWait(run.id)
+
+  expect(finalizedBeforeCleanup).toBe(false)
+  expect(cleanupFinished).toBe(true)
+  expect(run.status).toBe("canceled")
+  expect(store.activePath({ threadId: run.threadId }).at(-1)?.status).toBe("canceled")
+  await context.vm.service.restart({ botId: bot.id })
+})
 
 test("vault timeout revokes staging and a late host response cannot provision credentials", async () => {
   const f = await fixture(true, { auth: 40 })

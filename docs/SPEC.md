@@ -147,6 +147,17 @@ Normal finalization preserves the partial reply; if
 output preparation stalls, a bounded fallback still persists terminal state and retains the
 already stored history.
 
+When Stop interrupts VM preparation, terminal history waits for that preparation's
+credential revocation and activity release within the existing two-second finalization budget.
+If cleanup exceeds that budget, the bounded fallback still ends the run; machine operations
+remain subject to the VM's existing activity checks until cleanup finishes.
+
+Stream persistence saves the projection already validated in its worker transaction without
+replaying the same batch's journal. Pending earlier journal entries are materialized before
+validation; projections, search, journal entries and retry acknowledgements commit atomically.
+A delta that omits its part type preserves an existing reasoning part and its metadata, keeping
+reasoning content out of response text and response search.
+
 Terminal output preparation owns its attachment files until the winning terminal transaction
 settles, including cancellation during a failed turn. Orphan collection on the same database
 connection defers while publication is active. A publication waits for any already accepted
