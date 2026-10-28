@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { createServer } from "node:net"
 import { join, resolve } from "node:path"
 import { promisify } from "node:util"
-import { expect, test } from "@playwright/test"
+import { type BrowserContext, test as base, expect, type Page, type TestInfo } from "@playwright/test"
 import { build } from "vite"
 import { composerPerformanceMessageCount, composerPerformanceToolCount } from "./composer-performance-fixture"
 import "./syntax-memory-checks"
@@ -12,6 +12,38 @@ const run = promisify(execFile)
 const repository = resolve(import.meta.dirname, "../../..")
 const phase = process.env.TOURI_COMPOSER_PERF_PHASE ?? "after"
 const cpuRate = Number(process.env.TOURI_COMPOSER_PERF_CPU_RATE ?? 4)
+
+// Compile once per browser worker; every case still owns its server, database and context.
+const test = base.extend<object, { productionUi: string }>({
+  productionUi: [
+    async ({ browserName }, use) => {
+      await mkdir(join(repository, "node_modules/.cache"), { recursive: true })
+      const directory = await mkdtemp(join(repository, `node_modules/.cache/composer-performance-${browserName}-`))
+      try {
+        await build({
+          root: join(repository, "ui"),
+          configFile: join(repository, "ui/vite.config.ts"),
+          logLevel: "error",
+          resolve: { alias: { "react-dom/client": "react-dom/profiling" } },
+          build: {
+            outDir: directory,
+            rollupOptions: {
+              input: [
+                join(repository, "ui/index.html"),
+                join(repository, "ui/test/e2e/composer-performance-harness.html"),
+              ],
+            },
+          },
+        })
+
+        await use(directory)
+      } finally {
+        await rm(directory, { recursive: true, force: true })
+      }
+    },
+    { scope: "worker", timeout: 300_000 },
+  ],
+})
 
 type Keystroke = {
   start: number
@@ -122,48 +154,51 @@ const installMeasurements = () => {
 const percentile = (values: number[], fraction: number): number =>
   [...values].sort((left, right) => left - right)[Math.max(0, Math.ceil(values.length * fraction) - 1)] ?? 0
 
-const availablePort = async (): Promise<number> => {
+const getAvailablePort = async (port = 18800): Promise<number> => {
+  if (port > 18899) throw new Error("Temporary server port is unavailable")
   const socket = createServer()
-  await new Promise<void>((ready) => socket.listen(0, "127.0.0.1", ready))
-  const address = socket.address()
-  if (!address || typeof address === "string") throw new Error("Temporary server port is unavailable")
+  const listening = await new Promise<boolean>((ready, reject) => {
+    socket.once("error", (error: NodeJS.ErrnoException) => (error.code === "EADDRINUSE" ? ready(false) : reject(error)))
+    socket.listen(port, "127.0.0.1", () => ready(true))
+  })
+  if (!listening) return getAvailablePort(port + 1)
   await new Promise<void>((done, reject) => socket.close((error) => (error ? reject(error) : done())))
-  return address.port
+
+  return port
 }
 
 test.use({
   channel: "chromium",
-  viewport: { width: 1440, height: 900 },
   // DOM snapshots of thousands of tool nodes would dominate the work being measured.
   trace: { mode: "on", screenshots: false, snapshots: false, sources: false },
 })
 test.setTimeout(300_000)
 
-test("long history keeps typing independent of transcript work", async ({ page, context }, testInfo) => {
+const runTypingBenchmark = async (
+  { page, context, productionUi }: { page: Page; context: BrowserContext; productionUi: string },
+  testInfo: TestInfo,
+) => {
+  const releaseHealth = Promise.withResolvers<void>()
+  // Metadata can finish after the chat is usable; release it while edits are being measured.
+  let healthRequests = 0
+  await page.route("**/api/v1/health", async (route) => {
+    const shouldDefer = healthRequests > 0
+    healthRequests++
+    const response = await route.fetch()
+    if (shouldDefer) await releaseHealth.promise
+    await route.fulfill({ response })
+  })
   await mkdir(join(repository, "node_modules/.cache"), { recursive: true })
   const temporary = await mkdtemp(join(repository, "node_modules/.cache/touri-composer-performance-"))
   const dataDir = join(temporary, "data")
-  const uiDir = join(temporary, "ui")
   let server: ChildProcess | undefined
   try {
-    await build({
-      root: join(repository, "ui"),
-      configFile: join(repository, "ui/vite.config.ts"),
-      logLevel: "error",
-      resolve: { alias: { "react-dom/client": "react-dom/profiling" } },
-      build: {
-        outDir: uiDir,
-        rollupOptions: {
-          input: [join(repository, "ui/index.html"), join(repository, "ui/test/e2e/composer-performance-harness.html")],
-        },
-      },
-    })
     await run("bun", ["scripts/seed-composer-performance.ts", "--data-dir", dataDir], { cwd: repository })
-    const port = await availablePort()
+    const port = await getAvailablePort()
     const origin = `http://127.0.0.1:${port}`
     server = spawn(
       "bun",
-      ["sidecar/src/cli/main.ts", "serve", "--data-dir", dataDir, "--port", String(port), "--ui-dir", uiDir],
+      ["sidecar/src/cli/main.ts", "serve", "--data-dir", dataDir, "--port", String(port), "--ui-dir", productionUi],
       {
         cwd: repository,
         // Keep this synthetic fixture independent of installed providers and their diagnostic polling.
@@ -246,6 +281,13 @@ test("long history keeps typing independent of transcript work", async ({ page, 
     let previousTask = initialMetrics.metrics.find((metric) => metric.name === "TaskDuration")?.value ?? 0
     for (let index = 0; index < text.length; index++) {
       await input.press(text[index] ?? " ")
+      if (index === Math.floor(text.length / 2)) {
+        releaseHealth.resolve()
+        await page.unrouteAll({ behavior: "wait" })
+        await page.evaluate(
+          () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
+        )
+      }
       await page.waitForFunction((length) => {
         const metrics = (window as unknown as { composerPerformance: Metrics }).composerPerformance
         return metrics.samples.length === length && (metrics.samples.at(-1)?.afterFrameMs ?? 0) > 0
@@ -276,6 +318,8 @@ test("long history keeps typing independent of transcript work", async ({ page, 
     }, {})
     const report = {
       phase,
+      width: page.viewportSize()?.width,
+      healthRequests,
       cpuRate,
       messages: history.messages.length,
       toolCalls: composerPerformanceToolCount,
@@ -323,6 +367,7 @@ test("long history keeps typing independent of transcript work", async ({ page, 
     if (phase === "baseline")
       expect(renders.VirtualMessageList ?? 0, "Baseline reproduces transcript renders while typing").toBeGreaterThan(0)
     if (phase !== "baseline") {
+      expect(renders.ChatPanel ?? 0, "Metadata must not render the chat parent").toBe(0)
       expect(renders.VirtualMessageList ?? 0, "Typing must not render the transcript").toBe(0)
       expect(renders.MarkdownContent ?? 0, "Typing must not parse message markdown").toBe(0)
       expect(renders.ToolCallList ?? 0, "Typing must not render tool history").toBe(0)
@@ -356,6 +401,7 @@ test("long history keeps typing independent of transcript work", async ({ page, 
         .toBe(singleLineHeight)
     }
   } finally {
+    releaseHealth.resolve()
     if (server && server.exitCode === null) {
       server.kill("SIGTERM")
       await new Promise<void>((done) => {
@@ -371,4 +417,20 @@ test("long history keeps typing independent of transcript work", async ({ page, 
     }
     await rm(temporary, { recursive: true, force: true })
   }
+}
+
+const repetitions = Number(process.env.TOURI_COMPOSER_PERF_REPEATS ?? 1)
+if (!Number.isSafeInteger(repetitions) || repetitions < 1) throw new Error("Expected a positive benchmark repeat count")
+const viewports = [
+  { width: 1440, height: 900 },
+  { width: 390, height: 844 },
+]
+const cases = Array.from({ length: repetitions }, (_, index) => index + 1).flatMap((repetition) =>
+  viewports.map((viewport) => ({ viewport, repetition })),
+)
+cases.forEach(({ viewport, repetition }) => {
+  test.describe(`${viewport.width}px, repetition ${repetition}`, () => {
+    test.use({ viewport })
+    test("long history keeps typing independent of transcript work", runTypingBenchmark)
+  })
 })

@@ -88,7 +88,7 @@ import { MachineStatus } from "./MachineStatus"
 import { MarkdownContent } from "./MarkdownContent"
 import { MessageAttachments } from "./MessageAttachments"
 import { useInsertedIds } from "./Motion"
-import { mascotSignalFor } from "./mascotState"
+import { type MascotState, mascotSignalFor } from "./mascotState"
 import { PanelIcon } from "./PanelIcon"
 import { PersonAvatar } from "./PersonAvatar"
 import { REVEAL_EVENT } from "./revealEvent"
@@ -1651,10 +1651,7 @@ export const ChatPanel = ({
   })
   const phone = usePhoneViewport()
   const chatIsCovered = panelOpen && phone
-  const host = useHost(api)
-  const serverMode = useIsServerMode() || host === "server"
   const machine = machineStateForDisplay(rawMachine)
-  const mascotSnapshot = useMascotSnapshot({ id: bot?.id ?? "", color: bot?.color ?? null }, thread?.id)
   const composerRef = useRef<HTMLTextAreaElement>(null)
   const draftComposerRef = useRef<DraftComposerHandle>(null)
   const localAttachmentButtonRef = useRef<HTMLButtonElement>(null)
@@ -1716,11 +1713,7 @@ export const ChatPanel = ({
               <div className="chat-bot-chip">
                 {bot && <BotAvatar bot={bot} size={18} />}
                 <h1 className="chat-page-heading">{bot?.name ?? "touri"}</h1>
-                {bot?.anyFolderAccess && (
-                  <span className="any-folder-badge">
-                    {t("Any folder on this {host}", { host: getHostLabel(host) })}
-                  </span>
-                )}
+                {bot?.anyFolderAccess && <AnyFolderBadge api={api} />}
               </div>
               <div className="chat-toolbar">
                 {onTogglePanel && (
@@ -1786,16 +1779,14 @@ export const ChatPanel = ({
     connectDataMarker.test(messageMarkdown(latestReply))
       ? latestReply
       : null
-  const activityState =
-    mascotSnapshot.state === "idle"
-      ? mascotSignalFor({
-          botId: bot?.id ?? activeRun?.botId ?? "",
-          paused: bot?.paused ?? false,
-          runs: runs.filter((run) => run.threadId === thread.id),
-          messages: visibleMessages,
-          waiting: computerGrant?.threadId === thread.id,
-        }).state
-      : mascotSnapshot.state
+  const getFallbackActivityState = () =>
+    mascotSignalFor({
+      botId: bot?.id ?? activeRun?.botId ?? "",
+      paused: bot?.paused ?? false,
+      runs: runs.filter((run) => run.threadId === thread.id),
+      messages: visibleMessages,
+      waiting: computerGrant?.threadId === thread.id,
+    }).state
   // Index once for all active executions instead of rescanning history for each bot.
   const replyRunIds = new Set(
     visibleMessages.filter((message) => message.role === "assistant").map((message) => message.runId),
@@ -1848,16 +1839,12 @@ export const ChatPanel = ({
                 <header className="chat-header" data-tauri-drag-region="deep">
                   <div className="chat-bot-chip">
                     {bot ? (
-                      <BotAvatar bot={bot} size={18} threadId={thread.id} state={activityState} />
+                      <ConversationAvatar bot={bot} threadId={thread.id} getFallbackState={getFallbackActivityState} />
                     ) : (
                       <img src="/touri-bull.png" alt="" />
                     )}
                     <h1 className="chat-page-heading">{bot?.name ?? "touri"}</h1>
-                    {bot?.anyFolderAccess && (
-                      <span className="any-folder-badge">
-                        {t("Any folder on this {host}", { host: getHostLabel(host) })}
-                      </span>
-                    )}
+                    {bot?.anyFolderAccess && <AnyFolderBadge api={api} />}
                   </div>
                   <div className="chat-toolbar">
                     {onTogglePanel && (
@@ -2034,8 +2021,8 @@ export const ChatPanel = ({
                                 id: `connect-data-${connectDataReply.id}`,
                                 createdAt: connectDataReply.createdAt + 1,
                                 content: (
-                                  <ConnectDataCard
-                                    desktop={!serverMode && "__TAURI_INTERNALS__" in window}
+                                  <ConversationConnectDataCard
+                                    api={api}
                                     onAttach={() => attachmentButtonRef.current?.click()}
                                     onFolder={bot?.machine === "cloud" ? undefined : onOpenPermissions}
                                     onCatalog={onOpenToolCatalog}
@@ -2055,8 +2042,9 @@ export const ChatPanel = ({
                                 <div className="message-meta">
                                   <span className="message-role">{member?.name ?? "touri"}</span>
                                 </div>
-                                <ActivityMark
-                                  state={!group && activityState === "waiting-approval" ? activityState : "thinking"}
+                                <PendingRunActivity
+                                  getFallbackState={getFallbackActivityState}
+                                  group={Boolean(group)}
                                   bot={member ?? undefined}
                                   threadId={thread.id}
                                   run={run}
@@ -2155,6 +2143,58 @@ export const ChatPanel = ({
       </ChannelBrowserContext.Provider>
     </ChannelBrowserRunsContext.Provider>
   )
+}
+
+/** Host discovery belongs to its labels and controls, never the transcript's parent. */
+const AnyFolderBadge = ({ api }: { api: UiApi }) => {
+  const host = useHost(api)
+
+  return <span className="any-folder-badge">{t("Any folder on this {host}", { host: getHostLabel(host) })}</span>
+}
+
+const ConversationConnectDataCard = ({
+  api,
+  ...props
+}: Omit<ComponentProps<typeof ConnectDataCard>, "desktop"> & { api: UiApi }) => {
+  const host = useHost(api)
+  const serverMode = useIsServerMode() || host === "server"
+
+  return <ConnectDataCard {...props} desktop={!serverMode && "__TAURI_INTERNALS__" in window} />
+}
+
+/** Mascot attention and completion timers only update the surfaces that display them. */
+const ConversationAvatar = ({
+  bot,
+  threadId,
+  getFallbackState,
+}: {
+  bot: Bot
+  threadId: Id
+  getFallbackState: () => MascotState
+}) => {
+  const state = useConversationActivityState(bot.id, threadId, getFallbackState)
+
+  return <BotAvatar bot={bot} size={18} threadId={threadId} state={state} />
+}
+
+const PendingRunActivity = ({
+  getFallbackState,
+  group,
+  ...props
+}: Omit<ComponentProps<typeof ActivityMark>, "state"> & { getFallbackState: () => MascotState; group: boolean }) => {
+  const state = useConversationActivityState(props.bot?.id ?? "", props.threadId, getFallbackState)
+
+  return <ActivityMark {...props} state={!group && state === "waiting-approval" ? state : "thinking"} />
+}
+
+const useConversationActivityState = (
+  botId: Id,
+  threadId: Id | undefined,
+  getFallbackState: () => MascotState,
+): MascotState => {
+  const snapshot = useMascotSnapshot({ id: botId, color: null }, threadId)
+
+  return snapshot.state === "idle" ? getFallbackState() : snapshot.state
 }
 
 const RunCard = ({

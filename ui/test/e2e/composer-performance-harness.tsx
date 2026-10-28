@@ -2,7 +2,7 @@ import { Profiler } from "react"
 import { createRoot } from "react-dom/client"
 import App from "../../src/App"
 import { createApiClient, webEndpoint } from "../../src/api/client"
-import { VirtualMessageList } from "../../src/components/ChatPanel"
+import { ChatPanel, VirtualMessageList } from "../../src/components/ChatPanel"
 import { Composer } from "../../src/components/Composer"
 import { MarkdownContent } from "../../src/components/MarkdownContent"
 import { ToolCallList } from "../../src/components/ToolCallList"
@@ -22,6 +22,7 @@ Object.assign(window, {
   composerPerformanceFixture: metrics,
   composerPerformanceComponents: new Map<unknown, string>([
     [VirtualMessageList, "VirtualMessageList"],
+    [ChatPanel, "ChatPanel"],
     [Composer, "Composer"],
     [MarkdownContent, "MarkdownContent"],
     [ToolCallList, "ToolCallList"],

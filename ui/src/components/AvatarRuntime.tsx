@@ -211,7 +211,7 @@ export const useMessageMascotState = (message: Message, run?: Run): MascotState 
     (value) => run?.botId ?? value.threads.find((thread) => thread.id === message.threadId)?.botId ?? "",
     run?.botId ?? "",
   )
-  const snapshot = useRuntimeSnapshot(runtime, botId, message.threadId)
+  const state = useMessageRuntimeState(runtime, botId, message.threadId)
   const fallback = useRuntimeSelector(
     (value) =>
       mascotSignalFor({
@@ -223,7 +223,7 @@ export const useMessageMascotState = (message: Message, run?: Run): MascotState 
       }).state,
     mascotSignalFor({ botId, runs: run ? [run] : [], messages: [message], notifications: [], waiting: false }).state,
   )
-  return snapshot ? snapshot.state : fallback
+  return state ?? fallback
 }
 
 const createSnapshotStore = (initial: ReadonlyMap<string, MascotSnapshot>) => {
@@ -278,6 +278,21 @@ const subscribeWithoutRuntime = () => () => {}
 const useRuntimeSnapshot = (runtime: RuntimeValue | null, botId: string, threadId?: string) => {
   const key = scopeKey(botId, threadId)
   const getSnapshot = () => runtime?.snapshots.getSnapshot(key)
+
+  return useSyncExternalStore(runtime?.snapshots.subscribe ?? subscribeWithoutRuntime, getSnapshot)
+}
+
+const useMessageRuntimeState = (
+  runtime: RuntimeValue | null,
+  botId: string,
+  threadId: string,
+): MascotState | undefined => {
+  const key = scopeKey(botId, threadId)
+  const getSnapshot = () => {
+    const state = runtime?.snapshots.getSnapshot(key)?.state
+    // Composer attention and completion animations belong to avatars, not transcript content.
+    return state === "listening" || state === "done" ? "idle" : state
+  }
 
   return useSyncExternalStore(runtime?.snapshots.subscribe ?? subscribeWithoutRuntime, getSnapshot)
 }
