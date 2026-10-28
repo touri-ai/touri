@@ -90,10 +90,6 @@ export const createEventBus = (
       // A failed disk can also reject diagnostics.
     }
   }
-  const stopDelivery = (): void => {
-    reportFailure()
-    void stop().catch(reportFailure)
-  }
   const serialize = (envelope: UiEventEnvelope): string =>
     JSON.stringify(envelope.event.type === "transcript.resync" ? { type: "resync", lastSeq: envelope.seq } : envelope)
   const payloadFor = (envelope: UiEventEnvelope): string =>
@@ -427,11 +423,8 @@ export const createEventBus = (
       if (delivered < head()) scheduleFlush()
       else void runRetentionMaintenance()
     } catch (error) {
-      if (isSqliteBusy(error)) {
-        finishFlush(true)
-        return
-      }
-      stopDelivery()
+      if (!isSqliteBusy(error)) reportFailure()
+      finishFlush(true)
     }
   }
 
@@ -519,11 +512,8 @@ export const createEventBus = (
       }
     } catch (error) {
       deferred = true
-      if (isSqliteBusy(error)) {
-        finishFlush(true)
-        return
-      }
-      stopDelivery()
+      if (!isSqliteBusy(error)) reportFailure()
+      finishFlush(true)
     } finally {
       if (!deferred) finishFlush()
     }

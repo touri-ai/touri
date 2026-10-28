@@ -207,6 +207,44 @@ test("store close cancels scheduled delivery before the connection closes", asyn
   expect(flush).not.toThrow()
 })
 
+test("a transient delivery read failure preserves later publications and resumes its durable cursor", async () => {
+  const fixture = getFixture()
+  let continuation: (() => void) | undefined
+  const log = mock<Kernel["log"]>(() => {})
+  const bus = createEventBus(fixture.db, undefined, {
+    log,
+    schedule: (action) => {
+      continuation = action
+      const timer = setImmediate(action)
+      return () => clearImmediate(timer)
+    },
+  })
+  cleanups.add(() => bus.stop())
+  const delivered = mock(() => {})
+  bus.subscribe(delivered)
+  const insert = fixture.db.query("INSERT INTO ui_event_log(at,event_json) VALUES (1,?)")
+  Array.from({ length: 40 }).forEach(() => {
+    insert.run(JSON.stringify(getEvent()))
+  })
+  bus.publish(getEvent())
+  const flush = continuation
+  if (!flush) throw new Error("Missing delivery continuation")
+  const query = spyOn(fixture.db, "query").mockImplementation(() => {
+    throw Object.assign(new Error("synthetic private storage diagnostic"), { code: "SQLITE_IOERR" })
+  })
+  cleanups.add(() => query.mockRestore())
+
+  flush()
+  query.mockRestore()
+  bus.publish(getEvent())
+  await bus.flushAsync()
+
+  expect(fixture.db.query("SELECT count(*) AS count FROM ui_event_log").get()).toEqual({ count: 42 })
+  expect(delivered).toHaveBeenCalledTimes(42)
+  expect(log).toHaveBeenCalledTimes(1)
+  expect(JSON.stringify(log.mock.calls)).not.toContain("synthetic private storage diagnostic")
+})
+
 test("store close awaits bot deletion suspended in host cancellation and preserves its job", async () => {
   const fixture = getFixture()
   seedBot(fixture.db)
