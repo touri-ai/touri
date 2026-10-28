@@ -162,8 +162,10 @@ reasoning content out of response text and response search.
 
 Terminal output preparation owns its attachment files until the winning terminal transaction
 settles, including cancellation during a failed turn. Orphan collection on the same database
-connection defers while publication is active. A publication waits for any already accepted
-removal before preparing its files, so it can recreate an attachment before committing a reference.
+connection defers before candidate queries or reference scanning while publication is active.
+Publication that starts later in a collection pass remains protected by per-removal ownership checks.
+A publication waits for any already accepted removal before preparing its files, so it can recreate
+an attachment before committing a reference.
 Failed publication and removal release their ownership for later attempts; no database transaction
 stays open across file I/O.
 
