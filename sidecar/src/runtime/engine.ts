@@ -445,6 +445,7 @@ export const createRuntimeEngine = ({
   const active = new Map<Id, Run>()
   const controllers = new Map<Id, AbortController>()
   const executions = new Map<Id, Promise<void>>()
+  const vmPreparations = new Map<Id, Promise<void>>()
   const finalizations = new Map<Id, Promise<boolean>>()
   const providers = new Map<Id, ProviderAdapter>()
   const states = new Map<Id, RunState>()
@@ -1813,7 +1814,7 @@ export const createRuntimeEngine = ({
           const vm = kernel.services.use("vm.runtime")
           if (!vm) return { success: false, errorCode: "cli_crash", error: "VM runtime indisponível" }
           const token = randomHexToken()
-          const preparation = await retryTransient({
+          const preparing = retryTransient({
             run: () =>
               vm
                 .prepareTurn({ botId: bot.id, threadId: thread.id, token, signal: controller.signal })
@@ -1828,6 +1829,12 @@ export const createRuntimeEngine = ({
             canRetry: () => !controller.signal.aborted,
             signal: controller.signal,
           })
+          const settled = preparing.then(
+            () => undefined,
+            () => undefined,
+          )
+          vmPreparations.set(run.id, settled)
+          const preparation = await preparing.finally(() => vmPreparations.delete(run.id))
           if (preparation.failure) throw preparation.failure
           prepared = preparation.value ?? undefined
           if (controller.signal.aborted)
@@ -3155,8 +3162,12 @@ export const createRuntimeEngine = ({
     providerStops.get(run.id)?.resolve({ success: false, errorCode: failure.errorClass, error: failure.errorMessage })
     const store = kernel.services.use("store.api")
     const thread = store?.getThread({ threadId: run.threadId })
-    const finalization =
-      store && thread ? failTurn(Object.assign({ run, state, store, thread }, failure)) : Promise.resolve()
+    const finalization = (async () => {
+      // Aborting preparation also revokes credentials and releases VM activity. Join that
+      // cleanup before terminal history lets the user restart, within the existing stop budget.
+      await vmPreparations.get(run.id)
+      if (store && thread) await failTurn(Object.assign({ run, state, store, thread }, failure))
+    })()
     try {
       await Promise.race([finalization, Bun.sleep(2_000)]).catch(() => undefined)
       await finishStoppedRun(run, getRunStopFailure(state, failure))

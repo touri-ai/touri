@@ -111,6 +111,13 @@ const materialize = (target) => {
     clearPendingProjection(target);
     return;
   }
+  saveProjections(projections);
+  clearPendingProjection(target);
+};
+
+const saveProjections = (projections) => {
+  if (!projections.size) return;
+
   database.exec("UPDATE transcript_maintenance SET projection_write = 1 WHERE id = 1");
   for (const projection of projections.values()) {
     database.query(\`UPDATE messages SET text = ?, parts_json = ?, updated_seq = ?, generation = ?, updated_at = ?
@@ -126,7 +133,6 @@ const materialize = (target) => {
     refreshSearch(projection.thread_id, projection.id, projection.text);
   }
   database.exec("UPDATE transcript_maintenance SET projection_write = 0 WHERE id = 1");
-  clearPendingProjection(target);
 };
 
 const capture = () => {
@@ -212,22 +218,23 @@ const recordRejection = (event, reason) => {
   return { type: "transcript.rejected", rejection };
 };
 
-const eventProjection = (event, cache) => {
+const getEventProjection = (event, cache) => {
   const key = JSON.stringify([event.threadId, event.messageId]);
   const cached = cache.get(key);
   if (cached) return cached;
   const row = database.query("SELECT text, parts_json, status, generation, updated_seq FROM messages WHERE thread_id = ? AND id = ?")
     .get(event.threadId, event.messageId);
   if (!row) return null;
-  const projection = {
+  return {
+    id: event.messageId,
+    thread_id: event.threadId,
     text: row.text,
     parts: JSON.parse(row.parts_json),
     status: row.status,
     generation: row.generation,
-    updatedSeq: row.updated_seq,
+    updated_seq: row.updated_seq,
+    updated_at: 0,
   };
-  cache.set(key, projection);
-  return projection;
 };
 
 const getBatchResult = (id, entryIds, quarantined) => {
@@ -322,7 +329,7 @@ const writeBatch = (batch) => {
       }
       continue;
     }
-    const projection = eventProjection(event, projections);
+    const projection = getEventProjection(event, projections);
     if (!projection) continue;
     if (event.type === "message.delta") {
       const part = projection.parts[event.partIndex];
@@ -351,13 +358,14 @@ const writeBatch = (batch) => {
     const seq = nextSeq;
     event.updatedSeq = seq;
     database.query("UPDATE threads SET updated_seq = ? WHERE id = ?").run(seq, event.threadId);
+    const at = event.updatedAt ?? Date.now();
     const entry = database.query(\`INSERT INTO transcript_entries(thread_id, seq, generation, event_json, at)
       VALUES (?, ?, ?, ?, ?)\`).run(
       event.threadId,
       seq,
       event.generation ?? 1,
       JSON.stringify(event),
-      event.updatedAt ?? Date.now(),
+      at,
     );
     if (event.type === "message.parts") {
       const attachmentIds = new Set(event.parts.flatMap(({ part }) =>
@@ -389,12 +397,17 @@ const writeBatch = (batch) => {
         }
       }
     }
-    projection.updatedSeq = seq;
+    projection.updated_seq = seq;
+    projection.updated_at = at;
+    projection.generation = event.generation ?? projection.generation;
+    projections.set(JSON.stringify([event.threadId, event.messageId]), projection);
     committed.push(event);
     published.push(event);
   }
   capture();
-  if (!batch.quarantine) for (const target of targets.values()) materialize(target);
+  // The transaction already validated and applied these events; do not read and parse its journal again.
+  saveProjections(projections);
+  if (!batch.quarantine) for (const target of targets.values()) clearPendingProjection(target);
   const result = { type: "committed", id: batch.id, events: committed, rejected, published, quarantined: batch.quarantine === true };
   database.query("UPDATE stream_writer_state SET batch_id = ?, result_json = ? WHERE id = 1")
     .run(batch.id, JSON.stringify({ entryIds: database.query(
