@@ -25,6 +25,7 @@ import type {
   StoreApi,
   TextPart,
   Thread,
+  VmRuntime,
 } from "@touri/contracts"
 import { publicError } from "@touri/contracts"
 import { redactToolText } from "@touri/contracts/redaction"
@@ -445,7 +446,7 @@ export const createRuntimeEngine = ({
   const active = new Map<Id, Run>()
   const controllers = new Map<Id, AbortController>()
   const executions = new Map<Id, Promise<void>>()
-  const vmPreparations = new Map<Id, Promise<void>>()
+  const vmCleanups = new Map<Id, Promise<void>>()
   const finalizations = new Map<Id, Promise<boolean>>()
   const providers = new Map<Id, ProviderAdapter>()
   const states = new Map<Id, RunState>()
@@ -1782,9 +1783,10 @@ export const createRuntimeEngine = ({
       : null
     if (deadline) routineDeadlines.set(run.id, deadline)
     const result = await (async (): Promise<Awaited<ReturnType<ProviderAdapter["startTurn"]>>> => {
-      let prepared: Awaited<ReturnType<import("@touri/contracts").VmRuntime["prepareTurn"]>> | undefined
+      let prepared: Awaited<ReturnType<VmRuntime["prepareTurn"]>> | undefined
       let flushEvents: (() => void) | undefined
       let releaseLogin: (() => Promise<void> | void) | undefined
+      let finishVmCleanup: (() => void) | undefined
       try {
         const documentMessages = unacceptedRequest
           ? [unacceptedRequest, ...(request ? [request] : [])]
@@ -1813,8 +1815,14 @@ export const createRuntimeEngine = ({
         if (bot.machine === "vm") {
           const vm = kernel.services.use("vm.runtime")
           if (!vm) return { success: false, errorCode: "cli_crash", error: "VM runtime indisponível" }
+          const cleanup = Promise.withResolvers<void>()
+          vmCleanups.set(run.id, cleanup.promise)
+          finishVmCleanup = () => {
+            vmCleanups.delete(run.id)
+            cleanup.resolve()
+          }
           const token = randomHexToken()
-          const preparing = retryTransient({
+          const preparation = await retryTransient({
             run: () =>
               vm
                 .prepareTurn({ botId: bot.id, threadId: thread.id, token, signal: controller.signal })
@@ -1829,12 +1837,6 @@ export const createRuntimeEngine = ({
             canRetry: () => !controller.signal.aborted,
             signal: controller.signal,
           })
-          const settled = preparing.then(
-            () => undefined,
-            () => undefined,
-          )
-          vmPreparations.set(run.id, settled)
-          const preparation = await preparing.finally(() => vmPreparations.delete(run.id))
           if (preparation.failure) throw preparation.failure
           prepared = preparation.value ?? undefined
           if (controller.signal.aborted)
@@ -1972,12 +1974,16 @@ export const createRuntimeEngine = ({
           error: kernel.redact(error instanceof Error ? error.message : String(error)),
         }
       } finally {
-        // A completion frame is advisory; drain trailing text before publishing a terminal reply.
-        flushEvents?.()
-        await prepared?.release()
-        await releaseLogin?.()
-        if (deadline) clearTimeout(deadline)
-        routineDeadlines.delete(run.id)
+        try {
+          // A completion frame is advisory; drain trailing text before publishing a terminal reply.
+          flushEvents?.()
+          await prepared?.release()
+          await releaseLogin?.()
+        } finally {
+          finishVmCleanup?.()
+          if (deadline) clearTimeout(deadline)
+          routineDeadlines.delete(run.id)
+        }
       }
     })()
     const finalizeProviderTurn = async (): Promise<void> => {
@@ -3163,9 +3169,9 @@ export const createRuntimeEngine = ({
     const store = kernel.services.use("store.api")
     const thread = store?.getThread({ threadId: run.threadId })
     const finalization = (async () => {
-      // Aborting preparation also revokes credentials and releases VM activity. Join that
-      // cleanup before terminal history lets the user restart, within the existing stop budget.
-      await vmPreparations.get(run.id)
+      // Instruction loading and provider startup can own an already prepared VM. Join its
+      // resource release before terminal history lets the user restart, within the existing stop budget.
+      await vmCleanups.get(run.id)
       if (store && thread) await failTurn(Object.assign({ run, state, store, thread }, failure))
     })()
     try {
