@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite"
 import type { UiEvent } from "@touri/contracts"
 import { privateFileExistsAsync, writePrivateFileAsync } from "../kernel/async-files"
 import type { OutputBlobAttachment, OutputBlobWrite } from "../kernel/output-blobs"
+import { getWorkerExit } from "../kernel/worker-exit"
 import { streamPersistenceWorkerSource } from "./stream-persistence-worker"
 
 type StreamEvent = Extract<UiEvent, { type: "message.delta" | "message.parts" }>
@@ -75,6 +76,9 @@ export const createStreamPersistence = ({
   let queuedEvents = 0
   const workerUrl = URL.createObjectURL(new Blob([streamPersistenceWorkerSource], { type: "application/javascript" }))
   let worker: Worker | undefined
+  const workerExits = new Set<Promise<void>>()
+  const fileWrites = new Set<Promise<void>>()
+  let closePromise: Promise<void> | undefined
   let startupTimer: ReturnType<typeof setTimeout> | undefined
   let readyWaitTimer: ReturnType<typeof setTimeout> | undefined
   let retryTimer: ReturnType<typeof setTimeout> | undefined
@@ -207,7 +211,7 @@ export const createStreamPersistence = ({
     running = true
     const currentWorker = worker
     const number = workerNumber
-    void (async () => {
+    const writing = (async () => {
       if (!head.batch.quarantine && !head.filesWritten) {
         for (const file of head.files) {
           // A failed directory fsync can leave the renamed file visible; retries must persist it again.
@@ -230,6 +234,8 @@ export const createStreamPersistence = ({
       reportError()
       retryHead()
     })
+    fileWrites.add(writing)
+    void writing.finally(() => fileWrites.delete(writing))
   }
   const startWorker = (): void => {
     if (disposed || unavailable || worker) return
@@ -237,6 +243,9 @@ export const createStreamPersistence = ({
       workerNumber += 1
       const number = workerNumber
       worker = createWorker(workerUrl)
+      const exited = getWorkerExit(worker)
+      workerExits.add(exited)
+      void exited.then(() => workerExits.delete(exited))
       worker.onmessage = ({ data }: MessageEvent<WorkerMessage>): void => {
         if (number !== workerNumber || disposed) return
         if (data?.type === "ready") {
@@ -362,6 +371,7 @@ export const createStreamPersistence = ({
       const onMessage = ({ data }: MessageEvent): void => {
         if (data?.type === "stopped") finish()
       }
+      current.addEventListener("close", finish, { once: true })
       const timer = setTimeout(() => {
         current.terminate()
         finish()
@@ -390,6 +400,7 @@ export const createStreamPersistence = ({
     if (!drained) reportError()
     await stopWorkerGracefully()
     dispose()
+    await Promise.all(Array.from(workerExits).concat(Array.from(fileWrites)))
     const abandoned = queue
     queue = []
     queuedBytes = 0
@@ -399,8 +410,8 @@ export const createStreamPersistence = ({
     })
   }
   const closeIfIdle = (): boolean => {
-    if (disposed) return true
-    if (queue.length || running || worker) return false
+    if (disposed) return workerExits.size === 0 && fileWrites.size === 0
+    if (queue.length || running || worker || workerExits.size || fileWrites.size) return false
     stopping = true
     dispose()
     return true
@@ -419,5 +430,11 @@ export const createStreamPersistence = ({
   readyWaitTimer.unref()
   startWorker()
 
-  return { submit, drain, close, closeIfIdle, ready: readyPromise }
+  const closeOnce = (): Promise<void> => {
+    closePromise ??= close()
+    void closePromise.catch(reportError)
+    return closePromise
+  }
+
+  return { submit, drain, close: closeOnce, closeIfIdle, ready: readyPromise }
 }

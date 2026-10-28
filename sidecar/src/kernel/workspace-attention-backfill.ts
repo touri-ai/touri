@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite"
 import type { PerformanceStageRunner } from "./performance"
 import { workerEntrypoint } from "./worker-entrypoint"
+import { getWorkerExit } from "./worker-exit"
 import { deferWorkerReply } from "./worker-reply"
 import { backfillWorkspaceAttentionBatch, type WorkspaceAttentionBatchResult } from "./workspace-attention-batch"
 import type { WorkspaceAttentionWorkerReply } from "./workspace-attention-worker"
@@ -20,6 +21,7 @@ export const startWorkspaceAttentionBackfill = (
   let timer: ReturnType<typeof setTimeout> | undefined
   let deadline: ReturnType<typeof setTimeout> | undefined
   let worker: Worker | undefined
+  let workerExited: Promise<void> = Promise.resolve()
   let pending:
     | { resolve: (result: WorkspaceAttentionBatchResult) => void; reject: (error: unknown) => void }
     | undefined
@@ -44,20 +46,8 @@ export const startWorkspaceAttentionBackfill = (
     const current = worker
     worker = undefined
     settle({ type: "error" })
-    if (!current) return
-
-    await new Promise<void>((resolve) => {
-      const timeout = setTimeout(resolve, 1000)
-      current.addEventListener(
-        "close",
-        () => {
-          clearTimeout(timeout)
-          resolve()
-        },
-        { once: true },
-      )
-      current.terminate()
-    })
+    current?.terminate()
+    await workerExited
   }
   const runBatch = (): Promise<WorkspaceAttentionBatchResult> => {
     // In-memory fixtures cannot share a connection; deployed stores always use the worker.
@@ -73,6 +63,7 @@ export const startWorkspaceAttentionBackfill = (
           ),
           { smol: true, ref: false },
         )
+        workerExited = getWorkerExit(worker)
         worker.onmessage = ({ data }: MessageEvent<WorkspaceAttentionWorkerReply>) =>
           deferWorkerReply(() => settle(data))
         worker.onerror = (event) => {
@@ -118,8 +109,6 @@ export const startWorkspaceAttentionBackfill = (
   return () => {
     stopped = true
     clearTimeout(timer)
-    if (!worker && !pending) return
-
     return closeWorker()
   }
 }

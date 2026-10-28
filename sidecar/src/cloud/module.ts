@@ -15,6 +15,7 @@ import type {
   Message,
   Run,
 } from "@touri/contracts"
+import { onDatabaseShutdown } from "../kernel/database-lifecycle"
 import { createRemoteProvider } from "../vm/remote"
 import { createCloudBotUpdates } from "./bot-updates"
 import { CloudError, createCloudClient } from "./client"
@@ -31,16 +32,20 @@ export const initCloud = (kernel: Kernel) => {
   let connecting = false
   let cursor = "0"
   let disposed = false
+  let watching: Promise<void> | undefined
+  let recovery: Promise<void> | undefined
   let retry: ReturnType<typeof setTimeout> | undefined
-  const enabled = () => kernel.services.use("store.settings")?.().cloud === true
+  const enabled = () => !disposed && kernel.services.use("store.settings")?.().cloud === true
   const account = () => client.request<CloudAccount>("GET", "/v1/account")
   const mapping = async (botId: string) => {
+    if (disposed) throw new Error("DATABASE_CLOSING")
     const value = db.query("SELECT * FROM cloud_machines WHERE bot_id = ?").get(botId) as Mapping | null
     if (!value || value.base_url !== client.base().origin || value.account_id !== (await account()).id)
       throw new CloudError("TOURI-E9003")
     return value
   }
   const remember = (value: CloudMachine): MachineState => {
+    if (disposed) throw new Error("DATABASE_CLOSING")
     db.query("UPDATE cloud_machines SET generation = ? WHERE bot_id = ?").run(value.generation, value.botId)
     return remote.remember({
       botId: value.botId,
@@ -92,17 +97,30 @@ export const initCloud = (kernel: Kernel) => {
     clearTimeout(retry)
     provider.disconnect()
   }
-  const watch = async () => {
+  const watch = (): Promise<void> => {
+    watching ??= runWatch().finally(() => {
+      watching = undefined
+    })
+    return watching
+  }
+  const runWatch = async () => {
     if (disposed || !enabled() || stream || connecting) return
     connecting = true
     try {
       if (!(await client.load())) return
+      if (disposed) return
       if ((await client.capabilities()).implementation?.gatewayReady === false) return
+      if (disposed) return
       stream = await client.socket(
         client.endpoint(`/v1/events?since=${encodeURIComponent(cursor)}`).replace(/^http/, "ws"),
       )
+      if (disposed) {
+        closeStreams()
+        return
+      }
       const current = stream
       current.addEventListener("message", ({ data }) => {
+        if (disposed) return
         try {
           const frame = JSON.parse(String(data)) as CloudEvent
           if ("resync" in frame) {
@@ -150,7 +168,7 @@ export const initCloud = (kernel: Kernel) => {
         }
         if (stream === current) stream = null
         if (!disposed && enabled()) {
-          retry = setTimeout(() => void watch(), 5000)
+          retry = setTimeout(() => void watch().catch(() => undefined), 5000)
           retry.unref()
         }
       })
@@ -355,36 +373,38 @@ export const initCloud = (kernel: Kernel) => {
       await client.request("PATCH", `/v1/bots/${encodeURIComponent(bot.id)}`, cloudBotConfig(bot), signal)
     },
   })
+  const dispose = async (): Promise<void> => {
+    disposed = true
+    botUpdates.dispose()
+    closeStreams()
+    remote.dispose()
+    await Promise.allSettled([watching, recovery])
+  }
+  onDatabaseShutdown(db, dispose)
   kernel.onHostNotification(({ method }) => {
-    if (method === "app.willQuit") {
-      disposed = true
-      botUpdates.dispose()
-      closeStreams()
-      remote.dispose()
-    }
+    if (method === "app.willQuit") void dispose()
   })
   kernel.subscribe(({ event }) => {
     if (event.type === "bot.updated" && event.bot.machine === "cloud" && !event.bot.archivedAt)
       botUpdates.save(event.bot)
   })
   if (enabled() && kernel.services.use("store.settings")?.().cloudBaseUrl)
-    void state()
+    recovery = state()
       .then(async (value) => {
-        if (!value.connected) return
+        if (disposed || !value.connected) return
         const rows = db
           .query("SELECT bot_id FROM cloud_machines WHERE base_url = ? AND account_id = ?")
           .all(client.base().origin, value.account?.id ?? "") as Array<{ bot_id: string }>
-        for (const row of rows) await machine(row.bot_id).catch(() => undefined)
+        for (const row of rows) {
+          if (disposed) return
+          await machine(row.bot_id).catch(() => undefined)
+        }
       })
       .catch(() => undefined)
   return {
     runtime: remote.service,
     provider,
     service,
-    dispose: () => {
-      disposed = true
-      botUpdates.dispose()
-      closeStreams()
-    },
+    dispose,
   }
 }

@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite"
 import type {
   Id,
   Kernel,
@@ -6,6 +7,7 @@ import type {
   TelegramIntegration,
   TelegramIntegrationStatus,
 } from "@touri/contracts"
+import { onDatabaseShutdown } from "../../kernel/database-lifecycle"
 import { createTelegramBridge, type TelegramBridge } from "./bridge"
 import { createTelegramStore, normalizeConfig, tokenAccount } from "./store"
 
@@ -176,18 +178,21 @@ export const createTelegramIntegrations = ({
     )
   })
 
+  const stopAll = async (): Promise<void> => {
+    stopping = true
+    unsubscribe()
+    await Promise.all(Array.from(bridges.keys(), (botId) => stop(botId)))
+    await Promise.all(pending.values())
+    await Promise.all(Array.from(bridges.keys(), (botId) => stop(botId)))
+  }
+  onDatabaseShutdown(kernel.db as Database, stopAll)
+
   return {
     routes,
     start: async (): Promise<void> => {
       await Promise.all(store.configuredBots().map((botId) => serialize(botId, () => restart(botId))))
     },
-    stopAll: async (): Promise<void> => {
-      stopping = true
-      unsubscribe()
-      await Promise.all([...bridges.keys()].map((botId) => stop(botId)))
-      await Promise.all([...pending.values()])
-      await Promise.all([...bridges.keys()].map((botId) => stop(botId)))
-    },
+    stopAll,
     status: (botId: Id) => statuses.get(botId) ?? OFF,
   }
 }

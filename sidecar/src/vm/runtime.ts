@@ -17,6 +17,7 @@ import { getApiRequiredHosts } from "../api-models/runtime"
 import { ensurePrivateDirectoryAsync, removePrivateFileAsync, writePrivateFileAsync } from "../kernel/async-files"
 import { createBackgroundTask, getMeasuredStage, yieldBackground } from "../kernel/background-task"
 import { botFolderFingerprint } from "../kernel/bot-folders"
+import { onDatabaseShutdown } from "../kernel/database-lifecycle"
 import { writeDatabaseAsync } from "../kernel/database-write"
 import { TouriError } from "../kernel/errors"
 import type { PerformanceStageRunner } from "../kernel/performance"
@@ -1728,8 +1729,7 @@ export const createVmRuntime = ({
       unsubscribe()
       clearInterval(timer)
       clearInterval(orphanTimer)
-      idleTask.dispose()
-      orphanTask.dispose()
+      await Promise.all([idleTask.dispose(), orphanTask.dispose()])
       await Promise.allSettled(locks.values())
       for (const row of db.query("SELECT * FROM bot_machines").all() as Array<Metadata>) {
         await stopResources(row.bot_id)
@@ -1781,5 +1781,6 @@ export const createVmRuntime = ({
     })
     if (!result.success || result.code !== 0) throw new Error("Falha na colagem")
   }
+  onDatabaseShutdown(db, dispose)
   return { service, sweep, sweepOrphans, dispose, reconcile, applyNetworkPolicy, paste }
 }

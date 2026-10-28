@@ -1499,6 +1499,7 @@ export const createBrowserEngine = ({
   const mainDocumentErrors = new WeakMap<TabState, string>()
   const pendingStorage = new Map<string, Record<string, Record<string, string>>>()
   let sessionTimer: ReturnType<typeof setInterval> | null = null
+  let sessionTask: ReturnType<typeof createBackgroundTask> | undefined
   let legacyMigration: Promise<void> | null = null
   const windowConfig = deriveChromeWindowConfig({ env: process.env })
 
@@ -2179,6 +2180,7 @@ export const createBrowserEngine = ({
       },
       runStage,
     )
+    sessionTask = task
     sessionTimer = setInterval(() => void task.run().catch(() => undefined), SESSION_SAVE_INTERVAL_MS)
     sessionTimer.unref?.()
   }
@@ -5628,8 +5630,11 @@ export const createBrowserEngine = ({
     unsubscribeBotDeleted()
     if (sessionTimer) clearInterval(sessionTimer)
     sessionTimer = null
+    await sessionTask?.dispose()
+    await legacyMigration
+    const sessionsSaved = contextOwners.size > 0 ? saveSessions() : Promise.resolve()
     if (contextOwners.size > 0)
-      await raceBudget({ work: saveSessions(), ms: SESSION_SHUTDOWN_BUDGET_MS }).catch(() => undefined)
+      await raceBudget({ work: sessionsSaved, ms: SESSION_SHUTDOWN_BUDGET_MS }).catch(() => undefined)
     if (localBrowser && client) {
       const current = client
       await raceBudget({
@@ -5649,6 +5654,7 @@ export const createBrowserEngine = ({
     }
     markEngineUnavailable()
     await launcher.stop()
+    await sessionsSaved.catch(() => undefined)
     store.dispose()
   }
 

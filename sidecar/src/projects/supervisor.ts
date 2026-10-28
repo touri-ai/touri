@@ -22,6 +22,7 @@ import {
   writePrivateFileAsync,
 } from "../kernel/async-files"
 import { createBackgroundTask, getMeasuredStage, yieldBackground } from "../kernel/background-task"
+import { onDatabaseShutdown } from "../kernel/database-lifecycle"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import { backoffDelay, debounce, sleep } from "../kernel/policy"
 import { linuxRuntimeEnvironment } from "../platform/linux-environment"
@@ -175,9 +176,21 @@ export const createSupervisor = ({
   const failureHistory = new Map<string, Array<number>>()
   const restartTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const portTimers = new Map<string, ReturnType<typeof setInterval>>()
+  const portTasks = new Map<string, ReturnType<typeof createBackgroundTask>>()
+  const backgroundJobs = new Set<Promise<unknown>>()
+  const starts = new Set<Promise<unknown>>()
+  const shutdown = new AbortController()
   const pendingLogs = new Map<string, Array<string>>()
   const logTimers = new Map<string, ReturnType<typeof debounce>>()
   let shuttingDown = false
+  let stopPromise: Promise<void> | undefined
+  const trackBackground = (operation: Promise<unknown>): void => {
+    const tracked = operation.catch(() => {
+      kernel.log({ level: "warn", module: "store", msg: "Background process storage failed" })
+    })
+    backgroundJobs.add(tracked)
+    void tracked.finally(() => backgroundJobs.delete(tracked))
+  }
 
   const publish = (processId: string): void => {
     const spec = store.getProcessSpec({ processId })
@@ -202,6 +215,9 @@ export const createSupervisor = ({
     const portTimer = portTimers.get(processId)
     if (portTimer !== undefined) clearInterval(portTimer)
     portTimers.delete(processId)
+    const task = portTasks.get(processId)
+    if (task) trackBackground(task.dispose())
+    portTasks.delete(processId)
     flushLogs(processId)
   }
 
@@ -380,7 +396,7 @@ export const createSupervisor = ({
     if (fromLog !== null && !process.ports.some((port) => port.port === fromLog)) {
       process.ports.push({ port: fromLog, host: "127.0.0.1", pid: process.run.pid ?? 0, detectedAt: now(), via: "log" })
       store.updateProcessRun({ runId: process.run.id, ports: process.ports })
-      void emitPreview({ project, process, port: fromLog })
+      trackBackground(emitPreview({ project, process, port: fromLog }))
     }
     if (process.spec.ready && "logRegex" in process.spec.ready) {
       try {
@@ -390,7 +406,7 @@ export const createSupervisor = ({
       }
     }
     if (process.spec.previewPort !== null && safe.includes(String(process.spec.previewPort)))
-      void emitPreview({ project, process, port: process.spec.previewPort })
+      trackBackground(emitPreview({ project, process, port: process.spec.previewPort }))
   }
 
   const recordWorkResult = ({
@@ -407,82 +423,88 @@ export const createSupervisor = ({
   }
 
   const monitor = ({ project, process }: { project: Project; process: ManagedProcess }): void => {
-    void Promise.all([
-      readLines({ stream: process.child.stdout, onLine: (line) => logLine({ project, process, line }) }),
-      readLines({ stream: process.child.stderr, onLine: (line) => logLine({ project, process, line }) }),
-    ])
-    void process.child.exited.then(async (exit) => {
-      if (managed.get(process.spec.id)?.run.id !== process.run.id) return
-      managed.delete(process.spec.id)
-      processPolicies.delete(process.spec.id)
-      clearProcessTimers(process.spec.id)
-      const ended = now()
-      const machineStopped =
-        process.spec.vmBotId &&
-        kernel.services
-          .use("vm.runtime")
-          ?.states()
-          .find((state) => state.botId === process.spec.vmBotId)?.status !== "running"
-      if (process.stopped || stopRequested.has(process.spec.id) || shuttingDown || machineStopped) {
-        stopRequested.delete(process.spec.id)
-        recordWorkResult({ process, status: "stopped", exitCode: exit.code })
+    trackBackground(
+      Promise.all([
+        readLines({ stream: process.child.stdout, onLine: (line) => logLine({ project, process, line }) }),
+        readLines({ stream: process.child.stderr, onLine: (line) => logLine({ project, process, line }) }),
+      ]),
+    )
+    trackBackground(
+      process.child.exited.then(async (exit) => {
+        if (managed.get(process.spec.id)?.run.id !== process.run.id) return
+        managed.delete(process.spec.id)
+        processPolicies.delete(process.spec.id)
+        clearProcessTimers(process.spec.id)
+        const ended = now()
+        const machineStopped =
+          process.spec.vmBotId &&
+          kernel.services
+            .use("vm.runtime")
+            ?.states()
+            .find((state) => state.botId === process.spec.vmBotId)?.status !== "running"
+        if (process.stopped || stopRequested.has(process.spec.id) || shuttingDown || machineStopped) {
+          stopRequested.delete(process.spec.id)
+          recordWorkResult({ process, status: "stopped", exitCode: exit.code })
+          store.updateProcessRun({
+            runId: process.run.id,
+            status: "stopped",
+            exitCode: exit.code,
+            signal: exit.signal,
+            endedAt: ended,
+          })
+          publish(process.spec.id)
+          return
+        }
+        const failed = exit.code !== 0 || exit.signal !== null
+        const status = failed ? "crashed" : "exited"
+        recordWorkResult({ process, status, exitCode: exit.code })
         store.updateProcessRun({
           runId: process.run.id,
-          status: "stopped",
+          status,
           exitCode: exit.code,
           signal: exit.signal,
           endedAt: ended,
         })
         publish(process.spec.id)
-        return
-      }
-      const failed = exit.code !== 0 || exit.signal !== null
-      const status = failed ? "crashed" : "exited"
-      recordWorkResult({ process, status, exitCode: exit.code })
-      store.updateProcessRun({
-        runId: process.run.id,
-        status,
-        exitCode: exit.code,
-        signal: exit.signal,
-        endedAt: ended,
-      })
-      publish(process.spec.id)
-      if (!failed || process.spec.restart === "never") return
-      const history = (failureHistory.get(process.spec.id) ?? []).filter((at) => at >= ended - 10 * 60 * 1000)
-      history.push(ended)
-      failureHistory.set(process.spec.id, history)
-      if (history.length >= 5) {
-        store.updateProcessRun({ runId: process.run.id, status: "crashed", endedAt: ended })
-        kernel.services.use("notify.emit")?.({
-          kind: "incident",
-          botId: null,
-          threadId: null,
-          title: `${process.spec.name} crashed`,
-          body: "The process failed five times in ten minutes.",
-        })
-        publish(process.spec.id)
-        return
-      }
-      const configuredBase = Number(globalThis.process.env.TOURI_TEST_PROCESS_BACKOFF_MS ?? "1000")
-      const baseDelay = Number.isFinite(configuredBase) && configuredBase > 0 ? configuredBase : 1000
-      const delay = backoffDelay({ attempt: history.length, initialMs: baseDelay, maxMs: 60_000 })
-      const restartTimer = setTimeout(() => {
-        restartTimers.delete(process.spec.id)
-        const measure = getMeasuredStage("project_supervisor_restart", runStage)
-        const current = measure(() => store.getProcessSpec({ processId: process.spec.id }))
-        if (!current || shuttingDown) return
-        void measure(() =>
-          start({
-            project,
-            spec: current,
-            waitMs: 0,
-            scope: { turnId: process.effect?.turnId ?? null, threadId: null, automatic: true },
-            ...(process.confine ? { confine: process.confine } : {}),
-          }),
-        )
-      }, delay)
-      restartTimers.set(process.spec.id, restartTimer)
-    })
+        if (!failed || process.spec.restart === "never") return
+        const history = (failureHistory.get(process.spec.id) ?? []).filter((at) => at >= ended - 10 * 60 * 1000)
+        history.push(ended)
+        failureHistory.set(process.spec.id, history)
+        if (history.length >= 5) {
+          store.updateProcessRun({ runId: process.run.id, status: "crashed", endedAt: ended })
+          kernel.services.use("notify.emit")?.({
+            kind: "incident",
+            botId: null,
+            threadId: null,
+            title: `${process.spec.name} crashed`,
+            body: "The process failed five times in ten minutes.",
+          })
+          publish(process.spec.id)
+          return
+        }
+        const configuredBase = Number(globalThis.process.env.TOURI_TEST_PROCESS_BACKOFF_MS ?? "1000")
+        const baseDelay = Number.isFinite(configuredBase) && configuredBase > 0 ? configuredBase : 1000
+        const delay = backoffDelay({ attempt: history.length, initialMs: baseDelay, maxMs: 60_000 })
+        const restartTimer = setTimeout(() => {
+          restartTimers.delete(process.spec.id)
+          const measure = getMeasuredStage("project_supervisor_restart", runStage)
+          const current = measure(() => store.getProcessSpec({ processId: process.spec.id }))
+          if (!current || shuttingDown) return
+          trackBackground(
+            measure(() =>
+              start({
+                project,
+                spec: current,
+                waitMs: 0,
+                scope: { turnId: process.effect?.turnId ?? null, threadId: null, automatic: true },
+                ...(process.confine ? { confine: process.confine } : {}),
+              }),
+            ),
+          )
+        }, delay)
+        restartTimers.set(process.spec.id, restartTimer)
+      }),
+    )
   }
 
   const checkReady = async ({ process }: { process: ManagedProcess }): Promise<boolean> => {
@@ -527,7 +549,9 @@ export const createSupervisor = ({
     while (now() <= deadline && isAlive(process.run.pid)) {
       if (signal?.aborted) return false
       await detectPorts({ project, process })
-      for (const port of process.ports) void emitPreview({ project, process, port: port.port })
+      process.ports.forEach((port) => {
+        trackBackground(emitPreview({ project, process, port: port.port }))
+      })
       if (await checkReady({ process })) {
         process.ready = true
         store.updateProcessRun({ runId: process.run.id, status: "ready", ports: process.ports })
@@ -891,6 +915,7 @@ export const createSupervisor = ({
       },
       runStage,
     )
+    portTasks.set(spec.id, portTask)
     portTimers.set(
       spec.id,
       setInterval(() => {
@@ -911,7 +936,16 @@ export const createSupervisor = ({
     return { success: true, run: current ?? run }
   }
 
-  const start = async ({
+  const start = (input: Parameters<Supervisor["start"]>[0]): ReturnType<Supervisor["start"]> => {
+    if (shutdown.signal.aborted) return Promise.reject(new Error("DATABASE_CLOSING"))
+    const signal = input.signal ? AbortSignal.any([input.signal, shutdown.signal]) : shutdown.signal
+    const operation = startProcesses(Object.assign({}, input, { signal }))
+    starts.add(operation)
+    const finish = () => starts.delete(operation)
+    void operation.then(finish, finish)
+    return operation
+  }
+  const startProcesses = async ({
     project,
     spec,
     waitMs,
@@ -1165,15 +1199,24 @@ export const createSupervisor = ({
     }
   }
 
-  const stopAll = async (): Promise<void> => {
+  const stopAll = (): Promise<void> => {
+    stopPromise ??= performStopAll()
+    return stopPromise
+  }
+  const performStopAll = async (): Promise<void> => {
     shuttingDown = true
+    shutdown.abort()
     for (const timer of restartTimers.values()) clearTimeout(timer)
     restartTimers.clear()
     for (const timer of portTimers.values()) clearInterval(timer)
     portTimers.clear()
+    await Promise.allSettled(starts)
+    await Promise.all(Array.from(portTasks.values(), (task) => task.dispose()))
+    portTasks.clear()
     for (const processId of pendingLogs.keys()) flushLogs(processId)
     const processes = [...managed.keys()]
     for (const processId of processes) await stop({ processId })
+    await Promise.allSettled(backgroundJobs)
   }
 
   kernel.subscribe(({ event }) => {
@@ -1193,5 +1236,6 @@ export const createSupervisor = ({
       authorization.child.kill("SIGKILL")
     }
   })
+  onDatabaseShutdown(kernel.db as Database, stopAll)
   return { define, start, stop, restart, list, logs, previews, openPreview, stopAll, cleanupOrphans, autostart }
 }

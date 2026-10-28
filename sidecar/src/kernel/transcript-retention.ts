@@ -84,8 +84,7 @@ const createRetentionOwner = (filename: string) => {
         references -= 1
         if (references) return
 
-        if (!child) return
-        child.kill("SIGKILL")
+        child?.kill("SIGKILL")
         await running?.catch(() => {})
       }
     },

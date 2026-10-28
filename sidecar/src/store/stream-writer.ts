@@ -111,6 +111,7 @@ export const createStreamWriter = ({
   const failed = new WeakSet<PendingEvent>()
   let capacityReported = false
   let stopped = false
+  let committing: Promise<void> | undefined
   const outside = new WeakSet<PendingEvent>()
   const persistence = createStreamPersistence({
     database,
@@ -260,7 +261,7 @@ export const createStreamWriter = ({
     const attachments = eligible.flatMap((event) =>
       event.type === "message.parts" ? (event._outputBlobAttachments ?? []) : [],
     )
-    void persistence
+    committing = persistence
       .submit(eligible.map(getCleanEvent), { files, attachments })
       .then(async ({ events, rejected, quarantined }) => {
         if (quarantined)
@@ -289,7 +290,7 @@ export const createStreamWriter = ({
         for (const event of rejected) projections.delete(keyOf(event.rejection.threadId, event.rejection.messageId))
         // A commit can precede the bus's bounded delivery batches. Keep admission and drain
         // ownership until subscribers have received this batch, before a snapshot can supersede it.
-        await kernel.flushEvents?.()
+        if (!stopped) await kernel.flushEvents?.()
         inFlight = []
         inFlightBytes = 0
       })
@@ -603,7 +604,9 @@ export const createStreamWriter = ({
     if (!stopping) return
 
     stopped = true
-    void persistence.close()
+    void persistence.close().catch(() => {
+      kernel.log({ level: "warn", module: "store", msg: "Stream persistence shutdown failed" })
+    })
   }
 
   const drainAsync = async ({
@@ -653,6 +656,7 @@ export const createStreamWriter = ({
       }
     }
     await persistence.close()
+    await committing
   }
 
   return {

@@ -9,13 +9,14 @@ export const createBackgroundTask = (
 ) => {
   let running = false
   let stopped = false
+  let active: Promise<void> | undefined
   const run = async (): Promise<void> => {
     if (running || stopped) return
 
     running = true
     try {
-      if (runStage) await runStage(stage, action)
-      else await action()
+      active = runStage ? runStage(stage, action) : action()
+      await active
     } finally {
       running = false
     }
@@ -25,6 +26,7 @@ export const createBackgroundTask = (
     run,
     dispose: () => {
       stopped = true
+      return active?.catch(() => undefined) ?? Promise.resolve()
     },
     isStopped: () => stopped,
   }

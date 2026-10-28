@@ -408,6 +408,7 @@ export const createStorageMaintenance = ({
   schedule = setTimeout,
   getNow = Date.now,
   attachmentReferenceTimeoutMs = 10 * 60_000,
+  createCheckpointer = createWalCheckpointer,
 }: {
   database: Database
   appData: string
@@ -420,6 +421,7 @@ export const createStorageMaintenance = ({
   schedule?: (action: () => Promise<void>, delay: number) => ReturnType<typeof setTimeout>
   getNow?: () => number
   attachmentReferenceTimeoutMs?: number
+  createCheckpointer?: typeof createWalCheckpointer
 }) => {
   const stored = database.query("SELECT value_json FROM settings WHERE key = ?").get(progressKey) as {
     value_json: string
@@ -447,7 +449,7 @@ export const createStorageMaintenance = ({
     total: progress.total,
   }
   let stopped = false
-  const walCheckpointer = createWalCheckpointer({
+  const walCheckpointer = createCheckpointer({
     database,
     onReady: () => log?.({ level: "info", module: "store", msg: "WAL checkpoint worker started" }),
     onError: ({ autocheckpointRestored }) => {
@@ -468,6 +470,9 @@ export const createStorageMaintenance = ({
   let collectionDeferrals = 0
   let maintenanceFailures = 0
   let timer: ReturnType<typeof setTimeout> | undefined
+  let activeStep: Promise<void> | undefined
+  let retryTask: Promise<void> | undefined
+  let disposePromise: Promise<void> | undefined
   const save = (value = progress) =>
     withoutBusyWait(database, () =>
       database
@@ -482,19 +487,22 @@ export const createStorageMaintenance = ({
   const scheduleSessionKeyRetry = () => {
     if (stopped || retryRunning || retryTimer !== undefined) return
 
-    retryTimer = setTimeout(async () => {
+    retryTimer = setTimeout(() => {
       retryTimer = undefined
       retryRunning = true
-      try {
-        if (runStage)
-          await runStage("browser_session_key_retry", () => retryDeletedBrowserSessionKeys(retryController.signal))
-        else await retryDeletedBrowserSessionKeys(retryController.signal)
-      } catch {
-        if (!stopped) onError()
-      } finally {
-        retryRunning = false
-      }
+      retryTask = runSessionKeyRetry()
     }, 100)
+  }
+  const runSessionKeyRetry = async (): Promise<void> => {
+    try {
+      if (runStage)
+        await runStage("browser_session_key_retry", () => retryDeletedBrowserSessionKeys(retryController.signal))
+      else await retryDeletedBrowserSessionKeys(retryController.signal)
+    } catch {
+      if (!stopped) onError()
+    } finally {
+      retryRunning = false
+    }
   }
   const prepareCollection = async (): Promise<boolean> => {
     const next = runStage
@@ -525,7 +533,14 @@ export const createStorageMaintenance = ({
     }
     return true
   }
-  const step = async () => {
+  const step = (): Promise<void> => {
+    if (activeStep) return activeStep
+    activeStep = runStep().finally(() => {
+      activeStep = undefined
+    })
+    return activeStep
+  }
+  const runStep = async () => {
     if (stopped) return
     try {
       if (historyMigrationStatus(database).running) {
@@ -607,6 +622,7 @@ export const createStorageMaintenance = ({
         if (runStage) await runStage("storage_vacuum", () => walCheckpointer.vacuum())
         else await walCheckpointer.vacuum()
       }
+      if (stopped) return
       if (progress.changed || manual) publishResync()
       manual = false
       vacuum = false
@@ -642,16 +658,24 @@ export const createStorageMaintenance = ({
       return true
     },
     snapshot: (): StorageMaintenanceStatus => ({ ...status }),
-    dispose: ({ closing = false }: { closing?: boolean } = {}) => {
+    dispose: ({ closing = false }: { closing?: boolean } = {}): Promise<void> => {
+      if (disposePromise) return disposePromise
       stopped = true
       const retentionStopped = retention.dispose()
       const checkpointStopped = walCheckpointer.dispose({ closing })
       retryController.abort()
       clearTimeout(retryTimer)
       clearInterval(dailyRetryTimer)
-      upgrade.dispose()
+      const upgradeStopped = upgrade.dispose()
       clearTimeout(timer)
-      return Promise.all([retentionStopped, checkpointStopped]).then(() => {})
+      disposePromise = Promise.allSettled([
+        activeStep,
+        retryTask,
+        retentionStopped,
+        checkpointStopped,
+        upgradeStopped,
+      ]).then(() => {})
+      return disposePromise
     },
   }
 }

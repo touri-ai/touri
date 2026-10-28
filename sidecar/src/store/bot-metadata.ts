@@ -115,11 +115,12 @@ export const createBotMetadataWriter = (filename: string, onReady?: (pid: number
     }
   }
 
-  const dispose = (): void => {
+  const dispose = async (): Promise<void> => {
     disposed = true
     children.forEach((child) => {
       child.kill("SIGKILL")
     })
+    await Promise.all(tails.values())
     reader.dispose()
   }
 
@@ -182,7 +183,13 @@ export const createBotEditQueue = ({ maxPending = 32, maxRetainedBytes = 64 * 10
     }
   }
 
-  return { run, dispose: () => shutdown.abort(new Error("Bot edits closed")) }
+  return {
+    run,
+    dispose: async (): Promise<void> => {
+      shutdown.abort(new Error("Bot edits closed"))
+      await Promise.all(tails.values())
+    },
+  }
 }
 
 const sendInstructions = async (stdin: Bun.FileSink, instructions: string, signal: AbortSignal): Promise<void> => {

@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { HostNotification, Kernel, RouteHandler } from "@touri/contracts"
+import { stopDatabaseTasks } from "../../src/kernel/database-lifecycle"
 import { openDatabase } from "../../src/kernel/db"
 import { createAppPaths } from "../../src/kernel/paths"
 import { createServices } from "../../src/kernel/services"
@@ -63,10 +64,13 @@ export const testKernel = () => {
       if (!("json" in response)) throw new Error("Expected JSON response")
       return response
     },
-    close: () => {
-      kernel.services.use("storage.threadDeletion")?.dispose()
-      kernel.services.use("storage.threadTitles")?.dispose()
-      kernel.services.use("storage.botDeletion")?.dispose()
+    close: async () => {
+      await Promise.all([
+        stopDatabaseTasks(db),
+        kernel.services.use("storage.threadTitles")?.dispose(),
+        kernel.services.use("storage.threadDeletion")?.dispose(),
+        kernel.services.use("storage.botDeletion")?.dispose(),
+      ])
       db.close()
       rmSync(root, { recursive: true, force: true })
     },
