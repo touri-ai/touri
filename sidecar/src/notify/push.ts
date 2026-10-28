@@ -4,6 +4,7 @@ import { canDeliverNotification, type Kernel, type Message, type NotificationRec
 import { generateVAPIDKeys } from "web-push"
 import type { AuthStore } from "../cli/auth/store"
 import type { SecretStore } from "../cli/host/secretStore"
+import { onDatabaseShutdown } from "../kernel/database-lifecycle"
 import { getNotificationSettings } from "./preferences"
 import { createPushRoutes, createReviewNotice } from "./push-routes"
 import { createPushStore, type PushDelivery, type PushDevice } from "./push-store"
@@ -165,16 +166,19 @@ export const initWebPush = async ({
       sendTest: (device, signal) => sendToDevice(device, undefined, signal),
     }),
   )
+
+  const stop = async (): Promise<void> => {
+    controller.abort()
+    clearTimeout(timer.current)
+    await running.current
+  }
+  onDatabaseShutdown(database, stop)
   if (schedule) start()
 
   return {
     start,
     drain,
-    stop: async () => {
-      controller.abort()
-      clearTimeout(timer.current)
-      await running.current
-    },
+    stop,
   }
 }
 

@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite"
 import type { ImportReport, Kernel, LegacyImportOptions, RouteResponse } from "@touri/contracts"
 import { createBackgroundTask } from "../kernel/background-task"
+import { onDatabaseShutdown } from "../kernel/database-lifecycle"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import { DEPRECATED_IMPORT_ALIAS } from "./deprecatedAliases"
 import { cleanupExpiredLegacyStaging, runLegacyImport } from "./legacy/import"
@@ -85,8 +86,8 @@ const startJob = ({
   kernel: Kernel
   importId: string
   options: LegacyImportOptions
-}): void => {
-  void runLegacyImport({ kernel, importId, options })
+}): Promise<void> =>
+  runLegacyImport({ kernel, importId, options })
     .then(async ({ report }) => {
       kernel.publish({ type: "import.progress", importId, phase: "complete", done: 1, total: 1 })
       await kernel.flushEvents?.().catch(() => undefined)
@@ -111,7 +112,6 @@ const startJob = ({
       kernel.log({ level: "error", module: "importer", msg: "legacy app import failed", data: { error: message } })
       kernel.publish({ type: "import.progress", importId, phase: "failed", done: 1, total: 1 })
     })
-}
 
 const readStoredJob = ({ kernel, importId }: { kernel: Kernel; importId: string }): Job | null => {
   const row = (kernel.db as Database).query("SELECT status, report_json FROM imports WHERE id = ?").get(importId) as {
@@ -126,7 +126,7 @@ export const scheduleLegacyExpiry = (
   kernel: Kernel,
   intervalMs = 60_000,
   runStage?: PerformanceStageRunner,
-): (() => void) => {
+): (() => Promise<void>) => {
   const task = createBackgroundTask(
     "import_staging_expiry",
     async () => {
@@ -148,21 +148,34 @@ export const scheduleLegacyExpiry = (
     })
   }, intervalMs)
   timer.unref()
-  return () => {
+  const stop = (): Promise<void> => {
     clearInterval(timer)
-    task.dispose()
+    return task.dispose()
   }
+  onDatabaseShutdown(kernel.db as Database, stop)
+  return stop
 }
 
 export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): Promise<void> => {
+  let stopped = false
+  const activeJobs = new Set<Promise<void>>()
+  onDatabaseShutdown(kernel.db as Database, async () => {
+    stopped = true
+    await Promise.allSettled(activeJobs)
+  })
   const startImport = async ({ body }: { body: unknown }): Promise<RouteResponse> => {
+    if (stopped) throw new Error("DATABASE_CLOSING")
     const options = parseOptions(body)
     if (!options)
       return { status: 400, json: { errorCode: "INVALID_ARGS", error: "Invalid legacy app import options" } }
     const importId = kernel.newId()
     jobs.set(importId, { status: "running", report: null })
     kernel.publish({ type: "import.progress", importId, phase: "starting", done: 0, total: 1 })
-    startJob({ kernel, importId, options })
+    const job = startJob({ kernel, importId, options }).catch(() => {
+      kernel.log({ level: "warn", module: "store", msg: "Background import could not save its result" })
+    })
+    activeJobs.add(job)
+    void job.finally(() => activeJobs.delete(job))
     return { status: 202, json: { importId } }
   }
   await cleanupExpiredLegacyStaging({ kernel, runStage })

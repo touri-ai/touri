@@ -71,7 +71,12 @@ test("a failed key cleanup runs once while message compaction advances through s
 })
 
 test("a hanging key cleanup cannot block compaction or overlap another cleanup batch", async () => {
-  const retry = mock(() => new Promise<void>(() => {}))
+  const retry = mock(
+    (signal: AbortSignal) =>
+      new Promise<void>((resolve) => {
+        signal.addEventListener("abort", () => resolve(), { once: true })
+      }),
+  )
   const fixture = makeMaintenance(retry)
 
   await waitUntil(() => fixture.maintenance.snapshot().processed === 151 && !fixture.maintenance.snapshot().running)

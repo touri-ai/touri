@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite"
 import { walCheckpointSource } from "./wal-checkpoint-worker"
+import { getWorkerExit } from "./worker-exit"
 import { deferWorkerReply } from "./worker-reply"
 
 const DEFAULT_INTERVAL_MS = 5_000
@@ -27,6 +28,7 @@ export const createWalCheckpointer = ({
   const fallbackPages = previousPages > 0 ? previousPages : 1_000
   // Mutable handles belong only to this connection's maintenance lifecycle.
   let worker: RefableWorker | undefined
+  let workerExited: Promise<void> = Promise.resolve()
   let workerUrl: string | undefined
   let stopped = false
   let reportedError = false
@@ -39,6 +41,7 @@ export const createWalCheckpointer = ({
   const finish = (): void => {
     clearTimeout(startupTimer)
     clearTimeout(stopTimer)
+    worker?.ref()
     worker?.terminate()
     worker = undefined
     pendingVacuum.forEach(({ reject }) => {
@@ -47,7 +50,7 @@ export const createWalCheckpointer = ({
     pendingVacuum.clear()
     if (workerUrl) URL.revokeObjectURL(workerUrl)
     workerUrl = undefined
-    closed.resolve()
+    void workerExited.then(closed.resolve)
   }
   const restoreAutocheckpoint = (): boolean => {
     try {
@@ -70,6 +73,7 @@ export const createWalCheckpointer = ({
     database.exec("PRAGMA wal_autocheckpoint = 0")
     workerUrl = URL.createObjectURL(new Blob([walCheckpointSource], { type: "application/javascript" }))
     worker = createWorker(workerUrl) as RefableWorker
+    workerExited = getWorkerExit(worker)
     // Startup must make progress without an unrelated request waking the worker mailbox.
     worker.ref()
     worker.onmessage = ({ data }: MessageEvent<{ type?: string; requestId?: number; error?: string }>): void => {
@@ -135,6 +139,7 @@ export const createWalCheckpointer = ({
         return closed.promise
       }
 
+      worker.ref()
       stopTimer = setTimeout(finish, 1_000)
       try {
         worker.postMessage({ type: "stop" })

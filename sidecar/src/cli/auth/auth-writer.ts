@@ -1,4 +1,5 @@
 import { workerEntrypoint } from "../../kernel/worker-entrypoint"
+import { getWorkerExit } from "../../kernel/worker-exit"
 import { deferWorkerReply } from "../../kernel/worker-reply"
 import type { WorkerError, WriteCommand, WriterMessage, WriterRequest } from "./store-protocol"
 
@@ -13,7 +14,10 @@ export const createAuthWriter = async (filename: string, createWorker = startAut
   const ensureWriter = async (): Promise<AuthWriter> => {
     if (closed) throw new Error("Authentication writer is closed")
     if (!current.isStopped()) return current
-    restarting ??= startAuthWriter(filename, createWorker)
+    const previous = current
+    restarting ??= previous
+      .close()
+      .then(() => startAuthWriter(filename, createWorker))
       .then((writer) => {
         current = writer
         return writer
@@ -45,6 +49,7 @@ const getWorkerError = ({ name, message, code }: WorkerError): Error =>
 
 const startAuthWriter = async (filename: string, createWorker: () => Worker): Promise<AuthWriter> => {
   const worker = createWorker() as RefableWorker
+  const exited = getWorkerExit(worker)
   worker.ref()
   const pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>()
   let requestId = 0
@@ -120,6 +125,7 @@ const startAuthWriter = async (filename: string, createWorker: () => Worker): Pr
     worker.unref()
   } catch (error) {
     worker.terminate()
+    await exited
     throw error
   } finally {
     clearTimeout(startupTimeout)
@@ -142,6 +148,7 @@ const startAuthWriter = async (filename: string, createWorker: () => Worker): Pr
         closing = true
         if (stoppedByError) {
           worker.terminate()
+          await exited
           return
         }
         worker.ref()
@@ -153,6 +160,7 @@ const startAuthWriter = async (filename: string, createWorker: () => Worker): Pr
         await stopped
         clearTimeout(deadline)
         worker.terminate()
+        await exited
       })()
       return closePromise
     },

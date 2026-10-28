@@ -7,16 +7,17 @@ import { directoryAssets } from "../../src/cli/web/uiAssets"
 import { createKernel } from "../../src/kernel"
 import { init } from "../../src/store"
 
-const cleanups: Array<() => void> = []
-afterEach(() => {
-  for (const close of cleanups.splice(0)) close()
+const cleanups = new Set<() => Promise<void>>()
+afterEach(async () => {
+  for (const close of cleanups) await close()
+  cleanups.clear()
 })
 const fixture = async () => {
   const root = mkdtempSync(join(tmpdir(), "touri-served-security-"))
   const runtime = createKernel({ appData: root })
   await init(runtime.kernel)
-  cleanups.push(() => {
-    runtime.stop()
+  cleanups.add(async () => {
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
   const call = (path: string, body?: unknown) =>

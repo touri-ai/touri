@@ -102,7 +102,7 @@ const fixture = async ({ token = TOKEN }: { token?: string } = {}) => {
   cleanup.push(async () => {
     await integrations.stopAll()
     fake.stop()
-    runtime.stop()
+    await runtime.stop()
     rmSync(root, { recursive: true, force: true })
   })
   const request = async (method: string, path: string, body?: unknown) => {

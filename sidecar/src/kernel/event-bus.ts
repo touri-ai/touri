@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite"
-import type { UiEvent, UiEventEnvelope } from "@touri/contracts"
+import type { Kernel, UiEvent, UiEventEnvelope } from "@touri/contracts"
 import type { ServerWebSocket } from "bun"
 import { createStoreReader } from "../store/reader"
 import { onDatabaseCommit } from "./database-write"
@@ -43,6 +43,7 @@ export const createEventBus = (
     schedule = scheduleDelivery,
     deferRecovery = false,
     getReferenceEvents,
+    log = console.warn,
   }: DeliveryScheduling = {},
 ) => {
   const measureStage = <Value, Input>(stage: PerformanceStage, action: (input: Input) => Value, input: Input): Value =>
@@ -70,6 +71,7 @@ export const createEventBus = (
   let scheduled = false
   let cancelContinuation: (() => void) | undefined
   let stopped = false
+  let stopPromise: Promise<void> | undefined
   let flushing = false
   const retention = database ? createTranscriptRetention(database) : undefined
   let retentionRunning = false
@@ -77,6 +79,17 @@ export const createEventBus = (
   let retentionTimer: ReturnType<typeof setTimeout> | undefined
   let captureRetryTimer: ReturnType<typeof setTimeout> | undefined
   let captureRetryAttempt = 0
+  const reportFailure = (): void => {
+    try {
+      log({
+        level: "warn",
+        module: "store",
+        msg: "Background event storage failed; durable events remain for recovery",
+      })
+    } catch {
+      // A failed disk can also reject diagnostics.
+    }
+  }
   const serialize = (envelope: UiEventEnvelope): string =>
     JSON.stringify(envelope.event.type === "transcript.resync" ? { type: "resync", lastSeq: envelope.seq } : envelope)
   const payloadFor = (envelope: UiEventEnvelope): string =>
@@ -155,7 +168,8 @@ export const createEventBus = (
       try {
         captureTranscript()
         if (!scheduled) flush()
-      } catch {
+      } catch (error) {
+        if (!isSqliteBusy(error)) reportFailure()
         // Durable entries stay pending when storage is temporarily unavailable.
         scheduleCaptureRetry()
       }
@@ -405,8 +419,13 @@ export const createEventBus = (
       readRetryTimer.unref()
       return
     }
-    if (delivered < head()) scheduleFlush()
-    else void runRetentionMaintenance()
+    try {
+      if (delivered < head()) scheduleFlush()
+      else void runRetentionMaintenance()
+    } catch (error) {
+      if (!isSqliteBusy(error)) reportFailure()
+      finishFlush(true)
+    }
   }
 
   const flushReferences = async (rows: Row[]): Promise<void> => {
@@ -491,16 +510,17 @@ export const createEventBus = (
         }
         if (now() - startedAt >= LIVE_DELIVERY_LIMITS.budgetMs) break
       }
+    } catch (error) {
+      deferred = true
+      if (!isSqliteBusy(error)) reportFailure()
+      finishFlush(true)
     } finally {
       if (!deferred) finishFlush()
     }
-    if (stopped || delivered < head() || delivered - compactedAt < 256) return
-
-    void runRetentionMaintenance()
   }
   const flushAsync = async ({ persistOnly = false }: { persistOnly?: boolean } = {}): Promise<void> => {
     await eventWriter?.flushAsync()
-    if (persistOnly) return
+    if (persistOnly || stopped) return
     const through = head()
     if (!database || delivered >= through) return
     const deadline = performance.now() + 5_000
@@ -529,7 +549,7 @@ export const createEventBus = (
       if (!scheduled) flush()
     }
   }
-  const eventWriter = database ? createEventLogWriter(database, onEventSaved) : undefined
+  const eventWriter = database ? createEventLogWriter(database, onEventSaved, reportFailure) : undefined
   const writeEvent = (event: UiEvent): void =>
     eventWriter?.save(event.type === "process.log" ? boundedProcessLog(event) : event)
   const publish = (input: UiEvent): void => {
@@ -598,6 +618,31 @@ export const createEventBus = (
     sockets = sockets.map((current) => (current === entry ? { socket, since: sinceHead, filter } : current))
   }
 
+  const stop = (): Promise<void> => {
+    if (stopPromise) return stopPromise
+    stopped = true
+    shutdown.abort()
+    liveRead?.abort.abort()
+    liveRead = undefined
+    sockets.forEach((entry) => {
+      entry.replay?.abort.abort()
+    })
+    reader?.dispose()
+    clearTimeout(readRetryTimer)
+    cancelContinuation?.()
+    clearTimeout(retentionTimer)
+    clearTimeout(captureRetryTimer)
+    sockets = []
+    publications = []
+    earlyControls.clear()
+    stopPromise = Promise.allSettled([retention?.dispose(), eventWriter?.close()]).then((results) => {
+      const failure = results.find((result) => result.status === "rejected")
+      if (failure?.status === "rejected") throw failure.reason
+    })
+    void stopPromise.catch(reportFailure)
+    return stopPromise
+  }
+
   return {
     publish,
     flushAsync,
@@ -644,24 +689,7 @@ export const createEventBus = (
     },
     replay,
     catchUp: (since: number): Promise<UiEventEnvelope[]> => Promise.resolve(getCatchUp(since, shutdown.signal)),
-    stop: async (): Promise<void> => {
-      stopped = true
-      shutdown.abort()
-      liveRead?.abort.abort()
-      liveRead = undefined
-      sockets.forEach((entry) => {
-        entry.replay?.abort.abort()
-      })
-      reader?.dispose()
-      clearTimeout(readRetryTimer)
-      cancelContinuation?.()
-      clearTimeout(retentionTimer)
-      clearTimeout(captureRetryTimer)
-      sockets = []
-      publications = []
-      earlyControls.clear()
-      await Promise.all([retention?.dispose(), eventWriter?.flushAsync()])
-    },
+    stop,
   }
 }
 
@@ -678,6 +706,7 @@ type DeliveryScheduling = {
   schedule?: (action: () => void) => () => void
   getReferenceEvents?: (references: TranscriptRef[], signal: AbortSignal, maxBytes?: number) => Promise<UiEvent[]>
   deferRecovery?: boolean
+  log?: Kernel["log"]
 }
 
 const scheduleDelivery = (action: () => void): (() => void) => {

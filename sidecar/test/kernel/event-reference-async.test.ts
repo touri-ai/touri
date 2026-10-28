@@ -443,11 +443,15 @@ test("slow synthetic reference storage does not consume the live event-loop budg
     deliveredAt = performance.now() - started
   })
   let samples: number[] = []
+  let cpuSamples: number[] = []
   const sampling = (async () => {
     for (const _index of Array.from({ length: 60 })) {
       const expected = performance.now() + 5
+      const cpuStarted = process.cpuUsage()
       await new Promise<void>((resolve) => setTimeout(resolve, 5))
       samples = samples.concat(Math.max(0, performance.now() - expected))
+      const cpu = process.cpuUsage(cpuStarted)
+      cpuSamples = cpuSamples.concat((cpu.user + cpu.system) / 1_000)
     }
   })()
 
@@ -472,6 +476,8 @@ test("slow synthetic reference storage does not consume the live event-loop budg
         intervalMs: 5,
         p99Ms,
         maxMs,
+        maxLagProcessCpuMs: cpuSamples[samples.indexOf(maxMs)],
+        maxSampleProcessCpuMs: cpuSamples.reduce((maximum, cpu) => Math.max(maximum, cpu), 0),
         healthMs,
         deliveredAt,
       },

@@ -98,7 +98,7 @@ const getFixture = async (idleMs = 300_000) => {
   const engine = createBrowserEngine({ kernel: f.kernel, launcher: { start, stop }, idleMs, snapshotBudgetMs: 60 })
   resources.add(async () => {
     await engine.shutdown()
-    f.close()
+    await f.close()
   })
   const ctx: ToolContext = {
     botId: bot.id,
@@ -283,6 +283,17 @@ test("snapshot deadline includes waiting behind an earlier operation in the same
 
   expect(result).toMatchObject({ success: false, errorCode: "DEADLINE_EXCEEDED" })
   expect(performance.now() - started).toBeLessThan(2500)
+})
+
+test("shutdown cancels a frozen session snapshot before closing storage", async () => {
+  const f = await getFixture()
+  f.launch.resolve()
+  await f.engine.open({ url: "about:blank", ctx: f.ctx, timeoutMs: 2500 })
+  f.state.hangEvaluation = true
+
+  await f.engine.shutdown()
+
+  expect(f.stop).toHaveBeenCalledTimes(1)
 })
 
 test("navigation of an existing tab also retries once and preserves a DNS failure", async () => {

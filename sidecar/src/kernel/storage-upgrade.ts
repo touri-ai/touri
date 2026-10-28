@@ -157,6 +157,7 @@ export const createStorageUpgrade = ({
   }
   let stopped = false
   let worker: Worker | undefined
+  let workerExited: Promise<void> = Promise.resolve()
   let rejectBackup: ((reason: Error) => void) | undefined
   const save = (next: Progress) => {
     database
@@ -174,11 +175,18 @@ export const createStorageUpgrade = ({
     await removePrivateFileAsync({ root: appData, path: temporary })
     await writePrivateFileAsync({ root: appData, path: temporary, content: "" })
     const workerDestination = await prepareDatabaseFileAsync({ root: appData, path: temporary })
+    if (stopped) return
     const url = URL.createObjectURL(new Blob([backupSource], { type: "application/javascript" }))
     try {
       await new Promise<void>((resolve, reject) => {
         rejectBackup = reject
         worker = new Worker(url, { smol: true })
+        const exited = Promise.withResolvers<void>()
+        workerExited = exited.promise
+        worker.addEventListener("close", () => {
+          exited.resolve()
+          reject(new Error("Storage backup worker closed"))
+        })
         worker.onmessage = ({ data }) => {
           if (data?.ok === true) return resolve()
           const stage = ["open-source", "copy", "verify", "sync"].includes(data?.stage) ? data.stage : "worker"
@@ -186,7 +194,10 @@ export const createStorageUpgrade = ({
             typeof data?.code === "string" && /^[A-Z0-9_]{1,64}$/.test(data.code) ? data.code : "BACKUP_FAILED"
           reject(new Error(`Storage backup failed (${stage}: ${code})`))
         }
-        worker.onerror = () => reject(new Error("Storage backup failed"))
+        worker.onerror = (event) => {
+          event.preventDefault()
+          reject(new Error("Storage backup failed"))
+        }
         worker.postMessage({
           filename: database.filename,
           destination: workerDestination,
@@ -197,6 +208,7 @@ export const createStorageUpgrade = ({
       await movePrivateFileAsync({ root: appData, from: temporary, to: destination })
     } finally {
       worker?.terminate()
+      await workerExited
       worker = undefined
       rejectBackup = undefined
       URL.revokeObjectURL(url)
@@ -265,10 +277,11 @@ export const createStorageUpgrade = ({
       progress = { ...progress, cursor }
       return true
     },
-    dispose: () => {
+    dispose: (): Promise<void> => {
       stopped = true
       worker?.terminate()
       rejectBackup?.(new Error("Storage backup stopped"))
+      return workerExited
     },
   }
 }

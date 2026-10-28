@@ -70,6 +70,7 @@ export const createThreadDeletionManager = (
   let pendingBatch: PendingBatch | undefined
   let batchId = 0
   let workerExited: Promise<void> = Promise.resolve()
+  const workerExits = new Set<Promise<void>>()
 
   const clearWorker = (): void => {
     if (workerStartupTimer) clearTimeout(workerStartupTimer)
@@ -103,6 +104,8 @@ export const createThreadDeletionManager = (
     const current = worker
     const exited = Promise.withResolvers<void>()
     workerExited = exited.promise
+    workerExits.add(workerExited)
+    void workerExited.then(() => workerExits.delete(exited.promise))
     workerReady = new Promise<void>((resolve, reject) => {
       resolveWorkerReady = resolve
       rejectWorkerReady = reject
@@ -370,7 +373,7 @@ export const createThreadDeletionManager = (
       current?.terminate()
     }
     // Termination is asynchronous too: wait for the connection's owner to exit.
-    await workerExited
+    await Promise.all(workerExits)
     clearTimeout(stopTimer)
     clearWorker()
   }

@@ -3892,6 +3892,7 @@ export const createRuntimeEngine = ({
       await Promise.all(Array.from(preparations.values()).map(({ promise }) => promise))
       await Promise.all(Object.values(adapters).map((adapter) => adapter.shutdown()))
       await Promise.all(executions.values())
+      await reconciliation
       await Promise.allSettled(stopOperations.values())
       // Queued cancellations can have a terminal write without an execution promise.
       await Promise.all(finalizations.values())

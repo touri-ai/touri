@@ -538,11 +538,10 @@ export const init = async (
   kernel.services.provide("bots.instructions", getBotInstructions)
   kernel.services.provide("storage.threadTitles", {
     getRoutineTitles: (threadIds, signal) => getRoutineThreadTitles(reader, threadIds, signal),
-    dispose: () => {
+    dispose: async () => {
       threadTitleSearch.dispose()
+      await Promise.all([editQueue.dispose(), metadataWriter.dispose()])
       reader.dispose()
-      editQueue.dispose()
-      metadataWriter.dispose()
     },
   })
   const recovery = createStartupRecovery(kernel, runStage)

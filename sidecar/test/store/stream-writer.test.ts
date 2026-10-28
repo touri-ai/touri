@@ -693,16 +693,64 @@ test("shutdown warns about busy buffered writes and cancels retries before closi
   cleanups.add(() => log.mockRestore())
   const publish = spyOn(f.runtime.kernel, "publish")
   cleanups.add(() => publish.mockRestore())
+  const firstDrain = f.store.flushWritesAsync?.({ threadId: "t", messageId: "a" })
+  void firstDrain?.catch(() => undefined)
+  f.store.appendDelta({ threadId: "t", messageId: "b", partIndex: 0, delta: "Pendente" })
+  const pendingDrain = f.store.flushWritesAsync?.({ threadId: "t", messageId: "b" })
+  if (!pendingDrain) throw new Error("Missing asynchronous stream drain")
+  const drained = pendingDrain.catch((error: unknown) => error)
 
   await f.runtime.stop()
+  const failure = await drained
 
+  expect(failure).toBeInstanceOf(Error)
+  expect(failure instanceof Error && failure.message).toBe("Stream writer is closed")
   expect(publish.mock.calls.map(([event]) => event)).not.toContainEqual({ type: "transcript.resync" })
   expect(log.mock.calls.map(([entry]) => entry)).toContainEqual({
     level: "warn",
     module: "store",
     msg: "Shutdown could not persist buffered stream writes; database remains busy",
-    data: { events: 1, bytes: Buffer.byteLength("Preservar") },
+    data: { events: 2, bytes: Buffer.byteLength("PreservarPendente") },
   })
+  expect(f.events.filter(({ event }) => event.type === "message.delta")).toHaveLength(0)
+}, 10_000)
+
+test("shutdown settles an HTTP handler waiting for a contended stream drain", async () => {
+  const f = await fixture()
+  cleanups.add(f.close)
+  await f.runtime.kernel.services.use("storage.maintenance")?.dispose()
+  f.store.appendDelta({ threadId: "t", messageId: "a", partIndex: 0, delta: "Preservar" })
+  const blocker = new SqliteDatabase(join(f.root, "touri.db"))
+  cleanups.add(() => blocker.close())
+  blocker.exec("BEGIN IMMEDIATE")
+  const firstDrain = f.store.flushWritesAsync?.({ threadId: "t", messageId: "a" })
+  void firstDrain?.catch(() => undefined)
+  f.store.appendDelta({ threadId: "t", messageId: "b", partIndex: 0, delta: "Pendente" })
+  const started = Promise.withResolvers<void>()
+  const finished = Promise.withResolvers<void>()
+  f.runtime.kernel.registerRoutes({
+    name: "synthetic-drain",
+    routes: [
+      {
+        method: "GET",
+        path: "/synthetic-drain",
+        handler: async () => {
+          started.resolve()
+          await f.store.flushWritesAsync?.({ threadId: "t", messageId: "b" }).finally(finished.resolve)
+          return { status: 200, json: {} }
+        },
+      },
+    ],
+  })
+  const request = fetch(`http://127.0.0.1:${f.runtime.handshake.port}/api/v1/synthetic-drain`, {
+    headers: { Authorization: "Bearer dev-ui-token", Origin: "tauri://localhost" },
+  }).catch(() => undefined)
+  await started.promise
+
+  await f.runtime.stop()
+  await finished.promise
+  await request
+
   expect(f.events.filter(({ event }) => event.type === "message.delta")).toHaveLength(0)
 }, 10_000)
 

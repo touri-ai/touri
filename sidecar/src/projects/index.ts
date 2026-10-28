@@ -21,7 +21,10 @@ export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): P
   await supervisor.cleanupOrphans()
   await supervisor.autostart()
   kernel.subscribe(({ event }) => {
-    if (event.type === "machine.updated" && event.machine.status === "running") void supervisor.autostart()
+    if (event.type === "machine.updated" && event.machine.status === "running")
+      void supervisor.autostart().catch(() => {
+        kernel.log({ level: "warn", module: "store", msg: "Background process startup stopped" })
+      })
   })
   kernel.onHostNotification((notification) => {
     if (notification.method === "app.willQuit") void supervisor.stopAll()

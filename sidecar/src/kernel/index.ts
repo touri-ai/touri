@@ -18,6 +18,7 @@ import { touriVersion } from "../version"
 import { getFileIoStats, writePrivateFileAsync } from "./async-files"
 import { createBackgroundTask, getMeasuredStage, yieldBackground } from "./background-task"
 import { createStorageMaintenance } from "./data-maintenance"
+import { stopDatabaseTasks } from "./database-lifecycle"
 import { openDatabase, SCHEMA_VERSION } from "./db"
 import { bindDeviceSession, type DeviceSession, deviceSession, socketDeviceContext } from "./device-session"
 import { errorResponse, normalizeErrorBody } from "./errors"
@@ -236,7 +237,7 @@ export const createKernel = ({
     recentErrors.push({ code, at: Date.now() })
     if (recentErrors.length > 500) recentErrors.shift()
   })
-  const bus = createEventBus(database, stageTracker.run, { deferRecovery: true })
+  const bus = createEventBus(database, stageTracker.run, { deferRecovery: true, log })
   const notifications = new Set<(notification: HostNotification) => void>()
   const socketHost = createHostClient({
     socketPath: process.env.TOURI_HOST_SOCK ?? join(paths.runDir, "host.sock"),
@@ -303,6 +304,7 @@ export const createKernel = ({
   const liveSockets = new Set<ServerWebSocket<KernelSocketData>>()
   const eventSockets = new WeakMap<ServerWebSocket<KernelSocketData>, Parameters<typeof bus.add>[0]>()
   const pendingRequests = new Set<AbortController>()
+  const pendingHandlers = new Set<Promise<unknown>>()
   const sseRequests = new Set<AbortController>()
   const diagnostics = createPerformanceDiagnostics({
     log,
@@ -371,6 +373,7 @@ export const createKernel = ({
   revocationTimer.unref()
   const uiToken = process.env.TOURI_UI_TOKEN || developmentUiToken()
   let ready = !deferReady
+  let stopping = false
   const listen = web?.listen ?? Bun.serve<KernelSocketData>
   const server = listen({
     hostname: web?.hostname ?? "127.0.0.1",
@@ -384,6 +387,7 @@ export const createKernel = ({
       return jsonResponse(failure.status, failure.json)
     },
     fetch: diagnostics.observeFetch<KernelSocketData>(async (request, bunServer) => {
+      if (stopping) return jsonResponse(503, { errorCode: "RUNTIME_DRAINING" })
       const url = new URL(request.url)
       const desktopId = /^\/api\/v1\/desktop\/([a-f0-9]{48})\/socket$/.exec(url.pathname)?.[1]
       const presenceBotId = /^\/api\/v1\/bots\/([a-zA-Z0-9-]+)\/machine\/presence\/socket$/.exec(url.pathname)?.[1]
@@ -504,6 +508,7 @@ export const createKernel = ({
           request.headers.get("origin"),
         )
       const controller = new AbortController()
+      if (stopping) return jsonResponse(503, { errorCode: "RUNTIME_DRAINING" })
       const abortRequest = () => controller.abort()
       request.signal.addEventListener("abort", abortRequest, { once: true })
       if (request.signal.aborted) controller.abort()
@@ -515,13 +520,15 @@ export const createKernel = ({
         controller.signal.removeEventListener("abort", finish)
         request.signal.removeEventListener("abort", abortRequest)
       }
-      const response = await routes.handle({
+      const handling = routes.handle({
         method: request.method,
         pathname: url.pathname.slice(prefix.length) || "/",
         query: url.searchParams,
         body,
         signal: controller.signal,
       })
+      pendingHandlers.add(handling)
+      const response = await handling.finally(() => pendingHandlers.delete(handling))
       if ("stream" in response) {
         if (response.mime === "text/event-stream" && !controller.signal.aborted) sseRequests.add(controller)
         controller.signal.addEventListener("abort", finish, { once: true })
@@ -723,16 +730,21 @@ export const createKernel = ({
   let stopPromise: Promise<void> | undefined
   const stop = (): Promise<void> => {
     if (stopPromise) return stopPromise
+    stopping = true
     stopPromise = (async () => {
+      services.use("vm.desktop")?.dispose()
+      services.use("doctor")?.dispose()
+      removePrivateFile({ root: paths.appData, path: handshakePath })
       const shutdownRuntime = services.use("runtime.shutdown")
       if (shutdownRuntime) await shutdownRuntime({ appRestart: true })
+      const producersStopped = stopDatabaseTasks(database)
       const notificationRecovery = services.use("notify.recovery")
       if (notificationRecovery) await notificationRecovery.dispose()
       const storeRecovery = services.use("store.recovery")
       if (storeRecovery) await storeRecovery.dispose()
       diagnostics.stop()
       clearInterval(revocationTimer)
-      revocationTask.dispose()
+      await revocationTask.dispose()
       for (const controller of pendingRequests) controller.abort()
       for (const socket of liveSockets) socket.close(1001, "Servidor encerrado")
       liveSockets.clear()
@@ -741,27 +753,37 @@ export const createKernel = ({
       if (shutdownBrowser) await shutdownBrowser()
       const store = services.use("store.api")
       if (store && !store.closeStreamWriterIfIdle?.()) await store.flushWritesAsync?.({ stopping: true })
-      services.use("storage.botDeletion")?.dispose()
+      // A canceled history handler may itself be waiting for the stream writer to close.
+      await Promise.allSettled(pendingHandlers)
+      const botDeletionStopped = services.use("storage.botDeletion")?.dispose()
       const threadDeletionStopped = services.use("storage.threadDeletion")?.dispose()
-      services.use("storage.threadTitles")?.dispose()
+      const metadataStopped = services.use("storage.threadTitles")?.dispose()
       stopHistoryBackfill()
       const attentionStopped = stopWorkspaceAttentionBackfill()
       const maintenanceStopped = storageMaintenance.dispose({ closing: true })
-      services.use("vm.desktop")?.dispose()
-      services.use("doctor")?.dispose()
+      await Promise.allSettled([metadataStopped])
       const homeWriterStopped = stopBotHomeWriter(kernel)
       if (homeWriterStopped) await homeWriterStopped
       if (attentionStopped) await attentionStopped
-      removePrivateFile({ root: paths.appData, path: handshakePath })
+      // Deletion can finish a final publication while draining; close delivery last.
+      const storageStopped = await Promise.allSettled([
+        producersStopped,
+        metadataStopped,
+        botDeletionStopped,
+        threadDeletionStopped,
+        maintenanceStopped,
+      ])
+      const busStopped = await Promise.allSettled([bus.stop()])
       shell.dispose()
       host.close()
-      const storageStopped = await Promise.allSettled([threadDeletionStopped, maintenanceStopped, bus.stop()])
       database.close()
-      const storageFailure = storageStopped.find((result) => result.status === "rejected")
+      const storageFailure = storageStopped.concat(busStopped).find((result) => result.status === "rejected")
       if (storageFailure?.status === "rejected") throw storageFailure.reason
     })()
     // Shutdown can outlive its initiator; keep failures observable without an unhandled rejection.
-    void stopPromise.catch(() => undefined)
+    void stopPromise.catch(() => {
+      log({ level: "warn", module: "store", msg: "Storage shutdown failed after background work stopped" })
+    })
     return stopPromise
   }
 

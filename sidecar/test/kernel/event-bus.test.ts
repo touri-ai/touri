@@ -38,11 +38,9 @@ test("r2: closing or stale websocket cannot interrupt broadcasts or sidecar requ
   expect(healthy).toHaveLength(2)
 })
 
-const cleanups = new Set<() => void>()
-afterEach(() => {
-  cleanups.forEach((cleanup) => {
-    cleanup()
-  })
+const cleanups = new Set<() => void | Promise<void>>()
+afterEach(async () => {
+  for (const cleanup of cleanups) await cleanup()
   cleanups.clear()
 })
 const canView = (event: UiEvent): boolean => event.type !== "import.progress" || event.importId === "public"
@@ -79,9 +77,8 @@ test("filtered replay preserves the same cursor contract as live delivery", () =
   const database = openDatabase({ filename: join(root, "test.db") })
   const writer = createEventBus(database)
   const reader = createEventBus(database)
-  cleanups.add(() => {
-    writer.stop()
-    reader.stop()
+  cleanups.add(async () => {
+    await Promise.all([writer.stop(), reader.stop()])
     database.close()
     rmSync(root, { recursive: true, force: true })
   })

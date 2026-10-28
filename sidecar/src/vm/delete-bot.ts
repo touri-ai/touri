@@ -12,6 +12,7 @@ import {
   isStorageUpgradePending,
 } from "../kernel/data-maintenance"
 import { errorResponse, TouriError } from "../kernel/errors"
+import { getWorkerExit } from "../kernel/worker-exit"
 import { deleteBotWorkerSource } from "./delete-bot-worker"
 import { providerLoginAccount } from "./provider-login"
 
@@ -107,6 +108,10 @@ export const createBotDeletionManager = (
 ) => {
   const db = kernel.db as Database
   let disposed = false
+  let disposePromise: Promise<void> | undefined
+  const shutdown = new AbortController()
+  const jobs = new Set<Promise<void>>()
+  const workerExits = new Set<Promise<void>>()
   let worker: Worker | undefined
   let workerUrl: string | undefined
   let workerReady: Promise<void> | undefined
@@ -145,9 +150,13 @@ export const createBotDeletionManager = (
   }
 
   const ensureWorker = (): Promise<void> => {
+    if (disposed) return Promise.reject(new Error("Bot deletion worker stopped"))
     if (workerReady) return workerReady
     workerUrl = URL.createObjectURL(new Blob([deleteBotWorkerSource], { type: "application/javascript" }))
     worker = new Worker(workerUrl, { smol: true, ref: false })
+    const exited = getWorkerExit(worker)
+    workerExits.add(exited)
+    void exited.then(() => workerExits.delete(exited))
     workerReady = new Promise<void>((resolve, reject) => {
       resolveWorkerReady = resolve
       rejectWorkerReady = reject
@@ -195,6 +204,7 @@ export const createBotDeletionManager = (
     const operation = batchQueue.then(async () => {
       if (disposed) throw new Error("Bot deletion worker stopped")
       await ensureWorker()
+      if (disposed) throw new Error("Bot deletion worker stopped")
       if (!worker) throw new Error("Bot deletion worker is unavailable")
       const id = String(++batchId)
       return new Promise<DeletionBatchResult>((resolve, reject) => {
@@ -239,7 +249,12 @@ export const createBotDeletionManager = (
       error instanceof Error && "code" in error && typeof error.code === "string" && error.code.startsWith("SQLITE_")
         ? error.code
         : "unexpected"
-    db.query("UPDATE bot_deletions SET error_code = ?, updated_at = ? WHERE bot_id = ?").run(code, Date.now(), botId)
+    try {
+      db.query("UPDATE bot_deletions SET error_code = ?, updated_at = ? WHERE bot_id = ?").run(code, Date.now(), botId)
+    } catch {
+      kernel.log({ level: "warn", module: "store", msg: "Bot deletion status could not be saved" })
+      return
+    }
     kernel.log({
       level: "warn",
       module: "vm",
@@ -257,7 +272,9 @@ export const createBotDeletionManager = (
         relative(kernel.paths.appData, kernel.paths.botsDir),
         ...(await getProviderHomePaths(kernel.paths.appData)),
       ]
+      if (disposed) return false
       for (const path of homes) await removeBotHomeDirectoryAsync({ root: kernel.paths.appData, path, botId })
+      if (disposed) return false
       updateJob(botId, { phase: "replay", cursor: 0, highWater: 0, fileCursor: "" })
       return false
     }
@@ -275,6 +292,7 @@ export const createBotDeletionManager = (
         })
         .map((session) => session.rollout_path)
       await Promise.all(paths.map((path) => removePrivateFileAsync({ root: kernel.paths.appData, path })))
+      if (disposed) return false
       db.transaction(() => {
         sessions.forEach(({ id }) => {
           db.query("UPDATE provider_sessions SET rollout_path = NULL WHERE id = ?").run(id)
@@ -284,9 +302,11 @@ export const createBotDeletionManager = (
     }
 
     const paths = await getBotConfigurationPaths(kernel.paths.runDir, rows)
+    if (disposed) return false
     for (let offset = 0; offset < paths.length; offset += BOT_FILE_BATCH_SIZE) {
       const batch = paths.slice(offset, offset + BOT_FILE_BATCH_SIZE)
       await Promise.all(batch.map((path) => removePrivateFileAsync({ root: kernel.paths.appData, path })))
+      if (disposed) return false
       if (offset + BOT_FILE_BATCH_SIZE < paths.length) await new Promise<void>((resolve) => setImmediate(resolve))
     }
     updateJob(botId, { phase: "files", fileCursor: rows.at(-1)?.id ?? cursor })
@@ -319,11 +339,14 @@ export const createBotDeletionManager = (
     }
 
     await performDeletionStep("TOURI-E1015", () => stopBotTasks(kernel, job.bot_id))
+    if (disposed) return
     await performDeletionStep("TOURI-E1016", () => deleteBotLogins(kernel, job.bot_id))
+    if (disposed) return
     if (bot.machine !== "local" || db.query("SELECT bot_id FROM bot_machines WHERE bot_id = ?").get(job.bot_id))
       await performDeletionStep("TOURI-E8003", () =>
         runtime.destroy({ botId: job.bot_id, deleteVolumes: job.delete_volumes === 1 }),
       )
+    if (disposed) return
     prepareBotGroups(job.bot_id)
     updateJob(job.bot_id, { phase: "files", fileCursor: "" })
   }
@@ -360,12 +383,21 @@ export const createBotDeletionManager = (
         }
         if (job.phase === "session") {
           await removeBotSessionFile(kernel, botId)
+          if (disposed) return
           await removeDeletedBrowserSessionKey(kernel, botId)
+          if (disposed) return
           updateJob(botId, { phase: "cleanup" })
           continue
         }
         if (job.phase === "cleanup") {
-          const collected = await collectDeletedBotBlobs(kernel, botId, new Set<string>(), collectBlobs)
+          const collected = await collectDeletedBotBlobs(
+            kernel,
+            botId,
+            new Set<string>(),
+            collectBlobs,
+            shutdown.signal,
+          )
+          if (disposed) return
           if (!collected) {
             db.query("UPDATE bot_deletions SET error_code = 'TOURI-E2015', updated_at = ? WHERE bot_id = ?").run(
               Date.now(),
@@ -412,12 +444,17 @@ export const createBotDeletionManager = (
     if (disposed || running.has(botId) || immediate.has(botId)) return
     const timer = setImmediate(() => {
       immediate.delete(botId)
-      void runJob(botId)
+      const job = runJob(botId).catch(() => {
+        kernel.log({ level: "warn", module: "store", msg: "Background bot deletion failed" })
+      })
+      jobs.add(job)
+      void job.finally(() => jobs.delete(job))
     })
     immediate.set(botId, timer)
   }
 
   const schedulePending = () => {
+    if (disposed) return
     const pending = db.query("SELECT bot_id FROM bot_deletions ORDER BY created_at LIMIT 100").all() as Array<{
       bot_id: string
     }>
@@ -428,8 +465,10 @@ export const createBotDeletionManager = (
 
   const resume = () => schedulePending()
 
-  const dispose = () => {
+  const dispose = (): Promise<void> => {
+    if (disposePromise) return disposePromise
     disposed = true
+    shutdown.abort()
     immediate.forEach((timer) => {
       clearImmediate(timer)
     })
@@ -440,6 +479,8 @@ export const createBotDeletionManager = (
     retryTimers.clear()
     rejectWorkerReady?.(new Error("Bot deletion worker stopped"))
     clearWorker()
+    disposePromise = Promise.allSettled(Array.from(jobs).concat(batchQueue, Array.from(workerExits))).then(() => {})
+    return disposePromise
   }
 
   return { start, resume, dispose }
@@ -486,11 +527,12 @@ const collectDeletedBotBlobs = async (
   botId: string,
   attachments: Set<string>,
   collectBlobs: typeof collectUnusedOutputBlobs,
+  shutdown: AbortSignal,
 ): Promise<boolean> => {
   const db = kernel.db as Database
   const marker = `storage.deleted-attachments:${botId}`
   const timeoutMs = 5000
-  const signal = AbortSignal.timeout(timeoutMs)
+  const signal = AbortSignal.any([shutdown, AbortSignal.timeout(timeoutMs)])
   try {
     for (const attempt of [1, 2, 3]) {
       if (isStorageUpgradePending(db)) return false

@@ -8,13 +8,34 @@ const WRITE_DEADLINE_MS = 5_000
 type PendingEvent = { at: number; payload: string; bytes: number; deadline: number }
 
 /** Contended event inserts yield; delivery still starts only after durable persistence. */
-export const createEventLogWriter = (database: Database, onSaved: (envelope: UiEventEnvelope) => void) => {
+export const createEventLogWriter = (
+  database: Database,
+  onSaved: (envelope: UiEventEnvelope) => void,
+  onError: () => void = () => console.warn("Background event persistence failed"),
+) => {
   // This connection owns the bounded backlog and retry timer, including shutdown draining.
   let pending: PendingEvent[] = []
   let pendingBytes = 0
   let timer: ReturnType<typeof setTimeout> | undefined
   let completion: ReturnType<typeof Promise.withResolvers<void>> | undefined
   let failure: Error | undefined
+  let closing = false
+  let closePromise: Promise<void> | undefined
+  const reportFailure = (): void => {
+    try {
+      onError()
+    } catch {
+      // A failed disk can also reject diagnostics.
+    }
+  }
+
+  const notifySaved = (envelope: UiEventEnvelope): void => {
+    try {
+      onSaved(envelope)
+    } catch {
+      reportFailure()
+    }
+  }
 
   const insert = (event: PendingEvent): UiEventEnvelope => {
     const busyTimeout = (database.query("PRAGMA busy_timeout").get() as { timeout: number }).timeout
@@ -52,11 +73,12 @@ export const createEventLogWriter = (database: Database, onSaved: (envelope: UiE
         }
         failure = new Error("EVENT_PERSISTENCE_FAILED")
         completion?.reject(failure)
+        reportFailure()
         return
       }
       pending = pending.slice(1)
       pendingBytes -= next.bytes
-      onSaved(envelope)
+      notifySaved(envelope)
       if (performance.now() - startedAt >= 8) break
     }
     if (pending.length > 0) {
@@ -68,6 +90,7 @@ export const createEventLogWriter = (database: Database, onSaved: (envelope: UiE
   }
 
   const save = (event: UiEvent): void => {
+    if (closing) throw new Error("EVENT_PERSISTENCE_CLOSED")
     if (failure) throw failure
     // A retried owned transaction must not overtake already admitted events. Its caller
     // retries after rollback, so no uncommitted event ever escapes into the backlog.
@@ -82,7 +105,7 @@ export const createEventLogWriter = (database: Database, onSaved: (envelope: UiE
         if (database.inTransaction || !isEventWriteBusy(error)) throw error
       }
       if (envelope) {
-        onSaved(envelope)
+        notifySaved(envelope)
         return
       }
     }
@@ -98,11 +121,20 @@ export const createEventLogWriter = (database: Database, onSaved: (envelope: UiE
     schedule()
   }
 
+  const flushAsync = async (): Promise<void> => {
+    if (failure) throw failure
+    await completion?.promise
+  }
+
   return {
     save,
-    flushAsync: async (): Promise<void> => {
-      if (failure) throw failure
-      await completion?.promise
+    flushAsync,
+    close: (): Promise<void> => {
+      if (closePromise) return closePromise
+      closing = true
+      closePromise = flushAsync().finally(() => clearTimeout(timer))
+      void closePromise.catch(() => undefined)
+      return closePromise
     },
   }
 }
