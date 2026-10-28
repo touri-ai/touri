@@ -118,6 +118,21 @@ type State = {
 }
 const getState = async (): Promise<State> => post({ step: "inspect" })
 const getScreen = (page: Page) => page.getByRole("application", { name: "Página atual do navegador" })
+const waitForBrowserViewport = async (
+  page: Page,
+  getViewport: () => Promise<{ width: number; height: number }> = getState,
+) => {
+  await expect
+    .poll(async () => {
+      const state = await getViewport()
+      const bounds = await getScreen(page).boundingBox()
+      return {
+        width: Math.abs(state.width - Math.round(bounds?.width ?? 0)),
+        height: Math.abs(state.height - Math.round(bounds?.height ?? 0)),
+      }
+    })
+    .toEqual({ width: 0, height: 0 })
+}
 const getPoint = async (page: Page, target: Bounds, state: State) => {
   const bounds = await getScreen(page).boundingBox()
   if (!bounds) throw new Error("Live page missing")
@@ -137,6 +152,22 @@ const clickTarget = async (
   if (touch) await page.touchscreen.tap(point.x, point.y)
   else await page.mouse.click(point.x, point.y)
 }
+
+test("viewport synchronization waits for a height-only browser resize", async ({ page }) => {
+  await page.setContent(
+    '<div role="application" aria-label="Página atual do navegador" style="width: 1030px; height: 474px"></div>',
+  )
+  // Model the remote viewport before and after the asynchronous resize reaches the browser.
+  let inspections = 0
+  const getViewport = async () => {
+    inspections += 1
+    return { width: 1030, height: inspections === 1 ? 494 : 474 }
+  }
+
+  await waitForBrowserViewport(page, getViewport)
+
+  expect(inspections).toBeGreaterThan(1)
+})
 
 for (const width of [1440, 390]) {
   for (const theme of ["light", "dark"]) {
@@ -268,11 +299,7 @@ for (const width of [1440, 390]) {
         await expect(view).toHaveAttribute("data-full-view", width === 390 ? "true" : "false")
         const screen = await getScreen(page).boundingBox()
         expect(screen?.width).toBeGreaterThan(width === 390 ? 370 : 1000)
-        await expect
-          .poll(async () =>
-            Math.abs((await getState()).width - Math.round((await getScreen(page).boundingBox())?.width ?? 0)),
-          )
-          .toBe(0)
+        await waitForBrowserViewport(page)
       }
       await page.screenshot({ path: join(evidence, `${phase}-${width}-${theme}.png`) })
       if (baseline && width === 390) {
@@ -404,11 +431,7 @@ for (const width of [1440, 390]) {
       await page.getByRole("button", { name: "Recarregar página" }).click()
       await expect.poll(async () => (await getState()).next).toBe(true)
       await page.setViewportSize({ width: width === 390 ? 410 : 1280, height: width === 390 ? 800 : 820 })
-      await expect
-        .poll(async () =>
-          Math.abs((await getState()).width - Math.round((await getScreen(page).boundingBox())?.width ?? 0)),
-        )
-        .toBe(0)
+      await waitForBrowserViewport(page)
       await clickTarget(page, "nameBounds", width === 390)
       await page.keyboard.type("estado preservado")
       await expect.poll(async () => (await getState()).name).toBe("estado preservado")
