@@ -9,8 +9,8 @@ import { writeDatabaseAsync } from "../../src/kernel/database-write"
 import { openDatabase } from "../../src/kernel/db"
 import { createEventBus, REPLAY_LIMITS } from "../../src/kernel/event-bus"
 import { createPerformanceStageTracker } from "../../src/kernel/performance"
-import { createSlowStatementTracker, type SlowStatementTracker } from "../../src/kernel/sqlite-performance"
 import { profileProviders } from "../../src/kernel/provider-profiles"
+import { createSlowStatementTracker, type SlowStatementTracker } from "../../src/kernel/sqlite-performance"
 import type { TranscriptRef } from "../../src/kernel/transcript-events"
 
 const cleanups = new Set<() => void | Promise<void>>()
@@ -432,7 +432,9 @@ test("slow synthetic reference storage does not consume the live event-loop budg
   })
   const fixture = await getFixture(statements)
   const histogram = monitorEventLoopDelay({ resolution: 5 })
-  cleanups.add(() => histogram.disable())
+  cleanups.add(() => {
+    histogram.disable()
+  })
   const server = startProbeServer()
   const databaseQuery = fixture.database.query.bind(fixture.database)
   const delayMs = 150
@@ -484,16 +486,18 @@ test("slow synthetic reference storage does not consume the live event-loop budg
     const maxMs = ordered.at(-1) ?? 0
 
     histogram.disable()
+    // The tracker returns a fresh, bounded diagnostic array.
+    const longestStatements = statements
+      .snapshot()
+      .sort((left, right) => right.maxMs - left.maxMs)
+      .slice(0, 8)
     console.info(
       JSON.stringify({
         referenceProfile: {
           histogramP99Ms: histogram.percentile(99) / 1_000_000,
           histogramMaxMs: histogram.max / 1_000_000,
           stages: stages.snapshot(),
-          statements: statements
-            .snapshot()
-            .toSorted((left, right) => right.maxMs - left.maxMs)
-            .slice(0, 8),
+          statements: longestStatements,
         },
       }),
     )
@@ -663,7 +667,9 @@ const startProbeServer = () => {
 
 const getFixture = async (slowStatements?: SlowStatementTracker) => {
   const root = await mkdtemp(join(tmpdir(), "touri-async-reference-"))
-  const database = openDatabase({ filename: join(root, "synthetic.db"), slowStatements })
+  const filename = join(root, "synthetic.db")
+  const options = slowStatements ? { filename, slowStatements } : { filename }
+  const database = openDatabase(options)
   cleanups.add(async () => {
     database.close()
     await rm(root, { recursive: true, force: true })

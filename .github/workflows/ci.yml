@@ -12,15 +12,20 @@ jobs:
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: 1.4.3
-      - name: Profile 30 reference-storage repetitions under CPU load
+      - name: Profile shard prefix under CPU load
         shell: bash
         run: |
           python3 -c 'while True: sum(range(10000))' &
           load_pid=$!
           trap 'kill "$load_pid"; wait "$load_pid" || true' EXIT
           result=0
-          for iteration in $(seq 1 30); do
+          for iteration in $(seq 1 10); do
             echo "REFERENCE_ITERATION=$iteration"
-            bun test sidecar/test/kernel/event-reference-async.test.ts || result=1
+            bun -e '
+              import { testFiles, sidecarShard } from "./.github/ci/selection.ts"
+              const files = testFiles().filter((file) => sidecarShard(file) === 2 && file <= "kernel/event-reference-async.test.ts")
+              const child = Bun.spawn([process.execPath, "test", ...files.map((file) => `./sidecar/test/${file}`)], { stdout: "inherit", stderr: "inherit" })
+              process.exit(await child.exited)
+            ' || result=1
           done
           exit "$result"
