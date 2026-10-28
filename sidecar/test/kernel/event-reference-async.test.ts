@@ -1,11 +1,15 @@
+import { profile } from "bun:jsc"
 import { afterEach, expect, spyOn, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { monitorEventLoopDelay } from "node:perf_hooks"
 import type { UiEvent, UiEventEnvelope } from "@touri/contracts"
 import { writeDatabaseAsync } from "../../src/kernel/database-write"
 import { openDatabase } from "../../src/kernel/db"
 import { createEventBus, REPLAY_LIMITS } from "../../src/kernel/event-bus"
+import { createPerformanceStageTracker } from "../../src/kernel/performance"
+import { createSlowStatementTracker, type SlowStatementTracker } from "../../src/kernel/sqlite-performance"
 import { profileProviders } from "../../src/kernel/provider-profiles"
 import type { TranscriptRef } from "../../src/kernel/transcript-events"
 
@@ -419,7 +423,16 @@ test("the real read process preserves compacted snapshot fallback and missing-de
 })
 
 test("slow synthetic reference storage does not consume the live event-loop budget", async () => {
-  const fixture = await getFixture()
+  const stages = createPerformanceStageTracker()
+  const statements = createSlowStatementTracker({
+    log: () => {},
+    getStage: stages.getCurrentStage,
+    runStage: stages.run,
+    thresholdMs: 0,
+  })
+  const fixture = await getFixture(statements)
+  const histogram = monitorEventLoopDelay({ resolution: 5 })
+  cleanups.add(() => histogram.disable())
   const server = startProbeServer()
   const databaseQuery = fixture.database.query.bind(fixture.database)
   const delayMs = 150
@@ -429,7 +442,7 @@ test("slow synthetic reference storage does not consume the live event-loop budg
     return databaseQuery(sql)
   })
   cleanups.add(() => queries.mockRestore())
-  const bus = createEventBus(fixture.database, undefined, {
+  const bus = createEventBus(fixture.database, stages.run, {
     getReferenceEvents: async () => {
       await new Promise<void>((resolve) => setTimeout(resolve, delayMs))
       return [getDelta()]
@@ -437,55 +450,75 @@ test("slow synthetic reference storage does not consume the live event-loop budg
   })
   cleanups.add(() => bus.stop())
   fixture.saveReference()
-  const started = performance.now()
-  let deliveredAt = 0
-  bus.subscribe(() => {
-    deliveredAt = performance.now() - started
-  })
-  let samples: number[] = []
-  let cpuSamples: number[] = []
-  const sampling = (async () => {
-    for (const _index of Array.from({ length: 60 })) {
-      const expected = performance.now() + 5
-      const cpuStarted = process.cpuUsage()
-      await new Promise<void>((resolve) => setTimeout(resolve, 5))
-      samples = samples.concat(Math.max(0, performance.now() - expected))
-      const cpu = process.cpuUsage(cpuStarted)
-      cpuSamples = cpuSamples.concat((cpu.user + cpu.system) / 1_000)
-    }
-  })()
+  const cpu = await profile(async () => {
+    statements.reset()
+    stages.reset()
+    histogram.enable()
+    const started = performance.now()
+    let deliveredAt = 0
+    bus.subscribe(() => {
+      deliveredAt = performance.now() - started
+    })
+    let samples: number[] = []
+    let cpuSamples: number[] = []
+    const sampling = (async () => {
+      for (const _index of Array.from({ length: 60 })) {
+        const expected = performance.now() + 5
+        const cpuStarted = process.cpuUsage()
+        await new Promise<void>((resolve) => setTimeout(resolve, 5))
+        samples = samples.concat(Math.max(0, performance.now() - expected))
+        const cpu = process.cpuUsage(cpuStarted)
+        cpuSamples = cpuSamples.concat((cpu.user + cpu.system) / 1_000)
+      }
+    })()
 
-  bus.publish(getMarker("latency"))
-  const healthStarted = performance.now()
-  const health = await (await fetch(`${server.url}healthz`)).json()
-  const healthMs = performance.now() - healthStarted
-  await sampling
-  await waitFor(() => deliveredAt > 0)
-  // Sort a fresh, bounded probe array; the recorded samples remain unchanged.
-  const ordered = Array.from(samples).sort((left, right) => left - right)
-  const p99Ms = ordered[Math.ceil(ordered.length * 0.99) - 1] ?? 0
-  const maxMs = ordered.at(-1) ?? 0
+    bus.publish(getMarker("latency"))
+    const healthStarted = performance.now()
+    const health = await (await fetch(`${server.url}healthz`)).json()
+    const healthMs = performance.now() - healthStarted
+    await sampling
+    await waitFor(() => deliveredAt > 0)
+    // Sort a fresh, bounded probe array; the recorded samples remain unchanged.
+    const ordered = Array.from(samples).sort((left, right) => left - right)
+    const p99Ms = ordered[Math.ceil(ordered.length * 0.99) - 1] ?? 0
+    const maxMs = ordered.at(-1) ?? 0
 
-  console.info(
-    JSON.stringify({
-      syntheticReference: {
-        runtime: Bun.version,
-        references: 1,
-        delayMs,
-        samples: samples.length,
-        intervalMs: 5,
-        p99Ms,
-        maxMs,
-        maxLagProcessCpuMs: cpuSamples[samples.indexOf(maxMs)],
-        maxSampleProcessCpuMs: cpuSamples.reduce((maximum, cpu) => Math.max(maximum, cpu), 0),
-        healthMs,
-        deliveredAt,
-      },
-    }),
-  )
-  expect(health).toEqual({ ok: true })
-  expect(p99Ms).toBeLessThan(50)
-  expect(maxMs).toBeLessThan(500)
+    histogram.disable()
+    console.info(
+      JSON.stringify({
+        referenceProfile: {
+          histogramP99Ms: histogram.percentile(99) / 1_000_000,
+          histogramMaxMs: histogram.max / 1_000_000,
+          stages: stages.snapshot(),
+          statements: statements
+            .snapshot()
+            .toSorted((left, right) => right.maxMs - left.maxMs)
+            .slice(0, 8),
+        },
+      }),
+    )
+    console.info(
+      JSON.stringify({
+        syntheticReference: {
+          runtime: Bun.version,
+          references: 1,
+          delayMs,
+          samples: samples.length,
+          intervalMs: 5,
+          p99Ms,
+          maxMs,
+          maxLagProcessCpuMs: cpuSamples[samples.indexOf(maxMs)],
+          maxSampleProcessCpuMs: cpuSamples.reduce((maximum, cpu) => Math.max(maximum, cpu), 0),
+          healthMs,
+          deliveredAt,
+        },
+      }),
+    )
+    expect(health).toEqual({ ok: true })
+    expect(p99Ms).toBeLessThan(50)
+    expect(maxMs).toBeLessThan(500)
+  }, 1_000)
+  console.info(JSON.stringify({ referenceCpu: { functions: cpu.functions } }))
 })
 
 test("a failed live reader retries the same cursor and stop aborts the next in-flight read", async () => {
@@ -628,9 +661,9 @@ const startProbeServer = () => {
   throw new Error("No free synthetic test port")
 }
 
-const getFixture = async () => {
+const getFixture = async (slowStatements?: SlowStatementTracker) => {
   const root = await mkdtemp(join(tmpdir(), "touri-async-reference-"))
-  const database = openDatabase({ filename: join(root, "synthetic.db") })
+  const database = openDatabase({ filename: join(root, "synthetic.db"), slowStatements })
   cleanups.add(async () => {
     database.close()
     await rm(root, { recursive: true, force: true })
