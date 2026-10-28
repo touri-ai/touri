@@ -14,6 +14,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs"
+import { mkdir, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Kernel, LegacyImportOptions } from "@touri/contracts"
@@ -24,16 +25,20 @@ import { sourceOrigin } from "../../src/importer/legacy/identity"
 import { cleanupExpiredLegacyStaging, runLegacyImport } from "../../src/importer/legacy/import"
 import { buildAllowlistedCopyCommandList } from "../../src/importer/legacy/transport"
 import { createKernel } from "../../src/kernel"
+import type { PerformanceStageRunner } from "../../src/kernel/performance"
 
 const fixtureRoot = join(import.meta.dir, "..", "fixtures", "legacy")
 
-const withImmediateDatabaseLock = async <Value>(filename: string, operation: () => Promise<Value>): Promise<Value> => {
+const withImmediateDatabaseLock = async <Value>(
+  filename: string,
+  operation: (lock: Database) => Promise<Value>,
+): Promise<Value> => {
   const database = new Database(filename)
   database.exec("BEGIN IMMEDIATE")
   try {
-    return await operation()
+    return await operation(database)
   } finally {
-    database.exec("ROLLBACK")
+    if (database.inTransaction) database.exec("ROLLBACK")
     database.close()
   }
 }
@@ -172,6 +177,79 @@ test("expiry cursor writes do not wait on a busy database", async () => {
     expect(durationMs).toBeLessThan(250)
     expect((database.query("PRAGMA busy_timeout").get() as { timeout: number }).timeout).toBe(5000)
     expect(database.query("SELECT 1 FROM settings WHERE key = 'imports.legacy.expiry.cursor'").get()).toBeNull()
+  })
+})
+
+test.each([false, true])(
+  "expiry removes its whole batch with a concurrent writer (release after contention: %s)",
+  async (releaseAfterContention) => {
+    await withImport(async ({ database, kernel }) => {
+      const expiresAt = 1_800_000_000_000
+      const paths = ["expired-0", "expired-1"].map((id) => join(kernel.paths.importsDir, "legacy", id))
+      for (const path of paths) {
+        await mkdir(path, { recursive: true })
+        await writeFile(join(path, "messages.db"), "synthetic snapshot")
+      }
+      paths.forEach((path, index) => {
+        database
+          .query(
+            "INSERT INTO imports(id,source,origin,status,report_json,started_at) VALUES (?,'legacy','fixture','failed',?,1)",
+          )
+          .run(`expired-${index}`, JSON.stringify({ staging: { path, expiresAt }, warnings: ["synthetic warning"] }))
+      })
+      const removeWithWriter = (lock: Database) => {
+        const runStage: PerformanceStageRunner = (_stage, action, input) => {
+          try {
+            return action(input as Parameters<typeof action>[0])
+          } catch (error) {
+            if (releaseAfterContention && lock.inTransaction) lock.exec("ROLLBACK")
+            throw error
+          }
+        }
+        return cleanupExpiredLegacyStaging({ kernel, now: expiresAt + 1, maxEntries: 2, runStage })
+      }
+
+      const removed = await withImmediateDatabaseLock(kernel.paths.db, removeWithWriter)
+      const retainedPaths = paths.map((path) => existsSync(path))
+      const savedCursor = database
+        .query("SELECT value_json FROM settings WHERE key='imports.legacy.expiry.cursor'")
+        .get()
+      const resumed = await cleanupExpiredLegacyStaging({ kernel, now: expiresAt + 1, maxEntries: 2 })
+
+      expect(retainedPaths).toEqual([false, false])
+      expect(removed).toBe(2)
+      if (releaseAfterContention) expect(savedCursor).toEqual({ value_json: "0" })
+      expect(resumed).toBe(releaseAfterContention ? 1 : 2)
+      expect(
+        database
+          .query("SELECT count(*) AS n FROM imports WHERE json_extract(report_json,'$.staging') IS NOT NULL")
+          .get(),
+      ).toEqual({ n: 0 })
+      expect(database.query("SELECT report_json FROM imports ORDER BY rowid").all()).toEqual([
+        { report_json: JSON.stringify({ warnings: ["synthetic warning"] }) },
+        { report_json: JSON.stringify({ warnings: ["synthetic warning"] }) },
+      ])
+      expect((database.query("PRAGMA busy_timeout").get() as { timeout: number }).timeout).toBe(5000)
+    })
+  },
+)
+
+test.each([-1, 0, 1])("staging expiry uses the persisted millisecond deadline (offset %i)", async (offset) => {
+  await withImport(async ({ database, kernel }) => {
+    const expiresAt = 1_800_000_000_123
+    const path = join(kernel.paths.importsDir, "legacy", "deadline")
+    await mkdir(path, { recursive: true })
+    await writeFile(join(path, "messages.db"), "synthetic snapshot")
+    database
+      .query(
+        "INSERT INTO imports(id,source,origin,status,report_json,started_at) VALUES ('deadline','legacy','fixture','failed',?,1)",
+      )
+      .run(JSON.stringify({ staging: { path, expiresAt } }))
+
+    const removed = await cleanupExpiredLegacyStaging({ kernel, now: expiresAt + offset })
+
+    expect(removed).toBe(offset < 0 ? 0 : 1)
+    expect(existsSync(path)).toBe(offset < 0)
   })
 })
 
