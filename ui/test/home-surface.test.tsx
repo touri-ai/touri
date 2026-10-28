@@ -75,6 +75,7 @@ it("shows one primary hire action and quiet secondary actions, even when checks 
   api.getState().bots.splice(0)
   render(<App kernel={{ services: { api } }} />)
   await screen.findByRole("button", { name: "Criar meu primeiro bot" })
+  await screen.findByRole("button", { name: "Verificar este servidor" })
   const landing = screen.getByRole("main")
   expect(within(landing).getByRole("heading", { name: "touri" })).toBeVisible()
   expect(landing.querySelectorAll(".button-brand")).toHaveLength(1)

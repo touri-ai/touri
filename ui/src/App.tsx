@@ -3,7 +3,6 @@ import type {
   Bot,
   BotGroup,
   GroupInput,
-  HostKind,
   Id,
   Message,
   NotificationRecord,
@@ -179,7 +178,6 @@ const AppContent = ({ kernel }: AppProps) => {
   const currentPersonId = currentPerson?.id ?? null
   const canInvitePeople =
     currentPerson?.role === "admin" && (!isNativeDesktop() || serverState.status?.mode === "server")
-  const host = useHost(api)
   const attachmentButtonRef = useRef<HTMLButtonElement>(null)
   const apiRef = useRef(api)
   apiRef.current = api
@@ -1182,7 +1180,7 @@ const AppContent = ({ kernel }: AppProps) => {
         {botModal}
         {workspaceNotice}
         <OnboardingLanding
-          host={host}
+          api={api}
           onCreateBot={() => openModal("bot")}
           onDoctor={() => openModal("doctor")}
           onImport={() => openModal("import")}
@@ -1897,50 +1895,54 @@ const getStartupFailureDescription = (reason: string, serverMode: boolean): stri
 }
 
 const OnboardingLanding = ({
-  host,
+  api,
   onCreateBot,
   onDoctor,
   onImport,
   onSettings,
 }: {
-  host: HostKind
+  api: UiApi | null
   onCreateBot: () => void
   onDoctor: () => void
   onImport: () => void
   onSettings?: (() => void) | undefined
-}) => (
-  <main className="onboarding-screen">
-    <div className="onboarding-card">
-      <h1 className="brand-lockup">
-        <img className="brand-bull" src="/touri-bull.png" alt="" />
-        <span className="brand-name">touri</span>
-      </h1>
-      <p>{t("onboarding.privacy", { host: getHostLabel(host) })}</p>
-      <div className="onboarding-actions">
-        <button type="button" className="button button-brand" onClick={onCreateBot}>
-          {t("Create my first bot")}
-          <PanelIcon name="arrow-right" />
-        </button>
-      </div>
-      <div className="onboarding-secondary">
-        {onSettings && (
-          <button type="button" className="text-button" onClick={onSettings}>
-            {t("Usar um servidor touri")}
+}) => {
+  const host = useHost(api)
+
+  return (
+    <main className="onboarding-screen">
+      <div className="onboarding-card">
+        <h1 className="brand-lockup">
+          <img className="brand-bull" src="/touri-bull.png" alt="" />
+          <span className="brand-name">touri</span>
+        </h1>
+        <p>{t("onboarding.privacy", { host: getHostLabel(host) })}</p>
+        <div className="onboarding-actions">
+          <button type="button" className="button button-brand" onClick={onCreateBot}>
+            {t("Create my first bot")}
+            <PanelIcon name="arrow-right" />
           </button>
-        )}
-        <span>
-          {t("Already use another tool?")}{" "}
-          <button type="button" className="text-button" onClick={onImport}>
-            {t("Import")}
+        </div>
+        <div className="onboarding-secondary">
+          {onSettings && (
+            <button type="button" className="text-button" onClick={onSettings}>
+              {t("Usar um servidor touri")}
+            </button>
+          )}
+          <span>
+            {t("Already use another tool?")}{" "}
+            <button type="button" className="text-button" onClick={onImport}>
+              {t("Import")}
+            </button>
+          </span>
+          <button type="button" className="text-button" onClick={onDoctor}>
+            {t("Check this {host}", { host: getHostLabel(host) })}
           </button>
-        </span>
-        <button type="button" className="text-button" onClick={onDoctor}>
-          {t("Check this {host}", { host: getHostLabel(host) })}
-        </button>
+        </div>
       </div>
-    </div>
-  </main>
-)
+    </main>
+  )
+}
 
 const App = (props: AppProps) => {
   const chrome = getWindowChrome({
