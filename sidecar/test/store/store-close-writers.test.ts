@@ -16,7 +16,10 @@ import { testKernel } from "../kernel/test-kernel"
 
 const cleanups = new Set<() => void | Promise<void>>()
 afterEach(async () => {
-  for (const cleanup of Array.from(cleanups).toReversed()) await cleanup()
+  await Array.from(cleanups).reduceRight(async (previous, cleanup) => {
+    await previous
+    await cleanup()
+  }, Promise.resolve())
   cleanups.clear()
 })
 

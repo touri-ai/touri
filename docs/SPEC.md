@@ -681,6 +681,13 @@ Repeated kernel shutdown calls return the same promise. Deferred persistence fai
 observed internally even when the initiator attaches its observer later; awaiting shutdown still
 rejects with the persistence failure after the database closes.
 
+Shutdown refuses new HTTP work, cancels active requests and waits for their handlers and
+connection-owned producers before closing SQLite. Metadata edits, deletion jobs, maintenance,
+browser session saves, imports and process supervision retain ownership until admitted work
+settles. Worker stop acknowledgements do not release that ownership: shutdown also awaits
+actual worker exit, including replaced generations. Scheduled event delivery is canceled;
+background storage failures are contained and logged without raw storage diagnostics.
+
 ### 3.3 Sessions: one native session per thread
 - **Resume.** `provider_sessions` has at most one `active` row per (thread, provider).
   - Codex: `thread/resume {threadId, path?: rolloutPath, cwd, developerInstructions, ...}`.
