@@ -67,3 +67,17 @@ test("finished work cannot block and the age threshold excludes fresh work", () 
   expect(db.query(sql).all(20)).toMatchObject([{ blocker_run_id: null }])
   expect(db.query(sql).all(10)).toEqual([])
 })
+
+test("a same-bot channel request identifies its coordinator rather than the provider child", () => {
+  const db = getFixture()
+  addChannel(db, "waiting")
+  addRun(db, "a-provider-child", "builder")
+  addRun(db, "z-coordinator", "builder")
+  addChannel(db, "z-coordinator")
+
+  const rows = db.query(sql).all(20)
+
+  expect(rows).toEqual([
+    { run_id: "waiting", bot_id: "builder", queued_at: 10, wait_scope: "channel", blocker_run_id: "z-coordinator" },
+  ])
+})
