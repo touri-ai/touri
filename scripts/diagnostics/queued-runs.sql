@@ -1,5 +1,6 @@
 -- Offline diagnostic only. Bind the queued-at cutoff (Unix milliseconds).
 -- Only attribute direct conflicts visible in persisted scheduler identities.
+WITH waits AS (
 SELECT waiting.id AS run_id, waiting.bot_id, waiting.queued_at,
        CASE WHEN channel.run_id IS NOT NULL THEN 'channel' ELSE 'thread' END AS wait_scope,
        (SELECT active.id
@@ -26,4 +27,22 @@ SELECT waiting.id AS run_id, waiting.bot_id, waiting.queued_at,
 FROM runs waiting
 LEFT JOIN group_turns channel ON channel.run_id = waiting.id
 WHERE waiting.status = 'queued' AND waiting.queued_at < ?
-ORDER BY waiting.queued_at, waiting.id;
+)
+SELECT waits.*, blocker.started_at AS blocker_started_at,
+       CASE WHEN waits.wait_scope = 'channel' THEN (
+         SELECT MAX(reply.updated_at)
+         FROM group_run_links link
+         JOIN runs execution ON execution.id = link.run_id
+         JOIN messages reply ON reply.thread_id = execution.thread_id
+           AND reply.id = execution.reply_message_id AND reply.run_id = execution.id
+         WHERE link.turn_id = blocker.id AND execution.status IN ('starting', 'running')
+           AND execution.bot_id IN (SELECT value FROM json_each(channel.recipients_json))
+       ) ELSE (
+         SELECT reply.updated_at FROM messages reply
+         WHERE reply.thread_id = blocker.thread_id AND reply.id = blocker.reply_message_id
+           AND reply.run_id = blocker.id
+       ) END AS blocker_last_progress_at
+FROM waits
+LEFT JOIN runs blocker ON blocker.id = waits.blocker_run_id
+LEFT JOIN group_turns channel ON channel.run_id = waits.run_id
+ORDER BY waits.queued_at, waits.run_id;

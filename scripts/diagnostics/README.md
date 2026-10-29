@@ -50,3 +50,26 @@ breaker. Starting/running state does not prove provider progress.
 Consumers should report `wait_scope` and `blocker_run_id` rather than diagnosing
 all delayed coordinators as a stalled bot. Do not automatically cancel or restart
 work based on this query. It returns identifiers and timestamps, never messages.
+
+### Blocking work progress
+
+Waiting age alone does not distinguish a healthy long task from a stuck execution.
+The query also returns `blocker_started_at` and `blocker_last_progress_at` in Unix
+milliseconds, preserving the existing cutoff parameter and blocker selection.
+A missing blocker leaves both timestamps null; missing reply progress stays null
+rather than falling back to the coordinator's start time.
+
+For channel waits, progress is the maximum `messages.updated_at` of replies owned
+by the blocker's starting/running member executions for the waiting recipients,
+including delegated executions. Finished attempts and unrelated recipients do not
+contribute. For thread waits, only the blocking execution's own reply contributes.
+Reply lookup requires the message ID, execution thread and run ID together.
+The query never reads reply text or parts, event history, credentials or paths.
+
+Consumers should include these timestamps in delayed-request reports and compare
+progress against their observation time before claiming an execution has stalled.
+Recent reply updates are evidence of output persistence, not proof that every
+recipient is healthy or that a process is alive. Stale or missing timestamps are
+unknown progress, not permission to cancel, restart or replay work; use runtime
+supervision and explicit user controls for that. Updating this file does not
+install a new query in an external watchdog: that consumer must adopt it.
