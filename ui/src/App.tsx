@@ -45,6 +45,7 @@ import {
   SettingsModal,
 } from "./components/LazyModals"
 import { MotionPresence, MotionSkeleton } from "./components/Motion"
+import { NotificationVisibilityProvider, useSetNotificationsOpen } from "./components/NotificationVisibility"
 import { PageTransition } from "./components/PageTransition"
 import { PanelIcon } from "./components/PanelIcon"
 import { SidebarDrawer } from "./components/SidebarDrawer"
@@ -242,7 +243,7 @@ const AppContent = ({ kernel }: AppProps) => {
   const [localNotice, setLocalNotice] = useState<unknown>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [workspaceHeader, setWorkspaceHeader] = useState<HTMLElement | null>(null)
-  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const setNotificationsOpen = useSetNotificationsOpen()
   const unavailableApi = useMemo<UiApi>(
     () => ({
       request: async () => {
@@ -1414,7 +1415,7 @@ const AppContent = ({ kernel }: AppProps) => {
                   project={selectedProject}
                   processes={data.processes.filter((entry) => entry.spec.projectId === selectedProject?.id)}
                   preview={selectedPreview}
-                  modalOpen={modal !== null || searchOpen || notificationsOpen || recoveryOpen}
+                  modalOpen={modal !== null || searchOpen || recoveryOpen}
                   browserTabs={data.browserTabs}
                   selectedBot={selectedBot}
                   selectedThread={selectedThread}
@@ -1654,7 +1655,7 @@ const AppContent = ({ kernel }: AppProps) => {
                                       run.botId === selectedBot.id &&
                                       ["queued", "starting", "running"].includes(run.status),
                                   )}
-                                  paused={modal !== null || searchOpen || notificationsOpen || recoveryOpen}
+                                  paused={modal !== null || searchOpen || recoveryOpen}
                                   expanded={expandedBot === selectedBot.id}
                                   onExpand={() =>
                                     setExpandedBot((id) => (id === selectedBot.id ? null : selectedBot.id))
@@ -1975,7 +1976,9 @@ const App = (props: AppProps) => {
   const content = (
     <ServerModeProvider invoke={props.kernel?.services?.invoke ?? undefined} fallback={<LoadingScreen />}>
       <ErrorBoundary area="o app" app api={props.kernel?.services?.api ?? undefined}>
-        <AppContent {...props} />
+        <NotificationVisibilityProvider>
+          <AppContent kernel={props.kernel ?? {}} />
+        </NotificationVisibilityProvider>
       </ErrorBoundary>
       <ReportMenuLauncher api={props.kernel?.services?.api ?? undefined} />
     </ServerModeProvider>
