@@ -1,11 +1,13 @@
 import {
   type Bot,
+  type ChannelReadState,
   canDeliverNotification,
   type NotificationPreferences,
   type NotificationRecord,
 } from "@touri/contracts"
 import { useEffect, useRef } from "react"
 import type { TauriInvoke, UiApi } from "../../api/client"
+import { getAppBadgeCount } from "../../appBadge"
 import { buildDeepLink } from "../../deepLink"
 import { localizeNotice, t } from "../../i18n"
 import { isAttention, pendingNotifications } from "../../sidebarAttention"
@@ -100,16 +102,22 @@ export const installServerAttention = (
   })
 }
 
+const NO_CHANNEL_READS: ReadonlyMap<string, ChannelReadState> = new Map()
+
 export const useServerAttention = ({
   api,
   invoke,
   enabled,
   data,
+  channelReads = NO_CHANNEL_READS,
+  openThreadId = null,
 }: {
   api: UiApi | null
   invoke: TauriInvoke
   enabled: boolean
   data: WorkspaceData
+  channelReads?: ReadonlyMap<string, ChannelReadState> | null
+  openThreadId?: string | null
 }) => {
   const latest = useRef(data)
   latest.current = data
@@ -123,8 +131,12 @@ export const useServerAttention = ({
       botForThread: (thread) => latest.current.threads.find((item) => item.id === thread)?.botId ?? null,
     })
   }, [api, invoke, enabled, data.loading])
-  const count = pendingNotifications(data.notifications, data.activityMessages, data.runs).length
+  const count = getAppBadgeCount(
+    pendingNotifications(data.notifications, data.activityMessages, data.runs),
+    channelReads,
+    openThreadId,
+  )
   useEffect(() => {
-    if (enabled && !data.loading) void invoke("server_badge", { count: Math.min(9999, count) }).catch(() => undefined)
+    if (enabled && !data.loading) void invoke("server_badge", { count }).catch(() => undefined)
   }, [invoke, enabled, count, data.loading])
 }

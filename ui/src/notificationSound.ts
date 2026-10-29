@@ -6,7 +6,7 @@ import {
   type NotifyKind,
 } from "@touri/contracts"
 
-export type NotificationSoundKind = "attention" | "reply" | "task"
+export type NotificationSoundKind = "attention" | "reply" | "task" | "channel"
 
 export type NotificationSoundEvent = {
   kind: NotificationSoundKind
@@ -23,14 +23,18 @@ export type NotificationSoundEvent = {
 }
 
 export const shouldPlayNotificationSound = (event: NotificationSoundEvent): boolean => {
-  if (!event.visible || !event.focused || event.systemQuiet) return false
-  if (event.threadId !== null && event.threadId === event.activeThreadId) return false
+  if (event.systemQuiet) return false
+  const onScreen = event.visible && event.focused
+  const sameThread = event.threadId !== null && event.threadId === event.activeThreadId
+  // A finished channel task is news when the person is elsewhere: another app, a hidden window or another conversation.
+  if (event.kind === "channel" ? onScreen && sameThread : !onScreen || sameThread) return false
   if (event.preferences?.enabled === false) return false
   if (event.botId && event.preferences?.bots?.[event.botId]?.enabled === false) return false
   if (isWithinNotificationQuietHours(event.preferences?.quietHours, event.now)) return false
   if (event.kind === "attention" && event.preferences?.sound?.attention === false) return false
   if (event.kind === "task" && event.preferences?.sound?.task === false) return false
   if (event.kind === "reply" && event.preferences?.sound?.replies !== true) return false
+  if (event.kind === "channel" && event.preferences?.sound?.channel === false) return false
   if (getNotificationVolume(event.preferences) === 0) return false
   if (!event.notificationKind) return true
 
@@ -59,7 +63,7 @@ export const createNotificationSoundController = ({
     if (current - lastPlayedAt < 3000) return false
 
     lastPlayedAt = current
-    if (event.kind === "task") sink(getNotificationVolume(event.preferences), "task")
+    if (event.kind === "task" || event.kind === "channel") sink(getNotificationVolume(event.preferences), event.kind)
     else sink(getNotificationVolume(event.preferences))
     return true
   }

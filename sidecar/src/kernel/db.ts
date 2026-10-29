@@ -56,6 +56,7 @@ import fastConversationSql from "./migrations/0050.sql" with { type: "text" }
 import webPushSql from "./migrations/0051.sql" with { type: "text" }
 import notificationReadsSql from "./migrations/0052.sql" with { type: "text" }
 import attachmentRevisionSql from "./migrations/0053.sql" with { type: "text" }
+import channelReadsSql from "./migrations/channel-reads.sql" with { type: "text" }
 import imageEvidenceIndexesSql from "./migrations/image-evidence-indexes.sql" with { type: "text" }
 import type { PerformanceStageRunner } from "./performance"
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
@@ -72,7 +73,19 @@ const reclaimRebuiltPages = (database: Database): void => {
   if (total > 0 && free / total > FREE_PAGE_RATIO_LIMIT) database.exec("VACUUM")
 }
 
-export const openDatabase = ({
+export const openDatabase = (input: {
+  filename: string
+  slowStatements?: SlowStatementTracker
+  runStage?: PerformanceStageRunner
+}): Database => {
+  const database = openVersionedDatabase(input)
+  // Additive and idempotent, so it is applied to every store without a version step.
+  if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'channel_reads_since'").get())
+    database.transaction(() => database.exec(channelReadsSql))()
+  return database
+}
+
+const openVersionedDatabase = ({
   filename,
   slowStatements,
   runStage,

@@ -1,0 +1,157 @@
+import type { Database } from "bun:sqlite"
+import type { ChannelReadState, Kernel, RouteModule, RouteResponse } from "@touri/contracts"
+import type { DevicePerson } from "../kernel/device-session"
+import { getNotificationReader } from "./routes"
+
+/** Counts stop here; the sidebar shows 99+ long before. */
+const MAX_UNREAD = 1000
+/**
+ * A channel copy settles around its member run's finish. The index seek on the copy's update time
+ * starts this much before the read position; the run's finish time then decides exactly.
+ */
+const SETTLE_WINDOW_MS = 60_000
+
+type Reader = Pick<DevicePerson, "id" | "role">
+type ChannelThread = { id: string; group_id: string }
+
+const fail = (status: number, errorCode: string, error: string): RouteResponse => ({
+  status,
+  json: { errorCode, error },
+})
+
+// The final reply of a succeeded member run, as copied into the channel. Seeks
+// messages_assistant_complete from the read position; joins use primary keys and
+// group_message_links_message. Existence avoids multiplying a reply by its alias links.
+// Later edits of the copy never move the run's finish time.
+const UNREAD_FROM = `FROM messages visible
+    JOIN runs member ON member.id = visible.run_id
+    JOIN group_run_links participant ON participant.run_id = member.id`
+const UNREAD_WHERE = `WHERE visible.thread_id = ? AND visible.role = 'assistant' AND visible.status = 'complete'
+      AND visible.updated_at > ? AND member.status = 'succeeded' AND member.finished_at > ?
+      AND EXISTS (SELECT 1 FROM group_message_links shared
+        WHERE shared.message_id = member.reply_message_id AND shared.visible_message_id = visible.id)`
+
+/** Unread final replies in one channel conversation: thread, seek start, read position. */
+export const CHANNEL_UNREAD_COUNT_SQL = `SELECT COUNT(*) AS n FROM (SELECT 1 ${UNREAD_FROM} ${UNREAD_WHERE} LIMIT ${MAX_UNREAD})`
+
+/** Reuse persisted person mentions instead of rescanning reply text or sampling only recent replies. */
+export const CHANNEL_UNREAD_MENTIONS_SQL = `WITH unread AS (
+    SELECT visible.id, member.id AS run_id ${UNREAD_FROM} ${UNREAD_WHERE}
+    ORDER BY visible.updated_at DESC LIMIT ${MAX_UNREAD}
+  )
+  SELECT COUNT(*) AS n FROM unread
+  LEFT JOIN group_run_links link ON link.run_id = unread.run_id
+  LEFT JOIN runs turn ON turn.id = link.turn_id
+  LEFT JOIN messages request ON request.thread_id = turn.thread_id AND request.id = turn.request_message_id
+  WHERE (link.depth = 0 AND COALESCE(turn.requester_person_id,
+    CASE WHEN turn.trigger = 'user' AND request.id IS NOT NULL AND request.sender_json IS NULL THEN ? END) = ?)
+    OR EXISTS (SELECT 1 FROM notifications mention
+      WHERE mention.request_id = 'mention:' || unread.id || ':' || ?
+        AND mention.target_person_id = ? AND mention.kind = 'mention')`
+
+/**
+ * Per-person read positions for channel conversations. A final bot reply is the channel copy of a
+ * member run's reply, finished after the person last read the channel.
+ */
+export const createChannelReads = (kernel: Kernel) => {
+  const database = kernel.db as Database
+  const getSince = (): number =>
+    Number(
+      (
+        database.query("SELECT value FROM schema_meta WHERE key = 'channel_reads_since'").get() as {
+          value: string
+        } | null
+      )?.value ?? 0,
+    )
+  const getChannelThread = (threadId: string): ChannelThread | null =>
+    database
+      .query(
+        "SELECT id, group_id FROM threads WHERE id = ? AND group_id IS NOT NULL AND group_thread_id IS NULL AND archived_at IS NULL",
+      )
+      .get(threadId) as ChannelThread | null
+  const getReadAt = (personId: string, threadId: string): number =>
+    (
+      database
+        .query("SELECT read_at FROM channel_reads WHERE person_id = ? AND thread_id = ?")
+        .get(personId, threadId) as {
+        read_at: number
+      } | null
+    )?.read_at ?? getSince()
+  const getUnreadCount = (threadId: string, readAt: number): number =>
+    (database.query(CHANNEL_UNREAD_COUNT_SQL).get(threadId, readAt - SETTLE_WINDOW_MS, readAt) as { n: number }).n
+  const getState = (reader: Reader, thread: ChannelThread): ChannelReadState => {
+    const readAt = getReadAt(reader.id, thread.id)
+    const unread = getUnreadCount(thread.id, readAt)
+    if (unread === 0) return { threadId: thread.id, readAt, unread, mentions: 0 }
+
+    // Sender-less local requests belong to the owner; integrations always carry a sender.
+    const owner = kernel.services.use("work.defaultPersonId")?.() ?? "owner"
+    const mentions = (
+      database
+        .query(CHANNEL_UNREAD_MENTIONS_SQL)
+        .get(thread.id, readAt - SETTLE_WINDOW_MS, readAt, owner, reader.id, reader.id, reader.id) as { n: number }
+    ).n
+
+    return { threadId: thread.id, readAt, unread, mentions }
+  }
+  const canRead = (reader: Reader, threadId: string): boolean =>
+    reader.role === "admin" ||
+    Boolean(kernel.services.use("work.canAccessThread")?.({ personId: reader.id, role: reader.role, threadId }))
+
+  const list = (reader: Reader): ChannelReadState[] => {
+    const threads = database
+      .query(
+        "SELECT id, group_id FROM threads WHERE group_id IS NOT NULL AND group_thread_id IS NULL AND archived_at IS NULL",
+      )
+      .all() as ChannelThread[]
+    // Members only see their own channels; the per-thread check runs on that subset.
+    const getChannelIds = kernel.services.use("work.personChannelIds")
+    const channelIds = reader.role !== "admin" && getChannelIds ? new Set(getChannelIds(reader.id)) : null
+
+    return threads
+      .filter((thread) => (channelIds?.has(thread.group_id) ?? true) && canRead(reader, thread.id))
+      .map((thread) => getState(reader, thread))
+  }
+
+  const markRead = (reader: Reader, thread: ChannelThread): ChannelReadState => {
+    // A read position never moves back, so a late request cannot resurrect replies already seen.
+    const readAt = Math.max(Date.now(), getReadAt(reader.id, thread.id))
+    database
+      .query(`INSERT INTO channel_reads(person_id, thread_id, read_at) VALUES (?, ?, ?)
+        ON CONFLICT(person_id, thread_id) DO UPDATE SET read_at = MAX(read_at, excluded.read_at)`)
+      .run(reader.id, thread.id, readAt)
+    kernel.publish({ type: "channel.read", personId: reader.id, threadId: thread.id, readAt })
+
+    return getState(reader, thread)
+  }
+
+  const routes: RouteModule = {
+    name: "channel-reads",
+    routes: [
+      {
+        method: "GET",
+        path: "/channel-reads",
+        handler: async ({ signal }) => {
+          const reader = getNotificationReader(kernel, signal)
+          if (!reader) return fail(401, "UNAUTHORIZED", "Authenticated person required")
+
+          return { status: 200, json: { channels: list(reader) } }
+        },
+      },
+      {
+        method: "POST",
+        path: "/threads/:id/read",
+        handler: async ({ params, signal }) => {
+          const reader = getNotificationReader(kernel, signal)
+          if (!reader) return fail(401, "UNAUTHORIZED", "Authenticated person required")
+          const thread = getChannelThread(params.id ?? "")
+          if (!thread || !canRead(reader, thread.id)) return fail(404, "NOT_FOUND", "Channel conversation not found")
+
+          return { status: 200, json: { channel: markRead(reader, thread) } }
+        },
+      },
+    ],
+  }
+
+  return { list, markRead, routes }
+}

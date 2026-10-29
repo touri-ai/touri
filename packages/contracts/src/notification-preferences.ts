@@ -100,10 +100,11 @@ const isSoundPreferences = (value: unknown): boolean => {
   const sound = getRecord(value)
   return (
     !!sound &&
-    Object.keys(sound).every((key) => ["attention", "replies", "task", "volume"].includes(key)) &&
+    Object.keys(sound).every((key) => ["attention", "replies", "task", "channel", "volume"].includes(key)) &&
     (sound.attention === undefined || typeof sound.attention === "boolean") &&
     (sound.task === undefined || typeof sound.task === "boolean") &&
     (sound.replies === undefined || typeof sound.replies === "boolean") &&
+    (sound.channel === undefined || typeof sound.channel === "boolean") &&
     (sound.volume === undefined || (typeof sound.volume === "number" && sound.volume >= 0 && sound.volume <= 100))
   )
 }

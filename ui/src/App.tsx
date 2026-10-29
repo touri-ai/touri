@@ -23,6 +23,7 @@ import {
   webEndpoint,
 } from "./api/client"
 import { type ConnectionStatus, isSessionRejected } from "./api/connectionStatus"
+import { getAppBadgeCount } from "./appBadge"
 import type { ApprovalTarget } from "./approvalNavigation"
 import { isResolvedNotification } from "./approvalState"
 import { ApprovalNotice } from "./components/ApprovalNotice"
@@ -83,7 +84,8 @@ import { type DeepLinkRequest, installNativeDeepLinks } from "./nativeDeepLinks"
 import { requestTaskResume, requestTaskReview } from "./recoveryEvents"
 import { isRoutineConversation } from "./routineConversation"
 import { getTeamRoutineDraft, type RoutineDraft } from "./routineDraft"
-import { isFailureNotice, isReadyReviewNotice } from "./sidebarAttention"
+import { isFailureNotice, isReadyReviewNotice, pendingNotifications } from "./sidebarAttention"
+import { useChannelReads } from "./useChannelReads"
 import { useCurrentPerson } from "./useCurrentPersonId"
 import { useHost } from "./useHost"
 import { useNotificationSounds } from "./useNotificationSounds"
@@ -277,7 +279,6 @@ const AppContent = ({ kernel }: AppProps) => {
       requestTaskResume(task.notification.threadId, task.notification.botId ?? null)
     setRecoveryOpen(false)
   }
-  useServerAttention({ api, invoke: invokeCommand, enabled: isNativeDesktop() && serverMode, data })
   const section = route.section
   const advancedPage = route.section === "advanced" ? route.page : null
   const screen = route.section === "bots" ? route.screen : "chat"
@@ -731,9 +732,29 @@ const AppContent = ({ kernel }: AppProps) => {
     }) ?? []
   const selectedProject = data.projects.find((project) => project.id === selectedBot?.projectId) ?? null
   const selectedMessages = data.messages.filter((message) => message.threadId === selectedThread?.id)
+  const openThreadId = section === "bots" && screen === "chat" && !modal ? (selectedThread?.id ?? null) : null
+  const channelReads = useChannelReads({ api, threads: data.threads, openThreadId, enabled: data.loaded })
+  useServerAttention({
+    api,
+    invoke: invokeCommand,
+    enabled: isNativeDesktop() && serverMode,
+    data,
+    channelReads,
+    openThreadId,
+  })
+  const appBadgeCount = getAppBadgeCount(
+    pendingNotifications(data.notifications, data.activityMessages, data.runs),
+    channelReads,
+    openThreadId,
+  )
+  useEffect(() => {
+    if (isNativeDesktop() && !serverMode && data.loaded)
+      void invokeCommand("app_badge", { count: appBadgeCount }).catch(() => undefined)
+  }, [invokeCommand, serverMode, data.loaded, appBadgeCount])
   useNotificationSounds(
     {
       ready: data.loaded,
+      channelReads,
       notifications: data.notifications,
       messages: data.activityMessages,
       bots: data.bots,
@@ -1325,6 +1346,7 @@ const AppContent = ({ kernel }: AppProps) => {
             routines={data.routines}
             workRuns={data.workRuns}
             floatUpdates={data.settings?.sidebarFloatUpdates ?? true}
+            channelReads={channelReads ?? undefined}
             selectedBotId={selectedBot?.id ?? null}
             selectedThreadId={selectedThread?.id ?? null}
             section={section}

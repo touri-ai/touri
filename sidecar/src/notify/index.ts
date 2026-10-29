@@ -3,6 +3,7 @@ import type { Kernel, NotifyKind } from "@touri/contracts"
 import { deviceSession } from "../kernel/device-session"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import { initChannelNotifications } from "./channel"
+import { createChannelReads } from "./channel-reads"
 import { createNotifier } from "./notifier"
 import { createRecoverySync } from "./recovery"
 import { createNotifyRoutes } from "./routes"
@@ -138,6 +139,7 @@ export const init = async (
   })
 
   kernel.registerRoutes(createNotifyRoutes({ kernel, store, notifier, hub, syncRecoveryTasks }))
+  kernel.registerRoutes(createChannelReads(kernel).routes)
 }
 
 type HistoryReconcileProgress = { stage: "notification_history_reconcile"; cursor: number; upper: number }

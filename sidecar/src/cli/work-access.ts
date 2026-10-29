@@ -299,7 +299,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
   }
 
   const visibleEvent = ({ personId, role, event }: { personId: string; role: PersonRole; event: UiEvent }): boolean => {
-    if (event.type === "notifications.read") return event.personId === personId
+    if (event.type === "notifications.read" || event.type === "channel.read") return event.personId === personId
     if (event.type === "notification.created" || event.type === "notification.resolved")
       return canAccessNotification({
         personId,
@@ -483,6 +483,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
         "/recovery",
         "/notifications",
         "/notifications/pending",
+        "/channel-reads",
       ].includes(pathname)
     )
       return null
@@ -528,7 +529,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
     if (attachmentRoute && verb === "GET")
       return canAccessAttachment({ personId, role, attachmentId: attachmentRoute[1] ?? "" }) ? null : notFound
     const threadRoute =
-      /^\/threads\/([^/]+)(?:\/(messages|transcript|goal|respond|runs|prepare|delete-preview))?$/u.exec(pathname)
+      /^\/threads\/([^/]+)(?:\/(messages|transcript|goal|respond|runs|prepare|delete-preview|read))?$/u.exec(pathname)
     if (threadRoute) {
       const threadId = threadRoute[1] ?? ""
       const action = threadRoute[2] ?? ""
@@ -542,6 +543,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
       if (action === "transcript" && verb === "GET") return null
       if (action === "goal" && verb === "GET") return null
       if (action === "runs" && verb === "GET") return null
+      if (action === "read" && verb === "POST") return null
       if (action === "prepare" && verb === "POST" && ownsPrivateThread({ personId, threadId })) return null
       if (!action && verb === "PATCH" && ownsPrivateThread({ personId, threadId })) return null
       return denied

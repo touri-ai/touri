@@ -173,6 +173,14 @@ export const NotificationPreferencesSettings = ({
               onChange={(event) => saveSound({ task: event.target.checked })}
             />
           </label>
+          <label className="notification-preference-row" htmlFor={`${controlsId}-channel-sound`}>
+            <span>{t("Tocar um som quando um bot terminar algo num canal fora da tela")}</span>
+            <SettingsSwitch
+              id={`${controlsId}-channel-sound`}
+              checked={sound.channel !== false}
+              onChange={(event) => saveSound({ channel: event.target.checked })}
+            />
+          </label>
           <label className="notification-sound-volume" htmlFor={`${controlsId}-sound-volume`}>
             <span>{t("Volume do som")}</span>
             <input

@@ -229,6 +229,27 @@ test("deleted thread events only reach the owner, bot owner, admins or channel m
   expect(access.visibleEvent({ personId: "owner", role: "member", event: privateEvent })).toBe(true)
 })
 
+test("members read their own channels and only receive their own channel read positions", () => {
+  const read = (threadId: string) =>
+    access.authorizeHttp({
+      personId: "member",
+      role: "member",
+      method: "POST",
+      pathname: `/threads/${threadId}/read`,
+      body: {},
+    })
+  const position = (personId: string): UiEvent => ({ type: "channel.read", personId, threadId: "team-chat", readAt: 1 })
+
+  expect(
+    access.authorizeHttp({ personId: "member", role: "member", method: "GET", pathname: "/channel-reads", body: {} }),
+  ).toBeNull()
+  expect(read("team-chat")).toBeNull()
+  expect(read("other-chat")).toMatchObject({ status: 404 })
+  expect(access.visibleEvent({ personId: "member", role: "member", event: position("member") })).toBe(true)
+  expect(access.visibleEvent({ personId: "member", role: "member", event: position("second-member") })).toBe(false)
+  expect(access.visibleEvent({ personId: "owner", role: "admin", event: position("member") })).toBe(false)
+})
+
 test("channel membership cannot open a private session with another person's bot", () => {
   const request = { personId: "member", role: "member" as const, method: "POST", pathname: "/threads" }
 

@@ -2,7 +2,7 @@ import type { MouseEvent, ReactNode } from "react"
 
 export type SidebarRowTone = "waiting" | "failed" | "running" | "new"
 
-/** Count pills use blue for unread messages and amber for items that need attention. */
+/** Count pills use blue for unread messages, amber for items that need attention and red for mentions. */
 export const SidebarCount = ({
   count,
   label,
@@ -10,7 +10,7 @@ export const SidebarCount = ({
 }: {
   count: number
   label: string
-  tone?: "attention" | "unread"
+  tone?: "attention" | "unread" | "mention"
 }) => (
   <span className="sidebar-unread" data-tone={tone} role="img" aria-label={label}>
     {count > 99 ? "99+" : count}

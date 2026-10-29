@@ -214,6 +214,8 @@ export const ptBR = {
   "Person mention": "Menção a você",
   "Task started": "Tarefa iniciada",
   "Avisar quando um bot começar uma tarefa no canal": "Avisar quando um bot começar uma tarefa no canal",
+  "Tocar um som quando um bot terminar algo num canal fora da tela":
+    "Tocar um som quando um bot terminar algo num canal fora da tela",
   "@{author} mencionou você em #{channel}": "@{author} mencionou você em #{channel}",
   "{bot} começou uma tarefa em #{channel}: {title}": "{bot} começou uma tarefa em #{channel}: {title}",
   "Adjust bot": "Ajustar",
@@ -1771,6 +1773,7 @@ export const ptBR = {
   "Open and mark read": "Abrir e marcar como lida",
   "Open request": "Abrir pendência",
   "Unread messages": "{count} mensagens não lidas",
+  Mentions: "{count} menções",
   "Conversations for {name}": "Conversas de {name}",
   "Manage routines": "Gerenciar rotinas",
   "Review pending approval": "Revisar aprovação pendente",
@@ -3787,6 +3790,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Person mention": "Mentioned you",
   "Task started": "Task started",
   "Avisar quando um bot começar uma tarefa no canal": "Notify when a bot starts a task in a channel",
+  "Tocar um som quando um bot terminar algo num canal fora da tela":
+    "Play a sound when a bot finishes something in a channel you are not viewing",
   "@{author} mencionou você em #{channel}": "@{author} mentioned you in #{channel}",
   "{bot} começou uma tarefa em #{channel}: {title}": "{bot} started a task in #{channel}: {title}",
   Encerrado: "Closed",
@@ -5235,6 +5240,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "The bot that delegated the task is unavailable to resume it.",
   "Baixar imagem": "Download image",
   "Unread messages": "{count} unread messages",
+  Mentions: "{count} mentions",
   "Cloud execution coming soon": "Cloud execution coming soon",
   "Bot panel": "Bot panel",
   "Bot details": "Details",
@@ -6231,6 +6237,7 @@ const singular: Partial<Record<TranslationKey, [string, string]>> = {
     "{count} routine · runs while touri is open · America/Sao_Paulo",
   ],
   "Unread messages": ["{count} mensagem não lida", "{count} unread message"],
+  Mentions: ["{count} menção", "{count} mention"],
   "Delete {count} conversations": ["Apagar {count} conversa", "Delete {count} conversation"],
   "These conversations contain {count} messages in total.": [
     "Essas conversas têm {count} mensagem no total.",

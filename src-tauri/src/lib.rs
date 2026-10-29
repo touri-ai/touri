@@ -605,6 +605,7 @@ pub fn run() {
             server_mode::server_mode_local,
             server_mode::server_attention,
             server_mode::server_badge,
+            server_mode::app_badge,
             preview_show,
             preview_set_bounds,
             preview_navigate,
