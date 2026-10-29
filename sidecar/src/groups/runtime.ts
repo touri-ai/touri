@@ -32,6 +32,7 @@ import {
 } from "../runtime/continuations"
 import type { createRuntimeEngine } from "../runtime/engine"
 import { createRuntimePersistence, toRun } from "../runtime/persistence"
+import { getGroupContextRows } from "./context"
 import { getGroupRunsSql } from "./run-queries"
 import { crossesBoundary, delegatedBot, delegationCeiling, delegationSecrets, setDelegation } from "./security"
 import { recoverGroupReplies } from "./startup-recovery"
@@ -443,15 +444,8 @@ export const createGroupRuntime = (
       delegations: new Set(),
     })
     // Each native session keeps its own history. The shared context is explicit input, bounded to 16k.
-    const contextRows = db
-      .query(`SELECT role, text, sender_json FROM messages
-      WHERE thread_id=? AND (role<>'user' OR seq <= (SELECT seq FROM messages WHERE thread_id=? AND id=?))
-      ORDER BY seq DESC LIMIT 80`)
-      .all(turn.run.threadId, turn.run.threadId, turn.run.requestMessageId) as {
-      role: string
-      text: string
-      sender_json: string | null
-    }[]
+    const contextRows =
+      turn.action === "summarize" ? [] : getGroupContextRows(db, turn.run.threadId, turn.run.requestMessageId)
     const context =
       turn.action === "summarize"
         ? ""
