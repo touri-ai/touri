@@ -1460,6 +1460,11 @@ test.serial("Claude stream-json adapter completes a fake turn", async () => {
 test.each([
   { subtype: "error_during_execution", errors: ["Session cannot be resumed"], expected: "cli_protocol" },
   { subtype: "error_during_execution", errors: ["login required"], expected: "cli_auth" },
+  {
+    subtype: "error_during_execution",
+    errors: ["You've hit your 5-hour limit · resets 8pm (UTC)"],
+    expected: "rate_limit",
+  },
 ])(
   "Claude result $subtype preserves errors and never succeeds without a reply",
   async ({ subtype, errors, expected }) => {

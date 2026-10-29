@@ -775,7 +775,7 @@ interrupted | failed(cli_crash, oom) ─► automatic continuation run (see belo
 |---|---|
 | `cli_missing` | ENOENT at spawn |
 | `cli_auth` | stderr or protocol text matches `401`, `not logged in`, `login required` |
-| `rate_limit` | `429`, `rate limit`, `usage limit` |
+| `rate_limit` | `429`, `rate limit`, `usage limit`, timed/session/weekly quota diagnostics such as `hit your 5-hour limit` |
 | `context_overflow` | context length / too long |
 | `timeout` | per-run deadline (default 60 min, routines `timeout_minutes`) |
 | `canceled` | user Stop |
