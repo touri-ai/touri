@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react"
-import type { Message, Run, RunErrorClass } from "@touri/contracts"
+import { fireEvent, render, screen } from "@testing-library/react"
+import type { Message, MessagePart, Run, RunErrorClass } from "@touri/contracts"
 import { expect, it, vi } from "vitest"
 import { VirtualMessageList } from "../src/components/ChatPanel"
 import { errorRecovery } from "../src/errorRecovery"
@@ -17,6 +17,12 @@ const RECOVERY_LOCALES = [
   { locale: "pt-BR", cause: "sem capacidade", recovery: "Escolha outro modelo nas configurações do bot" },
   { locale: "en", cause: "at capacity", recovery: "Choose another model in the bot settings" },
 ] as const
+
+const getRecordedActions = (): MessagePart[] => [
+  { type: "command", callId: "demo-command", command: "printf demo", output: "demo", exitCode: 0 },
+  { type: "file_change", callId: "demo-file", paths: ["notes.md"], diff: null, completedOutcome: "succeeded" },
+  { type: "tool_call", callId: "demo-tool", tool: "demo_tool", summary: "Demo", inputJson: "{}", ok: null },
+]
 
 const getCapacityFixture = (diagnostic: string, errorClass: RunErrorClass = "rate_limit") => {
   const message: Message = {
@@ -127,4 +133,39 @@ it("preserves usage limit recovery for genuine rate limits", () => {
 
   expect(failure?.title).toBe("Limite de uso do provedor atingido")
   expect(failure?.recovery.message).toContain("atingiu o limite de uso")
+})
+
+it.each(RECOVERY_LOCALES)("keeps the capacity cause and action warning in $locale", ({ locale, cause, recovery }) => {
+  getRecordedActions().forEach((part) => {
+    const failure = errorRecovery("Selected model is at capacity. Please try a different model.", {
+      errorClass: "rate_limit",
+      parts: [part],
+      locale,
+    })
+
+    expect(failure.message).toContain(cause)
+    expect(failure.message).toContain(recovery)
+    expect(failure.message).toContain(locale === "en" ? "Some actions may" : "Algumas ações podem")
+    expect(failure.actions.map((action) => action.kind)).toEqual(["review", "resume"])
+  })
+})
+
+it("shows capacity recovery after recorded work without replaying actions", () => {
+  const fixture = getCapacityFixture("Selected model is at capacity. Please try a different model.")
+  const message = Object.assign({}, fixture.message, { parts: getRecordedActions().concat(fixture.message.parts) })
+  const retry = vi.fn()
+
+  render(<VirtualMessageList messages={[message]} runs={[fixture.run]} onRetry={retry} onSwitchBranch={vi.fn()} />)
+
+  const card = screen.getByRole("alert")
+  expect(card).toHaveTextContent("O modelo selecionado está sem capacidade no momento.")
+  expect(card).toHaveTextContent("Escolha outro modelo nas configurações do bot")
+  expect(card).toHaveTextContent("Algumas ações podem ter sido concluídas.")
+  expect(screen.queryByRole("button", { name: "Tentar novamente" })).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole("button", { name: "Ver ações realizadas" }))
+  expect(screen.getByRole("region", { name: "Ações registradas" })).toBeVisible()
+  fireEvent.click(screen.getByRole("button", { name: "Retomar tarefa" }))
+
+  expect(retry).not.toHaveBeenCalled()
 })

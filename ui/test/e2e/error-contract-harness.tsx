@@ -1,4 +1,4 @@
-import type { Message, Run } from "@touri/contracts"
+import type { Message, MessagePart, Run } from "@touri/contracts"
 import { createRoot } from "react-dom/client"
 import App from "../../src/App"
 import { createMockApi } from "../../src/api/mock"
@@ -43,7 +43,7 @@ const message: Message = {
   status: "failed",
   runId: run.id,
   text: "",
-  parts: [{ type: "notice", level: "error", code: "run_failed", text: diagnostic }],
+  parts: getRecordedParts(params).concat({ type: "notice", level: "error", code: "run_failed", text: diagnostic }),
   sender: null,
   source: "local",
   createdAt: run.queuedAt,
@@ -76,6 +76,12 @@ api.request = ((route, input, path) => {
 setTimeout(() => api.emit({ type: "notify", title: "Turn failed", body: diagnostic, threadId: thread.id }), 700)
 const root = document.getElementById("root")
 if (root) createRoot(root).render(<App kernel={{ services: { api } }} />)
+
+function getRecordedParts(params: URLSearchParams): MessagePart[] {
+  if (params.get("actions") !== "recorded") return []
+
+  return [{ type: "command", callId: "demo-command", command: "printf demo", output: "demo", exitCode: 0 }]
+}
 
 function getDiagnostic(scenario: string | null): string {
   if (scenario === "boot") return "A máquina não ficou pronta em 90 s: Xvfb não iniciou ou o guest não respondeu"

@@ -48,6 +48,8 @@ export const errorRecovery = (error: unknown, context: RecoveryContext = {}): Er
     actions,
     classified,
   })
+  const getCapacityMessage = (): string =>
+    `${tr("O modelo selecionado está sem capacidade no momento.")} ${tr("Escolha outro modelo nas configurações do bot ou tente de novo em alguns minutos.")}`
   if (context.historyRead)
     return view(tr("Could not load the conversation. Try again."), [action("retry", "Tentar novamente")])
   const attachmentError = getAttachmentError(raw, locale)
@@ -62,11 +64,12 @@ export const errorRecovery = (error: unknown, context: RecoveryContext = {}): Er
     /TOURI-E1010|app_restart|confirmação.*(?:perdida|confirmar)|não foi possível confirmar|algumas ações podem/i.test(
       text,
     )
-  )
-    return view(tr("A resposta foi interrompida. Algumas ações podem ter sido concluídas."), [
-      action("review", "Ver ações realizadas"),
-      action("resume", "Retomar tarefa"),
-    ])
+  ) {
+    const warning = tr("A resposta foi interrompida. Algumas ações podem ter sido concluídas.")
+    const message = isModelAtCapacity(raw) ? `${getCapacityMessage()} ${warning}` : warning
+
+    return view(message, [action("review", "Ver ações realizadas"), action("resume", "Retomar tarefa")])
+  }
   if (raw === "O provedor terminou sem responder. Tente de novo.")
     return view(tr("O provedor terminou sem responder. Tente de novo."), [action("retry", "Tentar novamente")])
   if (
@@ -88,11 +91,7 @@ export const errorRecovery = (error: unknown, context: RecoveryContext = {}): Er
     return view(tr("Entre novamente no {provedor} para continuar.", { provedor: provider }), [
       action("login", "Entrar na conta"),
     ])
-  if (isModelAtCapacity(raw))
-    return view(
-      `${tr("O modelo selecionado está sem capacidade no momento.")} ${tr("Escolha outro modelo nas configurações do bot ou tente de novo em alguns minutos.")}`,
-      [action("review", "Ver tarefa")],
-    )
+  if (isModelAtCapacity(raw)) return view(getCapacityMessage(), [action("review", "Ver tarefa")])
   if (
     (error instanceof ApiError && error.status === 429) ||
     /\b429\b|rate_limit|TOURI-E1006|limite.*(?:uso|solicitações)|too many requests/i.test(text)
