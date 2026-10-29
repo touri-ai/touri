@@ -50,12 +50,14 @@ it("reads the open channel when a reply settles while the person is looking at i
   const { result } = renderHook(() =>
     useChannelReads({ api: server.api, threads: [channel], openThreadId: channel.id, enabled: true }),
   )
-  await waitFor(() => expect(result.current.get(channel.id)?.unread).toBe(0))
+  // Nothing is known before the first load, so nothing can look new.
+  expect(result.current).toBeNull()
+  await waitFor(() => expect(result.current?.get(channel.id)?.unread).toBe(0))
 
   act(() => server.reply())
 
   await waitFor(() => expect(server.state.reads).toBe(1))
-  await waitFor(() => expect(result.current.get(channel.id)?.unread).toBe(0))
+  await waitFor(() => expect(result.current?.get(channel.id)?.unread).toBe(0))
 })
 
 it("leaves replies unread while the window is in the background, and reads them on return", async () => {
@@ -64,7 +66,7 @@ it("leaves replies unread while the window is in the background, and reads them 
   const { result } = renderHook(() =>
     useChannelReads({ api: server.api, threads: [channel], openThreadId: channel.id, enabled: true }),
   )
-  await waitFor(() => expect(result.current.get(channel.id)?.unread).toBe(2))
+  await waitFor(() => expect(result.current?.get(channel.id)?.unread).toBe(2))
   expect(server.state.reads).toBe(0)
 
   focused = true
@@ -72,7 +74,7 @@ it("leaves replies unread while the window is in the background, and reads them 
     window.dispatchEvent(new Event("focus"))
   })
 
-  await waitFor(() => expect(result.current.get(channel.id)?.unread).toBe(0))
+  await waitFor(() => expect(result.current?.get(channel.id)?.unread).toBe(0))
   expect(server.state.reads).toBe(1)
 })
 
@@ -81,10 +83,10 @@ it("keeps another channel's replies unread and refreshes them as they settle", a
   const { result } = renderHook(() =>
     useChannelReads({ api: server.api, threads: [channel], openThreadId: "other-thread", enabled: true }),
   )
-  await waitFor(() => expect(result.current.get(channel.id)?.unread).toBe(0))
+  await waitFor(() => expect(result.current?.get(channel.id)?.unread).toBe(0))
 
   act(() => server.reply())
 
-  await waitFor(() => expect(result.current.get(channel.id)?.unread).toBe(1))
+  await waitFor(() => expect(result.current?.get(channel.id)?.unread).toBe(1))
   expect(server.state.reads).toBe(0)
 })

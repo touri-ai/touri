@@ -110,12 +110,14 @@ export const useServerAttention = ({
   enabled,
   data,
   channelReads = NO_CHANNEL_READS,
+  openThreadId = null,
 }: {
   api: UiApi | null
   invoke: TauriInvoke
   enabled: boolean
   data: WorkspaceData
-  channelReads?: ReadonlyMap<string, ChannelReadState>
+  channelReads?: ReadonlyMap<string, ChannelReadState> | null
+  openThreadId?: string | null
 }) => {
   const latest = useRef(data)
   latest.current = data
@@ -132,6 +134,7 @@ export const useServerAttention = ({
   const count = getAppBadgeCount(
     pendingNotifications(data.notifications, data.activityMessages, data.runs),
     channelReads,
+    openThreadId,
   )
   useEffect(() => {
     if (enabled && !data.loading) void invoke("server_badge", { count }).catch(() => undefined)

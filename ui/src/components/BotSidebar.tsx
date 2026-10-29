@@ -102,7 +102,7 @@ type SidebarProps = {
   /** Float bots with updates to the top (settings: "Mover bots com novidades para o topo"). Default on. */
   floatUpdates?: boolean
   /** This person's unread bot replies per channel conversation. */
-  channelReads?: ReadonlyMap<string, ChannelReadState>
+  channelReads?: ReadonlyMap<string, ChannelReadState> | undefined
   selectedBotId: Id | null
   selectedThreadId: Id | null
   section: "advanced" | "bots"

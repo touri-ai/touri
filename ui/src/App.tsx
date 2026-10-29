@@ -732,16 +732,20 @@ const AppContent = ({ kernel }: AppProps) => {
     }) ?? []
   const selectedProject = data.projects.find((project) => project.id === selectedBot?.projectId) ?? null
   const selectedMessages = data.messages.filter((message) => message.threadId === selectedThread?.id)
-  const channelReads = useChannelReads({
+  const openThreadId = section === "bots" && screen === "chat" && !modal ? (selectedThread?.id ?? null) : null
+  const channelReads = useChannelReads({ api, threads: data.threads, openThreadId, enabled: data.loaded })
+  useServerAttention({
     api,
-    threads: data.threads,
-    openThreadId: section === "bots" && screen === "chat" && !modal ? (selectedThread?.id ?? null) : null,
-    enabled: data.loaded,
+    invoke: invokeCommand,
+    enabled: isNativeDesktop() && serverMode,
+    data,
+    channelReads,
+    openThreadId,
   })
-  useServerAttention({ api, invoke: invokeCommand, enabled: isNativeDesktop() && serverMode, data, channelReads })
   const appBadgeCount = getAppBadgeCount(
     pendingNotifications(data.notifications, data.activityMessages, data.runs),
     channelReads,
+    openThreadId,
   )
   useEffect(() => {
     if (isNativeDesktop() && !serverMode && data.loaded)
@@ -1342,7 +1346,7 @@ const AppContent = ({ kernel }: AppProps) => {
             routines={data.routines}
             workRuns={data.workRuns}
             floatUpdates={data.settings?.sidebarFloatUpdates ?? true}
-            channelReads={channelReads}
+            channelReads={channelReads ?? undefined}
             selectedBotId={selectedBot?.id ?? null}
             selectedThreadId={selectedThread?.id ?? null}
             section={section}

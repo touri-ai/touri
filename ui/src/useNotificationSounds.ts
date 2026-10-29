@@ -24,8 +24,8 @@ type SoundSnapshot = {
   threads: ReadonlyArray<Thread>
   preferences?: NotificationPreferences | undefined
   activeThreadId: string | null
-  /** Unread bot replies per channel conversation; a growing count is a finished channel task. */
-  channelReads?: ReadonlyMap<string, ChannelReadState>
+  /** Unread bot replies per channel conversation (null until loaded); a growing count is a finished channel task. */
+  channelReads?: ReadonlyMap<string, ChannelReadState> | null
 }
 
 type SoundIntent = {

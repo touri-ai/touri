@@ -8,7 +8,7 @@ import { createGroupRuntime } from "../../src/groups/runtime"
 import { createGroupStore } from "../../src/groups/store"
 import { createKernel } from "../../src/kernel"
 import { init as initNotify } from "../../src/notify"
-import { createChannelReads } from "../../src/notify/channel-reads"
+import { CHANNEL_UNREAD_COUNT_SQL, createChannelReads } from "../../src/notify/channel-reads"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { init as initStore } from "../../src/store"
 
@@ -224,4 +224,51 @@ test("a read position never moves back, and only replies settled after it count"
   await f.ask("Segunda resposta.")
 
   expect(f.reads.list(owner)).toEqual([expect.objectContaining({ unread: 1, mentions: 1 })])
+})
+
+test("editing a reply that was already read does not make it unread again", async () => {
+  const f = await getFixture()
+  await f.ask("Plano conferido.")
+  await f.tick()
+  f.reads.markRead(owner, { id: f.thread.id, group_id: f.group.id })
+  await f.tick()
+  // A later patch of the channel copy (an appended notice, a resolved tool) moves only its update time.
+  f.db
+    .query(
+      "UPDATE messages SET text = text || ' (atualizado)', updated_at = ? WHERE thread_id = ? AND role = 'assistant'",
+    )
+    .run(Date.now(), f.thread.id)
+
+  expect(f.reads.list(owner)).toEqual([expect.objectContaining({ unread: 0, mentions: 0 })])
+})
+
+test("a task whose request message is gone is never counted as the owner's own", async () => {
+  const f = await getFixture()
+  await f.ask("Plano conferido.")
+  f.db
+    .query(
+      "DELETE FROM messages WHERE thread_id = ? AND id IN (SELECT request_message_id FROM runs WHERE thread_id = ?)",
+    )
+    .run(f.thread.id, f.thread.id)
+
+  expect(f.reads.list(owner)).toEqual([expect.objectContaining({ unread: 1, mentions: 0 })])
+})
+
+test("conversations without unread replies never look up channel people, and the count seeks its index", async () => {
+  const f = await getFixture()
+  let lookups = 0
+  f.host.kernel.services.provide("work.channelPeople", () => {
+    lookups += 1
+    return people
+  })
+  const groups = createGroupStore(f.host.kernel)
+  Array.from({ length: 20 }, () => groups.createThread(f.group))
+
+  expect(f.reads.list(owner)).toHaveLength(21)
+  expect(lookups).toBe(0)
+  const plan = (
+    f.db.query(`EXPLAIN QUERY PLAN ${CHANNEL_UNREAD_COUNT_SQL}`).all(f.thread.id, 0, 0) as Array<{ detail: string }>
+  ).map(({ detail }) => detail)
+  expect(plan.some((detail) => detail.includes("messages_assistant_complete"))).toBe(true)
+  expect(plan.some((detail) => /SCAN (visible|member|shared)\b/.test(detail))).toBe(false)
 })

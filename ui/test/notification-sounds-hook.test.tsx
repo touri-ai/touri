@@ -166,11 +166,11 @@ it("plays the channel tone once when a channel's unread replies grow while the w
   const invoke = vi.fn(async () => false) as TauriInvoke
   const reads = (unread: number) =>
     new Map([["avisos-thread", { threadId: "avisos-thread", readAt: 1, unread, mentions: 0 }]])
-  // The first snapshot is history: replies that were already waiting stay silent.
+  // Until the first load the app has no counts; the loaded replies that were already waiting stay silent.
   const view = renderHook((current) => useNotificationSounds(current, invoke), {
-    initialProps: { ...snapshot, channelReads: reads(2) },
+    initialProps: { ...snapshot, channelReads: null } as Parameters<typeof useNotificationSounds>[0],
   })
-  await act(async () => undefined)
+  await act(async () => view.rerender({ ...snapshot, channelReads: reads(2) }))
   expect(audio.play).not.toHaveBeenCalled()
 
   await act(async () => view.rerender({ ...snapshot, channelReads: reads(3) }))

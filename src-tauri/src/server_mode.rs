@@ -1050,15 +1050,37 @@ pub fn server_badge(
     count: i64,
 ) -> Result<(), String> {
     require_main(&caller)?;
-    if state
+    if current_mode(&state)? != Mode::Server {
+        return Err("SERVER_MODE_REQUIRED".into());
+    }
+    set_badge(&app, count)
+}
+
+/// The app icon's count outside Server mode, where `server_badge` owns it.
+#[tauri::command]
+pub fn app_badge(
+    app: AppHandle<Wry>,
+    caller: tauri::Webview<Wry>,
+    state: tauri::State<'_, AppState>,
+    count: i64,
+) -> Result<(), String> {
+    require_main(&caller)?;
+    if current_mode(&state)? == Mode::Server {
+        return Err("SERVER_MODE_ACTIVE".into());
+    }
+    set_badge(&app, count)
+}
+
+fn current_mode(state: &tauri::State<'_, AppState>) -> Result<Mode, String> {
+    Ok(state
         .server_mode
         .lock()
         .map_err(|_| "SERVER_STATE_UNAVAILABLE")?
-        .mode
-        != Mode::Server
-    {
-        return Err("SERVER_MODE_REQUIRED".into());
-    }
+        .mode)
+}
+
+/// Platforms without an icon count (Windows taskbars) ignore it.
+fn set_badge(app: &AppHandle<Wry>, count: i64) -> Result<(), String> {
     if !(0..=9999).contains(&count) {
         return Err("INVALID_ARGS".into());
     }
