@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite"
 import { readFileSync } from "node:fs"
+import { isAbsolute } from "node:path"
 import type {
   ApprovalPart,
   Bot,
@@ -88,6 +89,7 @@ import { createOpenCodeAdapter } from "./opencode/adapter"
 import { createRuntimePersistence, type RuntimePersistence } from "./persistence"
 import { reapProviderProcesses } from "./provider-processes"
 import { formatRoutineTitle, nextCronSlot, parseCron, previousCronSlot, validTimezone } from "./routines/cron"
+import { createScriptRoutines } from "./routines/scripts"
 import { createRunSupervision, RUN_CANCEL_GRACE_MS, waitForProviderCompletion } from "./run-supervision"
 import { sessionFingerprint, workingDirectory } from "./session"
 import { canRecoverSession, hasTurnResponse, SESSION_RECOVERY_MESSAGE } from "./session-recovery"
@@ -242,7 +244,7 @@ const EXECUTION_FAILURE_CODES: ReadonlyArray<string> = [
   "SQLITE_IOERR",
 ]
 
-type RoutineCreate = {
+type RoutineCreate = Pick<Routine, "kind" | "command" | "cwd" | "envFile"> & {
   botId: Id
   name: string
   prompt: string
@@ -364,7 +366,7 @@ const routineError = (input: RoutineCreate): string | null => {
   if (
     !input.name.trim() ||
     input.name.length > 80 ||
-    !input.prompt.trim() ||
+    (input.kind !== "script" && !input.prompt.trim()) ||
     input.prompt.length > 8_000 ||
     !Number.isInteger(input.catchUpMinutes) ||
     input.catchUpMinutes < 0 ||
@@ -374,6 +376,14 @@ const routineError = (input: RoutineCreate): string | null => {
     input.timeoutMinutes > 240
   )
     return "Invalid routine name, prompt or timeout"
+  if (input.kind !== undefined && input.kind !== "bot" && input.kind !== "script") return "Invalid routine kind"
+  if (input.kind === "script") {
+    if (!input.command?.trim() || input.command.length > 8_000 || input.command.includes("\0")) return "Invalid command"
+    if (!input.cwd || !isAbsolute(input.cwd) || input.cwd.includes("\0")) return "cwd must be an absolute path"
+    if (input.envFile && (!isAbsolute(input.envFile) || input.envFile.includes("\0")))
+      return "envFile must be an absolute path"
+    if (!input.groupId) return "groupId is required for script routines"
+  }
   if (!(["skip", "queue"] as Array<Routine["overlap"]>).includes(input.overlap)) return "Invalid routine overlap"
   if (!validTimezone(input.timezone)) return "Invalid IANA timezone"
   const parsed = parseCron(input.cron)
@@ -3479,7 +3489,7 @@ export const createRuntimeEngine = ({
 
   // A group routine posts into one of the group's conversations; a bot routine only into the bot's own.
   const routineTargetError = (
-    input: Pick<RoutineCreate, "botId" | "continuity" | "resultsThreadId" | "groupId">,
+    input: Pick<RoutineCreate, "botId" | "continuity" | "resultsThreadId" | "groupId" | "kind">,
   ): string | null => {
     const store = kernel.services.use("store.api")
     const thread = input.resultsThreadId ? store?.getThread({ threadId: input.resultsThreadId }) : null
@@ -3490,7 +3500,8 @@ export const createRuntimeEngine = ({
     }
     const group = createGroupStore(kernel).get(input.groupId)
     if (!group) return "Group not found"
-    if (!group.memberIds.includes(input.botId)) return "The routine's bot must be a member of the group"
+    if (input.kind !== "script" && !group.memberIds.includes(input.botId))
+      return "The routine's bot must be a member of the group"
     if (input.continuity === "main-thread") return "A group routine posts into a group conversation"
     if (input.resultsThreadId && (thread?.groupId !== group.id || thread.groupThreadId))
       return "Results conversation must belong to this group"
@@ -3504,6 +3515,8 @@ export const createRuntimeEngine = ({
     input: RoutineCreate
     forceDisabled: boolean
   }): Result<{ routine: Routine }, "BOT_NOT_FOUND" | "INVALID_ARGS"> => {
+    if (forceDisabled && input.kind === "script")
+      return { success: false, errorCode: "INVALID_ARGS", error: "Only the owner can create script routines" }
     const store = kernel.services.use("store.api")
     if (!store?.getBot({ botId: input.botId }))
       return { success: false, errorCode: "BOT_NOT_FOUND", error: "Bot not found" }
@@ -3513,6 +3526,10 @@ export const createRuntimeEngine = ({
     const routine: Routine = {
       id: kernel.newId(),
       botId: input.botId,
+      kind: input.kind ?? "bot",
+      command: input.command ?? "",
+      cwd: input.cwd ?? "",
+      envFile: input.envFile ?? null,
       name: input.name,
       prompt: input.prompt,
       cron: input.cron,
@@ -3547,6 +3564,8 @@ export const createRuntimeEngine = ({
   }: RoutineUpdate): Result<{ routine: Routine }, "NOT_FOUND" | "NOT_OWNED" | "INVALID_ARGS"> => {
     const routine = persistence.getRoutine(routineId)
     if (!routine) return { success: false, errorCode: "NOT_FOUND", error: "Routine not found" }
+    if (fromTool && (routine.kind === "script" || patch.kind === "script"))
+      return { success: false, errorCode: "INVALID_ARGS", error: "Only the owner can edit script routines" }
     if (fromTool && botId !== routine.botId)
       return { success: false, errorCode: "NOT_OWNED", error: "This routine belongs to another bot" }
     if (fromTool && patch.enabled === true)
@@ -3571,6 +3590,9 @@ export const createRuntimeEngine = ({
       botId: routine.botId,
       enabled: needsReview ? false : (patch.enabled ?? routine.enabled),
       updatedAt: getNow(),
+      ...(patch.groupId !== undefined && patch.groupId !== routine.groupId && patch.resultsThreadId === undefined
+        ? { resultsThreadId: null, continuity: patch.groupId ? ("results-thread" as const) : routine.continuity }
+        : {}),
     })
 
     const validation = routineError(updated) ?? routineTargetError(updated)
@@ -3633,6 +3655,8 @@ export const createRuntimeEngine = ({
     })
   }
 
+  const scripts = createScriptRoutines({ kernel, persistence, getTimeoutMs: routineTimeout })
+
   const runRoutine = ({
     routineId,
     triggerSource,
@@ -3659,7 +3683,10 @@ export const createRuntimeEngine = ({
     // Checked before a run row exists, so a removed member never leaves a slot stuck as scheduled.
     const targetError = routineTargetError(routine)
     if (targetError) return { success: false, errorCode: "INVALID_ARGS", error: targetError }
-    const history = persistence.listRoutineRuns(routine.id)
+    const history =
+      routine.kind === "script"
+        ? persistence.getRoutineDispatchHistory(routine.id, Date.now() - 2000)
+        : persistence.listRoutineRuns(routine.id)
     if (triggerSource === "manual") {
       const duplicate = history.find(
         (item) =>
@@ -3667,7 +3694,9 @@ export const createRuntimeEngine = ({
       )
       if (duplicate) return { success: true, routineRun: duplicate }
     }
-    const previous = history.find((item) => item.status === "running")
+    const previous = history.find(
+      (item) => item.status === "running" || (routine.kind === "script" && item.status === "scheduled"),
+    )
     if (previous && routine.overlap === "skip") {
       const skipped: RoutineRun = {
         id: kernel.newId(),
@@ -3708,6 +3737,10 @@ export const createRuntimeEngine = ({
     }
     const inserted = persistence.insertRoutineRun(scheduled)
     if (!inserted.success) return { success: false, errorCode: "INVALID_ARGS", error: inserted.error }
+    if (routine.kind === "script") {
+      scripts.start(routine, scheduled)
+      return { success: true, routineRun: persistence.getRoutineRun(scheduled.id) ?? scheduled }
+    }
     const bot = store.getBot({ botId: routine.botId })
     if (!bot) return { success: false, errorCode: "NOT_FOUND", error: "Bot not found" }
     const group = routine.groupId ? createGroupStore(kernel).get(routine.groupId) : null
@@ -3809,7 +3842,11 @@ export const createRuntimeEngine = ({
       if (latest) persistence.updateRoutine({ ...latest, nextRunAt, updatedAt: Date.now() })
     }
     for (const routine of persistence.listRoutines().filter((item) => item.enabled)) {
-      if (kernel.services.use("store.api")?.getBot({ botId: routine.botId })?.machine === "cloud") continue
+      if (
+        routine.kind !== "script" &&
+        kernel.services.use("store.api")?.getBot({ botId: routine.botId })?.machine === "cloud"
+      )
+        continue
       const parsed = parseCron(routine.cron)
       if (!parsed.success || !validTimezone(routine.timezone)) continue
       let due = routine.nextRunAt
@@ -3849,7 +3886,11 @@ export const createRuntimeEngine = ({
 
   const canDrainRun = (runId: Id): boolean => continuations.link(runId) !== null || continuations.isGroupRun(runId)
   const hasDrainWork = (): boolean =>
-    executions.size > 0 || pendingContinuations.size > 0 || pendingAbandonments.size > 0 || queued.some(canDrainRun)
+    scripts.hasWork() ||
+    executions.size > 0 ||
+    pendingContinuations.size > 0 ||
+    pendingAbandonments.size > 0 ||
+    queued.some(canDrainRun)
   const waitForDrainChange = (changed: Promise<void>): Promise<boolean> =>
     new Promise((resolve) => {
       const timeout = setTimeout(() => resolve(false), DRAIN_CHANGE_TIMEOUT_MS)
@@ -3864,6 +3905,7 @@ export const createRuntimeEngine = ({
     while (!shuttingDown && hasDrainWork()) {
       const changed = drainChange.promise
       await drain()
+      await scripts.wait()
       await Promise.all([...executions.values()])
       await Promise.all(pendingAbandonments.values())
       if (!hasDrainWork()) return
@@ -3905,6 +3947,7 @@ export const createRuntimeEngine = ({
     }
     approvalBridge.dispose()
     shutdownPromise = (async () => {
+      await scripts.stop()
       await ready
       await Promise.all(Array.from(preparations.values()).map(({ promise }) => promise))
       await Promise.all(Object.values(adapters).map((adapter) => adapter.shutdown()))

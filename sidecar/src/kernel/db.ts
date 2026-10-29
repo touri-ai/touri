@@ -56,6 +56,7 @@ import fastConversationSql from "./migrations/0050.sql" with { type: "text" }
 import webPushSql from "./migrations/0051.sql" with { type: "text" }
 import notificationReadsSql from "./migrations/0052.sql" with { type: "text" }
 import attachmentRevisionSql from "./migrations/0053.sql" with { type: "text" }
+import scriptRoutinesSql from "./migrations/0054.sql" with { type: "text" }
 import channelReadsSql from "./migrations/channel-reads.sql" with { type: "text" }
 import imageEvidenceIndexesSql from "./migrations/image-evidence-indexes.sql" with { type: "text" }
 import type { PerformanceStageRunner } from "./performance"
@@ -63,7 +64,7 @@ import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
 import { applyUpgradeBaselines } from "./upgradeBaselines"
 
-export const SCHEMA_VERSION = 53
+export const SCHEMA_VERSION = 54
 
 const FREE_PAGE_RATIO_LIMIT = 0.2
 
@@ -122,12 +123,17 @@ const openVersionedDatabase = ({
       database.transaction(() => database.exec(imageEvidenceIndexesSql))()
     return database
   }
+  if (current?.value === "53") {
+    if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'image_evidence_indexes_version'").get())
+      database.transaction(() => database.exec(imageEvidenceIndexesSql))()
+    return upgradeScriptRoutines(database)
+  }
   if (current?.value === "52") {
     database.transaction(() => {
       applyAttachmentRevisionSchema(database)
       database.exec(imageEvidenceIndexesSql)
     })()
-    return database
+    return upgradeScriptRoutines(database)
   }
   if (current?.value === "51") {
     database.transaction(() => {
@@ -135,7 +141,7 @@ const openVersionedDatabase = ({
       applyAttachmentRevisionSchema(database)
     })()
     database.transaction(() => database.exec(imageEvidenceIndexesSql))()
-    return database
+    return upgradeScriptRoutines(database)
   }
   if (current?.value === "50") {
     database.transaction(() => {
@@ -144,7 +150,7 @@ const openVersionedDatabase = ({
       applyAttachmentRevisionSchema(database)
     })()
     database.transaction(() => database.exec(imageEvidenceIndexesSql))()
-    return database
+    return upgradeScriptRoutines(database)
   }
   if (current?.value === "49") {
     database.transaction(() => {
@@ -154,7 +160,7 @@ const openVersionedDatabase = ({
       applyAttachmentRevisionSchema(database)
     })()
     database.transaction(() => database.exec(imageEvidenceIndexesSql))()
-    return database
+    return upgradeScriptRoutines(database)
   }
   if (current?.value === "46" || current?.value === "47" || current?.value === "48") {
     database.transaction(() => {
@@ -168,7 +174,7 @@ const openVersionedDatabase = ({
       applyAttachmentRevisionSchema(database)
     })()
     database.transaction(() => database.exec(imageEvidenceIndexesSql))()
-    return database
+    return upgradeScriptRoutines(database)
   }
 
   database.exec(migrationSql)
@@ -444,7 +450,7 @@ const openVersionedDatabase = ({
     applyAttachmentRevisionSchema(database)
   })()
   database.transaction(() => database.exec(imageEvidenceIndexesSql))()
-  return database
+  return upgradeScriptRoutines(database)
 }
 
 const applyFastConversationSchema = (database: Database): void => {
@@ -464,4 +470,13 @@ const applyAttachmentRevisionSchema = (database: Database): void => {
   }
 
   database.exec(attachmentRevisionSql)
+}
+
+const upgradeScriptRoutines = (database: Database): Database => {
+  database.transaction(() => {
+    const columns = database.query("PRAGMA table_info(routines)").all() as Array<{ name: string }>
+    if (!columns.some(({ name }) => name === "kind")) database.exec(scriptRoutinesSql)
+    database.exec("UPDATE schema_meta SET value = '54' WHERE key = 'schema_version'")
+  })()
+  return database
 }

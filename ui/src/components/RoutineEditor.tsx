@@ -93,8 +93,9 @@ export const RoutineEditor = ({
   const formRef = useRef<HTMLFormElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [tested, setTested] = useState(false)
+  const isScript = draft.kind === "script"
   const bot = bots.find((bot) => bot.id === draft.botId)
-  const botGroups = groups.filter((group) => group.memberIds.includes(draft.botId))
+  const botGroups = groups.filter((group) => isScript || group.memberIds.includes(draft.botId))
   const group = groups.find((group) => group.id === draft.groupId)
   const isGroupUnavailable = !!draft.groupId && !botGroups.some((candidate) => candidate.id === draft.groupId)
   const unavailableGroupLabel = group
@@ -113,7 +114,7 @@ export const RoutineEditor = ({
     !isGroupUnavailable &&
     !!draft.name.trim() &&
     draft.name.length <= 80 &&
-    !!draft.prompt.trim() &&
+    (isScript ? !!draft.command?.trim() && !!draft.cwd?.trim() && !!draft.groupId : !!draft.prompt.trim()) &&
     draft.prompt.length <= 8000 &&
     Number.isInteger(draft.timeoutMinutes) &&
     draft.timeoutMinutes >= 1 &&
@@ -197,28 +198,46 @@ export const RoutineEditor = ({
           <div className="routine-fields">
             {!review ? (
               <>
+                <label>
+                  {t("Tipo de rotina")}
+                  <select
+                    value={draft.kind ?? "bot"}
+                    onChange={(event) =>
+                      update({
+                        kind: event.target.value as "bot" | "script",
+                        continuity: "results-thread",
+                        resultsThreadId: null,
+                      })
+                    }
+                  >
+                    <option value="bot">{t("Bot")}</option>
+                    <option value="script">{t("Script")}</option>
+                  </select>
+                </label>
                 <div className="routine-form-grid">
-                  <label>
-                    {t("Bot")}
-                    <select
-                      value={draft.botId}
-                      disabled={!!savedId}
-                      onChange={(event) =>
-                        update({
-                          botId: event.target.value,
-                          resultsThreadId: null,
-                          groupId: null,
-                          continuity: "main-thread",
-                        })
-                      }
-                    >
-                      {bots.map((bot) => (
-                        <option key={bot.id} value={bot.id}>
-                          {bot.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  {!isScript && (
+                    <label>
+                      {t("Bot")}
+                      <select
+                        value={draft.botId}
+                        disabled={!!savedId}
+                        onChange={(event) =>
+                          update({
+                            botId: event.target.value,
+                            resultsThreadId: null,
+                            groupId: null,
+                            continuity: "main-thread",
+                          })
+                        }
+                      >
+                        {bots.map((bot) => (
+                          <option key={bot.id} value={bot.id}>
+                            {bot.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                   <label>
                     {t("Nome")}
                     <input
@@ -230,16 +249,45 @@ export const RoutineEditor = ({
                     />
                   </label>
                 </div>
-                <label>
-                  {t("Tarefa")}
-                  <textarea
-                    required
-                    maxLength={8000}
-                    rows={3}
-                    value={draft.prompt}
-                    onChange={(event) => update({ prompt: event.target.value })}
-                  />
-                </label>
+                {isScript ? (
+                  <>
+                    <label>
+                      {t("Comando")}
+                      <textarea
+                        required
+                        maxLength={8000}
+                        value={draft.command ?? ""}
+                        onChange={(event) => update({ command: event.target.value })}
+                      />
+                    </label>
+                    <label>
+                      {t("Pasta de execução (cwd)")}
+                      <input
+                        required
+                        value={draft.cwd ?? ""}
+                        onChange={(event) => update({ cwd: event.target.value })}
+                      />
+                    </label>
+                    <label>
+                      {t("Arquivo de ambiente (opcional)")}
+                      <input
+                        value={draft.envFile ?? ""}
+                        onChange={(event) => update({ envFile: event.target.value || null })}
+                      />
+                    </label>
+                  </>
+                ) : (
+                  <label>
+                    {t("Tarefa")}
+                    <textarea
+                      required
+                      maxLength={8000}
+                      rows={3}
+                      value={draft.prompt}
+                      onChange={(event) => update({ prompt: event.target.value })}
+                    />
+                  </label>
+                )}
                 {simple && (
                   <>
                     <div className="routine-form-grid">
@@ -320,7 +368,7 @@ export const RoutineEditor = ({
                 <label>
                   {t("Destino dos resultados")}
                   <select
-                    value={draft.groupId ? `group:${draft.groupId}` : draft.continuity}
+                    value={draft.groupId ? `group:${draft.groupId}` : isScript ? "" : draft.continuity}
                     onChange={(event) => {
                       const groupId = event.target.value.startsWith("group:") ? event.target.value.slice(6) : null
                       if (groupId)
@@ -338,11 +386,20 @@ export const RoutineEditor = ({
                         })
                     }}
                   >
-                    <option value="main-thread">{t("Conversa principal")}</option>
-                    <option value="new-thread">{t("Seguir configuração do bot")}</option>
-                    <option value="results-thread">
-                      {draft.resultsThreadId && !draft.groupId ? t("Nesta conversa") : t("Conversa de resultados")}
-                    </option>
+                    {isScript && (
+                      <option value="" disabled>
+                        {t("Escolha um canal")}
+                      </option>
+                    )}
+                    {!isScript && (
+                      <>
+                        <option value="main-thread">{t("Conversa principal")}</option>
+                        <option value="new-thread">{t("Seguir configuração do bot")}</option>
+                        <option value="results-thread">
+                          {draft.resultsThreadId && !draft.groupId ? t("Nesta conversa") : t("Conversa de resultados")}
+                        </option>
+                      </>
+                    )}
                     {isGroupUnavailable && (
                       <option value={`group:${draft.groupId}`} disabled>
                         {unavailableGroupLabel}
@@ -356,6 +413,16 @@ export const RoutineEditor = ({
                   </select>
                 </label>
                 <Disclosure defaultOpen={!simple} openWhen={!simple} summary={t("Avançado")}>
+                  <label>
+                    {t("Se a execução anterior ainda estiver ativa")}
+                    <select
+                      value={draft.overlap}
+                      onChange={(event) => update({ overlap: event.target.value as "skip" | "queue" })}
+                    >
+                      <option value="skip">{t("Pular o próximo disparo")}</option>
+                      <option value="queue">{t("Esperar e executar em sequência")}</option>
+                    </select>
+                  </label>
                   <label>
                     {t("Expressão cron")}
                     <input
@@ -397,27 +464,49 @@ export const RoutineEditor = ({
             ) : (
               <section ref={reviewRef} tabIndex={-1} className="routine-review" aria-label={t("Revisar rotina")}>
                 <p className="routine-summary">
-                  {group
-                    ? t("A tarefa {task} será enviada ao grupo {group}, {schedule}.", {
+                  {isScript
+                    ? t("O script {task} será executado {schedule}.", {
                         task: draft.name,
-                        group: group.name,
-                        schedule: routineSchedule(draft.cron, draft.timezone).replace(/^De /, "de "),
+                        schedule: routineSchedule(draft.cron, draft.timezone),
                       })
-                    : t("{bot} fará {task}, {schedule}.", {
-                        bot: bot?.name ?? "",
-                        task: draft.name,
-                        schedule: routineSchedule(draft.cron, draft.timezone).replace(/^De /, "de "),
-                      })}
+                    : group
+                      ? t("A tarefa {task} será enviada ao grupo {group}, {schedule}.", {
+                          task: draft.name,
+                          group: group.name,
+                          schedule: routineSchedule(draft.cron, draft.timezone).replace(/^De /, "de "),
+                        })
+                      : t("{bot} fará {task}, {schedule}.", {
+                          bot: bot?.name ?? "",
+                          task: draft.name,
+                          schedule: routineSchedule(draft.cron, draft.timezone).replace(/^De /, "de "),
+                        })}
                 </p>
-                <h3>{t("Tarefa")}</h3>
-                <p className="routine-instruction">{draft.prompt}</p>
+                <h3>{isScript ? t("Comando") : t("Tarefa")}</h3>
+                <p className="routine-instruction">{isScript ? draft.command : draft.prompt}</p>
+                {isScript && (
+                  <p>
+                    {t("Pasta de execução (cwd)")}: {draft.cwd}
+                    {draft.envFile && (
+                      <span>
+                        {" "}
+                        · {t("Arquivo de ambiente (opcional)")}: {draft.envFile}
+                      </span>
+                    )}
+                  </p>
+                )}
                 <h3>{t("Destino dos resultados")}</h3>
                 <p>{destination}</p>
               </section>
             )}
             <section className="routine-context" aria-label={t("Contexto autorizado")}>
               <h3>{t("Contexto autorizado")}</h3>
-              {group ? (
+              {isScript ? (
+                <p>
+                  {t(
+                    "O script executa comandos nesta máquina com os acessos do dono, sem agente. Somente o dono pode configurá-lo.",
+                  )}
+                </p>
+              ) : group ? (
                 <p>
                   {t(
                     "O grupo recebe a tarefa como uma mensagem sua. Cada membro responde com as próprias permissões; com coordenador, só ele recebe e chama os outros.",
@@ -451,7 +540,11 @@ export const RoutineEditor = ({
                   )}
                 </>
               )}
-              <p>{t("Esta rotina não concede novos acessos. Mudanças de permissões do bot também afetam a rotina.")}</p>
+              {!isScript && (
+                <p>
+                  {t("Esta rotina não concede novos acessos. Mudanças de permissões do bot também afetam a rotina.")}
+                </p>
+              )}
             </section>
             <section aria-label={t("Próximas três execuções")}>
               <h3>{t("Próximas três execuções")}</h3>

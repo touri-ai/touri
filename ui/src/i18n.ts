@@ -5,6 +5,17 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "Escolha um canal": "Escolha um canal",
+  "O script {task} será executado {schedule}.": "O script {task} será executado {schedule}.",
+  "Se a execução anterior ainda estiver ativa": "Se a execução anterior ainda estiver ativa",
+  "Pular o próximo disparo": "Pular o próximo disparo",
+  "Esperar e executar em sequência": "Esperar e executar em sequência",
+  "Tipo de rotina": "Tipo de rotina",
+  Script: "Script",
+  "Pasta de execução (cwd)": "Pasta de execução (cwd)",
+  "Arquivo de ambiente (opcional)": "Arquivo de ambiente (opcional)",
+  "O script executa comandos nesta máquina com os acessos do dono, sem agente. Somente o dono pode configurá-lo.":
+    "O script executa comandos nesta máquina com os acessos do dono, sem agente. Somente o dono pode configurá-lo.",
   "A verificação de namespaces Linux não se aplica a este sistema.":
     "A verificação de namespaces Linux não se aplica a este sistema.",
   "Namespaces de usuário e rede disponíveis; a proteção do navegador permanece ativa.":
@@ -3586,6 +3597,17 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Escolha um canal": "Choose a channel",
+  "O script {task} será executado {schedule}.": "Script {task} will run {schedule}.",
+  "Se a execução anterior ainda estiver ativa": "If the previous execution is still active",
+  "Pular o próximo disparo": "Skip the next trigger",
+  "Esperar e executar em sequência": "Wait and run sequentially",
+  "Tipo de rotina": "Routine type",
+  Script: "Script",
+  "Pasta de execução (cwd)": "Working directory (cwd)",
+  "Arquivo de ambiente (opcional)": "Environment file (optional)",
+  "O script executa comandos nesta máquina com os acessos do dono, sem agente. Somente o dono pode configurá-lo.":
+    "The script runs commands on this machine with the owner's access, without an agent. Only the owner can configure it.",
   "A verificação de namespaces Linux não se aplica a este sistema.":
     "The Linux namespace check does not apply to this system.",
   "Namespaces de usuário e rede disponíveis; a proteção do navegador permanece ativa.":

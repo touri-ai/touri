@@ -2242,3 +2242,14 @@ field-value, preview and bot-read restrictions. Rejected stale input cannot alte
 Uninterrupted input is collected in segments of at most 16,384 characters, protecting the previous
 segment before starting the next. Handoff reasons retain up to 240 sanitized characters and shorten
 longer explanations at a word boundary with an ellipsis.
+
+
+### Script routines
+
+- The owner can choose Bot or Script in the routine editor. Script routines store `kind: "script"`, a shell `command`, absolute `cwd`, and an optional absolute `envFile` path. Existing routines default to `bot`.
+- Script execution is local to the server/desktop host, without a provider session, model request or group turn. The selected bot is only the existing storage identity for results; its sandbox is not used. The review explicitly describes host command access.
+- Cron, IANA timezone, timeout, skip/queue overlap and catch-up use the same routine scheduler. Script slots serialize per routine. Shutdown kills running process trees; interrupted slots are marked failed after restart and are never replayed automatically. Their routines pause until the owner checks possible external side effects and reactivates them.
+- Nonempty stdout posts a completed integration message in the selected channel (`groupId`), reusing its results conversation. Empty/whitespace-only output or exactly `[SILENT]` after trimming posts nothing. Output is capped at 64 KiB. Nonzero/signal exit posts a failure with up to 4 KiB of stderr tail. Streams drain concurrently and their readers cancel on timeout, including when a descendant holds a pipe open. Script dispatch/restart uses indexed unfinished/recent slots instead of loading full run history.
+- Optional dotenv files are read only at execution time, limited to 64 KiB, with no shell evaluation or interpolation. Only their paths are persisted. Ambient provider credentials are not inherited; configured secret/token/password/key values are redacted from output alongside standard redaction.
+- Only the authenticated owner (or the local owner UI token) can create, edit or manually run script routines. Members, other admins, integration clients and agent routine tools cannot configure or launch them.
+- PATCH changing `groupId` clears an omitted `resultsThreadId`, preventing the previous destination from conflicting with the new channel. An explicitly supplied results conversation must still belong to the selected channel.
