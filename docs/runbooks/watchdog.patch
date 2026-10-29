@@ -1,0 +1,32 @@
+--- a/touri-watchdog.py
++++ b/touri-watchdog.py
+@@ -11,0 +12 @@
++from watchdog_policy import cancel_overdue_run, get_overdue_runs
+@@ -128,13 +129,14 @@
+-    # stuck running
+-    for rid, bot, started in c.execute("select id, bot_id, started_at from runs where status='running' and started_at is not null"):
+-        limit = LIMIT_MIN.get(bot, DEFAULT_LIMIT_MIN)
+-        age = (NOW - int(started)) / 60000
+-        if age > limit and touri_up:
+-            try:
+-                api("POST", f"/runs/{rid}/cancel", {})
+-                log(f"canceled stuck run {rid} ({names.get(bot)}) after {age:.0f} min")
+-                discord(f"touri watchdog: execução travada do {names.get(bot)} cancelada após {age:.0f} min ({rid})")
+-            except Exception as e:
+-                log(f"cancel {rid} failed: {e}")
+-            report(f"stuck:{bot}", f"Execução do bot {names.get(bot)} travou por {age:.0f} min e foi cancelada",
+-                   f"run {rid}, limite {limit} min", state, touri_up)
++    # Routine execution deadlines take precedence over generic bot limits.
++    for candidate in get_overdue_runs(c, NOW, LIMIT_MIN, DEFAULT_LIMIT_MIN):
++        rid, bot = candidate["run_id"], candidate["bot_id"]
++        age, limit = candidate["age_minutes"], candidate["limit_minutes"]
++        if not touri_up:
++            continue
++        outcome = cancel_overdue_run(candidate, lambda run_id: api("POST", f"/runs/{run_id}/cancel", {}))
++        if outcome["cancellation_confirmed"]:
++            log(f"canceled overdue run {rid} ({names.get(bot)}) after {age:.0f} min")
++            title = f"Execução do bot {names.get(bot)} excedeu {limit} min e foi cancelada"
++        else:
++            log(f"cancellation unconfirmed for overdue run {rid}")
++            title = f"Execução do bot {names.get(bot)} excedeu {limit} min; cancelamento não confirmado"
++        report(f"stuck:{bot}", title, f"run {rid}, limite {limit} min", state, touri_up)
