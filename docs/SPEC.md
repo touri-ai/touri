@@ -920,7 +920,11 @@ Groups have a name, mascot shape/seed/color, an ordered roster and an optional c
 from that roster. Each group owns multiple conversations. Migration `0008.sql` is additive;
 existing bot conversations, permissions and provider sessions are preserved.
 
-Human channel messages dispatch only to explicitly mentioned bots, in mention order.
+Human channel messages dispatch only to explicitly mentioned bots, in mention order. Recipients of
+the same message start independently, subject to the runtime concurrency limit; a slow recipient
+does not delay dispatch to the others. Later requests sharing a recipient retain their order until
+the earlier turn settles. The parent waits for every recipient and preserves any member failure
+and successful replies; the explicit everyone action retains its partial-success behavior.
 Mentioning a person never dispatches a bot. The explicit everyone and summary actions select
 their own recipients; routines retain the coordinator / mentioned-members / all-members order.
 The UI mock follows the same mention matching for its channel bot roster: a message without a

@@ -786,16 +786,14 @@ export const createGroupRuntime = (
       )
       return
     }
-    if (turn.action !== "ask_all") {
-      const prompt = turn.action === "summarize" ? getSummaryRequest(turn) : text
-      for (const botId of turn.recipients) await runBot(turn, botId, prompt, 0, [botId], false)
-      return
-    }
+    const prompt = turn.action === "summarize" ? getSummaryRequest(turn) : text
+    // Each recipient has its own session; a slow member must not delay dispatch to the others.
     const outcomes = await Promise.allSettled(
-      turn.recipients.map((botId) => runBot(turn, botId, text, 0, [botId], false)),
+      turn.recipients.map((botId) => runBot(turn, botId, prompt, 0, [botId], false)),
     )
     turn.controller.signal.throwIfAborted()
-    if (outcomes.some((outcome) => outcome.status === "fulfilled")) return
+    if (turn.action === "ask_all" && outcomes.some((outcome) => outcome.status === "fulfilled")) return
+
     const failure = outcomes.find((outcome) => outcome.status === "rejected")
     if (failure?.status === "rejected") throw failure.reason
   }

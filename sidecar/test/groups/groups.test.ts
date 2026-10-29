@@ -632,12 +632,12 @@ test("queue serializes turns across group conversations; Parar cancels active an
   const first = f.send("primeiro")
   const other = f.data.createThread(f.group, "Outra conversa")
   const second = f.send("segundo", other.id)
-  await until(() => f.order.length === 1)
+  await until(() => f.order.length === f.group.memberIds.length)
   expect((await f.request(`/groups/${f.group.id}`, f.input, "PATCH")).status).toBe(409)
   expect(f.runtime.cancel(first.id)).toBe(true)
   await until(() => f.persistence.getRun(first.id)?.status === "canceled")
   expect(f.persistence.getRun(second.id)?.status).toBe("canceled")
-  expect(f.order).toHaveLength(1)
+  expect(f.order).toHaveLength(f.group.memberIds.length)
 })
 
 test("an independent bot replies while an earlier bot and its next request are waiting", async () => {
@@ -667,6 +667,70 @@ test("an independent bot replies while an earlier bot and its next request are w
   expect(history.filter((message) => message.text === "Resposta do segundo bot")).toMatchObject([
     { sender: { id: f.bots[1]?.id } },
   ])
+})
+
+test("explicit recipients start independently while later requests keep their order", async () => {
+  const release = Promise.withResolvers<void>()
+  const scenario = await fixture(async (ctx, complete) => {
+    if (ctx.botId === scenario.bots[0]?.id) await release.promise
+    complete(`Resposta de ${ctx.botId}`)
+  }, 30_000)
+  cleanups.unshift(() => release.resolve())
+
+  const shared = scenario.send("@pm @dev revisem")
+  await until(() => scenario.order.length === 2)
+  const waiting = scenario.send("@dev confira depois")
+  const members = scenario.runtime.listRuns(scenario.thread.id).filter((run) => run.groupTurnId === shared.id)
+
+  expect(scenario.persistence.getRun(shared.id)?.status).toBe("running")
+  expect(scenario.persistence.getRun(waiting.id)?.status).toBe("queued")
+  expect(members).toHaveLength(2)
+  expect(new Set(members.map((run) => scenario.persistence.getRun(run.id)?.threadId)).size).toBe(2)
+  expect(members.find((run) => run.botId === scenario.bots[0]?.id)?.status).toBe("running")
+  await until(() => members.some((run) => scenario.persistence.getRun(run.id)?.status === "succeeded"))
+
+  release.resolve()
+  await until(() => scenario.persistence.getRun(waiting.id)?.status === "succeeded")
+  const history = scenario.store.activePath({ threadId: scenario.thread.id })
+
+  expect(scenario.persistence.getRun(shared.id)?.status).toBe("succeeded")
+  expect(scenario.order).toEqual([scenario.bots[0]?.id ?? "", scenario.bots[1]?.id ?? "", scenario.bots[1]?.id ?? ""])
+  expect(history.filter((message) => message.role === "user")).toHaveLength(2)
+  expect(history.filter((message) => message.role === "assistant")).toHaveLength(3)
+})
+
+test("explicit recipients preserve a member failure while the other member finishes", async () => {
+  const release = Promise.withResolvers<void>()
+  const scenario = await fixture(async (_ctx, complete) => {
+    await release.promise
+    complete("Resposta concluída")
+  }, 30_000)
+  cleanups.unshift(() => release.resolve())
+  const turn = scenario.send("@pm @dev revisem")
+  await until(() => scenario.order.length === 2)
+  const first = [...scenario.running.values()].find(({ run }) => run.botId === scenario.bots[0]?.id)?.run
+  if (!first) throw new Error("Missing first recipient")
+  const failed: Run = {
+    ...first,
+    status: "failed",
+    errorClass: "cli_auth",
+    errorMessage: "Acesso de demonstração recusado",
+    finishedAt: Date.now(),
+  }
+
+  scenario.persistence.saveRun(failed)
+  scenario.host.kernel.publish({ type: "run.updated", run: failed })
+  release.resolve()
+  await until(() => scenario.persistence.getRun(turn.id)?.status === "failed")
+  const members = scenario.runtime.listRuns(scenario.thread.id).filter((run) => run.groupTurnId === turn.id)
+
+  expect(scenario.persistence.getRun(turn.id)).toMatchObject({ status: "failed", errorClass: "cli_auth" })
+  expect(members.find((run) => run.botId === scenario.bots[1]?.id)?.status).toBe("succeeded")
+  expect(
+    scenario.store
+      .activePath({ threadId: scenario.thread.id })
+      .some((message) => message.text === "Resposta concluída"),
+  ).toBe(true)
 })
 
 test("concurrent recipients cannot delegate into another active turn", async () => {
@@ -1077,7 +1141,7 @@ test("startup fails queued group turns whose group or conversation was removed",
   }
 })
 
-test("an active group finishes sequential members and delegated work during engine drain", async () => {
+test("an active group finishes addressed members and delegated work during engine drain", async () => {
   const f = await fixture()
   f.runtime.shutdown()
   const release = Promise.withResolvers<void>()
@@ -2796,7 +2860,7 @@ test("canceling a member for deletion preserves ask-all peers and unrelated queu
   expect([...scenario.canceledBots]).toEqual([scenario.bots[1]?.id ?? ""])
 })
 
-test("six ask-all members respect the engine concurrency cap and each gets its active execution budget", async () => {
+test.each(["ask_all", "mentions"] as const)("six %s recipients respect the execution cap", async (action) => {
   const scenario = await fixture()
   scenario.runtime.shutdown()
   const provider = scenario.bots[0]?.provider
@@ -2855,7 +2919,14 @@ test("six ask-all members respect the engine concurrency cap and each gets its a
     await engine.shutdown()
   })
 
-  const turn = await sendAskAll(scenario)
+  const response = await scenario.request(`/threads/${scenario.thread.id}/messages`, {
+    text: "@pm @dev @qa @outsider @docs @design revisem",
+    parentId: null,
+    attachmentIds: [],
+    groupAction: action === "ask_all" ? "ask_all" : undefined,
+  })
+  expect(response.status).toBe(201)
+  const { run: turn } = (await response.json()) as { run: Run }
   await until(() => releases.length === 2)
   expect(active.size).toBe(2)
   now += 600
