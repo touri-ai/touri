@@ -658,6 +658,41 @@ it("shows interrupted tasks only while pending and leaves the count on the notif
   expect(screen.getAllByText("1", { selector: ".notification-badge" })).toHaveLength(1)
 })
 
+it("closes sidebar navigation before dispatching a notification recovery", async () => {
+  const { bots, threads } = fixture()
+  const api = createMockApi()
+  const failure = api.notify({
+    kind: "turn-failed",
+    botId: "bot-alfa",
+    threadId: "thread-alfa",
+    title: "Tarefa interrompida",
+    body: "app_restart: touri restarted",
+  })
+  const onNavigate = vi.fn()
+  const recover = vi.fn(async () => undefined)
+  renderSidebar({
+    bots,
+    threads,
+    notifications: [failure],
+    onNavigate,
+    notificationActions: {
+      open: vi.fn(),
+      recover,
+      dismiss: async () => undefined,
+      dismissAll: async () => undefined,
+      respond: async () => undefined,
+      reply: async () => undefined,
+    },
+  })
+
+  fireEvent.click(screen.getByRole("button", { name: /^Notificações/ }))
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retomar tarefa", exact: true })))
+
+  expect(recover).toHaveBeenCalledWith(failure, "resume")
+  expect(onNavigate).toHaveBeenCalledOnce()
+  expect(onNavigate.mock.invocationCallOrder[0]).toBeLessThan(recover.mock.invocationCallOrder[0] ?? 0)
+})
+
 it("labels a postponed routine as such and keeps the bot out of needs-you", () => {
   const { bots, threads } = fixture()
   const notice = createMockApi().notify({

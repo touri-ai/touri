@@ -15,8 +15,13 @@ export const MotionPresence = ({
   children: ReactNode
 }) => {
   const [mounted, setMounted] = useState(show)
+  const [session, setSession] = useState({ show, id: 0 })
   const retained = useRef(children)
   const ref = useReveal<HTMLDivElement>(show)
+
+  // A reopened modal must read saved values instead of reusing its exiting form state.
+  if (kind === "modal" && show !== session.show) setSession({ show, id: session.id + (show ? 1 : 0) })
+
   useLayoutEffect(() => {
     if (show) retained.current = children
   }, [show, children])
@@ -41,6 +46,7 @@ export const MotionPresence = ({
   if (!mounted && !show) return null
   const surface = (
     <div
+      key={kind === "modal" ? session.id : undefined}
       ref={ref}
       className={`motion-presence motion-${kind}`}
       data-motion-state={show ? "open" : "closed"}

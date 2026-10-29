@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, expect, test, vi } from "vitest"
 import { MotionPresence, useInsertedIds } from "../src/components/Motion"
 import { AnimatedDisclosure } from "../src/components/Reveal"
+import { SettingsDisclosure } from "../src/components/SettingsLayout"
 import { motionTiers } from "../src/design/spring"
 
 afterEach(() => {
@@ -32,6 +33,30 @@ test("closing surfaces are inert immediately, survive only the exit, and tolerat
   rerender(surface(false))
   act(() => vi.advanceTimersByTime(motionTiers.quick.duration))
   expect(document.querySelector(".motion-presence")).toBeNull()
+})
+
+test("reopening a modal during its exit starts a new disclosure session", () => {
+  vi.useFakeTimers()
+  const getSurface = (show: boolean) => (
+    <MotionPresence show={show} kind="modal">
+      <SettingsDisclosure title="Som" description="Preferências de som">
+        {(open) => open && <input aria-label="Som do canal" type="checkbox" defaultChecked />}
+      </SettingsDisclosure>
+    </MotionPresence>
+  )
+  const { rerender } = render(getSurface(true))
+  fireEvent.click(screen.getByRole("button", { name: /Som/ }))
+  fireEvent.click(screen.getByRole("checkbox", { name: "Som do canal" }))
+  rerender(getSurface(true))
+  expect(screen.getByRole("checkbox", { name: "Som do canal" })).not.toBeChecked()
+
+  rerender(getSurface(false))
+  expect(screen.getByLabelText("Som do canal")).not.toBeChecked()
+  rerender(getSurface(true))
+
+  expect(screen.getByRole("button", { name: /Som/ })).toHaveAttribute("aria-expanded", "false")
+  fireEvent.click(screen.getByRole("button", { name: /Som/ }))
+  expect(screen.getByRole("checkbox", { name: "Som do canal" })).toBeChecked()
 })
 
 test.each(["system", "app"])("%s reduced motion removes closed surfaces without a timer", (preference) => {

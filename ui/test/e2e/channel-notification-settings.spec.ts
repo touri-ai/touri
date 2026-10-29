@@ -42,6 +42,12 @@ for (const colorScheme of ["dark", "light"] as const) {
       await dialog.getByRole("tab", { name: "Notificações", exact: true }).click()
       await dialog.getByText("Escolher avisos e horário silencioso", { exact: true }).click()
 
+      if (directory)
+        await page.screenshot({
+          path: join(directory, `notification-settings-reopened-${colorScheme}-${width}.png`),
+          animations: "disabled",
+        })
+
       await expect(sound).not.toBeChecked()
     })
   }
