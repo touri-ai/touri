@@ -21,7 +21,7 @@ for (const width of [1440, 1100]) {
           })
         if (view !== "empty")
           await expect(
-            page.locator(".message-assistant > .markdown-content, .chat-message-preview > .markdown-content").first(),
+            page.locator(".message-assistant .markdown-content, .chat-message-preview > .markdown-content").first(),
           ).toBeVisible()
         if (view === "conversation")
           await expect(page.locator(".message-assistant").last().locator("strong")).toHaveCount(3)

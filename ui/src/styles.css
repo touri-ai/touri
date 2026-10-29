@@ -3775,26 +3775,135 @@ a {
 .chat-message-list :is(.message-bubble, .day-divider) {
   width: min(var(--chat-column-width), 100%);
 }
+/* Message rows: your messages sit at the end without a header; bots read beside their avatar. */
 .chat-message-list .message-bubble {
-  margin-bottom: var(--space-24);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  position: relative;
+  max-width: none;
+  margin: 0 auto var(--space-16);
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
   line-height: 1.65;
 }
-.chat-message-list .message-user {
+.chat-message-list .message-bubble[data-message-grouped] {
+  margin-top: calc(-1 * var(--space-16));
+}
+.chat-message-list .message-bubble[data-message-author="own"],
+.chat-message-list .message-bubble[data-message-author="person"] {
+  justify-items: end;
+}
+.chat-message-list .message-bubble[data-message-author="bot"] {
+  grid-template-columns: var(--space-28) minmax(0, 1fr);
+  grid-template-areas:
+    ". routine"
+    ". meta"
+    "avatar body"
+    ". actions";
+  column-gap: var(--space-8);
+}
+.chat-message-list .message-bubble[data-message-author="bot"] > .routine-run-header {
+  grid-area: routine;
+}
+.chat-message-list .message-bubble[data-message-author="bot"] > .message-meta {
+  grid-area: meta;
+}
+.chat-message-list .message-bubble[data-message-author="bot"] > .message-body {
+  grid-area: body;
+}
+.chat-message-list .message-bubble[data-message-author="bot"] > .message-actions {
+  grid-area: actions;
+}
+.chat-message-list .message-avatar {
+  display: flex;
+  grid-area: avatar;
+  align-self: end;
+}
+.chat-message-list .message-body {
+  min-width: 0;
+  max-width: min(720px, 100%);
+  font-size: var(--fs-body);
+}
+.chat-message-list .message-bubble:is([data-message-author="own"], [data-message-author="person"]) > .message-body {
   width: fit-content;
-  max-width: min(var(--bubble-max-width), 85%);
-  margin-right: max(0px, calc((100% - var(--chat-column-width)) / 2));
   padding: var(--bubble-padding-block) var(--bubble-padding-inline);
   border-radius: var(--bubble-radius);
   background: var(--surface-chat-user);
-  font-size: var(--fs-body);
 }
-.chat-message-list .message-other-person {
-  margin-right: auto;
-  margin-left: max(0px, calc((100% - var(--chat-column-width)) / 2));
+.chat-message-list .message-bubble[data-message-author="person"] > .message-body {
+  background: color-mix(in srgb, var(--avatar-author-color) 22%, var(--surface-chat-user));
+}
+.chat-message-list .message-body > :first-child,
+.chat-message-list .message-text > .markdown-content > :first-child {
+  margin-top: 0;
+}
+.chat-message-list .message-body > :last-child,
+.chat-message-list .message-text > .markdown-content > :last-child {
+  margin-bottom: 0;
+}
+/* Plain bot text gets a muted bubble; tables, code and images keep their own frame on a ghost bubble. */
+.chat-message-list .message-text {
+  width: fit-content;
+  max-width: 100%;
+  padding: var(--bubble-padding-block) var(--bubble-padding-inline);
+  border-radius: var(--bubble-radius);
   background: var(--surface-control);
 }
-.chat-message-list .message-assistant {
+.chat-message-list .message-text + .message-text {
+  margin-top: var(--space-8);
+}
+.chat-message-list .message-text:has(table, pre, img, .evidence-gallery) {
+  width: 100%;
   padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.chat-message-list .message-body > :is(.approval-card, .team-approval-card) {
+  max-width: min(500px, 100%);
+}
+.chat-message-list .message-body .evidence-gallery {
+  max-width: min(480px, 100%);
+}
+.chat-message-list .message-bubble[data-message-author="person"] .message-meta time {
+  order: -1;
+}
+.chat-message-list .message-bubble:is([data-message-author="bot"], [data-message-author="person"]) .message-role {
+  color: color-mix(in srgb, var(--avatar-author-color) 35%, var(--text));
+  font-weight: var(--weight-regular);
+}
+/* Time and actions wait under the bubble until hover or keyboard focus; statuses always show. */
+.chat-message-list .message-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-8);
+  min-height: var(--space-24);
+  color: var(--text-2);
+  font-size: var(--fs-caption);
+  font-variant-numeric: tabular-nums;
+}
+.chat-message-list .message-actions:empty {
+  display: none;
+}
+.chat-message-list .message-actions .user-message-actions {
+  margin: 0;
+}
+.chat-message-list .message-actions > :is(time, .user-message-actions),
+.chat-message-list .message-bubble[data-message-author="bot"] .message-meta time {
+  opacity: 0;
+  transition: opacity var(--duration-standard) var(--ease-standard);
+}
+.chat-message-list .message-bubble:is(:hover, :focus-within) .message-actions > :is(time, .user-message-actions),
+.chat-message-list .message-bubble:is(:hover, :focus-within) .message-meta time,
+.chat-message-list .message-actions:has(.user-message-editor) > .user-message-actions,
+.chat-message-list .message-routine-prompt .message-actions > .user-message-actions {
+  opacity: 1;
+}
+@media (hover: none) {
+  .chat-message-list .message-actions > .user-message-actions {
+    opacity: 1;
+  }
 }
 .chat-message-list .routine-run-marker {
   width: min(var(--chat-column-width), 100%);
@@ -3835,6 +3944,14 @@ a {
   width: min(var(--chat-column-width), 100%);
   max-width: 100%;
   margin-inline: auto;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  justify-items: stretch;
+}
+.chat-message-list .message-routine-prompt > .message-body {
+  width: auto;
+  max-width: none;
   padding: 0;
   border-radius: 0;
   background: transparent;
@@ -4158,9 +4275,6 @@ a {
   }
   .chat-panel .chat-bot-chip {
     max-width: 40%;
-  }
-  .chat-message-list .message-user:not(.message-routine-prompt) {
-    max-width: 92%;
   }
 }
 /* end r8 chat */

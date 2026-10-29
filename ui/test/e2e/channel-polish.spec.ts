@@ -118,11 +118,13 @@ test("channel polish keeps identities, messages and the member panel clear", asy
         element.getAttribute("style")?.match(/--avatar-color: ([^;]+)/)?.[1],
       ]
       const panelAvatar = await panel.locator('[data-bot-id="owner"]').evaluate(avatarIdentity)
-      const messageAvatar = await messages.locator('[data-bot-id="owner"]').first().evaluate(avatarIdentity)
       const headerAvatar = await page.locator('.channel-member-avatars [data-bot-id="owner"]').evaluate(avatarIdentity)
 
-      expect(panelAvatar).toEqual(messageAvatar)
-      expect(headerAvatar).toEqual(messageAvatar)
+      expect(headerAvatar).toEqual(panelAvatar)
+      const ownRows = messages.locator('[data-message-author="own"]')
+      await expect(ownRows.first()).toBeVisible()
+      await expect(ownRows.locator(".tb-avatar, .message-meta, .message-role")).toHaveCount(0)
+      await expect(ownRows.first().locator(".visually-hidden")).toHaveText("Você")
       expect(
         await panel
           .locator("*")

@@ -16,7 +16,7 @@ import type {
 import { failureRetryHint, sanitizeDiagnostic } from "@touri/contracts/run-failure"
 import {
   type ComponentProps,
-  Fragment,
+  type CSSProperties,
   lazy,
   memo,
   type ReactNode,
@@ -66,7 +66,7 @@ import { useAvatarBot, useMascotSnapshot, useMessageMascotState, useThreadBot } 
 import { activeMessagePath } from "./activeMessagePath"
 import { withApprovalAnswers } from "./activityStatus"
 import { getAutomaticResumeMessages } from "./automaticResumeMessages"
-import { BotAvatar } from "./BotAvatar"
+import { avatarColorFor, BotAvatar } from "./BotAvatar"
 import { BrowserActivityControlsProvider } from "./BrowserActivityControls"
 import { getBrowserActivityTools } from "./browserActivityPresentation"
 import { type BrowserContinuationActivity, getBrowserContinuationActivities } from "./browserContinuationActivity"
@@ -826,6 +826,8 @@ export const VirtualMessageList = ({
                           : saved.parts,
                     }
                   : saved
+              const previous = timeline[start + index - 1]?.message
+              const grouped = Boolean(index > 0 && previous && shouldGroupMessages(previous, message, currentPersonId))
               const siblings = flatHistory ? [] : (branches.get(getMessageBranchKey(message)) ?? [])
               const branchIndex = flatHistory ? 0 : siblings.findIndex((candidate) => candidate.id === message.id)
               return (
@@ -839,6 +841,7 @@ export const VirtualMessageList = ({
                   inserted={insertedMessages.has(message.id)}
                   vmBotId={vmBotId}
                   currentPersonId={currentPersonId}
+                  grouped={grouped}
                   machine={machine}
                   message={message}
                   searchFocused={focusMessage?.messageId === message.id}
@@ -975,6 +978,37 @@ const sameCalendarDay = (left: number, right: number): boolean => {
   )
 }
 
+/** Who wrote a row, for grouping a run: you, another person or integration, or a bot; system rows never group. */
+const getMessageAuthorKey = (message: Message, currentPersonId: string | null): string | null => {
+  if (message.role === "user") return `person:${message.sender?.id ?? currentPersonId ?? "owner"}`
+  if (message.role === "assistant") return `bot:${message.sender?.id ?? message.threadId}`
+
+  return null
+}
+
+const groupWindow = 5 * 60_000
+
+/** A continuation of the same author's run draws no avatar or name of its own. */
+const shouldGroupMessages = (previous: Message, current: Message, currentPersonId: string | null): boolean => {
+  const author = getMessageAuthorKey(previous, currentPersonId)
+  if (!author || author !== getMessageAuthorKey(current, currentPersonId)) return false
+  if (!sameCalendarDay(previous.createdAt, current.createdAt)) return false
+  const elapsed = current.createdAt - previous.createdAt
+
+  return elapsed >= 0 && elapsed <= groupWindow
+}
+
+type MessageAuthor = "own" | "person" | "bot" | "system"
+
+const getMessageAuthor = (message: Message, fromOtherPerson: boolean): MessageAuthor => {
+  if (message.role === "assistant") return "bot"
+  if (message.role !== "user") return "system"
+  if (message.sender?.kind === "integration") return "bot"
+  if (fromOtherPerson) return "person"
+
+  return "own"
+}
+
 // Formatters are reused across renders; building them per message is costly while a reply streams.
 const dayFormat = new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "long" })
 const dayWithYearFormat = new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "long", year: "numeric" })
@@ -994,6 +1028,7 @@ const MessageBubbleRow = ({
   inserted,
   vmBotId,
   currentPersonId,
+  grouped = false,
   machine,
   recovered,
   automaticRecovery = false,
@@ -1019,6 +1054,7 @@ const MessageBubbleRow = ({
   inserted: boolean
   vmBotId?: string | undefined
   currentPersonId: string | null
+  grouped?: boolean
   machine?: MachineState | undefined
   recovered: boolean
   automaticRecovery?: boolean
@@ -1128,6 +1164,40 @@ const MessageBubbleRow = ({
     return t(message.role)
   }
   const messageRoleLabel = getMessageRoleLabel()
+  const author = getMessageAuthor(message, messageFromOtherPerson)
+  const showHeader = !routinePrompt && !grouped && author !== "own"
+  const getAuthorColor = (): string | undefined => {
+    if (personSender)
+      return avatarColorFor({
+        id: personSender.id,
+        color: null,
+        avatarSeed: personSender.avatarSeed ?? personSender.id,
+      })
+    if (senderBot) return avatarColorFor(senderBot)
+    if (message.sender) return avatarColorFor({ id: message.sender.id, color: null })
+    if (message.role === "assistant" && threadBot) return avatarColorFor(threadBot)
+
+    return undefined
+  }
+  const authorColor = getAuthorColor()
+  const getMessageAvatar = (): ReactNode => {
+    if (personSender)
+      return <PersonAvatar person={{ id: personSender.id, avatarSeed: personSender.avatarSeed ?? personSender.id }} />
+    if (senderBot) return <BotAvatar bot={senderBot} size={28} state={mascotState} />
+    if (!message.sender && threadBot) return <BotAvatar bot={threadBot} size={28} state={mascotState} />
+    if (!message.sender) return null
+
+    return (
+      <span role="img" aria-label={t("Membro excluído: {name}", { name: message.sender.name })}>
+        <BotAvatar
+          bot={{ id: message.sender.id, color: null, avatarShape: "none-none" }}
+          size={28}
+          state="idle"
+          still
+        />
+      </span>
+    )
+  }
   const technicalNotice =
     message.role === "system" &&
     message.parts.some((part) => part.type === "notice" && part.code === "session_replaced")
@@ -1292,268 +1362,273 @@ const MessageBubbleRow = ({
         </div>
       )
     )
+  const messageStatus = (
+    <>
+      {browserRunLabel && (
+        <span className="browser-run-state" role="status">
+          {browserRunLabel}
+        </span>
+      )}
+      {message.role === "user" && message.delivery && message.delivery.status !== "acked" && (
+        <span className="delivery-state" role="status">
+          {t(deliveryLabels[message.delivery.status], {}, locale)}
+        </span>
+      )}
+      {isCanceled && (
+        <span className="run-status chat-terminal-status" role="status">
+          {t("Cancelado por você", {}, locale)}
+        </span>
+      )}
+    </>
+  )
+  const messageTime = (
+    <time dateTime={new Date(message.createdAt).toISOString()}>{messageClock.format(message.createdAt)}</time>
+  )
   const bubble = (
     <article
       ref={root}
       className={`message-bubble ${messageClass}${routinePrompt ? " message-routine-prompt" : ""}${quietBrowserNarration ? " message-browser-narration" : ""}`}
       data-message-id={message.id}
+      data-message-author={author}
+      data-message-grouped={grouped || undefined}
       data-motion-insert={inserted}
+      style={authorColor ? ({ "--avatar-author-color": authorColor } as CSSProperties) : undefined}
     >
+      {author === "bot" && <div className="message-avatar">{grouped ? null : getMessageAvatar()}</div>}
+      {author === "own" && !routinePrompt && <span className="visually-hidden">{messageRoleLabel}</span>}
       {routineHeader && <small className="routine-run-header">{routineHeader}</small>}
-      {!routinePrompt && (
+      {showHeader && (
         <div className="message-meta">
-          {personSender && (
-            <span className="message-sender-avatar" aria-hidden="true">
-              <PersonAvatar
-                person={{ id: personSender.id, avatarSeed: personSender.avatarSeed ?? personSender.id }}
-                size={22}
-              />
-            </span>
-          )}
-          {message.role === "assistant" &&
-            message.sender &&
-            (senderBot ? (
-              <BotAvatar bot={senderBot} size={22} state={mascotState} />
-            ) : (
-              <span role="img" aria-label={t("Membro excluído: {name}", { name: message.sender.name })}>
-                <BotAvatar
-                  bot={{ id: message.sender.id, color: null, avatarShape: "none-none" }}
-                  size={22}
-                  state="idle"
-                  still
-                />
-              </span>
-            ))}
           <span className="message-role">{messageRoleLabel}</span>
           {message.sender?.kind === "integration" && (
             <span className="message-sender-kind">{t("Integração", {}, locale)}</span>
           )}
-          <time dateTime={new Date(message.createdAt).toISOString()}>{messageClock.format(message.createdAt)}</time>
-          {browserRunLabel && (
-            <span className="browser-run-state" role="status">
-              {browserRunLabel}
-            </span>
-          )}
-          {message.role === "user" && message.delivery && message.delivery.status !== "acked" && (
-            <span className="delivery-state" role="status">
-              {t(deliveryLabels[message.delivery.status], {}, locale)}
-            </span>
-          )}
-          {isCanceled && (
-            <span className="run-status chat-terminal-status" role="status">
-              {t("Cancelado por você", {}, locale)}
-            </span>
-          )}
+          {messageTime}
+          {messageStatus}
         </div>
       )}
-      {message.role === "assistant" ? (
-        segments.map((segment) => {
-          if (segment.type === "browser-steps")
-            return quietBrowserNarration ? renderBrowserSteps(segment.key, segment.count) : null
-          if (segment.type === "text") {
-            if (foldBrowserFlow && segment !== finalText) return null
-            const answer = renderAnswer(segment.text, segment === finalText)
-            if (!quietBrowserNarration) return <Fragment key={segment.key}>{answer}</Fragment>
-            if (!answer) return null
-
-            return (
-              <div className="browser-narration" key={segment.key}>
-                <strong>{senderName}:</strong>
-                {answer}
-              </div>
-            )
-          }
-          if (segment.type === "resume")
-            return (
-              <p key={segment.key} className="run-resumed-marker" role="note">
-                <span>{getResumeMarkerText(segment.text, locale)}</span>
-              </p>
-            )
-          if (segment.type === "approval")
-            return (
-              <ApprovalCard
-                key={segment.key}
-                part={segment.part}
-                tool={matchedApprovals.get(segment.part.approvalId)}
-                api={api}
-                finished={message.status !== "streaming"}
-                createdAt={message.createdAt}
-                onResolved={(_, decision) =>
-                  setAnswers((current) => ({ ...current, [segment.part.approvalId]: decision }))
-                }
-              />
-            )
-          if (segment.type === "attachments")
-            return <MessageAttachments key={segment.key} parts={segment.parts} api={api} />
-          if (hasBrowserTools) return null
-          return (
-            <TurnActivity
-              key={segment.key}
-              message={{ ...message, parts }}
-              locale={locale}
-              state={mascotState}
-              run={run}
-              browserActivity={browserActivity}
-              hideBrowserActivity={hideBrowserActivity}
-              botName={messageRoleLabel}
-              api={api}
-              bot={bot}
-              onCancel={showActivityStop ? onCancel : undefined}
-              preparingEnvironment={Boolean(vmBotId)}
-              hideBrowserCard={hasBrowserTools}
-              onFocusApproval={(approvalId) => {
-                const card = Array.from(root.current?.querySelectorAll<HTMLElement>("[data-approval-id]") ?? []).find(
-                  (element) => element.dataset.approvalId === approvalId,
-                )
-                card?.scrollIntoView?.({ block: "center", behavior: "instant" })
-                card?.focus({ preventScroll: true })
-              }}
-            />
-          )
-        })
-      ) : routinePrompt ? (
-        <ChatDisclosure label={t("Instruções da rotina")}>
-          <MarkdownContent content={text} />
-          <MessageAttachments parts={parts.filter((part) => part.type === "image" || part.type === "file")} api={api} />
-        </ChatDisclosure>
-      ) : text ? (
-        technicalNotice ? (
-          <ChatDisclosure label={t("Detalhes técnicos")}>
-            <pre>{text}</pre>
-          </ChatDisclosure>
-        ) : message.role === "tool" ? (
-          <ToolText text={text} />
-        ) : (
-          <MarkdownContent content={message.role === "system" ? localizeNotice(text) : text} imageApi={api} />
-        )
-      ) : null}
-      {hasBrowserTools && !hideBrowserActivity && (
-        <BrowserTurnCard
-          message={Object.assign({}, message, { parts })}
-          run={run}
-          bot={bot}
-          activity={browserActivity}
-          locale={locale}
-        >
-          {foldBrowserFlow
-            ? segments.map((flow) => {
-                if (flow.type === "browser-steps") return renderBrowserSteps(flow.key, flow.count)
-                if (flow.type !== "text" || flow === finalText) return null
-
+      <div className="message-body">
+        {message.role === "assistant" ? (
+          segments.map((segment) => {
+            if (segment.type === "browser-steps")
+              return quietBrowserNarration ? renderBrowserSteps(segment.key, segment.count) : null
+            if (segment.type === "text") {
+              if (foldBrowserFlow && segment !== finalText) return null
+              const answer = renderAnswer(segment.text, segment === finalText)
+              if (!answer) return null
+              if (!quietBrowserNarration)
                 return (
-                  <div className="browser-narration" key={flow.key}>
-                    <strong>{senderName}:</strong>
-                    <MarkdownContent content={flow.text.replace(connectDataMarker, "")} />
+                  <div className="message-text" key={segment.key}>
+                    {answer}
                   </div>
                 )
-              })
-            : undefined}
-          <TurnActivity
-            message={{ ...message, parts }}
+
+              return (
+                <div className="browser-narration" key={segment.key}>
+                  <strong>{senderName}:</strong>
+                  {answer}
+                </div>
+              )
+            }
+            if (segment.type === "resume")
+              return (
+                <p key={segment.key} className="run-resumed-marker" role="note">
+                  <span>{getResumeMarkerText(segment.text, locale)}</span>
+                </p>
+              )
+            if (segment.type === "approval")
+              return (
+                <ApprovalCard
+                  key={segment.key}
+                  part={segment.part}
+                  tool={matchedApprovals.get(segment.part.approvalId)}
+                  api={api}
+                  finished={message.status !== "streaming"}
+                  createdAt={message.createdAt}
+                  onResolved={(_, decision) =>
+                    setAnswers((current) => ({ ...current, [segment.part.approvalId]: decision }))
+                  }
+                />
+              )
+            if (segment.type === "attachments")
+              return <MessageAttachments key={segment.key} parts={segment.parts} api={api} />
+            if (hasBrowserTools) return null
+            return (
+              <TurnActivity
+                key={segment.key}
+                message={{ ...message, parts }}
+                locale={locale}
+                state={mascotState}
+                run={run}
+                browserActivity={browserActivity}
+                hideBrowserActivity={hideBrowserActivity}
+                botName={messageRoleLabel}
+                api={api}
+                bot={bot}
+                onCancel={showActivityStop ? onCancel : undefined}
+                preparingEnvironment={Boolean(vmBotId)}
+                hideBrowserCard={hasBrowserTools}
+                onFocusApproval={(approvalId) => {
+                  const card = Array.from(root.current?.querySelectorAll<HTMLElement>("[data-approval-id]") ?? []).find(
+                    (element) => element.dataset.approvalId === approvalId,
+                  )
+                  card?.scrollIntoView?.({ block: "center", behavior: "instant" })
+                  card?.focus({ preventScroll: true })
+                }}
+              />
+            )
+          })
+        ) : routinePrompt ? (
+          <ChatDisclosure label={t("Instruções da rotina")}>
+            <MarkdownContent content={text} />
+            <MessageAttachments
+              parts={parts.filter((part) => part.type === "image" || part.type === "file")}
+              api={api}
+            />
+          </ChatDisclosure>
+        ) : text ? (
+          technicalNotice ? (
+            <ChatDisclosure label={t("Detalhes técnicos")}>
+              <pre>{text}</pre>
+            </ChatDisclosure>
+          ) : message.role === "tool" ? (
+            <ToolText text={text} />
+          ) : (
+            <MarkdownContent content={message.role === "system" ? localizeNotice(text) : text} imageApi={api} />
+          )
+        ) : null}
+        {hasBrowserTools && !hideBrowserActivity && (
+          <BrowserTurnCard
+            message={Object.assign({}, message, { parts })}
             run={run}
             bot={bot}
-            state={mascotState}
-            api={api}
+            activity={browserActivity}
             locale={locale}
-            embedded
-            hideBrowserCard
+          >
+            {foldBrowserFlow
+              ? segments.map((flow) => {
+                  if (flow.type === "browser-steps") return renderBrowserSteps(flow.key, flow.count)
+                  if (flow.type !== "text" || flow === finalText) return null
+
+                  return (
+                    <div className="browser-narration" key={flow.key}>
+                      <strong>{senderName}:</strong>
+                      <MarkdownContent content={flow.text.replace(connectDataMarker, "")} />
+                    </div>
+                  )
+                })
+              : undefined}
+            <TurnActivity
+              message={{ ...message, parts }}
+              run={run}
+              bot={bot}
+              state={mascotState}
+              api={api}
+              locale={locale}
+              embedded
+              hideBrowserCard
+            />
+          </BrowserTurnCard>
+        )}
+        {browserHandoffExpired && (
+          <p className="chat-terminal-status" role="status">
+            {t("No one took over in time. Ask again when you can.", {}, locale)}
+          </p>
+        )}
+        {message.role !== "assistant" && !routinePrompt && (
+          <MessageAttachments parts={parts.filter((part) => part.type === "image" || part.type === "file")} api={api} />
+        )}
+        {message.role !== "assistant" && (
+          <ToolCallList
+            parts={parts}
+            api={api}
+            finished={message.status !== "streaming"}
+            createdAt={message.createdAt}
+            onResolved={(approvalId, decision) => setAnswers((current) => ({ ...current, [approvalId]: decision }))}
           />
-        </BrowserTurnCard>
-      )}
-      {browserHandoffExpired && (
-        <p className="chat-terminal-status" role="status">
-          {t("No one took over in time. Ask again when you can.", {}, locale)}
-        </p>
-      )}
-      {message.role !== "assistant" && !routinePrompt && (
-        <MessageAttachments parts={parts.filter((part) => part.type === "image" || part.type === "file")} api={api} />
-      )}
-      {message.role === "user" && onEdit && (
-        <UserMessageEdit
-          message={message}
-          onEdit={onEdit}
-          disabled={editDisabled || message.delivery?.status === "queued" || message.delivery?.status === "sent"}
-        />
-      )}
-      {message.role !== "assistant" && (
-        <ToolCallList
-          parts={parts}
-          api={api}
-          finished={message.status !== "streaming"}
-          createdAt={message.createdAt}
-          onResolved={(approvalId, decision) => setAnswers((current) => ({ ...current, [approvalId]: decision }))}
-        />
-      )}
-      {parts.some(screenTool) && !hasBrowserTools && (
-        <ChatDisclosure label={t("Advanced computer view")}>
-          <InlineLivePreview parts={parts} finished={message.status !== "streaming"} />
-        </ChatDisclosure>
-      )}
-      {siblings.length > 1 && (
-        <fieldset className="branch-switcher">
-          <legend className="visually-hidden">{t("Message branches")}</legend>
-          <button
-            type="button"
-            onClick={() => onSwitchBranch(message, siblings, Math.max(0, branchIndex - 1))}
-            disabled={branchIndex === 0}
-            aria-label={t("Previous branch")}
-          >
-            ‹
+        )}
+        {parts.some(screenTool) && !hasBrowserTools && (
+          <ChatDisclosure label={t("Advanced computer view")}>
+            <InlineLivePreview parts={parts} finished={message.status !== "streaming"} />
+          </ChatDisclosure>
+        )}
+        {(run?.automaticResumePending ||
+          (run?.automaticResumeFromRunId && ["queued", "starting", "running"].includes(run.status))) && (
+          <p className="run-resumed-marker" role="status">
+            {t("Retomando automaticamente…")}
+          </p>
+        )}
+        {run?.automaticResumePending && onCancel && (
+          <button type="button" className="text-button" onClick={() => void onCancel(run.id)}>
+            {t("Stop reply button")}
           </button>
-          <span>
-            {branchIndex + 1}/{siblings.length}
-          </span>
-          <button
-            type="button"
-            onClick={() => onSwitchBranch(message, siblings, Math.min(siblings.length - 1, branchIndex + 1))}
-            disabled={branchIndex === siblings.length - 1}
-            aria-label={t("Next branch")}
-          >
-            <PanelIcon name="chevron-right" />
-          </button>
-        </fieldset>
-      )}
-      {(run?.automaticResumePending ||
-        (run?.automaticResumeFromRunId && ["queued", "starting", "running"].includes(run.status))) && (
-        <p className="run-resumed-marker" role="status">
-          {t("Retomando automaticamente…")}
-        </p>
-      )}
-      {run?.automaticResumePending && onCancel && (
-        <button type="button" className="text-button" onClick={() => void onCancel(run.id)}>
-          {t("Stop reply button")}
-        </button>
-      )}
-      {resolvedInterruption && (
-        <p className="run-resumed-marker" role="note">
-          {t("Interrupção anterior · resolvida")}
-        </p>
-      )}
-      {runError && (recovered || resolvedInterruption) ? (
-        <div className="message-error-history">
-          <button
-            type="button"
-            className="text-button"
-            aria-expanded={failureExpanded}
-            onClick={() => setFailureExpanded((expanded) => !expanded)}
-          >
-            {!resolvedInterruption && (
-              <>
-                {runError.title} · {failureTime} · {recovered && `${t("A reply followed this error")} · `}
-              </>
+        )}
+        {resolvedInterruption && (
+          <p className="run-resumed-marker" role="note">
+            {t("Interrupção anterior · resolvida")}
+          </p>
+        )}
+        {runError && (recovered || resolvedInterruption) ? (
+          <div className="message-error-history">
+            <button
+              type="button"
+              className="text-button"
+              aria-expanded={failureExpanded}
+              onClick={() => setFailureExpanded((expanded) => !expanded)}
+            >
+              {!resolvedInterruption && (
+                <>
+                  {runError.title} · {failureTime} · {recovered && `${t("A reply followed this error")} · `}
+                </>
+              )}
+              {failureExpanded ? t("Hide error") : t(resolvedInterruption ? "Ver erro" : "View error")}
+            </button>
+            {failureExpanded && resolvedInterruption && (
+              <p className="message-error-meta">
+                {runError.title} · {failureTime}
+              </p>
             )}
-            {failureExpanded ? t("Hide error") : t(resolvedInterruption ? "Ver erro" : "View error")}
-          </button>
-          {failureExpanded && resolvedInterruption && (
-            <p className="message-error-meta">
-              {runError.title} · {failureTime}
-            </p>
-          )}
-          {failureExpanded && failureContent}
-        </div>
-      ) : (
-        failureContent
-      )}
+            {failureExpanded && failureContent}
+          </div>
+        ) : (
+          failureContent
+        )}
+      </div>
+      <div className="message-actions">
+        {!showHeader && messageTime}
+        {!showHeader && messageStatus}
+        {siblings.length > 1 && (
+          <fieldset className="branch-switcher">
+            <legend className="visually-hidden">{t("Message branches")}</legend>
+            <button
+              type="button"
+              onClick={() => onSwitchBranch(message, siblings, Math.max(0, branchIndex - 1))}
+              disabled={branchIndex === 0}
+              aria-label={t("Previous branch")}
+            >
+              ‹
+            </button>
+            <span>
+              {branchIndex + 1}/{siblings.length}
+            </span>
+            <button
+              type="button"
+              onClick={() => onSwitchBranch(message, siblings, Math.min(siblings.length - 1, branchIndex + 1))}
+              disabled={branchIndex === siblings.length - 1}
+              aria-label={t("Next branch")}
+            >
+              <PanelIcon name="chevron-right" />
+            </button>
+          </fieldset>
+        )}
+        {message.role === "user" && onEdit && (
+          <UserMessageEdit
+            message={message}
+            onEdit={onEdit}
+            disabled={editDisabled || message.delivery?.status === "queued" || message.delivery?.status === "sent"}
+          />
+        )}
+      </div>
     </article>
   )
 

@@ -291,7 +291,7 @@ select {
 }
 .motion-insert,
 .thread-row[data-motion-insert="true"],
-.message-bubble[data-motion-insert="true"] > :is(.message-meta, .markdown-content) {
+.message-bubble[data-motion-insert="true"] :is(.message-meta, .message-body > .markdown-content, .message-text) {
   animation: motion-item-in var(--duration-surface) var(--ease-surface);
 }
 /* Only text enters. Streaming updates and status/tool children stay still. */
