@@ -4,6 +4,7 @@ import { parseEnv } from "node:util"
 import type { Kernel, Routine, RoutineRun } from "@touri/contracts"
 import { redactToolText } from "@touri/contracts/redaction"
 import { createGroupStore } from "../../groups/store"
+import { createStreamingRedactor } from "../../kernel/redact"
 import type { RuntimePersistence } from "../persistence"
 
 const OUTPUT_LIMIT = 64 * 1024
@@ -62,6 +63,7 @@ export const createScriptRoutines = ({
         summary: failed ? redactToolText(text).slice(-STDERR_LIMIT) : null,
         finishedAt: Date.now(),
       })
+      if (visible) notifyResult(kernel, routine, scheduled.id, threadId, text, failed)
     } catch {
       const text = `Rotina “${routine.name}” falhou. Confira o comando, cwd e envFile e tente novamente.`
       const threadId = (() => {
@@ -72,6 +74,7 @@ export const createScriptRoutines = ({
         }
       })()
       publish(routine, { ...running, status: "failed", summary: text, threadId, finishedAt: Date.now() })
+      notifyResult(kernel, routine, scheduled.id, threadId, text, true)
     } finally {
       clearTimeout(timeout)
       controllers.delete(scheduled.id)
@@ -139,16 +142,17 @@ export const executeScript = async (kernel: Pick<Kernel, "spawnTree">, routine: 
   if (signal.aborted) stop()
   try {
     await child.stdin.close().catch(() => undefined)
+    const credentials = Object.entries(environment)
+      .filter(
+        ([key, value]) => /secret|token|password|passwd|key|credential|authorization/i.test(key) && value.length > 0,
+      )
+      .map(([, value]) => value)
     const [stdout, stderr, exit] = await Promise.all([
-      getOutput(child.stdout, OUTPUT_LIMIT, false, signal),
-      getOutput(child.stderr, STDERR_LIMIT, true, signal),
+      getOutput(child.stdout, OUTPUT_LIMIT, false, signal, credentials),
+      getOutput(child.stderr, STDERR_LIMIT, true, signal, credentials),
       child.exited,
     ])
-    const redact = (text: string): string =>
-      Object.entries(environment)
-        .filter(([key, value]) => /secret|token|password|key/i.test(key) && value.length > 0)
-        .reduce((output, [, value]) => output.replaceAll(value, "[REDACTED]"), redactToolText(text))
-    return { stdout: redact(stdout), stderr: redact(stderr), code: exit.code }
+    return { stdout: redactToolText(stdout), stderr: redactToolText(stderr), code: exit.code }
   } finally {
     signal.removeEventListener("abort", stop)
     // A successful shell may leave descendants holding the output pipes or still running.
@@ -178,6 +182,7 @@ const getOutput = async (
   limit: number,
   tail: boolean,
   signal: AbortSignal,
+  credentials: readonly string[],
 ): Promise<string> => {
   const reader = stream.getReader()
   const cancel = () => {
@@ -185,14 +190,23 @@ const getOutput = async (
   }
   signal.addEventListener("abort", cancel, { once: true })
   if (signal.aborted) cancel()
-  // The accumulator stays bounded while both pipes are drained concurrently.
+  const redactor = createStreamingRedactor((text) => text, credentials)
+  const decoder = new TextDecoder()
+  const encoder = new TextEncoder()
+  // Keep stream state local, masking complete credentials before either output boundary discards bytes.
   let bytes = new Uint8Array()
+  const append = (text: string): void => {
+    const combined = Buffer.concat([bytes, encoder.encode(text)])
+    bytes = tail ? combined.subarray(-limit) : combined.subarray(0, limit)
+  }
   try {
     while (true) {
       const chunk = await reader.read()
-      if (chunk.done) return new TextDecoder().decode(bytes)
-      const combined = Buffer.concat([bytes, chunk.value])
-      bytes = tail ? combined.subarray(-limit) : combined.subarray(0, limit)
+      if (chunk.done) {
+        append(redactor.push(decoder.decode()) + redactor.flush())
+        return new TextDecoder().decode(bytes)
+      }
+      append(redactor.push(decoder.decode(chunk.value, { stream: true })))
     }
   } finally {
     signal.removeEventListener("abort", cancel)
@@ -234,4 +248,22 @@ const postResult = (kernel: Kernel, routine: Routine, output: string): string =>
   // Direct insertion is deliberate: no group turn or provider enqueue for script output.
   if (created?.success) kernel.publish({ type: "thread.updated", thread })
   return thread.id
+}
+
+const notifyResult = (
+  kernel: Kernel,
+  routine: Routine,
+  slotId: string,
+  threadId: string | null,
+  output: string,
+  failed: boolean,
+): void => {
+  kernel.services.use("notify.emit")?.({
+    kind: failed ? "routine-failed" : "done",
+    botId: routine.botId,
+    threadId,
+    requestId: failed ? `recovery:routine:${slotId}` : `script:${slotId}`,
+    title: failed ? "Routine failed" : "Done",
+    body: output.slice(0, 600),
+  })
 }

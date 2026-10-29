@@ -7,6 +7,7 @@ import type { Bot, Routine, RoutineRun } from "@touri/contracts"
 import { createGroupStore } from "../../src/groups/store"
 import { createKernel } from "../../src/kernel"
 import { bindDeviceSession } from "../../src/kernel/device-session"
+import { createNotificationStore } from "../../src/notify/store"
 import { init as initRuntime, isScriptOwner } from "../../src/runtime"
 import { createRuntimeEngine } from "../../src/runtime/engine"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
@@ -17,6 +18,26 @@ const cleanups = new Set<() => Promise<void>>()
 afterEach(async () => {
   for (const close of cleanups) await close()
   cleanups.clear()
+})
+
+test.each([
+  ["printf completed", "done"],
+  ["printf ''", null],
+  ["printf '  [SILENT]\\n'", null],
+  ["printf bad >&2; exit 7", "routine-failed"],
+] as const)("notifies script results without a model run: %s", async (command, kind) => {
+  const fixture = await makeFixture(command)
+  const notifications = createNotificationStore({ db: fixture.db })
+  fixture.runtime.kernel.services.provide("notify.emit", (input) => notifications.insert(input).notification)
+  const finished = fixture.finished()
+
+  fixture.engine.runRoutine({ routineId: fixture.routine.id, triggerSource: "manual" })
+  const run = await finished
+
+  const recorded = notifications.recent(10)
+  expect(recorded.map((notification) => notification.kind)).toEqual(kind ? [kind] : [])
+  if (kind) expect(recorded[0]?.threadId).toBe(run.threadId)
+  if (kind === "routine-failed") expect(notifications.byRequestId(`recovery:routine:${run.id}`)?.kind).toBe(kind)
 })
 
 test.each(["printf 'completed'", "printf ''", "printf '  [SILENT]\\n'", "printf 'bad' >&2; exit 7"])(
@@ -65,6 +86,25 @@ test("env file values are loaded at execution time and sensitive values are reda
     text: "hello world [REDACTED]",
   })
   expect(JSON.stringify(fixture.engine.listRoutines())).not.toContain("synthetic-credential")
+})
+
+test.each([
+  ["stdout", "printf '%65524s' ''; printf '%s' \"$API_TOKEN\""],
+  ["stderr", "printf '%s' \"$API_TOKEN\" >&2; printf '%4084s' '' >&2; exit 7"],
+] as const)("redacts credentials before truncating %s", async (_pipe, command) => {
+  const fixture = await makeFixture(command)
+  const envFile = join(fixture.root, "example.env")
+  await writeFile(envFile, "API_TOKEN=example-sensitive-credential\n")
+  fixture.engine.updateRoutine({ routineId: fixture.routine.id, patch: { envFile }, fromTool: false })
+  const finished = fixture.finished()
+
+  fixture.engine.runRoutine({ routineId: fixture.routine.id, triggerSource: "manual" })
+  const run = await finished
+
+  const messages = fixture.db.query("SELECT text FROM messages WHERE role='assistant'").all()
+  const stored = JSON.stringify({ messages, summary: run.summary })
+  expect(stored).not.toContain("example-sens")
+  expect(stored).not.toContain("e-credential")
 })
 
 test("agents cannot create, convert or edit script routines", async () => {
