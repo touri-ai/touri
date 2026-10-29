@@ -1021,27 +1021,14 @@ test("A11 deletion removes host artifacts and login vault entries but retains sh
 test("bot deletion returns while attachment cleanup is blocked on slow IO", async () => {
   const entered = Promise.withResolvers<void>()
   const resume = Promise.withResolvers<void>()
-  let calls = 0
-  const collectBlobs: typeof collectUnusedOutputBlobs = async (
-    _database,
-    _appData,
-    _now,
-    _yieldBatch,
-    _deletedBotAttachments,
-    _runStage,
-    onDeferred,
-    _signal,
-    _attachmentReferenceTimeoutMs,
-  ) => {
-    calls += 1
-    if (calls === 1) {
-      entered.resolve()
-      await resume.promise
-    }
-    onDeferred?.("changed")
-    return 0
+  const collectBlobs: typeof collectUnusedOutputBlobs = async (...args) => {
+    entered.resolve()
+    await resume.promise
+    return collectUnusedOutputBlobs(...args)
   }
+  cleanups.push(async () => resume.resolve())
   const f = await fixture({ collectBlobs })
+  await f.runtime.kernel.services.use("storage.maintenance")?.dispose()
   const bot = await f.create("Slow cleanup", "local")
   const other = await f.create("Shared cleanup", "local")
   const privateAttachment = join(f.runtime.kernel.paths.attachmentsDir, "slow-private.png")
@@ -1073,6 +1060,16 @@ test("bot deletion returns while attachment cleanup is blocked on slow IO", asyn
   const response = await deletion
   await entered.promise
 
+  const deferred = mock(() => {})
+  await collectUnusedOutputBlobs(
+    f.db,
+    f.runtime.kernel.paths.appData,
+    Date.now(),
+    undefined,
+    undefined,
+    undefined,
+    deferred,
+  )
   const privateExistsWhileBlocked = existsSync(privateAttachment)
   const privateRecordWhileBlocked = f.db.query("SELECT id FROM attachments WHERE id='slow-private'").get()
   const sharedExistsWhileBlocked = existsSync(sharedAttachment)
@@ -1081,11 +1078,57 @@ test("bot deletion returns while attachment cleanup is blocked on slow IO", asyn
   await waitForDeletionOutcome(f.db, bot.id)
 
   expect(response.status).toBe(202)
-  expect(calls).toBeGreaterThan(0)
+  expect(deferred).toHaveBeenCalledWith("changed")
   expect(privateExistsWhileBlocked).toBe(true)
   expect(privateRecordWhileBlocked).not.toBeNull()
   expect(sharedExistsWhileBlocked).toBe(true)
   expect(sharedRecordWhileBlocked).toEqual({ id: "slow-shared" })
+  expect(existsSync(privateAttachment)).toBe(false)
+  expect(f.db.query("SELECT id FROM attachments WHERE id='slow-private'").get()).toBeNull()
+  expect(existsSync(sharedAttachment)).toBe(true)
+  expect(f.db.query("SELECT id FROM attachments WHERE id='slow-shared'").get()).toEqual({ id: "slow-shared" })
+})
+
+test("resuming failed attachment cleanup reserves its files before the collector starts", async () => {
+  const entered = Promise.withResolvers<void>()
+  const resume = Promise.withResolvers<void>()
+  const collectBlobs: typeof collectUnusedOutputBlobs = async (...args) => {
+    entered.resolve()
+    await resume.promise
+    return collectUnusedOutputBlobs(...args)
+  }
+  cleanups.push(async () => resume.resolve())
+  const workspace = await fixture()
+  await workspace.runtime.kernel.services.use("storage.maintenance")?.dispose()
+  await workspace.runtime.kernel.services.use("storage.botDeletion")?.dispose()
+  const path = join(workspace.runtime.kernel.paths.attachmentsDir, "synthetic-retry.txt")
+  await Bun.write(path, "synthetic")
+  workspace.db
+    .query("INSERT INTO attachments(id,path,mime,bytes,created_at) VALUES ('retry-upload',?,'text/plain',9,1)")
+    .run(path)
+  workspace.db
+    .query("INSERT INTO settings(key,value_json,updated_at) VALUES ('storage.deleted-attachments:retry',?,1)")
+    .run('["retry-upload"]')
+  workspace.db
+    .query(`INSERT INTO bot_deletions(bot_id,delete_volumes,phase,error_code,created_at,updated_at)
+      VALUES ('retry',0,'cleanup','TOURI-E2015',1,1)`)
+    .run()
+  const manager = createBotDeletionManager(workspace.runtime.kernel, workspace.vm.service, collectBlobs)
+  workspace.runtime.kernel.services.provide("storage.botDeletion", { dispose: manager.dispose })
+
+  manager.resume()
+  await entered.promise
+  const state = workspace.db.query("SELECT error_code FROM bot_deletions WHERE bot_id = 'retry'").get()
+  await collectUnusedOutputBlobs(workspace.db, workspace.runtime.kernel.paths.appData)
+  const existsWhileBlocked = await Bun.file(path).exists()
+  resume.resolve()
+  await waitForDeletionComplete(workspace.db, "retry")
+  await manager.dispose()
+
+  expect(state).toEqual({ error_code: null })
+  expect(existsWhileBlocked).toBe(true)
+  expect(await Bun.file(path).exists()).toBe(false)
+  expect(workspace.db.query("SELECT id FROM attachments WHERE id = 'retry-upload'").get()).toBeNull()
 })
 
 test("sustained attachment deferrals stop after three passes with exponential backoff", async () => {
