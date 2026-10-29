@@ -21,12 +21,15 @@ const fail = (status: number, errorCode: string, error: string): RouteResponse =
 
 // The final reply of a succeeded member run, as copied into the channel. Seeks
 // messages_assistant_complete from the read position; joins use primary keys and
-// group_message_links_message. Later edits of the copy never move the run's finish time.
+// group_message_links_message. Existence avoids multiplying a reply by its alias links.
+// Later edits of the copy never move the run's finish time.
 const UNREAD_FROM = `FROM messages visible
     JOIN runs member ON member.id = visible.run_id
-    JOIN group_message_links shared ON shared.message_id = member.reply_message_id AND shared.visible_message_id = visible.id`
+    JOIN group_run_links participant ON participant.run_id = member.id`
 const UNREAD_WHERE = `WHERE visible.thread_id = ? AND visible.role = 'assistant' AND visible.status = 'complete'
-      AND visible.updated_at > ? AND member.status = 'succeeded' AND member.finished_at > ?`
+      AND visible.updated_at > ? AND member.status = 'succeeded' AND member.finished_at > ?
+      AND EXISTS (SELECT 1 FROM group_message_links shared
+        WHERE shared.message_id = member.reply_message_id AND shared.visible_message_id = visible.id)`
 
 /** Unread final replies in one channel conversation: thread, seek start, read position. */
 export const CHANNEL_UNREAD_COUNT_SQL = `SELECT COUNT(*) AS n FROM (SELECT 1 ${UNREAD_FROM} ${UNREAD_WHERE} LIMIT ${MAX_UNREAD})`

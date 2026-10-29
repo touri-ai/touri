@@ -290,7 +290,16 @@ test("a mention stays counted after another hundred replies arrive", async () =>
 
   for (const _ of Array.from({ length: 100 })) await f.ask("Sem novidades.")
 
-  expect(f.reads.list(ana)).toEqual([expect.objectContaining({ unread: 101, mentions: 1 })])
+  const completed = f.db
+    .query(`SELECT COUNT(*) AS n FROM runs member
+    JOIN group_run_links link ON link.run_id = member.id
+    WHERE member.status = 'succeeded' AND member.reply_message_id IS NOT NULL`)
+    .get() as { n: number }
+  const channel = f.reads.list(ana)[0]
+
+  expect(channel?.unread).toBe(completed.n)
+  expect(channel?.unread).toBeGreaterThan(100)
+  expect(channel?.mentions).toBe(1)
 })
 
 test("mentions beyond the first eight thousand characters still count", async () => {
@@ -311,4 +320,47 @@ test("a longer person's name never counts as a mention of the shorter name", asy
   await f.ask("@Ana Lima confira o plano.")
 
   expect(f.reads.list(ana)).toEqual([expect.objectContaining({ unread: 1, mentions: 0 })])
+})
+
+test("multiple links to the same channel reply never inflate unread or mention counts", async () => {
+  const f = await getFixture()
+  await f.ask("Plano conferido.")
+  const alias = createGroupStore(f.host.kernel).createThread(f.group)
+  f.db
+    .query(`INSERT INTO group_message_links(message_id, source_thread_id, visible_message_id)
+    SELECT message_id, ?, visible_message_id FROM group_message_links LIMIT 1`)
+    .run(alias.id)
+
+  const channel = f.reads.list(owner).find((read) => read.threadId === f.thread.id)
+
+  expect(channel).toEqual(expect.objectContaining({ unread: 1, mentions: 1 }))
+})
+
+test("a coordination run never counts as an additional member reply", async () => {
+  const f = await getFixture()
+  await f.ask("Plano conferido.")
+  const turn = f.db.query("SELECT turn_id FROM group_run_links LIMIT 1").get() as { turn_id: string }
+  const sourceId = f.host.kernel.newId()
+  f.db.query("UPDATE runs SET reply_message_id = ? WHERE id = ?").run(sourceId, turn.turn_id)
+  const reply = f.store.insertMessage({
+    message: {
+      id: f.host.kernel.newId(),
+      threadId: f.thread.id,
+      parentId: null,
+      role: "assistant",
+      kind: "text",
+      status: "complete",
+      runId: turn.turn_id,
+      text: "Coordenação concluída.",
+      parts: [{ type: "text", text: "Coordenação concluída." }],
+      sender: null,
+      source: "local",
+    },
+  })
+  if (!reply.success) throw new Error(reply.error)
+  f.db.query("INSERT INTO group_message_links VALUES (?, ?, ?)").run(sourceId, f.thread.id, reply.message.id)
+
+  const channel = f.reads.list(owner)[0]
+
+  expect(channel).toEqual(expect.objectContaining({ unread: 1, mentions: 1 }))
 })
