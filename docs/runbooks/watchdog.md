@@ -24,7 +24,10 @@ for candidate in get_overdue_runs(connection, now_ms, bot_limits, default_limit=
 ```
 
 Use a read-only SQLite connection. `cancel_by_id` must use the existing authenticated
-cancellation API and raise on failure. Do not report an unconfirmed outcome as canceled;
+cancellation API, return its decoded response and raise on failure. Confirmation requires
+`{"run": {"id": "<requested run ID>", "status": "canceled"}}`; HTTP success alone does not
+prove cancellation if the run finished before the request. Missing, malformed or mismatched
+run state remains unconfirmed. Do not report an unconfirmed outcome as canceled;
 reconcile it with a later read of run status. Missing routine metadata skips automatic
 cancellation instead of silently using a shorter chat deadline. Keep diagnostic alerts
 for missing metadata separate from cancellation decisions.

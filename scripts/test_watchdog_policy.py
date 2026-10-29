@@ -80,9 +80,38 @@ class WatchdogPolicyTest(unittest.TestCase):
         self.assertFalse(result["cancellation_confirmed"])
 
     def test_successful_cancellation_is_confirmed(self):
-        result = cancel_overdue_run({"run_id": "run"}, lambda _: None)
+        result = cancel_overdue_run(
+            {"run_id": "run"}, lambda _: {"run": {"id": "run", "status": "canceled"}})
 
         self.assertTrue(result["cancellation_confirmed"])
+
+    def test_successful_response_for_finished_run_is_not_a_cancellation(self):
+        result = cancel_overdue_run(
+            {"run_id": "run"}, lambda _: {"run": {"id": "run", "status": "succeeded"}})
+
+        self.assertFalse(result["cancellation_confirmed"])
+
+    def test_successful_response_for_running_run_is_not_a_cancellation(self):
+        result = cancel_overdue_run(
+            {"run_id": "run"}, lambda _: {"run": {"id": "run", "status": "running"}})
+
+        self.assertFalse(result["cancellation_confirmed"])
+
+    def test_response_without_run_state_is_unconfirmed(self):
+        result = cancel_overdue_run({"run_id": "run"}, lambda _: None)
+
+        self.assertFalse(result["cancellation_confirmed"])
+
+    def test_malformed_run_state_is_unconfirmed(self):
+        result = cancel_overdue_run({"run_id": "run"}, lambda _: {"run": "canceled"})
+
+        self.assertFalse(result["cancellation_confirmed"])
+
+    def test_response_for_another_run_is_unconfirmed(self):
+        result = cancel_overdue_run(
+            {"run_id": "run"}, lambda _: {"run": {"id": "other", "status": "canceled"}})
+
+        self.assertFalse(result["cancellation_confirmed"])
 
 
 if __name__ == "__main__":

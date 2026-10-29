@@ -35,10 +35,16 @@ def get_overdue_run(row, now, bot_limits, default_limit):
 
 
 def cancel_overdue_run(candidate, cancel):
-    """An ambiguous HTTP error must not become a confirmed cancellation notice."""
+    """Only the requested run's canceled state confirms a cancellation notice."""
     try:
-        cancel(candidate["run_id"])
+        result = cancel(candidate["run_id"])
     except Exception:
-        return {**candidate, "cancellation_confirmed": False}
+        return dict(candidate, cancellation_confirmed=False)
 
-    return {**candidate, "cancellation_confirmed": True}
+    run = result.get("run") if isinstance(result, dict) else None
+    is_confirmed = (
+        isinstance(run, dict)
+        and run.get("id") == candidate["run_id"]
+        and run.get("status") == "canceled"
+    )
+    return dict(candidate, cancellation_confirmed=is_confirmed)
