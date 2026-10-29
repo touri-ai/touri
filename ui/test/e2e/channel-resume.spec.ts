@@ -118,16 +118,18 @@ for (const viewport of [
     const center = page.getByRole("region", { name: "Central de notificações" })
     await center.getByRole("button", { name: "Retomar tarefa", exact: true }).first().click()
 
-    await expect(page.getByRole("dialog", { name: "Barra lateral", exact: true })).not.toBeVisible()
-
     const input = page.getByRole("textbox", { name: "Mensagem para Viagem", exact: true })
     await expect(input).toBeVisible()
-    await expect(input).toBeFocused()
-    // Captured before the draft assertion so the same spec records the old draft on main.
+
+    // Capture the loaded conversation before checking the baseline's obstructing drawer.
     if (process.env.TOURI_SCREENSHOT_DIR)
       await page.screenshot({
         path: `${process.env.TOURI_SCREENSHOT_DIR}/channel-resume-${viewport.colorScheme}-${viewport.width}-${viewport.draft ? "existing" : "empty"}.png`,
+        animations: "disabled",
       })
+
+    await expect(page.getByRole("dialog", { name: "Barra lateral", exact: true })).not.toBeVisible()
+    await expect(input).toBeFocused()
     await expect(input).toHaveValue(`@mark ${request}${viewport.draft ? `\n\n${viewport.draft}` : ""}`)
     await expect(page.getByRole("button", { name: "Enviar", exact: true })).toBeEnabled()
   })
