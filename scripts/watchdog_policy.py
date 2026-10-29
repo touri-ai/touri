@@ -5,7 +5,9 @@ def get_overdue_runs(connection, now, bot_limits, default_limit=60):
     # Routine deadlines belong to the routine execution, including resumed runs.
     rows = connection.execute("""
         SELECT r.id, r.bot_id, r.started_at, r.trigger,
-               rr.started_at, routine.timeout_minutes
+               rr.started_at, routine.timeout_minutes,
+               EXISTS (SELECT 1 FROM group_turns WHERE run_id = r.id)
+                 OR EXISTS (SELECT 1 FROM group_run_links WHERE run_id = r.id)
         FROM runs r
         LEFT JOIN routine_runs rr ON rr.id = r.routine_run_id
         LEFT JOIN routines routine ON routine.id = rr.routine_id
@@ -19,9 +21,14 @@ def get_overdue_runs(connection, now, bot_limits, default_limit=60):
 
 
 def get_overdue_run(row, now, bot_limits, default_limit):
-    run_id, bot_id, started, trigger, routine_started, routine_limit = row
+    run_id, bot_id, started, trigger, routine_started, routine_limit, is_channel = row
     if trigger == "routine" and (routine_limit is None or routine_started is None):
         # Missing routine metadata cannot authorize a shorter bot-level deadline.
+        return None
+
+    # Channel coordination and delegation own finite runtime deadlines, including host overrides.
+    # The external watchdog cannot infer those deadlines from a generic per-bot age limit.
+    if is_channel and routine_limit is None:
         return None
 
     is_routine = routine_limit is not None and routine_started is not None

@@ -32,7 +32,10 @@ reconcile it with a later read of run status. Missing routine metadata skips aut
 cancellation instead of silently using a shorter chat deadline. Keep diagnostic alerts
 for missing metadata separate from cancellation decisions.
 
-The routine execution's original start is retained across resumed provider runs. Direct
+The routine execution's original start is retained across resumed provider runs. Channel coordinators and delegated members without routine metadata are left to the
+application runtime, which owns their finite deadlines and host overrides. A 62-minute
+channel run must not inherit the generic 60-minute direct-chat limit. Channel routines
+still use their absolute routine deadline. Direct one-to-one
 chat runs retain caller-supplied per-bot limits and the default. No production watchdog is
 changed by checking out or merging this policy; deployment is an explicit operator action.
 
