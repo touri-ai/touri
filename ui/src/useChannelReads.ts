@@ -12,7 +12,10 @@ const isOnScreen = (): boolean => document.visibilityState === "visible" && docu
 
 /** Whether an event can change a channel's unread replies: a reply settled, or this person read a channel. */
 const isReadChange = (event: UiEvent, threads: ReadonlyMap<string, Thread>): boolean => {
-  if (event.type === "channel.read") return true
+  if (event.type === "channel.read" || event.type === "group.deleted" || event.type === "bot.deleted") return true
+  if (event.type === "thread.deleted") return event.groupId !== null
+  if (event.type === "thread.updated")
+    return isChannelThread(event.thread) !== isChannelThread(threads.get(event.thread.id))
   if (event.type === "run.updated")
     return event.run.status === "succeeded" && isChannelThread(threads.get(event.run.threadId))
   if (event.type !== "message.created" && event.type !== "message.updated") return false

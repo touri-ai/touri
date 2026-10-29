@@ -1,5 +1,5 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
-import type { ChannelReadState, Message, Run, Thread, UiEventEnvelope } from "@touri/contracts"
+import type { ChannelReadState, Message, Run, Thread, UiEvent, UiEventEnvelope } from "@touri/contracts"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import type { UiApi } from "../src/api/client"
 import { useChannelReads } from "../src/useChannelReads"
@@ -45,12 +45,16 @@ const getServer = (unread: number) => {
     })
   }
 
+  const publish = (event: UiEvent) =>
+    listeners.forEach((listener) => {
+      listener({ seq: 3, event })
+    })
   const reconnect = () =>
     connections.forEach((listener) => {
       listener(true)
     })
 
-  return { api, state, reply, request, finish, reconnect }
+  return { api, state, reply, request, finish, reconnect, publish }
 }
 
 let focused = true
@@ -163,4 +167,32 @@ it("retries an interrupted read when the connection returns with the same unread
 
   await waitFor(() => expect(result.current?.get(channel.id)?.unread).toBe(0))
   expect(server.state.reads).toBe(1)
+})
+
+it("drops unread state after a channel is deleted", async () => {
+  const server = getServer(1)
+  const { result } = renderHook(() =>
+    useChannelReads({ api: server.api, threads: [channel], openThreadId: null, enabled: true }),
+  )
+  await waitFor(() => expect(result.current?.get(channel.id)?.unread).toBe(1))
+  server.request.mockResolvedValueOnce({ channels: [] })
+
+  act(() => server.publish({ type: "group.deleted", groupId: "avisos" }))
+
+  await waitFor(() => expect(result.current?.size).toBe(0))
+})
+
+it("refreshes a new channel even when replies arrive before its thread metadata", async () => {
+  const server = getServer(0)
+  const { result } = renderHook(() =>
+    useChannelReads({ api: server.api, threads: [], openThreadId: null, enabled: true }),
+  )
+  await waitFor(() => expect(result.current?.get(channel.id)?.unread).toBe(0))
+
+  act(() => {
+    server.reply()
+    server.publish({ type: "thread.updated", thread: channel })
+  })
+
+  await waitFor(() => expect(result.current?.get(channel.id)?.unread).toBe(1))
 })
