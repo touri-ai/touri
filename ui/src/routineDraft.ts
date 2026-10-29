@@ -3,7 +3,7 @@ import { getJobTemplates } from "./features/jobs/catalog"
 import { type Locale, t } from "./i18n"
 import { messageMarkdown } from "./messageMarkdown"
 
-export type RoutineDraft = ApiRoutes["POST /routines"]["req"]
+export type RoutineDraft = ApiRoutes["POST /routines"]["req"] & { botId: string; prompt: string }
 
 export const getTeamRoutineDraft = (bot: Bot, locale: Locale = "pt-BR"): RoutineDraft => {
   const suggested = suggestedRoutineDraft(bot, locale)

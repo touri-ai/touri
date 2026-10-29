@@ -138,6 +138,10 @@ const toRoutine = (value: unknown): Routine | null => {
   return {
     id: text(row, "id"),
     botId: text(row, "bot_id"),
+    kind: text(row, "kind", "bot") as NonNullable<Routine["kind"]>,
+    command: text(row, "command"),
+    cwd: text(row, "cwd"),
+    envFile: nullableText(row, "env_file"),
     name: text(row, "name"),
     prompt: text(row, "prompt"),
     cron: text(row, "cron"),
@@ -198,6 +202,7 @@ export type RuntimePersistence = {
   getRoutineRun: (id: Id) => RoutineRun | null
   updateRoutineRun: (routineRun: RoutineRun) => void
   listRoutineRuns: (routineId: Id) => Array<RoutineRun>
+  getRoutineDispatchHistory: (routineId: Id, recentAfter?: number) => Array<RoutineRun>
 }
 
 const canUseDatabase = (value: unknown): value is Database => {
@@ -532,13 +537,14 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
     if (!db) return
     try {
       db.query(
-        `INSERT INTO routines (id, bot_id, name, prompt, cron, timezone, enabled, continuity, results_thread_id, group_id, timeout_minutes, overlap, catch_up_minutes, next_run_at, source, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO routines (id, bot_id, name, prompt, cron, timezone, enabled, continuity, results_thread_id, group_id, timeout_minutes, overlap, catch_up_minutes, next_run_at, source, created_at, updated_at, kind, command, cwd, env_file)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET bot_id=excluded.bot_id, name=excluded.name, prompt=excluded.prompt, cron=excluded.cron,
          timezone=excluded.timezone, enabled=excluded.enabled, continuity=excluded.continuity, results_thread_id=excluded.results_thread_id,
          group_id=excluded.group_id,
          timeout_minutes=excluded.timeout_minutes, overlap=excluded.overlap, catch_up_minutes=excluded.catch_up_minutes,
-         next_run_at=excluded.next_run_at, source=excluded.source, updated_at=excluded.updated_at`,
+         next_run_at=excluded.next_run_at, source=excluded.source, updated_at=excluded.updated_at,
+         kind=excluded.kind, command=excluded.command, cwd=excluded.cwd, env_file=excluded.env_file`,
       ).run(
         routine.id,
         routine.botId,
@@ -557,6 +563,10 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
         routine.source,
         routine.createdAt,
         routine.updatedAt,
+        routine.kind ?? "bot",
+        routine.command ?? "",
+        routine.cwd ?? "",
+        routine.envFile ?? null,
       )
     } catch {
       return
@@ -638,6 +648,26 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
     }
   }
 
+  const getRoutineDispatchHistory = (routineId: Id, recentAfter = Number.MAX_SAFE_INTEGER): Array<RoutineRun> => {
+    if (!db)
+      return [...routineRuns.values()]
+        .filter(
+          (run) =>
+            run.routineId === routineId &&
+            (run.status === "running" || run.status === "scheduled" || run.scheduledFor >= recentAfter),
+        )
+        .sort((left, right) => right.scheduledFor - left.scheduledFor)
+
+    return db
+      .query(`SELECT * FROM routine_runs WHERE routine_id = ? AND status IN ('running', 'scheduled')
+      UNION SELECT * FROM routine_runs WHERE routine_id = ? AND scheduled_for >= ? ORDER BY scheduled_for DESC`)
+      .all(routineId, routineId, recentAfter)
+      .flatMap((row) => {
+        const run = toRoutineRun(row)
+        return run ? [run] : []
+      })
+  }
+
   const listRoutineRuns = (routineId: Id): Array<RoutineRun> => {
     const result = [...routineRuns.values()].filter((row) => row.routineId === routineId)
     if (result.length > 0 || !db) return result.sort((left, right) => right.scheduledFor - left.scheduledFor)
@@ -682,5 +712,6 @@ export const createRuntimePersistence = ({ database }: { database: unknown }): R
     getRoutineRun,
     updateRoutineRun,
     listRoutineRuns,
+    getRoutineDispatchHistory,
   }
 }

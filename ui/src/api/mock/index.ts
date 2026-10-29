@@ -1645,7 +1645,9 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
     if (key === "POST /routines") {
       const routineInput = input as ApiRoutes["POST /routines"]["req"]
       const routine: Routine = {
-        ...createRoutine(routineInput.botId),
+        ...createRoutine(
+          routineInput.botId ?? groups.find((group) => group.id === routineInput.groupId)?.memberIds[0] ?? "",
+        ),
         ...routineInput,
         id: `routine-${crypto.randomUUID()}`,
       }

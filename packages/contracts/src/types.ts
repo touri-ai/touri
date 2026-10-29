@@ -578,6 +578,11 @@ export type Attachment = {
 export type RoutineContinuity = 'new-thread' | 'results-thread' | 'main-thread'
 
 export type Routine = {
+  /** Omitted by older clients; defaults to bot. Script routines never start a provider. */
+  kind?: 'bot' | 'script'
+  command?: string
+  cwd?: AbsolutePath
+  envFile?: AbsolutePath | null
   id: Id
   botId: Id
   name: string
@@ -597,6 +602,17 @@ export type Routine = {
   createdAt: EpochMs
   updatedAt: EpochMs
 }
+
+export type RoutineCreateInput =
+  | Omit<Routine, 'id' | 'nextRunAt' | 'source' | 'createdAt' | 'updatedAt'>
+  | (Omit<Routine, 'id' | 'nextRunAt' | 'source' | 'createdAt' | 'updatedAt' | 'botId' | 'prompt' | 'kind'> & {
+      kind: 'script'
+      command: string
+      cwd: AbsolutePath
+      groupId: Id
+      botId?: Id
+      prompt?: string
+    })
 
 export type Mem0Mode = 'platform' | 'server'
 
@@ -1221,7 +1237,7 @@ export type ApiRoutes = {
   'GET /attachments/:id': { req: {}; res: Blob }
   'GET /attachments/:id/content': { req: { offset?: number; limit?: number }; res: { text: string; offset: number; nextOffset: number | null; bytes: number } }
   'GET /routines': { req: { botId?: Id }; res: { routines: Array<Routine>; host?: 'mac' | 'server'; hostKind?: HostKind } }
-  'POST /routines': { req: Omit<Routine, 'id' | 'nextRunAt' | 'source' | 'createdAt' | 'updatedAt'>; res: { routine: Routine } }
+  'POST /routines': { req: RoutineCreateInput; res: { routine: Routine } }
   'PATCH /routines/:id': { req: Partial<Omit<Routine, 'id' | 'source'>>; res: { routine: Routine } }
   'DELETE /routines/:id': { req: {}; res: {} }
   'POST /routines/:id/run': { req: {}; res: { routineRun: RoutineRun } }

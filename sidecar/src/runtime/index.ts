@@ -11,6 +11,7 @@ import {
   type ToolResult,
 } from "@touri/contracts"
 import { createGroupRuntime } from "../groups/runtime"
+import { createGroupStore } from "../groups/store"
 import { deviceSession } from "../kernel/device-session"
 import type { PerformanceStageRunner } from "../kernel/performance"
 import { buildChildEnv } from "../kernel/shell-env"
@@ -68,6 +69,13 @@ const toolError = (errorCode: string, error: string): ToolResult => ({
   content: [{ type: "text", text: `ERROR ${errorCode}: ${error}` }],
 })
 
+export const isScriptOwner = (signal: AbortSignal): boolean => {
+  const session = deviceSession(signal)
+  // Local UI token has no person; paired devices carry their authenticated identity.
+  if (session?.automation || session?.scopes?.length) return false
+  return !session?.person || session.person.id === "owner"
+}
+
 const routineInput = ({
   args,
   botId,
@@ -80,6 +88,10 @@ const routineInput = ({
   groupId?: Id | null
 }): Parameters<ReturnType<typeof createRuntimeEngine>["createRoutine"]>[0]["input"] => ({
   botId,
+  kind: args.kind === undefined ? "bot" : (args.kind as NonNullable<Routine["kind"]>),
+  command: stringField(args, "command"),
+  cwd: stringField(args, "cwd"),
+  envFile: typeof args.envFile === "string" ? args.envFile : null,
   name: stringField(args, "name"),
   prompt: stringField(args, "prompt"),
   cron: stringField(args, "cron"),
@@ -405,14 +417,19 @@ export const init = async (
       {
         method: "POST",
         path: "/routines",
-        handler: async ({ body }) => {
+        handler: async ({ body, signal }) => {
           const args = bodyRecord(body)
-          const botId = stringField(args, "botId")
+          if (args.kind === "script" && !isScriptOwner(signal))
+            return routeError("DENIED", "Only the owner can create script routines")
+          const groupId = typeof args.groupId === "string" ? args.groupId : null
+          const botId =
+            stringField(args, "botId") ||
+            (args.kind === "script" && groupId ? (createGroupStore(kernel).get(groupId)?.memberIds[0] ?? "") : "")
           const input = routineInput({
             args,
             botId,
             enabled: booleanField(args, "enabled", false),
-            groupId: typeof args.groupId === "string" ? args.groupId : null,
+            groupId,
           })
           const result = engine.createRoutine({ input, forceDisabled: false })
           return result.success
@@ -423,9 +440,16 @@ export const init = async (
       {
         method: "PATCH",
         path: "/routines/:id",
-        handler: async ({ params, body }) => {
+        handler: async ({ params, body, signal }) => {
           const args = bodyRecord(body)
+          const current = engine.listRoutines().find((routine) => routine.id === params.id)
+          if ((current?.kind === "script" || args.kind === "script") && !isScriptOwner(signal))
+            return routeError("DENIED", "Only the owner can edit script routines")
           const patch: Partial<Routine> = {}
+          if (args.kind !== undefined) patch.kind = args.kind as NonNullable<Routine["kind"]>
+          if (typeof args.command === "string") patch.command = args.command
+          if (typeof args.cwd === "string") patch.cwd = args.cwd
+          if (args.envFile === null || typeof args.envFile === "string") patch.envFile = args.envFile
           if (typeof args.name === "string") patch.name = args.name
           if (typeof args.prompt === "string") patch.prompt = args.prompt
           if (typeof args.cron === "string") patch.cron = args.cron
@@ -455,7 +479,12 @@ export const init = async (
       {
         method: "POST",
         path: "/routines/:id/run",
-        handler: async ({ params }) => {
+        handler: async ({ params, signal }) => {
+          if (
+            engine.listRoutines().find((routine) => routine.id === params.id)?.kind === "script" &&
+            !isScriptOwner(signal)
+          )
+            return routeError("DENIED", "Only the owner can run script routines")
           const result = engine.runRoutine({ routineId: params.id ?? "", triggerSource: "manual" })
           return result.success
             ? { status: 201, json: { routineRun: result.routineRun } }

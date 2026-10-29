@@ -174,3 +174,34 @@ it("provides unavailable channel labels in both languages", () => {
     "Channel Research (bot is not a member)",
   )
 })
+
+it("saves an owner-authored script command and destination without a prompt", async () => {
+  const { api, group, routine } = await getRoutineChannelFixture()
+  await openRoutineScreen(api)
+  await chooseRoutineAction(routine.name, "Editar")
+  const editor = screen.getByRole("dialog")
+
+  fireEvent.change(within(editor).getByRole("combobox", { name: "Tipo de rotina" }), { target: { value: "script" } })
+  fireEvent.change(within(editor).getByRole("textbox", { name: "Comando", exact: true }), {
+    target: { value: "printf completed" },
+  })
+  fireEvent.change(within(editor).getByRole("textbox", { name: "Pasta de execução (cwd)" }), {
+    target: { value: "/tmp/example" },
+  })
+  fireEvent.change(within(editor).getByRole("textbox", { name: "Arquivo de ambiente (opcional)" }), {
+    target: { value: "/tmp/example.env" },
+  })
+  fireEvent.click(within(editor).getByRole("button", { name: "Revisar rotina" }))
+  expect(within(editor).getByText("printf completed")).toBeVisible()
+  fireEvent.click(within(editor).getByRole("button", { name: "Ativar rotina" }))
+
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+  const saved = (await api.request("GET /routines", {})).routines.find((item) => item.id === routine.id)
+  expect(saved).toMatchObject({
+    kind: "script",
+    command: "printf completed",
+    cwd: "/tmp/example",
+    envFile: "/tmp/example.env",
+    groupId: group.id,
+  })
+})
