@@ -742,6 +742,15 @@ export const Sidebar = (props: SidebarProps) => {
             actions={{
               ...props.notificationActions,
               open: (item) => navigate(() => props.notificationActions.open(item)),
+              recover: async (item, action) => {
+                props.onNavigate?.()
+                if (!props.notificationActions.recover) {
+                  props.notificationActions.open(item)
+                  return
+                }
+
+                await props.notificationActions.recover(item, action)
+              },
             }}
             onOpenChange={props.onNotificationsOpen}
             onReviewApproval={(target) => navigate(() => props.onReviewApproval(target))}

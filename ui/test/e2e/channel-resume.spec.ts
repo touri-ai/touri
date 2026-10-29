@@ -9,15 +9,25 @@ const request =
 for (const viewport of [
   { width: 1440, height: 900 },
   { width: 390, height: 844 },
-].flatMap((viewport) => [
-  { ...viewport, draft: "" },
-  { ...viewport, draft: "@marketing confira o relatório." },
-])) {
-  test(`resuming a channel task calls the interrupted bot at ${viewport.width}px (${viewport.draft ? "existing draft" : "empty draft"})`, async ({
+]
+  .flatMap((viewport) => [
+    { ...viewport, draft: "" },
+    { ...viewport, draft: "@marketing confira o relatório." },
+  ])
+  .flatMap((viewport) =>
+    ["dark", "light"].map((colorScheme) => ({
+      width: viewport.width,
+      height: viewport.height,
+      draft: viewport.draft,
+      colorScheme,
+    })),
+  )) {
+  test(`resuming a channel task calls the interrupted bot at ${viewport.width}px (${viewport.draft ? "existing draft" : "empty draft"}) in ${viewport.colorScheme}`, async ({
     page,
   }) => {
     test.setTimeout(60_000)
     await page.setViewportSize(viewport)
+    await page.addInitScript((theme) => localStorage.setItem("touri.appearance.v1", theme), viewport.colorScheme)
     await page.goto("/test/e2e/groups-harness.html")
     await expect(page.getByRole("textbox", { name: "Mensagem para mark", exact: true })).toBeVisible()
     await page.evaluate(async (draft) => {
@@ -107,8 +117,8 @@ for (const viewport of [
     await page.getByRole("button", { name: /^Notificações/ }).click()
     const center = page.getByRole("region", { name: "Central de notificações" })
     await center.getByRole("button", { name: "Retomar tarefa", exact: true }).first().click()
-    if (await page.getByRole("dialog", { name: "Barra lateral", exact: true }).isVisible())
-      await page.keyboard.press("Escape")
+
+    await expect(page.getByRole("dialog", { name: "Barra lateral", exact: true })).not.toBeVisible()
 
     const input = page.getByRole("textbox", { name: "Mensagem para Viagem", exact: true })
     await expect(input).toBeVisible()
@@ -116,7 +126,7 @@ for (const viewport of [
     // Captured before the draft assertion so the same spec records the old draft on main.
     if (process.env.TOURI_SCREENSHOT_DIR)
       await page.screenshot({
-        path: `${process.env.TOURI_SCREENSHOT_DIR}/channel-resume-${viewport.width}-${viewport.draft ? "existing" : "empty"}.png`,
+        path: `${process.env.TOURI_SCREENSHOT_DIR}/channel-resume-${viewport.colorScheme}-${viewport.width}-${viewport.draft ? "existing" : "empty"}.png`,
       })
     await expect(input).toHaveValue(`@mark ${request}${viewport.draft ? `\n\n${viewport.draft}` : ""}`)
     await expect(page.getByRole("button", { name: "Enviar", exact: true })).toBeEnabled()
