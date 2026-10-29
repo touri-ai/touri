@@ -390,6 +390,7 @@ export const createBotDeletionManager = (
           continue
         }
         if (job.phase === "cleanup") {
+          updateJob(botId, {})
           const collected = await collectDeletedBotBlobs(
             kernel,
             botId,
@@ -551,6 +552,7 @@ const collectDeletedBotBlobs = async (
         },
         signal,
         timeoutMs,
+        botId,
       )
       // Shared and backup-pinned attachments intentionally survive a completed pass.
       if (!deferred && !db.query("SELECT 1 FROM settings WHERE key >= ? AND key < ? LIMIT 1").get(marker, `${marker};`))

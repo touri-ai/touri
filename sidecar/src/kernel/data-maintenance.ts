@@ -219,6 +219,7 @@ export const collectUnusedOutputBlobs = async (
   onDeferred: (reason: AttachmentReferenceScanDeferredReason) => void = () => {},
   signal?: AbortSignal,
   attachmentReferenceTimeoutMs = 10 * 60_000,
+  deletedBotId?: string,
 ): Promise<number> => {
   const measure = <Value>(stage: Parameters<PerformanceStageRunner>[0], action: () => Value): Value =>
     runStage ? runStage(stage, action) : action()
@@ -242,6 +243,7 @@ export const collectUnusedOutputBlobs = async (
   }
   let observed = changes()
   const eligible = new Set(deletedBotAttachments)
+  const protectedAttachments = new Set<string>()
   const pending: Array<{ key: string; value_json: string }> = []
   let pendingCursor = "storage.deleted-attachments:"
   while (true) {
@@ -258,6 +260,19 @@ export const collectUnusedOutputBlobs = async (
     rows.forEach((row) => {
       const ids = getDeletedAttachmentIds(row.value_json)
       if (!ids) return
+
+      const botId = row.key.slice("storage.deleted-attachments:".length).split(":")[0] ?? ""
+      const hasActiveOwner =
+        botId !== deletedBotId &&
+        database.query("SELECT 1 FROM bot_deletions WHERE bot_id = ? AND error_code IS NULL").get(botId)
+      // A live deletion owns its files until its collector runs or hands cleanup to maintenance.
+      if (hasActiveOwner) {
+        ids.forEach((id) => {
+          protectedAttachments.add(id)
+        })
+        if (!deletedBotId) onDeferred("changed")
+        return
+      }
 
       pending.push(row)
       ids.forEach((id) => {
@@ -292,7 +307,10 @@ export const collectUnusedOutputBlobs = async (
 
       cursor = rows.at(-1)?.cursor ?? cursor
       const candidates = rows.filter(
-        (row) => !row.pinned && (row.origin_path === OUTPUT_BLOB_ORIGIN || eligible.has(row.id)),
+        (row) =>
+          !row.pinned &&
+          !protectedAttachments.has(row.id) &&
+          (row.origin_path === OUTPUT_BLOB_ORIGIN || eligible.has(row.id)),
       )
       if (candidates.length && !started) {
         if (yieldBatch) await yieldBatch()
