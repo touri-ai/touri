@@ -16,6 +16,8 @@ class WatchdogPolicyTest(unittest.TestCase):
                 trigger TEXT, routine_run_id TEXT, status TEXT);
             CREATE TABLE routine_runs (id TEXT, routine_id TEXT, started_at INTEGER);
             CREATE TABLE routines (id TEXT, timeout_minutes INTEGER);
+            CREATE TABLE group_turns (run_id TEXT);
+            CREATE TABLE group_run_links (run_id TEXT);
             INSERT INTO routines VALUES ('routine', 90);
             INSERT INTO routine_runs VALUES ('execution', 'routine', 8100000);
         """)
@@ -54,6 +56,30 @@ class WatchdogPolicyTest(unittest.TestCase):
 
         self.assertEqual(expired[0]["limit_minutes"], 60)
         self.assertEqual(within_override, ())
+
+    def test_channel_coordinator_at_62_minutes_keeps_runtime_deadline(self):
+        self.add_run(age=62, trigger="user", execution=None)
+        self.db.execute("INSERT INTO group_turns VALUES ('run')")
+
+        result = get_overdue_runs(self.db, NOW, {})
+
+        self.assertEqual(result, ())
+
+    def test_delegated_channel_member_keeps_runtime_deadline(self):
+        self.add_run(age=62, trigger="user", execution=None)
+        self.db.execute("INSERT INTO group_run_links VALUES ('run')")
+
+        result = get_overdue_runs(self.db, NOW, {})
+
+        self.assertEqual(result, ())
+
+    def test_channel_routine_still_expires_at_its_absolute_deadline(self):
+        self.add_run()
+        self.db.execute("INSERT INTO group_turns VALUES ('run')")
+
+        result = get_overdue_runs(self.db, NOW + 26 * MINUTE, {})
+
+        self.assertEqual(result[0]["limit_minutes"], 90)
 
     def test_missing_routine_metadata_does_not_fall_back_to_60_minutes(self):
         self.add_run(execution="missing")
