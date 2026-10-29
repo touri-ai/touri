@@ -3869,7 +3869,7 @@ a {
   order: -1;
 }
 .chat-message-list .message-bubble:is([data-message-author="bot"], [data-message-author="person"]) .message-role {
-  color: color-mix(in srgb, var(--avatar-author-color) 55%, var(--text));
+  color: color-mix(in srgb, var(--avatar-author-color) 35%, var(--text));
   font-weight: var(--weight-regular);
 }
 /* Time and actions wait under the bubble until hover or keyboard focus; statuses always show. */
@@ -3888,10 +3888,6 @@ a {
 }
 .chat-message-list .message-actions .user-message-actions {
   margin: 0;
-}
-.chat-message-list .message-actions .user-message-actions > .text-button {
-  min-height: var(--space-24);
-  font-size: var(--fs-caption);
 }
 .chat-message-list .message-actions > :is(time, .user-message-actions),
 .chat-message-list .message-bubble[data-message-author="bot"] .message-meta time {

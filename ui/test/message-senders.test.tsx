@@ -162,4 +162,22 @@ describe("message senders", () => {
     expect(isGrouped("bot-after-system")).toBe(false)
     expect(isGrouped("after-day")).toBe(false)
   })
+
+  it("shows the author again after the day divider at the start of a virtual history window", () => {
+    const start = Date.UTC(2026, 9, 1, 12)
+    const messages = Array.from({ length: 40 }, (_, index) =>
+      getMessage(`bot-${index}`, lia, start + index, "assistant"),
+    )
+
+    const { container } = renderMessages(messages)
+    const firstVisible = container.querySelector(".message-bubble")
+    if (!firstVisible) throw new Error("Missing virtual history window")
+
+    expect(firstVisible).not.toHaveAttribute("data-message-id", "bot-0")
+    expect(firstVisible.parentElement?.querySelector(".day-divider")).not.toBeNull()
+    expect(firstVisible).not.toHaveAttribute("data-message-grouped")
+    expect(firstVisible.querySelector(".message-meta .message-role")).toHaveTextContent("Lia")
+    expect(firstVisible.querySelector(".message-avatar .tb-avatar")).not.toBeNull()
+    expect(getRow(container, "bot-39")).toHaveAttribute("data-message-grouped", "true")
+  })
 })

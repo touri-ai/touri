@@ -966,6 +966,21 @@ Independent messages from people, integrations and bots remain visible even when
 or are roots. Shared history has no message-edit or branch-selection controls and skips branch sibling
 lookups. Private direct conversations retain message editing and selection of real alternative branches.
 
+Channel and direct-chat message rows share one presentation. Your messages use a compact,
+end-aligned bubble without a visible name or avatar; the author remains available to screen readers.
+Other people's messages are end-aligned with their name above a bubble tinted by their avatar colour.
+Bot replies place a 28-pixel avatar beside the content, bottom-aligned with the body, and the name
+above it. Author names retain at least 4.5:1 contrast in both themes, including custom avatar colours.
+Plain bot text uses a muted bubble; tables, code and images keep their own frame. Approvals,
+activity, attachments and browser controls retain their existing behaviour in the content column.
+Consecutive messages from the same author within five minutes on the same calendar day omit
+repeated names and avatars; another author, system row or day divider breaks the group. The first
+mounted row in each virtual history window starts a new group so its author remains identifiable.
+Times and private-chat editing appear on hover or keyboard focus, with editing always visible on
+touch devices and an editing target of at least 44 by 44 pixels on phone layouts or coarse pointers.
+Delivery and cancellation statuses remain visible. These rows add no message actions;
+shared history still has no editing or branch controls.
+
 The touri MCP server exposes `ask_bot({bot, message})` and its `coordinate_bots` alias to group
 participant sessions. The final answer returns into the calling turn. Only current members can
 be addressed; cycles are rejected, depth is at most 2 and a group turn may make at most 6 calls.

@@ -827,7 +827,7 @@ export const VirtualMessageList = ({
                     }
                   : saved
               const previous = timeline[start + index - 1]?.message
-              const grouped = Boolean(previous && shouldGroupMessages(previous, message, currentPersonId))
+              const grouped = Boolean(index > 0 && previous && shouldGroupMessages(previous, message, currentPersonId))
               const siblings = flatHistory ? [] : (branches.get(getMessageBranchKey(message)) ?? [])
               const branchIndex = flatHistory ? 0 : siblings.findIndex((candidate) => candidate.id === message.id)
               return (
