@@ -1,5 +1,12 @@
-import type { Bot, Message, NotificationPreferences, NotificationRecord, Thread } from "@touri/contracts"
-import { useEffect, useMemo, useRef } from "react"
+import type {
+  Bot,
+  ChannelReadState,
+  Message,
+  NotificationPreferences,
+  NotificationRecord,
+  Thread,
+} from "@touri/contracts"
+import { useCallback, useEffect, useMemo, useRef } from "react"
 import type { TauriInvoke } from "./api/client"
 import {
   createNotificationSoundController,
@@ -17,6 +24,8 @@ type SoundSnapshot = {
   threads: ReadonlyArray<Thread>
   preferences?: NotificationPreferences | undefined
   activeThreadId: string | null
+  /** Unread bot replies per channel conversation; a growing count is a finished channel task. */
+  channelReads?: ReadonlyMap<string, ChannelReadState>
 }
 
 type SoundIntent = {
@@ -48,6 +57,24 @@ export const useNotificationSounds = (snapshot: SoundSnapshot, invoke: TauriInvo
   const latest = useRef(snapshot)
   latest.current = snapshot
   const seen = useRef<{ notificationIds: Set<number>; messageIds: Set<string> } | null>(null)
+  const play = useCallback(
+    async (intent: SoundIntent): Promise<void> => {
+      // Only Windows reports its focus or do-not-disturb state; elsewhere the app's own settings apply.
+      let systemQuiet = false
+      if ("__TAURI_INTERNALS__" in window) {
+        try {
+          systemQuiet = (await invoke("notification_system_quiet", {})) === true
+        } catch {
+          systemQuiet = false
+        }
+      }
+
+      if (!mounted.current) return
+
+      controller.play(getSoundEvent(intent, latest.current, systemQuiet))
+    },
+    [controller, invoke],
+  )
 
   useEffect(() => {
     mounted.current = true
@@ -100,22 +127,21 @@ export const useNotificationSounds = (snapshot: SoundSnapshot, invoke: TauriInvo
     ]
     const intent = intents.find((item) => shouldPlayNotificationSound(getSoundEvent(item, latest.current, false)))
     if (intent) void play(intent)
+  }, [play, snapshot.messages, snapshot.notifications, snapshot.ready])
 
-    async function play(intent: SoundIntent): Promise<void> {
-      let systemQuiet = false
-      if ("__TAURI_INTERNALS__" in window) {
-        try {
-          systemQuiet = (await invoke("notification_system_quiet", {})) === true
-        } catch {
-          systemQuiet = false
-        }
-      }
+  const seenChannels = useRef<ReadonlyMap<string, number> | null>(null)
+  useEffect(() => {
+    if (!snapshot.ready || !snapshot.channelReads) return
+    const previous = seenChannels.current
+    seenChannels.current = new Map(Array.from(snapshot.channelReads.values(), (read) => [read.threadId, read.unread]))
+    // The first snapshot is history, not news.
+    if (!previous) return
 
-      if (!mounted.current) return
-
-      controller.play(getSoundEvent(intent, latest.current, systemQuiet))
-    }
-  }, [controller, invoke, snapshot.messages, snapshot.notifications, snapshot.ready])
+    const finished = Array.from(snapshot.channelReads.values()).find(
+      (read) => read.unread > (previous.get(read.threadId) ?? 0),
+    )
+    if (finished) void play({ kind: "channel", threadId: finished.threadId, botId: null })
+  }, [play, snapshot.channelReads, snapshot.ready])
 }
 
 const getSoundEvent = (intent: SoundIntent, snapshot: SoundSnapshot, systemQuiet: boolean): NotificationSoundEvent => ({

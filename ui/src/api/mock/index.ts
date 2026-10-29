@@ -6,6 +6,7 @@ import type {
   BotGroup,
   BotLearning,
   BrowserTabInfo,
+  ChannelReadState,
   DoctorReport,
   Goal,
   GroupCreateInput,
@@ -653,6 +654,34 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
   }
 
   let notifications: Array<NotificationRecord> = []
+  // Read positions for the single mock person; replies finished before the mock started are not news.
+  const channelReadsSince = now()
+  const channelReads = new Map<Id, number>()
+  const mockOwner = { id: "owner", name: "thiago", handle: "thiago" }
+  const getChannelReadState = (thread: Thread): ChannelReadState => {
+    const readAt = channelReads.get(thread.id) ?? channelReadsSince
+    const replies = messages.filter(
+      (message) =>
+        message.threadId === thread.id &&
+        message.role === "assistant" &&
+        message.kind === "text" &&
+        message.status === "complete" &&
+        message.updatedAt > readAt,
+    )
+    const isOwnersTask = (message: Message): boolean => {
+      const run = message.runId ? runs.get(message.runId) : undefined
+      const request = messages.find((candidate) => candidate.id === run?.requestMessageId)
+
+      return run?.trigger === "user" && request?.role === "user" && !request.sender
+    }
+    const mentions = replies.filter(
+      (message) => isOwnersTask(message) || getMentionedPeople(message.text, [mockOwner]).length > 0,
+    ).length
+
+    return { threadId: thread.id, readAt, unread: replies.length, mentions }
+  }
+  const getChannelThreads = (): Thread[] =>
+    threads.filter((thread) => thread.groupId && !thread.groupThreadId && thread.archivedAt === null)
 
   const resolveNotification = ({
     id,
@@ -1861,6 +1890,17 @@ export const createMockApi = ({ scenario }: { scenario?: MockScenario | null } =
         notifications: notifications.filter((item) => item.resolvedAt === null),
         lastSeq: notifications.length,
       } as ApiRoutes[typeof route]["res"]
+    if (key === "GET /channel-reads")
+      return { channels: getChannelThreads().map(getChannelReadState) } as ApiRoutes[typeof route]["res"]
+    if (key === "POST /threads/:id/read") {
+      const thread = getChannelThreads().find((candidate) => candidate.id === pathValues.id)
+      if (!thread) throw new ApiError(404, "", "NOT_FOUND", "TOURI-E1002")
+      const readAt = Math.max(now(), channelReads.get(thread.id) ?? 0)
+      channelReads.set(thread.id, readAt)
+      emit({ type: "channel.read", personId: "owner", threadId: thread.id, readAt })
+
+      return { channel: getChannelReadState(thread) } as ApiRoutes[typeof route]["res"]
+    }
     if (key === "POST /notifications/read") {
       const body = input as ApiRoutes["POST /notifications/read"]["req"]
       if (

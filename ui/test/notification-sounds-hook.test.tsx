@@ -159,3 +159,24 @@ it("plays a new task notification through the softer sink without marking it as 
 
   expect(audio.play).toHaveBeenCalledExactlyOnceWith(0.45, "task")
 })
+
+it("plays the channel tone once when a channel's unread replies grow while the window is in the background", async () => {
+  const { snapshot } = getFixture()
+  vi.mocked(document.hasFocus).mockReturnValue(false)
+  const invoke = vi.fn(async () => false) as TauriInvoke
+  const reads = (unread: number) =>
+    new Map([["avisos-thread", { threadId: "avisos-thread", readAt: 1, unread, mentions: 0 }]])
+  // The first snapshot is history: replies that were already waiting stay silent.
+  const view = renderHook((current) => useNotificationSounds(current, invoke), {
+    initialProps: { ...snapshot, channelReads: reads(2) },
+  })
+  await act(async () => undefined)
+  expect(audio.play).not.toHaveBeenCalled()
+
+  await act(async () => view.rerender({ ...snapshot, channelReads: reads(3) }))
+  await vi.waitFor(() => expect(audio.play).toHaveBeenCalledExactlyOnceWith(0.45, "channel"))
+
+  // Reading the channel lowers the count; that is not news.
+  await act(async () => view.rerender({ ...snapshot, channelReads: reads(0) }))
+  expect(audio.play).toHaveBeenCalledOnce()
+})

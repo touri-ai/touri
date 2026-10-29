@@ -12,6 +12,7 @@ import { createRoot } from "react-dom/client"
 import App from "../../src/App"
 import type { ApiRequest } from "../../src/api/client"
 import { createMockApi } from "../../src/api/mock"
+import { initializeTheme } from "../../src/design/theme"
 import "../../src/styles.css"
 
 type Fixture = { bots: Bot[]; group: BotGroup; thread: Thread; people: ChannelPerson[] }
@@ -23,8 +24,12 @@ declare global {
       input: Send["req"],
     ) => Promise<{ response: Send["res"]; messages: Message[]; runs: Run[]; notifications?: NotificationRecord[] }>
     channelPost: (input: Send["req"]) => Promise<void>
+    /** Optional: read positions served by the real sidecar. */
+    channelReadsGet?: () => Promise<ApiRoutes["GET /channel-reads"]["res"]>
+    channelReadPost?: () => Promise<ApiRoutes["POST /threads/:id/read"]["res"]>
   }
 }
+initializeTheme()
 const fixture = await window.channelFixture()
 const base = createMockApi()
 // Isolate the attention tone from the task-start tone in the ping scenario.
@@ -55,6 +60,10 @@ Object.assign(created.thread, fixture.thread)
 const channelMessages = new Map<string, Message[]>()
 const request: ApiRequest = async (route, input, path) => {
   if (route === "GET /groups/:id/people") return { people: fixture.people }
+  if (route === "GET /channel-reads" && window.channelReadsGet)
+    return (await window.channelReadsGet()) as ApiRoutes[typeof route]["res"]
+  if (route === "POST /threads/:id/read" && path?.id === fixture.thread.id && window.channelReadPost)
+    return (await window.channelReadPost()) as ApiRoutes[typeof route]["res"]
   if (route === "GET /threads/:id/messages" && path?.id === fixture.thread.id)
     return { messages: channelMessages.get(fixture.thread.id) ?? [] }
   if (route !== "POST /threads/:id/messages") return base.request(route, input, path)

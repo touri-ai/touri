@@ -1,4 +1,4 @@
-import type { Bot, BotGroup, ChannelPerson, Message, Run, Thread } from "@touri/contracts"
+import type { Bot, BotGroup, ChannelPerson, ChannelReadState, Message, Run, Thread } from "@touri/contracts"
 import { avatarColorFor } from "@touri/contracts/avatar"
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useState } from "react"
 import { latestPreview } from "../botPreview"
@@ -20,6 +20,7 @@ const DeleteGroupDialog = lazy(() =>
 )
 
 const EMPTY_WORKING_BOTS: string[] = []
+const EMPTY_CHANNEL_READS: ReadonlyMap<string, ChannelReadState> = new Map()
 const EMPTY_THREADS: Thread[] = []
 const EMPTY_MESSAGES: Message[] = []
 const EMPTY_RUNS: Run[] = []
@@ -57,6 +58,7 @@ export const GroupSidebar = memo(
     threads,
     attentionThreadIds = new Set(),
     channelWorking,
+    channelReads = EMPTY_CHANNEL_READS,
     selectedThreadId,
     onSelect,
     onPrefetch,
@@ -77,6 +79,8 @@ export const GroupSidebar = memo(
     onInvite?: (() => void) | undefined
     channelWorking?: Record<string, string[]> | undefined
     attentionThreadIds?: ReadonlySet<string>
+    /** This person's unread bot replies per channel conversation. */
+    channelReads?: ReadonlyMap<string, ChannelReadState> | undefined
     selectedThreadId: string | null
     onSelect: (id: string) => void
     onPrefetch?: ((id: string) => void) | undefined
@@ -156,6 +160,8 @@ export const GroupSidebar = memo(
           const groupThreads = summary?.threads ?? EMPTY_THREADS
           const isSelected = groupThreads.some((thread) => thread.id === selectedThreadId)
           const selectedUnread = groupThreads.find((thread) => thread.id === selectedThreadId)?.unread ?? 0
+          // The conversation on screen is being read, so its replies never count.
+          const replies = getChannelReplies(groupThreads, channelReads, selectedThreadId)
 
           return (
             <GroupSidebarEntry
@@ -167,8 +173,9 @@ export const GroupSidebar = memo(
               firstThreadId={getChannelThreads(groupThreads, group.id)[0]?.id ?? null}
               preview={previews.get(group.id) ?? ""}
               time={getSidebarRowTime(getLastActivityAt(groupThreads))}
-              unread={summary?.unread ?? 0}
+              unread={(summary?.unread ?? 0) + replies.unread}
               selectedUnread={selectedUnread}
+              mentions={replies.mentions}
               needsAttention={summary?.needsAttention ?? false}
               selected={isSelected}
               selectedThreadId={isSelected ? selectedThreadId : null}
@@ -221,6 +228,19 @@ const getGroupPreviews = (summaries: ReadonlyMap<string, GroupThreadSummary>, me
   )
 }
 
+const getChannelReplies = (
+  threads: ReadonlyArray<Thread>,
+  reads: ReadonlyMap<string, ChannelReadState>,
+  selectedThreadId: string | null,
+) =>
+  threads.reduce(
+    (total, thread) => {
+      const read = thread.id === selectedThreadId ? undefined : reads.get(thread.id)
+      return { unread: total.unread + (read?.unread ?? 0), mentions: total.mentions + (read?.mentions ?? 0) }
+    },
+    { unread: 0, mentions: 0 },
+  )
+
 const getGroupThreadSummaries = (threads: Thread[], attentionThreadIds: ReadonlySet<string>) =>
   threads.reduce((summaries, thread) => {
     if (!thread.groupId || thread.groupThreadId) return summaries
@@ -245,6 +265,7 @@ const GroupSidebarEntry = memo(
     time,
     unread,
     selectedUnread,
+    mentions,
     needsAttention,
     workingBots,
     selected,
@@ -265,6 +286,7 @@ const GroupSidebarEntry = memo(
     time: string
     unread: number
     selectedUnread: number
+    mentions: number
     needsAttention: boolean
     workingBots: string[]
     selected: boolean
@@ -285,7 +307,12 @@ const GroupSidebarEntry = memo(
     const attentionLabel = t("Channel attention count", { count: 1 }, locale)
     const unreadCount = Math.max(0, unread - selectedUnread)
     const unreadLabel = t("Unread messages", { count: unreadCount }, locale)
-    const stateLabels = [...(needsAttention ? [attentionLabel] : []), ...(unreadCount > 0 ? [unreadLabel] : [])]
+    const mentionLabel = t("Mentions", { count: mentions }, locale)
+    const stateLabels = [
+      ...(mentions > 0 ? [mentionLabel] : []),
+      ...(needsAttention ? [attentionLabel] : []),
+      ...(unreadCount > 0 ? [unreadLabel] : []),
+    ]
     const conversations = selected ? getChannelSidebarThreads(threads, group, locale) : []
 
     return (
@@ -300,7 +327,7 @@ const GroupSidebarEntry = memo(
           selected={selected}
           rowAttention={needsAttention ? "waiting" : undefined}
           className="group-select"
-          rowClassName="channel-row"
+          rowClassName={unreadCount > 0 || mentions > 0 ? "channel-row has-unread" : "channel-row"}
           ariaLabel={[group.name, ...stateLabels].join(", ")}
           leading={<span className="channel-hash">#</span>}
           label={
@@ -313,7 +340,9 @@ const GroupSidebarEntry = memo(
             </span>
           }
           trailing={
-            needsAttention ? (
+            mentions > 0 ? (
+              <SidebarCount count={mentions} label={mentionLabel} tone="mention" />
+            ) : needsAttention ? (
               <SidebarDot tone="waiting" label={attentionLabel} />
             ) : unreadCount > 0 ? (
               <SidebarCount count={unreadCount} label={unreadLabel} />

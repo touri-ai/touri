@@ -75,7 +75,8 @@ test("channel polish keeps identities, messages and the member panel clear", asy
   await page.getByRole("tab", { name: /^Work,/ }).click()
   await page
     .getByRole("region", { name: "Canais", exact: true })
-    .getByRole("button", { name: group.name, exact: true })
+    // The row's name also announces unread replies and mentions that arrived while it was closed.
+    .getByRole("button", { name: new RegExp(`^${group.name}(?:,|$)`) })
     .first()
     .click()
   const input = page.getByRole("textbox", { name: /Mensagem (?:para |em #)fazendomapas/ })

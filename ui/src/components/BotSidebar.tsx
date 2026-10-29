@@ -3,6 +3,7 @@ import type {
   Bot,
   BotGroup,
   ChannelPerson,
+  ChannelReadState,
   HostKind,
   Id,
   Message,
@@ -100,6 +101,8 @@ type SidebarProps = {
   routines?: Array<Routine>
   /** Float bots with updates to the top (settings: "Mover bots com novidades para o topo"). Default on. */
   floatUpdates?: boolean
+  /** This person's unread bot replies per channel conversation. */
+  channelReads?: ReadonlyMap<string, ChannelReadState>
   selectedBotId: Id | null
   selectedThreadId: Id | null
   section: "advanced" | "bots"
@@ -371,8 +374,13 @@ export const Sidebar = (props: SidebarProps) => {
   const workUnreadCount = props.threads.reduce((count, thread) => {
     if (thread.id === props.selectedThreadId || thread.archivedAt !== null || thread.groupThreadId) return count
 
-    return count + thread.unread
+    return count + thread.unread + (props.channelReads?.get(thread.id)?.unread ?? 0)
   }, 0)
+  const workMentionCount = props.threads.reduce(
+    (count, thread) =>
+      thread.id === props.selectedThreadId ? count : count + (props.channelReads?.get(thread.id)?.mentions ?? 0),
+    0,
+  )
   const workWaitingCount = workNeedsYouCount + workUnreadCount
   const attentionByBot = useMemo(
     () =>
@@ -586,6 +594,7 @@ export const Sidebar = (props: SidebarProps) => {
               count: botsWaitingCount,
               needsYouCount: botsWaitingCount,
               unreadCount: 0,
+              mentionCount: 0,
             },
             {
               id: "work",
@@ -593,6 +602,7 @@ export const Sidebar = (props: SidebarProps) => {
               count: workWaitingCount,
               needsYouCount: workNeedsYouCount,
               unreadCount: workUnreadCount,
+              mentionCount: workMentionCount,
             },
           ] as const
         ).map((mode) => {
@@ -617,7 +627,13 @@ export const Sidebar = (props: SidebarProps) => {
               onKeyDown={handleModeKeyDown}
             >
               <span>{mode.label}</span>
-              {mode.unreadCount > 0 && <SidebarCount count={mode.unreadCount} label={label} tone="unread" />}
+              {mode.unreadCount > 0 && (
+                <SidebarCount
+                  count={mode.unreadCount}
+                  label={label}
+                  tone={mode.mentionCount > 0 ? "mention" : "unread"}
+                />
+              )}
             </button>
           )
         })}
@@ -664,6 +680,7 @@ export const Sidebar = (props: SidebarProps) => {
                 threads={props.threads}
                 attentionThreadIds={attentionThreadIds}
                 channelWorking={channelWorking}
+                channelReads={props.channelReads}
                 selectedThreadId={props.selectedThreadId}
                 onSelect={selectThread}
                 onPrefetch={props.onPrefetchThread}

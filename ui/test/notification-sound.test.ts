@@ -126,3 +126,34 @@ it("suppresses task sound in the active thread and shares attention debounce", (
 
   expect(sink).toHaveBeenCalledTimes(1)
 })
+
+it("plays the short channel tone only when the person is away from that conversation", () => {
+  const channel = (patch: Partial<Omit<NotificationSoundEvent, "now">> = {}) =>
+    getSoundEvent({ kind: "channel", notificationKind: undefined, threadId: "channel-avisos", ...patch })
+  let clock = 0
+  const sink = vi.fn()
+  const controller = createNotificationSoundController({ sink, now: () => (clock += 5_000) })
+
+  // On screen in that very channel: the reply is already being read.
+  expect(controller.play(channel({ activeThreadId: "channel-avisos" }))).toBe(false)
+  // Another app, a hidden window or another conversation.
+  expect(controller.play(channel({ activeThreadId: "channel-avisos", focused: false }))).toBe(true)
+  expect(controller.play(channel({ activeThreadId: "channel-avisos", visible: false }))).toBe(true)
+  expect(controller.play(channel())).toBe(true)
+  expect(sink).toHaveBeenCalledTimes(3)
+  expect(sink).toHaveBeenLastCalledWith(0.45, "channel")
+})
+
+it("keeps the channel tone off when turned off, in quiet hours or while the system is quiet", () => {
+  const channel = (patch: Partial<Omit<NotificationSoundEvent, "now">> = {}) =>
+    getSoundEvent({ kind: "channel", notificationKind: undefined, focused: false, ...patch })
+  const sink = vi.fn()
+  const controller = createNotificationSoundController({ sink, now: () => Date.UTC(2026, 9, 28, 3) })
+
+  expect(controller.play(channel({ preferences: { sound: { channel: false } } }))).toBe(false)
+  expect(controller.play(channel({ systemQuiet: true }))).toBe(false)
+  expect(
+    controller.play(channel({ preferences: { quietHours: { enabled: true, start: "00:00", end: "23:59" } } })),
+  ).toBe(false)
+  expect(sink).not.toHaveBeenCalled()
+})

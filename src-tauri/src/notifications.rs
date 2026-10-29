@@ -64,6 +64,29 @@ pub async fn notification_permission() -> Result<Permission, String> {
         .map_err(|error| error.to_string())
 }
 
+/// The app icon's count (dock or taskbar) outside Server mode: what needs the person plus channel mentions.
+#[tauri::command]
+pub fn app_badge(
+    app: AppHandle<tauri::Wry>,
+    caller: tauri::Webview<tauri::Wry>,
+    count: i64,
+) -> Result<(), String> {
+    use tauri::Manager;
+
+    if caller.label() != "main" {
+        return Err("BADGE_WINDOW_FORBIDDEN".into());
+    }
+    if !(0..=9999).contains(&count) {
+        return Err("INVALID_ARGS".into());
+    }
+    if let Some(window) = app.get_webview_window("main") {
+        window
+            .set_badge_count((count > 0).then_some(count))
+            .map_err(|_| "APP_BADGE_FAILED")?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn notification_system_quiet() -> Result<bool, String> {
     tauri::async_runtime::spawn_blocking(system_quiet)

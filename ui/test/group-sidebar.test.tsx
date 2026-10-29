@@ -139,3 +139,53 @@ it("hides an unread badge for the selected channel conversation", () => {
   const channel = screen.getByRole("button", { name: "Produto" })
   expect(channel.querySelector(".sidebar-unread")).toBeNull()
 })
+
+it("marks channels with unread bot replies in bold and mentions with a red count, except the open conversation", () => {
+  const state = createMockApi().getState()
+  const bot = state.bots[0]
+  const baseThread = state.threads[0]
+  if (!bot || !baseThread) throw new Error("Missing channel fixture")
+  const channel = (id: string, name: string): BotGroup => ({
+    id,
+    name,
+    memberIds: [bot.id],
+    coordinatorBotId: bot.id,
+    color: "#dc2626",
+    avatarShape: "classic-none",
+    avatarSeed: id,
+    createdAt: 1,
+    updatedAt: 1,
+  })
+  const groups = [channel("avisos", "avisos"), channel("mapas", "mapas"), channel("calmo", "calmo")]
+  const threads = groups.map((group) => ({ ...baseThread, id: `${group.id}-thread`, groupId: group.id, unread: 0 }))
+  const reads = new Map([
+    ["avisos-thread", { threadId: "avisos-thread", readAt: 1, unread: 3, mentions: 2 }],
+    ["mapas-thread", { threadId: "mapas-thread", readAt: 1, unread: 1, mentions: 0 }],
+  ])
+  const props = {
+    groups,
+    threads,
+    channelReads: reads,
+    onSelect: () => undefined,
+    onCreate: () => undefined,
+    onEdit: () => undefined,
+    onNewThread: () => undefined,
+  }
+  const view = render(<GroupSidebar {...props} selectedThreadId={null} />)
+
+  const avisos = screen.getByRole("button", { name: "avisos, 2 menções, 3 mensagens não lidas" })
+  const mention = within(avisos).getByRole("img", { name: "2 menções" })
+  expect(mention).toHaveAttribute("data-tone", "mention")
+  expect(mention).toHaveTextContent("2")
+  expect(avisos.closest(".sidebar-row")).toHaveClass("has-unread")
+  const mapas = screen.getByRole("button", { name: "mapas, 1 mensagem não lida" })
+  expect(within(mapas).getByRole("img", { name: "1 mensagem não lida" })).toHaveAttribute("data-tone", "unread")
+  expect(mapas.closest(".sidebar-row")).toHaveClass("has-unread")
+  expect(screen.getByRole("button", { name: "calmo" }).closest(".sidebar-row")).not.toHaveClass("has-unread")
+
+  view.rerender(<GroupSidebar {...props} selectedThreadId="avisos-thread" />)
+
+  const open = screen.getByRole("button", { name: "avisos" })
+  expect(open.querySelector(".sidebar-unread")).toBeNull()
+  expect(open.closest(".sidebar-row")).not.toHaveClass("has-unread")
+})

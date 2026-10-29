@@ -1289,6 +1289,8 @@ export type ApiRoutes = {
   'GET /notifications': { req: { limit?: number }; res: { notifications: Array<NotificationRecord> } }
   'GET /notifications/pending': { req: {}; res: { notifications: Array<NotificationRecord>; lastSeq: number } }
   'POST /notifications/read': { req: { ids: Array<number> }; res: { notifications: Array<NotificationRecord>; skipped: number; skippedIds: Array<number> } }
+  'GET /channel-reads': { req: Record<string, never>; res: { channels: Array<ChannelReadState> } }
+  'POST /threads/:id/read': { req: Record<string, never>; res: { channel: ChannelReadState } }
   'GET /push': { req: {}; res: { publicKey: string; subscribed: boolean } }
   'PUT /push': { req: { endpoint: string; keys: { p256dh: string; auth: string }; locale: 'pt-BR' | 'en' }; res: {} }
   'DELETE /push': { req: {}; res: {} }
@@ -1409,6 +1411,7 @@ export type UiEvent =
   | { type: 'notification.created'; notification: NotificationRecord }
   | { type: 'notification.resolved'; notification: NotificationRecord }
   | { type: 'notifications.read'; personId: Id; receipts: Array<{ notificationId: number; readAt: EpochMs }> }
+  | { type: 'channel.read'; personId: Id; threadId: Id; readAt: EpochMs }
   | { type: 'notify'; level: 'info' | 'warning' | 'error'; title: string; body: string; threadId: Id | null; requestId?: Id | null; notificationId?: number; kind?: NotifyKind; targetPersonId?: Id | null }
 
 /** Attention kinds need the user; message kinds (`done`, `delegation-settled`, `notice`) are informational and expire. */
@@ -1436,7 +1439,18 @@ export type NotificationPreferences = NotificationScopePreferences & {
   bots?: Record<Id, NotificationScopePreferences>
   /** Times use the local clock; an equal start and end silences the entire day. */
   quietHours?: { enabled: boolean; start: string; end: string; timeZone?: string }
-  sound?: { attention?: boolean; replies?: boolean; task?: boolean; volume?: number }
+  /** `channel`: a short tone when a bot finishes in a channel that is not on screen. Default: on. */
+  sound?: { attention?: boolean; replies?: boolean; task?: boolean; channel?: boolean; volume?: number }
+}
+
+/** One person's read position in a channel conversation and the bot replies that finished after it. */
+export type ChannelReadState = {
+  threadId: Id
+  readAt: EpochMs
+  /** Final bot replies that finished after `readAt`. */
+  unread: number
+  /** Unread replies that mention this person or finish a task they asked for. */
+  mentions: number
 }
 
 export type NotifyResolution = 'allow' | 'deny' | 'answer' | 'replied' | 'dismissed' | 'expired' | 'canceled'
@@ -1552,6 +1566,8 @@ export type TauriCommands = {
   deep_link_pending: { args: {}; result: PendingDeepLink | null }
   deep_link_ack: { args: { requestId: number }; result: {} }
   notification_system_quiet: { args: {}; result: boolean }
+  /** The app icon's count outside Server mode. */
+  app_badge: { args: { count: number }; result: {} }
   server_mode_status: { args: {}; result: ServerModeStatus }
   server_mode_pair: { args: { url: string; code: string }; result: ServerModeStatus }
   server_mode_test: { args: {}; result: { ok: true } }

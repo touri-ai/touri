@@ -613,6 +613,7 @@ pub fn run() {
             permissions_status,
             notifications::notification_permission,
             notifications::notification_system_quiet,
+            notifications::app_badge,
             notifications::notification_test,
             notifications::notification_open_settings,
             computer_kill_switch,

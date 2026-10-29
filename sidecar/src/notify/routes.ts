@@ -44,6 +44,18 @@ const answerText = ({ kind, body }: { kind: string; body: RespondBody }): string
   return `User answered: ${body.behavior === "allow" ? "yes" : "no"}`
 }
 
+/** The person a request reads for: the device session's person, or the local owner without Work access. */
+export const getNotificationReader = (
+  kernel: Kernel,
+  signal: AbortSignal,
+): Pick<DevicePerson, "id" | "role"> | null => {
+  const session = deviceSession(signal)
+  if (session) return session.active() ? (session.person ?? null) : null
+  if (kernel.services.use("work.authorizeHttp")) return null
+
+  return { id: kernel.services.use("work.defaultPersonId")?.() ?? "owner", role: "admin" }
+}
+
 export const createNotifyRoutes = ({
   kernel,
   store,
@@ -57,13 +69,7 @@ export const createNotifyRoutes = ({
   hub: SseHub
   syncRecoveryTasks?: ReturnType<typeof createRecoverySync>
 }): RouteModule => {
-  const getReader = (signal: AbortSignal): Pick<DevicePerson, "id" | "role"> | null => {
-    const session = deviceSession(signal)
-    if (session) return session.active() ? (session.person ?? null) : null
-    if (kernel.services.use("work.authorizeHttp")) return null
-
-    return { id: kernel.services.use("work.defaultPersonId")?.() ?? "owner", role: "admin" }
-  }
+  const getReader = (signal: AbortSignal) => getNotificationReader(kernel, signal)
 
   const canRead = (person: Pick<DevicePerson, "id" | "role">, notification: NotificationRecord): boolean => {
     if (notification.targetPersonId && notification.targetPersonId !== person.id) return false

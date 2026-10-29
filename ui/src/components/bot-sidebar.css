@@ -731,8 +731,13 @@
   white-space: nowrap;
 }
 .r8-sidebar .sidebar-row.selected .sidebar-row-label strong,
-.r8-sidebar .sidebar-row.selected .channel-name {
+.r8-sidebar .sidebar-row.selected .channel-name,
+.r8-sidebar .channel-row.has-unread .channel-name {
   font-weight: var(--weight-semibold);
+}
+/* Unread channels stand out from read ones, whose names recede. */
+.r8-sidebar .channel-row.has-unread .channel-hash {
+  color: var(--text);
 }
 .r8-sidebar .bot-preview.paused {
   color: var(--text-2);
@@ -774,6 +779,12 @@
 }
 .sidebar-unread[data-tone="attention"] {
   color: var(--warning);
+}
+/* A mention or the end of the person's own task: a solid red count, as in chat apps. */
+.sidebar-unread[data-tone="mention"],
+.r8-sidebar .sidebar-row.selected .sidebar-unread[data-tone="mention"] {
+  background: var(--brand);
+  color: var(--text-on-accent);
 }
 .sidebar-status-dot {
   display: block;
