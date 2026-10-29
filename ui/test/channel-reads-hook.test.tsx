@@ -1,5 +1,5 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
-import type { Message, Thread, UiEventEnvelope } from "@touri/contracts"
+import type { ChannelReadState, Message, Run, Thread, UiEventEnvelope } from "@touri/contracts"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import type { UiApi } from "../src/api/client"
 import { useChannelReads } from "../src/useChannelReads"
@@ -10,6 +10,7 @@ const channel = { id: "avisos-thread", groupId: "avisos", groupThreadId: null, a
 const getServer = (unread: number) => {
   const state = { unread, reads: 0 }
   const listeners = new Set<(envelope: UiEventEnvelope) => void>()
+  const connections = new Set<(connected: boolean) => void>()
   const read = () => ({ threadId: channel.id, readAt: 2, unread: state.unread, mentions: 0 })
   const request = vi.fn(async (route: string) => {
     if (route === "GET /channel-reads") return { channels: [read()] }
@@ -19,11 +20,15 @@ const getServer = (unread: number) => {
   })
   const api = {
     request,
+    subscribeConnection: (listener: (connected: boolean) => void) => {
+      connections.add(listener)
+      return () => connections.delete(listener)
+    },
     subscribe: (listener: (envelope: UiEventEnvelope) => void) => {
       listeners.add(listener)
       return () => listeners.delete(listener)
     },
-  } as unknown as UiApi
+  } as UiApi
   const reply = () => {
     state.unread += 1
     const message = { threadId: channel.id, role: "assistant", status: "complete" } as Message
@@ -32,7 +37,20 @@ const getServer = (unread: number) => {
     })
   }
 
-  return { api, state, reply }
+  const finish = () => {
+    state.unread += 1
+    const run = { threadId: channel.id, status: "succeeded" } as Run
+    listeners.forEach((listener) => {
+      listener({ seq: 2, event: { type: "run.updated", run } })
+    })
+  }
+
+  const reconnect = () =>
+    connections.forEach((listener) => {
+      listener(true)
+    })
+
+  return { api, state, reply, request, finish, reconnect }
 }
 
 let focused = true
@@ -89,4 +107,60 @@ it("keeps another channel's replies unread and refreshes them as they settle", a
 
   await waitFor(() => expect(result.current?.get(channel.id)?.unread).toBe(1))
   expect(server.state.reads).toBe(0)
+})
+
+it("does not restore unread replies from a snapshot that arrived after the channel was read", async () => {
+  const server = getServer(1)
+  const { result, rerender } = renderHook(
+    ({ openThreadId }: { openThreadId: string | null }) =>
+      useChannelReads({ api: server.api, threads: [channel], openThreadId, enabled: true }),
+    { initialProps: { openThreadId: null } },
+  )
+  await waitFor(() => expect(result.current?.get(channel.id)?.unread).toBe(1))
+  const pending = Promise.withResolvers<{ channels: ChannelReadState[] }>()
+  server.request.mockImplementationOnce(() => pending.promise)
+
+  act(() => server.reply())
+  await waitFor(() => expect(server.request).toHaveBeenCalledTimes(2))
+  rerender({ openThreadId: channel.id })
+  await waitFor(() => expect(result.current?.get(channel.id)?.unread).toBe(0))
+  // Move away before the older snapshot arrives: it must not resurrect a badge.
+  rerender({ openThreadId: null })
+  await act(async () =>
+    pending.resolve({
+      channels: [{ threadId: channel.id, readAt: 1, unread: 2, mentions: 0 }],
+    }),
+  )
+
+  expect(result.current?.get(channel.id)?.unread).toBe(0)
+})
+
+it("refreshes when the run succeeds after the complete message was already delivered", async () => {
+  const server = getServer(0)
+  const { result } = renderHook(() =>
+    useChannelReads({ api: server.api, threads: [channel], openThreadId: "other-thread", enabled: true }),
+  )
+  await waitFor(() => expect(result.current?.get(channel.id)?.unread).toBe(0))
+
+  act(() => server.finish())
+
+  await waitFor(() => expect(result.current?.get(channel.id)?.unread).toBe(1))
+})
+
+it("retries an interrupted read when the connection returns with the same unread count", async () => {
+  const server = getServer(1)
+  const { result, rerender } = renderHook(
+    ({ openThreadId }: { openThreadId: string | null }) =>
+      useChannelReads({ api: server.api, threads: [channel], openThreadId, enabled: true }),
+    { initialProps: { openThreadId: null } },
+  )
+  await waitFor(() => expect(result.current?.get(channel.id)?.unread).toBe(1))
+  server.request.mockRejectedValueOnce(new Error("Connection interrupted"))
+  rerender({ openThreadId: channel.id })
+  await waitFor(() => expect(server.request).toHaveBeenCalledTimes(2))
+
+  act(() => server.reconnect())
+
+  await waitFor(() => expect(result.current?.get(channel.id)?.unread).toBe(0))
+  expect(server.state.reads).toBe(1)
 })

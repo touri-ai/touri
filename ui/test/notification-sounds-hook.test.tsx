@@ -1,8 +1,9 @@
-import { act, renderHook } from "@testing-library/react"
+import { act, renderHook, waitFor } from "@testing-library/react"
 import type { NotificationPreferences } from "@touri/contracts"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import type { TauriInvoke } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
+import { useChannelReads } from "../src/useChannelReads"
 import { useNotificationSounds } from "../src/useNotificationSounds"
 
 const audio = vi.hoisted(() => ({ play: vi.fn(), unlock: vi.fn() }))
@@ -179,4 +180,27 @@ it("plays the channel tone once when a channel's unread replies grow while the w
   // Reading the channel lowers the count; that is not news.
   await act(async () => view.rerender({ ...snapshot, channelReads: reads(0) }))
   expect(audio.play).toHaveBeenCalledOnce()
+})
+
+it("keeps asynchronously loaded channel history silent", async () => {
+  const { snapshot } = getFixture()
+  vi.mocked(document.hasFocus).mockReturnValue(false)
+  const invoke = vi.fn(async () => false) as TauriInvoke
+  const base = createMockApi()
+  const api = {
+    ...base,
+    request: vi.fn(base.request).mockResolvedValue({
+      channels: [{ threadId: "avisos-thread", readAt: 1, unread: 2, mentions: 0 }],
+    }),
+  }
+  const view = renderHook(() => {
+    const channelReads = useChannelReads({ api, threads: [], openThreadId: null, enabled: true })
+    useNotificationSounds({ ...snapshot, channelReads }, invoke)
+    return channelReads
+  })
+
+  await waitFor(() => expect(view.result.current?.get("avisos-thread")?.unread).toBe(2))
+
+  expect(invoke).not.toHaveBeenCalled()
+  expect(audio.play).not.toHaveBeenCalled()
 })

@@ -66,6 +66,7 @@ import fastConversationSql from "../../src/kernel/migrations/0050.sql" with { ty
 import webPushSql from "../../src/kernel/migrations/0051.sql" with { type: "text" }
 import notificationReadsSql from "../../src/kernel/migrations/0052.sql" with { type: "text" }
 import attachmentRevisionSql from "../../src/kernel/migrations/0053.sql" with { type: "text" }
+import channelReadsSql from "../../src/kernel/migrations/channel-reads.sql" with { type: "text" }
 import imageEvidenceIndexesSql from "../../src/kernel/migrations/image-evidence-indexes.sql" with { type: "text" }
 import { captureTranscript } from "../../src/kernel/transcript-events"
 import { TRANSCRIPT_RETENTION } from "../../src/kernel/transcript-storage"
@@ -346,6 +347,7 @@ test("interrupted batches resume idempotently and match the shipped synchronous 
     synchronous.exec(notificationReadsSql)
     synchronous.exec(attachmentRevisionSql)
     synchronous.exec(imageEvidenceIndexesSql)
+    synchronous.exec(channelReadsSql)
     synchronous.exec(browserTakeoverContinuationsSql)
     database = openDatabase({ filename })
     expect(database.query("SELECT type, name, sql FROM sqlite_master ORDER BY name").all()).toEqual(

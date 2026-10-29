@@ -1,14 +1,10 @@
 import type { Database } from "bun:sqlite"
-import type { ChannelPerson, ChannelReadState, Kernel, RouteModule, RouteResponse } from "@touri/contracts"
-import { getMentionedPeople } from "../groups/people"
+import type { ChannelReadState, Kernel, RouteModule, RouteResponse } from "@touri/contracts"
 import type { DevicePerson } from "../kernel/device-session"
 import { getNotificationReader } from "./routes"
 
 /** Counts stop here; the sidebar shows 99+ long before. */
 const MAX_UNREAD = 1000
-/** Mentions are looked for in the newest unread replies only, and in a bounded prefix of each. */
-const MAX_MENTION_CANDIDATES = 100
-const MAX_MENTION_TEXT = 8000
 /**
  * A channel copy settles around its member run's finish. The index seek on the copy's update time
  * starts this much before the read position; the run's finish time then decides exactly.
@@ -17,13 +13,6 @@ const SETTLE_WINDOW_MS = 60_000
 
 type Reader = Pick<DevicePerson, "id" | "role">
 type ChannelThread = { id: string; group_id: string }
-type MentionCandidate = {
-  text: string
-  requester: string | null
-  depth: number | null
-  trigger: string | null
-  localRequest: number | null
-}
 
 const fail = (status: number, errorCode: string, error: string): RouteResponse => ({
   status,
@@ -41,6 +30,21 @@ const UNREAD_WHERE = `WHERE visible.thread_id = ? AND visible.role = 'assistant'
 
 /** Unread final replies in one channel conversation: thread, seek start, read position. */
 export const CHANNEL_UNREAD_COUNT_SQL = `SELECT COUNT(*) AS n FROM (SELECT 1 ${UNREAD_FROM} ${UNREAD_WHERE} LIMIT ${MAX_UNREAD})`
+
+/** Reuse persisted person mentions instead of rescanning reply text or sampling only recent replies. */
+export const CHANNEL_UNREAD_MENTIONS_SQL = `WITH unread AS (
+    SELECT visible.id, member.id AS run_id ${UNREAD_FROM} ${UNREAD_WHERE}
+    ORDER BY visible.updated_at DESC LIMIT ${MAX_UNREAD}
+  )
+  SELECT COUNT(*) AS n FROM unread
+  LEFT JOIN group_run_links link ON link.run_id = unread.run_id
+  LEFT JOIN runs turn ON turn.id = link.turn_id
+  LEFT JOIN messages request ON request.thread_id = turn.thread_id AND request.id = turn.request_message_id
+  WHERE (link.depth = 0 AND COALESCE(turn.requester_person_id,
+    CASE WHEN turn.trigger = 'user' AND request.id IS NOT NULL AND request.sender_json IS NULL THEN ? END) = ?)
+    OR EXISTS (SELECT 1 FROM notifications mention
+      WHERE mention.request_id = 'mention:' || unread.id || ':' || ?
+        AND mention.target_person_id = ? AND mention.kind = 'mention')`
 
 /**
  * Per-person read positions for channel conversations. A final bot reply is the channel copy of a
@@ -72,52 +76,20 @@ export const createChannelReads = (kernel: Kernel) => {
     )?.read_at ?? getSince()
   const getUnreadCount = (threadId: string, readAt: number): number =>
     (database.query(CHANNEL_UNREAD_COUNT_SQL).get(threadId, readAt - SETTLE_WINDOW_MS, readAt) as { n: number }).n
-  const getMentionCandidates = (threadId: string, readAt: number): MentionCandidate[] =>
-    database
-      .query(`SELECT substr(visible.text, 1, ${MAX_MENTION_TEXT}) AS text, turn.requester_person_id AS requester,
-          link.depth AS depth, turn.trigger AS trigger,
-          request.id IS NOT NULL AND request.sender_json IS NULL AS localRequest
-        ${UNREAD_FROM}
-        LEFT JOIN group_run_links link ON link.run_id = member.id
-        LEFT JOIN runs turn ON turn.id = link.turn_id
-        LEFT JOIN messages request ON request.thread_id = turn.thread_id AND request.id = turn.request_message_id
-        ${UNREAD_WHERE}
-        ORDER BY visible.updated_at DESC LIMIT ${MAX_MENTION_CANDIDATES}`)
-      .all(threadId, readAt - SETTLE_WINDOW_MS, readAt) as MentionCandidate[]
-
-  /** One person's state; channel people are looked up once per channel and only when replies are unread. */
-  const getState = (
-    reader: Reader,
-    thread: ChannelThread,
-    getPerson: (groupId: string) => ChannelPerson | undefined,
-  ): ChannelReadState => {
+  const getState = (reader: Reader, thread: ChannelThread): ChannelReadState => {
     const readAt = getReadAt(reader.id, thread.id)
     const unread = getUnreadCount(thread.id, readAt)
     if (unread === 0) return { threadId: thread.id, readAt, unread, mentions: 0 }
 
-    const person = getPerson(thread.group_id)
-    // Without Work accounts the owner's own messages carry no sender; integrations always do.
+    // Sender-less local requests belong to the owner; integrations always carry a sender.
     const owner = kernel.services.use("work.defaultPersonId")?.() ?? "owner"
-    const getRequester = (reply: MentionCandidate): string | null =>
-      reply.requester ?? (reply.trigger === "user" && reply.localRequest === 1 ? owner : null)
-    const mentions = getMentionCandidates(thread.id, readAt).filter(
-      (reply) =>
-        (reply.depth === 0 && getRequester(reply) === reader.id) ||
-        (person !== undefined && getMentionedPeople(reply.text, [person]).length > 0),
-    ).length
+    const mentions = (
+      database
+        .query(CHANNEL_UNREAD_MENTIONS_SQL)
+        .get(thread.id, readAt - SETTLE_WINDOW_MS, readAt, owner, reader.id, reader.id, reader.id) as { n: number }
+    ).n
 
     return { threadId: thread.id, readAt, unread, mentions }
-  }
-  const getPeopleLookup = (reader: Reader) => {
-    const people = new Map<string, ChannelPerson | undefined>()
-    return (groupId: string) => {
-      if (!people.has(groupId))
-        people.set(
-          groupId,
-          (kernel.services.use("work.channelPeople")?.(groupId) ?? []).find(({ id }) => id === reader.id),
-        )
-      return people.get(groupId)
-    }
   }
   const canRead = (reader: Reader, threadId: string): boolean =>
     reader.role === "admin" ||
@@ -132,11 +104,10 @@ export const createChannelReads = (kernel: Kernel) => {
     // Members only see their own channels; the per-thread check runs on that subset.
     const getChannelIds = kernel.services.use("work.personChannelIds")
     const channelIds = reader.role !== "admin" && getChannelIds ? new Set(getChannelIds(reader.id)) : null
-    const getPerson = getPeopleLookup(reader)
 
     return threads
       .filter((thread) => (channelIds?.has(thread.group_id) ?? true) && canRead(reader, thread.id))
-      .map((thread) => getState(reader, thread, getPerson))
+      .map((thread) => getState(reader, thread))
   }
 
   const markRead = (reader: Reader, thread: ChannelThread): ChannelReadState => {
@@ -148,7 +119,7 @@ export const createChannelReads = (kernel: Kernel) => {
       .run(reader.id, thread.id, readAt)
     kernel.publish({ type: "channel.read", personId: reader.id, threadId: thread.id, readAt })
 
-    return getState(reader, thread, getPeopleLookup(reader))
+    return getState(reader, thread)
   }
 
   const routes: RouteModule = {

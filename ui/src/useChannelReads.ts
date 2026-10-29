@@ -13,6 +13,8 @@ const isOnScreen = (): boolean => document.visibilityState === "visible" && docu
 /** Whether an event can change a channel's unread replies: a reply settled, or this person read a channel. */
 const isReadChange = (event: UiEvent, threads: ReadonlyMap<string, Thread>): boolean => {
   if (event.type === "channel.read") return true
+  if (event.type === "run.updated")
+    return event.run.status === "succeeded" && isChannelThread(threads.get(event.run.threadId))
   if (event.type !== "message.created" && event.type !== "message.updated") return false
 
   return (
@@ -38,25 +40,34 @@ export const useChannelReads = ({
   openThreadId: string | null
   enabled: boolean
 }): ReadonlyMap<string, ChannelReadState> | null => {
+  // An absent snapshot is distinct from a loaded channel with no unread replies.
   const [reads, setReads] = useState<ReadonlyMap<string, ChannelReadState> | null>(null)
   const [onScreen, setOnScreen] = useState(isOnScreen)
   const threadsById = useRef(new Map<string, Thread>())
   threadsById.current = useMemo(() => new Map(threads.map((thread) => [thread.id, thread])), [threads])
   const reading = useRef(new Set<string>())
-  // Bumped by each applied read, so a list requested before it cannot restore replies already read.
-  const readVersion = useRef(0)
+  const revision = useRef(0)
 
   useEffect(() => {
     if (!enabled || !api) return
     let active = true
     let timer: ReturnType<typeof setTimeout> | null = null
+    let pending: AbortController | null = null
+    setReads(null)
     const load = () => {
-      const version = readVersion.current
+      pending?.abort()
+      pending = new AbortController()
+      const version = ++revision.current
       void api
-        .request("GET /channel-reads", {})
+        .request("GET /channel-reads", {}, {}, { signal: pending.signal })
         .then(({ channels }) => {
-          if (active && version === readVersion.current)
-            setReads(new Map(channels.map((channel) => [channel.threadId, channel])))
+          if (!active) return
+          if (version !== revision.current) {
+            refresh()
+            return
+          }
+
+          setReads(new Map(channels.map((channel) => [channel.threadId, channel])))
         })
         .catch(() => undefined)
     }
@@ -74,6 +85,7 @@ export const useChannelReads = ({
     })
     return () => {
       active = false
+      pending?.abort()
       if (timer) clearTimeout(timer)
       unsubscribe()
       unsubscribeConnection?.()
@@ -92,8 +104,9 @@ export const useChannelReads = ({
     }
   }, [])
 
-  const openUnread = openThreadId ? (reads?.get(openThreadId)?.unread ?? 0) : 0
+  const openRead = openThreadId ? reads?.get(openThreadId) : undefined
   useEffect(() => {
+    const openUnread = openRead?.unread ?? 0
     if (!api || !enabled || !openThreadId || !onScreen || openUnread === 0 || reading.current.has(openThreadId)) return
     if (!isChannelThread(threadsById.current.get(openThreadId))) return
 
@@ -102,12 +115,13 @@ export const useChannelReads = ({
     void api
       .request("POST /threads/:id/read", {}, { id: threadId })
       .then(({ channel }) => {
-        readVersion.current += 1
-        setReads((current) => new Map(current ?? []).set(threadId, channel))
+        // A list started before this acknowledgement must not restore an older read position.
+        revision.current += 1
+        setReads((current) => new Map(current).set(threadId, channel))
       })
       .catch(() => undefined)
       .finally(() => reading.current.delete(threadId))
-  }, [api, enabled, onScreen, openThreadId, openUnread])
+  }, [api, enabled, onScreen, openThreadId, openRead])
 
   return reads
 }

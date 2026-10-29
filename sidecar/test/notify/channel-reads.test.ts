@@ -8,7 +8,11 @@ import { createGroupRuntime } from "../../src/groups/runtime"
 import { createGroupStore } from "../../src/groups/store"
 import { createKernel } from "../../src/kernel"
 import { init as initNotify } from "../../src/notify"
-import { CHANNEL_UNREAD_COUNT_SQL, createChannelReads } from "../../src/notify/channel-reads"
+import {
+  CHANNEL_UNREAD_COUNT_SQL,
+  CHANNEL_UNREAD_MENTIONS_SQL,
+  createChannelReads,
+} from "../../src/notify/channel-reads"
 import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { init as initStore } from "../../src/store"
 
@@ -271,4 +275,40 @@ test("conversations without unread replies never look up channel people, and the
   ).map(({ detail }) => detail)
   expect(plan.some((detail) => detail.includes("messages_assistant_complete"))).toBe(true)
   expect(plan.some((detail) => /SCAN (visible|member|shared)\b/.test(detail))).toBe(false)
+  const mentionPlan = (
+    f.db
+      .query(`EXPLAIN QUERY PLAN ${CHANNEL_UNREAD_MENTIONS_SQL}`)
+      .all(f.thread.id, 0, 0, "owner", "ana", "ana", "ana") as Array<{ detail: string }>
+  ).map(({ detail }) => detail)
+  expect(mentionPlan.some((detail) => detail.includes("notifications_request"))).toBe(true)
+  expect(mentionPlan.some((detail) => /SCAN (visible|member|shared|mention)\b/.test(detail))).toBe(false)
+})
+
+test("a mention stays counted after another hundred replies arrive", async () => {
+  const f = await getFixture()
+  await f.ask("@ana confira o plano.")
+
+  for (const _ of Array.from({ length: 100 })) await f.ask("Sem novidades.")
+
+  expect(f.reads.list(ana)).toEqual([expect.objectContaining({ unread: 101, mentions: 1 })])
+})
+
+test("mentions beyond the first eight thousand characters still count", async () => {
+  const f = await getFixture()
+
+  await f.ask(`${"Detalhe. ".repeat(1100)} @ana confira o plano.`)
+
+  expect(f.reads.list(ana)).toEqual([expect.objectContaining({ unread: 1, mentions: 1 })])
+})
+
+test("a longer person's name never counts as a mention of the shorter name", async () => {
+  const f = await getFixture()
+  f.host.kernel.services.provide("work.channelPeople", () => [
+    ...people,
+    { id: "ana-lima", name: "Ana Lima", handle: "ana-lima", avatarSeed: "ana-lima", role: "member" },
+  ])
+
+  await f.ask("@Ana Lima confira o plano.")
+
+  expect(f.reads.list(ana)).toEqual([expect.objectContaining({ unread: 1, mentions: 0 })])
 })

@@ -131,7 +131,10 @@ export const useNotificationSounds = (snapshot: SoundSnapshot, invoke: TauriInvo
 
   const seenChannels = useRef<ReadonlyMap<string, number> | null>(null)
   useEffect(() => {
-    if (!snapshot.ready || !snapshot.channelReads) return
+    if (!snapshot.ready || !snapshot.channelReads) {
+      seenChannels.current = null
+      return
+    }
     const previous = seenChannels.current
     seenChannels.current = new Map(Array.from(snapshot.channelReads.values(), (read) => [read.threadId, read.unread]))
     // The first snapshot is history, not news.
