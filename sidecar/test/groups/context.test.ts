@@ -9,11 +9,7 @@ import contextIndexes from "../../src/kernel/migrations/channel-context-indexes.
 
 const cleanups = new Set<() => void>()
 afterEach(() => {
-  Array.from(cleanups)
-    .reverse()
-    .forEach((cleanup) => {
-      cleanup()
-    })
+  Array.from(cleanups).reduceRight<void>((_, cleanup) => cleanup(), undefined)
   cleanups.clear()
 })
 
@@ -24,13 +20,14 @@ const getFixture = () => {
     CREATE TABLE messages (thread_id TEXT, id TEXT, seq INTEGER, role TEXT, text TEXT, sender_json TEXT,
       PRIMARY KEY (thread_id, id));`)
   database.exec(contextIndexes)
-  const insert = database.query("INSERT INTO messages VALUES (?, ?, ?, ?, ?, ?)")
-  database.transaction(() => {
-    Array.from({ length: 20_000 }, (_, seq) => seq + 1).forEach((seq) => {
-      insert.run("channel", String(seq), seq, seq % 2 ? "user" : "assistant", `synthetic ${seq}`, null)
-      insert.run("other", String(seq), seq, "assistant", "unrelated channel", null)
-    })
-  })()
+  database.exec(`WITH RECURSIVE sequence(seq) AS (
+    VALUES (1) UNION ALL SELECT seq + 1 FROM sequence WHERE seq < 20000
+  )
+  INSERT INTO messages
+  SELECT 'channel', CAST(seq AS TEXT), seq,
+    CASE WHEN seq % 2 = 1 THEN 'user' ELSE 'assistant' END, 'synthetic ' || seq, NULL FROM sequence
+  UNION ALL
+  SELECT 'other', CAST(seq AS TEXT), seq, 'assistant', 'unrelated channel', NULL FROM sequence;`)
 
   return database
 }
@@ -42,14 +39,17 @@ const getLegacyRows = (database: Database, requestId: string | null) =>
       ORDER BY seq DESC LIMIT 80`)
     .all("channel", "channel", requestId) as ReturnType<typeof getGroupContextRows>
 
-test.each(["19999", "1", "missing", null])("bounded channel context preserves the request ceiling: %s", (requestId) => {
-  const database = getFixture()
+test.each(["19999", "19921", "1", "missing", null])(
+  "bounded channel context preserves the request ceiling: %s",
+  (requestId) => {
+    const database = getFixture()
 
-  const actual = getGroupContextRows(database, "channel", requestId)
+    const actual = getGroupContextRows(database, "channel", requestId)
 
-  expect(actual).toEqual(getLegacyRows(database, requestId))
-  expect(actual).toHaveLength(80)
-})
+    expect(actual).toEqual(getLegacyRows(database, requestId))
+    expect(actual).toHaveLength(80)
+  },
+)
 
 test("channel context seeks indexed role candidates before sorting its bounded window", () => {
   const database = getFixture()
