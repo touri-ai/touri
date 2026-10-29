@@ -32,11 +32,20 @@ an external watchdog's SQL.
 and run this query in a separate maintenance process with an external deadline.
 The historical scan is not suitable for sidecar request handlers or callbacks.
 
-A channel coordinator waits behind the active coordinator of its **group**, even
-when that coordinator belongs to another bot or conversation. An ordinary bot run
-waits behind an active provider run of that bot, excluding channel coordinators.
-`blocker_run_id = NULL` means no active blocker was found in this snapshot; it is
-not proof of a deadlock. Starting/running state does not prove provider progress.
+A channel coordinator waits for an active coordinator in its **group** when their
+recipients overlap, even when the coordinators have different `bot_id` values or
+conversations. Independent recipients can run concurrently. Live delegated member
+runs also reserve their bot for the owning coordinator. The query checks declared
+recipients and persisted live delegations; it returns the coordinator, never its
+provider child. Ordinary executions serialize per **thread**, so another thread
+using the same bot is not a blocker. Their `wait_scope` is `thread`.
+
+`blocker_run_id = NULL` means no direct active blocker was established in this
+snapshot; it is not proof of a deadlock. Ordering behind an earlier waiting
+request, the global execution limit, and delegation reservations before a member
+run is persisted cannot be attributed by this query. Multiple active blockers
+may exist; it returns the earliest started matching one, with run ID as a tie
+breaker. Starting/running state does not prove provider progress.
 
 Consumers should report `wait_scope` and `blocker_run_id` rather than diagnosing
 all delayed coordinators as a stalled bot. Do not automatically cancel or restart
