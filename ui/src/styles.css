@@ -2861,11 +2861,13 @@ a {
 }
 .notification-bell {
   position: relative;
-  display: grid;
-  place-items: center;
   width: 40px;
   min-width: 40px;
   height: 40px;
+}
+.notification-center > .notification-bell {
+  display: grid;
+  place-items: center;
   padding: 0;
 }
 .notification-badge {
