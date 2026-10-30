@@ -872,6 +872,12 @@ export const init = async (
     groupThreadId,
     ownerPersonId,
   }) => {
+    if (
+      groupThreadId &&
+      (!getThread({ threadId: groupThreadId }) ||
+        database.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").all(groupThreadId).length > 0)
+    )
+      return { success: false, errorCode: "BOT_NOT_FOUND", error: "Channel conversation is being deleted" }
     const bot = getBot({ botId })
     if (!bot) return { success: false, errorCode: "BOT_NOT_FOUND", error: `Bot ${botId} was not found` }
     if (parentThreadId !== undefined) {

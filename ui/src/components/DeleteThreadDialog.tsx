@@ -8,7 +8,13 @@ export const DeleteThreadDialog = ({
   targets,
   onConfirm,
   onClose,
+  undoable = true,
+  pending = false,
+  error,
 }: {
+  pending?: boolean
+  error?: string | undefined
+  undoable?: boolean
   targets: Array<ThreadDeleteTarget>
   onConfirm: () => void
   onClose: () => void
@@ -59,14 +65,15 @@ export const DeleteThreadDialog = ({
           )}
         </div>
         <p>{t("Deleting stops any active work in these conversations.")}</p>
-        <p className="field-help">{t("You can undo for 5 seconds.")}</p>
+        {error && <p role="alert">{error}</p>}
+        {undoable && <p className="field-help">{t("You can undo for 5 seconds.")}</p>}
       </div>
       <div className="modal-actions">
-        <button type="button" data-initial-focus className="button-quiet" onClick={onClose}>
+        <button type="button" data-initial-focus disabled={pending} className="button-quiet" onClick={onClose}>
           {t("Cancel")}
         </button>
-        <button type="button" className="tool-action tool-action-deny" onClick={onConfirm}>
-          {t("Delete")}
+        <button type="button" className="tool-action tool-action-deny" disabled={pending} onClick={onConfirm}>
+          {pending ? t("Excluindo…") : t("Delete")}
         </button>
       </div>
     </Modal>

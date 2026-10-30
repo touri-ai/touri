@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from "@testing-library/react"
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react"
 import type { BotGroup, Message, Thread } from "@touri/contracts"
 import { afterEach, expect, it, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
@@ -188,4 +188,54 @@ it("marks channels with unread bot replies in bold and mentions with a red count
   const open = screen.getByRole("button", { name: "avisos" })
   expect(open.querySelector(".sidebar-unread")).toBeNull()
   expect(open.closest(".sidebar-row")).not.toHaveClass("has-unread")
+})
+
+it("confirms deleting a channel subthread without offering deletion for the main", async () => {
+  const state = createMockApi().getState()
+  const base = state.threads[0]
+  const bot = state.bots[0]
+  if (!base || !bot) throw new Error("Missing fixture")
+  const group: BotGroup = {
+    id: "channel-delete",
+    name: "Publicações",
+    memberIds: [bot.id],
+    coordinatorBotId: bot.id,
+    color: "#2563eb",
+    avatarShape: "classic-none",
+    avatarSeed: "synthetic",
+    createdAt: 1,
+    updatedAt: 1,
+  }
+  const main = {
+    ...base,
+    id: "channel-main",
+    title: "Publicações",
+    groupId: group.id,
+    groupThreadId: null,
+    createdAt: 1,
+  }
+  const secondary = { ...main, id: "channel-secondary", title: "Publicação diária", createdAt: 2 }
+  const onDeleteThread = vi.fn(async () => undefined)
+
+  render(
+    <GroupSidebar
+      groups={[group]}
+      threads={[main, secondary]}
+      selectedThreadId={secondary.id}
+      onSelect={() => undefined}
+      onCreate={() => undefined}
+      onEdit={() => undefined}
+      onNewThread={() => undefined}
+      onDeleteThread={onDeleteThread}
+    />,
+  )
+  screen.getByRole("button", { name: "Ações da conversa Publicação diária" }).click()
+  await screen.findByRole("menuitem", { name: "Apagar conversa…" }).then((button) => button.click())
+  const dialog = await screen.findByRole("alertdialog")
+
+  expect(within(dialog).queryByText("Você pode desfazer por 5 segundos.")).toBeNull()
+  expect(onDeleteThread).not.toHaveBeenCalled()
+  expect(screen.queryByRole("button", { name: "Ações da conversa Publicações" })).toBeNull()
+  within(dialog).getByRole("button", { name: "Apagar", exact: true }).click()
+  await waitFor(() => expect(onDeleteThread).toHaveBeenCalledWith(secondary.id, secondary.botId))
 })

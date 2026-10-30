@@ -29,6 +29,7 @@ export const WORKSPACE_MESSAGES_SQL = `
   WITH visible AS MATERIALIZED (
     SELECT t.id FROM threads t JOIN bots b ON b.id = t.bot_id
     WHERE t.archived_at IS NULL AND b.archived_at IS NULL AND t.group_thread_id IS NULL
+      AND NOT EXISTS (SELECT 1 FROM thread_deletions d WHERE d.thread_id = t.id)
       AND NOT EXISTS (SELECT 1 FROM bot_deletions d WHERE d.bot_id = b.id)
       AND (/* scope */ 1 = 1)
   ), selected AS (
@@ -80,6 +81,7 @@ export const WORKSPACE_RUNS_SQL = `
   JOIN bots b ON b.id = r.bot_id
   WHERE r.rowid IN (SELECT row_id FROM selected)
     AND t.archived_at IS NULL AND b.archived_at IS NULL AND t.group_thread_id IS NULL
+    AND NOT EXISTS (SELECT 1 FROM thread_deletions d WHERE d.thread_id = t.id)
     AND NOT EXISTS (SELECT 1 FROM bot_deletions d WHERE d.bot_id = b.id)
     AND (/* scope */ 1 = 1)
 `
@@ -115,6 +117,7 @@ export const WORKSPACE_BROWSER_RUNS_SQL = `
   JOIN bots b ON b.id = c.bot_id
   WHERE c.status IN ('queued','running','needs_you','taken_over')
     AND t.archived_at IS NULL AND b.archived_at IS NULL
+    AND NOT EXISTS (SELECT 1 FROM thread_deletions d WHERE d.thread_id = t.id)
     AND NOT EXISTS (SELECT 1 FROM bot_deletions d WHERE d.bot_id = b.id)
     AND (/* scope */ 1 = 1)
   ORDER BY c.group_id, c.thread_id, c.bot_id, c.queued_at, c.run_id
