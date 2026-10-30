@@ -105,7 +105,9 @@ export const createGroupStore = (kernel: Kernel) => {
     (
       db
         .query(
-          "SELECT id FROM threads WHERE group_id = ? AND group_thread_id IS NULL AND archived_at IS NULL ORDER BY updated_at DESC",
+          `SELECT id FROM threads WHERE group_id = ? AND group_thread_id IS NULL AND archived_at IS NULL
+            AND NOT EXISTS (SELECT 1 FROM thread_deletions WHERE thread_id = threads.id)
+            ORDER BY updated_at DESC`,
         )
         .all(groupId) as { id: string }[]
     ).flatMap(({ id }) => {

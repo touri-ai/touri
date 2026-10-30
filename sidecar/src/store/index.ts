@@ -875,7 +875,7 @@ export const init = async (
     if (
       groupThreadId &&
       (!getThread({ threadId: groupThreadId }) ||
-        database.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(groupThreadId))
+        database.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").all(groupThreadId).length > 0)
     )
       return { success: false, errorCode: "BOT_NOT_FOUND", error: "Channel conversation is being deleted" }
     const bot = getBot({ botId })

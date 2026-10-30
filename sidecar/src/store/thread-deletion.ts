@@ -257,9 +257,9 @@ export const createThreadDeletionManager = (
 
   const saveJobFailure = (error: unknown): boolean => {
     try {
-      const job = database
+      const [job] = database
         .query("SELECT thread_id FROM thread_deletions ORDER BY created_at, thread_id LIMIT 1")
-        .get() as { thread_id: string } | null
+        .all() as Array<{ thread_id: string }>
       if (!job) return true
 
       const busy = error instanceof Error && error.message === "SQLITE_BUSY"
@@ -278,9 +278,10 @@ export const createThreadDeletionManager = (
     if (disposed) return
     try {
       while (!disposed) {
-        const job = database
+        // Exhaust the one-row cursor so its snapshot cannot hide the worker's committed phase changes.
+        const [job] = database
           .query("SELECT * FROM thread_deletions ORDER BY created_at, thread_id LIMIT 1")
-          .get() as DeletionJob | null
+          .all() as Array<DeletionJob>
         if (!job) return
         if (job.phase === "stopping") {
           await kernel.services.use("runtime.cancelThreadTurns")?.({ threadId: job.thread_id })
@@ -429,11 +430,11 @@ const getDeleteError = (database: Database, thread: ThreadRow): ReturnType<typeo
   if (thread.kind === "main" || thread.main_thread_id === thread.id)
     return errorResponse(409, "THREAD_MAIN", "A conversa principal do bot não pode ser excluída.")
   if (thread.group_id) {
-    const main = database
+    const [main] = database
       .query(
         "SELECT id FROM threads WHERE group_id = ? AND group_thread_id IS NULL AND archived_at IS NULL ORDER BY created_at, id LIMIT 1",
       )
-      .get(thread.group_id) as { id: string } | null
+      .all(thread.group_id) as Array<{ id: string }>
     if (main?.id === thread.id)
       return errorResponse(409, "THREAD_MAIN", "A conversa principal do canal não pode ser excluída.")
   }

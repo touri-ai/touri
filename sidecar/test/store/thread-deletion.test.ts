@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { setTimeout as sleep } from "node:timers/promises"
 import type { Bot, Thread } from "@touri/contracts"
+import { createGroupStore } from "../../src/groups/store"
 import { createKernel } from "../../src/kernel"
 import { bindDeviceSession } from "../../src/kernel/device-session"
 import { init } from "../../src/store"
@@ -438,9 +439,13 @@ test("channel main is protected while a secondary conversation is deleted persis
   expect(JSON.stringify(plan)).toContain("threads_channel_created")
   expect(JSON.stringify(plan)).not.toContain("TEMP B-TREE")
 
+  const preview = await fixture.request(`/threads/${main.id}/delete-preview`)
+  const bulk = await fixture.request("/threads/delete", "POST", { ids: [secondary.id, main.id] })
   const denied = await fixture.request(`/threads/${main.id}`, "DELETE")
   const deleted = await fixture.request(`/threads/${secondary.id}`, "DELETE")
 
+  expect(preview.status).toBe(409)
+  expect(bulk.status).toBe(409)
   expect(denied.status).toBe(409)
   expect(await denied.json()).toMatchObject({ errorCode: "THREAD_MAIN" })
   expect(deleted.status).toBe(202)
@@ -457,4 +462,35 @@ test("channel main is protected while a secondary conversation is deleted persis
   await waitFor(() => !fixture.db.query("SELECT 1 FROM threads WHERE id = ?").get(secondary.id))
   expect(fixture.db.query("SELECT id FROM threads WHERE id = ?").get(main.id)).toEqual({ id: main.id })
   expect((await fixture.request(`/threads/${secondary.id}/messages`)).status).toBe(404)
+}, 30_000)
+
+test("accepted channel deletion stays hidden while active work is stopping", async () => {
+  const finish = Promise.withResolvers<void>()
+  cleanups.add(async () => finish.resolve())
+  const fixture = await startFixture()
+  fixture.db
+    .query(
+      "INSERT INTO bot_groups(id,name,color,avatar_shape,avatar_seed,created_at,updated_at) VALUES('channel-stopping','Synthetic','#2563eb','classic-none','seed',1,1)",
+    )
+    .run()
+  const main = fixture.createThread("Canal", { groupId: "channel-stopping" })
+  const secondary = fixture.createThread("Resultado", { groupId: "channel-stopping" })
+  fixture.db.query("UPDATE threads SET created_at = 1 WHERE id = ?").run(main.id)
+  fixture.db
+    .query(`INSERT INTO messages(id,thread_id,parent_id,role,kind,status,text,parts_json,source,created_at,updated_at)
+      VALUES('stopping-message',?,NULL,'assistant','text','complete','Synthetic result','[]','local',1,1)`)
+    .run(secondary.id)
+  fixture.runtime.kernel.services.provide("runtime.cancelThreadTurns", async () => finish.promise)
+
+  const response = await fixture.request(`/threads/${secondary.id}`, "DELETE")
+  const visible = createGroupStore(fixture.runtime.kernel).threads("channel-stopping")
+  const activity = (await (await fixture.request("/workspace/activity")).json()) as {
+    messages: Array<{ threadId: string }>
+  }
+  finish.resolve()
+
+  expect(response.status).toBe(202)
+  expect(visible.map((thread) => thread.id)).toEqual([main.id])
+  expect(activity.messages.some((message) => message.threadId === secondary.id)).toBe(false)
+  await waitFor(() => !fixture.db.query("SELECT 1 FROM threads WHERE id = ?").get(secondary.id))
 })

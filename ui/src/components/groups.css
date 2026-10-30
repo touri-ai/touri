@@ -589,3 +589,7 @@ button.channel-members-button[aria-expanded="true"] {
 .channel-thread-row .bot-actions-menu {
   flex: none;
 }
+.channel-thread-row:is(:hover, :has(:focus-visible)) .bot-settings,
+.channel-thread-row .bot-settings[aria-expanded="true"] {
+  opacity: 1;
+}
