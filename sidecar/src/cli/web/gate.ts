@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto"
+import { createHash, timingSafeEqual } from "node:crypto"
 import { isIP } from "node:net"
 import type { WebInterceptArgs } from "../../kernel"
 import { bindDeviceSession, type DevicePerson, deviceSession } from "../../kernel/device-session"
@@ -21,6 +21,10 @@ export type GateOptions = {
   ui: UiAssets
   secrets: SecretStore
   trustedProxy?: boolean
+  /** Header carrying the email a trusted proxy already authenticated, e.g. oauth2-proxy's X-Forwarded-Email. */
+  trustedEmailHeader?: string
+  /** Secret the trusted proxy sends in `X-Touri-Proxy-Secret`; without it the email header is ignored. */
+  trustedProxySecret?: string
   pairReadDeadlineMs?: number
   maxPairingRequests?: number
   requestEmailSignIn?: (input: { emailAddress: string; signal: AbortSignal }) => Promise<void>
@@ -69,6 +73,24 @@ const requestOrigin = ({ args, options }: { args: WebInterceptArgs; options: Gat
   } catch {
     return null
   }
+}
+
+export const trustedProxySecretHeader = "x-touri-proxy-secret"
+
+const sha256Of = (value: string): Buffer => createHash("sha256").update(value).digest()
+
+/** Loopback alone is not proof: other local accounts reach 127.0.0.1 too, so the proxy must also know the secret. */
+const isProvenProxy = (args: WebInterceptArgs, options: GateOptions): boolean => {
+  if (!options.trustedProxySecret || !trustedProxy(args, options)) return false
+  const sent = args.request.headers.get(trustedProxySecretHeader)
+  if (!sent) return false
+  return timingSafeEqual(sha256Of(sent), sha256Of(options.trustedProxySecret))
+}
+
+const getTrustedEmail = (args: WebInterceptArgs, options: GateOptions): string | null => {
+  if (!options.trustedEmailHeader || !isProvenProxy(args, options)) return null
+  const email = normalizeEmail(args.request.headers.get(options.trustedEmailHeader) ?? "")
+  return isValidEmail(email) ? email : null
 }
 
 const isSecureRequest = (args: WebInterceptArgs, options: GateOptions): boolean =>
@@ -385,6 +407,39 @@ const serveStatic = async ({
   )
 }
 
+const appPathAfterSignIn = (pathname: string): string =>
+  ["/login", "/join", "/pair"].includes(pathname) ? "/" : pathname
+
+/** A page request the trusted proxy vouches for gets a device of its own, as a redeemed magic link would. */
+const signInTrustedEmail = async ({
+  args,
+  options,
+  limiter,
+}: {
+  args: WebInterceptArgs
+  options: GateOptions
+  limiter: ReturnType<typeof createActionLimiter>
+}): Promise<Response | null> => {
+  const email = getTrustedEmail(args, options)
+  if (email === null) return null
+  const key = `trusted-email:${createHash("sha256").update(email).digest("hex")}`
+  if (!limiter.check(key).allowed) return null
+  limiter.record(key)
+  const claimed = await options.store.signInTrustedEmail({
+    email,
+    deviceName: args.request.headers.get("user-agent")?.slice(0, 80) || "Browser",
+  })
+  if (!claimed.success) return null
+  const cookie = buildCookie({ token: claimed.token, secure: isSecureRequest(args, options) })
+  const pathname = appPathAfterSignIn(args.url.pathname)
+  if (pathname !== args.url.pathname)
+    return new Response(null, { status: 303, headers: { ...baseHeaders, Location: pathname, "Set-Cookie": cookie } })
+  const page = await serveStatic({ pathname, request: args.request, ui: options.ui })
+  const headers = new Headers(page.headers)
+  headers.append("Set-Cookie", cookie)
+  return new Response(page.body, { status: page.status, headers })
+}
+
 const apiGate = async ({
   args,
   principal,
@@ -441,6 +496,7 @@ export const createWebGate = (options: GateOptions): ((args: WebInterceptArgs) =
   let inFlight = 0
   const bySource = new Map<string, number>()
   const emailSignInLimiter = createActionLimiter({ maxActions: 3, windowMs: 15 * 60_000 })
+  const trustedEmailLimiter = createActionLimiter({ maxActions: 10, windowMs: 15 * 60_000 })
   const intercept = async (args: WebInterceptArgs): Promise<Response | null> => {
     const { url, request } = args
     if (!isSecureRequest(args, options) && !isDirectLoopback({ clientIp: args.clientIp, headers: request.headers }))
@@ -504,6 +560,9 @@ export const createWebGate = (options: GateOptions): ((args: WebInterceptArgs) =
     const principal = authenticate({ args, store: options.store, options })
     if (url.pathname.startsWith("/api/")) return apiGate({ args, principal, options })
     if (principal === null) {
+      const wantsPage = request.method === "GET" && !/\.[A-Za-z0-9]+$/.test(url.pathname)
+      const trusted = wantsPage ? await signInTrustedEmail({ args, options, limiter: trustedEmailLimiter }) : null
+      if (trusted) return trusted
       if (request.method === "GET" && url.pathname === "/join")
         return serveStatic({ pathname: "/join", request, ui: options.ui })
       if (request.method === "GET" && url.pathname === "/login") return pairingPage()
@@ -512,7 +571,6 @@ export const createWebGate = (options: GateOptions): ((args: WebInterceptArgs) =
         (url.pathname.startsWith("/assets/") || isJoinAssetRequest({ request, url }))
       )
         return serveStatic({ pathname: url.pathname, request, ui: options.ui })
-      const wantsPage = request.method === "GET" && !/\.[A-Za-z0-9]+$/.test(url.pathname)
       return wantsPage
         ? pairingPage()
         : json(401, { errorCode: "UNAUTHORIZED", error: "Pareie este dispositivo primeiro" })

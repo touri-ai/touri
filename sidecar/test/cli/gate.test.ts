@@ -6,7 +6,7 @@ import { createRateLimiter } from "../../src/cli/auth/rateLimit"
 import { openAuthStore } from "../../src/cli/auth/store"
 import { createSecretStore } from "../../src/cli/host/secretStore"
 import { createStartupAvailability } from "../../src/cli/startupAvailability"
-import { createWebGate, deviceCookieName } from "../../src/cli/web/gate"
+import { createWebGate, deviceCookieName, trustedProxySecretHeader } from "../../src/cli/web/gate"
 import { isDirectLoopback } from "../../src/cli/web/loopback"
 import { directoryAssets, embeddedAssets, type UiAsset, type UiAssets } from "../../src/cli/web/uiAssets"
 import { deviceSession } from "../../src/kernel/device-session"
@@ -683,4 +683,102 @@ test("fresh browsers load join and its assets without a referrer while APIs stay
   expect(page?.status).toBe(200)
   expect(await script?.text()).toBe("js")
   expect(privateApi?.status).toBe(401)
+})
+
+const proxySecret = "a-proxy-secret-that-is-long-enough-123"
+
+const makeTrustedEmailGate = async () => {
+  const { store, secrets } = await makeGate()
+  const gate = createWebGate({
+    store,
+    secrets,
+    ui,
+    trustedProxy: true,
+    trustedEmailHeader: "X-Forwarded-Email",
+    trustedProxySecret: proxySecret,
+    limiter: createRateLimiter({ maxFailures: 3, windowMs: 60_000 }),
+  })
+  const visit = ({
+    path = "/",
+    email,
+    secret = proxySecret,
+    clientIp = "127.0.0.1",
+  }: {
+    path?: string
+    email?: string
+    secret?: string | null
+    clientIp?: string
+  }) => {
+    const request = new Request(`https://box.example${path}`, {
+      headers: {
+        host: "box.example",
+        "x-forwarded-proto": "https",
+        "x-forwarded-host": "box.example",
+        ...(email ? { "x-forwarded-email": email } : {}),
+        ...(secret ? { [trustedProxySecretHeader]: secret } : {}),
+      },
+    })
+    return gate({ request, url: new URL(request.url), clientIp })
+  }
+  return { store, visit }
+}
+
+const getCookieToken = (response: Response | null): string =>
+  response?.headers.get("set-cookie")?.split(";")[0]?.split("=")[1] ?? ""
+
+test("a trusted proxy identity signs the matching person in on the first page load", async () => {
+  const { store, visit } = await makeTrustedEmailGate()
+  expect(await store.claimOwnerEmail("Owner@Example.test")).toBe(true)
+  const page = await visit({ email: "owner@example.test" })
+  expect(page?.status).toBe(200)
+  expect(await page?.text()).toContain("app")
+  expect(page?.headers.get("set-cookie")).toContain("HttpOnly")
+  expect(page?.headers.get("set-cookie")).toContain("Secure")
+  expect(store.verifyDeviceToken(getCookieToken(page))?.personId).toBe("owner")
+  const login = await visit({ path: "/login", email: "owner@example.test" })
+  expect(login?.status).toBe(303)
+  expect(login?.headers.get("location")).toBe("/")
+  expect(store.verifyDeviceToken(getCookieToken(login))?.personId).toBe("owner")
+})
+
+test("a trusted proxy identity never creates a person or reaches a removed one", async () => {
+  const { store, visit } = await makeTrustedEmailGate()
+  const unknown = await visit({ email: "stranger@example.test" })
+  expect(unknown?.status).toBe(200)
+  expect(unknown?.headers.get("set-cookie")).toBeNull()
+  expect(await unknown?.text()).not.toContain("<html>app</html>")
+  expect(store.listPeople().map((person) => person.email)).not.toContain("stranger@example.test")
+  expect(store.listDevices()).toHaveLength(0)
+})
+
+test("the email header is ignored without the proxy secret or outside loopback", async () => {
+  const { store, visit } = await makeTrustedEmailGate()
+  await store.claimOwnerEmail("owner@example.test")
+  const noSecret = await visit({ email: "owner@example.test", secret: null })
+  const wrongSecret = await visit({ email: "owner@example.test", secret: `${proxySecret}x` })
+  const remote = await visit({ email: "owner@example.test", clientIp: "100.64.0.9" })
+  expect([noSecret, wrongSecret, remote].map((response) => response?.headers.get("set-cookie") ?? null)).toEqual([
+    null,
+    null,
+    null,
+  ])
+  expect(store.listDevices()).toHaveLength(0)
+})
+
+test("the owner takes an email only once and never one another person holds", async () => {
+  const { store } = await makeGate()
+  const invite = await store.createInvite({
+    actorPersonId: "owner",
+    name: "Bia",
+    email: "bia@example.test",
+    role: "member",
+    channelIds: [],
+  })
+  if (!invite.success) throw new Error("Invite setup failed")
+  const member = await store.claimInvite({ token: invite.token, email: "bia@example.test", deviceName: "Phone" })
+  if (!member.success) throw new Error("Invite redemption failed")
+  expect(await store.claimOwnerEmail("bia@example.test")).toBe(false)
+  expect(await store.claimOwnerEmail("owner@example.test")).toBe(true)
+  expect(await store.claimOwnerEmail("other@example.test")).toBe(false)
+  expect(store.getPerson("owner")?.email).toBe("owner@example.test")
 })

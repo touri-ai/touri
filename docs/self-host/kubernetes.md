@@ -32,6 +32,23 @@ Abra `https://touri.example.com` e use o código de pareamento no seu aparelho. 
 Ingress, encaminhe a porta 8443 do pod e use HTTPS com um certificado de teste. Não publique
 códigos, cookies, tokens nem o conteúdo de `/data` na evidência de testes.
 
+## Entrar pelo SSO da equipe
+
+Se um proxy de autenticação (oauth2-proxy, por exemplo) já protege o domínio, o touri pode entrar
+direto com a pessoa que ele autenticou, sem link por e-mail nem código:
+
+```sh
+touri serve --trust-proxy --trust-proxy-email X-Forwarded-Email \
+  --trust-proxy-secret-file /run/touri/proxy-secret --owner-email voce@example.com
+```
+
+- O nginx do pod envia `X-Touri-Proxy-Secret` com o conteúdo do arquivo (32 caracteres ou mais).
+  Sem esse segredo o header de e-mail é ignorado: só o loopback não prova nada, porque outras
+  contas na mesma máquina também alcançam `127.0.0.1`.
+- O touri só cria o aparelho para uma pessoa que **já existe** com aquele e-mail. Ele nunca cria
+  pessoas; convide-as pelo app. `--owner-email` dá um e-mail ao dono quando ele ainda não tem.
+- O proxy tem que sobrescrever o header de e-mail que vem do navegador.
+
 ## Navegador e limites de segurança
 
 A imagem inclui Chrome stable, Xvfb, fontes, Node 22 e as CLIs dos provedores. O touri inicia

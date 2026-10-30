@@ -31,6 +31,23 @@ Open `https://touri.example.com` and enter the pairing code on your device. With
 forward pod port 8443 and use HTTPS with a test certificate. Keep pairing codes, cookies, tokens
 and `/data` contents out of test evidence.
 
+## Sign in through the team's SSO
+
+When an authenticating proxy (oauth2-proxy, for instance) already guards the domain, touri can sign
+in the person it authenticated, with no email link or pairing code:
+
+```sh
+touri serve --trust-proxy --trust-proxy-email X-Forwarded-Email \
+  --trust-proxy-secret-file /run/touri/proxy-secret --owner-email you@example.com
+```
+
+- The pod's nginx sends `X-Touri-Proxy-Secret` with the file's content (32 characters or more).
+  Without it the email header is ignored: loopback alone proves nothing, since other accounts on
+  the same machine reach `127.0.0.1` too.
+- touri only adds a device for a person who **already exists** with that email. It never creates
+  people; invite them from the app. `--owner-email` gives the owner an email when it has none.
+- The proxy must overwrite any email header the browser sends.
+
 ## Browser and security limits
 
 The image contains stable Chrome, Xvfb, fonts, Node 22 and the provider CLIs. touri starts Xvfb.

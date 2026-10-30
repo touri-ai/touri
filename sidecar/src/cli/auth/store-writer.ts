@@ -18,6 +18,16 @@ const execute = (command: WriteCommand): unknown => {
         .run(command.name, command.email || null).changes === 1
     )
   }
+  if (command.type === "claim-owner-email") {
+    // Only an owner without an email takes one, and never an address another person already holds.
+    const taken = db.query("SELECT 1 FROM people WHERE email = ? AND removed_at IS NULL LIMIT 1").get(command.email)
+    if (taken) return false
+    return (
+      db
+        .query("UPDATE people SET email = ? WHERE id = 'owner' AND email IS NULL AND removed_at IS NULL")
+        .run(command.email).changes === 1
+    )
+  }
   if (command.type === "create-pairing") {
     if (!db.query("SELECT 1 FROM people WHERE id = ? AND removed_at IS NULL LIMIT 1").get(command.personId))
       return false
@@ -215,6 +225,24 @@ const execute = (command: WriteCommand): unknown => {
         .query("UPDATE email_signins SET used_at = ? WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?")
         .run(command.at, command.tokenHash, command.at)
       if (updated.changes !== 1) return false
+      db.query("INSERT INTO devices(id,name,token_hash,created_at,last_seen_at,person_id) VALUES(?,?,?,?,?,?)").run(
+        command.device.id,
+        command.device.name,
+        command.device.tokenHash,
+        command.at,
+        command.at,
+        command.personId,
+      )
+      return true
+    })
+    return claim.immediate()
+  }
+  if (command.type === "trusted-email-signin") {
+    const claim = db.transaction(() => {
+      const person = db
+        .query("SELECT 1 FROM people WHERE id = ? AND email = ? AND removed_at IS NULL LIMIT 1")
+        .get(command.personId, command.email)
+      if (!person) return false
       db.query("INSERT INTO devices(id,name,token_hash,created_at,last_seen_at,person_id) VALUES(?,?,?,?,?,?)").run(
         command.device.id,
         command.device.name,

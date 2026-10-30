@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { closeFileIoAsync } from "../kernel/async-files"
 import { prepareDatabaseAsync } from "../kernel/database-startup"
@@ -26,6 +27,13 @@ const failedPairingsPerWindow = 8
 const pairingWindowMs = 60 * 1000
 export const authDbName = "auth.db"
 
+const getTrustedProxySecret = async (file: string | undefined): Promise<string | undefined> => {
+  if (file === undefined) return undefined
+  const secret = (await readFile(file, "utf8")).trim()
+  if (secret.length < 32) throw new Error("--trust-proxy-secret-file must hold a secret of at least 32 characters")
+  return secret
+}
+
 const out = (line: string): void => {
   process.stdout.write(`${line}\n`)
 }
@@ -50,6 +58,8 @@ const startServer = async (options: ServeOptions, stopStderr: () => Promise<void
   const lease = await acquireRuntimeLock(paths, { parentPid: null })
   ensurePrivateDirectory({ root: paths.appData, path: paths.runDir })
   const store = await openAuthStore({ filename: join(options.dataDir, authDbName) })
+  const trustedProxySecret = await getTrustedProxySecret(options.trustedProxySecretFile)
+  if (options.ownerEmail) await store.claimOwnerEmail(options.ownerEmail)
   const secrets = createSecretStore({ dir: options.dataDir })
   const ui = resolveUiAssets({ uiDir: options.uiDir, fallbackDir: join(dirname(process.execPath), "ui") })
   const authorization: { authorize: MemberAuthorizer | null } = { authorize: null }
@@ -58,6 +68,9 @@ const startServer = async (options: ServeOptions, stopStderr: () => Promise<void
     secrets,
     ui,
     trustedProxy: options.trustedProxy === true || options.tailscale,
+    ...(options.trustedEmailHeader && trustedProxySecret
+      ? { trustedEmailHeader: options.trustedEmailHeader, trustedProxySecret }
+      : {}),
     limiter: createRateLimiter({ maxFailures: failedPairingsPerWindow, windowMs: pairingWindowMs }),
     requestEmailSignIn: createEmailSignInSender({ authStore: store, secrets }),
     authorizeMember: (input) => authorization.authorize?.(input) ?? null,
