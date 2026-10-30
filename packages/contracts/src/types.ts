@@ -1311,7 +1311,10 @@ export type ApiRoutes = {
   'PUT /push': { req: { endpoint: string; keys: { p256dh: string; auth: string }; locale: 'pt-BR' | 'en' }; res: {} }
   'DELETE /push': { req: {}; res: {} }
   'POST /push/test': { req: {}; res: {} }
-  'POST /threads/:id/notices': { req: { eventId: string; kind: 'pr-ready'; text: string }; res: { notification: NotificationRecord } }
+  'POST /threads/:id/notices': {
+    req: { text: string; sender?: { id?: string; name: string }; kind?: 'pr-ready' | 'notice'; eventId?: string; attachmentIds?: Array<Id> }
+    res: { notification: NotificationRecord; message: Message }
+  }
   'POST /notifications/:id/dismiss': { req: {}; res: { notification: NotificationRecord } }
   'POST /notifications/dismiss-all': { req: {}; res: { dismissed: number; skipped: number; skippedIds: Array<number> } }
   'POST /threads/:id/respond': { req: { requestId: string; behavior: RespondBehavior; message?: string }; res: {} }

@@ -4,7 +4,7 @@ import { createECDH, randomBytes } from "node:crypto"
 import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { Kernel, NotificationRecord } from "@touri/contracts"
+import type { ApiRoutes, Kernel, NotificationRecord } from "@touri/contracts"
 import { generateVAPIDKeys } from "web-push"
 import type { Person } from "../../src/cli/auth/store"
 import { createSecretStore } from "../../src/cli/host/secretStore"
@@ -495,21 +495,22 @@ test("plain integration notices retain their sender, publish once and never star
     events.push(event.event.type)
   })
   const path = `/threads/${fixture.channel.id}/notices`
-  const body = { text: "@Bot de teste: aviso fictício", sender: { id: "leads", name: "hodle-leads" } }
+  const body: ApiRoutes["POST /threads/:id/notices"]["req"] = {
+    text: "@Bot de teste: aviso fictício",
+    sender: { id: "publisher", name: "Publicações QA" },
+  }
 
   const result = await fixture.call("POST", path, body)
   await fixture.kernel.flushEvents?.()
+  if (!result || !("json" in result)) throw new Error("Expected notice JSON response")
+  const response = result.json as ApiRoutes["POST /threads/:id/notices"]["res"]
 
-  expect(result).toMatchObject({
-    status: 200,
-    json: {
-      message: {
-        role: "assistant",
-        kind: "notice",
-        runId: null,
-        sender: { id: "integration:leads", name: "hodle-leads", kind: "integration" },
-      },
-    },
+  expect(result?.status).toBe(200)
+  expect(response.message).toMatchObject({
+    role: "assistant",
+    kind: "notice",
+    runId: null,
+    sender: { id: "integration:publisher", name: "Publicações QA", kind: "integration" },
   })
   expect(fixture.store.activePath({ threadId: fixture.channel.id })).toHaveLength(1)
   expect(fixture.database.query("SELECT count(*) AS total FROM runs").get()).toEqual({ total: 0 })
@@ -535,10 +536,16 @@ test("sender-free plain notices create independent messages and named retries pu
   const events: string[] = []
   fixture.kernel.subscribe(({ event }) => events.push(event.type))
   const path = `/threads/${fixture.channel.id}/notices`
-  const named = { text: "Aviso", eventId: "demo:repeat", sender: { name: "hodle-leads" } }
+  const named: ApiRoutes["POST /threads/:id/notices"]["req"] = {
+    text: "Aviso",
+    kind: "notice",
+    eventId: "demo:repeat",
+    sender: { name: "Publicações QA" },
+  }
+  const plain: ApiRoutes["POST /threads/:id/notices"]["req"] = { text: "Aviso" }
 
-  const first = await fixture.call("POST", path, { text: "Aviso" })
-  await fixture.call("POST", path, { text: "Aviso" })
+  const first = await fixture.call("POST", path, plain)
+  await fixture.call("POST", path, plain)
   const namedFirst = await fixture.call("POST", path, named)
   const namedAgain = await fixture.call("POST", path, named)
   await fixture.kernel.flushEvents?.()

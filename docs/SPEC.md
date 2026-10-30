@@ -2289,6 +2289,7 @@ longer explanations at a word boundary with an ellipsis.
 
 `POST /api/v1/threads/:id/notices` accepts `{text, sender?: {id?, name}, kind?, eventId?}`
 from an active administrator device. `text` is nonempty and at most 8,000 characters.
+The shared API contract exposes these optional fields and the persisted `message` alongside `notification` in the response.
 The optional sender has a name of 1–80 letters, numbers, spaces, dots, underscores or
 hyphens; its optional ID has 1–80 ASCII word characters or hyphens. Stored sender IDs
 are namespaced with `integration:` and never resolve to a person or bot identity.
