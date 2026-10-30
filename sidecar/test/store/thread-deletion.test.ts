@@ -11,6 +11,7 @@ import { bindDeviceSession } from "../../src/kernel/device-session"
 import { init } from "../../src/store"
 import { threadDeletionRoutes } from "../../src/store/thread-deletion"
 import { createThreadTitleSearch } from "../../src/store/thread-title-search"
+import { getQueryPlan } from "../fakes/sqlite-plan"
 
 const cleanups = new Set<() => Promise<void>>()
 afterEach(async () => {
@@ -431,11 +432,11 @@ test("channel main is protected while a secondary conversation is deleted persis
   })
   if (!participant.success) throw new Error("Missing participant")
 
-  const plan = fixture.db
-    .query(
-      "EXPLAIN QUERY PLAN SELECT id FROM threads WHERE group_id = ? AND group_thread_id IS NULL AND archived_at IS NULL ORDER BY created_at, id LIMIT 1",
-    )
-    .all("channel-delete")
+  const plan = getQueryPlan(
+    fixture.db,
+    "SELECT id FROM threads WHERE group_id = ? AND group_thread_id IS NULL AND archived_at IS NULL ORDER BY created_at, id LIMIT 1",
+    ["channel-delete"],
+  )
   expect(JSON.stringify(plan)).toContain("threads_channel_created")
   expect(JSON.stringify(plan)).not.toContain("TEMP B-TREE")
 
@@ -493,4 +494,52 @@ test("accepted channel deletion stays hidden while active work is stopping", asy
   expect(visible.map((thread) => thread.id)).toEqual([main.id])
   expect(activity.messages.some((message) => message.threadId === secondary.id)).toBe(false)
   await waitFor(() => !fixture.db.query("SELECT 1 FROM threads WHERE id = ?").get(secondary.id))
+})
+
+test("a secondary channel preview releases its plan before deleting the conversation and its participant", async () => {
+  const fixture = await startFixture()
+  fixture.db
+    .query(`INSERT INTO bot_groups(id,name,color,avatar_shape,avatar_seed,created_at,updated_at)
+      VALUES('channel-preview-delete','Synthetic','#2563eb','classic-none','seed',1,1)`)
+    .run()
+  const main = fixture.createThread("Synthetic channel", { groupId: "channel-preview-delete" })
+  const secondary = fixture.createThread("Synthetic result", { groupId: "channel-preview-delete" })
+  fixture.db.query("UPDATE threads SET created_at = 1 WHERE id = ?").run(main.id)
+  const store = fixture.runtime.kernel.services.use("store.api")
+  if (!store) throw new Error("Missing store")
+  const participant = store.createThread({
+    botId: fixture.bot.id,
+    kind: "chat",
+    title: "Synthetic participant",
+    groupId: "channel-preview-delete",
+    groupThreadId: secondary.id,
+  })
+  if (!participant.success) throw new Error("Missing participant")
+  const parentDeleted = Promise.withResolvers<void>()
+  const childDeleted = Promise.withResolvers<void>()
+  const subscribe = fixture.runtime.kernel.subscribeRuntime ?? fixture.runtime.kernel.subscribe
+  const unsubscribe = subscribe(({ event }) => {
+    if (event.type !== "thread.deleted") return
+    if (event.threadId === secondary.id) parentDeleted.resolve()
+    if (event.threadId === participant.thread.id) childDeleted.resolve()
+  })
+  cleanups.add(async () => unsubscribe())
+  const plan = getQueryPlan(
+    fixture.db,
+    "SELECT id FROM threads WHERE group_id = ? AND group_thread_id IS NULL AND archived_at IS NULL ORDER BY created_at, id LIMIT 1",
+    ["channel-preview-delete"],
+  )
+
+  const preview = await fixture.request(`/threads/${secondary.id}/delete-preview`)
+  const deleted = await fixture.request(`/threads/${secondary.id}`, "DELETE")
+
+  expect(plan.some(({ detail }) => detail.includes("threads_channel_created"))).toBe(true)
+  expect(plan.some(({ detail }) => detail.includes("TEMP B-TREE"))).toBe(false)
+  expect(preview.status).toBe(200)
+  expect(deleted.status).toBe(202)
+  await Promise.all([parentDeleted.promise, childDeleted.promise])
+  expect(
+    fixture.db.query("SELECT id FROM threads WHERE id IN (?, ?) ORDER BY id").all(secondary.id, participant.thread.id),
+  ).toEqual([])
+  expect(fixture.db.query("SELECT id FROM threads WHERE id = ?").get(main.id)).toEqual({ id: main.id })
 })
