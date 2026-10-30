@@ -12,6 +12,7 @@ import { init as initGroups } from "../../src/groups"
 import { createGroupStore } from "../../src/groups/store"
 import { createKernel } from "../../src/kernel"
 import { init as initNotify } from "../../src/notify"
+import { createChannelReads } from "../../src/notify/channel-reads"
 import { createNotificationStore } from "../../src/notify/store"
 import { init as initStore } from "../../src/store"
 
@@ -296,4 +297,185 @@ test("integration sends are limited to channels and cannot borrow another sender
   expect(first.status).toBe(201)
   expect(conflict.status).toBe(409)
   expect(fixture.store.getThread({ threadId: fixture.thread.id })?.unread).toBe(1)
+})
+
+test("owner posts as a channel bot without dispatching even explicit mentions", async () => {
+  const fixture = await getFixture()
+
+  const response = await fixture.post({ text: "@Atlas atualização", asBotId: "atlas" })
+  const result = await response.json()
+  await fixture.kernel.flushEvents?.()
+
+  expect(response.status).toBe(201)
+  expect(result).toMatchObject({ message: { role: "assistant", sender: { id: "atlas", name: "Atlas" } }, run: null })
+  expect(fixture.enqueue).not.toHaveBeenCalled()
+  expect(fixture.database.query("SELECT count(*) AS total FROM runs").get()).toEqual({ total: 0 })
+})
+
+test.each(["missing", 123, null])("rejects invalid or nonmember bot %j", async (asBotId) => {
+  const fixture = await getFixture()
+
+  const response = await fixture.post({ text: "Atualização", asBotId })
+
+  expect(response.status).toBe(400)
+  expect(fixture.store.activePath({ threadId: fixture.thread.id })).toHaveLength(0)
+})
+
+test.each(["member", "admin"] as const)(
+  "posting as a bot rejects an invited %s and requires an owner bearer",
+  async (role) => {
+    const fixture = await getFixture()
+    const body = { text: "Atualização", asBotId: "atlas" }
+    const invite = await fixture.auth.createInvite({
+      actorPersonId: "owner",
+      name: "Pessoa B",
+      email: "member@example.test",
+      role,
+      channelIds: [],
+    })
+    if (!invite.success) throw new Error("Synthetic invite failed")
+    const member = await fixture.auth.claimInvite({
+      token: invite.token,
+      email: "member@example.test",
+      deviceName: "Member",
+    })
+    if (!member.success) throw new Error("Synthetic claim failed")
+
+    const forbidden = await fixture.post(body, { Authorization: `Bearer ${member.token}` })
+    const cookie = await fixture.post(body, {
+      Authorization: "",
+      Cookie: `${deviceCookieName}=${fixture.paired.token}`,
+    })
+    const anonymous = await fixture.post(body, { Authorization: "" })
+    await fixture.auth.revokeDevice(fixture.paired.device.id)
+    const revoked = await fixture.post(body)
+
+    expect(forbidden.status).toBe(403)
+    expect(cookie.status).toBe(403)
+    expect(anonymous.status).toBe(401)
+    expect(revoked.status).toBe(401)
+    expect(fixture.store.activePath({ threadId: fixture.thread.id })).toHaveLength(0)
+  },
+)
+
+test("an existing bot outside the channel cannot be used as sender", async () => {
+  const fixture = await getFixture()
+  fixture.database
+    .query(
+      "INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES('outsider','Outside','codex','/synthetic/outside',1,1)",
+    )
+    .run()
+
+  const response = await fixture.post({ text: "Atualização", asBotId: "outsider" })
+
+  expect(response.status).toBe(400)
+  expect(fixture.store.activePath({ threadId: fixture.thread.id })).toHaveLength(0)
+})
+
+test("bot automation does not silently discard attachments", async () => {
+  const fixture = await getFixture()
+
+  const response = await fixture.post({ text: "Atualização", asBotId: "atlas", attachmentIds: ["attachment"] })
+
+  expect(response.status).toBe(400)
+  expect(fixture.store.activePath({ threadId: fixture.thread.id })).toHaveLength(0)
+})
+
+test.each(["Publicação concluída", "@pessoa confira a publicação"])(
+  "bot posts notify once and remain unread until the person reads: %s",
+  async (text) => {
+    const fixture = await getFixture()
+    fixture.database.query("UPDATE schema_meta SET value = '0' WHERE key = 'channel_reads_since'").run()
+    const reads = createChannelReads(fixture.kernel)
+    const owner = { id: "owner", role: "admin" as const }
+
+    const response = await fixture.post({ text, asBotId: "atlas" })
+    await fixture.flushEvents()
+    const unread = reads.list(owner)
+    reads.markRead(owner, { id: fixture.thread.id, group_id: fixture.thread.groupId ?? "" })
+
+    expect(response.status).toBe(201)
+    expect(unread).toMatchObject([{ unread: 1, mentions: text.startsWith("@") ? 1 : 0 }])
+    expect(reads.list(owner)).toMatchObject([{ unread: 0, mentions: 0 }])
+    expect(fixture.getNotes()).toMatchObject([
+      { kind: text.startsWith("@") ? "mention" : "notice", botId: "atlas", targetPersonId: "owner", body: text },
+    ])
+    expect(fixture.getNotes()).toHaveLength(1)
+    expect(fixture.callHost).toHaveBeenCalledWith("notify", expect.objectContaining({ body: text }))
+    expect(fixture.enqueue).not.toHaveBeenCalled()
+  },
+)
+
+test("bot post retries preserve one message and one notification, and reject nonce conflicts", async () => {
+  const fixture = await getFixture()
+  const body = { text: "Publicação concluída", asBotId: "atlas", clientNonce: "bot-post-one" }
+
+  const response = await fixture.post(body)
+  const original = await response.json()
+  const replay = await fixture.post(body)
+  const repeated = await replay.json()
+  const conflict = await fixture.post({ ...body, text: "Outra publicação" })
+  await fixture.flushEvents()
+
+  expect(response.status).toBe(201)
+  expect(replay.status).toBe(200)
+  expect(repeated.message.id).toBe(original.message.id)
+  expect(conflict.status).toBe(409)
+  expect(fixture.store.activePath({ threadId: fixture.thread.id })).toHaveLength(1)
+  expect(fixture.getNotes()).toHaveLength(1)
+  expect(fixture.enqueue).not.toHaveBeenCalled()
+})
+
+test("bot posts reject direct chats and internal member conversations", async () => {
+  const fixture = await getFixture()
+  const direct = fixture.store.createThread({ botId: "atlas", kind: "chat", title: "Conversa direta" })
+  const member = fixture.store.createThread({
+    botId: "atlas",
+    kind: "chat",
+    title: "Conversa interna",
+    groupId: fixture.thread.groupId ?? "",
+    groupThreadId: fixture.thread.id,
+  })
+  if (!direct.success || !member.success) throw new Error("Synthetic conversations missing")
+  const body = { text: "Publicação concluída", asBotId: "atlas" }
+
+  const directResponse = await fixture.post(body, {}, direct.thread.id)
+  const memberResponse = await fixture.post(body, {}, member.thread.id)
+
+  expect(directResponse.status).toBe(400)
+  expect(memberResponse.status).toBe(400)
+  expect(fixture.store.activePath({ threadId: member.thread.id })).toHaveLength(0)
+})
+
+test("bot posts cannot append while a conversation is stopping for deletion", async () => {
+  const fixture = await getFixture()
+  fixture.database
+    .query(
+      "INSERT INTO thread_deletions(thread_id,bot_id,phase,created_at,updated_at) VALUES(?,'atlas','stopping',1,1)",
+    )
+    .run(fixture.thread.id)
+
+  const response = await fixture.post({ text: "Publicação concluída", asBotId: "atlas" })
+
+  expect(response.status).toBe(404)
+  expect(fixture.store.activePath({ threadId: fixture.thread.id })).toHaveLength(0)
+})
+
+test.each(["", "invalid nonce", 123])("bot posts reject an invalid client nonce: %j", async (clientNonce) => {
+  const fixture = await getFixture()
+
+  const response = await fixture.post({ text: "Publicação concluída", asBotId: "atlas", clientNonce })
+
+  expect(response.status).toBe(400)
+  expect(fixture.store.activePath({ threadId: fixture.thread.id })).toHaveLength(0)
+})
+
+test("bot posts cannot use an archived bot even if its channel membership remains", async () => {
+  const fixture = await getFixture()
+  fixture.database.query("UPDATE bots SET archived_at = 1 WHERE id = 'atlas'").run()
+
+  const response = await fixture.post({ text: "Publicação concluída", asBotId: "atlas" })
+
+  expect(response.status).toBe(400)
+  expect(fixture.store.activePath({ threadId: fixture.thread.id })).toHaveLength(0)
 })

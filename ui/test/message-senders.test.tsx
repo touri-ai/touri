@@ -45,6 +45,16 @@ const owner = { id: "owner", name: "Pessoa A", avatarSeed: "owner-avatar", kind:
 const lia = { id: "lia", name: "Lia", kind: "bot" as const }
 
 describe("message senders", () => {
+  it("shows a cron post as the channel bot on the incoming side", () => {
+    const { container } = renderMessages([getMessage("cron", lia, 1, "assistant")])
+
+    const row = getRow(container, "cron")
+
+    expect(within(row).getByText("Lia")).toBeVisible()
+    expect(within(row).queryByText("Você")).toBeNull()
+    expect(row).not.toHaveClass("message-user")
+  })
+
   it("shows an integration beside its avatar like a bot, with its label", () => {
     const sender = {
       id: "integration:notice",

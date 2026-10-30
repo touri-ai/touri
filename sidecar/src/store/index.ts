@@ -2097,6 +2097,75 @@ export const init = async (
         handler: async ({ params, body, signal }) => {
           const record = requestRecord(body)
           if (!record) return errorResponse(400, "INVALID_ARGS", "Request body must be an object")
+          if (record.asBotId !== undefined) {
+            const session = deviceSession(signal)
+            if (
+              !session?.active() ||
+              session.person?.role !== "admin" ||
+              session.person.id !== "owner" ||
+              !session.scopes?.includes("integration:write")
+            )
+              return errorResponse(403, "FORBIDDEN", "Owner token required")
+
+            await kernel.flushEvents?.({ persistOnly: true })
+            const thread = getThread({ threadId: params.id ?? "" })
+            if (!thread) return errorResponse(404, "NOT_FOUND", "Thread not found")
+            if (
+              typeof record.asBotId !== "string" ||
+              !thread.groupId ||
+              thread.groupThreadId ||
+              record.as !== undefined ||
+              record.groupAction
+            )
+              return errorResponse(400, "INVALID_BOT", "Select a channel member bot")
+            if (database.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(thread.id))
+              return errorResponse(409, "THREAD_DELETING", "Thread is being deleted")
+
+            const bot = database
+              .query(
+                `SELECT b.id, b.name FROM group_members gm JOIN bots b ON b.id = gm.bot_id
+                  WHERE gm.group_id = ? AND b.id = ? AND b.archived_at IS NULL
+                    AND NOT EXISTS (SELECT 1 FROM bot_deletions WHERE bot_id = b.id)`,
+              )
+              .get(thread.groupId, record.asBotId) as { id: string; name: string } | null
+            if (!bot) return errorResponse(400, "INVALID_BOT", "Select a channel member bot")
+            if (typeof record.text !== "string" || !record.text.trim() || record.text.length > 8000)
+              return errorResponse(400, "INVALID_ARGS", "Provide text up to 8000 characters")
+            const nonce = record.clientNonce ?? kernel.newId()
+            if (typeof nonce !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(nonce))
+              return errorResponse(400, "INVALID_ARGS", "Provide a valid message identifier")
+            if (
+              (record.attachmentIds !== undefined &&
+                (!Array.isArray(record.attachmentIds) || record.attachmentIds.length > 0)) ||
+              (record.attachments !== undefined &&
+                (!Array.isArray(record.attachments) || record.attachments.length > 0))
+            )
+              return errorResponse(400, "INVALID_ARGS", "Bot automation posts accept text only")
+
+            const messageId = `bot-post:${thread.id}:${nonce}`
+            const previous = getMessage({ threadId: thread.id, messageId })
+            if (previous && (previous.sender?.id !== bot.id || previous.text !== record.text))
+              return errorResponse(409, "NONCE_CONFLICT", "This identifier already belongs to another message")
+            if (previous) return jsonResponse(200, { message: previous, run: null })
+
+            const result = insertMessage({
+              message: {
+                id: messageId,
+                threadId: thread.id,
+                parentId: thread.activeLeafId,
+                role: "assistant",
+                kind: "text",
+                status: "complete",
+                runId: null,
+                text: record.text,
+                parts: [{ type: "text", text: record.text }],
+                sender: { id: bot.id, name: bot.name },
+                source: "local",
+              },
+            })
+            if (!result.success) return errorResponse(409, result.errorCode, result.error)
+            return jsonResponse(201, { message: result.message, run: null })
+          }
           const parsed = messageFromRequest({ threadId: params.id ?? "", body: record })
           if (!parsed.input || parsed.error)
             return errorResponse(400, "INVALID_ARGS", parsed.error ?? "Invalid message")

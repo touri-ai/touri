@@ -19,17 +19,19 @@ const fail = (status: number, errorCode: string, error: string): RouteResponse =
   json: { errorCode, error },
 })
 
-// The final reply of a succeeded member run, as copied into the channel. Seeks
+// Final member replies and complete bot posts without a run. Seeks
 // messages_assistant_complete from the read position; joins use primary keys and
 // group_message_links_message. Existence avoids multiplying a reply by its alias links.
 // Later edits of the copy never move the run's finish time.
 const UNREAD_FROM = `FROM messages visible
-    JOIN runs member ON member.id = visible.run_id
-    JOIN group_run_links participant ON participant.run_id = member.id`
+    LEFT JOIN runs member ON member.id = visible.run_id
+    LEFT JOIN group_run_links participant ON participant.run_id = member.id`
 const UNREAD_WHERE = `WHERE visible.thread_id = ? AND visible.role = 'assistant' AND visible.status = 'complete'
-      AND visible.updated_at > ? AND member.status = 'succeeded' AND member.finished_at > ?
-      AND EXISTS (SELECT 1 FROM group_message_links shared
-        WHERE shared.message_id = member.reply_message_id AND shared.visible_message_id = visible.id)`
+      AND visible.updated_at > ? AND COALESCE(member.finished_at, visible.created_at) > ?
+      AND ((visible.run_id IS NULL AND visible.id GLOB 'bot-post:*' AND visible.sender_json IS NOT NULL)
+        OR (member.status = 'succeeded' AND participant.run_id IS NOT NULL
+          AND EXISTS (SELECT 1 FROM group_message_links shared
+            WHERE shared.message_id = member.reply_message_id AND shared.visible_message_id = visible.id)))`
 
 /** Unread final replies in one channel conversation: thread, seek start, read position. */
 export const CHANNEL_UNREAD_COUNT_SQL = `SELECT COUNT(*) AS n FROM (SELECT 1 ${UNREAD_FROM} ${UNREAD_WHERE} LIMIT ${MAX_UNREAD})`
@@ -51,7 +53,7 @@ export const CHANNEL_UNREAD_MENTIONS_SQL = `WITH unread AS (
 
 /**
  * Per-person read positions for channel conversations. A final bot reply is the channel copy of a
- * member run's reply, finished after the person last read the channel.
+ * member run's reply, or a bot post without a run, finished after the last read.
  */
 export const createChannelReads = (kernel: Kernel) => {
   const database = kernel.db as Database
