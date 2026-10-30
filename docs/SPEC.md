@@ -2283,3 +2283,23 @@ longer explanations at a word boundary with an ellipsis.
 - Configured credentials are masked across stream chunks before stdout or stderr is truncated, so output limits cannot expose a credential fragment. Nonempty results emit a completion notification and failures emit an immediate routine failure notification tied to the execution slot. Empty output and `[SILENT]` remain silent.
 - Only the authenticated owner (or the local owner UI token) can create, edit or manually run script routines. Members, other admins, integration clients and agent routine tools cannot configure or launch them.
 - PATCH changing `groupId` clears an omitted `resultsThreadId`, preventing the previous destination from conflicting with the new channel. An explicitly supplied results conversation must still belong to the selected channel.
+
+
+### Integration notices in channel history
+
+`POST /api/v1/threads/:id/notices` accepts `{text, sender?: {id?, name}, kind?, eventId?}`
+from an active administrator device. `text` is nonempty and at most 8,000 characters.
+The optional sender has a name of 1–80 letters, numbers, spaces, dots, underscores or
+hyphens; its optional ID has 1–80 ASCII word characters or hyphens. Stored sender IDs
+are namespaced with `integration:` and never resolve to a person or bot identity.
+Notices persist as complete assistant messages with no run, publish `message.created`,
+and appear on the incoming side with the integration name, label and default avatar.
+They never dispatch a bot, including when their text contains mentions. Without a sender,
+existing automation attribution is preserved. Existing `pr-ready`/`notice` kinds and
+stable `eventId` retry semantics remain supported; omitted kind defaults to `notice`,
+and omitted event IDs create independent notices. Notification delivery remains unchanged.
+
+After this API is deployed, integration publishers can switch from `/messages` to
+`/notices` with `sender: {id: "leads", name: "hodle-leads"}`. Only HTTP 404 should
+fall back to the old messages endpoint; other errors must not trigger a duplicate send.
+Historical messages are retained.

@@ -487,3 +487,74 @@ test("automatic channel summaries retain uploaded image attachments and reject m
   expect(rejected?.status).toBe(400)
   expect(fixture.database.query("SELECT count(*) AS total FROM runs").get()).toEqual({ total: 0 })
 })
+
+test("plain integration notices retain their sender, publish once and never start a run", async () => {
+  const fixture = await getFixture()
+  const events: string[] = []
+  fixture.kernel.subscribe((event) => {
+    events.push(event.event.type)
+  })
+  const path = `/threads/${fixture.channel.id}/notices`
+  const body = { text: "@Bot de teste: aviso fictício", sender: { id: "leads", name: "hodle-leads" } }
+
+  const result = await fixture.call("POST", path, body)
+  await fixture.kernel.flushEvents?.()
+
+  expect(result).toMatchObject({
+    status: 200,
+    json: {
+      message: {
+        role: "assistant",
+        kind: "notice",
+        runId: null,
+        sender: { id: "integration:leads", name: "hodle-leads", kind: "integration" },
+      },
+    },
+  })
+  expect(fixture.store.activePath({ threadId: fixture.channel.id })).toHaveLength(1)
+  expect(fixture.database.query("SELECT count(*) AS total FROM runs").get()).toEqual({ total: 0 })
+  expect(events.filter((type) => type === "message.created")).toHaveLength(1)
+})
+
+test("notice sender validation rejects malformed identities and unauthorized writers", async () => {
+  const fixture = await getFixture()
+  const path = `/threads/${fixture.channel.id}/notices`
+  const anonymous = new AbortController().signal
+
+  expect(await fixture.call("POST", path, { text: "Aviso", sender: { name: "sender" } }, anonymous)).toMatchObject({
+    status: 403,
+  })
+  for (const sender of [null, { name: "" }, { name: "bad\nname" }, { name: "sender", id: "../owner" }]) {
+    expect(await fixture.call("POST", path, { text: "Aviso", sender })).toMatchObject({ status: 400 })
+  }
+  expect(fixture.store.activePath({ threadId: fixture.channel.id })).toHaveLength(0)
+})
+
+test("sender-free plain notices create independent messages and named retries publish only once", async () => {
+  const fixture = await getFixture()
+  const events: string[] = []
+  fixture.kernel.subscribe(({ event }) => events.push(event.type))
+  const path = `/threads/${fixture.channel.id}/notices`
+  const named = { text: "Aviso", eventId: "demo:repeat", sender: { name: "hodle-leads" } }
+
+  const first = await fixture.call("POST", path, { text: "Aviso" })
+  await fixture.call("POST", path, { text: "Aviso" })
+  const namedFirst = await fixture.call("POST", path, named)
+  const namedAgain = await fixture.call("POST", path, named)
+  await fixture.kernel.flushEvents?.()
+
+  expect(first).toMatchObject({
+    status: 200,
+    json: {
+      message: {
+        role: "assistant",
+        sender: { id: "automation-notices", name: "touri" },
+      },
+    },
+  })
+  expect(namedFirst).toMatchObject({ status: 200, json: { message: { sender: { kind: "integration" } } } })
+  expect(namedAgain).toEqual(namedFirst)
+  expect(fixture.store.activePath({ threadId: fixture.channel.id })).toHaveLength(3)
+  expect(events.filter((type) => type === "message.created")).toHaveLength(3)
+  expect(fixture.database.query("SELECT count(*) AS total FROM runs").get()).toEqual({ total: 0 })
+})
