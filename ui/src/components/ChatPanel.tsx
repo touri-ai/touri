@@ -1186,6 +1186,15 @@ const MessageBubbleRow = ({
     if (senderBot) return <BotAvatar bot={senderBot} size={28} state={mascotState} />
     if (!message.sender && threadBot) return <BotAvatar bot={threadBot} size={28} state={mascotState} />
     if (!message.sender) return null
+    if (message.sender.kind === "integration")
+      return (
+        <BotAvatar
+          bot={{ id: message.sender.id, color: null, avatarShape: "none-none" }}
+          size={28}
+          state="idle"
+          still
+        />
+      )
 
     return (
       <span role="img" aria-label={t("Membro excluído: {name}", { name: message.sender.name })}>

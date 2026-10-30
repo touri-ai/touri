@@ -4,7 +4,7 @@ import { createECDH, randomBytes } from "node:crypto"
 import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { Kernel, NotificationRecord } from "@touri/contracts"
+import type { ApiRoutes, Kernel, NotificationRecord } from "@touri/contracts"
 import { generateVAPIDKeys } from "web-push"
 import type { Person } from "../../src/cli/auth/store"
 import { createSecretStore } from "../../src/cli/host/secretStore"
@@ -485,5 +485,83 @@ test("automatic channel summaries retain uploaded image attachments and reject m
   const parts = (response.json as { message: { parts: Array<{ type: string }> } }).message.parts
   expect(parts.findIndex((part) => part.type === "text")).toBeLessThan(parts.findIndex((part) => part.type === "image"))
   expect(rejected?.status).toBe(400)
+  expect(fixture.database.query("SELECT count(*) AS total FROM runs").get()).toEqual({ total: 0 })
+})
+
+test("plain integration notices retain their sender, publish once and never start a run", async () => {
+  const fixture = await getFixture()
+  const events: string[] = []
+  fixture.kernel.subscribe((event) => {
+    events.push(event.event.type)
+  })
+  const path = `/threads/${fixture.channel.id}/notices`
+  const body: ApiRoutes["POST /threads/:id/notices"]["req"] = {
+    text: "@Bot de teste: aviso fictício",
+    sender: { id: "publisher", name: "Publicações QA" },
+  }
+
+  const result = await fixture.call("POST", path, body)
+  await fixture.kernel.flushEvents?.()
+  if (!result || !("json" in result)) throw new Error("Expected notice JSON response")
+  const response = result.json as ApiRoutes["POST /threads/:id/notices"]["res"]
+
+  expect(result?.status).toBe(200)
+  expect(response.message).toMatchObject({
+    role: "assistant",
+    kind: "notice",
+    runId: null,
+    sender: { id: "integration:publisher", name: "Publicações QA", kind: "integration" },
+  })
+  expect(fixture.store.activePath({ threadId: fixture.channel.id })).toHaveLength(1)
+  expect(fixture.database.query("SELECT count(*) AS total FROM runs").get()).toEqual({ total: 0 })
+  expect(events.filter((type) => type === "message.created")).toHaveLength(1)
+})
+
+test("notice sender validation rejects malformed identities and unauthorized writers", async () => {
+  const fixture = await getFixture()
+  const path = `/threads/${fixture.channel.id}/notices`
+  const anonymous = new AbortController().signal
+
+  expect(await fixture.call("POST", path, { text: "Aviso", sender: { name: "sender" } }, anonymous)).toMatchObject({
+    status: 403,
+  })
+  for (const sender of [null, { name: "" }, { name: "bad\nname" }, { name: "sender", id: "../owner" }]) {
+    expect(await fixture.call("POST", path, { text: "Aviso", sender })).toMatchObject({ status: 400 })
+  }
+  expect(fixture.store.activePath({ threadId: fixture.channel.id })).toHaveLength(0)
+})
+
+test("sender-free plain notices create independent messages and named retries publish only once", async () => {
+  const fixture = await getFixture()
+  const events: string[] = []
+  fixture.kernel.subscribe(({ event }) => events.push(event.type))
+  const path = `/threads/${fixture.channel.id}/notices`
+  const named: ApiRoutes["POST /threads/:id/notices"]["req"] = {
+    text: "Aviso",
+    kind: "notice",
+    eventId: "demo:repeat",
+    sender: { name: "Publicações QA" },
+  }
+  const plain: ApiRoutes["POST /threads/:id/notices"]["req"] = { text: "Aviso" }
+
+  const first = await fixture.call("POST", path, plain)
+  await fixture.call("POST", path, plain)
+  const namedFirst = await fixture.call("POST", path, named)
+  const namedAgain = await fixture.call("POST", path, named)
+  await fixture.kernel.flushEvents?.()
+
+  expect(first).toMatchObject({
+    status: 200,
+    json: {
+      message: {
+        role: "assistant",
+        sender: { id: "automation-notices", name: "touri" },
+      },
+    },
+  })
+  expect(namedFirst).toMatchObject({ status: 200, json: { message: { sender: { kind: "integration" } } } })
+  expect(namedAgain).toEqual(namedFirst)
+  expect(fixture.store.activePath({ threadId: fixture.channel.id })).toHaveLength(3)
+  expect(events.filter((type) => type === "message.created")).toHaveLength(3)
   expect(fixture.database.query("SELECT count(*) AS total FROM runs").get()).toEqual({ total: 0 })
 })

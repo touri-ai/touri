@@ -71,6 +71,19 @@ describe("message senders", () => {
     expect(notice).toHaveAttribute("data-message-author", "bot")
     expect(notice.querySelector('.message-avatar [data-bot-id="integration:notice"]')).not.toBeNull()
   })
+  it("shows an assistant integration notice on the incoming side with its named default avatar", () => {
+    const sender = { id: "integration:leads", name: "hodle-leads", kind: "integration" as const }
+    const message = { ...getMessage("integration-notice", sender, 1, "assistant"), kind: "notice" as const }
+    const { container } = renderMessages([message])
+    const row = getRow(container, message.id)
+
+    expect(row).toHaveAttribute("data-message-author", "bot")
+    expect(row).not.toHaveClass("message-user")
+    expect(within(row).getByText("hodle-leads")).toBeVisible()
+    expect(within(row).queryByText("Você")).toBeNull()
+    expect(row.querySelector('.message-avatar [data-bot-id="integration:leads"]')).not.toBeNull()
+    expect(row.querySelector('[aria-label="Membro excluído: hodle-leads"]')).toBeNull()
+  })
   it("shows another person's name on an end-aligned tinted bubble beside the current person's own message", () => {
     const messages = [
       getMessage("owner-message", { id: "owner", name: "Pessoa A", avatarSeed: "owner-avatar", kind: "person" }),

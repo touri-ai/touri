@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite"
 import { createHash } from "node:crypto"
-import type { FilePart, ImagePart, Kernel, RouteModule, RouteResponse } from "@touri/contracts"
+import type { FilePart, ImagePart, Kernel, MessageSender, RouteModule, RouteResponse } from "@touri/contracts"
 import type { SecretStore } from "../cli/host/secretStore"
 import { deviceSession } from "../kernel/device-session"
 import type { PushDevice, PushStore } from "./push-store"
@@ -101,13 +101,17 @@ const denied = (): RouteResponse => ({
 export const createReviewNotice = (kernel: Kernel, threadId: string, body: unknown): RouteResponse => {
   if (!body || typeof body !== "object") return invalidNotice()
   const input = body as Record<string, unknown>
+  const kind = input.kind ?? "notice"
+  const requestedEventId = input.eventId ?? kernel.newId()
   if (
-    !["pr-ready", "notice"].includes(String(input.kind)) ||
-    typeof input.eventId !== "string" ||
-    !/^[\w:./-]{1,160}$/u.test(input.eventId)
+    !["pr-ready", "notice"].includes(String(kind)) ||
+    typeof requestedEventId !== "string" ||
+    !/^[\w:./-]{1,160}$/u.test(requestedEventId)
   )
     return invalidNotice()
-  if (typeof input.text !== "string" || !input.text.trim() || input.text.length > 2000) return invalidNotice()
+  if (typeof input.text !== "string" || !input.text.trim() || input.text.length > 8000) return invalidNotice()
+  const sender = getNoticeSender(input.sender)
+  if (!sender) return invalidNotice()
   const attachmentIds = input.attachmentIds ?? []
   if (!Array.isArray(attachmentIds) || attachmentIds.length > 50 || attachmentIds.some((id) => typeof id !== "string"))
     return invalidNotice()
@@ -119,8 +123,10 @@ export const createReviewNotice = (kernel: Kernel, threadId: string, body: unkno
   if (!store || !emit || !thread?.groupId || thread.groupThreadId)
     return { status: 404, json: { errorCode: "NOT_FOUND", error: "Channel conversation not found" } }
 
-  const eventId = createHash("sha256").update(`${threadId}:${input.eventId}`).digest("hex")
-  const messageId = `${input.kind}:${eventId}`
+  const eventKey =
+    input.sender === undefined ? `${threadId}:${requestedEventId}` : `${threadId}:${sender.id}:${requestedEventId}`
+  const eventId = createHash("sha256").update(eventKey).digest("hex")
+  const messageId = `${kind}:${eventId}`
   const text = kernel.redact(input.text.trim())
   const existing = store.getPathMessage?.({ threadId, messageId, leafId: messageId })
   const inserted = existing
@@ -140,18 +146,19 @@ export const createReviewNotice = (kernel: Kernel, threadId: string, body: unkno
             { type: "text", text },
             ...attachments,
           ],
-          sender: { id: "automation-notices", name: "touri" },
+          sender,
           source: "local",
         },
       })
   if (!inserted.success) return { status: 409, json: { errorCode: inserted.errorCode, error: "Could not save notice" } }
+  if (!existing) kernel.publish({ type: "message.created", message: inserted.message })
   const notification = emit({
     kind: "notice",
     botId: null,
     threadId,
     requestId: messageId,
     targetPersonId: kernel.services.use("work.defaultPersonId")?.() ?? "owner",
-    title: input.kind === "pr-ready" ? "PR ready" : "Automatic notice",
+    title: kind === "pr-ready" ? "PR ready" : "Automatic notice",
     body: text,
   })
 
@@ -180,3 +187,22 @@ const getNoticeAttachments = (kernel: Kernel, ids: string[]): Array<FilePart | I
       },
     ]
   })
+
+const getNoticeSender = (value: unknown): MessageSender | null => {
+  if (value === undefined) return { id: "automation-notices", name: "touri" }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  const sender = value as Record<string, unknown>
+  if (Object.keys(sender).some((key) => !["id", "name"].includes(key))) return null
+  if (
+    typeof sender.name !== "string" ||
+    sender.name.length > 80 ||
+    !/^[\p{L}\p{N}][\p{L}\p{N} ._-]*$/u.test(sender.name)
+  )
+    return null
+  if (sender.id !== undefined && (typeof sender.id !== "string" || !/^[\w-]{1,80}$/u.test(sender.id))) return null
+  const name = sender.name.trim().normalize("NFKC")
+  const key = sender.id ?? createHash("sha256").update(name).digest("hex")
+  const id = `integration:${key}`
+
+  return { id, name, kind: "integration", avatarSeed: id }
+}
