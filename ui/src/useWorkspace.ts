@@ -36,6 +36,7 @@ import {
   reconcileApprovalNotifications,
   uniqueApprovalNotifications,
 } from "./approvalState"
+import { getChannelThreads } from "./channelThreads"
 import { moveComposerDraft } from "./composerDraft"
 import { getDocumentLocale } from "./documentLanguage"
 import { ApiError, isServiceUnavailable, userFacingError } from "./errors"
@@ -470,7 +471,9 @@ const getWorkspaceWithoutThreads = (data: WorkspaceData, threadIds: ReadonlySet<
   const threads = data.threads.filter((candidate) => !threadIds.has(candidate.id))
   const selected = threadIds.has(data.selectedThreadId ?? "")
   const bot = botId ? data.bots.find((candidate) => candidate.id === botId) : undefined
+  const channelMain = thread?.groupId ? getChannelThreads(threads, thread.groupId)[0] : undefined
   const fallback =
+    channelMain ??
     threads.find((candidate) => candidate.id === bot?.mainThreadId) ??
     threads.find((candidate) => candidate.botId === botId && !candidate.groupId && !candidate.archivedAt)
 

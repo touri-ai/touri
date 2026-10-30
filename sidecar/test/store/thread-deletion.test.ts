@@ -407,3 +407,54 @@ test("archived title search ignores accents and stays scoped without any message
   expect(matches[0]).not.toHaveProperty("carryoverNote")
   expect(matches[0]).not.toHaveProperty("cwdOverride")
 })
+
+test("channel main is protected while a secondary conversation is deleted persistently", async () => {
+  const fixture = await startFixture()
+  fixture.db
+    .query(
+      "INSERT INTO bot_groups(id,name,color,avatar_shape,avatar_seed,created_at,updated_at) VALUES('channel-delete','Synthetic','#2563eb','classic-none','seed',1,1)",
+    )
+    .run()
+  const main = fixture.createThread("Canal", { groupId: "channel-delete" })
+  const secondary = fixture.createThread("Resultado da rotina", { groupId: "channel-delete" })
+  fixture.db.query("UPDATE threads SET created_at = 1 WHERE id = ?").run(main.id)
+
+  const store = fixture.runtime.kernel.services.use("store.api")
+  if (!store) throw new Error("Missing store")
+  const participant = store.createThread({
+    botId: fixture.bot.id,
+    kind: "chat",
+    title: "Internal",
+    groupId: "channel-delete",
+    groupThreadId: secondary.id,
+  })
+  if (!participant.success) throw new Error("Missing participant")
+
+  const plan = fixture.db
+    .query(
+      "EXPLAIN QUERY PLAN SELECT id FROM threads WHERE group_id = ? AND group_thread_id IS NULL AND archived_at IS NULL ORDER BY created_at, id LIMIT 1",
+    )
+    .all("channel-delete")
+  expect(JSON.stringify(plan)).toContain("threads_channel_created")
+  expect(JSON.stringify(plan)).not.toContain("TEMP B-TREE")
+
+  const denied = await fixture.request(`/threads/${main.id}`, "DELETE")
+  const deleted = await fixture.request(`/threads/${secondary.id}`, "DELETE")
+
+  expect(denied.status).toBe(409)
+  expect(await denied.json()).toMatchObject({ errorCode: "THREAD_MAIN" })
+  expect(deleted.status).toBe(202)
+  expect(
+    store.createThread({
+      botId: fixture.bot.id,
+      kind: "chat",
+      title: "Late participant",
+      groupId: "channel-delete",
+      groupThreadId: secondary.id,
+    }).success,
+  ).toBe(false)
+  await waitFor(() => !fixture.db.query("SELECT 1 FROM threads WHERE id = ?").get(participant.thread.id))
+  await waitFor(() => !fixture.db.query("SELECT 1 FROM threads WHERE id = ?").get(secondary.id))
+  expect(fixture.db.query("SELECT id FROM threads WHERE id = ?").get(main.id)).toEqual({ id: main.id })
+  expect((await fixture.request(`/threads/${secondary.id}/messages`)).status).toBe(404)
+})

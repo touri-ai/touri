@@ -690,6 +690,7 @@ export const Sidebar = (props: SidebarProps) => {
                 runs={runs}
                 onSearch={openSearch}
                 onEdit={editChannel}
+                onDeleteThread={props.onDeleteThread}
                 onDelete={props.onDeleteGroup ? deleteChannel : undefined}
                 onNewThread={createChannelThread}
               />

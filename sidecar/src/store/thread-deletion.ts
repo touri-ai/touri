@@ -37,6 +37,8 @@ type ThreadRow = {
   title: string
 }
 
+type DeletionTarget = Pick<ThreadRow, "id" | "bot_id" | "group_id" | "owner_person_id" | "responsible_person_id">
+
 const FILE_BATCH_SIZE = 16
 const ATTACHMENT_BATCH_SIZE = 50
 const PREVIEW_MESSAGE_LIMIT = 1000
@@ -423,9 +425,18 @@ const getPermissionError = (
   return errorResponse(403, "THREAD_DELETE_FORBIDDEN", "Você não tem permissão para excluir esta conversa.")
 }
 
-const getDeleteError = (thread: ThreadRow): ReturnType<typeof errorResponse> | null => {
+const getDeleteError = (database: Database, thread: ThreadRow): ReturnType<typeof errorResponse> | null => {
   if (thread.kind === "main" || thread.main_thread_id === thread.id)
     return errorResponse(409, "THREAD_MAIN", "A conversa principal do bot não pode ser excluída.")
+  if (thread.group_id) {
+    const main = database
+      .query(
+        "SELECT id FROM threads WHERE group_id = ? AND group_thread_id IS NULL AND archived_at IS NULL ORDER BY created_at, id LIMIT 1",
+      )
+      .get(thread.group_id) as { id: string } | null
+    if (main?.id === thread.id)
+      return errorResponse(409, "THREAD_MAIN", "A conversa principal do canal não pode ser excluída.")
+  }
   if (thread.machine === "cloud")
     return errorResponse(409, "THREAD_REMOTE", "Esta conversa remota não pode ser excluída por este servidor.")
 
@@ -441,13 +452,21 @@ export const threadDeletionRoutes = (
   const manager = createThreadDeletionManager(kernel, collectBlobs, drainThread)
   kernel.services.provide("storage.threadDeletion", { dispose: manager.dispose })
 
-  const queueDeletion = async (threads: Array<ThreadRow>): Promise<void> => {
+  const queueDeletion = async (threads: Array<DeletionTarget>): Promise<ReturnType<typeof errorResponse> | null> => {
     const at = Date.now()
-    await writeDatabaseAsync(database, () => {
-      const insert = database.query(`INSERT INTO thread_deletions(
+    const error = await writeDatabaseAsync(database, () => {
+      const placeholders = threads.map(() => "?").join(",")
+      const linked = database
+        .query(`SELECT t.id, t.bot_id, t.group_id, t.owner_person_id, b.responsible_person_id
+        FROM threads t JOIN bots b ON b.id = t.bot_id WHERE t.group_thread_id IN (${placeholders}) LIMIT 201`)
+        .all(...threads.map((thread) => thread.id)) as Array<DeletionTarget>
+      const deleting = Array.from(new Map([...threads, ...linked].map((thread) => [thread.id, thread])).values())
+      if (deleting.length > 200)
+        return errorResponse(400, "TOO_MANY_THREADS", "Selecione menos conversas para excluir com seus participantes.")
+      const insert = database.query(`INSERT OR IGNORE INTO thread_deletions(
         thread_id, bot_id, group_id, owner_person_id, responsible_person_id, phase, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, 'stopping', ?, ?)`)
-      threads.forEach((thread) => {
+      deleting.forEach((thread) => {
         insert.run(
           thread.id,
           thread.bot_id,
@@ -462,14 +481,17 @@ export const threadDeletionRoutes = (
         .query(`UPDATE schema_meta SET value = cast(max(cast(value AS INTEGER),
         (SELECT coalesce(max(seq), 0) FROM ui_event_log)) AS TEXT) WHERE key = 'ui_event_floor_seq'`)
         .run()
+      return null
     })
+    if (error) return error
     manager.start()
+    return null
   }
 
   const validateDeletion = (thread: ThreadRow, signal: AbortSignal): ReturnType<typeof errorResponse> | null => {
     const permissionError = getPermissionError(kernel, thread, signal)
     if (permissionError) return permissionError
-    const deletionError = getDeleteError(thread)
+    const deletionError = getDeleteError(database, thread)
     if (deletionError) return deletionError
     if (database.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(thread.id))
       return errorResponse(409, "THREAD_DELETING", "Esta conversa já está sendo excluída.")
@@ -485,7 +507,7 @@ export const threadDeletionRoutes = (
         if (!thread) return errorResponse(404, "NOT_FOUND", "Conversa não encontrada.")
         const permissionError = getPermissionError(kernel, thread, signal)
         if (permissionError) return permissionError
-        const deletionError = getDeleteError(thread)
+        const deletionError = getDeleteError(database, thread)
         if (deletionError) return deletionError
         if (database.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(thread.id))
           return errorResponse(409, "THREAD_DELETING", "Esta conversa já está sendo excluída.")
@@ -516,7 +538,8 @@ export const threadDeletionRoutes = (
         if (!thread) return errorResponse(404, "NOT_FOUND", "Conversa não encontrada.")
         const error = validateDeletion(thread, signal)
         if (error) return error
-        await queueDeletion([thread])
+        const queueError = await queueDeletion([thread])
+        if (queueError) return queueError
         return { status: 202, json: { threadId: thread.id, phase: "stopping" } }
       },
     },
@@ -548,7 +571,8 @@ export const threadDeletionRoutes = (
           if (error) return error
         }
 
-        await queueDeletion(threads)
+        const queueError = await queueDeletion(threads)
+        if (queueError) return queueError
         return { status: 202, json: { threadIds: ids, phase: "stopping" } }
       },
     },

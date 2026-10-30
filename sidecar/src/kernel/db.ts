@@ -58,6 +58,7 @@ import notificationReadsSql from "./migrations/0052.sql" with { type: "text" }
 import attachmentRevisionSql from "./migrations/0053.sql" with { type: "text" }
 import scriptRoutinesSql from "./migrations/0054.sql" with { type: "text" }
 import channelContextIndexesSql from "./migrations/channel-context-indexes.sql" with { type: "text" }
+import channelMainIndexSql from "./migrations/channel-main-index.sql" with { type: "text" }
 import channelReadsSql from "./migrations/channel-reads.sql" with { type: "text" }
 import imageEvidenceIndexesSql from "./migrations/image-evidence-indexes.sql" with { type: "text" }
 import type { PerformanceStageRunner } from "./performance"
@@ -86,6 +87,8 @@ export const openDatabase = (input: {
     database.transaction(() => database.exec(channelReadsSql))()
   if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'channel_context_indexes_version'").get())
     database.transaction(() => database.exec(channelContextIndexesSql))()
+  if (!database.query("SELECT 1 FROM schema_meta WHERE key = 'channel_main_index_version'").get())
+    database.transaction(() => database.exec(channelMainIndexSql))()
   return database
 }
 

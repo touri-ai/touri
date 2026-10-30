@@ -8,6 +8,7 @@ import { type Locale, t } from "../i18n"
 import { getLastActivityAt, getSidebarRowTime } from "../sidebarAttention"
 import { BotAvatar } from "./BotAvatar"
 import { ConversationLoading } from "./ConversationLoading"
+import { DeleteThreadDialog } from "./DeleteThreadDialog"
 import { PanelIcon } from "./PanelIcon"
 import { PersonAvatar } from "./PersonAvatar"
 import { SidebarActionsMenu } from "./SidebarActionsMenu"
@@ -67,6 +68,7 @@ export const GroupSidebar = memo(
     onEdit,
     onNewThread,
     onDelete,
+    onDeleteThread,
     messages = EMPTY_MESSAGES,
     runs = EMPTY_RUNS,
     locale = "pt-BR",
@@ -88,6 +90,7 @@ export const GroupSidebar = memo(
     onSearch?: (() => void) | undefined
     onEdit: (group: BotGroup) => void
     onNewThread: (group: BotGroup) => void
+    onDeleteThread?: ((threadId: string, botId: string) => Promise<void>) | undefined
     onDelete?: ((groupId: string) => Promise<void>) | undefined
     locale?: Locale
   }) => {
@@ -184,6 +187,7 @@ export const GroupSidebar = memo(
               onEdit={onEdit}
               onNewThread={onNewThread}
               onDelete={onDelete}
+              onDeleteThread={onDeleteThread}
               workingBots={channelWorking?.[group.id] ?? EMPTY_WORKING_BOTS}
               locale={locale}
             />
@@ -275,6 +279,7 @@ const GroupSidebarEntry = memo(
     onEdit,
     onNewThread,
     onDelete,
+    onDeleteThread,
     locale,
   }: {
     loading: boolean
@@ -295,9 +300,27 @@ const GroupSidebarEntry = memo(
     onPrefetch?: ((id: string) => void) | undefined
     onEdit: (group: BotGroup) => void
     onNewThread: (group: BotGroup) => void
+    onDeleteThread?: ((threadId: string, botId: string) => Promise<void>) | undefined
     onDelete?: ((groupId: string) => Promise<void>) | undefined
     locale: Locale
   }) => {
+    const [threadMenu, setThreadMenu] = useState<string | null>(null)
+    const [deleteTarget, setDeleteTarget] = useState<Thread | null>(null)
+    const [deleteError, setDeleteError] = useState(false)
+    const [deleteBusy, setDeleteBusy] = useState(false)
+    const confirmDelete = async () => {
+      if (!deleteTarget || !onDeleteThread || deleteBusy) return
+      setDeleteBusy(true)
+      setDeleteError(false)
+      try {
+        await onDeleteThread(deleteTarget.id, deleteTarget.botId)
+        setDeleteTarget(null)
+      } catch {
+        setDeleteError(true)
+      } finally {
+        setDeleteBusy(false)
+      }
+    }
     const [menuOpen, setMenuOpen] = useState(false)
     const [deleting, setDeleting] = useState(false)
     const navigationKey = selected ? selectedThreadId : null
@@ -383,15 +406,53 @@ const GroupSidebarEntry = memo(
         {selected && conversations.length > 0 && (
           <div className="group-thread-list">
             {conversations.map((thread) => (
-              <button
-                type="button"
-                key={thread.id}
-                aria-current={thread.id === selectedThreadId ? "page" : undefined}
-                onClick={() => onSelect(thread.id)}
-              >
-                {getChannelThreadTitle(thread, locale)}
-              </button>
+              <div className="channel-thread-row" key={thread.id}>
+                <button
+                  type="button"
+                  aria-current={thread.id === selectedThreadId ? "page" : undefined}
+                  onClick={() => onSelect(thread.id)}
+                >
+                  {getChannelThreadTitle(thread, locale)}
+                </button>
+                {onDeleteThread && (
+                  <SidebarActionsMenu
+                    label={t(
+                      "Conversation actions for {title}",
+                      { title: getChannelThreadTitle(thread, locale) },
+                      locale,
+                    )}
+                    open={threadMenu === thread.id}
+                    onOpenChange={(open) => setThreadMenu(open ? thread.id : null)}
+                    actions={[
+                      {
+                        label: t("Delete conversation…", {}, locale),
+                        destructive: true,
+                        onSelect: () => {
+                          setDeleteTarget(thread)
+                          setDeleteError(false)
+                        },
+                      },
+                    ]}
+                  />
+                )}
+              </div>
             ))}
+            {deleteTarget && (
+              <DeleteThreadDialog
+                undoable={false}
+                pending={deleteBusy}
+                error={deleteError ? t("Could not delete conversation. Try again.", {}, locale) : undefined}
+                targets={[
+                  { id: deleteTarget.id, title: getChannelThreadTitle(deleteTarget, locale), messageCount: null },
+                ]}
+                onConfirm={() => {
+                  void confirmDelete()
+                }}
+                onClose={() => {
+                  if (!deleteBusy) setDeleteTarget(null)
+                }}
+              />
+            )}
           </div>
         )}
       </div>

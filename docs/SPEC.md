@@ -420,6 +420,10 @@ Tokens are never written to disk, except the per-thread MCP token files (rewritt
   opts into notifications. Configured email sign-in uses the existing sender and local vault,
   preserving identical accepted responses and the existing redemption rules.
 
+### Deleting secondary channel conversations
+
+Channel sidebar secondary conversations expose a conversation actions menu and the existing deletion confirmation. The channel's oldest active shared conversation is its main and cannot be deleted through thread deletion endpoints. After deleting the selected secondary conversation, selection returns to the channel main. Existing deletion workers cancel active work and remove messages, transcript records and unused attachments. Internal participant conversations are admitted to the same cleanup transaction and cannot be recreated while their shared conversation is being deleted. A deletion request admits at most 200 total conversations including internal participants; oversized bulk requests are rejected before writing.
+
 ### Fast conversational replies (schema 50)
 
 - Under **Avançado → Modelo** / **Advanced → Model**, each bot has **Resposta rápida para conversa** / **Fast conversational replies** (`fastConversation`, default `true`). An explicit allowlist recognizes text-only user greetings, thanks and short questions about the bot. Mixed requests, attachments, confirmations, continuations, routines and retries keep the configured reasoning effort and tools. Conversation turns use `low` effort and a brief tool-free prompt; JSON-RPC turns replace the coding-agent base instructions with a concise conversational base and disable reasoning summaries; identity and reviewed memory retain their trust boundaries.

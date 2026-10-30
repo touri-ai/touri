@@ -574,3 +574,18 @@ button.channel-members-button[aria-expanded="true"] {
 .channel-panel .group-member-state {
   display: block;
 }
+
+.channel-thread-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.channel-thread-row > button {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.channel-thread-row .bot-actions-menu {
+  flex: none;
+}
