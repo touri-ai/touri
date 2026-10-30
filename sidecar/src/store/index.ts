@@ -2097,6 +2097,51 @@ export const init = async (
         handler: async ({ params, body, signal }) => {
           const record = requestRecord(body)
           if (!record) return errorResponse(400, "INVALID_ARGS", "Request body must be an object")
+          if (record.asBotId !== undefined) {
+            const session = deviceSession(signal)
+            if (
+              !session?.active() ||
+              session.person?.role !== "admin" ||
+              !session.scopes?.includes("integration:write")
+            )
+              return errorResponse(403, "FORBIDDEN", "Owner token required")
+            const thread = getThread({ threadId: params.id ?? "" })
+            if (!thread) return errorResponse(404, "NOT_FOUND", "Thread not found")
+            if (typeof record.asBotId !== "string" || !thread.groupId || record.as !== undefined || record.groupAction)
+              return errorResponse(400, "INVALID_BOT", "Select a channel member bot")
+            const bot = database
+              .query(
+                "SELECT b.id, b.name FROM group_members gm JOIN bots b ON b.id = gm.bot_id WHERE gm.group_id = ? AND b.id = ?",
+              )
+              .get(thread.groupId, record.asBotId) as { id: string; name: string } | null
+            if (!bot) return errorResponse(400, "INVALID_BOT", "Select a channel member bot")
+            if (typeof record.text !== "string" || !record.text.trim() || record.text.length > 8000)
+              return errorResponse(400, "INVALID_ARGS", "Provide text up to 8000 characters")
+            if (
+              (record.attachmentIds !== undefined &&
+                (!Array.isArray(record.attachmentIds) || record.attachmentIds.length > 0)) ||
+              (record.attachments !== undefined &&
+                (!Array.isArray(record.attachments) || record.attachments.length > 0))
+            )
+              return errorResponse(400, "INVALID_ARGS", "Bot automation posts accept text only")
+            const result = insertMessage({
+              message: {
+                id: kernel.newId(),
+                threadId: thread.id,
+                parentId: thread.activeLeafId,
+                role: "assistant",
+                kind: "text",
+                status: "complete",
+                runId: null,
+                text: record.text,
+                parts: [{ type: "text", text: record.text }],
+                sender: { id: bot.id, name: bot.name },
+                source: "local",
+              },
+            })
+            if (!result.success) return errorResponse(409, result.errorCode, result.error)
+            return jsonResponse(201, { message: result.message, run: null })
+          }
           const parsed = messageFromRequest({ threadId: params.id ?? "", body: record })
           if (!parsed.input || parsed.error)
             return errorResponse(400, "INVALID_ARGS", parsed.error ?? "Invalid message")

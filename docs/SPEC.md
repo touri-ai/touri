@@ -2304,3 +2304,9 @@ After this API is deployed, integration publishers can switch from `/messages` t
 `/notices` with `sender: {id: "leads", name: "hodle-leads"}`. Only HTTP 404 should
 fall back to the old messages endpoint; other errors must not trigger a duplicate send.
 Historical messages are retained.
+
+### Owner automation posting as a channel bot
+
+`POST /threads/:id/messages` accepts `asBotId` with `text` for an active owner bearer token. The bot must belong to the conversation's channel. Invalid or nonmember IDs return 400; member sessions and cookie-only sessions cannot use this mode. The server resolves the current bot name, persists a complete assistant message, and returns `{message, run: null}` without dispatching teammates, including when text contains mentions. Existing messages retain their attribution.
+
+Publisher rollout follows merge and deployment: configure each channel's member bot ID in the publisher's channel mapping, select a review bot that is a channel member, send `asBotId`, and retain legacy fallback only for an explicit unsupported-request rejection. Verify one synthetic channel post, its incoming alignment and bot avatar before enabling scheduled publishing. Do not retry an ambiguous timeout through the legacy endpoint.

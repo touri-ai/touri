@@ -297,3 +297,79 @@ test("integration sends are limited to channels and cannot borrow another sender
   expect(conflict.status).toBe(409)
   expect(fixture.store.getThread({ threadId: fixture.thread.id })?.unread).toBe(1)
 })
+
+test("owner posts as a channel bot without dispatching even explicit mentions", async () => {
+  const fixture = await getFixture()
+
+  const response = await fixture.post({ text: "@Atlas atualização", asBotId: "atlas" })
+  const result = await response.json()
+  await fixture.kernel.flushEvents?.()
+
+  expect(response.status).toBe(201)
+  expect(result).toMatchObject({ message: { role: "assistant", sender: { id: "atlas", name: "Atlas" } }, run: null })
+  expect(fixture.enqueue).not.toHaveBeenCalled()
+  expect(fixture.database.query("SELECT count(*) AS total FROM runs").get()).toEqual({ total: 0 })
+})
+
+test.each(["missing", 123, null])("rejects invalid or nonmember bot %j", async (asBotId) => {
+  const fixture = await getFixture()
+
+  const response = await fixture.post({ text: "Atualização", asBotId })
+
+  expect(response.status).toBe(400)
+  expect(fixture.store.activePath({ threadId: fixture.thread.id })).toHaveLength(0)
+})
+
+test("posting as a bot requires an active owner bearer token", async () => {
+  const fixture = await getFixture()
+  const body = { text: "Atualização", asBotId: "atlas" }
+  const invite = await fixture.auth.createInvite({
+    actorPersonId: "owner",
+    name: "Pessoa B",
+    email: "member@example.test",
+    role: "member",
+    channelIds: [],
+  })
+  if (!invite.success) throw new Error("Synthetic invite failed")
+  const member = await fixture.auth.claimInvite({
+    token: invite.token,
+    email: "member@example.test",
+    deviceName: "Member",
+  })
+  if (!member.success) throw new Error("Synthetic claim failed")
+
+  const forbidden = await fixture.post(body, { Authorization: `Bearer ${member.token}` })
+  const cookie = await fixture.post(body, { Authorization: "", Cookie: `${deviceCookieName}=${fixture.paired.token}` })
+  const anonymous = await fixture.post(body, { Authorization: "" })
+  await fixture.auth.revokeDevice(fixture.paired.device.id)
+  const revoked = await fixture.post(body)
+
+  expect(forbidden.status).toBe(403)
+  expect(cookie.status).toBe(403)
+  expect(anonymous.status).toBe(401)
+  expect(revoked.status).toBe(401)
+  expect(fixture.store.activePath({ threadId: fixture.thread.id })).toHaveLength(0)
+})
+
+test("an existing bot outside the channel cannot be used as sender", async () => {
+  const fixture = await getFixture()
+  fixture.database
+    .query(
+      "INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES('outsider','Outside','codex','/synthetic/outside',1,1)",
+    )
+    .run()
+
+  const response = await fixture.post({ text: "Atualização", asBotId: "outsider" })
+
+  expect(response.status).toBe(400)
+  expect(fixture.store.activePath({ threadId: fixture.thread.id })).toHaveLength(0)
+})
+
+test("bot automation does not silently discard attachments", async () => {
+  const fixture = await getFixture()
+
+  const response = await fixture.post({ text: "Atualização", asBotId: "atlas", attachmentIds: ["attachment"] })
+
+  expect(response.status).toBe(400)
+  expect(fixture.store.activePath({ threadId: fixture.thread.id })).toHaveLength(0)
+})
