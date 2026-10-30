@@ -233,3 +233,62 @@ const getFreePort = async (): Promise<number> => {
   }
   throw new Error("No free synthetic test port")
 }
+
+const getBoundProperty = (target: object, property: string | symbol) => {
+  const value = Reflect.get(target, property, target)
+  return typeof value === "function" ? value.bind(target) : value
+}
+
+const getIdleScanDatabase = (database: Database, onIdle: () => void): Database => {
+  const query = database.query.bind(database)
+  const scan = "SELECT * FROM thread_deletions ORDER BY created_at, thread_id LIMIT 1"
+  const scanned = mock(onIdle)
+  const getStatement = (sql: string) => {
+    const statement = query(sql)
+    if (sql !== scan) return statement
+
+    const all = () => {
+      const rows = statement.all()
+      if (rows.length || scanned.mock.calls.length) return rows
+
+      scanned()
+      return rows
+    }
+    return new Proxy(statement, {
+      get: (target, property) => (property === "all" ? all : getBoundProperty(target, property)),
+    })
+  }
+  return new Proxy(database, {
+    get: (target, property) => (property === "query" ? getStatement : getBoundProperty(target, property)),
+  })
+}
+
+test("a deletion accepted while the idle scan settles starts without another request", async () => {
+  const fixture = getFixture("cleanup")
+  fixture.db.query("DELETE FROM thread_deletions").run()
+  const accepted = Promise.withResolvers<void>()
+  const finished = Promise.withResolvers<void>()
+  const database = getIdleScanDatabase(fixture.db, () => {
+    // The empty scan has returned, but its promise has not cleared the active job yet.
+    queueMicrotask(() => {
+      fixture.db
+        .query(`INSERT INTO thread_deletions(thread_id,bot_id,phase,created_at,updated_at)
+          VALUES('accepted','fixture','cleanup',1,1)`)
+        .run()
+      manager.start()
+      accepted.resolve()
+    })
+  })
+  const published = mock<Kernel["publish"]>(() => finished.resolve())
+  const kernel = Object.assign({}, fixture.kernel, { db: database, publish: published })
+  const manager = createThreadDeletionManager(kernel)
+  cleanups.add(() => manager.dispose())
+
+  await accepted.promise
+  await finished.promise
+  await manager.dispose()
+
+  expect(published).toHaveBeenCalledTimes(1)
+  expect(fixture.db.query("SELECT * FROM thread_deletions").all()).toEqual([])
+  expect(fixture.log).not.toHaveBeenCalled()
+})

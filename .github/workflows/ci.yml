@@ -31,7 +31,7 @@ jobs:
         run: bun .github/ci/changes.ts
 
   contracts:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun
@@ -52,7 +52,7 @@ jobs:
       fail-fast: false
       matrix:
         shard: [1, 2, 3]
-    runs-on: macos-14
+    runs-on: macos-15
     env:
       TOURI_VM_INTEGRATION: "0"
       TOURI_E2E_REAL_CLI: "0"
@@ -128,7 +128,7 @@ jobs:
           echo "Rust exact hit: $RUST_HIT" | tee -a "$GITHUB_STEP_SUMMARY"
 
   ui:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun
@@ -555,7 +555,7 @@ jobs:
         run: bun test sidecar/test/api-models sidecar/test/runtime/opencode.test.ts
 
   license-check:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun

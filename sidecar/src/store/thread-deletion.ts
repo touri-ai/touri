@@ -62,6 +62,7 @@ export const createThreadDeletionManager = (
   let disposePromise: Promise<void> | undefined
   const shutdown = new AbortController()
   let scheduled: ReturnType<typeof setImmediate> | undefined
+  let startRequested = false
   let retryTimer: ReturnType<typeof setTimeout> | undefined
   let worker: Worker | undefined
   let workerUrl: string | undefined
@@ -351,13 +352,19 @@ export const createThreadDeletionManager = (
   }
 
   const schedule = (): void => {
-    if (disposed || activeJob || scheduled || retryTimer) return
+    if (disposed) return
+    // An accepted request can arrive after the idle scan but before its promise settles.
+    startRequested = true
+    if (activeJob || scheduled || retryTimer) return
+
     scheduled = setImmediate(() => {
       scheduled = undefined
+      startRequested = false
       activeJob = runJobs()
         .catch(() => kernel.log({ level: "warn", module: "store", msg: "Thread deletion failed" }))
         .finally(() => {
           activeJob = undefined
+          if (startRequested) schedule()
         })
     })
   }
