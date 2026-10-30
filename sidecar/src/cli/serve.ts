@@ -52,13 +52,13 @@ export const runServeCommand = async (options: ServeOptions): Promise<void> => {
 const startServer = async (options: ServeOptions, stopStderr: () => Promise<void>): Promise<void> => {
   if ((options.trustedProxy || options.tailscale) && !["127.0.0.1", "::1", "localhost"].includes(options.host))
     throw new Error("O proxy HTTPS confiável exige --host 127.0.0.1. O acesso remoto por HTTP não é permitido.")
+  const trustedProxySecret = await getTrustedProxySecret(options.trustedProxySecretFile)
   process.env.TOURI_APP_DATA = options.dataDir
   process.env.TOURI_HEADLESS = "1"
   const paths = createAppPaths({ appData: options.dataDir })
   const lease = await acquireRuntimeLock(paths, { parentPid: null })
   ensurePrivateDirectory({ root: paths.appData, path: paths.runDir })
   const store = await openAuthStore({ filename: join(options.dataDir, authDbName) })
-  const trustedProxySecret = await getTrustedProxySecret(options.trustedProxySecretFile)
   if (options.ownerEmail) await store.claimOwnerEmail(options.ownerEmail)
   const secrets = createSecretStore({ dir: options.dataDir })
   const ui = resolveUiAssets({ uiDir: options.uiDir, fallbackDir: join(dirname(process.execPath), "ui") })

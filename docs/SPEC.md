@@ -16,9 +16,25 @@ legacy app bots, chats and routines so you can switch over.
 
 The optional Linux amd64 image and `docs/self-host/kubernetes.yaml` run one server for one
 person or a small trusted team. The application listens on loopback behind an HTTPS proxy;
-pairing remains mandatory. `HOME=/data/home` and `--data-dir /data` keep CLI configuration,
+every device still needs a device token. `HOME=/data/home` and `--data-dir /data` keep CLI configuration,
 sessions, browser profiles and application state together on the persistent volume. Bots are
 ordinary processes sharing a user, not isolation boundaries between untrusted people.
+
+Operators can opt into trusted-proxy sign-in with `--trust-proxy`, `--trust-proxy-email <header>`
+and `--trust-proxy-secret-file <file>`. The proxy must overwrite browser-supplied identity headers
+and provide `X-Touri-Proxy-Secret` matching the file (at least 32 characters). Only requests from
+the loopback proxy can use this proof. A cookie-less GET page creates a device only for an existing,
+active person with that email; unknown or removed people retain the ordinary sign-in flow.
+`/login`, `/join` and `/pair` redirect to `/` after successful proxy sign-in. Assets, non-GET requests
+and socket upgrades never create devices, and APIs still require a device token. Sign-in attempts
+are bounded to ten per email per fifteen minutes. Device cookies retain HttpOnly, SameSite=Strict,
+the root path and Secure over HTTPS. When the verified proxy identity changes, previous browser
+cookies and socket tickets cannot authorize the new identity; a page visit signs in the matching
+person. Explicit native bearer authentication retains its device identity. `--owner-email <email>`
+only fills an unset owner email not held by another active person. The proxy secret is validated
+before acquiring runtime resources, read asynchronously once at startup and never logged or stored
+in the application database. Revoking a device invalidates its token; disabling future proxy sign-in
+requires removing the person or revoking access at the proxy.
 
 Public `GET /readyz` returns only `{ "ok": false }` with HTTP 503 until runtime initialization
 completes and again when draining; otherwise it returns `{ "ok": true }` with HTTP 200.

@@ -21,7 +21,7 @@ export type GateOptions = {
   ui: UiAssets
   secrets: SecretStore
   trustedProxy?: boolean
-  /** Header carrying the email a trusted proxy already authenticated, e.g. oauth2-proxy's X-Forwarded-Email. */
+  /** Header carrying the email a trusted proxy already authenticated, e.g. X-Forwarded-Email. */
   trustedEmailHeader?: string
   /** Secret the trusted proxy sends in `X-Touri-Proxy-Secret`; without it the email header is ignored. */
   trustedProxySecret?: string
@@ -93,6 +93,14 @@ const getTrustedEmail = (args: WebInterceptArgs, options: GateOptions): string |
   return isValidEmail(email) ? email : null
 }
 
+const isMatchingProxyIdentity = (args: WebInterceptArgs, options: GateOptions, person: DevicePerson): boolean => {
+  if (!options.trustedEmailHeader || !isProvenProxy(args, options)) return true
+
+  // A shared browser can retain its device cookie after signing into a different proxy account.
+  const email = getTrustedEmail(args, options)
+  return email !== null && email === person.email
+}
+
 const isSecureRequest = (args: WebInterceptArgs, options: GateOptions): boolean =>
   args.url.protocol === "https:" ||
   (trustedProxy(args, options) && args.request.headers.get("x-forwarded-proto") === "https")
@@ -120,7 +128,11 @@ const authenticate = ({
   if (ticketSession?.active()) {
     const device = store.listDevices().find((item) => item.id === ticketSession.deviceId && item.revokedAt === null)
     const person = device ? store.getPersonForDevice(device.id) : null
-    if (device && person) return { kind: "device", device, person, viaCookie: true, token: "" }
+    if (device && person) {
+      if (!isMatchingProxyIdentity(args, options, person)) return null
+
+      return { kind: "device", device, person, viaCookie: true, token: "" }
+    }
   }
   const header = args.request.headers.get("authorization")
   const bearer = header?.startsWith("Bearer ") ? header.slice("Bearer ".length).trim() : null
@@ -130,6 +142,8 @@ const authenticate = ({
   if (device && token) {
     const person = store.getPersonForDevice(device.id)
     if (!person) return null
+    if (!bearer && !isMatchingProxyIdentity(args, options, person)) return null
+
     const origin = requestOrigin({ args, options })
     bindDeviceSession(args.request.signal, {
       deviceId: device.id,
@@ -407,7 +421,7 @@ const serveStatic = async ({
   )
 }
 
-const appPathAfterSignIn = (pathname: string): string =>
+const getAppPathAfterSignIn = (pathname: string): string =>
   ["/login", "/join", "/pair"].includes(pathname) ? "/" : pathname
 
 /** A page request the trusted proxy vouches for gets a device of its own, as a redeemed magic link would. */
@@ -431,7 +445,7 @@ const signInTrustedEmail = async ({
   })
   if (!claimed.success) return null
   const cookie = buildCookie({ token: claimed.token, secure: isSecureRequest(args, options) })
-  const pathname = appPathAfterSignIn(args.url.pathname)
+  const pathname = getAppPathAfterSignIn(args.url.pathname)
   if (pathname !== args.url.pathname)
     return new Response(null, { status: 303, headers: { ...baseHeaders, Location: pathname, "Set-Cookie": cookie } })
   const page = await serveStatic({ pathname, request: args.request, ui: options.ui })
@@ -529,7 +543,7 @@ export const createWebGate = (options: GateOptions): ((args: WebInterceptArgs) =
         throw error
       }
     }
-    if (url.pathname === "/pair") {
+    if (url.pathname === "/pair" && request.method !== "GET") {
       if (request.method !== "POST") return handlePair({ args, options })
       const source = sourceOf(args, options)
       const count = bySource.get(source) ?? 0
@@ -561,7 +575,8 @@ export const createWebGate = (options: GateOptions): ((args: WebInterceptArgs) =
     if (url.pathname.startsWith("/api/")) return apiGate({ args, principal, options })
     if (principal === null) {
       const wantsPage = request.method === "GET" && !/\.[A-Za-z0-9]+$/.test(url.pathname)
-      const trusted = wantsPage ? await signInTrustedEmail({ args, options, limiter: trustedEmailLimiter }) : null
+      const isTrustedPage = wantsPage && !url.pathname.startsWith("/assets/") && !request.headers.has("upgrade")
+      const trusted = isTrustedPage ? await signInTrustedEmail({ args, options, limiter: trustedEmailLimiter }) : null
       if (trusted) return trusted
       if (request.method === "GET" && url.pathname === "/join")
         return serveStatic({ pathname: "/join", request, ui: options.ui })
