@@ -1,5 +1,6 @@
 export type WriteCommand =
   | { type: "save-owner-profile"; name: string; email: string }
+  | { type: "claim-owner-email"; email: string }
   | { type: "create-pairing"; codeHash: string; personId: string; at: number; expiresAt: number }
   | {
       type: "claim-pairing"
@@ -47,6 +48,13 @@ export type WriteCommand =
   | {
       type: "claim-email-signin"
       tokenHash: string
+      email: string
+      personId: string
+      at: number
+      device: { id: string; name: string; tokenHash: string }
+    }
+  | {
+      type: "trusted-email-signin"
       email: string
       personId: string
       at: number

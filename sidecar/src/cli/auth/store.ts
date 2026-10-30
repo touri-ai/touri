@@ -59,6 +59,7 @@ export type CreateInviteResult = { success: true; invite: Invite; token: string;
 export type ClaimInviteResult = { success: true; device: Device; person: Person; token: string } | AuthError
 export type CreateEmailSignInResult = { success: true; token: string; expiresAt: number } | AuthError
 export type ClaimEmailSignInResult = { success: true; device: Device; person: Person; token: string } | AuthError
+export type TrustedEmailSignInResult = ClaimEmailSignInResult
 
 export type AuthStore = {
   saveOwnerProfile: (profile: { name: string; email: string }) => Promise<boolean>
@@ -87,6 +88,10 @@ export type AuthStore = {
   claimInvite: (args: { token: string; email: string; deviceName: string; name?: string }) => Promise<ClaimInviteResult>
   createEmailSignIn: (args: { email: string }) => Promise<CreateEmailSignInResult>
   claimEmailSignIn: (args: { token: string; deviceName: string }) => Promise<ClaimEmailSignInResult>
+  /** Pairs a device for the person a trusted HTTPS proxy already authenticated by email. */
+  signInTrustedEmail: (args: { email: string; deviceName: string }) => Promise<TrustedEmailSignInResult>
+  /** Gives the owner an email when it has none, so a trusted proxy identity can reach it. */
+  claimOwnerEmail: (email: string) => Promise<boolean>
   removePerson: (args: { id: string; actorPersonId: string }) => Promise<AuthError | { success: true }>
   getEmailConfig: () => unknown | null
   saveEmailConfig: (args: { actorPersonId: string; config: unknown }) => Promise<boolean>
@@ -592,6 +597,46 @@ export const openAuthStore = async ({
     }
   }
 
+  const signInTrustedEmail = async ({
+    email,
+    deviceName,
+  }: {
+    email: string
+    deviceName: string
+  }): Promise<TrustedEmailSignInResult> => {
+    const normalizedEmail = normalizeEmail(email)
+    if (!isValidEmail(normalizedEmail)) return invalidCode()
+    const personRow = database
+      .query("SELECT * FROM people WHERE email = ? AND removed_at IS NULL LIMIT 1")
+      .get(normalizedEmail) as PersonRow | null
+    if (!personRow) return invalidCode()
+    const person = toPerson(personRow)
+    const at = now()
+    const id = randomBytes(6).toString("hex")
+    const name = deviceName.trim().slice(0, 80) || "Browser"
+    const authToken = newToken(at, person.id)
+    const claimed = await writer.write({
+      type: "trusted-email-signin",
+      email: normalizedEmail,
+      personId: person.id,
+      at,
+      device: { id, name, tokenHash: sha256(authToken) },
+    })
+    if (!claimed) return invalidCode()
+    return {
+      success: true,
+      person,
+      device: { id, name, personId: person.id, createdAt: at, lastSeenAt: at, revokedAt: null },
+      token: authToken,
+    }
+  }
+
+  const claimOwnerEmail = async (email: string): Promise<boolean> => {
+    const normalizedEmail = normalizeEmail(email)
+    if (!isValidEmail(normalizedEmail)) return false
+    return Boolean(await writer.write({ type: "claim-owner-email", email: normalizedEmail }))
+  }
+
   const removePerson = async ({
     id,
     actorPersonId,
@@ -670,6 +715,8 @@ export const openAuthStore = async ({
     claimInvite,
     createEmailSignIn,
     claimEmailSignIn,
+    signInTrustedEmail,
+    claimOwnerEmail,
     removePerson,
     getEmailConfig,
     saveEmailConfig,

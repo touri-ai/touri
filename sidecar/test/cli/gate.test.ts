@@ -6,10 +6,10 @@ import { createRateLimiter } from "../../src/cli/auth/rateLimit"
 import { openAuthStore } from "../../src/cli/auth/store"
 import { createSecretStore } from "../../src/cli/host/secretStore"
 import { createStartupAvailability } from "../../src/cli/startupAvailability"
-import { createWebGate, deviceCookieName } from "../../src/cli/web/gate"
+import { createWebGate, deviceCookieName, trustedProxySecretHeader } from "../../src/cli/web/gate"
 import { isDirectLoopback } from "../../src/cli/web/loopback"
 import { directoryAssets, embeddedAssets, type UiAsset, type UiAssets } from "../../src/cli/web/uiAssets"
-import { deviceSession } from "../../src/kernel/device-session"
+import { bindDeviceSession, type DeviceSession, deviceSession } from "../../src/kernel/device-session"
 
 const files: Record<string, UiAsset> = {
   "index.html": { file: new Blob(["<html>app</html>"]), type: "text/html; charset=utf-8", immutable: false },
@@ -683,4 +683,246 @@ test("fresh browsers load join and its assets without a referrer while APIs stay
   expect(page?.status).toBe(200)
   expect(await script?.text()).toBe("js")
   expect(privateApi?.status).toBe(401)
+})
+
+const proxySecret = "a-proxy-secret-that-is-long-enough-123"
+
+const makeTrustedEmailGate = async () => {
+  const { store, secrets } = await makeGate()
+  const gate = createWebGate({
+    store,
+    secrets,
+    ui,
+    trustedProxy: true,
+    trustedEmailHeader: "X-Forwarded-Email",
+    trustedProxySecret: proxySecret,
+    limiter: createRateLimiter({ maxFailures: 3, windowMs: 60_000 }),
+  })
+  const visit = ({
+    path = "/",
+    email,
+    secret = proxySecret,
+    clientIp = "127.0.0.1",
+    method = "GET",
+    headers = {},
+    session,
+  }: {
+    path?: string
+    email?: string
+    secret?: string | null
+    clientIp?: string
+    method?: string
+    headers?: Record<string, string>
+    session?: DeviceSession
+  }) => {
+    const request = new Request(`https://box.example${path}`, {
+      method,
+      headers: {
+        host: "box.example",
+        "x-forwarded-proto": "https",
+        "x-forwarded-host": "box.example",
+        ...(email ? { "x-forwarded-email": email } : {}),
+        ...(secret ? { [trustedProxySecretHeader]: secret } : {}),
+        ...headers,
+      },
+    })
+    if (session) bindDeviceSession(request.signal, session)
+    return gate({ request, url: new URL(request.url), clientIp })
+  }
+  return { store, visit }
+}
+
+const getCookieToken = (response: Response | null): string =>
+  response?.headers.get("set-cookie")?.split(";")[0]?.split("=")[1] ?? ""
+
+test("a trusted proxy identity signs the matching person in on the first page load", async () => {
+  const { store, visit } = await makeTrustedEmailGate()
+  expect(await store.claimOwnerEmail("Owner@Example.test")).toBe(true)
+  const page = await visit({ email: "owner@example.test" })
+  expect(page?.status).toBe(200)
+  expect(await page?.text()).toContain("app")
+  expect(page?.headers.get("set-cookie")).toContain("HttpOnly")
+  expect(page?.headers.get("set-cookie")).toContain("Secure")
+  expect(store.verifyDeviceToken(getCookieToken(page))?.personId).toBe("owner")
+  const login = await visit({ path: "/login", email: "owner@example.test" })
+  expect(login?.status).toBe(303)
+  expect(login?.headers.get("location")).toBe("/")
+  expect(store.verifyDeviceToken(getCookieToken(login))?.personId).toBe("owner")
+})
+
+test("a trusted proxy identity never creates a person or reaches a removed one", async () => {
+  const { store, visit } = await makeTrustedEmailGate()
+  const unknown = await visit({ email: "stranger@example.test" })
+  expect(unknown?.status).toBe(200)
+  expect(unknown?.headers.get("set-cookie")).toBeNull()
+  expect(await unknown?.text()).not.toContain("<html>app</html>")
+  expect(store.listPeople().map((person) => person.email)).not.toContain("stranger@example.test")
+  expect(store.listDevices()).toHaveLength(0)
+})
+
+test("the email header is ignored without the proxy secret or outside loopback", async () => {
+  const { store, visit } = await makeTrustedEmailGate()
+  await store.claimOwnerEmail("owner@example.test")
+  const noSecret = await visit({ email: "owner@example.test", secret: null })
+  const wrongSecret = await visit({ email: "owner@example.test", secret: `${proxySecret}x` })
+  const remote = await visit({ email: "owner@example.test", clientIp: "100.64.0.9" })
+  expect([noSecret, wrongSecret, remote].map((response) => response?.headers.get("set-cookie") ?? null)).toEqual([
+    null,
+    null,
+    null,
+  ])
+  expect(store.listDevices()).toHaveLength(0)
+})
+
+test("the owner takes an email only once and never one another person holds", async () => {
+  const { store } = await makeGate()
+  const invite = await store.createInvite({
+    actorPersonId: "owner",
+    name: "Bia",
+    email: "bia@example.test",
+    role: "member",
+    channelIds: [],
+  })
+  if (!invite.success) throw new Error("Invite setup failed")
+  const member = await store.claimInvite({ token: invite.token, email: "bia@example.test", deviceName: "Phone" })
+  if (!member.success) throw new Error("Invite redemption failed")
+  expect(await store.claimOwnerEmail("bia@example.test")).toBe(false)
+  expect(await store.claimOwnerEmail("owner@example.test")).toBe(true)
+  expect(await store.claimOwnerEmail("other@example.test")).toBe(false)
+  expect(store.getPerson("owner")?.email).toBe("owner@example.test")
+})
+
+const makeProxyMember = async (store: Awaited<ReturnType<typeof openAuthStore>>) => {
+  const invite = await store.createInvite({
+    actorPersonId: "owner",
+    name: "Bia",
+    email: "bia@example.test",
+    role: "member",
+    channelIds: [],
+  })
+  if (!invite.success) throw new Error("Invite setup failed")
+  const member = await store.claimInvite({ token: invite.token, email: invite.invite.email, deviceName: "Phone" })
+  if (!member.success) throw new Error("Invite redemption failed")
+
+  return member
+}
+
+test.each(["/login", "/join", "/pair"])("trusted identity opens the app from %s", async (path) => {
+  const { store, visit } = await makeTrustedEmailGate()
+  await store.claimOwnerEmail("owner@example.test")
+
+  const response = await visit({ path, email: "owner@example.test" })
+
+  expect(response?.status).toBe(303)
+  expect(response?.headers.get("location")).toBe("/")
+  expect(store.verifyDeviceToken(getCookieToken(response))?.personId).toBe("owner")
+})
+
+test("switching proxy accounts replaces the previous browser identity without exposing its session", async () => {
+  const { store, visit } = await makeTrustedEmailGate()
+  await store.claimOwnerEmail("owner@example.test")
+  const member = await makeProxyMember(store)
+  const first = await visit({ email: "owner@example.test" })
+  const cookie = `${deviceCookieName}=${getCookieToken(first)}`
+
+  const denied = await visit({ path: "/api/v1/session", email: "bia@example.test", headers: { cookie } })
+  const page = await visit({ email: "bia@example.test", headers: { cookie } })
+  const nextCookie = `${deviceCookieName}=${getCookieToken(page)}`
+  const session = await visit({ path: "/api/v1/session", email: "bia@example.test", headers: { cookie: nextCookie } })
+
+  expect(denied?.status).toBe(401)
+  expect(page?.status).toBe(200)
+  expect(store.verifyDeviceToken(getCookieToken(page))?.personId).toBe(member.person.id)
+  expect(await session?.json()).toMatchObject({ person: { id: member.person.id, role: "member" } })
+})
+
+test.each(["stranger@example.test", "", "invalid"])(
+  "a proxy identity without membership cannot reuse an owner cookie: %s",
+  async (email) => {
+    const { store, visit } = await makeTrustedEmailGate()
+    await store.claimOwnerEmail("owner@example.test")
+    const first = await visit({ email: "owner@example.test" })
+    const cookie = `${deviceCookieName}=${getCookieToken(first)}`
+
+    const response = await visit({ path: "/api/v1/session", email, headers: { cookie } })
+
+    expect(response?.status).toBe(401)
+    expect(response?.headers.get("set-cookie")).toBeNull()
+  },
+)
+
+test("a socket ticket from the previous proxy identity is refused after switching accounts", async () => {
+  const { store, visit } = await makeTrustedEmailGate()
+  await store.claimOwnerEmail("owner@example.test")
+  await makeProxyMember(store)
+  const first = await visit({ email: "owner@example.test" })
+  const device = store.verifyDeviceToken(getCookieToken(first))
+  if (!device) throw new Error("Proxy sign-in setup failed")
+
+  const response = await visit({
+    path: "/api/v1/events",
+    email: "bia@example.test",
+    headers: { upgrade: "websocket" },
+    session: { deviceId: device.id, active: () => true },
+  })
+
+  expect(response?.status).toBe(401)
+})
+
+test("matching cookies are reused and native bearer identity stays explicit", async () => {
+  const { store, visit } = await makeTrustedEmailGate()
+  await store.claimOwnerEmail("owner@example.test")
+  await makeProxyMember(store)
+  const first = await visit({ email: "owner@example.test" })
+  const token = getCookieToken(first)
+
+  const same = await visit({ email: "owner@example.test", headers: { cookie: `${deviceCookieName}=${token}` } })
+  const native = await visit({
+    path: "/api/v1/session",
+    email: "bia@example.test",
+    headers: { authorization: `Bearer ${token}`, "x-touri-client": "test-client" },
+  })
+
+  expect(same?.headers.get("set-cookie")).toBeNull()
+  expect(await native?.json()).toMatchObject({ person: { id: "owner" } })
+  expect(store.listDevices()).toHaveLength(2)
+})
+
+test.each([
+  { path: "/api/v1/session" },
+  { path: "/api/v1/events", headers: { upgrade: "websocket" } },
+  { path: "/assets/app.js" },
+  { path: "/assets/extensionless" },
+  { path: "/", method: "HEAD" },
+  { path: "/", method: "POST" },
+  { path: "/", headers: { upgrade: "websocket" } },
+])("non-page request never creates a trusted device: %j", async (input) => {
+  const { store, visit } = await makeTrustedEmailGate()
+  await store.claimOwnerEmail("owner@example.test")
+
+  const response = await visit({ ...input, email: "owner@example.test" })
+
+  expect(response?.headers.get("set-cookie")).toBeNull()
+  expect(store.listDevices()).toHaveLength(0)
+})
+
+test("trusted sign-in stays bounded when cookies are discarded", async () => {
+  const { store, visit } = await makeTrustedEmailGate()
+  await store.claimOwnerEmail("owner@example.test")
+
+  const responses = await Promise.all(Array.from({ length: 12 }, () => visit({ email: "owner@example.test" })))
+
+  expect(responses.filter((response) => response?.headers.has("set-cookie"))).toHaveLength(10)
+  expect(store.listDevices()).toHaveLength(10)
+})
+
+test("a removed proxy identity cannot sign in again", async () => {
+  const { store, visit } = await makeTrustedEmailGate()
+  const member = await makeProxyMember(store)
+  await store.removePerson({ id: member.person.id, actorPersonId: "owner" })
+
+  const response = await visit({ email: "bia@example.test" })
+
+  expect(response?.headers.get("set-cookie")).toBeNull()
+  expect(store.listDevices().filter((device) => device.revokedAt === null)).toHaveLength(0)
 })

@@ -17,6 +17,9 @@ export type ServeOptions = {
   noPair: boolean
   uiDir: string | null
   trustedProxy?: boolean
+  trustedEmailHeader?: string
+  trustedProxySecretFile?: string
+  ownerEmail?: string
 }
 
 export type CliCommand =
@@ -57,6 +60,9 @@ const flagKinds: Record<string, FlagKind> = {
   "--path": "value",
   "--thread": "value",
   "--provider": "value",
+  "--trust-proxy-email": "value",
+  "--trust-proxy-secret-file": "value",
+  "--owner-email": "value",
   "--tailscale": "boolean",
   "--trust-proxy": "boolean",
   "--no-pair": "boolean",
@@ -129,11 +135,40 @@ const parseDrainTimeout = (raw: string | undefined): { success: true; timeoutMs:
 // Absolute, so the TOURI_APP_DATA that `serve` exports still resolves from the bots' workspace cwd.
 const dataDirOf = (flags: Flags): string => resolve(expandHome(flags.values["--data-dir"] ?? "~/.touri"))
 
+const headerNamePattern = /^[A-Za-z0-9-]{1,64}$/u
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u
+
+type TrustedIdentity = Pick<ServeOptions, "trustedEmailHeader" | "trustedProxySecretFile" | "ownerEmail">
+
+const parseTrustedIdentity = (flags: Flags): { success: true; identity: TrustedIdentity } | ParseCliError => {
+  const header = flags.values["--trust-proxy-email"]
+  const secretFile = flags.values["--trust-proxy-secret-file"]
+  const ownerEmail = flags.values["--owner-email"]
+  if (header !== undefined && !flags.switches.has("--trust-proxy"))
+    return { success: false, error: "--trust-proxy-email requires --trust-proxy" }
+  if (header !== undefined && !headerNamePattern.test(header))
+    return { success: false, error: "--trust-proxy-email needs a header name, e.g. X-Forwarded-Email" }
+  if ((header === undefined) !== (secretFile === undefined))
+    return { success: false, error: "--trust-proxy-email and --trust-proxy-secret-file go together" }
+  if (ownerEmail !== undefined && !emailPattern.test(ownerEmail.trim()))
+    return { success: false, error: "--owner-email needs an email address" }
+  return {
+    success: true,
+    identity: {
+      ...(header === undefined ? {} : { trustedEmailHeader: header }),
+      ...(secretFile === undefined ? {} : { trustedProxySecretFile: expandHome(secretFile) }),
+      ...(ownerEmail === undefined ? {} : { ownerEmail: ownerEmail.trim() }),
+    },
+  }
+}
+
 const buildServe = (flags: Flags): ParseCliResult => {
   const port = parsePort(flags.values["--port"])
   if (!port.success) return port
   const drainTimeout = parseDrainTimeout(flags.values["--drain-timeout"])
   if (!drainTimeout.success) return drainTimeout
+  const trusted = parseTrustedIdentity(flags)
+  if (!trusted.success) return trusted
   const uiDir = flags.values["--ui-dir"]
   return {
     success: true,
@@ -148,6 +183,7 @@ const buildServe = (flags: Flags): ParseCliResult => {
         ...(flags.switches.has("--trust-proxy") ? { trustedProxy: true } : {}),
         noPair: flags.switches.has("--no-pair"),
         uiDir: uiDir === undefined ? null : expandHome(uiDir),
+        ...trusted.identity,
       },
     },
   }
@@ -255,6 +291,9 @@ export const usageText = `touri - run your touri bots headless
 
 Usage:
   touri serve [--port 8795] [--host 127.0.0.1] [--data-dir ~/.touri] [--drain-timeout 60] [--tailscale | --trust-proxy] [--no-pair] [--ui-dir <dir>]
+              [--trust-proxy-email <header> --trust-proxy-secret-file <file>] [--owner-email <email>]
+                                                  sign in the person whose email the trusted proxy sends;
+                                                  the proxy proves itself with X-Touri-Proxy-Secret
   touri pair [--data-dir <dir>]                     print a one-time pairing code (valid 5 minutes)
   touri pair --client [--url <url>] [--code <code>] [--print-token]
                                                   pair this CLI; optionally print only the device token

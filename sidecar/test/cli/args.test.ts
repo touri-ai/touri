@@ -131,3 +131,31 @@ test("R11-REG-08: binding beyond loopback without an HTTPS proxy warns the opera
   expect(remoteAccessWarning({ host: "localhost", proxied: false })).toBeNull()
   expect(remoteAccessWarning({ host: "127.0.0.1", proxied: true })).toBeNull()
 })
+
+test("serve takes a trusted proxy email header only behind --trust-proxy and with a proxy secret", () => {
+  const parsed = parseCli([
+    "serve",
+    "--trust-proxy",
+    "--trust-proxy-email",
+    "X-Forwarded-Email",
+    "--trust-proxy-secret-file=/run/touri/proxy-secret",
+    "--owner-email",
+    "owner@example.test",
+  ])
+  expect(parsed.success && parsed.command.name === "serve" && parsed.command.options).toMatchObject({
+    trustedProxy: true,
+    trustedEmailHeader: "X-Forwarded-Email",
+    trustedProxySecretFile: "/run/touri/proxy-secret",
+    ownerEmail: "owner@example.test",
+  })
+  expect(parseCli(["serve", "--trust-proxy-email", "X-Forwarded-Email", "--trust-proxy-secret-file", "/s"])).toEqual({
+    success: false,
+    error: "--trust-proxy-email requires --trust-proxy",
+  })
+  expect(parseCli(["serve", "--trust-proxy", "--trust-proxy-email", "X-Forwarded-Email"]).success).toBe(false)
+  expect(
+    parseCli(["serve", "--trust-proxy", "--trust-proxy-email", "Bad Header", "--trust-proxy-secret-file", "/s"])
+      .success,
+  ).toBe(false)
+  expect(parseCli(["serve", "--owner-email", "not-an-email"]).success).toBe(false)
+})
