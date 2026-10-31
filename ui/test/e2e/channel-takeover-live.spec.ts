@@ -75,6 +75,24 @@ for (const viewport of [
       await member.video()?.saveAs(join(directory, `member-${viewport.width}.webm`))
     })
 
+    test("the channel header stays still while another person controls the browser", async ({ context }) => {
+      const { member, card, control } = await openLiveBrowserPages(context, true)
+      const header = member.locator(".group-header.channel-mode")
+      const initialHeight = await header.evaluate((element) => element.getBoundingClientRect().height)
+
+      await card.getByRole("button", { name: "Assumir", exact: true }).click()
+
+      await expect(control).toBeVisible()
+      await expect(header.getByRole("status")).toContainText("Ana está no controle")
+      await expect.poll(() => header.evaluate((element) => element.getBoundingClientRect().height)).toBe(initialHeight)
+
+      await control.getByRole("button", { name: "Devolver para Léo", exact: true }).click()
+
+      await expect(control).toHaveCount(0)
+      await expect(header.getByRole("status")).not.toContainText("Ana está no controle")
+      await expect.poll(() => header.evaluate((element) => element.getBoundingClientRect().height)).toBe(initialHeight)
+    })
+
     test.describe("fluidity", () => {
       test("live browser handoffs preserve the frame budget", async ({ context }, info) => {
         test.setTimeout(120_000)
@@ -131,11 +149,12 @@ for (const viewport of [
   })
 }
 
-const openLiveBrowserPages = async (context: BrowserContext) => {
+const openLiveBrowserPages = async (context: BrowserContext, channelMode = false) => {
   const requester = await context.newPage()
   const member = await context.newPage()
-  await requester.goto("/test/e2e/channel-browser-harness.html?viewer=user-ana&workflow=1")
-  await member.goto("/test/e2e/channel-browser-harness.html?viewer=user-hugo&workflow=1")
+  const mode = channelMode ? "&channelMode=1" : ""
+  await requester.goto(`/test/e2e/channel-browser-harness.html?viewer=user-ana&workflow=1${mode}`)
+  await member.goto(`/test/e2e/channel-browser-harness.html?viewer=user-hugo&workflow=1${mode}`)
   const card = requester.locator(".browser-activity-card")
   const memberCard = member.locator(".browser-activity-card")
   const control = requester.locator(".browser-takeover-view")
