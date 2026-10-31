@@ -1244,7 +1244,16 @@ export const useWorkspace = (
       const groupsRequest = api
         .request("GET /groups", {})
         .then((response) => {
-          if (attempt === generation.current) setData((current) => ({ ...current, groups: response.groups }))
+          if (attempt === generation.current)
+            setData((current) => ({
+              ...current,
+              groups: response.groups,
+              channelFailures: Object.fromEntries(
+                Object.entries(current.channelFailures ?? {}).filter(([id]) =>
+                  response.groups.some((group) => group.id === id),
+                ),
+              ),
+            }))
           return { ...response, loaded: true, notice: null }
         })
         .catch((error: unknown) => {
@@ -1499,7 +1508,7 @@ export const useWorkspace = (
           loading: false,
           notice: null,
           channelNotice: null,
-          historyFailure: { ...getHistoryFailure(error), threadId: current.selectedThreadId },
+          historyFailure: { ...getHistoryFailure(error), threadId: selected.id },
         }
       })
     } finally {
