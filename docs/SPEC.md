@@ -1476,11 +1476,18 @@ Launch:
 - A persisted request waiting for a person expands its browser card immediately, even before
   the tab snapshot arrives or after the provider turn ends. While waiting, the card keeps the live
   page and sanitized web origin visible, stops progress animation, and explains the pause in the
-  person's language beside one primary Take over action. Clicking the page requests the same
-  authorized control session. Other participants can observe but cannot send input. Known login,
+  person's language beside one primary Take over action in the sticky card header. The preview is
+  an image surface; only the explicit Take over action requests the authorized control session.
+  Recovery outcomes appear below that header, outside the scrolling action log. On phones, the compact
+  action log keeps its fixed height and scrolls within the card. Showing all steps or enlarging the
+  preview lets the log grow inside the card. Channel context wraps within the viewport. Other participants
+  can observe but cannot send input. Known login,
   payment and form reasons use localized sentences; custom reasons
   retain the existing sanitization. A channel's composer names the person the browser is waiting for.
 - During remote control, keyboard entry stays beside the sticky handback and privacy controls.
+  The initial preview remains visible until the first live frame renders, while only one screen is
+  exposed to assistive technology. Input waits for that rendered live frame. The inline preview
+  stops during this person's active control session and resumes after handback.
   Resizing tracks the handback button's visibility even when the rest of the controls extend beyond
   the visible history. Private typing stays outside the conversation and handback resumes the same request.
 - Person-initiated control is confirmed by the browser card without an additional top toast.

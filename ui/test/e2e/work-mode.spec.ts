@@ -263,22 +263,22 @@ for (const viewport of [
         const columns = await card
           .locator(".browser-activity-content")
           .evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length)
-        expect(columns).toBe(viewport.width > 1100 ? 2 : 1)
+        expect(columns).toBe(1)
         await expect(card.getByRole("img", { name: "Página atual do navegador" })).toBeVisible()
         await expect(card.getByRole("progressbar")).toBeVisible()
         await expect(card.getByRole("button", { name: "Assumir", exact: true })).toBeEnabled()
         await expect(page.locator(".composer-browser-status")).toHaveCount(1)
-        await expect(card.locator(".browser-activity-subtitle")).toContainText("estadias.example.test")
+        await expect(card.locator(".browser-activity-chrome")).toContainText("estadias.example.test")
         await expect(card.getByText(/estadias\.example\.test/)).toHaveCount(1)
       }
       if (mode === "held") {
         await expect(card.getByRole("progressbar")).toHaveCount(0)
         await expect(card.locator('[data-running="true"]')).toHaveCount(0)
-        await expect(card.getByText("Prévia oculta para o canal enquanto Ana digita")).toBeVisible()
-        await expect(card.locator(".browser-activity-preview img, .browser-activity-preview canvas")).toHaveCount(0)
+        await expect(card.getByRole("status", { name: "Privacidade do navegador" })).toHaveText("Ana está usando")
+        await expect(card.getByRole("img", { name: "Página atual do navegador" })).toBeVisible()
         await expect(page.locator(".composer-browser-status")).toContainText("Ana está no controle")
         await expect(card.getByText("Este navegador está sob seu controle.")).toHaveCount(0)
-        await expect(card.getByText("Uma pessoa está controlando esta aba; o bot está pausado.")).toHaveCount(1)
+        await expect(card.getByRole("button", { name: "Assumir", exact: true })).toHaveCount(0)
       }
       if (mode === "finished") {
         await expect(card.getByRole("button", { name: /Usou o navegador · 4 ações/ })).toBeVisible()

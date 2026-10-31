@@ -87,6 +87,13 @@ for (const width of [390, 1440]) {
     const card = page.getByRole("article", { name: "Navegador do Léo" })
     const image = card.getByRole("img", { name: "Página atual do navegador" })
     await expect(image).toBeVisible()
+    const imageBounds = await image.boundingBox()
+    const previewBounds = await card.locator(".browser-activity-preview-frames").boundingBox()
+
+    expect(imageBounds).not.toBeNull()
+    expect(previewBounds).not.toBeNull()
+    expect(imageBounds?.height ?? Number.POSITIVE_INFINITY).toBeCloseTo(previewBounds?.height ?? 0, 1)
+
     await image.scrollIntoViewIfNeeded()
     await expect(image).toBeInViewport({ ratio: 0.95 })
     const initialBounds = await card.boundingBox()

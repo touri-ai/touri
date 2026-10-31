@@ -160,7 +160,7 @@ for (const viewport of [
       await expect(card).toBeVisible()
       await capture(page, info, "browser")
 
-      const domainVisible = await card.locator(".browser-activity-subtitle").evaluate((element) => {
+      const domainVisible = await card.locator(".browser-activity-chrome").evaluate((element) => {
         const range = document.createRange()
         const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
         const nodes = Array.from({ length: 20 }, () => walker.nextNode()).filter((node) => node !== null)
