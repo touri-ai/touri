@@ -304,6 +304,9 @@
   background: var(--text);
   color: var(--bg);
 }
+.ob-actions > .ds-button-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text) 92%, var(--bg));
+}
 .ob-actions kbd {
   padding: var(--space-2) var(--space-4);
   border: var(--space-1) solid currentColor;

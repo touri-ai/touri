@@ -284,6 +284,8 @@ for (const colorScheme of ["light", "dark"] as const) {
       document.documentElement.dataset.theme = theme
     }, colorScheme)
     const check = async () => {
+      const primary = page.locator("main .ds-button-primary:enabled")
+      if (await primary.count()) await primary.first().hover()
       const result = await new AxeBuilder({ page }).include("main").analyze()
       expect(result.violations).toEqual([])
     }

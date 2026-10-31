@@ -93,6 +93,7 @@ answers, including from import sources to context. Optional questions can be ski
 screens the form and preview grow within one scrollable surface, machine controls fit the width,
 and each question starts at the
 top. The main landmark stays outside named regions so assistive navigation can reach it directly.
+Primary actions preserve readable contrast in both themes, including their hover state.
 
 Import discovery, preview and apply use the authenticated UI transport. Importing requires an
 explicit reviewed selection; secrets stay excluded and copied routines stay paused. Each review
