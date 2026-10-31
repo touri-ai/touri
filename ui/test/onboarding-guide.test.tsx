@@ -572,3 +572,22 @@ it("retries an unchanged first task once and gives edited text a new message non
   expect(nonces[1]).toBe(nonces[0])
   expect(nonces[2]).not.toBe(nonces[1])
 })
+
+it("rejects batches that would evict the server's three preview tickets", async () => {
+  const sources = Array.from({ length: 4 }, (_, index) => ({
+    id: `folder-${index}`,
+    kind: "folder" as const,
+    label: "Pasta exemplo",
+    found: true,
+    path: `/workspace/source-${index}`,
+  }))
+  const { request } = getFixture({ "GET /api/v1/import/sources": { sources } })
+  enterWorkspace()
+  continueSetup()
+  await waitFor(() => expect(screen.getAllByRole("button", { pressed: true })).toHaveLength(4))
+
+  continueSetup()
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("Escolha até 3 fontes")
+  expect(request).not.toHaveBeenCalledWith("POST /api/v1/import/preview", expect.anything())
+})

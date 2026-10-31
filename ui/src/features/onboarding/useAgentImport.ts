@@ -108,6 +108,12 @@ export const useAgentImport = (api: UiApi) => {
   }
   const previewSources = async (manual?: string): Promise<boolean> => {
     if (busy) return false
+    const chosen = sources.filter((source) => selected.includes(source.id))
+    // The server keeps three preview tickets; a larger batch evicts its own first ticket.
+    if (manual === undefined && chosen.length > 3) {
+      setError(t("ob.sourcesLimit"))
+      return false
+    }
     setBusy(true)
     setError(null)
     try {
@@ -122,15 +128,13 @@ export const useAgentImport = (api: UiApi) => {
         return true
       }
       const next = await Promise.all(
-        sources
-          .filter((source) => selected.includes(source.id))
-          .map(async (source) => ({
-            sourceId: source.id,
-            preview: await api.request("POST /api/v1/import/preview", {
-              source: source.kind,
-              ...(source.path ? { path: source.path } : {}),
-            }),
-          })),
+        chosen.map(async (source) => ({
+          sourceId: source.id,
+          preview: await api.request("POST /api/v1/import/preview", {
+            source: source.kind,
+            ...(source.path ? { path: source.path } : {}),
+          }),
+        })),
       )
       savePreviews(next)
       return next.length > 0

@@ -113,6 +113,8 @@ const runGuideFlow = async (page: Page, info: TestInfo, width: number, destinati
   await page.getByRole("button", { name: /Continuar enquanto importa/ }).click()
   await expect(page.getByRole("heading", { name: "O que seus agentes podem usar?" })).toBeVisible()
   await captureStep(`after-computer-${width}`)
+  const overflow = await page.locator(".ob-settings-card").evaluate((card) => card.scrollWidth - card.clientWidth)
+  expect(overflow).toBeLessThanOrEqual(1)
   mock.finishImport()
   await page.getByRole("checkbox", { name: /Navegador/ }).check()
   await page.getByRole("button", { name: /^Continuar/ }).click()

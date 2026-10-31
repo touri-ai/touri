@@ -125,7 +125,10 @@ const capture = async (page: Page, testInfo: TestInfo, name: string, selector = 
     expect(overflow).toBeLessThanOrEqual(1)
   }
   await testInfo.attach(name, {
-    body: await page.screenshot({ path: await getScreenshotPath(name), mask: [page.locator(".setup-pair-code")] }),
+    body: await page.screenshot({
+      path: await getScreenshotPath(name),
+      mask: [page.locator('.setup-pair-code, input[id$="-code"]')],
+    }),
     contentType: "image/png",
   })
 }

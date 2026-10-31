@@ -201,6 +201,7 @@
 .ob-settings-card,
 .ob-agent-card,
 .ob-import-agent {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-16);
@@ -208,6 +209,31 @@
   border: var(--space-1) solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface);
+}
+.ob-settings-card .machine-settings {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+.ob-settings-card .machine-settings > h3 {
+  display: none;
+}
+.ob-settings-card .machine-environment-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-12);
+}
+.ob-settings-card .machine-environment-control {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+.ob-settings-card select {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
 }
 .ob-import-list {
   display: flex;
