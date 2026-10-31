@@ -250,7 +250,7 @@ test("readiness uses the same bounded viewport scales as interactive frames", as
   expect(captures.every((call) => call.params.quality === 60 && call.params.captureBeyondViewport === false)).toBe(true)
 })
 
-test("preview alone restores a new safe document after handback while the private document stays hidden", async () => {
+test("live preview survives handback before bot document clearance", async () => {
   let documentId = 1
   const { engine } = await getFixture({
     getPrivacy: () => ({ documentId, url: "https://example.test/public", title: "Public", hasSensitiveEntry: false }),
@@ -259,7 +259,7 @@ test("preview alone restores a new safe document after handback while the privat
   await engine.releaseTakeover("tab")
   const input = { botId: "bot", tabId: "tab", signal: new AbortController().signal }
 
-  expect(await engine.preview(input)).toBeNull()
+  expect((await engine.preview(input))?.image).toBe("data:image/jpeg;base64,ZmFrZQ==")
   documentId = 2
   const preview = await engine.preview(input)
 
@@ -315,7 +315,7 @@ test.each(["after", "during"])("handback restores a canceled resize when returni
   expect(calls.filter((call) => call.method === "Emulation.clearDeviceMetricsOverride")).toHaveLength(1)
 })
 
-test("unknown private documents recover only after a committed replacement following handback", async () => {
+test("live preview survives private document navigation while bot clearance remains separate", async () => {
   let documentId = 0
   const { engine, emit } = await getFixture({
     getPrivacy: () => ({ documentId, url: "https://example.test/public", title: "Public", hasSensitiveEntry: false }),
@@ -325,7 +325,7 @@ test("unknown private documents recover only after a committed replacement follo
   await engine.releaseTakeover("tab")
   const input = { botId: "bot", tabId: "tab", signal: new AbortController().signal }
 
-  expect(await engine.preview(input)).toBeNull()
+  expect((await engine.preview(input))?.image).toBe("data:image/jpeg;base64,ZmFrZQ==")
   documentId = 2
   emit({
     method: "Page.navigatedWithinDocument",
@@ -335,7 +335,7 @@ test("unknown private documents recover only after a committed replacement follo
       url: "https://example.test/public#results",
     },
   })
-  expect(await engine.preview(input)).toBeNull()
+  expect((await engine.preview(input))?.image).toBe("data:image/jpeg;base64,ZmFrZQ==")
   emit({
     method: "Page.frameNavigated",
     sessionId: "owned-session",
@@ -344,7 +344,7 @@ test("unknown private documents recover only after a committed replacement follo
       type: "BackForwardCacheRestore",
     },
   })
-  expect(await engine.preview(input)).toBeNull()
+  expect((await engine.preview(input))?.image).toBe("data:image/jpeg;base64,ZmFrZQ==")
   emit({
     method: "Page.frameNavigated",
     sessionId: "owned-session",
@@ -366,7 +366,7 @@ test("unknown private documents recover only after a committed replacement follo
       type: "BackForwardCacheRestore",
     },
   })
-  expect(await engine.preview(input)).toBeNull()
+  expect((await engine.preview(input))?.image).toBe("data:image/jpeg;base64,ZmFrZQ==")
 
   documentId = 2
   emit({

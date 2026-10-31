@@ -1459,9 +1459,11 @@ Launch:
 - `browser_request_takeover(tabId, reason)` marks the tab `held_by_user`, brings the Chrome window to the front, and notifies the user ("the bot needs you in the browser: <reason>").
 - The user can also take a tab from the app's Browser panel.
 - A persisted request waiting for a person expands its browser card immediately, even before
-  the tab snapshot arrives or after the provider turn ends. While waiting, the card stops shared
-  preview requests and progress animation, hides page metadata, and explains the pause in the
-  person's language. Known login, payment and form reasons use localized sentences; custom reasons
+  the tab snapshot arrives or after the provider turn ends. While waiting, the card keeps the live
+  page and sanitized web origin visible, stops progress animation, and explains the pause in the
+  person's language beside one primary Take over action. Clicking the page requests the same
+  authorized control session. Other participants can observe but cannot send input. Known login,
+  payment and form reasons use localized sentences; custom reasons
   retain the existing sanitization. A channel's composer names the person the browser is waiting for.
 - During remote control, keyboard entry stays beside the sticky handback and privacy controls.
   Resizing tracks the handback button's visibility even when the rest of the controls extend beyond
@@ -1498,18 +1500,25 @@ Launch:
   and leaves control available for retry; losing the session or changing tabs also clears it.
   Finished historical cards do not subscribe for continuations.
 - Take-over times out after `timeoutMs` (default 10 min), and the tool then returns the current snapshot with a note.
-- Shared previews are withheld during human control and secret entry. Cached and in-flight frames are
-  invalidated on disconnect and main-frame navigation, including history and hash-route changes;
-  iframe navigation cannot replace the main page's metadata. Same-document navigation preserves secret mode.
-- After handback, restore or reconnect, a tab with private input requires fresh verification of a safe
-  document before shared previews resume. Changing the original private document's route does not clear
-  its protection. Decoded paths and hash routes for login/payment pages remain private, malformed routes
-  fail closed, and ordinary query values and anchor names do not classify a page as sensitive.
-- Preview capture performs that verification without requiring a separate snapshot command. Unknown
-  private document identities require a committed replacement after handback; a same-document route
-  change or an unverified history restore cannot release protection. At most 32 verified safe document
-  identities are retained per tab, and disconnect clears that temporary clearance.
-- Post-takeover title and URL metadata remain blank, including after safe shared previews resume.
+- Participants who already have access to the conversation see the live page while the bot waits,
+  during human control and after handback. This is an explicit product trade-off: page pixels,
+  including manually entered visible text, are shared with those participants. Password masking
+  follows the page. Vault secret entry still blocks capture before and after asynchronous work.
+  The shared address shows only a web origin; titles, credentials, paths, queries and fragments
+  stay out of preview metadata. Cached and in-flight frames retain navigation, disconnect and
+  generation fences. Device revocation and conversation authorization are rechecked after capture.
+- Bot tools, snapshots, history and context retain private-document protection after handback,
+  restore or reconnect. Changing a private document's route does not clear it. Safe-document
+  verification remains separate from whether people may see the preview, retains at most 32
+  document identities per tab and clears temporary clearance on disconnect.
+- Browser cards show the bot mascot, waiting/controller state, elapsed time and live-page indicator.
+  Elapsed time is visual and must not trigger a screen-reader announcement every second. During
+  control, the page has an outline and explicit Cancel and Hand back actions in the sticky controls.
+  Cancel discards unsent typing; Hand back flushes it. Both drain already accepted input before
+  releasing control. Other members retain the live page, controller name and recent actions.
+  Starting control retains the last preview and sanitized address until an interactive frame is ready;
+  the retained image cannot authorize input. The next queued request remains visible when the preceding
+  request succeeds, fails or is canceled. Text is available in Portuguese and English.
 
 **R9. Secure secret entry.**
 1. `browser_submit_secret(tabId, fields[], secretName?, submit)`. If `secretName` exists with `usage.browser = true` and `browser_origin` matches the tab's origin, the value is fetched from the Keychain. Otherwise the sidecar asks Rust (`secret.prompt`), which opens the native secret-card window for the user to type it.
@@ -2308,13 +2317,13 @@ The remote layout viewport follows the displayed page size; control/view/target 
 coordinate-based input and frames after a resize, navigation or controller change. Navigation itself
 requires the active controller, allowing Back/Forward/Reload before the next image has arrived. Handback drains accepted input and
 continues on the same page. Only the authorized controller receives the address origin/path; credentials,
-query strings and fragments are omitted. Private previews, bot reads and history retain their protection.
+query strings and fragments are omitted. Shared previews follow the human-viewing policy in R8; bot reads and history retain their protection.
 The input contract adds scoped navigation and pointer phases; there is no database schema change.
 
 Human typing is protected as whole entries when the person leaves a field or returns control, rather
 than registering each incoming character as a process-wide redaction value. Only entries of at least
 eight characters enter that registry; short input remains private through the existing document,
-field-value, preview and bot-read restrictions. Rejected stale input cannot alter the collected entry.
+field-value and bot-read restrictions. Rejected stale input cannot alter the collected entry.
 Uninterrupted input is collected in segments of at most 16,384 characters, protecting the previous
 segment before starting the next. Handoff reasons retain up to 240 sanitized characters and shorten
 longer explanations at a word boundary with an ellipsis.

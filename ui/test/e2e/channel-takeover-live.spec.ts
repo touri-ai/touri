@@ -1,0 +1,247 @@
+import { mkdir, rm, writeFile } from "node:fs/promises"
+import { join, resolve } from "node:path"
+import { type BrowserContext, expect, type Locator, type Page, test } from "@playwright/test"
+import { build } from "vite"
+
+test.use({ channel: "chromium", reducedMotion: "reduce", video: "off" })
+
+const recordingContexts = new Set<BrowserContext>()
+
+test.afterEach(async () => {
+  await Promise.all(Array.from(recordingContexts, (context) => context.close()))
+  recordingContexts.clear()
+})
+
+test.beforeAll(async () => {
+  test.setTimeout(180_000)
+  const root = resolve(import.meta.dirname, "../..")
+
+  // Render and input budgets measure the shipped runtime, without development JSX validation.
+  await build({
+    root,
+    configFile: resolve(root, "vite.config.ts"),
+    base: "/dist/browser-live/",
+    build: {
+      outDir: resolve(root, "dist/browser-live"),
+      rollupOptions: { input: resolve(root, "test/e2e/channel-browser-harness.html") },
+    },
+  })
+})
+
+test.afterAll(async () => {
+  await rm(resolve(import.meta.dirname, "../../dist/browser-live"), { recursive: true, force: true })
+})
+
+for (const viewport of [
+  { width: 1440, height: 900 },
+  { width: 390, height: 844 },
+]) {
+  test.describe(`${viewport.width}px`, () => {
+    test.use({ viewport })
+
+    test("the requester and another channel member see the live page through wait, control and handback", async ({
+      browser,
+      baseURL,
+    }, info) => {
+      test.setTimeout(120_000)
+      if (!baseURL) throw new Error("Browser fixture base URL is missing")
+      // Only this evidence context records video; the performance context uses the worker default.
+      const context = await browser.newContext({
+        baseURL,
+        viewport,
+        reducedMotion: "reduce",
+        colorScheme: "dark",
+        recordVideo: { dir: info.outputPath("videos"), size: viewport },
+      })
+      recordingContexts.add(context)
+      const { requester, member, card, memberCard, control } = await openLiveBrowserPages(context)
+      await expect(memberCard.getByRole("button", { name: "Assumir", exact: true })).toHaveCount(0)
+      await saveEvidence(requester, "requester-wait", info.outputPath("requester-wait.png"))
+      await saveEvidence(member, "member-wait", info.outputPath("member-wait.png"))
+
+      await card.getByRole("button", { name: "Assumir", exact: true }).click()
+
+      await expect(control).toBeVisible()
+      await expect(control.getByRole("application")).toBeVisible()
+      await expect(control.locator("canvas:visible, img").first()).toBeVisible()
+      await expect(control.getByRole("button", { name: "Cancelar", exact: true })).toBeVisible()
+      await expect(member.locator(".channel-chip")).toContainText("Ana está no controle")
+      await expect(memberCard.getByRole("img", { name: "Página atual do navegador" })).toBeVisible()
+      await expect(memberCard.locator(".browser-activity-chrome")).toContainText("estadias.example.test")
+      await saveEvidence(requester, "requester-control", info.outputPath("requester-control.png"))
+      await saveEvidence(member, "member-control", info.outputPath("member-control.png"))
+
+      await control.getByRole("button", { name: "Devolver para Léo" }).click()
+
+      await expect(control).toHaveCount(0)
+      await expect(card.getByRole("img", { name: "Página atual do navegador" })).toBeVisible()
+      await expect(memberCard.getByRole("img", { name: "Página atual do navegador" })).toBeVisible()
+      await expect(member.locator(".channel-chip")).not.toContainText("Ana está no controle")
+      await saveEvidence(requester, "requester-handback", info.outputPath("requester-handback.png"))
+      await saveEvidence(member, "member-handback", info.outputPath("member-handback.png"))
+      await requester.close()
+      await member.close()
+      const directory = process.env.TOURI_E2E_EVIDENCE_DIR
+      if (!directory) return
+
+      await requester.video()?.saveAs(join(directory, `requester-${viewport.width}.webm`))
+      await member.video()?.saveAs(join(directory, `member-${viewport.width}.webm`))
+    })
+
+    test.describe("fluidity", () => {
+      test("live browser handoffs preserve the frame budget", async ({ context }, info) => {
+        test.setTimeout(120_000)
+        const { requester, member, card, control } = await openLiveBrowserPages(context)
+        await card.locator(".browser-activity-page").click()
+        await control.locator(".browser-activity-header .ds-button-primary").click()
+        await expect(control).toHaveCount(0)
+        await requester.bringToFront()
+        await startPerformanceMeasurement(requester)
+        await startPerformanceMeasurement(member)
+        // Keep measurements in input order; each transition finishes before the next starts.
+        const interactions: number[] = []
+        for (const _iteration of Array.from({ length: 12 })) {
+          interactions.push(await measureBrowserInteraction(card.locator(".browser-activity-page")))
+          await expect(control).toBeVisible()
+          interactions.push(
+            await measureBrowserInteraction(control.locator(".browser-activity-header .ds-button-primary")),
+          )
+          await expect(control).toHaveCount(0)
+        }
+        const metrics = {
+          viewport,
+          p95Ms: getP95(interactions),
+          interactionMs: interactions,
+          requester: await getPerformanceMeasurement(requester),
+          member: await getPerformanceMeasurement(member),
+        }
+        await info.attach("browser-fluidity", { body: JSON.stringify(metrics), contentType: "application/json" })
+        if (process.env.TOURI_E2E_EVIDENCE_DIR)
+          await writeFile(
+            join(process.env.TOURI_E2E_EVIDENCE_DIR, `fluidity-${viewport.width}.json`),
+            JSON.stringify(metrics),
+          )
+
+        expect(metrics.p95Ms).toBeLessThan(100)
+        expect(metrics.requester.events.length).toBeGreaterThan(0)
+        expect(getP95(metrics.requester.events)).toBeLessThan(100)
+        expect(metrics.requester.longTasks).toEqual([])
+        expect(metrics.member.longTasks).toEqual([])
+        expect(metrics.requester.cls).toBeLessThan(0.01)
+        expect(metrics.member.cls).toBeLessThan(0.01)
+      })
+    })
+  })
+}
+
+const openLiveBrowserPages = async (context: BrowserContext) => {
+  const requester = await context.newPage()
+  const member = await context.newPage()
+  await requester.goto("/dist/browser-live/test/e2e/channel-browser-harness.html?viewer=user-ana&workflow=1")
+  await member.goto("/dist/browser-live/test/e2e/channel-browser-harness.html?viewer=user-hugo&workflow=1")
+  const card = requester.locator(".browser-activity-card")
+  const memberCard = member.locator(".browser-activity-card")
+  const control = requester.locator(".browser-takeover-view")
+  await expect(card).toHaveAttribute("data-held", "true")
+  await expect(memberCard).toHaveAttribute("data-held", "true")
+  await expect(card.getByRole("img", { name: "Página atual do navegador" })).toBeVisible()
+  await expect(memberCard.getByRole("img", { name: "Página atual do navegador" })).toBeVisible()
+  await requester.evaluate(() => document.fonts.ready)
+  await member.evaluate(() => document.fonts.ready)
+
+  return { requester, member, card, memberCard, control }
+}
+
+const saveEvidence = async (page: Page, name: string, output: string): Promise<void> => {
+  const screenshot = await page.screenshot({ animations: "disabled", fullPage: true })
+  await writeFile(output, screenshot)
+  const directory = process.env.TOURI_E2E_EVIDENCE_DIR
+  if (!directory) return
+
+  await mkdir(directory, { recursive: true })
+  await writeFile(join(directory, `${name}-${page.viewportSize()?.width}.png`), screenshot)
+}
+
+type BrowserMeasurement = { longTasks: number[]; events: number[]; cls: number; shiftSources: string[] }
+type MeasurementWindow = Window & {
+  getBrowserMeasurement?: () => BrowserMeasurement
+  nextBrowserPaint?: Promise<number>
+}
+
+const startPerformanceMeasurement = (page: Page): Promise<void> =>
+  page.evaluate(() => {
+    // These bounded collectors live only for this synthetic browser interaction.
+    const longTasks: number[] = []
+    const events = new Map<number, number>()
+    const shifts: number[] = []
+    const shiftSources: string[] = []
+    const observer = new PerformanceObserver((list) => {
+      list.getEntries().forEach((entry) => {
+        if (entry.entryType === "longtask" && longTasks.length < 200) longTasks.push(entry.duration)
+        const shift = entry as PerformanceEntry & {
+          value?: number
+          hadRecentInput?: boolean
+          sources?: Array<{ node?: Element }>
+        }
+        if (entry.entryType === "layout-shift" && !shift.hadRecentInput && shifts.length < 200) {
+          shifts.push(shift.value ?? 0)
+          shiftSources.push(
+            (shift.sources ?? [])
+              .map(({ node }) => node?.getAttribute?.("class") ?? node?.nodeName ?? "unknown")
+              .join(", "),
+          )
+        }
+      })
+    })
+    observer.observe({ entryTypes: ["longtask", "layout-shift"] })
+    const eventObserver = new PerformanceObserver((list) => {
+      list.getEntries().forEach((entry) => {
+        const interaction = entry as PerformanceEntry & { interactionId?: number }
+        const id = interaction.interactionId
+        if (id && (events.size < 200 || events.has(id))) events.set(id, Math.max(events.get(id) ?? 0, entry.duration))
+      })
+    })
+    eventObserver.observe({ type: "event", durationThreshold: 16 })
+    const fixture = window as MeasurementWindow
+    fixture.getBrowserMeasurement = () => ({
+      longTasks,
+      events: Array.from(events.values()),
+      cls: shifts.reduce((total, value) => total + value, 0),
+      shiftSources,
+    })
+  })
+
+const getPerformanceMeasurement = (page: Page): Promise<BrowserMeasurement> =>
+  page.evaluate(() => {
+    const result = (window as MeasurementWindow).getBrowserMeasurement?.()
+    if (!result) throw new Error("Browser measurement was not started")
+
+    return result
+  })
+
+const measureBrowserInteraction = async (button: Locator): Promise<number> => {
+  await button.scrollIntoViewIfNeeded()
+  const bounds = await button.boundingBox()
+  if (!bounds) throw new Error("Browser control is not laid out")
+
+  await button.evaluate((element) => {
+    const fixture = window as MeasurementWindow
+    fixture.nextBrowserPaint = new Promise<number>((resolve) => {
+      element.addEventListener(
+        "click",
+        () => {
+          const startedAt = performance.now()
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve(performance.now() - startedAt)))
+        },
+        { once: true },
+      )
+    })
+  })
+
+  await button.page().mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+
+  return button.page().evaluate(() => (window as MeasurementWindow).nextBrowserPaint ?? 0)
+}
+
+const getP95 = (samples: number[]): number =>
+  samples.toSorted((first, second) => first - second)[Math.ceil(samples.length * 0.95) - 1] ?? 0

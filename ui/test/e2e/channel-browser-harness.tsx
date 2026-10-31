@@ -1,4 +1,5 @@
 import type { Bot, BotGroup, Message, ToolCallPart } from "@touri/contracts"
+import { useEffect, useMemo, useState } from "react"
 import { createRoot } from "react-dom/client"
 import type { ApiRequest } from "../../src/api/client"
 import { createMockApi } from "../../src/api/mock"
@@ -38,6 +39,7 @@ const getPreview = (): string => {
 }
 
 const state: ChannelBrowserState = {
+  status: params.has("workflow") ? "needs_you" : "running",
   botId: "bot-leo",
   botName: "Léo",
   requesterId: "user-ana",
@@ -67,9 +69,66 @@ const parts = [
 ]
 
 const Fixture = () => {
-  const api = createMockApi()
-  const preview = getPreview()
-  api.request = (async (route: string) => {
+  const [liveState, setLiveState] = useState(state)
+  const transport = useMemo(() => new BroadcastChannel("browser-card-demo"), [])
+  const api = useMemo(() => createMockApi(), [])
+  const preview = useMemo(getPreview, [])
+  const isHeld = liveState.status === "needs_you" || Boolean(liveState.controllerId)
+
+  useEffect(() => {
+    const update = (next: ChannelBrowserState) => setLiveState(next)
+    transport.onmessage = (event: MessageEvent<ChannelBrowserState>) => update(event.data)
+
+    return () => transport.close()
+  }, [transport])
+
+  useEffect(() => {
+    api.emit({
+      type: "browser.tab",
+      tab: {
+        tabId: "tab-1",
+        ownerBotId: "bot-mark",
+        url: "https://estadias.example.test/busca",
+        title: "Estadias",
+        state: "live",
+        openerTabId: null,
+        heldByUser: isHeld,
+        takeoverReason: "login",
+        lastUsedAt: Date.now(),
+      },
+    })
+  }, [api, isHeld])
+
+  const changeControl = (controllerId: string | null): void => {
+    const next = Object.assign({}, liveState, {
+      status: controllerId ? ("taken_over" as const) : ("running" as const),
+      controllerId,
+      controllerName: controllerId ? "Ana" : null,
+    })
+    setLiveState(next)
+    transport.postMessage(next)
+  }
+  api.request = (async (route: string, input?: unknown) => {
+    if (route === "POST /browser/tabs/:id/takeover/session") {
+      changeControl("user-ana")
+      return { sessionId: "demo-session", controlEpoch: "demo-control", viewEpoch: 0 }
+    }
+    if (route === "DELETE /browser/tabs/:id/takeover/session") {
+      changeControl(null)
+      return {}
+    }
+    if (route === "POST /browser/tabs/:id/takeover/input") return {}
+    if (route === "POST /browser/tabs/:id/takeover/frame")
+      return {
+        image: preview,
+        title: "Estadias",
+        url: "https://estadias.example.test/busca",
+        width: 800,
+        height: 500,
+        controlEpoch: "demo-control",
+        targetEpoch: 1,
+        viewEpoch: (input as { viewEpoch?: number } | undefined)?.viewEpoch ?? 0,
+      }
     if (route === "GET /browser/tabs")
       return {
         tabs: [
@@ -80,7 +139,8 @@ const Fixture = () => {
             title: "Estadias",
             state: "live",
             openerTabId: null,
-            heldByUser: tookOver,
+            heldByUser: isHeld,
+            takeoverReason: "login",
             lastUsedAt: Date.now(),
           },
         ],
@@ -118,7 +178,7 @@ const Fixture = () => {
   } satisfies Message
 
   return (
-    <ChannelBrowserContext.Provider value={{ state, viewerId }}>
+    <ChannelBrowserContext.Provider value={{ state: liveState, viewerId }}>
       <div className="channel-demo">
         <GroupSidebar
           groups={[group]}

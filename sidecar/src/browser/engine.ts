@@ -58,6 +58,7 @@ import {
   canResumeAfterHumanTakeover,
   captureCurrentBrowserControlFrame,
   captureSafeBrowserPreview,
+  getLiveBrowserPreviewMetadata,
   HAS_SENSITIVE_ENTRY_EXPRESSION,
   sanitizeHumanTakeoverSnapshot,
   sanitizeHumanTakeoverUrl,
@@ -5443,7 +5444,7 @@ export const createBrowserEngine = ({
         if (!image) return null
         return {
           ...image,
-          // Only the authorized human receives this metadata; previews/history remain private.
+          // Controller navigation keeps its scoped metadata; human input stays out of history.
           url: kernel.redact(getControllerBrowserUrl(tab.info.url)),
           title: "",
           loading: loadingTakeoverTabs.has(tab),
@@ -5718,17 +5719,10 @@ export const createBrowserEngine = ({
       const tab = tabs
         .filter((tab) => tab.info.ownerBotId === botId && (!tabId || tab.info.tabId === tabId))
         .sort((a, b) => b.info.lastUsedAt - a.info.lastUsedAt)[0]
-      if (tab?.info.state !== "live" || !tab.sessionId || tab.secretMode || tab.takeover) return null
+      if (tab?.info.state !== "live" || !tab.sessionId || tab.secretMode) return null
       await refreshTakeoverPrivacy(tab)
       const generation = tab.generation
-      const isCurrent = () =>
-        !retired &&
-        !tab.info.heldByUser &&
-        !tab.secretMode &&
-        !tab.privateAfterTakeover &&
-        !tab.takeover &&
-        tab.info.state === "live" &&
-        tab.generation === generation
+      const isCurrent = () => !retired && !tab.secretMode && tab.info.state === "live" && tab.generation === generation
       const frame = await sharedPreview.capture({
         target: tab.info.tabId,
         generation,
@@ -5746,9 +5740,11 @@ export const createBrowserEngine = ({
           })
           if (!data || data.length > 450_000 || !isCurrent()) return null
 
+          const metadata = getLiveBrowserPreviewMetadata({ url: kernel.redact(tab.info.url) })
+
           return {
-            title: tab.privateInput ? "" : kernel.redact(tab.info.title),
-            url: tab.privateInput ? sanitizeHumanTakeoverUrl(tab.info.url) : kernel.redact(tab.info.url),
+            title: metadata.title,
+            url: metadata.url,
             image: `data:image/jpeg;base64,${data}`,
           }
         },

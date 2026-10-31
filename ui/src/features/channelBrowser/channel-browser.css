@@ -1,6 +1,8 @@
 .channel-chip {
   display: inline-flex;
-  flex: 0 1 auto;
+  flex: 0 1 calc(var(--space-100) * 4);
+  width: min(100%, calc(var(--space-100) * 4));
+  overflow: hidden;
   align-items: center;
   gap: var(--space-8);
   min-height: 30px;
@@ -22,7 +24,7 @@
 .channel-browser-card .browser-activity-header {
   flex-wrap: wrap;
 }
-.channel-browser-card .browser-activity-header > div:first-child {
+.channel-browser-card .browser-activity-header > .browser-activity-heading {
   flex: 1 1 200px;
 }
 .channel-browser-card .channel-visibility {
@@ -42,18 +44,6 @@
   flex: none;
   color: var(--text-2);
   font-size: var(--fs-caption);
-}
-.channel-hidden-preview {
-  display: grid;
-  aspect-ratio: 16 / 10;
-  place-items: center;
-  margin: 0;
-  padding: var(--space-12);
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--surface-control);
-  color: var(--text-2);
-  text-align: center;
 }
 .channel-card-footer {
   display: grid;
@@ -108,7 +98,7 @@
   .channel-chip {
     max-width: 100%;
     overflow: hidden;
-    white-space: normal;
+    white-space: nowrap;
     padding: var(--space-4) var(--space-12);
   }
 }

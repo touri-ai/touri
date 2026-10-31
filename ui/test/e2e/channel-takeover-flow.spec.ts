@@ -22,7 +22,7 @@ for (const viewport of [
   { width: 1440, height: 900 },
   { width: 390, height: 844 },
 ]) {
-  test(`Work channel takeover survives turn completion and resumes privately at ${viewport.width}px`, async ({
+  test(`Work channel takeover survives turn completion and resumes with a live page at ${viewport.width}px`, async ({
     page,
   }, info) => {
     test.setTimeout(120_000)
@@ -83,7 +83,8 @@ for (const viewport of [
     await expect(takeover).toBeVisible()
     await expect(page.locator(".channel-chip")).toContainText("Planejamento no navegador")
     const waitingStatus = await page.locator(".composer-browser-status").textContent()
-    const hiddenWhileWaiting = await card.getByText("Prévia oculta enquanto o navegador espera você.").count()
+    await expect(card.getByRole("img", { name: "Página atual do navegador" })).toBeVisible()
+    const liveWhileWaiting = await card.getByRole("img", { name: "Página atual do navegador" }).count()
     const previewRequests = await page.evaluate(
       () => (window as TakeoverWindow).getChannelTakeoverState?.().previewRequests,
     )
@@ -94,9 +95,11 @@ for (const viewport of [
 
     const control = page.getByRole("region", { name: "Controle remoto do navegador" })
     const handback = control.getByRole("button", { name: "Devolver para Planejamento" })
-    await expect(control).toContainText("Você está no controle · Planejamento está pausado")
+    await expect(control).toContainText("você está usando")
     await expect(handback).toBeInViewport()
     await expect(control.getByRole("status", { name: "Privacidade do navegador" })).toBeInViewport()
+    const headingWidth = await control.locator(".browser-activity-heading").evaluate((element) => element.clientWidth)
+    expect(headingWidth).toBeGreaterThanOrEqual(180)
     const reason = await control.locator(".browser-takeover-reason").textContent()
     await expect(page.locator(".group-panel")).toHaveCount(groupPanelCount)
     await expect(page.locator(".notice-bar")).toHaveCount(0)
@@ -145,7 +148,7 @@ for (const viewport of [
     await screenshot("resumed")
 
     const p95Ms = getP95(interactionMs)
-    const evidence = { viewport, hiddenWhileWaiting, previewRequests, reason, interactionMs, p95Ms, performance }
+    const evidence = { viewport, liveWhileWaiting, previewRequests, reason, interactionMs, p95Ms, performance }
     await info.attach("takeover-state", {
       body: JSON.stringify(evidence),
       contentType: "application/json",
@@ -156,8 +159,8 @@ for (const viewport of [
         JSON.stringify(evidence),
       )
 
-    expect(hiddenWhileWaiting).toBe(1)
-    expect(previewRequests).toBe(0)
+    expect(liveWhileWaiting).toBe(1)
+    expect(previewRequests).toBeGreaterThan(0)
     expect(reason).toContain("O site pediu login para continuar.")
     expect(waitingStatus).toContain("Planejamento está aguardando você no navegador")
   })

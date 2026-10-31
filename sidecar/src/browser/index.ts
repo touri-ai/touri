@@ -1026,21 +1026,11 @@ export const init = async (
           const person = deviceSession(signal)?.person
           if (person && !kernel.services.use("work.canAccessBot")?.({ personId: person.id, role: person.role, botId }))
             return { status: 404, json: { error: "Bot não encontrado" } }
-          if (Array.from(takeoverSessions.values()).some((session) => session.botId === botId))
-            return { status: 409, json: { error: "A prévia fica oculta enquanto alguém controla o navegador." } }
           const visibleTabs = visibleTabsFor(botId, person)
           if (person && query.tabId && !visibleTabs.some((tab) => tab.tabId === query.tabId))
             return { status: 404, json: { error: "Página não encontrada" } }
           const selectedTabId = query.tabId ?? visibleTabs[0]?.tabId
           if (person && !selectedTabId) return { status: 404, json: { error: "Página não encontrada" } }
-          if (selectedTabId && channelRuns.isPreviewHidden(selectedTabId))
-            return {
-              status: 409,
-              json: {
-                errorCode: "BROWSER_PREVIEW_HIDDEN",
-                error: "A prévia fica oculta enquanto alguém está no controle.",
-              },
-            }
           const capture = () =>
             selectedTabId
               ? engine.preview({ botId, tabId: selectedTabId, signal })
