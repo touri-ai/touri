@@ -194,7 +194,7 @@ test.describe("folder picker responsiveness", () => {
       await page.getByRole("textbox", { name: "Nome", exact: true }).fill("Equipe exemplo")
       await page.getByRole("textbox", { name: "Nome", exact: true }).press("Enter")
       await page.getByRole("button", { name: "Pular" }).click()
-      await expect(page.getByRole("button", { name: /Claude Code/ })).toBeVisible()
+      await expect(page.getByRole("button", { name: /Outra pasta de agente/ })).toBeVisible()
       await page.evaluate(() => document.fonts.ready)
       await installPerformanceProbe(page)
 
