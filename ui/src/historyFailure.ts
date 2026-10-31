@@ -57,15 +57,15 @@ export const getWithRetry = async <T>(
 
 const waitFor = (delayMs: number, signal: AbortSignal): Promise<void> =>
   new Promise((resolve, reject) => {
-    const timer = setTimeout(resolve, delayMs)
-    signal.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer)
-        reject(signal.reason)
-      },
-      { once: true },
-    )
+    const abort = (): void => {
+      clearTimeout(timer)
+      reject(signal.reason)
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", abort)
+      resolve()
+    }, delayMs)
+    signal.addEventListener("abort", abort, { once: true })
   })
 
 const isBrowserOnline = (): boolean => typeof navigator === "undefined" || navigator.onLine !== false

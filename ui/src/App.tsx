@@ -682,16 +682,6 @@ const AppContent = ({ kernel }: AppProps) => {
   const selectedGroup = data.groups.find((g) => g.id === selectedThread?.groupId) ?? null
   const historyFailure =
     data.historyFailure && data.historyFailure.threadId === selectedThread?.id ? data.historyFailure : null
-  const offlineHistory = historyFailure?.kind === "offline"
-  const refreshWorkspace = actions.refresh
-  // An offline read retries by itself once the device is back online.
-  useEffect(() => {
-    if (!offlineHistory) return
-
-    const retry = () => void refreshWorkspace()
-    window.addEventListener("online", retry)
-    return () => window.removeEventListener("online", retry)
-  }, [offlineHistory, refreshWorkspace])
   const modeSelections = useRef<Partial<Record<WorkspaceMode, ModeSelection>>>({})
   const [sidebarModeRequest, setSidebarModeRequest] = useState<{ mode: WorkspaceMode; id: number } | null>(null)
   const selectedChannel = Boolean(selectedThread?.groupId || selectedThread?.groupThreadId)

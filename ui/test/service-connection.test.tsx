@@ -211,6 +211,61 @@ test("reconnection clears the selected history's service error without a new ser
   expect(hook.result.current.data.notice).toBeNull()
 })
 
+test.each(["reconnect", "online"] as const)(
+  "%s recovers a failed conversation without another server event or manual retry",
+  async (recovery) => {
+    const mock = createMockApi()
+    const failRead = vi
+      .fn<() => void>()
+      .mockImplementationOnce(() => {
+        throw new ApiError(503, "Restarting", "RUNTIME_DRAINING")
+      })
+      .mockImplementationOnce(() => {
+        throw new ApiError(503, "Restarting", "RUNTIME_DRAINING")
+      })
+    const request: ApiRequest = async (route, input, path) => {
+      if (route === "GET /threads/:id/messages") failRead()
+      return mock.request(route, input, path)
+    }
+    const client = makeConnectionClient({ ...mock, request, isMock: false, cursorReady: async () => undefined })
+    const hook = renderHook(() => useWorkspace(client.api))
+    await waitFor(() => expect(hook.result.current.data.historyFailure?.code).toBe("TOURI-E1009"), {
+      timeout: 4000,
+    })
+    expect(hook.result.current.data.notice).toBeNull()
+
+    act(() => {
+      if (recovery === "reconnect") client.reconnect()
+      else window.dispatchEvent(new Event("online"))
+    })
+
+    await waitFor(() => expect(hook.result.current.data.messages.length).toBeGreaterThan(0))
+    expect(hook.result.current.data.historyFailure).toBeNull()
+    expect(hook.result.current.data.notice).toBeNull()
+    expect(failRead).toHaveBeenCalledTimes(3)
+  },
+)
+
+test("reconnecting does not retry a deleted conversation", async () => {
+  const mock = createMockApi()
+  const read = vi.fn<() => void>().mockImplementation(() => {
+    throw new ApiError(404, "Thread not found", "NOT_FOUND")
+  })
+  const request: ApiRequest = async (route, input, path) => {
+    if (route === "GET /threads/:id/messages") read()
+    return mock.request(route, input, path)
+  }
+  const client = makeConnectionClient({ ...mock, request, isMock: false, cursorReady: async () => undefined })
+  const hook = renderHook(() => useWorkspace(client.api))
+  await waitFor(() => expect(hook.result.current.data.historyFailure?.kind).toBe("deleted"))
+
+  await act(async () => client.reconnect())
+  await act(async () => window.dispatchEvent(new Event("online")))
+
+  expect(read).toHaveBeenCalledTimes(1)
+  expect(hook.result.current.data.historyFailure?.kind).toBe("deleted")
+})
+
 test.each(["pt-BR", "en"] as const)("service errors identify touri instead of the AI in %s", (locale) => {
   const failures = [
     new ApiError(0, "", undefined, "TOURI-E1009"),

@@ -63,3 +63,18 @@ test("a second failure is reported instead of retrying again", async () => {
   await settled
   expect(read).toHaveBeenCalledTimes(2)
 })
+
+test("canceling a conversation read during backoff stops the retry", async () => {
+  vi.useFakeTimers()
+  const controller = new AbortController()
+  const read = vi.fn<() => Promise<string>>().mockRejectedValue(new ApiError(503, "", "RUNTIME_DRAINING"))
+  const result = getWithRetry(read, { signal: controller.signal, delayMs: 1000 })
+  const settled = expect(result).rejects.toMatchObject({ name: "AbortError" })
+  await vi.advanceTimersByTimeAsync(100)
+
+  controller.abort()
+  await vi.advanceTimersByTimeAsync(1000)
+
+  await settled
+  expect(read).toHaveBeenCalledTimes(1)
+})

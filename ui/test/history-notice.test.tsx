@@ -33,7 +33,7 @@ test("a failed read stays inside the conversation and keeps the saved messages i
       onOpenTools={vi.fn()}
     />,
   )
-  const notice = screen.getByRole("alert")
+  const notice = await screen.findByRole("alert")
   fireEvent.click(within(notice).getByRole("button", { name: "Tentar de novo" }))
 
   expect(notice.closest(".chat-panel")).not.toBeNull()

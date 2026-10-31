@@ -1821,9 +1821,13 @@ export const useWorkspace = (
           refreshing = null
         })
     }
+    const hasFailedHistory = (): boolean => {
+      const failure = currentData.current.historyFailure
+      return Boolean(failure && failure.kind !== "deleted" && failure.threadId === currentData.current.selectedThreadId)
+    }
     const refreshOnReturn = (): void => {
       // Cursor-aware transports reconnect on return and replay changes without refetching valid history.
-      if (api.cursorReady && !currentData.current.notice) return
+      if (api.cursorReady && !currentData.current.notice && !hasFailedHistory()) return
       refreshAttention()
     }
     let wasHidden = document.visibilityState === "hidden"
@@ -1842,7 +1846,7 @@ export const useWorkspace = (
         resync()
         return
       }
-      if (currentData.current.notice) refreshAttention()
+      if (currentData.current.notice || hasFailedHistory()) refreshAttention()
     })
     // Subscribe first, then load: the snapshot starts where live delivery does.
     void (api.cursorReady?.() ?? Promise.resolve()).then(() => {
