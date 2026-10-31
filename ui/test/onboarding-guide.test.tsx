@@ -761,9 +761,12 @@ it("allocates distinct names to matching sources and submits the reviewed names"
   continueSetup()
   const names = await screen.findAllByRole("textbox", { name: "Nome do agente" })
 
+  const secondName = names[1]
+  if (!secondName) throw new Error("Missing second name field")
+
   expect(names[0]).toHaveValue("dev")
-  expect(names[1]).toHaveValue("dev 2")
-  fireEvent.change(names[1] as HTMLElement, { target: { value: "Revisão" } })
+  expect(secondName).toHaveValue("dev 2")
+  fireEvent.change(secondName, { target: { value: "Revisão" } })
   fireEvent.click(screen.getByRole("button", { name: /Importar selecionados/ }))
 
   await waitFor(() =>
@@ -786,8 +789,11 @@ it("blocks blank and duplicate reviewed agent names", async () => {
   continueSetup()
   const names = await screen.findAllByRole("textbox", { name: "Nome do agente" })
 
-  fireEvent.change(names[1] as HTMLElement, { target: { value: "dev" } })
+  const secondName = names[1]
+  if (!secondName) throw new Error("Missing second name field")
+
+  fireEvent.change(secondName, { target: { value: "dev" } })
   expect(screen.getByRole("button", { name: /Importar selecionados/ })).toBeDisabled()
-  fireEvent.change(names[1] as HTMLElement, { target: { value: " " } })
+  fireEvent.change(secondName, { target: { value: " " } })
   expect(screen.getByRole("button", { name: /Importar selecionados/ })).toBeDisabled()
 })

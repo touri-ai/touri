@@ -3,6 +3,7 @@ import { readdir, readFile } from "node:fs/promises"
 import { join } from "node:path"
 import type { AgentImportPreview, AgentImportResult, Bot, Routine } from "@touri/contracts"
 import { createAgentImportRoutes } from "../../src/agent-import/routes"
+import { init as initGroups } from "../../src/groups"
 import { allItems, installImportCleanup, makeHarness, makePayload, makeSession, waitFor } from "./harness"
 
 installImportCleanup()
@@ -396,4 +397,29 @@ test("rejects invalid reviewed names and keys before writing bots", async () => 
 
   const bots = (await (await fixture.request("GET", "/bots")).json()) as { bots: Bot[] }
   expect(bots.bots).toHaveLength(0)
+})
+
+test("detected and folder sources create distinct bots that can join the same channel", async () => {
+  const fixture = await makeHarness()
+  await initGroups(fixture.runtime.kernel)
+  await fixture.write(".claude/CLAUDE.md", "Revise o código.")
+  await fixture.write("export/AGENTS.md", "Organize as notas.")
+  const sources = [{ source: "claude-code" }, { source: "folder", path: join(fixture.home, "export") }]
+  // Record only the two fixture IDs returned by sequential source transactions.
+  const memberIds: string[] = []
+
+  for (const source of sources) {
+    const previewResponse = await fixture.request("POST", "/import/preview", source)
+    const preview = (await previewResponse.json()) as AgentImportPreview
+    const response = await fixture.request("POST", "/import/apply", {
+      previewId: preview.previewId,
+      select: { [preview.agents[0]?.key ?? ""]: allItems },
+    })
+    const result = (await response.json()) as AgentImportResult
+    expect(response.status).toBe(200)
+    memberIds.push(result.bots[0]?.botId ?? "")
+  }
+  const group = await fixture.request("POST", "/groups", { name: "geral", memberIds })
+
+  expect(group.status).toBe(201)
 })
