@@ -10,6 +10,7 @@ import {
 } from "@touri/contracts"
 import type { ServerWebSocket } from "bun"
 import { retryDeletedBrowserSessionKeys } from "../browser/sessionVault"
+import { readJsonBody } from "../cli/web/body"
 import { compressBufferedResponse } from "../cli/web/compression"
 import { isDirectLoopback } from "../cli/web/loopback"
 import { getHostIdentity } from "../platform/host"
@@ -182,6 +183,9 @@ const readBrowserTakeoverBody = async (request: Request): Promise<string | null>
 
 const parseBody = async (request: Request): Promise<unknown> => {
   if (["GET", "HEAD"].includes(request.method)) return {}
+  if (/\/import\/(?:preview|apply|undo)$/.test(new URL(request.url).pathname)) {
+    return readJsonBody(request, { maxBytes: 256 * 1024 }).catch(() => null)
+  }
   const text = isBrowserTakeoverRequest(request) ? await readBrowserTakeoverBody(request) : await request.text()
   if (text === null) return null
   if (!text) return {}

@@ -3,6 +3,10 @@ import { expect, test, vi } from "vitest"
 import { apiRouteKeys, createApiClient, resolveSidecarEndpoint, type TauriInvoke } from "../src/api/client"
 
 const contractRouteKeys: Array<keyof ApiRoutes> = [
+  "GET /api/v1/import/sources",
+  "POST /api/v1/import/preview",
+  "POST /api/v1/import/apply",
+  "POST /api/v1/import/undo",
   "GET /session",
   "GET /push",
   "PUT /push",
@@ -393,4 +397,23 @@ test("group validation fields survive API parsing without trusting remote error 
   await expect(response).rejects.toThrow(
     "avatarShape: informe um formato de mascote válido, como classic-none. [TOURI-E1001]",
   )
+})
+
+test("agent import routes use the versioned API and send reviewed selections unchanged", async () => {
+  const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+    Response.json({ importId: "fixture", bots: [], pausedRoutines: 0, reconnect: [] }),
+  )
+  const api = createApiClient({
+    endpoint: { baseUrl: "http://127.0.0.1:1", wsUrl: "ws://127.0.0.1:1/events", token: "fixture" },
+    fetchImpl,
+  })
+  const input = {
+    previewId: "preview",
+    select: { "agent-1": { instructions: true, skills: false, memories: true, routines: false } },
+  }
+
+  await api.request("POST /api/v1/import/apply", input)
+
+  expect(fetchImpl.mock.calls[0]?.[0]).toBe("http://127.0.0.1:1/api/v1/import/apply")
+  expect(JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body))).toEqual(input)
 })

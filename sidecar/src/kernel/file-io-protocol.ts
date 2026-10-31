@@ -3,6 +3,9 @@ import type { FileWrite } from "./files"
 
 export type FileIoTask =
   | { operation: "flush" }
+  | { operation: "agent-import-config"; args: { path: string } }
+  | { operation: "agent-import-file"; args: { path: string } }
+  | { operation: "agent-import-manual"; args: { payload: unknown } }
   | { operation: "workspace-image"; args: WorkspaceImageInput }
   | { operation: "read-image"; args: { root: string; path: string } }
   | { operation: "read-attachment"; args: { root: string; path: string } }

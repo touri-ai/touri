@@ -493,6 +493,14 @@ export const init = async (
       },
     ],
   }
+  kernel.services.provide("agentImport.routines", {
+    create: ({ botId, name, schedule, prompt }) =>
+      engine.createRoutine({
+        input: routineInput({ args: { name, cron: schedule, prompt, timezone: "UTC" }, botId, enabled: false }),
+        forceDisabled: true,
+      }),
+    remove: engine.deleteRoutine,
+  })
   kernel.registerRoutes(routes)
 
   const routineList: ToolHandler = async ({ ctx }) =>

@@ -32,6 +32,10 @@ export const webEndpoint = (location: Pick<Location, "protocol" | "host">): Endp
 const authHeaders = (token: string): Record<string, string> => (token ? { Authorization: `Bearer ${token}` } : {})
 
 export const apiRouteKeys = [
+  "GET /api/v1/import/sources",
+  "POST /api/v1/import/preview",
+  "POST /api/v1/import/apply",
+  "POST /api/v1/import/undo",
   "GET /session",
   "GET /push",
   "PUT /push",
@@ -564,7 +568,8 @@ export const createApiClient = ({
     const body =
       route === "PATCH /bots/:id" ? await getBotEditBody(input, undefined, transport.signal) : JSON.stringify(input)
     const send = (): Promise<Response> => {
-      const url = `${endpoint.baseUrl}/api/v1${path}${query ? `?${query}` : ""}`
+      const apiPath = path.startsWith("/api/v1/") ? path : `/api/v1${path}`
+      const url = `${endpoint.baseUrl}${apiPath}${query ? `?${query}` : ""}`
       const headers = { ...authHeaders(endpoint.token), ...(!isGet ? { "Content-Type": "application/json" } : {}) }
       return fetchImpl(url, {
         method,

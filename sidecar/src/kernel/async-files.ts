@@ -1,3 +1,4 @@
+import type { ImportFileRead, ImportSnapshot } from "../agent-import/model"
 import type { WorkspaceImageInput, WorkspaceImageResult } from "../vm/evidence-local"
 import { createFileIoLane, logIoByteLimit } from "./file-io-client"
 import type { FileIoTask } from "./file-io-protocol"
@@ -103,3 +104,14 @@ export const getAttachmentBytesAsync = (args: {
   path: string
 }): Promise<{ bytes: Uint8Array; mime: string }> =>
   imageIo.run({ operation: "read-attachment", args }).then((result) => result as { bytes: Uint8Array; mime: string })
+
+export const getAgentImportConfigAsync = (path: string): Promise<{ names: string[]; secrets: number; bytes: number }> =>
+  runFileIoTask({ operation: "agent-import-config", args: { path } }).then(
+    (result) => result as { names: string[]; secrets: number; bytes: number },
+  )
+
+export const getAgentImportFileAsync = (path: string): Promise<ImportFileRead> =>
+  runFileIoTask({ operation: "agent-import-file", args: { path } }).then((result) => result as ImportFileRead)
+
+export const getAgentImportManualAsync = (payload: unknown): Promise<ImportSnapshot> =>
+  runFileIoTask({ operation: "agent-import-manual", args: { payload } }).then((result) => result as ImportSnapshot)

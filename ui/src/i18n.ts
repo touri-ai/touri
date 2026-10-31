@@ -5,6 +5,13 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "Claude Code": "Claude Code",
+  "Agente importado": "Agente importado",
+  "Agente {number}": "Agente {number}",
+  "Rotina {number}": "Rotina {number}",
+  "A prévia expirou. Revise os agentes novamente.": "A prévia expirou. Revise os agentes novamente.",
+  "Outra pasta de agente": "Outra pasta de agente",
+  "Outro app (pedido de exportação)": "Outro app (pedido de exportação)",
   "Escolha um canal": "Escolha um canal",
   "O script {task} será executado {schedule}.": "O script {task} será executado {schedule}.",
   "Se a execução anterior ainda estiver ativa": "Se a execução anterior ainda estiver ativa",
@@ -3599,6 +3606,13 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Claude Code": "Claude Code",
+  "Agente importado": "Imported agent",
+  "Agente {number}": "Agent {number}",
+  "Rotina {number}": "Routine {number}",
+  "A prévia expirou. Revise os agentes novamente.": "The preview expired. Review the agents again.",
+  "Outra pasta de agente": "Another agent folder",
+  "Outro app (pedido de exportação)": "Another app (export request)",
   "Escolha um canal": "Choose a channel",
   "O script {task} será executado {schedule}.": "Script {task} will run {schedule}.",
   "Se a execução anterior ainda estiver ativa": "If the previous execution is still active",

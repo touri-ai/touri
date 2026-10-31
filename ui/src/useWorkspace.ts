@@ -2716,7 +2716,7 @@ const getOptionalWorkspaceRead = async <Value, Fallback>(
 }
 
 const getHistoryEventThreadId = (event: UiEvent): string | null => {
-  if ("message" in event) return event.message.threadId
+  if (event.type === "message.created" || event.type === "message.updated") return event.message.threadId
   if ("threadId" in event && typeof event.threadId === "string") return event.threadId
   if (event.type === "run.updated") return event.run.threadId
   if (event.type === "thread.updated") return event.thread.id

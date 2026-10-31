@@ -1,5 +1,7 @@
 import { readdirSync, statSync } from "node:fs"
 import { join } from "node:path"
+import { getImportConfig, getImportFile } from "../agent-import/config"
+import { getManualSnapshot } from "../agent-import/manual"
 import { startHelperWorker } from "../platform/helper-worker"
 import { removeBotHomeDirectory } from "../vm/bot-home-cleanup"
 import { getLocalImageBytes, getWorkspaceImage } from "../vm/evidence-local"
@@ -38,6 +40,9 @@ const rotateLog = ({
 }
 
 const execute = (task: FileIoTask): unknown => {
+  if (task.operation === "agent-import-file") return getImportFile(task.args.path)
+  if (task.operation === "agent-import-manual") return getManualSnapshot(task.args.payload)
+  if (task.operation === "agent-import-config") return getImportConfig(task.args.path)
   if (task.operation === "workspace-image") return getWorkspaceImage(task.args)
   if (task.operation === "read-image") return getLocalImageBytes(task.args.root, task.args.path)
   if (task.operation === "read-attachment") {

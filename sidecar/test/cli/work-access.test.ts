@@ -721,3 +721,18 @@ test("instruction reads use the same bot scope as conversation history", () => {
   expect(authorize("team-bot")).toBeNull()
   expect(authorize("other-bot")).toMatchObject({ status: 404 })
 })
+
+test("agent import progress is visible only to the owner, including among administrators", () => {
+  const event: UiEvent = {
+    type: "agent.import.progress",
+    importId: "fixture",
+    agentKey: "agent-1",
+    step: "done",
+    done: 4,
+    total: 4,
+  }
+
+  expect(access.visibleEvent({ personId: "owner", role: "admin", event })).toBe(true)
+  expect(access.visibleEvent({ personId: "other-admin", role: "admin", event })).toBe(false)
+  expect(access.visibleEvent({ personId: "member", role: "member", event })).toBe(false)
+})

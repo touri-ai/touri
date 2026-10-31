@@ -1,4 +1,5 @@
 import type { ApiModel, ApiModelConnection, ApiModelError, ApiModelInput, ApiModelTest } from "./api-models"
+import type { AgentImportProgress, AgentImportRoutes } from "./agent-import"
 import type { HostKind } from "./host"
 
 /**
@@ -1066,7 +1067,7 @@ export type WorkEmailConfiguration =
     }
   | { transport: 'http'; endpoint: string; fromEmail: string; fromName: string; teamName: string }
 
-export type ApiRoutes = {
+export type ApiRoutes = AgentImportRoutes & {
   'GET /people': {
     req: {}
     res: {
@@ -1399,6 +1400,7 @@ export type StorageMaintenanceStatus = { running: boolean; processed: number; to
 
 /** Server → UI push events on the WebSocket. Each carries a monotonically increasing `seq`. */
 export type UiEvent =
+  | ({ type: 'agent.import.progress' } & AgentImportProgress)
   | { type: 'group.updated'; group: BotGroup }
   | { type: 'group.deleted'; groupId: Id }
   | { type: 'machine.updated'; machine: MachineState }
@@ -1737,6 +1739,8 @@ export type ServiceMap = {
   'work.canApprove': (input: { personId: Id; approvalId: Id }) => boolean
   'work.channelPeople': (groupId: Id) => Array<ChannelPerson>
   'work.defaultPersonId': () => Id
+  'agentImport.createBot': (input: { id: Id; name: string; role?: string; instructions: string; signal: AbortSignal }) => Promise<Bot | null>
+  'agentImport.routines': { create: (input: { botId: Id; name: string; schedule: string; prompt: string }) => Result<{ routine: Routine }>; remove: (id: Id) => Result<object> }
   'bots.validateCreation': (body: unknown) => Result<{ input: CreateBotInput }>
   'bots.create': (input: {
     body: unknown
@@ -1778,6 +1782,7 @@ export type ServiceMap = {
   'doctor': { start: () => void; dispose: () => void; snapshot: (refresh?: boolean) => DoctorReport; settled: () => Promise<void> }
   'storage.maintenance': { scheduleSessionKeyRetry: () => void; start: (vacuum?: boolean) => boolean; snapshot: () => StorageMaintenanceStatus; dispose: (options?: { closing?: boolean }) => Promise<void> }
   'storage.botDeletion': { dispose: () => void }
+  'agentImport.deleteBot': (botId: Id) => boolean
   'notify.recovery': { ready: Promise<void>; dispose: () => Promise<void> }
   'storage.threadTitles': { dispose: () => void; getRoutineTitles: (threadIds: readonly Id[], signal: AbortSignal) => Promise<ReadonlyMap<Id, RoutineThreadTitle>> }
   'storage.threadDeletion': { dispose: () => Promise<void> }
