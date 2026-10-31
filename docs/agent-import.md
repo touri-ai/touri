@@ -49,6 +49,8 @@ Memórias de até 3.000 caracteres usam `MEMORY.md` no formato do aprendizado ex
 
 ## Progresso e desfazer
 
+As chaves dos agentes são opacas e exclusivas de cada prévia; use os valores retornados ao selecionar e acompanhar o progresso de várias fontes.
+
 O stream existente publica eventos `agent.import.progress` com os campos de `AgentImportProgress`: `importId`, `agentKey`, `step`, `done` e `total`. Os passos são `instructions`, `skills`, `memories`, `routines`, `done` e `failed`. As contagens são passos concluídos por agente, de zero a quatro; não representam bytes. Eventos não contêm arquivos, caminhos de origem nem segredos.
 
 Um registro durável guarda apenas os IDs de bots e rotinas criados. Desfazer continua disponível depois de reiniciar, usa a exclusão progressiva existente e preserva bots anteriores. `removedBots` conta as exclusões iniciadas; a limpeza física continua em segundo plano. Repetir o desfazer retorna zero. Falhas durante a aplicação iniciam a limpeza dos recursos já criados. Não há sobrescrita de bots existentes.

@@ -90,14 +90,19 @@ export const createAgentImportRoutes = (
             signal,
           })
     if (!authorize(signal)) return error(403, "FORBIDDEN")
+    const previewId = kernel.newId()
+    const scopedSnapshot: ImportSnapshot = {
+      ...snapshot,
+      agents: snapshot.agents.map((agent) => ({ ...agent, key: `${previewId}:${agent.key}` })),
+    }
     const result: AgentImportPreview = {
-      previewId: kernel.newId(),
+      previewId,
       source,
-      agents: snapshot.agents.map(getAgentPreview),
+      agents: scopedSnapshot.agents.map(getAgentPreview),
       excluded: snapshot.excluded,
       expiresAt: now() + PREVIEW_TTL_MS,
     }
-    previews.set(result.previewId, { preview: result, snapshot })
+    previews.set(result.previewId, { preview: result, snapshot: scopedSnapshot })
 
     return { status: 200, json: result }
   }

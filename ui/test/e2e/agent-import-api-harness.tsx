@@ -44,7 +44,7 @@ const Harness = () => {
     if (!preview) return null
     const value = await api.request("POST /api/v1/import/apply", {
       previewId: preview.previewId,
-      select: { "agent-1": { instructions: true, skills: true, memories: true, routines: true } },
+      select: { [preview.agents[0]?.key ?? ""]: { instructions: true, skills: true, memories: true, routines: true } },
     })
     setResult(value)
     return value

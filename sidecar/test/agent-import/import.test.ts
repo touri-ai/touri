@@ -21,7 +21,7 @@ test("manual preview writes nothing; apply copies selected resources, pauses rou
 
   const applied = await fixture.request("POST", "/import/apply", {
     previewId: preview.previewId,
-    select: { "agent-1": allItems },
+    select: { [preview.agents[0]?.key ?? ""]: allItems },
   })
   const result = (await applied.json()) as AgentImportResult
   const botId = result.bots[0]?.botId ?? ""
@@ -52,7 +52,7 @@ test("manual preview writes nothing; apply copies selected resources, pauses rou
 
   const repeated = await fixture.request("POST", "/import/apply", {
     previewId: preview.previewId,
-    select: { "agent-1": allItems },
+    select: { [preview.agents[0]?.key ?? ""]: allItems },
   })
 
   expect(await repeated.json()).toEqual(result)
@@ -92,7 +92,10 @@ test("folder copy preserves the source and does not touch an existing bot when u
     await fixture.request("POST", "/import/preview", { source: "folder", path: join(fixture.home, "export") })
   ).json()) as AgentImportPreview
   const result = (await (
-    await fixture.request("POST", "/import/apply", { previewId: preview.previewId, select: { "agent-1": allItems } })
+    await fixture.request("POST", "/import/apply", {
+      previewId: preview.previewId,
+      select: { [preview.agents[0]?.key ?? ""]: allItems },
+    })
   ).json()) as AgentImportResult
   const bot = fixture.runtime.kernel.services.use("store.api")?.getBot({ botId: result.bots[0]?.botId ?? "" })
 
@@ -162,7 +165,7 @@ test("preview expires and invalid selections cannot create bots", async () => {
 
   const expired = await fixture.request("POST", "/import/apply", {
     previewId: preview.previewId,
-    select: { "agent-1": allItems },
+    select: { [preview.agents[0]?.key ?? ""]: allItems },
   })
 
   expect(invalid.status).toBe(400)
@@ -178,7 +181,9 @@ test("unchecked categories create no artifacts and undo is idempotent", async ()
   const result = (await (
     await fixture.request("POST", "/import/apply", {
       previewId: preview.previewId,
-      select: { "agent-1": { instructions: false, skills: false, memories: false, routines: false } },
+      select: {
+        [preview.agents[0]?.key ?? ""]: { instructions: false, skills: false, memories: false, routines: false },
+      },
     })
   ).json()) as AgentImportResult
   const botId = result.bots[0]?.botId ?? ""
@@ -206,7 +211,7 @@ test("apply uses reviewed content even when the source changes and preserves lar
 
   const response = await fixture.request("POST", "/import/apply", {
     previewId: preview.previewId,
-    select: { "agent-1": allItems },
+    select: { [preview.agents[0]?.key ?? ""]: allItems },
   })
   const result = (await response.json()) as AgentImportResult
   const botId = result.bots[0]?.botId ?? ""
@@ -235,12 +240,12 @@ test("a copy failure rolls back the newly created bot and does not duplicate it 
 
   const response = await fixture.request("POST", "/import/apply", {
     previewId: preview.previewId,
-    select: { "agent-1": allItems },
+    select: { [preview.agents[0]?.key ?? ""]: allItems },
   })
   await waitFor(() => !fixture.database.query("SELECT id FROM bots LIMIT 1").get())
   const retry = await fixture.request("POST", "/import/apply", {
     previewId: preview.previewId,
-    select: { "agent-1": allItems },
+    select: { [preview.agents[0]?.key ?? ""]: allItems },
   })
 
   expect(response.status).toBe(500)
@@ -259,12 +264,16 @@ test("concurrent source previews are serialized and concurrent apply retries cre
 
   const applied = await Promise.all(
     [1, 2].map(() =>
-      fixture.request("POST", "/import/apply", { previewId: preview.previewId, select: { "agent-1": allItems } }),
+      fixture.request("POST", "/import/apply", {
+        previewId: preview.previewId,
+        select: { [preview.agents[0]?.key ?? ""]: allItems },
+      }),
     ),
   )
   const results = await Promise.all(applied.map((response) => response.json() as Promise<AgentImportResult>))
 
   expect(responses.map((response) => response.status)).toEqual([200, 200])
+  expect(previews[0]?.agents[0]?.key).not.toBe(previews[1]?.agents[0]?.key)
   expect(applied.map((response) => response.status)).toEqual([200, 200])
   expect(results[0]).toEqual(results[1])
   expect(((await (await fixture.request("GET", "/bots")).json()) as { bots: Bot[] }).bots).toHaveLength(1)

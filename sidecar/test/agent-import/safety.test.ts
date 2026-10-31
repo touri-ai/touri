@@ -33,7 +33,7 @@ test("secret filenames, content, links and oversized files are excluded from pre
   const preview = (await previewResponse.json()) as AgentImportPreview
   const applied = await fixture.request("POST", "/import/apply", {
     previewId: preview.previewId,
-    select: { "agent-1": allItems },
+    select: { [preview.agents[0]?.key ?? ""]: allItems },
   })
   const result = (await applied.json()) as AgentImportResult
   const bot = fixture.runtime.kernel.services.use("store.api")?.getBot({ botId: result.bots[0]?.botId ?? "" })
