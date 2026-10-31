@@ -268,6 +268,41 @@ test("handback restarts the live preview after the remote control source takes o
   expect(screen.getByRole("button", { name: "Assumir", exact: true })).toBeEnabled()
 })
 
+test("handback waits for a fresh frame instead of showing the page from before takeover", async () => {
+  const replacement = Promise.withResolvers<Parameters<typeof startInlineFrameSource>[3]>()
+  vi.mocked(startInlineFrameSource)
+    .mockImplementationOnce((_api, _bot, _tabId, frame) => {
+      frame({ src: "data:image/jpeg;base64,b2xk", title: "Anterior", url: "https://travel.example.test" })
+
+      return () => {}
+    })
+    .mockImplementationOnce((_api, _bot, _tabId, frame) => {
+      replacement.resolve(frame)
+
+      return () => {}
+    })
+  const parts = [getPart({ callId: "read", tool: "browser_snapshot", inputJson: '{"tabId":"browser-tab"}' })]
+  renderCard(parts, false)
+  await screen.findByRole("img", { name: "Página atual do navegador" })
+  fireEvent.click(screen.getByRole("button", { name: "Assumir", exact: true }))
+  await screen.findByRole("region", { name: "Controle remoto do navegador" })
+
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Devolver para Lia" }))
+  })
+  const receiveFrame = await replacement.promise
+
+  expect(screen.queryByRole("region", { name: "Controle remoto do navegador" })).toBeNull()
+  expect(screen.queryByRole("img", { name: "Página atual do navegador" })).toBeNull()
+  act(() => {
+    receiveFrame({ src: "data:image/jpeg;base64,bmV3", title: "Atual", url: "https://travel.example.test" })
+  })
+  expect(screen.getByRole("img", { name: "Página atual do navegador" })).toHaveAttribute(
+    "src",
+    "data:image/jpeg;base64,bmV3",
+  )
+})
+
 test("the activity log is keyboard-accessible and disclosure controls reference mounted content", () => {
   const parts = [getPart({ callId: "read", tool: "browser_snapshot", inputJson: "{}" })]
 
