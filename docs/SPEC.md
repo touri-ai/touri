@@ -31,7 +31,9 @@ final symlinks, secret paths, private application data and traversal are rejecte
 canonical ancestors and reject symlinks and multiple links. Secret and suspicious content is filtered
 before preview caching. Scans are bounded by entries, depth, bytes and elapsed time, and yield between
 reads; text validation and writes use the existing file worker. Progress events use the existing
-owner-only event boundary and contain IDs and counts. Tests release their own fixtures and flush
+owner-only event boundary and contain IDs and counts. A valid local UI token retains owner access
+when work authorization is installed; paired devices must carry the active owner's identity.
+Tests release their own fixtures and flush
 accepted file operations without closing the process-wide worker used by later test files.
 
 ## Single-instance server deployment

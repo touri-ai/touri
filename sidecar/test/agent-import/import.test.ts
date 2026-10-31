@@ -151,6 +151,39 @@ test("owner identity is required for all four routes, including other administra
   expect(owner.status).toBe(200)
 })
 
+test("the authenticated local owner can preview, apply and undo with work authorization installed", async () => {
+  const fixture = await makeHarness()
+  fixture.runtime.kernel.services.provide("work.authorizeHttp", () => ({
+    status: 403,
+    json: { errorCode: "FORBIDDEN" },
+  }))
+
+  const sources = await fixture.request("GET", "/import/sources")
+  const previewResponse = await fixture.request("POST", "/import/preview", {
+    source: "manual",
+    payload: makePayload(),
+  })
+  const preview = (await previewResponse.json()) as AgentImportPreview
+
+  expect(sources.status).toBe(200)
+  expect(previewResponse.status).toBe(200)
+
+  const applied = await fixture.request("POST", "/import/apply", {
+    previewId: preview.previewId,
+    select: Object.fromEntries(preview.agents.map(({ key }) => [key, allItems])),
+  })
+  const result = (await applied.json()) as AgentImportResult
+
+  expect(applied.status).toBe(200)
+
+  const undone = await fixture.request("POST", "/import/undo", { importId: result.importId })
+  const unauthenticated = await fetch(`http://127.0.0.1:${fixture.runtime.handshake.port}/api/v1/import/sources`)
+
+  expect(undone.status).toBe(200)
+  expect(await undone.json()).toEqual({ removedBots: 1 })
+  expect(unauthenticated.status).toBe(401)
+})
+
 test("preview expires and invalid selections cannot create bots", async () => {
   let time = 1000
   const fixture = await makeHarness({ now: () => time })
