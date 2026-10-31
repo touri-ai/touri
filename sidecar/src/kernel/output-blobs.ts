@@ -4,6 +4,7 @@ import { closeSync, constants, existsSync, fstatSync, openSync, readSync } from 
 import { basename, dirname, join, relative } from "node:path"
 import type { MessagePart, RouteResponse, ToolCallPart, UiEvent } from "@touri/contracts"
 import { privateFileExistsAsync, writePrivateFileAsync } from "./async-files"
+import { writeDatabaseAsync } from "./database-write"
 import { assertPrivateFile, atomicWriteFile, openWorkspaceDirectory, openWorkspaceEntry } from "./files"
 
 export const OUTPUT_BLOB_THRESHOLD = 8 * 1024
@@ -225,7 +226,8 @@ export const externalizeMessageParts = (args: ExternalizationOptions): MessagePa
 export const externalizeMessagePartsAsync = async (args: ExternalizationOptions): Promise<MessagePart[]> => {
   const plan = planExternalizedParts(args)
   await writeOutputBlobFilesAsync({ root: args.appData, files: plan.writes })
-  insertAttachmentRows(args.database, plan.attachments)
+  if (plan.attachments.length)
+    await writeDatabaseAsync(args.database, () => insertAttachmentRows(args.database, plan.attachments))
   return plan.parts
 }
 
