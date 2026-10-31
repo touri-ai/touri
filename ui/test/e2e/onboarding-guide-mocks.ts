@@ -56,6 +56,22 @@ export const installGuideMocks = async (
           : { completed: false, hasData: false, tailscale: "missing", remoteUrl: null },
       )
     if (path === "/import/sources") return reply({ sources: [getGuideSourceFixture()] })
+    if (path === "/folders" && method === "GET") {
+      // A fake home with enough folders to scroll; each read waits like a real disk listing.
+      await new Promise((resolve) => setTimeout(resolve, 60))
+      const folder = new URL(request.url()).searchParams.get("path") ?? "/home/exemplo"
+      return reply({
+        canGrant: true,
+        home: "/home/exemplo",
+        path: folder,
+        parent: folder === "/home/exemplo" ? null : folder.slice(0, folder.lastIndexOf("/")) || "/",
+        folders: Array.from({ length: 14 }, (_, index) => ({
+          name: `agentes-${index + 1}`,
+          path: `${folder}/agentes-${index + 1}`,
+        })),
+        truncated: false,
+      })
+    }
     if (path === "/import/preview") return reply({ ...preview, agents })
     if (path === "/import/apply") {
       seq += 1
