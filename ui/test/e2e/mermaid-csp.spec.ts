@@ -9,7 +9,7 @@ import type { Manifest } from "vite"
 
 test.use({ channel: "chromium" })
 const uiRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..")
-const output = resolve(uiRoot, "test-results/mermaid-production")
+const output = resolve(uiRoot, "dist")
 let server: Server | undefined
 let endpoint = ""
 let adapterFile = ""
@@ -20,23 +20,8 @@ test.describe("mermaid production and desktop CSP", () => {
   test.skip(process.env.CHAT_TRANSCRIPT_PHASE === "before", "Capture the existing renderer before integration")
 
   test.beforeAll(async () => {
-    // Compilation has its own allowance; the payload and interaction budgets below stay unchanged.
-    test.setTimeout(600_000)
-    const { build } = await import("vite")
-    await build({
-      root: uiRoot,
-      configFile: resolve(uiRoot, "vite.config.ts"),
-      logLevel: "silent",
-      build: {
-        outDir: output,
-        emptyOutDir: true,
-        manifest: "manifest.json",
-        rollupOptions: {
-          input: { app: resolve(uiRoot, "index.html"), diagram: resolve(uiRoot, "test/e2e/mermaid-harness.html") },
-        },
-      },
-    })
-    const manifest = JSON.parse(await readFile(resolve(output, "manifest.json"), "utf8")) as Manifest
+    // All production fixtures share the build from global setup; payload and CSP checks stay independent.
+    const manifest = JSON.parse(await readFile(resolve(output, ".vite/manifest.json"), "utf8")) as Manifest
     const initialFiles = new Set<string>()
     const visited = new Set<string>()
     const visit = (key: string) => {

@@ -4,6 +4,7 @@ const port = Number(process.env.TOURI_E2E_PORT ?? 14278)
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${port}`
 
 export default defineConfig({
+  reportSlowTests: { max: 10, threshold: 1_000 },
   testDir: "./test/e2e",
   ...(process.env.UPDATE_SNAPSHOTS ? { updateSnapshots: "all" as const } : {}),
   globalSetup: "./test/e2e/global-setup.ts",

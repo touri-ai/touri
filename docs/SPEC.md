@@ -2388,6 +2388,10 @@ without waiting for UI history delivery. Delayed startup notifications cannot cl
 
 ### Human browser control
 
+At phone widths, the channel header reserves room for two browser status lines. Another participant
+taking control keeps the header height and conversation position stable while the full controller
+status remains readable. Taking control and handing it back require the explicit labeled buttons.
+
 During human control, the live page occupies the card width. The handoff reason and previous actions
 stay in a collapsed details strip; the reason comes from the sanitized bot request. A phone opens the
 same persistent page in a full-screen dialog automatically. The toolbar provides an editable address,

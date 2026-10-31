@@ -159,7 +159,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install archive tool
@@ -169,13 +169,16 @@ jobs:
           bun-version: 1.4.3
       - name: Check the complete browser suite
         working-directory: ui
-        run: bunx playwright test --workers=1 --shard=${{ matrix.shard }}/3
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/browser-durations.json
+        run: bunx playwright test --workers=1 --shard=${{ matrix.shard }}/4 --reporter=line,json
       - name: Retain browser evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: browser-failures-${{ matrix.shard }}
           path: |
+            ui/test-results/browser-durations.json
             ui/test-results/**/*.png
             ui/test-results/**/error-context.md
             ui/test-results/**/project-menu-fonts.json

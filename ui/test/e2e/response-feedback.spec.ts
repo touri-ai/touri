@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
-import { expect, test } from "@playwright/test"
+import { expect } from "@playwright/test"
+import { test } from "./production-fixture"
 
 test.setTimeout(90_000)
 // Trace DOM snapshots add work to the same event loop whose latency this suite measures.
@@ -127,8 +128,7 @@ if (phase === "after") {
       expect(confirmationMs).toBeLessThanOrEqual(100)
       expect(acceptedActivityMs).toBeLessThanOrEqual(250)
       await page.evaluate("window.feedback.provider()")
-      // Controlled provider fixture: this is not a live-model latency benchmark.
-      await page.waitForTimeout(4_810)
+      // The scenarios above cover provider delay with a virtual clock; this measures local confirmation.
       await page.evaluate("window.feedback.parts([{type:'reasoning',text:'Checking context'}])")
       await page.evaluate("window.feedback.parts([{type:'text',text:'Notas organizadas.'}]); window.feedback.finish()")
       const timings = (await page.evaluate("window.feedback.timings()")) as Array<{

@@ -191,7 +191,7 @@ const Fixture = () => {
           channelWorking={{ [group.id]: ["Léo"] }}
         />
         <main className="channel-demo-main">
-          <GroupHeader group={group} bots={bots} onEdit={() => {}} />
+          <GroupHeader group={group} bots={bots} onEdit={() => {}} channelMode={params.has("channelMode")} />
           <InlinePreviewContext.Provider
             value={{ api, bot, machine: undefined, activeCallId: undefined, onOpenComputer: () => {} }}
           >
