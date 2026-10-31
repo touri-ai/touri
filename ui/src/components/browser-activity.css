@@ -1100,6 +1100,12 @@
 @media (max-width: 600px) {
   .browser-activity-card[data-finished="false"] .browser-activity-log {
     height: 156px;
+    overflow: auto;
+  }
+  .browser-activity-card[data-finished="false"][data-show-all-actions="true"] .browser-activity-log,
+  .browser-activity-card[data-finished="false"] .browser-activity-preview-full ~ .browser-activity-log {
+    height: auto;
+    overflow: visible;
   }
   .browser-activity-header {
     gap: var(--space-8);

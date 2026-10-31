@@ -1478,8 +1478,9 @@ Launch:
   page and sanitized web origin visible, stops progress animation, and explains the pause in the
   person's language beside one primary Take over action in the sticky card header. The preview is
   an image surface; only the explicit Take over action requests the authorized control session.
-  Recovery outcomes appear below that header, outside the scrolling action log. On phones, the live
-  action log keeps its fixed height and channel context wraps within the viewport. Other participants
+  Recovery outcomes appear below that header, outside the scrolling action log. On phones, the compact
+  action log keeps its fixed height and scrolls within the card. Showing all steps or enlarging the
+  preview lets the log grow inside the card. Channel context wraps within the viewport. Other participants
   can observe but cannot send input. Known login,
   payment and form reasons use localized sentences; custom reasons
   retain the existing sanitization. A channel's composer names the person the browser is waiting for.

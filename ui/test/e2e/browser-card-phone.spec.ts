@@ -44,6 +44,24 @@ test("phone browser controls have usable touch targets and actions keep a stable
   expect(updated).not.toBeNull()
   expect(Math.abs((updated?.height ?? 0) - (initial?.height ?? 0))).toBeLessThanOrEqual(1)
   await expect(log).toHaveCSS("height", "156px")
+
+  await card.getByRole("button", { name: "Ver tudo", exact: true }).click()
+
+  const expanded = await log.evaluate((element) => {
+    const card = element.closest(".browser-activity-card")
+    const lastAction = element.querySelector("li:last-child")
+    const disclosure = element.querySelector(".browser-activity-more-actions")
+    if (!card || !lastAction || !disclosure) throw new Error("Missing expanded browser actions")
+
+    return {
+      cardBottom: card.getBoundingClientRect().bottom,
+      lastActionBottom: lastAction.getBoundingClientRect().bottom,
+      disclosureBottom: disclosure.getBoundingClientRect().bottom,
+    }
+  })
+
+  expect(expanded.lastActionBottom).toBeLessThanOrEqual(expanded.cardBottom)
+  expect(expanded.disclosureBottom).toBeLessThanOrEqual(expanded.cardBottom)
 })
 
 test("phone handback stays reachable after typing and scrolling the private page", async ({ page }, info) => {
