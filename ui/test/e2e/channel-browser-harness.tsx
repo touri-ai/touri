@@ -8,6 +8,7 @@ import { TurnActivity } from "../../src/components/TurnActivity"
 import { ChannelBrowserContext, ChannelComposerChip } from "../../src/features/channelBrowser/ChannelBrowser"
 import type { ChannelBrowserState } from "../../src/features/channelBrowser/channelBrowserModel"
 import { InlinePreviewContext } from "../../src/features/desktop/InlineLivePreview"
+import { changeMockBrowserControl } from "./channel-browser-request"
 import "../../src/styles.css"
 
 const params = new URLSearchParams(location.search)
@@ -110,11 +111,11 @@ const Fixture = () => {
   }
   api.request = (async (route: string, input?: unknown) => {
     if (route === "POST /browser/tabs/:id/takeover/session") {
-      changeControl("user-ana")
+      await changeMockBrowserControl(() => changeControl("user-ana"))
       return { sessionId: "demo-session", controlEpoch: "demo-control", viewEpoch: 0 }
     }
     if (route === "DELETE /browser/tabs/:id/takeover/session") {
-      changeControl(null)
+      await changeMockBrowserControl(() => changeControl(null))
       return {}
     }
     if (route === "POST /browser/tabs/:id/takeover/input") return {}
