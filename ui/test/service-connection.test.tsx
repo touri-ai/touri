@@ -6,9 +6,11 @@ import { errorRecovery } from "../src/errorRecovery"
 import { ApiError } from "../src/errors"
 import { t } from "../src/i18n"
 import { useWorkspace } from "../src/useWorkspace"
+import { saveWorkChannelCache } from "../src/workChannelCache"
 
 afterEach(() => {
   cleanup()
+  localStorage.clear()
   vi.clearAllTimers()
   vi.useRealTimers()
   vi.unstubAllGlobals()
@@ -188,6 +190,122 @@ test("reconnection reloads a snapshot that failed before the bot list arrived", 
   await waitFor(() => expect(hook.result.current.data.loaded).toBe(true))
   expect(hook.result.current.data.bots.length).toBeGreaterThan(0)
   expect(hook.result.current.data.notice).toBeNull()
+})
+
+test("a stopped server reports inside the open conversation instead of the app notice", async () => {
+  const mock = createMockApi()
+  let unavailable = false
+  const request: ApiRequest = async (route, input, path) => {
+    if (unavailable) throw new ApiError(0, "", undefined, "TOURI-E1009")
+    return mock.request(route, input, path)
+  }
+  const api = { ...mock, request, isMock: false }
+  const hook = renderHook(() => useWorkspace(api))
+  await waitFor(() => expect(hook.result.current.data.messages.length).toBeGreaterThan(0))
+  const { selectedThreadId } = hook.result.current.data
+  const messageIds = hook.result.current.data.messages.map((message) => message.id)
+  unavailable = true
+
+  await act(async () => hook.result.current.actions.refresh())
+
+  expect(hook.result.current.data.notice).toBeNull()
+  expect(hook.result.current.data.historyFailure).toMatchObject({ kind: "server", code: "TOURI-E1009" })
+  expect(hook.result.current.data.historyFailure?.threadId).toBe(selectedThreadId)
+  expect(hook.result.current.data.messages.map((message) => message.id)).toEqual(messageIds)
+  unavailable = false
+
+  await act(async () => hook.result.current.actions.refresh())
+
+  await waitFor(() => expect(hook.result.current.data.historyFailure).toBeNull(), { timeout: 4000 })
+  expect(hook.result.current.data.notice).toBeNull()
+})
+
+test.each([404, 502])("an HTTP %s index failure does not claim the open conversation was deleted", async (status) => {
+  const mock = createMockApi()
+  let failure: ApiError | null = null
+  const request: ApiRequest = async (route, input, path) => {
+    if (route === "GET /runs" && failure) throw failure
+    return mock.request(route, input, path)
+  }
+  const client = { ...mock, request, isMock: false }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(hook.result.current.data.messages.length).toBeGreaterThan(0))
+  failure = new ApiError(status, "Synthetic index failure")
+
+  await act(async () => hook.result.current.actions.refresh())
+
+  expect(hook.result.current.data.notice).toContain("Synthetic index failure")
+  expect(hook.result.current.data.historyFailure).toBeNull()
+})
+
+test("a later successful message read preserves an unreachable run snapshot until retry succeeds", async () => {
+  const mock = createMockApi()
+  const releaseMessages = Promise.withResolvers<void>()
+  const messagesStarted = vi.fn()
+  const runsFailed = vi.fn()
+  let unreachable = true
+  const request: ApiRequest = async (route, input, path) => {
+    if (route === "GET /threads/:id/runs" && unreachable) {
+      runsFailed()
+      throw new ApiError(0, "", undefined, "TOURI-E1009")
+    }
+    if (route === "GET /threads/:id/messages") {
+      messagesStarted()
+      await releaseMessages.promise
+    }
+    return mock.request(route, input, path)
+  }
+  const client = { ...mock, request, isMock: false }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(messagesStarted).toHaveBeenCalled())
+  await waitFor(() => expect(runsFailed).toHaveBeenCalled())
+  await waitFor(() =>
+    expect(hook.result.current.data.historyFailure).toMatchObject({ kind: "server", code: "TOURI-E1009" }),
+  )
+
+  await act(async () => releaseMessages.resolve())
+  await waitFor(() => expect(hook.result.current.data.messages.length).toBeGreaterThan(0))
+
+  expect(hook.result.current.data.historyRunsReady).toBe(false)
+  expect(hook.result.current.data.historyFailure).toMatchObject({ kind: "server", code: "TOURI-E1009" })
+  expect(hook.result.current.data.notice).toBeNull()
+  unreachable = false
+
+  await act(async () => hook.result.current.actions.refresh())
+
+  await waitFor(() => expect(hook.result.current.data.historyRunsReady).toBe(true))
+  expect(hook.result.current.data.historyFailure).toBeNull()
+})
+
+test("a successful channel message read does not clear a failed workspace index", async () => {
+  const mock = createMockApi()
+  const { group, thread } = await mock.request("POST /groups", {
+    name: "Canal de exemplo",
+    color: "#2563eb",
+    memberIds: ["bot-mark"],
+    coordinatorBotId: null,
+  })
+  saveWorkChannelCache({ groups: [group], threads: [thread], selectedThreadId: thread.id }, "owner")
+  const releaseMessages = Promise.withResolvers<void>()
+  let failedIndex = true
+  const request: ApiRequest = async (route, input, path) => {
+    if (route === "GET /runs" && failedIndex) throw new ApiError(0, "", undefined, "TOURI-E1009")
+    if (route === "GET /threads/:id/messages") await releaseMessages.promise
+    return mock.request(route, input, path)
+  }
+  const client = { ...mock, request, isMock: false }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(hook.result.current.data.historyFailure?.index).toBe(true))
+
+  await act(async () => releaseMessages.resolve())
+  await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe(thread.id))
+
+  expect(hook.result.current.data.historyFailure).toMatchObject({ index: true, threadId: thread.id })
+  failedIndex = false
+
+  await act(async () => hook.result.current.actions.refresh())
+
+  expect(hook.result.current.data.historyFailure).toBeNull()
 })
 
 test("reconnection clears the selected history's service error without a new server event", async () => {

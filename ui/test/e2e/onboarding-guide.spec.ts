@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import AxeBuilder from "@axe-core/playwright"
 import { test as base, expect, type Page, type TestInfo } from "@playwright/test"
+import { getGuidePreviewFixture } from "../fixtures/onboarding-guide"
 import { installGuideMocks } from "./onboarding-guide-mocks"
 import { createGuideStaticServer } from "./onboarding-guide-static"
 import { getInteractionDurations } from "./onboarding-guide-timing"
@@ -384,6 +385,103 @@ const openEmptyGuide = async (page: Page, destination: string) => {
   await page.getByRole("button", { name: "Pular", exact: true }).click()
 }
 for (const width of [1440, 390]) {
+  test(`onboarding recovery ${width}: undo while importing confirms it and returns to sources`, async ({
+    page,
+    productionUrl,
+  }, info) => {
+    const mock = await installGuideMocks(page)
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 800 })
+    await openEmptyGuide(page, productionUrl)
+    await page.getByRole("button", { name: /^Continuar/ }).click()
+    mock.finishImport()
+    await page.getByRole("button", { name: /Importar selecionados/ }).click()
+    await expect(page.getByText("Pronto", { exact: true })).toHaveCount(1)
+    await capture(page, info, `undo-importing-before-${width}`)
+
+    await page.getByRole("button", { name: /Desfazer importação/ }).click()
+
+    await expect(page.getByRole("button", { name: /Desfazer importação/ })).toHaveCount(0)
+    await capture(page, info, `undo-importing-after-${width}`)
+    await expect(page.getByRole("heading", { name: "Já usa agentes em outro app?" })).toBeVisible()
+    await expect(page.getByRole("status").filter({ hasText: "Importação desfeita. Removemos dev." })).toBeVisible()
+    for (const theme of ["light", "dark"]) {
+      await page.evaluate(async (value) => {
+        document.documentElement.dataset.theme = value
+        await Promise.all(
+          document
+            .getAnimations()
+            .filter((animation) => animation instanceof CSSTransition)
+            .map((animation) => animation.finished.catch(() => undefined)),
+        )
+      }, theme)
+      const accessibility = await new AxeBuilder({ page }).include("main").analyze()
+      expect(accessibility.violations).toEqual([])
+    }
+    await expect(page.getByRole("button", { name: /Claude Code/ })).toBeVisible()
+    expect(mock.getBots()).toHaveLength(0)
+  })
+}
+for (const width of [1440, 390]) {
+  test(`onboarding recovery ${width}: long imported names keep the undo action inside the form`, async ({
+    page,
+    productionUrl,
+  }, info) => {
+    const names = [
+      "assistente-de-planejamento-e-operacoes",
+      "assistente-de-pesquisa-e-documentacao",
+      "assistente-de-atendimento-e-relatorios",
+    ]
+    const mock = await installGuideMocks(page, { agentNames: names })
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 800 })
+    await openEmptyGuide(page, productionUrl)
+    await page.getByRole("button", { name: /^Continuar/ }).click()
+    mock.finishImport()
+    await page.getByRole("button", { name: /Importar selecionados/ }).click()
+    const undo = page.getByRole("button", { name: `Desfazer importação de ${names.join(", ")}`, exact: true })
+    await expect(undo).toBeVisible()
+    await capture(page, info, `long-import-undo-${width}`)
+
+    const fitsForm = await undo.evaluate((button) => {
+      const pane = button.closest(".ob-pane")
+      if (!pane) return false
+      const bounds = button.getBoundingClientRect()
+      const container = pane.getBoundingClientRect()
+      return bounds.left >= container.left && bounds.right <= container.right
+    })
+
+    expect(fitsForm).toBe(true)
+    await undo.click()
+    await expect(page.getByRole("status")).toContainText(`Importação desfeita. Removemos ${names.join(", ")}.`)
+  })
+}
+for (const width of [1440, 390]) {
+  test(`onboarding recovery ${width}: an older import keeps its names after a new preview`, async ({
+    page,
+    productionUrl,
+  }, info) => {
+    const mock = await installGuideMocks(page)
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 800 })
+    await openEmptyGuide(page, productionUrl)
+    await page.getByRole("button", { name: /^Continuar/ }).click()
+    mock.finishImport()
+    await page.getByRole("button", { name: /Importar selecionados/ }).click()
+    await expect(page.getByRole("button", { name: "Desfazer importação de dev", exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Voltar", exact: true }).click()
+    await page.getByRole("button", { name: "Voltar", exact: true }).click()
+    await page.route("**/api/v1/import/preview", (route) =>
+      route.fulfill({ json: getGuidePreviewFixture("next-preview") }),
+    )
+
+    await page.getByRole("button", { name: /^Continuar/ }).click()
+    await expect(page.getByRole("heading", { name: "Confere o que vem?" })).toBeVisible()
+    await page.getByRole("button", { name: "Voltar", exact: true }).click()
+    await capture(page, info, `retained-import-name-${width}`)
+
+    await page.getByRole("button", { name: "Desfazer importação de dev", exact: true }).click()
+    await expect(page.getByRole("status")).toContainText("Importação desfeita. Removemos dev.")
+  })
+}
+for (const width of [1440, 390]) {
   test(`onboarding recovery ${width}: undo and compact account rows retain avatar identity`, async ({
     page,
     productionUrl,
@@ -403,6 +501,7 @@ for (const width of [1440, 390]) {
     await capture(page, info, `recovery-undo-${width}`)
     await page.getByRole("button", { name: /Desfazer importação/ }).click()
     await expect(page.getByRole("button", { name: /Desfazer importação/ })).toHaveCount(0)
+    await expect(page.getByRole("status").filter({ hasText: "Importação desfeita." })).toBeVisible()
     expect(mock.getBots()).toHaveLength(0)
     await page.getByRole("button", { name: /^Continuar/ }).click()
     await page.getByRole("button", { name: /Importar selecionados/ }).click()

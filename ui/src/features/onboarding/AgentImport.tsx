@@ -5,7 +5,7 @@ import { BotAvatar } from "../../components/BotAvatar"
 import { Badge, Button } from "../../components/Button"
 import { FolderPicker } from "../../components/FolderPicker"
 import { type TranslationKey, t } from "../../i18n"
-import { type GuideStep, getSourceLabel } from "./guide"
+import { type GuideStep, getImportedNames, getSourceLabel } from "./guide"
 import type { useAgentImport } from "./useAgentImport"
 
 export const AgentImport = ({
@@ -268,10 +268,11 @@ const ImportUndo = ({
         <Button
           key={result.importId}
           variant="quiet"
+          className="ob-import-undo"
           disabled={imports.busy}
           onClick={() => void onUndo(result.importId)}
         >
-          {t("ob.undoImport")} · {result.bots.length}
+          {t("ob.undoImportNamed", { names: getImportedNames(imports, result.importId) })}
         </Button>
       ))}
     </div>

@@ -27,7 +27,8 @@ export const ptBR = {
   "Take over the browser page": "Assumir a página do navegador",
   "The browser is ready for you to take over.": "O navegador está pronto para você assumir.",
 
-  "ob.undoImport": "Desfazer importação",
+  "ob.undoImportNamed": "Desfazer importação de {names}",
+  "ob.importUndone": "Importação desfeita. Removemos {names}. Escolha outra fonte ou pule.",
   "ob.undoError": "Não conseguimos desfazer a importação. Tente de novo.",
   "ob.accountNotReady":
     "Conecte a conta de {name} e verifique se o programa está instalado antes de enviar a tarefa. Seu texto foi mantido.",
@@ -3790,7 +3791,8 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Take over the browser page": "Take over the browser page",
   "The browser is ready for you to take over.": "The browser is ready for you to take over.",
 
-  "ob.undoImport": "Undo import",
+  "ob.undoImportNamed": "Undo import of {names}",
+  "ob.importUndone": "Import undone. We removed {names}. Pick another source or skip.",
   "ob.undoError": "Could not undo the import. Try again.",
   "ob.accountNotReady":
     "Connect {name}’s account and check that its program is installed before sending the task. Your text has been kept.",

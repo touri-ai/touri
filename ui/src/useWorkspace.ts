@@ -42,7 +42,7 @@ import { getDocumentLocale } from "./documentLanguage"
 import { ApiError, isServiceUnavailable, userFacingError } from "./errors"
 import { adoptProviderLogin } from "./features/bots/providerLogin"
 import { useDoctorReport } from "./features/doctor/useDoctorReport"
-import { getHistoryFailure, getWithRetry, type HistoryFailure } from "./historyFailure"
+import { getHistoryFailure, getWithRetry, type HistoryFailure, isUnreachable } from "./historyFailure"
 import { localizeNotice, t } from "./i18n"
 import { localResponseTimings } from "./localResponseTimings"
 import { useMachineParking } from "./machineIntents"
@@ -430,6 +430,22 @@ const bufferStreamEvent = (load: ThreadLoad | undefined, event: MessageStreamEve
     // Clearing the request-owned buffer in place releases payloads still captured by its callback.
     load.deltas.length = 0
   } else load.deltas.push(event)
+}
+
+/** A failed conversation index keeps an open conversation readable and explains the failure inside it. */
+export const getIndexFailure = (data: WorkspaceData, notice: string, error: unknown, isMock = false): WorkspaceData => {
+  const threadId = data.selectedThreadId
+  const isOpen = Boolean(threadId && data.threads.some((thread) => thread.id === threadId))
+  if (isMock || !threadId || !isOpen || !isUnreachable(error))
+    return { ...data, loading: false, notice, channelNotice: notice }
+
+  return {
+    ...data,
+    loading: false,
+    notice: null,
+    channelNotice: null,
+    historyFailure: { ...getHistoryFailure(error), threadId, index: true },
+  }
 }
 
 const getWorkspaceWithoutGroup = (data: WorkspaceData, groupId: Id): WorkspaceData => {
@@ -1011,12 +1027,13 @@ export const useWorkspace = (
         attempt === generation.current &&
         threadLoads.current.get(threadId)?.promise === promise &&
         currentData.current.selectedThreadId === threadId
-      // A transcript failure stays inside the conversation; a run snapshot failure keeps the app notice.
+      // A transcript failure, or any read that never reached a stopped server, stays inside the conversation;
+      // other run snapshot failures keep the app notice.
       const showReadFailure = (error: unknown, history: boolean): void => {
         if (!isCurrentLoad()) return
 
         const notice = t("Service request failed", { error: getServiceErrorMessage(error) })
-        if (history) {
+        if (history || isUnreachable(error)) {
           setData((current) => ({
             ...current,
             historyNotice: notice,
@@ -1114,7 +1131,7 @@ export const useWorkspace = (
                 ? updateMessage(current.activityMessages, activityMessage(offscreen))
                 : current.activityMessages,
               historyNotice: null,
-              historyFailure: null,
+              historyFailure: current.historyFailure?.index ? current.historyFailure : null,
               messages: (api.pendingMessages?.() ?? [])
                 .filter((message) => message.threadId === threadId)
                 .reduce(
@@ -1175,7 +1192,14 @@ export const useWorkspace = (
           return
         }
       }
-      const runsRequest = loadRuns().catch((error: unknown) => showReadFailure(error, false))
+      const runsRequest = loadRuns().catch(async (error: unknown) => {
+        showReadFailure(error, false)
+        if (!isUnreachable(error)) return
+
+        // Successful messages must not clear the connection failure of their companion run read.
+        await messagesRequest
+        showReadFailure(error, false)
+      })
       const promise = Promise.all([messagesRequest, runsRequest])
         .then(() => undefined)
         .finally(() => {
@@ -1448,6 +1472,7 @@ export const useWorkspace = (
           loaded: true,
           notice: groupResponse.notice ?? null,
           channelNotice: groupResponse.notice,
+          historyFailure: current.historyFailure?.index ? null : (current.historyFailure ?? null),
         }
       })
       snapshotUnavailable.current = false
@@ -1467,7 +1492,7 @@ export const useWorkspace = (
       const notice = api.isMock
         ? "Demo data · sidecar services are optional"
         : t("Service request failed", { error: getServiceErrorMessage(error) })
-      setData((current) => ({ ...current, loading: false, notice, channelNotice: notice }))
+      setData((current) => getIndexFailure(current, notice, error, api.isMock))
     } finally {
       if (attempt === generation.current) completedDuringLoad.current = null
     }

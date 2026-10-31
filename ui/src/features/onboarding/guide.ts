@@ -201,3 +201,16 @@ export const getImportedIdentity = (botId: string, results: AgentImportResult[])
   const imported = results.flatMap((result) => result.bots).find((bot) => bot.botId === botId)
   return imported ? { avatarSeed: imported.agentKey, color: null } : {}
 }
+
+type ImportedNamesInput = {
+  results: (AgentImportResult & { agentNames: string[] })[]
+}
+
+/** Names the agents one import brought in, so each undo says exactly what it removes. */
+export const getImportedNames = (imports: ImportedNamesInput, importId: string): string => {
+  const result = imports.results.find((item) => item.importId === importId)
+  if (!result) return ""
+  if (!result.agentNames.length) return t("ob.sourceCount", { count: result.bots.length })
+
+  return result.agentNames.join(", ")
+}

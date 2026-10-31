@@ -11,7 +11,7 @@ import {
 
 export const installGuideMocks = async (
   page: Page,
-  { team = true, agentCount = 1 }: { team?: boolean; agentCount?: number } = {},
+  { team = true, agentCount = 1, agentNames }: { team?: boolean; agentCount?: number; agentNames?: string[] } = {},
 ) => {
   const protocol = JSON.parse(
     await readFile(new URL("../../../packages/contracts/protocol.json", import.meta.url), "utf8"),
@@ -24,7 +24,7 @@ export const installGuideMocks = async (
   let seq = 0
   const calls: { path: string; method: string; body: Record<string, unknown> }[] = []
   const imports = Promise.withResolvers<void>()
-  const names = ["dev", "ops", "design"].slice(0, agentCount)
+  const names = agentNames ?? ["dev", "ops", "design"].slice(0, agentCount)
   const preview = getGuidePreviewFixture()
   const template = preview.agents[0]
   if (!template) throw new Error("Missing synthetic preview agent")

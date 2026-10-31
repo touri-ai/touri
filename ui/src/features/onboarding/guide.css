@@ -165,6 +165,13 @@
   align-items: center;
   gap: var(--space-8);
 }
+.ob-import-undo.ds-button {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: start;
+}
 .ob-grow {
   flex: 1;
   min-width: 180px;

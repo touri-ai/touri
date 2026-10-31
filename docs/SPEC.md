@@ -113,7 +113,10 @@ their instructions even when named touri; guide instructions apply only to a new
 writing and host computer control start disabled, with approvals required.
 
 Completed imports can be undone from import progress or the source screen. A successful undo removes
-its agents from the preview and account choices; a failed undo retains the import and offers a retry.
+its agents from the preview and account choices, returns to source selection and confirms the removed
+agents. Each undo action names its agents and wraps long names within the form. Back from import
+progress opens source selection when no preview remains. A failed undo retains the import and offers a retry.
+Import names stay available when another source replaces the preview.
 Preview avatar seeds persist on imported agents, and the guide keeps the same identity throughout setup.
 Agent accounts use compact rows on wide screens. Invitations require a configured HTTPS address;
 without one, the guide explains the prerequisite before offering an invitation form.
@@ -392,8 +395,11 @@ offline device, deleted conversation, server restart or server failure. Its erro
 retries reads only; deleted conversations have no retry action. Loaded messages and drafts stay
 visible, and a failed first read replaces the loading skeleton with the notice. Returning online or
 reconnecting automatically refreshes failed history, while healthy history relies on event replay.
-A server's `RUNTIME_DRAINING` refusal reconnects the client. A failed conversation-index refresh
-uses the application notice and identifies the list rather than claiming the conversation failed.
+A server's `RUNTIME_DRAINING` refusal reconnects the client. A read that cannot reach the server,
+including a run snapshot or workspace-index refresh with an open conversation, uses the conversation
+notice and keeps saved messages readable. A successful message read alone does not clear a failed
+run snapshot; retry must recover that read too. A successful full refresh clears an index failure.
+Other index failures retain the application notice rather than claiming the conversation was deleted.
 
 Conversation history always reserves the same 64 px navigation space outside its scroll viewport,
 including while the jump-to-latest button is hidden. Showing or hiding that button must not resize

@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
+import AxeBuilder from "@axe-core/playwright"
 import { expect, type Page, test } from "@playwright/test"
 
 test.use({ channel: "chromium", locale: "pt-BR" })
@@ -40,9 +41,70 @@ test("a conversation read refused during a restart explains it inside the conver
   await context.close()
 })
 
+for (const width of [1440, 390]) {
+  test(`a stopped server ${width}: explains the failure inside the conversation and keeps saved history`, async ({
+    browser,
+  }) => {
+    const evidence = process.env.TOURI_E2E_EVIDENCE_DIR
+    const context = await browser.newContext({
+      viewport: { width, height: width === 390 ? 844 : 800 },
+      colorScheme: "dark",
+    })
+    const page = await context.newPage()
+    await page.goto("/test/e2e/history-notice-harness.html?open=failing&server=stoppable")
+    const history = page.getByRole("region", { name: "Histórico da conversa" })
+    await expect(history.getByText("valide esse perfil e veja os posts")).toBeVisible()
+    const sidebar = page.getByRole("navigation", { name: "Barra lateral" })
+    const notice = page.locator(".chat-panel .conversation-notice")
+    await page.evaluate(() => {
+      window.serverStopped = true
+    })
+    if (width === 390) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+
+    await sidebar.getByRole("button", { name: /^mark / }).click()
+    if (width === 390) await page.keyboard.press("Escape")
+
+    await expect(page.locator(".notice-bar, .chat-panel .conversation-notice").first()).toBeVisible()
+    if (evidence) await saveScreenshot(page, evidence, `stopped-server-${width}.png`)
+    await expect(notice).toContainText("O servidor do touri não respondeu. Mostrando o que já estava salvo.")
+    await expect(notice.getByRole("button", { name: "Tentar de novo", exact: true })).toBeVisible()
+    await expect(page.locator(".notice-bar")).toHaveCount(0)
+    for (const theme of ["light", "dark"]) {
+      await page.evaluate(async (value) => {
+        document.documentElement.dataset.theme = value
+        await Promise.all(
+          document
+            .getAnimations()
+            .filter((animation) => animation instanceof CSSTransition)
+            .map((animation) => animation.finished.catch(() => undefined)),
+        )
+      }, theme)
+      const accessibility = await new AxeBuilder({ page }).include(".conversation-notice").analyze()
+      expect(accessibility.violations).toEqual([])
+    }
+    if (width === 390) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+    await sidebar.getByRole("button", { name: /^Publicações/ }).click()
+    // The channel row opens its main conversation; the saved messages belong to its secondary conversation.
+    const drawer = page.getByRole("dialog", { name: "Barra lateral", exact: true })
+    if (width === 390) {
+      await expect(drawer).toBeHidden()
+      await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+    }
+    const savedConversation = sidebar.getByRole("button", { name: "Perfil de demonstração", exact: true })
+    await savedConversation.click()
+    if (width === 390) await page.keyboard.press("Escape")
+    await expect(history.getByText("valide esse perfil e veja os posts")).toBeVisible()
+    await expect(notice).toHaveCount(0)
+    await expect(page.locator(".notice-bar")).toHaveCount(0)
+    if (evidence) await saveScreenshot(page, evidence, `stopped-server-return-${width}.png`)
+    await context.close()
+  })
+}
+
 declare global {
   interface Window {
     historyFailing?: boolean
+    serverStopped?: boolean
     fluidity: { longTasks: number[]; interactions: number[]; layoutShift: number }
   }
 }
