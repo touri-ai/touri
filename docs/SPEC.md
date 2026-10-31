@@ -2390,6 +2390,10 @@ without waiting for UI history delivery. Delayed startup notifications cannot cl
 
 ### Human browser control
 
+After successful handback or an ended control session, the activity card discards its cached
+pre-control thumbnail. It shows the existing loading state until a fresh public preview arrives,
+so an obsolete page is never presented as the current page while capture resumes.
+
 At phone widths, the channel header reserves room for two browser status lines. Another participant
 taking control keeps the header height and conversation position stable while the full controller
 status remains readable. Taking control and handing it back require the explicit labeled buttons.
