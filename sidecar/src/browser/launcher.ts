@@ -267,6 +267,7 @@ export const createChromeLauncher = ({
 }): ChromeLauncher => {
   let active: { client: CdpClient; process: SpawnedChrome } | null = null
   let pending: ReturnType<ChromeLauncher["start"]> | null = null
+  let stopping: Promise<void> | null = null
   let generation = 0
   let display: Awaited<ReturnType<typeof startBrowserDisplay>> = null
 
@@ -276,9 +277,13 @@ export const createChromeLauncher = ({
 
   const stopSpawned = async (process: SpawnedChrome): Promise<void> => {
     process.kill("SIGTERM")
-    const exited = await Promise.race([process.exited.then(() => true), Bun.sleep(2000).then(() => false)])
-    if (!exited) process.kill("SIGKILL")
-    await Promise.race([process.exited, Bun.sleep(2000)])
+    const timer = setTimeout(() => process.kill("SIGKILL"), 2000)
+    try {
+      // The profile remains owned until the OS reports exit, even after escalation.
+      await process.exited
+    } finally {
+      clearTimeout(timer)
+    }
     for (const pipe of process.extra) {
       await pipe.read?.cancel().catch(() => undefined)
       await pipe.write?.abort().catch(() => undefined)
@@ -432,18 +437,26 @@ export const createChromeLauncher = ({
     }
   }
 
-  const stop = async (): Promise<void> => {
+  const stop = (): Promise<void> => {
+    if (stopping) return stopping
     generation += 1
     const current = active
     active = null
-    if (current) {
-      await stopActiveChrome(current)
-    }
-    await display?.stop()
-    display = null
+    const starting = pending
+    stopping = (async () => {
+      if (current) await stopActiveChrome(current)
+      // A canceled startup still owns its process and display until its cleanup finishes.
+      await starting?.catch(() => undefined)
+      await display?.stop()
+      display = null
+    })().finally(() => {
+      stopping = null
+    })
+    return stopping
   }
 
   const start: ChromeLauncher["start"] = ({ runningOnly = false } = {}) => {
+    if (stopping) return stopping.then(() => start({ runningOnly }))
     if (runningOnly && !active && !pending) return Promise.resolve(null)
     if (pending) return pending
     const epoch = generation
