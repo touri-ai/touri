@@ -90,71 +90,15 @@ export const ChannelHeaderChip = ({ locale = "pt-BR" }: { locale?: Locale }) => 
   )
 }
 
-export const ChannelVisibilityLabel = ({ locale = "pt-BR" }: { locale?: Locale }) => {
-  if (!useContext(ChannelBrowserContext)) return null
-
-  return <span className="channel-visibility">{t("Everyone in the channel sees", {}, locale)}</span>
-}
-
-export const ChannelControlNote = ({ locale = "pt-BR" }: { locale?: Locale }) => {
-  const channel = useChannelBrowserView(locale)
-  if (!channel?.state.controllerId) return null
-
-  return (
-    <span className="channel-visibility" role="status">
-      {channel.controlLabel}
-    </span>
-  )
-}
-
-export const ChannelHiddenPreview = ({ locale = "pt-BR" }: { locale?: Locale }) => {
-  const channel = useChannelBrowserView(locale)
-  if (!channel) return null
-
-  return (
-    <p className="channel-hidden-preview" role="status">
-      {t(
-        channel.selfControl ? "Browser self hidden preview" : "Preview hidden for the channel while {person} types",
-        { person: channel.controlName },
-        locale,
-      )}
-    </p>
-  )
-}
-
 export const ChannelCardFooter = ({ locale = "pt-BR" }: { locale?: Locale }) => {
   const channel = useChannelBrowserView(locale)
   if (!channel) return null
 
   const queue = getChannelQueueLabel(channel.state.queue, locale)
-  const finished = ["succeeded", "failed", "canceled"].includes(channel.state.status ?? "")
-  if (finished && !queue) return null
+  if (!queue) return null
 
   return (
     <div className="channel-card-footer">
-      <p className="channel-banner">
-        <svg
-          aria-hidden="true"
-          width="16"
-          height="16"
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-        >
-          <circle cx="8" cy="8" r="6.5" />
-          <path d="M8 4.5v4M8 11h.01" />
-        </svg>
-        <span>
-          <strong>{t("If the site asks for a login,", {}, locale)}</strong>{" "}
-          {t(
-            "{bot} pauses and calls {person}, who asked. The preview stays hidden for the channel while they type.",
-            { bot: channel.state.botName, person: channel.state.requesterName },
-            locale,
-          )}
-        </span>
-      </p>
       {queue && (
         <p className="channel-queue" role="status">
           {queue}

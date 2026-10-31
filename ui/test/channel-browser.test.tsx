@@ -161,15 +161,6 @@ describe("getChannelBrowserView", () => {
     const view = getChannelBrowserView(getState(), "user-hugo")
 
     expect(view.controlName).toBe("Ana")
-    expect(view.previewHidden).toBe(false)
-  })
-
-  test("hides the shared preview for everyone during a take-over", () => {
-    const state = getState({ controllerId: "user-ana", controllerName: "Ana" })
-
-    expect(getChannelBrowserView(state, "user-hugo").previewHidden).toBe(true)
-    expect(getChannelBrowserView(state, "user-owner").previewHidden).toBe(true)
-    expect(getChannelBrowserView(state, "user-ana").previewHidden).toBe(true)
   })
 
   test("only the current controller keeps control actions during a handoff", () => {
@@ -245,20 +236,20 @@ describe("getChannelQueueLabel", () => {
 
 describe("browser card in a channel", () => {
   test.each([
-    ["pt-BR", "Prévia oculta enquanto o navegador espera Ana."],
-    ["en", "Preview hidden while the browser waits for Ana."],
+    ["pt-BR", "Esperando Ana"],
+    ["en", "Waiting for Ana"],
   ] as const)("a waiting preview names the requester to an observer in %s", (locale, copy) => {
     renderCard(getState({ status: "needs_you" }), "user-hugo", locale, true)
 
-    expect(screen.getByText(copy)).toBeVisible()
+    expect(screen.getByText(new RegExp(copy))).toBeVisible()
     expect(screen.queryByRole("button", { name: t("Take over browser", {}, locale) })).toBeNull()
   })
 
-  test("tells everyone in the channel and explains login before the requester", () => {
+  test("labels the live page without repeating the login reason", () => {
     renderCard(getState(), "user-ana")
 
-    expect(screen.getByText("Todos no canal veem")).toBeVisible()
-    expect(screen.getByText(/Léo pausa e chama você, quem pediu/)).toBeVisible()
+    expect(screen.getByText("Ao vivo")).toBeVisible()
+    expect(screen.queryByText(/prévia.*oculta/i)).toBeNull()
   })
 
   test("hides Assumir from people who are not allowed to take control", () => {
@@ -271,10 +262,10 @@ describe("browser card in a channel", () => {
   test("keeps Assumir enabled for the requester", () => {
     renderCard(getState(), "user-ana")
 
-    expect(screen.getByRole("button", { name: /Assumir/ })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Assumir", exact: true })).toBeEnabled()
   })
 
-  test("hides the preview for the channel while someone has control", async () => {
+  test("keeps the live preview for the channel while someone has control", async () => {
     const { api, bot } = renderCard(getState({ controllerId: "user-ana", controllerName: "Ana" }), "user-hugo")
     if (!bot) throw new Error("Missing fixture bot")
 
@@ -295,10 +286,10 @@ describe("browser card in a channel", () => {
       }),
     )
 
-    expect(screen.queryByRole("img", { name: "Página atual do navegador" })).toBeNull()
-    expect(screen.getByText("Prévia oculta para o canal enquanto Ana digita")).toBeVisible()
+    expect(await screen.findByRole("img", { name: "Página atual do navegador" })).toBeVisible()
+    expect(screen.getByText(/Ana está usando/)).toBeVisible()
     expect(screen.queryByText("Este navegador está sob seu controle.")).toBeNull()
-    expect(await screen.findAllByText("Uma pessoa está controlando esta aba; o bot está pausado.")).toHaveLength(1)
+    expect(screen.queryByText("Uma pessoa está controlando esta aba; o bot está pausado.")).toBeNull()
   })
 
   test("shows the queued request below the card", () => {
@@ -307,7 +298,18 @@ describe("browser card in a channel", () => {
     expect(screen.getByText("Na fila: pedido de Hugo")).toBeVisible()
   })
 
-  test("a private channel preview never offers a retry while another person types", async () => {
+  test.each(["succeeded", "failed", "canceled"] as const)(
+    "keeps the next request visible after the active request %s",
+    (status) => {
+      const state = getState({ status, queue: [{ requesterId: "user-hugo", requesterName: "Hugo" }] })
+
+      renderCard(state, "user-ana")
+
+      expect(screen.getByText("Na fila: pedido de Hugo")).toBeVisible()
+    },
+  )
+
+  test("a live channel preview needs no retry while another person types", async () => {
     vi.useFakeTimers()
     renderCard(getState({ controllerId: "user-ana", controllerName: "Ana" }), "user-hugo")
 
@@ -315,7 +317,7 @@ describe("browser card in a channel", () => {
       await vi.advanceTimersByTimeAsync(16_000)
     })
 
-    expect(screen.getByText("Prévia oculta para o canal enquanto Ana digita")).toBeVisible()
+    expect(screen.getByRole("img", { name: "Página atual do navegador" })).toBeVisible()
     expect(screen.queryByRole("button", { name: "Tentar carregar prévia novamente" })).toBeNull()
   })
 
@@ -456,9 +458,9 @@ test("ChatPanel derives shared browser presentation from workspace browser runs"
   )
 
   expect(await screen.findByRole("status", { name: "Léo no navegador · pedido de você" })).toBeVisible()
-  expect(await screen.findByText("Todos no canal veem")).toBeVisible()
+  expect(await screen.findByText("Ao vivo", { exact: true })).toBeVisible()
   expect(screen.getByText("Léo está trabalhando · No navegador · para você")).toBeVisible()
-  expect(screen.getByText("Todos no canal veem").closest(".message-assistant")).toContainElement(
+  expect(screen.getByText("Ao vivo", { exact: true }).closest(".message-assistant")).toContainElement(
     screen.getByText(fixture.reply.text),
   )
 })

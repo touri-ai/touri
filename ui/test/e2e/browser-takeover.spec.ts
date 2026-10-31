@@ -31,10 +31,13 @@ for (const viewport of [
 
     await page.locator(".browser-activity-card").getByRole("button", { name: "Assumir", exact: true }).click()
     await expect(page.getByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
-    await expect(page.getByText(/Você está no controle · .* está pausado/)).toBeVisible()
+    await expect(page.getByRole("status", { name: "Privacidade do navegador" })).toContainText("você está usando")
     await expect(
       page.getByRole("region", { name: "Controle remoto do navegador" }).getByRole("button", { name: /Devolver para/ }),
     ).toHaveCSS("min-height", "44px")
+    const expansion = page.getByRole("button", { name: /navegador em tela cheia/ })
+    await expect(expansion).toHaveCSS("min-width", "44px")
+    await expect(expansion).toHaveCSS("min-height", "44px")
     await expect(
       page.locator(".browser-takeover-screen img, .browser-takeover-screen canvas:visible").first(),
     ).toBeVisible()

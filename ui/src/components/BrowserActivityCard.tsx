@@ -1,13 +1,7 @@
 import type { BrowserTabInfo, BrowserTakeoverReason, Id, MessagePart, ToolCallPart } from "@touri/contracts"
 import { type ReactNode, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import { ApiError } from "../errors"
-import {
-  ChannelCardFooter,
-  ChannelControlNote,
-  ChannelHiddenPreview,
-  ChannelVisibilityLabel,
-  useChannelBrowserView,
-} from "../features/channelBrowser/ChannelBrowser"
+import { ChannelCardFooter, useChannelBrowserView } from "../features/channelBrowser/ChannelBrowser"
 import { clearBrowserHold, setBrowserHold } from "../features/desktop/browserHold"
 import { InlinePreviewContext } from "../features/desktop/InlineLivePreview"
 import { type PreviewFrame, startInlineFrameSource } from "../features/desktop/inlineFrameSource"
@@ -15,7 +9,9 @@ import { useInlinePreviewPreference } from "../features/desktop/inlinePreviewPre
 import { type Locale, t } from "../i18n"
 import { useBrowserActivityControls } from "./BrowserActivityControls"
 import { BrowserIcon, getBrowserIconName } from "./BrowserIcon"
+import { BrowserLiveHeader } from "./BrowserLiveHeader"
 import { BrowserTakeoverView } from "./BrowserTakeoverView"
+import { Button } from "./Button"
 import {
   getBrowserActivityCurrentLabel,
   getBrowserActivityIcon,
@@ -25,7 +21,6 @@ import {
   getBrowserActivityOpenUrl,
   getBrowserActivityScreenshot,
   getBrowserActivityShortUrl,
-  getBrowserActivitySubtitleAction,
   getBrowserActivityTabId,
   getBrowserActivityTime,
   getBrowserActivityTimestamps,
@@ -125,14 +120,12 @@ export const BrowserActivityCard = ({
   const observingHandback = takeoverSession !== null || resuming
   const resumption = useRef<{ runId: Id | null; completed: boolean } | null>(null)
   const handbackRunId = useRef<Id | null | undefined>(undefined)
-  const [privacyPending, setPrivacyPending] = useState(false)
   const held = heldTab?.tabId === activeTabId && heldTab?.held === true
   const paused = held || waitingForPerson
   const heldRef = useRef(held)
   heldRef.current = held
   const finished = sourceFinished && !paused && !takeoverSession && !resuming && !queued
-  const preview =
-    !paused && !channel?.previewHidden && previewFrame?.tabId === activeTabId ? previewFrame?.frame : undefined
+  const preview = previewFrame?.tabId === activeTabId ? previewFrame?.frame : undefined
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [takeoverUnavailable, setTakeoverUnavailable] = useState(false)
@@ -262,7 +255,6 @@ export const BrowserActivityCard = ({
       ) {
         hasTabEvent = true
         if (!tabId) setResolvedTab({ callId: resolutionCallId, tabId: event.tab.tabId })
-        if (event.tab.heldByUser) setPreviewFrame(undefined)
         setHeldTab({
           tabId: event.tab.tabId,
           held:
@@ -319,9 +311,7 @@ export const BrowserActivityCard = ({
       !visible ||
       hidden ||
       !expanded ||
-      paused ||
       finished ||
-      channel?.previewHidden ||
       takeoverSession ||
       waitedTooLong
     )
@@ -332,7 +322,6 @@ export const BrowserActivityCard = ({
       { id: botId, machine },
       activeTabId,
       (frame) => {
-        setPrivacyPending(false)
         setPreviewFrame({ tabId: activeTabId, frame })
       },
       () => setPreviewError(t("Browser preview unavailable. Open the browser to reconnect.", {}, locale)),
@@ -351,10 +340,8 @@ export const BrowserActivityCard = ({
     botId,
     machine,
     canPreview,
-    channel?.previewHidden,
     expanded,
     finished,
-    paused,
     hidden,
     locale,
     previewEnabled,
@@ -363,13 +350,6 @@ export const BrowserActivityCard = ({
     waitedTooLong,
     previewAttempt,
   ])
-
-  useEffect(() => {
-    if (paused || channel?.previewHidden) {
-      setPrivacyPending(true)
-      setPreviewFrame(undefined)
-    }
-  }, [channel?.previewHidden, paused])
 
   // Refresh after each completed browser action; the source keeps sampling serial and throttled.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the action count is the trigger
@@ -380,12 +360,12 @@ export const BrowserActivityCard = ({
   // biome-ignore lint/correctness/useExhaustiveDependencies: an explicit retry starts a new first-frame deadline
   useEffect(() => {
     setWaitedTooLong(false)
-    const isPreviewPaused = !previewEnabled || channel?.previewHidden || hidden || !visible
-    if (finished || paused || preview || !expanded || isPreviewPaused) return
+    const isPreviewPaused = !previewEnabled || hidden || !visible
+    if (finished || preview || !expanded || isPreviewPaused) return
     const timer = window.setTimeout(() => setWaitedTooLong(true), WAITING_TIMEOUT_MS)
 
     return () => window.clearTimeout(timer)
-  }, [expanded, finished, paused, preview, previewAttempt, previewEnabled, channel?.previewHidden, hidden, visible])
+  }, [expanded, finished, preview, previewAttempt, previewEnabled, hidden, visible])
 
   // Preserve a user's scroll position when they inspect earlier browser actions.
   // biome-ignore lint/correctness/useExhaustiveDependencies: row count changes trigger this check
@@ -492,44 +472,27 @@ export const BrowserActivityCard = ({
   if (!browserTools.length) return null
 
   const screenshot = getBrowserActivityScreenshot(browserTools)
-  const finalPreview = !paused && !channel?.previewHidden ? preview : undefined
+  const finalPreview = preview
   const actions = browserTools.slice(-MAX_VISIBLE_ACTIONS)
   const times = getBrowserActivityTimestamps(actions, createdAt)
   const takeoverActions = browserTools.slice(-5)
   const takeoverTimes = getBrowserActivityTimestamps(takeoverActions, createdAt)
   const currentAction = browserTools.at(-1)
-  const requesterName = channel?.state.requesterName ?? t("Browser self", {}, locale)
-  const previewNotice = getPreviewNotice(paused, privacyPending, previewError, requesterName, locale)
   const title = t("Browser for {name}", { name: botName }, locale)
   const summary = t(
     browserTools.length === 1 ? "Used the browser · 1 action" : "Used the browser · {count} actions",
     { count: browserTools.length },
     locale,
   )
-  const url =
-    finished || paused || channel?.previewHidden
-      ? ""
-      : getBrowserActivityShortUrl(preview?.url ?? "") || getBrowserActivityOpenUrl(browserTools)
-  const subtitle = [
-    botName,
-    queued
-      ? t("Waiting for the other browser request to finish.", {}, locale)
-      : currentAction && getBrowserActivitySubtitleAction(currentAction, locale),
-  ]
-    .filter(Boolean)
-    .join(" · ")
+  const url = getBrowserActivityShortUrl(preview?.url ?? "") || getBrowserActivityOpenUrl(browserTools)
+  const requesterName = channel?.state.requesterName ?? t("Browser self", {}, locale)
+  const controllerName = channel?.state.controllerId ? channel.controlName : null
+  const canTakeOver = channel?.canControl !== false && !!activeTabId && !queued && !busy
   const takeoverActive = paused && !finished
   const fallbackReason = waitingForPerson ? "sensitive_action" : "requested"
   const requestedReason = takeoverActive ? getBrowserTakeoverReason(browserTools) : null
   const takeoverReason = requestedReason ?? heldTab?.reason ?? fallbackReason
   const reasonCopy = getTakeoverReasonCopy(takeoverReason, locale)
-  const controlStatusCopy = t(
-    channel?.state.controllerId
-      ? "A person is controlling this browser tab; the bot is paused."
-      : "The browser needs your help.",
-    {},
-    locale,
-  )
   if (takeoverSession && controlEpoch && activeTabId && api && !finished) {
     const takeoverCard = (
       <div className="browser-activity-stack">
@@ -540,7 +503,10 @@ export const BrowserActivityCard = ({
             sessionId={takeoverSession}
             controlEpoch={controlEpoch}
             initialViewEpoch={takeoverViewEpoch}
+            initialPreview={preview?.src}
+            initialAddress={url}
             botName={botName}
+            bot={bot ?? undefined}
             locale={locale}
             reason={reasonCopy}
             actions={takeoverActions.map((part, index) => ({
@@ -626,37 +592,26 @@ export const BrowserActivityCard = ({
             <span aria-hidden="true">{expanded ? "−" : "+"}</span>
           </button>
         ) : (
-          <header className="browser-activity-header">
-            <div className="browser-activity-heading">
-              <strong>{title}</strong>
-              {(subtitle || url) && (
-                <span className="browser-activity-subtitle">
-                  {url && <span className="browser-activity-domain">{url}</span>} {subtitle}
-                </span>
-              )}
-            </div>
-            <ChannelVisibilityLabel locale={locale} />
-            <ChannelControlNote locale={locale} />
+          <BrowserLiveHeader
+            bot={bot ?? undefined}
+            botName={botName}
+            waiting={paused}
+            requesterName={requesterName}
+            controllerName={controllerName}
+            selfControl={channel?.selfControl ?? false}
+            startedAt={currentAction?.resolvedAt ?? currentAction?.startedAt ?? createdAt}
+            locale={locale}
+          >
             <div className="browser-activity-header-actions">
               {channel?.canControl !== false && (
-                <button
-                  type="button"
-                  className="button button-quiet"
-                  disabled={busy || !activeTabId || queued}
+                <Button
+                  variant="primary"
+                  disabled={!canTakeOver}
                   title={activeTabId ? undefined : t("Preparing the browser…", {}, locale)}
                   onClick={() => void toggleTakeover()}
                 >
-                  {busy ? (
-                    t("Updating browser control…", {}, locale)
-                  ) : (
-                    <>
-                      <BrowserIcon name="person" />
-                      {takeoverSession
-                        ? t("Hand back to {name}", { name: botName }, locale)
-                        : t("Take over browser", {}, locale)}
-                    </>
-                  )}
-                </button>
+                  {t(busy ? "Updating browser control…" : "Take over browser", {}, locale)}
+                </Button>
               )}
               {previewEnabled && (
                 <button
@@ -679,7 +634,7 @@ export const BrowserActivityCard = ({
                 <BrowserIcon name={expanded ? "chevronUp" : "chevronDown"} />
               </button>
             </div>
-          </header>
+          </BrowserLiveHeader>
         )}
         {/* The outcome sits under the control the person just used, outside the scrolling log. */}
         {(error || (takeoverUnavailable && channel?.canControl !== false)) && (
@@ -703,27 +658,25 @@ export const BrowserActivityCard = ({
             className={`browser-activity-content${fullView || finished || !previewEnabled ? " browser-activity-content-full" : ""}`}
           >
             {finished && children && <div className="browser-activity-history">{children}</div>}
-            {!finished && (channel?.previewHidden || previewEnabled) && (
+            {!finished && previewEnabled && (
               <div className={`browser-activity-preview${fullView ? " browser-activity-preview-full" : ""}`}>
-                {channel?.previewHidden ? (
-                  <ChannelHiddenPreview locale={locale} />
-                ) : previewEnabled ? (
-                  <div className="browser-activity-window">
-                    {/* Reserve the chrome while loading so following history cannot move a pressed control. */}
-                    <div className="browser-activity-chrome" aria-hidden="true">
-                      {preview?.src && (
-                        <>
-                          <span className="browser-activity-chrome-lock" />
-                          <span className="browser-activity-chrome-live" />
-                          {t("Live", {}, locale)}
-                        </>
-                      )}
-                    </div>
+                <div className="browser-activity-window">
+                  {/* Reserve the chrome while loading so following history cannot move a pressed control. */}
+                  <div className="browser-activity-chrome">
+                    <span className="browser-activity-chrome-lock" aria-hidden="true" />
+                    <span className="browser-activity-address">{url || t("Preparing the browser…", {}, locale)}</span>
+                  </div>
+                  <div className="browser-activity-page">
                     {preview?.src ? (
                       <BrowserPreviewImage src={preview.src} alt={t("Current browser page", {}, locale)} />
                     ) : (
                       <p className="browser-activity-placeholder" role="status">
-                        {previewNotice ??
+                        <span className="motion-skeleton" aria-hidden="true">
+                          <span />
+                          <span />
+                          <span />
+                        </span>
+                        {previewError ??
                           t(
                             waitedTooLong
                               ? "The browser did not send a preview in time. Retry the preview or stop the task."
@@ -736,8 +689,8 @@ export const BrowserActivityCard = ({
                       </p>
                     )}
                   </div>
-                ) : null}
-                {waitedTooLong && previewEnabled && !channel?.previewHidden && !preview?.src && (
+                </div>
+                {waitedTooLong && previewEnabled && !preview?.src && (
                   <button
                     type="button"
                     className="button button-quiet"
@@ -756,6 +709,11 @@ export const BrowserActivityCard = ({
                 )}
               </div>
             )}
+            {!finished && (
+              <div className="browser-activity-help">
+                <p>{takeoverActive ? reasonCopy : t("Follow the browser steps here.", {}, locale)}</p>
+              </div>
+            )}
             <div
               className="browser-activity-log"
               role="log"
@@ -765,13 +723,6 @@ export const BrowserActivityCard = ({
               aria-live={finished ? "off" : "polite"}
               ref={logList}
             >
-              {takeoverActive && (
-                <section className="browser-takeover-reason">
-                  <strong>{t("Why {name} paused", { name: botName }, locale)}</strong>
-                  {reasonCopy !== controlStatusCopy && <p>{reasonCopy}</p>}
-                  <p>{controlStatusCopy}</p>
-                </section>
-              )}
               <strong>{t(takeoverActive ? "Recent actions" : "Browser activity", {}, locale)}</strong>
               <ol>
                 {actions.map((part, index) => (
@@ -820,12 +771,6 @@ export const BrowserActivityCard = ({
               {browserTools.length > MAX_VISIBLE_ACTIONS && (
                 <small>{t("Showing the latest {count} browser actions", { count: MAX_VISIBLE_ACTIONS }, locale)}</small>
               )}
-              {takeoverActive && (
-                <p className="browser-takeover-privacy">
-                  {t("What you type in the browser stays out of chat and the bot's context.", {}, locale)}
-                </p>
-              )}
-              {takeoverSession && held && <p role="status">{t("You have control of this browser tab.", {}, locale)}</p>}
               {finished && screenshot?.outputAttachmentId && (
                 <section className="browser-activity-final-shot" aria-label={t("Final browser screenshot", {}, locale)}>
                   <strong>{t("Final browser screenshot", {}, locale)}</strong>
@@ -858,19 +803,6 @@ export const BrowserActivityCard = ({
   )
 }
 
-const getPreviewNotice = (
-  paused: boolean,
-  privacyPending: boolean,
-  error: string | null,
-  requesterName: string,
-  locale: Locale,
-): string | null => {
-  if (paused) return t("Preview hidden while the browser waits for {person}.", { person: requesterName }, locale)
-  if (privacyPending) return t("Your last page stays private until a new safe page is ready.", {}, locale)
-
-  return error
-}
-
 const getTakeoverReasonCopy = (reason: string, locale: Locale): string => {
   if (["captcha", "verification", "challenge"].includes(reason))
     return t("The site needs you to complete a verification step.", {}, locale)
@@ -878,7 +810,7 @@ const getTakeoverReasonCopy = (reason: string, locale: Locale): string => {
   if (reason === "payment")
     return t("The site asked you to review a purchase or payment before continuing.", {}, locale)
   if (reason === "form_submit") return t("The site asked you to submit a form before continuing.", {}, locale)
-  if (reason === "requested") return t("A person is controlling this browser tab; the bot is paused.", {}, locale)
+  if (reason === "requested") return t("The browser is ready for you to take over.", {}, locale)
 
   if (reason === "sensitive_action") return t("The site needs your confirmation before continuing.", {}, locale)
 

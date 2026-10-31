@@ -135,7 +135,6 @@ test("the human wait keeps its owner and bot slot after the provider finishes", 
   expect(fixture.runs.getForTab("tab")).toMatchObject({ status: "needs_you", requesterPersonId: "ana" })
   expect(fixture.runs.takeControl({ runId: "first", actorPersonId: "other" }).success).toBe(false)
   expect(fixture.runs.takeControl({ runId: "first", actorPersonId: "ana" }).success).toBe(true)
-  expect(fixture.runs.isPreviewHidden("tab")).toBe(true)
 
   fixture.runs.cancelRequest("first")
 

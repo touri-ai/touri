@@ -353,64 +353,73 @@ test("a VM browser card samples its authorized tab instead of the complete compu
   expect(request).not.toHaveBeenCalledWith("POST /bots/:id/desktop", expect.anything(), expect.anything())
 })
 
-test("a worker frame from before takeover cannot return after public preview is purged", async () => {
-  installPreviewWorker(false)
-  let listener: (envelope: UiEventEnvelope) => void = () => {}
-  const api = {
-    request: vi.fn(async (route: string) =>
-      route === "GET /browser/tabs"
-        ? { tabs: [] }
-        : { image: "data:image/jpeg;base64,ZmFrZQ==", title: "Synthetic", url: "https://example.test" },
-    ),
-    subscribe: (next: typeof listener) => {
-      listener = next
-      return () => {}
-    },
-    isMock: false,
-  } as UiApi
-  const frame = vi.fn()
-  const reset = vi.fn()
-  const stop = startInlineFrameSource(api, { id: "leo", machine: "local" }, "tab", frame, vi.fn(), undefined, {
-    onReset: reset,
-  })
-  await vi.waitFor(() => expect(mock.workers[0]?.sent).toHaveLength(1))
-  const worker = mock.workers[0]
-  if (!worker) throw new Error("Missing preview processor")
-
-  listener({
-    seq: 1,
-    at: 1,
-    event: {
-      type: "browser.tab",
-      tab: {
-        tabId: "tab",
-        ownerBotId: "leo",
-        title: "",
-        url: "",
-        state: "live",
-        openerTabId: null,
-        heldByUser: true,
-        lastUsedAt: 1,
+test.each(["closed", "live"] as const)(
+  "an in-flight frame is retained during human control unless the tab is %s",
+  async (state) => {
+    installPreviewWorker(false)
+    let listener: (envelope: UiEventEnvelope) => void = () => {}
+    const api = {
+      request: vi.fn(async (route: string) =>
+        route === "GET /browser/tabs"
+          ? { tabs: [] }
+          : { image: "data:image/jpeg;base64,ZmFrZQ==", title: "Synthetic", url: "https://example.test" },
+      ),
+      subscribe: (next: typeof listener) => {
+        listener = next
+        return () => {}
       },
-    },
-  })
-  worker.dispatchEvent(
-    new MessageEvent("message", {
-      data: {
-        id: worker.sent[0]?.message.id,
-        title: "Private",
-        url: "https://example.test/private",
-        src: "data:image/jpeg;base64,ZmFrZQ==",
-      },
-    }),
-  )
-  await Promise.resolve()
-  await Promise.resolve()
-  stop()
+      isMock: false,
+    } as UiApi
+    const frame = vi.fn()
+    const reset = vi.fn()
+    const stop = startInlineFrameSource(api, { id: "leo", machine: "local" }, "tab", frame, vi.fn(), undefined, {
+      onReset: reset,
+    })
+    await vi.waitFor(() => expect(mock.workers[0]?.sent).toHaveLength(1))
+    const worker = mock.workers[0]
+    if (!worker) throw new Error("Missing preview processor")
 
-  expect(reset).toHaveBeenCalledOnce()
-  expect(frame).not.toHaveBeenCalled()
-})
+    listener({
+      seq: 1,
+      at: 1,
+      event: {
+        type: "browser.tab",
+        tab: {
+          tabId: "tab",
+          ownerBotId: "leo",
+          title: "",
+          url: "",
+          state,
+          openerTabId: null,
+          heldByUser: true,
+          lastUsedAt: 1,
+        },
+      },
+    })
+    worker.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          id: worker.sent[0]?.message.id,
+          title: "Private",
+          url: "https://example.test/private",
+          src: "data:image/jpeg;base64,ZmFrZQ==",
+        },
+      }),
+    )
+    await Promise.resolve()
+    await Promise.resolve()
+    stop()
+
+    if (state === "closed") {
+      expect(reset).toHaveBeenCalledOnce()
+      expect(frame).not.toHaveBeenCalled()
+      return
+    }
+
+    expect(reset).not.toHaveBeenCalled()
+    expect(frame).toHaveBeenCalledOnce()
+  },
+)
 
 const recoverySources = new Set<() => void>()
 afterEach(() => {

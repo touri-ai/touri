@@ -165,7 +165,7 @@ test("restoring an owned tab at the quota does not create another saved tab or g
   expect(fixture.engine.tabsForBot("brisa")).toEqual([])
 })
 
-test("restoration does not expose an unverified private document", async () => {
+test("restoration keeps an unverified document out of bot context while showing its live page", async () => {
   const fixture = getFixture()
   fixture.activation.resolve()
 
@@ -182,8 +182,8 @@ test("restoration does not expose an unverified private document", async () => {
   })
 
   expect(snapshot).toMatchObject({ success: true, structured: { url: "", title: "", text: "", image: null } })
-  expect(preview).toBeNull()
-  expect(fixture.calls.some((call) => call.method === "Page.captureScreenshot")).toBe(false)
+  expect(preview?.image).toBe("data:image/jpeg;base64,ZmFrZQ==")
+  expect(fixture.calls.filter((call) => call.method === "Page.captureScreenshot")).toHaveLength(1)
 })
 
 test.each(["file:///private/synthetic", "javascript:alert(1)"])("restoration still rejects %s", async (url) => {

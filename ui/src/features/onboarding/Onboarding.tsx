@@ -1,6 +1,8 @@
 import type { DiscoveredServer, OnboardingStatus } from "@touri/contracts"
-import { type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react"
+import { lazy, type ReactNode, type RefObject, Suspense, useEffect, useId, useRef, useState } from "react"
 import { createTauriInvoke, type TauriInvoke } from "../../api/client"
+import { BotAvatar } from "../../components/BotAvatar"
+import { Button } from "../../components/Button"
 import { getWindowChrome, WindowFrame } from "../../components/WindowFrame"
 import { t } from "../../i18n"
 import { isNativeDesktop, serverModeError } from "../server/serverMode"
@@ -14,10 +16,14 @@ import {
   OnboardingUnsupportedError,
   scheduleLocalSetup,
 } from "./client"
+import { guideBot } from "./guide"
 import "./onboarding.css"
 
-type Step = "welcome" | "choose" | "connect" | "pair" | "here" | "access"
+type Step = "welcome" | "choose" | "connect" | "pair" | "here" | "access" | "workspace"
 const nativeInvoke = createTauriInvoke()
+const GuidedOnboarding = lazy(() =>
+  import("./GuidedOnboarding").then((module) => ({ default: module.GuidedOnboarding })),
+)
 
 export const OnboardingBoundary = ({
   children,
@@ -89,6 +95,7 @@ export const Onboarding = ({
   onUnsupported?: () => void
 }) => {
   const [step, setStep] = useState<Step>(initialStep)
+  const [paired, setPaired] = useState(false)
   const [status, setStatus] = useState<OnboardingStatus | null>(null)
   const [url, setUrl] = useState("")
   const [code, setCode] = useState("")
@@ -159,7 +166,18 @@ export const Onboarding = ({
       }
       const result = await invoke("server_mode_pair", { url: destination, code: code.trim() })
       if (result?.mode !== "server") throw new Error("SERVER_PAIR")
-      onComplete()
+      if (revisiting) {
+        onComplete()
+        return
+      }
+      const pairedStatus = await request("GET /onboarding", {}).catch(() => null)
+      const existingBots = pairedStatus ? [] : (await request("GET /bots", {}).catch(() => ({ bots: [] }))).bots
+      if (pairedStatus?.completed || existingBots.length > 0) {
+        onComplete()
+        return
+      }
+      setPaired(true)
+      go("workspace")
     } catch (caught) {
       setError(serverModeError(caught))
     } finally {
@@ -173,7 +191,8 @@ export const Onboarding = ({
     try {
       const mode = await invoke("server_mode_status", {})
       if (mode?.mode !== "server") {
-        go("here")
+        setPaired(false)
+        go(revisiting ? "here" : "workspace")
         return
       }
       scheduleLocalSetup()
@@ -195,11 +214,39 @@ export const Onboarding = ({
       setError(serverModeError(caught))
     }
   }
+  if (step === "workspace")
+    return (
+      <Suspense
+        fallback={
+          <main className="setup-screen" aria-busy="true">
+            <p role="status">{t("Loading")}</p>
+          </main>
+        }
+      >
+        <GuidedOnboarding
+          checkExistingWorkspace={paired}
+          invoke={invoke}
+          onBack={() => go("choose")}
+          onComplete={async () => {
+            if (!paired) await request("POST /onboarding", { remote: false })
+            onComplete()
+          }}
+        />
+      </Suspense>
+    )
   return (
-    <main className="setup-screen">
+    <main
+      className="setup-screen"
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || busy || step === "welcome") return
+        event.preventDefault()
+        if (step === "choose" && revisiting) onComplete()
+        else go(getPreviousStep(step))
+      }}
+    >
       <section className={`setup-card setup-${step}`} aria-labelledby={`${id}-title`} aria-busy={busy}>
         {step !== "welcome" && (
-          <button
+          <Button
             type="button"
             className="setup-back"
             disabled={busy}
@@ -212,7 +259,7 @@ export const Onboarding = ({
             }}
           >
             ← {t("Back")}
-          </button>
+          </Button>
         )}
         {step === "welcome" && (
           <WelcomeScreen
@@ -220,7 +267,7 @@ export const Onboarding = ({
             id={id}
             status={status}
             busy={busy}
-            onStart={() => void start(false)}
+            onStart={() => go("choose")}
             onChoose={() => go("choose")}
           />
         )}
@@ -276,9 +323,9 @@ export const Onboarding = ({
             <p className="setup-access-url">{access.url}</p>
             <p>{t("setup.codeExpires")}</p>
             <output className="setup-pair-code">{access.code}</output>
-            <button type="button" className="button button-brand setup-primary" onClick={onComplete}>
+            <Button type="button" className="button button-brand setup-primary" onClick={onComplete}>
               {t("setup.openHome")}
-            </button>
+            </Button>
           </>
         )}
         {error && (
@@ -386,21 +433,21 @@ const WelcomeScreen = ({
 }: HeadingProps & { status: OnboardingStatus | null; busy: boolean; onStart: () => void; onChoose: () => void }) => (
   <>
     <div className="setup-brand">
-      <img src="/touri-bull.png" alt="" />
+      <BotAvatar bot={guideBot} size={96} mood="responded" />
       <span>touri</span>
     </div>
     <h1 ref={heading} tabIndex={-1} id={`${id}-title`}>
-      {t("setup.welcome")}
+      {t("ob.welcome")}
     </h1>
-    <p className="setup-intro">{t("setup.welcomeDetail")}</p>
+    <p className="setup-intro">{t("ob.welcomeDetail")}</p>
     {status?.hasData && <p className="setup-note">{t("setup.keepData")}</p>}
-    <button type="button" className="button button-brand setup-primary" disabled={busy} onClick={onStart}>
-      {t(busy ? "setup.starting" : "setup.localStart")} <span aria-hidden="true">→</span>
-    </button>
+    <Button type="button" className="button button-brand setup-primary" disabled={busy} onClick={onStart}>
+      {t(busy ? "setup.starting" : "ob.start")} <span aria-hidden="true">→</span>
+    </Button>
     <p className="setup-note">{t("setup.noAccount")}</p>
-    <button type="button" className="setup-server-link" disabled={busy} onClick={onChoose}>
+    <Button type="button" className="setup-server-link" disabled={busy} onClick={onChoose}>
       {t("setup.ownServer")} <span aria-hidden="true">›</span>
-    </button>
+    </Button>
   </>
 )
 
@@ -413,23 +460,34 @@ const ServerChooser = ({
   onHere,
 }: HeadingProps & { computer: string; busy: boolean; onConnect: () => void; onHere: () => void }) => (
   <>
-    <h1 ref={heading} tabIndex={-1} id={`${id}-title`}>
-      {t("setup.myServer")}
-    </h1>
-    <p className="setup-intro">{t("setup.serverDetail")}</p>
+    <div className="setup-question">
+      <BotAvatar bot={guideBot} size={56} mood="idle" />
+      <div>
+        <h1 ref={heading} tabIndex={-1} id={`${id}-title`}>
+          {t("ob.where")}
+        </h1>
+        <p className="setup-intro">{t("ob.whereDetail")}</p>
+      </div>
+    </div>
     <div className="setup-choices">
-      <button type="button" className="setup-choice" disabled={busy} onClick={onConnect}>
+      {import.meta.env.VITE_TOURI_CLOUD_ONBOARDING === "true" && (
+        <Button className="setup-choice" disabled>
+          <strong>touri Cloud</strong>
+          <span>{t("ob.soon")}</span>
+        </Button>
+      )}
+      <Button type="button" className="setup-choice" disabled={busy} onClick={onConnect}>
         <span aria-hidden="true">↗</span>
         <strong>{t("setup.connectTitle")}</strong>
         <span>{t("setup.connectDetail")}</span>
         <span aria-hidden="true">→</span>
-      </button>
-      <button type="button" className="setup-choice" disabled={busy} onClick={onHere}>
+      </Button>
+      <Button type="button" className="setup-choice" disabled={busy} onClick={onHere}>
         <span aria-hidden="true">⌂</span>
-        <strong>{t("setup.runHere", { computer })}</strong>
+        <strong>{t("ob.thisComputer", { computer })}</strong>
         <span>{t("setup.runDetail")}</span>
         <span aria-hidden="true">→</span>
-      </button>
+      </Button>
     </div>
   </>
 )
@@ -458,10 +516,15 @@ const ConnectScreen = ({
   discovery: DiscoveryState
 }) => (
   <>
-    <h1 ref={heading} tabIndex={-1} id={`${id}-title`}>
-      {t("setup.connectTitle")}
-    </h1>
-    <p className="setup-intro">{t("setup.addressHelp")}</p>
+    <div className="setup-question">
+      <BotAvatar bot={guideBot} size={56} mood={busy ? "connecting" : "idle"} />
+      <div>
+        <h1 ref={heading} tabIndex={-1} id={`${id}-title`}>
+          {t(step === "pair" ? "ob.pairQuestion" : "ob.serverQuestion")}
+        </h1>
+        <p className="setup-intro">{t("setup.addressHelp")}</p>
+      </div>
+    </div>
     <form
       onSubmit={(event) => {
         event.preventDefault()
@@ -483,9 +546,9 @@ const ConnectScreen = ({
           onChange={(event) => setUrl(event.target.value)}
         />
         {step === "connect" && (
-          <button className="button button-brand" type="submit" disabled={!url.trim()}>
+          <Button className="button button-brand" type="submit" disabled={!url.trim()}>
             {t("Conectar ao servidor")}
-          </button>
+          </Button>
         )}
       </div>
       {step === "pair" && (
@@ -506,9 +569,9 @@ const ConnectScreen = ({
             onChange={(event) => setCode(event.target.value)}
           />
           <p className="setup-note">{t("setup.pairPrivacy")}</p>
-          <button className="button button-brand setup-primary" type="submit" disabled={busy || !code.trim()}>
+          <Button className="button button-brand setup-primary" type="submit" disabled={busy || !code.trim()}>
             {t(busy ? "Aguarde…" : "setup.pair")}
-          </button>
+          </Button>
         </>
       )}
     </form>
@@ -523,7 +586,7 @@ const ConnectScreen = ({
                 <strong>{server.source === "local" ? t("setup.thisComputer") : server.name}</strong>
                 <p>{t(server.source === "local" ? "setup.runningHere" : "setup.tailnet")}</p>
               </div>
-              <button
+              <Button
                 type="button"
                 className="button button-quiet"
                 onClick={() => selectServer(server.url)}
@@ -532,7 +595,7 @@ const ConnectScreen = ({
                 })}
               >
                 {t("setup.use")}
-              </button>
+              </Button>
             </div>
           ))}
           {discovery.searching && <p role="status">{t("setup.searching")}</p>}
@@ -540,9 +603,9 @@ const ConnectScreen = ({
         </div>
         <p className="setup-note">{t("setup.discoveryHelp")}</p>
         {!discovery.searching && (
-          <button type="button" className="text-button" onClick={discovery.retry}>
+          <Button type="button" className="text-button" onClick={discovery.retry}>
             {t("setup.searchAgain")}
-          </button>
+          </Button>
         )}
       </section>
     )}
@@ -580,7 +643,7 @@ const RunHereScreen = ({
 }) => (
   <>
     <h1 ref={heading} tabIndex={-1} id={`${id}-title`}>
-      {t("setup.runHere", { computer })}
+      {t("ob.thisComputer", { computer })}
     </h1>
     <p className="setup-intro">{t("setup.builtIn")}</p>
     {status?.hasData && <p className="setup-callout">{t("setup.keepData")}</p>}
@@ -635,15 +698,15 @@ const RunHereScreen = ({
         {getNetworkHelp(status?.tailscale, discovery.searching)}
       </p>
       {!discovery.searching && (
-        <button type="button" className="text-button" onClick={discovery.retry}>
+        <Button type="button" className="text-button" onClick={discovery.retry}>
           {t("onboarding.recheck")}
-        </button>
+        </Button>
       )}
       <p className="setup-note">{t("setup.agents")}</p>
       <p className="setup-note">{t("setup.alwaysOn")}</p>
       <p className="setup-note">
         {t("setup.migrate")}{" "}
-        <button
+        <Button
           type="button"
           className="text-button"
           onClick={() =>
@@ -653,11 +716,11 @@ const RunHereScreen = ({
           }
         >
           {t("setup.guide")}
-        </button>
+        </Button>
       </p>
-      <button type="submit" className="button button-brand setup-primary" disabled={busy}>
+      <Button type="submit" className="button button-brand setup-primary" disabled={busy}>
         {t(busy ? "setup.starting" : "setup.start")}
-      </button>
+      </Button>
     </form>
   </>
 )

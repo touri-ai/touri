@@ -12,6 +12,31 @@ legacy app bots, chats and routines so you can switch over.
 
 ---
 
+## Local agent import
+
+The authenticated owner can detect local sources, preview selected export folders or strict manual
+JSON, copy selected instructions, skills, memories and routines, and undo the created resources.
+The shared contract is `packages/contracts/src/agent-import.ts`; formats and limits are documented
+in `docs/agent-import.md`. This API change supplies the typed client without adding onboarding screens.
+
+Preview writes nothing, expires after ten minutes and caches at most three reviewed snapshots.
+Apply copies that snapshot without modifying the source; retries with the same selection reuse the
+result while the preview remains available. New bots use read-only access, explicit approvals and
+no browser or computer control. Routines remain disabled; integrations expose names to reconnect.
+Undo uses a durable resource journal, pauses routines by ID and delegates routine history cleanup
+to the existing progressive bot deletion path instead of loading execution history in the request.
+
+Source folders resolve parent-directory aliases before private-data scope checks, allowing ordinary
+system-directory aliases on supported hosts. The selected final entry must be a regular directory;
+final symlinks, secret paths, private application data and traversal are rejected. File reads pin
+canonical ancestors and reject symlinks and multiple links. Secret and suspicious content is filtered
+before preview caching. Scans are bounded by entries, depth, bytes and elapsed time, and yield between
+reads; text validation and writes use the existing file worker. Progress events use the existing
+owner-only event boundary and contain IDs and counts. A valid local UI token retains owner access
+when work authorization is installed; paired devices must carry the active owner's identity.
+Tests release their own fixtures and flush
+accepted file operations without closing the process-wide worker used by later test files.
+
 ## Single-instance server deployment
 
 The optional Linux amd64 image and `docs/self-host/kubernetes.yaml` run one server for one
@@ -54,6 +79,54 @@ doctor warning about process data and credential exposure. There is no automatic
 sandboxing. `TOURI_BROWSER_DISABLE_DEV_SHM_USAGE=1` independently uses temporary files for
 shared memory. Desktop defaults remain unchanged. The bilingual deployment guide covers
 TLS, namespace requirements, credential-grade backups and restoration before upgrades.
+
+## Guided workspace setup
+
+The guide and its account editors load only when local workspace setup opens. Welcome and server
+access do not fetch those optional modules; shared button styles remain available at startup.
+
+First opening preserves server discovery, pairing and the choice to run locally. Pairing with
+an already configured server opens its existing workspace instead of restarting setup. Servers
+without the optional onboarding route are recognized by their existing bots. Only empty
+administrator workspaces enter the guide; member sessions retain their existing entry path. Local setup
+then asks for a workspace name, optional context and HTTPS website, reviewed agent imports,
+computer permissions, agent accounts, optional teammates and a first task. A live preview shows
+the channels, agents and first paused routine being assembled. Back returns to the preceding question without losing
+answers, including from import sources to context. Optional questions can be skipped. On narrow
+screens the form and preview grow within one scrollable surface, machine controls fit the width,
+and each question starts at the
+top. The main landmark stays outside named regions so assistive navigation can reach it directly.
+Primary actions preserve readable contrast in both themes, including their hover state. Workspace initials
+keep readable contrast for every offered color in both themes.
+Question transitions scroll in the next animation frame and focus the heading after that frame paints.
+If the owner focuses a field first, the scheduled heading focus preserves that choice.
+Escape remains available during that transition and does not navigate away from an open dialog.
+
+Import discovery, preview and apply use the authenticated UI transport. Importing requires an
+explicit reviewed selection; secrets stay excluded and copied routines stay paused. Each review
+accepts up to three sources so its previews fit the server's ticket capacity. The import
+server validates each preview and applies only reviewed resources; on older servers without
+these routes, source discovery explains the failure and setup remains usable through Skip. Pasted exports are bounded to 64 KiB and stay in memory.
+The owner can configure computer permissions during copying; loading and editing agent accounts
+waits for import completion so late results cannot replace account choices. Existing agents keep
+their instructions even when named touri; guide instructions apply only to a newly created guide. Browser access,
+writing and host computer control start disabled, with approvals required.
+
+Completed imports can be undone from import progress or the source screen. A successful undo removes
+its agents from the preview and account choices; a failed undo retains the import and offers a retry.
+Preview avatar seeds persist on imported agents, and the guide keeps the same identity throughout setup.
+Agent accounts use compact rows on wide screens. Invitations require a configured HTTPS address;
+without one, the guide explains the prerequisite before offering an invitation form.
+
+The first task checks the selected agent's installed program and saved account before sending anything.
+An unready or unreachable account returns to account setup with the task text intact; API models require
+a saved catalog entry and an available executor. These read-only checks never start a model request.
+The first task goes to #geral with an explicit mention of the selected bot. Retries keep the
+chosen conversation and reuse the nonce for unchanged text; edited text gets a new nonce.
+Context and the optional website are included in that task; source paths and pasted exports are
+not. Website reading is deferred to the task and grants no extra permissions. Completing setup
+opens that channel in Work without repeating the old team setup prompt. Existing server access
+settings remain available when revisiting setup.
 
 ## Turn latency
 
@@ -1003,6 +1076,11 @@ Bot replies place a 28-pixel avatar beside the content, bottom-aligned with the 
 above it. Author names retain at least 4.5:1 contrast in both themes, including custom avatar colours.
 Plain bot text uses a muted bubble; tables, code and images keep their own frame. Approvals,
 activity, attachments and browser controls retain their existing behaviour in the content column.
+An active reply draws only one bot avatar: when the message column already provides it, the
+activity line starts with three calm dots and its status label, without a decorative chevron.
+Standalone activity and grouped rows without a message avatar keep the activity avatar. The
+status label still opens activity details; pending approvals retain their separate toggle and link.
+Dots remain static under reduced motion.
 Consecutive messages from the same author within five minutes on the same calendar day omit
 repeated names and avatars; another author, system row or day divider breaks the group. The first
 mounted row in each virtual history window starts a new group so its author remains identifiable.
@@ -1444,11 +1522,20 @@ Launch:
 - `browser_request_takeover(tabId, reason)` marks the tab `held_by_user`, brings the Chrome window to the front, and notifies the user ("the bot needs you in the browser: <reason>").
 - The user can also take a tab from the app's Browser panel.
 - A persisted request waiting for a person expands its browser card immediately, even before
-  the tab snapshot arrives or after the provider turn ends. While waiting, the card stops shared
-  preview requests and progress animation, hides page metadata, and explains the pause in the
-  person's language. Known login, payment and form reasons use localized sentences; custom reasons
+  the tab snapshot arrives or after the provider turn ends. While waiting, the card keeps the live
+  page and sanitized web origin visible, stops progress animation, and explains the pause in the
+  person's language beside one primary Take over action in the sticky card header. The preview is
+  an image surface; only the explicit Take over action requests the authorized control session.
+  Recovery outcomes appear below that header, outside the scrolling action log. On phones, the compact
+  action log keeps its fixed height and scrolls within the card. Showing all steps or enlarging the
+  preview lets the log grow inside the card. Channel context wraps within the viewport. Other participants
+  can observe but cannot send input. Known login,
+  payment and form reasons use localized sentences; custom reasons
   retain the existing sanitization. A channel's composer names the person the browser is waiting for.
 - During remote control, keyboard entry stays beside the sticky handback and privacy controls.
+  The initial preview remains visible until the first live frame renders, while only one screen is
+  exposed to assistive technology. Input waits for that rendered live frame. The inline preview
+  stops during this person's active control session and resumes after handback.
   Resizing tracks the handback button's visibility even when the rest of the controls extend beyond
   the visible history. Private typing stays outside the conversation and handback resumes the same request.
 - Person-initiated control is confirmed by the browser card without an additional top toast.
@@ -1483,18 +1570,25 @@ Launch:
   and leaves control available for retry; losing the session or changing tabs also clears it.
   Finished historical cards do not subscribe for continuations.
 - Take-over times out after `timeoutMs` (default 10 min), and the tool then returns the current snapshot with a note.
-- Shared previews are withheld during human control and secret entry. Cached and in-flight frames are
-  invalidated on disconnect and main-frame navigation, including history and hash-route changes;
-  iframe navigation cannot replace the main page's metadata. Same-document navigation preserves secret mode.
-- After handback, restore or reconnect, a tab with private input requires fresh verification of a safe
-  document before shared previews resume. Changing the original private document's route does not clear
-  its protection. Decoded paths and hash routes for login/payment pages remain private, malformed routes
-  fail closed, and ordinary query values and anchor names do not classify a page as sensitive.
-- Preview capture performs that verification without requiring a separate snapshot command. Unknown
-  private document identities require a committed replacement after handback; a same-document route
-  change or an unverified history restore cannot release protection. At most 32 verified safe document
-  identities are retained per tab, and disconnect clears that temporary clearance.
-- Post-takeover title and URL metadata remain blank, including after safe shared previews resume.
+- Participants who already have access to the conversation see the live page while the bot waits,
+  during human control and after handback. This is an explicit product trade-off: page pixels,
+  including manually entered visible text, are shared with those participants. Password masking
+  follows the page. Vault secret entry still blocks capture before and after asynchronous work.
+  The shared address shows only a web origin; titles, credentials, paths, queries and fragments
+  stay out of preview metadata. Cached and in-flight frames retain navigation, disconnect and
+  generation fences. Device revocation and conversation authorization are rechecked after capture.
+- Bot tools, snapshots, history and context retain private-document protection after handback,
+  restore or reconnect. Changing a private document's route does not clear it. Safe-document
+  verification remains separate from whether people may see the preview, retains at most 32
+  document identities per tab and clears temporary clearance on disconnect.
+- Browser cards show the bot mascot, waiting/controller state, elapsed time and live-page indicator.
+  Elapsed time is visual and must not trigger a screen-reader announcement every second. During
+  control, the page has an outline and explicit Cancel and Hand back actions in the sticky controls.
+  Cancel discards unsent typing; Hand back flushes it. Both drain already accepted input before
+  releasing control. Other members retain the live page, controller name and recent actions.
+  Starting control retains the last preview and sanitized address until an interactive frame is ready;
+  the retained image cannot authorize input. The next queued request remains visible when the preceding
+  request succeeds, fails or is canceled. Text is available in Portuguese and English.
 
 **R9. Secure secret entry.**
 1. `browser_submit_secret(tabId, fields[], secretName?, submit)`. If `secretName` exists with `usage.browser = true` and `browser_origin` matches the tab's origin, the value is fetched from the Keychain. Otherwise the sidecar asks Rust (`secret.prompt`), which opens the native secret-card window for the user to type it.
@@ -2293,13 +2387,13 @@ The remote layout viewport follows the displayed page size; control/view/target 
 coordinate-based input and frames after a resize, navigation or controller change. Navigation itself
 requires the active controller, allowing Back/Forward/Reload before the next image has arrived. Handback drains accepted input and
 continues on the same page. Only the authorized controller receives the address origin/path; credentials,
-query strings and fragments are omitted. Private previews, bot reads and history retain their protection.
+query strings and fragments are omitted. Shared previews follow the human-viewing policy in R8; bot reads and history retain their protection.
 The input contract adds scoped navigation and pointer phases; there is no database schema change.
 
 Human typing is protected as whole entries when the person leaves a field or returns control, rather
 than registering each incoming character as a process-wide redaction value. Only entries of at least
 eight characters enter that registry; short input remains private through the existing document,
-field-value, preview and bot-read restrictions. Rejected stale input cannot alter the collected entry.
+field-value and bot-read restrictions. Rejected stale input cannot alter the collected entry.
 Uninterrupted input is collected in segments of at most 16,384 characters, protecting the previous
 segment before starting the next. Handoff reasons retain up to 240 sanitized characters and shorten
 longer explanations at a word boundary with an ellipsis.

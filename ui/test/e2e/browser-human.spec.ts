@@ -184,8 +184,13 @@ for (const width of [1440, 390]) {
     if (!baseline) await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBe(false)
     await view.getByRole("button", { name: /Devolver para/ }).click()
     await expect(view).toHaveCount(0)
-    await expect(card.getByRole("img", { name: "Página atual do navegador" })).toHaveCount(0)
+    await expect(card.getByRole("img", { name: "Página atual do navegador" })).toBeVisible()
+    const previousPreview = await card.getByRole("img", { name: "Página atual do navegador" }).getAttribute("src")
     await post("public-navigation")
+    await expect(card.getByRole("img", { name: "Página atual do navegador" })).not.toHaveAttribute(
+      "src",
+      previousPreview ?? "",
+    )
     if (!baseline)
       await expect(card.getByRole("img", { name: "Página atual do navegador" })).toBeVisible({ timeout: 15_000 })
     await page.screenshot({ path: resolve(evidence, `${baseline ? "before" : "after"}-preview-${width}.png`) })

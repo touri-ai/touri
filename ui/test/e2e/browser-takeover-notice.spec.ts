@@ -20,7 +20,7 @@ widths.forEach((width) => {
     await takeover.click()
 
     const control = page.getByRole("region", { name: "Controle remoto do navegador" })
-    await expect(control).toContainText("Você está no controle · Planejamento está pausado")
+    await expect(control.getByRole("status", { name: "Privacidade do navegador" })).toContainText("você está usando")
     await expect(control.getByRole("button", { name: "Devolver para Planejamento" })).toBeVisible()
     const evidenceDirectory = process.env.TOURI_E2E_EVIDENCE_DIR
     if (evidenceDirectory) {

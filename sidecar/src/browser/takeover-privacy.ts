@@ -8,8 +8,6 @@ type BrowserPreviewPage = {
   title: string
 }
 
-type BrowserPreviewBlockReason = "human_control" | "sensitive_page"
-
 const MAX_PREVIEW_URL_LENGTH = 8192
 const MAX_PREVIEW_TITLE_LENGTH = 512
 
@@ -20,11 +18,11 @@ export const captureSafeBrowserPreview = async <T>({
   getPage: () => BrowserPreviewPage
   capture: () => Promise<T>
 }): Promise<T | null> => {
-  if (getBrowserPreviewBlockReason(getPage())) return null
+  if (getPage().secretMode) return null
 
   const frame = await capture()
-  // Take-over can begin during CDP capture, so only return a frame if control is still safe.
-  if (getBrowserPreviewBlockReason(getPage())) return null
+  // Vault entry must remain private even if it starts during an in-flight capture.
+  if (getPage().secretMode) return null
 
   return frame
 }
@@ -46,13 +44,17 @@ export const captureCurrentBrowserControlFrame = async <T extends object>({
   return { ...frame, targetEpoch }
 }
 
-const getBrowserPreviewBlockReason = (page: BrowserPreviewPage): BrowserPreviewBlockReason | null => {
-  if (page.heldByUser || page.secretMode) return "human_control"
-  if (page.url.length > MAX_PREVIEW_URL_LENGTH || page.title.length > MAX_PREVIEW_TITLE_LENGTH) return "sensitive_page"
-  if (isSensitiveTakeoverPage(page.url, page.title)) return "sensitive_page"
-  if (page.privateAfterTakeover && !sanitizeHumanTakeoverUrl(page.url)) return "sensitive_page"
+export const getLiveBrowserPreviewMetadata = (page: { url: string }): { title: string; url: string } => {
+  if (page.url.length > MAX_PREVIEW_URL_LENGTH) return { title: "", url: "" }
 
-  return null
+  try {
+    const url = new URL(page.url)
+    if (!["http:", "https:"].includes(url.protocol)) return { title: "", url: "" }
+
+    return { title: "", url: url.origin }
+  } catch {
+    return { title: "", url: "" }
+  }
 }
 
 export const sanitizeHumanTakeoverPreviewMetadata = (page: {

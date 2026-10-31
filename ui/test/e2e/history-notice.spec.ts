@@ -14,10 +14,9 @@ test("a conversation read refused during a restart explains it inside the conver
   })
   const page = await context.newPage()
   await page.addInitScript(observeFluidity)
-  await page.goto("/test/e2e/history-notice-harness.html")
-  await expect(page.getByRole("textbox", { name: "Mensagem para Publicações" })).toBeVisible()
+  // Opening the refused conversation directly is what a reload during a restart does.
+  await page.goto("/test/e2e/history-notice-harness.html?open=failing")
 
-  await page.getByRole("button", { name: "Perfil de demonstração", exact: true }).click()
   const notice = page.locator(".chat-panel .conversation-notice")
   await expect(notice).toContainText("Não conseguimos carregar as mensagens novas.")
   await expect(notice).toContainText("O touri está reiniciando. Mostrando o que já estava salvo.")

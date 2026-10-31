@@ -556,16 +556,6 @@ export const createChannelBrowserRuns = ({
     resumeRequest(row.run_id)
     return { success: true }
   }
-  const isPreviewHidden = (tabId: string): boolean =>
-    Boolean(
-      database
-        .query(`SELECT 1 FROM browser_tabs tab JOIN threads owner_thread ON owner_thread.id = tab.owner_thread_id
-          JOIN browser_channel_runs run ON run.group_id = owner_thread.group_id
-            AND run.thread_id = owner_thread.group_thread_id AND run.bot_id = tab.owner_bot_id
-          WHERE tab.id = ? AND run.controller_person_id IS NOT NULL
-            AND run.status = 'taken_over' LIMIT 1`)
-        .get(tabId),
-    )
   const onRunUpdated = (kernel.subscribeRuntime ?? kernel.subscribe)(({ event }) => {
     if (event.type !== "run.updated") return
     const row = getRaw(event.run.id)
@@ -629,7 +619,6 @@ export const createChannelBrowserRuns = ({
     takeControl,
     returnControl,
     restoreControl,
-    isPreviewHidden,
     dispose: () => {
       onRunUpdated()
       if (restoreTimer) clearTimeout(restoreTimer)

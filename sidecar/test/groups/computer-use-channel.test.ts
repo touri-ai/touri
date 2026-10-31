@@ -158,9 +158,7 @@ test("channel browser runs persist one active slot per bot and promote queued wo
     expect(channelRuns.takeControl({ runId: "leo-2", actorPersonId: "intruder" })).toMatchObject({ success: false })
     expect(channelRuns.takeControl({ runId: "leo-2", actorPersonId: "ana" })).toEqual({ success: true })
     expect(channelRuns.getForTab("leo-tab")?.controllerName).toBe("Ana")
-    expect(channelRuns.isPreviewHidden("leo-tab")).toBe(true)
     expect(channelRuns.returnControl({ runId: "leo-2", actorPersonId: "ana" })).toEqual({ success: true })
-    expect(channelRuns.isPreviewHidden("leo-tab")).toBe(false)
 
     publishRunStatus("leo-3", "canceled")
     await expect(third).resolves.toMatchObject({ success: true, queued: true })

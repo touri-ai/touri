@@ -254,8 +254,8 @@ export const startInlineFrameSource = (
     const changedPage = page.url !== event.tab.url
     const wasHeld = held
     page = event.tab
-    held = event.tab.heldByUser || event.tab.state === "closed"
-    // Metadata updates must not starve an in-flight capture. Only page/privacy transitions invalidate it.
+    held = event.tab.state === "closed"
+    // Metadata and control updates must not starve an in-flight capture.
     if (held || wasHeld !== held || changedPage) generation += 1
     // An unloaded tab can reconnect automatically; retain its last safe frame while sampling retries.
     if (held) options.onReset?.()

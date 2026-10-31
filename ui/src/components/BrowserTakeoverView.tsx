@@ -1,10 +1,12 @@
-import type { BrowserTakeoverFrame, BrowserTakeoverInput } from "@touri/contracts"
+import type { Bot, BrowserTakeoverFrame, BrowserTakeoverInput } from "@touri/contracts"
 import type { KeyboardEvent, PointerEvent, WheelEvent } from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import { ApiError } from "../errors"
 import { type Locale, t } from "../i18n"
 import { useBrowserActivityControls } from "./BrowserActivityControls"
+import { BrowserLiveHeader } from "./BrowserLiveHeader"
+import { Button } from "./Button"
 import { requestReveal } from "./revealEvent"
 
 type FrameMeta = Pick<
@@ -38,7 +40,10 @@ export const BrowserTakeoverView = ({
   sessionId,
   controlEpoch,
   initialViewEpoch = 0,
+  initialPreview,
+  initialAddress = "",
   botName,
+  bot,
   locale,
   reason,
   actions,
@@ -52,7 +57,10 @@ export const BrowserTakeoverView = ({
   sessionId: string
   controlEpoch: string
   initialViewEpoch?: number
+  initialPreview?: string | undefined
+  initialAddress?: string
   botName: string
+  bot?: Bot | undefined
   locale: Locale
   reason: string | null
   actions: Array<{ id: string; icon: string; label: string; time: string; active: boolean }>
@@ -61,6 +69,7 @@ export const BrowserTakeoverView = ({
   onHandbackError?: (() => void) | undefined
   onSessionEnded?: (() => void) | undefined
 }) => {
+  const [startedAt] = useState(Date.now)
   const dialog = useRef<HTMLDialogElement>(null)
   const fullscreenHistory = useRef(false)
   const autoExpanded = useRef(false)
@@ -525,8 +534,14 @@ export const BrowserTakeoverView = ({
     return flushPendingText()
   }
 
-  const handback = async (): Promise<void> => {
-    if (releasing.current || released.current || !flushKeyboard()) return
+  const handback = async (discardTyping = false): Promise<void> => {
+    if (releasing.current || released.current) return
+    if (!discardTyping && !flushKeyboard()) return
+    if (discardTyping) {
+      clearTimeout(textTimer.current)
+      pendingText.current = ""
+      if (keyboard.current) keyboard.current.value = ""
+    }
     releasing.current = true
     setReturning(true)
     onHandbackStart?.()
@@ -733,7 +748,7 @@ export const BrowserTakeoverView = ({
     sendInput({ kind: "key", phase: "up", key: event.key, code: event.code, modifiers })
   }
 
-  const safeUrl = getBrowserControlAddress(frame?.url ?? "")
+  const safeUrl = getBrowserControlAddress(frame?.url ?? "") || initialAddress
   useEffect(() => {
     if (!addressFocused) setAddress(safeUrl)
   }, [addressFocused, safeUrl])
@@ -750,16 +765,16 @@ export const BrowserTakeoverView = ({
       data-full-view={fullView}
     >
       <div className="browser-takeover-controls">
-        <header className="browser-takeover-toolbar">
-          <div>
-            <span
-              role="status"
-              aria-label={t("Browser privacy", {}, locale)}
-              title={t("What you type here stays out of chat, the bot, and history.", {}, locale)}
-            >
-              {t("You are in control · {name} is paused", { name: botName }, locale)}
-            </span>
-          </div>
+        <BrowserLiveHeader
+          bot={bot}
+          botName={botName}
+          waiting
+          requesterName={t("Browser self", {}, locale)}
+          controllerName={t("Browser self", {}, locale)}
+          selfControl
+          startedAt={startedAt}
+          locale={locale}
+        >
           <button
             type="button"
             className="browser-activity-icon-button"
@@ -769,16 +784,18 @@ export const BrowserTakeoverView = ({
           >
             <span aria-hidden="true">{fullView ? "↙" : "↗"}</span>
           </button>
-          <button
-            ref={handbackButton}
-            type="button"
-            className="button button-quiet"
+          <Button
+            variant="quiet"
             disabled={returning}
-            onClick={() => void handback()}
+            onClick={() => void handback(true)}
+            title={t("Discard unsent typing and return control", {}, locale)}
           >
+            {t("Cancelar", {}, locale)}
+          </Button>
+          <Button ref={handbackButton} variant="primary" disabled={returning} onClick={() => void handback()}>
             {returning ? t("Returning control…", {}, locale) : t("Hand back to {name}", { name: botName }, locale)}
-          </button>
-        </header>
+          </Button>
+        </BrowserLiveHeader>
         <nav className="browser-takeover-navigation" aria-label={t("Browser navigation", {}, locale)}>
           {(["back", "forward", "reload"] as const).map((action) => (
             <button
@@ -872,7 +889,15 @@ export const BrowserTakeoverView = ({
               }}
             />
           )}
-          {!frame && !error && (
+          {!frameReady && initialPreview && (
+            <img
+              className="browser-takeover-initial-preview"
+              src={initialPreview}
+              alt={t("Last browser page", {}, locale)}
+              aria-hidden={Boolean(fallbackImage || (workerReady && workerFrameReady))}
+            />
+          )}
+          {!frame && !initialPreview && !error && (
             <p className="browser-takeover-placeholder">{t("Connecting to the browser…", {}, locale)}</p>
           )}
         </div>
@@ -881,7 +906,7 @@ export const BrowserTakeoverView = ({
             {reason ?? t("Browser details", {}, locale)}
           </summary>
           <p className="browser-takeover-privacy">
-            {t("What you type here stays out of chat, the bot, and history.", {}, locale)}
+            {t("People with access see the live page. Typing stays out of history and the bot's context.", {}, locale)}
           </p>
           <section className="browser-takeover-actions" aria-label={t("Latest browser actions", {}, locale)}>
             <strong>{t("Latest actions", {}, locale)}</strong>

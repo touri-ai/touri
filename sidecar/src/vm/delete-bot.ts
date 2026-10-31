@@ -42,7 +42,25 @@ export const deleteBotRoutes = (
 ): RouteModule["routes"] => {
   const db = kernel.db as Database
   const manager = createBotDeletionManager(kernel, runtime, collectBlobs)
+  const startDeletion = (botId: string, deleteVolumes = false): boolean => {
+    if (db.query("SELECT 1 FROM bot_deletions WHERE bot_id = ?").get(botId)) return true
+    if (!kernel.services.use("store.api")?.getBot({ botId })) return false
+    const at = Date.now()
+    db.transaction(() => {
+      db.query(`INSERT INTO bot_deletions(bot_id, delete_volumes, phase, created_at, updated_at)
+        VALUES (?, ?, 'stopping', ?, ?)
+        ON CONFLICT(bot_id) DO NOTHING`).run(botId, deleteVolumes ? 1 : 0, at, at)
+      db.query("UPDATE bots SET paused = 1, updated_at = ? WHERE id = ?").run(at, botId)
+      db.query(`UPDATE schema_meta SET value = cast(max(cast(value AS INTEGER),
+        (SELECT coalesce(max(seq), 0) FROM ui_event_log)) AS TEXT) WHERE key = 'ui_event_floor_seq'`).run()
+    }).immediate()
+    publishBotDeletion(kernel, botId)
+    manager.start(botId)
+
+    return true
+  }
   kernel.services.provide("storage.botDeletion", { dispose: manager.dispose })
+  kernel.services.provide("agentImport.deleteBot", startDeletion)
   manager.resume()
 
   return [
@@ -74,17 +92,7 @@ export const deleteBotRoutes = (
         if (input?.name !== bot.name || (input.deleteVolumes !== undefined && typeof input.deleteVolumes !== "boolean"))
           return { status: 400, json: { errorCode: "CONFIRM_REQUIRED", error: "Digite o nome do bot para excluir." } }
 
-        const at = Date.now()
-        db.transaction(() => {
-          db.query(`INSERT INTO bot_deletions(bot_id, delete_volumes, phase, created_at, updated_at)
-            VALUES (?, ?, 'stopping', ?, ?)
-            ON CONFLICT(bot_id) DO NOTHING`).run(botId, input.deleteVolumes === true ? 1 : 0, at, at)
-          db.query("UPDATE bots SET paused = 1, updated_at = ? WHERE id = ?").run(at, botId)
-          db.query(`UPDATE schema_meta SET value = cast(max(cast(value AS INTEGER),
-            (SELECT coalesce(max(seq), 0) FROM ui_event_log)) AS TEXT) WHERE key = 'ui_event_floor_seq'`).run()
-        }).immediate()
-        publishBotDeletion(kernel, botId)
-        manager.start(botId)
+        startDeletion(botId, input.deleteVolumes === true)
         return { status: 202, json: { botId, phase: "stopping" } }
       },
     },
