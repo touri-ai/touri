@@ -1275,6 +1275,34 @@ export const useWorkspace = (
         })
       // Attach a rejection handler immediately, including when another startup resource fails first.
       void groupThreadsRequest.catch(() => undefined)
+      const botsRequest = api.request("GET /bots", {}).then((response) => {
+        if (attempt !== generation.current) return response
+
+        // The sidebar can render before the complete index resolves saved selections and deep links.
+        setData((current) => {
+          const selectedBot = response.bots.find((bot) => bot.id === current.selectedBotId) ?? response.bots[0]
+
+          return Object.assign({}, current, {
+            bots: uniqueById(response.bots),
+            botsLoaded: true,
+            isMember: member,
+            selectedBotId: member ? null : (selectedBot?.id ?? null),
+            activeProjectId: selectedBot?.projectId ?? null,
+          })
+        })
+        return response
+      })
+      // Conversation indexes depend only on authorized bots, not machines, routines or previews.
+      const botThreadsRequest = botsRequest.then(({ bots }) =>
+        Promise.all(
+          bots.map(async (bot) => {
+            const response = await api.request("GET /bots/:id/threads", {}, { id: bot.id })
+
+            return response.threads
+          }),
+        ),
+      )
+      void botThreadsRequest.catch(() => undefined)
       const [
         groupResponse,
         botResponse,
@@ -1290,24 +1318,7 @@ export const useWorkspace = (
         workResponse,
       ] = await Promise.all([
         groupsRequest,
-        api.request("GET /bots", {}).then((response) => {
-          if (attempt === generation.current) {
-            // The sidebar can render independently of machine, routine and history initialization.
-            // Keep loaded false until the complete index can resolve saved selections and deep links.
-            setData((current) => {
-              const selectedBot = response.bots.find((bot) => bot.id === current.selectedBotId) ?? response.bots[0]
-              return {
-                ...current,
-                bots: uniqueById(response.bots),
-                botsLoaded: true,
-                isMember: member,
-                selectedBotId: member ? null : (selectedBot?.id ?? null),
-                activeProjectId: selectedBot?.projectId ?? null,
-              }
-            })
-          }
-          return response
-        }),
+        botsRequest,
         restricted ? { projects: [] } : getOptionalWorkspaceRead(api.request("GET /projects", {}), { projects: [] }),
         restricted
           ? { settings: null }
@@ -1335,15 +1346,7 @@ export const useWorkspace = (
         api.request("GET /workspace/activity", {}),
         api.request("GET /runs", {}),
       ])
-      const [botThreads, groupThreads] = await Promise.all([
-        Promise.all(
-          botResponse.bots.map(async (bot) => {
-            const response = await api.request("GET /bots/:id/threads", {}, { id: bot.id })
-            return response.threads
-          }),
-        ),
-        groupThreadsRequest,
-      ])
+      const [botThreads, groupThreads] = await Promise.all([botThreadsRequest, groupThreadsRequest])
       const allThreads = [...botThreads.flat(), ...groupThreads.flatMap((r) => r.threads)]
       if (attempt !== generation.current) return
       setData((current) => {

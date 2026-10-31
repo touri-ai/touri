@@ -316,6 +316,16 @@ This numeric diagnostic does not remove either record from history or change can
 
 ## Decisions at a glance
 
+Bot conversation indexes start as soon as the authorized bot list arrives, independently of
+secondary workspace reads. Saved selections and deep links still resolve only after the complete
+startup snapshot; starting an index read does not grant access or publish a partial selection.
+Buffered HTTP compression runs asynchronously with one native compression job at a time, keeping
+live requests responsive during cold asset bursts. Existing encoding negotiation, cached embedded
+variants, HEAD behavior, stream bypasses and browser-frame exclusions remain in force.
+Compression admission retains at most 64 jobs and 64 MiB of input, including the active job.
+When admission is full, responses use their original bytes without a content encoding. Completed
+and failed jobs both release capacity; a compression failure cannot strand later jobs.
+
 Channel navigation and headers are available at startup so the first click opens a stable surface.
 Optional member panels, group dialogs and the routine editor load asynchronously outside the initial
 application bundle. They preserve existing actions and keyboard access, including their close control
