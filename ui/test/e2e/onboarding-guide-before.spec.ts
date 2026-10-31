@@ -1,88 +1,80 @@
 import { execFile } from "node:child_process"
-import { readFile } from "node:fs/promises"
-import { createServer } from "node:http"
-import { extname, join, resolve, sep } from "node:path"
+import { join, resolve } from "node:path"
 import { promisify } from "node:util"
-import { expect, test } from "@playwright/test"
-import { build } from "vite"
+import { test as base, expect } from "@playwright/test"
+import { createGuideBuild } from "./onboarding-guide-build"
 import { installGuideMocks } from "./onboarding-guide-mocks"
 
-const servers = new Set<ReturnType<typeof createServer>>()
-test.afterEach(async () => {
-  for (const server of servers) {
-    server.closeAllConnections()
-    await new Promise<void>((done) => server.close(() => done()))
-  }
-  servers.clear()
+const test = base.extend<{ legacyUrl: string }>({
+  legacyUrl: async ({ browserName }, use) => {
+    const fixture = await createGuideBuild("legacy", await getLegacySources(), browserName)
+    await use(fixture.url)
+    await fixture.stop()
+  },
 })
 test.setTimeout(180_000)
-test("onboarding guide before: unchanged main welcome with synthetic data", async ({ page }, info) => {
+test("onboarding guide before: unchanged main welcome with synthetic data", async ({ page, legacyUrl }, info) => {
+  await installGuideMocks(page)
+  await page.route("**/api/v1/onboarding", (route) =>
+    route.fulfill({
+      json:
+        route.request().method() === "POST"
+          ? { completed: true, url: "https://local.example.ts.net:8445/" }
+          : { completed: false, hasData: false, tailscale: "ready", remoteUrl: null },
+    }),
+  )
+  await page.route("**/api/v1/onboarding/servers", (route) =>
+    route.fulfill({ json: { servers: [], tailscale: "ready" } }),
+  )
+  await page.route("**/api/v1/onboarding/pair-code", (route) => route.fulfill({ json: { code: "TEST-CODE" } }))
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 800 })
+    await page.goto(legacyUrl)
+    await expect(page.getByRole("heading", { name: "Seus bots, perto de você" })).toBeVisible()
+    await page.screenshot({
+      path: join(process.env.TOURI_ONBOARDING_EVIDENCE_DIR ?? info.outputDir, `before-welcome-${width}.png`),
+    })
+    await page.getByRole("button", { name: /Usar meu servidor/ }).click()
+    await page.screenshot({
+      path: join(process.env.TOURI_ONBOARDING_EVIDENCE_DIR ?? info.outputDir, `before-location-${width}.png`),
+    })
+    await page.getByRole("button", { name: /Conectar ao meu servidor/ }).click()
+    await page.screenshot({
+      path: join(process.env.TOURI_ONBOARDING_EVIDENCE_DIR ?? info.outputDir, `before-connect-${width}.png`),
+    })
+    await page.getByRole("textbox", { name: "Endereço do servidor" }).fill("https://server.example.com")
+    await page.getByRole("button", { name: "Conectar ao servidor", exact: true }).click()
+    await page.screenshot({
+      path: join(process.env.TOURI_ONBOARDING_EVIDENCE_DIR ?? info.outputDir, `before-pair-${width}.png`),
+    })
+    await page.getByRole("button", { name: "← Voltar", exact: true }).click()
+    await page.getByRole("button", { name: "← Voltar", exact: true }).click()
+    await page.getByRole("button", { name: /Rodar neste/ }).click()
+    await page.getByRole("textbox", { name: "Seu nome", exact: true }).fill("Pessoa Exemplo")
+    await page.getByRole("textbox", { name: "Seu email", exact: true }).fill("person@example.com")
+    await page.getByRole("switch").check()
+    await page.screenshot({
+      path: join(process.env.TOURI_ONBOARDING_EVIDENCE_DIR ?? info.outputDir, `before-run-here-${width}.png`),
+    })
+    await page.getByRole("button", { name: "Começar", exact: true }).scrollIntoViewIfNeeded()
+    await page.screenshot({
+      path: join(process.env.TOURI_ONBOARDING_EVIDENCE_DIR ?? info.outputDir, `before-run-here-end-${width}.png`),
+    })
+    await page.getByRole("button", { name: "Começar", exact: true }).click()
+    await expect(page.getByRole("heading", { name: "Pronto para acessar de outro aparelho" })).toBeVisible()
+    await page.screenshot({
+      path: join(process.env.TOURI_ONBOARDING_EVIDENCE_DIR ?? info.outputDir, `before-access-${width}.png`),
+    })
+  }
+})
+
+const getLegacySources = async () => {
   const root = resolve(import.meta.dirname, "../../..")
   const paths = ["ui/src/features/onboarding/Onboarding.tsx", "ui/src/features/onboarding/onboarding.css"]
-  const sources = await Promise.all(
+  return Promise.all(
     paths.map(async (path) => ({
       path: join(root, path),
       source: (await promisify(execFile)("git", ["show", `origin/main:${path}`], { cwd: root })).stdout,
     })),
   )
-  const directory = info.outputPath("before-ui")
-  await build({
-    root: join(root, "ui"),
-    configFile: join(root, "ui/vite.config.ts"),
-    logLevel: "error",
-    build: { outDir: directory, rollupOptions: { input: join(root, "ui/test/e2e/onboarding-legacy-harness.html") } },
-    plugins: [
-      {
-        name: "main-onboarding-evidence",
-        enforce: "pre",
-        transform: (_source, id) => sources.find((source) => source.path === id)?.source,
-      },
-    ],
-  })
-  const server = createServer(async (request, response) => {
-    const path = new URL(request.url ?? "/", "http://localhost").pathname
-    const file = resolve(directory, `.${path}`)
-    if (!file.startsWith(`${directory}${sep}`)) {
-      response.writeHead(404).end()
-      return
-    }
-    const types: Record<string, string> = {
-      ".html": "text/html",
-      ".js": "text/javascript",
-      ".css": "text/css",
-      ".woff2": "font/woff2",
-      ".png": "image/png",
-    }
-    try {
-      response.writeHead(200, { "Content-Type": types[extname(file)] ?? "text/plain" })
-      response.end(await readFile(file))
-    } catch {
-      response.writeHead(404).end()
-    }
-  })
-  servers.add(server)
-  await listen(server)
-  const address = server.address()
-  if (!address || typeof address === "string") throw new Error("Missing local test address")
-  await installGuideMocks(page)
-  await page.setViewportSize({ width: 1280, height: 800 })
-  await page.goto(`http://127.0.0.1:${address.port}/test/e2e/onboarding-legacy-harness.html`)
-  await expect(page.getByRole("heading", { name: "Seus bots, perto de você" })).toBeVisible()
-  await page.screenshot({
-    path: join(process.env.TOURI_ONBOARDING_EVIDENCE_DIR ?? info.outputDir, "before-welcome.png"),
-  })
-  await page.getByRole("button", { name: /Usar meu servidor/ }).click()
-  await page.screenshot({
-    path: join(process.env.TOURI_ONBOARDING_EVIDENCE_DIR ?? info.outputDir, "before-location.png"),
-  })
-})
-const listen = async (server: ReturnType<typeof createServer>): Promise<void> => {
-  for (const port of Array.from({ length: 100 }, (_, index) => 18800 + index)) {
-    const accepted = await new Promise<boolean>((done) => {
-      server.once("error", () => done(false))
-      server.listen(port, "127.0.0.1", () => done(true))
-    })
-    if (accepted) return
-  }
-  throw new Error("No available staging port")
 }

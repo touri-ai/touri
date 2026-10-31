@@ -80,6 +80,33 @@ sandboxing. `TOURI_BROWSER_DISABLE_DEV_SHM_USAGE=1` independently uses temporary
 shared memory. Desktop defaults remain unchanged. The bilingual deployment guide covers
 TLS, namespace requirements, credential-grade backups and restoration before upgrades.
 
+## Guided workspace setup
+
+First opening preserves server discovery, pairing and the choice to run locally. Pairing with
+an already configured server opens its existing workspace instead of restarting setup. Servers
+without the optional onboarding route are recognized by their existing bots. Local setup
+then asks for a workspace name, optional context and HTTPS website, reviewed agent imports,
+computer permissions, agent accounts, optional teammates and a first task. A live preview shows
+the channels and agents being assembled. Back returns to the preceding question without losing
+answers, including from import sources to context. Optional questions can be skipped. On narrow
+screens the form and preview grow within one scrollable surface, and each question starts at the
+top. The main landmark stays outside named regions so assistive navigation can reach it directly.
+
+Import discovery, preview and apply use the authenticated UI transport. Importing requires an
+explicit reviewed selection; secrets stay excluded and copied routines stay paused. The import
+server validates each preview and applies only reviewed resources; on older servers without
+these routes, source discovery explains the failure and setup remains usable through Skip. Pasted exports are bounded to 64 KiB and stay in memory.
+The owner can configure computer permissions during copying; loading and editing agent accounts
+waits for import completion so late results cannot replace account choices. Existing agents keep
+their instructions even when named touri; guide instructions apply only to a newly created guide. Browser access,
+writing and host computer control start disabled, with approvals required.
+
+The first task goes to #geral with an explicit mention of the selected bot. Retries keep the
+chosen conversation and reuse the nonce for unchanged text; edited text gets a new nonce.
+Context and the optional website are included in that task; source paths and pasted exports are
+not. Website reading is deferred to the task and grants no extra permissions. Completing setup
+opens that channel. Existing server access settings remain available when revisiting setup.
+
 ## Turn latency
 
 Release CLI and desktop sidecar builds embed ESM bytecode with the pinned Bun toolchain. This avoids repeating bundle parsing when request-owned history readers start. Reader capacity, deadlines, cancellation and SQL scopes are unchanged; each read still owns its process and can interrupt native SQLite with SIGKILL.

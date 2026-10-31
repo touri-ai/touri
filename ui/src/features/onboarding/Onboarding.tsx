@@ -164,11 +164,18 @@ export const Onboarding = ({
       }
       const result = await invoke("server_mode_pair", { url: destination, code: code.trim() })
       if (result?.mode !== "server") throw new Error("SERVER_PAIR")
-      if (revisiting) onComplete()
-      else {
-        setPaired(true)
-        go("workspace")
+      if (revisiting) {
+        onComplete()
+        return
       }
+      const pairedStatus = await request("GET /onboarding", {}).catch(() => null)
+      const existingBots = pairedStatus ? [] : (await request("GET /bots", {}).catch(() => ({ bots: [] }))).bots
+      if (pairedStatus?.completed || existingBots.length > 0) {
+        onComplete()
+        return
+      }
+      setPaired(true)
+      go("workspace")
     } catch (caught) {
       setError(serverModeError(caught))
     } finally {

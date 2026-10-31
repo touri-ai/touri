@@ -117,7 +117,8 @@ const Guide = ({
   const [error, setError] = useState<string | null>(null)
   const heading = useRef<HTMLHeadingElement>(null)
   const operation = useRef(false)
-  const nonce = useRef(crypto.randomUUID())
+  const createdGuideId = useRef<string | null>(null)
+  const pendingMessage = useRef<{ threadId: string; text: string; nonce: string } | null>(null)
   const imports = useAgentImport(api)
   const host = useHost(api)
   const computerName = getComputerLabel(host)
@@ -138,12 +139,10 @@ const Guide = ({
       .catch(() => undefined)
     return () => controller.abort()
   }, [api])
-  useEffect(() => {
-    if (imports.results.length) void refreshBots().catch(() => setError(t("ob.saveError")))
-  }, [imports.results, refreshBots])
   // biome-ignore lint/correctness/useExhaustiveDependencies: focus only on screen changes.
   useEffect(() => {
     heading.current?.focus({ preventScroll: true })
+    heading.current?.closest(".ob-screen")?.scrollTo?.({ top: 0, behavior: "instant" })
   }, [step])
   const go = (next: GuideStep) => {
     setError(null)
@@ -183,6 +182,7 @@ const Guide = ({
       vmProviderLogin: computer.vmProviderLogin,
       hostComputerUse: computer.hostComputerUse,
     })
+    createdGuideId.current = bot.id
     setBots([...existing, bot])
     setTarget(bot.id)
     go("agents")
@@ -198,7 +198,7 @@ const Guide = ({
               {
                 provider: bot.provider,
                 model: bot.model,
-                ...(bot.name === "touri"
+                ...(bot.id === createdGuideId.current
                   ? {
                       description: draft.name.trim(),
                       color: getWorkspaceColor(draft.color),
@@ -233,19 +233,23 @@ const Guide = ({
     const general = groups.find((group) => group.name === "geral")
     const bot = bots.find((bot) => bot.id === target) ?? bots[0]
     if (!general || !bot || !task.trim()) return
-    const result = await api.request("GET /groups/:id/threads", {}, { id: general.id })
+    const threads = thread ? [thread] : (await api.request("GET /groups/:id/threads", {}, { id: general.id })).threads
     const destination =
-      result.threads[0] ??
+      threads[0] ??
       (await api.request("POST /groups/:id/threads", { title: t("ob.firstTask") }, { id: general.id })).thread
     const website = draft.website ? t("ob.websiteTask", { website: draft.website }) : ""
     const context = t("ob.ownerContext", { name: draft.name.trim(), context: draft.context })
     const text = `@${bot.name} ${task.trim()}\n\n${context}${website ? `\n\n${website}` : ""}`
+    const previous = pendingMessage.current
+    const clientNonce =
+      previous?.threadId === destination.id && previous.text === text ? previous.nonce : crypto.randomUUID()
+    pendingMessage.current = { threadId: destination.id, text, nonce: clientNonce }
+    setThread(destination)
     await api.request(
       "POST /threads/:id/messages",
-      { threadId: destination.id, parentId: null, text, attachmentIds: [], clientNonce: nonce.current },
+      { threadId: destination.id, parentId: null, text, attachmentIds: [], clientNonce },
       { id: destination.id },
     )
-    setThread(destination)
     saveWorkspaceState({ botId: null, threadId: destination.id, route: { section: "bots", screen: "chat" } })
     go("ready")
     await onComplete()
@@ -316,7 +320,7 @@ const Guide = ({
     }
     go(getSkippedStep(step))
   }
-  const keyboard = (event: KeyboardEvent<HTMLDivElement>) => {
+  const keyboard = (event: KeyboardEvent<HTMLElement>) => {
     const element = event.target as HTMLElement
     if (element.closest('[role="dialog"], [role="alertdialog"]')) return
     if (event.key === "Escape") {
@@ -345,119 +349,119 @@ const Guide = ({
       !Object.values(imports.selection).some((agents) =>
         Object.values(agents).some((item) => Object.values(item).some(Boolean)),
       )) ||
-    (step === "agents" && imports.busy) ||
+    (["computer", "agents"].includes(step) && imports.busy) ||
     (step === "task" && !task.trim())
   const canSkip = ["context", "sources", "manual", "review", "team"].includes(step)
   const replies = getReplies(step, draft, computerName)
   return (
-    <section className="ob-keyboard" onKeyDown={keyboard} aria-label={t("ob.progress")}>
-      <GuideLayout
-        step={step}
-        draft={draft}
-        bots={getLiveBots(bots, imports)}
-        progress={imports.progress}
-        replies={replies}
-        computer={computerName}
-        team={invited}
-        task={task}
-        busy={busy || imports.busy}
-        error={error ?? (step !== "sources" ? imports.error : null)}
-        heading={heading}
-        onBack={back}
-      >
-        {step === "workspace" && <WorkspaceFields draft={draft} onChange={setDraft} />}
-        {step === "context" && <ContextFields draft={draft} onChange={setDraft} />}
-        {["sources", "review", "importing"].includes(step) && (
-          <AgentImport step={step} imports={imports} api={api} invoke={invoke} onManual={() => go("manual")} />
-        )}
-        {step === "review" && imports.selectionCount > 19 && (
-          <p className="ob-error" role="alert">
-            {t("ob.importLimit")}
-          </p>
-        )}
-        {step === "manual" && <ManualImport value={manual} onChange={setManual} />}
-        {step === "computer" && (
-          <ComputerFields api={api} values={computer} computer={computerName} onChange={setComputer} />
-        )}
-        {step === "agents" && (
-          <AgentFields
-            api={api}
-            bots={bots}
-            onChange={(bot) => setBots((previous) => previous.map((item) => (item.id === bot.id ? bot : item)))}
-          />
-        )}
-        {step === "team" && <TeamFields api={api} groups={groups} onInvited={() => setInvited(true)} />}
-        {step === "task" && (
-          <>
-            <label className="ob-field">
-              {t("ob.taskAgent")}
-              <select value={target} onChange={(event) => setTarget(event.target.value)}>
-                {bots.map((bot) => (
-                  <option key={bot.id} value={bot.id}>
-                    {bot.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="ob-suggestions">
-              {getSuggestions(
-                draft,
-                imports.previews.flatMap(({ preview }) =>
-                  preview.agents
-                    .filter(
-                      (agent) =>
-                        imports.selection[preview.previewId]?.[agent.key]?.routines &&
-                        imports.results.some((result) => result.bots.some((bot) => bot.agentKey === agent.key)),
-                    )
-                    .flatMap((agent) => agent.routines.map((routine) => routine.name)),
-                ),
-              ).map((suggestion) => (
-                <Button key={suggestion} aria-pressed={task === suggestion} onClick={() => setTask(suggestion)}>
-                  {suggestion}
-                </Button>
+    <GuideLayout
+      onKeyDown={keyboard}
+      step={step}
+      draft={draft}
+      bots={getLiveBots(bots, imports)}
+      progress={imports.progress}
+      replies={replies}
+      computer={computerName}
+      team={invited}
+      task={task}
+      busy={busy || imports.busy}
+      error={error ?? (step !== "sources" ? imports.error : null)}
+      heading={heading}
+      onBack={back}
+    >
+      {step === "workspace" && <WorkspaceFields draft={draft} onChange={setDraft} />}
+      {step === "context" && <ContextFields draft={draft} onChange={setDraft} />}
+      {["sources", "review", "importing"].includes(step) && (
+        <AgentImport step={step} imports={imports} api={api} invoke={invoke} onManual={() => go("manual")} />
+      )}
+      {step === "review" && imports.selectionCount > 19 && (
+        <p className="ob-error" role="alert">
+          {t("ob.importLimit")}
+        </p>
+      )}
+      {step === "manual" && <ManualImport value={manual} onChange={setManual} />}
+      {step === "computer" && (
+        <ComputerFields api={api} values={computer} computer={computerName} onChange={setComputer} />
+      )}
+      {step === "agents" && (
+        <AgentFields
+          api={api}
+          bots={bots}
+          onChange={(bot) => setBots((previous) => previous.map((item) => (item.id === bot.id ? bot : item)))}
+        />
+      )}
+      {step === "team" && <TeamFields api={api} groups={groups} onInvited={() => setInvited(true)} />}
+      {step === "task" && (
+        <>
+          <label className="ob-field">
+            {t("ob.taskAgent")}
+            <select value={target} onChange={(event) => setTarget(event.target.value)}>
+              {bots.map((bot) => (
+                <option key={bot.id} value={bot.id}>
+                  {bot.name}
+                </option>
               ))}
-            </div>
-            <label className="ob-field">
-              {t("ob.writeTask")}
-              <textarea rows={3} value={task} maxLength={8000} onChange={(event) => setTask(event.target.value)} />
-            </label>
-          </>
-        )}
-        {step === "ready" && (
-          <p className="ob-notice">
-            {t("ob.taskSent")} #{groups.find((group) => group.name === "geral")?.name}
-            {thread && <span className="ob-muted"> · {bots.map((bot) => bot.name).join(", ")}</span>}
-          </p>
-        )}
-        {imports.error && step === "importing" && (
-          <div className="ob-inline">
-            <Button onClick={() => void imports.apply()}>{t("ob.retryImport")}</Button>
-            <Button
-              onClick={() => {
-                imports.clearPreview()
-                go("sources")
-              }}
-            >
-              {t("ob.reviewSources")}
-            </Button>
+            </select>
+          </label>
+          <div className="ob-suggestions">
+            {getSuggestions(
+              draft,
+              imports.previews.flatMap(({ preview }) =>
+                preview.agents
+                  .filter(
+                    (agent) =>
+                      imports.selection[preview.previewId]?.[agent.key]?.routines &&
+                      imports.results.some((result) => result.bots.some((bot) => bot.agentKey === agent.key)),
+                  )
+                  .flatMap((agent) => agent.routines.map((routine) => routine.name)),
+              ),
+            ).map((suggestion) => (
+              <Button key={suggestion} aria-pressed={task === suggestion} onClick={() => setTask(suggestion)}>
+                {suggestion}
+              </Button>
+            ))}
           </div>
-        )}
-        <footer className="ob-actions">
-          <Button variant="primary" disabled={isDisabled} onClick={() => void next()}>
-            {getNextLabel(step, busy, imports.busy)} <kbd>↵</kbd>
+          <label className="ob-field">
+            {t("ob.writeTask")}
+            <textarea rows={3} value={task} maxLength={8000} onChange={(event) => setTask(event.target.value)} />
+          </label>
+        </>
+      )}
+      {step === "ready" && (
+        <p className="ob-notice">
+          {t("ob.taskSent")} #{groups.find((group) => group.name === "geral")?.name}
+          {thread && <span className="ob-muted"> · {bots.map((bot) => bot.name).join(", ")}</span>}
+        </p>
+      )}
+      {imports.error && step === "importing" && (
+        <div className="ob-inline">
+          <Button onClick={() => void imports.apply()}>{t("ob.retryImport")}</Button>
+          <Button
+            onClick={() => {
+              imports.clearPreview()
+              go("sources")
+            }}
+          >
+            {t("ob.reviewSources")}
           </Button>
-          {canSkip && (
-            <Button variant="quiet" disabled={busy || imports.busy} onClick={skip}>
-              {t("ob.skip")}
-            </Button>
-          )}
-        </footer>
-      </GuideLayout>
-    </section>
+        </div>
+      )}
+      <footer className="ob-actions">
+        <Button variant="primary" disabled={isDisabled} onClick={() => void next()}>
+          {getNextLabel(step, busy, imports.busy)} <kbd>↵</kbd>
+        </Button>
+        {canSkip && (
+          <Button variant="quiet" disabled={busy || imports.busy} onClick={skip}>
+            {t("ob.skip")}
+          </Button>
+        )}
+      </footer>
+    </GuideLayout>
   )
 }
 const getPrevious = (step: GuideStep, hasTeam: boolean): GuideStep => {
   if (step === "context") return "workspace"
+  if (step === "sources") return "context"
   if (["manual", "review", "computer"].includes(step)) return "sources"
   if (step === "importing") return "review"
   if (step === "agents") return "computer"

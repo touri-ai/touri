@@ -1,5 +1,5 @@
 import type { AgentImportProgress, AvatarMood, Bot } from "@touri/contracts"
-import type { ReactNode, RefObject } from "react"
+import type { KeyboardEventHandler, ReactNode, RefObject } from "react"
 import { BotAvatar } from "../../components/BotAvatar"
 import { Button } from "../../components/Button"
 import { type TranslationKey, t } from "../../i18n"
@@ -26,6 +26,7 @@ export const GuideLayout = ({
   error,
   heading,
   onBack,
+  onKeyDown,
   children,
 }: {
   step: GuideStep
@@ -40,12 +41,13 @@ export const GuideLayout = ({
   error: string | null
   heading: RefObject<HTMLHeadingElement | null>
   onBack: () => void
+  onKeyDown: KeyboardEventHandler<HTMLElement>
   children: ReactNode
 }) => {
   const stage = getStage(step)
   const question = questions[step]
   return (
-    <main className="ob-screen">
+    <main className="ob-screen" onKeyDown={onKeyDown}>
       <div className="ob-shell">
         <section className="ob-conversation" aria-labelledby="ob-title" aria-busy={busy}>
           <header className="ob-top">

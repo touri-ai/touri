@@ -50,8 +50,7 @@ for (const [device, width, height, theme] of [
     const fixture = await start()
     await fixture.install(page, theme)
     await page.setViewportSize({ width, height })
-    await page.goto(fixture.url)
-    await page.evaluate(() => window.dispatchEvent(new Event("touri-open-onboarding")))
+    await openRuntimeSetup(page, fixture.url)
     await expect(page.getByRole("heading", { name: "Onde seus agentes vão morar?" })).toBeFocused()
     await capture(page, testInfo, `${device}-chooser`)
     await page.getByRole("button", { name: /Conectar ao meu servidor/ }).click()
@@ -59,19 +58,21 @@ for (const [device, width, height, theme] of [
     await expect(page.getByRole("button", { name: "Usar Este computador" })).toBeVisible()
     await capture(page, testInfo, `${device}-discovery`)
     await page.getByRole("button", { name: "Usar studio.example.ts.net" }).click()
-    await expect(page.getByLabel("Endereço do servidor")).toHaveValue("https://studio.example.ts.net:8445")
+    await expect(page.getByRole("textbox", { name: "Endereço do servidor", exact: true })).toHaveValue(
+      "https://studio.example.ts.net:8445",
+    )
     await page.getByRole("button", { name: "← Voltar" }).click()
-    await page.getByLabel("Endereço do servidor").fill("http://insecure.example")
+    await page.getByRole("textbox", { name: "Endereço do servidor", exact: true }).fill("http://insecure.example")
     await page.getByRole("button", { name: "Conectar ao servidor" }).click()
     await expect(page.getByRole("alert")).toContainText("HTTPS")
-    await page.getByLabel("Endereço do servidor").fill(fixture.base)
+    await page.getByRole("textbox", { name: "Endereço do servidor", exact: true }).fill(fixture.base)
     await page.getByRole("button", { name: "Conectar ao servidor" }).click()
-    await page.getByLabel("Código de pareamento").fill("WRONG-CODE")
+    await page.getByRole("textbox", { name: "Código de pareamento", exact: true }).fill("WRONG-CODE")
     await page.getByRole("button", { name: "Parear e continuar" }).click()
     await expect(page.getByRole("alert")).toContainText("Gere outro código")
-    await expect(page.getByLabel("Código de pareamento")).toHaveValue("")
+    await expect(page.getByRole("textbox", { name: "Código de pareamento", exact: true })).toHaveValue("")
     const pairing = { code: await fixture.getCode() }
-    await page.getByLabel("Código de pareamento").fill(pairing.code)
+    await page.getByRole("textbox", { name: "Código de pareamento", exact: true }).fill(pairing.code)
     await capture(page, testInfo, `${device}-pairing`)
     await page.getByRole("button", { name: "Parear e continuar" }).click()
     await expect(page.getByRole("button", { name: "Criar meu primeiro bot" })).toBeVisible()
@@ -88,8 +89,7 @@ for (const [device, width, height, theme] of [
     const fixture = await start()
     await fixture.install(page, theme)
     await page.setViewportSize({ width, height })
-    await page.goto(fixture.url)
-    await page.evaluate(() => window.dispatchEvent(new Event("touri-open-onboarding")))
+    await openRuntimeSetup(page, fixture.url)
     await page.getByRole("button", { name: /Este (Mac|PC)/ }).click()
     await page.getByLabel("Seu nome").fill("Pessoa Exemplo")
     await page.getByLabel("Seu email").fill("person@example.com")
@@ -128,4 +128,11 @@ const capture = async (page: Page, testInfo: TestInfo, name: string, selector = 
     body: await page.screenshot({ path: await getScreenshotPath(name), mask: [page.locator(".setup-pair-code")] }),
     contentType: "image/png",
   })
+}
+
+const openRuntimeSetup = async (page: Page, url: string) => {
+  await page.addInitScript(() => localStorage.setItem("touri.onboarding.completed.v1", "true"))
+  await page.goto(url)
+  await expect(page.getByRole("button", { name: "Criar meu primeiro bot" })).toBeVisible()
+  await page.evaluate(() => window.dispatchEvent(new Event("touri-open-onboarding")))
 }

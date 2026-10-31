@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { UiEventEnvelope } from "@touri/contracts"
 import { afterEach, expect, it, vi } from "vitest"
 import type { TauriInvoke, UiApi } from "../src/api/client"
@@ -152,7 +152,7 @@ it("keeps access opt-in and sends the first task to the general channel with a r
   expect(request).toHaveBeenCalledWith(
     "POST /threads/:id/messages",
     expect.objectContaining({
-      text: expect.stringContaining("@touri Organize as prioridades."),
+      text: expect.stringContaining("@touri Organize as prioridades.\n\nWorkspace: Equipe exemplo."),
       clientNonce: expect.any(String),
     }),
     { id: "general-thread" },
@@ -315,4 +315,116 @@ it("translates every conversational setup string", () => {
   keys.forEach((key) => {
     expect(dictionaries.en[key]).not.toBe(key)
   })
+})
+
+it("returns from sources to context with the owner's answers intact", async () => {
+  getFixture()
+  enterWorkspace()
+  fireEvent.change(screen.getByRole("textbox", { name: "Conte sobre seu trabalho" }), {
+    target: { value: "Criamos ferramentas." },
+  })
+  continueSetup()
+  await screen.findByRole("button", { name: /Claude Code/ })
+
+  fireEvent.click(screen.getByRole("button", { name: "Voltar", exact: true }))
+
+  expect(screen.getByRole("textbox", { name: "Conte sobre seu trabalho" })).toHaveValue("Criamos ferramentas.")
+})
+it("lets the owner configure permissions while importing but waits before loading agents", async () => {
+  const pending = Promise.withResolvers<unknown>()
+  const { request } = getFixture({ "POST /api/v1/import/apply": () => pending.promise })
+  enterWorkspace()
+  continueSetup()
+  await screen.findByRole("button", { name: /Claude Code/ })
+  continueSetup()
+  await screen.findByRole("heading", { name: "Confere o que vem?" })
+  fireEvent.click(screen.getByRole("button", { name: /Importar selecionados/ }))
+  fireEvent.click(screen.getByRole("button", { name: /Continuar enquanto importa/ }))
+
+  fireEvent.click(screen.getByRole("checkbox", { name: /Navegador/ }))
+
+  expect(screen.getByRole("checkbox", { name: /Navegador/ })).toBeChecked()
+  expect(screen.getByRole("button", { name: /^Continuar/ })).toBeDisabled()
+  expect(request).not.toHaveBeenCalledWith("GET /bots", {})
+  await act(async () => {
+    pending.resolve({
+      importId: "import-one",
+      bots: [{ agentKey: "dev", botId: "bot-dev" }],
+      pausedRoutines: 1,
+      reconnect: [],
+    })
+  })
+  await waitFor(() => expect(screen.getByRole("button", { name: /^Continuar/ })).toBeEnabled())
+  continueSetup()
+  await screen.findByRole("heading", { name: "Seu time de agentes" })
+  expect(screen.getAllByRole("combobox", { name: "Conta de IA" })).toHaveLength(2)
+})
+
+it("preserves an existing agent's instructions when its name matches the guide", async () => {
+  const existing = { ...getGuideBotFixture(), instructions: "Instruções revisadas pelo dono." }
+  const { request } = getFixture({ "GET /bots": { bots: [existing] } })
+  enterWorkspace()
+  continueSetup()
+  fireEvent.click(await screen.findByRole("button", { name: "Pular" }))
+  continueSetup()
+  await screen.findByRole("heading", { name: "Seu time de agentes" })
+
+  continueSetup()
+
+  await screen.findByRole("heading", { name: "Quem mais trabalha com você?" })
+  expect(request).toHaveBeenCalledWith(
+    "PATCH /bots/:id",
+    expect.not.objectContaining({ instructions: expect.anything() }),
+    { id: existing.id },
+  )
+})
+
+it("keeps setup usable when import routes are not installed", async () => {
+  getFixture({ "GET /api/v1/import/sources": new ApiError(404, "NOT_FOUND") })
+  enterWorkspace()
+  continueSetup()
+  await screen.findByRole("alert")
+
+  fireEvent.click(screen.getByRole("button", { name: "Pular", exact: true }))
+  continueSetup()
+
+  await screen.findByRole("heading", { name: "Seu time de agentes" })
+})
+
+it("retries an unchanged first task once and gives edited text a new message nonce", async () => {
+  const send = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("Response lost"))
+    .mockRejectedValueOnce(new Error("Response lost"))
+    .mockResolvedValue({})
+  const { request } = getFixture({ "POST /threads/:id/messages": send })
+  enterWorkspace()
+  continueSetup()
+  fireEvent.click(await screen.findByRole("button", { name: "Pular" }))
+  continueSetup()
+  await screen.findByRole("heading", { name: "Seu time de agentes" })
+  continueSetup()
+  await screen.findByRole("heading", { name: "Quem mais trabalha com você?" })
+  fireEvent.click(screen.getByRole("button", { name: "Pular" }))
+  fireEvent.change(screen.getByRole("textbox", { name: "Sua primeira tarefa" }), {
+    target: { value: "Resuma o contexto." },
+  })
+
+  fireEvent.click(screen.getByRole("button", { name: /Enviar primeira tarefa/ }))
+  await screen.findByRole("alert")
+  fireEvent.click(screen.getByRole("button", { name: /Enviar primeira tarefa/ }))
+  await screen.findByRole("alert")
+  fireEvent.change(screen.getByRole("textbox", { name: "Sua primeira tarefa" }), {
+    target: { value: "Organize as prioridades." },
+  })
+  fireEvent.click(screen.getByRole("button", { name: /Enviar primeira tarefa/ }))
+
+  await screen.findByRole("heading", { name: "Seu touri está pronto" })
+  const nonces = vi
+    .mocked(request)
+    .mock.calls.filter(([route]) => route === "POST /threads/:id/messages")
+    .flatMap(([, input]) => ("clientNonce" in input ? [input.clientNonce] : []))
+  expect(nonces).toHaveLength(3)
+  expect(nonces[1]).toBe(nonces[0])
+  expect(nonces[2]).not.toBe(nonces[1])
 })

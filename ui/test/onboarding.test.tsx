@@ -2,9 +2,14 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { DiscoveredServer } from "@touri/contracts"
 import { afterEach, expect, it, vi } from "vitest"
 import type { TauriInvoke } from "../src/api/client"
-import { hasCompletedOnboarding, type OnboardingRequest } from "../src/features/onboarding/client"
+import {
+  hasCompletedOnboarding,
+  type OnboardingRequest,
+  OnboardingUnsupportedError,
+} from "../src/features/onboarding/client"
 import { getServerUrl, Onboarding } from "../src/features/onboarding/Onboarding"
 import { dictionaries } from "../src/i18n"
+import { getGuideBotFixture } from "./fixtures/onboarding-guide"
 
 afterEach(cleanup)
 
@@ -163,4 +168,55 @@ it("does not pair the desktop with the runtime that its restart would stop", asy
   await screen.findByRole("alert")
   expect(screen.getByRole("alert")).toHaveTextContent("já está rodando neste computador")
   expect(invoke).not.toHaveBeenCalled()
+})
+
+it("opens an already configured server after first pairing without restarting workspace setup", async () => {
+  const status = vi
+    .fn()
+    .mockResolvedValueOnce({ completed: false, hasData: false, tailscale: "missing", remoteUrl: null })
+    .mockResolvedValue({ completed: true, hasData: true, tailscale: "ready", remoteUrl: null })
+  const fallback = getRequest()
+  const request = vi.fn((route, input, signal) =>
+    route === "GET /onboarding" ? status() : fallback(route, input, signal),
+  ) as OnboardingRequest
+  const invoke = vi.fn(async (command) =>
+    command === "server_mode_pair" ? { mode: "server", url: "https://server.example.com" } : null,
+  ) as TauriInvoke
+  const complete = vi.fn()
+  render(<Onboarding request={request} invoke={invoke} onComplete={complete} initialStep="connect" />)
+  fireEvent.change(screen.getByLabelText("Endereço do servidor"), { target: { value: "https://server.example.com" } })
+  fireEvent.click(screen.getByRole("button", { name: "Conectar ao servidor", exact: true }))
+  fireEvent.change(screen.getByLabelText("Código de pareamento"), { target: { value: "FAKE-CODE" } })
+
+  fireEvent.click(screen.getByRole("button", { name: "Parear e continuar" }))
+
+  await waitFor(() => expect(complete).toHaveBeenCalledOnce())
+  expect(status).toHaveBeenCalledTimes(2)
+  expect(screen.queryByRole("heading", { name: "Como chama seu espaço?" })).toBeNull()
+})
+
+it("opens an existing server that has bots but no optional onboarding route", async () => {
+  const status = vi
+    .fn()
+    .mockResolvedValueOnce({ completed: false, hasData: false, tailscale: "missing", remoteUrl: null })
+    .mockRejectedValue(new OnboardingUnsupportedError())
+  const fallback = getRequest()
+  const request = vi.fn((route, input, signal) => {
+    if (route === "GET /onboarding") return status()
+    if (route === "GET /bots") return Promise.resolve({ bots: [getGuideBotFixture()] })
+    return fallback(route, input, signal)
+  }) as OnboardingRequest
+  const invoke = vi.fn(async (command) =>
+    command === "server_mode_pair" ? { mode: "server", url: "https://server.example.com" } : null,
+  ) as TauriInvoke
+  const complete = vi.fn()
+  render(<Onboarding request={request} invoke={invoke} onComplete={complete} initialStep="connect" />)
+  fireEvent.change(screen.getByLabelText("Endereço do servidor"), { target: { value: "https://server.example.com" } })
+  fireEvent.click(screen.getByRole("button", { name: "Conectar ao servidor", exact: true }))
+  fireEvent.change(screen.getByLabelText("Código de pareamento"), { target: { value: "FAKE-CODE" } })
+
+  fireEvent.click(screen.getByRole("button", { name: "Parear e continuar" }))
+
+  await waitFor(() => expect(complete).toHaveBeenCalledOnce())
+  expect(request).toHaveBeenCalledWith("GET /bots", {})
 })
