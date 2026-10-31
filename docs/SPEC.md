@@ -260,6 +260,8 @@ A publication waits for any already accepted removal before preparing its files,
 an attachment before committing a reference.
 Failed publication and removal release their ownership for later attempts; no database transaction
 stays open across file I/O.
+After file creation, attachment-row publication uses the bounded asynchronous database writer.
+Lock contention yields between attempts; output references return only after their attachment rows commit.
 
 Browser reply headers show one cancellation status when either the message or its run is canceled,
 never a simultaneous finished label. Failed browser turns show failure; expired handoffs retain
