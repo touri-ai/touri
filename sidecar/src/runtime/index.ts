@@ -499,7 +499,6 @@ export const init = async (
         input: routineInput({ args: { name, cron: schedule, prompt, timezone: "UTC" }, botId, enabled: false }),
         forceDisabled: true,
       }),
-    remove: engine.deleteRoutine,
   })
   kernel.registerRoutes(routes)
 

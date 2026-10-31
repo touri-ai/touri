@@ -23,7 +23,8 @@ Preview writes nothing, expires after ten minutes and caches at most three revie
 Apply copies that snapshot without modifying the source; retries with the same selection reuse the
 result while the preview remains available. New bots use read-only access, explicit approvals and
 no browser or computer control. Routines remain disabled; integrations expose names to reconnect.
-Undo uses a durable resource journal and the existing progressive deletion path.
+Undo uses a durable resource journal, pauses routines by ID and delegates routine history cleanup
+to the existing progressive bot deletion path instead of loading execution history in the request.
 
 Source folders resolve parent-directory aliases before private-data scope checks, allowing ordinary
 system-directory aliases on supported hosts. The selected final entry must be a regular directory;

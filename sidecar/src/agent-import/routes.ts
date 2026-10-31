@@ -125,12 +125,12 @@ export const createAgentImportRoutes = (
     if (!journal) return error(404, "NOT_FOUND")
     if (journal.state === "undone") return { status: 200, json: { removedBots: 0 } }
     const deletion = kernel.services.use("agentImport.deleteBot")
-    const routines = kernel.services.use("agentImport.routines")
-    if (!deletion || !routines) return error(503, "SERVICE_UNAVAILABLE")
+    if (!deletion) return error(503, "SERVICE_UNAVAILABLE")
     const removed = journal.bots.filter(({ botId }) => Boolean(kernel.services.use("store.api")?.getBot({ botId })))
     for (const id of journal.routines) {
       assertOwner()
-      routines.remove(id)
+      // The bot deletion worker removes routine history in batches after scheduling stops.
+      database.query("UPDATE routines SET enabled = 0, next_run_at = NULL, updated_at = ? WHERE id = ?").run(now(), id)
       await yieldBackground()
     }
     for (const { botId } of removed) {

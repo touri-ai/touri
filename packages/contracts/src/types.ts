@@ -1740,7 +1740,7 @@ export type ServiceMap = {
   'work.channelPeople': (groupId: Id) => Array<ChannelPerson>
   'work.defaultPersonId': () => Id
   'agentImport.createBot': (input: { id: Id; name: string; role?: string; instructions: string; signal: AbortSignal }) => Promise<Bot | null>
-  'agentImport.routines': { create: (input: { botId: Id; name: string; schedule: string; prompt: string }) => Result<{ routine: Routine }>; remove: (id: Id) => Result<object> }
+  'agentImport.routines': { create: (input: { botId: Id; name: string; schedule: string; prompt: string }) => Result<{ routine: Routine }> }
   'bots.validateCreation': (body: unknown) => Result<{ input: CreateBotInput }>
   'bots.create': (input: {
     body: unknown

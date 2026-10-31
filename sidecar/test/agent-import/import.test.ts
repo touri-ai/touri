@@ -118,6 +118,49 @@ test("folder copy preserves the source and does not touch an existing bot when u
   expect(await readFile(instructionsPath, "utf8")).toBe("Ajude com revisão de texto.")
 })
 
+test("undo removes routine history through progressive bot deletion without synchronous routine removal", async () => {
+  const fixture = await makeHarness()
+  const preview = (await (
+    await fixture.request("POST", "/import/preview", { source: "manual", payload: makePayload() })
+  ).json()) as AgentImportPreview
+  const result = (await (
+    await fixture.request("POST", "/import/apply", {
+      previewId: preview.previewId,
+      select: Object.fromEntries(preview.agents.map(({ key }) => [key, allItems])),
+    })
+  ).json()) as AgentImportResult
+  const botId = result.bots[0]?.botId ?? ""
+  const routine = fixture.database.query("SELECT id FROM routines WHERE bot_id = ?").get(botId) as { id: string } | null
+  const routines = fixture.runtime.kernel.services.use("agentImport.routines")
+  if (!routine || !routines) throw new Error("Missing imported routine")
+  fixture.database
+    .query(`WITH RECURSIVE slots(n) AS (
+    SELECT 1 UNION ALL SELECT n + 1 FROM slots WHERE n < 512
+  ) INSERT INTO routine_runs(id, routine_id, scheduled_for, status, trigger_source)
+    SELECT 'fixture-run-' || n, ?, n, 'succeeded', 'import' FROM slots`)
+    .run(routine.id)
+  const guardedRoutines = {
+    create: routines.create,
+    remove: () => {
+      throw new Error("Synchronous routine history removal is forbidden")
+    },
+  }
+  fixture.runtime.kernel.services.provide("agentImport.routines", guardedRoutines)
+
+  const response = await fixture.request("POST", "/import/undo", { importId: result.importId })
+
+  expect(response.status).toBe(200)
+  await waitFor(() => !fixture.database.query("SELECT id FROM bots WHERE id = ?").get(botId))
+
+  expect(await response.json()).toEqual({ removedBots: 1 })
+  expect(fixture.database.query("SELECT id FROM routines WHERE id = ?").get(routine.id)).toBeNull()
+  expect(
+    fixture.database.query("SELECT count(*) AS count FROM routine_runs WHERE routine_id = ?").get(routine.id),
+  ).toEqual({
+    count: 0,
+  })
+})
+
 test("owner identity is required for all four routes, including other administrators and expired sessions", async () => {
   const fixture = await makeHarness()
   const routes = [
