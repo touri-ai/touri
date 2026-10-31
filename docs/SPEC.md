@@ -82,6 +82,9 @@ TLS, namespace requirements, credential-grade backups and restoration before upg
 
 ## Guided workspace setup
 
+The guide and its account editors load only when local workspace setup opens. Welcome and server
+access do not fetch those optional modules; shared button styles remain available at startup.
+
 First opening preserves server discovery, pairing and the choice to run locally. Pairing with
 an already configured server opens its existing workspace instead of restarting setup. Servers
 without the optional onboarding route are recognized by their existing bots. Only empty

@@ -1,5 +1,5 @@
 import type { DiscoveredServer, OnboardingStatus } from "@touri/contracts"
-import { type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react"
+import { lazy, type ReactNode, type RefObject, Suspense, useEffect, useId, useRef, useState } from "react"
 import { createTauriInvoke, type TauriInvoke } from "../../api/client"
 import { BotAvatar } from "../../components/BotAvatar"
 import { Button } from "../../components/Button"
@@ -16,12 +16,14 @@ import {
   OnboardingUnsupportedError,
   scheduleLocalSetup,
 } from "./client"
-import { GuidedOnboarding } from "./GuidedOnboarding"
 import { guideBot } from "./guide"
 import "./onboarding.css"
 
 type Step = "welcome" | "choose" | "connect" | "pair" | "here" | "access" | "workspace"
 const nativeInvoke = createTauriInvoke()
+const GuidedOnboarding = lazy(() =>
+  import("./GuidedOnboarding").then((module) => ({ default: module.GuidedOnboarding })),
+)
 
 export const OnboardingBoundary = ({
   children,
@@ -214,15 +216,23 @@ export const Onboarding = ({
   }
   if (step === "workspace")
     return (
-      <GuidedOnboarding
-        checkExistingWorkspace={paired}
-        invoke={invoke}
-        onBack={() => go("choose")}
-        onComplete={async () => {
-          if (!paired) await request("POST /onboarding", { remote: false })
-          onComplete()
-        }}
-      />
+      <Suspense
+        fallback={
+          <main className="setup-screen" aria-busy="true">
+            <p role="status">{t("Loading")}</p>
+          </main>
+        }
+      >
+        <GuidedOnboarding
+          checkExistingWorkspace={paired}
+          invoke={invoke}
+          onBack={() => go("choose")}
+          onComplete={async () => {
+            if (!paired) await request("POST /onboarding", { remote: false })
+            onComplete()
+          }}
+        />
+      </Suspense>
     )
   return (
     <main
