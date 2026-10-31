@@ -385,6 +385,7 @@ export const BrowserActivityCard = ({
   }
   const finishHandback = (): void => {
     setResuming(resumption.current !== null && !resumption.current.completed)
+    setPreviewFrame(undefined)
     setTakeoverSession(null)
     setControlEpoch(null)
     setTakeoverViewEpoch(0)
@@ -518,6 +519,7 @@ export const BrowserActivityCard = ({
             }))}
             onSessionEnded={() => {
               cancelHandback()
+              setPreviewFrame(undefined)
               setTakeoverSession(null)
               setControlEpoch(null)
               setTakeoverViewEpoch(0)
