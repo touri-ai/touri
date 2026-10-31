@@ -129,6 +129,7 @@ const Guide = ({
   const [thread, setThread] = useState<Thread | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const heading = useRef<HTMLHeadingElement>(null)
   const operation = useRef(false)
   const createdGuideId = useRef<string | null>(null)
@@ -176,6 +177,7 @@ const Guide = ({
     }
   }, [step])
   const go = (next: GuideStep) => {
+    setNotice(null)
     setError(null)
     setStep(next)
   }
@@ -269,6 +271,8 @@ const Guide = ({
     const removed = result.bots.map((bot) => bot.botId)
     setBots((previous) => previous.filter((bot) => !removed.includes(bot.id)))
     if (removed.includes(target)) setTarget("")
+    go("sources")
+    setNotice(t("ob.importUndone"))
   }
   const sendFirstTask = async () => {
     const general = groups.find((group) => group.name === "geral")
@@ -416,6 +420,7 @@ const Guide = ({
       heading={heading}
       onBack={back}
     >
+      {notice && <p role="status">{notice}</p>}
       {step === "workspace" && <WorkspaceFields draft={draft} onChange={setDraft} />}
       {step === "context" && <ContextFields draft={draft} onChange={setDraft} />}
       {["sources", "review", "importing"].includes(step) && (

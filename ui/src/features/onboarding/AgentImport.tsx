@@ -271,7 +271,16 @@ const ImportUndo = ({
           disabled={imports.busy}
           onClick={() => void onUndo(result.importId)}
         >
-          {t("ob.undoImport")} · {result.bots.length}
+          {t("ob.undoNamedImport", {
+            names: imports.previews
+              .filter(({ preview }) => imports.importIds[preview.previewId] === result.importId)
+              .flatMap(({ preview }) =>
+                preview.agents
+                  .filter((agent) => result.bots.some((bot) => bot.agentKey === agent.key))
+                  .map((agent) => agent.suggestedBotName),
+              )
+              .join(", "),
+          })}
         </Button>
       ))}
     </div>

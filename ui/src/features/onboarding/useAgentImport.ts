@@ -184,6 +184,10 @@ export const useAgentImport = (api: UiApi) => {
       const previewIds = Object.entries(importIds)
         .filter(([, id]) => id === importId)
         .map(([previewId]) => previewId)
+      const sourceIds = previews
+        .filter(({ preview }) => previewIds.includes(preview.previewId))
+        .map(({ sourceId }) => sourceId)
+      setSelected((previous) => previous.filter((id) => !sourceIds.includes(id)))
       completed.current = new Set(Array.from(completed.current).filter((id) => !previewIds.includes(id)))
       progressOwners.current.delete(importId)
       setResults((previous) => previous.filter((result) => result.importId !== importId))

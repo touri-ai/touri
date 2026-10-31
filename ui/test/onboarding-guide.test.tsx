@@ -745,3 +745,22 @@ it("retains an import when undo fails so the owner can retry", async () => {
   fireEvent.click(screen.getByRole("button", { name: /Desfazer importação/ }))
   await waitFor(() => expect(screen.queryByRole("button", { name: /Desfazer importação/ })).toBeNull())
 })
+
+it("undo from import progress confirms success and returns to source selection", async () => {
+  getFixture()
+  enterWorkspace()
+  continueSetup()
+  await screen.findByRole("button", { name: /Claude Code/ })
+  continueSetup()
+  await screen.findByRole("heading", { name: "Confere o que vem?" })
+  fireEvent.click(screen.getByRole("button", { name: /Importar selecionados/ }))
+  await screen.findByText("Pronto", { selector: ".ob-import-agent span" })
+
+  fireEvent.click(screen.getByRole("button", { name: "Desfazer importação de dev", exact: true }))
+
+  expect(await screen.findByRole("heading", { name: "Já usa agentes em outro app?" })).toBeVisible()
+  expect(screen.getByRole("status")).toHaveTextContent("Importação desfeita. Escolha outra fonte.")
+  expect(screen.getByRole("button", { name: /Claude Code/ })).toHaveAttribute("aria-pressed", "false")
+  expect(screen.getByRole("button", { name: /^Continuar/ })).toBeDisabled()
+  expect(screen.queryByText("Trazendo seus agentes")).toBeNull()
+})
