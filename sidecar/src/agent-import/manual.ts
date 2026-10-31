@@ -106,7 +106,7 @@ const getSanitizedSnapshot = (agents: ImportAgent[]): ImportSnapshot => {
       ),
       memories: agent.memories.filter(accept),
       routines: agent.routines.filter((routine) => accept(`${routine.name}\n${routine.prompt}`)),
-      integrations: agent.integrations.filter((name) => /^[\p{L}\p{N} _.-]{1,80}$/u.test(name) && accept(name)),
+      integrations: agent.integrations.filter((name) => accept(name) && /^[\p{L}\p{N} _.-]{1,80}$/u.test(name)),
     }))
 
   return { source: "manual", agents: sanitized, excluded: { secrets, files } }
