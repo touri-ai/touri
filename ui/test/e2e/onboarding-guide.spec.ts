@@ -101,16 +101,16 @@ const runGuideFlow = async (page: Page, info: TestInfo, width: number, destinati
   await page.setViewportSize({ width, height: width === 390 ? 844 : 800 })
   await page.goto(destination)
   await expect(page.getByRole("heading", { name: "Seu time e seus agentes, no mesmo chat" })).toBeVisible()
+  if (measure) {
+    await page.evaluate(() => document.fonts.ready)
+    await installPerformanceProbe(page)
+  }
   await captureStep(`after-welcome-${width}`)
   await page.getByRole("button", { name: /^Começar/ }).click()
   await captureStep(`after-location-${width}`)
   await page.getByRole("button", { name: /Este (PC|Mac)/ }).click()
   await expect(page.getByRole("heading", { name: "Como chama seu espaço?" })).toBeVisible()
   await captureStep(`after-workspace-${width}`)
-  if (measure) {
-    await page.evaluate(() => document.fonts.ready)
-    await installPerformanceProbe(page)
-  }
   const question = page.locator("main .ob-conversation")
   await question.getByRole("textbox", { name: "Nome", exact: true }).fill("Equipe exemplo")
   await question.getByRole("textbox", { name: "Nome", exact: true }).press("Enter")
@@ -164,6 +164,7 @@ const runGuideFlow = async (page: Page, info: TestInfo, width: number, destinati
     const metrics = await getPerformanceMetrics(page)
     console.log(JSON.stringify({ width, ...metrics }))
     await info.attach(`fluidity-${width}`, { body: JSON.stringify(metrics, null, 2), contentType: "application/json" })
+    expect(metrics.interactions).toBeGreaterThanOrEqual(14)
     expect(metrics.longTasks).toHaveLength(0)
     expect(metrics.paintP95).toBeLessThan(100)
     expect(metrics.eventP95).toBeLessThan(100)
