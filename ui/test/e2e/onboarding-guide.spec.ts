@@ -473,6 +473,58 @@ for (const width of [1440, 390]) {
   })
 }
 for (const width of [1440, 390]) {
+  test(`onboarding recovery ${width}: a JSON import keeps the earlier imported agent listed and named`, async ({
+    page,
+    productionUrl,
+  }, info) => {
+    const mock = await installGuideMocks(page)
+    mock.finishImport()
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 800 })
+    await openEmptyGuide(page, productionUrl)
+    await page.getByRole("button", { name: /^Continuar/ }).click()
+    await page.getByRole("button", { name: /Importar selecionados/ }).click()
+    await expect(page.getByText("Pronto", { exact: true })).toHaveCount(1)
+    await page.getByRole("button", { name: "Voltar", exact: true }).click()
+    await page.getByRole("button", { name: "Voltar", exact: true }).click()
+    const template = getGuidePreviewFixture().agents[0]
+    if (!template) throw new Error("Missing synthetic preview agent")
+    await page.route("**/api/v1/import/preview", (route) =>
+      route.fulfill({
+        json: {
+          ...getGuidePreviewFixture("manual-preview"),
+          agents: [{ ...template, key: "ops", name: "ops", suggestedBotName: "ops" }],
+        },
+      }),
+    )
+    await page.route("**/api/v1/import/apply", (route) =>
+      route.fulfill({
+        json: {
+          importId: "import-two",
+          bots: [{ agentKey: "ops", botId: "bot-ops" }],
+          pausedRoutines: 0,
+          reconnect: [],
+        },
+      }),
+    )
+    await page.getByRole("button", { name: /Outro app \(pedido de exportação\)/ }).click()
+    await page.getByRole("textbox", { name: "Resposta em JSON" }).fill('{"agents":[{"name":"ops"}]}')
+    await page.getByRole("button", { name: /^Continuar/ }).click()
+    await expect(page.getByRole("heading", { name: "Confere o que vem?" })).toBeVisible()
+
+    await page.getByRole("button", { name: /Importar selecionados/ }).click()
+
+    const rows = page.locator("main .ob-import-agent")
+    await expect(rows.filter({ hasText: "Pronto" })).toHaveCount(2)
+    await expect(rows.locator("strong")).toHaveText(["dev", "ops"])
+    await expect(page.getByRole("button", { name: "Desfazer importação de dev", exact: true })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Desfazer importação de ops", exact: true })).toBeVisible()
+    const live = page.locator("aside.ob-live")
+    await expect(live.getByText("dev", { exact: true })).toHaveCount(1)
+    await expect(live.getByText("ops", { exact: true })).toHaveCount(1)
+    await capture(page, info, `json-import-keeps-earlier-${width}`)
+  })
+}
+for (const width of [1440, 390]) {
   test(`onboarding recovery ${width}: long imported names keep the undo action inside the form`, async ({
     page,
     productionUrl,

@@ -17,6 +17,7 @@ import {
   getImportedNames,
   getIsEmptyOwnerWorkspace,
   getIsGuideBotReady,
+  getRetainedImports,
   getStage,
   getWebsite,
   guideBot,
@@ -581,7 +582,26 @@ const getLiveBots = (bots: Bot[], imports: ReturnType<typeof useAgentImport>) =>
         avatarSeed: agent.key,
       }))
   })
-  return [...bots, ...copying]
+  const retained = getRetainedImports(
+    imports.results,
+    imports.importIds,
+    imports.previews.map(({ preview }) => preview.previewId),
+  ).flatMap((result) =>
+    result.agents
+      .filter((agent) => {
+        const imported = result.bots.find((item) => item.agentKey === agent.key)
+        return !bots.some((bot) => bot.id === imported?.botId)
+      })
+      .map((agent) => ({
+        id: `${result.importId}:${agent.key}`,
+        importId: result.importId,
+        agentKey: agent.key,
+        name: agent.name,
+        color: null,
+        avatarSeed: agent.key,
+      })),
+  )
+  return [...bots, ...retained, ...copying]
 }
 
 const getGuideEndpoint = async (invoke: TauriInvoke): Promise<Endpoint> => {
