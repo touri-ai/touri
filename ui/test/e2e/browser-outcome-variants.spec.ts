@@ -1,4 +1,5 @@
-import { expect, type Locator, test } from "@playwright/test"
+import { expect, type Locator } from "@playwright/test"
+import { test } from "./production-fixture"
 
 test.use({ channel: "chromium", reducedMotion: "reduce" })
 
@@ -50,14 +51,13 @@ for (const viewport of [
       const outcome = page.getByRole("alert").filter({ hasText: unavailable })
       await expect(outcome).toHaveCount(1)
       const handback = page.locator(".browser-activity-recovery-return")
-      await page.waitForTimeout(400)
+      for (const element of [outcome, handback])
+        await expect.poll(() => getPlacement(element)).toEqual({ withinHistory: true, hittable: true })
       if (process.env.TOURI_SCREENSHOT_DIR)
         await page.screenshot({
           path: `${process.env.TOURI_SCREENSHOT_DIR}/${variant.via}-${variant.query.replace(/[=&]/g, "") || "streaming"}-${viewport.width}.png`,
         })
 
-      for (const element of [outcome, handback])
-        expect(await getPlacement(element)).toEqual({ withinHistory: true, hittable: true })
       await handback.dispatchEvent("click")
       await expect(outcome).toHaveCount(0)
       await expect(input).toHaveValue("Rascunho que deve continuar aqui")

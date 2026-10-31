@@ -1,4 +1,5 @@
-import { expect, type Locator, test } from "@playwright/test"
+import { expect, type Locator } from "@playwright/test"
+import { test } from "./production-fixture"
 
 test.use({ channel: "chromium", reducedMotion: "reduce" })
 
@@ -32,16 +33,14 @@ for (const viewport of [
     const outcome = page.getByRole("alert").filter({ hasText: unavailable })
     await expect(outcome).toHaveCount(1)
     const handback = page.locator(".browser-activity-recovery-return")
-    // Let the history settle the way it does after a real response.
-    await page.waitForTimeout(400)
-    if (process.env.TOURI_SCREENSHOT_DIR)
-      await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/composer-takeover-${viewport.width}.png` })
-
     for (const element of [outcome, handback]) {
       await expect(element).toBeInViewport({ ratio: 1 })
-      expect(await isUncovered(element)).toBe(true)
+      await expect.poll(() => isUncovered(element)).toBe(true)
     }
     await expect(page.getByText(/Você está no controle/)).toHaveCount(0)
+
+    if (process.env.TOURI_SCREENSHOT_DIR)
+      await page.screenshot({ path: `${process.env.TOURI_SCREENSHOT_DIR}/composer-takeover-${viewport.width}.png` })
 
     await handback.click()
     await expect(outcome).toHaveCount(0)

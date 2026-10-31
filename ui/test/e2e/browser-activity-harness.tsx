@@ -445,8 +445,6 @@ const Fixture = () => {
   )
 }
 
-const wait = (duration: number): Promise<void> => new Promise((resolve) => window.setTimeout(resolve, duration))
-
 const requestBrowserFixture = async (step: string, payload?: Record<string, unknown>) => {
   const response = await fetch("/__browser-activity-fixture", {
     method: "POST",
@@ -639,17 +637,13 @@ const LiveFixture = () => {
       ok: null,
     }
     setParts((previous) => [...previous, pending])
-    await wait(350)
     if (stopped.current) return
     const result = await requestBrowserFixture(step)
     const completedPart = result.part
     if (!completedPart) throw new Error(`The browser fixture returned no action for ${step}.`)
     setParts((previous) => previous.map((part) => (part.callId === callId ? { ...completedPart, callId } : part)))
     if (step !== "open") return
-    if (params.get("holdAfterOpen") !== "true") {
-      await wait(3_000)
-      return
-    }
+    if (params.get("holdAfterOpen") !== "true") return
     await new Promise<void>((resolve) => {
       continueAfterOpen.current = resolve
     })

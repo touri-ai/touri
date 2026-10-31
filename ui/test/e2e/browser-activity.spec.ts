@@ -4,7 +4,15 @@ import { mkdir } from "node:fs/promises"
 import { resolve } from "node:path"
 import { createInterface } from "node:readline"
 import AxeBuilder from "@axe-core/playwright"
-import { type BrowserContext, chromium, expect, type Page, type TestInfo, test } from "@playwright/test"
+import {
+  type BrowserContext,
+  type BrowserContextOptions,
+  chromium,
+  expect,
+  type Page,
+  type TestInfo,
+} from "@playwright/test"
+import { test } from "./production-fixture"
 
 test.describe.configure({ mode: "default" })
 const token = randomUUID()
@@ -12,10 +20,8 @@ const contexts = new Set<BrowserContext>()
 let child: ChildProcess
 let endpoint = ""
 
-test.beforeAll(async ({ baseURL }) => {
-  const baseUrl = process.env.PLAYWRIGHT_BASE_URL ?? baseURL
-  if (!baseUrl) throw new Error("The local browser fixture URL is missing.")
-  const fixtureUrl = new URL("/test/e2e/fixtures/travel-search.html", baseUrl).toString()
+test.beforeAll(async ({ productionBaseURL }) => {
+  const fixtureUrl = new URL("/test/e2e/fixtures/travel-search.html", productionBaseURL).toString()
   child = spawn("bun", [resolve("test/e2e/browser-activity-server.ts")], {
     stdio: ["ignore", "pipe", "pipe"],
     env: {
@@ -84,14 +90,22 @@ test.describe("full browser activity flow", () => {
 
   for (const variant of liveVariants) {
     test(`plays the travel search and records ${variant.name}`, async ({ browser, baseURL }, info) => {
-      const context = await browser.newContext({
-        viewport: { width: variant.width, height: variant.height },
-        colorScheme: variant.colorScheme,
-        hasTouch: variant.width <= 600,
-        isMobile: variant.width <= 600,
-        reducedMotion: "no-preference",
-        recordVideo: { dir: info.outputDir, size: { width: variant.width, height: variant.height } },
-      })
+      const outputDirectory = process.env.TOURI_BROWSER_FLOW_OUTPUT
+      const recordingOptions: BrowserContextOptions = outputDirectory
+        ? { recordVideo: { dir: info.outputDir, size: { width: variant.width, height: variant.height } } }
+        : {}
+      const context = await browser.newContext(
+        Object.assign(
+          {
+            viewport: { width: variant.width, height: variant.height },
+            colorScheme: variant.colorScheme,
+            hasTouch: variant.width <= 600,
+            isMobile: variant.width <= 600,
+            reducedMotion: "no-preference",
+          },
+          recordingOptions,
+        ),
+      )
       contexts.add(context)
       const page = await context.newPage()
       await connectBrowserFixture(page)
@@ -235,7 +249,6 @@ test.describe("full browser activity flow", () => {
       expect(accessibility.violations).toEqual([])
       await page.screenshot({ path: getEvidencePath(info, `browser-finished-${variant.name}.png`), fullPage: true })
 
-      const outputDirectory = process.env.TOURI_BROWSER_FLOW_OUTPUT
       if (outputDirectory) {
         await mkdir(outputDirectory, { recursive: true })
         await page.screenshot({ path: resolve(outputDirectory, `browser-${variant.name}.png`), fullPage: true })
@@ -441,3 +454,19 @@ for (const width of [360, 390, 430, 1440]) {
     await expect(page.getByText("Atividade do navegador", { exact: true })).toBeVisible()
   })
 }
+
+test("browser activity and travel fixtures load compiled modules", async ({ page }) => {
+  const activity = await page.goto("/test/e2e/browser-activity-harness.html?remote=true")
+
+  expect(activity?.status()).toBe(200)
+  await expect(page.getByRole("button", { name: "Iniciar busca de viagem" })).toBeVisible()
+  await expect(page.locator('script[type="module"][src^="/assets/"]')).toHaveCount(1)
+  await expect(page.locator('script[src*="/@vite/"], script[src*=".tsx"]')).toHaveCount(0)
+
+  const travel = await page.goto("/test/e2e/fixtures/travel-search.html")
+
+  expect(travel?.status()).toBe(200)
+  await expect(page.getByRole("textbox", { name: "Destination primary" })).toBeVisible()
+  await expect(page.locator('script[type="module"][src^="/assets/"]')).toHaveCount(1)
+  await expect(page.locator('script[src*="/@vite/"], script[src*=".tsx"]')).toHaveCount(0)
+})

@@ -1,35 +1,5 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises"
-import { resolve } from "node:path"
-import { test as base, expect, type Locator, type Page } from "@playwright/test"
-import { build, preview } from "vite"
-
-const test = base.extend<object, { approvalApp: string }>({
-  approvalApp: [
-    async ({ browserName }, use) => {
-      const root = resolve(import.meta.dirname, "../..")
-      const cache = resolve(root, "../node_modules/.cache")
-      await mkdir(cache, { recursive: true })
-      const outDir = await mkdtemp(resolve(cache, `work-approval-${browserName}-`))
-      await build({
-        root,
-        build: {
-          outDir,
-          reportCompressedSize: false,
-          rollupOptions: { input: resolve(root, "test/e2e/work-approval-harness.html") },
-        },
-      })
-      const server = await startApprovalPreview(root, outDir)
-
-      await use(`${server.resolvedUrls?.local[0]}test/e2e/work-approval-harness.html`)
-
-      await new Promise<void>((resolve, reject) =>
-        server.httpServer.close((error) => (error ? reject(error) : resolve())),
-      )
-      await rm(outDir, { recursive: true, force: true })
-    },
-    { scope: "worker", timeout: 180_000 },
-  ],
-})
+import { expect, type Locator, type Page } from "@playwright/test"
+import { test } from "./production-fixture"
 
 test.use({
   reducedMotion: "reduce",
@@ -133,9 +103,9 @@ for (const source of ["desktop", "phone"] as const) {
   })
 }
 
-test("Work approval review stays within the interaction budget", async ({ page, approvalApp }, info) => {
+test("Work approval review stays within the interaction budget", async ({ page }, info) => {
   await page.setViewportSize({ width: 760, height: 844 })
-  await page.goto(approvalApp)
+  await page.goto("/test/e2e/work-approval-harness.html")
   await expect(getApprovalReview(page)).toBeVisible()
   await page.getByRole("button", { name: "Painel do bot", exact: true }).click()
   await expect(page.locator(".bot-panel-tabs")).toBeVisible()
@@ -288,19 +258,6 @@ const getTaskSeconds = (metrics: Array<{ name: string; value: number }>): number
   if (!task) throw new Error("Missing renderer CPU metric")
 
   return task.value
-}
-
-const startApprovalPreview = async (root: string, outDir: string) => {
-  for (const offset of Array.from({ length: 100 }, (_, index) => index)) {
-    const port = 18800 + ((process.pid + offset) % 100)
-    try {
-      return await preview({ root, build: { outDir }, preview: { host: "127.0.0.1", port, strictPort: true } })
-    } catch (error) {
-      if (!(error instanceof Error) || !error.message.includes("already in use")) throw error
-    }
-  }
-
-  throw new Error("No free approval preview port")
 }
 
 const getApprovalReview = (page: Page) =>

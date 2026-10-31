@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright"
-import { expect, test } from "@playwright/test"
+import { expect } from "@playwright/test"
 import { openGlobalPage } from "./home-navigation"
+import { test } from "./production-fixture"
 
 test.use({ channel: "chromium", reducedMotion: "reduce" })
 
@@ -81,10 +82,7 @@ for (const viewport of [
   test(`work queue and performance at ${viewport.width}px`, async ({ page }) => {
     test.setTimeout(45_000)
     await page.setViewportSize(viewport)
-    // Development optimization can reload the page; start with a fresh mock after it settles.
     await page.goto("/test/e2e/work-harness.html")
-    await page.waitForLoadState("networkidle")
-    await page.reload({ waitUntil: "networkidle" })
     await expect(page.getByRole("textbox", { name: "Mensagem para Planejamento" })).toBeVisible()
     const startedDocument = await page.evaluate(() => performance.timeOrigin)
     const openAdvanced = async () => {

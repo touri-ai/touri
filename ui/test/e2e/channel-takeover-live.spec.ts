@@ -1,7 +1,7 @@
-import { mkdir, rm, writeFile } from "node:fs/promises"
-import { join, resolve } from "node:path"
-import { type BrowserContext, expect, type Locator, type Page, test } from "@playwright/test"
-import { build } from "vite"
+import { mkdir, writeFile } from "node:fs/promises"
+import { join } from "node:path"
+import { type BrowserContext, type BrowserContextOptions, expect, type Locator, type Page } from "@playwright/test"
+import { test } from "./production-fixture"
 
 test.use({ channel: "chromium", reducedMotion: "reduce", video: "off" })
 
@@ -10,26 +10,6 @@ const recordingContexts = new Set<BrowserContext>()
 test.afterEach(async () => {
   await Promise.all(Array.from(recordingContexts, (context) => context.close()))
   recordingContexts.clear()
-})
-
-test.beforeAll(async () => {
-  test.setTimeout(180_000)
-  const root = resolve(import.meta.dirname, "../..")
-
-  // Render and input budgets measure the shipped runtime, without development JSX validation.
-  await build({
-    root,
-    configFile: resolve(root, "vite.config.ts"),
-    base: "/dist/browser-live/",
-    build: {
-      outDir: resolve(root, "dist/browser-live"),
-      rollupOptions: { input: resolve(root, "test/e2e/channel-browser-harness.html") },
-    },
-  })
-})
-
-test.afterAll(async () => {
-  await rm(resolve(import.meta.dirname, "../../dist/browser-live"), { recursive: true, force: true })
 })
 
 for (const viewport of [
@@ -45,14 +25,22 @@ for (const viewport of [
     }, info) => {
       test.setTimeout(120_000)
       if (!baseURL) throw new Error("Browser fixture base URL is missing")
-      // Only this evidence context records video; the performance context uses the worker default.
-      const context = await browser.newContext({
-        baseURL,
-        viewport,
-        reducedMotion: "reduce",
-        colorScheme: "dark",
-        recordVideo: { dir: info.outputPath("videos"), size: viewport },
-      })
+      // Record video only when evidence is requested; measured contexts keep recording disabled.
+      const directory = process.env.TOURI_E2E_EVIDENCE_DIR
+      const recordingOptions: BrowserContextOptions = directory
+        ? { recordVideo: { dir: info.outputPath("videos"), size: viewport } }
+        : {}
+      const context = await browser.newContext(
+        Object.assign(
+          {
+            baseURL,
+            viewport,
+            reducedMotion: "reduce",
+            colorScheme: "dark",
+          },
+          recordingOptions,
+        ),
+      )
       recordingContexts.add(context)
       const { requester, member, card, memberCard, control } = await openLiveBrowserPages(context)
       await expect(memberCard.getByRole("button", { name: "Assumir", exact: true })).toHaveCount(0)
@@ -81,7 +69,6 @@ for (const viewport of [
       await saveEvidence(member, "member-handback", info.outputPath("member-handback.png"))
       await requester.close()
       await member.close()
-      const directory = process.env.TOURI_E2E_EVIDENCE_DIR
       if (!directory) return
 
       await requester.video()?.saveAs(join(directory, `requester-${viewport.width}.webm`))
@@ -92,8 +79,17 @@ for (const viewport of [
       test("live browser handoffs preserve the frame budget", async ({ context }, info) => {
         test.setTimeout(120_000)
         const { requester, member, card, control } = await openLiveBrowserPages(context)
-        await card.locator(".browser-activity-page").click()
-        await control.locator(".browser-activity-header .ds-button-primary").click()
+        const takeOver = card.getByRole("button", { name: "Assumir", exact: true })
+        const handBack = control.getByRole("button", { name: "Devolver para Léo", exact: true })
+        const memberHeader = member.locator(".group-header")
+        const initialHeaderHeight = await memberHeader.evaluate((header) => header.getBoundingClientRect().height)
+        await expect(takeOver).toHaveCount(1)
+        await takeOver.click()
+        await expect(control).toBeVisible()
+        await expect
+          .poll(() => memberHeader.evaluate((header) => header.getBoundingClientRect().height))
+          .toBe(initialHeaderHeight)
+        await handBack.click()
         await expect(control).toHaveCount(0)
         await requester.bringToFront()
         await startPerformanceMeasurement(requester)
@@ -101,11 +97,12 @@ for (const viewport of [
         // Keep measurements in input order; each transition finishes before the next starts.
         const interactions: number[] = []
         for (const _iteration of Array.from({ length: 12 })) {
-          interactions.push(await measureBrowserInteraction(card.locator(".browser-activity-page")))
+          interactions.push(await measureBrowserInteraction(takeOver))
           await expect(control).toBeVisible()
-          interactions.push(
-            await measureBrowserInteraction(control.locator(".browser-activity-header .ds-button-primary")),
-          )
+          await expect
+            .poll(() => memberHeader.evaluate((header) => header.getBoundingClientRect().height))
+            .toBe(initialHeaderHeight)
+          interactions.push(await measureBrowserInteraction(handBack))
           await expect(control).toHaveCount(0)
         }
         const metrics = {
@@ -137,8 +134,8 @@ for (const viewport of [
 const openLiveBrowserPages = async (context: BrowserContext) => {
   const requester = await context.newPage()
   const member = await context.newPage()
-  await requester.goto("/dist/browser-live/test/e2e/channel-browser-harness.html?viewer=user-ana&workflow=1")
-  await member.goto("/dist/browser-live/test/e2e/channel-browser-harness.html?viewer=user-hugo&workflow=1")
+  await requester.goto("/test/e2e/channel-browser-harness.html?viewer=user-ana&workflow=1")
+  await member.goto("/test/e2e/channel-browser-harness.html?viewer=user-hugo&workflow=1")
   const card = requester.locator(".browser-activity-card")
   const memberCard = member.locator(".browser-activity-card")
   const control = requester.locator(".browser-takeover-view")

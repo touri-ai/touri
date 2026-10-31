@@ -102,4 +102,9 @@
     white-space: normal;
     padding: var(--space-4) var(--space-12);
   }
+
+  .group-header > .channel-chip {
+    /* A remote take-over adds a second status line without moving the conversation. */
+    min-height: calc(2lh + var(--space-8) + var(--space-8) + 2px);
+  }
 }

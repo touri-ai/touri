@@ -1,5 +1,6 @@
-import { expect, test } from "@playwright/test"
+import { expect } from "@playwright/test"
 import type { ApiRequest } from "../../src/api/client"
+import { test } from "./production-fixture"
 
 test.use({ channel: "chromium", reducedMotion: "reduce" })
 
