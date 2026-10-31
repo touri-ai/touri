@@ -1,5 +1,5 @@
 import { lstat, opendir, realpath } from "node:fs/promises"
-import { isAbsolute, join, relative, sep } from "node:path"
+import { isAbsolute, join, relative, resolve, sep } from "node:path"
 import type { AgentImportSourceKind } from "@touri/contracts"
 import { getAgentImportConfigAsync, getAgentImportFileAsync } from "../kernel/async-files"
 import { yieldBackground } from "../kernel/background-task"
@@ -43,11 +43,14 @@ export const getFolderSnapshot = async ({
 const getSourceRoot = async (path: string, appData: string): Promise<string> => {
   if (!isAbsolute(path) || path.length > 4096 || /[\0\r\n]/.test(path) || path.split(sep).includes(".."))
     throw new Error("INVALID_ARGS")
+  const entry = await lstat(resolve(path))
+  if (entry.isSymbolicLink() || !entry.isDirectory()) throw new Error("INVALID_ARGS")
+  // Resolve parent aliases before checking scope; subsequent reads pin the canonical ancestors.
   const canonical = await realpath(path)
-  if (canonical !== path || path === sep || !(await lstat(path)).isDirectory()) throw new Error("INVALID_ARGS")
+  if (canonical === sep) throw new Error("INVALID_ARGS")
   const relation = relative(await realpath(appData), canonical)
   if (!relation || (!relation.startsWith(`..${sep}`) && !isAbsolute(relation))) throw new Error("INVALID_ARGS")
-  if (isSecretPath(path)) throw new Error("INVALID_ARGS")
+  if (isSecretPath(path) || isSecretPath(canonical)) throw new Error("INVALID_ARGS")
 
   return canonical
 }

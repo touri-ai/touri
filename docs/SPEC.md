@@ -12,6 +12,28 @@ legacy app bots, chats and routines so you can switch over.
 
 ---
 
+## Local agent import
+
+The authenticated owner can detect local sources, preview selected export folders or strict manual
+JSON, copy selected instructions, skills, memories and routines, and undo the created resources.
+The shared contract is `packages/contracts/src/agent-import.ts`; formats and limits are documented
+in `docs/agent-import.md`. This API change supplies the typed client without adding onboarding screens.
+
+Preview writes nothing, expires after ten minutes and caches at most three reviewed snapshots.
+Apply copies that snapshot without modifying the source; retries with the same selection reuse the
+result while the preview remains available. New bots use read-only access, explicit approvals and
+no browser or computer control. Routines remain disabled; integrations expose names to reconnect.
+Undo uses a durable resource journal and the existing progressive deletion path.
+
+Source folders resolve parent-directory aliases before private-data scope checks, allowing ordinary
+system-directory aliases on supported hosts. The selected final entry must be a regular directory;
+final symlinks, secret paths, private application data and traversal are rejected. File reads pin
+canonical ancestors and reject symlinks and multiple links. Secret and suspicious content is filtered
+before preview caching. Scans are bounded by entries, depth, bytes and elapsed time, and yield between
+reads; text validation and writes use the existing file worker. Progress events use the existing
+owner-only event boundary and contain IDs and counts. Tests release their own fixtures and flush
+accepted file operations without closing the process-wide worker used by later test files.
+
 ## Single-instance server deployment
 
 The optional Linux amd64 image and `docs/self-host/kubernetes.yaml` run one server for one

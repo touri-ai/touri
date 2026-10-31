@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import { link, mkdir, readFile, symlink } from "node:fs/promises"
 import { join } from "node:path"
 import type { AgentImportPreview, AgentImportResult } from "@touri/contracts"
+import { getAgentImportFileAsync } from "../../src/kernel/async-files"
 import { getManualSnapshot } from "../../src/agent-import/manual"
 import { IMPORT_LIMITS } from "../../src/agent-import/model"
 import { allItems, installImportCleanup, makeHarness, makePayload } from "./harness"
@@ -9,6 +10,15 @@ import { allItems, installImportCleanup, makeHarness, makePayload } from "./harn
 installImportCleanup()
 
 const getSyntheticSecret = () => ["sk", "synthetic", "never-copy-this-fixture-value"].join("-")
+
+test("the file worker reads a regular source file using its absolute volume root", async () => {
+  const fixture = await makeHarness()
+  const path = await fixture.write("export/instructions.md", "Organize notas.")
+
+  const file = await getAgentImportFileAsync(path)
+
+  expect(file).toMatchObject({ kind: "file", content: "Organize notas." })
+})
 
 test("secret filenames, content, links and oversized files are excluded from preview, events and copied resources", async () => {
   const fixture = await makeHarness()
@@ -107,6 +117,37 @@ test("rejects source traversal, root links, protected roots and total byte exhau
   })
 
   expect(tooLarge.status).toBe(400)
+})
+
+test("regular source folders under parent aliases work while final links and private-data aliases remain denied", async () => {
+  const fixture = await makeHarness()
+  await fixture.write("export/instructions.md", "Organize notas.")
+  const alias = join(fixture.root, "home-alias")
+  await symlink(fixture.home, alias)
+  await symlink(join(fixture.home, "export"), join(fixture.home, "source-link"))
+  await symlink(fixture.appData, join(fixture.root, "app-alias"))
+  await fixture.write(".ssh/export/instructions.md", "Private fixture.")
+  await symlink(join(fixture.home, ".ssh"), join(fixture.root, "hidden-parent"))
+
+  const accepted = await fixture.request("POST", "/import/preview", {
+    source: "folder",
+    path: join(alias, "export"),
+  })
+  const deniedPaths = [
+    join(alias, "source-link"),
+    `${join(alias, "source-link")}/`,
+    join(fixture.root, "app-alias", "bots"),
+    join(fixture.root, "hidden-parent", "export"),
+  ]
+  expect(accepted.status).toBe(200)
+  expect((await accepted.json()) as AgentImportPreview).toMatchObject({
+    agents: [{ instructions: { files: 1 } }],
+  })
+  for (const path of deniedPaths) {
+    const response = await fixture.request("POST", "/import/preview", { source: "folder", path })
+
+    expect(response.status).toBe(400)
+  }
 })
 
 test("strict manual validation rejects unknown fields, executable routine fields, invalid schedules and traversal skill names", () => {
