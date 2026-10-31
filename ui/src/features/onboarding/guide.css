@@ -400,7 +400,6 @@
   }
   .ob-shell {
     align-self: flex-start;
-    overflow: visible;
     grid-template-columns: minmax(0, 1fr);
     margin: 0;
     overflow: visible;

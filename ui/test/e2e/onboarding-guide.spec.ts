@@ -2,8 +2,8 @@ import { mkdir } from "node:fs/promises"
 import { join } from "node:path"
 import AxeBuilder from "@axe-core/playwright"
 import { test as base, expect, type Page, type TestInfo } from "@playwright/test"
-import { createGuideStaticServer } from "./onboarding-guide-static"
 import { installGuideMocks } from "./onboarding-guide-mocks"
+import { createGuideStaticServer } from "./onboarding-guide-static"
 
 const test = base.extend<object, { productionUrl: string }>({
   productionUrl: [
@@ -183,6 +183,7 @@ type ProbeWindow = Window & {
 const installPerformanceProbe = (page: Page) =>
   page.evaluate(() => {
     const target = window as ProbeWindow
+    // Observers append samples owned by this bounded, short-lived page flow.
     const probe = {
       longTasks: [] as number[],
       paints: [] as number[],
