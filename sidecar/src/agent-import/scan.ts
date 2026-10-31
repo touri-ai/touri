@@ -35,9 +35,11 @@ export const getFolderSnapshot = async ({
   if (projects.length > IMPORT_LIMITS.agents) throw new Error("INVALID_ARGS")
   // Sort a bounded local copy; directory enumeration order is not stable.
   const orderedProjects = Array.from(projects).sort()
-  const agents = (orderedProjects.length ? orderedProjects : [""]).map((project, index) =>
-    getFolderAgent(result.files, project, index, source),
-  )
+  let agents: ImportAgent[] = []
+  for (const [index, project] of (orderedProjects.length ? orderedProjects : [""]).entries()) {
+    agents = [...agents, getFolderAgent(result.files, project, index, source)]
+    await yieldBackground()
+  }
 
   return {
     source,
@@ -129,9 +131,20 @@ const getSourceFiles = async (root: string, source: AgentImportSourceKind, appDa
       }
       bytes += Math.max(0, file.bytes - stat.size)
       if (bytes > IMPORT_LIMITS.total) throw new Error("INVALID_ARGS")
-      if (file.kind === "secret") secrets += 1
-      else if (file.kind === "excluded") excludedFiles += 1
-      else batches.push([{ path, content: file.content }])
+      if (file.kind === "secret") {
+        secrets += 1
+        continue
+      }
+      if (file.kind === "excluded") {
+        excludedFiles += 1
+        continue
+      }
+      const candidate = { path, content: file.content }
+      if (!isSupportedRoutineFile(candidate)) {
+        excludedFiles += 1
+        continue
+      }
+      batches.push([candidate])
       await yieldBackground()
     }
 
@@ -203,6 +216,7 @@ const getSkills = (files: SourceFile[]): ImportSkill[] =>
   })
 
 const getFileRoutines = (file: SourceFile): ImportRoutine[] => {
+  if (file.path.startsWith("skills/")) return []
   if (/(?:^|\/)(?:crontab|routines\.cron)$/.test(file.path))
     return file.content
       .split(/\r?\n/)
@@ -256,4 +270,13 @@ const getGlobalConfig = async (
   if (usedBytes + config.bytes > IMPORT_LIMITS.total) throw new Error("INVALID_ARGS")
 
   return { names: config.names, secrets: config.secrets, files: 0 }
+}
+
+const isSupportedRoutineFile = (file: SourceFile): boolean => {
+  try {
+    getFileRoutines(file)
+    return true
+  } catch {
+    return false
+  }
 }
