@@ -164,7 +164,7 @@ const runGuideFlow = async (page: Page, info: TestInfo, width: number, destinati
     const metrics = await getPerformanceMetrics(page)
     console.log(JSON.stringify({ width, ...metrics }))
     await info.attach(`fluidity-${width}`, { body: JSON.stringify(metrics, null, 2), contentType: "application/json" })
-    expect(metrics.interactions).toBeGreaterThanOrEqual(14)
+    expect(metrics.interactions).toBeGreaterThanOrEqual(16)
     expect(metrics.longTasks).toHaveLength(0)
     expect(metrics.paintP95).toBeLessThan(100)
     expect(metrics.eventP95).toBeLessThan(100)

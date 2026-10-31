@@ -92,19 +92,32 @@ for (const viewport of [
       test("live browser handoffs preserve the frame budget", async ({ context }, info) => {
         test.setTimeout(120_000)
         const { requester, member, card, control } = await openLiveBrowserPages(context)
-        await card.locator(".browser-activity-page").click()
-        await control.locator(".browser-activity-header .ds-button-primary").click()
+        await card.getByRole("button", { name: "Assumir", exact: true }).click()
+        await expect(control).toBeVisible()
+        await control.getByRole("button", { name: "Devolver para Léo", exact: true }).click()
         await expect(control).toHaveCount(0)
         await requester.bringToFront()
+        const memberHeader = member.locator(".group-header")
+        const initialHeader = await memberHeader.boundingBox()
+        expect(initialHeader).not.toBeNull()
+        const profileDirectory = process.env.TOURI_BROWSER_PROFILE
+        const session = profileDirectory ? await context.newCDPSession(requester) : null
+        if (session) {
+          await session.send("Performance.enable", { timeDomain: "threadTicks" })
+          await session.send("Profiler.enable")
+          await session.send("Profiler.start")
+        }
         await startPerformanceMeasurement(requester)
         await startPerformanceMeasurement(member)
         // Keep measurements in input order; each transition finishes before the next starts.
         const interactions: number[] = []
         for (const _iteration of Array.from({ length: 12 })) {
-          interactions.push(await measureBrowserInteraction(card.locator(".browser-activity-page")))
+          interactions.push(await measureBrowserInteraction(card.getByRole("button", { name: "Assumir", exact: true })))
           await expect(control).toBeVisible()
+          await expect(member.locator(".channel-chip")).toContainText("Ana está no controle")
+          expect((await memberHeader.boundingBox())?.height).toBe(initialHeader?.height)
           interactions.push(
-            await measureBrowserInteraction(control.locator(".browser-activity-header .ds-button-primary")),
+            await measureBrowserInteraction(control.getByRole("button", { name: "Devolver para Léo", exact: true })),
           )
           await expect(control).toHaveCount(0)
         }
@@ -114,6 +127,12 @@ for (const viewport of [
           interactionMs: interactions,
           requester: await getPerformanceMeasurement(requester),
           member: await getPerformanceMeasurement(member),
+        }
+        if (session && profileDirectory) {
+          const { profile } = await session.send("Profiler.stop")
+          const { metrics: cpu } = await session.send("Performance.getMetrics")
+          await writeFile(join(profileDirectory, `browser-${viewport.width}.cpuprofile`), JSON.stringify(profile))
+          await writeFile(join(profileDirectory, `cpu-${viewport.width}.json`), JSON.stringify(cpu))
         }
         await info.attach("browser-fluidity", { body: JSON.stringify(metrics), contentType: "application/json" })
         if (process.env.TOURI_E2E_EVIDENCE_DIR)

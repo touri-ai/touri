@@ -75,17 +75,19 @@ export const ChannelHeaderChip = ({ locale = "pt-BR" }: { locale?: Locale }) => 
   const label = [bot, request, controller].filter(Boolean).join(" · ")
 
   return (
-    <span className="channel-chip" role="status" aria-label={label}>
+    <span className="channel-chip" role="status" aria-label={label} title={label}>
       <span className="channel-dot" aria-hidden="true" />
-      {bot}
-      <span aria-hidden="true">·</span>
-      <span className="channel-chip-muted">{request}</span>
+      <span className="channel-chip-bot">{bot}</span>
+      <span className="channel-chip-separator" aria-hidden="true">
+        ·
+      </span>
+      <span className="channel-chip-muted channel-chip-request">{request}</span>
       {controller && (
-        <>
-          <span aria-hidden="true">·</span>
-          <span className="channel-chip-muted">{controller}</span>
-        </>
+        <span className="channel-chip-separator" aria-hidden="true">
+          ·
+        </span>
       )}
+      <span className="channel-chip-muted channel-chip-controller">{controller}</span>
     </span>
   )
 }
