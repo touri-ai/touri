@@ -132,10 +132,11 @@ test.each(["GET /groups", "GET /groups/:id/threads"])(
     )
     let failing = false
     const request: ApiRequest = async (route, input, path, transport) => {
-      if (failing && route === failedRoute) throw new ApiError(503, "RUNTIME_DRAINING")
+      if (failing && route === failedRoute) throw new ApiError(503, "Synthetic restart", "RUNTIME_DRAINING")
       return api.request(route, input, path, transport)
     }
-    const hook = renderHook(() => useWorkspace({ ...api, request }))
+    const client = { ...api, request }
+    const hook = renderHook(() => useWorkspace(client))
     await waitFor(() => expect(hook.result.current.data.loaded).toBe(true))
     act(() => hook.result.current.actions.selectThread(thread.id))
     await waitFor(() =>

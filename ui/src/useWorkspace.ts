@@ -1244,14 +1244,13 @@ export const useWorkspace = (
       const groupsRequest = api
         .request("GET /groups", {})
         .then((response) => {
+          const groupIds = new Set(response.groups.map((group) => group.id))
           if (attempt === generation.current)
             setData((current) => ({
               ...current,
               groups: response.groups,
               channelFailures: Object.fromEntries(
-                Object.entries(current.channelFailures ?? {}).filter(([id]) =>
-                  response.groups.some((group) => group.id === id),
-                ),
+                Object.entries(current.channelFailures ?? {}).filter(([id]) => groupIds.has(id)),
               ),
             }))
           return { ...response, loaded: true, notice: null }
