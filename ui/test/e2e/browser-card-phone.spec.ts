@@ -13,6 +13,10 @@ test("phone browser controls have usable touch targets and actions keep a stable
     process.env.TOURI_E2E_EVIDENCE_DIR ? join(process.env.TOURI_E2E_EVIDENCE_DIR, name) : info.outputPath(name)
   const controls = card.locator(".browser-activity-header-actions button")
 
+  const heading = await card.locator(".browser-activity-heading").boundingBox()
+  expect(heading?.width ?? 0).toBeGreaterThanOrEqual(140)
+  expect(heading?.height ?? Number.POSITIVE_INFINITY).toBeLessThan(100)
+
   for (const button of await controls.all()) {
     const bounds = await button.boundingBox()
     expect(bounds?.width ?? 0).toBeGreaterThanOrEqual(44)

@@ -603,6 +603,16 @@ export const BrowserActivityCard = ({
             locale={locale}
           >
             <div className="browser-activity-header-actions">
+              {channel?.canControl !== false && (
+                <Button
+                  variant="primary"
+                  disabled={!canTakeOver}
+                  title={activeTabId ? undefined : t("Preparing the browser…", {}, locale)}
+                  onClick={() => void toggleTakeover()}
+                >
+                  {t(busy ? "Updating browser control…" : "Take over browser", {}, locale)}
+                </Button>
+              )}
               {previewEnabled && (
                 <button
                   type="button"
@@ -656,13 +666,7 @@ export const BrowserActivityCard = ({
                     <span className="browser-activity-chrome-lock" aria-hidden="true" />
                     <span className="browser-activity-address">{url || t("Preparing the browser…", {}, locale)}</span>
                   </div>
-                  <button
-                    type="button"
-                    className="browser-activity-page"
-                    aria-label={t(canTakeOver ? "Take over the browser page" : "Current browser page", {}, locale)}
-                    disabled={!canTakeOver}
-                    onClick={() => void toggleTakeover()}
-                  >
+                  <div className="browser-activity-page">
                     {preview?.src ? (
                       <BrowserPreviewImage src={preview.src} alt={t("Current browser page", {}, locale)} />
                     ) : (
@@ -684,7 +688,7 @@ export const BrowserActivityCard = ({
                           )}
                       </p>
                     )}
-                  </button>
+                  </div>
                 </div>
                 {waitedTooLong && previewEnabled && !preview?.src && (
                   <button
@@ -707,27 +711,7 @@ export const BrowserActivityCard = ({
             )}
             {!finished && (
               <div className="browser-activity-help">
-                <p>
-                  {takeoverActive
-                    ? reasonCopy
-                    : t(
-                        channel?.canControl === false
-                          ? "Follow the browser steps here."
-                          : "Click the page to take over.",
-                        {},
-                        locale,
-                      )}
-                </p>
-                {channel?.canControl !== false && (
-                  <Button
-                    variant="primary"
-                    disabled={!canTakeOver}
-                    title={activeTabId ? undefined : t("Preparing the browser…", {}, locale)}
-                    onClick={() => void toggleTakeover()}
-                  >
-                    {t(busy ? "Updating browser control…" : "Take over browser", {}, locale)}
-                  </Button>
-                )}
+                <p>{takeoverActive ? reasonCopy : t("Follow the browser steps here.", {}, locale)}</p>
               </div>
             )}
             <div

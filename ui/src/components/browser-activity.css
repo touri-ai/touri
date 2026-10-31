@@ -272,10 +272,14 @@
   inset: 0;
   display: block;
   width: 100%;
-  height: 100%;
   object-fit: cover;
   object-position: top;
   animation: browser-activity-frame-in 260ms ease-out both;
+}
+.browser-activity-preview-frames > .browser-activity-preview-image,
+.browser-takeover-screen > .browser-takeover-image,
+.browser-takeover-screen > .browser-takeover-initial-preview {
+  height: 100%;
 }
 .browser-activity-preview-image-previous {
   animation: browser-activity-frame-out 260ms ease-out both;
@@ -353,7 +357,6 @@
 .browser-takeover-image {
   display: block;
   width: 100%;
-  height: 100%;
   object-fit: fill;
   cursor: default;
   touch-action: none;
@@ -363,7 +366,6 @@
   position: absolute;
   inset: 0;
   width: 100%;
-  height: 100%;
   object-fit: contain;
   pointer-events: none;
 }
@@ -847,8 +849,8 @@
 }
 
 @media (max-width: 600px) {
-  .browser-activity-card[data-finished="false"] .browser-activity-log {
-    height: 156px;
+  .browser-activity-header-actions .ds-button {
+    min-height: var(--touch-target-size);
   }
   .browser-activity-card[data-finished="false"] .browser-activity-preview-frames {
     height: min(26vh, 220px);
@@ -1036,6 +1038,7 @@
 }
 .browser-activity-page {
   display: block;
+  min-width: 0;
   width: 100%;
   padding: 0;
   border: 0;
@@ -1043,15 +1046,6 @@
   color: var(--text-2);
   font: inherit;
   text-align: inherit;
-  cursor: pointer;
-}
-.browser-activity-page:disabled {
-  opacity: 1;
-  cursor: default;
-}
-.browser-activity-page:focus-visible {
-  outline: var(--space-2) solid var(--link);
-  outline-offset: calc(-1 * var(--space-2));
 }
 .browser-activity-card[data-finished="false"] .browser-activity-content {
   grid-template-columns: minmax(0, 1fr);
@@ -1084,9 +1078,6 @@
   color: var(--text);
   font-size: var(--fs-meta);
 }
-.browser-activity-help .ds-button {
-  min-height: var(--icon-button-size);
-}
 .browser-takeover-view .browser-activity-header .ds-button,
 .browser-takeover-view .browser-activity-header .browser-activity-icon-button {
   min-width: var(--touch-target-size);
@@ -1107,11 +1098,14 @@
   background-size: 200% 100%;
 }
 @media (max-width: 600px) {
+  .browser-activity-card[data-finished="false"] .browser-activity-log {
+    height: 156px;
+  }
   .browser-activity-header {
     gap: var(--space-8);
     flex-wrap: wrap;
   }
-  .browser-activity-heading {
+  .browser-activity-header .browser-activity-heading {
     flex: 1 1 150px;
   }
   .browser-activity-header .browser-activity-subtitle {

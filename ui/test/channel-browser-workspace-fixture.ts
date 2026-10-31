@@ -159,7 +159,7 @@ export const getChannelBrowserWorkspaceFixture = async ({
         title: "Página de demonstração",
         url: "https://demo.example.test",
         image:
-          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
+          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==",
       } as ApiRoutes[typeof route]["res"]
 
     return base.request(route, input, path, transport)

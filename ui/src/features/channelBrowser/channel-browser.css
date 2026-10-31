@@ -1,8 +1,9 @@
 .channel-chip {
   display: inline-flex;
-  flex: 0 1 calc(var(--space-100) * 4);
-  width: min(100%, calc(var(--space-100) * 4));
-  overflow: hidden;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
   align-items: center;
   gap: var(--space-8);
   min-height: 30px;
@@ -12,7 +13,7 @@
   background: var(--surface);
   color: var(--text);
   font-size: var(--fs-meta);
-  white-space: nowrap;
+  white-space: normal;
 }
 .channel-browser-card {
   min-width: 0;
@@ -98,7 +99,7 @@
   .channel-chip {
     max-width: 100%;
     overflow: hidden;
-    white-space: nowrap;
+    white-space: normal;
     padding: var(--space-4) var(--space-12);
   }
 }

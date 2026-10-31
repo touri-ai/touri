@@ -25,6 +25,40 @@ const loadFirstBrowserFrame = async (): Promise<void> => {
   fireEvent.load(image)
 }
 
+test("the initial preview does not duplicate the live screen while the first frame loads", async () => {
+  const request = vi.fn(async (route: string) => {
+    if (route === "POST /browser/tabs/:id/takeover/frame") return getBrowserFrame()
+    return {}
+  }) as ApiRequest
+  const api = Object.assign({}, createMockApi(), { request })
+  const view = render(
+    <BrowserTakeoverView
+      api={api}
+      tabId="synthetic-tab"
+      sessionId="synthetic-session"
+      controlEpoch="control-epoch"
+      initialPreview="data:image/png;base64,cHJldmlldw=="
+      botName="Lia"
+      locale="pt-BR"
+      reason={null}
+      actions={[]}
+      onHandback={vi.fn()}
+    />,
+  )
+
+  const screenImage = await screen.findByRole("img", { name: "Página atual do navegador" })
+
+  expect(screen.getAllByRole("img")).toHaveLength(1)
+  expect(view.container.querySelector(".browser-takeover-initial-preview")).toBeVisible()
+  expect(screen.getByRole("button", { name: "Digitar no navegador" })).toBeDisabled()
+
+  fireEvent.load(screenImage)
+
+  expect(view.container.querySelector(".browser-takeover-initial-preview")).toBeNull()
+  expect(screen.getAllByRole("img")).toHaveLength(1)
+  expect(screen.getByRole("button", { name: "Digitar no navegador" })).toBeEnabled()
+})
+
 test("keeps remote keyboard events inside the takeover control", async () => {
   const request = vi.fn(async (route: string) => {
     if (route === "POST /browser/tabs/:id/takeover/frame") return getBrowserFrame()
