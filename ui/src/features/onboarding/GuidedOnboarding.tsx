@@ -154,10 +154,14 @@ const Guide = ({
   // biome-ignore lint/correctness/useExhaustiveDependencies: focus only on screen changes.
   useEffect(() => {
     // Let scrolling paint before focus so both operations can reuse the committed layout.
+    const activeElement = document.activeElement
     let focusFrame = 0
     const frame = requestAnimationFrame(() => {
       heading.current?.closest(".ob-screen")?.scrollTo?.({ top: 0, behavior: "instant" })
-      focusFrame = requestAnimationFrame(() => heading.current?.focus({ preventScroll: true }))
+      focusFrame = requestAnimationFrame(() => {
+        if (document.activeElement !== activeElement) return
+        heading.current?.focus({ preventScroll: true })
+      })
     })
     return () => {
       cancelAnimationFrame(frame)

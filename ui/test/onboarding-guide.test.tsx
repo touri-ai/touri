@@ -17,6 +17,7 @@ import {
 
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
   localStorage.clear()
 })
 
@@ -68,6 +69,17 @@ it("keeps the owner's answer and highlights the live workspace without a step ra
   expect(within(screen.getByLabelText("Suas respostas")).getByText("Equipe exemplo")).toBeVisible()
   expect(view.container.querySelector('.ob-preview-section[data-highlighted="true"] h2')).toHaveTextContent("Canais")
   expect(screen.queryByRole("navigation")).toBeNull()
+})
+it("preserves field focus when the owner starts typing before the scheduled heading focus", async () => {
+  vi.useFakeTimers()
+  getFixture()
+  enterWorkspace()
+  const context = screen.getByRole("textbox", { name: "Conte sobre seu trabalho" })
+
+  context.focus()
+  await act(async () => vi.advanceTimersByTime(100))
+
+  expect(context).toHaveFocus()
 })
 it("preselects discovered sources and sends only reviewed item selections to apply", async () => {
   const { request } = getFixture()
