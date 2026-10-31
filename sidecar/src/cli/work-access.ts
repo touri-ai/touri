@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite"
 import type { UiEvent } from "@touri/contracts"
 import { canControlChannelBrowserRun, getBrowserRunControlError } from "../browser/channel-runs"
+import { ownerPersonId } from "./auth/database"
 import type { AuthStore } from "./auth/store"
 
 type PersonRole = "member" | "admin"
@@ -299,6 +300,7 @@ export const createWorkAccess = ({ database, authStore }: { database: Database; 
   }
 
   const visibleEvent = ({ personId, role, event }: { personId: string; role: PersonRole; event: UiEvent }): boolean => {
+    if (event.type === "agent.import.progress") return personId === ownerPersonId
     if (event.type === "notifications.read" || event.type === "channel.read") return event.personId === personId
     if (event.type === "notification.created" || event.type === "notification.resolved")
       return canAccessNotification({

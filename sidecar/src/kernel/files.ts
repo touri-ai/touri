@@ -185,7 +185,17 @@ export const createWorkspaceDirectory = ({
 export const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024
 
 /** Read one bounded regular file through pinned, no-follow directory descriptors. */
-export const readBoundedFile = ({ root, path, maxBytes }: { root: string; path: string; maxBytes: number }): Buffer => {
+export const readBoundedFile = ({
+  root,
+  path,
+  maxBytes,
+  rejectHardlinks = false,
+}: {
+  root: string
+  path: string
+  maxBytes: number
+  rejectHardlinks?: boolean
+}): Buffer => {
   if (process.platform === "win32") {
     const value = nativeFileOperation<string | null>("read_bounded", { root, path, max_bytes: maxBytes })
     if (value === null) throw new TouriError("TOURI-E2000")
@@ -203,7 +213,8 @@ export const readBoundedFile = ({ root, path, maxBytes }: { root: string; path: 
   }
   try {
     const info = fstatSync(fd)
-    if (!info.isFile() || info.size > maxBytes) throw new Error("Escolha um arquivo de até 15 MB")
+    if (!info.isFile() || info.size > maxBytes || (rejectHardlinks && info.nlink !== 1))
+      throw new Error("Escolha um arquivo de até 15 MB")
     const bytes = Buffer.alloc(info.size + 1)
     let offset = 0
     while (offset < bytes.length) {

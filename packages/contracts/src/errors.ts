@@ -254,6 +254,7 @@ export const errorRegistry = {
     "Esta máquina já contém outro projeto. Nas permissões do bot, recrie a máquina do zero antes de trocar o projeto. Os arquivos atuais foram preservados.",
     409,
   ),
+  "TOURI-E7001": entry("import", "agent-import", false, "A prévia expirou. Revise os agentes novamente.", 410),
   "TOURI-E7000": entry("import", "importer", false, "Não foi possível importar os dados. Confira a origem.", 400),
   "TOURI-E8000": entry(
     "machine",
@@ -378,6 +379,7 @@ const aliases: Record<string, RegisteredErrorCode> = {
   PROCESS_EXISTS: "TOURI-E1005",
   PROCESS_CYCLE: "TOURI-E1005",
   IMPORT_FAILED: "TOURI-E7000",
+  IMPORT_PREVIEW_EXPIRED: "TOURI-E7001",
   MACHINE_UNAVAILABLE: "TOURI-E8000",
   MACHINE_SERVICE_UNAVAILABLE: "TOURI-E8001",
   machine_service_unavailable: "TOURI-E8001",

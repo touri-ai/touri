@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite"
 import type { ImportReport, Kernel, LegacyImportOptions, RouteResponse } from "@touri/contracts"
+import { createAgentImportRoutes } from "../agent-import/routes"
 import { createBackgroundTask } from "../kernel/background-task"
 import { onDatabaseShutdown } from "../kernel/database-lifecycle"
 import type { PerformanceStageRunner } from "../kernel/performance"
@@ -157,6 +158,7 @@ export const scheduleLegacyExpiry = (
 }
 
 export const init = async (kernel: Kernel, runStage?: PerformanceStageRunner): Promise<void> => {
+  kernel.registerRoutes(createAgentImportRoutes(kernel))
   let stopped = false
   const activeJobs = new Set<Promise<void>>()
   onDatabaseShutdown(kernel.db as Database, async () => {

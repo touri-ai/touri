@@ -47,6 +47,7 @@
       "!**/test-results",
       "!docs/contracts",
       "!packages/contracts/src/types.ts",
+      "!packages/contracts/src/agent-import.ts",
       "!packages/contracts/schema.sql",
       "!packages/contracts/mcp-tools.json",
       "!docs/design"

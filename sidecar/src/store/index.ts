@@ -25,6 +25,7 @@ import type {
 } from "@touri/contracts"
 import { apiModelErrors, isNotificationPreferences, normalizeBotName } from "@touri/contracts"
 import { validAvatarColor, validAvatarShape } from "@touri/contracts/avatar"
+import { isImportOwner } from "../agent-import/owner"
 import { getApiModel } from "../api-models/config"
 import { installDoctor } from "../doctor"
 import { writePrivateFileAsync } from "../kernel/async-files"
@@ -1180,12 +1181,16 @@ export const init = async (
     input,
     signal = new AbortController().signal,
     isCurrent,
+    reservedId,
+    paused = false,
   }: {
+    reservedId?: string
+    paused?: boolean
     input: CreateBotInput
     signal?: AbortSignal
     isCurrent?: () => boolean
   }): Promise<Bot | null> => {
-    const id = kernel.newId()
+    const id = reservedId ?? kernel.newId()
     const instructions = input.instructions ?? ""
     const instructionsHash = sha256(instructions)
     const homeDir = await writeHome(kernel, id, instructions, signal)
@@ -1200,7 +1205,7 @@ export const init = async (
       database.transaction(() => {
         database
           .query(
-            "INSERT INTO bots (id, name, title, role_line, description, color, avatar_path, avatar_shape, avatar_seed, instructions, instructions_hash, provider, model, reasoning_effort, access, approvals, project_id, cwd, home_dir, main_thread_id, browser_enabled, computer_use, notifications, section, sort_order, paused, source, created_at, updated_at, archived_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'failures', NULL, 0, 0, 'local', ?, ?, NULL)",
+            "INSERT INTO bots (id, name, title, role_line, description, color, avatar_path, avatar_shape, avatar_seed, instructions, instructions_hash, provider, model, reasoning_effort, access, approvals, project_id, cwd, home_dir, main_thread_id, browser_enabled, computer_use, notifications, section, sort_order, paused, source, created_at, updated_at, archived_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'failures', NULL, 0, ?, 'local', ?, ?, NULL)",
           )
           .run(
             id,
@@ -1224,6 +1229,7 @@ export const init = async (
             mainThreadId,
             input.browserEnabled === false ? 0 : 1,
             input.computerUse === true ? 1 : 0,
+            paused ? 1 : 0,
             timestamp,
             timestamp,
           )
@@ -1686,6 +1692,27 @@ export const init = async (
     }
     return bot ? jsonResponse(201, { bot }) : errorResponse(500, "STORE_ERROR", "Bot could not be created")
   }
+
+  kernel.services.provide("agentImport.createBot", async ({ id, name, role, instructions, signal }) => {
+    if (!isImportOwner(kernel, signal)) return null
+
+    return createBot({
+      reservedId: id,
+      paused: true,
+      signal,
+      input: {
+        name,
+        ...(role ? { roleLine: role } : {}),
+        instructions,
+        provider: readSettings({ database }).defaultProvider,
+        machine: "local",
+        access: "read-only",
+        approvals: "on-request",
+        browserEnabled: false,
+        computerUse: false,
+      },
+    })
+  })
 
   const routes: RouteModule = {
     name: "store",

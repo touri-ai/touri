@@ -43,3 +43,16 @@ channel notice returns `201` with `run: null` (`200` on replay).
 
 Invalid identities return `400 INVALID_INTEGRATION`; missing integration scope
 returns `403 FORBIDDEN`; authentication failures return `401 UNAUTHORIZED`.
+
+## Agent import
+
+The owner can detect local sources, preview an import without writes, copy selected resources, and undo the resources that import created. Other administrators and members cannot use these endpoints.
+
+| Method | Path | Request |
+| --- | --- | --- |
+| GET | `/api/v1/import/sources` | Empty |
+| POST | `/api/v1/import/preview` | `{source, path?, payload?}` |
+| POST | `/api/v1/import/apply` | `{previewId, select}` |
+| POST | `/api/v1/import/undo` | `{importId}` |
+
+The exact types are exported as `AgentImportRoutes`. `UiApi.request` accepts their versioned route keys directly. Progress is delivered as `agent.import.progress` events containing `AgentImportProgress`. See [agent-import.md](agent-import.md) for source formats, expiration, limits, paused routines, and undo behavior.
