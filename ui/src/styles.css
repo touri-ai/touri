@@ -3691,6 +3691,9 @@ a {
   gap: var(--space-4);
   flex: none;
 }
+.activity-dots[data-leading] {
+  grid-column: 1;
+}
 .activity-dots i {
   width: var(--space-4);
   height: var(--space-4);

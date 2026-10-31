@@ -72,6 +72,20 @@ const message: Message = {
   updatedAt: timestamp,
 }
 
+const earlier: Message = {
+  ...message,
+  id: "approval-scene-earlier",
+  kind: "text",
+  status: "complete",
+  text: "Vou conferir.",
+  parts: [{ type: "text", text: "Vou conferir." }],
+  createdAt: timestamp - 1000,
+  updatedAt: timestamp - 1000,
+}
+const messages = new URLSearchParams(location.search).has("grouped")
+  ? [earlier, { ...message, parentId: earlier.id }]
+  : [message]
+
 const root = document.getElementById("root")
 const States = () => {
   const [image, setImage] = useState<string>()
@@ -142,9 +156,10 @@ if (root)
       >
         <h1 className="visually-hidden">Ferramentas e aprovações</h1>
         <VirtualMessageList
-          messages={[message]}
+          messages={messages}
           api={api}
           mainThread={conversation === "dm"}
+          flatHistory={conversation === "channel"}
           onSwitchBranch={() => undefined}
           onRetry={async () => undefined}
         />

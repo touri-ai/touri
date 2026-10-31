@@ -38,7 +38,8 @@ for (const width of [1440, 390]) {
       "A resposta está demorando. Você pode continuar esperando ou verificar a conexão.",
     )
     await expect(page.locator(".activity-label")).toHaveCount(1)
-    await expect(page.locator(".activity-mascot")).toHaveCount(1)
+    await expect(page.locator(".message-avatar .tb-avatar")).toHaveCount(1)
+    await expect(page.locator(".activity-mascot")).toHaveCount(0)
     await expect(page.getByText("Ainda aguardando a IA responder.", { exact: true })).toHaveCount(0)
     await expect(page.getByRole("button", { name: "Verificar conexão", exact: true })).toBeVisible()
     await page.screenshot({

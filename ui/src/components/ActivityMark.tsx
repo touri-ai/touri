@@ -32,6 +32,7 @@ export const ActivityMark = ({
   preparingEnvironment = false,
   api,
   onCancel,
+  showAvatar = true,
 }: {
   state: MascotState
   parts?: readonly MessagePart[]
@@ -47,6 +48,8 @@ export const ActivityMark = ({
   preparingEnvironment?: boolean | undefined
   api?: UiApi | undefined
   onCancel?: ((runId: string) => Promise<void>) | undefined
+  /** False when the surrounding message row already draws the bot avatar. */
+  showAvatar?: boolean
 }) => {
   const reduced = useReducedMotion()
   const busy = mascotIsBusy(state)
@@ -95,9 +98,13 @@ export const ActivityMark = ({
       data-activity={activityKindFor(state, parts)}
       data-reduced-motion={reduced}
     >
-      <span className="activity-mascot" aria-hidden="true">
-        <BotAvatar bot={bot} still size={24} state={state} {...(threadId ? { threadId } : {})} />
-      </span>
+      {showAvatar ? (
+        <span className="activity-mascot" aria-hidden="true">
+          <BotAvatar bot={bot} still size={24} state={state} {...(threadId ? { threadId } : {})} />
+        </span>
+      ) : (
+        busy && <ActivityDots leading />
+      )}
       {waiting && approvalId && onExpandReasoning && (
         <button
           type="button"
@@ -142,17 +149,6 @@ export const ActivityMark = ({
               aria-expanded={reasoningExpanded}
               onClick={onExpandReasoning}
             >
-              <svg
-                className="turn-activity-chevron"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                aria-hidden="true"
-              >
-                <path d="m9 5 7 7-7 7" />
-              </svg>
               {label}
             </button>
           ) : (
@@ -215,16 +211,18 @@ export const ActivityMark = ({
           </div>
         )}
       </div>
-      {busy && (
-        <span className="activity-dots" aria-hidden="true">
-          <i />
-          <i />
-          <i />
-        </span>
-      )}
+      {busy && showAvatar && <ActivityDots />}
     </div>
   )
 }
+
+const ActivityDots = ({ leading = false }: { leading?: boolean }) => (
+  <span className="activity-dots" data-leading={leading || undefined} aria-hidden="true">
+    <i />
+    <i />
+    <i />
+  </span>
+)
 
 const getActivityLabel = ({
   run,
