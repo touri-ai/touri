@@ -42,6 +42,13 @@ export const isDeletedConversation = (error: unknown): boolean =>
 export const isUnreachable = (error: unknown): boolean =>
   error instanceof ApiError && (error.status === 0 || error.errorCode === "SERVER_CONNECTION_FAILED")
 
+/**
+ * The server could not answer the read: unreachable, refused by a proxy in front of it, or failing while it stops.
+ * Saved history stays readable, so the failure belongs inside the open conversation, not in an app-wide notice.
+ */
+export const isServerReadFailure = (error: unknown): boolean =>
+  isUnreachable(error) || isServiceUnavailable(error) || (error instanceof ApiError && error.status >= 500)
+
 export const isRetryableHistoryError = (error: unknown): boolean =>
   !isDeletedConversation(error) &&
   !(error instanceof DOMException && error.name === "AbortError") &&

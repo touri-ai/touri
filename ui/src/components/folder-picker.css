@@ -176,3 +176,9 @@
     flex-wrap: wrap;
   }
 }
+
+/* Every click here re-renders the list; a full-screen blur behind it repainted with each frame (p95 > 350 ms at
+   desktop width). The 70% backdrop already separates the picker from the page. */
+.modal-backdrop:has(> .folder-picker) {
+  backdrop-filter: none;
+}

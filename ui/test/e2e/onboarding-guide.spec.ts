@@ -180,6 +180,57 @@ const runGuideFlow = async (page: Page, info: TestInfo, width: number, destinati
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 }
 
+test.describe("folder picker responsiveness", () => {
+  for (const width of [1440, 390]) {
+    test(`onboarding folder picker ${width}: opens, expands the path and opens folders within budget`, async ({
+      measurementPage: page,
+      productionUrl,
+    }, info) => {
+      await installGuideMocks(page)
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 800 })
+      await page.goto(productionUrl)
+      await page.getByRole("button", { name: /^Começar/ }).click()
+      await page.getByRole("button", { name: /Este (PC|Mac)/ }).click()
+      await page.getByRole("textbox", { name: "Nome", exact: true }).fill("Equipe exemplo")
+      await page.getByRole("textbox", { name: "Nome", exact: true }).press("Enter")
+      await page.getByRole("button", { name: "Pular" }).click()
+      await expect(page.getByRole("button", { name: /Outra pasta de agente/ })).toBeVisible()
+      await page.evaluate(() => document.fonts.ready)
+      await installPerformanceProbe(page)
+
+      await page.getByRole("button", { name: /Outra pasta de agente/ }).click()
+      const picker = page
+        .getByRole("dialog", { name: "Escolher pasta" })
+        .or(page.getByRole("dialog", { name: "Pastas no servidor" }))
+      await expect(picker.getByRole("button", { name: /agentes-3/ })).toBeVisible()
+      await picker.getByText("Digitar caminho").click()
+      await expect(picker.getByRole("textbox", { name: "Caminho absoluto da pasta" })).toHaveValue("/srv/exemplo")
+      await picker.getByRole("button", { name: /agentes-3/ }).click()
+      await expect(picker.getByRole("textbox", { name: "Caminho absoluto da pasta" })).toHaveValue(
+        "/srv/exemplo/agentes-3",
+      )
+      await picker.getByRole("textbox", { name: "Caminho absoluto da pasta" }).fill("/srv/exemplo/agentes-5")
+      await picker.getByRole("button", { name: "Abrir pasta" }).click()
+      await expect(picker.locator("[aria-current=location]")).toHaveText("agentes-5")
+      await picker.getByRole("button", { name: "Voltar uma pasta" }).click()
+      await expect(picker.getByRole("textbox", { name: "Caminho absoluto da pasta" })).toHaveValue("/srv/exemplo")
+      await picker.getByRole("button", { name: "Usar esta pasta" }).click()
+      await expect(picker).toHaveCount(0)
+
+      const metrics = await getPerformanceMetrics(page)
+      console.log(JSON.stringify({ picker: width, ...metrics }))
+      await info.attach(`picker-fluidity-${width}`, {
+        body: JSON.stringify(metrics, null, 2),
+        contentType: "application/json",
+      })
+      expect(metrics.longTasks).toHaveLength(0)
+      expect(metrics.paintP95).toBeLessThan(100)
+      expect(metrics.eventP95).toBeLessThan(100)
+      expect(metrics.cls).toBeLessThan(0.01)
+    })
+  }
+})
+
 test("onboarding guide: manual export and keyboard back remain usable with reduced motion and missing team routes", async ({
   page,
   productionUrl,
@@ -419,6 +470,58 @@ for (const width of [1440, 390]) {
     }
     await expect(page.getByRole("button", { name: /Claude Code/ })).toBeVisible()
     expect(mock.getBots()).toHaveLength(0)
+  })
+}
+for (const width of [1440, 390]) {
+  test(`onboarding recovery ${width}: a JSON import keeps the earlier imported agent listed and named`, async ({
+    page,
+    productionUrl,
+  }, info) => {
+    const mock = await installGuideMocks(page)
+    mock.finishImport()
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 800 })
+    await openEmptyGuide(page, productionUrl)
+    await page.getByRole("button", { name: /^Continuar/ }).click()
+    await page.getByRole("button", { name: /Importar selecionados/ }).click()
+    await expect(page.getByText("Pronto", { exact: true })).toHaveCount(1)
+    await page.getByRole("button", { name: "Voltar", exact: true }).click()
+    await page.getByRole("button", { name: "Voltar", exact: true }).click()
+    const template = getGuidePreviewFixture().agents[0]
+    if (!template) throw new Error("Missing synthetic preview agent")
+    await page.route("**/api/v1/import/preview", (route) =>
+      route.fulfill({
+        json: {
+          ...getGuidePreviewFixture("manual-preview"),
+          agents: [{ ...template, key: "ops", name: "ops", suggestedBotName: "ops" }],
+        },
+      }),
+    )
+    await page.route("**/api/v1/import/apply", (route) =>
+      route.fulfill({
+        json: {
+          importId: "import-two",
+          bots: [{ agentKey: "ops", botId: "bot-ops" }],
+          pausedRoutines: 0,
+          reconnect: [],
+        },
+      }),
+    )
+    await page.getByRole("button", { name: /Outro app \(pedido de exportação\)/ }).click()
+    await page.getByRole("textbox", { name: "Resposta em JSON" }).fill('{"agents":[{"name":"ops"}]}')
+    await page.getByRole("button", { name: /^Continuar/ }).click()
+    await expect(page.getByRole("heading", { name: "Confere o que vem?" })).toBeVisible()
+
+    await page.getByRole("button", { name: /Importar selecionados/ }).click()
+
+    const rows = page.locator("main .ob-import-agent")
+    await expect(rows.filter({ hasText: "Pronto" })).toHaveCount(2)
+    await expect(rows.locator("strong")).toHaveText(["dev", "ops"])
+    await expect(page.getByRole("button", { name: "Desfazer importação de dev", exact: true })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Desfazer importação de ops", exact: true })).toBeVisible()
+    const live = page.locator("aside.ob-live")
+    await expect(live.getByText("dev", { exact: true })).toHaveCount(1)
+    await expect(live.getByText("ops", { exact: true })).toHaveCount(1)
+    await capture(page, info, `json-import-keeps-earlier-${width}`)
   })
 }
 for (const width of [1440, 390]) {

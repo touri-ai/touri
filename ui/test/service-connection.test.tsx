@@ -220,7 +220,7 @@ test("a stopped server reports inside the open conversation instead of the app n
   expect(hook.result.current.data.notice).toBeNull()
 })
 
-test.each([404, 502])("an HTTP %s index failure does not claim the open conversation was deleted", async (status) => {
+test.each([404, 409])("an HTTP %s index failure does not claim the open conversation was deleted", async (status) => {
   const mock = createMockApi()
   let failure: ApiError | null = null
   const request: ApiRequest = async (route, input, path) => {
@@ -236,6 +236,32 @@ test.each([404, 502])("an HTTP %s index failure does not claim the open conversa
 
   expect(hook.result.current.data.notice).toContain("Synthetic index failure")
   expect(hook.result.current.data.historyFailure).toBeNull()
+})
+
+test.each([
+  ["a refusing proxy", () => new ApiError(503, "")],
+  ["a gateway without the server", () => new ApiError(502, "Bad gateway")],
+  ["a stopping server", () => new ApiError(500, "", undefined, "TOURI-E1000")],
+])("%s keeps a failed conversation list inside the open conversation", async (_, getError) => {
+  const mock = createMockApi()
+  let failing = false
+  const request: ApiRequest = async (route, input, path) => {
+    if (failing) throw getError()
+    return mock.request(route, input, path)
+  }
+  const client = { ...mock, request, isMock: false }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(hook.result.current.data.messages.length).toBeGreaterThan(0))
+  const { selectedThreadId } = hook.result.current.data
+  const messageIds = hook.result.current.data.messages.map((message) => message.id)
+  failing = true
+
+  await act(async () => hook.result.current.actions.refresh())
+
+  expect(hook.result.current.data.notice).toBeNull()
+  expect(hook.result.current.data.channelNotice).toBeNull()
+  expect(hook.result.current.data.historyFailure).toMatchObject({ kind: "server", threadId: selectedThreadId })
+  expect(hook.result.current.data.messages.map((message) => message.id)).toEqual(messageIds)
 })
 
 test("a later successful message read preserves an unreachable run snapshot until retry succeeds", async () => {

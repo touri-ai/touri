@@ -42,7 +42,13 @@ import { getDocumentLocale } from "./documentLanguage"
 import { ApiError, isServiceUnavailable, userFacingError } from "./errors"
 import { adoptProviderLogin } from "./features/bots/providerLogin"
 import { useDoctorReport } from "./features/doctor/useDoctorReport"
-import { getHistoryFailure, getWithRetry, type HistoryFailure, isUnreachable } from "./historyFailure"
+import {
+  getHistoryFailure,
+  getWithRetry,
+  type HistoryFailure,
+  isServerReadFailure,
+  isUnreachable,
+} from "./historyFailure"
 import { localizeNotice, t } from "./i18n"
 import { localResponseTimings } from "./localResponseTimings"
 import { useMachineParking } from "./machineIntents"
@@ -432,11 +438,14 @@ const bufferStreamEvent = (load: ThreadLoad | undefined, event: MessageStreamEve
   } else load.deltas.push(event)
 }
 
-/** A failed conversation index keeps an open conversation readable and explains the failure inside it. */
+/**
+ * A conversation index the server could not answer (stopped, refused by a proxy or failing while it stops) keeps
+ * the open conversation readable and explains the failure inside it.
+ */
 export const getIndexFailure = (data: WorkspaceData, notice: string, error: unknown, isMock = false): WorkspaceData => {
   const threadId = data.selectedThreadId
   const isOpen = Boolean(threadId && data.threads.some((thread) => thread.id === threadId))
-  if (isMock || !threadId || !isOpen || !isUnreachable(error))
+  if (isMock || !threadId || !isOpen || !isServerReadFailure(error))
     return { ...data, loading: false, notice, channelNotice: notice }
 
   return {
@@ -1027,13 +1036,13 @@ export const useWorkspace = (
         attempt === generation.current &&
         threadLoads.current.get(threadId)?.promise === promise &&
         currentData.current.selectedThreadId === threadId
-      // A transcript failure, or any read that never reached a stopped server, stays inside the conversation;
+      // A transcript failure, or any read a stopped server could not answer, stays inside the conversation;
       // other run snapshot failures keep the app notice.
-      const showReadFailure = (error: unknown, history: boolean): void => {
+      const showReadFailure = (error: unknown, inConversation: boolean): void => {
         if (!isCurrentLoad()) return
 
         const notice = t("Service request failed", { error: getServiceErrorMessage(error) })
-        if (history || isUnreachable(error)) {
+        if (inConversation) {
           setData((current) => ({
             ...current,
             historyNotice: notice,
@@ -1192,13 +1201,19 @@ export const useWorkspace = (
           return
         }
       }
+      // When the transcript read failed the same way, the server is down rather than one run snapshot broken.
+      const isPageUnanswered = pageRequest.then(
+        () => false,
+        (error: unknown) => isServerReadFailure(error),
+      )
       const runsRequest = loadRuns().catch(async (error: unknown) => {
-        showReadFailure(error, false)
-        if (!isUnreachable(error)) return
+        const isUnanswered = isUnreachable(error) || (isServerReadFailure(error) && (await isPageUnanswered))
+        showReadFailure(error, isUnanswered)
+        if (!isUnanswered) return
 
         // Successful messages must not clear the connection failure of their companion run read.
         await messagesRequest
-        showReadFailure(error, false)
+        showReadFailure(error, true)
       })
       const promise = Promise.all([messagesRequest, runsRequest])
         .then(() => undefined)

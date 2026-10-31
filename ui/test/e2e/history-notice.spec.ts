@@ -101,10 +101,43 @@ for (const width of [1440, 390]) {
   })
 }
 
+for (const width of [1440, 390]) {
+  test(`a proxy refusing a stopped server ${width}: keeps the failure inside the conversation`, async ({ browser }) => {
+    const evidence = process.env.TOURI_E2E_EVIDENCE_DIR
+    const context = await browser.newContext({
+      viewport: { width, height: width === 390 ? 844 : 800 },
+      colorScheme: "dark",
+    })
+    const page = await context.newPage()
+    await page.goto("/test/e2e/history-notice-harness.html?open=failing&server=stoppable")
+    const history = page.getByRole("region", { name: "Histórico da conversa" })
+    await expect(history.getByText("valide esse perfil e veja os posts")).toBeVisible()
+    const sidebar = page.getByRole("navigation", { name: "Barra lateral" })
+    const notice = page.locator(".chat-panel .conversation-notice")
+    await page.evaluate(() => {
+      window.serverRefused = true
+    })
+    if (width === 390) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+
+    await sidebar.getByRole("button", { name: /^mark / }).click()
+    if (width === 390) await page.keyboard.press("Escape")
+
+    await expect(notice.getByRole("button", { name: "Tentar de novo", exact: true })).toBeVisible()
+    await expect(page.locator(".notice-bar")).toHaveCount(0)
+    // Run reads retry once after 1.2 s; an app notice from that late failure would be visible by now.
+    await page.waitForTimeout(1500)
+    if (evidence) await saveScreenshot(page, evidence, `refused-server-${width}.png`)
+    await expect(page.locator(".notice-bar")).toHaveCount(0)
+    await expect(page.getByText("TOURI-E1000")).toHaveCount(0)
+    await context.close()
+  })
+}
+
 declare global {
   interface Window {
     historyFailing?: boolean
     serverStopped?: boolean
+    serverRefused?: boolean
     fluidity: { longTasks: number[]; interactions: number[]; layoutShift: number }
   }
 }

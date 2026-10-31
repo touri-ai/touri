@@ -5,7 +5,7 @@ import { BotAvatar } from "../../components/BotAvatar"
 import { Badge, Button } from "../../components/Button"
 import { FolderPicker } from "../../components/FolderPicker"
 import { type TranslationKey, t } from "../../i18n"
-import { type GuideStep, getImportedNames, getSourceLabel } from "./guide"
+import { type GuideStep, getImportedNames, getRetainedImports, getSourceLabel } from "./guide"
 import type { useAgentImport } from "./useAgentImport"
 
 export const AgentImport = ({
@@ -209,6 +209,21 @@ const getItemCount = (
 }
 const ImportProgress = ({ imports }: { imports: ReturnType<typeof useAgentImport> }) => (
   <div className="ob-import-list" aria-live="polite">
+    {getRetainedImports(
+      imports.results,
+      imports.importIds,
+      imports.previews.map(({ preview }) => preview.previewId),
+    ).flatMap((result) =>
+      result.agents.map((agent) => (
+        <div key={`${result.importId}-${agent.key}`} className="ob-import-agent">
+          <div className="ob-inline">
+            <BotAvatar bot={{ id: agent.key, avatarSeed: agent.key, color: null }} size={32} mood="responded" />
+            <strong>{agent.name}</strong>
+            <span>{t("ob.importDone")}</span>
+          </div>
+        </div>
+      )),
+    )}
     {imports.previews.flatMap(({ preview }) =>
       preview.agents
         .filter((agent) => Object.values(imports.selection[preview.previewId]?.[agent.key] ?? {}).some(Boolean))

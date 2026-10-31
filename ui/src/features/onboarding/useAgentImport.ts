@@ -13,7 +13,8 @@ import { getImportProgress, getToggle } from "./guide"
 
 export type ImportPreview = { sourceId: string; preview: AgentImportPreview }
 export type ImportSelection = Record<string, Record<string, AgentImportItemSelection>>
-type ImportedResult = AgentImportResult & { agentNames: string[] }
+/** An applied import keeps its agents' names, so it stays listed and named after another preview replaces it. */
+export type ImportedResult = AgentImportResult & { agents: { key: string; name: string }[] }
 export const useAgentImport = (api: UiApi) => {
   const [sources, setSources] = useState<AgentImportSource[]>([])
   const [selected, setSelected] = useState<string[]>([])
@@ -163,12 +164,12 @@ export const useAgentImport = (api: UiApi) => {
         activeKeys.current = Object.keys(select)
         const result = await api.request("POST /api/v1/import/apply", { previewId: preview.previewId, select })
         const importedKeys = new Set(result.bots.map((bot) => bot.agentKey))
-        const agentNames = preview.agents
+        const agents = preview.agents
           .filter((agent) => importedKeys.has(agent.key))
-          .map((agent) => agent.suggestedBotName)
+          .map((agent) => ({ key: agent.key, name: agent.suggestedBotName }))
         rememberImport(preview.previewId, result.importId)
         completed.current.add(preview.previewId)
-        setResults((previous) => [...previous, { ...result, agentNames }])
+        setResults((previous) => [...previous, { ...result, agents }])
       }
       return true
     } catch (error) {

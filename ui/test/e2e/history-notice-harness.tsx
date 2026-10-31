@@ -11,6 +11,7 @@ declare global {
   interface Window {
     historyFailing?: boolean
     serverStopped?: boolean
+    serverRefused?: boolean
   }
 }
 
@@ -41,6 +42,8 @@ window.serverStopped = false
 const request: ApiRequest = async (route, input, path, transport) => {
   // A stopped server never answers: the browser reports a connection failure before any HTTP status.
   if (window.serverStopped) throw new ApiError(0, "", undefined, "TOURI-E1009")
+  // A proxy in front of a stopped server answers with an empty 503 instead.
+  if (window.serverRefused) throw new ApiError(503, "")
   if (window.historyFailing && path?.id === secondary.id && route === "GET /threads/:id/messages")
     throw new ApiError(503, '{"errorCode":"RUNTIME_DRAINING"}', "RUNTIME_DRAINING")
   if (route === "GET /groups/:id/threads") {
