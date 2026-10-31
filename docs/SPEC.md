@@ -1377,6 +1377,10 @@ Managed host browsers use stable system Chrome with a private persistent profile
 Linux without a display, touri starts and owns a local Xvfb display with TCP disabled; stable
 Chrome and Xvfb must be installed. Server mode keeps the browser headful. An explicit
 `TOURI_BROWSER_HEADLESS=1` remains available for tests. Missing prerequisites fail explicitly.
+Display startup waits for the complete newline-terminated display number, including when it arrives
+across separate reads. Invalid, incomplete or oversized readiness responses stop only the owned display.
+Restart waits for any earlier shutdown and canceled startup to release their process and display.
+The profile remains owned until process exit is confirmed, including after forced termination.
 Host screen capture and input tools are neither advertised nor callable when the host
 cannot implement them, even if an imported bot has computer control enabled. The UI offers host
 screen control only in a supported native desktop; a supported isolated machine keeps its own
