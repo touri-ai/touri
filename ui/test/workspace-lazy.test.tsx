@@ -620,8 +620,9 @@ test("a failed run snapshot cannot hide the successfully loaded transcript", asy
   const client = { ...api, request }
   const hook = renderHook(() => useWorkspace(client))
 
-  await waitFor(() => expect(hook.result.current.data.notice).toContain(failure.message))
+  // A run failure on a working server waits for its transcript read to tell it from a stopped server.
   await act(async () => messages.resolve())
+  await waitFor(() => expect(hook.result.current.data.notice).toContain(failure.message))
   await waitFor(() => expect(hook.result.current.data.historyThreadId).toBe("thread-mark"))
 
   expect(hook.result.current.data.messages.some((message) => message.threadId === "thread-mark")).toBe(true)
