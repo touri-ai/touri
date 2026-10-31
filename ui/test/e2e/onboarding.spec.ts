@@ -21,35 +21,27 @@ for (const [device, width, height, theme] of [
   ["desktop-dark", 1440, 900, "dark"],
   ["phone-dark", 390, 844, "dark"],
 ] as const) {
-  test(`first-run ${device}: local start is one click and returning preserves the home`, async ({ page }, testInfo) => {
+  test(`first-run ${device}: local setup keeps answers and access opt-in`, async ({ page }) => {
     const fixture = await start()
     await fixture.install(page, theme)
     await page.setViewportSize({ width, height })
     await page.goto(fixture.url)
-    const welcome = page.getByRole("heading", { name: "Seus bots, perto de você" })
-    await expect(welcome).toBeVisible()
-    const welcomeMs = await page.evaluate(() => performance.getEntriesByName("onboarding-welcome")[0]?.startTime)
-    expect(welcomeMs).toBeLessThan(300)
-    await capture(page, testInfo, `${device}-welcome`)
+    await expect(page.getByRole("heading", { name: "Seu time e seus agentes, no mesmo chat" })).toBeVisible()
 
-    const started = performance.now()
-    await page.getByRole("button", { name: /Começar neste computador/ }).click()
-    await expect(page.getByRole("button", { name: "Criar meu primeiro bot" })).toBeVisible()
-    const localStartMs = performance.now() - started
-    await expect.poll(() => fixture.eventConnections).toBeGreaterThan(0)
-    await capture(page, testInfo, `${device}-home`, ".onboarding-landing")
-    await page.reload()
-    await expect(page.getByRole("button", { name: "Criar meu primeiro bot" })).toBeVisible()
-    await expect(welcome).toHaveCount(0)
-    expect((await fixture.api("/onboarding")).completed).toBe(true)
+    await page.getByRole("button", { name: /^Começar/ }).click()
+    await page.getByRole("button", { name: /Este (Mac|PC)/ }).click()
+    await page.getByRole("textbox", { name: "Nome", exact: true }).fill("Equipe exemplo")
+    await page.getByRole("button", { name: /^Continuar/ }).click()
+    await page.keyboard.press("Escape")
+    await expect(page.getByRole("textbox", { name: "Nome", exact: true })).toHaveValue("Equipe exemplo")
+    await page.getByRole("button", { name: /^Continuar/ }).click()
+    await page.getByRole("button", { name: "Pular" }).click()
+    await page.getByRole("button", { name: "Pular" }).click()
+
+    await expect(page.getByRole("heading", { name: "O que seus agentes podem usar?" })).toBeVisible()
+    await expect(page.getByRole("checkbox", { name: /Comandos sem aprovação/ })).not.toBeChecked()
+    expect((await fixture.api("/onboarding")).completed).toBe(false)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-    await page.getByRole("button", { name: "Usar um servidor touri", exact: true }).click()
-    await expect(page.getByRole("region", { name: "Usar um servidor touri", exact: true })).toBeVisible()
-    await capture(page, testInfo, `${device}-settings`, ".server-mode-settings")
-    await page.getByRole("button", { name: "Gerar código para outro aparelho" }).click()
-    await expect(page.locator(".setup-pair-code")).toBeVisible()
-    await capture(page, testInfo, `${device}-settings-code`, ".server-mode-settings")
-    console.log(JSON.stringify({ device, welcomeMs, localStartMs }))
   })
 
   test(`first-run ${device}: server chooser, discovery, pairing errors and real code consumption`, async ({
@@ -58,28 +50,29 @@ for (const [device, width, height, theme] of [
     const fixture = await start()
     await fixture.install(page, theme)
     await page.setViewportSize({ width, height })
-    await page.goto(fixture.url)
-    await page.getByRole("button", { name: /Usar meu servidor/ }).click()
-    await expect(page.getByRole("heading", { name: "Meu servidor" })).toBeFocused()
+    await openRuntimeSetup(page, fixture.url)
+    await expect(page.getByRole("heading", { name: "Onde seus agentes vão morar?" })).toBeFocused()
     await capture(page, testInfo, `${device}-chooser`)
     await page.getByRole("button", { name: /Conectar ao meu servidor/ }).click()
     await expect(page.getByRole("button", { name: "Usar studio.example.ts.net" })).toBeVisible()
     await expect(page.getByRole("button", { name: "Usar Este computador" })).toBeVisible()
     await capture(page, testInfo, `${device}-discovery`)
     await page.getByRole("button", { name: "Usar studio.example.ts.net" }).click()
-    await expect(page.getByLabel("Endereço do servidor")).toHaveValue("https://studio.example.ts.net:8445")
+    await expect(page.getByRole("textbox", { name: "Endereço do servidor", exact: true })).toHaveValue(
+      "https://studio.example.ts.net:8445",
+    )
     await page.getByRole("button", { name: "← Voltar" }).click()
-    await page.getByLabel("Endereço do servidor").fill("http://insecure.example")
+    await page.getByRole("textbox", { name: "Endereço do servidor", exact: true }).fill("http://insecure.example")
     await page.getByRole("button", { name: "Conectar ao servidor" }).click()
     await expect(page.getByRole("alert")).toContainText("HTTPS")
-    await page.getByLabel("Endereço do servidor").fill(fixture.base)
+    await page.getByRole("textbox", { name: "Endereço do servidor", exact: true }).fill(fixture.base)
     await page.getByRole("button", { name: "Conectar ao servidor" }).click()
-    await page.getByLabel("Código de pareamento").fill("WRONG-CODE")
+    await page.getByRole("textbox", { name: "Código de pareamento", exact: true }).fill("WRONG-CODE")
     await page.getByRole("button", { name: "Parear e continuar" }).click()
     await expect(page.getByRole("alert")).toContainText("Gere outro código")
-    await expect(page.getByLabel("Código de pareamento")).toHaveValue("")
+    await expect(page.getByRole("textbox", { name: "Código de pareamento", exact: true })).toHaveValue("")
     const pairing = { code: await fixture.getCode() }
-    await page.getByLabel("Código de pareamento").fill(pairing.code)
+    await page.getByRole("textbox", { name: "Código de pareamento", exact: true }).fill(pairing.code)
     await capture(page, testInfo, `${device}-pairing`)
     await page.getByRole("button", { name: "Parear e continuar" }).click()
     await expect(page.getByRole("button", { name: "Criar meu primeiro bot" })).toBeVisible()
@@ -96,9 +89,8 @@ for (const [device, width, height, theme] of [
     const fixture = await start()
     await fixture.install(page, theme)
     await page.setViewportSize({ width, height })
-    await page.goto(fixture.url)
-    await page.getByRole("button", { name: /Usar meu servidor/ }).click()
-    await page.getByRole("button", { name: /Rodar neste/ }).click()
+    await openRuntimeSetup(page, fixture.url)
+    await page.getByRole("button", { name: /Este (Mac|PC)/ }).click()
     await page.getByLabel("Seu nome").fill("Pessoa Exemplo")
     await page.getByLabel("Seu email").fill("person@example.com")
     await expect(page.getByRole("switch")).toBeEnabled()
@@ -133,7 +125,17 @@ const capture = async (page: Page, testInfo: TestInfo, name: string, selector = 
     expect(overflow).toBeLessThanOrEqual(1)
   }
   await testInfo.attach(name, {
-    body: await page.screenshot({ path: await getScreenshotPath(name), mask: [page.locator(".setup-pair-code")] }),
+    body: await page.screenshot({
+      path: await getScreenshotPath(name),
+      mask: [page.locator('.setup-pair-code, input[id$="-code"]')],
+    }),
     contentType: "image/png",
   })
+}
+
+const openRuntimeSetup = async (page: Page, url: string) => {
+  await page.addInitScript(() => localStorage.setItem("touri.onboarding.completed.v1", "true"))
+  await page.goto(url)
+  await expect(page.getByRole("button", { name: "Criar meu primeiro bot" })).toBeVisible()
+  await page.evaluate(() => window.dispatchEvent(new Event("touri-open-onboarding")))
 }

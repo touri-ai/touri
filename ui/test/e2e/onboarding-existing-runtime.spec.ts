@@ -55,6 +55,6 @@ for (const width of [1440, 390]) {
     await page.evaluate(() => window.dispatchEvent(new Event("touri-open-onboarding")))
     expect((await reopened).status()).toBe(404)
     await page.getByRole("button", { name: /Conectar ao meu servidor/ }).click()
-    await expect(page.getByLabel("Endereço do servidor")).toBeVisible()
+    await expect(page.getByRole("textbox", { name: "Endereço do servidor", exact: true })).toBeVisible()
   })
 }
