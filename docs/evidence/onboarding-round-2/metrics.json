@@ -115,7 +115,7 @@
           "nextPaintMs": 19.3,
           "longTasksInNext500Ms": 0,
           "maxLongTaskInNext500Ms": 0,
-          "layoutShiftInNext500Ms": 2.504e-05,
+          "layoutShiftInNext500Ms": 2.504e-5,
           "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
@@ -297,7 +297,7 @@
           "nextPaintMs": 398.9,
           "longTasksInNext500Ms": 1,
           "maxLongTaskInNext500Ms": 402,
-          "layoutShiftInNext500Ms": 9.627e-05,
+          "layoutShiftInNext500Ms": 9.627e-5,
           "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
