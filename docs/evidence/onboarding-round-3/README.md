@@ -54,6 +54,8 @@ P1 | ob-ui | Fluidez da configuração, seletor de pasta e recuperação | Orça
 | browser-all-requester | 4 | 63.2 ms | 144 ms | 1 / 58 ms | 0.01617 |
 | browser-all-member | 0 | NA | NA | 2 / 74 ms | 0.01196 |
 
+`actions.json` associa cada conjunto de quadros aos novos cliques/eventos observados, às tarefas e aos deslocamentos nos 500 ms seguintes. Edição, leitura ou navegação sem clique têm lista vazia, sem duração inventada. `screens.json` registra a observação de texto e desenho por etapa.
+
 Cada clique registra dois callbacks requestAnimationFrame, event timing e tarefas/deslocamentos nos 500 ms seguintes nos JSONs. Percentil nearest rank. CLS é a maior janela de até cinco segundos com intervalo máximo de um segundo entre deslocamentos, excluindo interação recente; a soma simples também está disponível e não é apresentada como CLS.
 
 Os cliques mais lentos foram abrir o seletor de pasta (159,7 ms), expandir caminho (164,2 ms) e abrir pasta (153,3 ms). A tarefa de 52 ms do onboarding ocorreu na inicialização, antes do primeiro clique. O máximo de 58 ms no navegador ocorreu no início do handoff; o CLS do navegador inclui montagem inicial. O registro do histórico também inclui a sessão e as respostas anteriores à parada. As abas em segundo plano podem atrasar callbacks; nenhuma latência de clique é atribuída à aba observadora, que não recebeu cliques.
