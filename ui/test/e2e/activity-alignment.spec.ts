@@ -106,6 +106,8 @@ for (const conversation of conversations)
 
         const row = page.locator(".message-bubble", { has: page.locator(".activity-mark") })
         await expect(row.locator(".activity-label")).toContainText("Preparando a resposta")
+        await expect(page.locator(".branch-switcher")).toHaveCount(0)
+        if (grouped) await expect(row).toHaveAttribute("data-message-grouped", "true")
         const filename = `thinking-${conversation}${grouped ? "-grouped" : ""}-${width}.png`
         const screenshot = evidenceDirectory ? `${evidenceDirectory}/${filename}` : testInfo.outputPath(filename)
         if (evidenceDirectory) await mkdir(evidenceDirectory, { recursive: true })

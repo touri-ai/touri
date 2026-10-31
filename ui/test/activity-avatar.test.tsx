@@ -51,7 +51,13 @@ const renderRows = (messages: Message[], sender: boolean) => {
     <AvatarRuntimeProvider
       value={{ bots: [bot], threads: [thread], messages: rows, runs: [], notifications: [], loading: false }}
     >
-      <VirtualMessageList api={api} messages={rows} onSwitchBranch={() => undefined} onRetry={async () => undefined} />
+      <VirtualMessageList
+        api={api}
+        messages={rows}
+        flatHistory={sender}
+        onSwitchBranch={() => undefined}
+        onRetry={async () => undefined}
+      />
     </AvatarRuntimeProvider>,
   )
 }
@@ -79,7 +85,7 @@ for (const [conversation, sender] of [
   })
 
   it(`draws one avatar in a grouped active bot row in a ${conversation}`, () => {
-    const view = renderRows([getMessage("before"), getLive("live", { createdAt: 1_500 })], sender)
+    const view = renderRows([getMessage("before"), getLive("live", { createdAt: 1_500, parentId: "before" })], sender)
     const row = getLiveRow(view.container)
 
     expect(row).toHaveAttribute("data-message-grouped", "true")

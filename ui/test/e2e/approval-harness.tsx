@@ -82,7 +82,9 @@ const earlier: Message = {
   createdAt: timestamp - 1000,
   updatedAt: timestamp - 1000,
 }
-const messages = new URLSearchParams(location.search).has("grouped") ? [earlier, message] : [message]
+const messages = new URLSearchParams(location.search).has("grouped")
+  ? [earlier, { ...message, parentId: earlier.id }]
+  : [message]
 
 const root = document.getElementById("root")
 const States = () => {
@@ -157,6 +159,7 @@ if (root)
           messages={messages}
           api={api}
           mainThread={conversation === "dm"}
+          flatHistory={conversation === "channel"}
           onSwitchBranch={() => undefined}
           onRetry={async () => undefined}
         />
