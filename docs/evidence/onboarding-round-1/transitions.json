@@ -1,0 +1,142 @@
+[
+  {
+    "name": "Começar →",
+    "at": 27409.100000023842,
+    "nextPaint": 94.80000001192093
+  },
+  {
+    "name": "Este computador cuida dos seus bots. Comece com um clique.",
+    "at": 31983,
+    "nextPaint": 124.60000002384186
+  },
+  {
+    "name": "Continuar ↵",
+    "at": 42197.10000002384,
+    "nextPaint": 108.89999997615814
+  },
+  {
+    "name": "Continuar ↵",
+    "at": 56492.60000002384,
+    "nextPaint": 83.19999998807907
+  },
+  {
+    "name": "＋Outra pasta de agenteEscolher pasta",
+    "at": 65001,
+    "nextPaint": 91
+  },
+  {
+    "name": "▸ agent-export",
+    "at": 71709.5,
+    "nextPaint": 667.1000000238419
+  },
+  {
+    "name": "Usar esta pasta",
+    "at": 85444,
+    "nextPaint": 31.600000023841858
+  },
+  {
+    "name": "Copiar pedido e colar resposta",
+    "at": 94192.5,
+    "nextPaint": 27.400000035762787
+  },
+  {
+    "name": "Copiar pedido",
+    "at": 100883.10000002384,
+    "nextPaint": 7.899999976158142
+  },
+  {
+    "name": "Colar resposta",
+    "at": 108684.80000001192,
+    "nextPaint": 2.699999988079071
+  },
+  {
+    "name": "Continuar ↵",
+    "at": 113382.60000002384,
+    "nextPaint": 37.39999997615814
+  },
+  {
+    "name": "Importar selecionados ↵",
+    "at": 125583.30000001192,
+    "nextPaint": 19.399999976158142
+  },
+  {
+    "name": "Continuar ↵",
+    "at": 138683.19999998808,
+    "nextPaint": 212.5
+  },
+  {
+    "name": "‹",
+    "at": 145684.30000001192,
+    "nextPaint": 92.5
+  },
+  {
+    "name": "Continuar ↵",
+    "at": 151709.69999998808,
+    "nextPaint": 68.10000002384186
+  },
+  {
+    "name": "Importar selecionados ↵",
+    "at": 159942.30000001192,
+    "nextPaint": 43.69999998807907
+  },
+  {
+    "name": "Continuar ↵",
+    "at": 172484.19999998808,
+    "nextPaint": 98
+  },
+  {
+    "name": "",
+    "at": 180006.19999998808,
+    "nextPaint": 71.60000002384186
+  },
+  {
+    "name": "Continuar ↵",
+    "at": 185255.80000001192,
+    "nextPaint": 50.60000002384186
+  },
+  {
+    "name": "Conectar ou verificar conta",
+    "at": 199706.5,
+    "nextPaint": 75.40000003576279
+  },
+  {
+    "name": "Cancelar login",
+    "at": 206107.5,
+    "nextPaint": 49.90000003576279
+  },
+  {
+    "name": "Continuar ↵",
+    "at": 216739.90000003576,
+    "nextPaint": 46.5
+  },
+  {
+    "name": "Convidar pessoa",
+    "at": 223469.5,
+    "nextPaint": 168.80000001192093
+  },
+  {
+    "name": "Enviar convite",
+    "at": 260503.90000003576,
+    "nextPaint": 73.29999995231628
+  },
+  {
+    "name": "Cancelar",
+    "at": 270536.1999999881,
+    "nextPaint": 63.80000001192093
+  },
+  {
+    "name": "Continuar ↵",
+    "at": 274786.10000002384,
+    "nextPaint": 41.30000001192093
+  },
+  {
+    "name": "Resuma o contexto de Equipe Demo e sugira três próximos passos.",
+    "at": 282536.10000002384,
+    "nextPaint": 45.80000001192093
+  },
+  {
+    "name": "Enviar primeira tarefa ↵",
+    "at": 288304.8000000119,
+    "nextPaint": 77.80000001192093
+  }
+]

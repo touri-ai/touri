@@ -1,0 +1,754 @@
+[
+  {
+    "width": 1440,
+    "longTasks": [
+      {
+        "at": 2511.800000011921,
+        "duration": 87
+      },
+      {
+        "at": 3312.199999988079,
+        "duration": 79
+      },
+      {
+        "at": 3607.5,
+        "duration": 102
+      },
+      {
+        "at": 3928.300000011921,
+        "duration": 64
+      },
+      {
+        "at": 4410.5,
+        "duration": 82
+      },
+      {
+        "at": 4607.199999988079,
+        "duration": 90
+      },
+      {
+        "at": 4920.300000011921,
+        "duration": 93
+      },
+      {
+        "at": 5014,
+        "duration": 85
+      },
+      {
+        "at": 5109.100000023842,
+        "duration": 83
+      },
+      {
+        "at": 5210.400000035763,
+        "duration": 85
+      },
+      {
+        "at": 6020.900000035763,
+        "duration": 76
+      },
+      {
+        "at": 6218,
+        "duration": 73
+      },
+      {
+        "at": 6512,
+        "duration": 83
+      },
+      {
+        "at": 7116.199999988079,
+        "duration": 77
+      },
+      {
+        "at": 7605.5,
+        "duration": 92
+      },
+      {
+        "at": 8014.100000023842,
+        "duration": 77
+      },
+      {
+        "at": 8209.600000023842,
+        "duration": 90
+      },
+      {
+        "at": 8322.100000023842,
+        "duration": 76
+      },
+      {
+        "at": 8515.199999988079,
+        "duration": 76
+      },
+      {
+        "at": 8610.900000035763,
+        "duration": 105
+      },
+      {
+        "at": 8717.5,
+        "duration": 80
+      },
+      {
+        "at": 8812.800000011921,
+        "duration": 190
+      },
+      {
+        "at": 9008.600000023842,
+        "duration": 97
+      },
+      {
+        "at": 9115.100000023842,
+        "duration": 76
+      },
+      {
+        "at": 9213.100000023842,
+        "duration": 81
+      },
+      {
+        "at": 9412.800000011921,
+        "duration": 79
+      },
+      {
+        "at": 9616.900000035763,
+        "duration": 191
+      },
+      {
+        "at": 9822.300000011921,
+        "duration": 69
+      }
+    ],
+    "interactions": 14,
+    "paintP95": 182.9000000357628,
+    "cls": 0.0012876302083333333,
+    "shifts": [
+      {
+        "value": 0.0012876302083333333,
+        "at": 9394.100000023842,
+        "nodes": ["bot-groups work-mode-dms"]
+      }
+    ],
+    "eventSamples": [
+      {
+        "id": 873,
+        "duration": 112,
+        "at": 2511.600000023842,
+        "target": ""
+      },
+      {
+        "id": 873,
+        "duration": 24,
+        "at": 2600.800000011921,
+        "target": "‹2/7 · ContextoEquipe exemploO que Equipe exemplo faz?Conte "
+      },
+      {
+        "id": 880,
+        "duration": 96,
+        "at": 2817.699999988079,
+        "target": "Código e deploy"
+      },
+      {
+        "id": 880,
+        "duration": 96,
+        "at": 2817.800000011921,
+        "target": "Código e deploy"
+      },
+      {
+        "id": 880,
+        "duration": 96,
+        "at": 2817.800000011921,
+        "target": "Código e deploy"
+      },
+      {
+        "id": 887,
+        "duration": 96,
+        "at": 3098.5,
+        "target": "Suporte"
+      },
+      {
+        "id": 887,
+        "duration": 96,
+        "at": 3098.699999988079,
+        "target": "Suporte"
+      },
+      {
+        "id": 887,
+        "duration": 96,
+        "at": 3098.699999988079,
+        "target": "Suporte"
+      },
+      {
+        "id": 894,
+        "duration": 120,
+        "at": 3304.400000035763,
+        "target": "Ler o site"
+      },
+      {
+        "id": 894,
+        "duration": 120,
+        "at": 3304.5,
+        "target": "Ler o site"
+      },
+      {
+        "id": 894,
+        "duration": 120,
+        "at": 3304.5,
+        "target": "Ler o site"
+      },
+      {
+        "id": 901,
+        "duration": 216,
+        "at": 3605,
+        "target": "Continuar ↵"
+      },
+      {
+        "id": 901,
+        "duration": 216,
+        "at": 3605.100000023842,
+        "target": "Continuar ↵"
+      },
+      {
+        "id": 901,
+        "duration": 216,
+        "at": 3605.100000023842,
+        "target": "Continuar ↵"
+      },
+      {
+        "id": 908,
+        "duration": 120,
+        "at": 3902.600000023842,
+        "target": "Importar selecionados ↵"
+      },
+      {
+        "id": 908,
+        "duration": 120,
+        "at": 3902.699999988079,
+        "target": "Importar selecionados ↵"
+      },
+      {
+        "id": 908,
+        "duration": 120,
+        "at": 3902.699999988079,
+        "target": "Importar selecionados ↵"
+      },
+      {
+        "id": 915,
+        "duration": 112,
+        "at": 4398,
+        "target": ""
+      },
+      {
+        "id": 915,
+        "duration": 112,
+        "at": 4398.100000023842,
+        "target": ""
+      },
+      {
+        "id": 915,
+        "duration": 112,
+        "at": 4398.100000023842,
+        "target": ""
+      },
+      {
+        "id": 922,
+        "duration": 192,
+        "at": 4600.699999988079,
+        "target": "Continuar enquanto importa ↵"
+      },
+      {
+        "id": 922,
+        "duration": 192,
+        "at": 4600.800000011921,
+        "target": "Continuar enquanto importa ↵"
+      },
+      {
+        "id": 922,
+        "duration": 192,
+        "at": 4600.800000011921,
+        "target": "Continuar enquanto importa ↵"
+      },
+      {
+        "id": 929,
+        "duration": 288,
+        "at": 4919.699999988079,
+        "target": "Continuar ↵"
+      },
+      {
+        "id": 929,
+        "duration": 288,
+        "at": 4919.699999988079,
+        "target": "Continuar ↵"
+      },
+      {
+        "id": 929,
+        "duration": 288,
+        "at": 4919.699999988079,
+        "target": "Continuar ↵"
+      },
+      {
+        "id": 936,
+        "duration": 88,
+        "at": 5705.199999988079,
+        "target": ""
+      },
+      {
+        "id": 936,
+        "duration": 88,
+        "at": 5705.300000011921,
+        "target": ""
+      },
+      {
+        "id": 936,
+        "duration": 88,
+        "at": 5705.300000011921,
+        "target": ""
+      },
+      {
+        "id": 943,
+        "duration": 96,
+        "at": 5899.800000011921,
+        "target": "Aguarde… ↵"
+      },
+      {
+        "id": 943,
+        "duration": 88,
+        "at": 5900,
+        "target": "Aguarde… ↵"
+      },
+      {
+        "id": 943,
+        "duration": 88,
+        "at": 5900,
+        "target": "Aguarde… ↵"
+      },
+      {
+        "id": 950,
+        "duration": 200,
+        "at": 6216,
+        "target": "Conectar ou verificar conta"
+      },
+      {
+        "id": 950,
+        "duration": 200,
+        "at": 6216.100000023842,
+        "target": "Conectar ou verificar conta"
+      },
+      {
+        "id": 950,
+        "duration": 200,
+        "at": 6216.100000023842,
+        "target": "Conectar ou verificar conta"
+      },
+      {
+        "id": 957,
+        "duration": 200,
+        "at": 6498.600000023842,
+        "target": "Aguarde… ↵"
+      },
+      {
+        "id": 957,
+        "duration": 200,
+        "at": 6498.600000023842,
+        "target": "Aguarde… ↵"
+      },
+      {
+        "id": 957,
+        "duration": 200,
+        "at": 6498.600000023842,
+        "target": "Aguarde… ↵"
+      },
+      {
+        "id": 964,
+        "duration": 192,
+        "at": 6998.699999988079,
+        "target": ""
+      },
+      {
+        "id": 964,
+        "duration": 192,
+        "at": 6998.800000011921,
+        "target": ""
+      },
+      {
+        "id": 964,
+        "duration": 192,
+        "at": 6998.800000011921,
+        "target": ""
+      },
+      {
+        "id": 971,
+        "duration": 104,
+        "at": 7299.100000023842,
+        "target": "Aguarde… ↵"
+      },
+      {
+        "id": 971,
+        "duration": 104,
+        "at": 7299.199999988079,
+        "target": "Aguarde… ↵"
+      },
+      {
+        "id": 971,
+        "duration": 104,
+        "at": 7299.199999988079,
+        "target": "Aguarde… ↵"
+      }
+    ],
+    "eventInteractions": 15,
+    "eventP95": 288
+  },
+  {
+    "width": 390,
+    "longTasks": [
+      {
+        "at": 3809,
+        "duration": 85
+      },
+      {
+        "at": 4009,
+        "duration": 91
+      },
+      {
+        "at": 4102.100000023842,
+        "duration": 91
+      },
+      {
+        "at": 5514.100000023842,
+        "duration": 191
+      },
+      {
+        "at": 5705.800000011921,
+        "duration": 87
+      },
+      {
+        "at": 6004.699999988079,
+        "duration": 95
+      },
+      {
+        "at": 6209.800000011921,
+        "duration": 96
+      },
+      {
+        "at": 6306.900000035763,
+        "duration": 107
+      },
+      {
+        "at": 6726.800000011921,
+        "duration": 168
+      },
+      {
+        "at": 7207.600000023842,
+        "duration": 99
+      },
+      {
+        "at": 7415.5,
+        "duration": 78
+      },
+      {
+        "at": 8026.699999988079,
+        "duration": 65
+      },
+      {
+        "at": 8305.800000011921,
+        "duration": 89
+      },
+      {
+        "at": 8405.300000011921,
+        "duration": 88
+      },
+      {
+        "at": 8711.300000011921,
+        "duration": 95
+      },
+      {
+        "at": 9128.600000023842,
+        "duration": 63
+      },
+      {
+        "at": 9613.400000035763,
+        "duration": 79
+      },
+      {
+        "at": 10124.100000023842,
+        "duration": 77
+      },
+      {
+        "at": 10713.300000011921,
+        "duration": 87
+      },
+      {
+        "at": 10827.600000023842,
+        "duration": 66
+      },
+      {
+        "at": 11103.400000035763,
+        "duration": 90
+      },
+      {
+        "at": 11210.600000023842,
+        "duration": 85
+      },
+      {
+        "at": 11327.100000023842,
+        "duration": 67
+      },
+      {
+        "at": 11418,
+        "duration": 77
+      },
+      {
+        "at": 11514,
+        "duration": 79
+      },
+      {
+        "at": 11613.900000035763,
+        "duration": 81
+      },
+      {
+        "at": 11911.900000035763,
+        "duration": 83
+      },
+      {
+        "at": 12026.100000023842,
+        "duration": 81
+      },
+      {
+        "at": 12426.5,
+        "duration": 67
+      }
+    ],
+    "interactions": 14,
+    "paintP95": 199.60000002384186,
+    "cls": 0,
+    "shifts": [],
+    "eventSamples": [
+      {
+        "id": 210,
+        "duration": 208,
+        "at": 4000.5,
+        "target": ""
+      },
+      {
+        "id": 210,
+        "duration": 192,
+        "at": 4011.5,
+        "target": "‹2/7 · ContextoEquipe exemploO que Equipe exemplo faz?Conte "
+      },
+      {
+        "id": 217,
+        "duration": 104,
+        "at": 4695.600000023842,
+        "target": "Código e deploy"
+      },
+      {
+        "id": 217,
+        "duration": 104,
+        "at": 4695.800000011921,
+        "target": "Código e deploy"
+      },
+      {
+        "id": 217,
+        "duration": 104,
+        "at": 4695.800000011921,
+        "target": "Código e deploy"
+      },
+      {
+        "id": 224,
+        "duration": 96,
+        "at": 4900.600000023842,
+        "target": "Suporte"
+      },
+      {
+        "id": 224,
+        "duration": 96,
+        "at": 4900.600000023842,
+        "target": "Suporte"
+      },
+      {
+        "id": 224,
+        "duration": 96,
+        "at": 4900.600000023842,
+        "target": "Suporte"
+      },
+      {
+        "id": 231,
+        "duration": 112,
+        "at": 5200.800000011921,
+        "target": "Ler o site"
+      },
+      {
+        "id": 231,
+        "duration": 112,
+        "at": 5200.900000035763,
+        "target": "Ler o site"
+      },
+      {
+        "id": 231,
+        "duration": 112,
+        "at": 5200.900000035763,
+        "target": "Ler o site"
+      },
+      {
+        "id": 238,
+        "duration": 304,
+        "at": 5511.100000023842,
+        "target": "Continuar ↵"
+      },
+      {
+        "id": 238,
+        "duration": 304,
+        "at": 5511.400000035763,
+        "target": "Continuar ↵"
+      },
+      {
+        "id": 238,
+        "duration": 304,
+        "at": 5511.400000035763,
+        "target": "Continuar ↵"
+      },
+      {
+        "id": 245,
+        "duration": 208,
+        "at": 6004,
+        "target": "Importar selecionados ↵"
+      },
+      {
+        "id": 245,
+        "duration": 208,
+        "at": 6004.300000011921,
+        "target": "Importar selecionados ↵"
+      },
+      {
+        "id": 245,
+        "duration": 208,
+        "at": 6004.300000011921,
+        "target": "Importar selecionados ↵"
+      },
+      {
+        "id": 259,
+        "duration": 280,
+        "at": 6721,
+        "target": "Continuar enquanto importa ↵"
+      },
+      {
+        "id": 259,
+        "duration": 280,
+        "at": 6721.199999988079,
+        "target": "Continuar enquanto importa ↵"
+      },
+      {
+        "id": 259,
+        "duration": 280,
+        "at": 6721.199999988079,
+        "target": "Continuar enquanto importa ↵"
+      },
+      {
+        "id": 266,
+        "duration": 288,
+        "at": 7207,
+        "target": "Continuar ↵"
+      },
+      {
+        "id": 266,
+        "duration": 288,
+        "at": 7207.300000011921,
+        "target": "Continuar ↵"
+      },
+      {
+        "id": 266,
+        "duration": 288,
+        "at": 7207.300000011921,
+        "target": "Continuar ↵"
+      },
+      {
+        "id": 280,
+        "duration": 96,
+        "at": 8200.600000023842,
+        "target": "Aguarde… ↵"
+      },
+      {
+        "id": 280,
+        "duration": 96,
+        "at": 8200.699999988079,
+        "target": "Aguarde… ↵"
+      },
+      {
+        "id": 280,
+        "duration": 96,
+        "at": 8200.699999988079,
+        "target": "Aguarde… ↵"
+      },
+      {
+        "id": 287,
+        "duration": 184,
+        "at": 8706.300000011921,
+        "target": "Conectar ou verificar conta"
+      },
+      {
+        "id": 287,
+        "duration": 184,
+        "at": 8706.400000035763,
+        "target": "Conectar ou verificar conta"
+      },
+      {
+        "id": 287,
+        "duration": 184,
+        "at": 8706.400000035763,
+        "target": "Conectar ou verificar conta"
+      },
+      {
+        "id": 294,
+        "duration": 112,
+        "at": 9098.699999988079,
+        "target": "Aguarde… ↵"
+      },
+      {
+        "id": 294,
+        "duration": 112,
+        "at": 9098.699999988079,
+        "target": "Aguarde… ↵"
+      },
+      {
+        "id": 294,
+        "duration": 112,
+        "at": 9098.699999988079,
+        "target": "Aguarde… ↵"
+      },
+      {
+        "id": 301,
+        "duration": 104,
+        "at": 9600.199999988079,
+        "target": ""
+      },
+      {
+        "id": 301,
+        "duration": 104,
+        "at": 9600.300000011921,
+        "target": ""
+      },
+      {
+        "id": 301,
+        "duration": 104,
+        "at": 9600.300000011921,
+        "target": ""
+      },
+      {
+        "id": 308,
+        "duration": 16,
+        "at": 9901.300000011921,
+        "target": "Aguarde… ↵"
+      },
+      {
+        "id": 308,
+        "duration": 16,
+        "at": 9901.400000035763,
+        "target": "Aguarde… ↵"
+      },
+      {
+        "id": 308,
+        "duration": 16,
+        "at": 9901.400000035763,
+        "target": "Aguarde… ↵"
+      }
+    ],
+    "eventInteractions": 13,
+    "eventP95": 304
+  }
+]
