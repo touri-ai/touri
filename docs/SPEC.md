@@ -96,7 +96,9 @@ answers, including from import sources to context. Optional questions can be ski
 screens the form and preview grow within one scrollable surface, machine controls fit the width,
 and each question starts at the
 top. The main landmark stays outside named regions so assistive navigation can reach it directly.
-Primary actions preserve readable contrast in both themes, including their hover state. Workspace initials
+Primary actions preserve readable contrast in both themes, including intermediate frames when entering
+and leaving hover. Branded buttons keep their branded fill instead of inheriting secondary hover surfaces
+or a brightness filter. Workspace initials
 keep readable contrast for every offered color in both themes.
 Question transitions scroll in the next animation frame and focus the heading after that frame paints.
 If the owner focuses a field first, the scheduled heading focus preserves that choice.
