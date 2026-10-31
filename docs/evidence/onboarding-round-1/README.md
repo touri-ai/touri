@@ -48,7 +48,7 @@ O navegador compartilhado usou o harness existente com duas pessoas e transporte
 
 Os dois testes novos falharam primeiro na ausência de tarefas longas; os percentis também excederam 100 ms. A main usada como base não contém esse guia/teste novo, portanto não se afirma regressão de um teste preexistente. Atividade concorrente limita a atribuição dos custos observados.
 
-A exploração manual de produção registrou 28 cliques: p95 da aproximação por pintura de 212,5 ms e event timing p95 de 720 ms. Antes do envio final, houve 21 tarefas longas (máximo 122 ms) e CLS 0,03780, incluindo expansão assíncrona do login. Os cinco cliques coletados no navegador compartilhado não constituem uma amostra estatística estável; os resultados brutos dessa exploração ficam separados dos testes de orçamento. O detalhamento por transição está em [transitions.json](transitions.json), e as duas medições de teste estão em [fluidity.json](fluidity.json).
+A exploração manual de produção registrou 28 cliques: p95 da aproximação por pintura de 212,5 ms e event timing p95 de 720 ms. Antes do envio final, houve 21 tarefas longas (máximo 122 ms) e CLS 0,03780, incluindo expansão assíncrona do login. Os cinco cliques coletados no navegador compartilhado não constituem uma amostra estatística estável; os resultados brutos dessa exploração ficam separados dos testes de orçamento. O detalhamento por transição inclui pintura aproximada, event timing e tarefas longas/deslocamentos no primeiro segundo após cada clique; essa correlação temporal não estabelece causalidade. Os dados estão em [transitions.json](transitions.json), e as duas medições de teste estão em [fluidity.json](fluidity.json).
 
 | Verificação | Resultado |
 | --- | --- |

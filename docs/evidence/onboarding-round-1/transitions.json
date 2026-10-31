@@ -2,141 +2,457 @@
   {
     "name": "Começar →",
     "at": 27409.100000023842,
-    "nextPaint": 94.80000001192093
+    "nextPaint": 94.80000001192093,
+    "eventTimingMs": 208,
+    "longTasksFirstSecond": [],
+    "layoutShiftsFirstSecond": []
   },
   {
     "name": "Este computador cuida dos seus bots. Comece com um clique.",
     "at": 31983,
-    "nextPaint": 124.60000002384186
+    "nextPaint": 124.60000002384186,
+    "eventTimingMs": 320,
+    "longTasksFirstSecond": [],
+    "layoutShiftsFirstSecond": []
   },
   {
     "name": "Continuar ↵",
     "at": 42197.10000002384,
-    "nextPaint": 108.89999997615814
+    "nextPaint": 108.89999997615814,
+    "eventTimingMs": 112,
+    "longTasksFirstSecond": [
+      {
+        "afterClickMs": 108.6,
+        "durationMs": 71
+      },
+      {
+        "afterClickMs": 411.8,
+        "durationMs": 68
+      }
+    ],
+    "layoutShiftsFirstSecond": [
+      {
+        "afterClickMs": 6.4,
+        "value": 0.0034069335937500006,
+        "hadRecentInput": true
+      }
+    ]
   },
   {
     "name": "Continuar ↵",
     "at": 56492.60000002384,
-    "nextPaint": 83.19999998807907
+    "nextPaint": 83.19999998807907,
+    "eventTimingMs": 112,
+    "longTasksFirstSecond": [],
+    "layoutShiftsFirstSecond": [
+      {
+        "afterClickMs": 8.0,
+        "value": 0.0039850056966145835,
+        "hadRecentInput": true
+      }
+    ]
   },
   {
     "name": "＋Outra pasta de agenteEscolher pasta",
     "at": 65001,
-    "nextPaint": 91
+    "nextPaint": 91,
+    "eventTimingMs": 912,
+    "longTasksFirstSecond": [],
+    "layoutShiftsFirstSecond": [
+      {
+        "afterClickMs": 475.5,
+        "value": 0.007649537037037037,
+        "hadRecentInput": true
+      }
+    ]
   },
   {
     "name": "▸ agent-export",
     "at": 71709.5,
-    "nextPaint": 667.1000000238419
+    "nextPaint": 667.1000000238419,
+    "eventTimingMs": 640,
+    "longTasksFirstSecond": [],
+    "layoutShiftsFirstSecond": [
+      {
+        "afterClickMs": 66.8,
+        "value": 0.007649537037037037,
+        "hadRecentInput": true
+      },
+      {
+        "afterClickMs": 366.4,
+        "value": 0.007649537037037037,
+        "hadRecentInput": true
+      }
+    ]
   },
   {
     "name": "Usar esta pasta",
     "at": 85444,
-    "nextPaint": 31.600000023841858
+    "nextPaint": 31.600000023841858,
+    "eventTimingMs": 64,
+    "longTasksFirstSecond": [],
+    "layoutShiftsFirstSecond": [
+      {
+        "afterClickMs": 5.3,
+        "value": 0.04088057427300347,
+        "hadRecentInput": true
+      }
+    ]
   },
   {
     "name": "Copiar pedido e colar resposta",
     "at": 94192.5,
-    "nextPaint": 27.400000035762787
+    "nextPaint": 27.400000035762787,
+    "eventTimingMs": 64,
+    "longTasksFirstSecond": [],
+    "layoutShiftsFirstSecond": [
+      {
+        "afterClickMs": 6.6,
+        "value": 0.008504998914930556,
+        "hadRecentInput": true
+      }
+    ]
   },
   {
     "name": "Copiar pedido",
     "at": 100883.10000002384,
-    "nextPaint": 7.899999976158142
+    "nextPaint": 7.899999976158142,
+    "eventTimingMs": 96,
+    "longTasksFirstSecond": [],
+    "layoutShiftsFirstSecond": [
+      {
+        "afterClickMs": 107.9,
+        "value": 0.001464656635802469,
+        "hadRecentInput": true
+      }
+    ]
   },
   {
     "name": "Colar resposta",
     "at": 108684.80000001192,
-    "nextPaint": 2.699999988079071
+    "nextPaint": 2.699999988079071,
+    "eventTimingMs": 96,
+    "longTasksFirstSecond": [],
+    "layoutShiftsFirstSecond": [
+      {
+        "afterClickMs": 91.5,
+        "value": 0.0013264814814814814,
+        "hadRecentInput": true
+      }
+    ]
   },
   {
     "name": "Continuar ↵",
     "at": 113382.60000002384,
-    "nextPaint": 37.39999997615814
+    "nextPaint": 37.39999997615814,
+    "eventTimingMs": 32,
+    "longTasksFirstSecond": [],
+    "layoutShiftsFirstSecond": [
+      {
+        "afterClickMs": 36.9,
+        "value": 0.006444361617476852,
+        "hadRecentInput": true
+      }
+    ]
   },
   {
     "name": "Importar selecionados ↵",
     "at": 125583.30000001192,
-    "nextPaint": 19.399999976158142
+    "nextPaint": 19.399999976158142,
+    "eventTimingMs": 208,
+    "longTasksFirstSecond": [],
+    "layoutShiftsFirstSecond": [
+      {
+        "afterClickMs": 10.1,
+        "value": 2.5044216579861114e-5,
+        "hadRecentInput": true
+      },
+      {
+        "afterClickMs": 506.9,
+        "value": 2.5260054976851852e-5,
+        "hadRecentInput": true
+      }
+    ]
   },
   {
     "name": "Continuar ↵",
     "at": 138683.19999998808,
-    "nextPaint": 212.5
+    "nextPaint": 212.5,
+    "eventTimingMs": 720,
+    "longTasksFirstSecond": [],
+    "layoutShiftsFirstSecond": [
+      {
+        "afterClickMs": 100.6,
+        "value": 0.0038111725380979935,
+        "hadRecentInput": true
+      },
+      {
+        "afterClickMs": 211.4,
+        "value": 0.008402534360532407,
+        "hadRecentInput": true
+      }
+    ]
   },
   {
     "name": "‹",
     "at": 145684.30000001192,
-    "nextPaint": 92.5
+    "nextPaint": 92.5,
+    "eventTimingMs": 224,
+    "longTasksFirstSecond": [],
+    "layoutShiftsFirstSecond": [
+      {
+        "afterClickMs": 12.6,
+        "value": 0.004744128146701388,
+        "hadRecentInput": true
+      }
+    ]
   },
   {
     "name": "Continuar ↵",
     "at": 151709.69999998808,
-    "nextPaint": 68.10000002384186
+    "nextPaint": 68.10000002384186,
+    "eventTimingMs": 192,
+    "longTasksFirstSecond": [
+      {
+        "afterClickMs": 7.5,
+        "durationMs": 59
+      },
+      {
+        "afterClickMs": 384.2,
+        "durationMs": 86
+      }
+    ],
+    "layoutShiftsFirstSecond": [
+      {
+        "afterClickMs": 466.6,
+        "value": 0.010051670328776042,
+        "hadRecentInput": true
+      }
+    ]
   },
   {
     "name": "Importar selecionados ↵",
     "at": 159942.30000001192,
-    "nextPaint": 43.69999998807907
+    "nextPaint": 43.69999998807907,
+    "eventTimingMs": 88,
+    "longTasksFirstSecond": [
+      {
+        "afterClickMs": 82.6,
+        "durationMs": 54
+      }
+    ],
+    "layoutShiftsFirstSecond": [
+      {
+        "afterClickMs": 38.6,
+        "value": 0.0034442657093942904,
+        "hadRecentInput": true
+      },
+      {
+        "afterClickMs": 263.8,
+        "value": 2.5260054976851852e-5,
+        "hadRecentInput": true
+      }
+    ]
   },
   {
     "name": "Continuar ↵",
     "at": 172484.19999998808,
-    "nextPaint": 98
+    "nextPaint": 98,
+    "eventTimingMs": 520,
+    "longTasksFirstSecond": [
+      {
+        "afterClickMs": 21.0,
+        "durationMs": 76
+      },
+      {
+        "afterClickMs": 519.0,
+        "durationMs": 72
+      }
+    ],
+    "layoutShiftsFirstSecond": [
+      {
+        "afterClickMs": 13.5,
+        "value": 0.0038111725380979935,
+        "hadRecentInput": true
+      },
+      {
+        "afterClickMs": 292.9,
+        "value": 0.008402534360532407,
+        "hadRecentInput": true
+      }
+    ]
   },
   {
     "name": "",
     "at": 180006.19999998808,
-    "nextPaint": 71.60000002384186
+    "nextPaint": 71.60000002384186,
+    "eventTimingMs": 72,
+    "longTasksFirstSecond": [],
+    "layoutShiftsFirstSecond": []
   },
   {
     "name": "Continuar ↵",
     "at": 185255.80000001192,
-    "nextPaint": 50.60000002384186
+    "nextPaint": 50.60000002384186,
+    "eventTimingMs": 48,
+    "longTasksFirstSecond": [
+      {
+        "afterClickMs": 72.4,
+        "durationMs": 58
+      }
+    ],
+    "layoutShiftsFirstSecond": [
+      {
+        "afterClickMs": 50.5,
+        "value": 0.0008270061728395062,
+        "hadRecentInput": true
+      },
+      {
+        "afterClickMs": 135.3,
+        "value": 0.02744497302396798,
+        "hadRecentInput": true
+      },
+      {
+        "afterClickMs": 147.1,
+        "value": 0.0013264814814814814,
+        "hadRecentInput": true
+      }
+    ]
   },
   {
     "name": "Conectar ou verificar conta",
     "at": 199706.5,
-    "nextPaint": 75.40000003576279
+    "nextPaint": 75.40000003576279,
+    "eventTimingMs": 184,
+    "longTasksFirstSecond": [
+      {
+        "afterClickMs": 494.2,
+        "durationMs": 77
+      }
+    ],
+    "layoutShiftsFirstSecond": [
+      {
+        "afterClickMs": 9.0,
+        "value": 0.02686785108024692,
+        "hadRecentInput": true
+      },
+      {
+        "afterClickMs": 184.5,
+        "value": 0.005928493441358024,
+        "hadRecentInput": true
+      }
+    ]
   },
   {
     "name": "Cancelar login",
     "at": 206107.5,
-    "nextPaint": 49.90000003576279
+    "nextPaint": 49.90000003576279,
+    "eventTimingMs": 56,
+    "longTasksFirstSecond": [],
+    "layoutShiftsFirstSecond": [
+      {
+        "afterClickMs": 19.6,
+        "value": 0.006207364969135802,
+        "hadRecentInput": true
+      }
+    ]
   },
   {
     "name": "Continuar ↵",
     "at": 216739.90000003576,
-    "nextPaint": 46.5
+    "nextPaint": 46.5,
+    "eventTimingMs": 48,
+    "longTasksFirstSecond": [],
+    "layoutShiftsFirstSecond": [
+      {
+        "afterClickMs": 766.2,
+        "value": 0.03325123456790124,
+        "hadRecentInput": false
+      }
+    ]
   },
   {
     "name": "Convidar pessoa",
     "at": 223469.5,
-    "nextPaint": 168.80000001192093
+    "nextPaint": 168.80000001192093,
+    "eventTimingMs": 168,
+    "longTasksFirstSecond": [],
+    "layoutShiftsFirstSecond": []
   },
   {
     "name": "Enviar convite",
     "at": 260503.90000003576,
-    "nextPaint": 73.29999995231628
+    "nextPaint": 73.29999995231628,
+    "eventTimingMs": 384,
+    "longTasksFirstSecond": [],
+    "layoutShiftsFirstSecond": [
+      {
+        "afterClickMs": 4.8,
+        "value": 5.4815538194444444e-5,
+        "hadRecentInput": true
+      },
+      {
+        "afterClickMs": 381.0,
+        "value": 0.009767592592592593,
+        "hadRecentInput": true
+      }
+    ]
   },
   {
     "name": "Cancelar",
     "at": 270536.1999999881,
-    "nextPaint": 63.80000001192093
+    "nextPaint": 63.80000001192093,
+    "eventTimingMs": 64,
+    "longTasksFirstSecond": [],
+    "layoutShiftsFirstSecond": []
   },
   {
     "name": "Continuar ↵",
     "at": 274786.10000002384,
-    "nextPaint": 41.30000001192093
+    "nextPaint": 41.30000001192093,
+    "eventTimingMs": 40,
+    "longTasksFirstSecond": [],
+    "layoutShiftsFirstSecond": [
+      {
+        "afterClickMs": 5.1,
+        "value": 0.0001160621925636574,
+        "hadRecentInput": true
+      }
+    ]
   },
   {
     "name": "Resuma o contexto de Equipe Demo e sugira três próximos passos.",
     "at": 282536.10000002384,
-    "nextPaint": 45.80000001192093
+    "nextPaint": 45.80000001192093,
+    "eventTimingMs": 48,
+    "longTasksFirstSecond": [],
+    "layoutShiftsFirstSecond": []
   },
   {
     "name": "Enviar primeira tarefa ↵",
     "at": 288304.8000000119,
-    "nextPaint": 77.80000001192093
+    "nextPaint": 77.80000001192093,
+    "eventTimingMs": 80,
+    "longTasksFirstSecond": [
+      {
+        "afterClickMs": 303.3,
+        "durationMs": 74
+      },
+      {
+        "afterClickMs": 387.0,
+        "durationMs": 98
+      },
+      {
+        "afterClickMs": 883.5,
+        "durationMs": 106
+      }
+    ],
+    "layoutShiftsFirstSecond": [
+      {
+        "afterClickMs": 4.9,
+        "value": 1.5136537905092593e-5,
+        "hadRecentInput": true
+      }
+    ]
   }
 ]
