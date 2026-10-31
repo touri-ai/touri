@@ -119,7 +119,7 @@ export const GuideLayout = ({
           </div>
           <div className="ob-workspace">
             <div className="ob-workspace-name">
-              <span className="ob-workspace-mark" style={{ background: draft.color }}>
+              <span className="ob-workspace-mark" data-color={draft.color} style={{ background: draft.color }}>
                 {draft.name.slice(0, 1).toUpperCase() || "t"}
               </span>
               <strong>{draft.name || t("ob.yourWorkspace")}</strong>

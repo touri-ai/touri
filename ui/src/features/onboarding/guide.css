@@ -484,3 +484,7 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+:root:not([data-theme="light"]) .ob-workspace-mark:not([data-color="var(--brand)"]) {
+  color: var(--neutral-1000);
+}
