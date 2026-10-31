@@ -23,7 +23,6 @@ export type ChannelBrowserState = {
 export type ChannelBrowserView = {
   canControl: boolean
   controlName: string
-  previewHidden: boolean
 }
 
 export const getChannelWorking = (
@@ -66,7 +65,6 @@ export const getChannelBrowserView = (state: ChannelBrowserState, viewerId: stri
   return {
     canControl,
     controlName: tookOver ? (state.controllerName ?? state.requesterName) : state.requesterName,
-    previewHidden: tookOver,
   }
 }
 

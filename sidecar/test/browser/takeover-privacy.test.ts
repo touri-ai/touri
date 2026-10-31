@@ -4,6 +4,7 @@ import {
   canResumeAfterHumanTakeover,
   captureCurrentBrowserControlFrame,
   captureSafeBrowserPreview,
+  getLiveBrowserPreviewMetadata,
   sanitizeHumanTakeoverPreviewMetadata,
   sanitizeHumanTakeoverSnapshot,
 } from "../../src/browser/takeover-privacy"
@@ -54,7 +55,7 @@ test("human takeover snapshots omit typed field values, page images, and URL sec
   expect(safeSnapshot.image).toBeNull()
 })
 
-test("channel previews never capture a frame while a person controls the browser", async () => {
+test("channel previews keep capturing while a person controls the browser", async () => {
   const page = {
     heldByUser: true,
     privateAfterTakeover: true,
@@ -72,11 +73,11 @@ test("channel previews never capture a frame while a person controls the browser
     },
   })
 
-  expect(preview).toBeNull()
-  expect(captures).toBe(0)
+  expect(preview).toBe("fixture-image-secret")
+  expect(captures).toBe(1)
 })
 
-test("a frame captured as takeover starts is discarded before it can reach channel viewers", async () => {
+test("a frame captured as takeover starts stays visible to channel viewers", async () => {
   let page = {
     heldByUser: false,
     privateAfterTakeover: false,
@@ -93,10 +94,10 @@ test("a frame captured as takeover starts is discarded before it can reach chann
     },
   })
 
-  expect(preview).toBeNull()
+  expect(preview).toBe("fixture-image-secret")
 })
 
-test("takeover pages stay hidden after handback until the page is safe", async () => {
+test("takeover pages stay visible after handback", async () => {
   const page = {
     heldByUser: false,
     privateAfterTakeover: true,
@@ -114,8 +115,8 @@ test("takeover pages stay hidden after handback until the page is safe", async (
     },
   })
 
-  expect(preview).toBeNull()
-  expect(captures).toBe(0)
+  expect(preview).toBe("fixture-image-secret")
+  expect(captures).toBe(1)
 })
 
 test("takeover privacy can lift only after bounded metadata identifies a safe page", () => {
@@ -174,7 +175,7 @@ test.each([
   "/#!/login#details",
   "/%6cogin/%ZZ",
   "/#/%E0%A4",
-])("route %s blocks preview capture and takeover clearance", async (path) => {
+])("route %s stays visible without granting bot takeover clearance", async (path) => {
   const page = {
     heldByUser: false,
     privateAfterTakeover: false,
@@ -186,12 +187,12 @@ test.each([
   const preview = await captureSafeBrowserPreview({
     getPage: () => page,
     capture: async () => {
-      throw new Error("Sensitive routes must be rejected before capture")
+      return "synthetic-frame"
     },
   })
   const canResume = canResumeAfterHumanTakeover({ url: page.url, title: page.title, hasSensitiveEntry: false })
 
-  expect(preview).toBeNull()
+  expect(preview).toBe("synthetic-frame")
   expect(canResume).toBe(false)
 })
 
@@ -229,7 +230,7 @@ test("blank-page previews remain available without establishing takeover clearan
   expect(canResume).toBe(false)
 })
 
-test("a document remains private until trusted provenance clears the hold", async () => {
+test("a human preview stays live while bot document clearance remains restricted", async () => {
   const page = {
     heldByUser: false,
     privateAfterTakeover: true,
@@ -243,7 +244,7 @@ test("a document remains private until trusted provenance clears the hold", asyn
     capture: async () => "fixture-image",
   })
 
-  expect(preview).toBeNull()
+  expect(preview).toBe("fixture-image")
 })
 
 test("post-takeover preview metadata omits page titles and URL values", () => {
@@ -290,4 +291,34 @@ test("revoking control discards an already running private capture", async () =>
   complete({ image: "private-page" })
 
   expect(await capture).toBeNull()
+})
+
+test("live preview metadata keeps only the origin without changing transcript sanitization", () => {
+  const page = { url: "https://fake:fixture@travel.example.test/reset/fixture?token=fixture#fixture", title: "fixture" }
+
+  const metadata = getLiveBrowserPreviewMetadata(page)
+
+  expect(metadata).toEqual({ title: "", url: "https://travel.example.test" })
+  expect(sanitizeHumanTakeoverPreviewMetadata(page)).toEqual({ title: "", url: "" })
+})
+
+test("vault entry stays protected if it begins during a preview capture", async () => {
+  const page = {
+    heldByUser: true,
+    privateAfterTakeover: true,
+    secretMode: false,
+    url: "https://example.test/login",
+    title: "",
+  }
+  const state = { page }
+
+  const preview = await captureSafeBrowserPreview({
+    getPage: () => state.page,
+    capture: async () => {
+      Object.assign(state, { page: Object.assign({}, page, { secretMode: true }) })
+      return "synthetic-frame"
+    },
+  })
+
+  expect(preview).toBeNull()
 })

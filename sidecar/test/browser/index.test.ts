@@ -111,7 +111,7 @@ test("remote browser takeover gives one device an interactive session and reject
     ownerThreadId: null,
   }
   const engine: BrowserEngine = {
-    preview: async () => null,
+    preview: async () => ({ image: "data:image/jpeg;base64,ZmFrZQ==", title: "", url: "https://example.test" }),
     open: async () => getResult(),
     list: async () => getResult(),
     close: async () => getResult(),
@@ -225,8 +225,9 @@ test("remote browser takeover gives one device an interactive session and reject
     expect(sessionId).toHaveLength(64)
     expect(controlEpoch).toHaveLength(32)
 
-    const hiddenPreview = await request(`/bots/${botId}/browser-preview`, {}, "GET")
-    expect(hiddenPreview.status).toBe(409)
+    const livePreview = await request(`/bots/${botId}/browser-preview`, {}, "GET")
+    expect(livePreview.status).toBe(200)
+    expect(await livePreview.json()).toMatchObject({ url: "https://example.test" })
     const tabs = await request(`/browser/tabs?botId=${botId}`, {}, "GET")
     expect(await tabs.json()).toMatchObject({
       tabs: [{ title: "", url: "" }],

@@ -283,9 +283,17 @@ test("keeps one privacy notice in details and lets a person expand the browser v
 
   fireEvent.click(document.querySelector(".browser-takeover-aside summary") as HTMLElement)
   const privacy = screen.getByRole("status", { name: "Privacidade do navegador" })
-  expect(privacy).toHaveTextContent("Você está no controle · Lia está pausado")
-  expect(screen.getAllByText("O que você digitar aqui não vai para o chat, o bot nem o histórico.")).toHaveLength(1)
-  await screen.findByText("Você está no controle · Lia está pausado", { exact: true })
+  expect(privacy).toHaveTextContent("você está usando")
+  expect(
+    screen.getByRole("button", { name: "Cancelar", exact: true }).closest(".browser-takeover-controls"),
+  ).not.toBeNull()
+  expect(screen.getByRole("button", { name: "Devolver para Lia" }).closest(".browser-takeover-controls")).not.toBeNull()
+  expect(
+    screen.getAllByText(
+      "Pessoas com acesso veem a página ao vivo. A digitação fica fora do histórico e do contexto do bot.",
+    ),
+  ).toHaveLength(1)
+  await screen.findByText("você está usando", { exact: true })
   expect(screen.queryByText("Conectando ao navegador…")).toBeNull()
   const expand = screen.getByRole("button", { name: "Expandir navegador em tela cheia" })
   fireEvent.click(expand)
@@ -614,4 +622,83 @@ test("phone text stays local and focused during a viewport refresh and is flushe
     ),
   )
   expect(keyboard).toHaveValue("")
+})
+
+test("cancel discards unsent typing before returning browser control", async () => {
+  const request = vi.fn(async (route: string) => {
+    if (route === "POST /browser/tabs/:id/takeover/frame") return getBrowserFrame()
+    return {}
+  }) as ApiRequest
+  const api = Object.assign({}, createMockApi(), { request })
+  const onHandback = vi.fn()
+  render(
+    <BrowserTakeoverView
+      api={api}
+      tabId="synthetic-tab"
+      sessionId="synthetic-cancel-session"
+      controlEpoch="control-epoch"
+      botName="Lia"
+      locale="pt-BR"
+      reason={null}
+      actions={[]}
+      onHandback={onHandback}
+    />,
+  )
+  await loadFirstBrowserFrame()
+  const keyboard = screen.getByRole("textbox", { name: "Entrada de teclado para o navegador" })
+
+  fireEvent.input(keyboard, { target: { value: "digitação fictícia ainda não enviada" } })
+  fireEvent.click(screen.getByRole("button", { name: "Cancelar", exact: true }))
+
+  await waitFor(() => expect(onHandback).toHaveBeenCalledOnce())
+  expect(request).toHaveBeenCalledWith(
+    "DELETE /browser/tabs/:id/takeover/session",
+    { sessionId: "synthetic-cancel-session", controlEpoch: "control-epoch" },
+    { id: "synthetic-tab" },
+  )
+  expect(request).not.toHaveBeenCalledWith(
+    "POST /browser/tabs/:id/takeover/input",
+    expect.anything(),
+    expect.anything(),
+  )
+})
+
+test("the last preview and address remain visible without granting input while control connects", async () => {
+  const firstFrame = Promise.withResolvers<ReturnType<typeof getBrowserFrame>>()
+  const request = vi.fn(async (route: string) => {
+    if (route === "POST /browser/tabs/:id/takeover/frame") return firstFrame.promise
+    return {}
+  }) as ApiRequest
+  const api = Object.assign({}, createMockApi(), { request })
+  render(
+    <BrowserTakeoverView
+      api={api}
+      tabId="synthetic-tab"
+      sessionId="synthetic-preview-session"
+      controlEpoch="control-epoch"
+      botName="Lia"
+      initialPreview="data:image/png;base64,ZmFrZQ=="
+      initialAddress="exemplo.test"
+      locale="pt-BR"
+      reason={null}
+      actions={[]}
+      onHandback={vi.fn()}
+    />,
+  )
+  const preview = screen.getByRole("img", { name: "Última página do navegador" })
+
+  fireEvent.load(preview)
+  fireEvent.pointerDown(screen.getByRole("application"), { pointerId: 1, clientX: 10, clientY: 10 })
+
+  expect(preview).toBeVisible()
+  expect(screen.getByRole("textbox", { name: "Endereço do navegador" })).toHaveValue("exemplo.test")
+  expect(screen.getByRole("textbox", { name: "Entrada de teclado para o navegador" })).toBeDisabled()
+  expect(request).not.toHaveBeenCalledWith(
+    "POST /browser/tabs/:id/takeover/input",
+    expect.anything(),
+    expect.anything(),
+  )
+  firstFrame.resolve(getBrowserFrame())
+  await loadFirstBrowserFrame()
+  await waitFor(() => expect(screen.queryByRole("img", { name: "Última página do navegador" })).toBeNull())
 })

@@ -12,6 +12,21 @@ export const ptBR = {
   "A prévia expirou. Revise os agentes novamente.": "A prévia expirou. Revise os agentes novamente.",
   "Outra pasta de agente": "Outra pasta de agente",
   "Outro app (pedido de exportação)": "Outro app (pedido de exportação)",
+  "Last browser page": "Última página do navegador",
+
+  "You are using the browser": "você está usando",
+  "Discard unsent typing and return control": "Descartar a digitação pendente e devolver o controle",
+
+  "Follow the browser steps here.": "Acompanhe os passos do navegador.",
+
+  "Waiting for {person}": "Esperando {person}",
+  "{seconds} s ago": "há {seconds} s",
+  "{person} is using the browser": "{person} está usando",
+  "The bot is using the browser.": "O bot está usando o navegador.",
+  "Click the page to take over.": "Clique na página para assumir.",
+  "Take over the browser page": "Assumir a página do navegador",
+  "The browser is ready for you to take over.": "O navegador está pronto para você assumir.",
+
   "Escolha um canal": "Escolha um canal",
   "O script {task} será executado {schedule}.": "O script {task} será executado {schedule}.",
   "Se a execução anterior ainda estiver ativa": "Se a execução anterior ainda estiver ativa",
@@ -265,8 +280,6 @@ export const ptBR = {
   "Filling a saved credential": "Preenchendo uma credencial salva",
   "Pressing a key": "Pressionando uma tecla",
   "Working in the browser": "Trabalhando no navegador",
-  "Your last page stays private until a new safe page is ready.":
-    "A página que você usou continua privada até uma nova página segura ficar pronta.",
   "Waiting for the other browser request to finish.": "Aguardando o outro pedido no navegador terminar.",
   "Stop browser work": "Parar",
   "The page changed. Trying again.": "A página mudou. Tentando de novo.",
@@ -992,7 +1005,6 @@ export const ptBR = {
     "{name} pausou para você cuidar deste passo no navegador.",
   "What you type here does not go to the chat or to {name}.":
     "O que você digita aqui não vai para o chat nem para o {name}.",
-  "Preview hidden while you are in control.": "Prévia oculta enquanto você está no controle.",
   "Show all": "Ver tudo",
   "Show fewer": "Ver menos",
   "in progress": "em andamento",
@@ -1008,8 +1020,6 @@ export const ptBR = {
   "This browser run ended before it started.": "O turno do navegador foi cancelado antes de começar.",
   "This browser run has already ended.": "Este turno do navegador já foi encerrado.",
   "This browser is no longer active.": "Este navegador não está mais ativo.",
-  "The browser preview is hidden while someone is in control.":
-    "A prévia fica oculta enquanto alguém está no controle.",
   "The browser needs your attention": "O navegador precisa de atenção",
   "The browser needs you": "O navegador precisa de você",
   "The site asked you to sign in. Return control to let the bot continue.":
@@ -1059,15 +1069,14 @@ export const ptBR = {
   "Expand browser to full screen": "Expandir navegador em tela cheia",
   "Collapse browser full screen": "Recolher navegador em tela cheia",
   "Browser privacy": "Privacidade do navegador",
-  "What you type here stays out of chat, the bot, and history.":
-    "O que você digitar aqui não vai para o chat, o bot nem o histórico.",
+  "People with access see the live page. Typing stays out of history and the bot's context.":
+    "Pessoas com acesso veem a página ao vivo. A digitação fica fora do histórico e do contexto do bot.",
   "Type in the browser": "Digitar no navegador",
   "Keyboard input for the browser": "Entrada de teclado para o navegador",
   "Open browser": "Abrir navegador",
   "Browser for {name}": "Navegador do {name}",
   "Why {name} paused": "Por que {name} parou",
   "The site asked you to sign in before continuing.": "O site pediu login para continuar.",
-  "Preview hidden while the browser waits for {person}.": "Prévia oculta enquanto o navegador espera {person}.",
   "{name} is waiting for {person} in the browser": "{name} está aguardando {person} no navegador",
   "The site asked you to review a purchase or payment before continuing.":
     "O site pediu que você confira uma compra ou pagamento antes de continuar.",
@@ -1087,10 +1096,7 @@ export const ptBR = {
   "for {person}": "para {person}",
   "Everyone in the channel sees": "Todos no canal veem",
   "{person} is in control": "{person} está no controle",
-  "Preview hidden for the channel while {person} types": "Prévia oculta para o canal enquanto {person} digita",
   "If the site asks for a login,": "Se o site pedir login,",
-  "{bot} pauses and calls {person}, who asked. The preview stays hidden for the channel while they type.":
-    "{bot} pausa e chama {person}, quem pediu. A prévia fica oculta para o canal enquanto a pessoa digita.",
   "{name} is working · In the browser": "{name} está trabalhando · No navegador",
   "Used the browser · 1 action": "Usou o navegador · 1 ação",
   "Used the browser · {count} actions": "Usou o navegador · {count} ações",
@@ -3417,7 +3423,6 @@ export const ptBR = {
   "Conversation history": "Histórico da conversa",
   "Browser self": "você",
   "Browser self control": "Você está no controle",
-  "Browser self hidden preview": "Prévia oculta para o canal enquanto você digita",
   "Work empty": "Nenhuma tarefa em execução ou na fila. Envie uma mensagem para começar.",
   "Work queued": "Na fila",
   "Work queued count": "{count} na fila",
@@ -3621,6 +3626,21 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "A prévia expirou. Revise os agentes novamente.": "The preview expired. Review the agents again.",
   "Outra pasta de agente": "Another agent folder",
   "Outro app (pedido de exportação)": "Another app (export request)",
+  "Last browser page": "Last browser page",
+
+  "You are using the browser": "You are using the browser",
+  "Discard unsent typing and return control": "Discard unsent typing and return control",
+
+  "Follow the browser steps here.": "Follow the browser steps here.",
+
+  "Waiting for {person}": "Waiting for {person}",
+  "{seconds} s ago": "{seconds} s ago",
+  "{person} is using the browser": "{person} is using the browser",
+  "The bot is using the browser.": "The bot is using the browser.",
+  "Click the page to take over.": "Click the page to take over.",
+  "Take over the browser page": "Take over the browser page",
+  "The browser is ready for you to take over.": "The browser is ready for you to take over.",
+
   "Escolha um canal": "Choose a channel",
   "O script {task} será executado {schedule}.": "Script {task} will run {schedule}.",
   "Se a execução anterior ainda estiver ativa": "If the previous execution is still active",
@@ -3854,8 +3874,6 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Capturas de tela ficam bloqueadas depois do controle privado do navegador.":
     "Screenshots are blocked after private browser control.",
   "Informe um endereço HTTPS válido, sem caminho.": "Enter a valid HTTPS address without a path.",
-  "Your last page stays private until a new safe page is ready.":
-    "Your last page stays private until a new safe page is ready.",
   "Waiting for the other browser request to finish.": "Waiting for the other browser request to finish.",
   "Stop browser work": "Stop",
   "The page changed. Trying again.": "The page changed. Trying again.",
@@ -3892,10 +3910,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "for {person}": "for {person}",
   "Everyone in the channel sees": "Everyone in the channel sees",
   "{person} is in control": "{person} is in control",
-  "Preview hidden for the channel while {person} types": "Preview hidden for the channel while {person} types",
   "If the site asks for a login,": "If the site asks for a login,",
-  "{bot} pauses and calls {person}, who asked. The preview stays hidden for the channel while they type.":
-    "{bot} pauses and calls {person}, who asked. The preview stays hidden for the channel while they type.",
   "{name} is working · In the browser": "{name} is working · In the browser",
   "Browser address": "Browser address",
   "Secure connection": "Secure connection",
@@ -3909,10 +3924,9 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Expand browser to full screen": "Expand browser to full screen",
   "Collapse browser full screen": "Collapse full-screen browser",
   "Browser privacy": "Browser privacy",
-  "Preview hidden while the browser waits for {person}.": "Preview hidden while the browser waits for {person}.",
   "{name} is waiting for {person} in the browser": "{name} is waiting for {person} in the browser",
-  "What you type here stays out of chat, the bot, and history.":
-    "What you type here stays out of chat, the bot, and history.",
+  "People with access see the live page. Typing stays out of history and the bot's context.":
+    "People with access see the live page. Typing stays out of history and the bot's context.",
   "Hand back to {name}": "Hand back to {name}",
   Conversations: "Conversations",
   "Thread actions for {title}": "Actions for {title}",
@@ -6153,7 +6167,6 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Conversation history": "Conversation history",
   "Browser self": "you",
   "Browser self control": "You are in control",
-  "Browser self hidden preview": "Preview hidden for the channel while you type",
   "Work empty": "No running or queued tasks. Send a message to get started.",
   "Work queued": "Queued",
   "Work queued count": "{count} queued",
