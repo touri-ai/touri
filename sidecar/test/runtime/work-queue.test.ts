@@ -461,6 +461,19 @@ test("queue publication batches database reads regardless of the number of waiti
   expect(fixture.getEvent(last.id)).toMatchObject({ queuePosition: 20, queueTotal: 20 })
 })
 
+test("committed work remains observable while ordered history delivery is deferred", async () => {
+  const fixture = await getFixture()
+  await fixture.engine.ready
+  const database = fixture.runtime.kernel.db as Database
+  database.transaction(() => {
+    fixture.runtime.kernel.publish({ type: "import.progress", importId: "synthetic", phase: "done", done: 1, total: 1 })
+  })()
+
+  const run = fixture.send("thread-0")
+
+  expect(fixture.getEvent(run.id)).toMatchObject({ id: run.id, status: "queued", origin: "message" })
+})
+
 const getFixture = async (botCount = 5) => {
   const root = mkdtempSync(join(tmpdir(), "touri-work-queue-"))
   const runtime = createKernel({ appData: root })
@@ -481,7 +494,7 @@ const getFixture = async (botCount = 5) => {
   const engine = createRuntimeEngine({ kernel: runtime.kernel, providerAdapters: { codex: adapter } })
   runtime.kernel.services.provide("runtime.settingsChanged", engine.settingsChanged)
   let events: Run[] = []
-  const unsubscribe = runtime.kernel.subscribe(({ event }) => {
+  const unsubscribe = (runtime.kernel.subscribeRuntime ?? runtime.kernel.subscribe)(({ event }) => {
     if (event.type === "run.updated") events = [...events, event.run]
   })
   let extraCleanups: Array<() => Promise<void>> = []
