@@ -1,9 +1,14 @@
-import { brotliCompressSync, constants } from "node:zlib"
+import { setImmediate } from "node:timers/promises"
+import { promisify } from "node:util"
+import { brotliCompress, constants, gzip } from "node:zlib"
 
 type Encoding = "br" | "gzip"
 export type CompressedVariants = Record<Encoding, Uint8Array<ArrayBuffer>> & { size: number }
 
 const minimumBytes = 1024
+const compressBrotli = promisify(brotliCompress)
+const compressGzip = promisify(gzip)
+const runCompression = createCompressionRunner()
 
 const acceptedEncoding = (header: string | null): Encoding | null => {
   const qualities = new Map<string, number>()
@@ -22,10 +27,29 @@ const acceptedEncoding = (header: string | null): Encoding | null => {
   return br >= gzip ? "br" : "gzip"
 }
 
-const compress = (bytes: Uint8Array<ArrayBuffer>, encoding: Encoding): Uint8Array<ArrayBuffer> =>
-  encoding === "br"
-    ? brotliCompressSync(bytes, { params: { [constants.BROTLI_PARAM_QUALITY]: 4 } })
-    : Bun.gzipSync(bytes, { level: 4 })
+const getCompressedBytes = (bytes: Uint8Array<ArrayBuffer>, encoding: Encoding): Promise<Uint8Array<ArrayBuffer>> =>
+  runCompression(async () => {
+    const compressed = await (encoding === "br"
+      ? compressBrotli(bytes, { params: { [constants.BROTLI_PARAM_QUALITY]: 4 } })
+      : compressGzip(bytes, { level: 4 }))
+
+    return new Uint8Array(compressed)
+  })
+
+function createCompressionRunner() {
+  // This resource boundary serializes native jobs so cold assets leave CPU for live requests.
+  let previous: Promise<void> = Promise.resolve()
+
+  return <Result>(compress: () => Promise<Result>): Promise<Result> => {
+    const pending = previous.then(compress)
+    previous = pending.then(
+      () => setImmediate(),
+      () => setImmediate(),
+    )
+
+    return pending
+  }
+}
 
 export const compressibleType = (type: string): boolean => {
   const mime = type.split(";")[0]?.trim().toLowerCase() ?? ""
@@ -35,11 +59,11 @@ export const compressibleType = (type: string): boolean => {
   )
 }
 
-export const compressedVariants = (bytes: Uint8Array<ArrayBuffer>): CompressedVariants => ({
-  size: bytes.byteLength,
-  br: compress(bytes, "br"),
-  gzip: compress(bytes, "gzip"),
-})
+export const compressedVariants = async (bytes: Uint8Array<ArrayBuffer>): Promise<CompressedVariants> => {
+  const [br, gzip] = await Promise.all([getCompressedBytes(bytes, "br"), getCompressedBytes(bytes, "gzip")])
+
+  return { size: bytes.byteLength, br, gzip }
+}
 
 /** Only pass buffered responses; route streams and WebSocket upgrades bypass this helper. */
 export const compressBufferedResponse = async (
@@ -83,7 +107,7 @@ export const compressBufferedResponse = async (
     bytes = new Uint8Array(await response.arrayBuffer())
     size = bytes.byteLength
     if (size < minimumBytes) return new Response(head ? null : bytes, response)
-    compressed = compress(bytes, encoding)
+    compressed = await getCompressedBytes(bytes, encoding)
   }
   if (compressed.byteLength >= size) return bytes ? new Response(head ? null : bytes, response) : unchanged()
   response.headers.set("Content-Encoding", encoding)
