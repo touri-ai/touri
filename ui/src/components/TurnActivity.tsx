@@ -95,6 +95,7 @@ export const TurnActivity = ({
   preparingEnvironment,
   onCancel,
   onFocusApproval,
+  showAvatar = true,
   browserFlow,
   hideBrowserCard = false,
   embedded = false,
@@ -111,6 +112,8 @@ export const TurnActivity = ({
   preparingEnvironment?: boolean | undefined
   onCancel?: ((runId: string) => Promise<void>) | undefined
   onFocusApproval?: ((approvalId: string) => void) | undefined
+  /** False when the message row already draws the bot avatar. */
+  showAvatar?: boolean
   /** Narration and step rows folded into the finished browser card. */
   browserFlow?: ReactNode
   /** The live card is rendered after the last step by the message instead. */
@@ -200,6 +203,7 @@ export const TurnActivity = ({
           reasoningExpanded={expanded}
           onExpandReasoning={() => setExpanded((value) => !value)}
           onFocusApproval={onFocusApproval}
+          showAvatar={showAvatar}
         />
       ) : !live ? (
         <button

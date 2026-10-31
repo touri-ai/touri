@@ -216,7 +216,8 @@ for (const [action, expected] of [
     expect(view.container.querySelectorAll(".tool-call-card")).toHaveLength(1)
     expect(view.container.querySelector(".turn-activity .tool-call-card")).toBeNull()
     expect(view.container.querySelector("[data-approval-id]")?.closest(".turn-activity")).toBeNull()
-    expect(view.container.querySelector(".activity-mark .tb-avatar")).toHaveAttribute("data-bot-id", bot.id)
+    expect(view.container.querySelector(".message-avatar .tb-avatar")).toHaveAttribute("data-bot-id", bot.id)
+    expect(view.container.querySelector(".activity-mark .tb-avatar")).toBeNull()
   })
 }
 
