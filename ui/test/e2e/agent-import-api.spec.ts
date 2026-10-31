@@ -61,6 +61,12 @@ test("typed client previews, imports and undoes through the real server without 
   test.setTimeout(90_000)
   const shots = process.env.TOURI_IMPORT_EVIDENCE
   if (shots) await mkdir(shots, { recursive: true })
+  const saveVideo = async (name: string) => {
+    if (!shots) return
+    const video = page.video()
+    await page.context().close()
+    if (video) await video.saveAs(join(shots, name))
+  }
   const port = await startServer(process.env.TOURI_IMPORT_BACKEND_ROOT)
   await page.route("**/api/v1/import/**", async (route) => {
     const url = new URL(route.request().url())
@@ -109,6 +115,7 @@ test("typed client previews, imports and undoes through the real server without 
       await page.waitForTimeout(700)
       await page.screenshot({ path: join(shots, "before-api.png") })
     }
+    await saveVideo("before-api.webm")
     return
   }
   await expect(page.getByTestId("output")).toContainText('"previewId"')
@@ -153,4 +160,5 @@ test("typed client previews, imports and undoes through the real server without 
   expect(p95).toBeLessThan(100)
   expect(metrics.longTasks.filter((duration) => duration > 50)).toEqual([])
   expect(metrics.cls).toBeLessThan(0.001)
+  await saveVideo("api-import.webm")
 })

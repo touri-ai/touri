@@ -3,7 +3,9 @@ import { join } from "node:path"
 import { hasSecret, isSafeText } from "../../src/agent-import/safety"
 import { getFolderSnapshot } from "../../src/agent-import/scan"
 import { getMaximum, getPercentile, startEventLoopLagProbe } from "../fakes/latency"
-import { makeHarness } from "./harness"
+import { installImportCleanup, makeHarness } from "./harness"
+
+installImportCleanup()
 
 test("long delimiter-free text is scanned with bounded synchronous work", () => {
   const text = "a".repeat(64 * 1024)

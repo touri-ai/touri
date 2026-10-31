@@ -1,12 +1,12 @@
 import type { Database } from "bun:sqlite"
-import { afterAll, afterEach } from "bun:test"
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { afterEach } from "bun:test"
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import type { Kernel, RouteRequest, UiEvent } from "@touri/contracts"
 import { createAgentImportRoutes } from "../../src/agent-import/routes"
 import { createKernel } from "../../src/kernel"
-import { closeFileIoAsync } from "../../src/kernel/async-files"
+import { flushFileIoAsync } from "../../src/kernel/async-files"
 import { bindDeviceSession, type DeviceSession } from "../../src/kernel/device-session"
 import { init as initRuntime } from "../../src/runtime"
 import { init as initStore } from "../../src/store"
@@ -16,14 +16,15 @@ import { fakeVmProvider } from "../vm/fake-provider"
 
 type Cleanup = () => Promise<void>
 const cleanups = new Set<Cleanup>()
-afterEach(async () => {
-  for (const cleanup of cleanups) await cleanup()
-  cleanups.clear()
-})
-afterAll(() => closeFileIoAsync())
+export const installImportCleanup = (): void => {
+  afterEach(async () => {
+    for (const cleanup of cleanups) await cleanup()
+    cleanups.clear()
+  })
+}
 
 export const makeHarness = async ({ now = Date.now }: { now?: () => number } = {}) => {
-  const root = await mkdtemp(join(tmpdir(), "agent-import-fixture-"))
+  const root = await realpath(await mkdtemp(join(tmpdir(), "agent-import-fixture-")))
   const appData = join(root, "app")
   const home = join(root, "home")
   await mkdir(home)
@@ -34,6 +35,7 @@ export const makeHarness = async ({ now = Date.now }: { now?: () => number } = {
   cleanups.add(async () => {
     await runtime.kernel.services.use("runtime.shutdown")?.()
     await runtime.stop()
+    await flushFileIoAsync()
     Object.assign(runtime.kernel, { callHost })
     await rm(root, { recursive: true, force: true })
   })

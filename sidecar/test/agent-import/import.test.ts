@@ -3,7 +3,9 @@ import { readdir, readFile } from "node:fs/promises"
 import { join } from "node:path"
 import type { AgentImportPreview, AgentImportResult, Bot, Routine } from "@touri/contracts"
 import { createAgentImportRoutes } from "../../src/agent-import/routes"
-import { allItems, makeHarness, makePayload, makeSession, waitFor } from "./harness"
+import { allItems, installImportCleanup, makeHarness, makePayload, makeSession, waitFor } from "./harness"
+
+installImportCleanup()
 
 test("manual preview writes nothing; apply copies selected resources, pauses routines and supports durable undo", async () => {
   const fixture = await makeHarness()

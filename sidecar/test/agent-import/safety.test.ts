@@ -4,7 +4,9 @@ import { join } from "node:path"
 import type { AgentImportPreview, AgentImportResult } from "@touri/contracts"
 import { getManualSnapshot } from "../../src/agent-import/manual"
 import { IMPORT_LIMITS } from "../../src/agent-import/model"
-import { allItems, makeHarness, makePayload } from "./harness"
+import { allItems, installImportCleanup, makeHarness, makePayload } from "./harness"
+
+installImportCleanup()
 
 const getSyntheticSecret = () => ["sk", "synthetic", "never-copy-this-fixture-value"].join("-")
 
@@ -157,4 +159,19 @@ test("crontab imports are prompts in paused routines and never execute source co
 
   expect(response.status).toBe(200)
   expect(preview.agents[0]?.routines).toEqual([{ name: "Rotina 1", schedule: "0 9 * * *" }])
+})
+
+test("folder memory references cannot overflow the existing learning budget", async () => {
+  const fixture = await makeHarness()
+  for (const index of Array.from({ length: 160 }, (_, index) => index)) {
+    await fixture.write(`export/memory/note-${index}.md`, "Contexto fictício para revisão.")
+  }
+
+  const response = await fixture.request("POST", "/import/preview", {
+    source: "folder",
+    path: join(fixture.home, "export"),
+  })
+
+  expect(response.status).toBe(400)
+  expect(fixture.database.query("SELECT id FROM bots LIMIT 1").all()).toEqual([])
 })

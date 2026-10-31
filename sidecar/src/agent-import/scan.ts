@@ -155,13 +155,17 @@ const getFolderAgent = (
     (file) => /\.md$/i.test(file.path) && !file.path.startsWith("skills/") && !memories.includes(file),
   )
 
+  const skills = getSkills(relevant)
+  const routines = relevant.flatMap(getFileRoutines)
+  if (skills.length > 100 || memories.length > 100 || routines.length > 100) throw new Error("INVALID_ARGS")
+
   return {
     key: `agent-${index + 1}`,
     name: project ? `Agente ${index + 1}` : "Agente importado",
     instructions: instructions.map(({ content }) => content),
-    skills: getSkills(relevant),
+    skills,
     memories: memories.map(({ content }) => content),
-    routines: relevant.flatMap(getFileRoutines),
+    routines,
     integrations: source === "claude-code" ? getIntegrationNames(relevant) : [],
   }
 }
