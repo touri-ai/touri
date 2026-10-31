@@ -5,6 +5,7 @@ import { PageTransition } from "../../src/components/PageTransition"
 import { AnimatedDisclosure, useReveal } from "../../src/components/Reveal"
 import { navigatePage } from "../../src/design/navigation"
 import { installMotionTokens } from "../../src/design/spring"
+import { t } from "../../src/i18n"
 import type { AppRoute } from "../../src/workspaceState"
 import "../../src/styles.css"
 
@@ -16,9 +17,9 @@ const Harness = () => {
   return (
     <main className="app-shell" style={{ padding: 24 }}>
       <div className="brand-button-samples">
-        <Button className="button button-brand">Parear e continuar</Button>
+        <Button className="button button-brand">{t("setup.pair")}</Button>
         <button type="button" className="brand-button">
-          Continuar
+          {t("ob.continue")}
         </button>
       </div>
       <nav aria-label="Páginas de teste">
