@@ -19,8 +19,8 @@ afterEach(async () => {
 const capability = await getSystemBrowserCapability()
 if (!capability.available) console.info(`System browser persistence: skipped — ${capability.reason}`)
 
-test.skipIf(!capability.available)(
-  "headful stable Chrome preserves a bot profile across real process restarts",
+test.skipIf(!capability.available).each(Array.from({ length: 30 }, (_, index) => index + 1))(
+  "headful stable Chrome preserves a bot profile across real process restarts (%i)",
   async () => {
     const root = await mkdtemp(join(tmpdir(), "touri-persistent-chrome-"))
     const runtime = createKernel({ appData: root })
@@ -38,7 +38,7 @@ test.skipIf(!capability.available)(
     cleanups.add(() => launcher.stop())
     const first = await launcher.start()
     expect(first).not.toBeNull()
-    if (!first) throw new Error("Stable Chrome did not start")
+    if (!first?.process) throw new Error("Stable Chrome did not start its own process")
     const sessionId = await openPage(first.client, url)
     const identity = await evaluate(
       first.client,
@@ -56,8 +56,10 @@ test.skipIf(!capability.available)(
     )
 
     await launcher.stop()
+    expect(await first.process.exited).toEqual({ code: 0, signal: null })
     const restarted = await launcher.start()
-    if (!restarted) throw new Error("Stable Chrome did not restart")
+    if (!restarted?.process) throw new Error("Stable Chrome did not restart its own process")
+    expect(restarted.process.pid).not.toBe(first.process.pid)
     const restartedSession = await openPage(restarted.client, url)
     const saved = await evaluate(
       restarted.client,

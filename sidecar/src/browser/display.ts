@@ -20,19 +20,31 @@ export const startBrowserDisplay = async (
   const reader = spawned.stdout.getReader()
   const timer = setTimeout(() => spawned.kill("SIGTERM"), 5000)
   try {
-    const result = await Promise.race([reader.read(), spawned.exited.then(() => null)])
-    const display = result?.value ? new TextDecoder().decode(result.value).trim() : ""
-    if (!/^\d{1,5}$/u.test(display)) {
+    const display = await Promise.race([getDisplayNumber(reader), spawned.exited.then(() => null)])
+    if (!display) {
       await stop()
       return null
     }
-    void reader.cancel().catch(() => undefined)
     return { env: Object.assign({}, env, { DISPLAY: `:${display}` }), stop }
   } catch {
     await stop()
     return null
   } finally {
     clearTimeout(timer)
+    await reader.cancel().catch(() => undefined)
+    reader.releaseLock()
+  }
+}
+
+const getDisplayNumber = async (reader: ReadableStreamDefaultReader<Uint8Array>): Promise<string | null> => {
+  let line = ""
+  // The server writes the digits and newline separately; closing between them can kill it with SIGPIPE.
+  while (true) {
+    const chunk = await reader.read()
+    if (chunk.done || chunk.value.length > 6 - line.length) return null
+    line += new TextDecoder().decode(chunk.value)
+    if (line.endsWith("\n")) return /^\d{1,5}\n$/u.test(line) ? line.slice(0, -1) : null
+    if (!/^\d{1,5}$/u.test(line)) return null
   }
 }
 
