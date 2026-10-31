@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import AxeBuilder from "@axe-core/playwright"
 import { test as base, expect, type Page, type TestInfo } from "@playwright/test"
+import { getGuidePreviewFixture, getGuideSourceFixture } from "../fixtures/onboarding-guide"
 import { installGuideMocks } from "./onboarding-guide-mocks"
 import { createGuideStaticServer } from "./onboarding-guide-static"
 import { getInteractionDurations } from "./onboarding-guide-timing"
@@ -458,5 +459,69 @@ for (const width of [1440, 390]) {
     await capture(page, info, `recovery-task-${width}`)
     await page.getByRole("button", { name: /Enviar primeira tarefa/ }).click()
     await expect(page.getByRole("textbox", { name: /Mensagem para geral/ })).toBeVisible()
+  })
+}
+
+for (const width of [1440, 390]) {
+  test(`import names ${width}: two matching sources can be reviewed independently`, async ({
+    page,
+    productionUrl,
+  }, info) => {
+    await installGuideMocks(page)
+    const source = getGuideSourceFixture()
+    await page.route("**/api/v1/import/sources", (route) =>
+      route.fulfill({
+        json: { sources: [source, { ...source, id: "folder", kind: "folder", path: "/workspace/export" }] },
+      }),
+    )
+    // Counters and requests belong only to this disposable route fixture.
+    let previewCount = 0
+    const applied: Record<string, unknown>[] = []
+    await page.route("**/api/v1/import/preview", (route) => {
+      previewCount += 1
+      const preview = getGuidePreviewFixture(`preview-${previewCount}`)
+      return route.fulfill({
+        json: {
+          ...preview,
+          agents: preview.agents.map((agent) => ({
+            ...agent,
+            name: "Agente importado",
+            suggestedBotName: "Agente importado",
+          })),
+        },
+      })
+    })
+    await page.route("**/api/v1/import/apply", (route) => {
+      const body = route.request().postDataJSON() as Record<string, unknown>
+      applied.push(body)
+      return route.fulfill({
+        json: {
+          importId: `import-${applied.length}`,
+          bots: [{ agentKey: "dev", botId: `bot-${applied.length}` }],
+          pausedRoutines: 0,
+          reconnect: [],
+        },
+      })
+    })
+    await page.setViewportSize({ width, height: 1000 })
+    await openEmptyGuide(page, productionUrl)
+    await page.getByRole("button", { name: /^Continuar/ }).click()
+    const names = page.getByRole("textbox", { name: "Nome do agente" })
+    await expect(names.nth(0)).toHaveValue("Agente importado")
+    await expect(names.nth(1)).toHaveValue("Agente importado 2")
+
+    await names.nth(1).fill("Notas")
+    await capture(page, info, `review-distinct-names-${width}`)
+    await page.getByRole("button", { name: /Importar selecionados/ }).click()
+
+    await expect(page.getByText("Pronto", { exact: true })).toHaveCount(2)
+    expect(applied[1]?.names).toEqual({ dev: "Notas" })
+    await capture(page, info, `imported-distinct-names-${width}`)
+    const directory = process.env.TOURI_ONBOARDING_EVIDENCE_DIR
+    const video = page.video()
+    if (directory && video && width === 1440) {
+      await page.close()
+      await video.saveAs(join(directory, "review-import-names.webm"))
+    }
   })
 }
