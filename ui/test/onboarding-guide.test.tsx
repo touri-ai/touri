@@ -745,3 +745,49 @@ it("retains an import when undo fails so the owner can retry", async () => {
   fireEvent.click(screen.getByRole("button", { name: /Desfazer importação/ }))
   await waitFor(() => expect(screen.queryByRole("button", { name: /Desfazer importação/ })).toBeNull())
 })
+
+it("allocates distinct names to matching sources and submits the reviewed names", async () => {
+  const sources = [
+    getGuideSourceFixture(),
+    { ...getGuideSourceFixture(), id: "export", kind: "folder", label: "Outra pasta de agente" },
+  ]
+  const first = getGuidePreviewFixture("first")
+  const second = getGuidePreviewFixture("second")
+  const preview = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second)
+  const { request } = getFixture({ "GET /api/v1/import/sources": { sources }, "POST /api/v1/import/preview": preview })
+  enterWorkspace()
+  continueSetup()
+  await screen.findByRole("button", { name: /Claude Code/ })
+  continueSetup()
+  const names = await screen.findAllByRole("textbox", { name: "Nome do agente" })
+
+  expect(names[0]).toHaveValue("dev")
+  expect(names[1]).toHaveValue("dev 2")
+  fireEvent.change(names[1] as HTMLElement, { target: { value: "Revisão" } })
+  fireEvent.click(screen.getByRole("button", { name: /Importar selecionados/ }))
+
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith("POST /api/v1/import/apply", {
+      previewId: "second",
+      select: { dev: { instructions: true, skills: true, memories: true, routines: true } },
+      names: { dev: "Revisão" },
+    }),
+  )
+})
+
+it("blocks blank and duplicate reviewed agent names", async () => {
+  const preview = getGuidePreviewFixture()
+  const first = preview.agents[0]
+  if (!first) throw new Error("Missing fixture agent")
+  getFixture({ "POST /api/v1/import/preview": { ...preview, agents: [first, { ...first, key: "other" }] } })
+  enterWorkspace()
+  continueSetup()
+  await screen.findByRole("button", { name: /Claude Code/ })
+  continueSetup()
+  const names = await screen.findAllByRole("textbox", { name: "Nome do agente" })
+
+  fireEvent.change(names[1] as HTMLElement, { target: { value: "dev" } })
+  expect(screen.getByRole("button", { name: /Importar selecionados/ })).toBeDisabled()
+  fireEvent.change(names[1] as HTMLElement, { target: { value: " " } })
+  expect(screen.getByRole("button", { name: /Importar selecionados/ })).toBeDisabled()
+})

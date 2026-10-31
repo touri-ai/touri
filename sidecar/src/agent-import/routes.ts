@@ -11,6 +11,7 @@ import type {
   RouteModule,
   RouteResponse,
 } from "@touri/contracts"
+import { normalizeBotName } from "@touri/contracts"
 import { getAgentImportManualAsync, writePrivateFileAsync } from "../kernel/async-files"
 import { yieldBackground } from "../kernel/background-task"
 import { onDatabaseShutdown } from "../kernel/database-lifecycle"
@@ -19,6 +20,7 @@ import { ENTRY_DELIMITER, MEMORY_LIMITS } from "../learning/memory"
 import { getRecord } from "./manual"
 import { getAgentPreview, type ImportAgent, type ImportSnapshot, PREVIEW_TTL_MS } from "./model"
 import { isImportOwner } from "./owner"
+import { isSafeText } from "./safety"
 import { getFolderSnapshot } from "./scan"
 
 type PreviewEntry = {
@@ -147,12 +149,13 @@ export const createAgentImportRoutes = (
   }
   const apply = async (body: unknown, signal: AbortSignal): Promise<RouteResponse> => {
     expire()
-    const input = getRecord(body, ["previewId", "select"])
+    const input = getRecord(body, ["previewId", "select", "names"])
     if (typeof input.previewId !== "string") return error(400, "INVALID_ARGS")
     const entry = previews.get(input.previewId)
     if (!entry) return error(410, "IMPORT_PREVIEW_EXPIRED")
     const selections = getSelections(input.select, entry.preview.agents)
-    const selection = JSON.stringify(selections)
+    const names = getNames(input.names, entry.preview.agents)
+    const selection = JSON.stringify({ selections, names })
     if (entry.result)
       return entry.selection === selection ? { status: 200, json: entry.result } : error(409, "CONFLICT")
     const createBot = kernel.services.use("agentImport.createBot")
@@ -179,7 +182,7 @@ export const createAgentImportRoutes = (
         const instructions = selected.instructions ? getImportedInstructions(agent) : ""
         const bot = await createBot({
           id: botId,
-          name: agent.name,
+          name: names[agent.key] ?? agent.name,
           ...(agent.role ? { role: agent.role } : {}),
           instructions,
           signal,
@@ -293,6 +296,23 @@ export const createAgentImportRoutes = (
       },
     ],
   }
+}
+
+const getNames = (value: unknown, agents: { key: string }[]): Record<string, string> => {
+  if (value === undefined) return {}
+  const record = getRecord(
+    value,
+    agents.map(({ key }) => key),
+  )
+
+  return Object.fromEntries(
+    Object.entries(record).map(([key, value]) => {
+      const name = normalizeBotName(value)
+      if (!name || !isSafeText(name)) throw new Error("INVALID_ARGS")
+
+      return [key, name]
+    }),
+  )
 }
 
 const getSelections = (value: unknown, agents: { key: string }[]): Record<string, AgentImportItemSelection> => {

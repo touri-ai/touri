@@ -176,7 +176,7 @@ const getFolderAgent = (
 
   return {
     key: `agent-${index + 1}`,
-    name: project ? `Agente ${index + 1}` : "Agente importado",
+    name: getFolderAgentName(source, project, index),
     instructions: instructions.map(({ content }) => content),
     skills,
     memories: memories.map(({ content }) => content),
@@ -256,4 +256,9 @@ const getGlobalConfig = async (
   if (usedBytes + config.bytes > IMPORT_LIMITS.total) throw new Error("INVALID_ARGS")
 
   return { names: config.names, secrets: config.secrets, files: 0 }
+}
+
+const getFolderAgentName = (source: AgentImportSourceKind, project: string, index: number): string => {
+  const name = source === "claude-code" ? "Claude Code" : "Agente importado"
+  return project ? `${name} ${index + 1}` : name
 }

@@ -155,7 +155,14 @@ const ImportReview = ({ imports }: { imports: ReturnType<typeof useAgentImport> 
             <article key={agent.key} className="ob-import-agent">
               <div className="ob-inline">
                 <BotAvatar bot={{ id: agent.key, avatarSeed: agent.key, color: null }} size={32} mood="idle" />
-                <strong>{agent.suggestedBotName}</strong>
+                <label className="ob-field">
+                  {t("ob.importAgentName")}
+                  <input
+                    value={agent.suggestedBotName}
+                    maxLength={80}
+                    onChange={(event) => imports.renameAgent(preview.previewId, agent.key, event.target.value)}
+                  />
+                </label>
                 <label className="ob-agent-check">
                   <input
                     type="checkbox"

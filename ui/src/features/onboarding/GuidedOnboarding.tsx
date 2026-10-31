@@ -390,7 +390,7 @@ const Guide = ({
     (step === "workspace" && !draft.name.trim()) ||
     (step === "sources" && (!imports.selected.length || imports.busy)) ||
     (step === "manual" && (!manual.trim() || imports.busy)) ||
-    (step === "review" && imports.selectionCount > 19) ||
+    (step === "review" && (imports.selectionCount > 19 || imports.hasInvalidNames)) ||
     (step === "review" &&
       !Object.values(imports.selection).some((agents) =>
         Object.values(agents).some((item) => Object.values(item).some(Boolean)),
@@ -412,7 +412,11 @@ const Guide = ({
       task={task}
       routine={getRoutineNames(imports, false)[0] ?? ""}
       busy={busy || imports.busy}
-      error={error ?? (step !== "sources" ? imports.error : null)}
+      error={
+        error ??
+        (step === "review" && imports.hasInvalidNames ? t("ob.importNamesError") : null) ??
+        (step !== "sources" ? imports.error : null)
+      }
       heading={heading}
       onBack={back}
     >

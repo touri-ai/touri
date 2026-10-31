@@ -5,6 +5,7 @@ import type {
   AgentImportResult,
   AgentImportSource,
 } from "@touri/contracts"
+import { normalizeBotName } from "@touri/contracts"
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { UiApi } from "../../api/client"
 import { ApiError } from "../../errors"
@@ -90,7 +91,11 @@ export const useAgentImport = (api: UiApi) => {
     setSources((previous) => [...previous.filter((item) => item.id !== source.id), source].slice(-20))
     setSelected((previous) => Array.from(new Set([...previous, source.id])))
   }
-  const savePreviews = (next: ImportPreview[]) => {
+  const savePreviews = (incoming: ImportPreview[], reserved: string[]) => {
+    const importedNames = previews
+      .filter(({ preview }) => completed.current.has(preview.previewId))
+      .flatMap(({ preview }) => preview.agents.map((agent) => agent.suggestedBotName))
+    const next = getNamedPreviews(incoming, [...reserved, ...importedNames])
     setPreviews(next)
     setSelection(
       Object.fromEntries(
@@ -124,7 +129,7 @@ export const useAgentImport = (api: UiApi) => {
         }
         const payload: unknown = JSON.parse(manual)
         const preview = await api.request("POST /api/v1/import/preview", { source: "manual", payload })
-        savePreviews([{ sourceId: "manual", preview }])
+        savePreviews([{ sourceId: "manual", preview }], [])
         return true
       }
       const next = await Promise.all(
@@ -136,7 +141,7 @@ export const useAgentImport = (api: UiApi) => {
           }),
         })),
       )
-      savePreviews(next)
+      savePreviews(next, [])
       return next.length > 0
     } catch {
       setError(t("ob.previewError"))
@@ -160,7 +165,13 @@ export const useAgentImport = (api: UiApi) => {
         if (!Object.values(select).some((item) => Object.values(item).some(Boolean))) continue
         activePreview.current = preview.previewId
         activeKeys.current = Object.keys(select)
-        const result = await api.request("POST /api/v1/import/apply", { previewId: preview.previewId, select })
+        const renamed = preview.agents.filter((agent) => select[agent.key] && agent.name !== agent.suggestedBotName)
+        const names = Object.fromEntries(renamed.map((agent) => [agent.key, agent.suggestedBotName]))
+        const result = await api.request("POST /api/v1/import/apply", {
+          previewId: preview.previewId,
+          select,
+          ...(renamed.length ? { names } : {}),
+        })
         rememberImport(preview.previewId, result.importId)
         completed.current.add(preview.previewId)
         setResults((previous) => [...previous, result])
@@ -246,8 +257,54 @@ export const useAgentImport = (api: UiApi) => {
       setSelection({})
       setError(null)
     },
+    renameAgent: (previewId: string, key: string, name: string) =>
+      setPreviews((previous) =>
+        previous.map((item) =>
+          item.preview.previewId !== previewId
+            ? item
+            : {
+                ...item,
+                preview: {
+                  ...item.preview,
+                  agents: item.preview.agents.map((agent) =>
+                    agent.key !== key ? agent : { ...agent, suggestedBotName: name },
+                  ),
+                },
+              },
+        ),
+      ),
+    hasInvalidNames: getHasInvalidNames(previews, selection),
     toggleItem,
     toggleAgent,
     toggleSource: (id: string) => setSelected((previous) => getToggle(previous, id)),
   }
+}
+
+const getNamedPreviews = (previews: ImportPreview[], reserved: string[]): ImportPreview[] => {
+  // Names are allocated within this bounded preview batch; no source paths become display names.
+  const used = new Set(["touri", ...reserved].map((name) => name.toLocaleLowerCase()))
+  return previews.map((item) => ({
+    ...item,
+    preview: {
+      ...item.preview,
+      agents: item.preview.agents.map((agent) => {
+        const base = agent.suggestedBotName
+        const candidates = Array.from({ length: used.size + 2 }, (_, index) =>
+          index === 0 ? base : `${Array.from(base).slice(0, 70).join("")} ${index + 1}`,
+        )
+        const name = candidates.find((candidate) => !used.has(candidate.toLocaleLowerCase())) ?? base
+        used.add(name.toLocaleLowerCase())
+        return { ...agent, suggestedBotName: name }
+      }),
+    },
+  }))
+}
+
+const getHasInvalidNames = (previews: ImportPreview[], selection: ImportSelection): boolean => {
+  const names = previews.flatMap(({ preview }) =>
+    preview.agents
+      .filter((agent) => Object.values(selection[preview.previewId]?.[agent.key] ?? {}).some(Boolean))
+      .map((agent) => normalizeBotName(agent.suggestedBotName)?.toLocaleLowerCase()),
+  )
+  return names.some((name) => !name) || new Set(names).size !== names.length
 }

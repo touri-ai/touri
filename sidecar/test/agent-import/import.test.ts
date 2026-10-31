@@ -354,3 +354,46 @@ test("concurrent source previews are serialized and concurrent apply retries cre
   expect(results[0]).toEqual(results[1])
   expect(((await (await fixture.request("GET", "/bots")).json()) as { bots: Bot[] }).bots).toHaveLength(1)
 })
+
+test("applies reviewed names to two sources with the same agent name", async () => {
+  const fixture = await makeHarness()
+  const previews = await Promise.all(
+    ["first", "second"].map(async () => {
+      const response = await fixture.request("POST", "/import/preview", { source: "manual", payload: makePayload() })
+      return (await response.json()) as AgentImportPreview
+    }),
+  )
+
+  for (const [index, preview] of previews.entries()) {
+    const key = preview.agents[0]?.key ?? ""
+    const response = await fixture.request("POST", "/import/apply", {
+      previewId: preview.previewId,
+      select: { [key]: allItems },
+      names: { [key]: `Notas ${index + 1}` },
+    })
+    expect(response.status).toBe(200)
+  }
+
+  const response = await fixture.request("GET", "/bots")
+  const { bots } = (await response.json()) as { bots: Bot[] }
+  expect(new Set(bots.map((bot) => bot.name))).toEqual(new Set(["Notas 1", "Notas 2"]))
+})
+
+test("rejects invalid reviewed names and keys before writing bots", async () => {
+  const fixture = await makeHarness()
+  const response = await fixture.request("POST", "/import/preview", { source: "manual", payload: makePayload() })
+  const preview = (await response.json()) as AgentImportPreview
+  const key = preview.agents[0]?.key ?? ""
+
+  for (const names of [{ [key]: "" }, { [key]: "bad\nname" }, { other: "Notas" }]) {
+    const response = await fixture.request("POST", "/import/apply", {
+      previewId: preview.previewId,
+      select: { [key]: allItems },
+      names,
+    })
+    expect(response.status).toBe(400)
+  }
+
+  const bots = (await (await fixture.request("GET", "/bots")).json()) as { bots: Bot[] }
+  expect(bots.bots).toHaveLength(0)
+})
