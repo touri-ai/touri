@@ -23,7 +23,8 @@ export const redeemFileGrant = async ({
   grantId,
   signal,
 }: RedeemFileGrantArgs): Promise<RedeemFileGrantResult> => {
-  if (deviceSession(signal))
+  const session = deviceSession(signal)
+  if (session && (!session.native || !session.active()))
     return refused(403, "FILE_GRANT_REQUIRED", "Arquivos soltos só funcionam no aplicativo desktop")
   if (typeof grantId !== "string" || !GRANT_ID.test(grantId))
     return refused(403, "FILE_GRANT_REQUIRED", "Solte o arquivo novamente para anexar")

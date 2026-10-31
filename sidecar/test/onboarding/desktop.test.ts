@@ -6,10 +6,10 @@ import { join } from "node:path"
 import type { Bot, BotGroup, Kernel, Run, Thread } from "@touri/contracts"
 import type { RunCommand } from "../../src/cli/tailscale"
 import { init as initGroups } from "../../src/groups"
-import { init as initStore } from "../../src/store"
-import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { createKernel, type KernelRuntime } from "../../src/kernel"
 import { createDesktopWeb } from "../../src/onboarding/desktop"
+import { createRuntimePersistence } from "../../src/runtime/persistence"
+import { init as initStore } from "../../src/store"
 
 const fixtures = new Set<{
   runtime: KernelRuntime
@@ -163,7 +163,7 @@ test("native owner can read invites, open the real channel and send the first ta
       threadId,
       requestMessageId,
       trigger,
-      botId: null,
+      botId: bot.id,
       provider: "codex",
       replyMessageId: null,
       externalTurnId: null,
@@ -220,10 +220,11 @@ test("native owner can read invites, open the real channel and send the first ta
   expect(integration.status).toBe(403)
   const ticketResponse = await fixture.request("/api/v1/ws-ticket", "POST", { path: "/api/v1/events" })
   const ticket = (await ticketResponse.json()) as { ticket: string }
-  const socket = new WebSocket(
+  // Bun supports native headers beyond the shared DOM constructor declaration.
+  const socket: WebSocket = Reflect.construct(WebSocket, [
     `ws://127.0.0.1:${fixture.runtime.handshake.port}/api/v1/events?ticket=${ticket.ticket}`,
     { headers: { "X-Touri-Client": "test" } },
-  )
+  ])
   await new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => {
       socket.close()
