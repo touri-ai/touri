@@ -118,7 +118,8 @@ Completed imports can be undone from import progress or the source screen. A suc
 its agents from the preview and account choices, returns to source selection and confirms the removed
 agents. Each undo action names its agents and wraps long names within the form. Back from import
 progress opens source selection when no preview remains. A failed undo retains the import and offers a retry.
-Import names stay available when another source replaces the preview.
+Import names stay available when another source replaces the preview, and agents from earlier imports stay
+listed in import progress and in the live workspace preview.
 Preview avatar seeds persist on imported agents, and the guide keeps the same identity throughout setup.
 Agent accounts use compact rows on wide screens. Invitations require a configured HTTPS address;
 without one, the guide explains the prerequisite before offering an invitation form.
@@ -401,7 +402,9 @@ visible, and a failed first read replaces the loading skeleton with the notice. 
 reconnecting automatically refreshes failed history, while healthy history relies on event replay.
 A server's `RUNTIME_DRAINING` refusal reconnects the client. A read that cannot reach the server,
 including a run snapshot or workspace-index refresh with an open conversation, uses the conversation
-notice and keeps saved messages readable. A successful message read alone does not clear a failed
+notice and keeps saved messages readable. A server error (HTTP 5xx, such as a proxy refusing a stopped
+server) on the workspace index, or on a run snapshot whose message read failed the same way, counts as
+the server not answering. A successful message read alone does not clear a failed
 run snapshot; retry must recover that read too. A successful full refresh clears an index failure.
 Other index failures retain the application notice rather than claiming the conversation was deleted.
 
