@@ -59,12 +59,12 @@ export const installGuideMocks = async (
     if (path === "/folders" && method === "GET") {
       // A fake home with enough folders to scroll; each read waits like a real disk listing.
       await new Promise((resolve) => setTimeout(resolve, 60))
-      const folder = new URL(request.url()).searchParams.get("path") ?? "/home/exemplo"
+      const folder = new URL(request.url()).searchParams.get("path") ?? "/srv/exemplo"
       return reply({
         canGrant: true,
-        home: "/home/exemplo",
+        home: "/srv/exemplo",
         path: folder,
-        parent: folder === "/home/exemplo" ? null : folder.slice(0, folder.lastIndexOf("/")) || "/",
+        parent: folder === "/srv/exemplo" ? null : folder.slice(0, folder.lastIndexOf("/")) || "/",
         folders: Array.from({ length: 14 }, (_, index) => ({
           name: `agentes-${index + 1}`,
           path: `${folder}/agentes-${index + 1}`,

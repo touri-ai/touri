@@ -204,16 +204,16 @@ test.describe("folder picker responsiveness", () => {
         .or(page.getByRole("dialog", { name: "Pastas no servidor" }))
       await expect(picker.getByRole("button", { name: /agentes-3/ })).toBeVisible()
       await picker.getByText("Digitar caminho").click()
-      await expect(picker.getByRole("textbox", { name: "Caminho absoluto da pasta" })).toHaveValue("/home/exemplo")
+      await expect(picker.getByRole("textbox", { name: "Caminho absoluto da pasta" })).toHaveValue("/srv/exemplo")
       await picker.getByRole("button", { name: /agentes-3/ }).click()
       await expect(picker.getByRole("textbox", { name: "Caminho absoluto da pasta" })).toHaveValue(
-        "/home/exemplo/agentes-3",
+        "/srv/exemplo/agentes-3",
       )
-      await picker.getByRole("textbox", { name: "Caminho absoluto da pasta" }).fill("/home/exemplo/agentes-5")
+      await picker.getByRole("textbox", { name: "Caminho absoluto da pasta" }).fill("/srv/exemplo/agentes-5")
       await picker.getByRole("button", { name: "Abrir pasta" }).click()
       await expect(picker.locator("[aria-current=location]")).toHaveText("agentes-5")
       await picker.getByRole("button", { name: "Voltar uma pasta" }).click()
-      await expect(picker.getByRole("textbox", { name: "Caminho absoluto da pasta" })).toHaveValue("/home/exemplo")
+      await expect(picker.getByRole("textbox", { name: "Caminho absoluto da pasta" })).toHaveValue("/srv/exemplo")
       await picker.getByRole("button", { name: "Usar esta pasta" }).click()
       await expect(picker).toHaveCount(0)
 
