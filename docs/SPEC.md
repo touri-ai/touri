@@ -993,6 +993,11 @@ Bot replies place a 28-pixel avatar beside the content, bottom-aligned with the 
 above it. Author names retain at least 4.5:1 contrast in both themes, including custom avatar colours.
 Plain bot text uses a muted bubble; tables, code and images keep their own frame. Approvals,
 activity, attachments and browser controls retain their existing behaviour in the content column.
+An active reply draws only one bot avatar: when the message column already provides it, the
+activity line starts with three calm dots and its status label, without a decorative chevron.
+Standalone activity and grouped rows without a message avatar keep the activity avatar. The
+status label still opens activity details; pending approvals retain their separate toggle and link.
+Dots remain static under reduced motion.
 Consecutive messages from the same author within five minutes on the same calendar day omit
 repeated names and avatars; another author, system row or day divider breaks the group. The first
 mounted row in each virtual history window starts a new group so its author remains identifiable.

@@ -32,7 +32,7 @@ for (const theme of ["light", "dark"]) {
         await showBotPanel(page)
         await expect(page.locator(".bot-panel-identity .tb-avatar")).toBeVisible()
         if (phase === "after" && view === "working") {
-          for (const selector of [".bot-row.selected", ".chat-bot-chip", ".bot-panel-identity", ".activity-mascot"]) {
+          for (const selector of [".bot-row.selected", ".chat-bot-chip", ".bot-panel-identity", ".message-avatar"]) {
             const avatar = page.locator(`${selector} .tb-avatar`).first()
             await expect(avatar).toHaveAttribute("data-avatar-phase", /^(thinking|working)$/)
             await expect(avatar.locator(".tb-avatar-head")).toHaveCSS("animation-name", "none")
@@ -66,7 +66,8 @@ if (phase === "after") {
       const head = page.locator(`${selector} .tb-avatar .tb-avatar-head`).first()
       await expect(head).toHaveCSS("animation-name", /^tb-avatar-(bob|tilt)$/)
     }
-    await expect(page.locator(".activity-mascot .tb-avatar")).toHaveAttribute("data-avatar-animated", "false")
+    await expect(page.locator(".message-avatar .tb-avatar")).toHaveAttribute("data-avatar-animated", "true")
+    await expect(page.locator(".activity-mascot")).toHaveCount(0)
     await expect(page.locator(".tb-avatar-rings, linearGradient")).toHaveCount(0)
     await page.screenshot({ path: `${evidence}/after-working-motion-dark.png`, animations: "disabled" })
     await page.emulateMedia({ reducedMotion: "reduce" })
