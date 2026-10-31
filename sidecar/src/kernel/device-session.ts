@@ -10,6 +10,8 @@ export type DevicePerson = {
   role: "member" | "admin"
 }
 export type DeviceSession = {
+  /** Set only after the kernel authenticates a direct desktop request. */
+  native?: true
   deviceId: string
   active: () => boolean
   person?: DevicePerson

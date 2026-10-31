@@ -177,9 +177,18 @@ export const initDesktopOnboarding = async ({
     routes: [
       {
         method: "GET",
+        path: "/session",
+        handler: async ({ signal }) => {
+          const session = deviceSession(signal)
+          if (!session?.native || !session.active() || !session.person) return forbidden()
+          return { status: 200, json: { ok: true, kind: "device", person: session.person } }
+        },
+      },
+      {
+        method: "GET",
         path: "/onboarding",
         handler: async ({ signal }) => {
-          if (deviceSession(signal)) return forbidden()
+          if (isRemoteSession(signal)) return forbidden()
           const status: OnboardingStatus = {
             completed: preferences.completed || hasData,
             ...(localServerUrl ? { localUrl: localServerUrl } : {}),
@@ -195,7 +204,7 @@ export const initDesktopOnboarding = async ({
         method: "GET",
         path: "/onboarding/servers",
         handler: async ({ signal }) => {
-          if (deviceSession(signal)) return forbidden()
+          if (isRemoteSession(signal)) return forbidden()
           return { status: 200, json: await getCandidates(signal) }
         },
       },
@@ -203,7 +212,7 @@ export const initDesktopOnboarding = async ({
         method: "POST",
         path: "/onboarding/probe",
         handler: async ({ signal, body }) => {
-          if (deviceSession(signal)) return forbidden()
+          if (isRemoteSession(signal)) return forbidden()
           const url = body && typeof body === "object" && "url" in body ? body.url : null
           if (typeof url !== "string" || (url !== localServerUrl && !candidates.some((server) => server.url === url)))
             return forbidden()
@@ -220,7 +229,7 @@ export const initDesktopOnboarding = async ({
         method: "POST",
         path: "/onboarding/pair-code",
         handler: async ({ signal }) => {
-          if (deviceSession(signal)) return forbidden()
+          if (isRemoteSession(signal)) return forbidden()
           return { status: 200, json: await authStore.createPairingCode() }
         },
       },
@@ -228,7 +237,7 @@ export const initDesktopOnboarding = async ({
         method: "POST",
         path: "/onboarding",
         handler: async ({ signal, body }) => {
-          if (deviceSession(signal)) return forbidden()
+          if (isRemoteSession(signal)) return forbidden()
           if (starting) return { status: 409, json: { errorCode: "ONBOARDING_BUSY" } }
           const input = getStartInput(body)
           if (!input) return { status: 400, json: { errorCode: "INVALID_ARGS" } }
@@ -262,6 +271,11 @@ export const initDesktopOnboarding = async ({
       },
     ],
   })
+}
+
+const isRemoteSession = (signal: AbortSignal): boolean => {
+  const session = deviceSession(signal)
+  return Boolean(session && !session.native)
 }
 
 const forbidden = () => ({ status: 403, json: { errorCode: "FORBIDDEN" } })

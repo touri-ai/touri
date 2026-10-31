@@ -408,7 +408,7 @@ export const createKernel = ({
       const isNativeRequest = Boolean(
         web?.nativeDesktop &&
           isDirectLoopback({ clientIp: bunServer.requestIP(request)?.address ?? null, headers: request.headers }) &&
-          (bearer(request) === uiToken || (ticket !== null && !ticket.session)),
+          (bearer(request) === uiToken || (ticket !== null && (!ticket.session || ticket.session.native === true))),
       )
       const isWebRequest = web && !isNativeRequest
       const early = isWebRequest
@@ -416,7 +416,6 @@ export const createKernel = ({
         : null
       if (early) return early
       if (!isWebRequest && request.method === "OPTIONS") return corsPreflight(request, bunServer.port ?? 0)
-      const session = deviceSession(request.signal)
       const failure = isWebRequest
         ? null
         : authFailure({
@@ -427,6 +426,22 @@ export const createKernel = ({
             authenticatedTicket: ticket !== null,
           })
       if (failure) return failure
+      if (isNativeRequest) {
+        const personId = services.use("work.defaultPersonId")?.() ?? "owner"
+        bindDeviceSession(request.signal, {
+          native: true,
+          deviceId: "native-desktop",
+          active: () => !stopping,
+          person: {
+            id: personId,
+            name: services.use("work.personName")?.(personId) ?? "owner",
+            email: null,
+            avatarSeed: personId,
+            role: "admin",
+          },
+        })
+      }
+      const session = deviceSession(request.signal)
       if (!ready && apiPrefixOf(url.pathname) !== null) {
         const response = jsonResponse(
           503,

@@ -3,8 +3,11 @@ import { afterEach, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { Kernel } from "@touri/contracts"
+import type { Bot, BotGroup, Kernel, Run, Thread } from "@touri/contracts"
 import type { RunCommand } from "../../src/cli/tailscale"
+import { init as initGroups } from "../../src/groups"
+import { init as initStore } from "../../src/store"
+import { createRuntimePersistence } from "../../src/runtime/persistence"
 import { createKernel, type KernelRuntime } from "../../src/kernel"
 import { createDesktopWeb } from "../../src/onboarding/desktop"
 
@@ -147,4 +150,101 @@ test("forwarded requests cannot use the privileged desktop credential", async ()
   })
 
   expect(response.status).toBe(401)
+})
+
+test("native owner can read invites, open the real channel and send the first task", async () => {
+  const fixture = await start(async () => ({ success: true, value: {} }))
+  await initStore(fixture.runtime.kernel)
+  await initGroups(fixture.runtime.kernel)
+  const kernel = fixture.runtime.kernel
+  kernel.services.provide("runtime.enqueue", ({ threadId, requestMessageId, trigger }) => {
+    const run: Run = {
+      id: kernel.newId(),
+      threadId,
+      requestMessageId,
+      trigger,
+      botId: null,
+      provider: "codex",
+      replyMessageId: null,
+      externalTurnId: null,
+      status: "queued",
+      errorClass: null,
+      errorMessage: null,
+      usage: null,
+      routineRunId: null,
+      queuedAt: Date.now(),
+      startedAt: null,
+      finishedAt: null,
+    }
+    createRuntimePersistence({ database: kernel.db }).saveRun(run)
+    return { success: true, run }
+  })
+  const created = await fixture.request("/api/v1/bots", "POST", { name: "guia", provider: "codex" })
+  const { bot } = (await created.json()) as { bot: Bot }
+  const channel = await fixture.request("/api/v1/groups", "POST", {
+    name: "geral",
+    color: "#dc2626",
+    memberIds: [bot.id],
+  })
+  const { group } = (await channel.json()) as { group: BotGroup }
+
+  const session = await fixture.request("/api/v1/session")
+  const invites = await fixture.request("/api/v1/invites")
+  const conversations = await fixture.request(`/api/v1/groups/${group.id}/threads`)
+  const { threads } = (await conversations.json()) as { threads: Thread[] }
+  const thread = threads[0]
+  if (!thread) throw new Error("Missing synthetic channel thread")
+  const sent = await fixture.request(`/api/v1/threads/${thread.id}/messages`, "POST", {
+    threadId: thread.id,
+    text: "@guia Organize três prioridades.",
+    parentId: null,
+    attachmentIds: [],
+    clientNonce: "first-task",
+    sender: { id: "forged", name: "Forged", kind: "person", avatarSeed: "forged" },
+  })
+
+  expect(session.status).toBe(200)
+  expect(await session.json()).toMatchObject({ person: { id: "owner", role: "admin" } })
+  expect(invites.status).toBe(200)
+  expect(conversations.status).toBe(200)
+  expect(sent.status).toBe(201)
+  expect(await sent.json()).toMatchObject({
+    message: { sender: { id: "owner", kind: "person" }, delivery: { status: "acked" } },
+  })
+  expect((await fixture.request("/api/v1/invites", "GET", undefined, "bad-token")).status).toBe(401)
+  expect((await fixture.request("/api/v1/onboarding")).status).toBe(200)
+  const integration = await fixture.request(`/api/v1/threads/${thread.id}/messages`, "POST", {
+    asBotId: bot.id,
+    text: "Escopo ausente",
+  })
+  expect(integration.status).toBe(403)
+  const ticketResponse = await fixture.request("/api/v1/ws-ticket", "POST", { path: "/api/v1/events" })
+  const ticket = (await ticketResponse.json()) as { ticket: string }
+  const socket = new WebSocket(
+    `ws://127.0.0.1:${fixture.runtime.handshake.port}/api/v1/events?ticket=${ticket.ticket}`,
+    { headers: { "X-Touri-Client": "test" } },
+  )
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      socket.close()
+      reject(new Error("Native socket deadline"))
+    }, 5000)
+    socket.addEventListener(
+      "open",
+      () => {
+        clearTimeout(timeout)
+        resolve()
+      },
+      { once: true },
+    )
+    socket.addEventListener(
+      "error",
+      () => {
+        clearTimeout(timeout)
+        reject(new Error("Native socket rejected"))
+      },
+      { once: true },
+    )
+  })
+  socket.close()
 })
