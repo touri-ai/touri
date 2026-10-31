@@ -719,6 +719,55 @@ it("keeps an earlier import named after reviewing another source", async () => {
   expect(screen.getByRole("status")).toHaveTextContent("Importação desfeita. Removemos dev.")
 })
 
+it("keeps an earlier imported agent listed and named while a JSON export imports", async () => {
+  const preview = getGuidePreviewFixture()
+  const agent = preview.agents[0]
+  if (!agent) throw new Error("Missing synthetic preview agent")
+  const previews = vi
+    .fn()
+    .mockResolvedValueOnce(preview)
+    .mockResolvedValueOnce({
+      ...getGuidePreviewFixture("manual-preview"),
+      agents: [{ ...agent, key: "ops", name: "ops", suggestedBotName: "ops" }],
+    })
+  const applies = vi
+    .fn()
+    .mockResolvedValueOnce({
+      importId: "import-one",
+      bots: [{ agentKey: "dev", botId: "bot-dev" }],
+      pausedRoutines: 0,
+      reconnect: [],
+    })
+    .mockResolvedValueOnce({
+      importId: "import-two",
+      bots: [{ agentKey: "ops", botId: "bot-ops" }],
+      pausedRoutines: 0,
+      reconnect: [],
+    })
+  getFixture({ "POST /api/v1/import/preview": previews, "POST /api/v1/import/apply": applies })
+  enterWorkspace()
+  continueSetup()
+  await waitFor(() => expect(screen.getByRole("button", { name: /^Continuar/ })).toBeEnabled())
+  continueSetup()
+  await screen.findByRole("heading", { name: "Confere o que vem?" })
+  fireEvent.click(screen.getByRole("button", { name: /Importar selecionados/ }))
+  await screen.findByText("Pronto", { selector: ".ob-import-agent span" })
+  fireEvent.click(screen.getByRole("button", { name: "Voltar", exact: true }))
+  fireEvent.click(screen.getByRole("button", { name: "Voltar", exact: true }))
+  fireEvent.click(screen.getByRole("button", { name: /Outro app/ }))
+  fireEvent.change(screen.getByRole("textbox", { name: "Resposta em JSON" }), { target: { value: '{"agents":[]}' } })
+  continueSetup()
+  await screen.findByRole("heading", { name: "Confere o que vem?" })
+
+  fireEvent.click(screen.getByRole("button", { name: /Importar selecionados/ }))
+
+  await waitFor(() => expect(screen.getAllByText("Pronto", { selector: ".ob-import-agent span" })).toHaveLength(2))
+  const rows = screen.getByRole("main").querySelectorAll(".ob-import-agent strong")
+  expect(Array.from(rows, (row) => row.textContent)).toEqual(["dev", "ops"])
+  expect(screen.getByRole("button", { name: "Desfazer importação de dev", exact: true })).toBeVisible()
+  expect(screen.getByRole("button", { name: "Desfazer importação de ops", exact: true })).toBeVisible()
+})
+
 it("explains the invite prerequisite before asking for a person's details", async () => {
   const request = vi.fn(async () => ({ address: null, reachability: "unset" })) as UiApi["request"]
   const api: UiApi = { request, isMock: false, subscribe: () => () => undefined }

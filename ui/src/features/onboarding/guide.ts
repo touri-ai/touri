@@ -203,14 +203,24 @@ export const getImportedIdentity = (botId: string, results: AgentImportResult[])
 }
 
 type ImportedNamesInput = {
-  results: (AgentImportResult & { agentNames: string[] })[]
+  results: (AgentImportResult & { agents: { name: string }[] })[]
 }
 
 /** Names the agents one import brought in, so each undo says exactly what it removes. */
 export const getImportedNames = (imports: ImportedNamesInput, importId: string): string => {
   const result = imports.results.find((item) => item.importId === importId)
   if (!result) return ""
-  if (!result.agentNames.length) return t("ob.sourceCount", { count: result.bots.length })
+  if (!result.agents.length) return t("ob.sourceCount", { count: result.bots.length })
 
-  return result.agentNames.join(", ")
+  return result.agents.map((agent) => agent.name).join(", ")
+}
+
+/** Imports applied from a preview the owner has since replaced; their agents still belong on the progress list. */
+export const getRetainedImports = <Result extends AgentImportResult>(
+  results: Result[],
+  importIds: Record<string, string>,
+  previewIds: string[],
+): Result[] => {
+  const current = new Set(previewIds.map((previewId) => importIds[previewId]))
+  return results.filter((result) => !current.has(result.importId))
 }
