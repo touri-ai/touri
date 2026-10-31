@@ -4,6 +4,7 @@ import AxeBuilder from "@axe-core/playwright"
 import { test as base, expect, type Page, type TestInfo } from "@playwright/test"
 import { installGuideMocks } from "./onboarding-guide-mocks"
 import { createGuideStaticServer } from "./onboarding-guide-static"
+import { getInteractionDurations } from "./onboarding-guide-timing"
 
 const test = base.extend<{ measurementPage: Page }, { productionUrl: string }>({
   measurementPage: async ({ browser }, use) => {
@@ -252,27 +253,25 @@ const installPerformanceProbe = (page: Page) =>
       { capture: true },
     )
   })
-const getPerformanceMetrics = (page: Page) =>
-  page.evaluate(() => {
+const getPerformanceMetrics = async (page: Page) => {
+  const metrics = await page.evaluate(() => {
     const probe = (window as ProbeWindow).__guideProbe
     probe.observers.forEach((observer) => {
       observer.disconnect()
     })
     const paints = probe.paints.toSorted((left, right) => left - right)
-    const events = Array.from(new Map(probe.events.map((event) => [event.id, event.duration])).values()).toSorted(
-      (left, right) => left - right,
-    )
     return {
       longTasks: probe.longTasks,
       interactions: paints.length,
       paintP95: paints[Math.ceil(paints.length * 0.95) - 1] ?? 0,
-      eventInteractions: events.length,
-      eventP95: events[Math.ceil(events.length * 0.95) - 1] ?? 0,
       cls: probe.cls,
       shifts: probe.shifts,
       eventSamples: probe.events,
     }
   })
+  const events = getInteractionDurations(metrics.eventSamples)
+  return { ...metrics, eventInteractions: events.length, eventP95: events[Math.ceil(events.length * 0.95) - 1] ?? 0 }
+}
 
 for (const colorScheme of ["light", "dark"] as const) {
   test(`onboarding guide: accessible questions and contrast in ${colorScheme}`, async ({ page, productionUrl }) => {
