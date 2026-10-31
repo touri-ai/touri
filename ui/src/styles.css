@@ -848,24 +848,6 @@ a {
   font-size: var(--fs-caption);
   overflow-wrap: anywhere;
 }
-.message-error .error-recovery-actions .text-button:first-child {
-  display: inline-flex;
-  min-height: var(--icon-button-size);
-  align-items: center;
-  padding-inline: var(--space-12);
-  border-radius: var(--radius-sm);
-  background: var(--brand);
-  color: var(--text-on-accent);
-}
-.message-error .error-recovery-actions .text-button:nth-child(n + 2) {
-  display: inline-flex;
-  min-height: var(--icon-button-size);
-  align-items: center;
-  padding-inline: var(--space-12);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-}
 .message-error-meta,
 .message-error-code {
   display: block;

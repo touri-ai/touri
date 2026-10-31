@@ -1,5 +1,6 @@
 import { useContext, useRef, useState } from "react"
 import { type ErrorRecovery, errorRecovery, type RecoveryAction, type RecoveryContext } from "../errorRecovery"
+import { Button } from "./Button"
 import { ErrorDetails } from "./ErrorDetails"
 import { FailureActionContext } from "./FailureActionContext"
 import "./ErrorNotice.css"
@@ -47,16 +48,15 @@ export const ErrorNotice = ({
       <p>{view.message}</p>
       {showActions && (
         <div className="error-recovery-actions">
-          {view.actions.map((action) => (
-            <button
+          {view.actions.map((action, index) => (
+            <Button
               key={action.kind}
-              type="button"
-              className="text-button"
+              variant={index === 0 ? "primary" : "secondary"}
               disabled={busy}
               onClick={() => void act(action.kind)}
             >
               {action.label}
-            </button>
+            </Button>
           ))}
         </div>
       )}

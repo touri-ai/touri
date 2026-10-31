@@ -40,10 +40,11 @@ test("server mode recovers a failed history read without another server event", 
     .click()
 
   const notice = page
-    .locator(".notice-bar")
-    .filter({ hasText: "Não foi possível carregar a conversa. Tente novamente." })
+    .locator(".chat-panel .conversation-notice")
+    .filter({ hasText: "Não conseguimos carregar as mensagens novas." })
   await expect(notice).toBeVisible()
-  await expect(notice.getByRole("button", { name: "Tentar novamente", exact: true })).toBeVisible()
+  await expect(notice.getByRole("button", { name: "Tentar de novo", exact: true })).toBeVisible()
+  await expect(notice).toContainText("TOURI-E1009")
   await expect(notice).not.toContainText("serviço local")
   const evidence = resolve(import.meta.dirname, "../../../docs/qa/server-restart")
   await mkdir(evidence, { recursive: true })

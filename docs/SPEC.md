@@ -324,6 +324,16 @@ The loaded takeover
 canvas exposes the same localized image role and accessible name as the fallback image, while
 handback and privacy controls remain visible and reachable.
 
+A failed conversation read retries once after 1.2 seconds for transient failures. HTTP 404 and
+aborted reads are not retried. If reading still fails, a notice inside the conversation names an
+offline device, deleted conversation, server restart or server failure. Its error code stays visible;
+**Detalhes** / **Details** expands the sanitized diagnostic. **Tentar de novo** / **Try again**
+retries reads only; deleted conversations have no retry action. Loaded messages and drafts stay
+visible, and a failed first read replaces the loading skeleton with the notice. Returning online or
+reconnecting automatically refreshes failed history, while healthy history relies on event replay.
+A server's `RUNTIME_DRAINING` refusal reconnects the client. A failed conversation-index refresh
+uses the application notice and identifies the list rather than claiming the conversation failed.
+
 Conversation history always reserves the same 64 px navigation space outside its scroll viewport,
 including while the jump-to-latest button is hidden. Showing or hiding that button must not resize
 the history or move a pressed control before pointer release, including when the first browser

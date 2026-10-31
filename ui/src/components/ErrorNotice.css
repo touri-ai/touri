@@ -14,13 +14,6 @@
   margin-bottom: 8px;
 }
 
-.error-notice .error-recovery-actions button {
-  margin: 0;
-  padding: 2px 0;
-  font: inherit;
-  text-align: left;
-}
-
 .error-notice .error-details code {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
