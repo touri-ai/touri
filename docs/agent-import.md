@@ -6,10 +6,12 @@ O dono pode copiar agentes do servidor onde o touri está rodando. A importaçã
 | --- | --- |
 | `GET /api/v1/import/sources` | Detecta a pasta do Claude Code no servidor e oferece pasta ou JSON manual. |
 | `POST /api/v1/import/preview` | Recebe `{source, path?, payload?}` e retorna contagens, itens excluídos e uma prévia válida por dez minutos. |
-| `POST /api/v1/import/apply` | Recebe `{previewId, select}`; cada chave de agente seleciona instruções, skills, memórias e rotinas. |
+| `POST /api/v1/import/apply` | Recebe `{previewId, select, names?}`; cada chave de agente seleciona instruções, skills, memórias e rotinas. |
 | `POST /api/v1/import/undo` | Recebe `{importId}` e inicia a remoção dos bots e recursos criados por essa importação. |
 
 A prévia existe apenas em memória: não cria arquivos, bots, rotinas nem registros no banco. O servidor mantém as três prévias mais recentes; uma nova prévia substitui a mais antiga. Um reinício exige outra prévia. A aplicação usa o conteúdo revisado, mesmo se a origem mudar depois. Repetir a mesma aplicação enquanto a prévia estiver disponível devolve o mesmo resultado; outra seleção exige nova prévia.
+
+Os nomes podem ser revisados antes da importação: `names` associa as chaves da prévia a nomes de até 80 caracteres. Nomes vazios, caracteres de controle, conteúdo suspeito e chaves fora da prévia são recusados. Repetir a aplicação exige os mesmos nomes revisados. A interface distingue nomes repetidos entre fontes e permite editar cada um antes de copiar.
 
 ## Fontes
 

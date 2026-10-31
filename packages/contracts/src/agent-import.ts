@@ -46,7 +46,7 @@ export type AgentImportRoutes = {
     res: AgentImportPreview
   }
   "POST /api/v1/import/apply": {
-    req: { previewId: string; select: Record<string, AgentImportItemSelection> }
+    req: { previewId: string; select: Record<string, AgentImportItemSelection>; names?: Record<string, string> }
     res: AgentImportResult
   }
   "POST /api/v1/import/undo": { req: { importId: string }; res: { removedBots: number } }
