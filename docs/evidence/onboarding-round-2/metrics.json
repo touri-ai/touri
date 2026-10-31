@@ -1,5 +1,5 @@
 {
-  "method": "Headed production Chromium; click listener and two requestAnimationFrame callbacks; PerformanceObserver longtask, event and layout-shift. Observational samples with screen recording and concurrent activity; no regression attribution.",
+  "method": "Headed production Chromium; click listener and two requestAnimationFrame callbacks; PerformanceObserver longtask, event and layout-shift. Observational samples with screen recording and concurrent activity; no regression attribution. Per-action jank and layout shift use the next 500 ms, including shifts following recent input; this is a diagnostic window, not causal attribution or CLS.",
   "scenarios": [
     {
       "scenario": "real-runtime-onboarding-desktop",
@@ -13,137 +13,245 @@
         {
           "action": 1,
           "label": "Começar →",
-          "nextPaintMs": 1097.8
+          "nextPaintMs": 1097.8,
+          "longTasksInNext500Ms": 1,
+          "maxLongTaskInNext500Ms": 200,
+          "layoutShiftInNext500Ms": 0,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 2,
           "label": "Este computador cuida dos seus bots. Comece com um clique.",
-          "nextPaintMs": 280.4
+          "nextPaintMs": 280.4,
+          "longTasksInNext500Ms": 2,
+          "maxLongTaskInNext500Ms": 199,
+          "layoutShiftInNext500Ms": 0,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 3,
           "label": "Continuar ↵",
-          "nextPaintMs": 12.2
+          "nextPaintMs": 12.2,
+          "longTasksInNext500Ms": 0,
+          "maxLongTaskInNext500Ms": 0,
+          "layoutShiftInNext500Ms": 0.00340693,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 4,
           "label": "Suporte",
-          "nextPaintMs": 93.1
+          "nextPaintMs": 93.1,
+          "longTasksInNext500Ms": 0,
+          "maxLongTaskInNext500Ms": 0,
+          "layoutShiftInNext500Ms": 0.0009167,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 5,
           "label": "Continuar ↵",
-          "nextPaintMs": 76.2
+          "nextPaintMs": 76.2,
+          "longTasksInNext500Ms": 0,
+          "maxLongTaskInNext500Ms": 0,
+          "layoutShiftInNext500Ms": 0.00398501,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 6,
           "label": "＋Outra pasta de agenteEscolher pasta",
-          "nextPaintMs": 206.2
+          "nextPaintMs": 206.2,
+          "longTasksInNext500Ms": 1,
+          "maxLongTaskInNext500Ms": 122,
+          "layoutShiftInNext500Ms": 0,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 7,
           "label": "▸ agent-export",
-          "nextPaintMs": 380.7
+          "nextPaintMs": 380.7,
+          "longTasksInNext500Ms": 0,
+          "maxLongTaskInNext500Ms": 0,
+          "layoutShiftInNext500Ms": 0.01529907,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 8,
           "label": "Usar esta pasta",
-          "nextPaintMs": 113.9
+          "nextPaintMs": 113.9,
+          "longTasksInNext500Ms": 0,
+          "maxLongTaskInNext500Ms": 0,
+          "layoutShiftInNext500Ms": 0.04088057,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 9,
           "label": "Copiar pedido e colar resposta",
-          "nextPaintMs": 53.6
+          "nextPaintMs": 53.6,
+          "longTasksInNext500Ms": 1,
+          "maxLongTaskInNext500Ms": 52,
+          "layoutShiftInNext500Ms": 0.008505,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 10,
           "label": "Continuar ↵",
-          "nextPaintMs": 288.7
+          "nextPaintMs": 288.7,
+          "longTasksInNext500Ms": 2,
+          "maxLongTaskInNext500Ms": 106,
+          "layoutShiftInNext500Ms": 0,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 11,
           "label": "Continuar ↵",
-          "nextPaintMs": 580.9
+          "nextPaintMs": 580.9,
+          "longTasksInNext500Ms": 2,
+          "maxLongTaskInNext500Ms": 100,
+          "layoutShiftInNext500Ms": 0.00644436,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 12,
           "label": "Importar selecionados ↵",
-          "nextPaintMs": 19.3
+          "nextPaintMs": 19.3,
+          "longTasksInNext500Ms": 0,
+          "maxLongTaskInNext500Ms": 0,
+          "layoutShiftInNext500Ms": 2.504e-05,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 13,
           "label": "Desfazer importação · 1",
-          "nextPaintMs": 402.5
+          "nextPaintMs": 402.5,
+          "longTasksInNext500Ms": 3,
+          "maxLongTaskInNext500Ms": 290,
+          "layoutShiftInNext500Ms": 0.00071297,
+          "copyObservation": "A remoção funciona, mas o título Trazendo seus agentes permanece sem confirmação; F3."
         },
         {
           "action": 14,
           "label": "‹",
-          "nextPaintMs": 113.6
+          "nextPaintMs": 113.6,
+          "longTasksInNext500Ms": 0,
+          "maxLongTaskInNext500Ms": 0,
+          "layoutShiftInNext500Ms": 0,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 15,
           "label": "‹",
-          "nextPaintMs": 11.2
+          "nextPaintMs": 11.2,
+          "longTasksInNext500Ms": 0,
+          "maxLongTaskInNext500Ms": 0,
+          "layoutShiftInNext500Ms": 0.00102651,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 16,
           "label": "Continuar ↵",
-          "nextPaintMs": 70.7
+          "nextPaintMs": 70.7,
+          "longTasksInNext500Ms": 0,
+          "maxLongTaskInNext500Ms": 0,
+          "layoutShiftInNext500Ms": 0.00899535,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 17,
           "label": "Importar selecionados ↵",
-          "nextPaintMs": 78.2
+          "nextPaintMs": 78.2,
+          "longTasksInNext500Ms": 1,
+          "maxLongTaskInNext500Ms": 72,
+          "layoutShiftInNext500Ms": 0.00346953,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 18,
           "label": "Continuar ↵",
-          "nextPaintMs": 689.4
+          "nextPaintMs": 689.4,
+          "longTasksInNext500Ms": 2,
+          "maxLongTaskInNext500Ms": 91,
+          "layoutShiftInNext500Ms": 0.00381117,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 19,
           "label": "Continuar ↵",
-          "nextPaintMs": 53.8
+          "nextPaintMs": 53.8,
+          "longTasksInNext500Ms": 1,
+          "maxLongTaskInNext500Ms": 82,
+          "layoutShiftInNext500Ms": 0.00185954,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 20,
           "label": "Conectar ou verificar conta",
-          "nextPaintMs": 111.5
+          "nextPaintMs": 111.5,
+          "longTasksInNext500Ms": 1,
+          "maxLongTaskInNext500Ms": 69,
+          "layoutShiftInNext500Ms": 0.03994713,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 21,
           "label": "Cancelar login",
-          "nextPaintMs": 10.2
+          "nextPaintMs": 10.2,
+          "longTasksInNext500Ms": 0,
+          "maxLongTaskInNext500Ms": 0,
+          "layoutShiftInNext500Ms": 0.00970718,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 22,
           "label": "Continuar ↵",
-          "nextPaintMs": 79.9
+          "nextPaintMs": 79.9,
+          "longTasksInNext500Ms": 1,
+          "maxLongTaskInNext500Ms": 73,
+          "layoutShiftInNext500Ms": 0,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 23,
           "label": "Continuar ↵",
-          "nextPaintMs": 162.3
+          "nextPaintMs": 162.3,
+          "longTasksInNext500Ms": 1,
+          "maxLongTaskInNext500Ms": 54,
+          "layoutShiftInNext500Ms": 0,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 24,
           "label": "Continuar ↵",
-          "nextPaintMs": 99.6
+          "nextPaintMs": 99.6,
+          "longTasksInNext500Ms": 0,
+          "maxLongTaskInNext500Ms": 0,
+          "layoutShiftInNext500Ms": 0,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 25,
           "label": "Resuma o contexto de Empresa Exemplo e sugira três próximos passos.",
-          "nextPaintMs": 84.2
+          "nextPaintMs": 84.2,
+          "longTasksInNext500Ms": 0,
+          "maxLongTaskInNext500Ms": 0,
+          "layoutShiftInNext500Ms": 0,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 26,
           "label": "Enviar primeira tarefa ↵",
-          "nextPaintMs": 81
+          "nextPaintMs": 81,
+          "longTasksInNext500Ms": 4,
+          "maxLongTaskInNext500Ms": 100,
+          "layoutShiftInNext500Ms": 0.00173844,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 27,
           "label": "Continuar ↵",
-          "nextPaintMs": 210.2
+          "nextPaintMs": 210.2,
+          "longTasksInNext500Ms": 1,
+          "maxLongTaskInNext500Ms": 74,
+          "layoutShiftInNext500Ms": 0,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         }
       ]
     },
@@ -159,57 +267,101 @@
         {
           "action": 1,
           "label": "Começar →",
-          "nextPaintMs": 412.3
+          "nextPaintMs": 412.3,
+          "longTasksInNext500Ms": 1,
+          "maxLongTaskInNext500Ms": 499,
+          "layoutShiftInNext500Ms": 0,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 2,
           "label": "Este computador cuida dos seus bots. Comece com um clique.",
-          "nextPaintMs": 202.1
+          "nextPaintMs": 202.1,
+          "longTasksInNext500Ms": 1,
+          "maxLongTaskInNext500Ms": 198,
+          "layoutShiftInNext500Ms": 0,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 3,
           "label": "Continuar ↵",
-          "nextPaintMs": 12
+          "nextPaintMs": 12,
+          "longTasksInNext500Ms": 0,
+          "maxLongTaskInNext500Ms": 0,
+          "layoutShiftInNext500Ms": 0.00340693,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 4,
           "label": "Pular",
-          "nextPaintMs": 398.9
+          "nextPaintMs": 398.9,
+          "longTasksInNext500Ms": 1,
+          "maxLongTaskInNext500Ms": 402,
+          "layoutShiftInNext500Ms": 9.627e-05,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 5,
           "label": "Pular",
-          "nextPaintMs": 410.1
+          "nextPaintMs": 410.1,
+          "longTasksInNext500Ms": 1,
+          "maxLongTaskInNext500Ms": 494,
+          "layoutShiftInNext500Ms": 0.00259306,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 6,
           "label": "Continuar ↵",
-          "nextPaintMs": 197.1
+          "nextPaintMs": 197.1,
+          "longTasksInNext500Ms": 3,
+          "maxLongTaskInNext500Ms": 109,
+          "layoutShiftInNext500Ms": 0,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 7,
           "label": "Continuar ↵",
-          "nextPaintMs": 190.5
+          "nextPaintMs": 190.5,
+          "longTasksInNext500Ms": 2,
+          "maxLongTaskInNext500Ms": 208,
+          "layoutShiftInNext500Ms": 0,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 8,
           "label": "Convidar pessoa",
-          "nextPaintMs": 392.7
+          "nextPaintMs": 392.7,
+          "longTasksInNext500Ms": 2,
+          "maxLongTaskInNext500Ms": 303,
+          "layoutShiftInNext500Ms": 0,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 9,
           "label": "Cancelar",
-          "nextPaintMs": 3383.4
+          "nextPaintMs": 3383.4,
+          "longTasksInNext500Ms": 0,
+          "maxLongTaskInNext500Ms": 0,
+          "layoutShiftInNext500Ms": 0,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 10,
           "label": "Continuar ↵",
-          "nextPaintMs": 195.1
+          "nextPaintMs": 195.1,
+          "longTasksInNext500Ms": 1,
+          "maxLongTaskInNext500Ms": 190,
+          "layoutShiftInNext500Ms": 0.00011606,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         },
         {
           "action": 11,
           "label": "Resuma o contexto de Equipe Exemplo e sugira três próximos passos.",
-          "nextPaintMs": 10.4
+          "nextPaintMs": 10.4,
+          "longTasksInNext500Ms": 0,
+          "maxLongTaskInNext500Ms": 0,
+          "layoutShiftInNext500Ms": 0,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         }
       ]
     },
@@ -225,12 +377,20 @@
         {
           "action": 1,
           "label": "Assumir",
-          "nextPaintMs": 1102.7
+          "nextPaintMs": 1102.7,
+          "longTasksInNext500Ms": 1,
+          "maxLongTaskInNext500Ms": 1213,
+          "layoutShiftInNext500Ms": 0,
+          "copyObservation": "Página e nome de quem controla permaneceram visíveis para as duas pessoas fictícias."
         },
         {
           "action": 2,
           "label": "Devolver para Léo",
-          "nextPaintMs": 174.3
+          "nextPaintMs": 174.3,
+          "longTasksInNext500Ms": 1,
+          "maxLongTaskInNext500Ms": 87,
+          "layoutShiftInNext500Ms": 0.00439322,
+          "copyObservation": "Página e nome de quem controla permaneceram visíveis para as duas pessoas fictícias."
         }
       ]
     },
@@ -256,22 +416,38 @@
         {
           "action": 1,
           "label": "Assumir",
-          "nextPaintMs": 1102.7
+          "nextPaintMs": 1102.7,
+          "longTasksInNext500Ms": 1,
+          "maxLongTaskInNext500Ms": 1213,
+          "layoutShiftInNext500Ms": 0,
+          "copyObservation": "Página e nome de quem controla permaneceram visíveis para as duas pessoas fictícias."
         },
         {
           "action": 2,
           "label": "Devolver para Léo",
-          "nextPaintMs": 174.3
+          "nextPaintMs": 174.3,
+          "longTasksInNext500Ms": 1,
+          "maxLongTaskInNext500Ms": 87,
+          "layoutShiftInNext500Ms": 0.00439322,
+          "copyObservation": "Página e nome de quem controla permaneceram visíveis para as duas pessoas fictícias."
         },
         {
           "action": 3,
           "label": "Assumir",
-          "nextPaintMs": 793.8
+          "nextPaintMs": 793.8,
+          "longTasksInNext500Ms": 1,
+          "maxLongTaskInNext500Ms": 618,
+          "layoutShiftInNext500Ms": 0,
+          "copyObservation": "Página e nome de quem controla permaneceram visíveis para as duas pessoas fictícias."
         },
         {
           "action": 4,
           "label": "Cancelar",
-          "nextPaintMs": 166.1
+          "nextPaintMs": 166.1,
+          "longTasksInNext500Ms": 1,
+          "maxLongTaskInNext500Ms": 91,
+          "layoutShiftInNext500Ms": 0.01358201,
+          "copyObservation": "Sem outra lacuna de texto registrada nesta ação; ver achados por etapa no relatório."
         }
       ]
     }

@@ -52,7 +52,9 @@ públicos são recortes curtos revisados, sem credenciais ou caminhos pessoais.
 
 `metrics.json` contém cada clique observado e o próximo quadro estimado por dois callbacks
 `requestAnimationFrame`, além de Event Timing, tarefas longas e deslocamentos de layout.
-Os percentis usam nearest rank. As tarefas longas incluem inicialização e toda a janela de coleta.
+Os percentis usam nearest rank. Cada ação também registra tarefas longas, deslocamento de layout
+e observação de texto nos 500 ms seguintes. Essa janela inclui deslocamentos após input e não
+é CLS nem atribuição causal. As tarefas longas totais incluem inicialização e toda a janela de coleta.
 
 | Cenário de produção | Cliques | Clique → pintura p95 | Evento p95 | Tarefas longas / máximo | CLS |
 | --- | ---: | ---: | ---: | ---: | ---: |
