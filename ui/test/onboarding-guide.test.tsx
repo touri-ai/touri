@@ -1,0 +1,318 @@
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import type { UiEventEnvelope } from "@touri/contracts"
+import { afterEach, expect, it, vi } from "vitest"
+import type { TauriInvoke, UiApi } from "../src/api/client"
+import { ApiError } from "../src/errors"
+import { GuidedOnboarding } from "../src/features/onboarding/GuidedOnboarding"
+import { getImportProgress, getWebsite } from "../src/features/onboarding/guide"
+import { dictionaries } from "../src/i18n"
+import {
+  getGuideBotFixture,
+  getGuideGroupFixture,
+  getGuidePreviewFixture,
+  getGuideSourceFixture,
+  getGuideThreadFixture,
+} from "./fixtures/onboarding-guide"
+
+afterEach(() => {
+  cleanup()
+  localStorage.clear()
+})
+
+const getFixture = (overrides: Record<string, unknown> = {}) => {
+  const listeners = new Set<(event: UiEventEnvelope) => void>()
+  const request = vi.fn(async (route: string) => {
+    if (overrides[route] instanceof Error) throw overrides[route]
+    const override = overrides[route]
+    if (typeof override === "function") return override()
+    if (route in overrides) return override
+    if (route === "GET /api/v1/import/sources") return { sources: [getGuideSourceFixture()] }
+    if (route === "POST /api/v1/import/preview") return getGuidePreviewFixture()
+    if (route === "POST /api/v1/import/apply")
+      return { importId: "import-one", bots: [{ agentKey: "dev", botId: "bot-dev" }], pausedRoutines: 1, reconnect: [] }
+    if (route === "GET /bots") return { bots: [getGuideBotFixture(), getGuideBotFixture("dev")] }
+    if (route === "GET /groups") return { groups: [] }
+    if (route === "POST /groups") return { group: getGuideGroupFixture(), thread: getGuideThreadFixture() }
+    if (route === "GET /groups/:id/threads") return { threads: [getGuideThreadFixture()] }
+    if (route === "PATCH /bots/:id") return { bot: getGuideBotFixture() }
+    return {}
+  }) as UiApi["request"]
+  const api: UiApi = {
+    request,
+    isMock: false,
+    subscribe: (listener) => {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+  }
+  const complete = vi.fn(async () => undefined)
+  const invoke = vi.fn(async () => null) as TauriInvoke
+  const view = render(<GuidedOnboarding api={api} invoke={invoke} onBack={vi.fn()} onComplete={complete} />)
+  return { request, complete, listeners, view }
+}
+const continueSetup = () => fireEvent.click(screen.getByRole("button", { name: /^Continuar/ }))
+const enterWorkspace = () => {
+  fireEvent.change(screen.getByRole("textbox", { name: "Nome" }), { target: { value: "Equipe exemplo" } })
+  continueSetup()
+}
+it("keeps the owner's answer and highlights the live workspace without a step rail", () => {
+  const { view } = getFixture()
+
+  enterWorkspace()
+
+  expect(screen.getByRole("heading", { name: "O que Equipe exemplo faz?" })).toBeVisible()
+  expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "2")
+  expect(within(screen.getByLabelText("Suas respostas")).getByText("Equipe exemplo")).toBeVisible()
+  expect(view.container.querySelector('.ob-preview-section[data-highlighted="true"] h2')).toHaveTextContent("Canais")
+  expect(screen.queryByRole("navigation")).toBeNull()
+})
+it("preselects discovered sources and sends only reviewed item selections to apply", async () => {
+  const { request } = getFixture()
+  enterWorkspace()
+  continueSetup()
+  const source = await screen.findByRole("button", { name: /Claude Code/ })
+  expect(source).toHaveAttribute("aria-pressed", "true")
+
+  continueSetup()
+  await screen.findByRole("heading", { name: "Confere o que vem?" })
+  fireEvent.click(screen.getByRole("checkbox", { name: /Memórias/ }))
+  fireEvent.click(screen.getByRole("button", { name: /Importar selecionados/ }))
+
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith("POST /api/v1/import/apply", {
+      previewId: "preview-one",
+      select: { dev: { instructions: true, skills: true, memories: false, routines: true } },
+    }),
+  )
+  expect(screen.getByText("Rotinas pausadas")).toBeVisible()
+})
+it("omits unchecked agents from the apply map", async () => {
+  const preview = getGuidePreviewFixture()
+  const first = preview.agents[0]
+  if (!first) throw new Error("Missing synthetic preview agent")
+  const { request } = getFixture({
+    "POST /api/v1/import/preview": {
+      ...preview,
+      agents: [first, { ...first, key: "skip", name: "skip", suggestedBotName: "skip" }],
+    },
+  })
+  enterWorkspace()
+  continueSetup()
+  await screen.findByRole("button", { name: /Claude Code/ })
+  continueSetup()
+  await screen.findByRole("heading", { name: "Confere o que vem?" })
+
+  fireEvent.click(screen.getByRole("checkbox", { name: "Incluir skip", exact: true }))
+  fireEvent.click(screen.getByRole("button", { name: /Importar selecionados/ }))
+
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith("POST /api/v1/import/apply", {
+      previewId: "preview-one",
+      select: { dev: { instructions: true, skills: true, memories: true, routines: true } },
+    }),
+  )
+})
+it("leaves clipboard denial recoverable and never stores the pasted export in browser storage", async () => {
+  getFixture()
+  enterWorkspace()
+  continueSetup()
+  fireEvent.click(await screen.findByRole("button", { name: /Outro app \(pedido de exportação\)/ }))
+
+  fireEvent.click(screen.getByRole("button", { name: "Colar resposta" }))
+
+  await screen.findByText("Cole a resposta no campo abaixo.")
+  fireEvent.change(screen.getByRole("textbox", { name: "Resposta em JSON" }), { target: { value: "invalid" } })
+  continueSetup()
+  await screen.findByRole("alert")
+  expect(screen.getByRole("textbox", { name: "Resposta em JSON" })).toHaveValue("invalid")
+  expect(localStorage.length).toBe(0)
+})
+it("keeps access opt-in and sends the first task to the general channel with a retry nonce", async () => {
+  const { request, complete } = getFixture()
+  enterWorkspace()
+  continueSetup()
+  fireEvent.click(await screen.findByRole("button", { name: "Pular" }))
+  const browser = screen.getByRole("checkbox", { name: /Navegador/ })
+  expect(browser).not.toBeChecked()
+  expect(screen.getByRole("checkbox", { name: /Comandos sem aprovação/ })).not.toBeChecked()
+
+  continueSetup()
+  await screen.findByRole("heading", { name: "Seu time de agentes" })
+  continueSetup()
+  await screen.findByRole("heading", { name: "Quem mais trabalha com você?" })
+  fireEvent.click(screen.getByRole("button", { name: "Pular" }))
+  fireEvent.change(screen.getByRole("textbox", { name: "Sua primeira tarefa" }), {
+    target: { value: "Organize as prioridades." },
+  })
+  fireEvent.click(screen.getByRole("button", { name: /Enviar primeira tarefa/ }))
+
+  await screen.findByRole("heading", { name: "Seu touri está pronto" })
+  expect(request).toHaveBeenCalledWith(
+    "POST /threads/:id/messages",
+    expect.objectContaining({
+      text: expect.stringContaining("@touri Organize as prioridades."),
+      clientNonce: expect.any(String),
+    }),
+    { id: "general-thread" },
+  )
+  await waitFor(() => expect(complete).toHaveBeenCalledOnce())
+})
+it("keeps Enter inside account settings and refreshes API models when the editor closes", async () => {
+  const catalog = vi.fn().mockReturnValue({ models: [], executorAvailable: true })
+  getFixture({ "GET /api-models": catalog })
+  enterWorkspace()
+  continueSetup()
+  fireEvent.click(await screen.findByRole("button", { name: "Pular" }))
+  continueSetup()
+  await screen.findByRole("heading", { name: "Seu time de agentes" })
+  fireEvent.change(screen.getByRole("combobox", { name: "Conta de IA" }), { target: { value: "opencode" } })
+  fireEvent.click(screen.getByRole("button", { name: "Chave de API" }))
+  const key = await screen.findByLabelText("Chave de API")
+  fireEvent.change(key, { target: { value: "synthetic-key" } })
+
+  fireEvent.keyDown(key, { key: "Enter" })
+
+  expect(screen.getByRole("heading", { name: "Seu time de agentes" })).toBeVisible()
+  expect(key).toHaveValue("synthetic-key")
+  catalog.mockReturnValue({
+    models: [
+      {
+        id: "example",
+        preset: "custom",
+        name: "Modelo exemplo",
+        baseUrl: "https://api.example.com",
+        modelId: "model-x",
+      },
+    ],
+    executorAvailable: true,
+  })
+  fireEvent.click(screen.getByRole("button", { name: "Fechar", exact: true }))
+  await screen.findByRole("option", { name: "Modelo exemplo · model-x" })
+})
+it("removes preview-only agents when the owner skips review", async () => {
+  getFixture()
+  enterWorkspace()
+  continueSetup()
+  await screen.findByRole("button", { name: /Claude Code/ })
+  continueSetup()
+  await screen.findByRole("heading", { name: "Confere o que vem?" })
+
+  fireEvent.click(screen.getByRole("button", { name: "Pular" }))
+
+  expect(screen.getByRole("heading", { name: "O que seus agentes podem usar?" })).toBeVisible()
+  expect(within(screen.getByRole("complementary")).queryByText("dev")).toBeNull()
+})
+it("validates a typed website before continuing", () => {
+  getFixture()
+  enterWorkspace()
+  const website = screen.getByRole("textbox", { name: "Site (opcional)" })
+  fireEvent.change(website, { target: { value: "file:///workspace/site" } })
+
+  continueSetup()
+
+  expect(screen.getByRole("alert")).toHaveTextContent("Use um endereço HTTPS")
+  expect(screen.getByRole("heading", { name: "O que Equipe exemplo faz?" })).toBeVisible()
+})
+it("suggests only routines the owner chose to import", async () => {
+  getFixture({
+    "POST /api/v1/import/apply": {
+      importId: "import-one",
+      bots: [{ agentKey: "dev", botId: "bot-dev" }],
+      pausedRoutines: 0,
+      reconnect: [],
+    },
+  })
+  enterWorkspace()
+  continueSetup()
+  await screen.findByRole("button", { name: /Claude Code/ })
+  continueSetup()
+  await screen.findByRole("heading", { name: "Confere o que vem?" })
+  fireEvent.click(screen.getByRole("checkbox", { name: /Rotinas/ }))
+  fireEvent.click(screen.getByRole("button", { name: /Importar selecionados/ }))
+  await screen.findByText("Pronto", { exact: true })
+  continueSetup()
+  continueSetup()
+  await screen.findByRole("heading", { name: "Seu time de agentes" })
+  continueSetup()
+  await screen.findByRole("heading", { name: "Quem mais trabalha com você?" })
+
+  fireEvent.click(screen.getByRole("button", { name: "Pular" }))
+
+  expect(screen.getByRole("heading", { name: "O que eles fazem primeiro?" })).toBeVisible()
+  expect(screen.queryByRole("button", { name: /Revise a rotina/ })).toBeNull()
+})
+it("returns an expired import preview to source review", async () => {
+  getFixture({ "POST /api/v1/import/apply": new ApiError(410, "IMPORT_PREVIEW_EXPIRED") })
+  enterWorkspace()
+  continueSetup()
+  await screen.findByRole("button", { name: /Claude Code/ })
+  continueSetup()
+  await screen.findByRole("heading", { name: "Confere o que vem?" })
+  fireEvent.click(screen.getByRole("button", { name: /Importar selecionados/ }))
+  await screen.findByRole("alert")
+  expect(screen.getByText("Cópia interrompida")).toBeVisible()
+
+  fireEvent.click(screen.getByRole("button", { name: "Revisar fontes", exact: true }))
+
+  expect(screen.getByRole("heading", { name: "Já usa agentes em outro app?" })).toBeVisible()
+  expect(screen.queryByRole("alert")).toBeNull()
+})
+it("reserves a place for the guide within the channel member limit", async () => {
+  const preview = getGuidePreviewFixture()
+  const template = preview.agents[0]
+  if (!template) throw new Error("Missing synthetic preview agent")
+  const agents = Array.from({ length: 20 }, (_, index) => ({
+    ...template,
+    key: `agent-${index}`,
+    suggestedBotName: `agent-${index}`,
+  }))
+  getFixture({ "POST /api/v1/import/preview": { ...preview, agents } })
+  enterWorkspace()
+  continueSetup()
+  await screen.findByRole("button", { name: /Claude Code/ })
+  continueSetup()
+  await screen.findByRole("heading", { name: "Confere o que vem?" })
+
+  expect(screen.getByRole("button", { name: /Importar selecionados/ })).toBeDisabled()
+  fireEvent.click(screen.getByRole("checkbox", { name: "Incluir agent-0", exact: true }))
+
+  expect(screen.getByRole("button", { name: /Importar selecionados/ })).toBeEnabled()
+})
+it("skips the team step when invite routes are absent", async () => {
+  getFixture({ "GET /invites": new Error("NOT_SUPPORTED") })
+  enterWorkspace()
+  continueSetup()
+  fireEvent.click(await screen.findByRole("button", { name: "Pular" }))
+  continueSetup()
+  await screen.findByRole("heading", { name: "Seu time de agentes" })
+
+  continueSetup()
+
+  await screen.findByRole("heading", { name: "O que eles fazem primeiro?" })
+  expect(screen.queryByRole("button", { name: "Convidar pessoa" })).toBeNull()
+})
+it.each(["http://example.com", "file:///workspace/export.json", "https://user:password@example.com"])(
+  "rejects a website outside HTTPS without credentials: %s",
+  (website) => {
+    expect(() => getWebsite(website)).toThrow()
+  },
+)
+it("uses actual progress events and rejects malformed or non-finite counters", () => {
+  const progress = { importId: "one", agentKey: "dev", step: "skills", done: 1, total: 4 }
+
+  expect(getImportProgress({ type: "agent-import.progress", progress })).toEqual(progress)
+  expect(getImportProgress({ ...progress, total: Number.NaN })).toBeNull()
+  expect(getImportProgress({ type: "import.progress", done: 1, total: 4 })).toBeNull()
+})
+it("translates every conversational setup string", () => {
+  const keys = Object.keys(dictionaries["pt-BR"]).filter((key) =>
+    key.startsWith("ob."),
+  ) as (keyof typeof dictionaries.en)[]
+
+  expect(keys.length).toBeGreaterThan(80)
+  keys.forEach((key) => {
+    expect(dictionaries.en[key]).not.toBe(key)
+  })
+})

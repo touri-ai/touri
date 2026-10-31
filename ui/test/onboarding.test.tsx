@@ -19,16 +19,16 @@ const getRequest = (overrides: Record<string, unknown> = {}): OnboardingRequest 
   }) as OnboardingRequest
 const getInvoke = (): TauriInvoke => vi.fn(async () => null) as TauriInvoke
 
-it("starts locally with one click, without identity or network configuration", async () => {
+it("starts with a location choice before creating a workspace", async () => {
   const request = getRequest()
   const complete = vi.fn()
   render(<Onboarding request={request} invoke={getInvoke()} onComplete={complete} />)
 
-  fireEvent.click(screen.getByRole("button", { name: /Começar neste computador/ }))
+  fireEvent.click(screen.getByRole("button", { name: /^Começar/ }))
 
-  await waitFor(() => expect(complete).toHaveBeenCalledOnce())
-  expect(request).toHaveBeenCalledWith("POST /onboarding", { remote: false })
-  expect(screen.queryByLabelText("Seu email")).toBeNull()
+  expect(screen.getByRole("heading", { name: "Onde seus agentes vão morar?" })).toBeVisible()
+  expect(complete).not.toHaveBeenCalled()
+  expect(request).not.toHaveBeenCalledWith("POST /onboarding", expect.anything())
 })
 
 it("skips a completed installation and recognizes existing browser state", async () => {
@@ -48,10 +48,10 @@ it("skips a completed installation and recognizes existing browser state", async
 })
 
 it("offers the two server paths and actionable missing-network help", async () => {
-  render(<Onboarding request={getRequest()} invoke={getInvoke()} onComplete={vi.fn()} />)
+  render(<Onboarding request={getRequest()} invoke={getInvoke()} onComplete={vi.fn()} revisiting />)
 
   fireEvent.click(screen.getByRole("button", { name: /Usar meu servidor/ }))
-  fireEvent.click(screen.getByRole("button", { name: /Rodar neste/ }))
+  fireEvent.click(screen.getByRole("button", { name: /Este (Mac|PC)/ }))
 
   await screen.findByText(/Para ativar: instale o Tailscale/)
   expect(screen.getByRole("switch")).toBeDisabled()
@@ -134,7 +134,7 @@ it("returns to the existing local runtime before configuring a computer from ser
   const complete = vi.fn()
   render(<Onboarding request={getRequest()} invoke={invoke} onComplete={complete} initialStep="choose" revisiting />)
 
-  fireEvent.click(screen.getByRole("button", { name: /Rodar neste/ }))
+  fireEvent.click(screen.getByRole("button", { name: /Este (Mac|PC)/ }))
 
   await waitFor(() => expect(invoke).toHaveBeenCalledWith("server_mode_local", {}))
   expect(complete).toHaveBeenCalledOnce()

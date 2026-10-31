@@ -32,6 +32,7 @@
       }
     }
   },
+  "overrides": [{ "includes": ["packages/contracts/src/agent-import.ts"], "formatter": { "enabled": false } }],
   "files": {
     "includes": [
       "**",
