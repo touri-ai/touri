@@ -1,5 +1,5 @@
 import type { AgentImportProgress, AvatarMood, Bot } from "@touri/contracts"
-import type { KeyboardEventHandler, ReactNode, RefObject } from "react"
+import { type KeyboardEventHandler, type ReactNode, type RefObject, useEffect } from "react"
 import { BotAvatar } from "../../components/BotAvatar"
 import { Button } from "../../components/Button"
 import { type TranslationKey, t } from "../../i18n"
@@ -48,6 +48,16 @@ export const GuideLayout = ({
 }) => {
   const stage = getStage(step)
   const question = questions[step]
+  useEffect(() => {
+    const handleUnfocusedEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape" || event.target !== document.body) return
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return
+      event.preventDefault()
+      onBack()
+    }
+    window.addEventListener("keydown", handleUnfocusedEscape)
+    return () => window.removeEventListener("keydown", handleUnfocusedEscape)
+  }, [onBack])
   return (
     <main className="ob-screen" onKeyDown={onKeyDown}>
       <div className="ob-shell">

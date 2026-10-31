@@ -81,6 +81,24 @@ it("preserves field focus when the owner starts typing before the scheduled head
 
   expect(context).toHaveFocus()
 })
+it("handles Escape before a question receives its scheduled focus", () => {
+  vi.useFakeTimers()
+  getFixture()
+  enterWorkspace()
+
+  fireEvent.keyDown(document.body, { key: "Escape" })
+
+  expect(screen.getByRole("textbox", { name: "Nome", exact: true })).toHaveValue("Equipe exemplo")
+})
+it("does not leave an open dialog when Escape reaches the body", () => {
+  getFixture()
+  enterWorkspace()
+  render(<section role="dialog" aria-label="Diálogo de exemplo" />)
+
+  fireEvent.keyDown(document.body, { key: "Escape" })
+
+  expect(screen.getByRole("heading", { name: "O que Equipe exemplo faz?" })).toBeVisible()
+})
 it("preselects discovered sources and sends only reviewed item selections to apply", async () => {
   const { request } = getFixture()
   enterWorkspace()

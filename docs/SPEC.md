@@ -99,6 +99,7 @@ top. The main landmark stays outside named regions so assistive navigation can r
 Primary actions preserve readable contrast in both themes, including their hover state.
 Question transitions scroll in the next animation frame and focus the heading after that frame paints.
 If the owner focuses a field first, the scheduled heading focus preserves that choice.
+Escape remains available during that transition and does not navigate away from an open dialog.
 
 Import discovery, preview and apply use the authenticated UI transport. Importing requires an
 explicit reviewed selection; secrets stay excluded and copied routines stay paused. Each review
