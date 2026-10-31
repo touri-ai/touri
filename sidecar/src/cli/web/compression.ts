@@ -1,13 +1,11 @@
 import { setImmediate } from "node:timers/promises"
-import { promisify } from "node:util"
-import { brotliCompress, constants, gzip } from "node:zlib"
+import { createCompressionClient } from "./compression-client"
 
 type Encoding = "br" | "gzip"
 export type CompressedVariants = Record<Encoding, Uint8Array<ArrayBuffer>> & { size: number }
 
 const minimumBytes = 1024
-const compressBrotli = promisify(brotliCompress)
-const compressGzip = promisify(gzip)
+const compression = createCompressionClient()
 const runCompression = createCompressionRunner()
 
 const acceptedEncoding = (header: string | null): Encoding | null => {
@@ -28,13 +26,7 @@ const acceptedEncoding = (header: string | null): Encoding | null => {
 }
 
 const getCompressedBytes = (bytes: Uint8Array<ArrayBuffer>, encoding: Encoding): Promise<Uint8Array<ArrayBuffer>> => {
-  const pending = runCompression(bytes.byteLength, async () => {
-    const compressed = await (encoding === "br"
-      ? compressBrotli(bytes, { params: { [constants.BROTLI_PARAM_QUALITY]: 4 } })
-      : compressGzip(bytes, { level: 4 }))
-
-    return new Uint8Array(compressed)
-  })
+  const pending = runCompression(bytes.byteLength, () => compression.run(bytes, encoding))
 
   // An identity response remains usable when compression admission is full.
   return pending ?? Promise.resolve(bytes)

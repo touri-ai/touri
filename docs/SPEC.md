@@ -320,7 +320,8 @@ Bot conversation indexes start as soon as the authorized bot list arrives, indep
 secondary workspace reads. Saved selections and deep links still resolve only after the complete
 startup snapshot; starting an index read does not grant access or publish a partial selection.
 Buffered HTTP compression runs asynchronously with one native compression job at a time, keeping
-live requests responsive during cold asset bursts. Existing encoding negotiation, cached embedded
+live requests responsive during cold asset bursts. Codecs run on a dedicated CPU worker; failed or
+closed work preserves the original response bytes. Existing encoding negotiation, cached embedded
 variants, HEAD behavior, stream bypasses and browser-frame exclusions remain in force.
 Compression admission retains at most 64 jobs and 64 MiB of input, including the active job.
 When admission is full, responses use their original bytes without a content encoding. Completed

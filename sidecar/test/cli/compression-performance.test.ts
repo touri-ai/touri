@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto"
 import { setImmediate } from "node:timers/promises"
 import { brotliDecompressSync } from "node:zlib"
 import { compressBufferedResponse, compressedVariants, createCompressionRunner } from "../../src/cli/web/compression"
+import { createCompressionClient } from "../../src/cli/web/compression-client"
 
 const cleanups = new Set<() => void>()
 
@@ -11,6 +12,47 @@ afterEach(() => {
     close()
   })
   cleanups.clear()
+})
+
+test("worker startup failure preserves the original response bytes", async () => {
+  const client = createCompressionClient({
+    createWorker: () => {
+      throw new Error("synthetic worker startup failure")
+    },
+  })
+  cleanups.add(client.close)
+  const bytes = new TextEncoder().encode("Synthetic response")
+
+  const result = await client.run(bytes, "br")
+
+  expect(result).toBe(bytes)
+  expect(new TextDecoder().decode(bytes)).toBe("Synthetic response")
+})
+
+test("closing active compression preserves bytes and permits the next request", async () => {
+  const held = URL.createObjectURL(new Blob(["self.onmessage = () => {}"], { type: "application/javascript" }))
+  cleanups.add(() => {
+    URL.revokeObjectURL(held)
+  })
+  let created = 0
+  const client = createCompressionClient({
+    createWorker: (url) => {
+      created += 1
+
+      return new Worker(created === 1 ? held : url, { smol: true, ref: false })
+    },
+  })
+  cleanups.add(client.close)
+  const bytes = new TextEncoder().encode("Synthetic response. ".repeat(100))
+  const pending = client.run(bytes, "br")
+
+  client.close()
+  const canceled = await pending
+  const compressed = await client.run(bytes, "br")
+
+  expect(canceled).toBe(bytes)
+  expect(created).toBe(2)
+  expect(new Uint8Array(brotliDecompressSync(compressed))).toEqual(bytes)
 })
 
 test("compression admission bounds retained bytes until native work finishes", async () => {
