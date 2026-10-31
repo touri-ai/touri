@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises"
+import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import AxeBuilder from "@axe-core/playwright"
 import { test as base, expect, type Page, type TestInfo } from "@playwright/test"
@@ -10,7 +10,25 @@ const test = base.extend<{ measurementPage: Page }, { productionUrl: string }>({
   measurementPage: async ({ browser }, use) => {
     // A separate context keeps video encoding out of the timing samples.
     const context = await browser.newContext({ colorScheme: "dark" })
-    await use(await context.newPage())
+    const page = await context.newPage()
+    const session = await context.newCDPSession(page)
+    await session.send("Performance.enable", { timeDomain: "threadTicks" })
+    const profileDirectory = process.env.TOURI_ONBOARDING_PROFILE
+    if (profileDirectory) {
+      await session.send("Profiler.enable")
+      await session.send("Profiler.start")
+    }
+    await use(page)
+    const { metrics } = await session.send("Performance.getMetrics")
+    const durations = metrics.filter(({ name }) =>
+      ["TaskDuration", "ScriptDuration", "LayoutDuration", "RecalcStyleDuration"].includes(name),
+    )
+    const navigationStart = metrics.find(({ name }) => name === "NavigationStart")?.value
+    console.log(JSON.stringify({ cpu: durations, navigationStart }))
+    if (profileDirectory) {
+      const { profile } = await session.send("Profiler.stop")
+      await writeFile(join(profileDirectory, `guide-${page.viewportSize()?.width}.cpuprofile`), JSON.stringify(profile))
+    }
     await context.close()
   },
   productionUrl: [
@@ -182,7 +200,7 @@ test("onboarding guide: manual export and keyboard back remain usable with reduc
 })
 type ProbeWindow = Window & {
   __guideProbe: {
-    longTasks: number[]
+    longTasks: { at: number; duration: number }[]
     paints: number[]
     events: { id: number; duration: number; at: number; target: string }[]
     cls: number
@@ -195,7 +213,7 @@ const installPerformanceProbe = (page: Page) =>
     const target = window as ProbeWindow
     // Observers append samples owned by this bounded, short-lived page flow.
     const probe = {
-      longTasks: [] as number[],
+      longTasks: [] as { at: number; duration: number }[],
       paints: [] as number[],
       events: [] as { id: number; duration: number; at: number; target: string }[],
       cls: 0,
@@ -204,7 +222,7 @@ const installPerformanceProbe = (page: Page) =>
     }
     target.__guideProbe = probe
     const longTasks = new PerformanceObserver((list) =>
-      probe.longTasks.push(...list.getEntries().map((entry) => entry.duration)),
+      probe.longTasks.push(...list.getEntries().map((entry) => ({ at: entry.startTime, duration: entry.duration }))),
     )
     longTasks.observe({ type: "longtask" })
     const events = new PerformanceObserver((list) =>

@@ -94,6 +94,7 @@ screens the form and preview grow within one scrollable surface, machine control
 and each question starts at the
 top. The main landmark stays outside named regions so assistive navigation can reach it directly.
 Primary actions preserve readable contrast in both themes, including their hover state.
+Question transitions scroll in the next animation frame and focus the heading after that frame paints.
 
 Import discovery, preview and apply use the authenticated UI transport. Importing requires an
 explicit reviewed selection; secrets stay excluded and copied routines stay paused. Each review
