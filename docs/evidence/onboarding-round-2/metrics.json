@@ -1,0 +1,279 @@
+{
+  "method": "Headed production Chromium; click listener and two requestAnimationFrame callbacks; PerformanceObserver longtask, event and layout-shift. Observational samples with screen recording and concurrent activity; no regression attribution.",
+  "scenarios": [
+    {
+      "scenario": "real-runtime-onboarding-desktop",
+      "sampleCount": 27,
+      "clickToPaintP95Ms": 689.4,
+      "eventTimingP95Ms": 2112,
+      "longTaskCountIncludingStartup": 125,
+      "longTaskMaxMsIncludingStartup": 308,
+      "cls": 0.04159723162615741,
+      "transitions": [
+        {
+          "action": 1,
+          "label": "Começar →",
+          "nextPaintMs": 1097.8
+        },
+        {
+          "action": 2,
+          "label": "Este computador cuida dos seus bots. Comece com um clique.",
+          "nextPaintMs": 280.4
+        },
+        {
+          "action": 3,
+          "label": "Continuar ↵",
+          "nextPaintMs": 12.2
+        },
+        {
+          "action": 4,
+          "label": "Suporte",
+          "nextPaintMs": 93.1
+        },
+        {
+          "action": 5,
+          "label": "Continuar ↵",
+          "nextPaintMs": 76.2
+        },
+        {
+          "action": 6,
+          "label": "＋Outra pasta de agenteEscolher pasta",
+          "nextPaintMs": 206.2
+        },
+        {
+          "action": 7,
+          "label": "▸ agent-export",
+          "nextPaintMs": 380.7
+        },
+        {
+          "action": 8,
+          "label": "Usar esta pasta",
+          "nextPaintMs": 113.9
+        },
+        {
+          "action": 9,
+          "label": "Copiar pedido e colar resposta",
+          "nextPaintMs": 53.6
+        },
+        {
+          "action": 10,
+          "label": "Continuar ↵",
+          "nextPaintMs": 288.7
+        },
+        {
+          "action": 11,
+          "label": "Continuar ↵",
+          "nextPaintMs": 580.9
+        },
+        {
+          "action": 12,
+          "label": "Importar selecionados ↵",
+          "nextPaintMs": 19.3
+        },
+        {
+          "action": 13,
+          "label": "Desfazer importação · 1",
+          "nextPaintMs": 402.5
+        },
+        {
+          "action": 14,
+          "label": "‹",
+          "nextPaintMs": 113.6
+        },
+        {
+          "action": 15,
+          "label": "‹",
+          "nextPaintMs": 11.2
+        },
+        {
+          "action": 16,
+          "label": "Continuar ↵",
+          "nextPaintMs": 70.7
+        },
+        {
+          "action": 17,
+          "label": "Importar selecionados ↵",
+          "nextPaintMs": 78.2
+        },
+        {
+          "action": 18,
+          "label": "Continuar ↵",
+          "nextPaintMs": 689.4
+        },
+        {
+          "action": 19,
+          "label": "Continuar ↵",
+          "nextPaintMs": 53.8
+        },
+        {
+          "action": 20,
+          "label": "Conectar ou verificar conta",
+          "nextPaintMs": 111.5
+        },
+        {
+          "action": 21,
+          "label": "Cancelar login",
+          "nextPaintMs": 10.2
+        },
+        {
+          "action": 22,
+          "label": "Continuar ↵",
+          "nextPaintMs": 79.9
+        },
+        {
+          "action": 23,
+          "label": "Continuar ↵",
+          "nextPaintMs": 162.3
+        },
+        {
+          "action": 24,
+          "label": "Continuar ↵",
+          "nextPaintMs": 99.6
+        },
+        {
+          "action": 25,
+          "label": "Resuma o contexto de Empresa Exemplo e sugira três próximos passos.",
+          "nextPaintMs": 84.2
+        },
+        {
+          "action": 26,
+          "label": "Enviar primeira tarefa ↵",
+          "nextPaintMs": 81
+        },
+        {
+          "action": 27,
+          "label": "Continuar ↵",
+          "nextPaintMs": 210.2
+        }
+      ]
+    },
+    {
+      "scenario": "synthetic-onboarding-desktop-without-page-video",
+      "sampleCount": 11,
+      "clickToPaintP95Ms": 3383.4,
+      "eventTimingP95Ms": 3792,
+      "longTaskCountIncludingStartup": 26,
+      "longTaskMaxMsIncludingStartup": 499,
+      "cls": 0.008541333474995177,
+      "transitions": [
+        {
+          "action": 1,
+          "label": "Começar →",
+          "nextPaintMs": 412.3
+        },
+        {
+          "action": 2,
+          "label": "Este computador cuida dos seus bots. Comece com um clique.",
+          "nextPaintMs": 202.1
+        },
+        {
+          "action": 3,
+          "label": "Continuar ↵",
+          "nextPaintMs": 12
+        },
+        {
+          "action": 4,
+          "label": "Pular",
+          "nextPaintMs": 398.9
+        },
+        {
+          "action": 5,
+          "label": "Pular",
+          "nextPaintMs": 410.1
+        },
+        {
+          "action": 6,
+          "label": "Continuar ↵",
+          "nextPaintMs": 197.1
+        },
+        {
+          "action": 7,
+          "label": "Continuar ↵",
+          "nextPaintMs": 190.5
+        },
+        {
+          "action": 8,
+          "label": "Convidar pessoa",
+          "nextPaintMs": 392.7
+        },
+        {
+          "action": 9,
+          "label": "Cancelar",
+          "nextPaintMs": 3383.4
+        },
+        {
+          "action": 10,
+          "label": "Continuar ↵",
+          "nextPaintMs": 195.1
+        },
+        {
+          "action": 11,
+          "label": "Resuma o contexto de Equipe Exemplo e sugira três próximos passos.",
+          "nextPaintMs": 10.4
+        }
+      ]
+    },
+    {
+      "scenario": "synthetic-browser-desktop-requester",
+      "sampleCount": 2,
+      "clickToPaintP95Ms": 1102.7,
+      "eventTimingP95Ms": 2688,
+      "longTaskCountIncludingStartup": 21,
+      "longTaskMaxMsIncludingStartup": 1213,
+      "cls": 0.01616814814814815,
+      "transitions": [
+        {
+          "action": 1,
+          "label": "Assumir",
+          "nextPaintMs": 1102.7
+        },
+        {
+          "action": 2,
+          "label": "Devolver para Léo",
+          "nextPaintMs": 174.3
+        }
+      ]
+    },
+    {
+      "scenario": "synthetic-browser-desktop-member",
+      "sampleCount": 0,
+      "clickToPaintP95Ms": null,
+      "eventTimingP95Ms": null,
+      "longTaskCountIncludingStartup": 32,
+      "longTaskMaxMsIncludingStartup": 299,
+      "cls": 0.01558406322337963,
+      "transitions": []
+    },
+    {
+      "scenario": "synthetic-browser-desktop-and-phone-requester",
+      "sampleCount": 4,
+      "clickToPaintP95Ms": 1102.7,
+      "eventTimingP95Ms": 2688,
+      "longTaskCountIncludingStartup": 38,
+      "longTaskMaxMsIncludingStartup": 1213,
+      "cls": 0.01616814814814815,
+      "transitions": [
+        {
+          "action": 1,
+          "label": "Assumir",
+          "nextPaintMs": 1102.7
+        },
+        {
+          "action": 2,
+          "label": "Devolver para Léo",
+          "nextPaintMs": 174.3
+        },
+        {
+          "action": 3,
+          "label": "Assumir",
+          "nextPaintMs": 793.8
+        },
+        {
+          "action": 4,
+          "label": "Cancelar",
+          "nextPaintMs": 166.1
+        }
+      ]
+    }
+  ]
+}
