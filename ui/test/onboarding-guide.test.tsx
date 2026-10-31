@@ -764,3 +764,52 @@ it("undo from import progress confirms success and returns to source selection",
   expect(screen.getByRole("button", { name: /^Continuar/ })).toBeDisabled()
   expect(screen.queryByText("Trazendo seus agentes")).toBeNull()
 })
+
+it("undo labels identify each imported source and undo only the chosen import", async () => {
+  const first = getGuidePreviewFixture("first")
+  const second = getGuidePreviewFixture("second")
+  const sources = [
+    getGuideSourceFixture(),
+    { ...getGuideSourceFixture(), id: "export", kind: "folder", label: "Outra pasta de agente" },
+  ]
+  const previews = vi
+    .fn()
+    .mockResolvedValueOnce(first)
+    .mockResolvedValueOnce({
+      ...second,
+      agents: second.agents.map((agent) => ({ ...agent, key: "ops", name: "ops", suggestedBotName: "ops" })),
+    })
+  const apply = vi
+    .fn()
+    .mockResolvedValueOnce({
+      importId: "first-import",
+      bots: [{ agentKey: "dev", botId: "bot-dev" }],
+      pausedRoutines: 0,
+      reconnect: [],
+    })
+    .mockResolvedValueOnce({
+      importId: "second-import",
+      bots: [{ agentKey: "ops", botId: "bot-ops" }],
+      pausedRoutines: 0,
+      reconnect: [],
+    })
+  const { request } = getFixture({
+    "GET /api/v1/import/sources": { sources },
+    "POST /api/v1/import/preview": previews,
+    "POST /api/v1/import/apply": apply,
+  })
+  enterWorkspace()
+  continueSetup()
+  await screen.findByRole("button", { name: /Claude Code/ })
+  continueSetup()
+  await screen.findByRole("heading", { name: "Confere o que vem?" })
+  fireEvent.click(screen.getByRole("button", { name: /Importar selecionados/ }))
+  const undo = await screen.findByRole("button", { name: "Desfazer importação de ops", exact: true })
+
+  fireEvent.click(undo)
+
+  await screen.findByRole("heading", { name: "Já usa agentes em outro app?" })
+  expect(request).toHaveBeenCalledWith("POST /api/v1/import/undo", { importId: "second-import" })
+  expect(screen.getByRole("button", { name: "Desfazer importação de dev", exact: true })).toBeVisible()
+  expect(screen.queryByRole("button", { name: "Desfazer importação de ops", exact: true })).toBeNull()
+})

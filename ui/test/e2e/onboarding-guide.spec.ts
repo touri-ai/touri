@@ -46,13 +46,16 @@ test.setTimeout(90_000)
 const recording = process.env.TOURI_ONBOARDING_RECORD === "1" || Boolean(process.env.TOURI_ONBOARDING_EVIDENCE_DIR)
 test.use({ video: recording ? { mode: "on", size: { width: 1440, height: 800 } } : "off", trace: "off" })
 test.afterEach(async ({ context }, info) => {
-  if (!info.title.startsWith("onboarding guide 1440:")) return
+  if (!info.title.startsWith("onboarding guide 1440:") && !info.title.startsWith("onboarding recovery 1440: undo"))
+    return
   const directory = process.env.TOURI_ONBOARDING_EVIDENCE_DIR
   const page = context.pages()[0]
   const video = page?.video()
   if (!directory || !page || !video) return
   await page.close()
-  await video.saveAs(join(directory, "onboarding-flow.webm"))
+  await video.saveAs(
+    join(directory, info.title.startsWith("onboarding recovery") ? "undo-recovery.webm" : "onboarding-flow.webm"),
+  )
 })
 const capture = async (page: Page, info: TestInfo, name: string) => {
   const directory = process.env.TOURI_ONBOARDING_EVIDENCE_DIR ?? info.outputDir
