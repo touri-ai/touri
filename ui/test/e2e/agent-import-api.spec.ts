@@ -9,9 +9,12 @@ test.use({ video: process.env.TOURI_IMPORT_EVIDENCE ? { mode: "on", size: { widt
 const children = new Set<ChildProcess>()
 test.afterEach(async () => {
   for (const child of children) {
+    if (child.exitCode !== null || child.signalCode !== null) continue
     const exited = new Promise<void>((done) => child.once("exit", () => done()))
+    const deadline = setTimeout(() => child.kill("SIGKILL"), 10_000)
     child.kill("SIGTERM")
     await exited
+    clearTimeout(deadline)
   }
   children.clear()
 })
