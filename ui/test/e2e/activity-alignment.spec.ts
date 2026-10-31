@@ -25,7 +25,6 @@ const checkPermissionActivity = async (
 
   const activity = page.locator(".activity-mark")
   const message = page.locator(`[data-conversation="${conversation}"] .message-bubble`)
-  const avatar = activity.locator(".activity-mascot .tb-avatar")
   const chevron = activity.locator(".turn-activity-chevron")
   const label = activity.locator(".activity-label")
   await expect(activity).toBeVisible()
@@ -36,7 +35,7 @@ const checkPermissionActivity = async (
   await page.evaluate(() => document.fonts.ready)
 
   const centers = await Promise.all(
-    [avatar, chevron, label].map((element) =>
+    [chevron, label].map((element) =>
       element.evaluate((node) => {
         const bounds = node.getBoundingClientRect()
         return bounds.top + bounds.height / 2
@@ -92,3 +91,38 @@ test.describe("permission activity on a phone", () => {
         await checkPermissionActivity(page, conversation, theme, phoneViewport, testInfo)
       })
 })
+
+for (const conversation of conversations)
+  for (const grouped of [false, true])
+    for (const width of [1440, 390])
+      test(`active bot row draws exactly one avatar in ${conversation}${grouped ? ", grouped" : ""}, ${width}px`, async ({
+        page,
+      }, testInfo) => {
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+        await page.emulateMedia({ reducedMotion: "reduce" })
+        await page.goto(
+          `/test/e2e/approval-harness.html?scene=thinking&conversation=${conversation}${grouped ? "&grouped=1" : ""}`,
+        )
+
+        const row = page.locator(".message-bubble", { has: page.locator(".activity-mark") })
+        await expect(row.locator(".activity-label")).toContainText("Preparando a resposta")
+        await expect(page.locator(".branch-switcher")).toHaveCount(0)
+        if (grouped) await expect(row).toHaveAttribute("data-message-grouped", "true")
+        const filename = `thinking-${conversation}${grouped ? "-grouped" : ""}-${width}.png`
+        const screenshot = evidenceDirectory ? `${evidenceDirectory}/${filename}` : testInfo.outputPath(filename)
+        if (evidenceDirectory) await mkdir(evidenceDirectory, { recursive: true })
+        await page.screenshot({ path: screenshot, animations: "disabled" })
+        await expect(row.locator(".tb-avatar")).toHaveCount(1)
+        await expect(row.locator(".activity-mark .turn-activity-chevron")).toHaveCount(0)
+        await expect(row.locator(".activity-mark .activity-dots i")).toHaveCount(3)
+        // The test harness has no bot context in a DM, so only a channel row owns an avatar to defer to.
+        if (conversation === "channel" && !grouped)
+          await expect(row.locator(".message-avatar .tb-avatar")).toHaveCount(1)
+        const toggle = row.getByRole("button", { name: "Preparando a resposta…", exact: true })
+        await toggle.focus()
+        await toggle.press("Enter")
+        await expect(toggle).toHaveAttribute("aria-expanded", "true")
+        await expect(row.getByRole("heading", { name: "Raciocínio", exact: true })).toBeVisible()
+        await toggle.press("Space")
+        await expect(toggle).toHaveAttribute("aria-expanded", "false")
+      })

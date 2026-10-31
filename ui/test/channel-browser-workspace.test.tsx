@@ -34,7 +34,7 @@ test.each([
     const composer = screen.getByRole("textbox", { name: "Mensagem para Viagens" })
     const status = composer.closest(".chat-panel")?.querySelector(".composer-browser-status")
     if (!(status instanceof HTMLElement)) throw new Error("Missing browser status")
-    expect(within(card).getByText("Todos no canal veem")).toBeVisible()
+    expect(within(card).getByText("Ao vivo", { exact: true })).toBeVisible()
     expect(within(card).queryByRole("button", { name: "Assumir", exact: true }) !== null).toBe(canControl)
     expect(within(status).queryByRole("button", { name: "Parar Léo" }) !== null).toBe(canStop)
     await waitFor(() =>

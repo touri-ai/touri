@@ -15,6 +15,7 @@ const optionalModules = [
   "src/components/RoutineEditor.tsx",
   "src/components/WorkspaceScreens.tsx",
   "src/features/work/WorkScreen.tsx",
+  "src/features/onboarding/GuidedOnboarding.tsx",
 ]
 
 test("keeps the production startup payload below 400 KB gzip with optional modules deferred", async () => {
@@ -52,12 +53,19 @@ test("keeps the production startup payload below 400 KB gzip with optional modul
   avatarStyles.forEach((file) => {
     expect(initialFiles).not.toContain(file)
   })
-  const previewStyles = manifest["src/components/WorkspaceScreens.tsx"]?.css ?? []
+  // Shared button styles can be needed at startup; preview and dialog rules must still be deferred.
+  const previewStyles = await getFeatureStyles(
+    manifest["src/components/WorkspaceScreens.tsx"]?.css ?? [],
+    ".preview-screen-body",
+  )
   expect(previewStyles.length).toBeGreaterThan(0)
   previewStyles.forEach((file) => {
     expect(initialFiles).not.toContain(file)
   })
-  const dialogStyles = manifest["src/components/GroupModal.tsx"]?.css ?? []
+  const dialogStyles = await getFeatureStyles(
+    manifest["src/components/GroupModal.tsx"]?.css ?? [],
+    ".group-modal-heading",
+  )
   expect(dialogStyles.length).toBeGreaterThan(0)
   dialogStyles.forEach((file) => {
     expect(initialFiles).not.toContain(file)
@@ -86,3 +94,10 @@ const getInitialFiles = (manifest: Manifest, root: string): string[] => {
 }
 
 const getGzipBytes = async (file: string): Promise<number> => (await compress(await readFile(file))).length
+
+const getFeatureStyles = async (files: string[], selector: string): Promise<string[]> => {
+  const styles = await Promise.all(
+    files.map(async (file) => ({ file, content: await readFile(resolve(output, file), "utf8") })),
+  )
+  return styles.filter(({ content }) => content.includes(selector)).map(({ file }) => file)
+}

@@ -146,15 +146,15 @@ const getSameDocumentEvent = (method: string, url: string, frameId = "main"): Cd
   return { method, sessionId: "session", params: { frame: { id: frameId, url }, type: "SameDocument" } }
 }
 
-test("restored private-input tabs require fresh verification before shared previews resume", async () => {
+test("restored private-input tabs show the live page while bot snapshots still require verification", async () => {
   const fixture = await getFixture({ privateInput: true })
   const signal = new AbortController().signal
   await fixture.engine.list({ botId: "leo" })
 
   const restored = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
 
-  expect(restored).toBeNull()
-  expect(fixture.captures()).toBe(0)
+  expect(restored?.image).toBe("data:image/jpeg;base64,ZmFrZQ==")
+  expect(fixture.captures()).toBe(1)
 
   fixture.navigate(2)
 
@@ -162,8 +162,8 @@ test("restored private-input tabs require fresh verification before shared previ
   const preview = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
 
   expect(safePage).toMatchObject({ success: true, structured: { text: "Public results", image: null } })
-  expect(preview).toEqual({ title: "", url: "", image: "data:image/jpeg;base64,ZmFrZQ==" })
-  expect(fixture.captures()).toBe(1)
+  expect(preview).toEqual({ title: "", url: "https://example.test", image: "data:image/jpeg;base64,ZmFrZQ==" })
+  expect(fixture.captures()).toBe(2)
 })
 
 test("reconnecting retained private-input tabs requires fresh sensitive-entry verification", async () => {
@@ -184,15 +184,15 @@ test("reconnecting retained private-input tabs requires fresh sensitive-entry ve
   await fixture.engine.snapshot({ botId: "leo", tabId: "tab", image: "never", signal })
   const privatePreview = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
 
-  expect(privatePreview).toBeNull()
-  expect(fixture.captures()).toBe(1)
+  expect(privatePreview?.image).toBe("data:image/jpeg;base64,ZmFrZQ==")
+  expect(fixture.captures()).toBe(2)
 
   getHasSensitiveEntry.mockReturnValue(false)
   await fixture.engine.snapshot({ botId: "leo", tabId: "tab", image: "never", signal })
   const recovered = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
 
-  expect(recovered).toEqual({ title: "", url: "", image: "data:image/jpeg;base64,ZmFrZQ==" })
-  expect(fixture.captures()).toBe(2)
+  expect(recovered).toEqual({ title: "", url: "https://example.test", image: "data:image/jpeg;base64,ZmFrZQ==" })
+  expect(fixture.captures()).toBe(3)
 })
 
 test.each([
@@ -201,43 +201,50 @@ test.each([
   { localBrowser: true, method: "Page.navigatedWithinDocument", path: "/#/login" },
   { localBrowser: true, method: "Page.frameNavigated", path: "/#/payment" },
   { localBrowser: false, method: "Page.navigatedWithinDocument", path: "/%6cogin" },
-])("same-document route %p reapplies privacy after safe-document clearance", async ({ localBrowser, method, path }) => {
-  // The mock supplies changing CDP location state without mutating page fixtures.
-  const getUrl = mock(() => "https://example.test/results")
-  const fixture = await getFixture({ localBrowser, getUrl })
-  const signal = new AbortController().signal
-  await fixture.engine.list({ botId: "leo" })
-  await fixture.engine.holdTakeover({ tabId: "tab", reason: "Synthetic handoff" })
-  await fixture.engine.releaseTakeover("tab")
-  fixture.navigate(2)
-  const safePage = await fixture.engine.snapshot({ botId: "leo", tabId: "tab", image: "always", signal })
-  const initial = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
+])(
+  "same-document route %p protects bot context while people retain the live page",
+  async ({ localBrowser, method, path }) => {
+    // The mock supplies changing CDP location state without mutating page fixtures.
+    const getUrl = mock(() => "https://example.test/results")
+    const fixture = await getFixture({ localBrowser, getUrl })
+    const signal = new AbortController().signal
+    await fixture.engine.list({ botId: "leo" })
+    await fixture.engine.holdTakeover({ tabId: "tab", reason: "Synthetic handoff" })
+    await fixture.engine.releaseTakeover("tab")
+    fixture.navigate(2)
+    const safePage = await fixture.engine.snapshot({ botId: "leo", tabId: "tab", image: "always", signal })
+    const initial = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
 
-  expect(safePage).toMatchObject({ success: true, structured: { text: "Public results", image: null } })
-  expect(initial).toEqual({ title: "", url: "", image: "data:image/jpeg;base64,ZmFrZQ==" })
+    expect(safePage).toMatchObject({ success: true, structured: { text: "Public results", image: null } })
+    expect(initial).toEqual({ title: "", url: "https://example.test", image: "data:image/jpeg;base64,ZmFrZQ==" })
 
-  getUrl.mockReturnValue(`https://example.test${path}`)
-  fixture.emit(getSameDocumentEvent(method, getUrl()))
-  const preview = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
-  const sensitivePage = await fixture.engine.snapshot({ botId: "leo", tabId: "tab", image: "always", signal })
+    getUrl.mockReturnValue(`https://example.test${path}`)
+    fixture.emit(getSameDocumentEvent(method, getUrl()))
+    const preview = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
+    const sensitivePage = await fixture.engine.snapshot({ botId: "leo", tabId: "tab", image: "always", signal })
 
-  expect(preview).toBeNull()
-  expect(sensitivePage).toMatchObject({ success: true, structured: { title: "", url: "", text: "", image: null } })
-  expect(await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })).toBeNull()
-  expect(fixture.captures()).toBe(1)
+    expect(preview?.image).toBe("data:image/jpeg;base64,ZmFrZQ==")
+    expect(sensitivePage).toMatchObject({ success: true, structured: { title: "", url: "", text: "", image: null } })
+    expect(await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })).not.toBeNull()
+    expect(fixture.captures()).toBe(3)
 
-  getUrl.mockReturnValue("https://example.test/results?next=/login")
-  fixture.emit(getSameDocumentEvent(method, getUrl()))
-  const recovered = await fixture.engine.snapshot({ botId: "leo", tabId: "tab", image: "always", signal })
-  const recoveredPreview = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
+    getUrl.mockReturnValue("https://example.test/results?next=/login")
+    fixture.emit(getSameDocumentEvent(method, getUrl()))
+    const recovered = await fixture.engine.snapshot({ botId: "leo", tabId: "tab", image: "always", signal })
+    const recoveredPreview = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
 
-  expect(recovered).toMatchObject({
-    success: true,
-    structured: { title: "", url: "", text: "Public results", image: null },
-  })
-  expect(recoveredPreview).toEqual({ title: "", url: "", image: "data:image/jpeg;base64,ZmFrZQ==" })
-  expect(fixture.captures()).toBe(2)
-})
+    expect(recovered).toMatchObject({
+      success: true,
+      structured: { title: "", url: "", text: "Public results", image: null },
+    })
+    expect(recoveredPreview).toEqual({
+      title: "",
+      url: "https://example.test",
+      image: "data:image/jpeg;base64,ZmFrZQ==",
+    })
+    expect(fixture.captures()).toBe(4)
+  },
+)
 
 test.each(["Page.navigatedWithinDocument", "Page.frameNavigated"])(
   "%s invalidates a cached preview for an ordinary query route",
@@ -250,8 +257,8 @@ test.each(["Page.navigatedWithinDocument", "Page.frameNavigated"])(
     fixture.emit(getSameDocumentEvent(method, "https://example.test/results?next=/login", "owned"))
     const preview = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
 
-    expect(initial?.url).toBe("https://example.test/results")
-    expect(preview?.url).toBe("https://example.test/results?next=/login")
+    expect(initial?.url).toBe("https://example.test")
+    expect(preview?.url).toBe("https://example.test")
     expect(fixture.captures()).toBe(2)
   },
 )
@@ -283,7 +290,7 @@ test.each(["Page.navigatedWithinDocument", "Page.frameNavigated"])(
 
     const current = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
 
-    expect(current?.url).toBe("https://example.test/results?sort=price")
+    expect(current?.url).toBe("https://example.test")
     expect(fixture.captures()).toBe(2)
   },
 )
@@ -294,11 +301,11 @@ test("same-document iframe events cannot replace the main page metadata", async 
   await fixture.engine.list({ botId: "leo" })
   fixture.emit(getSameDocumentEvent("Page.frameNavigated", "https://example.test/login", "owned"))
 
-  fixture.emit(getSameDocumentEvent("Page.navigatedWithinDocument", "https://example.test/results", "child"))
+  fixture.emit(getSameDocumentEvent("Page.navigatedWithinDocument", "https://other.example.test/results", "child"))
   const preview = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
 
-  expect(preview).toBeNull()
-  expect(fixture.captures()).toBe(0)
+  expect(preview?.url).toBe("https://example.test")
+  expect(fixture.captures()).toBe(1)
 })
 
 test.each(["Page.navigatedWithinDocument", "Page.frameNavigated"])(
@@ -315,12 +322,12 @@ test.each(["Page.navigatedWithinDocument", "Page.frameNavigated"])(
     const preview = await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })
 
     expect(snapshot).toMatchObject({ success: true, structured: { title: "", url: "", text: "", image: null } })
-    expect(preview).toBeNull()
-    expect(fixture.captures()).toBe(0)
+    expect(preview?.url).toBe("https://example.test")
+    expect(fixture.captures()).toBe(1)
   },
 )
 
-test("handoff cannot reveal the original document through changed metadata or browser history", async () => {
+test("handoff keeps the original document out of bot tools while the human preview stays live", async () => {
   const fixture = await getFixture()
   const signal = new AbortController().signal
   await fixture.engine.list({ botId: "leo" })
@@ -332,8 +339,8 @@ test("handoff cannot reveal the original document through changed metadata or br
   const original = await fixture.engine.snapshot({ botId: "leo", tabId: "tab", image: "always", signal })
 
   expect(JSON.stringify(original)).not.toContain("private-input-fixture")
-  expect(await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })).toBeNull()
-  expect(fixture.captures()).toBe(1)
+  expect(await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })).not.toBeNull()
+  expect(fixture.captures()).toBe(2)
   const clicked = await fixture.engine.click({
     tabId: "tab",
     botId: "leo",
@@ -358,8 +365,8 @@ test("handoff cannot reveal the original document through changed metadata or br
   fixture.navigate(1)
   const restored = await fixture.engine.snapshot({ botId: "leo", tabId: "tab", image: "always", signal })
   expect(JSON.stringify(restored)).not.toContain("private-input-fixture")
-  expect(await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })).toBeNull()
-  expect(fixture.captures()).toBe(2)
+  expect(await fixture.engine.preview({ botId: "leo", tabId: "tab", signal })).not.toBeNull()
+  expect(fixture.captures()).toBe(4)
 })
 
 test("a document reached through native human navigation stays private after handback", async () => {
@@ -373,7 +380,7 @@ test("a document reached through native human navigation stays private after han
   const page = await fixture.engine.snapshot({ tabId: "tab", botId: "leo", image: "always", signal })
 
   expect(JSON.stringify(page)).not.toContain("private-input-fixture")
-  expect(await fixture.engine.preview({ tabId: "tab", botId: "leo", signal })).toBeNull()
+  expect(await fixture.engine.preview({ tabId: "tab", botId: "leo", signal })).not.toBeNull()
 })
 
 test("waiting cannot probe text or URLs from a private document", async () => {

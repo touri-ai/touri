@@ -115,6 +115,8 @@ export { activeMessagePath } from "./activeMessagePath"
 
 type ChatPanelProps = {
   historyLoading?: boolean
+  /** A failed read of this conversation; rendered inside it, above the messages already loaded. */
+  historyNotice?: ReactNode
   onLatestHistory?: (() => void) | undefined
   hasOlderHistory?: boolean | undefined
   loadingOlderHistory?: boolean | undefined
@@ -1207,6 +1209,7 @@ const MessageBubbleRow = ({
       </span>
     )
   }
+  const messageAvatar = author === "bot" && !grouped ? getMessageAvatar() : null
   const technicalNotice =
     message.role === "system" &&
     message.parts.some((part) => part.type === "notice" && part.code === "session_replaced")
@@ -1403,7 +1406,7 @@ const MessageBubbleRow = ({
       data-motion-insert={inserted}
       style={authorColor ? ({ "--avatar-author-color": authorColor } as CSSProperties) : undefined}
     >
-      {author === "bot" && <div className="message-avatar">{grouped ? null : getMessageAvatar()}</div>}
+      {author === "bot" && <div className="message-avatar">{messageAvatar}</div>}
       {author === "own" && !routinePrompt && <span className="visually-hidden">{messageRoleLabel}</span>}
       {routineHeader && <small className="routine-run-header">{routineHeader}</small>}
       {showHeader && (
@@ -1476,6 +1479,7 @@ const MessageBubbleRow = ({
                 bot={bot}
                 onCancel={showActivityStop ? onCancel : undefined}
                 preparingEnvironment={Boolean(vmBotId)}
+                showAvatar={!messageAvatar}
                 hideBrowserCard={hasBrowserTools}
                 onFocusApproval={(approvalId) => {
                   const card = Array.from(root.current?.querySelectorAll<HTMLElement>("[data-approval-id]") ?? []).find(
@@ -1684,6 +1688,7 @@ export const ChatPanel = ({
   groupMembers = [],
   channelMode = false,
   historyLoading = false,
+  historyNotice,
   hasOlderHistory = false,
   loadingOlderHistory = false,
   onLoadOlderHistory,
@@ -1947,8 +1952,11 @@ export const ChatPanel = ({
                   </div>
                 </header>
               )}
+              {historyNotice}
               {historyLoading && visibleMessages.length === 0 ? (
-                <ConversationLoading />
+                historyNotice ? null : (
+                  <ConversationLoading />
+                )
               ) : (
                 <>
                   {!group && bot && !routineConversation && (

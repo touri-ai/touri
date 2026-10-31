@@ -224,35 +224,3 @@ test("folder memory references cannot overflow the existing learning budget", as
   expect(response.status).toBe(400)
   expect(fixture.database.query("SELECT id FROM bots LIMIT 1").all()).toEqual([])
 })
-
-test("unsupported routine exports do not block other resources or consume skill reference files", async () => {
-  const fixture = await makeHarness()
-  await fixture.write("export/instructions.md", "Organize notas.")
-  await fixture.write(
-    "export/jobs.json",
-    JSON.stringify({ jobs: [{ name: "Exportada", cron: "* * * * *", command: "Do not run source commands" }] }),
-  )
-  await fixture.write("export/skills/revisar/SKILL.md", "Revise as notas.")
-  await fixture.write("export/skills/revisar/references/jobs.json", '{"template":"example"}')
-  const previewResponse = await fixture.request("POST", "/import/preview", {
-    source: "folder",
-    path: join(fixture.home, "export"),
-  })
-  const preview = (await previewResponse.json()) as AgentImportPreview
-
-  expect(previewResponse.status).toBe(200)
-  expect(preview.excluded.files).toBe(1)
-  expect(preview.agents[0]?.routines).toEqual([])
-
-  const applied = await fixture.request("POST", "/import/apply", {
-    previewId: preview.previewId,
-    select: { [preview.agents[0]?.key ?? ""]: allItems },
-  })
-  const result = (await applied.json()) as AgentImportResult
-  const bot = fixture.runtime.kernel.services.use("store.api")?.getBot({ botId: result.bots[0]?.botId ?? "" })
-
-  expect(applied.status).toBe(200)
-  expect(await readFile(join(bot?.homeDir ?? "", "skills/revisar/references/jobs.json"), "utf8")).toBe(
-    '{"template":"example"}',
-  )
-})

@@ -4,6 +4,7 @@ import { expect, test } from "@playwright/test"
 
 test.use({
   channel: "chromium",
+  video: "on",
   reducedMotion: "reduce",
   viewport: { width: 1440, height: 900 },
 })
@@ -45,13 +46,13 @@ test("a channel browser handback resumes the bot and posts its answer in the sam
   await expect(browserCard).toBeVisible()
   await expect(composer).toBeVisible()
   await expect(browserCard.getByRole("button", { name: "Assumir", exact: true })).toBeVisible()
-  await expect(browserCard).toContainText("Prévia oculta enquanto o navegador espera você.")
-  await expect(browserCard).not.toContainText("portal.example.test")
+  await expect(browserCard.getByRole("img", { name: "Página atual do navegador" })).toBeVisible()
+  await expect(browserCard.locator(".browser-activity-chrome")).toContainText("portal.example.test")
   await saveScreenshot("channel-takeover-browser-card-after.png")
 
   await browserCard.getByRole("button", { name: "Assumir", exact: true }).click()
   const control = page.getByRole("region", { name: "Controle remoto do navegador" })
-  await expect(control).toContainText("Você está no controle · Planejamento está pausado")
+  await expect(control).toContainText("você está usando")
   await expect(browserCard.getByRole("button", { name: "Devolver para Planejamento" })).toBeVisible()
   await saveScreenshot("channel-takeover-active.png")
 

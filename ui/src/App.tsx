@@ -35,6 +35,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary"
 import { ErrorNotice } from "./components/ErrorNotice"
 import { EvidenceContext } from "./components/EvidenceGallery"
 import { FailureActionContext } from "./components/FailureActionContext"
+import { HistoryNotice } from "./components/HistoryNotice"
 import {
   BotCreateModal,
   BotSettingsModal,
@@ -679,6 +680,8 @@ const AppContent = ({ kernel }: AppProps) => {
   const selectedThread =
     data.threadCreation?.thread ?? data.threads.find((thread) => thread.id === data.selectedThreadId) ?? null
   const selectedGroup = data.groups.find((g) => g.id === selectedThread?.groupId) ?? null
+  const historyFailure =
+    data.historyFailure && data.historyFailure.threadId === selectedThread?.id ? data.historyFailure : null
   const modeSelections = useRef<Partial<Record<WorkspaceMode, ModeSelection>>>({})
   const [sidebarModeRequest, setSidebarModeRequest] = useState<{ mode: WorkspaceMode; id: number } | null>(null)
   const selectedChannel = Boolean(selectedThread?.groupId || selectedThread?.groupThreadId)
@@ -881,9 +884,8 @@ const AppContent = ({ kernel }: AppProps) => {
         .sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0))[0]
     : undefined
   const noticeContext = {
-    historyRead:
-      (!!data.historyNotice && notice === data.historyNotice) ||
-      (!!data.channelNotice && notice === data.channelNotice),
+    // Conversation reads report inside the conversation; this bar only names a failed conversation index.
+    indexRead: !!data.channelNotice && notice === data.channelNotice,
     provider: noticeRun?.provider,
     errorClass: noticeRun?.errorClass,
     parts: data.activityMessages.find((message) => message.id === noticeRun?.replyMessageId)?.parts,
@@ -891,7 +893,7 @@ const AppContent = ({ kernel }: AppProps) => {
     occurredAt: noticeRun?.finishedAt ?? noticeRecord?.createdAt,
   }
   const failureShownInChat =
-    !noticeContext.historyRead &&
+    !noticeContext.indexRead &&
     !!noticeRun?.replyMessageId &&
     noticeRun.threadId === selectedThread?.id &&
     selectedMessages.some((message) => message.id === noticeRun.replyMessageId && message.status === "failed")
@@ -1092,7 +1094,7 @@ const AppContent = ({ kernel }: AppProps) => {
               context={noticeContext}
               onAction={async (action) => {
                 if (action === "retry") {
-                  if (noticeRecord && !noticeContext.historyRead) {
+                  if (noticeRecord && !noticeContext.indexRead) {
                     await notificationActions.recover(noticeRecord, action)
                     return
                   }
@@ -1509,6 +1511,11 @@ const AppContent = ({ kernel }: AppProps) => {
                               data.historyFocusId && selectedThread
                                 ? () => actions.selectThread(selectedThread.id)
                                 : undefined
+                            }
+                            historyNotice={
+                              historyFailure ? (
+                                <HistoryNotice failure={historyFailure} onRetry={actions.refresh} />
+                              ) : undefined
                             }
                             historyLoading={
                               !data.threadCreation &&

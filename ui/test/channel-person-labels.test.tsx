@@ -6,7 +6,6 @@ import {
   ChannelCardFooter,
   ChannelComposerChip,
   ChannelHeaderChip,
-  ChannelHiddenPreview,
 } from "../src/features/channelBrowser/ChannelBrowser"
 import { getChannelBrowserValue } from "../src/features/channelBrowser/channelBrowserModel"
 import type { Locale } from "../src/i18n"
@@ -37,7 +36,6 @@ const renderBrowser = async (viewerId: string, locale: Locale) => {
       <ChannelHeaderChip locale={locale} />
       <ChannelComposerChip botName="Léo" locale={locale} />
       <ChannelCardFooter locale={locale} />
-      <ChannelHiddenPreview locale={locale} />
     </ChannelBrowserContext.Provider>,
   )
 }
@@ -49,7 +47,7 @@ test("browser requester, controller, recipient and queue prefer current handles 
     screen.getByRole("status", { name: "Léo no navegador · pedido de ana · carla está no controle" }),
   ).toBeVisible()
   expect(view.container.querySelector(".composer-browser-status")).toHaveTextContent("carla está no controle")
-  expect(view.container.querySelector(".channel-banner")).toHaveTextContent("chama ana")
+  expect(view.container.querySelector(".channel-chip")).toHaveTextContent("pedido de ana")
   expect(screen.getByText("Na fila: pedido de ana")).toBeVisible()
   expect(view.container).not.toHaveTextContent("Owner")
 })
@@ -62,18 +60,18 @@ test.each([
 
   expect(view.container.querySelector(".channel-chip")).toHaveTextContent(request)
   expect(screen.getByText(queue)).toBeVisible()
-  expect(view.container.querySelector(".channel-banner")).toHaveTextContent(
-    locale === "en" ? "calls you" : "chama você",
+  expect(view.container.querySelector(".composer-browser-status")).toHaveTextContent(
+    locale === "en" ? "carla is in control" : "carla está no controle",
   )
+  expect(view.container).not.toHaveTextContent("Owner")
 })
 
 test.each([
-  { locale: "pt-BR" as const, control: "Você está no controle", preview: "enquanto você digita" },
-  { locale: "en" as const, control: "You are in control", preview: "while you type" },
-])("browser self control uses correct grammar in $locale", async ({ locale, control, preview }) => {
+  { locale: "pt-BR" as const, control: "Você está no controle" },
+  { locale: "en" as const, control: "You are in control" },
+])("browser self control uses correct grammar in $locale", async ({ locale, control }) => {
   const view = await renderBrowser("owner", locale)
 
   expect(view.container.querySelector(".channel-chip")).toHaveTextContent(control)
   expect(view.container.querySelector(".composer-browser-status")).toHaveTextContent(control)
-  expect(view.container.querySelector(".channel-hidden-preview")).toHaveTextContent(preview)
 })

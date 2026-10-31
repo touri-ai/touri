@@ -151,9 +151,9 @@ test("routed local engine opens a default-context window, reads only owned pages
     const captures = f.calls.filter((call) => call.method === "Page.captureScreenshot").length
 
     expect(await f.engine.holdTakeover({ tabId: ownedTab.tabId, reason: "Manual control" })).toBe(true)
-    expect(await f.engine.preview({ botId: f.bot.id, tabId: ownedTab.tabId, signal: f.ctx.signal })).toBeNull()
+    expect(await f.engine.preview({ botId: f.bot.id, tabId: ownedTab.tabId, signal: f.ctx.signal })).not.toBeNull()
 
-    expect(f.calls.filter((call) => call.method === "Page.captureScreenshot")).toHaveLength(captures)
+    expect(f.calls.filter((call) => call.method === "Page.captureScreenshot")).toHaveLength(captures + 1)
 
     expect(await f.engine.releaseTakeover(tabId)).toBe(true)
     expect(await f.engine.holdTakeover({ tabId, reason: "Synthetic second handoff" })).toBe(true)
@@ -277,11 +277,11 @@ test("channel takeover notifies the channel and checks both control changes befo
   })
   setDelegation(f.kernel, participant.id, null)
   const captures = f.calls.filter((call) => call.method === "Page.captureScreenshot").length
-  expect(await f.engine.preview({ botId: f.bot.id, tabId, signal: ctx.signal })).toBeNull()
+  expect(await f.engine.preview({ botId: f.bot.id, tabId, signal: ctx.signal })).not.toBeNull()
   expect(await f.engine.holdTakeoverForPerson({ tabId, personId: "other-member" })).toBe("forbidden")
   expect(await f.engine.holdTakeoverForPerson({ tabId, personId: "requester" })).toBe("held")
-  expect(await f.engine.preview({ botId: f.bot.id, tabId, signal: ctx.signal })).toBeNull()
-  expect(f.calls.filter((call) => call.method === "Page.captureScreenshot")).toHaveLength(captures)
+  expect(await f.engine.preview({ botId: f.bot.id, tabId, signal: ctx.signal })).not.toBeNull()
+  expect(f.calls.filter((call) => call.method === "Page.captureScreenshot").length).toBeGreaterThan(captures)
   expect(await f.engine.releaseTakeoverForPerson({ tabId, personId: "other-member" })).toBe("forbidden")
   expect(f.engine.tabsForBot(f.bot.id)[0]?.heldByUser).toBe(true)
   expect(await f.engine.releaseTakeoverForPerson({ tabId, personId: "owner" })).toBe("released")

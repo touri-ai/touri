@@ -47,6 +47,32 @@ test.each([
   expect(connection.mock.calls).toEqual([[false], [true]])
 })
 
+test("a read refused by a draining server reconnects instead of reporting a broken conversation", async () => {
+  vi.useFakeTimers()
+  const sockets = makeSockets()
+  const fetchImpl = vi.fn(async () => Response.json({ ticket: "test-ticket", ok: true, schemaVersion: 46 }))
+  const api = createApiClient({
+    endpoint: { baseUrl: "https://server.example", wsUrl: "wss://server.example/api/v1/events", token: "test" },
+    fetchImpl,
+  })
+  const connection = vi.fn()
+  api.subscribeConnection?.(connection)
+  onTestFinished(api.subscribe(vi.fn()))
+  await vi.advanceTimersByTimeAsync(0)
+  sockets.getSocket(0).dispatchEvent(new Event("open"))
+  // The exact body a restarting server sends while it drains active runs.
+  fetchImpl.mockResolvedValueOnce(Response.json({ errorCode: "RUNTIME_DRAINING" }, { status: 503 }))
+
+  await expect(
+    api.request("GET /threads/:id/messages", { all: true, limit: 40 }, { id: "thread" }),
+  ).rejects.toMatchObject({ status: 503, errorCode: "RUNTIME_DRAINING" })
+  await vi.advanceTimersByTimeAsync(250)
+  sockets.getSocket(1).dispatchEvent(new Event("open"))
+
+  expect(sockets.getSocket(0).close).toHaveBeenCalledOnce()
+  expect(connection.mock.calls).toEqual([[false], [true]])
+})
+
 test.each([
   ["STORE_UNAVAILABLE", "TOURI-E1009"],
   ["HOST_UNAVAILABLE", "TOURI-E1009"],
@@ -166,20 +192,78 @@ test("reconnection reloads a snapshot that failed before the bot list arrived", 
 
 test("reconnection clears the selected history's service error without a new server event", async () => {
   const mock = createMockApi()
-  const failRead = makeUnavailableRead()
+  let unavailable = true
   const request: ApiRequest = async (route, input, path) => {
-    if (route === "GET /threads/:id/messages") failRead()
+    if (route === "GET /threads/:id/messages" && unavailable) throw new ApiError(0, "", undefined, "TOURI-E1009")
     return mock.request(route, input, path)
   }
   const client = makeConnectionClient({ ...mock, request, isMock: false })
   const hook = renderHook(() => useWorkspace(client.api))
-  await waitFor(() => expect(hook.result.current.data.notice).toContain("TOURI-E1009"))
-  expect(errorRecovery(hook.result.current.data.notice).message).toContain("O serviço do touri está indisponível")
+  await waitFor(() => expect(hook.result.current.data.historyFailure).toBeTruthy(), { timeout: 4000 })
+  expect(hook.result.current.data.historyFailure).toMatchObject({ kind: "server", code: "TOURI-E1009" })
+  expect(hook.result.current.data.notice).toBeNull()
+  unavailable = false
 
   act(client.reconnect)
 
   await waitFor(() => expect(hook.result.current.data.messages.length).toBeGreaterThan(0))
+  expect(hook.result.current.data.historyFailure).toBeNull()
   expect(hook.result.current.data.notice).toBeNull()
+})
+
+test.each(["reconnect", "online"] as const)(
+  "%s recovers a failed conversation without another server event or manual retry",
+  async (recovery) => {
+    const mock = createMockApi()
+    const failRead = vi
+      .fn<() => void>()
+      .mockImplementationOnce(() => {
+        throw new ApiError(503, "Restarting", "RUNTIME_DRAINING")
+      })
+      .mockImplementationOnce(() => {
+        throw new ApiError(503, "Restarting", "RUNTIME_DRAINING")
+      })
+    const request: ApiRequest = async (route, input, path) => {
+      if (route === "GET /threads/:id/messages") failRead()
+      return mock.request(route, input, path)
+    }
+    const client = makeConnectionClient({ ...mock, request, isMock: false, cursorReady: async () => undefined })
+    const hook = renderHook(() => useWorkspace(client.api))
+    await waitFor(() => expect(hook.result.current.data.historyFailure?.code).toBe("TOURI-E1009"), {
+      timeout: 4000,
+    })
+    expect(hook.result.current.data.notice).toBeNull()
+
+    act(() => {
+      if (recovery === "reconnect") client.reconnect()
+      else window.dispatchEvent(new Event("online"))
+    })
+
+    await waitFor(() => expect(hook.result.current.data.messages.length).toBeGreaterThan(0))
+    expect(hook.result.current.data.historyFailure).toBeNull()
+    expect(hook.result.current.data.notice).toBeNull()
+    expect(failRead).toHaveBeenCalledTimes(3)
+  },
+)
+
+test("reconnecting does not retry a deleted conversation", async () => {
+  const mock = createMockApi()
+  const read = vi.fn<() => void>().mockImplementation(() => {
+    throw new ApiError(404, "Thread not found", "NOT_FOUND")
+  })
+  const request: ApiRequest = async (route, input, path) => {
+    if (route === "GET /threads/:id/messages") read()
+    return mock.request(route, input, path)
+  }
+  const client = makeConnectionClient({ ...mock, request, isMock: false, cursorReady: async () => undefined })
+  const hook = renderHook(() => useWorkspace(client.api))
+  await waitFor(() => expect(hook.result.current.data.historyFailure?.kind).toBe("deleted"))
+
+  await act(async () => client.reconnect())
+  await act(async () => window.dispatchEvent(new Event("online")))
+
+  expect(read).toHaveBeenCalledTimes(1)
+  expect(hook.result.current.data.historyFailure?.kind).toBe("deleted")
 })
 
 test.each(["pt-BR", "en"] as const)("service errors identify touri instead of the AI in %s", (locale) => {

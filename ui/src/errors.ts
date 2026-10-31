@@ -49,5 +49,7 @@ export const isServiceUnavailable = (error: unknown): boolean =>
   // E1009 also covers storage and execution failures on an otherwise reachable server.
   ((error.status === 0 && error.code === "TOURI-E1009") ||
     error.errorCode === "SERVER_CONNECTION_FAILED" ||
+    // A draining server answers every request until the restarted one listens.
+    error.errorCode === "RUNTIME_DRAINING" ||
     error.status === 502 ||
     error.status === 504)

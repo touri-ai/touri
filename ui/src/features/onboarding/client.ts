@@ -1,7 +1,7 @@
 import type { ApiRoutes } from "@touri/contracts"
 import { resolveSidecarEndpoint, type TauriInvoke } from "../../api/client"
 
-type OnboardingRoute = Extract<keyof ApiRoutes, `${string} /onboarding${string}`>
+type OnboardingRoute = Extract<keyof ApiRoutes, `${string} /onboarding${string}` | "GET /bots">
 export type OnboardingRequest = <K extends OnboardingRoute>(
   route: K,
   input: ApiRoutes[K]["req"],

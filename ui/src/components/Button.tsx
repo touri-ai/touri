@@ -1,9 +1,10 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react"
+import type { ButtonHTMLAttributes, ReactNode, Ref } from "react"
 import "./ds.css"
 
 export type ButtonVariant = "primary" | "secondary" | "quiet" | "link-action" | "destructive"
 
 type ButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type"> & {
+  ref?: Ref<HTMLButtonElement>
   variant?: ButtonVariant
   type?: "button" | "submit"
 }

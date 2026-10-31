@@ -11,7 +11,7 @@ const scenarios = [
   { name: "requester", query: "viewer=user-ana" },
   { name: "member-no-control", query: "viewer=user-hugo&queue=1" },
   { name: "requester-observes-waiting-member", query: "viewer=user-ana&queue=1" },
-  { name: "takeover-hidden-preview", query: "viewer=user-hugo&takeover=1" },
+  { name: "takeover-live-preview", query: "viewer=user-hugo&takeover=1" },
 ]
 
 test.describe("browser card in a channel", () => {
@@ -21,14 +21,14 @@ test.describe("browser card in a channel", () => {
         await page.setViewportSize({ width: size.width, height: size.height })
         await page.goto(`/test/e2e/channel-browser-harness.html?${scenario.query}`)
 
-        await expect(page.getByText("Todos no canal veem")).toBeVisible()
+        await expect(page.getByText("Ao vivo", { exact: true })).toBeVisible()
         const isRequester = scenario.query.includes("viewer=user-ana")
         const requester = isRequester ? "você" : "Ana"
-        const control = scenario.name === "takeover-hidden-preview" ? " · Ana está no controle" : ""
+        const control = scenario.name === "takeover-live-preview" ? " · Ana está no controle" : ""
         const header = `Léo no navegador · pedido de ${requester}${control}`
         await expect(page.getByRole("status", { name: header })).toBeVisible()
         await expect(page.getByTitle("Léo trabalhando aqui")).toBeVisible()
-        if (scenario.name === "takeover-hidden-preview")
+        if (scenario.name === "takeover-live-preview")
           await expect(page.locator(".composer-browser-status")).toContainText("Ana está no controle")
         else
           await expect(page.locator(".composer-browser-status")).toContainText(isRequester ? "para você" : "para Ana")
@@ -39,10 +39,8 @@ test.describe("browser card in a channel", () => {
         const replyHeader = await page.locator(".channel-demo-reply .message-meta").boundingBox()
         expect(editGroup).not.toBeNull()
         expect(replyHeader?.y).toBeGreaterThanOrEqual((editGroup?.y ?? 0) + (editGroup?.height ?? 0))
-        const visibleUrl = scenario.name === "takeover-hidden-preview" ? 0 : 1
-        await expect(
-          page.locator(".browser-activity-subtitle").filter({ hasText: "estadias.example.test" }),
-        ).toHaveCount(visibleUrl)
+        await expect(page.locator(".browser-activity-chrome")).toContainText("estadias.example.test")
+        await expect(page.getByRole("img", { name: "Página atual do navegador" })).toBeVisible()
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
         expect(overflow).toBeLessThanOrEqual(0)
 
@@ -54,14 +52,13 @@ test.describe("browser card in a channel", () => {
           expect(log?.y).toBeGreaterThanOrEqual((preview?.y ?? 0) + (preview?.height ?? 0))
         }
 
-        if (isRequester) await expect(page.getByRole("button", { name: /Assumir/ })).toBeEnabled()
+        if (isRequester) await expect(page.getByRole("button", { name: "Assumir", exact: true })).toBeEnabled()
         if (!isRequester) {
-          await expect(page.getByRole("button", { name: /Assumir/ })).toHaveCount(0)
-          if (scenario.name === "takeover-hidden-preview")
-            await expect(page.getByText("Ana está no controle").first()).toBeVisible()
+          await expect(page.getByRole("button", { name: "Assumir", exact: true })).toHaveCount(0)
+          if (scenario.name === "takeover-live-preview")
+            await expect(page.getByText(/Ana está usando/).first()).toBeVisible()
         }
-        if (scenario.name === "takeover-hidden-preview")
-          await expect(page.getByText("Prévia oculta para o canal enquanto Ana digita")).toBeVisible()
+        if (scenario.name === "takeover-live-preview") await expect(page.getByText(/Ana está usando/)).toBeVisible()
         if (scenario.name === "member-no-control") {
           await expect(page.getByText("Na fila: pedido de você", { exact: true })).toBeVisible()
           await expect(page.getByText("Na fila: pedido de Hugo", { exact: true })).toHaveCount(0)
