@@ -328,6 +328,8 @@ When admission is full, responses use their original bytes without a content enc
 and failed jobs both release capacity; a compression failure cannot strand later jobs.
 
 Channel navigation and headers are available at startup so the first click opens a stable surface.
+The channel sidebar ships with the application shell: publishing channel metadata never starts a
+second module download before its primary navigation can render.
 Optional member panels, group dialogs and the routine editor load asynchronously outside the initial
 application bundle. They preserve existing actions and keyboard access, including their close control
 while their module loads.
