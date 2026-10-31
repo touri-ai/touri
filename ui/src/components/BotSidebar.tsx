@@ -16,7 +16,6 @@ import type {
 import {
   Fragment,
   type KeyboardEvent,
-  lazy,
   memo,
   type ReactNode,
   Suspense,
@@ -58,6 +57,7 @@ import { DeleteBotDialog } from "./DeleteBotDialog"
 import { DeleteOldAutomaticThreadsDialog } from "./DeleteOldAutomaticThreadsDialog"
 import { DeleteThreadDialog, type ThreadDeleteTarget } from "./DeleteThreadDialog"
 import { GlobalAdvancedMenu } from "./GlobalAdvancedMenu"
+import { GroupSidebar } from "./GroupSidebar"
 import { Modal } from "./Modal"
 import { useInsertedIds } from "./Motion"
 import { mascotIsBusy } from "./mascotState"
@@ -70,8 +70,6 @@ import { ThreadGroupHistory } from "./ThreadGroupHistory"
 import { type HoldReason, useSidebarOrder } from "./useSidebarOrder"
 import { getThreadDeletionError, type ThreadDeletion } from "./useThreadDeletion"
 import "./bot-sidebar.css"
-
-const GroupSidebar = lazy(() => import("./Groups").then((module) => ({ default: module.GroupSidebar })))
 
 type SidebarProps = {
   currentPerson?: ChannelPerson | undefined

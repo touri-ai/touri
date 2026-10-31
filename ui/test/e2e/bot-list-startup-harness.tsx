@@ -5,6 +5,15 @@ import { createMockApi } from "../../src/api/mock"
 import "../../src/styles.css"
 
 const api = createMockApi()
+if (new URLSearchParams(location.search).has("channels"))
+  await api.request("POST /groups", {
+    name: "Planejamento",
+    color: "#dc2626",
+    avatarShape: "classic-none",
+    memberIds: ["bot-mark", "bot-onb"],
+    coordinatorBotId: "bot-mark",
+  })
+
 let release: () => void = () => undefined
 const pending = new Promise<void>((resolve) => {
   release = resolve
