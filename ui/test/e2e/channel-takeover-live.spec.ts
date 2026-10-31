@@ -1,9 +1,13 @@
 import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { type BrowserContext, type BrowserContextOptions, expect, type Locator, type Page } from "@playwright/test"
+import { type BrowserMeasurement, startBrowserPerformanceMeasurement } from "./channel-browser-performance"
 import { test } from "./production-fixture"
 
 test.use({ channel: "chromium", reducedMotion: "reduce", video: "off" })
+
+// Keep recorder work outside the application frame budget.
+const fluidityTest = test.extend({ trace: "off" })
 
 const recordingContexts = new Set<BrowserContext>()
 
@@ -93,9 +97,11 @@ for (const viewport of [
       await expect.poll(() => header.evaluate((element) => element.getBoundingClientRect().height)).toBe(initialHeight)
     })
 
-    test.describe("fluidity", () => {
-      test("live browser handoffs preserve the frame budget", async ({ context }, info) => {
-        test.setTimeout(120_000)
+    fluidityTest.describe("fluidity", () => {
+      fluidityTest("live browser handoffs preserve the frame budget", async ({ context, trace }, info) => {
+        fluidityTest.setTimeout(120_000)
+        expect(trace).toBe("off")
+
         const { requester, member, card, control } = await openLiveBrowserPages(context)
         const takeOver = card.getByRole("button", { name: "Assumir", exact: true })
         const handBack = control.getByRole("button", { name: "Devolver para Léo", exact: true })
@@ -178,54 +184,12 @@ const saveEvidence = async (page: Page, name: string, output: string): Promise<v
   await writeFile(join(directory, `${name}-${page.viewportSize()?.width}.png`), screenshot)
 }
 
-type BrowserMeasurement = { longTasks: number[]; events: number[]; cls: number; shiftSources: string[] }
 type MeasurementWindow = Window & {
   getBrowserMeasurement?: () => BrowserMeasurement
   nextBrowserPaint?: Promise<number>
 }
 
-const startPerformanceMeasurement = (page: Page): Promise<void> =>
-  page.evaluate(() => {
-    // These bounded collectors live only for this synthetic browser interaction.
-    const longTasks: number[] = []
-    const events = new Map<number, number>()
-    const shifts: number[] = []
-    const shiftSources: string[] = []
-    const observer = new PerformanceObserver((list) => {
-      list.getEntries().forEach((entry) => {
-        if (entry.entryType === "longtask" && longTasks.length < 200) longTasks.push(entry.duration)
-        const shift = entry as PerformanceEntry & {
-          value?: number
-          hadRecentInput?: boolean
-          sources?: Array<{ node?: Element }>
-        }
-        if (entry.entryType === "layout-shift" && !shift.hadRecentInput && shifts.length < 200) {
-          shifts.push(shift.value ?? 0)
-          shiftSources.push(
-            (shift.sources ?? [])
-              .map(({ node }) => node?.getAttribute?.("class") ?? node?.nodeName ?? "unknown")
-              .join(", "),
-          )
-        }
-      })
-    })
-    observer.observe({ entryTypes: ["longtask", "layout-shift"] })
-    const eventObserver = new PerformanceObserver((list) => {
-      list.getEntries().forEach((entry) => {
-        const interaction = entry as PerformanceEntry & { interactionId?: number }
-        const id = interaction.interactionId
-        if (id && (events.size < 200 || events.has(id))) events.set(id, Math.max(events.get(id) ?? 0, entry.duration))
-      })
-    })
-    eventObserver.observe({ type: "event", durationThreshold: 16 })
-    const fixture = window as MeasurementWindow
-    fixture.getBrowserMeasurement = () => ({
-      longTasks,
-      events: Array.from(events.values()),
-      cls: shifts.reduce((total, value) => total + value, 0),
-      shiftSources,
-    })
-  })
+const startPerformanceMeasurement = (page: Page): Promise<void> => page.evaluate(startBrowserPerformanceMeasurement)
 
 const getPerformanceMeasurement = (page: Page): Promise<BrowserMeasurement> =>
   page.evaluate(() => {
