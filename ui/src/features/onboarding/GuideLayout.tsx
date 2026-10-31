@@ -134,7 +134,7 @@ export const GuideLayout = ({
             </PreviewSection>
             <PreviewSection title={t("ob.agents")} highlighted={stage === 2 || stage === 4}>
               <p className="ob-preview-item">
-                <BotAvatar bot={guideBot} size={24} mood="idle" />
+                <BotAvatar bot={bots.find((bot) => bot.name === "touri") ?? guideBot} size={24} mood="idle" />
                 <span>touri</span>
                 <small>{t("ob.guide")}</small>
               </p>

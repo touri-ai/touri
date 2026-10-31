@@ -111,6 +111,15 @@ waits for import completion so late results cannot replace account choices. Exis
 their instructions even when named touri; guide instructions apply only to a newly created guide. Browser access,
 writing and host computer control start disabled, with approvals required.
 
+Completed imports can be undone from import progress or the source screen. A successful undo removes
+its agents from the preview and account choices; a failed undo retains the import and offers a retry.
+Preview avatar seeds persist on imported agents, and the guide keeps the same identity throughout setup.
+Agent accounts use compact rows on wide screens. Invitations require a configured HTTPS address;
+without one, the guide explains the prerequisite before offering an invitation form.
+
+The first task checks the selected agent's installed program and saved account before sending anything.
+An unready or unreachable account returns to account setup with the task text intact; API models require
+a saved catalog entry and an available executor. These read-only checks never start a model request.
 The first task goes to #geral with an explicit mention of the selected bot. Retries keep the
 chosen conversation and reuse the nonce for unchanged text; edited text gets a new nonce.
 Context and the optional website are included in that task; source paths and pasted exports are

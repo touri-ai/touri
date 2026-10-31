@@ -359,3 +359,89 @@ for (const width of [1440, 390]) {
     await capture(page, info, `after-manual-${width}`)
   })
 }
+
+const openEmptyGuide = async (page: Page, destination: string) => {
+  await page.goto(destination)
+  await page.getByRole("button", { name: /^Começar/ }).click()
+  await page.getByRole("button", { name: /Este (PC|Mac)/ }).click()
+  await page.getByRole("textbox", { name: "Nome", exact: true }).fill("Equipe exemplo")
+  await page.getByRole("button", { name: /^Continuar/ }).click()
+  await page.getByRole("button", { name: "Pular", exact: true }).click()
+}
+for (const width of [1440, 390]) {
+  test(`onboarding recovery ${width}: undo and compact account rows retain avatar identity`, async ({
+    page,
+    productionUrl,
+  }, info) => {
+    const mock = await installGuideMocks(page, { agentCount: 3 })
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 })
+    await openEmptyGuide(page, productionUrl)
+    await page.getByRole("button", { name: /^Continuar/ }).click()
+    const reviewed = page.locator(".ob-import-agent").first().locator(".tb-avatar")
+    const identity = await reviewed.getAttribute("data-avatar-shape")
+    const color = await reviewed.evaluate((element) => getComputedStyle(element).getPropertyValue("--avatar-color"))
+    mock.finishImport()
+    await page.getByRole("button", { name: /Importar selecionados/ }).click()
+    await expect(page.getByText("Pronto", { exact: true })).toHaveCount(3)
+    await page.getByRole("button", { name: /^Continuar/ }).click()
+    await page.getByRole("button", { name: "Voltar", exact: true }).click()
+    await capture(page, info, `recovery-undo-${width}`)
+    await page.getByRole("button", { name: /Desfazer importação/ }).click()
+    await expect(page.getByRole("button", { name: /Desfazer importação/ })).toHaveCount(0)
+    expect(mock.getBots()).toHaveLength(0)
+    await page.getByRole("button", { name: /^Continuar/ }).click()
+    await page.getByRole("button", { name: /Importar selecionados/ }).click()
+    await expect(page.getByText("Pronto", { exact: true })).toHaveCount(3)
+    await page.getByRole("button", { name: /^Continuar/ }).click()
+    await page.getByRole("button", { name: /^Continuar/ }).click()
+    await expect(page.locator(".ob-agent-card")).toHaveCount(4)
+    const imported = page.locator(".ob-agent-card").first().locator(".tb-avatar")
+    await expect(imported).toHaveAttribute("data-avatar-shape", identity ?? "")
+    expect(await imported.evaluate((element) => getComputedStyle(element).getPropertyValue("--avatar-color"))).toBe(
+      color,
+    )
+    await capture(page, info, `recovery-four-accounts-${width}`)
+    if (width === 1440) await expect(page.getByRole("button", { name: /^Continuar/ })).toBeInViewport()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await page.getByRole("button", { name: /^Continuar/ }).click()
+    expect(mock.calls.find((call) => call.path === "/bots/bot-dev" && call.method === "PATCH")?.body.avatarSeed).toBe(
+      "dev",
+    )
+  })
+  test(`onboarding recovery ${width}: unready account keeps the task and missing public address is explained early`, async ({
+    page,
+    productionUrl,
+  }, info) => {
+    const mock = await installGuideMocks(page)
+    await page.route("**/api/v1/public-address", (route) =>
+      route.fulfill({ json: { address: null, reachability: "unset" } }),
+    )
+    await page.route("**/api/v1/bots/*/provider-login/flow*", (route) =>
+      route.fulfill({ json: { provider: "claude", state: "idle", executable: "missing" } }),
+    )
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 800 })
+    await openEmptyGuide(page, productionUrl)
+    await page.getByRole("button", { name: "Pular", exact: true }).click()
+    await page.getByRole("button", { name: /^Continuar/ }).click()
+    await page.getByRole("button", { name: /^Continuar/ }).click()
+    await expect(page.getByRole("status")).toContainText("configure um endereço HTTPS")
+    await expect(page.getByRole("button", { name: "Convidar pessoa" })).toHaveCount(0)
+    await capture(page, info, `recovery-invite-${width}`)
+    await page.getByRole("button", { name: "Pular", exact: true }).click()
+    await page.getByRole("textbox", { name: "Sua primeira tarefa" }).fill("Organize três prioridades.")
+    await page.getByRole("button", { name: /Enviar primeira tarefa/ }).click()
+    await expect(page.getByRole("heading", { name: "Seu time de agentes" })).toBeVisible()
+    await expect(page.getByRole("alert")).toContainText("Seu texto foi mantido")
+    expect(mock.calls.some((call) => call.path === "/threads/general-thread/messages")).toBe(false)
+    await capture(page, info, `recovery-account-${width}`)
+    await page.route("**/api/v1/bots/*/provider-login/flow*", (route) =>
+      route.fulfill({ json: { provider: "claude", state: "ready", executable: "available" } }),
+    )
+    await page.getByRole("button", { name: /^Continuar/ }).click()
+    await page.getByRole("button", { name: "Pular", exact: true }).click()
+    await expect(page.getByRole("textbox", { name: "Sua primeira tarefa" })).toHaveValue("Organize três prioridades.")
+    await capture(page, info, `recovery-task-${width}`)
+    await page.getByRole("button", { name: /Enviar primeira tarefa/ }).click()
+    await expect(page.getByRole("textbox", { name: /Mensagem para geral/ })).toBeVisible()
+  })
+}

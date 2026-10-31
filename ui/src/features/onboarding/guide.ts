@@ -1,4 +1,12 @@
-import type { AgentImportProgress, AgentImportSource, AvatarMood, Bot, BotGroup } from "@touri/contracts"
+import type {
+  AgentImportProgress,
+  AgentImportResult,
+  AgentImportSource,
+  AvatarMood,
+  Bot,
+  BotGroup,
+} from "@touri/contracts"
+import { getApiModelReference } from "@touri/contracts"
 import type { UiApi } from "../../api/client"
 import { type TranslationKey, t } from "../../i18n"
 import { saveWorkspaceState } from "../../workspaceState"
@@ -28,10 +36,9 @@ export type ComputerDraft = {
 export const guideBot = {
   id: "onboarding-touri",
   name: "touri",
-  color: "var(--brand)",
+  color: "#dc2626",
   avatarSeed: "touri",
   avatarShape: "classic-none" as const,
-  avatarHue: 0 as const,
 }
 export const guideStages: TranslationKey[] = [
   "ob.workspace",
@@ -167,4 +174,30 @@ export const saveGuideDestination = (threadId: string): void => {
   } catch {
     // The channel selection still uses the existing workspace storage policy.
   }
+}
+
+/** Read-only readiness checks never start a login or a paid model request. */
+export const getIsGuideBotReady = async (api: UiApi, bot: Bot): Promise<boolean> => {
+  try {
+    if (bot.provider === "opencode" && bot.model?.startsWith("touri-api-")) {
+      const catalog = await api.request("GET /api-models", {})
+      return (
+        (bot.machine === "vm" || catalog.executorAvailable === true) &&
+        catalog.models.some((model) => getApiModelReference(model) === bot.model)
+      )
+    }
+    // Isolated machines carry their own programs; host installation does not describe them.
+    if (bot.machine === "vm") {
+      const login = await api.request("GET /bots/:id/provider-login", {}, { id: bot.id })
+      return login.provider === bot.provider && login.ready
+    }
+    const login = await api.request("GET /bots/:id/provider-login/flow", { provider: bot.provider }, { id: bot.id })
+    return login.provider === bot.provider && login.state === "ready" && login.executable === "available"
+  } catch {
+    return false
+  }
+}
+export const getImportedIdentity = (botId: string, results: AgentImportResult[]) => {
+  const imported = results.flatMap((result) => result.bots).find((bot) => bot.botId === botId)
+  return imported ? { avatarSeed: imported.agentKey, color: null } : {}
 }

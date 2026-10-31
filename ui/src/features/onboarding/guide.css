@@ -460,3 +460,27 @@
     font-size: var(--fs-subtitle);
   }
 }
+
+.ob-agent-row {
+  display: grid;
+  grid-template-columns: minmax(72px, 0.7fr) minmax(135px, 1fr) minmax(112px, 0.9fr) minmax(130px, 1fr);
+  align-items: center;
+  gap: var(--space-12);
+}
+.ob-agent-row > .ds-button {
+  align-self: end;
+  white-space: normal;
+}
+@media (min-width: 761px) {
+  .ob-agent-card {
+    padding: var(--space-12);
+  }
+  .ob-agent-row > label > small {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  .ob-agent-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

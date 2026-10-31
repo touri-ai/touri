@@ -9,7 +9,10 @@ import {
   getGuideThreadFixture,
 } from "../fixtures/onboarding-guide"
 
-export const installGuideMocks = async (page: Page, { team = true }: { team?: boolean } = {}) => {
+export const installGuideMocks = async (
+  page: Page,
+  { team = true, agentCount = 1 }: { team?: boolean; agentCount?: number } = {},
+) => {
   const protocol = JSON.parse(
     await readFile(new URL("../../../packages/contracts/protocol.json", import.meta.url), "utf8"),
   ) as { version: number; legacySchemaVersion: number }
@@ -21,6 +24,11 @@ export const installGuideMocks = async (page: Page, { team = true }: { team?: bo
   let seq = 0
   const calls: { path: string; method: string; body: Record<string, unknown> }[] = []
   const imports = Promise.withResolvers<void>()
+  const names = ["dev", "ops", "design"].slice(0, agentCount)
+  const preview = getGuidePreviewFixture()
+  const template = preview.agents[0]
+  if (!template) throw new Error("Missing synthetic preview agent")
+  const agents = names.map((name) => ({ ...template, key: name, name, suggestedBotName: name }))
   await page.routeWebSocket("**/api/v1/events?*", (connection) => {
     socket = connection
     connection.send(JSON.stringify({ type: "resync", lastSeq: 0 }))
@@ -48,7 +56,7 @@ export const installGuideMocks = async (page: Page, { team = true }: { team?: bo
           : { completed: false, hasData: false, tailscale: "missing", remoteUrl: null },
       )
     if (path === "/import/sources") return reply({ sources: [getGuideSourceFixture()] })
-    if (path === "/import/preview") return reply(getGuidePreviewFixture())
+    if (path === "/import/preview") return reply({ ...preview, agents })
     if (path === "/import/apply") {
       seq += 1
       socket?.send(
@@ -66,13 +74,18 @@ export const installGuideMocks = async (page: Page, { team = true }: { team?: bo
         }),
       )
       await imports.promise
-      bots = [getGuideBotFixture("dev")]
+      bots = names.map(getGuideBotFixture)
       return reply({
         importId: "import-one",
-        bots: [{ agentKey: "dev", botId: "bot-dev" }],
+        bots: names.map((name) => ({ agentKey: name, botId: `bot-${name}` })),
         pausedRoutines: 1,
         reconnect: [],
       })
+    }
+    if (path === "/import/undo") {
+      const removedBots = bots.filter((bot) => names.includes(bot.name)).length
+      bots = bots.filter((bot) => !names.includes(bot.name))
+      return reply({ removedBots })
     }
     if (path === "/bots" && method === "GET") return reply({ bots })
     if (path === "/bots" && method === "POST") {
@@ -120,6 +133,7 @@ export const installGuideMocks = async (page: Page, { team = true }: { team?: bo
       return reply({ entries: [], rejections: [], lastSeq: 0, generation: 0, hasMore: false, resync: false })
     if (path.endsWith("/threads")) return reply({ threads: [] })
     if (path.endsWith("/runs") || path === "/runs") return reply({ runs: [] })
+    if (path === "/public-address") return reply({ address: "https://team.example.com", reachability: "public" })
     if (path === "/invites") return reply({ invites: [] }, team ? 200 : 404)
     if (path === "/machines")
       return reply({ capability: { available: false, reason: null, provider: null }, machines: [] })

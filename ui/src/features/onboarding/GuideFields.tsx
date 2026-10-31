@@ -200,49 +200,51 @@ export const AgentFields = ({ api, bots, onChange }: { api: UiApi; bots: Bot[]; 
       )}
       {bots.map((bot) => (
         <article className="ob-agent-card" key={bot.id}>
-          <div className="ob-inline">
-            <BotAvatar bot={bot} size={36} mood="idle" />
-            <strong>{bot.name}</strong>
-          </div>
-          <label className="ob-field">
-            {t("ob.account")}
-            <select
-              value={bot.provider}
-              onChange={(event) => onChange({ ...bot, provider: event.target.value as Bot["provider"], model: "" })}
-            >
-              <option value="claude">{t("ob.claudeSubscription")}</option>
-              <option value="codex">{t("ob.chatSubscription")}</option>
-              <option value="opencode">{t("ob.apiKey")}</option>
-            </select>
-          </label>
-          {bot.provider !== "opencode" && (
-            <Button onClick={() => setLoginId(loginId === bot.id ? null : bot.id)} aria-expanded={loginId === bot.id}>
-              {t("ob.connectAccount")}
-            </Button>
-          )}
-          {loginId === bot.id && bot.provider !== "opencode" && (
-            <ProviderLogin api={api} botId={bot.id} provider={bot.provider} onConfigured={() => undefined} />
-          )}
-          {bot.provider === "opencode" ? (
-            <ApiModelPicker
-              key={`${bot.id}-${apiOpen}`}
-              api={api}
-              id={`ob-model-${bot.id}`}
-              value={bot.model ?? ""}
-              onChange={(model) => onChange({ ...bot, model })}
-            />
-          ) : (
-            <label className="ob-field" htmlFor={`ob-model-${bot.id}`}>
-              {t("ob.model")}
-              <ProviderModelField
+          <div className="ob-agent-row">
+            <div className="ob-inline">
+              <BotAvatar bot={bot} size={36} mood="idle" />
+              <strong>{bot.name}</strong>
+            </div>
+            <label className="ob-field">
+              {t("ob.account")}
+              <select
+                value={bot.provider}
+                onChange={(event) => onChange({ ...bot, provider: event.target.value as Bot["provider"], model: "" })}
+              >
+                <option value="claude">{t("ob.claudeSubscription")}</option>
+                <option value="codex">{t("ob.chatSubscription")}</option>
+                <option value="opencode">{t("ob.apiKey")}</option>
+              </select>
+            </label>
+            {bot.provider !== "opencode" && (
+              <Button onClick={() => setLoginId(loginId === bot.id ? null : bot.id)} aria-expanded={loginId === bot.id}>
+                {t("ob.connectAccount")}
+              </Button>
+            )}
+            {bot.provider === "opencode" ? (
+              <ApiModelPicker
+                key={`${bot.id}-${apiOpen}`}
                 api={api}
                 id={`ob-model-${bot.id}`}
-                botId={bot.id}
-                provider={bot.provider}
                 value={bot.model ?? ""}
                 onChange={(model) => onChange({ ...bot, model })}
               />
-            </label>
+            ) : (
+              <label className="ob-field" htmlFor={`ob-model-${bot.id}`}>
+                {t("ob.model")}
+                <ProviderModelField
+                  api={api}
+                  id={`ob-model-${bot.id}`}
+                  botId={bot.id}
+                  provider={bot.provider}
+                  value={bot.model ?? ""}
+                  onChange={(model) => onChange({ ...bot, model })}
+                />
+              </label>
+            )}
+          </div>
+          {loginId === bot.id && bot.provider !== "opencode" && (
+            <ProviderLogin api={api} botId={bot.id} provider={bot.provider} onConfigured={() => undefined} />
           )}
         </article>
       ))}
@@ -251,10 +253,23 @@ export const AgentFields = ({ api, bots, onChange }: { api: UiApi; bots: Bot[]; 
 }
 export const TeamFields = ({ api, groups, onInvited }: { api: UiApi; groups: BotGroup[]; onInvited: () => void }) => {
   const [open, setOpen] = useState(false)
+  const [canInvite, setCanInvite] = useState<boolean | null>(null)
+  useEffect(() => {
+    const controller = new AbortController()
+    void api
+      .request("GET /public-address", {}, {}, { signal: controller.signal })
+      .then(({ address }) => {
+        if (!controller.signal.aborted) setCanInvite(Boolean(address?.startsWith("https://")))
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setCanInvite(false)
+      })
+    return () => controller.abort()
+  }, [api])
   return (
     <>
-      <p>{t("ob.inviteHelp")}</p>
-      <Button onClick={() => setOpen(true)}>{t("ob.invitePerson")}</Button>
+      <p role="status">{t(canInvite ? "ob.inviteHelp" : "ob.inviteAddressRequired")}</p>
+      {canInvite && <Button onClick={() => setOpen(true)}>{t("ob.invitePerson")}</Button>}
       {open && (
         <InvitePersonDialog
           channels={groups}

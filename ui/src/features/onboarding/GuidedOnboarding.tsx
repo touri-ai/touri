@@ -13,10 +13,12 @@ import {
   type ComputerDraft,
   createGuideChannels,
   type GuideStep,
+  getImportedIdentity,
   getIsEmptyOwnerWorkspace,
+  getIsGuideBotReady,
   getStage,
   getWebsite,
-  getWorkspaceColor,
+  guideBot,
   saveGuideDestination,
   topicOptions,
   type WorkspaceDraft,
@@ -138,9 +140,14 @@ const Guide = ({
     const result = await api.request("GET /bots", {})
     const importedIds = imports.results.flatMap((result) => result.bots.map((bot) => bot.botId))
     const selected = result.bots.filter((bot) => bot.name === "touri" || importedIds.includes(bot.id))
-    setBots(selected)
-    return selected
-  }, [api, imports.results])
+    const identified = selected.map((bot) => {
+      const draftBot = bots.find((item) => item.id === bot.id)
+      const account = draftBot ? { provider: draftBot.provider, model: draftBot.model } : {}
+      return { ...bot, ...account, ...getImportedIdentity(bot.id, imports.results) }
+    })
+    setBots(identified)
+    return identified
+  }, [api, imports.results, bots])
   useEffect(() => {
     const controller = new AbortController()
     void api
@@ -195,7 +202,9 @@ const Guide = ({
     const { bot } = await api.request("POST /bots", {
       name: "touri",
       provider: "claude",
-      color: getWorkspaceColor(draft.color),
+      color: guideBot.color,
+      avatarSeed: guideBot.avatarSeed,
+      avatarShape: guideBot.avatarShape,
       description: draft.name.trim(),
       instructions: t("ob.guideInstructions", { name: draft.name.trim(), context: draft.context }),
       access: computer.access,
@@ -220,12 +229,13 @@ const Guide = ({
             await api.request(
               "PATCH /bots/:id",
               {
+                ...getImportedIdentity(bot.id, imports.results),
                 provider: bot.provider,
                 model: bot.model,
                 ...(bot.id === createdGuideId.current
                   ? {
                       description: draft.name.trim(),
-                      color: getWorkspaceColor(draft.color),
+                      color: guideBot.color,
                       instructions: t("ob.guideInstructions", { name: draft.name.trim(), context: draft.context }),
                     }
                   : {}),
@@ -253,10 +263,22 @@ const Guide = ({
     if (!target) setTarget(updated[0]?.id ?? "")
     go(hasTeam ? "team" : "task")
   }
+  const undoImport = async (importId: string) => {
+    const result = imports.results.find((item) => item.importId === importId)
+    if (!result || !(await imports.undo(importId))) return
+    const removed = result.bots.map((bot) => bot.botId)
+    setBots((previous) => previous.filter((bot) => !removed.includes(bot.id)))
+    if (removed.includes(target)) setTarget("")
+  }
   const sendFirstTask = async () => {
     const general = groups.find((group) => group.name === "geral")
     const bot = bots.find((bot) => bot.id === target) ?? bots[0]
     if (!general || !bot || !task.trim()) return
+    if (!(await getIsGuideBotReady(api, bot))) {
+      go("agents")
+      setError(t("ob.accountNotReady", { name: bot.name }))
+      return
+    }
     const threads = thread ? [thread] : (await api.request("GET /groups/:id/threads", {}, { id: general.id })).threads
     const destination =
       threads[0] ??
@@ -397,7 +419,14 @@ const Guide = ({
       {step === "workspace" && <WorkspaceFields draft={draft} onChange={setDraft} />}
       {step === "context" && <ContextFields draft={draft} onChange={setDraft} />}
       {["sources", "review", "importing"].includes(step) && (
-        <AgentImport step={step} imports={imports} api={api} invoke={invoke} onManual={() => go("manual")} />
+        <AgentImport
+          step={step}
+          imports={imports}
+          api={api}
+          invoke={invoke}
+          onManual={() => go("manual")}
+          onUndo={undoImport}
+        />
       )}
       {step === "review" && imports.selectionCount > 19 && (
         <p className="ob-error" role="alert">
@@ -536,6 +565,7 @@ const getLiveBots = (bots: Bot[], imports: ReturnType<typeof useAgentImport>) =>
         agentKey: agent.key,
         name: agent.suggestedBotName,
         color: null,
+        avatarSeed: agent.key,
       }))
   })
   return [...bots, ...copying]

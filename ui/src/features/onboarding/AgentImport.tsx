@@ -14,16 +14,24 @@ export const AgentImport = ({
   api,
   invoke,
   onManual,
+  onUndo,
 }: {
   step: GuideStep
   imports: ReturnType<typeof useAgentImport>
   api: UiApi
   invoke: TauriInvoke
   onManual: () => void
+  onUndo: (importId: string) => Promise<void>
 }) => {
   const [folderOpen, setFolderOpen] = useState(false)
   if (step === "review") return <ImportReview imports={imports} />
-  if (step === "importing") return <ImportProgress imports={imports} />
+  if (step === "importing")
+    return (
+      <>
+        <ImportProgress imports={imports} />
+        <ImportUndo imports={imports} onUndo={onUndo} />
+      </>
+    )
   return (
     <>
       {imports.loading && <p role="status">{t("ob.findingSources")}</p>}
@@ -56,6 +64,7 @@ export const AgentImport = ({
           </Button>
         ))}
       </div>
+      <ImportUndo imports={imports} onUndo={onUndo} />
       {imports.error && (
         <div className="ob-notice">
           <p role="alert">{imports.error}</p>
@@ -145,7 +154,7 @@ const ImportReview = ({ imports }: { imports: ReturnType<typeof useAgentImport> 
           return (
             <article key={agent.key} className="ob-import-agent">
               <div className="ob-inline">
-                <BotAvatar bot={{ id: agent.key, color: "var(--link)" }} size={32} mood="idle" />
+                <BotAvatar bot={{ id: agent.key, avatarSeed: agent.key, color: null }} size={32} mood="idle" />
                 <strong>{agent.suggestedBotName}</strong>
                 <label className="ob-agent-check">
                   <input
@@ -214,7 +223,7 @@ const ImportProgress = ({ imports }: { imports: ReturnType<typeof useAgentImport
           return (
             <div key={`${preview.previewId}-${agent.key}`} className="ob-import-agent">
               <div className="ob-inline">
-                <BotAvatar bot={{ id: agent.key, color: "var(--link)" }} size={32} mood={mood} />
+                <BotAvatar bot={{ id: agent.key, avatarSeed: agent.key, color: null }} size={32} mood={mood} />
                 <strong>{agent.suggestedBotName}</strong>
                 <span>{getProgressLabel(done, failed)}</span>
               </div>
@@ -243,4 +252,28 @@ const getProgressLabel = (done: boolean, failed: boolean): string => {
   if (done) return t("ob.importDone")
   if (failed) return t("ob.importFailed")
   return t("ob.importWorking")
+}
+
+const ImportUndo = ({
+  imports,
+  onUndo,
+}: {
+  imports: ReturnType<typeof useAgentImport>
+  onUndo: (importId: string) => Promise<void>
+}) => {
+  if (!imports.results.length) return null
+  return (
+    <div className="ob-inline">
+      {imports.results.map((result) => (
+        <Button
+          key={result.importId}
+          variant="quiet"
+          disabled={imports.busy}
+          onClick={() => void onUndo(result.importId)}
+        >
+          {t("ob.undoImport")} · {result.bots.length}
+        </Button>
+      ))}
+    </div>
+  )
 }

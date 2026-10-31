@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from "vitest"
 import type { TauriInvoke, UiApi } from "../src/api/client"
 import { ApiError } from "../src/errors"
 import { GuidedOnboarding } from "../src/features/onboarding/GuidedOnboarding"
+import { TeamFields } from "../src/features/onboarding/GuideFields"
 import { getImportProgress, getIsEmptyOwnerWorkspace, getWebsite } from "../src/features/onboarding/guide"
 import { dictionaries } from "../src/i18n"
 import { readWorkspaceState } from "../src/workspaceState"
@@ -23,7 +24,7 @@ afterEach(() => {
 
 const getFixture = (overrides: Record<string, unknown> = {}) => {
   const listeners = new Set<(event: UiEventEnvelope) => void>()
-  const request = vi.fn(async (route: string) => {
+  const request = vi.fn(async (route: string, input: Record<string, unknown>, paths?: { id?: string }) => {
     if (overrides[route] instanceof Error) throw overrides[route]
     const override = overrides[route]
     if (typeof override === "function") return override()
@@ -36,7 +37,13 @@ const getFixture = (overrides: Record<string, unknown> = {}) => {
     if (route === "GET /groups") return { groups: [] }
     if (route === "POST /groups") return { group: getGuideGroupFixture(), thread: getGuideThreadFixture() }
     if (route === "GET /groups/:id/threads") return { threads: [getGuideThreadFixture()] }
-    if (route === "PATCH /bots/:id") return { bot: getGuideBotFixture() }
+    if (route === "PATCH /bots/:id") {
+      const bot = paths?.id === "bot-dev" ? getGuideBotFixture("dev") : getGuideBotFixture()
+      return { bot: { ...bot, ...input } }
+    }
+    if (route === "GET /bots/:id/provider-login/flow")
+      return { provider: input.provider, state: "ready", executable: "available" }
+    if (route === "GET /public-address") return { address: "https://team.example.com", reachability: "public" }
     return {}
   }) as UiApi["request"]
   const api: UiApi = {
@@ -620,4 +627,121 @@ it("rejects batches that would evict the server's three preview tickets", async 
 
   expect(await screen.findByRole("alert")).toHaveTextContent("Escolha até 3 fontes")
   expect(request).not.toHaveBeenCalledWith("POST /api/v1/import/preview", expect.anything())
+})
+
+it.each([
+  { state: "ready", executable: "missing" },
+  { state: "idle", executable: "available" },
+])("returns to account setup before sending to an unready agent: $state/$executable", async (status) => {
+  const { request, complete } = getFixture({
+    "GET /bots/:id/provider-login/flow": { provider: "claude", ...status },
+  })
+  enterWorkspace()
+  continueSetup()
+  fireEvent.click(await screen.findByRole("button", { name: "Pular" }))
+  continueSetup()
+  await screen.findByRole("heading", { name: "Seu time de agentes" })
+  continueSetup()
+  await screen.findByRole("heading", { name: "Quem mais trabalha com você?" })
+  fireEvent.click(screen.getByRole("button", { name: "Pular" }))
+  fireEvent.change(screen.getByRole("textbox", { name: "Sua primeira tarefa" }), {
+    target: { value: "Organize as prioridades." },
+  })
+
+  fireEvent.click(screen.getByRole("button", { name: /Enviar primeira tarefa/ }))
+
+  await screen.findByRole("heading", { name: "Seu time de agentes" })
+  expect(screen.getByRole("alert")).toHaveTextContent("Conecte a conta de touri")
+  expect(vi.mocked(request).mock.calls.some(([route]) => route === "POST /threads/:id/messages")).toBe(false)
+  expect(complete).not.toHaveBeenCalled()
+})
+
+it("undoes a completed import from the source screen and removes its preview", async () => {
+  const { request } = getFixture()
+  enterWorkspace()
+  continueSetup()
+  await screen.findByRole("button", { name: /Claude Code/ })
+  continueSetup()
+  await screen.findByRole("heading", { name: "Confere o que vem?" })
+  fireEvent.click(screen.getByRole("button", { name: /Importar selecionados/ }))
+  await screen.findByText("Pronto", { selector: ".ob-import-agent span" })
+  continueSetup()
+  fireEvent.click(screen.getByRole("button", { name: "Voltar", exact: true }))
+
+  fireEvent.click(await screen.findByRole("button", { name: /Desfazer importação/ }))
+
+  await waitFor(() => expect(request).toHaveBeenCalledWith("POST /api/v1/import/undo", { importId: "import-one" }))
+  await waitFor(() => expect(screen.queryByRole("button", { name: /Desfazer importação/ })).toBeNull())
+  expect(within(screen.getByRole("complementary")).queryByText("dev")).toBeNull()
+})
+
+it("explains the invite prerequisite before asking for a person's details", async () => {
+  const request = vi.fn(async () => ({ address: null, reachability: "unset" })) as UiApi["request"]
+  const api: UiApi = { request, isMock: false, subscribe: () => () => undefined }
+
+  render(<TeamFields api={api} groups={[]} onInvited={vi.fn()} />)
+
+  await waitFor(() => expect(request).toHaveBeenCalledWith("GET /public-address", {}, {}, expect.anything()))
+  expect(screen.getByRole("status")).toHaveTextContent("configure um endereço HTTPS")
+  expect(screen.queryByRole("button", { name: "Convidar pessoa" })).toBeNull()
+  expect(screen.queryByRole("dialog")).toBeNull()
+})
+
+it("persists the reviewed avatar seed on the imported agent without changing its instructions", async () => {
+  const { request } = getFixture()
+  enterWorkspace()
+  continueSetup()
+  await screen.findByRole("button", { name: /Claude Code/ })
+  continueSetup()
+  await screen.findByRole("heading", { name: "Confere o que vem?" })
+  fireEvent.click(screen.getByRole("button", { name: /Importar selecionados/ }))
+  await screen.findByText("Pronto", { selector: ".ob-import-agent span" })
+  continueSetup()
+  continueSetup()
+  await screen.findByRole("heading", { name: "Seu time de agentes" })
+
+  continueSetup()
+
+  await screen.findByRole("heading", { name: "Quem mais trabalha com você?" })
+  expect(request).toHaveBeenCalledWith("PATCH /bots/:id", expect.objectContaining({ avatarSeed: "dev", color: null }), {
+    id: "bot-dev",
+  })
+  const imported = vi
+    .mocked(request)
+    .mock.calls.find(([route, , paths]) => route === "PATCH /bots/:id" && paths?.id === "bot-dev")
+  expect(imported?.[1]).not.toHaveProperty("instructions")
+})
+
+it("keeps unsaved account choices when returning to computer permissions", async () => {
+  getFixture()
+  enterWorkspace()
+  continueSetup()
+  fireEvent.click(await screen.findByRole("button", { name: "Pular" }))
+  continueSetup()
+  await screen.findByRole("heading", { name: "Seu time de agentes" })
+  fireEvent.change(screen.getByRole("combobox", { name: "Conta de IA" }), { target: { value: "codex" } })
+
+  fireEvent.click(screen.getByRole("button", { name: "Voltar", exact: true }))
+  continueSetup()
+
+  await screen.findByRole("heading", { name: "Seu time de agentes" })
+  expect(screen.getByRole("combobox", { name: "Conta de IA" })).toHaveValue("codex")
+})
+it("retains an import when undo fails so the owner can retry", async () => {
+  const undo = vi.fn().mockRejectedValueOnce(new Error("Connection interrupted")).mockResolvedValue({ removedBots: 1 })
+  getFixture({ "POST /api/v1/import/undo": undo })
+  enterWorkspace()
+  continueSetup()
+  await screen.findByRole("button", { name: /Claude Code/ })
+  continueSetup()
+  await screen.findByRole("heading", { name: "Confere o que vem?" })
+  fireEvent.click(screen.getByRole("button", { name: /Importar selecionados/ }))
+  await screen.findByText("Pronto", { selector: ".ob-import-agent span" })
+
+  fireEvent.click(screen.getByRole("button", { name: /Desfazer importação/ }))
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("Não conseguimos desfazer")
+  expect(within(screen.getByRole("complementary")).getByText("dev")).toBeVisible()
+  fireEvent.click(screen.getByRole("button", { name: /Desfazer importação/ }))
+  await waitFor(() => expect(screen.queryByRole("button", { name: /Desfazer importação/ })).toBeNull())
 })

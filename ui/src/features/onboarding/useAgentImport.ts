@@ -174,6 +174,34 @@ export const useAgentImport = (api: UiApi) => {
       setBusy(false)
     }
   }
+  const undo = async (importId: string): Promise<boolean> => {
+    if (applying.current) return false
+    applying.current = true
+    setBusy(true)
+    setError(null)
+    try {
+      await api.request("POST /api/v1/import/undo", { importId })
+      const previewIds = Object.entries(importIds)
+        .filter(([, id]) => id === importId)
+        .map(([previewId]) => previewId)
+      completed.current = new Set(Array.from(completed.current).filter((id) => !previewIds.includes(id)))
+      progressOwners.current.delete(importId)
+      setResults((previous) => previous.filter((result) => result.importId !== importId))
+      setProgress((previous) => previous.filter((item) => item.importId !== importId))
+      setPreviews((previous) => previous.filter(({ preview }) => !previewIds.includes(preview.previewId)))
+      setSelection((previous) =>
+        Object.fromEntries(Object.entries(previous).filter(([id]) => !previewIds.includes(id))),
+      )
+      setImportIds((previous) => Object.fromEntries(Object.entries(previous).filter(([, id]) => id !== importId)))
+      return true
+    } catch {
+      setError(t("ob.undoError"))
+      return false
+    } finally {
+      applying.current = false
+      setBusy(false)
+    }
+  }
   const toggleItem = (previewId: string, key: string, item: keyof AgentImportItemSelection) =>
     setSelection((previous) => {
       const agent = previous[previewId]?.[key]
@@ -212,6 +240,7 @@ export const useAgentImport = (api: UiApi) => {
     addFolder,
     previewSources,
     apply,
+    undo,
     clearPreview: () => {
       setPreviews([])
       setSelection({})
