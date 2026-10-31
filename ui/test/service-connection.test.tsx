@@ -190,6 +190,34 @@ test("reconnection reloads a snapshot that failed before the bot list arrived", 
   expect(hook.result.current.data.notice).toBeNull()
 })
 
+test("a stopped server reports inside the open conversation instead of the app notice", async () => {
+  const mock = createMockApi()
+  let unavailable = false
+  const request: ApiRequest = async (route, input, path) => {
+    if (unavailable) throw new ApiError(0, "", undefined, "TOURI-E1009")
+    return mock.request(route, input, path)
+  }
+  const api = { ...mock, request, isMock: false }
+  const hook = renderHook(() => useWorkspace(api))
+  await waitFor(() => expect(hook.result.current.data.messages.length).toBeGreaterThan(0))
+  const { selectedThreadId } = hook.result.current.data
+  const messageIds = hook.result.current.data.messages.map((message) => message.id)
+  unavailable = true
+
+  await act(async () => hook.result.current.actions.refresh())
+
+  expect(hook.result.current.data.notice).toBeNull()
+  expect(hook.result.current.data.historyFailure).toMatchObject({ kind: "server", code: "TOURI-E1009" })
+  expect(hook.result.current.data.historyFailure?.threadId).toBe(selectedThreadId)
+  expect(hook.result.current.data.messages.map((message) => message.id)).toEqual(messageIds)
+  unavailable = false
+
+  await act(async () => hook.result.current.actions.refresh())
+
+  await waitFor(() => expect(hook.result.current.data.historyFailure).toBeNull(), { timeout: 4000 })
+  expect(hook.result.current.data.notice).toBeNull()
+})
+
 test("reconnection clears the selected history's service error without a new server event", async () => {
   const mock = createMockApi()
   let unavailable = true

@@ -14,6 +14,7 @@ import {
   createGuideChannels,
   type GuideStep,
   getImportedIdentity,
+  getImportedNames,
   getIsEmptyOwnerWorkspace,
   getIsGuideBotReady,
   getStage,
@@ -129,6 +130,7 @@ const Guide = ({
   const [thread, setThread] = useState<Thread | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const heading = useRef<HTMLHeadingElement>(null)
   const operation = useRef(false)
   const createdGuideId = useRef<string | null>(null)
@@ -177,6 +179,7 @@ const Guide = ({
   }, [step])
   const go = (next: GuideStep) => {
     setError(null)
+    setNotice(null)
     setStep(next)
   }
   const run = async (action: () => Promise<void>) => {
@@ -265,10 +268,15 @@ const Guide = ({
   }
   const undoImport = async (importId: string) => {
     const result = imports.results.find((item) => item.importId === importId)
-    if (!result || !(await imports.undo(importId))) return
+    if (!result) return
+    const names = getImportedNames(imports, importId)
+    if (!(await imports.undo(importId))) return
+
     const removed = result.bots.map((bot) => bot.botId)
     setBots((previous) => previous.filter((bot) => !removed.includes(bot.id)))
     if (removed.includes(target)) setTarget("")
+    go("sources")
+    setNotice(t("ob.importUndone", { names }))
   }
   const sendFirstTask = async () => {
     const general = groups.find((group) => group.name === "geral")
@@ -356,7 +364,7 @@ const Guide = ({
       onBack()
       return
     }
-    go(getPrevious(step, hasTeam))
+    go(getPrevious(step, hasTeam, imports.previews.length > 0))
   }
   const skip = () => {
     if (step === "context") setDraft((previous) => ({ ...previous, context: "", website: "", topics: [] }))
@@ -418,6 +426,11 @@ const Guide = ({
     >
       {step === "workspace" && <WorkspaceFields draft={draft} onChange={setDraft} />}
       {step === "context" && <ContextFields draft={draft} onChange={setDraft} />}
+      {notice && step === "sources" && (
+        <p className="ob-notice" role="status">
+          {notice}
+        </p>
+      )}
       {["sources", "review", "importing"].includes(step) && (
         <AgentImport
           step={step}
@@ -502,11 +515,11 @@ const Guide = ({
     </GuideLayout>
   )
 }
-const getPrevious = (step: GuideStep, hasTeam: boolean): GuideStep => {
+const getPrevious = (step: GuideStep, hasTeam: boolean, hasPreviews: boolean): GuideStep => {
   if (step === "context") return "workspace"
   if (step === "sources") return "context"
   if (["manual", "review", "computer"].includes(step)) return "sources"
-  if (step === "importing") return "review"
+  if (step === "importing") return hasPreviews ? "review" : "sources"
   if (step === "agents") return "computer"
   if (step === "team") return "agents"
   return hasTeam ? "team" : "agents"

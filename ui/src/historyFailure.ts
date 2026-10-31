@@ -8,6 +8,8 @@ export type HistoryFailure = {
   code: string
   diagnostic: string
   threadId?: string | undefined
+  /** The conversation index failed, not this conversation's messages; the next full load clears it. */
+  index?: boolean | undefined
 }
 
 /** Wait before the single automatic retry; long enough for a restarted server to listen again. */
@@ -35,6 +37,10 @@ export const isDeletedConversation = (error: unknown): boolean =>
   error instanceof ApiError &&
   error.status === 404 &&
   (error.errorCode === undefined || /^(?:NOT_FOUND|THREAD_NOT_FOUND)$/.test(error.errorCode))
+
+/** The request never reached a running server, so every read of the conversation fails for the same reason. */
+export const isUnreachable = (error: unknown): boolean =>
+  error instanceof ApiError && (error.status === 0 || error.errorCode === "SERVER_CONNECTION_FAILED")
 
 export const isRetryableHistoryError = (error: unknown): boolean =>
   !isDeletedConversation(error) &&

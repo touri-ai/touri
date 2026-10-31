@@ -40,9 +40,40 @@ test("a conversation read refused during a restart explains it inside the conver
   await context.close()
 })
 
+test("a stopped server explains a failed conversation inside it and keeps saved history elsewhere", async ({
+  browser,
+}) => {
+  const evidence = process.env.TOURI_E2E_EVIDENCE_DIR
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, colorScheme: "dark" })
+  const page = await context.newPage()
+  await page.goto("/test/e2e/history-notice-harness.html?open=failing&server=stoppable")
+  const history = page.getByRole("region", { name: "Histórico da conversa" })
+  await expect(history.getByText("valide esse perfil e veja os posts")).toBeVisible()
+  const sidebar = page.getByRole("navigation", { name: "Barra lateral" })
+  const notice = page.locator(".chat-panel .conversation-notice")
+  await page.evaluate(() => {
+    window.serverStopped = true
+  })
+
+  await sidebar.getByRole("button", { name: /^mark / }).click()
+
+  await expect(page.locator(".notice-bar, .chat-panel .conversation-notice").first()).toBeVisible()
+  if (evidence) await saveScreenshot(page, evidence, "stopped-server.png")
+  await expect(notice).toContainText("O servidor do touri não respondeu. Mostrando o que já estava salvo.")
+  await expect(notice.getByRole("button", { name: "Tentar de novo", exact: true })).toBeVisible()
+  await expect(page.locator(".notice-bar")).toHaveCount(0)
+  await sidebar.getByRole("button", { name: /^Publicações/ }).click()
+  await expect(history.getByText("valide esse perfil e veja os posts")).toBeVisible()
+  await expect(notice).toHaveCount(0)
+  await expect(page.locator(".notice-bar")).toHaveCount(0)
+  if (evidence) await saveScreenshot(page, evidence, "stopped-server-return.png")
+  await context.close()
+})
+
 declare global {
   interface Window {
     historyFailing?: boolean
+    serverStopped?: boolean
     fluidity: { longTasks: number[]; interactions: number[]; layoutShift: number }
   }
 }

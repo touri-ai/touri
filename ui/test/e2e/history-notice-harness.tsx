@@ -9,6 +9,7 @@ import "../../src/styles.css"
 declare global {
   interface Window {
     historyFailing?: boolean
+    serverStopped?: boolean
   }
 }
 
@@ -31,9 +32,14 @@ await base.request(
   { text: "valide esse perfil e veja os posts", parentId: null, attachmentIds: [], sendId: crypto.randomUUID() },
   { id: secondary.id },
 )
-window.historyFailing = true
+const query = new URLSearchParams(location.search)
+// `?server=stoppable` starts healthy; the spec stops the server later, as quitting it does.
+window.historyFailing = query.get("server") !== "stoppable"
+window.serverStopped = false
 // The exact refusal a restarting server sends while it drains active runs.
 const request: ApiRequest = async (route, input, path, transport) => {
+  // A stopped server never answers: the browser reports a connection failure before any HTTP status.
+  if (window.serverStopped) throw new ApiError(0, "", undefined, "TOURI-E1009")
   if (window.historyFailing && path?.id === secondary.id && route === "GET /threads/:id/messages")
     throw new ApiError(503, '{"errorCode":"RUNTIME_DRAINING"}', "RUNTIME_DRAINING")
   return base.request(route, input, path, transport)
@@ -45,7 +51,7 @@ localStorage.setItem(
   JSON.stringify({
     botId: main.botId,
     // `?open=failing` starts on the conversation whose read is refused, as a reload during a restart does.
-    threadId: new URLSearchParams(location.search).get("open") === "failing" ? secondary.id : main.id,
+    threadId: query.get("open") === "failing" ? secondary.id : main.id,
     route: { section: "bots", screen: "chat" },
   }),
 )

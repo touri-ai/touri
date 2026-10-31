@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest"
 import { ApiError, isServiceUnavailable } from "../src/errors"
-import { getHistoryFailure, getWithRetry, isRetryableHistoryError } from "../src/historyFailure"
+import { getHistoryFailure, getWithRetry, isRetryableHistoryError, isUnreachable } from "../src/historyFailure"
 
 afterEach(() => {
   vi.useRealTimers()
@@ -77,4 +77,13 @@ test("canceling a conversation read during backoff stops the retry", async () =>
 
   await settled
   expect(read).toHaveBeenCalledTimes(1)
+})
+
+test("only a request that never reached the server counts as unreachable", () => {
+  const stopped = new ApiError(0, "", undefined, "TOURI-E1009")
+  const gateway = new ApiError(502, "Bad gateway")
+
+  expect(isUnreachable(stopped)).toBe(true)
+  expect(isUnreachable(new ApiError(503, "", "SERVER_CONNECTION_FAILED"))).toBe(true)
+  expect(isUnreachable(gateway)).toBe(false)
 })

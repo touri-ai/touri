@@ -675,6 +675,24 @@ it("undoes a completed import from the source screen and removes its preview", a
   expect(within(screen.getByRole("complementary")).queryByText("dev")).toBeNull()
 })
 
+it("confirms an undo from the importing screen and returns to source selection", async () => {
+  getFixture()
+  enterWorkspace()
+  continueSetup()
+  await screen.findByRole("button", { name: /Claude Code/ })
+  continueSetup()
+  await screen.findByRole("heading", { name: "Confere o que vem?" })
+  fireEvent.click(screen.getByRole("button", { name: /Importar selecionados/ }))
+  await screen.findByText("Pronto", { selector: ".ob-import-agent span" })
+
+  fireEvent.click(screen.getByRole("button", { name: "Desfazer importação de dev" }))
+
+  await screen.findByRole("heading", { name: "Já usa agentes em outro app?" })
+  expect(screen.getByRole("status")).toHaveTextContent("Importação desfeita. Removemos dev.")
+  expect(screen.getByRole("button", { name: /Claude Code/ })).toBeVisible()
+  expect(screen.queryByRole("button", { name: /Desfazer importação/ })).toBeNull()
+})
+
 it("explains the invite prerequisite before asking for a person's details", async () => {
   const request = vi.fn(async () => ({ address: null, reachability: "unset" })) as UiApi["request"]
   const api: UiApi = { request, isMock: false, subscribe: () => () => undefined }

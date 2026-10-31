@@ -384,6 +384,30 @@ const openEmptyGuide = async (page: Page, destination: string) => {
   await page.getByRole("button", { name: "Pular", exact: true }).click()
 }
 for (const width of [1440, 390]) {
+  test(`onboarding recovery ${width}: undo while importing confirms it and returns to sources`, async ({
+    page,
+    productionUrl,
+  }, info) => {
+    const mock = await installGuideMocks(page)
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 800 })
+    await openEmptyGuide(page, productionUrl)
+    await page.getByRole("button", { name: /^Continuar/ }).click()
+    mock.finishImport()
+    await page.getByRole("button", { name: /Importar selecionados/ }).click()
+    await expect(page.getByText("Pronto", { exact: true })).toHaveCount(1)
+    await capture(page, info, `undo-importing-before-${width}`)
+
+    await page.getByRole("button", { name: "Desfazer importação de dev", exact: true }).click()
+
+    await expect(page.getByRole("button", { name: /Desfazer importação/ })).toHaveCount(0)
+    await capture(page, info, `undo-importing-after-${width}`)
+    await expect(page.getByRole("heading", { name: "Já usa agentes em outro app?" })).toBeVisible()
+    await expect(page.getByRole("status").filter({ hasText: "Importação desfeita. Removemos dev." })).toBeVisible()
+    await expect(page.getByRole("button", { name: /Claude Code/ })).toBeVisible()
+    expect(mock.getBots()).toHaveLength(0)
+  })
+}
+for (const width of [1440, 390]) {
   test(`onboarding recovery ${width}: undo and compact account rows retain avatar identity`, async ({
     page,
     productionUrl,
@@ -403,6 +427,7 @@ for (const width of [1440, 390]) {
     await capture(page, info, `recovery-undo-${width}`)
     await page.getByRole("button", { name: /Desfazer importação/ }).click()
     await expect(page.getByRole("button", { name: /Desfazer importação/ })).toHaveCount(0)
+    await expect(page.getByRole("status").filter({ hasText: "Importação desfeita." })).toBeVisible()
     expect(mock.getBots()).toHaveLength(0)
     await page.getByRole("button", { name: /^Continuar/ }).click()
     await page.getByRole("button", { name: /Importar selecionados/ }).click()
