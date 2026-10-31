@@ -196,6 +196,33 @@ test("shows live browser steps and keeps typed values and URL credentials and qu
   expect(document.body.textContent).not.toContain("fixture-token")
 })
 
+test.each<Locale>(["pt-BR", "en"])(
+  "a live card has one take-over control before and during a pause in %s",
+  async (locale) => {
+    const parts = [getPart({ callId: "read", tool: "browser_snapshot", inputJson: '{"tabId":"browser-tab"}' })]
+    const { api } = renderCard(parts, false, undefined, "local", false, locale)
+    const card = screen.getByRole("article", { name: t("Browser for {name}", { name: "Lia" }, locale) })
+    const controls = within(card)
+    const takeoverName = new RegExp(t("Take over browser", {}, locale))
+
+    await waitFor(() => expect(controls.getAllByRole("button", { name: takeoverName })).toHaveLength(1))
+    expect(controls.getByRole("button", { name: takeoverName })).toBeEnabled()
+    expect(controls.getByRole("button", { name: takeoverName }).closest("header")).not.toBeNull()
+    expect(controls.getByRole("img", { name: t("Current browser page", {}, locale) })).toBeVisible()
+
+    act(() =>
+      api.emit({
+        type: "browser.tab",
+        tab: Object.assign({}, tab, { heldByUser: true, takeoverReason: "login" as const }),
+      }),
+    )
+
+    expect(controls.getAllByRole("button", { name: takeoverName })).toHaveLength(1)
+    expect(controls.getByRole("button", { name: takeoverName })).toBeEnabled()
+    expect(controls.getByRole("img", { name: t("Current browser page", {}, locale) })).toBeVisible()
+  },
+)
+
 test("collapsing a live card stops its preview source until the card is expanded", async () => {
   const stopPreview = vi.fn()
   vi.mocked(startInlineFrameSource).mockReturnValueOnce(stopPreview)
@@ -210,6 +237,35 @@ test("collapsing a live card stops its preview source until the card is expanded
   fireEvent.click(screen.getByRole("button", { name: "Expandir cartão do navegador" }))
 
   await waitFor(() => expect(startInlineFrameSource).toHaveBeenCalledTimes(2))
+})
+
+test("handback restarts the live preview after the remote control source takes over", async () => {
+  const stopPreview = Object.assign(vi.fn(), { refresh: vi.fn() })
+  vi.mocked(startInlineFrameSource).mockImplementationOnce((_api, _bot, _tabId, frame) => {
+    frame({ src: "data:image/jpeg;base64,cHJldmlldw==", title: "Página fictícia", url: "https://travel.example.test" })
+    return stopPreview
+  })
+  const parts = [getPart({ callId: "read", tool: "browser_snapshot", inputJson: '{"tabId":"browser-tab"}' })]
+  renderCard(parts, false)
+  const preview = await screen.findByRole("img", { name: "Página atual do navegador" })
+  expect(preview).toHaveAttribute("src", "data:image/jpeg;base64,cHJldmlldw==")
+
+  fireEvent.click(screen.getByRole("button", { name: "Assumir", exact: true }))
+
+  expect(await screen.findByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
+  expect(stopPreview).toHaveBeenCalledOnce()
+
+  fireEvent.click(screen.getByRole("button", { name: "Devolver para Lia" }))
+
+  await waitFor(() => expect(screen.queryByRole("region", { name: "Controle remoto do navegador" })).toBeNull())
+  await waitFor(() =>
+    expect(screen.getByRole("img", { name: "Página atual do navegador" })).toHaveAttribute(
+      "src",
+      "data:image/jpeg;base64,ZmFrZQ==",
+    ),
+  )
+  expect(startInlineFrameSource).toHaveBeenCalledTimes(2)
+  expect(screen.getByRole("button", { name: "Assumir", exact: true })).toBeEnabled()
 })
 
 test("the activity log is keyboard-accessible and disclosure controls reference mounted content", () => {
@@ -1299,11 +1355,16 @@ test("an unavailable session explains recovery without claiming browser control"
   expect(screen.queryByText(/Esta sessão do navegador está indisponível/)).toBeNull()
 })
 
-test("clicking the live page takes over with the same authorized action as the primary button", async () => {
+test("only the take-over button starts the authorized browser control session", async () => {
   const parts = [getPart({ callId: "open", tool: "browser_open", inputJson: '{"tabId":"browser-tab"}' })]
   const { request } = renderCard(parts, false)
+  const preview = await screen.findByRole("img", { name: "Página atual do navegador" })
 
-  fireEvent.click(await screen.findByRole("button", { name: "Assumir a página do navegador" }))
+  fireEvent.click(preview)
+
+  expect(request).not.toHaveBeenCalledWith("POST /browser/tabs/:id/takeover/session", {}, { id: "browser-tab" })
+
+  fireEvent.click(screen.getByRole("button", { name: "Assumir" }))
 
   expect(await screen.findByRole("region", { name: "Controle remoto do navegador" })).toBeVisible()
   expect(request).toHaveBeenCalledWith("POST /browser/tabs/:id/takeover/session", {}, { id: "browser-tab" })

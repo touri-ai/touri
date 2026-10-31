@@ -80,6 +80,54 @@ sandboxing. `TOURI_BROWSER_DISABLE_DEV_SHM_USAGE=1` independently uses temporary
 shared memory. Desktop defaults remain unchanged. The bilingual deployment guide covers
 TLS, namespace requirements, credential-grade backups and restoration before upgrades.
 
+## Guided workspace setup
+
+The guide and its account editors load only when local workspace setup opens. Welcome and server
+access do not fetch those optional modules; shared button styles remain available at startup.
+
+First opening preserves server discovery, pairing and the choice to run locally. Pairing with
+an already configured server opens its existing workspace instead of restarting setup. Servers
+without the optional onboarding route are recognized by their existing bots. Only empty
+administrator workspaces enter the guide; member sessions retain their existing entry path. Local setup
+then asks for a workspace name, optional context and HTTPS website, reviewed agent imports,
+computer permissions, agent accounts, optional teammates and a first task. A live preview shows
+the channels, agents and first paused routine being assembled. Back returns to the preceding question without losing
+answers, including from import sources to context. Optional questions can be skipped. On narrow
+screens the form and preview grow within one scrollable surface, machine controls fit the width,
+and each question starts at the
+top. The main landmark stays outside named regions so assistive navigation can reach it directly.
+Primary actions preserve readable contrast in both themes, including their hover state. Workspace initials
+keep readable contrast for every offered color in both themes.
+Question transitions scroll in the next animation frame and focus the heading after that frame paints.
+If the owner focuses a field first, the scheduled heading focus preserves that choice.
+Escape remains available during that transition and does not navigate away from an open dialog.
+
+Import discovery, preview and apply use the authenticated UI transport. Importing requires an
+explicit reviewed selection; secrets stay excluded and copied routines stay paused. Each review
+accepts up to three sources so its previews fit the server's ticket capacity. The import
+server validates each preview and applies only reviewed resources; on older servers without
+these routes, source discovery explains the failure and setup remains usable through Skip. Pasted exports are bounded to 64 KiB and stay in memory.
+The owner can configure computer permissions during copying; loading and editing agent accounts
+waits for import completion so late results cannot replace account choices. Existing agents keep
+their instructions even when named touri; guide instructions apply only to a newly created guide. Browser access,
+writing and host computer control start disabled, with approvals required.
+
+Completed imports can be undone from import progress or the source screen. A successful undo removes
+its agents from the preview and account choices; a failed undo retains the import and offers a retry.
+Preview avatar seeds persist on imported agents, and the guide keeps the same identity throughout setup.
+Agent accounts use compact rows on wide screens. Invitations require a configured HTTPS address;
+without one, the guide explains the prerequisite before offering an invitation form.
+
+The first task checks the selected agent's installed program and saved account before sending anything.
+An unready or unreachable account returns to account setup with the task text intact; API models require
+a saved catalog entry and an available executor. These read-only checks never start a model request.
+The first task goes to #geral with an explicit mention of the selected bot. Retries keep the
+chosen conversation and reuse the nonce for unchanged text; edited text gets a new nonce.
+Context and the optional website are included in that task; source paths and pasted exports are
+not. Website reading is deferred to the task and grants no extra permissions. Completing setup
+opens that channel in Work without repeating the old team setup prompt. Existing server access
+settings remain available when revisiting setup.
+
 ## Turn latency
 
 Release CLI and desktop sidecar builds embed ESM bytecode with the pinned Bun toolchain. This avoids repeating bundle parsing when request-owned history readers start. Reader capacity, deadlines, cancellation and SQL scopes are unchanged; each read still owns its process and can interrupt native SQLite with SIGKILL.
@@ -1476,11 +1524,18 @@ Launch:
 - A persisted request waiting for a person expands its browser card immediately, even before
   the tab snapshot arrives or after the provider turn ends. While waiting, the card keeps the live
   page and sanitized web origin visible, stops progress animation, and explains the pause in the
-  person's language beside one primary Take over action. Clicking the page requests the same
-  authorized control session. Other participants can observe but cannot send input. Known login,
+  person's language beside one primary Take over action in the sticky card header. The preview is
+  an image surface; only the explicit Take over action requests the authorized control session.
+  Recovery outcomes appear below that header, outside the scrolling action log. On phones, the compact
+  action log keeps its fixed height and scrolls within the card. Showing all steps or enlarging the
+  preview lets the log grow inside the card. Channel context wraps within the viewport. Other participants
+  can observe but cannot send input. Known login,
   payment and form reasons use localized sentences; custom reasons
   retain the existing sanitization. A channel's composer names the person the browser is waiting for.
 - During remote control, keyboard entry stays beside the sticky handback and privacy controls.
+  The initial preview remains visible until the first live frame renders, while only one screen is
+  exposed to assistive technology. Input waits for that rendered live frame. The inline preview
+  stops during this person's active control session and resumes after handback.
   Resizing tracks the handback button's visibility even when the rest of the controls extend beyond
   the visible history. Private typing stays outside the conversation and handback resumes the same request.
 - Person-initiated control is confirmed by the browser card without an additional top toast.

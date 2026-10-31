@@ -18,13 +18,14 @@ for (const width of [1440, 390]) {
     await expect(chip).toBeVisible()
     await expect(page.locator(".composer-browser-status")).toBeVisible()
     await expect(page.getByRole("article", { name: "Navegador do Léo" })).toBeVisible()
-    await expect(page.locator(".channel-card-footer")).toBeVisible()
+    const card = page.getByRole("article", { name: "Navegador do Léo" })
+    await expect(card.getByRole("img", { name: "Página atual do navegador" })).toBeVisible()
     const screenshot = process.env.WORK_PERSON_EVIDENCE
     if (screenshot) await page.screenshot({ path: `${screenshot}/${phase}-person-${width}.png` })
     if (phase !== "before") {
       await expect(chip).toHaveText("Léo no navegador·pedido de você·carla está no controle")
       await expect(page.locator(".composer-browser-status")).toContainText("carla está no controle")
-      await expect(page.locator(".channel-card-footer")).toContainText("chama você")
+      await expect(card.getByRole("status", { name: "Privacidade do navegador" })).toHaveText("carla está usando")
       await expect(page.locator(".chat-panel")).not.toContainText("Owner")
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     }

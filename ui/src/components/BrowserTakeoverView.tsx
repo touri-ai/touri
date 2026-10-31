@@ -894,6 +894,7 @@ export const BrowserTakeoverView = ({
               className="browser-takeover-initial-preview"
               src={initialPreview}
               alt={t("Last browser page", {}, locale)}
+              aria-hidden={Boolean(fallbackImage || (workerReady && workerFrameReady))}
             />
           )}
           {!frame && !initialPreview && !error && (

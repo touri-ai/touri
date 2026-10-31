@@ -417,3 +417,22 @@ test("agent import routes use the versioned API and send reviewed selections unc
   expect(fetchImpl.mock.calls[0]?.[0]).toBe("http://127.0.0.1:1/api/v1/import/apply")
   expect(JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body))).toEqual(input)
 })
+
+test("agent import routes keep one version prefix and authenticated transport", async () => {
+  const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ sources: [] }), { status: 200 }))
+  const api = createApiClient({
+    endpoint: {
+      baseUrl: "https://server.example",
+      wsUrl: "wss://server.example/api/v1/events",
+      token: "synthetic-token",
+    },
+    fetchImpl,
+  })
+
+  await api.request("GET /api/v1/import/sources", {})
+
+  expect(fetchImpl).toHaveBeenCalledWith(
+    "https://server.example/api/v1/import/sources",
+    expect.objectContaining({ headers: { Authorization: "Bearer synthetic-token" } }),
+  )
+})
