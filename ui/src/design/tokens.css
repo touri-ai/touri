@@ -11,6 +11,7 @@
   --text: #f2f2f3;
   --text-2: #a9a9b0;
   --brand: #dc2626;
+  --brand-hover: color-mix(in srgb, var(--brand) 92%, var(--neutral-1000));
   --link: #5aa9ff;
   --info: #5aa9ff;
   --info-fill: #1f6fd1;
@@ -164,7 +165,7 @@
   --surface-settings-hover: var(--surface-control);
   --surface-settings-switch: var(--surface-control-raised);
   --surface-settings-switch-thumb: var(--text-on-accent);
-  --surface-settings-primary-hover: color-mix(in srgb, var(--brand) 92%, var(--neutral-1000));
+  --surface-settings-primary-hover: var(--brand-hover);
   --surface-settings-danger-hover: color-mix(in srgb, var(--surface-danger) 85%, var(--danger));
 }
 /* End r8 settings tokens. */

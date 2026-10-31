@@ -1178,6 +1178,12 @@ a {
 .outline-button:hover {
   filter: brightness(1.12);
 }
+button.button-brand:hover:not(:disabled),
+button.brand-button:hover:not(:disabled) {
+  border-color: var(--brand-hover);
+  background: var(--brand-hover);
+  filter: none;
+}
 .empty-state {
   min-height: 0;
   flex: 1;
