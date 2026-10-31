@@ -2,9 +2,9 @@ import { expect, test } from "bun:test"
 import { link, mkdir, readFile, symlink } from "node:fs/promises"
 import { join } from "node:path"
 import type { AgentImportPreview, AgentImportResult } from "@touri/contracts"
-import { getAgentImportFileAsync } from "../../src/kernel/async-files"
 import { getManualSnapshot } from "../../src/agent-import/manual"
 import { IMPORT_LIMITS } from "../../src/agent-import/model"
+import { getAgentImportFileAsync } from "../../src/kernel/async-files"
 import { allItems, installImportCleanup, makeHarness, makePayload } from "./harness"
 
 installImportCleanup()
