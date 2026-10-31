@@ -22,7 +22,7 @@ const getSecretCount = (value: unknown, depth = 0): number => {
   if (!value || typeof value !== "object") return 0
 
   return Object.entries(value).reduce((count, [key, item]) => {
-    if (/token|password|secret|api[_-]?key|credential|authorization|^env$/i.test(key)) return count + 1
+    if (/token|password|secret|api[_-]?key|credential|authorization|oauth|^auth$|^env$/i.test(key)) return count + 1
 
     return count + getSecretCount(item, depth + 1)
   }, 0)

@@ -1,5 +1,5 @@
 import { lstat, opendir, realpath } from "node:fs/promises"
-import { isAbsolute, join, relative, resolve, sep } from "node:path"
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 import type { AgentImportSourceKind } from "@touri/contracts"
 import { getAgentImportConfigAsync, getAgentImportFileAsync } from "../kernel/async-files"
 import { yieldBackground } from "../kernel/background-task"
@@ -22,6 +22,8 @@ export const getFolderSnapshot = async ({
 }): Promise<ImportSnapshot> => {
   const root = await getSourceRoot(path, appData)
   const result = await getSourceFiles(root, source, await realpath(appData), signal)
+  const globalConfig =
+    source === "claude-code" ? await getGlobalConfig(root, result.bytes) : { names: [], secrets: 0, files: 0 }
   const projects = Array.from(
     new Set(
       result.files.flatMap((file) => {
@@ -37,7 +39,17 @@ export const getFolderSnapshot = async ({
     getFolderAgent(result.files, project, index, source),
   )
 
-  return { source, agents, excluded: result.excluded }
+  return {
+    source,
+    agents: agents.map((agent) => ({
+      ...agent,
+      integrations: Array.from(new Set([...agent.integrations, ...globalConfig.names])),
+    })),
+    excluded: {
+      secrets: result.excluded.secrets + globalConfig.secrets,
+      files: result.excluded.files + globalConfig.files,
+    },
+  }
 }
 
 const getSourceRoot = async (path: string, appData: string): Promise<string> => {
@@ -127,7 +139,7 @@ const getSourceFiles = async (root: string, source: AgentImportSourceKind, appDa
   }
   const files = await visit("", 0)
 
-  return { files, excluded: { secrets, files: excludedFiles } }
+  return { files, bytes, excluded: { secrets, files: excludedFiles } }
 }
 
 const isCandidateFile = (path: string, source: AgentImportSourceKind): boolean => {
@@ -229,3 +241,19 @@ const getIntegrationNames = (files: SourceFile[]): string[] =>
       }),
     ),
   )
+
+const getGlobalConfig = async (
+  root: string,
+  usedBytes: number,
+): Promise<{ names: string[]; secrets: number; files: number }> => {
+  const path = join(dirname(root), ".claude.json")
+  const stat = await lstat(path).catch(() => undefined)
+  if (!stat) return { names: [], secrets: 0, files: 0 }
+  if (!stat.isFile() || stat.nlink !== 1 || stat.size > IMPORT_LIMITS.file) return { names: [], secrets: 0, files: 1 }
+  if (usedBytes + stat.size > IMPORT_LIMITS.total) throw new Error("INVALID_ARGS")
+  const config = await getAgentImportConfigAsync(path).catch(() => undefined)
+  if (!config) return { names: [], secrets: 0, files: 1 }
+  if (usedBytes + config.bytes > IMPORT_LIMITS.total) throw new Error("INVALID_ARGS")
+
+  return { names: config.names, secrets: config.secrets, files: 0 }
+}

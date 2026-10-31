@@ -76,6 +76,12 @@ test("Claude Code discovery creates one agent per project, shares global skills 
     ".claude/settings.json",
     JSON.stringify({ mcpServers: { Calendário: { command: "unused", env: { API_KEY: secret } } } }),
   )
+  await fixture.write(
+    ".claude.json",
+    JSON.stringify({
+      mcpServers: { Repositórios: { url: "https://example.invalid", headers: { Authorization: `Bearer ${secret}` } } },
+    }),
+  )
   const sources = (await (await fixture.request("GET", "/import/sources")).json()) as {
     sources: { kind: string; found: boolean }[]
   }
@@ -91,7 +97,8 @@ test("Claude Code discovery creates one agent per project, shares global skills 
   expect(
     preview.agents.every((agent) => agent.skills[0]?.name === "revisar" && agent.integrations[0] === "Calendário"),
   ).toBe(true)
-  expect(preview.excluded.secrets).toBe(1)
+  expect(preview.agents.every((agent) => agent.integrations.includes("Repositórios"))).toBe(true)
+  expect(preview.excluded.secrets).toBe(2)
   expect(JSON.stringify(preview)).not.toContain(secret)
 })
 

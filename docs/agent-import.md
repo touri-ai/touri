@@ -13,7 +13,7 @@ A prévia existe apenas em memória: não cria arquivos, bots, rotinas nem regis
 
 ## Fontes
 
-**Claude Code:** lê `CLAUDE.md`, `projects/*/CLAUDE.md`, `projects/*/memory/*.md`, `skills/*/SKILL.md` e seus arquivos de apoio. Cada projeto com instruções ou memória vira um agente; sem projetos, há um agente. Instruções globais e skills são compartilhadas por cópia. Arquivos `settings.json`, `claude.json` e `settings/*.json` fornecem somente nomes de servidores MCP. Valores de configuração permanecem no worker de arquivos e não entram na prévia, no banco ou nos eventos.
+**Claude Code:** lê `CLAUDE.md`, `projects/*/CLAUDE.md`, `projects/*/memory/*.md`, `skills/*/SKILL.md` e seus arquivos de apoio. Cada projeto com instruções ou memória vira um agente; sem projetos, há um agente. Instruções globais e skills são compartilhadas por cópia. O arquivo global `~/.claude.json` e os arquivos `settings.json`, `claude.json` e `settings/*.json` da pasta detectada fornecem somente nomes de servidores MCP. Valores de configuração permanecem no worker de arquivos e não entram na prévia, no banco ou nos eventos.
 
 **Pasta:** escolha uma pasta de exportação no servidor. Markdown fora de `skills/`, `memory/`, `memories/` e `notes/` fornece instruções. Memórias vêm dessas pastas ou de `MEMORY.md`. Skills ficam em `skills/<nome>/SKILL.md`, com arquivos de apoio. `jobs.json`, `routines.json` e `cron.json` aceitam uma lista de `{name, schedule, prompt}` ou `{jobs: [...]}`. `crontab` e `routines.cron` aceitam cinco campos de agenda seguidos pelo texto da tarefa. Esse texto vira um prompt de rotina pausada; nenhum comando da origem é executado durante a importação.
 
