@@ -5,7 +5,13 @@ import { test as base, expect, type Page, type TestInfo } from "@playwright/test
 import { installGuideMocks } from "./onboarding-guide-mocks"
 import { createGuideStaticServer } from "./onboarding-guide-static"
 
-const test = base.extend<object, { productionUrl: string }>({
+const test = base.extend<{ measurementPage: Page }, { productionUrl: string }>({
+  measurementPage: async ({ browser }, use) => {
+    // A separate context keeps video encoding out of the timing samples.
+    const context = await browser.newContext({ colorScheme: "dark" })
+    await use(await context.newPage())
+    await context.close()
+  },
   productionUrl: [
     // biome-ignore lint/correctness/noEmptyPattern: the fixture runner discovers dependencies from this pattern.
     async ({}, use) => {
@@ -18,13 +24,14 @@ const test = base.extend<object, { productionUrl: string }>({
 })
 
 test.setTimeout(90_000)
-const recording = process.env.TOURI_ONBOARDING_RECORD === "1"
+const recording = process.env.TOURI_ONBOARDING_RECORD === "1" || Boolean(process.env.TOURI_ONBOARDING_EVIDENCE_DIR)
 test.use({ video: recording ? { mode: "on", size: { width: 1440, height: 800 } } : "off", trace: "off" })
-test.afterEach(async ({ page }, info) => {
+test.afterEach(async ({ context }, info) => {
   if (!info.title.startsWith("onboarding guide 1440:")) return
   const directory = process.env.TOURI_ONBOARDING_EVIDENCE_DIR
-  const video = page.video()
-  if (!directory || !video) return
+  const page = context.pages()[0]
+  const video = page?.video()
+  if (!directory || !page || !video) return
   await page.close()
   await video.saveAs(join(directory, "onboarding-flow.webm"))
 })
@@ -45,13 +52,12 @@ for (const width of [1440, 390]) {
   })
 }
 test.describe("production responsiveness", () => {
-  test.skip(recording, "Timing measurements run without video")
   for (const width of [1440, 390]) {
     test(`onboarding production ${width}: stays within the interaction budget`, async ({
-      page,
+      measurementPage,
       productionUrl,
     }, info) => {
-      await runGuideFlow(page, info, width, productionUrl, true)
+      await runGuideFlow(measurementPage, info, width, productionUrl, true)
     })
   }
 })
