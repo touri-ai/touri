@@ -19,6 +19,7 @@ export const useAgentImport = (api: UiApi) => {
   const [previews, setPreviews] = useState<ImportPreview[]>([])
   const [selection, setSelection] = useState<ImportSelection>({})
   const [results, setResults] = useState<AgentImportResult[]>([])
+  const [importIds, setImportIds] = useState<Record<string, string>>({})
   const [progress, setProgress] = useState<AgentImportProgress[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -27,6 +28,12 @@ export const useAgentImport = (api: UiApi) => {
   const applying = useRef(false)
   const completed = useRef<Set<string>>(new Set())
   const activeKeys = useRef<string[]>([])
+  const activePreview = useRef("")
+  const progressOwners = useRef(new Map<string, string>())
+  const rememberImport = (previewId: string, importId: string) => {
+    progressOwners.current.set(importId, previewId)
+    setImportIds((previous) => ({ ...previous, [previewId]: importId }))
+  }
   const refresh = useCallback(async () => {
     controller.current?.abort()
     const current = new AbortController()
@@ -59,7 +66,16 @@ export const useAgentImport = (api: UiApi) => {
         if (!applying.current) return
         const update = getImportProgress(event)
         if (!update || !activeKeys.current.includes(update.agentKey)) return
-        setProgress((previous) => [...previous.filter((item) => item.agentKey !== update.agentKey), update].slice(-100))
+        const previewId = progressOwners.current.get(update.importId) ?? activePreview.current
+        if (!previewId) return
+        progressOwners.current.set(update.importId, previewId)
+        setImportIds((previous) => ({ ...previous, [previewId]: update.importId }))
+        setProgress((previous) =>
+          [
+            ...previous.filter((item) => item.importId !== update.importId || item.agentKey !== update.agentKey),
+            update,
+          ].slice(-100),
+        )
       }),
     [api],
   )
@@ -128,7 +144,6 @@ export const useAgentImport = (api: UiApi) => {
   const apply = async (): Promise<boolean> => {
     if (applying.current) return false
     applying.current = true
-    activeKeys.current = previews.flatMap(({ preview }) => preview.agents.map((agent) => agent.key))
     setBusy(true)
     setError(null)
     try {
@@ -139,7 +154,10 @@ export const useAgentImport = (api: UiApi) => {
           Object.entries(selection[preview.previewId] ?? {}).filter(([, item]) => Object.values(item).some(Boolean)),
         )
         if (!Object.values(select).some((item) => Object.values(item).some(Boolean))) continue
+        activePreview.current = preview.previewId
+        activeKeys.current = Object.keys(select)
         const result = await api.request("POST /api/v1/import/apply", { previewId: preview.previewId, select })
+        rememberImport(preview.previewId, result.importId)
         completed.current.add(preview.previewId)
         setResults((previous) => [...previous, result])
       }
@@ -171,11 +189,17 @@ export const useAgentImport = (api: UiApi) => {
     selected,
     previews,
     selection,
-    selectionCount: Object.values(selection).reduce(
-      (total, agents) => total + Object.values(agents).filter((item) => Object.values(item).some(Boolean)).length,
-      0,
-    ),
+    selectionCount:
+      new Set(results.flatMap((result) => result.bots.map((bot) => bot.botId))).size +
+      Object.entries(selection)
+        .filter(([previewId]) => !completed.current.has(previewId))
+        .reduce(
+          (total, [, agents]) =>
+            total + Object.values(agents).filter((item) => Object.values(item).some(Boolean)).length,
+          0,
+        ),
     progress,
+    importIds,
     results,
     loading,
     busy,

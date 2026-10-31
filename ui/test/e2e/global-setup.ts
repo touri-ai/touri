@@ -14,7 +14,11 @@ export default async function setup(config: FullConfig) {
       build: {
         manifest: true,
         rollupOptions: {
-          input: [resolve(root, "index.html"), resolve(root, "test/e2e/channel-takeover-harness.html")],
+          input: [
+            resolve(root, "index.html"),
+            resolve(root, "test/e2e/channel-takeover-harness.html"),
+            resolve(root, "test/e2e/onboarding-guide-harness.html"),
+          ],
         },
       },
     })

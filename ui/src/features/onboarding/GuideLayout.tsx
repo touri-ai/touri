@@ -22,6 +22,7 @@ export const GuideLayout = ({
   computer,
   team,
   task,
+  routine,
   busy,
   error,
   heading,
@@ -31,12 +32,13 @@ export const GuideLayout = ({
 }: {
   step: GuideStep
   draft: WorkspaceDraft
-  bots: (Pick<Bot, "id" | "name" | "color"> & { agentKey?: string })[]
+  bots: (Pick<Bot, "id" | "name" | "color"> & { agentKey?: string; importId?: string })[]
   progress: AgentImportProgress[]
   replies: string[]
   computer: string
   team: boolean
   task: string
+  routine: string
   busy: boolean
   error: string | null
   heading: RefObject<HTMLHeadingElement | null>
@@ -150,6 +152,11 @@ export const GuideLayout = ({
             <PreviewSection title={t("ob.people")} highlighted={stage === 5}>
               <p className="ob-preview-item">{t(team ? "ob.invitedTeam" : "ob.you")}</p>
             </PreviewSection>
+            {routine && (
+              <PreviewSection title={t("ob.routines")} highlighted={stage === 2}>
+                <p className="ob-preview-item">{`${routine} · ${t("ob.routinesPaused")}`}</p>
+              </PreviewSection>
+            )}
             {task && (
               <PreviewSection title={t("ob.firstTask")} highlighted={stage === 6}>
                 <p className="ob-preview-item ob-preview-task">{task}</p>
@@ -195,11 +202,11 @@ const questions: Record<GuideStep, { title: TranslationKey; detail: TranslationK
 }
 
 const getPreviewMood = (
-  bot: { name: string; agentKey?: string },
+  bot: { name: string; agentKey?: string; importId?: string },
   progress: AgentImportProgress[],
   error: string | null,
 ): AvatarMood => {
-  const current = progress.find((item) => item.agentKey === (bot.agentKey ?? bot.name))
+  const current = progress.find((item) => item.importId === bot.importId && item.agentKey === bot.agentKey)
   if (current?.step === "failed" || (error && bot.agentKey)) return "failed"
   if (current && current.step !== "done") return "working"
   return "idle"

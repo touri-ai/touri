@@ -5,6 +5,10 @@
 }
 .ob-screen {
   display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--space-24);
+  scrollbar-gutter: stable;
   background: var(--bg);
   color: var(--text);
   overflow: auto;
@@ -14,7 +18,9 @@
   grid-template-columns: minmax(0, 1fr) 300px;
   width: min(1120px, 100%);
   min-height: min(720px, 100%);
-  margin: auto;
+  margin: 0;
+  flex-shrink: 0;
+  align-self: flex-start;
   border: var(--space-1) solid var(--border);
   border-radius: var(--radius-md);
   overflow: clip;
@@ -231,6 +237,9 @@
   gap: var(--space-8);
   font-size: var(--fs-meta);
 }
+.ob-import-agent .ds-badge {
+  align-self: flex-start;
+}
 .ob-import-agent progress {
   width: 100%;
   accent-color: var(--brand);
@@ -386,11 +395,15 @@
   justify-content: flex-start;
 }
 @media (max-width: 760px) {
+  .ob-screen {
+    padding: 0;
+  }
   .ob-shell {
     align-self: flex-start;
     overflow: visible;
     grid-template-columns: minmax(0, 1fr);
     margin: 0;
+    overflow: visible;
     border: 0;
     border-radius: 0;
   }

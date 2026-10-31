@@ -13,6 +13,7 @@ const test = base.extend<{ legacyUrl: string }>({
   },
 })
 test.setTimeout(180_000)
+test.skip(process.env.TOURI_ONBOARDING_CAPTURE_BEFORE !== "1", "Before screenshots require an explicit evidence run")
 test("onboarding guide before: unchanged main welcome with synthetic data", async ({ page, legacyUrl }, info) => {
   await installGuideMocks(page)
   await page.route("**/api/v1/onboarding", (route) =>

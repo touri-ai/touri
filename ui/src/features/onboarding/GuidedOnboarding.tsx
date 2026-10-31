@@ -5,7 +5,6 @@ import { Button } from "../../components/Button"
 import { t } from "../../i18n"
 import { setStorageScope } from "../../storageScope"
 import { useHost } from "../../useHost"
-import { saveWorkspaceState } from "../../workspaceState"
 import { ServerModeProvider } from "../server/serverMode"
 import { AgentImport, ManualImport } from "./AgentImport"
 import { AgentFields, ComputerFields, ContextFields, TeamFields, WorkspaceFields } from "./GuideFields"
@@ -14,9 +13,11 @@ import {
   type ComputerDraft,
   createGuideChannels,
   type GuideStep,
+  getIsEmptyOwnerWorkspace,
   getStage,
   getWebsite,
   getWorkspaceColor,
+  saveGuideDestination,
   topicOptions,
   type WorkspaceDraft,
 } from "./guide"
@@ -28,7 +29,9 @@ export const GuidedOnboarding = ({
   api: providedApi,
   onBack,
   onComplete,
+  checkExistingWorkspace = false,
 }: {
+  checkExistingWorkspace?: boolean
   invoke: TauriInvoke
   api?: UiApi
   onBack: () => void
@@ -37,21 +40,30 @@ export const GuidedOnboarding = ({
   const [api, setApi] = useState<UiApi | null>(providedApi ?? null)
   const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
+  const complete = useRef(onComplete)
+  complete.current = onComplete
   // biome-ignore lint/correctness/useExhaustiveDependencies: attempt retries endpoint discovery.
   useEffect(() => {
     if (providedApi) return
     const controller = new AbortController()
     void getGuideEndpoint(invoke)
-      .then((endpoint) => {
+      .then(async (endpoint) => {
         if (controller.signal.aborted) return
         setStorageScope(endpoint.scope ?? null)
-        setApi(createApiClient({ endpoint, resolveEndpoint: () => getGuideEndpoint(invoke) }))
+        const client = createApiClient({ endpoint, resolveEndpoint: () => getGuideEndpoint(invoke) })
+        const shouldSetUp = !checkExistingWorkspace || (await getIsEmptyOwnerWorkspace(client, controller.signal))
+        if (controller.signal.aborted) return
+        if (!shouldSetUp) {
+          await complete.current()
+          return
+        }
+        setApi(client)
       })
       .catch(() => {
         if (!controller.signal.aborted) setFailed(true)
       })
     return () => controller.abort()
-  }, [invoke, providedApi, attempt])
+  }, [invoke, providedApi, attempt, checkExistingWorkspace])
   if (api)
     return (
       <ServerModeProvider invoke={invoke} fallback={<p role="status">{t("ob.connecting")}</p>}>
@@ -250,7 +262,7 @@ const Guide = ({
       { threadId: destination.id, parentId: null, text, attachmentIds: [], clientNonce },
       { id: destination.id },
     )
-    saveWorkspaceState({ botId: null, threadId: destination.id, route: { section: "bots", screen: "chat" } })
+    saveGuideDestination(destination.id)
     go("ready")
     await onComplete()
   }
@@ -364,6 +376,7 @@ const Guide = ({
       computer={computerName}
       team={invited}
       task={task}
+      routine={getRoutineNames(imports, false)[0] ?? ""}
       busy={busy || imports.busy}
       error={error ?? (step !== "sources" ? imports.error : null)}
       heading={heading}
@@ -404,18 +417,7 @@ const Guide = ({
             </select>
           </label>
           <div className="ob-suggestions">
-            {getSuggestions(
-              draft,
-              imports.previews.flatMap(({ preview }) =>
-                preview.agents
-                  .filter(
-                    (agent) =>
-                      imports.selection[preview.previewId]?.[agent.key]?.routines &&
-                      imports.results.some((result) => result.bots.some((bot) => bot.agentKey === agent.key)),
-                  )
-                  .flatMap((agent) => agent.routines.map((routine) => routine.name)),
-              ),
-            ).map((suggestion) => (
+            {getSuggestions(draft, getRoutineNames(imports, true)).map((suggestion) => (
               <Button key={suggestion} aria-pressed={task === suggestion} onClick={() => setTask(suggestion)}>
                 {suggestion}
               </Button>
@@ -492,17 +494,38 @@ const getSuggestions = (draft: WorkspaceDraft, routines: string[]): string[] => 
   ...routines.slice(0, 2).map((name) => t("ob.routineTask", { name: JSON.stringify(name) })),
 ]
 
-const getLiveBots = (bots: Bot[], imports: ReturnType<typeof useAgentImport>) => {
-  const importedNames = new Set(bots.map((bot) => bot.name))
-  const copying = imports.previews.flatMap(({ preview }) =>
-    preview.agents
+const getRoutineNames = (imports: ReturnType<typeof useAgentImport>, completedOnly: boolean): string[] =>
+  imports.previews.flatMap(({ preview }) => {
+    const result = imports.results.find((item) => item.importId === imports.importIds[preview.previewId])
+    return preview.agents
       .filter(
         (agent) =>
-          !importedNames.has(agent.suggestedBotName) &&
-          Object.values(imports.selection[preview.previewId]?.[agent.key] ?? {}).some(Boolean),
+          imports.selection[preview.previewId]?.[agent.key]?.routines &&
+          (!completedOnly || result?.bots.some((bot) => bot.agentKey === agent.key)),
       )
-      .map((agent) => ({ id: agent.key, agentKey: agent.key, name: agent.suggestedBotName, color: null })),
-  )
+      .flatMap((agent) => agent.routines.map((routine) => routine.name))
+  })
+
+const getLiveBots = (bots: Bot[], imports: ReturnType<typeof useAgentImport>) => {
+  const copying = imports.previews.flatMap(({ preview }) => {
+    const importId = imports.importIds[preview.previewId]
+    const result = imports.results.find((item) => item.importId === importId)
+    return preview.agents
+      .filter((agent) => {
+        const imported = result?.bots.find((item) => item.agentKey === agent.key)
+        return (
+          !bots.some((bot) => bot.id === imported?.botId) &&
+          Object.values(imports.selection[preview.previewId]?.[agent.key] ?? {}).some(Boolean)
+        )
+      })
+      .map((agent) => ({
+        id: `${preview.previewId}:${agent.key}`,
+        ...(importId ? { importId } : {}),
+        agentKey: agent.key,
+        name: agent.suggestedBotName,
+        color: null,
+      }))
+  })
   return [...bots, ...copying]
 }
 

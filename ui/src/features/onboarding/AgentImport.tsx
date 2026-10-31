@@ -204,8 +204,11 @@ const ImportProgress = ({ imports }: { imports: ReturnType<typeof useAgentImport
       preview.agents
         .filter((agent) => Object.values(imports.selection[preview.previewId]?.[agent.key] ?? {}).some(Boolean))
         .map((agent) => {
-          const progress = imports.progress.find((item) => item.agentKey === agent.key)
-          const done = imports.results.some((result) => result.bots.some((bot) => bot.agentKey === agent.key))
+          const importId = imports.importIds[preview.previewId]
+          const progress = imports.progress.find((item) => item.importId === importId && item.agentKey === agent.key)
+          const done = imports.results.some(
+            (result) => result.importId === importId && result.bots.some((bot) => bot.agentKey === agent.key),
+          )
           const failed = Boolean(imports.error) && !imports.busy
           const mood = getProgressMood(progress?.step, done, failed)
           return (

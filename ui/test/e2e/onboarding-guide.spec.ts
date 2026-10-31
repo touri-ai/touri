@@ -2,22 +2,23 @@ import { mkdir } from "node:fs/promises"
 import { join } from "node:path"
 import AxeBuilder from "@axe-core/playwright"
 import { test as base, expect, type Page, type TestInfo } from "@playwright/test"
-import { createGuideBuild } from "./onboarding-guide-build"
+import { createGuideStaticServer } from "./onboarding-guide-static"
 import { installGuideMocks } from "./onboarding-guide-mocks"
 
 const test = base.extend<object, { productionUrl: string }>({
   productionUrl: [
-    async ({ browserName }, use) => {
-      const fixture = await createGuideBuild("guide", [], browserName)
-      await use(fixture.url)
-      await fixture.stop()
+    // biome-ignore lint/correctness/noEmptyPattern: the fixture runner discovers dependencies from this pattern.
+    async ({}, use) => {
+      const fixture = await createGuideStaticServer()
+      await use(`${fixture.url}/test/e2e/onboarding-guide-harness.html`)
+      await fixture.dispose()
     },
     { scope: "worker", timeout: 300_000 },
   ],
 })
 
 test.setTimeout(90_000)
-test.use({ video: { mode: "on", size: { width: 1440, height: 800 } } })
+test.use({ video: { mode: "on", size: { width: 1440, height: 800 } }, trace: "off" })
 test.afterEach(async ({ page }, info) => {
   if (!info.title.startsWith("onboarding guide 1440:")) return
   const directory = process.env.TOURI_ONBOARDING_EVIDENCE_DIR
@@ -26,7 +27,6 @@ test.afterEach(async ({ page }, info) => {
   await page.close()
   await video.saveAs(join(directory, "onboarding-flow.webm"))
 })
-const url = "/test/e2e/onboarding-guide-harness.html"
 const capture = async (page: Page, info: TestInfo, name: string) => {
   const directory = process.env.TOURI_ONBOARDING_EVIDENCE_DIR ?? info.outputDir
   await mkdir(directory, { recursive: true })
@@ -38,8 +38,9 @@ const capture = async (page: Page, info: TestInfo, name: string) => {
 for (const width of [1440, 390]) {
   test(`onboarding guide ${width}: review imports, keep progress live, configure and land in general`, async ({
     page,
+    productionUrl,
   }, info) => {
-    await runGuideFlow(page, info, width, url, false)
+    await runGuideFlow(page, info, width, productionUrl, false)
   })
 }
 test.describe("production responsiveness", () => {
@@ -125,6 +126,7 @@ const runGuideFlow = async (page: Page, info: TestInfo, width: number, destinati
   await captureStep(`after-ready-${width}`)
   completion.resolve()
   await expect(page.getByRole("textbox", { name: /Mensagem para geral/ })).toBeVisible()
+  await expect(page.getByRole("region", { name: "Coloque outro bot para trabalhar com você" })).toHaveCount(0)
   await captureStep(`after-general-${width}`)
   if (measure) {
     const metrics = await getPerformanceMetrics(page)
@@ -150,10 +152,11 @@ const runGuideFlow = async (page: Page, info: TestInfo, width: number, destinati
 
 test("onboarding guide: manual export and keyboard back remain usable with reduced motion and missing team routes", async ({
   page,
+  productionUrl,
 }) => {
   await installGuideMocks(page, { team: false })
   await page.emulateMedia({ reducedMotion: "reduce" })
-  await page.goto(url)
+  await page.goto(productionUrl)
   await page.getByRole("button", { name: /^Começar/ }).click()
   await page.getByRole("button", { name: /Este (PC|Mac)/ }).click()
   await page.getByRole("textbox", { name: "Nome", exact: true }).fill("Equipe exemplo")
@@ -171,20 +174,21 @@ type ProbeWindow = Window & {
   __guideProbe: {
     longTasks: number[]
     paints: number[]
-    events: { id: number; duration: number }[]
+    events: { id: number; duration: number; at: number; target: string }[]
     cls: number
+    shifts: { value: number; at: number; nodes: string[] }[]
     observers: PerformanceObserver[]
   }
 }
 const installPerformanceProbe = (page: Page) =>
   page.evaluate(() => {
     const target = window as ProbeWindow
-    // Observers append measurements owned by this bounded, short-lived page flow.
     const probe = {
       longTasks: [] as number[],
       paints: [] as number[],
-      events: [] as { id: number; duration: number }[],
+      events: [] as { id: number; duration: number; at: number; target: string }[],
       cls: 0,
+      shifts: [] as { value: number; at: number; nodes: string[] }[],
       observers: [] as PerformanceObserver[],
     }
     target.__guideProbe = probe
@@ -195,16 +199,36 @@ const installPerformanceProbe = (page: Page) =>
     const events = new PerformanceObserver((list) =>
       probe.events.push(
         ...list.getEntries().flatMap((entry) => {
-          const event = entry as PerformanceEntry & { interactionId: number }
-          return event.interactionId > 0 ? [{ id: event.interactionId, duration: event.duration }] : []
+          const event = entry as PerformanceEntry & { interactionId: number; target: Element | null }
+          return event.interactionId > 0
+            ? [
+                {
+                  id: event.interactionId,
+                  duration: event.duration,
+                  at: event.startTime,
+                  target: event.target?.getAttribute("aria-label") ?? event.target?.textContent?.slice(0, 60) ?? "",
+                },
+              ]
+            : []
         }),
       ),
     )
     events.observe({ type: "event", durationThreshold: 16 } as PerformanceObserverInit)
     const shifts = new PerformanceObserver((list) =>
       list.getEntries().forEach((entry) => {
-        const shift = entry as PerformanceEntry & { hadRecentInput: boolean; value: number }
-        if (!shift.hadRecentInput) probe.cls += shift.value
+        const shift = entry as PerformanceEntry & {
+          hadRecentInput: boolean
+          value: number
+          sources: { node: Element | null }[]
+        }
+        if (!shift.hadRecentInput) {
+          probe.cls += shift.value
+          probe.shifts.push({
+            value: shift.value,
+            at: shift.startTime,
+            nodes: shift.sources.map(({ node }) => String(node?.className ?? node?.nodeName ?? "")),
+          })
+        }
       }),
     )
     shifts.observe({ type: "layout-shift" })
@@ -235,15 +259,17 @@ const getPerformanceMetrics = (page: Page) =>
       eventInteractions: events.length,
       eventP95: events[Math.ceil(events.length * 0.95) - 1] ?? 0,
       cls: probe.cls,
+      shifts: probe.shifts,
+      eventSamples: probe.events,
     }
   })
 
 for (const colorScheme of ["light", "dark"] as const) {
-  test(`onboarding guide: accessible questions and contrast in ${colorScheme}`, async ({ page }) => {
+  test(`onboarding guide: accessible questions and contrast in ${colorScheme}`, async ({ page, productionUrl }) => {
     const mock = await installGuideMocks(page)
     await page.setViewportSize({ width: 390, height: 844 })
     await page.emulateMedia({ colorScheme })
-    await page.goto(url)
+    await page.goto(productionUrl)
     await page.evaluate((theme) => {
       document.documentElement.dataset.theme = theme
     }, colorScheme)
@@ -284,10 +310,10 @@ for (const colorScheme of ["light", "dark"] as const) {
 }
 
 for (const width of [1440, 390]) {
-  test(`onboarding guide: connection and manual export at ${width}`, async ({ page }, info) => {
+  test(`onboarding guide: connection and manual export at ${width}`, async ({ page, productionUrl }, info) => {
     await installGuideMocks(page)
     await page.setViewportSize({ width, height: width === 390 ? 844 : 800 })
-    await page.goto(url)
+    await page.goto(productionUrl)
     await page.getByRole("button", { name: /^Começar/ }).click()
     await page.getByRole("button", { name: /Conectar ao meu servidor/ }).click()
     await capture(page, info, `after-connect-${width}`)

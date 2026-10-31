@@ -26,7 +26,13 @@ const Harness = () => {
   const [complete, setComplete] = useState(false)
   if (complete)
     return (
-      <Suspense fallback={<p role="status">{t("Loading")}</p>}>
+      <Suspense
+        fallback={
+          <main className="setup-screen" aria-busy="true">
+            <p role="status">{t("Loading")}</p>
+          </main>
+        }
+      >
         <App kernel={{ services: { api, invoke } }} />
       </Suspense>
     )

@@ -1,6 +1,7 @@
 import type { AgentImportProgress, AgentImportSource, AvatarMood, Bot, BotGroup } from "@touri/contracts"
 import type { UiApi } from "../../api/client"
 import { type TranslationKey, t } from "../../i18n"
+import { saveWorkspaceState } from "../../workspaceState"
 
 export type GuideStep =
   | "workspace"
@@ -137,4 +138,33 @@ export const getWorkspaceColor = (token: string): string => {
   const property = token.slice(4, -1)
   const color = getComputedStyle(document.documentElement).getPropertyValue(property).trim()
   return /^#[0-9a-f]{6}$/i.test(color) ? color : "#dc2626"
+}
+
+/** Connecting an existing server must preserve its workspace and member access. */
+export const getIsEmptyOwnerWorkspace = async (api: UiApi, signal?: AbortSignal): Promise<boolean> => {
+  const transport = signal ? { signal } : {}
+  try {
+    const [workspace, session] = await Promise.all([
+      api.request("GET /bots", {}, {}, transport),
+      api.request("GET /session", {}, {}, transport),
+    ])
+    return workspace.bots.length === 0 && session.person.role === "admin"
+  } catch {
+    return false
+  }
+}
+
+/** The guide already builds the team; opening its channel must not flash the old team prompt. */
+export const saveGuideDestination = (threadId: string): void => {
+  saveWorkspaceState({
+    botId: null,
+    threadId,
+    route: { section: "bots", screen: "chat" },
+    teamSuggestionDismissed: true,
+  })
+  try {
+    localStorage.setItem("touri.sidebar.mode", "work")
+  } catch {
+    // The channel selection still uses the existing workspace storage policy.
+  }
 }

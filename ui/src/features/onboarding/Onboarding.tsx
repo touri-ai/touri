@@ -215,6 +215,7 @@ export const Onboarding = ({
   if (step === "workspace")
     return (
       <GuidedOnboarding
+        checkExistingWorkspace={paired}
         invoke={invoke}
         onBack={() => go("choose")}
         onComplete={async () => {

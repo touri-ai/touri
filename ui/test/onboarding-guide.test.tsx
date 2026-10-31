@@ -4,8 +4,9 @@ import { afterEach, expect, it, vi } from "vitest"
 import type { TauriInvoke, UiApi } from "../src/api/client"
 import { ApiError } from "../src/errors"
 import { GuidedOnboarding } from "../src/features/onboarding/GuidedOnboarding"
-import { getImportProgress, getWebsite } from "../src/features/onboarding/guide"
+import { getImportProgress, getIsEmptyOwnerWorkspace, getWebsite } from "../src/features/onboarding/guide"
 import { dictionaries } from "../src/i18n"
+import { readWorkspaceState } from "../src/workspaceState"
 import {
   getGuideBotFixture,
   getGuideGroupFixture,
@@ -87,6 +88,64 @@ it("preselects discovered sources and sends only reviewed item selections to app
     }),
   )
   expect(screen.getByText("Rotinas pausadas")).toBeVisible()
+  expect(within(screen.getByRole("complementary")).getByText("revisao-diaria · Rotinas pausadas")).toBeVisible()
+})
+it("returns from sources to the previous context without losing answers", async () => {
+  getFixture()
+  enterWorkspace()
+  const context = "Criamos ferramentas para equipes."
+  fireEvent.change(screen.getByRole("textbox", { name: "Conte sobre seu trabalho" }), { target: { value: context } })
+  continueSetup()
+  await screen.findByRole("button", { name: /Claude Code/ })
+
+  fireEvent.keyDown(screen.getByRole("main"), { key: "Escape" })
+
+  expect(screen.getByRole("textbox", { name: "Conte sobre seu trabalho" })).toHaveValue(context)
+})
+it("keeps identical agent keys from separate sources scoped to their own import", async () => {
+  const first = getGuidePreviewFixture()
+  const agent = first.agents[0]
+  if (!agent) throw new Error("Missing synthetic preview agent")
+  const second = { ...first, previewId: "preview-two", agents: [{ ...agent, suggestedBotName: "ops" }] }
+  const pending = Promise.withResolvers<unknown>()
+  const preview = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second)
+  const apply = vi
+    .fn()
+    .mockResolvedValueOnce({
+      importId: "import-one",
+      bots: [{ agentKey: "dev", botId: "bot-dev" }],
+      pausedRoutines: 1,
+      reconnect: [],
+    })
+    .mockReturnValueOnce(pending.promise)
+  const source = getGuideSourceFixture()
+  const { view } = getFixture({
+    "GET /api/v1/import/sources": { sources: [source, { ...source, id: "second-source", kind: "folder" }] },
+    "POST /api/v1/import/preview": preview,
+    "POST /api/v1/import/apply": apply,
+  })
+  enterWorkspace()
+  continueSetup()
+  await screen.findByRole("button", { name: /Claude Code/ })
+  continueSetup()
+  await screen.findByRole("heading", { name: "Confere o que vem?" })
+
+  fireEvent.click(screen.getByRole("button", { name: /Importar selecionados/ }))
+  await waitFor(() => expect(apply).toHaveBeenCalledTimes(2))
+
+  const rows = view.container.querySelectorAll(".ob-import-agent")
+  expect(rows[0]).toHaveTextContent("Pronto")
+  expect(rows[1]).toHaveTextContent("Copiando")
+  expect(rows[1]).not.toHaveTextContent("Pronto")
+  await act(async () =>
+    pending.resolve({
+      importId: "import-two",
+      bots: [{ agentKey: "dev", botId: "bot-ops" }],
+      pausedRoutines: 1,
+      reconnect: [],
+    }),
+  )
+  expect(rows[1]).toHaveTextContent("Pronto")
 })
 it("omits unchecked agents from the apply map", async () => {
   const preview = getGuidePreviewFixture()
@@ -158,6 +217,8 @@ it("keeps access opt-in and sends the first task to the general channel with a r
     { id: "general-thread" },
   )
   await waitFor(() => expect(complete).toHaveBeenCalledOnce())
+  expect(readWorkspaceState()).toMatchObject({ threadId: "general-thread", teamSuggestionDismissed: true })
+  expect(localStorage.getItem("touri.sidebar.mode")).toBe("work")
 })
 it("keeps Enter inside account settings and refreshes API models when the editor closes", async () => {
   const catalog = vi.fn().mockReturnValue({ models: [], executorAvailable: true })
@@ -259,6 +320,41 @@ it("returns an expired import preview to source review", async () => {
   expect(screen.getByRole("heading", { name: "Já usa agentes em outro app?" })).toBeVisible()
   expect(screen.queryByRole("alert")).toBeNull()
 })
+it("preserves instructions of an imported agent named touri", async () => {
+  const bot = { ...getGuideBotFixture(), instructions: "Preserve minhas instruções." }
+  const preview = getGuidePreviewFixture()
+  const { request } = getFixture({
+    "GET /bots": { bots: [bot] },
+    "POST /api/v1/import/preview": {
+      ...preview,
+      agents: preview.agents.map((agent) => ({ ...agent, key: "touri", name: "touri", suggestedBotName: "touri" })),
+    },
+    "POST /api/v1/import/apply": {
+      importId: "one",
+      bots: [{ agentKey: "touri", botId: bot.id }],
+      pausedRoutines: 0,
+      reconnect: [],
+    },
+  })
+  enterWorkspace()
+  continueSetup()
+  await screen.findByRole("button", { name: /Claude Code/ })
+  continueSetup()
+  await screen.findByRole("heading", { name: "Confere o que vem?" })
+  fireEvent.click(screen.getByRole("button", { name: /Importar selecionados/ }))
+  await screen.findByText("Pronto", { exact: true })
+  continueSetup()
+  continueSetup()
+  await screen.findByRole("heading", { name: "Seu time de agentes" })
+
+  continueSetup()
+
+  await screen.findByRole("heading", { name: "Quem mais trabalha com você?" })
+  const update = vi.mocked(request).mock.calls.find(([route]) => route === "PATCH /bots/:id")
+  expect(update?.[1]).not.toHaveProperty("instructions")
+  expect(update?.[1]).not.toHaveProperty("description")
+  expect(request).not.toHaveBeenCalledWith("POST /bots", expect.anything())
+})
 it("reserves a place for the guide within the channel member limit", async () => {
   const preview = getGuidePreviewFixture()
   const template = preview.agents[0]
@@ -280,6 +376,44 @@ it("reserves a place for the guide within the channel member limit", async () =>
 
   expect(screen.getByRole("button", { name: /Importar selecionados/ })).toBeEnabled()
 })
+it("counts agents already imported when the owner reviews another source", async () => {
+  const preview = getGuidePreviewFixture()
+  const agent = preview.agents[0]
+  if (!agent) throw new Error("Missing synthetic preview agent")
+  const agents = Array.from({ length: 19 }, (_, index) => ({
+    ...agent,
+    key: `agent-${index}`,
+    suggestedBotName: `agent-${index}`,
+  }))
+  const previews = vi
+    .fn()
+    .mockResolvedValueOnce({ ...preview, agents })
+    .mockResolvedValueOnce(getGuidePreviewFixture("next-preview"))
+  getFixture({
+    "POST /api/v1/import/preview": previews,
+    "POST /api/v1/import/apply": {
+      importId: "first-import",
+      bots: agents.map((item) => ({ agentKey: item.key, botId: `bot-${item.key}` })),
+      pausedRoutines: 19,
+      reconnect: [],
+    },
+  })
+  enterWorkspace()
+  continueSetup()
+  await screen.findByRole("button", { name: /Claude Code/ })
+  continueSetup()
+  await screen.findByRole("heading", { name: "Confere o que vem?" })
+  fireEvent.click(screen.getByRole("button", { name: /Importar selecionados/ }))
+  await screen.findAllByText("Pronto", { exact: true })
+  fireEvent.click(screen.getByRole("button", { name: "Voltar", exact: true }))
+  fireEvent.click(screen.getByRole("button", { name: "Voltar", exact: true }))
+
+  continueSetup()
+
+  await screen.findByRole("heading", { name: "Confere o que vem?" })
+  expect(screen.getByRole("button", { name: /Importar selecionados/ })).toBeDisabled()
+  expect(screen.getByRole("alert")).toHaveTextContent("Selecione até 19 agentes")
+})
 it("skips the team step when invite routes are absent", async () => {
   getFixture({ "GET /invites": new Error("NOT_SUPPORTED") })
   enterWorkspace()
@@ -299,6 +433,16 @@ it.each(["http://example.com", "file:///workspace/export.json", "https://user:pa
     expect(() => getWebsite(website)).toThrow()
   },
 )
+it.each([
+  { bots: [getGuideBotFixture()], role: "admin", expected: false },
+  { bots: [], role: "member", expected: false },
+  { bots: [], role: "admin", expected: true },
+])("preserves an existing server for role $role with setup=$expected", async ({ bots, role, expected }) => {
+  const request = vi.fn(async (route) => (route === "GET /bots" ? { bots } : { person: { role } })) as UiApi["request"]
+  const api: UiApi = { request, isMock: false, subscribe: () => () => undefined }
+
+  expect(await getIsEmptyOwnerWorkspace(api)).toBe(expected)
+})
 it("uses actual progress events and rejects malformed or non-finite counters", () => {
   const progress = { importId: "one", agentKey: "dev", step: "skills", done: 1, total: 4 }
 
