@@ -15,7 +15,7 @@ import { type Locale, type TranslationKey, t } from "./i18n"
 
 export type RecoveryAction = "retry" | "login" | "storage" | "review" | "resume" | "doctor"
 export type RecoveryContext = {
-  historyRead?: boolean | undefined
+  indexRead?: boolean | undefined
   provider?: Provider | undefined
   errorClass?: string | null | undefined
   parts?: MessagePart[] | undefined
@@ -50,8 +50,13 @@ export const errorRecovery = (error: unknown, context: RecoveryContext = {}): Er
   })
   const getCapacityMessage = (): string =>
     `${tr("O modelo selecionado está sem capacidade no momento.")} ${tr("Escolha outro modelo nas configurações do bot ou tente de novo em alguns minutos.")}`
-  if (context.historyRead)
-    return view(tr("Could not load the conversation. Try again."), [action("retry", "Tentar novamente")])
+  if (context.indexRead)
+    return view(
+      isServiceUnavailable(error) || /SERVER_CONNECTION_FAILED|RUNTIME_DRAINING/i.test(text)
+        ? tr("O serviço do touri está indisponível. Verifique a conexão e tente novamente.")
+        : tr("Could not refresh the conversation list. Try again."),
+      [action("retry", "Tentar novamente")],
+    )
   const attachmentError = getAttachmentError(raw, locale)
   if (attachmentError) return view(attachmentError, [])
   if (raw === "O bot terminou sem responder. Tente novamente.")

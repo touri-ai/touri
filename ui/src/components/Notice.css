@@ -1,0 +1,72 @@
+/* Design system v2 notice: a status card that sits inside the surface it describes. */
+.ds-notice {
+  --notice-role: var(--danger);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-8) var(--space-12);
+  padding: var(--space-12) var(--space-16);
+  border: 1px solid color-mix(in srgb, var(--notice-role) 40%, var(--border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--notice-role) var(--tint), var(--surface));
+  color: var(--text);
+  animation: ds-notice-in var(--duration-quick) var(--ease-quick);
+}
+.ds-notice-warning {
+  --notice-role: var(--warning);
+}
+.ds-notice-info {
+  --notice-role: var(--info);
+}
+.ds-notice-body {
+  flex: 1 1 240px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.ds-notice-title {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: var(--weight-semibold);
+}
+.ds-notice-cause {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-meta);
+  overflow-wrap: anywhere;
+}
+.ds-notice-cause code,
+.ds-notice-details {
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+}
+.ds-notice-details {
+  margin: var(--space-4) 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-2);
+  user-select: text;
+}
+.ds-notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+  margin-inline-start: auto;
+}
+@keyframes ds-notice-in {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ds-notice {
+    animation: none;
+  }
+}
+
+/* Inside a conversation the notice keeps the saved messages below it in view. */
+.conversation-notice {
+  flex: none;
+  margin: var(--space-12) var(--space-16) 0;
+}

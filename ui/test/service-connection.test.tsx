@@ -47,6 +47,32 @@ test.each([
   expect(connection.mock.calls).toEqual([[false], [true]])
 })
 
+test("a read refused by a draining server reconnects instead of reporting a broken conversation", async () => {
+  vi.useFakeTimers()
+  const sockets = makeSockets()
+  const fetchImpl = vi.fn(async () => Response.json({ ticket: "test-ticket", ok: true, schemaVersion: 46 }))
+  const api = createApiClient({
+    endpoint: { baseUrl: "https://server.example", wsUrl: "wss://server.example/api/v1/events", token: "test" },
+    fetchImpl,
+  })
+  const connection = vi.fn()
+  api.subscribeConnection?.(connection)
+  onTestFinished(api.subscribe(vi.fn()))
+  await vi.advanceTimersByTimeAsync(0)
+  sockets.getSocket(0).dispatchEvent(new Event("open"))
+  // The exact body a restarting server sends while it drains active runs.
+  fetchImpl.mockResolvedValueOnce(Response.json({ errorCode: "RUNTIME_DRAINING" }, { status: 503 }))
+
+  await expect(
+    api.request("GET /threads/:id/messages", { all: true, limit: 40 }, { id: "thread" }),
+  ).rejects.toMatchObject({ status: 503, errorCode: "RUNTIME_DRAINING" })
+  await vi.advanceTimersByTimeAsync(250)
+  sockets.getSocket(1).dispatchEvent(new Event("open"))
+
+  expect(sockets.getSocket(0).close).toHaveBeenCalledOnce()
+  expect(connection.mock.calls).toEqual([[false], [true]])
+})
+
 test.each([
   ["STORE_UNAVAILABLE", "TOURI-E1009"],
   ["HOST_UNAVAILABLE", "TOURI-E1009"],

@@ -115,6 +115,8 @@ export { activeMessagePath } from "./activeMessagePath"
 
 type ChatPanelProps = {
   historyLoading?: boolean
+  /** A failed read of this conversation; rendered inside it, above the messages already loaded. */
+  historyNotice?: ReactNode
   onLatestHistory?: (() => void) | undefined
   hasOlderHistory?: boolean | undefined
   loadingOlderHistory?: boolean | undefined
@@ -1684,6 +1686,7 @@ export const ChatPanel = ({
   groupMembers = [],
   channelMode = false,
   historyLoading = false,
+  historyNotice,
   hasOlderHistory = false,
   loadingOlderHistory = false,
   onLoadOlderHistory,
@@ -1947,8 +1950,11 @@ export const ChatPanel = ({
                   </div>
                 </header>
               )}
+              {historyNotice}
               {historyLoading && visibleMessages.length === 0 ? (
-                <ConversationLoading />
+                historyNotice ? null : (
+                  <ConversationLoading />
+                )
               ) : (
                 <>
                   {!group && bot && !routineConversation && (

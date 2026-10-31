@@ -287,8 +287,10 @@ test("history recovery remains available after repeated read failures", async ({
   await page.goto(current.serverUrl)
   await page.getByRole("tab", { name: /^Work,/ }).click()
   await page.getByRole("region", { name: "Canais", exact: true }).getByText(group.name, { exact: true }).click()
-  const retry = page.getByRole("button", { name: "Tentar novamente", exact: true })
+  const retry = page.getByRole("button", { name: "Tentar de novo", exact: true })
   await expect(retry).toBeVisible()
+  // One automatic retry runs before the notice appears.
+  expect(failures).toBe(2)
   if (process.env.TOURI_WORK_OPEN_EVIDENCE) {
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
@@ -299,9 +301,11 @@ test("history recovery remains available after repeated read failures", async ({
     }
   }
   await retry.click()
-  await expect.poll(() => failures).toBeGreaterThanOrEqual(2)
+  await expect.poll(() => failures).toBeGreaterThanOrEqual(3)
   await expect(retry).toBeEnabled()
-  await expect(page.getByText("Não foi possível carregar a conversa. Tente novamente.", { exact: true })).toBeVisible()
+  await expect(page.locator(".chat-panel .conversation-notice")).toContainText(
+    "Não conseguimos carregar as mensagens novas.",
+  )
   failing = false
   await retry.click()
 

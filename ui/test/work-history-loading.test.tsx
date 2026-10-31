@@ -72,16 +72,23 @@ test("retrying a failed first history read loads the conversation", async () => 
   fireEvent.click(await screen.findByRole("tab", { name: /^Work,/ }))
   const channels = await screen.findByRole("region", { name: "Canais", exact: true })
   fireEvent.click(await within(channels).findByText("Demonstração", { exact: true }))
-  expect(await screen.findByText("Não foi possível carregar a conversa. Tente novamente.")).toBeVisible()
-  fireEvent.click(await screen.findByRole("button", { name: "Tentar novamente", exact: true }))
+  const notice = await screen.findByText("Não conseguimos carregar as mensagens novas.", undefined, { timeout: 4000 })
+  const failuresAtNotice = failures
+  expect(failuresAtNotice).toBe(2)
+  expect(notice.closest(".chat-panel")).not.toBeNull()
+  expect(notice.closest(".notice-bar")).toBeNull()
+  expect(screen.getByText("TOURI-E1000")).toBeVisible()
+  fireEvent.click(screen.getByRole("button", { name: "Tentar de novo", exact: true }))
 
-  await waitFor(() => expect(failures).toBeGreaterThanOrEqual(2))
-  await waitFor(() => expect(screen.getByRole("button", { name: "Tentar novamente", exact: true })).toBeEnabled())
-  expect(screen.getByText("Não foi possível carregar a conversa. Tente novamente.")).toBeVisible()
+  await waitFor(() => expect(failures).toBeGreaterThan(failuresAtNotice), { timeout: 4000 })
+  await waitFor(() => expect(screen.getByRole("button", { name: "Tentar de novo", exact: true })).toBeEnabled(), {
+    timeout: 4000,
+  })
   failing = false
-  fireEvent.click(screen.getByRole("button", { name: "Tentar novamente", exact: true }))
+  fireEvent.click(screen.getByRole("button", { name: "Tentar de novo", exact: true }))
 
   const history = await screen.findByRole("region", { name: "Histórico da conversa" })
   expect(await within(history).findByText("O plano está salvo.")).toBeVisible()
   expect(screen.queryByRole("status", { name: "Carregando conversas…" })).not.toBeInTheDocument()
-})
+  expect(screen.queryByText("Não conseguimos carregar as mensagens novas.")).not.toBeInTheDocument()
+}, 15_000)

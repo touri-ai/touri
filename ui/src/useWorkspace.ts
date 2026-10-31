@@ -42,6 +42,7 @@ import { getDocumentLocale } from "./documentLanguage"
 import { ApiError, isServiceUnavailable, userFacingError } from "./errors"
 import { adoptProviderLogin } from "./features/bots/providerLogin"
 import { useDoctorReport } from "./features/doctor/useDoctorReport"
+import { getHistoryFailure, getWithRetry, type HistoryFailure } from "./historyFailure"
 import { localizeNotice, t } from "./i18n"
 import { localResponseTimings } from "./localResponseTimings"
 import { useMachineParking } from "./machineIntents"
@@ -68,6 +69,8 @@ export type WorkspaceData = {
   loadingOlderHistory?: boolean
   historyThreadId?: Id | null
   historyNotice?: string | null
+  /** The selected conversation's last failed read, shown inside the conversation instead of the app notice. */
+  historyFailure?: HistoryFailure | null
   channelNotice?: string | null
   channelCacheIdentity?: { scope: string | null; personId: string }
   groups: Array<BotGroup>
@@ -704,6 +707,7 @@ export const useWorkspace = (
             historyFocusId: null,
             historyContext: cached.context,
             historyNotice: null,
+            historyFailure: null,
             loadingOlderHistory: false,
           }
         : next
@@ -991,6 +995,7 @@ export const useWorkspace = (
                 historyFocusId: null,
                 historyContext: cached.context,
                 historyNotice: null,
+                historyFailure: null,
               }
             : current,
         )
@@ -1006,17 +1011,22 @@ export const useWorkspace = (
         attempt === generation.current &&
         threadLoads.current.get(threadId)?.promise === promise &&
         currentData.current.selectedThreadId === threadId
+      // A transcript failure stays inside the conversation; a run snapshot failure keeps the app notice.
       const showReadFailure = (error: unknown, history: boolean): void => {
         if (!isCurrentLoad()) return
 
         const notice = t("Service request failed", { error: getServiceErrorMessage(error) })
+        if (history) {
+          setData((current) => ({
+            ...current,
+            historyNotice: notice,
+            historyFailure: { ...getHistoryFailure(error), threadId },
+          }))
+          return
+        }
         if (isServiceUnavailable(error)) serviceNotice.current = notice
-        if (!history) runNotice.current = notice
-        setData((current) => ({
-          ...current,
-          notice,
-          historyNotice: history ? notice : (current.historyNotice ?? null),
-        }))
+        runNotice.current = notice
+        setData((current) => ({ ...current, notice }))
       }
       const requestedIds = new Set(currentData.current.messages.map((message) => message.id))
       const pageTarget = repairMessageId ?? focus?.messageId
@@ -1034,7 +1044,10 @@ export const useWorkspace = (
             before: cached.before,
             context: cached.context,
           })
-        : api.request("GET /threads/:id/messages", pageInput, { id: threadId }, { signal: controller.signal })
+        : getWithRetry(
+            () => api.request("GET /threads/:id/messages", pageInput, { id: threadId }, { signal: controller.signal }),
+            { signal: controller.signal },
+          )
       const messagesRequest = pageRequest
         .then((messages) => {
           const load = threadLoads.current.get(threadId)
@@ -1101,6 +1114,7 @@ export const useWorkspace = (
                 ? updateMessage(current.activityMessages, activityMessage(offscreen))
                 : current.activityMessages,
               historyNotice: null,
+              historyFailure: null,
               messages: (api.pendingMessages?.() ?? [])
                 .filter((message) => message.threadId === threadId)
                 .reduce(
@@ -1429,7 +1443,7 @@ export const useWorkspace = (
           activeProjectId: selectedBot?.projectId ?? null,
           loading: false,
           loaded: true,
-          notice: groupResponse.notice ?? current.historyNotice ?? null,
+          notice: groupResponse.notice ?? null,
           channelNotice: groupResponse.notice,
         }
       })
