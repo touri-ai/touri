@@ -18,7 +18,8 @@ const test = base.extend<object, { productionUrl: string }>({
 })
 
 test.setTimeout(90_000)
-test.use({ video: { mode: "on", size: { width: 1440, height: 800 } }, trace: "off" })
+const recording = process.env.TOURI_ONBOARDING_RECORD === "1"
+test.use({ video: recording ? { mode: "on", size: { width: 1440, height: 800 } } : "off", trace: "off" })
 test.afterEach(async ({ page }, info) => {
   if (!info.title.startsWith("onboarding guide 1440:")) return
   const directory = process.env.TOURI_ONBOARDING_EVIDENCE_DIR
@@ -44,7 +45,7 @@ for (const width of [1440, 390]) {
   })
 }
 test.describe("production responsiveness", () => {
-  test.use({ video: "off", trace: "off" })
+  test.skip(recording, "Timing measurements run without video")
   for (const width of [1440, 390]) {
     test(`onboarding production ${width}: stays within the interaction budget`, async ({
       page,
