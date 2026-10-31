@@ -1,0 +1,87 @@
+[
+  {
+    "screen": "01",
+    "frames": "004",
+    "observation": "Boas-vindas legível; ação Começar funciona."
+  },
+  {
+    "screen": "02",
+    "frames": "005",
+    "observation": "Destino local disponível; oferta remota adicional fora do escopo desta rodada."
+  },
+  {
+    "screen": "03",
+    "frames": "006–008",
+    "observation": "Busca exibe computador local e servidor fictício; voltar funciona. Descoberta de rede simulada pelo adaptador existente."
+  },
+  {
+    "screen": "04",
+    "frames": "010–011",
+    "observation": "Nome atualiza o workspace ao vivo."
+  },
+  {
+    "screen": "05",
+    "frames": "012–014",
+    "observation": "Contexto e Suporte aparecem na prévia."
+  },
+  {
+    "screen": "06",
+    "frames": "015–021",
+    "observation": "Fonte local detectada; seletor de pasta lê a pasta fictícia."
+  },
+  {
+    "screen": "07–08",
+    "frames": "029–035",
+    "observation": "Exportação via pedido e JSON validada. Uma tentativa incompleta da fixture foi rejeitada; o JSON completo do formato exibido foi aceito."
+  },
+  {
+    "screen": "09",
+    "frames": "022–024",
+    "observation": "Três skills, duas memórias, integração pelo nome e dois segredos excluídos. Nome repetido desabilita importar; nome revisado libera."
+  },
+  {
+    "screen": "10",
+    "frames": "025–028,036–037",
+    "observation": "Importação e undo seletivo funcionam; nova importação perde o nome da ação anterior e omite o agente mantido da prévia."
+  },
+  {
+    "screen": "11",
+    "frames": "038–040",
+    "observation": "Navegador opt-in, controles disponíveis; indisponibilidade de máquina separada explicada."
+  },
+  {
+    "screen": "12",
+    "frames": "041–042,047–048",
+    "observation": "Sem login pronto, a tarefa retorna à conexão da conta e conserva o texto. Rótulos dos provedores ocultados nas cópias públicas."
+  },
+  {
+    "screen": "13",
+    "frames": "043,049",
+    "observation": "Time acessível ao dono nativo. Ausência de endereço HTTPS é explicada; nenhum convite enviado."
+  },
+  {
+    "screen": "14",
+    "frames": "044–051",
+    "observation": "Tarefa preservada após falta de login. Prontidão substituída por resposta fictícia apenas para continuar; envio e leitura usam APIs reais."
+  },
+  {
+    "screen": "15",
+    "frames": "052–054",
+    "observation": "Tarefa enviada ao geral e resposta de CLI fictícia persistida. Identificação do sistema ocultada no primeiro quadro público."
+  },
+  {
+    "screen": "A",
+    "frames": "058–061",
+    "observation": "Antes do primeiro texto, Preparando a resposta tem um único avatar na coluna; stop real disponível."
+  },
+  {
+    "screen": "B–C",
+    "frames": "068–082",
+    "observation": "Duas abas com pessoas fictícias veem a página em espera, controle e devolução. Solicitante tem controles; outro membro acompanha. 1440/390 px, zero overflow horizontal. Transporte e identidades sintéticos."
+  },
+  {
+    "screen": "D",
+    "frames": "062–067",
+    "observation": "Parada real dos runtimes preserva mensagens, mas troca de canal mostra erro genérico global. Reconexão automática restaura sem recarregar."
+  }
+]

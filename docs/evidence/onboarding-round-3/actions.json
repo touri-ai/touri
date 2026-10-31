@@ -1,0 +1,5224 @@
+[
+  {
+    "frames": ["001-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [
+      {
+        "name": "pointerover",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 40,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["002-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["003-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": true,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["004-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["005-p.png"],
+    "action": "Começar →",
+    "documentReset": false,
+    "clickToNextPaintMs": [27.80000001192093],
+    "clicks": [
+      {
+        "name": "Começar →",
+        "at": 4055,
+        "nextPaint": 27.80000001192093
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerover",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 48,
+        "interactionId": 3017
+      },
+      {
+        "name": "mousedown",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 48,
+        "interactionId": 3017
+      },
+      {
+        "name": "mouseup",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 48,
+        "interactionId": 3017
+      },
+      {
+        "name": "pointerover",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 48,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["006-p.png"],
+    "action": "Use outro computador ou um servidor que já está ligado.",
+    "documentReset": false,
+    "clickToNextPaintMs": [27.19999998807907],
+    "clicks": [
+      {
+        "name": "Use outro computador ou um servidor que já está ligado.",
+        "at": 7516,
+        "nextPaint": 27.19999998807907
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 32,
+        "interactionId": 3024
+      },
+      {
+        "name": "mousedown",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 32,
+        "interactionId": 3024
+      },
+      {
+        "name": "mouseup",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 32,
+        "interactionId": 3024
+      },
+      {
+        "name": "pointerover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 32,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 7542.900000035763,
+        "value": 0.0003239583333333334,
+        "recentInput": true
+      },
+      {
+        "at": 7559.199999988079,
+        "value": 0.004084574652777778,
+        "recentInput": true
+      },
+      {
+        "at": 7580,
+        "value": 0.011066840277777778,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["007-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["008-p.png"],
+    "action": "← Voltar",
+    "documentReset": false,
+    "clickToNextPaintMs": [29.399999976158142],
+    "clicks": [
+      {
+        "name": "← Voltar",
+        "at": 15064.800000011921,
+        "nextPaint": 29.399999976158142
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 24,
+        "interactionId": 3031
+      },
+      {
+        "name": "mousedown",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 24,
+        "interactionId": 3031
+      },
+      {
+        "name": "mouseup",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 24,
+        "interactionId": 3031
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 15072,
+        "value": 0.005471874999999999,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["009-p.png"],
+    "action": "Este computador cuida dos seus bots. Comece com um clique.",
+    "documentReset": false,
+    "clickToNextPaintMs": [25.399999976158142],
+    "clicks": [
+      {
+        "name": "Este computador cuida dos seus bots. Comece com um clique.",
+        "at": 18416.400000035763,
+        "nextPaint": 25.399999976158142
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 32,
+        "interactionId": 3038
+      },
+      {
+        "name": "mousedown",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 32,
+        "interactionId": 3038
+      },
+      {
+        "name": "mouseup",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 32,
+        "interactionId": 3038
+      },
+      {
+        "name": "pointerover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 32,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["010-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [
+      {
+        "name": "pointerover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 24,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["011-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [
+      {
+        "name": "beforeinput",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "input",
+        "duration": 32,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["012-p.png"],
+    "action": "Continuar ↵",
+    "documentReset": false,
+    "clickToNextPaintMs": [20.19999998807907],
+    "clicks": [
+      {
+        "name": "Continuar ↵",
+        "at": 29637.30000001192,
+        "nextPaint": 20.19999998807907
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 40,
+        "interactionId": 3045
+      },
+      {
+        "name": "mousedown",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 32,
+        "interactionId": 3045
+      },
+      {
+        "name": "mouseup",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 32,
+        "interactionId": 3045
+      },
+      {
+        "name": "pointerout",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 24,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 29646.600000023842,
+        "value": 0.0034069335937500006,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["013-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [
+      {
+        "name": "beforeinput",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "input",
+        "duration": 24,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["014-p.png"],
+    "action": "Suporte",
+    "documentReset": false,
+    "clickToNextPaintMs": [25.399999976158142],
+    "clicks": [
+      {
+        "name": "Suporte",
+        "at": 36848.60000002384,
+        "nextPaint": 25.399999976158142
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 24,
+        "interactionId": 3052
+      },
+      {
+        "name": "mousedown",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 24,
+        "interactionId": 3052
+      },
+      {
+        "name": "mouseup",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 24,
+        "interactionId": 3052
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 36851.40000003576,
+        "value": 0.0009166975308641975,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["015-p.png"],
+    "action": "Continuar ↵",
+    "documentReset": false,
+    "clickToNextPaintMs": [30.399999976158142],
+    "clicks": [
+      {
+        "name": "Continuar ↵",
+        "at": 39730.90000003576,
+        "nextPaint": 30.399999976158142
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 32,
+        "interactionId": 3059
+      },
+      {
+        "name": "mousedown",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 32,
+        "interactionId": 3059
+      },
+      {
+        "name": "mouseup",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 32,
+        "interactionId": 3059
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 39746.19999998808,
+        "value": 0.0039850056966145835,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["016-p.png"],
+    "action": "＋Outra pasta de agenteEscolher pasta",
+    "documentReset": false,
+    "clickToNextPaintMs": [159.69999998807907],
+    "clicks": [
+      {
+        "name": "＋Outra pasta de agenteEscolher pasta",
+        "at": 45163,
+        "nextPaint": 159.69999998807907
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 160,
+        "interactionId": 3066
+      },
+      {
+        "name": "mousedown",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 160,
+        "interactionId": 3066
+      },
+      {
+        "name": "mouseup",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 160,
+        "interactionId": 3066
+      },
+      {
+        "name": "pointerout",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerout",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 160,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 45287.80000001192,
+        "value": 0.007649537037037037,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["017-p.png"],
+    "action": "Digitar caminho",
+    "documentReset": false,
+    "clickToNextPaintMs": [164.19999998807907],
+    "clicks": [
+      {
+        "name": "Digitar caminho",
+        "at": 48916.10000002384,
+        "nextPaint": 164.19999998807907
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 168,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 168,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 168,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 168,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 168,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 168,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 168,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 168,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 168,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 168,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 168,
+        "interactionId": 3073
+      },
+      {
+        "name": "mousedown",
+        "duration": 168,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 168,
+        "interactionId": 3073
+      },
+      {
+        "name": "mouseup",
+        "duration": 168,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 168,
+        "interactionId": 3073
+      },
+      {
+        "name": "pointerout",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 160,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 160,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 48919.30000001192,
+        "value": 0.02599070987654321,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["018-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [
+      {
+        "name": "beforeinput",
+        "duration": 680,
+        "interactionId": 0
+      },
+      {
+        "name": "input",
+        "duration": 672,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["019-p.png"],
+    "action": "Abrir pasta",
+    "documentReset": false,
+    "clickToNextPaintMs": [153.30000001192093],
+    "clicks": [
+      {
+        "name": "Abrir pasta",
+        "at": 59132.19999998808,
+        "nextPaint": 153.30000001192093
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 152,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 152,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 152,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 152,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 152,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 152,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 152,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 152,
+        "interactionId": 3080
+      },
+      {
+        "name": "mousedown",
+        "duration": 152,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 152,
+        "interactionId": 3080
+      },
+      {
+        "name": "mouseup",
+        "duration": 152,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 152,
+        "interactionId": 3080
+      },
+      {
+        "name": "pointerout",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 144,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 59136.30000001192,
+        "value": 0.008571404320987654,
+        "recentInput": true
+      },
+      {
+        "at": 59284.69999998808,
+        "value": 0.008571404320987654,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["020-p.png"],
+    "action": "Usar esta pasta",
+    "documentReset": false,
+    "clickToNextPaintMs": [30.30000001192093],
+    "clicks": [
+      {
+        "name": "Usar esta pasta",
+        "at": 65297.10000002384,
+        "nextPaint": 30.30000001192093
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 192,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 192,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 192,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 192,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 192,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 192,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 192,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerout",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 72,
+        "interactionId": 3087
+      },
+      {
+        "name": "mousedown",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 72,
+        "interactionId": 3087
+      },
+      {
+        "name": "mouseup",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 72,
+        "interactionId": 3087
+      },
+      {
+        "name": "pointerover",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerout",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 64,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 65302.90000003576,
+        "value": 0.04088057427300347,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["021-p.png"],
+    "action": "Continuar ↵",
+    "documentReset": false,
+    "clickToNextPaintMs": [25.399999976158142],
+    "clicks": [
+      {
+        "name": "Continuar ↵",
+        "at": 68448.40000003576,
+        "nextPaint": 25.399999976158142
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 64,
+        "interactionId": 3094
+      },
+      {
+        "name": "mousedown",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 64,
+        "interactionId": 3094
+      },
+      {
+        "name": "mouseup",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 64,
+        "interactionId": 3094
+      },
+      {
+        "name": "pointerout",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 32,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 68519.5,
+        "value": 0.013684028531298225,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["022-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["023-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [
+      {
+        "name": "beforeinput",
+        "duration": 56,
+        "interactionId": 0
+      },
+      {
+        "name": "input",
+        "duration": 56,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["024-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [
+      {
+        "name": "beforeinput",
+        "duration": 56,
+        "interactionId": 0
+      },
+      {
+        "name": "input",
+        "duration": 48,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["025-p.png"],
+    "action": "Importar selecionados ↵",
+    "documentReset": false,
+    "clickToNextPaintMs": [25.80000001192093],
+    "clicks": [
+      {
+        "name": "Importar selecionados ↵",
+        "at": 85015.5,
+        "nextPaint": 25.80000001192093
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 48,
+        "interactionId": 3101
+      },
+      {
+        "name": "mousedown",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 48,
+        "interactionId": 3101
+      },
+      {
+        "name": "mouseup",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 48,
+        "interactionId": 3101
+      },
+      {
+        "name": "pointerout",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 24,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 85032.80000001192,
+        "value": 0.0051750913266782415,
+        "recentInput": true
+      },
+      {
+        "at": 85176.30000001192,
+        "value": 0.0011403086419753087,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["026-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["027-p.png"],
+    "action": "Desfazer importação de Rotinas demo",
+    "documentReset": false,
+    "clickToNextPaintMs": [26.69999998807907],
+    "clicks": [
+      {
+        "name": "Desfazer importação de Rotinas demo",
+        "at": 91197.90000003576,
+        "nextPaint": 26.69999998807907
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 32,
+        "interactionId": 3108
+      },
+      {
+        "name": "mousedown",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 32,
+        "interactionId": 3108
+      },
+      {
+        "name": "mouseup",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 32,
+        "interactionId": 3108
+      },
+      {
+        "name": "pointerover",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 64,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 91204.90000003576,
+        "value": 2.5260054976851852e-5,
+        "recentInput": true
+      },
+      {
+        "at": 91239.10000002384,
+        "value": 0.006852758487654321,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["028-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["029-p.png"],
+    "action": "Copiar pedido e colar resposta",
+    "documentReset": false,
+    "clickToNextPaintMs": [26.80000001192093],
+    "clicks": [
+      {
+        "name": "Copiar pedido e colar resposta",
+        "at": 101311.80000001192,
+        "nextPaint": 26.80000001192093
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 64,
+        "interactionId": 3115
+      },
+      {
+        "name": "mousedown",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 64,
+        "interactionId": 3115
+      },
+      {
+        "name": "mouseup",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 64,
+        "interactionId": 3115
+      },
+      {
+        "name": "pointerover",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerout",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 48,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 101318,
+        "value": 0.0036586871865354944,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["030-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [
+      {
+        "name": "beforeinput",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "input",
+        "duration": 32,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["031-p.png"],
+    "action": "Continuar ↵",
+    "documentReset": false,
+    "clickToNextPaintMs": [30],
+    "clicks": [
+      {
+        "name": "Continuar ↵",
+        "at": 109580.30000001192,
+        "nextPaint": 30
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 32,
+        "interactionId": 3122
+      },
+      {
+        "name": "mousedown",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 32,
+        "interactionId": 3122
+      },
+      {
+        "name": "mouseup",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 32,
+        "interactionId": 3122
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["032-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["033-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [
+      {
+        "name": "beforeinput",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "input",
+        "duration": 24,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["034-p.png"],
+    "action": "Continuar ↵",
+    "documentReset": false,
+    "clickToNextPaintMs": [28.30000001192093],
+    "clicks": [
+      {
+        "name": "Continuar ↵",
+        "at": 125777,
+        "nextPaint": 28.30000001192093
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerdown",
+        "duration": 32,
+        "interactionId": 3129
+      },
+      {
+        "name": "mousedown",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 32,
+        "interactionId": 3129
+      },
+      {
+        "name": "mouseup",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 32,
+        "interactionId": 3129
+      },
+      {
+        "name": "pointerout",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 40,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 125804.60000002384,
+        "value": 0.004047350260416667,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["035-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["036-p.png"],
+    "action": "Importar selecionados ↵",
+    "documentReset": false,
+    "clickToNextPaintMs": [29.099999964237213],
+    "clicks": [
+      {
+        "name": "Importar selecionados ↵",
+        "at": 134910.60000002384,
+        "nextPaint": 29.099999964237213
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 32,
+        "interactionId": 3136
+      },
+      {
+        "name": "mousedown",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 32,
+        "interactionId": 3136
+      },
+      {
+        "name": "mouseup",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 32,
+        "interactionId": 3136
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 134917.19999998808,
+        "value": 0.0016553576660156251,
+        "recentInput": true
+      },
+      {
+        "at": 134939.5,
+        "value": 0.0008377777777777778,
+        "recentInput": true
+      },
+      {
+        "at": 134975.69999998808,
+        "value": 0.0014681450135030864,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["037-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["038-p.png"],
+    "action": "Continuar ↵",
+    "documentReset": false,
+    "clickToNextPaintMs": [26.80000001192093],
+    "clicks": [
+      {
+        "name": "Continuar ↵",
+        "at": 144210.10000002384,
+        "nextPaint": 26.80000001192093
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerdown",
+        "duration": 24,
+        "interactionId": 3143
+      },
+      {
+        "name": "mousedown",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 24,
+        "interactionId": 3143
+      },
+      {
+        "name": "mouseup",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 24,
+        "interactionId": 3143
+      },
+      {
+        "name": "pointerout",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 16,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 144220.19999998808,
+        "value": 0.0038111725380979935,
+        "recentInput": true
+      },
+      {
+        "at": 144289.80000001192,
+        "value": 0.008402534360532407,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["039-p.png"],
+    "action": "",
+    "documentReset": false,
+    "clickToNextPaintMs": [26.399999976158142],
+    "clicks": [
+      {
+        "name": "",
+        "at": 149226.30000001192,
+        "nextPaint": 26.399999976158142
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerout",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 24,
+        "interactionId": 3150
+      },
+      {
+        "name": "mousedown",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 24,
+        "interactionId": 3150
+      },
+      {
+        "name": "mouseup",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 24,
+        "interactionId": 3150
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["040-p.png"],
+    "action": "Continuar ↵",
+    "documentReset": false,
+    "clickToNextPaintMs": [28.299999952316284],
+    "clicks": [
+      {
+        "name": "Continuar ↵",
+        "at": 153858.40000003576,
+        "nextPaint": 28.299999952316284
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 32,
+        "interactionId": 3157
+      },
+      {
+        "name": "mousedown",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 32,
+        "interactionId": 3157
+      },
+      {
+        "name": "mouseup",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 32,
+        "interactionId": 3157
+      },
+      {
+        "name": "pointerout",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 24,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 153920.40000003576,
+        "value": 0.0008270061728395062,
+        "recentInput": true
+      },
+      {
+        "at": 153935.90000003576,
+        "value": 0.0027114200846354167,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["041-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["042-p.png"],
+    "action": "Continuar ↵",
+    "documentReset": false,
+    "clickToNextPaintMs": [23.30000001192093],
+    "clicks": [
+      {
+        "name": "Continuar ↵",
+        "at": 165761.69999998808,
+        "nextPaint": 23.30000001192093
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 16,
+        "interactionId": 3164
+      },
+      {
+        "name": "mousedown",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 16,
+        "interactionId": 3164
+      },
+      {
+        "name": "mouseup",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 16,
+        "interactionId": 3164
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["043-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 16,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["044-p.png"],
+    "action": "Pular",
+    "documentReset": false,
+    "clickToNextPaintMs": [28.69999998807907],
+    "clicks": [
+      {
+        "name": "Pular",
+        "at": 190345.10000002384,
+        "nextPaint": 28.69999998807907
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 32,
+        "interactionId": 3171
+      },
+      {
+        "name": "mousedown",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 32,
+        "interactionId": 3171
+      },
+      {
+        "name": "mouseup",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 32,
+        "interactionId": 3171
+      },
+      {
+        "name": "pointerover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 32,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 190353.69999998808,
+        "value": 0.0027884724934895836,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["045-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [
+      {
+        "name": "beforeinput",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "input",
+        "duration": 16,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["046-p.png"],
+    "action": "Enviar primeira tarefa ↵",
+    "documentReset": false,
+    "clickToNextPaintMs": [27.69999998807907],
+    "clicks": [
+      {
+        "name": "Enviar primeira tarefa ↵",
+        "at": 200174.80000001192,
+        "nextPaint": 27.69999998807907
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 24,
+        "interactionId": 3178
+      },
+      {
+        "name": "mousedown",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 24,
+        "interactionId": 3178
+      },
+      {
+        "name": "mouseup",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 24,
+        "interactionId": 3178
+      },
+      {
+        "name": "pointerout",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 16,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 200177.90000003576,
+        "value": 1.5136537905092593e-5,
+        "recentInput": true
+      },
+      {
+        "at": 200202,
+        "value": 0.001723304398148148,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["047-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["048-p.png"],
+    "action": "Continuar ↵",
+    "documentReset": false,
+    "clickToNextPaintMs": [32.89999997615814],
+    "clicks": [
+      {
+        "name": "Continuar ↵",
+        "at": 236776.40000003576,
+        "nextPaint": 32.89999997615814
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 40,
+        "interactionId": 3185
+      },
+      {
+        "name": "mousedown",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 40,
+        "interactionId": 3185
+      },
+      {
+        "name": "mouseup",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 40,
+        "interactionId": 3185
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["049-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 16,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["050-p.png"],
+    "action": "Pular",
+    "documentReset": false,
+    "clickToNextPaintMs": [25],
+    "clicks": [
+      {
+        "name": "Pular",
+        "at": 244340.30000001192,
+        "nextPaint": 25
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 24,
+        "interactionId": 3192
+      },
+      {
+        "name": "mousedown",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 24,
+        "interactionId": 3192
+      },
+      {
+        "name": "mouseup",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 24,
+        "interactionId": 3192
+      },
+      {
+        "name": "pointerover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 24,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 244345.30000001192,
+        "value": 0.0027884724934895836,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["051-p.png"],
+    "action": "Enviar primeira tarefa ↵",
+    "documentReset": false,
+    "clickToNextPaintMs": [27.399999976158142],
+    "clicks": [
+      {
+        "name": "Enviar primeira tarefa ↵",
+        "at": 248138.40000003576,
+        "nextPaint": 27.399999976158142
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 24,
+        "interactionId": 3199
+      },
+      {
+        "name": "mousedown",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 16,
+        "interactionId": 3199
+      },
+      {
+        "name": "mouseup",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 16,
+        "interactionId": 3199
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 248140.90000003576,
+        "value": 1.5136537905092593e-5,
+        "recentInput": true
+      },
+      {
+        "at": 248270.40000003576,
+        "value": 0.0008886844135802469,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["052-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 16,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerout",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 32,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["053-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": true,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["054-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["055-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["056-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [
+      {
+        "name": "beforeinput",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "input",
+        "duration": 24,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["057-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [
+      {
+        "name": "keydown",
+        "duration": 136,
+        "interactionId": 4005
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["058-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["059-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["060-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [
+      {
+        "name": "keydown",
+        "duration": 40,
+        "interactionId": 4012
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["061-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["062-p.png"],
+    "action": "suporte11:54",
+    "documentReset": false,
+    "clickToNextPaintMs": [24.899999976158142],
+    "clicks": [
+      {
+        "name": "suporte11:54",
+        "at": 99940.5,
+        "nextPaint": 24.899999976158142
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerover",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 64,
+        "interactionId": 4019
+      },
+      {
+        "name": "mousedown",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 64,
+        "interactionId": 4019
+      },
+      {
+        "name": "mouseup",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 64,
+        "interactionId": 4019
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 99987.89999997616,
+        "value": 1.037037037037037e-5,
+        "recentInput": true
+      },
+      {
+        "at": 100103.89999997616,
+        "value": 0.08360460069444445,
+        "recentInput": true
+      },
+      {
+        "at": 100111,
+        "value": 2.533950617283951e-5,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["063-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerout",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 32,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["064-p.png"],
+    "action": "geral11:58",
+    "documentReset": false,
+    "clickToNextPaintMs": [55.59999996423721],
+    "clicks": [
+      {
+        "name": "geral11:58",
+        "at": 109546.30000001192,
+        "nextPaint": 55.59999996423721
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 80,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 80,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 80,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 80,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 80,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 80,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 80,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 80,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 80,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 80,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 80,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 80,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 80,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 80,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 80,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 80,
+        "interactionId": 4026
+      },
+      {
+        "name": "mousedown",
+        "duration": 80,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 80,
+        "interactionId": 4026
+      },
+      {
+        "name": "mouseup",
+        "duration": 80,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 80,
+        "interactionId": 4026
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["065-p.png"],
+    "action": "Detalhes do erro",
+    "documentReset": false,
+    "clickToNextPaintMs": [27.69999998807907],
+    "clicks": [
+      {
+        "name": "Detalhes do erro",
+        "at": 118462.69999998808,
+        "nextPaint": 27.69999998807907
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 32,
+        "interactionId": 4033
+      },
+      {
+        "name": "mousedown",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 32,
+        "interactionId": 4033
+      },
+      {
+        "name": "mouseup",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 32,
+        "interactionId": 4033
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 118465.09999996424,
+        "value": 0.017374999999999998,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["066-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["067-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 32,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 32,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["068-p.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": true,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["069-p.png", "070-member.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["071-p.png", "072-member.png"],
+    "action": "Assumir",
+    "documentReset": false,
+    "clickToNextPaintMs": [63.19999998807907],
+    "clicks": [
+      {
+        "name": "Assumir",
+        "at": 11643.5,
+        "nextPaint": 63.19999998807907
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerover",
+        "duration": 104,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 104,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 104,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 104,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 104,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 104,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 104,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 104,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 104,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 104,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 104,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 104,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 104,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 104,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 104,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 104,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 104,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 104,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 104,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerout",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 144,
+        "interactionId": 1511
+      },
+      {
+        "name": "mousedown",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 144,
+        "interactionId": 1511
+      },
+      {
+        "name": "mouseup",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 144,
+        "interactionId": 1511
+      },
+      {
+        "name": "pointerover",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 144,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerout",
+        "duration": 88,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 88,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 88,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 88,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 88,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 88,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 88,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 88,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 88,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 88,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 11696.800000011921,
+        "value": 0.001040925925925926,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["073-p.png", "074-member.png"],
+    "action": "Devolver para Léo",
+    "documentReset": false,
+    "clickToNextPaintMs": [36.09999996423721],
+    "clicks": [
+      {
+        "name": "Devolver para Léo",
+        "at": 18032.80000001192,
+        "nextPaint": 36.09999996423721
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerdown",
+        "duration": 88,
+        "interactionId": 1518
+      },
+      {
+        "name": "mousedown",
+        "duration": 88,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 88,
+        "interactionId": 1518
+      },
+      {
+        "name": "mouseup",
+        "duration": 88,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 88,
+        "interactionId": 1518
+      },
+      {
+        "name": "pointerover",
+        "duration": 88,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 88,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerout",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 64,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 64,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": [
+      {
+        "at": 18057.19999998808,
+        "value": 0.001040925925925926,
+        "recentInput": true
+      }
+    ]
+  },
+  {
+    "frames": ["075-p.png", "076-member.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 112,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 112,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 112,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 112,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 112,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 112,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 112,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 112,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 112,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 112,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 112,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 112,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 112,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 112,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 112,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 112,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["077-p.png", "078-member.png"],
+    "action": "Observação ou edição sem novo clique medido",
+    "documentReset": false,
+    "clickToNextPaintMs": [],
+    "clicks": [],
+    "eventTiming": [],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["079-p.png", "080-member.png"],
+    "action": "Assumir",
+    "documentReset": false,
+    "clickToNextPaintMs": [39.40000003576279],
+    "clicks": [
+      {
+        "name": "Assumir",
+        "at": 54930.69999998808,
+        "nextPaint": 39.40000003576279
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerover",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 72,
+        "interactionId": 1525
+      },
+      {
+        "name": "mousedown",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 72,
+        "interactionId": 1525
+      },
+      {
+        "name": "mouseup",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 72,
+        "interactionId": 1525
+      },
+      {
+        "name": "pointerover",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 72,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerout",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 40,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 48,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 48,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  },
+  {
+    "frames": ["081-p.png", "082-member.png"],
+    "action": "Devolver para Léo",
+    "documentReset": false,
+    "clickToNextPaintMs": [28.599999964237213],
+    "clicks": [
+      {
+        "name": "Devolver para Léo",
+        "at": 60388.80000001192,
+        "nextPaint": 28.599999964237213
+      }
+    ],
+    "eventTiming": [
+      {
+        "name": "pointerout",
+        "duration": 56,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 56,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 56,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 56,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 56,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 56,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 56,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 56,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 56,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerdown",
+        "duration": 56,
+        "interactionId": 1532
+      },
+      {
+        "name": "mousedown",
+        "duration": 56,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerup",
+        "duration": 56,
+        "interactionId": 1532
+      },
+      {
+        "name": "mouseup",
+        "duration": 56,
+        "interactionId": 0
+      },
+      {
+        "name": "click",
+        "duration": 56,
+        "interactionId": 1532
+      },
+      {
+        "name": "pointerover",
+        "duration": 56,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 56,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerout",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerleave",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerover",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "pointerenter",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseout",
+        "duration": 24,
+        "interactionId": 0
+      },
+      {
+        "name": "mouseover",
+        "duration": 24,
+        "interactionId": 0
+      }
+    ],
+    "longTasksWithin500ms": [],
+    "layoutShiftsWithin500ms": []
+  }
+]
