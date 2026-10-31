@@ -1,7 +1,8 @@
 import { afterEach, expect, test } from "bun:test"
 import { randomBytes } from "node:crypto"
 import { setImmediate } from "node:timers/promises"
-import { compressBufferedResponse, compressedVariants } from "../../src/cli/web/compression"
+import { brotliDecompressSync } from "node:zlib"
+import { compressBufferedResponse, compressedVariants, createCompressionRunner } from "../../src/cli/web/compression"
 
 const cleanups = new Set<() => void>()
 
@@ -10,6 +11,60 @@ afterEach(() => {
     close()
   })
   cleanups.clear()
+})
+
+test("compression admission bounds retained bytes until native work finishes", async () => {
+  const run = createCompressionRunner()
+  const held = Promise.withResolvers<number>()
+  const first = run(64 * 1024 * 1024, () => held.promise)
+
+  expect(run(1, () => Promise.resolve(2))).toBeNull()
+  held.resolve(1)
+  expect(await first).toBe(1)
+
+  expect(await run(64 * 1024 * 1024, () => Promise.resolve(2))).toBe(2)
+})
+
+test("compression admission bounds waiting jobs and recovers capacity", async () => {
+  const run = createCompressionRunner()
+  const held = Promise.withResolvers<number>()
+  const jobs = Array.from({ length: 64 }, () => run(1, () => held.promise))
+
+  expect(run(1, () => Promise.resolve(2))).toBeNull()
+  held.resolve(1)
+  await Promise.all(jobs)
+
+  expect(await run(1, () => Promise.resolve(2))).toBe(2)
+})
+
+test("failed native compression releases admission and does not block later work", async () => {
+  const run = createCompressionRunner()
+  const first = run(64 * 1024 * 1024, () => Promise.reject(new Error("synthetic compression failure")))
+
+  await expect(first).rejects.toThrow("synthetic compression failure")
+
+  expect(await run(64 * 1024 * 1024, () => Promise.resolve(2))).toBe(2)
+})
+
+test("saturated HTTP compression preserves identity bodies and encoding headers", async () => {
+  const body = "synthetic response content\n".repeat(150)
+  const request = new Request("https://app.example.test/large-response", { headers: { "Accept-Encoding": "br" } })
+  const getResponse = () =>
+    compressBufferedResponse(request, new Response(body, { headers: { "Content-Type": "text/plain" } }))
+
+  const responses = await Promise.all(Array.from({ length: 65 }, getResponse))
+  const contents = await Promise.all(
+    responses.map(async (response) => {
+      const bytes = new Uint8Array(await response.arrayBuffer())
+      const decoded = response.headers.has("content-encoding") ? brotliDecompressSync(bytes) : bytes
+
+      return new TextDecoder().decode(decoded)
+    }),
+  )
+
+  expect(responses.some((response) => !response.headers.has("content-encoding"))).toBe(true)
+  expect(contents.every((content) => content === body)).toBe(true)
+  expect(responses.every((response) => response.headers.get("vary") === "Accept-Encoding")).toBe(true)
 })
 
 test.each(["embedded", "directory"])("%s startup compression keeps the request loop responsive", async (source) => {

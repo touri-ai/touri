@@ -27,8 +27,8 @@ const acceptedEncoding = (header: string | null): Encoding | null => {
   return br >= gzip ? "br" : "gzip"
 }
 
-const getCompressedBytes = (bytes: Uint8Array<ArrayBuffer>, encoding: Encoding): Promise<Uint8Array<ArrayBuffer>> =>
-  runCompression(async () => {
+const getCompressedBytes = (bytes: Uint8Array<ArrayBuffer>, encoding: Encoding): Promise<Uint8Array<ArrayBuffer>> => {
+  const pending = runCompression(bytes.byteLength, async () => {
     const compressed = await (encoding === "br"
       ? compressBrotli(bytes, { params: { [constants.BROTLI_PARAM_QUALITY]: 4 } })
       : compressGzip(bytes, { level: 4 }))
@@ -36,16 +36,29 @@ const getCompressedBytes = (bytes: Uint8Array<ArrayBuffer>, encoding: Encoding):
     return new Uint8Array(compressed)
   })
 
-function createCompressionRunner() {
-  // This resource boundary serializes native jobs so cold assets leave CPU for live requests.
-  let previous: Promise<void> = Promise.resolve()
+  // An identity response remains usable when compression admission is full.
+  return pending ?? Promise.resolve(bytes)
+}
 
-  return <Result>(compress: () => Promise<Result>): Promise<Result> => {
+export function createCompressionRunner() {
+  // Local counters bound retained input while native jobs execute one at a time.
+  let previous: Promise<void> = Promise.resolve()
+  let pendingBytes = 0
+  let pendingJobs = 0
+
+  return <Result>(size: number, compress: () => Promise<Result>): Promise<Result> | null => {
+    if (pendingBytes + size > 64 * 1024 * 1024 || pendingJobs >= 64) return null
+
+    pendingBytes += size
+    pendingJobs += 1
+    const release = () => {
+      pendingBytes -= size
+      pendingJobs -= 1
+
+      return setImmediate()
+    }
     const pending = previous.then(compress)
-    previous = pending.then(
-      () => setImmediate(),
-      () => setImmediate(),
-    )
+    previous = pending.then(release, release)
 
     return pending
   }
