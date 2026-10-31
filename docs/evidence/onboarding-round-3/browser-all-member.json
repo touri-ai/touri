@@ -1,0 +1,122 @@
+{
+  "clicks": [],
+  "longtasks": [
+    {
+      "at": 177.19999998807907,
+      "duration": 73
+    },
+    {
+      "at": 255.79999995231628,
+      "duration": 74
+    }
+  ],
+  "shifts": [
+    {
+      "at": 665,
+      "value": 0.011963888888888888,
+      "recentInput": false
+    },
+    {
+      "at": 5085,
+      "value": 5.077160493827161e-5,
+      "recentInput": false
+    },
+    {
+      "at": 40692.799999952316,
+      "value": 0.8950054684651841,
+      "recentInput": true
+    }
+  ],
+  "events": [
+    {
+      "name": "pointerout",
+      "duration": 56,
+      "interactionId": 0
+    },
+    {
+      "name": "pointerover",
+      "duration": 56,
+      "interactionId": 0
+    },
+    {
+      "name": "pointerenter",
+      "duration": 56,
+      "interactionId": 0
+    },
+    {
+      "name": "pointerenter",
+      "duration": 56,
+      "interactionId": 0
+    },
+    {
+      "name": "pointerenter",
+      "duration": 56,
+      "interactionId": 0
+    },
+    {
+      "name": "pointerenter",
+      "duration": 56,
+      "interactionId": 0
+    },
+    {
+      "name": "pointerenter",
+      "duration": 56,
+      "interactionId": 0
+    },
+    {
+      "name": "pointerenter",
+      "duration": 56,
+      "interactionId": 0
+    },
+    {
+      "name": "pointerenter",
+      "duration": 56,
+      "interactionId": 0
+    },
+    {
+      "name": "pointerenter",
+      "duration": 56,
+      "interactionId": 0
+    },
+    {
+      "name": "pointerenter",
+      "duration": 56,
+      "interactionId": 0
+    },
+    {
+      "name": "pointerenter",
+      "duration": 56,
+      "interactionId": 0
+    },
+    {
+      "name": "mouseout",
+      "duration": 56,
+      "interactionId": 0
+    },
+    {
+      "name": "mouseover",
+      "duration": 56,
+      "interactionId": 0
+    },
+    {
+      "name": "pointerover",
+      "duration": 104,
+      "interactionId": 0
+    },
+    {
+      "name": "pointerenter",
+      "duration": 104,
+      "interactionId": 0
+    },
+    {
+      "name": "pointerenter",
+      "duration": 104,
+      "interactionId": 0
+    },
+    {
+      "name": "mouseover",
+      "duration": 104,
+      "interactionId": 0
+    }
+  ]
+}

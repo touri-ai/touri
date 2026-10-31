@@ -1,0 +1,52 @@
+[
+  {
+    "sample": "onboarding-runtime-metrics",
+    "clicks": 27,
+    "paintP95Ms": 159.69999998807907,
+    "eventP95Ms": 160,
+    "longTasks": 1,
+    "maxLongTaskMs": 52,
+    "cls": 0.01117890769675926,
+    "layoutShiftSumWithoutRecentInput": 0.012196370050877701
+  },
+  {
+    "sample": "history-runtime-metrics",
+    "clicks": 3,
+    "paintP95Ms": 55.59999996423721,
+    "eventP95Ms": 136,
+    "longTasks": 1,
+    "maxLongTaskMs": 121,
+    "cls": 0.13606159143518518,
+    "layoutShiftSumWithoutRecentInput": 0.23929453526626399
+  },
+  {
+    "sample": "browser-desktop-requester",
+    "clicks": 2,
+    "paintP95Ms": 63.19999998807907,
+    "eventP95Ms": 144,
+    "longTasks": 1,
+    "maxLongTaskMs": 58,
+    "cls": 0.01616814814814815,
+    "layoutShiftSumWithoutRecentInput": 0.01616814814814815
+  },
+  {
+    "sample": "browser-all-requester",
+    "clicks": 4,
+    "paintP95Ms": 63.19999998807907,
+    "eventP95Ms": 144,
+    "longTasks": 1,
+    "maxLongTaskMs": 58,
+    "cls": 0.01616814814814815,
+    "layoutShiftSumWithoutRecentInput": 0.01616814814814815
+  },
+  {
+    "sample": "browser-all-member",
+    "clicks": 0,
+    "paintP95Ms": null,
+    "eventP95Ms": null,
+    "longTasks": 2,
+    "maxLongTaskMs": 74,
+    "cls": 0.011963888888888888,
+    "layoutShiftSumWithoutRecentInput": 0.01201466049382716
+  }
+]
