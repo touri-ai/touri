@@ -115,3 +115,42 @@ test("returning to cached messages retries a failed run snapshot", async () => {
   expect(hook.result.current.data.messages.some((message) => message.threadId === "thread-mark")).toBe(true)
   await waitFor(() => expect(hook.result.current.data.notice).toBeNull())
 })
+
+test.each(["GET /groups", "GET /groups/:id/threads"])(
+  "a failed %s refresh preserves the conversation and recovers in place",
+  async (failedRoute) => {
+    const api = createMockApi()
+    const { group, thread } = await api.request("POST /groups", {
+      name: "Canal exemplo",
+      color: "#558866",
+      memberIds: ["bot-mark"],
+    })
+    await api.request(
+      "POST /threads/:id/messages",
+      { text: "Mensagem preservada.", parentId: null, attachmentIds: [] },
+      { id: thread.id },
+    )
+    let failing = false
+    const request: ApiRequest = async (route, input, path, transport) => {
+      if (failing && route === failedRoute) throw new ApiError(503, "RUNTIME_DRAINING")
+      return api.request(route, input, path, transport)
+    }
+    const hook = renderHook(() => useWorkspace({ ...api, request }))
+    await waitFor(() => expect(hook.result.current.data.loaded).toBe(true))
+    act(() => hook.result.current.actions.selectThread(thread.id))
+    await waitFor(() =>
+      expect(hook.result.current.data.messages.some((message) => message.text === "Mensagem preservada.")).toBe(true),
+    )
+
+    failing = true
+    await act(() => hook.result.current.actions.refresh())
+
+    expect(hook.result.current.data.channelFailures?.[group.id]).toMatchObject({ kind: "restarting" })
+    expect(hook.result.current.data.notice).toBeNull()
+    expect(hook.result.current.data.messages.some((message) => message.text === "Mensagem preservada.")).toBe(true)
+    expect(hook.result.current.data.threads.some((item) => item.id === thread.id)).toBe(true)
+    failing = false
+    await act(() => hook.result.current.actions.refresh())
+    await waitFor(() => expect(hook.result.current.data.channelFailures?.[group.id]).toBeUndefined())
+  },
+)

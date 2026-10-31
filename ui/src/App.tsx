@@ -681,7 +681,9 @@ const AppContent = ({ kernel }: AppProps) => {
     data.threadCreation?.thread ?? data.threads.find((thread) => thread.id === data.selectedThreadId) ?? null
   const selectedGroup = data.groups.find((g) => g.id === selectedThread?.groupId) ?? null
   const historyFailure =
-    data.historyFailure && data.historyFailure.threadId === selectedThread?.id ? data.historyFailure : null
+    data.historyFailure && data.historyFailure.threadId === selectedThread?.id
+      ? data.historyFailure
+      : (data.channelFailures?.[selectedGroup?.id ?? ""] ?? null)
   const modeSelections = useRef<Partial<Record<WorkspaceMode, ModeSelection>>>({})
   const [sidebarModeRequest, setSidebarModeRequest] = useState<{ mode: WorkspaceMode; id: number } | null>(null)
   const selectedChannel = Boolean(selectedThread?.groupId || selectedThread?.groupThreadId)

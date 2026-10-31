@@ -9,6 +9,7 @@ import "../../src/styles.css"
 declare global {
   interface Window {
     historyFailing?: boolean
+    historyRefreshIndex?: (failing: boolean) => void
   }
 }
 
@@ -31,9 +32,17 @@ await base.request(
   { text: "valide esse perfil e veja os posts", parentId: null, attachmentIds: [], sendId: crypto.randomUUID() },
   { id: secondary.id },
 )
-window.historyFailing = true
+const indexScenario = new URLSearchParams(location.search).has("index")
+window.historyFailing = !indexScenario
+let indexFailing = false
+window.historyRefreshIndex = (failing) => {
+  indexFailing = failing
+  if (failing) base.emit({ type: "transcript.resync" })
+}
 // The exact refusal a restarting server sends while it drains active runs.
 const request: ApiRequest = async (route, input, path, transport) => {
+  if (indexFailing && route === "GET /groups/:id/threads")
+    throw new ApiError(503, '{"errorCode":"RUNTIME_DRAINING"}', "RUNTIME_DRAINING")
   if (window.historyFailing && path?.id === secondary.id && route === "GET /threads/:id/messages")
     throw new ApiError(503, '{"errorCode":"RUNTIME_DRAINING"}', "RUNTIME_DRAINING")
   return base.request(route, input, path, transport)

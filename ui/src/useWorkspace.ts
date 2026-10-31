@@ -71,6 +71,7 @@ export type WorkspaceData = {
   historyNotice?: string | null
   /** The selected conversation's last failed read, shown inside the conversation instead of the app notice. */
   historyFailure?: HistoryFailure | null
+  channelFailures?: Record<string, HistoryFailure>
   channelNotice?: string | null
   channelCacheIdentity?: { scope: string | null; personId: string }
   groups: Array<BotGroup>
@@ -1246,20 +1247,45 @@ export const useWorkspace = (
           if (attempt === generation.current) setData((current) => ({ ...current, groups: response.groups }))
           return { ...response, loaded: true, notice: null }
         })
-        .catch((error: unknown) => ({
-          groups: [],
-          loaded: false,
-          notice: t("Service request failed", { error: getServiceErrorMessage(error) }),
-        }))
+        .catch((error: unknown) => {
+          const groups = currentData.current.groups
+          const failure = getHistoryFailure(error)
+          if (attempt === generation.current && groups.length)
+            setData((current) => ({
+              ...current,
+              channelFailures: Object.fromEntries(groups.map((group) => [group.id, failure])),
+            }))
+          return {
+            groups,
+            loaded: false,
+            notice: groups.length ? null : t("Service request failed", { error: getServiceErrorMessage(error) }),
+          }
+        })
       const groupThreadsRequest = groupsRequest
-        .then(({ groups }) =>
+        .then(({ groups, loaded }) =>
           Promise.all(
             groups.map(async (group) => {
-              const response = await api.request("GET /groups/:id/threads", {}, { id: group.id })
+              if (!loaded)
+                return { threads: currentData.current.threads.filter((thread) => thread.groupId === group.id) }
+              const response = await api
+                .request("GET /groups/:id/threads", {}, { id: group.id })
+                .catch((error: unknown) => {
+                  if (attempt === generation.current)
+                    setData((current) => ({
+                      ...current,
+                      channelFailures: { ...current.channelFailures, [group.id]: getHistoryFailure(error) },
+                    }))
+                  return null
+                })
+              if (!response)
+                return { threads: currentData.current.threads.filter((thread) => thread.groupId === group.id) }
               if (attempt === generation.current)
                 setData((current) =>
                   Object.assign({}, current, {
                     threads: mergeThreads(current.threads, response.threads),
+                    channelFailures: Object.fromEntries(
+                      Object.entries(current.channelFailures ?? {}).filter(([id]) => id !== group.id),
+                    ),
                     readyGroupIds: (current.readyGroupIds ?? []).filter((id) => id !== group.id).concat(group.id),
                   }),
                 )
@@ -1464,7 +1490,18 @@ export const useWorkspace = (
       const notice = api.isMock
         ? "Demo data · sidecar services are optional"
         : t("Service request failed", { error: getServiceErrorMessage(error) })
-      setData((current) => ({ ...current, loading: false, notice, channelNotice: notice }))
+      setData((current) => {
+        const selected = current.threads.find((thread) => thread.id === current.selectedThreadId)
+        if (!selected?.groupId || !isServiceUnavailable(error))
+          return { ...current, loading: false, notice, channelNotice: notice }
+        return {
+          ...current,
+          loading: false,
+          notice: null,
+          channelNotice: null,
+          historyFailure: { ...getHistoryFailure(error), threadId: current.selectedThreadId },
+        }
+      })
     } finally {
       if (attempt === generation.current) completedDuringLoad.current = null
     }
@@ -1823,11 +1860,20 @@ export const useWorkspace = (
     }
     const hasFailedHistory = (): boolean => {
       const failure = currentData.current.historyFailure
-      return Boolean(failure && failure.kind !== "deleted" && failure.threadId === currentData.current.selectedThreadId)
+      const thread = currentData.current.threads.find((thread) => thread.id === currentData.current.selectedThreadId)
+      const channelFailure = currentData.current.channelFailures?.[thread?.groupId ?? ""]
+      return Boolean(
+        channelFailure ||
+          (failure && failure.kind !== "deleted" && failure.threadId === currentData.current.selectedThreadId),
+      )
     }
     const refreshOnReturn = (): void => {
       // Cursor-aware transports reconnect on return and replay changes without refetching valid history.
       if (api.cursorReady && !currentData.current.notice && !hasFailedHistory()) return
+      if (Object.keys(currentData.current.channelFailures ?? {}).length) {
+        void load()
+        return
+      }
       refreshAttention()
     }
     let wasHidden = document.visibilityState === "hidden"
@@ -1843,6 +1889,10 @@ export const useWorkspace = (
     const unsubscribeConnection = api.subscribeConnection?.((connected) => {
       if (!connected) return
       if (snapshotUnavailable.current || !currentData.current.loaded) {
+        resync()
+        return
+      }
+      if (Object.keys(currentData.current.channelFailures ?? {}).length) {
         resync()
         return
       }
