@@ -1,3 +1,4 @@
+import type { ApiRoutes } from "@touri/contracts"
 import { createRoot } from "react-dom/client"
 import App from "../../src/App"
 import type { ApiRequest, UiApi } from "../../src/api/client"
@@ -42,6 +43,13 @@ const request: ApiRequest = async (route, input, path, transport) => {
   if (window.serverStopped) throw new ApiError(0, "", undefined, "TOURI-E1009")
   if (window.historyFailing && path?.id === secondary.id && route === "GET /threads/:id/messages")
     throw new ApiError(503, '{"errorCode":"RUNTIME_DRAINING"}', "RUNTIME_DRAINING")
+  if (route === "GET /groups/:id/threads") {
+    const response = await base.request("GET /groups/:id/threads", {}, { id: path?.id ?? "" })
+    // Same-millisecond random IDs must not choose which conversation is the channel's main one.
+    return {
+      threads: response.threads.map((thread) => ({ ...thread, createdAt: thread.id === main.id ? 1 : 2 })),
+    } as ApiRoutes[typeof route]["res"]
+  }
   return base.request(route, input, path, transport)
 }
 const api: UiApi = { ...base, request }

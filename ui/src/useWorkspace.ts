@@ -436,7 +436,8 @@ const bufferStreamEvent = (load: ThreadLoad | undefined, event: MessageStreamEve
 export const getIndexFailure = (data: WorkspaceData, notice: string, error: unknown, isMock = false): WorkspaceData => {
   const threadId = data.selectedThreadId
   const isOpen = Boolean(threadId && data.threads.some((thread) => thread.id === threadId))
-  if (isMock || !threadId || !isOpen) return { ...data, loading: false, notice, channelNotice: notice }
+  if (isMock || !threadId || !isOpen || !isUnreachable(error))
+    return { ...data, loading: false, notice, channelNotice: notice }
 
   return {
     ...data,
@@ -1130,7 +1131,7 @@ export const useWorkspace = (
                 ? updateMessage(current.activityMessages, activityMessage(offscreen))
                 : current.activityMessages,
               historyNotice: null,
-              historyFailure: null,
+              historyFailure: current.historyFailure?.index ? current.historyFailure : null,
               messages: (api.pendingMessages?.() ?? [])
                 .filter((message) => message.threadId === threadId)
                 .reduce(
@@ -1191,7 +1192,14 @@ export const useWorkspace = (
           return
         }
       }
-      const runsRequest = loadRuns().catch((error: unknown) => showReadFailure(error, false))
+      const runsRequest = loadRuns().catch(async (error: unknown) => {
+        showReadFailure(error, false)
+        if (!isUnreachable(error)) return
+
+        // Successful messages must not clear the connection failure of their companion run read.
+        await messagesRequest
+        showReadFailure(error, false)
+      })
       const promise = Promise.all([messagesRequest, runsRequest])
         .then(() => undefined)
         .finally(() => {

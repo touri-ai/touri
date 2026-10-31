@@ -13,12 +13,13 @@ import { getImportProgress, getToggle } from "./guide"
 
 export type ImportPreview = { sourceId: string; preview: AgentImportPreview }
 export type ImportSelection = Record<string, Record<string, AgentImportItemSelection>>
+type ImportedResult = AgentImportResult & { agentNames: string[] }
 export const useAgentImport = (api: UiApi) => {
   const [sources, setSources] = useState<AgentImportSource[]>([])
   const [selected, setSelected] = useState<string[]>([])
   const [previews, setPreviews] = useState<ImportPreview[]>([])
   const [selection, setSelection] = useState<ImportSelection>({})
-  const [results, setResults] = useState<AgentImportResult[]>([])
+  const [results, setResults] = useState<ImportedResult[]>([])
   const [importIds, setImportIds] = useState<Record<string, string>>({})
   const [progress, setProgress] = useState<AgentImportProgress[]>([])
   const [loading, setLoading] = useState(true)
@@ -161,9 +162,13 @@ export const useAgentImport = (api: UiApi) => {
         activePreview.current = preview.previewId
         activeKeys.current = Object.keys(select)
         const result = await api.request("POST /api/v1/import/apply", { previewId: preview.previewId, select })
+        const importedKeys = new Set(result.bots.map((bot) => bot.agentKey))
+        const agentNames = preview.agents
+          .filter((agent) => importedKeys.has(agent.key))
+          .map((agent) => agent.suggestedBotName)
         rememberImport(preview.previewId, result.importId)
         completed.current.add(preview.previewId)
-        setResults((previous) => [...previous, result])
+        setResults((previous) => [...previous, { ...result, agentNames }])
       }
       return true
     } catch (error) {

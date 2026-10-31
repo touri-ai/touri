@@ -268,6 +268,7 @@ const ImportUndo = ({
         <Button
           key={result.importId}
           variant="quiet"
+          className="ob-import-undo"
           disabled={imports.busy}
           onClick={() => void onUndo(result.importId)}
         >
