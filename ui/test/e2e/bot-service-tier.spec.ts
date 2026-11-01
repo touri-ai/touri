@@ -14,6 +14,7 @@ test.afterEach(async () => {
 })
 
 const openSettings = async (page: Page) => {
+  await expect(page.getByRole("textbox", { name: "Mensagem para Lia", exact: true })).toBeVisible()
   const drawer = page.getByRole("dialog", { name: "Barra lateral", exact: true })
   const menu = page.getByRole("button", { name: "Abrir menu", exact: true })
   if ((await menu.isVisible()) && !(await drawer.isVisible())) await menu.click()
@@ -36,12 +37,13 @@ for (const theme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme: theme })
       await page.addInitScript((appearance) => localStorage.setItem("touri.appearance.v1", appearance), theme)
       await page.goto(server.serverUrl)
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
       const settings = await openSettings(page)
       const toggle = settings.getByRole("switch", { name: "Modo rápido", exact: true })
       await expect(toggle).not.toBeChecked()
       await expect(toggle).toHaveAccessibleDescription("Respostas mais rápidas, com custo maior")
 
-      await toggle.check()
+      await toggle.click()
       await expect(toggle).toBeChecked()
       expect(
         ((await server.api("/bots")).bots as Bot[]).find((candidate) => candidate.id === bot.id)?.serviceTier,
@@ -60,7 +62,7 @@ for (const theme of ["light", "dark"] as const) {
       const reopened = await openSettings(page)
       const persisted = reopened.getByRole("switch", { name: "Modo rápido", exact: true })
       await expect(persisted).toBeChecked()
-      await persisted.uncheck()
+      await persisted.click()
       await expect(persisted).not.toBeChecked()
       expect(
         ((await server.api("/bots")).bots as Bot[]).find((candidate) => candidate.id === bot.id)?.serviceTier,
