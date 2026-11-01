@@ -4,6 +4,7 @@ import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
 import type { Bot, BotGroup, Message, Thread } from "@touri/contracts"
 import seed from "../../../sidecar/test/fixtures/ui-seed.json" with { type: "json" }
+import { seedLegacyChannelHistory } from "./seed-channel-history"
 import { createWorkGoldenServer } from "./work-golden-server"
 
 let server: Awaited<ReturnType<typeof createWorkGoldenServer>> | null = null
@@ -162,23 +163,30 @@ const seedWorkHistory = async (current: Awaited<ReturnType<typeof createWorkGold
       return bot
     }),
   )
-  for (const groupIndex of [0, 1, 2]) {
-    const { group, thread } = (await current.api("/groups", "POST", {
-      name: ["Projetos", "Equipe", "Planejamento"][groupIndex],
-      color: "#558866",
-      avatarShape: "cercle",
-      memberIds: bots.slice(groupIndex * 3, groupIndex * 3 + 3).map((bot) => bot.id),
-      coordinatorBotId: null,
-    })) as { group: BotGroup; thread: Thread }
+  const channels = await Promise.all(
+    [0, 1, 2].map(
+      async (groupIndex) =>
+        current.api("/groups", "POST", {
+          name: ["Projetos", "Equipe", "Planejamento"][groupIndex],
+          color: "#558866",
+          avatarShape: "cercle",
+          memberIds: bots.slice(groupIndex * 3, groupIndex * 3 + 3).map((bot) => bot.id),
+          coordinatorBotId: null,
+        }) as Promise<{ group: BotGroup; thread: Thread }>,
+    ),
+  )
+  // Retain the original historical volume; live UI creation still requires a message anchor.
+  await seedLegacyChannelHistory(
+    current,
+    channels.map(({ thread }) => thread.id),
+    2,
+  )
+  for (const [groupIndex, { group, thread }] of channels.entries()) {
+    const { threads } = (await current.api(`/groups/${group.id}/threads`)) as { threads: Thread[] }
     for (const index of Array.from({ length: 45 }, (_, value) => value)) {
       const conversation =
-        index === 0
-          ? thread
-          : (
-              (await current.api(`/groups/${group.id}/threads`, "POST", { title: `Conversa ${index + 1}` })) as {
-                thread: Thread
-              }
-            ).thread
+        index === 0 ? thread : threads.find((candidate) => candidate.title === `Conversa ${index + 1}`)
+      if (!conversation) throw new Error("Missing synthetic legacy conversation")
       const messageCount = groupIndex * 45 + index < 80 ? 10 : 9
       let parentId: string | null = null
       for (const number of Array.from({ length: messageCount }, (_, value) => value)) {
