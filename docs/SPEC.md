@@ -1133,8 +1133,15 @@ canceling a group or a delegating caller, the server checks every browser reques
 affect, including work reached while delegation approval is still pending. A denial leaves all runs,
 browser control and pending turns unchanged; a browser leaf can still be canceled in isolation.
 
-Parar cancels the active group turns, their delegated work and pending group turns. Editing members
-or the coordinator requires idle group conversations. Eligible unfinished channel turns resume after
+Parar cancels the active group turns, their delegated work and pending group turns. Channel names,
+appearance, coordinator selection, member additions and idle-member removals remain editable while
+work continues. Removing a member with a queued, starting or running execution in this channel
+returns `409 GROUP_MEMBER_BUSY` with a bounded `busyBotId`; coordination records, private
+conversations and other channels do not make that member busy here. A rejected edit saves no
+changes. The dialog names the working bot in Portuguese or English and preserves pending edits
+for retry after completion. Edits preserve existing work and history; pending work rechecks current
+membership before dispatch so a removed member cannot start from an old turn snapshot.
+Eligible unfinished channel turns resume after
 restart and provider interruption, up to two automatic attempts recorded durably per original member
 turn. A newer queued request does not supersede an interrupted request: startup restores the
 interrupted request ahead of waiting requests, preserving its requester and continuation identity.
