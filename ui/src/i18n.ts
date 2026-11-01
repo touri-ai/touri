@@ -3081,6 +3081,13 @@ export const ptBR = {
   "local history / safe cut-over": "histórico local / migração",
   Source: "Origem",
   "Choose bots": "Escolher bots",
+  "Import options": "Opções",
+  "All bots from this archive will be imported.": "Todos os bots deste arquivo serão importados.",
+  "All archive bots": "Todos do arquivo",
+  "All archive bots count": "Todos do arquivo ({count})",
+  "Everything was already up to date": "Tudo já estava atualizado",
+  "Unchanged import counts":
+    "{messages} mensagens e {threads} conversas já estavam no touri. Nenhuma alteração necessária.",
   "Dry run": "Simulação",
   Import: "Importar",
   "Cut-over": "Migração",
@@ -6380,6 +6387,9 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Import message count": "{count} messages",
   "Imported conversation count": "{count} imported conversations",
   "Import counts": "{messages} and {threads}. Routines are paused.",
+  "All archive bots count": "All from archive ({count})",
+  "Unchanged import counts":
+    "{messages} messages and {threads} conversations were already in touri. No changes needed.",
   "Checks ready": "{count} checks ready",
   "Enable routine": "Enable {name}",
   "Avatar color": "Color {color}",

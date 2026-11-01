@@ -2,7 +2,7 @@ import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import AxeBuilder from "@axe-core/playwright"
-import { test as base, expect } from "@playwright/test"
+import { test as base, expect, type TestInfo } from "@playwright/test"
 import { openGlobalPage } from "./home-navigation"
 import { createServerModeFixture } from "./server-mode-fixture"
 
@@ -44,10 +44,16 @@ for (const width of [1440, 390]) {
       await openGlobalPage(page, "Importar")
       await page.locator("#legacy-root").fill(source)
       await page.getByRole("button", { name: "Continuar", exact: true }).click()
-      await page.screenshot({ path: info.outputPath(`${width}-${theme}-source-bots.png`), animations: "disabled" })
+      await page.screenshot({
+        path: getScreenshotPath(`${width}-${theme}-source-bots.png`, info),
+        animations: "disabled",
+      })
       await page.getByRole("button", { name: "Revisar importação", exact: true }).click()
-      await expect(page.locator(".review-grid")).toContainText("Todos")
-      await page.screenshot({ path: info.outputPath(`${width}-${theme}-review.png`), animations: "disabled" })
+      await expect(page.locator(".review-grid")).toContainText("Todos do arquivo")
+      await page.screenshot({
+        path: getScreenshotPath(`${width}-${theme}-review.png`, info),
+        animations: "disabled",
+      })
       const request = page.waitForRequest(
         (request) => request.url().endsWith("/imports/legacy") && request.method() === "POST",
       )
@@ -55,7 +61,10 @@ for (const width of [1440, 390]) {
       expect((await request).postDataJSON().botIds).toEqual([])
       await expect(page.locator(".success-card")).toContainText("11 mensagens", { timeout: 30_000 })
       await expect(page.locator(".success-card")).toContainText("5 conversas")
-      await page.screenshot({ path: info.outputPath(`${width}-${theme}-imported.png`), animations: "disabled" })
+      await page.screenshot({
+        path: getScreenshotPath(`${width}-${theme}-imported.png`, info),
+        animations: "disabled",
+      })
       const audit = await new AxeBuilder({ page })
         .include(".modal-card")
         .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
@@ -70,6 +79,24 @@ for (const width of [1440, 390]) {
       await openGlobalPage(page, "Importar")
       await page.locator("#legacy-root").fill(source)
       await page.getByRole("button", { name: "Continuar", exact: true }).click()
+      await page.getByRole("button", { name: "Revisar importação", exact: true }).click()
+      await page.getByRole("button", { name: "Simular importação", exact: true }).click()
+      await expect(page.locator(".review-grid")).toContainText("Todos do arquivo (3)")
+      await page.getByRole("button", { name: "Importar agora", exact: true }).click()
+      await expect(page.locator(".import-current-card")).toContainText("Tudo já estava atualizado")
+      await expect(page.locator(".import-current-card")).toContainText("11 mensagens e 5 conversas")
+      await expect(page.locator(".success-card")).toHaveCount(0)
+      await page.screenshot({
+        path: getScreenshotPath(`${width}-${theme}-unchanged.png`, info),
+        animations: "disabled",
+      })
+      await page.getByRole("button", { name: "Fechar diálogo", exact: true }).click()
+      if (width === 390) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+      await openGlobalPage(page, "Importar")
+      await page.locator("#legacy-root").fill(source)
+      await page.getByRole("button", { name: "Continuar", exact: true }).click()
+      await expect(page.getByText("Opções", { exact: true })).toBeVisible()
+      await expect(page.getByText("Todos os bots deste arquivo serão importados.")).toBeVisible()
       await page.getByRole("button", { name: "Revisar importação", exact: true }).click()
       await page.route("**/api/v1/imports/*", async (route) => {
         const response = await route.fetch()
@@ -97,8 +124,16 @@ for (const width of [1440, 390]) {
       await expect(page.getByRole("alert")).toBeVisible()
       await expect(page.locator(".success-card")).toHaveCount(0)
       await expect(page.getByRole("button", { name: "Tentar de novo", exact: true })).toBeInViewport()
-      await page.screenshot({ path: info.outputPath(`${width}-${theme}-empty-warning.png`), animations: "disabled" })
+      await page.screenshot({
+        path: getScreenshotPath(`${width}-${theme}-empty-warning.png`, info),
+        animations: "disabled",
+      })
       expect((await new AxeBuilder({ page }).include(".modal-card").analyze()).violations).toEqual([])
     })
   }
+}
+
+const getScreenshotPath = (name: string, info: TestInfo) => {
+  const evidence = process.env.TOURI_IMPORT_EVIDENCE_DIR
+  return evidence ? join(evidence, name) : info.outputPath(name)
 }

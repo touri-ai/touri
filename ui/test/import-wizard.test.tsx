@@ -88,25 +88,30 @@ it.each([false, true])("rejects an empty warning report (dry run: %s)", async (d
   expect(notice).not.toHaveBeenCalled()
 })
 
-it("accepts an idempotent import with warnings when records are already present", async () => {
-  const fixture = getFixture()
-  const report = getReport({ warnings: ["An optional attachment is unavailable."] })
-  fixture.getStatus.mockResolvedValue({
-    status: "succeeded",
-    report: {
-      ...report,
-      bots: { ...getCounts(0), unchanged: 1 },
-      threads: { ...getCounts(0), unchanged: 4 },
-      messages: { ...getCounts(0), unchanged: 23 },
-    },
-  })
-  openReview(fixture)
+it.each([{ warnings: [] }, { warnings: ["An optional attachment is unavailable."] }])(
+  "describes an unchanged import neutrally: %s",
+  async ({ warnings }) => {
+    const fixture = getFixture()
+    const report = getReport({ warnings })
+    fixture.getStatus.mockResolvedValue({
+      status: "succeeded",
+      report: {
+        ...report,
+        bots: { ...getCounts(0), unchanged: 1 },
+        threads: { ...getCounts(0), unchanged: 4 },
+        messages: { ...getCounts(0), unchanged: 23 },
+      },
+    })
+    openReview(fixture)
 
-  await clickRun(false)
+    await clickRun(false)
 
-  expect(screen.getByText(t("History is in touri"))).toBeVisible()
-  expect(screen.queryByRole("alert")).toBeNull()
-})
+    expect(screen.getByText(t("Everything was already up to date"))).toBeVisible()
+    expect(screen.getByText(t("Unchanged import counts", { messages: 23, threads: 4 }))).toBeVisible()
+    expect(document.querySelector(".success-card")).toBeNull()
+    expect(screen.queryByRole("alert")).toBeNull()
+  },
+)
 
 it.each([
   [
@@ -295,6 +300,7 @@ it("shows a completed dry-run report and clears it while the real import runs", 
 
   expect(screen.getByRole("heading", { name: t("Review a safe dry run") })).toBeVisible()
   expect(screen.getByText(t("Import step", { step: 3 }))).toBeVisible()
+  expect(screen.getByText(t("All archive bots count", { count: 1 }))).toBeVisible()
   expect(within(getReportView()).getByText("23", { selector: "dd" })).toBeVisible()
   expect(within(getReportView()).getByText("4", { selector: "dd" })).toBeVisible()
   expect(screen.getByText(`⚠ ${t("Imported routines stay disabled.")}`)).toBeVisible()

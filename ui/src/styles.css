@@ -4634,3 +4634,21 @@ button.brand-button:hover:not(:disabled) {
 .thread-context-header button {
   flex-shrink: 0;
 }
+
+.import-current-card {
+  display: flex;
+  gap: var(--space-8);
+  margin: var(--space-16) 0;
+  padding: var(--space-20);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.import-current-card strong {
+  font-size: var(--fs-title);
+}
+.import-current-card p {
+  margin: var(--space-4) 0 0;
+  font-size: var(--fs-body);
+  overflow-wrap: anywhere;
+}

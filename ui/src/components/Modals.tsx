@@ -155,6 +155,20 @@ export const ImportWizard = ({ api, onClose, onNotice }: ImportWizardProps) => {
     return () => controller.abort()
   }, [])
 
+  const reportCounts = report && [
+    report.bots,
+    report.threads,
+    report.messages,
+    report.routines,
+    report.attachments,
+    report.codexSessions,
+    report.memoryFiles,
+  ]
+  const isAlreadyUpdated = Boolean(
+    reportCounts?.some((count) => count.unchanged > 0) &&
+      reportCounts.every((count) => count.created + count.updated === 0),
+  )
+
   const run = async (dryRun: boolean): Promise<void> => {
     if (busy || !lifetime || lifetime.aborted) return
 
@@ -225,7 +239,7 @@ export const ImportWizard = ({ api, onClose, onNotice }: ImportWizardProps) => {
         tabIndex={0}
       >
         <div className="wizard-steps">
-          {[t("Source"), t("Choose bots"), t("Dry run"), t("Import"), t("Cut-over")].map((label, index) => (
+          {[t("Source"), t("Import options"), t("Dry run"), t("Import"), t("Cut-over")].map((label, index) => (
             <span className={index === step ? "wizard-active" : index < step ? "wizard-done" : ""} key={label}>
               <i>{index + 1}</i>
               <small className="wizard-step-label">{label}</small>
@@ -252,9 +266,7 @@ export const ImportWizard = ({ api, onClose, onNotice }: ImportWizardProps) => {
         {step === 1 && (
           <div className="wizard-content">
             <h3>{t("Import bots from the source archive")}</h3>
-            <div className="info-callout">
-              {t("All bots in the source archive will be imported. Existing local bots do not filter the archive.")}
-            </div>
+            <p>{t("All bots from this archive will be imported.")}</p>
             <label className="toggle-row import-warning">
               <span>
                 <strong>{t("Copy native Codex sessions")}</strong>
@@ -278,8 +290,14 @@ export const ImportWizard = ({ api, onClose, onNotice }: ImportWizardProps) => {
             </p>
             <div className="review-grid">
               <span>
-                {t("Selected bots")}
-                <strong>{t("All source bots")}</strong>
+                {t("Bots")}
+                <strong>
+                  {report
+                    ? t("All archive bots count", {
+                        count: report.bots.created + report.bots.updated + report.bots.unchanged,
+                      })
+                    : t("All archive bots")}
+                </strong>
               </span>
               <span>
                 {t("Attachments")}
@@ -304,11 +322,18 @@ export const ImportWizard = ({ api, onClose, onNotice }: ImportWizardProps) => {
         {step === 3 && report && (
           <div className="wizard-content">
             <h3>{t("Import finished")}</h3>
-            <div className="success-card">
-              <span>✓</span>
+            <div className={isAlreadyUpdated ? "import-current-card" : "success-card"}>
+              <span aria-hidden="true">{isAlreadyUpdated ? "=" : "✓"}</span>
               <div>
-                <strong>{t("History is in touri")}</strong>
-                <p>{t("Import counts", { messages: report.messages.created, threads: report.threads.created })}</p>
+                <strong>{t(isAlreadyUpdated ? "Everything was already up to date" : "History is in touri")}</strong>
+                <p>
+                  {isAlreadyUpdated
+                    ? t("Unchanged import counts", {
+                        messages: report.messages.unchanged,
+                        threads: report.threads.unchanged,
+                      })
+                    : t("Import counts", { messages: report.messages.created, threads: report.threads.created })}
+                </p>
               </div>
             </div>
             <ImportReportView report={report} showWarnings={!error} />
