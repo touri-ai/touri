@@ -440,6 +440,38 @@ test("two provider frames cannot overfill the per-message byte budget", async ()
   }
 })
 
+test("accepts contiguous part patches when a later index arrives first", async () => {
+  const f = await fixture()
+  cleanups.add(f.close)
+
+  const existingParts = Array.from({ length: 21 }, (_, index) => ({
+    type: "reasoning" as const,
+    text: `Parte ${index}`,
+  }))
+  const updated = f.store.updateMessage({
+    threadId: "t",
+    messageId: "a",
+    patch: { parts: existingParts },
+  })
+  expect(updated.success).toBe(true)
+
+  f.store.appendParts?.({
+    threadId: "t",
+    messageId: "a",
+    parts: [
+      { partIndex: 22, part: { type: "reasoning", text: "Última parte" } },
+      { partIndex: 21, part: { type: "text", text: "Parte intermediária" } },
+    ],
+  })
+  await f.store.flushWritesAsync?.()
+
+  const message = f.store.activePath({ threadId: "t", leafId: "a" })[0]
+  expect(message?.parts.slice(21)).toEqual([
+    { type: "text", text: "Parte intermediária" },
+    { type: "reasoning", text: "Última parte" },
+  ])
+})
+
 test("an invalid patch list leaves the cached projection unchanged", async () => {
   const f = await fixture()
   try {

@@ -503,12 +503,16 @@ export const createStreamWriter = ({
     )
       return
     const validateIndices = (initialLength: number): void => {
-      let length = initialLength
-      for (const patch of input.parts) {
-        if (!Number.isSafeInteger(patch.partIndex) || patch.partIndex < 0 || patch.partIndex > length)
-          throw new Error(`Invalid stream part index ${patch.partIndex} at length ${length}`)
-        if (patch.partIndex === length) length++
-      }
+      const invalid = input.parts.find(({ partIndex }) => !Number.isSafeInteger(partIndex) || partIndex < 0)
+      if (invalid) throw new Error(`Invalid stream part index ${invalid.partIndex} at length ${initialLength}`)
+
+      const appended = input.parts
+        .filter(({ partIndex }) => partIndex >= initialLength)
+        .map(({ partIndex }) => partIndex)
+      const maximum = appended.reduce((highest, partIndex) => Math.max(highest, partIndex), initialLength - 1)
+      if (maximum - initialLength + 1 === new Set(appended).size) return
+
+      throw new Error(`Invalid stream part index ${maximum} at length ${initialLength}`)
     }
     // A later invalid patch must not change offsets in the cached projection or
     // externalize an earlier part. Prepare the whole event before applying it.
