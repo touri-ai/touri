@@ -117,7 +117,7 @@ export const createGroupStore = (kernel: Kernel) => {
   const getMainThread = (groupId: string): Thread | null => {
     const row = db
       .query(
-        "SELECT id FROM threads WHERE group_id = ? AND group_thread_id IS NULL AND archived_at IS NULL ORDER BY created_at, id LIMIT 1",
+        "SELECT id FROM threads WHERE group_id = ? AND group_thread_id IS NULL AND parent_thread_id IS NULL AND archived_at IS NULL ORDER BY created_at, id LIMIT 1",
       )
       .get(groupId) as { id: string } | null
 

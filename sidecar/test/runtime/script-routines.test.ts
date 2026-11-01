@@ -51,6 +51,7 @@ test.each(["printf 'completed'", "printf ''", "printf '  [SILENT]\\n'", "printf 
     const run = await finished
 
     expect(run.runId).toBeNull()
+    expect(createGroupStore(fixture.runtime.kernel).threads(fixture.group.id)).toHaveLength(1)
     expect(fixture.db.query("SELECT id FROM runs").all()).toEqual([])
     const messages = fixture.db.query("SELECT role,text,sender_json FROM messages WHERE role='assistant'").all() as {
       text: string
@@ -223,13 +224,15 @@ const makeFixture = async (command: string) => {
   })
   expect(response.status).toBe(201)
   const { bot } = (await response.json()) as { bot: Bot }
-  const group = createGroupStore(runtime.kernel).save({
+  const groups = createGroupStore(runtime.kernel)
+  const group = groups.save({
     name: "Reports",
     color: "blue",
     avatarShape: "cercle",
     memberIds: [bot.id],
     coordinatorBotId: null,
   })
+  groups.createThread(group)
   const engine = createRuntimeEngine({ kernel: runtime.kernel })
   await engine.ready
   cleanups.add(async () => {

@@ -4608,3 +4608,22 @@ button.brand-button:hover:not(:disabled) {
 .chat-message-list .message-bubble[data-message-author="bot"] > .message-thread-replies {
   grid-area: replies;
 }
+
+.thread-context-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.thread-context-header strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.thread-context-header button {
+  flex-shrink: 0;
+}

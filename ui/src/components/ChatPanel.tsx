@@ -2004,6 +2004,20 @@ export const ChatPanel = ({
                   </div>
                 </header>
               )}
+              {thread.anchorMessageId && (
+                <div className="thread-context-header">
+                  <strong>{t("Thread · {title}", { title: thread.title })}</strong>
+                  {thread.parentThreadId && onSelectChannelThread && (
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() => thread.parentThreadId && onSelectChannelThread(thread.parentThreadId)}
+                    >
+                      {t("Voltar à conversa")}
+                    </button>
+                  )}
+                </div>
+              )}
               {historyNotice}
               {historyLoading && visibleMessages.length === 0 ? (
                 historyNotice ? null : (

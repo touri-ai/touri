@@ -107,22 +107,24 @@ export const getThreadRequest = (
     !db.query("SELECT 1 FROM group_members WHERE group_id = ? AND bot_id = ?").get(parent.groupId, ctx.botId)
   )
     return null
-  const canAccess = kernel.services.use("work.canAccessThread")
-  const personId = kernel.services.use("work.personForRun")?.(run.id)
-  const role = kernel.services.use("work.isAdminRun")?.(run.id) ? "admin" : "member"
-  if (canAccess && (!personId || !canAccess({ personId, role, threadId: parent.id }))) return null
   const linked = thread.groupThreadId
     ? (db
         .query(
-          "SELECT r.request_message_id, r.trigger, r.routine_run_id FROM group_run_links l JOIN runs r ON r.id = l.turn_id WHERE l.run_id = ? AND l.depth = 0 AND r.thread_id = ?",
+          "SELECT r.id, r.request_message_id, r.trigger, r.routine_run_id FROM group_run_links l JOIN runs r ON r.id = l.turn_id WHERE l.run_id = ? AND l.depth = 0 AND r.thread_id = ?",
         )
         .get(run.id, parent.id) as {
+        id: string
         request_message_id: string
         trigger: string
         routine_run_id: string | null
       } | null)
     : null
   if (thread.groupThreadId && (linked?.trigger !== "user" || linked.routine_run_id)) return null
+  const humanRunId = linked?.id ?? run.id
+  const canAccess = kernel.services.use("work.canAccessThread")
+  const personId = run.requesterPersonId ?? kernel.services.use("work.personForRun")?.(humanRunId)
+  const role = kernel.services.use("work.isAdminRun")?.(humanRunId) ? "admin" : "member"
+  if (canAccess && (!personId || !canAccess({ personId, role, threadId: parent.id }))) return null
   const message = store.getPathMessage?.({
     threadId: parent.id,
     messageId: linked?.request_message_id ?? run.requestMessageId,

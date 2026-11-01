@@ -95,3 +95,13 @@ it("omits children that repeat the channel name while keeping routines and named
 
   expect(children.map((thread) => thread.id)).toEqual([conversation.id, routine.id])
 })
+
+it("uses message reply links for anchored threads instead of duplicating feed cards", () => {
+  const { channel, routine, reply } = getFixture()
+  const anchored = { ...routine, id: "anchored", anchorMessageId: "message-plan", parentThreadId: channel.id }
+
+  const cards = getChannelThreadCards([channel, routine, anchored], [reply], "team")
+
+  expect(cards.map(({ thread }) => thread.id)).toEqual([routine.id])
+  expect(getChannelThreads([channel, anchored], "team").map((thread) => thread.id)).toEqual([channel.id, anchored.id])
+})

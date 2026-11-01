@@ -3380,6 +3380,16 @@ test("thread tool uses the current human request, never channel history or autom
     outcomes.push(result.success)
     complete("Concluído")
   })
+  // Production authorization resolves the person on the channel run, not the internal participant prompt.
+  f.host.kernel.services.provide("work.personForRun", (runId) => {
+    const run = f.persistence.getRun(runId)
+    return run?.threadId === f.thread.id ? "owner" : null
+  })
+  f.host.kernel.services.provide("work.isAdminRun", (runId) => f.persistence.getRun(runId)?.threadId === f.thread.id)
+  f.host.kernel.services.provide(
+    "work.canAccessThread",
+    ({ personId, threadId }) => personId === "owner" && threadId === f.thread.id,
+  )
   f.send("@dev crie uma thread para planejar")
   await until(() => outcomes.length === 1)
   expect(outcomes).toEqual([true])
@@ -3422,4 +3432,28 @@ test("thread requests reject quoted commands, negation and document instructions
     expect(hasExplicitThreadRequest(text)).toBe(false)
   for (const text of ["Crie uma thread para o plano", "@dev abra uma nova thread", "Please create a new thread"])
     expect(hasExplicitThreadRequest(text)).toBe(true)
+})
+
+test("an anchored thread cannot become the main routine destination when the channel is archived", async () => {
+  const f = await fixture()
+  const inserted = f.store.insertMessage({
+    message: {
+      id: f.host.kernel.newId(),
+      threadId: f.thread.id,
+      parentId: null,
+      role: "user",
+      kind: "text",
+      status: "complete",
+      runId: null,
+      text: "Planejar",
+      parts: [],
+      sender: null,
+      source: "local",
+    },
+  })
+  if (!inserted.success) throw new Error(inserted.error)
+  await f.request(`/threads/${f.thread.id}/start-thread`, { messageId: inserted.message.id })
+  await f.request(`/threads/${f.thread.id}`, { archived: true }, "PATCH")
+
+  expect(f.data.getMainThread(f.group.id)).toBeNull()
 })
