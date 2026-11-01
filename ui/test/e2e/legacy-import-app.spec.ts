@@ -32,7 +32,11 @@ for (const width of [1440, 390]) {
       }
       const capture = async (state: string) => {
         await expect(page.getByRole("dialog", { name: "Importar seus bots", exact: true })).toBeVisible()
-        await page.screenshot({ path: info.outputPath(`${width}-${theme}-${state}.png`), animations: "disabled" })
+        const filename = `${width}-${theme}-${state}.png`
+        const path = process.env.TOURI_E2E_EVIDENCE_DIR
+          ? `${process.env.TOURI_E2E_EVIDENCE_DIR}/${filename}`
+          : info.outputPath(filename)
+        await page.screenshot({ path, animations: "disabled" })
         const audit = await new AxeBuilder({ page })
           .include(".modal-card")
           .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
