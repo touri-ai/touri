@@ -1797,6 +1797,18 @@ Each imported text gets an FTS row.
 - Failed staging becomes eligible for cleanup at its persisted millisecond deadline. Cleanup visits at most 32 import records per pass, yields between records and removes expired snapshots asynchronously. A busy metadata write does not stop the rest of the batch or hide completed filesystem removals from the returned count. Metadata writes never wait for a SQLite writer; the existing scheduled pass resumes from the earliest deferred record, preserving unrelated report fields and reports changed by a concurrent retry.
 
 ### 7.4 Cut-over runbook (shown in the wizard's last step)
+
+The legacy import wizard stays on review while its background job runs. It checks the returned
+job ID sequentially, waiting one second after each status response, with a 30-second deadline per
+request. An unavailable status read retries that same job and shows a translated waiting message.
+Back, dry run and import actions stay disabled until a terminal result arrives. Closing the wizard
+cancels its requests and timers; it does not cancel the server's import.
+
+Success requires both `succeeded` and a report. The success card uses the report's actual message
+and conversation counts; it never substitutes zero for a missing report. A completed dry run stays
+on review with its report. A failed job shows its available report and warnings plus an explicit
+retry in the same mode. Starting another attempt clears the previous report and error.
+
 1. Import (dry run → real), then verify counts against the source: the per-bot thread and message counts, minus dropped kinds.
 2. Use touri for chats. Re-import any time to pick up new legacy app messages.
 3. When ready: on the source machine, disable the legacy app routines (or stop its service). Then run a final re-import, enable the routines in touri, and turn on launch-at-login.
