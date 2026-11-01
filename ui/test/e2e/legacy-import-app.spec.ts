@@ -42,6 +42,21 @@ for (const width of [1440, 390]) {
           .locator(".modal-card")
           .evaluate((element) => element.scrollWidth > element.clientWidth)
         expect(overflow).toBe(false)
+        if (width !== 390) return
+
+        const wrappedWords = await page.locator(".wizard-active .wizard-step-label").evaluate((label) => {
+          const text = label.firstChild
+          if (!text) throw new Error("The current import step has no label")
+
+          return Array.from((text.textContent ?? "").matchAll(/\S+/g)).flatMap((word) => {
+            const range = document.createRange()
+            range.setStart(text, word.index)
+            range.setEnd(text, word.index + word[0].length)
+
+            return range.getClientRects().length > 1 ? [word[0]] : []
+          })
+        })
+        expect(wrappedWords).toEqual([])
       }
       await server.api("/bots", "POST", { name: "Arquivo exemplo", provider: "codex" })
       await server.install(page)
