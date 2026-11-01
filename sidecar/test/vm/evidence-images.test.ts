@@ -380,3 +380,25 @@ test("guest pattern enumeration sniffs rasters, rejects links and stays within i
   expect(JSON.parse(result.stdout.toString())).toEqual({ names: ["round-good.png"] })
   expect(denied.exitCode).not.toBe(0)
 })
+
+test("image failures include specific codes and resolved paths", async () => {
+  const f = fixture()
+  f.bot.machine = "local"
+  f.bot.cwd = f.path
+  writeFileSync(join(f.path, "invalid.png"), "not an image")
+  writeFileSync(join(f.path, "large.png"), Buffer.alloc(MAX_IMAGE_BYTES + 1))
+
+  expect(await f.request({ path: "/outside/result.png" })).toMatchObject({
+    status: 403,
+    json: { errorCode: "IMAGE_OUTSIDE_WORKSPACE", path: "/outside/result.png" },
+  })
+  expect(await f.request({ path: "missing.png" })).toMatchObject({
+    status: 404,
+    json: { errorCode: "IMAGE_NOT_FOUND", path: join(f.path, "missing.png") },
+  })
+  expect(await f.request({ path: "invalid.png" })).toMatchObject({
+    status: 422,
+    json: { errorCode: "IMAGE_UNSUPPORTED" },
+  })
+  expect(await f.request({ path: "large.png" })).toMatchObject({ status: 422, json: { errorCode: "IMAGE_TOO_LARGE" } })
+})

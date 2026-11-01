@@ -39,3 +39,28 @@ test("current stores gain image lookup indexes once without replaying history mi
     value: "1",
   })
 })
+
+test("current stores index assistant image references without rewriting historical messages", async () => {
+  const root = await mkdtemp(join(tmpdir(), "touri-response-image-index-"))
+  const filename = join(root, "touri.db")
+  const original = openDatabase({ filename })
+  original.exec(
+    "DELETE FROM schema_meta WHERE key='response_image_references_version'; DROP TRIGGER messages_attachment_refs_insert; DROP TRIGGER messages_attachment_refs_update",
+  )
+  original.close()
+  const database = openDatabase({ filename })
+  cleanups.add(async () => {
+    database.close()
+    await rm(root, { recursive: true, force: true })
+  })
+
+  const trigger = database
+    .query("SELECT sql FROM sqlite_schema WHERE name = 'messages_attachment_refs_insert'")
+    .get() as { sql: string }
+
+  expect(trigger.sql).toContain("'$.images'")
+  expect(database.query("SELECT value FROM schema_meta WHERE key='response_image_references_version'").get()).toEqual({
+    value: "1",
+  })
+  expect(database.query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" })
+})

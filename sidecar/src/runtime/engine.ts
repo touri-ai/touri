@@ -91,6 +91,7 @@ import { reapProviderProcesses } from "./provider-processes"
 import { formatRoutineTitle, nextCronSlot, parseCron, previousCronSlot, validTimezone } from "./routines/cron"
 import { createScriptRoutines } from "./routines/scripts"
 import { createRunSupervision, RUN_CANCEL_GRACE_MS, waitForProviderCompletion } from "./run-supervision"
+import { saveResponseImages } from "./save-response-images"
 import { sessionFingerprint, workingDirectory } from "./session"
 import { canRecoverSession, hasTurnResponse, SESSION_RECOVERY_MESSAGE } from "./session-recovery"
 import { getStartupReply, getStartupRuns } from "./startup-runs"
@@ -1005,7 +1006,22 @@ export const createRuntimeEngine = ({
     )
     if (!isCurrent()) return () => false
 
-    state.parts = externalized
+    const bot = store.getBot({ botId: run.botId })
+    const captured = bot
+      ? await saveResponseImages({
+          kernel,
+          database,
+          bot,
+          parts: externalized,
+          signal: AbortSignal.any([
+            controllers.get(run.id)?.signal ?? AbortSignal.timeout(30_000),
+            AbortSignal.timeout(30_000),
+          ]),
+        })
+      : externalized
+    if (!isCurrent()) return () => false
+
+    state.parts = captured
     state.preparedFinish = measureStage("runtime_part_finalization", () =>
       tools.prepareFinish(run, state.parts, reason),
     )

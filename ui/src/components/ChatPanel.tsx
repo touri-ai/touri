@@ -1094,6 +1094,7 @@ const MessageBubbleRow = ({
   const bot = senderBot ?? threadBot
   const evidenceBot = senderBot ?? (message.sender ? undefined : threadBot)
   const imageVersion = `${message.id}:${message.status === "streaming" ? "streaming" : message.updatedAt}`
+  // biome-ignore lint/correctness/useExhaustiveDependencies: imageVersion invalidates final attachment references without restarting image loads on each streamed part
   const evidence = useMemo(
     () =>
       evidenceBot && api
@@ -1101,6 +1102,7 @@ const MessageBubbleRow = ({
             api,
             bot: evidenceBot,
             imageVersion,
+            imageAttachments: message.parts.flatMap((part) => (part.type === "text" ? (part.images ?? []) : [])),
             onLayoutChange: () => onImageLoad(message.id),
             onLibrary: parentEvidence?.onLibrary
               ? (path: string) => parentEvidence.onLibrary?.(path, evidenceBot.id)

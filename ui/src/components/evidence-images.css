@@ -114,3 +114,11 @@
   object-fit: contain;
   user-select: none;
 }
+
+.evidence-image > .text-button {
+  margin-inline-end: 12px;
+}
+.evidence-path {
+  overflow-wrap: anywhere;
+  display: block;
+}
