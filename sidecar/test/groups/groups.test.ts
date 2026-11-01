@@ -3445,6 +3445,13 @@ test("thread requests reject quoted commands, negation and document instructions
 
 test("an anchored thread cannot become the main routine destination when the channel is archived", async () => {
   const f = await fixture()
+  const engine = routineEngine(f)
+  const created = engine.createRoutine({
+    input: groupRoutine(f, { continuity: "main-thread", resultsThreadId: null }),
+    forceDisabled: false,
+  })
+  if (!created.success) throw new Error(created.error)
+  const scheduledFor = Date.now()
   const inserted = f.store.insertMessage({
     message: {
       id: f.host.kernel.newId(),
@@ -3464,7 +3471,21 @@ test("an anchored thread cannot become the main routine destination when the cha
   await f.request(`/threads/${f.thread.id}/start-thread`, { messageId: inserted.message.id })
   await f.request(`/threads/${f.thread.id}`, { archived: true }, "PATCH")
 
+  const unavailable = engine.runRoutine({ routineId: created.routine.id, triggerSource: "manual", scheduledFor })
+
   expect(f.data.getMainThread(f.group.id)).toBeNull()
+  expect(unavailable).toMatchObject({
+    success: false,
+    error: "Reabra a conversa principal do canal para executar a rotina.",
+  })
+  expect(engine.listRoutineRuns(created.routine.id)).toEqual([])
+
+  await f.request(`/threads/${f.thread.id}`, { archived: false }, "PATCH")
+  const restored = engine.runRoutine({ routineId: created.routine.id, triggerSource: "manual", scheduledFor })
+  if (!restored.success) throw new Error(restored.error)
+  await until(() => engine.listRoutineRuns(created.routine.id)[0]?.status === "succeeded")
+
+  expect(restored.routineRun.threadId).toBe(f.thread.id)
 })
 
 test.each(["main-thread", "results-thread", "new-thread"] as const)(

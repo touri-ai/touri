@@ -5,6 +5,8 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "Reabra a conversa principal do canal para executar a rotina.":
+    "Reabra a conversa principal do canal para executar a rotina.",
   "Create a routine for this bot and request explicit user approval in chat to activate it. Remains disabled if not approved. Always requires approval, even with approvals disabled. Results use the existing main conversation; only a human selection in the routine editor can opt into new threads.":
     "Criar uma rotina para este bot e pedir aprovação explícita no chat para ativá-la. Sem aprovação, continua pausada. A ativação sempre exige aprovação, mesmo quando as aprovações do bot estão desativadas. Os resultados usam a conversa principal existente; somente uma escolha no editor de rotinas permite novas threads.",
   "Create a thread anchored to the current human message, only when that message explicitly asks to create a thread. Never use for routines, delegated work or on your own initiative.":
@@ -3822,6 +3824,8 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "Reabra a conversa principal do canal para executar a rotina.":
+    "Reopen the main channel conversation to run this routine.",
   "Criar uma thread a partir da mensagem atual.": "Create a thread from the current message.",
   "{bot} is working; remove them when they finish.": "{bot} is working; remove them when they finish.",
   "This bot is working; remove it when it finishes.": "This bot is working; remove it when it finishes.",

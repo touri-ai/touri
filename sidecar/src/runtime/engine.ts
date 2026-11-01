@@ -3528,6 +3528,10 @@ export const createRuntimeEngine = ({
       return "The routine's bot must be a member of the group"
     if (input.resultsThreadId && (thread?.groupId !== group.id || thread.groupThreadId))
       return "Results conversation must belong to this group"
+    const needsMainThread =
+      input.continuity === "main-thread" || (input.continuity === "results-thread" && !input.resultsThreadId)
+    if (needsMainThread && !createGroupStore(kernel).getMainThread(group.id))
+      return "Reabra a conversa principal do canal para executar a rotina."
     return null
   }
 
