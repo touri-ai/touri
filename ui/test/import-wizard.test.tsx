@@ -108,6 +108,107 @@ it("accepts an idempotent import with warnings when records are already present"
   expect(screen.queryByRole("alert")).toBeNull()
 })
 
+it.each([
+  [
+    "Source messages.db must be a regular file inside the source root",
+    "No history was found in this folder. Check the source path.",
+  ],
+  ["Selected bot not found: synthetic-private-id", "A selected bot was not found in the source archive."],
+  [
+    "No cwd mapping for attachment-helper; using /archive/default",
+    "Bots use local working folders. You can change them in each bot’s settings.",
+  ],
+  ["attachment-helper: local memory edit kept for MEMORY.md", "Your local edits were kept."],
+  [
+    "Unexpected failure /tmp/synthetic-import/private-id 2026-11-08T02:24:34.375Z",
+    "The source archive contains an item that could not be imported. Check the source and try again.",
+  ],
+])("localizes server warning without exposing diagnostics: %s", async (warning, message) => {
+  const fixture = getFixture()
+  fixture.getStatus.mockResolvedValue({ status: "failed", report: getReport({ warnings: [warning] }) })
+  openReview(fixture)
+
+  await clickRun(false)
+
+  expect(screen.getByRole("alert")).toHaveTextContent(t(message))
+  expect(screen.getByRole("alert")).not.toHaveTextContent(warning)
+  expect(screen.getByRole("alert")).not.toHaveTextContent(/private-id|2026-11|\/tmp\//)
+})
+
+it.each(["failed", "succeeded"] as const)(
+  "hides staging details and groups translated warnings (%s)",
+  async (status) => {
+    const fixture = getFixture()
+    fixture.getStatus.mockResolvedValue({
+      status,
+      report: getReport({
+        warnings: [
+          "Failed import staging retained at /archive/private-id until 2026-11-08T02:24:34.375Z",
+          "Selected bot not found: one",
+          "Selected bot not found: two",
+          "Attachment not found in allowlisted attachments/: foto.png",
+        ],
+      }),
+    })
+    openReview(fixture)
+
+    await clickRun(false)
+
+    const surface = status === "failed" ? screen.getByRole("alert") : getReportView()
+    expect(within(surface).getByText(/2 ocorrências/)).toBeVisible()
+    expect(surface.querySelectorAll("p")).toHaveLength(2)
+    expect(surface).toHaveTextContent(
+      t("1 attachment was not copied: {name}. Check it in the source folder.", { name: "foto.png" }),
+    )
+    expect(surface).not.toHaveTextContent(/temporários|Temporary|private-id|2026-11|staging/)
+  },
+)
+
+it.each(["../private-id", "folder/private-id", "C:\\private-id", "<script>.png", ".."])(
+  "keeps unsafe attachment details hidden: %s",
+  async (name) => {
+    const fixture = getFixture()
+    fixture.getStatus.mockResolvedValue({
+      status: "failed",
+      report: getReport({ warnings: [`Attachment not found in allowlisted attachments/: ${name}`] }),
+    })
+    openReview(fixture)
+
+    await clickRun(false)
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      t("A source file could not be copied. Check the source folder."),
+    )
+    expect(screen.getByRole("alert")).not.toHaveTextContent(name)
+  },
+)
+
+it.each([false, true])("makes source correction primary and preserves retry mode (dry run: %s)", async (dryRun) => {
+  const fixture = getFixture()
+  fixture.getStatus.mockResolvedValue({
+    status: "failed",
+    report: getReport({ warnings: ["Source messages.db must be a regular file inside the source root"] }),
+  })
+  openReview(fixture)
+
+  await clickRun(dryRun)
+
+  const correct = screen.getByRole("button", { name: t("Correct source path") })
+  expect(correct).toHaveClass("button-dark")
+  expect(screen.getByRole("button", { name: t("ob.retry") })).toHaveClass("button-quiet")
+
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: t("ob.retry") })))
+
+  expect(fixture.start.mock.calls.map(([options]) => options.dryRun)).toEqual([dryRun, dryRun])
+
+  fireEvent.click(screen.getByRole("button", { name: t("Correct source path") }))
+
+  expect(screen.getByLabelText(t("legacy app root"))).toHaveFocus()
+  expect(screen.getByLabelText(t("legacy app root"))).toHaveValue("/tmp/legacy-fixture")
+  expect(screen.queryByRole("alert")).toBeNull()
+  expect(fixture.start).toHaveBeenCalledTimes(2)
+})
+
 it.each([false, true])("shows failure warnings and retries the same mode (dry run: %s)", async (dryRun) => {
   vi.useFakeTimers()
   const fixture = getFixture()
@@ -129,8 +230,14 @@ it.each([false, true])("shows failure warnings and retries the same mode (dry ru
   await act(async () => vi.advanceTimersByTimeAsync(1000))
 
   expect(screen.getByRole("alert")).toHaveTextContent(t("Import failed. Review the report and try again."))
-  expect(within(screen.getByRole("alert")).getByText("The source archive is incomplete.")).toBeVisible()
-  expect(within(screen.getByRole("alert")).getByText("No attachments were copied.")).toBeVisible()
+  expect(
+    within(screen.getByRole("alert")).getByText(
+      t("The source archive contains an item that could not be imported. Check the source and try again."),
+    ),
+  ).toBeVisible()
+  expect(
+    within(screen.getByRole("alert")).getByText(t("A source file could not be copied. Check the source folder.")),
+  ).toBeVisible()
   expect(screen.getByText(t("Import step", { step: 3 }))).toBeVisible()
   expect(screen.queryByText(t("Import finished"))).toBeNull()
   expect(screen.getByRole("button", { name: t("ob.retry") })).toBeEnabled()
@@ -190,7 +297,7 @@ it("shows a completed dry-run report and clears it while the real import runs", 
   expect(screen.getByText(t("Import step", { step: 3 }))).toBeVisible()
   expect(within(getReportView()).getByText("23", { selector: "dd" })).toBeVisible()
   expect(within(getReportView()).getByText("4", { selector: "dd" })).toBeVisible()
-  expect(screen.getByText("⚠ Routines will remain disabled.")).toBeVisible()
+  expect(screen.getByText(`⚠ ${t("Imported routines stay disabled.")}`)).toBeVisible()
   expect(screen.queryByText(t("History is in touri"))).toBeNull()
   expect(notice).toHaveBeenCalledExactlyOnceWith(t("Dry run complete. Nothing was written."))
 

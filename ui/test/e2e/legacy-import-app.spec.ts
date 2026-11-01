@@ -32,7 +32,11 @@ for (const width of [1440, 390]) {
       }
       const capture = async (state: string) => {
         await expect(page.getByRole("dialog", { name: "Importar seus bots", exact: true })).toBeVisible()
-        await page.screenshot({ path: info.outputPath(`${width}-${theme}-${state}.png`), animations: "disabled" })
+        const filename = `${width}-${theme}-${state}.png`
+        const path = process.env.TOURI_E2E_EVIDENCE_DIR
+          ? `${process.env.TOURI_E2E_EVIDENCE_DIR}/${filename}`
+          : info.outputPath(filename)
+        await page.screenshot({ path, animations: "disabled" })
         const audit = await new AxeBuilder({ page })
           .include(".modal-card")
           .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
@@ -106,7 +110,10 @@ for (const width of [1440, 390]) {
 
       expect(summarySurfaces).toEqual([reportSurface, reportSurface, reportSurface])
       await capture("dry-run")
-      const warnings = Array.from({ length: 100 }, (_, index) => `Arquivo sintético ${index + 1} indisponível.`)
+      const warnings = Array.from({ length: 100 }, (_, index) => [
+        `Attachment not found in allowlisted attachments/: nota-${index + 1}.pdf`,
+        `Unknown synthetic warning ${index + 1}: /tmp/synthetic/private-id at 2026-11-08T02:24:34.375Z`,
+      ]).flat()
 
       await page.unroute("**/api/v1/imports/import-fixture")
       await page.route("**/api/v1/imports/import-fixture", (route) =>
@@ -118,7 +125,9 @@ for (const width of [1440, 390]) {
       await expect(page.getByRole("alert")).toBeVisible()
       await expect(page.getByRole("button", { name: "Importar agora", exact: true })).toHaveCount(0)
       const alert = page.getByRole("alert")
-      await expect(alert).toContainText("Arquivo sintético 100 indisponível.")
+      await expect(alert.locator("p")).toHaveCount(101)
+      await expect(alert).toContainText("100 ocorrências")
+      await expect(alert).not.toContainText(/private-id|2026-11|\/tmp\//)
 
       await page.getByRole("region", { name: "Detalhes da importação" }).focus()
       await page.keyboard.press("End")
@@ -128,11 +137,11 @@ for (const width of [1440, 390]) {
       await alert.focus()
       await page.keyboard.press("End")
 
-      await expect(alert.getByText("Arquivo sintético 100 indisponível.", { exact: true })).toBeInViewport()
+      await expect(alert.locator("p").last()).toBeInViewport()
       await expect(page.getByRole("button", { name: "Tentar de novo", exact: true })).toBeInViewport()
 
       await alert.press("Control+Home")
-      await expect(alert.getByText("Arquivo sintético 1 indisponível.", { exact: true })).toBeInViewport()
+      await expect(alert.locator("p").first()).toBeInViewport()
       await capture("failure")
       await page.unroute("**/api/v1/imports/import-fixture")
       await page.route("**/api/v1/imports/import-fixture", (route) =>
