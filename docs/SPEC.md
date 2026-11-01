@@ -1809,6 +1809,11 @@ and conversation counts; it never substitutes zero for a missing report. A compl
 on review with its report. A failed job shows its available report and warnings plus an explicit
 retry in the same mode. Starting another attempt clears the previous report and error.
 
+The report separates translated labels from their counts. Wizard actions stay in a fixed footer;
+failure replaces the import action with retry. Long warning lists scroll within a bounded,
+keyboard-accessible area so the report and retry remain reachable on a phone. The main wizard
+content also supports keyboard scrolling when it contains only a report or checklist.
+
 1. Import (dry run → real), then verify counts against the source: the per-bot thread and message counts, minus dropped kinds.
 2. Use touri for chats. Re-import any time to pick up new legacy app messages.
 3. When ready: on the source machine, disable the legacy app routines (or stop its service). Then run a final re-import, enable the routines in touri, and turn on launch-at-login.

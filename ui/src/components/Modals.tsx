@@ -200,7 +200,12 @@ export const ImportWizard = ({ bots, api, onClose, onNotice }: ImportWizardProps
       title={t("Import your teammates")}
       eyebrow={t("Import step", { step: step + 1 })}
     >
-      <div className="import-wizard-body">
+      <section
+        className="import-wizard-body"
+        aria-label={t("Import details")}
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: import reports need keyboard scrolling without editable controls.
+        tabIndex={0}
+      >
         <div className="wizard-steps">
           {[t("Source"), t("Choose bots"), t("Dry run"), t("Import"), t("Cut-over")].map((label, index) => (
             <span className={index === step ? "wizard-active" : index < step ? "wizard-done" : ""} key={label}>
@@ -332,10 +337,15 @@ export const ImportWizard = ({ bots, api, onClose, onNotice }: ImportWizardProps
             </ol>
           </div>
         )}
-      </div>
+      </section>
       <footer className="import-wizard-footer">
         {step === 2 && error && (
-          <div className="info-callout import-error" role="alert">
+          <div
+            className="info-callout import-error"
+            role="alert"
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: long warning lists need keyboard scrolling.
+            tabIndex={0}
+          >
             <strong>{error}</strong>
             {report?.warnings.map((warning) => (
               <p key={warning}>{warning}</p>

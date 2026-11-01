@@ -77,16 +77,32 @@ for (const width of [1440, 390]) {
       await expect(grid.locator("dd")).toHaveText(["1", "7", "42", "0"])
       await expect(grid).toHaveCSS("display", "grid")
       await capture("dry-run")
+      const warnings = Array.from({ length: 100 }, (_, index) => `Arquivo sintético ${index + 1} indisponível.`)
+
       await page.unroute("**/api/v1/imports/import-fixture")
       await page.route("**/api/v1/imports/import-fixture", (route) =>
         route.fulfill({
-          json: { status: "failed", report: { ...report, warnings: ["Arquivo sintético indisponível."] } },
+          json: { status: "failed", report: { ...report, warnings } },
         }),
       )
       await page.getByRole("button", { name: "Importar agora", exact: true }).click()
       await expect(page.getByRole("alert")).toBeVisible()
       await expect(page.getByRole("button", { name: "Importar agora", exact: true })).toHaveCount(0)
-      await expect(page.locator("footer [role='alert']")).toContainText("Arquivo sintético indisponível.")
+      const alert = page.getByRole("alert")
+      await expect(alert).toContainText("Arquivo sintético 100 indisponível.")
+
+      await page.getByRole("region", { name: "Detalhes da importação" }).focus()
+      await page.keyboard.press("End")
+
+      await expect(grid).toBeInViewport()
+
+      await alert.focus()
+      await page.keyboard.press("End")
+
+      await expect(alert.getByText("Arquivo sintético 100 indisponível.", { exact: true })).toBeInViewport()
+      await expect(page.getByRole("button", { name: "Tentar de novo", exact: true })).toBeInViewport()
+
+      await page.keyboard.press("Home")
       await capture("failure")
       await page.unroute("**/api/v1/imports/import-fixture")
       await page.route("**/api/v1/imports/import-fixture", (route) =>
