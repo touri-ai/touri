@@ -1,7 +1,8 @@
 import type { Database } from "bun:sqlite"
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test"
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
-import { writeFile } from "node:fs/promises"
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Bot, Kernel, Message, Run, RunTimings, StoreApi, Thread } from "@touri/contracts"
 import { t } from "../../../ui/src/i18n"
@@ -3641,15 +3642,20 @@ const sendTurn = async (current: Fixture, text: string) => {
 
 describe("response image finalization", () => {
   const fixtures = new Set<Fixture>()
+  const images = new Set<string>()
   afterEach(async () => {
     for (const value of fixtures) await closeFixture(value)
     fixtures.clear()
+    for (const directory of images) await rm(directory, { recursive: true, force: true })
+    images.clear()
   })
 
   test.each([false, true])("captures local images with the active delegation ceiling: %s", async (delegated) => {
     const f = await fixture()
     fixtures.add(f)
-    const source = join(f.root, "outside.png")
+    const directory = await mkdtemp(join(tmpdir(), "touri-image-finalization-"))
+    images.add(directory)
+    const source = join(directory, "outside.png")
     await writeFile(source, Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0]))
     await writeFile(
       f.scenario,

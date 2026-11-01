@@ -995,6 +995,7 @@ export const createRuntimeEngine = ({
       return () => true
     }
 
+    materializePendingText(state, runStage)
     const initial = state.parts
     const isCurrent = measureStage("runtime_part_finalization", () => getPartsSnapshotGuard(state))
     const parts = await measureStage("runtime_part_finalization", () =>

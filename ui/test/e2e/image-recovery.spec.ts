@@ -72,13 +72,15 @@ for (const { width, theme, state } of scenarios) {
     await page.getByRole("button", { name: /Abrir captura/ }).click()
     const dialog = page.getByRole("dialog")
     await expect(dialog).toBeVisible()
-    if (!before && state === "denied") {
+    if (state === "denied") {
       await expect(dialog.getByText("Imagem fora da pasta do bot", { exact: true })).toBeVisible()
-      await expect(dialog.getByRole("navigation")).toHaveCount(0)
-      const box = await dialog.boundingBox()
-      expect(box?.height).toBeLessThan(360)
-      expect(box && Math.abs(box.y + box.height / 2 - 450)).toBeLessThan(2)
-    } else if (!before) await expect(dialog.getByRole("img")).toBeVisible()
+      if (!before) {
+        await expect(dialog.getByRole("navigation")).toHaveCount(0)
+        const box = await dialog.boundingBox()
+        expect(box?.height).toBeLessThan(360)
+        expect(box && Math.abs(box.y + box.height / 2 - 450)).toBeLessThan(2)
+      }
+    } else await expect(dialog.getByRole("img")).toBeVisible()
     if (!before) expect((await new AxeBuilder({ page }).include(".evidence-lightbox").analyze()).violations).toEqual([])
     await page.screenshot({
       path: getCapturePath(`${before ? "before" : "after"}-${theme}-viewer-${state}-${width}.png`),

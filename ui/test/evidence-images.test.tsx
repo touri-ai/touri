@@ -960,6 +960,23 @@ it.each([true, false])("reports whether copying the image path succeeded: %s", a
   expect(writeText).toHaveBeenCalledWith("/outside/result.png")
 })
 
+it("reports a failed desktop folder reveal", async () => {
+  const { context, request } = fixture()
+  request.mockRejectedValue(new ApiError(403, "Denied", "IMAGE_OUTSIDE_WORKSPACE"))
+  saveInvoke.mockRejectedValueOnce(new Error("Denied"))
+  render(
+    <MarkdownContent
+      evidence={{ ...context, bot: { ...context.bot, machine: "local" } }}
+      content="![Result](/outside/result.png)"
+    />,
+  )
+  await screen.findByText("Imagem fora da pasta do bot")
+
+  fireEvent.click(screen.getByRole("button", { name: "Abrir pasta" }))
+
+  expect(await screen.findByText("Não foi possível abrir a pasta.")).toBeVisible()
+})
+
 it("keeps local folder actions outside the viewer status announcement", async () => {
   const { context, request } = fixture()
   vi.stubGlobal("__TAURI_INTERNALS__", {})

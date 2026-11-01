@@ -134,16 +134,37 @@ test.each(["vm", "cloud"] as const)("%s capture retains the delegated permission
   const original = { id: "bot", machine, access: "full", projectId: null } as Bot
   const bot = delegationCeiling({ ...original, access: "read-only" }, original)
   const bytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0])
-  const exec = mock(async () => ({
+  const exec = mock<VmRuntime["exec"]>(async () => ({
     success: true,
     stdout: JSON.stringify({ size: bytes.length, data: bytes.toString("base64") }),
+    stderr: "",
+    code: 0,
   }))
   const release = mock(async () => {})
-  const vm = {
-    states: () => [{ botId: bot.id, status: "running" }],
+  const unexpected = (): never => {
+    throw new Error("Unexpected machine operation")
+  }
+  const vm: VmRuntime = {
+    capability: { available: true, reason: null, provider: null },
+    intent: unexpected,
+    spawn: unexpected,
+    writeFile: unexpected,
+    prepareTurn: unexpected,
+    forwardPort: unexpected,
+    desktopConnection: unexpected,
+    browserEndpoint: unexpected,
+    computer: unexpected,
+    restart: unexpected,
+    startService: unexpected,
+    stop: unexpected,
+    destroy: unexpected,
+    doctor: unexpected,
+    states: (): ReturnType<VmRuntime["states"]> => [
+      { botId: bot.id, status: "running", progress: null, error: null, memoryMb: 0, createdMs: null, startMs: null },
+    ],
     acquire: async () => release,
     exec,
-  } as VmRuntime
+  }
   const kernel = {
     db: database,
     paths: { appData: join(root, "data"), attachmentsDir: join(root, "data", "attachments") },
