@@ -1338,7 +1338,7 @@ export const BotSettingsModal = ({
                     <option value="xhigh">{t("Extra high")}</option>
                   </select>
                 </SettingsRow>
-                {provider === "codex" && (
+                {provider === "codex" && machine.machine !== "cloud" && (
                   <SettingsRow
                     title={t("Modo rápido")}
                     description={t("Respostas mais rápidas, com custo maior")}

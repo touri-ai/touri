@@ -67,6 +67,27 @@ it.each(["claude", "opencode"] as const)("hides paid fast mode for %s", (provide
   expect(screen.queryByRole("switch", { name: "Modo rápido", exact: true })).toBeNull()
 })
 
+it.each(["local", "vm", "cloud"] as const)("offers paid fast mode only on supported execution: %s", (machine) => {
+  const base = createMockApi().getState().bots[0]
+  if (!base) throw new Error("Missing synthetic bot")
+  const bot: Bot = { ...base, provider: "codex", machine }
+
+  render(
+    <BotSettingsModal
+      bot={bot}
+      projects={[]}
+      routines={[]}
+      initialSection="model"
+      actions={{} as WorkspaceActions}
+      onClose={() => undefined}
+    />,
+  )
+
+  expect(screen.queryAllByRole("switch", { name: "Modo rápido", exact: true })).toHaveLength(
+    machine === "cloud" ? 0 : 1,
+  )
+})
+
 it("reports a failed save and keeps the previous tier", async () => {
   const bot = createMockApi().getState().bots[0]
   if (!bot) throw new Error("Missing synthetic bot")

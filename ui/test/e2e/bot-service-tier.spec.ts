@@ -1,5 +1,6 @@
 import { mkdir } from "node:fs/promises"
 import { join } from "node:path"
+import AxeBuilder from "@axe-core/playwright"
 import { expect, type Page, test } from "@playwright/test"
 import type { Bot } from "@touri/contracts"
 import { showBotAdvanced } from "./home-navigation"
@@ -20,6 +21,7 @@ const openSettings = async (page: Page) => {
   if ((await menu.isVisible()) && !(await drawer.isVisible())) await menu.click()
   await showBotAdvanced(page, "Lia")
   const settings = page.getByRole("dialog", { name: "Configurações de Lia", exact: true })
+  await expect(settings.getByRole("switch", { name: "Modo rápido", exact: true })).toHaveCount(0)
   await settings.getByRole("button", { name: /^Avançado(?: Ajustes deste bot)?$/ }).click()
 
   return settings
@@ -43,7 +45,8 @@ for (const theme of ["light", "dark"] as const) {
       await expect(toggle).not.toBeChecked()
       await expect(toggle).toHaveAccessibleDescription("Respostas mais rápidas, com custo maior")
 
-      await toggle.click()
+      await toggle.focus()
+      await page.keyboard.press("Space")
       await expect(toggle).toBeChecked()
       expect(
         ((await server.api("/bots")).bots as Bot[]).find((candidate) => candidate.id === bot.id)?.serviceTier,
@@ -54,6 +57,10 @@ for (const theme of ["light", "dark"] as const) {
       const filename = `fast-mode-${width}-${theme}.png`
       await page.screenshot({ path: directory ? join(directory, filename) : info.outputPath(filename) })
       expect(await settings.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
+      const audit = await new AxeBuilder({ page }).include(".modal-card").analyze()
+      expect(audit.violations.filter((violation) => ["serious", "critical"].includes(violation.impact ?? ""))).toEqual(
+        [],
+      )
 
       await settings.getByRole("button", { name: "Salvar configurações", exact: true }).click()
       await expect(settings).toHaveCount(0)
