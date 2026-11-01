@@ -334,7 +334,7 @@ export const ImportWizard = ({ bots, api, onClose, onNotice }: ImportWizardProps
         )}
       </div>
       <footer className="import-wizard-footer">
-        {error && (
+        {step === 2 && error && (
           <div className="info-callout import-error" role="alert">
             <strong>{error}</strong>
             {report?.warnings.map((warning) => (
