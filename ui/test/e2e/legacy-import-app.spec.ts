@@ -117,7 +117,7 @@ for (const width of [1440, 390]) {
       await expect(alert.getByText("Arquivo sintético 100 indisponível.", { exact: true })).toBeInViewport()
       await expect(page.getByRole("button", { name: "Tentar de novo", exact: true })).toBeInViewport()
 
-      await page.keyboard.press("Home")
+      await alert.press("Control+Home")
       await expect(alert.getByText("Arquivo sintético 1 indisponível.", { exact: true })).toBeInViewport()
       await capture("failure")
       await page.unroute("**/api/v1/imports/import-fixture")
