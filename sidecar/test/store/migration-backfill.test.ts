@@ -68,6 +68,7 @@ import webPushSql from "../../src/kernel/migrations/0051.sql" with { type: "text
 import notificationReadsSql from "../../src/kernel/migrations/0052.sql" with { type: "text" }
 import attachmentRevisionSql from "../../src/kernel/migrations/0053.sql" with { type: "text" }
 import scriptRoutinesSql from "../../src/kernel/migrations/0054.sql" with { type: "text" }
+import botServiceTierSql from "../../src/kernel/migrations/bot-service-tier.sql" with { type: "text" }
 import imageEvidenceIndexesSql from "../../src/kernel/migrations/image-evidence-indexes.sql" with { type: "text" }
 import responseImageReferencesSql from "../../src/kernel/migrations/response-image-references.sql" with { type: "text" }
 import { captureTranscript } from "../../src/kernel/transcript-events"
@@ -350,6 +351,7 @@ test("interrupted batches resume idempotently and match the shipped synchronous 
     synchronous.exec(attachmentRevisionSql)
     synchronous.exec(scriptRoutinesSql)
     synchronous.exec(imageEvidenceIndexesSql)
+    synchronous.exec(botServiceTierSql)
     applyChannelSchema(synchronous)
     synchronous.exec(responseImageReferencesSql)
     synchronous.exec(browserTakeoverContinuationsSql)

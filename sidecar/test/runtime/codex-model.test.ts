@@ -4,10 +4,8 @@ import { createCodexAdapter } from "../../src/runtime/codex/adapter"
 import { testKernel } from "../kernel/test-kernel"
 
 const fixtures = new Set<ReturnType<typeof testKernel>>()
-afterEach(() => {
-  fixtures.forEach((fixture) => {
-    fixture.close()
-  })
+afterEach(async () => {
+  await Promise.all(Array.from(fixtures).map((fixture) => fixture.close()))
   fixtures.clear()
 })
 
@@ -55,6 +53,29 @@ test.each(models)("passes model %j as one literal TOML string", async (model) =>
     expect(Bun.TOML.parse(assignment)).toEqual({ model: expected })
   })
 })
+
+test.each((["fast", null, undefined] as const).map((serviceTier) => ({ serviceTier })))(
+  "passes only an opted-in service tier %j to local and guest app-server",
+  async ({ serviceTier }) => {
+    const { adapter, args, spawn } = makeFixture(null)
+    const bot = serviceTier === undefined ? args.bot : { ...args.bot, serviceTier }
+    const turn = { ...args, bot }
+
+    await adapter.startTurn(turn)
+    await adapter.startTurn({ ...turn, execution: { spawn, writeFile: async () => undefined } })
+
+    expect(spawn).toHaveBeenCalledTimes(2)
+    spawn.mock.calls.forEach(([input]) => {
+      const assignments = input.args.filter((value) => value.startsWith("service_tier="))
+      expect(assignments).toEqual(serviceTier === "fast" ? ['service_tier="fast"'] : [])
+      if (serviceTier !== "fast") return
+
+      const index = input.args.indexOf('service_tier="fast"')
+      expect(input.args[index - 1]).toBe("-c")
+      expect(Bun.TOML.parse(assignments[0] ?? "")).toEqual({ service_tier: "fast" })
+    })
+  },
+)
 
 const invalidModels = [
   "--help",

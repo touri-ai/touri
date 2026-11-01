@@ -1430,6 +1430,24 @@ export const BotSettingsModal = ({
                     <option value="xhigh">{t("Extra high")}</option>
                   </select>
                 </SettingsRow>
+                {provider === "codex" && machine.machine !== "cloud" && (
+                  <SettingsRow
+                    title={t("Modo rápido")}
+                    description={t("Respostas mais rápidas, com custo maior")}
+                    descriptionId="settings-service-tier-description"
+                  >
+                    <SettingsSwitch
+                      aria-label={t("Modo rápido")}
+                      aria-describedby="settings-service-tier-description"
+                      checked={bot.provider === "codex" && bot.serviceTier === "fast"}
+                      disabled={updating || saving || modelSaving || provider !== bot.provider}
+                      onChange={(event) => {
+                        const serviceTier = event.target.checked ? "fast" : null
+                        void immediateAction(() => actions.updateBot(bot.id, { serviceTier }))
+                      }}
+                    />
+                  </SettingsRow>
+                )}
                 <SettingsRow title={t("Fast conversation")} description={t("Fast conversation help")}>
                   <SettingsSwitch
                     aria-label={t("Fast conversation")}
