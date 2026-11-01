@@ -1821,6 +1821,11 @@ failure replaces the import action with retry. Long warning lists scroll within 
 keyboard-accessible area so the report and retry remain reachable on a phone. The main wizard
 content also supports keyboard scrolling when it contains only a report or checklist.
 
+At viewport widths up to 480 pixels, the progress indicator keeps all five step numbers visible
+and displays only the current step name beneath them, using the full indicator width so words
+remain intact. Every step name stays available to screen readers; wider viewports show every
+label with its step number. Summary cards use the report's control surface and small corner radius.
+
 1. Import (dry run → real), then verify counts against the source: the per-bot thread and message counts, minus dropped kinds.
 2. Use touri for chats. Re-import any time to pick up new legacy app messages.
 3. When ready: on the source machine, disable the legacy app routines (or stop its service). Then run a final re-import, enable the routines in touri, and turn on launch-at-login.
