@@ -18,7 +18,7 @@ export const StartThreadAction = ({
   const [error, setError] = useState(false)
   const start = async () => {
     if (busy) return
-    if (thread) return onSelect(thread.id)
+    if (thread && !thread.archivedAt) return onSelect(thread.id)
     setBusy(true)
     setError(false)
     try {

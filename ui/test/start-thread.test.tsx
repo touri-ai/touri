@@ -81,3 +81,20 @@ test("an archived child leaves the message action available to restore it", () =
   expect(screen.getByRole("button", { name: "Iniciar thread" })).toBeEnabled()
   expect(screen.queryByRole("button", { name: "3 respostas" })).toBeNull()
 })
+
+test("reply counter restores an archived anchored thread before selecting it", async () => {
+  const api = createMockApi()
+  const thread = { id: "thread-plan", replyCount: 3, archivedAt: 1 } as Thread
+  const request = vi.spyOn(api, "request").mockResolvedValue({ thread: { ...thread, archivedAt: null } })
+  const onSelect = vi.fn()
+  render(<StartThreadAction message={message} api={api} thread={thread} onSelect={onSelect} />)
+
+  fireEvent.click(screen.getByRole("button", { name: "3 respostas" }))
+
+  await waitFor(() => expect(onSelect).toHaveBeenCalledWith(thread.id))
+  expect(request).toHaveBeenCalledWith(
+    "POST /threads/:id/start-thread",
+    { messageId: message.id },
+    { id: message.threadId },
+  )
+})
