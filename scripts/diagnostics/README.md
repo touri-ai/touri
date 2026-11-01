@@ -32,13 +32,14 @@ an external watchdog's SQL.
 and run this query in a separate maintenance process with an external deadline.
 The historical scan is not suitable for sidecar request handlers or callbacks.
 
-A channel coordinator waits for an active coordinator in its **group** when their
-recipients overlap, even when the coordinators have different `bot_id` values or
-conversations. Independent recipients can run concurrently. Live delegated member
-runs also reserve their bot for the owning coordinator. The query checks declared
-recipients and persisted live delegations; it returns the coordinator, never its
-provider child. Ordinary executions serialize per **thread**, so another thread
-using the same bot is not a blocker. Their `wait_scope` is `thread`.
+Channel requests reserve each active member's bot across groups and conversations.
+A completed recipient no longer owns its bot slot even while another recipient
+keeps the coordinator running. The query checks live persisted member executions,
+including direct and delegated members, and returns their owning coordinator.
+Before any member execution is persisted, overlapping declared recipients in the
+same group remain a conservative fallback. Ordinary executions serialize per
+**thread**, so another thread using the same bot is not a thread blocker. The
+`wait_scope` remains `channel` for channel requests and `thread` otherwise.
 
 `blocker_run_id = NULL` means no direct active blocker was established in this
 snapshot; it is not proof of a deadlock. Ordering behind an earlier waiting

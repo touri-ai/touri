@@ -207,7 +207,7 @@ test("channel progress excludes unrelated recipients and completed attempts", ()
 
   const rows = db.query(sql).all(20)
 
-  expect(rows).toMatchObject([{ blocker_run_id: "coordinator", blocker_last_progress_at: null }])
+  expect(rows).toMatchObject([{ blocker_run_id: null, blocker_last_progress_at: null }])
 })
 
 test("delegated blockers report the latest active attempt for the waiting recipient", () => {
@@ -242,4 +242,30 @@ test("a reply from a different thread or run cannot imply blocker progress", () 
   const rows = db.query(sql).all(20)
 
   expect(rows).toMatchObject([{ blocker_run_id: "provider", blocker_last_progress_at: null }])
+})
+
+test("a completed recipient does not block while another member keeps its coordinator alive", () => {
+  const db = getFixture()
+  addChannel(db, "waiting")
+  addRun(db, "coordinator", "designer")
+  addChannel(db, "coordinator", "channel", ["builder", "designer"])
+  addRun(db, "finished-builder", "builder", "succeeded", "builder-thread")
+  addRun(db, "busy-designer", "designer", "running", "designer-thread")
+  db.query(
+    "INSERT INTO group_run_links VALUES ('finished-builder', 'coordinator', 0), ('busy-designer', 'coordinator', 0)",
+  ).run()
+
+  expect(db.query(sql).all(20)).toMatchObject([{ blocker_run_id: null }])
+})
+
+test("a live member in another channel still owns the same bot slot", () => {
+  const db = getFixture()
+  addChannel(db, "waiting")
+  addRun(db, "coordinator", "builder")
+  addChannel(db, "coordinator", "other-channel")
+  addRun(db, "busy-builder", "builder", "running", "builder-thread")
+  db.query("INSERT INTO group_run_links VALUES ('busy-builder', 'coordinator', 0)").run()
+  saveReplyProgress(db, "busy-builder", 100)
+
+  expect(db.query(sql).all(20)).toMatchObject([{ blocker_run_id: "coordinator", blocker_last_progress_at: 100 }])
 })
