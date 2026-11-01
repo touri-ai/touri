@@ -4484,3 +4484,79 @@ button.brand-button:hover:not(:disabled) {
     padding-inline: var(--space-8);
   }
 }
+
+.person-avatar {
+  border-radius: 50%;
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+.person-initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-control);
+  color: var(--text);
+  font-size: var(--fs-caption);
+  font-weight: var(--weight-semibold);
+}
+.chat-message-list .message-bubble[data-work-message] {
+  justify-items: stretch;
+  grid-template-columns: var(--space-28) minmax(0, 1fr);
+  grid-template-areas: ". routine" "avatar meta" ". body" ". actions";
+  column-gap: var(--space-8);
+}
+.chat-message-list .message-bubble[data-work-message] > .message-meta {
+  grid-area: meta;
+  justify-content: flex-start;
+}
+.chat-message-list .message-bubble[data-work-message] > .message-avatar {
+  grid-area: avatar;
+  align-self: start;
+}
+.chat-message-list .message-bubble[data-work-message] > .message-body {
+  grid-area: body;
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.chat-message-list .message-bubble[data-work-message] > .message-actions {
+  grid-area: actions;
+  justify-self: start;
+}
+.chat-message-list .message-bubble[data-work-message] .message-text {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.owner-profile-settings {
+  display: grid;
+  gap: var(--space-12);
+  min-width: 0;
+}
+.owner-profile-settings canvas {
+  display: block;
+  width: min(256px, 100%);
+  border-radius: 50%;
+}
+.owner-profile-settings label {
+  display: grid;
+  gap: var(--space-8);
+}
+.owner-profile-settings input {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.chat-message-list .message-bubble[data-work-message] > .routine-run-header {
+  grid-area: routine;
+}
+.chat-message-list .message-bubble[data-work-message] .message-meta time {
+  order: 0;
+  opacity: 1;
+}
+.chat-message-list .message-bubble[data-work-message] .message-role {
+  font-weight: var(--weight-semibold);
+}

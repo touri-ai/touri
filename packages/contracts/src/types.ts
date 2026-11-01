@@ -1349,7 +1349,16 @@ export type OnboardingStatus = {
   remoteUrl: string | null
 }
 
+export type OwnerAvatar =
+  | { kind: "image"; dataUrl: string }
+  | { kind: "mascot"; avatarSeed: string; avatarShape: AvatarShape | null; color: string | null }
+
+export type OwnerProfile = { name: string; avatar: OwnerAvatar | null }
+
 export type AppSettings = {
+  /** Local owner identity. Missing on older installations; no migration is needed for this optional JSON setting. */
+  ownerProfile?: OwnerProfile
+
   /** Keep tool details and reasoning for this many days; 0 keeps them indefinitely. Default: 30. */
   dataRetentionDays?: number
   /** Local bot VM memory cap, applied when the VM is created or recreated. Default: 1536 MiB. */

@@ -23,7 +23,7 @@ import type {
   ThreadKind,
   ThreadUsage,
 } from "@touri/contracts"
-import { apiModelErrors, isNotificationPreferences, normalizeBotName } from "@touri/contracts"
+import { apiModelErrors, isNotificationPreferences, isOwnerProfile, normalizeBotName } from "@touri/contracts"
 import { validAvatarColor, validAvatarShape } from "@touri/contracts/avatar"
 import { isImportOwner } from "../agent-import/owner"
 import { getApiModel } from "../api-models/config"
@@ -334,6 +334,7 @@ const errorResponse = (
 const requestRecord = (body: unknown): Record<string, unknown> | null => asRecord(body)
 
 const settingsDefaults = (): AppSettings => ({
+  ownerProfile: { name: "", avatar: null },
   dataRetentionDays: DEFAULT_DATA_RETENTION_DAYS,
   botVmMemoryMb: DEFAULT_BOT_VM_MEMORY_MB,
   cloud: process.env.TOURI_CLOUD_ENABLED === "1",
@@ -355,6 +356,7 @@ const settingsDefaults = (): AppSettings => ({
 })
 
 const settingsKeys: Array<keyof AppSettings> = [
+  "ownerProfile",
   "dataRetentionDays",
   "botVmMemoryMb",
   "cloud",
@@ -379,6 +381,7 @@ const validSettingsPatch = (patch: Record<string, unknown>): string | null => {
   for (const key of Object.keys(patch)) {
     if (!settingsKeys.includes(key as keyof AppSettings)) return `Unknown setting ${key}`
   }
+  if (patch.ownerProfile !== undefined && !isOwnerProfile(patch.ownerProfile)) return "Invalid owner profile"
   if (patch.notificationPreferences !== undefined && !isNotificationPreferences(patch.notificationPreferences))
     return "Invalid notification preferences"
   if (patch.dataRetentionDays !== undefined && !validDataRetentionDays(patch.dataRetentionDays))
@@ -434,6 +437,7 @@ const readSettings = ({ database }: { database: Database }): AppSettings => {
     if (!settingsKeys.includes(row.key as keyof AppSettings)) continue
     const key = row.key as keyof AppSettings
     const value = parseJson<unknown>(row.value_json, settings[key])
+    if (key === "ownerProfile" && isOwnerProfile(value)) settings[key] = value
     if (key === "dataRetentionDays" && validDataRetentionDays(value)) settings[key] = value
     if (key === "botVmMemoryMb" && validBotVmMemory(value)) settings[key] = value
     if (key === "maxConcurrentRuns" && Number.isInteger(value)) settings[key] = value as never
@@ -2401,9 +2405,11 @@ export const init = async (
       {
         method: "PATCH",
         path: "/settings",
-        handler: async ({ body }) => {
+        handler: async ({ body, signal }) => {
           const record = requestRecord(body)
           if (!record) return errorResponse(400, "INVALID_ARGS", "Request body must be an object")
+          if (Object.hasOwn(record, "ownerProfile") && !isImportOwner(kernel, signal))
+            return errorResponse(403, "FORBIDDEN", "Only the owner can change the owner profile")
           const validationError = validSettingsPatch(record)
           if (validationError) return errorResponse(400, "INVALID_ARGS", validationError)
           const settings = { ...readSettings({ database }), ...record } as AppSettings

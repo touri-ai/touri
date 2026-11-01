@@ -161,7 +161,7 @@ export const initWorkMode = ({
       )
       .map(({ id, name, avatarSeed, role }) => ({
         id,
-        name,
+        name: id === ownerPersonId ? kernel.services.use("store.settings")?.().ownerProfile?.name.trim() || name : name,
         handle: getPersonHandle(name, id === ownerPersonId ? accountName : id),
         avatarSeed,
         role,

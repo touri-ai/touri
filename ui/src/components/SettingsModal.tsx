@@ -22,6 +22,7 @@ import { hostComputerSupported } from "../platform"
 import { useHost } from "../useHost"
 import { Disclosure } from "./Disclosure"
 import { Modal } from "./Modal"
+import { OwnerProfileSettings } from "./OwnerProfileSettings"
 import {
   SettingsDisclosure,
   SettingsGroup,
@@ -49,6 +50,8 @@ const ServerModeSettings = lazy(() =>
 )
 
 type SettingsModalProps = {
+  canEditOwnerProfile?: boolean
+
   doctor?: DoctorReport | null
   doctorError?: string | null
   onRefreshDoctor?: () => Promise<void>
@@ -66,6 +69,7 @@ type SettingsModalProps = {
 }
 
 export const SettingsModal = ({
+  canEditOwnerProfile = true,
   settings,
   onClose,
   onSave,
@@ -93,6 +97,7 @@ export const SettingsModal = ({
   )
   useSettingFocus(focusSetting)
   const [reportOpen, setReportOpen] = useState(initialSection === "report")
+  const [ownerProfile, setOwnerProfile] = useState(settings?.ownerProfile ?? { name: "", avatar: null })
   const [theme, setThemePreference] = useState<ThemePreference>(readTheme)
   const [inlinePreview, setInlinePreview] = useState(readInlinePreviewPreference)
   const [telemetry, setTelemetry] = useState(settings?.cliTelemetry ?? "off")
@@ -125,6 +130,11 @@ export const SettingsModal = ({
     setError(null)
     try {
       await onSave({
+        ...(canEditOwnerProfile &&
+        ownerProfile !== settings?.ownerProfile &&
+        (settings?.ownerProfile || ownerProfile.name || ownerProfile.avatar)
+          ? { ownerProfile }
+          : {}),
         ...(launchAtLogin !== (settings?.launchAtLogin ?? false) ? { launchAtLogin } : {}),
         cliTelemetry: telemetry,
         checkForUpdates: updates,
@@ -238,6 +248,11 @@ export const SettingsModal = ({
               </div>
             </div>
           </SettingsDisclosure>
+          {canEditOwnerProfile && (
+            <SettingsDisclosure title={t("Profile")} description={t("Your name and avatar in conversations.")}>
+              <OwnerProfileSettings profile={ownerProfile} onChange={setOwnerProfile} />
+            </SettingsDisclosure>
+          )}
         </SettingsPane>
         <SettingsPane {...pane("privacy")}>
           <p className="field-help">

@@ -1019,6 +1019,7 @@ const AppContent = ({ kernel }: AppProps) => {
 
   const settingsModal = modal === "settings" && (
     <SettingsModal
+      canEditOwnerProfile={currentPersonId === "owner"}
       api={api ?? undefined}
       invokeCommand={invokeCommand}
       doctor={data.doctor}
@@ -1523,6 +1524,7 @@ const AppContent = ({ kernel }: AppProps) => {
                             }
                             channelMode={Boolean(selectedGroup)}
                             workspaceMode={sidebarMode}
+                            ownerProfile={data.settings?.ownerProfile}
                             browserRuns={data.browserRuns ?? []}
                             onRepeatTask={setRoutineDraft}
                             currentPersonId={currentPersonId}

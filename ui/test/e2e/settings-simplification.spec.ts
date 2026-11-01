@@ -80,6 +80,8 @@ test("app preferences disclose technical controls and preserve edits between sec
   await page.keyboard.press("Tab")
   await expect(dialog.locator(".ds-disclosure-trigger").first()).toBeFocused()
   await page.keyboard.press("Tab")
+  await expect(dialog.getByRole("button", { name: /^Perfil/ })).toBeFocused()
+  await page.keyboard.press("Tab")
   await expect(dialog.getByRole("button", { name: "Cancelar", exact: true })).toBeFocused()
   const appearance = await new AxeBuilder({ page }).include(".modal-card").analyze()
   expect(appearance.violations.filter((violation) => ["serious", "critical"].includes(violation.impact ?? ""))).toEqual(
