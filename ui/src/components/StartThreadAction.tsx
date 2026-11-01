@@ -1,5 +1,5 @@
 import type { Message, Thread } from "@touri/contracts"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { UiApi } from "../api/client"
 import { t } from "../i18n"
 
@@ -16,9 +16,14 @@ export const StartThreadAction = ({
 }) => {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(false)
+  const request = useRef<AbortController | null>(null)
+  useEffect(() => () => request.current?.abort(), [])
+
   const start = async () => {
-    if (busy) return
+    if (request.current) return
     if (thread && !thread.archivedAt) return onSelect(thread.id)
+    const controller = new AbortController()
+    request.current = controller
     setBusy(true)
     setError(false)
     try {
@@ -26,12 +31,15 @@ export const StartThreadAction = ({
         "POST /threads/:id/start-thread",
         { messageId: message.id },
         { id: message.threadId },
+        { signal: controller.signal },
       )
+      if (controller.signal.aborted) return
       onSelect(response.thread.id)
     } catch {
-      setError(true)
+      if (!controller.signal.aborted) setError(true)
     } finally {
-      setBusy(false)
+      request.current = null
+      if (!controller.signal.aborted) setBusy(false)
     }
   }
 

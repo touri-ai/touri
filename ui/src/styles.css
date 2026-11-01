@@ -3791,7 +3791,6 @@ button.brand-button:hover:not(:disabled) {
     ". routine"
     ". meta"
     "avatar body"
-    ". replies"
     ". actions";
   column-gap: var(--space-8);
 }
@@ -4529,7 +4528,7 @@ button.brand-button:hover:not(:disabled) {
 .chat-message-list .message-bubble[data-work-message] {
   justify-items: stretch;
   grid-template-columns: var(--space-28) minmax(0, 1fr);
-  grid-template-areas: ". routine" "avatar meta" ". body" ". replies" ". actions";
+  grid-template-areas: ". routine" "avatar meta" ". body" ". actions";
   column-gap: var(--space-8);
 }
 .chat-message-list .message-bubble[data-work-message] > .message-meta {
@@ -4588,9 +4587,6 @@ button.brand-button:hover:not(:disabled) {
   font-weight: var(--weight-semibold);
 }
 
-.message-thread-replies {
-  margin-top: var(--space-8);
-}
 .chat-message-list .message-start-thread > button {
   opacity: 0;
   transition: opacity var(--duration-standard) var(--ease-standard);
@@ -4612,10 +4608,6 @@ button.brand-button:hover:not(:disabled) {
   .message-thread-replies button {
     min-height: 44px;
   }
-}
-
-.chat-message-list .message-bubble:is([data-message-author="bot"], [data-work-message]) > .message-thread-replies {
-  grid-area: replies;
 }
 
 .thread-context-header {

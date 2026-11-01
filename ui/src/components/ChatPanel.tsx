@@ -1654,15 +1654,13 @@ const MessageBubbleRow = ({
           failureContent
         )}
       </div>
-      {api && onSelectThread && anchoredThread && (
-        <StartThreadAction message={message} api={api} thread={anchoredThread} onSelect={onSelectThread} />
-      )}
       <div className="message-actions">
         {api &&
           onSelectThread &&
-          !anchoredThread &&
           ["user", "assistant"].includes(message.role) &&
-          message.status !== "streaming" && <StartThreadAction message={message} api={api} onSelect={onSelectThread} />}
+          (anchoredThread || message.status !== "streaming") && (
+            <StartThreadAction message={message} api={api} thread={anchoredThread} onSelect={onSelectThread} />
+          )}
         {!showHeader && messageTime}
         {!showHeader && messageStatus}
         {siblings.length > 1 && (

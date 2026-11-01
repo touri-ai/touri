@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { Message, Thread } from "@touri/contracts"
 import { afterEach, expect, test, vi } from "vitest"
 import { createMockApi } from "../src/api/mock"
@@ -35,6 +35,7 @@ test.each(["user", "assistant"] as const)("message action starts an anchored thr
     "POST /threads/:id/start-thread",
     { messageId: message.id },
     { id: message.threadId },
+    { signal: expect.any(AbortSignal) },
   )
 })
 
@@ -96,5 +97,50 @@ test("reply counter restores an archived anchored thread before selecting it", a
     "POST /threads/:id/start-thread",
     { messageId: message.id },
     { id: message.threadId },
+    { signal: expect.any(AbortSignal) },
   )
+})
+
+test("leaving the message cancels a pending open and ignores its late response", async () => {
+  const api = createMockApi()
+  const pending = Promise.withResolvers<{ thread: { id: string } }>()
+  const request = vi.spyOn(api, "request").mockReturnValue(pending.promise)
+  const onSelect = vi.fn()
+  const view = render(<StartThreadAction message={message} api={api} onSelect={onSelect} />)
+  fireEvent.click(screen.getByRole("button", { name: "Iniciar thread" }))
+  const signal = request.mock.calls[0]?.[3]?.signal
+
+  view.unmount()
+  await act(async () => pending.resolve({ thread: { id: "late-thread" } }))
+
+  expect(signal?.aborted).toBe(true)
+  expect(onSelect).not.toHaveBeenCalled()
+})
+
+test("a creation event before the HTTP response keeps the pending action mounted", async () => {
+  const api = createMockApi()
+  const base = api.getState().threads[0]
+  if (!base) throw new Error("Missing synthetic thread")
+  const thread = { ...base, id: "created-thread", anchorMessageId: message.id, replyCount: 0 }
+  const pending = Promise.withResolvers<{ thread: Thread }>()
+  const request = vi.spyOn(api, "request").mockReturnValue(pending.promise)
+  const onSelect = vi.fn()
+  const getList = (threads: Thread[]) => (
+    <VirtualMessageList
+      messages={[message]}
+      anchoredThreads={threads}
+      api={api}
+      onSelectThread={onSelect}
+      onSwitchBranch={vi.fn()}
+      onRetry={vi.fn()}
+    />
+  )
+  const view = render(getList([]))
+  fireEvent.click(screen.getByRole("button", { name: "Iniciar thread" }))
+
+  view.rerender(getList([thread]))
+  await act(async () => pending.resolve({ thread }))
+
+  expect(request.mock.calls[0]?.[3]?.signal?.aborted).toBe(false)
+  expect(onSelect).toHaveBeenCalledWith(thread.id)
 })
