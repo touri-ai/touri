@@ -366,6 +366,8 @@ export type Run = {
 
   /** Coordination tracks a channel request; only execution invokes a provider. Derived from group_turns. */
   kind?: "execution" | "coordination"
+  /** Coordination recipients still awaiting bot admission; derived from group turns and member runs. */
+  pendingBotIds?: Id[]
   /** Automatic interruption recovery, projected from the durable continuation ledger. */
   automaticResumePending?: boolean
   automaticResumeFromRunId?: Id | null

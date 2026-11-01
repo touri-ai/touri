@@ -7,7 +7,7 @@ import { ScreenHeader } from "../../components/ScreenPrimitives"
 import { type TranslationKey, t } from "../../i18n"
 import { getSidebarThreadTitle } from "../../sidebarThreadTitle"
 import { getOngoingWorkRuns, getPrecedingWorkRun } from "./precedingTask"
-import { getWorkStateLabel } from "./presentation"
+import { getQueuedWorkRuns, getWorkStateLabel } from "./presentation"
 import "../../components/screens.css"
 import "./work.css"
 
@@ -63,15 +63,11 @@ export const WorkScreen = ({
     const timer = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(timer)
   }, [runs.length, section])
-  const running = runs.filter((run) => run.status === "starting" || run.status === "running")
+  const running = runs.filter(
+    (run) => run.kind !== "coordination" && (run.status === "starting" || run.status === "running"),
+  )
   const ongoing = getOngoingWorkRuns(running)
-  // Sort a fresh filtered array; the workspace snapshot stays untouched.
-  const queued = runs
-    .filter((run) => run.status === "queued")
-    .sort(
-      (first, second) =>
-        (first.queuePosition ?? Number.MAX_SAFE_INTEGER) - (second.queuePosition ?? Number.MAX_SAFE_INTEGER),
-    )
+  const queued = getQueuedWorkRuns(runs)
 
   return (
     <section className="workspace-screen r8-screen work-screen" aria-labelledby="work-title">
@@ -130,9 +126,10 @@ export const WorkScreen = ({
                 return (
                   <article
                     className="screen-card work-card"
-                    key={run.id}
+                    key={`${run.id}:${run.botId}`}
                     data-run-id={run.id}
-                    id={`work-task-${run.id}`}
+                    data-bot-id={run.botId}
+                    id={`work-task-${run.id}-${run.botId}`}
                     tabIndex={-1}
                   >
                     <div className="work-card-bot">
@@ -149,7 +146,9 @@ export const WorkScreen = ({
                       </div>
                       <div>
                         <dt>{t("Work state")}</dt>
-                        <dd>{getWorkStateLabel(run)}</dd>
+                        <dd>
+                          {getWorkStateLabel(run, run.kind === "coordination" && run.pendingBotIds ? "bot" : "runtime")}
+                        </dd>
                       </div>
                       <div>
                         <dt>{t(run.status === "queued" ? "Work waiting time" : "Work elapsed time")}</dt>
@@ -160,8 +159,8 @@ export const WorkScreen = ({
                       <button
                         type="button"
                         className="work-thread work-previous"
-                        aria-controls={`work-task-${preceding.id}`}
-                        onClick={() => document.getElementById(`work-task-${preceding.id}`)?.focus()}
+                        aria-controls={`work-task-${preceding.id}-${preceding.botId}`}
+                        onClick={() => document.getElementById(`work-task-${preceding.id}-${preceding.botId}`)?.focus()}
                       >
                         {t("Work preceding task", { name: bot?.name ?? t("Bot local") })}
                       </button>

@@ -1,4 +1,6 @@
+import type { ChannelPerson } from "@touri/contracts"
 import { type ComponentProps, type Ref, useEffect, useImperativeHandle } from "react"
+import { getAddressedPeople } from "../../../sidecar/src/groups/people"
 import { useComposerDraft } from "../composerDraft"
 import { t } from "../i18n"
 import { consumeTaskResume, resumeTaskEvent } from "../recoveryEvents"
@@ -15,19 +17,23 @@ type DraftComposerProps = Omit<ComponentProps<typeof Composer>, "draft" | "onDra
 export const DraftComposer = ({ draftRef, draftIdentity, onSend, ...props }: DraftComposerProps) => {
   const { draft, setDraft, draftSaveFailed } = useComposerDraft(props.threadId, draftIdentity)
   useImperativeHandle(draftRef, () => ({ setDraft }), [setDraft])
-  const { threadId, inputRef, mentionBots } = props
+  const { threadId, inputRef, mentionBots, mentionPeople } = props
   useEffect(() => {
     const resume = () => {
       const request = consumeTaskResume(threadId)
       if (!request) return
       const bot = mentionBots?.find((member) => member.id === request.botId)
-      setDraft((current) => getResumeDraft(current, bot?.name))
+      const members = [
+        ...(mentionPeople ?? []).map((person) => ({ ...person, id: `person:${person.id}` })),
+        ...(mentionBots ?? []),
+      ]
+      setDraft((current) => getResumeDraft(current, bot?.name, members))
       inputRef.current?.focus()
     }
     resume()
     window.addEventListener(resumeTaskEvent, resume)
     return () => window.removeEventListener(resumeTaskEvent, resume)
-  }, [threadId, inputRef, setDraft, mentionBots])
+  }, [threadId, inputRef, setDraft, mentionBots, mentionPeople])
 
   return (
     <>
@@ -54,25 +60,19 @@ export const DraftComposer = ({ draftRef, draftIdentity, onSend, ...props }: Dra
  * A channel runs only mentioned bots, so resuming there names the interrupted bot. An existing draft
  * stays below the request instead of being replaced; a direct conversation keeps it as it is.
  */
-export const getResumeDraft = (current: string, botName?: string): string => {
+export const getResumeDraft = (
+  current: string,
+  botName?: string,
+  members?: readonly Pick<ChannelPerson, "id" | "name" | "handle">[],
+): string => {
   const request = t(
     "Conferi as ações registradas. Quero continuar a tarefa a partir do estado atual, sem repetir ações já concluídas.",
   )
   if (!botName) return current || request
   const mention = getMentionToken(botName)
   if (!current.trim()) return `${mention} ${request}`
-  if (getHasBotMention(current, botName)) return current
+  const addressed = getAddressedPeople(current, members ?? [{ id: "resume", name: botName }])
+  if (addressed.some((member) => !member.id.startsWith("person:") && member.name === botName)) return current
 
   return `${mention} ${request}\n\n${current}`
 }
-
-const getHasBotMention = (draft: string, botName: string): boolean => {
-  const tokens = [botName, JSON.stringify(botName)]
-    .map((token) => getNormalizedMention(token).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .join("|")
-  const mention = new RegExp(`(?:^|[^\\p{L}\\p{N}_@.-])@(?:${tokens})(?=$|[^\\p{L}\\p{N}_-])`, "u")
-
-  return mention.test(getNormalizedMention(draft))
-}
-
-const getNormalizedMention = (value: string): string => value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase()

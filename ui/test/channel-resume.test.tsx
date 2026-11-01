@@ -67,6 +67,16 @@ it("builds the resume draft from the interrupted bot only", () => {
   expect(getResumeDraft("Meu rascunho", undefined)).toBe("Meu rascunho")
 })
 
+it("keeps a draft that addresses the interrupted bot after another channel member", async () => {
+  const { thread, input } = await openChannel()
+  const draft = "@onb @mark continuem o relatório"
+  fireEvent.change(input, { target: { value: draft } })
+
+  act(() => requestTaskResume(thread.id, "bot-mark"))
+
+  expect(input).toHaveValue(draft)
+})
+
 it.each(["@marketing veja o relatório", "demo@mark.example", "@mark-extra", "@mark_2", "@mark2"])(
   "adds the interrupted bot when the draft contains a similar token: %s",
   (draft) => {
@@ -76,14 +86,11 @@ it.each(["@marketing veja o relatório", "demo@mark.example", "@mark-extra", "@m
   },
 )
 
-it.each(["@MARK já comecei", "Olá, @mark!", '@"mark" já comecei'])(
-  "preserves a draft with a complete mention: %s",
-  (draft) => {
-    const result = getResumeDraft(draft, "mark")
+it.each(["@MARK já comecei", '@"mark" já comecei'])("preserves a draft with a complete mention: %s", (draft) => {
+  const result = getResumeDraft(draft, "mark")
 
-    expect(result).toBe(draft)
-  },
-)
+  expect(result).toBe(draft)
+})
 
 it.each([
   { botName: "João", draft: "@JOAO já comecei" },
@@ -93,4 +100,13 @@ it.each([
   const result = getResumeDraft(draft, botName)
 
   expect(result).toBe(draft)
+})
+
+it("prefixes recovery when the bot appears only in a future instruction", () => {
+  const draft = "Depois peça ao @mark para conferir"
+
+  const resumed = getResumeDraft(draft, "mark")
+
+  expect(resumed.startsWith("@mark ")).toBe(true)
+  expect(resumed.endsWith(draft)).toBe(true)
 })

@@ -413,7 +413,7 @@ test("channel requests remain visible behind a healthy busy bot and promote with
     return result.run
   }
   const first = send()
-  await waitFor(() => fixture.getRunning().length === 1)
+  await waitFor(() => fixture.getRunning().some((run) => run.groupTurnId === first.id))
 
   const second = send()
   const third = send()
@@ -437,6 +437,66 @@ test("channel requests remain visible behind a healthy busy bot and promote with
   expect(promoted.some((run) => run.id === first.id || run.id === second.id)).toBe(false)
   expect(fixture.getEvent(third.id)).toMatchObject({ queuePosition: 1, queueTotal: 1 })
   expect(fixture.getEvent(second.id)).toMatchObject({ status: "running", origin: "message", queuePosition: null })
+})
+
+test("partially admitted channel requests expose each pending bot in snapshots and free completed members", async () => {
+  const fixture = await getFixture()
+  const kernel = fixture.runtime.kernel
+  const store = kernel.services.use("store.api")
+  if (!store) throw new Error("Store unavailable")
+  const groups = createGroupStore(kernel)
+  const group = groups.save({
+    name: "Equipe de demonstração",
+    color: "#2563eb",
+    avatarShape: "classic-none",
+    memberIds: ["bot-0", "bot-1"],
+    coordinatorBotId: null,
+  })
+  const channel = groups.createThread(group)
+  const runtime = createGroupRuntime(kernel, fixture.engine)
+  fixture.addCleanup(async () => {
+    runtime.shutdown()
+    await runtime.waitForDrain()
+  })
+  const send = (text: string) => {
+    const request = store.insertMessage({
+      message: {
+        id: kernel.newId(),
+        threadId: channel.id,
+        parentId: store.getThread({ threadId: channel.id })?.activeLeafId ?? null,
+        role: "user",
+        kind: "text",
+        status: "complete",
+        runId: null,
+        text,
+        parts: [],
+        sender: null,
+        source: "local",
+      },
+    })
+    if (!request.success) throw new Error(request.error)
+    const result = runtime.enqueue({ threadId: channel.id, requestMessageId: request.message.id, trigger: "user" })
+    if (!result.success) throw new Error(result.error)
+
+    return result.run
+  }
+  const first = send('@"Equipe 0" tarefa longa')
+  await waitFor(() => fixture.getRunning().length === 1)
+  const shared = send('@"Equipe 0" @"Equipe 1" revisem')
+
+  await waitFor(() => fixture.getRunning().length === 2)
+
+  const snapshot = fixture.engine.getWorkRuns()
+  expect(snapshot.find((run) => run.id === shared.id)).toMatchObject({ status: "running", pendingBotIds: ["bot-0"] })
+  expect(fixture.engine.getRunSnapshot(shared).pendingBotIds).toEqual(["bot-0"])
+  const member = snapshot.find((run) => run.groupTurnId === shared.id)
+  if (!member) throw new Error("Missing independent member")
+  fixture.finish(member.threadId)
+  await waitFor(() => fixture.getEvent(member.id)?.status === "succeeded")
+  const later = send('@"Equipe 1" confira outro item')
+  await waitFor(() => fixture.getRunning().some((run) => run.groupTurnId === later.id))
+  expect(fixture.engine.getRunSnapshot(first).status).toBe("running")
+  expect(fixture.engine.getWorkRuns().find((run) => run.id === shared.id)?.pendingBotIds).toEqual(["bot-0"])
 })
 
 test("queue publication batches database reads regardless of the number of waiting turns", async () => {
@@ -557,7 +617,7 @@ const getFixture = async (botCount = 5) => {
     send,
     saveLimit,
     sendFive: () => Array.from({ length: 5 }, (_, index) => send(`thread-${index}`, index)),
-    getRunning: () => engine.getWorkRuns().filter((run) => run.status === "running"),
+    getRunning: () => engine.getWorkRuns().filter((run) => run.kind !== "coordination" && run.status === "running"),
     getEvents: () => events,
     getProviderStarts: () => completions.size,
     getEvent: (id: string | undefined) => events.filter((run) => run.id === id).at(-1),

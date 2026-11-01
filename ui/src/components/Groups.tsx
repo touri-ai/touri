@@ -39,7 +39,7 @@ export const MemberMascots = ({ bots, locale = "pt-BR" }: { bots: Bot[]; locale?
   </span>
 )
 export const GroupRoutingNote = (_props: { group: BotGroup; bots: Bot[]; channelMode?: boolean }) => (
-  <p className="group-routing-note">{t("Os bots só respondem quando você os chama com @nome.")}</p>
+  <p className="group-routing-note">{t("Channel bot addressing")}</p>
 )
 
 const GroupMembers = ({
@@ -92,7 +92,7 @@ export const GroupConversationStart = ({
         size={36}
       />
       <h2>{startTitle}</h2>
-      <p>{t("Os bots só respondem quando você os chama com @nome.")}</p>
+      <p>{t("Channel bot addressing")}</p>
       <GroupMembers group={group} bots={bots} people={people} currentPersonId={currentPersonId} />
     </section>
   )
@@ -127,7 +127,7 @@ const ChannelConversationStart = ({
           </li>
         ))}
       </ul>
-      <p className="channel-start-hint">{t("Os bots só respondem quando você os chama com @nome.")}</p>
+      <p className="channel-start-hint">{t("Channel bot addressing")}</p>
     </section>
   )
 }

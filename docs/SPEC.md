@@ -1064,22 +1064,37 @@ Groups have a name, mascot shape/seed/color, an ordered roster and an optional c
 from that roster. Each group owns multiple conversations. Migration `0008.sql` is additive;
 existing bot conversations, permissions and provider sessions are preserved.
 
-Human channel messages dispatch only to explicitly mentioned bots, in mention order. Recipients of
-the same message start independently, subject to the runtime concurrency limit; a slow recipient
-does not delay dispatch to the others. Later requests sharing a recipient retain their order until
-the earlier turn settles. The parent waits for every recipient and preserves any member failure
-and successful replies; the explicit everyone action retains its partial-success behavior.
-Mentioning a person never dispatches a bot. The explicit everyone and summary actions select
-their own recipients; routines retain the coordinator / mentioned-members / all-members order.
-The UI mock follows the same mention matching for its channel bot roster: a message without a
-matching bot mention remains in history and returns `run: null`; each mentioned member receives
-one reply in first-mention order, with the selected bot's ID and name as its sender so that the
-displayed author and avatar agree with the run recipient. Direct messages and explicit
-everyone/summary actions retain their recipients in the mock.
-Multiword names can be quoted (`@"Dev Bot"`). Turns addressed to different members may run
-concurrently within a group, subject to the runtime concurrency limit. Requests sharing a recipient
-retain their order across group conversations, including requests naming several members. Delegated
-recipients stay reserved during approval and execution; delegation into another active turn is refused.
+Human channel messages dispatch only to bots in a **leading address block**, in address order.
+For example, `@planner @reviewer check this` calls both now; `@planner implement; then ask
+@reviewer to validate` calls only planner. Mentions in the body, quotes, code and future instructions
+are references and never dispatch work. To request another bot now, put it in the leading block
+or send it a separate addressed message. This is a syntactic rule, with no language or intent
+classification. Leading whitespace is allowed; addresses can be separated by whitespace or commas.
+The first non-address text (including an unknown handle) ends the block. Multiword names can be
+quoted (`@"Dev Bot"`); matching remains case- and accent-insensitive, longest name first. Person
+identities take precedence over colliding bot names; mentioning a person never dispatches a bot.
+The existing composer placeholder and channel panel explain this rule, without an additional
+permanent composer legend. The UI mock uses the same address parser.
+The explicit everyone and summary actions select their own recipients; routines retain the
+coordinator / addressed-members / all-members order.
+
+Each bot has an independent Work FIFO across channels and their conversations. Free recipients of a message
+start immediately, subject to the runtime concurrency limit, even if another recipient is busy.
+A member finishing frees its own next request while its peers keep working. Pending recipients
+reserve only their own place; they never prevent unrelated bots from starting. Delegated recipients
+stay reserved during approval and execution; delegation into another active turn is refused.
+The parent waits for every recipient and preserves failures and successful replies; the explicit
+everyone action retains partial-success behavior. Cancellation aborts both started and waiting
+recipients of the selected request, without losing later requests when using turn scope.
+
+`Run.pendingBotIds?: Id[]` is an additive, derived projection for active coordination runs:
+recipients without a depth-zero member execution yet. It is reconstructed from `group_turns` and
+`group_run_links`, so no persisted schema migration is needed. The Work task list displays one
+waiting card per bot and a per-bot count in the channel member panel, including when another recipient of the same message is already running,
+and numbers pending channel requests within that bot's FIFO. Execution cards retain the runtime
+slot queue metadata. Older servers without the projection keep their single-request fallback.
+Reload and reconnect reconstruct the same pending bots; terminal coordination runs have none.
+
 Each member uses an internal
 conversation with its own native session, machine, instructions, history and approvals. Replies
 are appended to the current shared history path with the actual member's identity, preserving
@@ -1168,7 +1183,7 @@ tools without a trusted read-only definition and unconfirmed effects prevent aut
 The first retry is immediate; the second waits one minute, retaining its deadline across restart.
 A managed effect recorded in the durable work journal requires human review
 even if no reply part was saved; neither automatic recovery nor a simple retry may replay it.
-The manual resume action appears only after automatic recovery is exhausted or needs human review. It prepares the resume request in the composer and focuses it; the person sends it. In a channel the request starts with an @mention of the interrupted task's bot (from the task or its notification, never the bot that answered last), because channel messages run only mentioned bots; a message without a mention still starts no run. An existing draft stays below the request, and a draft that already mentions that bot is kept as it is. Only complete mentions count: a longer name or an email containing the same text does not suppress the resume request; matching ignores case and accents, as channel routing does. Direct conversations keep the request without a mention.
+The manual resume action appears only after automatic recovery is exhausted or needs human review. It prepares the resume request in the composer and focuses it; the person sends it. In a channel the request starts with an @mention of the interrupted task's bot (from the task or its notification, never the bot that answered last), because channel messages run only mentioned bots; a message without a mention still starts no run. An existing draft stays below the request, and a draft that already addresses that bot in its leading block is kept as it is. Only complete mentions count: a longer name or an email containing the same text does not suppress the resume request; matching ignores case and accents, as channel routing does. Direct conversations keep the request without a mention.
 A later reply to another channel request or from another member does not hide that action.
 Automatic recovery markers follow the selected interface language. An empty final response (no text
 or parts) fails visibly instead of succeeding.

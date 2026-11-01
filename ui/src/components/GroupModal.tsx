@@ -185,7 +185,7 @@ export const GroupModal = ({
           ) : (
             coordinatorField
           )}
-          <p className="group-routing-note">{t("Os bots só respondem quando você os chama com @nome.")}</p>
+          <p className="group-routing-note">{t("Channel bot addressing")}</p>
           {error && <p role="alert">{error}</p>}
           <div className="group-modal-actions">
             <button type="button" className="button button-quiet" onClick={onClose} disabled={saving}>

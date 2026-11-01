@@ -163,7 +163,7 @@ test("channel polish keeps identities, messages and the member panel clear", asy
     page.getByTestId("virtual-message-list").getByText("Mensagem de demonstração entregue.", { exact: true }),
   ).toBeVisible()
   await expect(page.locator(".delivery-state").filter({ hasText: "Entregue" })).toHaveCount(0)
-  await expect(input).toHaveAttribute("placeholder", "Mensagem em #fazendomapas")
+  await expect(input).toHaveAttribute("placeholder", "Comece com @nome · mensagem em #fazendomapas")
   await expect(page.locator(".group-thread-list button").filter({ hasText: /^fazendomapas$/ })).toHaveCount(0)
   await expect(page.locator(".group-thread-list")).toContainText(/slot manha · \d{1,2} [a-z]{3}/)
   await expect(page.locator(".sidebar-footer .user-chip strong")).toHaveText("Pessoa demo")

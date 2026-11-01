@@ -90,7 +90,7 @@ test("channel messages stay quiet until a bot is mentioned", async ({ page, chan
     .getByRole("button", { name: /^produto/ })
     .click()
   const composer = page.getByRole("textbox", { name: "Mensagem para produto" })
-  await expect(composer).toHaveAttribute("placeholder", "Mensagem em #produto")
+  await expect(composer).toHaveAttribute("placeholder", "Comece com @nome · mensagem em #produto")
 
   await composer.fill("oi")
   await composer.press("Enter")
