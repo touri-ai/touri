@@ -9,8 +9,10 @@ import { evidenceImageRoute, imagePath } from "../vm/evidence-images"
 export const getResponseImagePaths = (text: string): string[] => {
   const prose = text.slice(0, 1024 * 1024).replace(/```[\s\S]*?(?:```|$)|~~~[\s\S]*?(?:~~~|$)/g, "")
   const paths = Array.from(
-    prose.matchAll(/(?:[\s`(]|^)([^\s<>`"'()[\]]+\.(?:png|jpe?g|gif|webp))(?=[\s`)\],.;!?]|$)/gi),
-    (match) => match[1] ?? "",
+    prose.matchAll(
+      /`([^`\n]+\.(?:png|jpe?g|gif|webp))`|(?:[\s`(]|^)([^\s<>`"'()[\]]+\.(?:png|jpe?g|gif|webp))(?=[\s`)\],.;!?]|$)/gi,
+    ),
+    (match) => match[1] ?? match[2] ?? "",
   )
 
   const decoded = paths.flatMap((path) => {
@@ -20,7 +22,9 @@ export const getResponseImagePaths = (text: string): string[] => {
       return []
     }
   })
-  return [...new Set(decoded)].filter((path) => !/^[a-z][a-z0-9+.-]*:|^\/\//i.test(path)).slice(0, 12)
+  return [...new Set(decoded)]
+    .filter((path) => path.length <= 4096 && !/^[a-z][a-z0-9+.-]*:|^\/\//i.test(path))
+    .slice(0, 12)
 }
 
 export const saveResponseImages = async ({

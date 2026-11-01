@@ -925,3 +925,20 @@ it("reads persisted image references by attachment rather than the deleted origi
   expect(await screen.findByRole("img", { name: "Result" })).toBeVisible()
   expect(request).toHaveBeenCalledWith("GET /bots/:id/images", { attachmentId }, { id: context.bot.id })
 })
+
+it("keeps one path label when the surrounding viewer already names a failed image", async () => {
+  const { context, request } = fixture()
+  request.mockRejectedValue(new ApiError(404, "Missing", "IMAGE_NOT_FOUND"))
+  render(
+    <EvidenceContext.Provider value={context}>
+      <p>/workspace/result.png</p>
+      <EvidenceGallery
+        hasPathLabel
+        images={[{ path: "/workspace/result.png", filename: "result.png", caption: "Result" }]}
+      />
+    </EvidenceContext.Provider>,
+  )
+
+  expect(await screen.findByText("Imagem não encontrada")).toBeVisible()
+  expect(screen.getAllByText("/workspace/result.png")).toHaveLength(1)
+})

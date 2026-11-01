@@ -20,6 +20,12 @@ test("captures only prose image references", () => {
   ).toEqual(["/tmp/result.png"])
 })
 
+test("preserves code-formatted image paths containing spaces", () => {
+  const text = "Imagem: `/tmp/example result.png`. Remota: `https://example.test/remote image.png`"
+
+  expect(getResponseImagePaths(text)).toEqual(["/tmp/example result.png"])
+})
+
 test("full local bot captures outside its root and retains bytes after source deletion", async () => {
   const root = await mkdtemp(join(tmpdir(), "touri-image-capture-"))
   const database = new Database(":memory:")

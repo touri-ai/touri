@@ -123,7 +123,7 @@ export const workspaceError = (error: unknown): { status: number; json: { error:
 }
 
 // The same guest paths used by folder mounts are also accepted by the read endpoints.
-export const guestFileErrors = (source: string): string => `import errno,json,sys
+export const guestFileErrors = (source: string, errorExitCode: 0 | 1 = 1): string => `import errno,json,sys
 try:
 ${source
   .split("\n")
@@ -131,7 +131,7 @@ ${source
   .join("\n")}
 except OSError as e:
  print(json.dumps(dict(errorStatus=404 if e.errno==errno.ENOENT else 403)))
- sys.exit(1)`
+ sys.exit(${errorExitCode})`
 
 export const checkGuestFileError = (stdout: string) => {
   const result = JSON.parse(stdout) as { errorStatus?: number }

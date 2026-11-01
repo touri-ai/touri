@@ -1,5 +1,6 @@
 import { createRoot } from "react-dom/client"
 import { createMockApi } from "../../src/api/mock"
+import { BotLibrary } from "../../src/components/BotLibrary"
 import { MarkdownContent } from "../../src/components/MarkdownContent"
 import { ApiError } from "../../src/errors"
 import "../../src/styles.css"
@@ -7,6 +8,7 @@ import "../../src/styles.css"
 const query = new URLSearchParams(location.search)
 document.documentElement.dataset.theme = query.get("theme") ?? "dark"
 const denied = query.get("state") === "denied"
+const library = query.get("screen") === "library"
 const api = createMockApi()
 const bot = api.getState().bots[0]
 if (!bot) throw new Error("Missing example bot")
@@ -28,6 +30,8 @@ const image = await new Promise<Blob>((resolve, reject) =>
   canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("Missing image"))), "image/png"),
 )
 api.request = async (route, input) => {
+  if (route === "GET /bots/:id/files" && library)
+    return { files: [{ name: "result.png", path: "/workspace/result.png", directory: false, bytes: 1024 }] } as never
   if (route === "GET /bots/:id/files") throw new ApiError(403, "Denied")
   if (route === "GET /bots/:id/images" && !denied && (input as { attachmentId?: string }).attachmentId === attachmentId)
     return image as never
@@ -37,13 +41,20 @@ createRoot(document.getElementById("root") ?? document.body).render(
   <main style={{ maxWidth: 760, margin: "24px auto", padding: 20 }}>
     <h1>Imagens na conversa</h1>
     <p>Bot de exemplo · resposta concluída</p>
-    <MarkdownContent
-      evidence={{
-        api,
-        bot: { ...bot, machine: "local" },
-        imageAttachments: denied ? [] : [{ path: "/outside/result.png", attachmentId }],
-      }}
-      content="Resultado: ![Arte de exemplo](/outside/result.png)"
-    />
+    {library ? (
+      <BotLibrary
+        api={api}
+        bot={{ ...bot, machine: "local", projectId: null, cwd: "/workspace", homeDir: "/workspace" }}
+      />
+    ) : (
+      <MarkdownContent
+        evidence={{
+          api,
+          bot: { ...bot, machine: "local" },
+          imageAttachments: denied ? [] : [{ path: "/outside/result.png", attachmentId }],
+        }}
+        content="Resultado: ![Arte de exemplo](/outside/result.png)"
+      />
+    )}
   </main>,
 )

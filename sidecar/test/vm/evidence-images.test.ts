@@ -17,7 +17,9 @@ import {
 import { guestImageReferences } from "../../src/vm/evidence-pattern"
 
 const roots: string[] = []
+const cleanups: Array<() => void> = []
 afterEach(() => {
+  for (const cleanup of cleanups.splice(0)) cleanup()
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 const root = () => {
@@ -96,6 +98,7 @@ const fixture = (running = false) => {
   const route = evidenceImageRoute(kernel, vm)
   return {
     db,
+    kernel,
     vm,
     path,
     attachments,
@@ -305,8 +308,13 @@ test("guest reader enforces symlink and traversal confinement and the size cap",
   symlinkSync(join(outside, "a.png"), join(path, "link.png"))
   writeFileSync(join(path, "big.png"), Buffer.alloc(MAX_IMAGE_BYTES + 1))
   const script = guestImage.replace("'/workspace'", JSON.stringify(path))
-  for (const name of ["../a.png", "escape/a.png", "link.png", "big.png"])
-    expect(Bun.spawnSync(["python3", "-c", script, name, "0"]).exitCode).not.toBe(0)
+  expect(Bun.spawnSync(["python3", "-c", script, "../a.png", "0"]).exitCode).not.toBe(0)
+  for (const name of ["escape/a.png", "link.png", "big.png"]) {
+    const result = Bun.spawnSync(["python3", "-c", script, name, "0"])
+    const failure = name === "big.png" ? { errorCode: "IMAGE_TOO_LARGE" } : { errorStatus: 403 }
+
+    expect(JSON.parse(result.stdout.toString())).toEqual(failure)
+  }
   const good = Bun.spawnSync(["python3", "-c", script, "a.png", "0"])
   expect(good.exitCode).toBe(0)
   expect(JSON.parse(good.stdout.toString()).data).toBe(png.toString("base64"))
@@ -401,4 +409,43 @@ test("image failures include specific codes and resolved paths", async () => {
     json: { errorCode: "IMAGE_UNSUPPORTED" },
   })
   expect(await f.request({ path: "large.png" })).toMatchObject({ status: 422, json: { errorCode: "IMAGE_TOO_LARGE" } })
+})
+
+test.each([
+  { status: 422, errorCode: "IMAGE_TOO_LARGE" },
+  { status: 422, errorCode: "IMAGE_UNSUPPORTED" },
+  { status: 404, errorCode: "IMAGE_NOT_FOUND" },
+  { status: 403, errorCode: "IMAGE_OUTSIDE_WORKSPACE" },
+])("preserves guest image failure $errorCode through the execution boundary", async ({ status, errorCode }) => {
+  const f = fixture(true)
+  cleanups.push(() => f.db.close())
+  const path = join(f.path, "result.png")
+  if (errorCode === "IMAGE_TOO_LARGE") writeFileSync(path, Buffer.alloc(MAX_IMAGE_BYTES + 1))
+  if (errorCode === "IMAGE_UNSUPPORTED") writeFileSync(path, "not an image")
+  if (errorCode === "IMAGE_OUTSIDE_WORKSPACE") symlinkSync(join(root(), "private.png"), path)
+  const vm: VmRuntime = {
+    ...f.vm,
+    exec: async () => {
+      const child = Bun.spawn(["python3", "-c", guestImage, "result.png", "0", f.path])
+      const [stdout, stderr, code] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ])
+      // Providers discard stdout on nonzero exits; typed failures must use the JSON protocol.
+      if (code !== 0) return { success: false, error: "Guest read failed", errorCode: "EXEC_FAILED" }
+
+      return { success: true, stdout, stderr, code }
+    },
+  }
+
+  const response = await evidenceImageRoute(f.kernel, vm).handler({
+    params: { id: f.bot.id },
+    query: { path: "/workspace/result.png" },
+    body: null,
+    signal: new AbortController().signal,
+  })
+
+  expect(response).toMatchObject({ status, json: { errorCode, path: "/workspace/result.png" } })
+  expect(f.counts()).toEqual({ acquired: 1, released: 1 })
 })

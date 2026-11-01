@@ -89,7 +89,8 @@ export const localImage = (root: string, path: string) => {
 }
 
 // No shell interpolation, no symlink following at any component, bounded regular-file read.
-export const guestImage = guestFileErrors(`import os,sys,stat,base64,json
+export const guestImage = guestFileErrors(
+  `import os,sys,stat,base64,json
 parts=sys.argv[1].split('/')
 if any(p in ('..','') or '\\\\' in p for p in parts): raise Exception('Caminho inválido')
 fd=os.open(sys.argv[3] if len(sys.argv)>3 else '/workspace',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
@@ -102,13 +103,15 @@ try:
  with os.fdopen(item,'rb') as f:
   info=os.fstat(f.fileno())
   if not stat.S_ISREG(info.st_mode):
-   print(json.dumps(dict(errorCode='IMAGE_UNSUPPORTED'))); sys.exit(1)
+   print(json.dumps(dict(errorCode='IMAGE_UNSUPPORTED'))); sys.exit(0)
   if info.st_size>15728640:
-   print(json.dumps(dict(errorCode='IMAGE_TOO_LARGE'))); sys.exit(1)
+   print(json.dumps(dict(errorCode='IMAGE_TOO_LARGE'))); sys.exit(0)
   f.seek(int(sys.argv[2]))
   data=f.read(393216)
  print(json.dumps(dict(size=info.st_size,data=base64.b64encode(data).decode())))
-finally: os.close(fd)`)
+finally: os.close(fd)`,
+  0,
+)
 
 export const evidenceImageRoute = (kernel: Kernel, vm: VmRuntime, capture = false): RouteModule["routes"][number] => ({
   method: "GET",

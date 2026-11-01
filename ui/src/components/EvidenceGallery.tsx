@@ -63,12 +63,14 @@ const Thumbnail = ({
   open,
   context,
   inline,
+  hasPathLabel,
 }: {
   image: EvidenceImage
   index: number
   open: () => void
   context: EvidenceContextValue | null
   inline: boolean
+  hasPathLabel: boolean
 }) => {
   const root = useRef<HTMLElement>(null)
   const [visible, setVisible] = useState(false)
@@ -182,7 +184,7 @@ const Thumbnail = ({
         )}
       </button>
       <figcaption>{image.caption}</figcaption>
-      {error && <p className="evidence-path">{image.path}</p>}
+      {error && !hasPathLabel && <p className="evidence-path">{image.path}</p>}
       {error && (
         <button type="button" className="text-button" onClick={() => void navigator.clipboard.writeText(image.path)}>
           {t("Copiar caminho")}
@@ -223,7 +225,15 @@ const Thumbnail = ({
   )
 }
 
-export const EvidenceGallery = ({ images, inline = false }: { images: EvidenceImage[]; inline?: boolean }) => {
+export const EvidenceGallery = ({
+  images,
+  inline = false,
+  hasPathLabel = false,
+}: {
+  images: EvidenceImage[]
+  inline?: boolean
+  hasPathLabel?: boolean
+}) => {
   const context = useContext(EvidenceContext)
   const [selected, setSelected] = useState<number | null>(null)
   const identity = JSON.stringify(images.map(({ path, caption, filename, src }) => ({ path, caption, filename, src })))
@@ -245,6 +255,7 @@ export const EvidenceGallery = ({ images, inline = false }: { images: EvidenceIm
             index={index}
             context={context}
             inline={inline}
+            hasPathLabel={hasPathLabel}
             open={() => setSelected(index)}
           />
         ))}
@@ -491,7 +502,7 @@ export const ImageLightbox = ({
           />
         </div>
       ) : (
-        <p role="status">Carregando imagem…</p>
+        <p role="status">{t("Carregando imagem…")}</p>
       )}
     </dialog>
   )

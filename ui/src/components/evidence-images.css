@@ -118,6 +118,12 @@
 .evidence-image > .text-button {
   margin-inline-end: 12px;
 }
+@media (max-width: 620px) {
+  .evidence-image > .text-button,
+  .evidence-lightbox button {
+    min-height: 44px;
+  }
+}
 .evidence-path {
   overflow-wrap: anywhere;
   display: block;

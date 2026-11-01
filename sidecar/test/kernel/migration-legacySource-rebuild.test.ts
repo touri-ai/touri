@@ -123,6 +123,10 @@ for (let version = 1; version < SCHEMA_VERSION; version++) {
           if (version < 42 && object.name.startsWith("browser_channel_runs_")) {
             const name = object.name === "browser_channel_runs_queue" ? "browser_channel_runs_bot_queue" : object.name
             expect(after.some((current) => current.name === name && current.type === "index")).toBe(true)
+          } else if (["messages_attachment_refs_insert", "messages_attachment_refs_update"].includes(object.name)) {
+            // Cited response images intentionally extend these maintained attachment references.
+            const trigger = after.find((current) => current.name === object.name && current.type === "trigger")
+            expect(trigger?.sql).toContain("'$.images'")
           } else if (REPLACED_TRANSCRIPT_TRIGGERS.has(object.name))
             expect(after.some((current) => current.name === object.name && current.type === "trigger")).toBe(true)
           else expect(after).toContainEqual(object)
