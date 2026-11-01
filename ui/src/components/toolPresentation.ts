@@ -166,6 +166,7 @@ const projectToolPresentation = (name: string, input: Record<string, unknown> | 
   const process = typeof input?.name === "string" ? input.name : t("do projeto")
   const command = typeof input?.command === "string" ? `: ${input.command}` : ""
   const presentations: Record<string, { name: string; summary: string }> = {
+    thread_create: { name: t("Iniciar thread"), summary: t("Criar uma thread a partir da mensagem atual.") },
     ask_all: {
       name: t("Perguntar a todos"),
       summary: t("Enviar esta tarefa aos outros membros do grupo: {message}", {

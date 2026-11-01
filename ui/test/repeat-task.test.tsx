@@ -426,7 +426,7 @@ it("sends a routine to a group the bot belongs to and reviews it as a group task
   await waitFor(() => expect(f.actions.createRoutine).toHaveBeenCalled())
   expect(f.actions.createRoutine.mock.calls[0]?.[0]).toMatchObject({
     groupId: "group-email",
-    continuity: "results-thread",
+    continuity: "main-thread",
     resultsThreadId: null,
     enabled: true,
   })
