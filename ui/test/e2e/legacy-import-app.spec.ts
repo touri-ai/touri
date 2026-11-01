@@ -31,7 +31,7 @@ for (const width of [1440, 390]) {
         warnings: [],
       }
       const capture = async (state: string) => {
-        await expect(page.locator(".modal-card")).toBeVisible()
+        await expect(page.getByRole("dialog", { name: "Importar seus bots", exact: true })).toBeVisible()
         await page.screenshot({ path: info.outputPath(`${width}-${theme}-${state}.png`), animations: "disabled" })
         const audit = await new AxeBuilder({ page })
           .include(".modal-card")
