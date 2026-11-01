@@ -1006,7 +1006,8 @@ export const createRuntimeEngine = ({
     )
     if (!isCurrent()) return () => false
 
-    const bot = store.getBot({ botId: run.botId })
+    const ownBot = store.getBot({ botId: run.botId })
+    const bot = ownBot ? delegatedBot(kernel, run.threadId, ownBot) : null
     const captured = bot
       ? await saveResponseImages({
           kernel,

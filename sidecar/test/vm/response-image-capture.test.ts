@@ -16,8 +16,10 @@ afterEach(async () => {
 
 test("captures only prose image references", () => {
   expect(
-    getResponseImagePaths("![result](/tmp/result.png)\n```\n/tmp/secret.png\n```\nhttps://example.test/remote.png"),
-  ).toEqual(["/tmp/result.png"])
+    getResponseImagePaths(
+      "![result](/tmp/result.png)\n```\n/tmp/secret.png\n```\nhttps://example.test/remote.png\n`/tmp/space image.png`\n![result](</tmp/angle image.jpeg>)",
+    ),
+  ).toEqual(["/tmp/result.png", "/tmp/space image.png", "/tmp/angle image.jpeg"])
 })
 
 test("preserves code-formatted image paths containing spaces", () => {
@@ -38,7 +40,7 @@ test("full local bot captures outside its root and retains bytes after source de
   )
   const homeDir = join(root, "bot")
   await mkdir(homeDir)
-  const source = join(root, "outside.png")
+  const source = join(root, "outside image.png")
   const bytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0])
   await writeFile(source, bytes)
   const bot = { id: "bot", machine: "local", access: "full", homeDir, cwd: homeDir, projectId: null } as Bot
@@ -63,7 +65,7 @@ test("full local bot captures outside its root and retains bytes after source de
     services,
     paths: { appData: join(root, "data"), attachmentsDir: join(root, "data", "attachments") },
   } as Kernel
-  const parts: MessagePart[] = [{ type: "text", text: `![result](${source})` }]
+  const parts: MessagePart[] = [{ type: "text", text: `![result](<${source}>)` }]
 
   const result = await saveResponseImages({ kernel, database, bot, parts })
   await rm(source)

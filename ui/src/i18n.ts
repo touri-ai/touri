@@ -310,6 +310,10 @@ export const ptBR = {
   "Formato de imagem não suportado": "Formato de imagem não suportado",
   "Não foi possível carregar a imagem. Verifique a conexão.":
     "Não foi possível carregar a imagem. Verifique a conexão.",
+  "Caminho copiado": "Caminho copiado",
+  "Não foi possível copiar o caminho. Selecione e copie o texto.":
+    "Não foi possível copiar o caminho. Selecione e copie o texto.",
+  "Não foi possível abrir a pasta.": "Não foi possível abrir a pasta.",
   "Copiar caminho": "Copiar caminho",
   "Prévia indisponível. Clique para abrir a imagem.": "Prévia indisponível. Clique para abrir a imagem.",
   "Carregando imagem…": "Carregando imagem…",
@@ -4074,6 +4078,9 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Imagem acima de 15 MB": "Image exceeds 15 MB",
   "Formato de imagem não suportado": "Unsupported image format",
   "Não foi possível carregar a imagem. Verifique a conexão.": "Could not load the image. Check your connection.",
+  "Caminho copiado": "Path copied",
+  "Não foi possível copiar o caminho. Selecione e copie o texto.": "Could not copy the path. Select and copy the text.",
+  "Não foi possível abrir a pasta.": "Could not open the folder.",
   "Copiar caminho": "Copy path",
   "Prévia indisponível. Clique para abrir a imagem.": "Preview unavailable. Click to open the image.",
   "Carregando imagem…": "Loading image…",
