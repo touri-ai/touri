@@ -3051,6 +3051,7 @@ export const ptBR = {
   "Checking…": "Verificando…",
   "Run dry run": "Simular importação",
   "Import now": "Importar agora",
+  "Import details": "Detalhes da importação",
   "Waiting for the import result…": "Aguardando o resultado da importação…",
   "Could not check the import status. Retrying…": "Não foi possível verificar a importação. Tentando novamente…",
   "Import failed. Review the report and try again.": "A importação falhou. Confira o relatório e tente novamente.",

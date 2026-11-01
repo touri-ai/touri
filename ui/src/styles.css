@@ -4396,6 +4396,11 @@ button.brand-button:hover:not(:disabled) {
   min-height: 0;
   overflow-y: auto;
 }
+.import-wizard-body:focus-visible,
+.import-error:focus-visible {
+  outline: 2px solid var(--accent-info);
+  outline-offset: -2px;
+}
 .import-wizard .wizard-content {
   padding-bottom: var(--space-24);
 }
@@ -4407,7 +4412,7 @@ button.brand-button:hover:not(:disabled) {
   border-top: 1px solid var(--border-strong);
   background: var(--surface);
 }
-.import-wizard-footer .modal-actions {
+.import-wizard .import-wizard-footer .modal-actions {
   position: static;
   align-items: center;
 }
@@ -4424,6 +4429,8 @@ button.brand-button:hover:not(:disabled) {
   border-color: var(--border-error);
   background: var(--surface-danger);
   overflow-wrap: anywhere;
+  max-block-size: min(30dvh, 240px);
+  overflow-y: auto;
 }
 .import-error p {
   margin: var(--space-8) 0 0;
