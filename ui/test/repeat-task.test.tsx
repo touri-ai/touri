@@ -44,29 +44,24 @@ const fixture = () => {
 }
 
 describe("repeating work", () => {
-  it("keeps new routine drafts connected to the bot's conversation setting", () => {
+  it("defaults new routine drafts to the existing main conversation", () => {
     const f = fixture()
 
-    expect(newRoutineDraft(f.bot.id).continuity).toBe("new-thread")
+    expect(newRoutineDraft(f.bot.id).continuity).toBe("main-thread")
   })
 
-  for (const [mode, destination] of [
-    ["main", "Segue o bot: conversa principal"],
-    ["task", "Segue o bot: uma conversa nova por tarefa"],
-  ] as const) {
-    it(`shows the effective ${mode} bot destination for a deferred routine`, () => {
-      const f = fixture()
-      const bot = { ...f.bot, automaticConversationMode: mode }
-      render(<RoutineEditor initial={f.draft} bots={[bot]} actions={f.actions} host="server" onClose={vi.fn()} />)
+  it.each(["main", "task"] as const)("uses the main conversation independently of %s bot mode", (mode) => {
+    const f = fixture()
+    const bot = { ...f.bot, automaticConversationMode: mode }
+    render(<RoutineEditor initial={f.draft} bots={[bot]} actions={f.actions} host="server" onClose={vi.fn()} />)
 
-      const destinationOption = screen.getByRole("combobox", { name: "Destino dos resultados" })
-      expect(destinationOption).toHaveValue("new-thread")
-      expect(within(destinationOption).getByRole("option", { name: "Seguir configuração do bot" })).toBeInTheDocument()
-      fireEvent.click(screen.getByRole("button", { name: "Revisar rotina" }))
+    const destination = screen.getByRole("combobox", { name: "Destino dos resultados" })
+    expect(destination).toHaveValue("main-thread")
+    expect(within(destination).getByRole("option", { selected: true })).toHaveTextContent("Conversa principal")
+    fireEvent.click(screen.getByRole("button", { name: "Revisar rotina" }))
 
-      expect(screen.getByText(destination)).toBeVisible()
-    })
-  }
+    expect(screen.getByText("Conversa principal", { exact: true })).toBeVisible()
+  })
 
   it("shows readable Portuguese labels for every routine timezone option", () => {
     const f = fixture()
