@@ -375,6 +375,36 @@ test.each(["database is locked", "SQLITE_BUSY", "database table is locked"])(
   },
 )
 
+test("a workspace discovery failure before output retries once and preserves the user message", async () => {
+  const request = "Continue the synthetic task"
+  const runtime = getFixture(undefined, [{ message: "workspace routing discovery failed", direct: true }])
+
+  const run = runtime.send(request)
+  await waitForRun(run)
+  const turns = runtime.requests.filter((item) => item.method === "turn/start")
+
+  expect(run.status).toBe("succeeded")
+  expect(runtime.calls).toHaveLength(2)
+  expect(turns).toHaveLength(2)
+  expect(turns.every((turn) => turn.params.input?.some((item) => item.text?.includes(request)))).toBe(true)
+})
+
+test("a workspace discovery failure after partial output never replays the turn", async () => {
+  const runtime = getFixture(undefined, [
+    { message: "workspace routing discovery failed", direct: true, text: "Partial reply" },
+  ])
+
+  const run = runtime.send("Continue the synthetic task")
+  await waitForRun(run)
+
+  expect(run.status).toBe("failed")
+  expect(runtime.calls).toHaveLength(1)
+  expect(runtime.requests.filter((item) => item.method === "turn/start")).toHaveLength(1)
+  expect(
+    runtime.store.activePath({ threadId: runtime.thread.id }).find((item) => item.role === "assistant")?.text,
+  ).toBe("Partial reply")
+})
+
 test("a lock reported in every pre-start completion stops after the bounded retries", async () => {
   const failures = Array.from({ length: 5 }, () => ({ message: "database is locked" }))
   const runtime = getFixture(undefined, failures)
