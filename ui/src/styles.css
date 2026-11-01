@@ -4401,6 +4401,13 @@ button.brand-button:hover:not(:disabled) {
   outline: 2px solid var(--accent-info);
   outline-offset: -2px;
 }
+.import-wizard .wizard-step-label {
+  font: inherit;
+}
+.import-wizard .review-grid > span {
+  border-radius: var(--radius-sm);
+  background: var(--surface-control);
+}
 .import-wizard .wizard-content {
   padding-bottom: var(--space-24);
 }
@@ -4472,9 +4479,28 @@ button.brand-button:hover:not(:disabled) {
 }
 @media (max-width: 480px) {
   .import-wizard .wizard-steps {
+    position: relative;
     gap: var(--space-8);
-    overflow-wrap: anywhere;
-    font-size: var(--fs-caption);
+    padding-bottom: 40px;
+  }
+  .import-wizard .wizard-step-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .import-wizard .wizard-active .wizard-step-label {
+    left: var(--space-24);
+    right: var(--space-24);
+    bottom: var(--space-12);
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+    text-align: center;
+    white-space: normal;
   }
   .import-wizard-footer .modal-actions {
     padding: var(--space-12);
