@@ -47,6 +47,13 @@ const getComposer = (handle?: string) => {
 }
 
 describe("channel mentions", () => {
+  it("explains leading addresses in the existing placeholder without a second composer legend", () => {
+    const { input } = getComposer()
+
+    expect(input).toHaveAttribute("placeholder", "Comece com @nome · mensagem em #produto")
+    expect(screen.queryByText(/Menções no texto são só referências/)).toBeNull()
+  })
+
   it("offers bots and people, completes inline mentions with the keyboard and keeps typing", async () => {
     const user = userEvent.setup()
     const { input, send } = getComposer()
@@ -135,7 +142,7 @@ describe("channel mentions", () => {
     fireEvent.change(input, { target: { value: "@", selectionStart: 1 } })
     fireEvent.keyDown(input, { key: "Enter", isComposing: true, keyCode: 229 })
 
-    expect(input).toHaveAttribute("placeholder", "Mensagem em #produto")
+    expect(input).toHaveAttribute("placeholder", "Comece com @nome · mensagem em #produto")
     expect(input).toHaveValue("@")
     expect(send).not.toHaveBeenCalled()
   })

@@ -123,18 +123,20 @@ describe("channel view", () => {
       within(await screen.findByRole("region", { name: "Canais" })).getByRole("button", { name: /^Equipe QA/ }),
     )
     const composer = await screen.findByRole("textbox", { name: "Mensagem para Equipe QA" })
-    expect(composer).toHaveAttribute("placeholder", "Mensagem em #Equipe QA")
+    expect(composer).toHaveAttribute("placeholder", "Comece com @nome · mensagem em #Equipe QA")
     expect(screen.getByRole("button", { name: "Ações do time" })).toBeVisible()
     expect(screen.queryByRole("button", { name: "Perguntar a todos" })).toBeNull()
     const start = await screen.findByRole("region", { name: "Comece a conversa em #Equipe QA" })
     expect(within(start).getByRole("heading", { name: "Comece a conversa em #Equipe QA" })).toBeVisible()
     expect(within(start).getByRole("list", { name: "Membros do canal" }).children).toHaveLength(2)
-    expect(within(start).getByText("Os bots só respondem quando você os chama com @nome.")).toBeVisible()
+    expect(
+      within(start).getByText("Chame os bots com @nome no início da mensagem. Menções no texto são só referências."),
+    ).toBeVisible()
     expect(within(document.body).queryByText(/grupo/i)).toBeNull()
   })
 
   it("translates the channel copy in English", () => {
-    expect(t("Message in channel", { name: "QA" }, "en")).toBe("Message in #QA")
+    expect(t("Message in channel", { name: "QA" }, "en")).toBe("Start with @name · message in #QA")
     expect(t("Invite to channel", {}, "en")).toBe("Invite to channel")
     expect(t("Team actions", {}, "en")).toBe("Team actions")
     expect(t("Channel members summary", { summary: "1 person · 2 bots" }, "en")).toBe(

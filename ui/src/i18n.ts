@@ -2185,7 +2185,7 @@ export const ptBR = {
   "Remove attached file": "Remover {name}",
   "Message to bot": "Mensagem para {name}",
   "Os bots só respondem quando você os chama com @nome.": "Os bots só respondem quando você os chama com @nome.",
-  "Message in channel": "Mensagem em #{name}",
+  "Message in channel": "Comece com @nome · mensagem em #{name}",
   "Mention member": "Mencionar membro",
   "Composer keyboard help":
     "Enter envia. Shift+Enter insere uma nova linha. Durante uma resposta, a mensagem entra na fila.",
@@ -5796,7 +5796,7 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "Remove attached file": "Remove {name}",
   "Message to bot": "Message to {name}",
   "Os bots só respondem quando você os chama com @nome.": "Bots only reply when you call them with @name.",
-  "Message in channel": "Message in #{name}",
+  "Message in channel": "Start with @name · message in #{name}",
   "Mention member": "Mention member",
   "Composer keyboard help": "Enter sends. Shift+Enter adds a new line. During a reply, your message joins the queue.",
   "Stop reply": "Stop reply",

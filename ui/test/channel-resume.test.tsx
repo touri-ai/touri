@@ -67,6 +67,16 @@ it("builds the resume draft from the interrupted bot only", () => {
   expect(getResumeDraft("Meu rascunho", undefined)).toBe("Meu rascunho")
 })
 
+it("keeps a draft that addresses the interrupted bot after another channel member", async () => {
+  const { thread, input } = await openChannel()
+  const draft = "@onb @mark continuem o relatório"
+  fireEvent.change(input, { target: { value: draft } })
+
+  act(() => requestTaskResume(thread.id, "bot-mark"))
+
+  expect(input).toHaveValue(draft)
+})
+
 it.each(["@marketing veja o relatório", "demo@mark.example", "@mark-extra", "@mark_2", "@mark2"])(
   "adds the interrupted bot when the draft contains a similar token: %s",
   (draft) => {

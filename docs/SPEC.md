@@ -1066,7 +1066,8 @@ classification. Leading whitespace is allowed; addresses can be separated by whi
 The first non-address text (including an unknown handle) ends the block. Multiword names can be
 quoted (`@"Dev Bot"`); matching remains case- and accent-insensitive, longest name first. Person
 identities take precedence over colliding bot names; mentioning a person never dispatches a bot.
-The composer and channel panel explain this rule. The UI mock uses the same address parser.
+The existing composer placeholder and channel panel explain this rule, without an additional
+permanent composer legend. The UI mock uses the same address parser.
 The explicit everyone and summary actions select their own recipients; routines retain the
 coordinator / addressed-members / all-members order.
 
