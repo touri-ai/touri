@@ -39,6 +39,7 @@ import {
 import { createApprovalBridge } from "../approvals/bridge"
 import { approvalOutcome } from "../approvals/outcome"
 import { getRequesterPersonId } from "../browser/channel-runs"
+import { getPendingGroupBotIds } from "../groups/queue"
 import { delegatedBot } from "../groups/security"
 import { createGroupStore } from "../groups/store"
 import { buildChildEnv } from "../kernel"
@@ -643,10 +644,12 @@ export const createRuntimeEngine = ({
         ? (kernel.services.use("store.api")?.getThread({ threadId: run.threadId })?.groupThreadId ?? null)
         : metadata.groupThreadId
     const position = run.status === "queued" ? queue.positions.get(run.id) : undefined
+    const pendingBotIds = kernel.db instanceof Database ? getPendingGroupBotIds(kernel.db, metadata) : undefined
 
     return {
       ...cloneRun(run),
       kind: metadata.kind ?? "execution",
+      ...(pendingBotIds ? { pendingBotIds } : {}),
       ...(metadata.groupTurnId ? { groupTurnId: metadata.groupTurnId } : {}),
       automaticResumePending:
         !abandonedContinuations.has(run.id) && automaticResumes.getJob(run.id)?.state === "pending",
@@ -679,7 +682,10 @@ export const createRuntimeEngine = ({
       kernel.publish({ type: "run.updated", run: getSnapshot(run, queue) })
     })
   }
-  const getWorkRuns = (runs: ReadonlyArray<Run> = persistence.listWorkRuns()): Run[] => getRunSnapshots(runs)
+  const getWorkRuns = (runs: ReadonlyArray<Run> = persistence.listWorkRuns()): Run[] =>
+    getRunSnapshots(runs).filter(
+      (run) => run.kind !== "coordination" || run.status === "queued" || run.pendingBotIds?.length,
+    )
 
   const updateRun = (run: Run, patch: Partial<Run>): Run => {
     const leftQueue = run.status === "queued" && patch.status !== undefined && patch.status !== "queued"

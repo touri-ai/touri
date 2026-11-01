@@ -137,7 +137,9 @@ describe("Grupos", () => {
     await screen.findByRole("textbox", { name: "Mensagem para Equipe QA" })
     const welcome = screen.getByRole("region", { name: "Comece a conversa em #Equipe QA" })
     expect(within(welcome).getByRole("heading", { name: "Comece a conversa em #Equipe QA" })).toBeVisible()
-    expect(within(welcome).getByText("Os bots só respondem quando você os chama com @nome.")).toBeVisible()
+    expect(
+      within(welcome).getByText("Chame os bots com @nome no início da mensagem. Menções no texto são só referências."),
+    ).toBeVisible()
     expect(within(welcome).getByRole("list", { name: "Membros do canal" })).toHaveTextContent("mark")
     expect(within(welcome).getByRole("list", { name: "Membros do canal" })).toHaveTextContent("onb")
     expect(screen.queryByRole("heading", { name: "Comece uma conversa com mark" })).toBeNull()

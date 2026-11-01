@@ -610,6 +610,7 @@ export const Composer = ({
           void submit()
         }}
       />
+      {groupName && <p className="group-routing-note">{t("Channel bot addressing")}</p>}
       {suggestions.length > 0 && (
         <div className="group-mentions" id={mentionListId} role="listbox" aria-label={t("Mention member")}>
           {suggestions.map((bot) => (

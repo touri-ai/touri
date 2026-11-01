@@ -30,7 +30,7 @@ import type {
 import { canMarkNotificationRead, toolCatalog } from "@touri/contracts"
 import { avatarColorFor, avatarShapeFor } from "@touri/contracts/avatar"
 import rootPackage from "../../../../package.json"
-import { getMentionedPeople } from "../../../../sidecar/src/groups/people"
+import { getAddressedPeople, getMentionedPeople } from "../../../../sidecar/src/groups/people"
 import seedJson from "../../../../sidecar/test/fixtures/ui-seed.json"
 import { ApiError } from "../../errors"
 import type { ApiRequest, UiApi } from "../client"
@@ -65,7 +65,7 @@ const getGroupRecipients = (
   if (input.groupAction === "ask_all") return group.memberIds
   if (input.groupAction === "summarize") return [group.coordinatorBotId ?? group.memberIds[0] ?? ""]
 
-  return getMentionedPeople(
+  return getAddressedPeople(
     input.text,
     bots.filter((bot) => group.memberIds.includes(bot.id)),
   ).map((bot) => bot.id)

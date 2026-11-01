@@ -5,9 +5,11 @@ import App from "../src/App"
 import type { UiApi } from "../src/api/client"
 import { createMockApi } from "../src/api/mock"
 import { ActivityMark } from "../src/components/ActivityMark"
-import { getQueueLabel } from "../src/features/work/presentation"
+import { GroupPanel } from "../src/components/GroupPanel"
+import { getQueuedWorkRuns, getQueueLabel } from "../src/features/work/presentation"
 import { PerformanceScreen, WorkScreen } from "../src/features/work/WorkScreen"
 import { useWorkspace } from "../src/useWorkspace"
+import { getGroupProgressFixture } from "./fixtures/groupProgress"
 import { createWorkApi } from "./fixtures/work-api"
 import { openGlobalPage, openWork } from "./workspaceNavigation"
 
@@ -334,4 +336,112 @@ it("keeps a failed save actionable and shows a calm empty work view", async () =
   expect(screen.getByRole("button", { name: "Salvar limite" })).toBeEnabled()
   view.rerender(<WorkScreen runs={[]} bots={[]} threads={[]} loading={false} onThread={() => {}} />)
   expect(screen.getByText(/Nenhuma tarefa em execução ou na fila/)).toBeVisible()
+})
+
+it("projects each pending bot's queue while another recipient of the same message is running", () => {
+  const api = createWorkApi()
+  const template = api.getRuns()[0]
+  const first = api.bots[0]
+  const second = api.bots[1]
+  if (!template || !first || !second) throw new Error("Missing bot queue fixtures")
+  const partial = { ...template, id: "partial", kind: "coordination" as const, pendingBotIds: [second.id] }
+  const later = {
+    ...partial,
+    id: "later",
+    status: "queued" as const,
+    pendingBotIds: [first.id, second.id],
+    queuedAt: partial.queuedAt + 1,
+  }
+  const runs = [partial, later, { ...template, id: "execution" }]
+
+  render(<WorkScreen runs={runs} bots={api.bots} threads={api.threads} loading={false} onThread={vi.fn()} />)
+
+  const queued = screen.getByRole("region", { name: "Na fila", exact: true })
+  expect(within(queued).getAllByRole("article")).toHaveLength(3)
+  expect(within(queued).getAllByText(second.name)).toHaveLength(2)
+  expect(within(queued).getByText(first.name)).toBeVisible()
+  expect(screen.getByText("Na fila deste bot · 2º de 2")).toBeVisible()
+  expect(screen.getByRole("region", { name: "Trabalhando", exact: true }).querySelectorAll("article")).toHaveLength(1)
+  const projected = getQueuedWorkRuns(runs)
+  expect(projected.map(({ botId, queuePosition, queueTotal }) => ({ botId, queuePosition, queueTotal }))).toEqual([
+    { botId: second.id, queuePosition: 1, queueTotal: 2 },
+    { botId: first.id, queuePosition: 1, queueTotal: 1 },
+    { botId: second.id, queuePosition: 2, queueTotal: 2 },
+  ])
+  expect(getQueueLabel(projected[2] ?? template, "en", "bot")).toBe("In this bot's queue · 2 of 2")
+})
+
+it("keeps partially admitted channel recipients in the task list until their own executions start", async () => {
+  const api = createWorkApi()
+  const template = api.getRuns()[0]
+  if (!template) throw new Error("Missing work fixture")
+  const partial = { ...template, id: "partial", kind: "coordination" as const, pendingBotIds: [template.botId] }
+  const hook = renderHook(() => useWorkspace(api))
+  await waitFor(() => expect(hook.result.current.data.loading).toBe(false))
+
+  act(() => api.emit({ type: "run.updated", run: partial }))
+
+  expect(hook.result.current.data.workRuns.find((run) => run.id === partial.id)?.pendingBotIds).toEqual([
+    template.botId,
+  ])
+  act(() => api.emit({ type: "run.updated", run: { ...partial, pendingBotIds: [] } }))
+  expect(hook.result.current.data.workRuns.some((run) => run.id === partial.id)).toBe(false)
+})
+
+it("does not restore pending bots from a work snapshot older than their admission event", async () => {
+  const api = createWorkApi()
+  const template = api.getRuns()[0]
+  if (!template) throw new Error("Missing work fixture")
+  const partial = { ...template, id: "partial", kind: "coordination" as const, pendingBotIds: [template.botId] }
+  const requested = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  let delay = false
+  const request: UiApi["request"] = async (route, input, path) => {
+    if (route !== "GET /runs" || !delay) return api.request(route, input, path)
+
+    requested.resolve()
+    await release.promise
+    return { runs: [partial], draining: false } as ApiRoutes[typeof route]["res"]
+  }
+  const client = { ...api, request }
+  const hook = renderHook(() => useWorkspace(client))
+  await waitFor(() => expect(hook.result.current.data.loading).toBe(false))
+  act(() => api.emit({ type: "run.updated", run: partial }))
+  delay = true
+
+  await act(async () => {
+    const refresh = hook.result.current.actions.refresh()
+    await requested.promise
+    api.emit({ type: "run.updated", run: { ...partial, pendingBotIds: [] } })
+    release.resolve()
+    await refresh
+  })
+
+  expect(hook.result.current.data.workRuns.some((run) => run.id === partial.id)).toBe(false)
+})
+
+it("shows each member's waiting count in the channel panel without counting a working peer", () => {
+  const fixture = getGroupProgressFixture()
+  const peer = fixture.bots[1]
+  if (!peer) throw new Error("Missing teammate")
+  const partial = { ...fixture.coordination, pendingBotIds: [peer.id] }
+
+  render(
+    <GroupPanel
+      group={fixture.group}
+      bots={fixture.bots}
+      threadId={fixture.thread.id}
+      runs={[partial, fixture.execution]}
+      onClose={vi.fn()}
+      onEdit={vi.fn()}
+      channelMode
+    />,
+  )
+
+  const rows = screen.getAllByRole("listitem")
+  const waiting = rows.find((row) => within(row).queryByText(peer.name))
+  const working = rows.find((row) => within(row).queryByText(fixture.bot.name))
+  if (!waiting || !working) throw new Error("Missing member rows")
+  expect(within(waiting).getByText("Pedidos na fila deste bot: 1")).toBeVisible()
+  expect(within(working).queryByText(/Pedidos na fila/)).toBeNull()
 })

@@ -140,3 +140,36 @@ describe("channel mentions", () => {
     expect(send).not.toHaveBeenCalled()
   })
 })
+
+it("the channel mock dispatches leading addresses and preserves future mentions as references", async () => {
+  const api = createMockApi()
+  const [first, second] = api.getState().bots
+  if (!first || !second) throw new Error("Missing synthetic teammates")
+  const { thread } = await api.request("POST /groups", {
+    name: "Equipe de demonstração",
+    color: "#2563eb",
+    avatarShape: "classic-none",
+    memberIds: [first.id, second.id],
+    coordinatorBotId: null,
+  })
+
+  const response = await api.request(
+    "POST /threads/:id/messages",
+    { text: `@${first.name} implemente; depois peça ao @${second.name}` },
+    { id: thread.id },
+  )
+  const referencesOnly = await api.request(
+    "POST /threads/:id/messages",
+    { text: `Depois peça ao @${second.name}` },
+    { id: thread.id },
+  )
+
+  expect(response.run?.botId).toBe(first.id)
+  expect(referencesOnly.run).toBeNull()
+  expect(
+    api
+      .getState()
+      .messages.filter((message) => message.threadId === thread.id && message.role === "assistant")
+      .map((message) => message.sender?.id),
+  ).toEqual([first.id])
+})

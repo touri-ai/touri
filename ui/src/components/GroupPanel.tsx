@@ -2,9 +2,10 @@ import type { Bot, BotGroup, ChannelPerson, Message, Run } from "@touri/contract
 import { useMemo } from "react"
 import type { UiApi } from "../api/client"
 import { useChannelPeople } from "../features/channelBrowser/useChannelPeople"
+import { getQueuedWorkRuns } from "../features/work/presentation"
 import { t } from "../i18n"
 import { BotAvatar } from "./BotAvatar"
-import { getGroupProjection, getIdleMemberState } from "./groupProjection"
+import { type GroupMemberState, getGroupProjection, getIdleMemberState } from "./groupProjection"
 import { PersonAvatar } from "./PersonAvatar"
 import "./groups.css"
 
@@ -30,6 +31,7 @@ export const GroupPanel = ({
   channelMode?: boolean
 }) => {
   const people = useChannelPeople(api, channelMode ? group.id : null)
+  const queued = useMemo(() => getQueuedWorkRuns(runs.filter((run) => run.threadId === threadId)), [runs, threadId])
   const { board, members, removed } = useMemo(
     () => getGroupProjection(threadId, messages, runs),
     [threadId, messages, runs],
@@ -68,6 +70,7 @@ export const GroupPanel = ({
           <ChannelPeople people={people} />
           {bots.map((bot) => {
             const member = members.get(bot.id) ?? getIdleMemberState()
+            const queuedCount = queued.filter((run) => run.botId === bot.id).length
             return (
               <li key={bot.id}>
                 <BotAvatar bot={bot} size={28} />
@@ -76,8 +79,9 @@ export const GroupPanel = ({
                   {!channelMode && <small>{t(getMemberRole(bot.id, group.coordinatorBotId))}</small>}
                   {!channelMode && bot.roleLine && <small>{bot.roleLine}</small>}
                   <span className={`group-member-state group-member-state-${member.state}`}>
-                    {t(channelMode ? getChannelMemberLabel(member.state) : member.label)}
+                    {t(getMemberLabel(member, queuedCount, channelMode))}
                   </span>
+                  {queuedCount > 0 && <small>{t("Channel bot queued requests", { count: queuedCount })}</small>}
                   {!channelMode && (
                     <p className="group-member-result">{member.result || t("Sem resultado confirmado.")}</p>
                   )}
@@ -111,7 +115,7 @@ export const GroupPanel = ({
                 <p className="muted-copy">{t("Sem resultados confirmados neste turno.")}</p>
               )}
             </section>
-            <p className="group-routing-note">{t("Os bots só respondem quando você os chama com @nome.")}</p>
+            <p className="group-routing-note">{t("Channel bot addressing")}</p>
             <p className="muted-copy">
               {t(
                 channelMode
@@ -138,6 +142,13 @@ const ChannelPeople = ({ people }: { people: ChannelPerson[] }) =>
       </div>
     </li>
   ))
+
+const getMemberLabel = (member: GroupMemberState, queuedCount: number, channelMode: boolean) => {
+  if (queuedCount > 0 && member.state === "idle") return "Work queued"
+  if (channelMode) return getChannelMemberLabel(member.state)
+
+  return member.label
+}
 
 const getChannelMemberLabel = (state: string) => {
   if (state === "working" || state === "waiting") return "Trabalhando"

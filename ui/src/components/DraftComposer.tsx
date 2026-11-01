@@ -1,4 +1,5 @@
 import { type ComponentProps, type Ref, useEffect, useImperativeHandle } from "react"
+import { getAddressedPeople } from "../../../sidecar/src/groups/people"
 import { useComposerDraft } from "../composerDraft"
 import { t } from "../i18n"
 import { consumeTaskResume, resumeTaskEvent } from "../recoveryEvents"
@@ -61,18 +62,7 @@ export const getResumeDraft = (current: string, botName?: string): string => {
   if (!botName) return current || request
   const mention = getMentionToken(botName)
   if (!current.trim()) return `${mention} ${request}`
-  if (getHasBotMention(current, botName)) return current
+  if (getAddressedPeople(current, [{ id: "resume", name: botName }]).length) return current
 
   return `${mention} ${request}\n\n${current}`
 }
-
-const getHasBotMention = (draft: string, botName: string): boolean => {
-  const tokens = [botName, JSON.stringify(botName)]
-    .map((token) => getNormalizedMention(token).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .join("|")
-  const mention = new RegExp(`(?:^|[^\\p{L}\\p{N}_@.-])@(?:${tokens})(?=$|[^\\p{L}\\p{N}_-])`, "u")
-
-  return mention.test(getNormalizedMention(draft))
-}
-
-const getNormalizedMention = (value: string): string => value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase()

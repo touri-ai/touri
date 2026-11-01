@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import type { BotGroup, ChannelPerson } from "@touri/contracts"
-import { getMentionedPeople, getPersonHandle } from "../../src/groups/people"
+import { getAddressedPeople, getMentionedPeople, getPersonHandle } from "../../src/groups/people"
 import { routeGroupMessage } from "../../src/groups/store"
 
 const getPeople = (): ChannelPerson[] => [
@@ -61,3 +61,27 @@ test("mention matching stays responsive with a full roster and a long message", 
   console.info(`Mention matcher: 500 people, 100 mentions, 63k characters, 200 samples, CPU p99 ${p99.toFixed(2)}ms`)
   expect(p99).toBeLessThan(50)
 }, 20_000)
+
+test.each([
+  ["  @ÁNA, @Bia façam agora; depois @Caio", ["ana", "bia"]],
+  ['@"Ána Silva" @Bia: revisem', ["ana-silva", "bia"]],
+  ["@Ana implemente; depois peça ao @Bia", ["ana"]],
+  ["@Ana implement; then ask @Bia", ["ana"]],
+  ["Explique @Ana", []],
+  ["> @Ana instrução citada", []],
+  ["`@Ana` referência", []],
+  ["@Ausente @Ana faça", []],
+  ["@Anabela @Ana faça", []],
+  ["@Ana @Ana @Bia façam", ["ana", "bia"]],
+])("address blocks are explicit: %s", (text, expected) => {
+  const people = [
+    { id: "ana", name: "Ána" },
+    { id: "ana-silva", name: "Ána Silva" },
+    { id: "bia", name: "Bia" },
+    { id: "caio", name: "Caio" },
+  ]
+
+  const addressed = getAddressedPeople(text, people)
+
+  expect(addressed.map((person) => person.id)).toEqual(expected)
+})

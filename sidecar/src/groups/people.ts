@@ -20,8 +20,30 @@ export const getMentionedPeople = <Person extends MentionIdentity>(
   const mentions = Array.from(normalized.matchAll(/(?:^|[^\p{L}\p{N}_@.-])@/gu)).slice(0, 128)
   const matches = mentions.flatMap((mention) => {
     const person = getMentionMatch(normalized, mention.index + mention[0].length, index)
-    return person ? [person] : []
+    return person ? [person.person] : []
   })
+
+  return Array.from(new Map(matches.map((person) => [person.id, person])).values())
+}
+
+/** Only a leading address block dispatches bots; body mentions remain references. */
+export const getAddressedPeople = <Person extends MentionIdentity>(
+  text: string,
+  people: readonly Person[],
+): Person[] => {
+  const normalized = getNormalized(text.slice(0, 64_000)).trimStart()
+  const index = getMentionIndex(people)
+  // Cursor and matches are local to this bounded parser, shared with ordinary person mention matching.
+  const matches: Person[] = []
+  let offset = 0
+  while (normalized[offset] === "@" && matches.length < 128) {
+    const match = getMentionMatch(normalized, offset + 1, index)
+    if (!match) break
+
+    matches.push(match.person)
+    offset = match.end
+    while (offset < normalized.length && /[\s,]/u.test(normalized[offset] ?? "")) offset += 1
+  }
 
   return Array.from(new Map(matches.map((person) => [person.id, person])).values())
 }
@@ -52,14 +74,19 @@ const getMentionTokens = <Person extends MentionIdentity>(people: readonly Perso
       }),
   )
 
-const getMentionMatch = <Person>(text: string, start: number, index: MentionIndex<Person>): Person | null => {
+const getMentionMatch = <Person>(
+  text: string,
+  start: number,
+  index: MentionIndex<Person>,
+): { person: Person; end: number } | null => {
   let node = index
-  let matched: Person | null = null
+  let matched: { person: Person; end: number } | null = null
   for (let offset = start; offset < text.length; offset++) {
     const next = node.children.get(text[offset] ?? "")
     if (!next) break
     node = next
-    if (node.person && !/[\p{L}\p{N}_-]/u.test(text[offset + 1] ?? "")) matched = node.person
+    if (node.person && !/[\p{L}\p{N}_-]/u.test(text[offset + 1] ?? ""))
+      matched = { person: node.person, end: offset + 1 }
   }
 
   return matched

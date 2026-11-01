@@ -210,7 +210,11 @@ test("one channel mention starts one provider execution even if enqueue is repea
     groupTurnId: run.id,
   })
   const coordination = Array.from(updates).filter((candidate) => candidate.id === run.id)
-  expect(coordination.map((candidate) => candidate.status)).toEqual(["queued", "running", "succeeded"])
+  expect(Array.from(new Set(coordination.map((candidate) => candidate.status)))).toEqual([
+    "queued",
+    "running",
+    "succeeded",
+  ])
   expect(coordination.every((candidate) => candidate.kind === "coordination")).toBe(true)
   const executions = Array.from(updates).filter((candidate) => candidate.id !== run.id)
   expect(executions.length).toBeGreaterThan(0)

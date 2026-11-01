@@ -265,7 +265,7 @@ const fixture = async (
   }
 }
 
-test("routing calls only mentioned members in text order, including quoted multiword names", () => {
+test("routing calls only addressed members in prefix order, including quoted multiword names", () => {
   const group = {
     id: "g",
     name: "g",
@@ -281,7 +281,8 @@ test("routing calls only mentioned members in text order, including quoted multi
     { id: "a", name: "PM" },
     { id: "b", name: "Dev Bot" },
   ]
-  expect(routeGroupMessage(group, bots, '@"Dev Bot" consulte @pm')).toEqual(["b", "a"])
+  expect(routeGroupMessage(group, bots, '@"Dev Bot" consulte @pm')).toEqual(["b"])
+  expect(routeGroupMessage(group, bots, '@"Dev Bot", @PM revisem')).toEqual(["b", "a"])
   expect(routeGroupMessage(group, bots, "@PMx olá")).toEqual([])
   expect(routeGroupMessage(group, bots, '@"Dev Bot", revise')).toEqual(["b"])
   expect(routeGroupMessage({ ...group, coordinatorBotId: "a" }, bots, '@"Dev Bot"')).toEqual(["b"])
@@ -669,6 +670,72 @@ test("an independent bot replies while an earlier bot and its next request are w
   ])
 })
 
+test("a bot keeps its FIFO across channels without holding other bots in either channel", async () => {
+  const release = Promise.withResolvers<void>()
+  const scenario = await fixture(async (ctx, complete) => {
+    if (ctx.botId === scenario.bots[0]?.id) await release.promise
+    complete("Pedido concluído")
+  }, 30_000)
+  cleanups.unshift(() => release.resolve())
+  const otherGroup = scenario.data.save({ ...scenario.input, name: "Outra equipe" })
+  const otherThread = scenario.data.createThread(otherGroup)
+  const first = scenario.send("@pm tarefa longa")
+  await until(() => scenario.order.length === 1)
+  const waiting = scenario.send("@pm próximo pedido", otherThread.id)
+  const independent = scenario.send("@dev confira", otherThread.id)
+
+  await until(() => scenario.persistence.getRun(independent.id)?.status === "succeeded")
+
+  expect(scenario.persistence.getRun(first.id)?.status).toBe("running")
+  expect(scenario.persistence.getRun(waiting.id)?.status).toBe("queued")
+  release.resolve()
+  await until(() => scenario.persistence.getRun(waiting.id)?.status === "succeeded")
+  expect(scenario.order).toEqual([scenario.bots[0]?.id ?? "", scenario.bots[1]?.id ?? "", scenario.bots[0]?.id ?? ""])
+})
+
+test("three addressed bots run independently and a future reference never reserves another bot", async () => {
+  const release = Promise.withResolvers<void>()
+  const scenario = await fixture(async (ctx, complete) => {
+    if (ctx.botId === scenario.bots[0]?.id) await release.promise
+    complete("Pedido concluído")
+  }, 30_000)
+  cleanups.unshift(() => release.resolve())
+  const first = scenario.send("@pm tarefa longa; depois peça ao @qa para validar")
+  await until(() => scenario.order.length === 1)
+  const second = scenario.send("@dev outra tarefa")
+  const third = scenario.send("@qa valide agora")
+  const ownNext = scenario.send("@pm próximo pedido")
+
+  await until(() => [second, third].every((run) => scenario.persistence.getRun(run.id)?.status === "succeeded"))
+
+  expect(scenario.persistence.getRun(first.id)?.status).toBe("running")
+  expect(scenario.persistence.getRun(ownNext.id)?.status).toBe("queued")
+  expect(scenario.order).toEqual(scenario.group.memberIds)
+  release.resolve()
+  await until(() => scenario.persistence.getRun(ownNext.id)?.status === "succeeded")
+})
+
+test("canceling a partially admitted request removes its waiting recipient without canceling later requests", async () => {
+  const release = Promise.withResolvers<void>()
+  const scenario = await fixture(async (ctx, complete) => {
+    if (ctx.botId === scenario.bots[0]?.id) await release.promise
+    complete("Pedido concluído")
+  }, 30_000)
+  cleanups.unshift(() => release.resolve())
+  scenario.send("@pm tarefa longa")
+  await until(() => scenario.order.length === 1)
+  const partial = scenario.send("@pm @dev revisem")
+  const later = scenario.send("@pm pedido seguinte")
+  await until(() => scenario.order.length === 2)
+
+  scenario.runtime.cancel(partial.id, "turn")
+  await until(() => scenario.persistence.getRun(partial.id)?.status === "canceled")
+  release.resolve()
+  await until(() => scenario.persistence.getRun(later.id)?.status === "succeeded")
+
+  expect(scenario.order).toEqual([scenario.bots[0]?.id ?? "", scenario.bots[1]?.id ?? "", scenario.bots[0]?.id ?? ""])
+})
+
 test("explicit recipients start independently while later requests keep their order", async () => {
   const release = Promise.withResolvers<void>()
   const scenario = await fixture(async (ctx, complete) => {
@@ -683,14 +750,14 @@ test("explicit recipients start independently while later requests keep their or
   const members = scenario.runtime.listRuns(scenario.thread.id).filter((run) => run.groupTurnId === shared.id)
 
   expect(scenario.persistence.getRun(shared.id)?.status).toBe("running")
-  expect(scenario.persistence.getRun(waiting.id)?.status).toBe("queued")
+  await until(() => scenario.persistence.getRun(waiting.id)?.status === "succeeded")
   expect(members).toHaveLength(2)
   expect(new Set(members.map((run) => scenario.persistence.getRun(run.id)?.threadId)).size).toBe(2)
   expect(members.find((run) => run.botId === scenario.bots[0]?.id)?.status).toBe("running")
   await until(() => members.some((run) => scenario.persistence.getRun(run.id)?.status === "succeeded"))
 
   release.resolve()
-  await until(() => scenario.persistence.getRun(waiting.id)?.status === "succeeded")
+  await until(() => scenario.persistence.getRun(shared.id)?.status === "succeeded")
   const history = scenario.store.activePath({ threadId: scenario.thread.id })
 
   expect(scenario.persistence.getRun(shared.id)?.status).toBe("succeeded")
@@ -795,7 +862,7 @@ test("a delegated recipient stays reserved and starts its next request when dele
   await until(() => f.persistence.getRun(caller.id)?.status === "succeeded")
 })
 
-test("a waiting multi-bot request keeps its order without blocking an unrelated recipient", async () => {
+test("a multi-bot request admits free recipients and keeps only each busy bot's FIFO", async () => {
   const release = Promise.withResolvers<void>()
   const f = await fixture(async (ctx, complete) => {
     if (ctx.botId === f.bots[0]?.id) await release.promise
@@ -810,16 +877,15 @@ test("a waiting multi-bot request keeps its order without blocking an unrelated 
   const independent = f.send("@qa confira")
   await until(() => f.persistence.getRun(independent.id)?.status === "succeeded")
 
-  expect(f.persistence.getRun(shared.id)?.status).toBe("queued")
-  expect(f.persistence.getRun(sameBot.id)?.status).toBe("queued")
-  release.resolve()
   await until(() => f.persistence.getRun(sameBot.id)?.status === "succeeded")
-  expect(f.order).toEqual([
-    f.bots[0]?.id ?? "",
-    f.bots[2]?.id ?? "",
+  expect(f.persistence.getRun(shared.id)?.status).toBe("running")
+  release.resolve()
+  await until(() => f.persistence.getRun(shared.id)?.status === "succeeded")
+  expect(f.order.filter((id) => id !== f.bots[2]?.id)).toEqual([
     f.bots[0]?.id ?? "",
     f.bots[1]?.id ?? "",
     f.bots[1]?.id ?? "",
+    f.bots[0]?.id ?? "",
   ])
 })
 
@@ -3014,11 +3080,11 @@ test("plain channel messages persist and replay without a run, even with a coord
   expect(scenario.store.activePath({ threadId: scenario.thread.id })).toHaveLength(1)
 })
 
-test("channel mentions call exactly the named members in mention order and ignore the coordinator default", async () => {
+test("channel addresses call exactly the named members in prefix order and ignore the coordinator default", async () => {
   const scenario = await fixture()
   scenario.data.save({ ...scenario.input, coordinatorBotId: scenario.bots[0]?.id ?? null }, scenario.group)
 
-  const sent = await postChannelMessage(scenario, "@qa oi @dev @qa")
+  const sent = await postChannelMessage(scenario, "@qa @dev @qa oi")
   await until(() => Boolean(sent.run && scenario.persistence.getRun(sent.run.id)?.status === "succeeded"))
 
   expect(scenario.order).toEqual([scenario.bots[2]?.id ?? "", scenario.bots[1]?.id ?? ""])

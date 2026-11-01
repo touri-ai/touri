@@ -640,7 +640,8 @@ const lastActiveThread = (threads: Thread[], runs: Run[], botId: Id, rememberedI
 }
 
 const isWorkRun = (run: Run): boolean =>
-  run.status === "queued" || (run.kind !== "coordination" && ["starting", "running"].includes(run.status))
+  ["queued", "starting", "running"].includes(run.status) &&
+  (run.kind !== "coordination" || run.status === "queued" || Boolean(run.pendingBotIds?.length))
 
 const getProcessVmBotId = (bot: Bot | undefined): Id | null => (bot?.machine === "vm" ? bot.id : null)
 
@@ -1460,7 +1461,7 @@ export const useWorkspace = (
           ),
           workRuns: mergeRunRows(
             workResponse.runs.filter((run) => !completedRuns.has(run.id)),
-            current.workRuns.filter((run) => (liveRuns.current.get(run.id) ?? 0) > runsAtStart),
+            current.runs.filter((run) => run.origin && (liveRuns.current.get(run.id) ?? 0) > runsAtStart),
           ).filter(isWorkRun),
           runs,
           projects: projectResponse.projects,

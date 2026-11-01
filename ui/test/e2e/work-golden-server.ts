@@ -97,6 +97,12 @@ export const createWorkGoldenServer = async ({
       serverUrl,
       api,
       setScenario,
+      holdReply: async (text: string) => {
+        const releasePath = join(directory, "release-reply")
+        await setScenario({ deltas: [text], pauseAfterFirstDelta: releasePath })
+
+        return () => writeFile(releasePath, "release")
+      },
       install: async (page: Page) => {
         await page
           .context()

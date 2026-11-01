@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite"
 import type { BotGroup, ChannelPerson, GroupInput, GroupValidationField, Kernel, Thread } from "@touri/contracts"
 import { validAvatarColor, validAvatarShape } from "@touri/contracts/avatar"
-import { getMentionedPeople } from "./people"
+import { getAddressedPeople } from "./people"
 
 export const createGroupStore = (kernel: Kernel) => {
   const db = kernel.db as Database
@@ -173,7 +173,7 @@ export const createGroupStore = (kernel: Kernel) => {
   }
 }
 
-/** Only explicit bot mentions route human channel messages, in first-mention order. */
+/** Only leading bot addresses route human channel messages, in first-mention order. */
 export const routeGroupMessage = (
   group: BotGroup,
   bots: { id: string; name: string }[],
@@ -185,7 +185,7 @@ export const routeGroupMessage = (
     ...bots.filter((bot) => group.memberIds.includes(bot.id)),
   ]
 
-  return getMentionedPeople(text, identities)
+  return getAddressedPeople(text, identities)
     .filter(({ id }) => !id.startsWith("person:"))
     .map(({ id }) => id)
 }
