@@ -1,7 +1,7 @@
 import type { AvatarShape, Bot, BotGroup, GroupInput } from "@touri/contracts"
 import { avatarColorFor, avatarProfileFor } from "@touri/contracts/avatar"
 import { useEffect, useRef, useState } from "react"
-import { userFacingError } from "../errors"
+import { ApiError, userFacingError } from "../errors"
 import { t } from "../i18n"
 import { AvatarPicker } from "./AvatarPicker"
 import { BotAvatar } from "./BotAvatar"
@@ -112,7 +112,7 @@ export const GroupModal = ({
               })
               onClose()
             } catch (e) {
-              setError(userFacingError(e))
+              setError(getSaveError(e, bots))
             } finally {
               setSaving(false)
             }
@@ -214,4 +214,13 @@ const getNewGroupAvatarShape = (avatarSeed: string, avatarShape?: AvatarShape): 
   const profile = avatarProfileFor({ id: avatarSeed, color: null, avatarShape: avatarShape ?? null })
 
   return `${profile.headShape}:${profile.shape}`
+}
+
+const getSaveError = (error: unknown, bots: Bot[]): string => {
+  if (!(error instanceof ApiError) || error.errorCode !== "GROUP_MEMBER_BUSY") return userFacingError(error)
+
+  const bot = bots.find((bot) => bot.id === error.busyBotId)
+  if (!bot) return t("This bot is working; remove it when it finishes.")
+
+  return t("{bot} is working; remove them when they finish.", { bot: bot.name })
 }

@@ -167,3 +167,23 @@ test("group fields are bounded, allowlisted, deduplicated and rebuilt as bilingu
   expect(normalizeErrorBody({ ...supplied, fields: Array(100).fill("name") }, 400)).not.toHaveProperty("fields")
   expect(normalizeErrorBody(supplied, 500)).not.toHaveProperty("fields")
 })
+
+test("busy-member normalization only exposes a bounded identifier on its specific conflict", () => {
+  const input = {
+    errorCode: "GROUP_MEMBER_BUSY",
+    busyBotId: "bot-qa",
+    error: "private diagnostic",
+    token: "private token",
+  }
+
+  const result = normalizeErrorBody(input, 409)
+
+  expect(result).toMatchObject({ busyBotId: "bot-qa", code: "TOURI-E1005" })
+  expect(JSON.stringify(result)).not.toContain("private")
+  expect(normalizeErrorBody(input, 500)).not.toHaveProperty("busyBotId")
+  expect(normalizeErrorBody({ ...input, errorCode: "GROUP_BUSY" }, 409)).not.toHaveProperty("busyBotId")
+  const invalidIds = ["/private/path", "line\nbreak", "a".repeat(129), 42, null]
+  invalidIds.forEach((busyBotId) => {
+    expect(normalizeErrorBody({ ...input, busyBotId }, 409)).not.toHaveProperty("busyBotId")
+  })
+})

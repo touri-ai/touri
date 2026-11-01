@@ -606,12 +606,20 @@ export const createApiClient = ({
       let errorCode: string | undefined
       let code: RegisteredErrorCode | undefined
       let field: unknown
+      let busyBotId: string | undefined
       try {
-        const parsed = JSON.parse(detail) as { error?: unknown; errorCode?: unknown; code?: unknown; field?: unknown }
+        const parsed = JSON.parse(detail) as {
+          error?: unknown
+          errorCode?: unknown
+          code?: unknown
+          field?: unknown
+          busyBotId?: unknown
+        }
         if (typeof parsed.error === "string") message = parsed.error
         if (typeof parsed.errorCode === "string") errorCode = parsed.errorCode
         if (isErrorCode(parsed.code)) code = parsed.code
         field = parsed.field
+        if (typeof parsed.busyBotId === "string") busyBotId = parsed.busyBotId
       } catch {
         transport.signal?.throwIfAborted()
         // Keep the plain response body when it is not JSON.
@@ -622,7 +630,7 @@ export const createApiClient = ({
           ? Date.now() + Number(retryAfter) * 1000
           : Date.parse(retryAfter)
         : undefined
-      const error = new ApiError(response.status, message, errorCode, code, retryAt, field)
+      const error = new ApiError(response.status, message, errorCode, code, retryAt, field, busyBotId)
       if (isSessionRejected(error)) pauseRejectedSession()
       if (isGet && isServiceUnavailable(error)) reconnectUnavailableService()
       throw error

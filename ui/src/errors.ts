@@ -28,6 +28,7 @@ export class ApiError extends Error {
     code?: RegisteredErrorCode,
     readonly retryAt?: number,
     field?: unknown,
+    readonly busyBotId?: string,
   ) {
     const publicCode = code ?? (isErrorCode(errorCode) ? errorCode : undefined)
     const definition = publicCode ? errorRegistry[publicCode] : undefined

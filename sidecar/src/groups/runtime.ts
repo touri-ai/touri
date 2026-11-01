@@ -407,7 +407,7 @@ export const createGroupRuntime = (
     await engine.ready
     turn.controller.signal.throwIfAborted()
     if (!isCurrentTurn(turn)) throw new Error("A conversa foi removida.")
-    if (!turn.group.memberIds.includes(botId)) throw new Error("Bot não pertence ao grupo")
+    if (!groups.get(turn.group.id)?.memberIds.includes(botId)) throw new Error("Bot não pertence ao grupo")
     const bot = withServers(store.getBot({ botId }))
     if (!bot || bot.archivedAt || bot.paused) throw new Error("Bot indisponível ou pausado")
     const thread = groups.participant(turn.group, turn.run.threadId, botId)
@@ -491,6 +491,8 @@ export const createGroupRuntime = (
     if (!request.success) throw new Error(request.error)
     const executeMember = async (previousRun?: Run): Promise<Run> => {
       const memberRun = await writeDatabaseAsync(db, () => {
+        if (!groups.get(turn.group.id)?.memberIds.includes(botId)) throw new Error("Bot não pertence ao grupo")
+
         const previousId = previousRun?.id ?? continuationFromRunId
         const continuationReason = previousRun ? getMemberContinuationReason(previousRun) : "browser_takeover"
         const result = engine.enqueue({

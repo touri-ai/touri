@@ -5,6 +5,8 @@ import { userFacingError } from "./errors"
 export type Locale = "pt-BR" | "en"
 export const DEFAULT_LOCALE: Locale = "pt-BR"
 export const ptBR = {
+  "{bot} is working; remove them when they finish.": "{bot} está trabalhando; remova quando terminar.",
+  "This bot is working; remove it when it finishes.": "Este bot está trabalhando; remova quando terminar.",
   "Claude Code": "Claude Code",
   "Agente importado": "Agente importado",
   "Agente {number}": "Agente {number}",
@@ -3789,6 +3791,8 @@ export const ptBR = {
 } as const
 export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
+  "{bot} is working; remove them when they finish.": "{bot} is working; remove them when they finish.",
+  "This bot is working; remove it when it finishes.": "This bot is working; remove it when it finishes.",
   "Claude Code": "Claude Code",
   "Agente importado": "Imported agent",
   "Agente {number}": "Agent {number}",

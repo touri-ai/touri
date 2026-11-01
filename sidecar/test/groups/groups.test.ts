@@ -53,6 +53,7 @@ const fixture = async (
   hook?: (ctx: ToolContext, complete: (text: string) => void) => Promise<void>,
   timeout = 1000,
   getStartDelay: (botId: string) => number = () => 0,
+  ready: Promise<void> = Promise.resolve(),
 ) => {
   const root = mkdtempSync(join(tmpdir(), "touri-groups-"))
   const host = createKernel({ appData: root })
@@ -199,7 +200,7 @@ const fixture = async (
         (v) => v.run.threadId === threadId && persistence.getRun(v.run.id)?.status === "running",
       )?.run ?? null,
   )
-  const runtime = createGroupRuntime(host.kernel, engine, timeout)
+  const runtime = createGroupRuntime(host.kernel, { ...engine, ready }, timeout)
   host.kernel.services.provide("groups.runtime", runtime)
   host.kernel.services.provide("runtime.enqueue", runtime.enqueue)
   const send = (text: string, targetThreadId = thread.id, sender: Message["sender"] = null) => {
@@ -627,13 +628,68 @@ test("R11: a read-only coordinator's ask_bot gets a consent card and the target 
   expect(targetAccess).toBe("read-only")
 }, 30_000)
 
+test("edits keep active work alive and the newly added member can answer the next turn", async () => {
+  const started = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  cleanups.push(async () => release.resolve())
+  const f = await fixture(async (ctx, complete) => {
+    if (ctx.botId === f.bots[0]?.id) {
+      started.resolve()
+      await release.promise
+    }
+    complete("Trabalho preservado")
+  }, 30_000)
+  const run = f.send("@pm planeje")
+  await started.promise
+  const newBot = f.bots[3]
+  if (!newBot) throw new Error("Missing new member")
+  const input = { ...f.input, name: "Equipe ampliada", color: "#2563eb", memberIds: [...f.input.memberIds, newBot.id] }
+
+  const response = await f.request(`/groups/${f.group.id}`, input, "PATCH")
+
+  expect(response.status).toBe(200)
+  expect(f.persistence.getRun(run.id)?.status).toBe("running")
+  expect(f.order).toEqual([f.bots[0]?.id ?? ""])
+
+  release.resolve()
+  await until(() => f.persistence.getRun(run.id)?.status === "succeeded", 3000)
+  const next = f.send("@outsider revise")
+  await until(() => f.persistence.getRun(next.id)?.status === "succeeded", 3000)
+
+  expect(f.order).toEqual([f.bots[0]?.id ?? "", newBot.id])
+  expect(f.data.get(f.group.id)).toMatchObject(input)
+})
+
+test("a removed idle recipient cannot start from an old pending turn snapshot", async () => {
+  const release = Promise.withResolvers<void>()
+  cleanups.push(async () => release.resolve())
+  const f = await fixture(
+    async (_ctx, complete) => complete("Resposta permitida"),
+    30_000,
+    () => 0,
+    release.promise,
+  )
+  const [first, second] = f.bots
+  if (!first || !second) throw new Error("Missing members")
+  const run = f.send("@dev revise")
+  await until(() => f.persistence.getRun(run.id)?.status === "running")
+
+  const response = await f.request(`/groups/${f.group.id}`, { ...f.input, memberIds: [first.id] }, "PATCH")
+  release.resolve()
+  await until(() => f.persistence.getRun(run.id)?.status === "failed", 3000)
+
+  expect(response.status).toBe(200)
+  expect(f.order).not.toContain(second.id)
+  expect(f.db.query("SELECT run_id FROM group_run_links WHERE turn_id = ?").all(run.id)).toEqual([])
+})
+
 test("queue serializes turns across group conversations; Parar cancels active and queued turns", async () => {
   const f = await fixture(async () => {})
   const first = f.send("primeiro")
   const other = f.data.createThread(f.group, "Outra conversa")
   const second = f.send("segundo", other.id)
   await until(() => f.order.length === f.group.memberIds.length)
-  expect((await f.request(`/groups/${f.group.id}`, f.input, "PATCH")).status).toBe(409)
+  expect((await f.request(`/groups/${f.group.id}`, f.input, "PATCH")).status).toBe(200)
   expect(f.runtime.cancel(first.id)).toBe(true)
   await until(() => f.persistence.getRun(first.id)?.status === "canceled")
   expect(f.persistence.getRun(second.id)?.status).toBe("canceled")
