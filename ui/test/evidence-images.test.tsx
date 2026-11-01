@@ -354,6 +354,7 @@ it("opens the same lightbox for tool screenshots with zoom, navigation, saving, 
   fireEvent.pointerUp(stage)
   fireEvent.click(screen.getByRole("button", { name: "Próxima" }))
   expect(dialog).toHaveTextContent("2/2")
+  await waitFor(() => expect(dialog.querySelector("img")).not.toBeNull())
   fireEvent.keyDown(document, { key: "ArrowLeft" })
   expect(dialog).toHaveTextContent("1/2")
   fireEvent.click(await screen.findByRole("button", { name: "Salvar" }))
@@ -416,7 +417,12 @@ it("redacts tool image captions before displaying labels and alternative text", 
   expect(await screen.findByRole("img", { name: "[REDACTED]" })).toBeVisible()
 })
 it("opens workspace evidence in the Library from the lightbox", async () => {
-  const { context } = fixture()
+  const { context, request } = fixture()
+  request.mockImplementation(async (route) =>
+    route === "GET /bots/:id/files"
+      ? { files: [{ name: "a.png", path: "/workspace/a.png", directory: false, bytes: 8 }] }
+      : blob,
+  )
   render(
     <EvidenceContext.Provider value={context}>
       <EvidenceGallery images={[{ path: "/workspace/a.png", filename: "a.png", caption: "Tela" }]} />
@@ -888,4 +894,51 @@ it("keeps image discovery responsive when prose contains a deeply nested non-ima
 
   expect(samples[Math.ceil(samples.length * 0.95) - 1]).toBeLessThan(50)
   expect(samples.at(-1)).toBeLessThan(200)
+})
+
+it("explains an outside-workspace image without retry or empty viewer controls", async () => {
+  const { context, request } = fixture()
+  request.mockRejectedValue(new ApiError(400, "Denied", "IMAGE_OUTSIDE_WORKSPACE"))
+  render(<MarkdownContent evidence={context} content="![Result](/outside/result.png)" />)
+
+  expect(await screen.findByText("Imagem fora da pasta do bot")).toBeVisible()
+  expect(screen.getByText("/outside/result.png")).toBeVisible()
+  expect(screen.queryByRole("button", { name: "Tentar novamente" })).toBeNull()
+  fireEvent.click(screen.getByRole("button", { name: /Abrir captura/ }))
+
+  const dialog = await screen.findByRole("dialog")
+  expect(await within(dialog).findByText("Imagem fora da pasta do bot")).toBeVisible()
+  for (const name of ["Salvar", "Aumentar zoom", "Ajustar imagem", "Anterior", "Próxima", "Abrir na Biblioteca"])
+    expect(within(dialog).queryByRole("button", { name })).toBeNull()
+})
+
+it("reads persisted image references by attachment rather than the deleted original", async () => {
+  const { context, request } = fixture()
+  const attachmentId = "a".repeat(64)
+  render(
+    <MarkdownContent
+      evidence={{ ...context, imageAttachments: [{ path: "/outside/result.png", attachmentId }] }}
+      content="![Result](/outside/result.png)"
+    />,
+  )
+
+  expect(await screen.findByRole("img", { name: "Result" })).toBeVisible()
+  expect(request).toHaveBeenCalledWith("GET /bots/:id/images", { attachmentId }, { id: context.bot.id })
+})
+
+it("keeps one path label when the surrounding viewer already names a failed image", async () => {
+  const { context, request } = fixture()
+  request.mockRejectedValue(new ApiError(404, "Missing", "IMAGE_NOT_FOUND"))
+  render(
+    <EvidenceContext.Provider value={context}>
+      <p>/workspace/result.png</p>
+      <EvidenceGallery
+        hasPathLabel
+        images={[{ path: "/workspace/result.png", filename: "result.png", caption: "Result" }]}
+      />
+    </EvidenceContext.Provider>,
+  )
+
+  expect(await screen.findByText("Imagem não encontrada")).toBeVisible()
+  expect(screen.getAllByText("/workspace/result.png")).toHaveLength(1)
 })

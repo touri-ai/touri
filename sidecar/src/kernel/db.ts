@@ -59,6 +59,7 @@ import notificationReadsSql from "./migrations/0052.sql" with { type: "text" }
 import attachmentRevisionSql from "./migrations/0053.sql" with { type: "text" }
 import scriptRoutinesSql from "./migrations/0054.sql" with { type: "text" }
 import imageEvidenceIndexesSql from "./migrations/image-evidence-indexes.sql" with { type: "text" }
+import responseImageReferencesSql from "./migrations/response-image-references.sql" with { type: "text" }
 import type { PerformanceStageRunner } from "./performance"
 import { withSuspendedSchemaObjects } from "./schema-rebuild"
 import { instrumentMainConnection, type SlowStatementTracker } from "./sqlite-performance"
@@ -81,6 +82,8 @@ export const openDatabase = (input: {
 }): Database => {
   const database = openVersionedDatabase(input)
   applyChannelSchema(database)
+  if (!database.query("SELECT 1 FROM schema_meta WHERE key='response_image_references_version'").get())
+    database.transaction(() => database.exec(responseImageReferencesSql))()
   return database
 }
 

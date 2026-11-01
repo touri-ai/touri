@@ -439,7 +439,10 @@ export type MessageRole = 'user' | 'assistant' | 'system' | 'tool'
 export type MessageKind = 'text' | 'tool' | 'notice' | 'approval'
 export type MessageStatus = 'streaming' | 'complete' | 'failed' | 'canceled'
 
-export type TextPart = { type: 'text'; text: string }
+export type ImageErrorCode = 'IMAGE_OUTSIDE_WORKSPACE' | 'IMAGE_NOT_FOUND' | 'IMAGE_TOO_LARGE' | 'IMAGE_UNSUPPORTED' | 'IMAGE_MACHINE_STOPPED'
+export type ImageErrorResponse = { errorCode: ImageErrorCode; error: string; path: string }
+
+export type TextPart = { type: 'text'; text: string; images?: Array<{ path: string; attachmentId: Id }> }
 export type ReasoningPart = { type: 'reasoning'; text: string; estimatedTokens?: number }
 export type ImagePart = { type: 'image'; attachmentId: Id; mime: string; name?: string }
 export type FilePart = { type: 'file'; attachmentId: Id; name: string; mime: string }

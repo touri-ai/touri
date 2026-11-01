@@ -1,11 +1,11 @@
 import type { Bot } from "@touri/contracts"
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import type { UiApi } from "../api/client"
+import { createTauriInvoke, type UiApi } from "../api/client"
 import { ApiError } from "../errors"
 import { t } from "../i18n"
 import { useSaveNotice } from "../useSaveNotice"
 import type { EvidenceImage } from "./evidenceMarkdown"
-import { getCachedThumbnail, loadImage, thumbnailBlob } from "./imageLoads"
+import { getCachedThumbnail, imageDimensions, loadImage, thumbnailBlob } from "./imageLoads"
 import "./evidence-images.css"
 import { blobDataUrl } from "../blobDataUrl"
 
@@ -13,6 +13,7 @@ export type EvidenceContextValue = {
   api: UiApi
   bot: Bot
   base?: string
+  imageAttachments?: Array<{ path: string; attachmentId: string }>
   imageVersion?: string
   onLayoutChange?: () => void
   onLibrary?: ((path: string, botId?: string) => void) | undefined
@@ -30,14 +31,31 @@ export const readImage = async (image: EvidenceImage, context: EvidenceContextVa
   if (image.read) return image.read()
   if (image.src) return inlineImage(image.src) ?? (await fetch(image.src)).blob()
   if (!context) throw new Error("Imagem indisponível")
-  const attachmentId = /^\/(?:api\/v1\/)?attachments\/([a-f0-9]{64})$/i.exec(image.path)?.[1]
+  const attachmentId =
+    context.imageAttachments?.find((reference) => reference.path === image.path)?.attachmentId ??
+    /^\/(?:api\/v1\/)?attachments\/([a-f0-9]{64})$/i.exec(image.path)?.[1]
   return context.api.request(
     "GET /bots/:id/images",
     attachmentId ? { attachmentId } : { path: image.path, ...(context.base ? { base: context.base } : {}) },
     { id: context.bot.id },
   )
 }
-const stoppedError = (error: unknown) => error instanceof ApiError && error.errorCode === "IMAGE_MACHINE_STOPPED"
+export const getImageError = (error: unknown): string => {
+  const code = error instanceof ApiError ? error.errorCode : ""
+  if (code === "IMAGE_OUTSIDE_WORKSPACE" || (error instanceof ApiError && error.status === 403))
+    return t("Imagem fora da pasta do bot")
+  if (code === "IMAGE_NOT_FOUND" || (error instanceof ApiError && error.status === 404))
+    return t("Imagem não encontrada")
+  if (code === "IMAGE_TOO_LARGE") return t("Imagem acima de 15 MB")
+  if (code === "IMAGE_UNSUPPORTED") return t("Formato de imagem não suportado")
+  if (code === "IMAGE_MACHINE_STOPPED") return t("Imagem disponível quando a máquina estiver ligada")
+  return t("Não foi possível carregar a imagem. Verifique a conexão.")
+}
+const canRetryImage = (error: unknown) =>
+  !(error instanceof ApiError) ||
+  error.status === 0 ||
+  error.status >= 500 ||
+  error.errorCode === "IMAGE_MACHINE_STOPPED"
 
 const Thumbnail = ({
   image,
@@ -45,18 +63,23 @@ const Thumbnail = ({
   open,
   context,
   inline,
+  hasPathLabel,
 }: {
   image: EvidenceImage
   index: number
   open: () => void
   context: EvidenceContextValue | null
   inline: boolean
+  hasPathLabel: boolean
 }) => {
   const root = useRef<HTMLElement>(null)
   const [visible, setVisible] = useState(false)
   const [src, setSrc] = useState<string | null>(null)
   const [error, setError] = useState("")
   const [revision, setRevision] = useState(0)
+  const [retryable, setRetryable] = useState(false)
+  const [ratio, setRatio] = useState("4 / 3")
+  const [previewWidth, setPreviewWidth] = useState(480)
   const { notice, saveImage } = useSaveNotice()
   const canOpenComputer =
     error === t("Imagem disponível quando a máquina estiver ligada") && Boolean(context?.onComputer)
@@ -92,6 +115,11 @@ const Thumbnail = ({
         : JSON.stringify([context?.bot.id, context?.base, context?.imageVersion, image.path])
       const dataUrl = await getCachedThumbnail(owner, key, async () => {
         const blob = await readImage(image, context)
+        const dimensions = imageDimensions(new Uint8Array(await blob.slice(0, 131072).arrayBuffer()))
+        if (alive && dimensions) {
+          setRatio(`${dimensions.width} / ${dimensions.height}`)
+          setPreviewWidth(Math.min(480, (320 * dimensions.width) / dimensions.height))
+        }
         const small = await thumbnailBlob(blob).catch(() => blob)
 
         return blobDataUrl(small)
@@ -99,12 +127,10 @@ const Thumbnail = ({
       if (!alive) return
       setSrc(dataUrl)
     }).catch((reason) => {
-      if (alive)
-        setError(
-          stoppedError(reason)
-            ? t("Imagem disponível quando a máquina estiver ligada")
-            : t("Prévia indisponível. Clique para abrir a imagem."),
-        )
+      if (alive) {
+        setError(getImageError(reason))
+        setRetryable(canRetryImage(reason))
+      }
     })
     return () => {
       alive = false
@@ -132,6 +158,7 @@ const Thumbnail = ({
       <button
         type="button"
         className="evidence-thumbnail"
+        style={{ aspectRatio: ratio, maxWidth: previewWidth }}
         aria-label={t("Abrir captura {index} em tamanho original", { index: index + 1 })}
         onClick={open}
       >
@@ -140,9 +167,16 @@ const Thumbnail = ({
             src={src}
             alt={image.caption}
             loading="lazy"
+            onLoad={(event) => {
+              const { naturalWidth: width, naturalHeight: height } = event.currentTarget
+              if (!width || !height) return
+              setRatio(`${width} / ${height}`)
+              setPreviewWidth(Math.min(480, (320 * width) / height))
+            }}
             onError={() => {
               setSrc(null)
-              setError(t("Prévia indisponível. Clique para abrir a imagem."))
+              setError(t("Formato de imagem não suportado"))
+              setRetryable(false)
             }}
           />
         ) : (
@@ -150,7 +184,22 @@ const Thumbnail = ({
         )}
       </button>
       <figcaption>{image.caption}</figcaption>
+      {error && !hasPathLabel && <p className="evidence-path">{image.path}</p>}
       {error && (
+        <button type="button" className="text-button" onClick={() => void navigator.clipboard.writeText(image.path)}>
+          {t("Copiar caminho")}
+        </button>
+      )}
+      {error && context?.bot.machine === "local" && "__TAURI_INTERNALS__" in window && (
+        <button
+          type="button"
+          className="text-button"
+          onClick={() => void createTauriInvoke()("reveal_in_finder", { path: image.path }).catch(() => {})}
+        >
+          {t("Abrir pasta")}
+        </button>
+      )}
+      {error && retryable && (
         <button
           type="button"
           className="text-button"
@@ -176,7 +225,15 @@ const Thumbnail = ({
   )
 }
 
-export const EvidenceGallery = ({ images, inline = false }: { images: EvidenceImage[]; inline?: boolean }) => {
+export const EvidenceGallery = ({
+  images,
+  inline = false,
+  hasPathLabel = false,
+}: {
+  images: EvidenceImage[]
+  inline?: boolean
+  hasPathLabel?: boolean
+}) => {
   const context = useContext(EvidenceContext)
   const [selected, setSelected] = useState<number | null>(null)
   const identity = JSON.stringify(images.map(({ path, caption, filename, src }) => ({ path, caption, filename, src })))
@@ -198,6 +255,7 @@ export const EvidenceGallery = ({ images, inline = false }: { images: EvidenceIm
             index={index}
             context={context}
             inline={inline}
+            hasPathLabel={hasPathLabel}
             open={() => setSelected(index)}
           />
         ))}
@@ -233,6 +291,9 @@ export const ImageLightbox = ({
   const [src, setSrc] = useState<string | null>(null)
   const [error, setError] = useState("")
   const [zoom, setZoom] = useState(1)
+  const [libraryPath, setLibraryPath] = useState<string | null>(null)
+  const [revision, setRevision] = useState(0)
+  const [retryable, setRetryable] = useState(false)
   const stage = useRef<HTMLDivElement>(null)
   const [available, setAvailable] = useState({ width: 0, height: 0 })
   const [natural, setNatural] = useState({ width: 0, height: 0 })
@@ -271,6 +332,7 @@ export const ImageLightbox = ({
   }, [])
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (!src) return
       if (event.key === "ArrowRight") {
         event.preventDefault()
         select((index + 1) % images.length)
@@ -284,7 +346,8 @@ export const ImageLightbox = ({
     return () => {
       document.removeEventListener("keydown", onKey)
     }
-  }, [index, images.length, select])
+  }, [index, images.length, select, src])
+  // biome-ignore lint/correctness/useExhaustiveDependencies: revision retries a failed image read
   useEffect(() => {
     let alive = true
     setSrc(null)
@@ -301,17 +364,31 @@ export const ImageLightbox = ({
         if (!alive) return
         setSrc(dataUrl)
       }).catch((reason) => {
-        if (alive)
-          setError(
-            stoppedError(reason)
-              ? t("Imagem disponível quando a máquina estiver ligada")
-              : t("Não foi possível abrir esta imagem"),
-          )
+        if (alive) {
+          setError(getImageError(reason))
+          setRetryable(canRetryImage(reason))
+        }
       })
     return () => {
       alive = false
     }
-  }, [image, context])
+  }, [image, context, revision])
+  useEffect(() => {
+    let alive = true
+    setLibraryPath(null)
+    if (!src || !image || image.src || image.read || !context?.onLibrary) return
+    const directory = image.path.slice(0, image.path.lastIndexOf("/")) || ""
+    void context.api
+      .request("GET /bots/:id/files", { path: directory }, { id: context.bot.id })
+      .then((result) => {
+        const entry = result.files.find((file) => !file.directory && file.name === image.filename)
+        if (alive && entry) setLibraryPath(entry.path)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [src, image, context])
   if (!image) return null
   return (
     <dialog ref={dialog} className="evidence-lightbox" aria-label={image.caption} onCancel={close}>
@@ -323,55 +400,65 @@ export const ImageLightbox = ({
           {t("Fechar imagem")}
         </button>
       </header>
-      <nav aria-label={t("Controles da imagem")}>
-        <button
-          type="button"
-          disabled={images.length < 2}
-          onClick={() => select((index + images.length - 1) % images.length)}
-        >
-          {t("Anterior")}
-        </button>
-        <button type="button" disabled={images.length < 2} onClick={() => select((index + 1) % images.length)}>
-          {t("Próxima")}
-        </button>
-        <button type="button" onClick={() => changeZoom(-0.5)}>
-          {t("Diminuir zoom")}
-        </button>
-        <button type="button" onClick={() => changeZoom(0.5)}>
-          {t("Aumentar zoom")}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setZoom(1)
-            setPan({ x: 0, y: 0 })
-          }}
-        >
-          {t("Ajustar imagem")}
-        </button>
-        {context?.onLibrary && !image.src && !image.read && (
+      {src && (
+        <nav aria-label={t("Controles da imagem")}>
+          <button
+            type="button"
+            disabled={images.length < 2}
+            onClick={() => select((index + images.length - 1) % images.length)}
+          >
+            {t("Anterior")}
+          </button>
+          <button type="button" disabled={images.length < 2} onClick={() => select((index + 1) % images.length)}>
+            {t("Próxima")}
+          </button>
+          <button type="button" onClick={() => changeZoom(-0.5)}>
+            {t("Diminuir zoom")}
+          </button>
+          <button type="button" onClick={() => changeZoom(0.5)}>
+            {t("Aumentar zoom")}
+          </button>
           <button
             type="button"
             onClick={() => {
-              context.onLibrary?.(image.path)
-              close()
+              setZoom(1)
+              setPan({ x: 0, y: 0 })
             }}
           >
-            {t("Abrir na Biblioteca")}
+            {t("Ajustar imagem")}
           </button>
-        )}
-        <button
-          type="button"
-          disabled={!src}
-          onClick={() => void saveImage(() => readImage(image, context), image.filename)}
-        >
-          {t("Salvar")}
-        </button>
-      </nav>
+          {context?.onLibrary && libraryPath && (
+            <button
+              type="button"
+              onClick={() => {
+                context.onLibrary?.(libraryPath)
+                close()
+              }}
+            >
+              {t("Abrir na Biblioteca")}
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={!src}
+            onClick={() => void saveImage(() => readImage(image, context), image.filename)}
+          >
+            {t("Salvar")}
+          </button>
+        </nav>
+      )}
       {notice && <p role="status">{notice}</p>}
       {error ? (
         <p role="status">
-          {error}{" "}
+          <span>{error}</span> <span className="evidence-path">{image.path}</span>
+          <button type="button" onClick={() => void navigator.clipboard.writeText(image.path)}>
+            {t("Copiar caminho")}
+          </button>
+          {retryable && (
+            <button type="button" onClick={() => setRevision((value) => value + 1)}>
+              {t("Tentar novamente")}
+            </button>
+          )}
           {error === t("Imagem disponível quando a máquina estiver ligada") && context?.onComputer && (
             <button type="button" onClick={() => context?.onComputer?.()}>
               {t("Abrir Computador")}
@@ -399,6 +486,11 @@ export const ImageLightbox = ({
           }}
         >
           <img
+            onError={() => {
+              setSrc(null)
+              setError(t("Formato de imagem não suportado"))
+              setRetryable(false)
+            }}
             draggable={false}
             src={src}
             alt={image.caption}
@@ -410,7 +502,7 @@ export const ImageLightbox = ({
           />
         </div>
       ) : (
-        <p role="status">Carregando imagem…</p>
+        <p role="status">{t("Carregando imagem…")}</p>
       )}
     </dialog>
   )

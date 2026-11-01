@@ -266,6 +266,7 @@ export const BotLibrary = ({
             {file.mime === "image/preview" ? (
               <EvidenceContext.Provider value={evidence}>
                 <EvidenceGallery
+                  hasPathLabel
                   images={[{ path: file.imagePath ?? file.name, caption: file.name, filename: file.name }]}
                 />
               </EvidenceContext.Provider>

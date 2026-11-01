@@ -89,7 +89,8 @@ export const localImage = (root: string, path: string) => {
 }
 
 // No shell interpolation, no symlink following at any component, bounded regular-file read.
-export const guestImage = guestFileErrors(`import os,sys,stat,base64,json
+export const guestImage = guestFileErrors(
+  `import os,sys,stat,base64,json
 parts=sys.argv[1].split('/')
 if any(p in ('..','') or '\\\\' in p for p in parts): raise Exception('Caminho inválido')
 fd=os.open(sys.argv[3] if len(sys.argv)>3 else '/workspace',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
@@ -101,13 +102,18 @@ try:
  item=os.open(parts[-1],os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=fd)
  with os.fdopen(item,'rb') as f:
   info=os.fstat(f.fileno())
-  if not stat.S_ISREG(info.st_mode) or info.st_size>15728640: raise Exception('Imagem acima de 15 MB')
+  if not stat.S_ISREG(info.st_mode):
+   print(json.dumps(dict(errorCode='IMAGE_UNSUPPORTED'))); sys.exit(0)
+  if info.st_size>15728640:
+   print(json.dumps(dict(errorCode='IMAGE_TOO_LARGE'))); sys.exit(0)
   f.seek(int(sys.argv[2]))
   data=f.read(393216)
  print(json.dumps(dict(size=info.st_size,data=base64.b64encode(data).decode())))
-finally: os.close(fd)`)
+finally: os.close(fd)`,
+  0,
+)
 
-export const evidenceImageRoute = (kernel: Kernel, vm: VmRuntime): RouteModule["routes"][number] => ({
+export const evidenceImageRoute = (kernel: Kernel, vm: VmRuntime, capture = false): RouteModule["routes"][number] => ({
   method: "GET",
   path: "/bots/:id/images",
   handler: async ({ params, query, signal: requestSignal }) => {
@@ -120,7 +126,7 @@ export const evidenceImageRoute = (kernel: Kernel, vm: VmRuntime): RouteModule["
             id: string
             path: string
           } | null)
-        : query.path
+        : query.path && !capture
           ? (db
               .query(`WITH candidates AS MATERIALIZED (
               SELECT id,path FROM attachments WHERE path = ?
@@ -156,6 +162,7 @@ export const evidenceImageRoute = (kernel: Kernel, vm: VmRuntime): RouteModule["
           appData: kernel.paths.appData,
           bot,
           path: query.path,
+          capture,
           base: query.base,
           projectPath: project?.path,
         })
@@ -164,12 +171,24 @@ export const evidenceImageRoute = (kernel: Kernel, vm: VmRuntime): RouteModule["
 
         return getImageResponse(result)
       }
-      const { root, path } = workspacePath(kernel, { ...bot, anyFolderAccess: false }, query.path, query.base)
+      const { root, path } =
+        capture && bot.access === "full"
+          ? { root: "/", path: imagePath("/", resolve("/workspace", query.base ?? "", query.path)) }
+          : workspacePath(
+              kernel,
+              { ...bot, anyFolderAccess: capture && Boolean(bot.anyFolderAccess) },
+              query.path,
+              query.base,
+            )
       if (!path || /[?*[\]{}]/.test(path)) throw new WorkspacePathError(400)
       if (!vm.states().some((state) => state.botId === bot.id && state.status === "running"))
         return {
           status: 409,
-          json: { errorCode: "IMAGE_MACHINE_STOPPED", error: "Imagem disponível quando a máquina estiver ligada" },
+          json: {
+            errorCode: "IMAGE_MACHINE_STOPPED",
+            error: "Imagem disponível quando a máquina estiver ligada",
+            path: resolve(root, path),
+          },
         }
       const signal = AbortSignal.any([requestSignal, AbortSignal.timeout(30_000)])
       const release = await vm.acquire({ botId: bot.id, runningOnly: true, signal })
@@ -187,8 +206,12 @@ export const evidenceImageRoute = (kernel: Kernel, vm: VmRuntime): RouteModule["
           args: ["-c", guestImage, path, String(offset), root],
           signal,
         })
-        if (!result.success || result.stdout.length > 530_000) throw new Error("Imagem indisponível")
+        if (!result.success) throw new Error("Imagem indisponível")
+        if (result.stdout.length > 530_000) throw new Error("Imagem indisponível")
         checkGuestFileError(result.stdout)
+        const failure = JSON.parse(result.stdout) as { errorCode?: string }
+        if (failure.errorCode === "IMAGE_TOO_LARGE" || failure.errorCode === "IMAGE_UNSUPPORTED")
+          throw Object.assign(new Error("Imagem indisponível"), { code: failure.errorCode })
         const chunk = JSON.parse(result.stdout) as { size: number; data: string }
         if (
           !Number.isSafeInteger(chunk.size) ||
@@ -205,7 +228,7 @@ export const evidenceImageRoute = (kernel: Kernel, vm: VmRuntime): RouteModule["
       try {
         const first = await read(0)
         const mime = imageMime(first.bytes)
-        if (!mime) throw new Error("Formato de imagem inválido")
+        if (!mime) throw Object.assign(new Error("Formato de imagem inválido"), { code: "IMAGE_UNSUPPORTED" })
         let offset = 0
         const stream = new ReadableStream<Uint8Array>({
           async pull(controller) {
@@ -232,7 +255,14 @@ export const evidenceImageRoute = (kernel: Kernel, vm: VmRuntime): RouteModule["
         throw error
       }
     } catch (error) {
-      return workspaceError(error)
+      return getImageErrorResponse(
+        error,
+        resolve(
+          bot.machine === "vm" || bot.machine === "cloud" ? "/workspace" : bot.cwd || bot.homeDir,
+          query.base ?? "",
+          query.path ?? "",
+        ),
+      )
     }
   },
 })
@@ -325,3 +355,32 @@ const getGuestImageReferenceResponse = async (
 
 const isGuestImageName = (name: unknown): name is string =>
   typeof name === "string" && name.length <= 255 && !/[/\\\0]/.test(name) && name !== "." && name !== ".."
+
+const getImageErrorResponse = (error: unknown, path: string): RouteResponse => {
+  const code = getImageErrorCode(error)
+  const errors: Record<string, { errorCode: string; status: number }> = {
+    ENOENT: { errorCode: "IMAGE_NOT_FOUND", status: 404 },
+    HTTP_404: { errorCode: "IMAGE_NOT_FOUND", status: 404 },
+    HTTP_403: { errorCode: "IMAGE_OUTSIDE_WORKSPACE", status: 403 },
+    EACCES: { errorCode: "IMAGE_OUTSIDE_WORKSPACE", status: 403 },
+    EPERM: { errorCode: "IMAGE_OUTSIDE_WORKSPACE", status: 403 },
+    ELOOP: { errorCode: "IMAGE_OUTSIDE_WORKSPACE", status: 403 },
+    ENOTDIR: { errorCode: "IMAGE_OUTSIDE_WORKSPACE", status: 403 },
+    "TOURI-E2000": { errorCode: "IMAGE_OUTSIDE_WORKSPACE", status: 403 },
+    IMAGE_OUTSIDE_WORKSPACE: { errorCode: "IMAGE_OUTSIDE_WORKSPACE", status: 403 },
+    IMAGE_TOO_LARGE: { errorCode: "IMAGE_TOO_LARGE", status: 422 },
+    IMAGE_UNSUPPORTED: { errorCode: "IMAGE_UNSUPPORTED", status: 422 },
+  }
+  const failure = errors[code]
+  if (!failure) return workspaceError(error)
+  return {
+    status: failure.status,
+    json: { errorCode: failure.errorCode, error: error instanceof Error ? error.message : "Imagem indisponível", path },
+  }
+}
+
+const getImageErrorCode = (error: unknown): string => {
+  if (error instanceof WorkspacePathError) return `HTTP_${error.status}`
+  if (error instanceof Error && "code" in error) return String(error.code)
+  return ""
+}
