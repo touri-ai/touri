@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test"
 
 test.setTimeout(60_000)
+test.use({ reducedMotion: "reduce" })
 
 const before = process.env.OWNER_PROFILE_PHASE === "before"
 const evidence = process.env.OWNER_PROFILE_EVIDENCE
@@ -34,7 +35,10 @@ for (const width of [1440, 390])
         await expect(own.locator(".message-meta")).toContainText("Você")
       }
       if (evidence)
-        await page.screenshot({ path: `${evidence}/${before ? "before" : "after"}-work-${width}-${theme}.png` })
+        await page.screenshot({
+          animations: "disabled",
+          path: `${evidence}/${before ? "before" : "after"}-work-${width}-${theme}.png`,
+        })
       if (!before) {
         await openProfile(page, width)
         await page.getByLabel("Nome do perfil", { exact: true }).fill("Pessoa Teste")
@@ -43,12 +47,14 @@ for (const width of [1440, 390])
           .setInputFiles({ name: "photo.png", mimeType: "image/png", buffer: photo })
         await expect(page.getByLabel("Prévia do recorte da foto")).toBeVisible()
         await page.getByLabel("Zoom", { exact: true }).fill("1.5")
-        if (evidence) await page.screenshot({ path: `${evidence}/after-profile-${width}-${theme}.png` })
+        if (evidence)
+          await page.screenshot({ animations: "disabled", path: `${evidence}/after-profile-${width}-${theme}.png` })
         await page.getByRole("button", { name: "Usar foto recortada" }).click()
         await saveProfile(page)
         await expect(own.locator(".message-meta")).toContainText("Pessoa Teste")
         await expect(own.locator(".message-avatar img")).toBeVisible()
-        if (evidence) await page.screenshot({ path: `${evidence}/after-photo-work-${width}-${theme}.png` })
+        if (evidence)
+          await page.screenshot({ animations: "disabled", path: `${evidence}/after-photo-work-${width}-${theme}.png` })
         await openProfile(page, width)
         await page.getByRole("button", { name: "Remover avatar do perfil" }).click()
         await saveProfile(page)
@@ -61,14 +67,23 @@ for (const width of [1440, 390])
       }
       await navigation(page, width)
       await page.getByRole("tab", { name: /^Bots,/ }).click()
-      if (width === 390) await page.getByRole("button", { name: "Fechar menu", exact: true }).click()
+      if (width === 390) {
+        await page.getByRole("button", { name: "Fechar menu", exact: true }).click()
+        await expect(page.locator(".sidebar-drawer")).not.toBeVisible()
+        await page.evaluate(
+          () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+        )
+      }
       await expect(page.getByText("Vamos revisar a entrega de hoje.", { exact: true })).toBeVisible()
       if (!before) {
         await expect(page.locator("[data-work-message]")).toHaveCount(0)
         await expect(page.locator('[data-message-author="own"] .message-meta')).toHaveCount(0)
       }
       if (evidence)
-        await page.screenshot({ path: `${evidence}/${before ? "before" : "after"}-direct-${width}-${theme}.png` })
+        await page.screenshot({
+          animations: "disabled",
+          path: `${evidence}/${before ? "before" : "after"}-direct-${width}-${theme}.png`,
+        })
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     })
   }

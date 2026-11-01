@@ -4,7 +4,7 @@ import { openGlobalPage, showBotAdvanced } from "./home-navigation"
 
 test.use({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" })
 
-const nativePreferencesTabs = ["Aparência", "Privacidade", "Atualizações", "Notificações", "Diagnóstico"]
+const nativePreferencesTabs = ["Perfil", "Aparência", "Privacidade", "Atualizações", "Notificações", "Diagnóstico"]
 
 test("bot identity stays simple and every advanced section remains reachable", async ({ page }) => {
   await page.goto("/test/e2e/r8-settings-harness.html")
