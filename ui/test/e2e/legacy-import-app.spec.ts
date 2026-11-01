@@ -58,7 +58,7 @@ for (const width of [1440, 390]) {
         document.documentElement.dataset.theme = value
       }, theme)
       const drawer = page.getByRole("button", { name: "Abrir menu", exact: true })
-      if (await drawer.isVisible()) await drawer.click()
+      if (width === 390) await drawer.click()
       await openGlobalPage(page, "Importar")
       await capture("source")
       await page.locator("#legacy-root").fill("/archive")
