@@ -4386,3 +4386,101 @@ button.brand-button:hover:not(:disabled) {
     opacity: 1;
   }
 }
+
+.import-wizard {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.import-wizard-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+.import-wizard-body:focus-visible,
+.import-error:focus-visible {
+  outline: 2px solid var(--accent-info);
+  outline-offset: -2px;
+}
+.import-wizard .wizard-content {
+  padding-bottom: var(--space-24);
+}
+.import-wizard .wizard-content > p {
+  padding: 0;
+}
+.import-wizard-footer {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border-strong);
+  background: var(--surface);
+}
+.import-wizard .import-wizard-footer .modal-actions {
+  position: static;
+  align-items: center;
+}
+.import-wizard-footer .button-dark {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--surface);
+}
+.import-wizard-footer .button-quiet {
+  margin-right: auto;
+}
+.import-error {
+  margin: var(--space-16) var(--space-24) 0;
+  border-color: var(--border-error);
+  background: var(--surface-danger);
+  overflow-wrap: anywhere;
+  max-block-size: min(30dvh, 240px);
+  overflow-y: auto;
+}
+.import-error p {
+  margin: var(--space-8) 0 0;
+}
+.import-report {
+  display: grid;
+  gap: var(--space-12);
+  padding: var(--space-16);
+}
+.import-report-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-8) var(--space-24);
+  margin: 0;
+}
+.import-report-grid > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-8);
+}
+.import-report dt {
+  color: var(--text-2);
+  font-size: var(--fs-caption);
+}
+.import-report dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.import-wizard .success-card {
+  padding: var(--space-20);
+}
+.import-wizard .success-card strong {
+  font-size: var(--fs-title);
+}
+.import-wizard .success-card p {
+  font-size: var(--fs-body);
+}
+@media (max-width: 480px) {
+  .import-wizard .wizard-steps {
+    gap: var(--space-8);
+    overflow-wrap: anywhere;
+    font-size: var(--fs-caption);
+  }
+  .import-wizard-footer .modal-actions {
+    padding: var(--space-12);
+    gap: var(--space-8);
+  }
+  .import-wizard-footer .button {
+    padding-inline: var(--space-8);
+  }
+}
