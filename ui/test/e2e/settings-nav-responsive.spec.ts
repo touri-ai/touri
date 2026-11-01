@@ -10,8 +10,15 @@ test("phone settings navigation exposes every tab for touch and keyboard", async
   const dialog = page.getByRole("dialog")
   const tablist = dialog.getByRole("tablist")
   const tabs = tablist.getByRole("tab")
-  await expect(tabs).toHaveCount(5)
-  await expect(tabs).toContainText(["Aparência", "Privacidade", "Atualizações", "Notificações", "Diagnóstico"])
+  await expect(tabs).toHaveCount(6)
+  await expect(tabs).toContainText([
+    "Perfil",
+    "Aparência",
+    "Privacidade",
+    "Atualizações",
+    "Notificações",
+    "Diagnóstico",
+  ])
 
   const layout = await tablist.evaluate((element) => {
     const bounds = element.getBoundingClientRect()

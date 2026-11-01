@@ -22,6 +22,7 @@ import { hostComputerSupported } from "../platform"
 import { useHost } from "../useHost"
 import { Disclosure } from "./Disclosure"
 import { Modal } from "./Modal"
+import { OwnerProfileSettings } from "./OwnerProfileSettings"
 import {
   SettingsDisclosure,
   SettingsGroup,
@@ -93,6 +94,7 @@ export const SettingsModal = ({
   )
   useSettingFocus(focusSetting)
   const [reportOpen, setReportOpen] = useState(initialSection === "report")
+  const [ownerProfile, setOwnerProfile] = useState(settings?.ownerProfile ?? { name: "", avatar: null })
   const [theme, setThemePreference] = useState<ThemePreference>(readTheme)
   const [inlinePreview, setInlinePreview] = useState(readInlinePreviewPreference)
   const [telemetry, setTelemetry] = useState(settings?.cliTelemetry ?? "off")
@@ -125,6 +127,10 @@ export const SettingsModal = ({
     setError(null)
     try {
       await onSave({
+        ...(ownerProfile !== settings?.ownerProfile &&
+        (settings?.ownerProfile || ownerProfile.name || ownerProfile.avatar)
+          ? { ownerProfile }
+          : {}),
         ...(launchAtLogin !== (settings?.launchAtLogin ?? false) ? { launchAtLogin } : {}),
         cliTelemetry: telemetry,
         checkForUpdates: updates,
@@ -164,6 +170,9 @@ export const SettingsModal = ({
           <Suspense fallback={<SettingsPaneLoading />}>
             <ApiModelsSettings api={api} />
           </Suspense>
+        </SettingsPane>
+        <SettingsPane {...pane("profile")}>
+          <OwnerProfileSettings profile={ownerProfile} onChange={setOwnerProfile} />
         </SettingsPane>
         <SettingsPane {...pane("appearance")}>
           <SettingsGroup>

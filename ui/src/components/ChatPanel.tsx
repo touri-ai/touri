@@ -7,6 +7,7 @@ import type {
   MachineState,
   Message,
   MessageBranch,
+  OwnerProfile,
   Project,
   Routine,
   RoutineRun,
@@ -133,6 +134,7 @@ type ChatPanelProps = {
   group?: BotGroup | null
   groupMembers?: Bot[]
   channelMode?: boolean
+  ownerProfile?: OwnerProfile | undefined
   workspaceMode?: "bots" | "work"
   onEditGroup?: () => void
   browserRuns?: BrowserChannelRun[]
@@ -174,6 +176,8 @@ type ChatPanelProps = {
 }
 
 type VirtualMessageListProps = {
+  work?: boolean
+  ownerProfile?: OwnerProfile | undefined
   vmBotId?: string | undefined
   currentPersonId?: string | null | undefined
   machine?: MachineState | undefined
@@ -315,6 +319,8 @@ const scrollToEnd = (list: HTMLElement, programmaticTop: { current: Programmatic
 const emptyRuns: Run[] = []
 
 export const VirtualMessageList = ({
+  work = false,
+  ownerProfile,
   vmBotId,
   currentPersonId = "owner",
   machine,
@@ -843,6 +849,8 @@ export const VirtualMessageList = ({
                   inserted={insertedMessages.has(message.id)}
                   vmBotId={vmBotId}
                   currentPersonId={currentPersonId}
+                  work={work}
+                  ownerProfile={ownerProfile}
                   grouped={grouped}
                   machine={machine}
                   message={message}
@@ -1027,6 +1035,8 @@ const formatDaySeparator = (timestamp: number): string => {
 }
 
 const MessageBubbleRow = ({
+  work = false,
+  ownerProfile,
   inserted,
   vmBotId,
   currentPersonId,
@@ -1053,6 +1063,8 @@ const MessageBubbleRow = ({
   showActivityStop,
   onImageLoad,
 }: {
+  work?: boolean
+  ownerProfile?: OwnerProfile | undefined
   inserted: boolean
   vmBotId?: string | undefined
   currentPersonId: string | null
@@ -1088,6 +1100,8 @@ const MessageBubbleRow = ({
       ? message.sender
       : null
   const messageFromOtherPerson = Boolean(personSender && personSender.id !== currentPersonId)
+  const isOwnerMessage = message.role === "user" && (personSender?.id ?? currentPersonId) === "owner"
+  const profile = isOwnerMessage ? ownerProfile : undefined
   const personMessageClass = messageFromOtherPerson ? "message-user message-other-person" : "message-user"
   const messageClass = message.role === "user" ? personMessageClass : "message-assistant"
   const parentEvidence = useContext(EvidenceContext)
@@ -1160,6 +1174,7 @@ const MessageBubbleRow = ({
   )
   const getMessageRoleLabel = (): string => {
     if (message.role === "user") {
+      if (profile?.name.trim()) return profile.name.trim()
       if (messageFromOtherPerson) return personSender?.name ?? t("Você")
       return t("Você")
     }
@@ -1169,7 +1184,7 @@ const MessageBubbleRow = ({
   }
   const messageRoleLabel = getMessageRoleLabel()
   const author = getMessageAuthor(message, messageFromOtherPerson)
-  const showHeader = !routinePrompt && !grouped && author !== "own"
+  const showHeader = !routinePrompt && !grouped && (work || author !== "own")
   const getAuthorColor = (): string | undefined => {
     if (personSender)
       return avatarColorFor({
@@ -1185,8 +1200,17 @@ const MessageBubbleRow = ({
   }
   const authorColor = getAuthorColor()
   const getMessageAvatar = (): ReactNode => {
-    if (personSender)
-      return <PersonAvatar person={{ id: personSender.id, avatarSeed: personSender.avatarSeed ?? personSender.id }} />
+    if (message.role === "user")
+      return (
+        <PersonAvatar
+          person={{
+            id: personSender?.id ?? currentPersonId ?? "owner",
+            name: profile?.name || personSender?.name || t("Você"),
+            avatarSeed: personSender?.avatarSeed ?? "owner",
+          }}
+          avatar={profile?.avatar}
+        />
+      )
     if (senderBot) return <BotAvatar bot={senderBot} size={28} state={mascotState} />
     if (!message.sender && threadBot) return <BotAvatar bot={threadBot} size={28} state={mascotState} />
     if (!message.sender) return null
@@ -1211,7 +1235,7 @@ const MessageBubbleRow = ({
       </span>
     )
   }
-  const messageAvatar = author === "bot" && !grouped ? getMessageAvatar() : null
+  const messageAvatar = (work || author === "bot") && !grouped ? getMessageAvatar() : null
   const technicalNotice =
     message.role === "system" &&
     message.parts.some((part) => part.type === "notice" && part.code === "session_replaced")
@@ -1402,13 +1426,14 @@ const MessageBubbleRow = ({
     <article
       ref={root}
       className={`message-bubble ${messageClass}${routinePrompt ? " message-routine-prompt" : ""}${quietBrowserNarration ? " message-browser-narration" : ""}`}
+      data-work-message={work || undefined}
       data-message-id={message.id}
       data-message-author={author}
       data-message-grouped={grouped || undefined}
       data-motion-insert={inserted}
       style={authorColor ? ({ "--avatar-author-color": authorColor } as CSSProperties) : undefined}
     >
-      {author === "bot" && <div className="message-avatar">{messageAvatar}</div>}
+      {(work || author === "bot") && <div className="message-avatar">{messageAvatar}</div>}
       {author === "own" && !routinePrompt && <span className="visually-hidden">{messageRoleLabel}</span>}
       {routineHeader && <small className="routine-run-header">{routineHeader}</small>}
       {showHeader && (
@@ -1676,6 +1701,8 @@ const MessageRow = ({ dayLabel, ...props }: ComponentProps<typeof MessageBubbleR
 const MessageBubble = memo(MessageRow, sameBubbleProps)
 
 export const ChatPanel = ({
+  workspaceMode = "bots",
+  ownerProfile,
   currentPersonId = "owner",
   channelThreads = [],
   channelMessages = [],
@@ -2007,6 +2034,8 @@ export const ChatPanel = ({
                     }}
                   >
                     <VirtualMessageList
+                      work={workspaceMode === "work"}
+                      ownerProfile={ownerProfile}
                       vmBotId={bot?.machine === "vm" ? bot.id : undefined}
                       currentPersonId={currentPersonId}
                       machine={machine}

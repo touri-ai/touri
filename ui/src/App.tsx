@@ -1523,6 +1523,7 @@ const AppContent = ({ kernel }: AppProps) => {
                             }
                             channelMode={Boolean(selectedGroup)}
                             workspaceMode={sidebarMode}
+                            ownerProfile={data.settings?.ownerProfile}
                             browserRuns={data.browserRuns ?? []}
                             onRepeatTask={setRoutineDraft}
                             currentPersonId={currentPersonId}

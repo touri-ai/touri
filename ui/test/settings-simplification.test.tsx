@@ -167,6 +167,7 @@ it("keeps app sections short and technical settings within their disclosure", as
     />,
   )
   expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+    "Perfil",
     "Aparência",
     "Privacidade",
     "Atualizações",
