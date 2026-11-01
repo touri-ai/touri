@@ -71,16 +71,16 @@ it("imports the source archive even when no local bot exists", async () => {
   expect(screen.getByText(t("History is in touri"))).toBeVisible()
 })
 
-it("does not claim success for a completed job with warnings and no imported records", async () => {
+it.each([false, true])("rejects an empty warning report (dry run: %s)", async (dryRun) => {
   const fixture = getFixture()
-  const report = getReport({ warnings: ["Selected bot not found: synthetic-local-id"] })
+  const report = getReport({ dryRun, warnings: ["Selected bot not found: synthetic-local-id"] })
   fixture.getStatus.mockResolvedValue({
     status: "succeeded",
     report: { ...report, bots: getCounts(0), threads: getCounts(0), messages: getCounts(0) },
   })
   const { notice } = openReview(fixture)
 
-  await clickRun(false)
+  await clickRun(dryRun)
 
   expect(screen.getByRole("alert")).toBeVisible()
   expect(screen.queryByText(t("History is in touri"))).toBeNull()

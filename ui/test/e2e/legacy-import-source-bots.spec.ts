@@ -45,6 +45,8 @@ for (const width of [1440, 390]) {
       await page.getByRole("button", { name: "Continuar", exact: true }).click()
       await page.screenshot({ path: info.outputPath(`${width}-${theme}-source-bots.png`), animations: "disabled" })
       await page.getByRole("button", { name: "Revisar importação", exact: true }).click()
+      await expect(page.locator(".review-grid")).toContainText("Todos")
+      await page.screenshot({ path: info.outputPath(`${width}-${theme}-review.png`), animations: "disabled" })
       const request = page.waitForRequest(
         (request) => request.url().endsWith("/imports/legacy") && request.method() === "POST",
       )
@@ -61,6 +63,41 @@ for (const width of [1440, 390]) {
       expect(await page.locator(".modal-card").evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
         false,
       )
+
+      await page.getByRole("button", { name: "Fechar diálogo", exact: true }).click()
+      if (width === 390) await page.getByRole("button", { name: "Abrir menu", exact: true }).click()
+      await openGlobalPage(page, "Importar")
+      await page.locator("#legacy-root").fill(source)
+      await page.getByRole("button", { name: "Continuar", exact: true }).click()
+      await page.getByRole("button", { name: "Revisar importação", exact: true }).click()
+      await page.route("**/api/v1/imports/*", async (route) => {
+        const response = await route.fetch()
+        const status = await response.json()
+        if (route.request().method() !== "GET" || !status.report) return route.fulfill({ response })
+
+        const counts = { created: 0, updated: 0, unchanged: 0, skipped: 0 }
+        const report = {
+          ...status.report,
+          bots: counts,
+          threads: counts,
+          messages: counts,
+          routines: counts,
+          attachments: counts,
+          codexSessions: counts,
+          memoryFiles: counts,
+          warnings: ["Nenhum registro encontrado no arquivo sintético."],
+        }
+
+        await route.fulfill({ json: { status: "succeeded", report } })
+      })
+
+      await page.getByRole("button", { name: "Importar agora", exact: true }).click()
+
+      await expect(page.getByRole("alert")).toBeVisible()
+      await expect(page.locator(".success-card")).toHaveCount(0)
+      await expect(page.getByRole("button", { name: "Tentar de novo", exact: true })).toBeInViewport()
+      await page.screenshot({ path: info.outputPath(`${width}-${theme}-empty-warning.png`), animations: "disabled" })
+      expect((await new AxeBuilder({ page }).include(".modal-card").analyze()).violations).toEqual([])
     })
   }
 }
