@@ -58,6 +58,7 @@ import webPushSql from "./migrations/0051.sql" with { type: "text" }
 import notificationReadsSql from "./migrations/0052.sql" with { type: "text" }
 import attachmentRevisionSql from "./migrations/0053.sql" with { type: "text" }
 import scriptRoutinesSql from "./migrations/0054.sql" with { type: "text" }
+import botServiceTierSql from "./migrations/bot-service-tier.sql" with { type: "text" }
 import imageEvidenceIndexesSql from "./migrations/image-evidence-indexes.sql" with { type: "text" }
 import responseImageReferencesSql from "./migrations/response-image-references.sql" with { type: "text" }
 import type { PerformanceStageRunner } from "./performance"
@@ -81,6 +82,9 @@ export const openDatabase = (input: {
   runStage?: PerformanceStageRunner
 }): Database => {
   const database = openVersionedDatabase(input)
+  // This additive startup migration touches only bounded bot metadata, never conversation history.
+  if (!database.query("SELECT 1 FROM schema_meta WHERE key='bot_service_tier_version'").get())
+    database.transaction(() => database.exec(botServiceTierSql))()
   applyChannelSchema(database)
   if (!database.query("SELECT 1 FROM schema_meta WHERE key='response_image_references_version'").get())
     database.transaction(() => database.exec(responseImageReferencesSql))()

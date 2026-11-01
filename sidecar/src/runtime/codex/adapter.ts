@@ -234,7 +234,10 @@ const codexArgs = ({ args, mcp }: { args: StartTurnArgs; mcp: StartTurnArgs["mcp
       "-c",
       'approval_policy="never"',
     )
-  return args.bot.model ? [...result, "-c", `model=${JSON.stringify(args.bot.model)}`] : result
+  return result.concat(
+    args.bot.model ? ["-c", `model=${JSON.stringify(args.bot.model)}`] : [],
+    args.bot.serviceTier === "fast" ? ["-c", 'service_tier="fast"'] : [],
+  )
 }
 
 export const createCodexAdapter = ({

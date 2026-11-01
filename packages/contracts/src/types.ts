@@ -166,6 +166,8 @@ export type Bot = {
   instructionsHash: string
   provider: Provider
   model: string | null
+  /** Opt-in paid fast tier; only available for Codex. Omitted or null keeps the provider default. */
+  serviceTier?: 'fast' | null
   reasoningEffort: ReasoningEffort | null
   access: BotAccess
   approvals: ApprovalMode
@@ -991,7 +993,7 @@ export type TeamCreationResult = {
 }
 
 export type CreateBotInput = { cloudApiKey?: string; jobId?: string } & Pick<Bot, 'name' | 'provider'> &
-  Partial<Pick<Bot, 'title' | 'roleLine' | 'description' | 'color' | 'avatarShape' | 'avatarSeed' | 'instructions' | 'model' | 'reasoningEffort' | 'access' | 'approvals' | 'projectId' | 'cwd' | 'browserEnabled' | 'automaticConversationMode' | 'fastConversation' | 'browser' | 'computerUse' | 'machine' | 'machineIdleMinutes' | 'vmProviderLogin' | 'hostComputerUse' | 'folders' | 'anyFolderAccess' | 'providerProfile' | 'claudeAiConnectors'>>
+  Partial<Pick<Bot, 'title' | 'roleLine' | 'description' | 'color' | 'avatarShape' | 'avatarSeed' | 'instructions' | 'model' | 'serviceTier' | 'reasoningEffort' | 'access' | 'approvals' | 'projectId' | 'cwd' | 'browserEnabled' | 'automaticConversationMode' | 'fastConversation' | 'browser' | 'computerUse' | 'machine' | 'machineIdleMinutes' | 'vmProviderLogin' | 'hostComputerUse' | 'folders' | 'anyFolderAccess' | 'providerProfile' | 'claudeAiConnectors'>>
 
 /** A named login under `<appData>/provider-profiles/<name>`, created with `touri profile login`. */
 export type ProviderProfile = { name: string; provider: Provider; loggedIn: boolean; account: string | null }

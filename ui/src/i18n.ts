@@ -385,6 +385,10 @@ export const ptBR = {
     "Escolha um nome diferente de pessoas e bots, com até 80 letras, números, espaços, pontos, sublinhados ou hífens.",
   Integração: "Integração",
   "Bot typing": "{name} digitando…",
+  "Modo rápido": "Modo rápido",
+  "Respostas mais rápidas, com custo maior": "Respostas mais rápidas, com custo maior",
+  "Escolha o modo rápido ou o padrão do provedor.": "Escolha o modo rápido ou o padrão do provedor.",
+  "O modo rápido está disponível apenas para bots Codex.": "O modo rápido está disponível apenas para bots Codex.",
   "Fast conversation": "Resposta rápida para conversa",
   "Fast conversation help":
     "Responde mais rápido a cumprimentos e perguntas simples sobre o bot. Tarefas mantêm o esforço de raciocínio escolhido.",
@@ -4150,6 +4154,10 @@ const englishOverrides: Partial<Record<TranslationKey, string>> = {
     "Choose a name different from people and bots, using up to 80 letters, numbers, spaces, dots, underscores or hyphens.",
   Integração: "Integration",
   "Bot typing": "{name} is typing…",
+  "Modo rápido": "Fast mode",
+  "Respostas mais rápidas, com custo maior": "Faster responses at a higher cost",
+  "Escolha o modo rápido ou o padrão do provedor.": "Choose fast mode or the provider default.",
+  "O modo rápido está disponível apenas para bots Codex.": "Fast mode is only available for Codex bots.",
   "Fast conversation": "Fast conversational replies",
   "Fast conversation help":
     "Answers greetings and simple questions about the bot faster. Tasks keep your chosen reasoning effort.",

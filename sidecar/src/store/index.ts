@@ -98,6 +98,7 @@ type RawBot = {
   instructions_hash: string
   provider: string
   model: string | null
+  service_tier: Bot["serviceTier"]
   reasoning_effort: string | null
   access: string
   approvals: string
@@ -255,6 +256,7 @@ const asBot = (row: RawBot): Bot => ({
   instructionsHash: row.instructions_hash,
   provider: asProvider(row.provider, "codex"),
   model: row.model,
+  serviceTier: row.service_tier ?? null,
   reasoningEffort: asReasoningEffort(row.reasoning_effort),
   access:
     row.access === "read-only" || row.access === "full" || row.access === "workspace-write"
@@ -960,9 +962,16 @@ export const init = async (
       return { input: null, error: "Use de 1 a 80 caracteres, sem quebras de linha ou caracteres de controle." }
     if (provider !== "codex" && provider !== "claude" && provider !== "opencode")
       return { input: null, error: "provider deve ser Codex, Claude ou OpenCode" }
+    if (Object.hasOwn(body, "serviceTier") && body.serviceTier !== null && body.serviceTier !== "fast")
+      return { input: null, error: "Escolha o modo rápido ou o padrão do provedor." }
+    if (body.serviceTier === "fast" && provider !== "codex")
+      return { input: null, error: "O modo rápido está disponível apenas para bots Codex." }
+
+    const serviceTier = Object.hasOwn(body, "serviceTier") ? body.serviceTier : (existing?.serviceTier ?? null)
     const input: CreateBotInput = {
       name,
       provider,
+      serviceTier: provider === "codex" && serviceTier === "fast" ? "fast" : null,
       ...(body.jobId === "team-builder" ? { jobId: "team-builder" } : {}),
     }
     if (
@@ -1205,7 +1214,7 @@ export const init = async (
       database.transaction(() => {
         database
           .query(
-            "INSERT INTO bots (id, name, title, role_line, description, color, avatar_path, avatar_shape, avatar_seed, instructions, instructions_hash, provider, model, reasoning_effort, access, approvals, project_id, cwd, home_dir, main_thread_id, browser_enabled, computer_use, notifications, section, sort_order, paused, source, created_at, updated_at, archived_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'failures', NULL, 0, ?, 'local', ?, ?, NULL)",
+            "INSERT INTO bots (id, name, title, role_line, description, color, avatar_path, avatar_shape, avatar_seed, instructions, instructions_hash, provider, model, service_tier, reasoning_effort, access, approvals, project_id, cwd, home_dir, main_thread_id, browser_enabled, computer_use, notifications, section, sort_order, paused, source, created_at, updated_at, archived_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'failures', NULL, 0, ?, 'local', ?, ?, NULL)",
           )
           .run(
             id,
@@ -1220,6 +1229,7 @@ export const init = async (
             instructionsHash,
             input.provider,
             input.model ?? null,
+            input.serviceTier ?? null,
             input.reasoningEffort ?? null,
             input.access ?? "workspace-write",
             input.approvals ?? "on-request",
@@ -1298,6 +1308,7 @@ export const init = async (
       "avatar_shape = ?",
       "avatar_seed = ?",
       "model = ?",
+      "service_tier = ?",
       "reasoning_effort = ?",
       "access = ?",
       "approvals = ?",
@@ -1320,6 +1331,7 @@ export const init = async (
       input.avatarShape ?? null,
       input.avatarSeed ?? null,
       input.model ?? null,
+      input.serviceTier ?? null,
       input.reasoningEffort ?? null,
       input.access ?? bot.access,
       input.approvals ?? bot.approvals,
