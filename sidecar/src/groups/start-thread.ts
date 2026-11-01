@@ -128,6 +128,7 @@ export const getThreadRequest = (
   const message = store.getPathMessage?.({
     threadId: parent.id,
     messageId: linked?.request_message_id ?? run.requestMessageId,
+    leafId: linked?.request_message_id ?? run.requestMessageId,
   })
   if (
     message?.role !== "user" ||
