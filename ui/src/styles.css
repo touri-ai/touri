@@ -3791,6 +3791,7 @@ button.brand-button:hover:not(:disabled) {
     ". routine"
     ". meta"
     "avatar body"
+    ". replies"
     ". actions";
   column-gap: var(--space-8);
 }
@@ -3880,19 +3881,22 @@ button.brand-button:hover:not(:disabled) {
 .chat-message-list .message-actions .user-message-actions {
   margin: 0;
 }
-.chat-message-list .message-actions > :is(time, .user-message-actions),
+.chat-message-list .message-actions > :is(time, .user-message-actions, .message-start-thread),
 .chat-message-list .message-bubble[data-message-author="bot"] .message-meta time {
   opacity: 0;
   transition: opacity var(--duration-standard) var(--ease-standard);
 }
-.chat-message-list .message-bubble:is(:hover, :focus-within) .message-actions > :is(time, .user-message-actions),
+.chat-message-list
+  .message-bubble:is(:hover, :focus-within)
+  .message-actions
+  > :is(time, .user-message-actions, .message-start-thread),
 .chat-message-list .message-bubble:is(:hover, :focus-within) .message-meta time,
 .chat-message-list .message-actions:has(.user-message-editor) > .user-message-actions,
 .chat-message-list .message-routine-prompt .message-actions > .user-message-actions {
   opacity: 1;
 }
 @media (hover: none) {
-  .chat-message-list .message-actions > .user-message-actions {
+  .chat-message-list .message-actions > :is(.user-message-actions, .message-start-thread) {
     opacity: 1;
   }
 }
@@ -4585,4 +4589,22 @@ button.brand-button:hover:not(:disabled) {
 }
 .chat-message-list .message-bubble[data-work-message] .message-role {
   font-weight: var(--weight-semibold);
+}
+
+.message-thread-replies {
+  margin-top: var(--space-8);
+}
+.message-start-thread button,
+.message-thread-replies button {
+  min-height: 32px;
+}
+@media (max-width: 800px), (pointer: coarse) {
+  .message-start-thread button,
+  .message-thread-replies button {
+    min-height: 44px;
+  }
+}
+
+.chat-message-list .message-bubble[data-message-author="bot"] > .message-thread-replies {
+  grid-area: replies;
 }

@@ -24,7 +24,7 @@ export const newRoutineDraft = (botId: string): RoutineDraft => ({
   cron: "0 9 * * 1-5",
   timezone: "America/Sao_Paulo",
   enabled: false,
-  continuity: "new-thread",
+  continuity: "main-thread",
   resultsThreadId: null,
   groupId: null,
   timeoutMinutes: 30,

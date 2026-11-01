@@ -3,6 +3,7 @@ import { toolCatalog, validateToolArgs } from "@touri/contracts"
 import { approvalDestination } from "../approvals/grants"
 import { hiddenInGroupSession } from "../groups/privacy"
 import { delegatedBot, getDelegation } from "../groups/security"
+import { getThreadRequest } from "../groups/start-thread"
 import { redactStructured } from "../kernel/redact"
 import { learningToolHidden } from "../learning/settings"
 import { mem0SessionAllowed } from "../mem0/session"
@@ -75,6 +76,7 @@ const visibleTo = ({
   experimental: boolean
   kernel: Kernel
 }): boolean => {
+  if (tool.name === "thread_create" && !getThreadRequest(kernel, caller)) return false
   if (tool.name === "team_create" && !getTeamBuilder(kernel, caller)) return false
   if (
     ["coordinate_bots", "ask_bot", "ask_all"].includes(tool.name) &&

@@ -3526,7 +3526,6 @@ export const createRuntimeEngine = ({
     if (!group) return "Group not found"
     if (input.kind !== "script" && !group.memberIds.includes(input.botId))
       return "The routine's bot must be a member of the group"
-    if (input.continuity === "main-thread") return "A group routine posts into a group conversation"
     if (input.resultsThreadId && (thread?.groupId !== group.id || thread.groupThreadId))
       return "Results conversation must belong to this group"
     return null
@@ -3767,7 +3766,13 @@ export const createRuntimeEngine = ({
     }
     const bot = store.getBot({ botId: routine.botId })
     if (!bot) return { success: false, errorCode: "NOT_FOUND", error: "Bot not found" }
-    const group = routine.groupId ? createGroupStore(kernel).get(routine.groupId) : null
+    const routineGroups = createGroupStore(kernel)
+    const membership = (kernel.db as Database)
+      .query(
+        "SELECT group_id FROM group_members JOIN bot_groups ON bot_groups.id = group_members.group_id WHERE bot_id = ? ORDER BY bot_groups.created_at, group_id LIMIT 1",
+      )
+      .get(bot.id) as { group_id: string } | null
+    const group = routineGroups.get(routine.groupId ?? membership?.group_id ?? "")
     const publishRoutineThread = (thread: Thread): void => {
       kernel.publish({
         type: "thread.updated",
@@ -3778,10 +3783,14 @@ export const createRuntimeEngine = ({
       })
     }
     let threadId: Id | null = null
-    if (routine.continuity === "main-thread") threadId = bot.mainThreadId
-    else if (routine.continuity === "results-thread") threadId = routine.resultsThreadId
-    else if ((bot.automaticConversationMode ?? "main") === "main" && !group) threadId = bot.mainThreadId
-    else if ((bot.automaticConversationMode ?? "main") === "main" && group) threadId = routine.resultsThreadId
+    if (routine.continuity !== "new-thread") {
+      threadId = group
+        ? (createGroupStore(kernel).getMainThread(group.id)?.id ?? null)
+        : routine.continuity === "results-thread"
+          ? (routine.resultsThreadId ?? bot.mainThreadId)
+          : bot.mainThreadId
+      if (!threadId) return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Conversa principal indisponível" }
+    }
     if (!threadId && group) {
       const created = store.createThread({
         botId: group.memberIds[0] ?? bot.id,
@@ -3793,8 +3802,6 @@ export const createRuntimeEngine = ({
         return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Unable to create routine thread" }
       publishRoutineThread(created.thread)
       threadId = created.thread.id
-      if (routine.continuity === "results-thread" || (bot.automaticConversationMode ?? "main") === "main")
-        persistence.updateRoutine({ ...routine, resultsThreadId: threadId, updatedAt: Date.now() })
     }
     if (!threadId) {
       const threadArgs = {
@@ -3810,9 +3817,9 @@ export const createRuntimeEngine = ({
         return { success: false, errorCode: "THREAD_NOT_FOUND", error: "Unable to create routine thread" }
       publishRoutineThread(created.thread)
       threadId = created.thread.id
-      if (routine.continuity === "results-thread")
-        persistence.updateRoutine({ ...routine, resultsThreadId: threadId, updatedAt: Date.now() })
     }
+    if (routine.continuity === "results-thread" && !routine.resultsThreadId)
+      persistence.updateRoutine({ ...routine, resultsThreadId: threadId, updatedAt: Date.now() })
     const messageResult = store.insertMessage({
       message: {
         id: kernel.newId(),

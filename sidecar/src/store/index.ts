@@ -28,6 +28,7 @@ import { validAvatarColor, validAvatarShape } from "@touri/contracts/avatar"
 import { isImportOwner } from "../agent-import/owner"
 import { getApiModel } from "../api-models/config"
 import { installDoctor } from "../doctor"
+import { startMessageThread } from "../groups/start-thread"
 import { writePrivateFileAsync } from "../kernel/async-files"
 import { parseBotFolders, protectedFolder } from "../kernel/bot-folders"
 import { DEFAULT_DATA_RETENTION_DAYS, validDataRetentionDays } from "../kernel/data-maintenance"
@@ -138,6 +139,8 @@ type RawThread = {
   updated_seq: number
   id: string
   bot_id: string
+  anchor_message_id?: string | null
+  reply_count?: number
   parent_thread_id: string | null
   kind: string
   title: string
@@ -291,6 +294,8 @@ const asBot = (row: RawBot): Bot => ({
 })
 
 const asThread = (row: RawThread): Thread => ({
+  anchorMessageId: row.anchor_message_id ?? null,
+  replyCount: row.reply_count ?? 0,
   ownerPersonId: row.group_id === null ? (row.owner_person_id ?? "owner") : null,
   groupId: row.group_id,
   groupThreadId: row.group_thread_id,
@@ -874,6 +879,7 @@ export const init = async (
     kind,
     title,
     parentThreadId,
+    anchorMessageId,
     routineRunId,
     groupId,
     groupThreadId,
@@ -895,6 +901,8 @@ export const init = async (
       if (!parent || parent.bot_id !== botId)
         return { success: false, errorCode: "BOT_NOT_FOUND", error: `Parent thread ${parentThreadId} was not found` }
     }
+    if (anchorMessageId && (!parentThreadId || !hasMessage({ threadId: parentThreadId, messageId: anchorMessageId })))
+      return { success: false, errorCode: "BOT_NOT_FOUND", error: "Mensagem de origem não encontrada" }
     const threadId = kernel.newId()
     const timestamp = now()
     database
@@ -913,6 +921,8 @@ export const init = async (
         timestamp,
         ownerPersonId ?? null,
       )
+    if (anchorMessageId)
+      database.query("UPDATE threads SET anchor_message_id = ? WHERE id = ?").run(anchorMessageId, threadId)
     if (groupId)
       database
         .query("UPDATE threads SET group_id = ?, group_thread_id = ? WHERE id = ?")
@@ -1937,6 +1947,38 @@ export const init = async (
           const titles = await getRoutineThreadTitles(reader, getRoutineThreadCandidateIds(visible), signal)
 
           return jsonResponse(200, { threads: getThreadsWithRoutineTitles(visible, titles) })
+        },
+      },
+      {
+        method: "POST",
+        path: "/threads/:id/start-thread",
+        handler: async ({ params, body, signal }) => {
+          const thread = getThread({ threadId: params.id ?? "" })
+          const record = requestRecord(body)
+          if (!thread || thread.groupThreadId) return errorResponse(404, "NOT_FOUND", "Conversa não encontrada")
+          const actor = deviceSession(signal)?.person
+          const canAccess = kernel.services.use("work.canAccessThread")
+          if (canAccess && (!actor || !canAccess({ personId: actor.id, role: actor.role, threadId: thread.id })))
+            return errorResponse(404, "NOT_FOUND", "Conversa não encontrada")
+          if (
+            !record ||
+            !isString(record.messageId) ||
+            (record.title !== undefined && (!isString(record.title) || record.title.length > 200))
+          )
+            return errorResponse(400, "INVALID_ARGS", "Mensagem inválida")
+          const message = getMessage({ threadId: thread.id, messageId: record.messageId })
+          if (!message || !["user", "assistant"].includes(message.role) || message.status === "streaming")
+            return errorResponse(404, "NOT_FOUND", "Mensagem não encontrada")
+          if (database.query("SELECT 1 FROM thread_deletions WHERE thread_id = ?").get(thread.id))
+            return errorResponse(409, "THREAD_DELETING", "Conversa em exclusão")
+          const created = startMessageThread(
+            kernel,
+            thread,
+            message,
+            typeof record.title === "string" ? record.title : undefined,
+          )
+
+          return jsonResponse(201, { thread: created })
         },
       },
       {

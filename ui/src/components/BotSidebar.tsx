@@ -832,7 +832,6 @@ const BotEntryView = ({
   selectedThreadId,
   onSelect,
   onSelectThread,
-  onNewThread,
   onSettings,
   onRoutines,
   onRoutineHistory,
@@ -1320,7 +1319,6 @@ const BotEntryView = ({
               onRoutines={() => onRoutines(bot.id)}
               onConversations={openConversations}
               conversations={{
-                onNewThread: () => onNewThread(bot.id),
                 onSelectThreads:
                   onArchiveThreads || onDeleteThreads
                     ? () => {
@@ -1602,19 +1600,6 @@ const BotEntryView = ({
                 {t("Delete old automatic conversations…")}
               </button>
             )}
-            <button
-              type="button"
-              className="new-thread-row"
-              onClick={() => {
-                setConversationsOpen(false)
-                onNewThread(bot.id)
-              }}
-            >
-              <SidebarIcon>
-                <path d="M12 5v14M5 12h14" />
-              </SidebarIcon>
-              {t("Nova conversa")}
-            </button>
             {onLoadArchivedThreads && (
               <>
                 <button

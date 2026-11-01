@@ -114,6 +114,15 @@ export const createGroupStore = (kernel: Kernel) => {
       const t = store.getThread({ threadId: id })
       return t ? [t] : []
     })
+  const getMainThread = (groupId: string): Thread | null => {
+    const row = db
+      .query(
+        "SELECT id FROM threads WHERE group_id = ? AND group_thread_id IS NULL AND archived_at IS NULL ORDER BY created_at, id LIMIT 1",
+      )
+      .get(groupId) as { id: string } | null
+
+    return row ? store.getThread({ threadId: row.id }) : null
+  }
   const createThread = (group: BotGroup, title = group.name): Thread => {
     const first = group.memberIds[0]
     if (!first) throw new Error("Group has no members")
@@ -168,6 +177,7 @@ export const createGroupStore = (kernel: Kernel) => {
     save,
     threads,
     createThread,
+    getMainThread,
     participant,
     removeBot,
   }

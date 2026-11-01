@@ -217,17 +217,7 @@ const getOutput = async (
 const postResult = (kernel: Kernel, routine: Routine, output: string): string => {
   const store = kernel.services.use("store.api")
   if (!store || !routine.groupId) throw new Error("Script channel unavailable")
-  const existing = routine.resultsThreadId ? store.getThread({ threadId: routine.resultsThreadId }) : null
-  const created =
-    existing?.groupId === routine.groupId
-      ? null
-      : store.createThread({
-          botId: createGroupStore(kernel).get(routine.groupId)?.memberIds[0] ?? routine.botId,
-          kind: "chat",
-          title: routine.name,
-          groupId: routine.groupId,
-        })
-  const thread = existing?.groupId === routine.groupId ? existing : created?.success ? created.thread : null
+  const thread = createGroupStore(kernel).getMainThread(routine.groupId)
   if (!thread) throw new Error("Script channel unavailable")
   const inserted = store.insertMessage({
     message: {
@@ -246,7 +236,6 @@ const postResult = (kernel: Kernel, routine: Routine, output: string): string =>
   })
   if (!inserted.success) throw new Error("Script output could not be saved")
   // Direct insertion is deliberate: no group turn or provider enqueue for script output.
-  if (created?.success) kernel.publish({ type: "thread.updated", thread })
   return thread.id
 }
 

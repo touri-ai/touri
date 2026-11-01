@@ -21,6 +21,12 @@ export const ptBR = {
   "Use cropped photo": "Usar foto recortada",
   "Create profile mascot": "Criar mascote do perfil",
   "Remove profile avatar": "Remover avatar do perfil",
+  "Iniciar thread": "Iniciar thread",
+  "Abrindo thread…": "Abrindo thread…",
+  "Não foi possível iniciar a thread. Tente novamente.": "Não foi possível iniciar a thread. Tente novamente.",
+  "{count} respostas": "{count} respostas",
+  "Nova thread a cada execução": "Nova thread a cada execução",
+
   "Claude Code": "Claude Code",
   "Agente importado": "Agente importado",
   "Agente {number}": "Agente {number}",
@@ -3810,6 +3816,12 @@ export type TranslationKey = keyof typeof ptBR
 const englishOverrides: Partial<Record<TranslationKey, string>> = {
   "{bot} is working; remove them when they finish.": "{bot} is working; remove them when they finish.",
   "This bot is working; remove it when it finishes.": "This bot is working; remove it when it finishes.",
+  "Iniciar thread": "Start thread",
+  "Abrindo thread…": "Opening thread…",
+  "Não foi possível iniciar a thread. Tente novamente.": "Could not start the thread. Try again.",
+  "{count} respostas": "{count} replies",
+  "Nova thread a cada execução": "New thread for each run",
+
   "Claude Code": "Claude Code",
   "Agente importado": "Imported agent",
   "Agente {number}": "Agent {number}",

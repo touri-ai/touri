@@ -84,13 +84,7 @@ export type PaletteSource = {
 export type PaletteIndex = { items: Array<IndexedItem>; byId: Map<string, IndexedItem> }
 
 /** Built once per data change; typing only scores the prepared, normalized index. */
-export const buildPaletteIndex = ({
-  bots,
-  threads,
-  settings,
-  hasBot,
-  locale = "pt-BR",
-}: PaletteSource): PaletteIndex => {
+export const buildPaletteIndex = ({ bots, threads, settings, locale = "pt-BR" }: PaletteSource): PaletteIndex => {
   const botNames = new Map(bots.map((bot) => [bot.id, bot.name]))
   const items: Array<IndexedItem> = [
     ...bots.map((bot) =>
@@ -132,7 +126,7 @@ export const buildPaletteIndex = ({
         entry.keywords.join(" "),
       ),
     ),
-    ...ACTIONS.filter((action) => action.action !== "new-thread" || hasBot).map((action) =>
+    ...ACTIONS.filter((action) => action.action !== "new-thread").map((action) =>
       indexed(
         {
           id: `action:${action.action}`,

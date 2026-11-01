@@ -11,6 +11,7 @@ import {
   type ToolResult,
 } from "@touri/contracts"
 import { createGroupRuntime } from "../groups/runtime"
+import { createThreadTool } from "../groups/start-thread"
 import { createGroupStore } from "../groups/store"
 import { deviceSession } from "../kernel/device-session"
 import type { PerformanceStageRunner } from "../kernel/performance"
@@ -37,7 +38,7 @@ const numberField = (value: Record<string, unknown>, key: string, fallback: numb
 const booleanField = (value: Record<string, unknown>, key: string, fallback: boolean): boolean =>
   typeof value[key] === "boolean" ? value[key] : fallback
 const continuityField = (value: unknown): Routine["continuity"] =>
-  value === "results-thread" || value === "main-thread" ? value : "new-thread"
+  value === "results-thread" || value === "new-thread" ? value : "main-thread"
 const overlapField = (value: unknown): Routine["overlap"] => (value === "queue" ? "queue" : "skip")
 
 const getRouteErrorStatus = (errorCode: string): number => {
@@ -505,7 +506,11 @@ export const init = async (
   const routineList: ToolHandler = async ({ ctx }) =>
     textResult(JSON.stringify(engine.listRoutines(ctx.botId)), engine.listRoutines(ctx.botId))
   const routineCreate: ToolHandler = async ({ ctx, args }) => {
-    const input = routineInput({ args: bodyRecord(args), botId: ctx.botId, enabled: false })
+    const input = routineInput({
+      args: { ...bodyRecord(args), continuity: "main-thread" },
+      botId: ctx.botId,
+      enabled: false,
+    })
     const result = engine.createRoutine({ input, forceDisabled: true })
     if (!result.success) return toolError(result.errorCode, result.error)
     const routine = result.routine
@@ -565,6 +570,7 @@ export const init = async (
   const registration = kernel.registerTools({
     tools: [
       ...createTeamTools(kernel),
+      createThreadTool(kernel),
       { name: "coordinate_bots", group: "core", handler: ({ ctx, args }) => groups.askBot(ctx, args) },
       { name: "ask_all", group: "core", handler: ({ ctx, args }) => groups.askAll(ctx, args) },
       { name: "ask_bot", group: "core", handler: ({ ctx, args }) => groups.askBot(ctx, args) },
