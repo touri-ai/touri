@@ -345,6 +345,7 @@ test("HTTP script creation needs no bot or prompt and channel PATCH clears a sta
     memberIds: [bot.id],
     coordinatorBotId: null,
   })
+  groups.createThread(group)
 
   const response = await request("POST", "/routines", {
     kind: "script",
