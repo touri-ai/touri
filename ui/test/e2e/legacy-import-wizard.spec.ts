@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright"
 import { expect, type Page, test } from "@playwright/test"
 import type { ImportReport } from "@touri/contracts"
 
@@ -57,6 +58,75 @@ test("legacy import failure keeps its warnings visible and permits retry", async
   await expect(page.locator(".import-report")).toContainText(translatedWarning)
   await expect(page.locator(".import-report")).not.toContainText(sourceWarning)
 })
+
+for (const width of [1440, 390]) {
+  test(`legacy import warning recovery at ${width}px`, async ({ page }, info) => {
+    test.setTimeout(90_000)
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+    await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" })
+    await openReview(page)
+    await page.evaluate(() => {
+      document.documentElement.dataset.theme = "light"
+    })
+    const report = {
+      ...getReport(true),
+      warnings: [
+        "No cwd mapping for synthetic-bot; using /archive/private-id",
+        "Selected bot not found: synthetic-one",
+        "Selected bot not found: synthetic-two",
+        "Attachment not found in allowlisted attachments/: foto.png",
+        "Failed import staging retained at /archive/private-id until 2026-11-08T02:24:34.375Z",
+      ],
+    }
+    const capture = async (state: string) => {
+      const dialog = page.locator(".modal-card")
+      await expect(dialog).not.toContainText(/private-id|synthetic-one|synthetic-two|2026-11|temporários/)
+      expect(await dialog.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(false)
+      const audit = await new AxeBuilder({ page })
+        .include(".modal-card")
+        .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+        .analyze()
+      expect(audit.violations).toEqual([])
+      if (process.env.TOURI_IMPORT_REVIEW_SCREENSHOTS) {
+        const filename = `${width}-light-${state}.png`
+        const directory = process.env.TOURI_E2E_EVIDENCE_DIR ?? process.env.TOURI_E2E_OUTPUT_DIR
+        const path = directory ? `${directory}/${filename}` : info.outputPath(filename)
+        await page.screenshot({ path, animations: "disabled" })
+      }
+    }
+
+    await completeImport(page, "succeeded", report)
+    await page.getByRole("button", { name: "Simular importação", exact: true }).click()
+    await expect(page.locator(".import-report")).toContainText("2 ocorrências")
+    await expect(page.locator(".import-report")).toContainText("1 anexo não foi copiado: foto.png")
+    await expect(page.locator(".import-report")).toContainText("configurações de cada bot")
+    await page.locator(".import-report").scrollIntoViewIfNeeded()
+    await capture("report")
+
+    await completeImport(page, "failed", {
+      ...report,
+      warnings: [...report.warnings, "Source messages.db must be a regular file inside the source root"],
+    })
+    await page.getByRole("button", { name: "Importar agora", exact: true }).click()
+    await expect(page.getByRole("alert")).toContainText("Não encontramos o histórico nesta pasta")
+    await expect(page.getByRole("button", { name: "Corrigir caminho", exact: true })).toHaveClass(/button-dark/)
+    await expect(page.getByRole("button", { name: "Tentar de novo", exact: true })).toHaveClass(/button-quiet/)
+    await capture("failure")
+
+    await page.getByRole("button", { name: "Corrigir caminho", exact: true }).click()
+    await expect(page.locator("#legacy-root")).toBeFocused()
+    await expect(page.locator("#legacy-root")).toHaveValue("/archive")
+    await capture("source")
+
+    await page.getByRole("button", { name: "Continuar", exact: true }).click()
+    await page.getByRole("button", { name: "Revisar importação", exact: true }).click()
+    await completeImport(page, "succeeded", { ...report, dryRun: false })
+    await page.getByRole("button", { name: "Importar agora", exact: true }).click()
+    await expect(page.locator(".success-card")).toBeVisible()
+    await page.locator(".import-report").scrollIntoViewIfNeeded()
+    await capture("success")
+  })
+}
 
 const openReview = async (page: Page): Promise<void> => {
   await page.route("**/api/v1/imports/legacy", (route) =>

@@ -4449,6 +4449,8 @@ button.brand-button:hover:not(:disabled) {
 }
 .import-report > p {
   margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-caption);
   overflow-wrap: anywhere;
 }
 .import-report-grid {

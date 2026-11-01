@@ -110,10 +110,10 @@ for (const width of [1440, 390]) {
 
       expect(summarySurfaces).toEqual([reportSurface, reportSurface, reportSurface])
       await capture("dry-run")
-      const warnings = Array.from(
-        { length: 100 },
-        (_, index) => `Unknown synthetic warning ${index + 1}: /tmp/synthetic/private-id at 2026-11-08T02:24:34.375Z`,
-      )
+      const warnings = Array.from({ length: 100 }, (_, index) => [
+        `Attachment not found in allowlisted attachments/: nota-${index + 1}.pdf`,
+        `Unknown synthetic warning ${index + 1}: /tmp/synthetic/private-id at 2026-11-08T02:24:34.375Z`,
+      ]).flat()
 
       await page.unroute("**/api/v1/imports/import-fixture")
       await page.route("**/api/v1/imports/import-fixture", (route) =>
@@ -125,7 +125,8 @@ for (const width of [1440, 390]) {
       await expect(page.getByRole("alert")).toBeVisible()
       await expect(page.getByRole("button", { name: "Importar agora", exact: true })).toHaveCount(0)
       const alert = page.getByRole("alert")
-      await expect(alert.locator("p")).toHaveCount(100)
+      await expect(alert.locator("p")).toHaveCount(101)
+      await expect(alert).toContainText("100 ocorrências")
       await expect(alert).not.toContainText(/private-id|2026-11|\/tmp\//)
 
       await page.getByRole("region", { name: "Detalhes da importação" }).focus()

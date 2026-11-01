@@ -3088,12 +3088,14 @@ export const ptBR = {
     "Não encontramos o histórico nesta pasta. Confira o caminho de origem.",
   "Imported routines stay disabled.": "As rotinas importadas permanecem desativadas.",
   "A selected bot was not found in the source archive.": "Um bot selecionado não foi encontrado no arquivo de origem.",
-  "Temporary import files were kept for recovery.":
-    "Os arquivos temporários da importação foram mantidos para recuperação.",
-  "A source file could not be copied. Check the source archive.":
-    "Um arquivo de origem não pôde ser copiado. Confira o arquivo de origem.",
-  "A source folder has no destination. Check the folder mappings.":
-    "Uma pasta de origem não tem destino. Confira o mapeamento das pastas.",
+  "A source file could not be copied. Check the source folder.":
+    "Um arquivo de origem não pôde ser copiado. Confira a pasta de origem.",
+  "Bots use local working folders. You can change them in each bot’s settings.":
+    "Os bots usam pastas de trabalho locais. Você pode alterá-las nas configurações de cada bot.",
+  "1 attachment was not copied: {name}. Check it in the source folder.":
+    "1 anexo não foi copiado: {name}. Confira esse arquivo na pasta de origem.",
+  "{warning} ({count} occurrences)": "{warning} ({count} ocorrências)",
+  "Correct source path": "Corrigir caminho",
   "Your local edits were kept.": "Suas alterações locais foram preservadas.",
   "Sessions were not copied. Imported chats use a handoff summary.":
     "As sessões não foram copiadas. As conversas importadas usam um resumo de continuidade.",

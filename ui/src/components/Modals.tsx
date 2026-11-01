@@ -138,6 +138,15 @@ export const ImportWizard = ({ api, onClose, onNotice }: ImportWizardProps) => {
   const [statusUnavailable, setStatusUnavailable] = useState(false)
   const [retryDryRun, setRetryDryRun] = useState(false)
   const [lifetime, setLifetime] = useState<AbortSignal | null>(null)
+  const sourceInput = useRef<HTMLInputElement>(null)
+  const primaryActionLabel = error ? t("ob.retry") : t("Import now")
+  const hasMissingHistory = Boolean(
+    error && report?.warnings.some((warning) => warning.startsWith("Source messages.db")),
+  )
+
+  useEffect(() => {
+    if (step === 0) sourceInput.current?.focus()
+  }, [step])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -234,7 +243,7 @@ export const ImportWizard = ({ api, onClose, onNotice }: ImportWizardProps) => {
             <label className="field-label" htmlFor="legacy-root">
               {t("legacy app root")}
             </label>
-            <input id="legacy-root" value={root} onChange={(event) => setRoot(event.target.value)} />
+            <input ref={sourceInput} id="legacy-root" value={root} onChange={(event) => setRoot(event.target.value)} />
             <div className="info-callout">
               {t("Default source: local path. SSH import is available when the sidecar transport is connected.")}
             </div>
@@ -344,8 +353,8 @@ export const ImportWizard = ({ api, onClose, onNotice }: ImportWizardProps) => {
             tabIndex={0}
           >
             <strong>{error}</strong>
-            {report?.warnings.map((warning) => (
-              <p key={warning}>{getImportWarning(warning)}</p>
+            {getImportWarnings(report?.warnings ?? []).map((warning) => (
+              <p key={warning}>{warning}</p>
             ))}
           </div>
         )}
@@ -368,8 +377,13 @@ export const ImportWizard = ({ api, onClose, onNotice }: ImportWizardProps) => {
           )}
           {step === 2 && (
             <>
-              <button type="button" className="button button-quiet" disabled={busy} onClick={() => setStep(1)}>
-                {t("Back")}
+              <button
+                type="button"
+                className="button button-quiet"
+                disabled={busy}
+                onClick={() => (hasMissingHistory ? void run(retryDryRun) : setStep(1))}
+              >
+                {hasMissingHistory ? t("ob.retry") : t("Back")}
               </button>
               {!error && (
                 <button type="button" className="button button-outline" disabled={busy} onClick={() => void run(true)}>
@@ -380,9 +394,18 @@ export const ImportWizard = ({ api, onClose, onNotice }: ImportWizardProps) => {
                 type="button"
                 className="button button-dark"
                 disabled={busy}
-                onClick={() => void run(error ? retryDryRun : false)}
+                onClick={() => {
+                  if (hasMissingHistory) {
+                    setError(null)
+                    setReport(null)
+                    setStep(0)
+                    return
+                  }
+
+                  void run(error ? retryDryRun : false)
+                }}
               >
-                {error ? t("ob.retry") : t("Import now")}
+                {hasMissingHistory ? t("Correct source path") : primaryActionLabel}
               </button>
             </>
           )}
@@ -404,18 +427,38 @@ export const ImportWizard = ({ api, onClose, onNotice }: ImportWizardProps) => {
   )
 }
 
-const getImportWarning = (warning: string): string => {
+const getImportWarnings = (warnings: string[]): string[] => {
+  // Keep long reports linear; this accumulator is local to the transformation.
+  const counts = warnings.reduce((counts, warning) => {
+    const message = getImportWarning(warning)
+    if (!message) return counts
+
+    return counts.set(message, (counts.get(message) ?? 0) + 1)
+  }, new Map<string, number>())
+
+  return Array.from(counts, ([warning, count]) =>
+    count === 1 ? warning : t("{warning} ({count} occurrences)", { warning, count }),
+  )
+}
+
+const getImportWarning = (warning: string): string | null => {
   if (warning.startsWith("Source messages.db")) return t("No history was found in this folder. Check the source path.")
   if (warning === "Routines will remain disabled.") return t("Imported routines stay disabled.")
   if (warning.startsWith("Selected bot not found:")) return t("A selected bot was not found in the source archive.")
-  if (warning.startsWith("Failed import staging retained")) return t("Temporary import files were kept for recovery.")
-  if (warning.includes("cwd mapping")) return t("A source folder has no destination. Check the folder mappings.")
+  if (warning.startsWith("Failed import staging retained")) return null
+  if (warning.includes("cwd mapping"))
+    return t("Bots use local working folders. You can change them in each bot’s settings.")
   if (warning.includes("local memory edit kept") || warning.includes("local SOUL.md edit kept"))
     return t("Your local edits were kept.")
   if (warning.includes("session copying is disabled"))
     return t("Sessions were not copied. Imported chats use a handoff summary.")
-  if (warning.includes("attachment") || warning.includes("Allowlisted source file"))
-    return t("A source file could not be copied. Check the source archive.")
+  const attachmentName = warning.startsWith("Attachment not found in allowlisted attachments/: ")
+    ? warning.slice("Attachment not found in allowlisted attachments/: ".length)
+    : ""
+  if (/^[\p{L}\p{N} _.-]{1,80}$/u.test(attachmentName) && attachmentName !== "." && attachmentName !== "..")
+    return t("1 attachment was not copied: {name}. Check it in the source folder.", { name: attachmentName })
+  if (warning.toLowerCase().includes("attachment") || warning.includes("Allowlisted source file"))
+    return t("A source file could not be copied. Check the source folder.")
   return t("The source archive contains an item that could not be imported. Check the source and try again.")
 }
 
@@ -447,7 +490,7 @@ const ImportReportView = ({
           <dd>{report.routines.created}</dd>
         </div>
       </dl>
-      {showWarnings && report.warnings.map((warning) => <p key={warning}>⚠ {getImportWarning(warning)}</p>)}
+      {showWarnings && getImportWarnings(report.warnings).map((warning) => <p key={warning}>⚠ {warning}</p>)}
     </div>
   ) : null
 
