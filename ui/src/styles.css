@@ -4532,7 +4532,7 @@ button.brand-button:hover:not(:disabled) {
 .chat-message-list .message-bubble[data-work-message] {
   justify-items: stretch;
   grid-template-columns: var(--space-28) minmax(0, 1fr);
-  grid-template-areas: ". routine" "avatar meta" ". body" ". actions";
+  grid-template-areas: ". routine" "avatar meta" ". body" ". replies" ". actions";
   column-gap: var(--space-8);
 }
 .chat-message-list .message-bubble[data-work-message] > .message-meta {
@@ -4605,7 +4605,7 @@ button.brand-button:hover:not(:disabled) {
   }
 }
 
-.chat-message-list .message-bubble[data-message-author="bot"] > .message-thread-replies {
+.chat-message-list .message-bubble:is([data-message-author="bot"], [data-work-message]) > .message-thread-replies {
   grid-area: replies;
 }
 
