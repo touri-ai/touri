@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import AxeBuilder from "@axe-core/playwright"
 import { expect, type Page, test } from "@playwright/test"
 import type { Bot, BotGroup, Run, Thread } from "@touri/contracts"
 import { showWorkMode } from "./home-navigation"
@@ -109,6 +110,8 @@ viewportWidths.forEach((width) => {
     expect((await rejected).status()).toBe(409)
     await expect(busyRemoval.getByRole("alert")).toHaveText("Lia está trabalhando; remova quando terminar.")
     expect(await getGroup()).toMatchObject({ memberIds: [lia.id, bia.id] })
+    const accessibility = await new AxeBuilder({ page }).include(".group-modal").analyze()
+    expect(accessibility.violations).toEqual([])
     await page.screenshot({ path: join(evidence, `member-busy-reason-${width}.png`), animations: "disabled" })
 
     await writeFile(release, "finish")
