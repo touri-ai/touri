@@ -44,16 +44,16 @@ for (const width of [1440, 390]) {
         expect(overflow).toBe(false)
         if (width !== 390) return
 
-        const wrappedWords = await page.locator(".wizard-active .wizard-step-label").evaluate((label) => {
-          const text = label.firstChild
-          if (!text) throw new Error("The current import step has no label")
+        const wrappedWords = await page.locator(".wizard-active").evaluate((step) => {
+          const text = step.querySelector(".wizard-step-label")?.firstChild ?? step.lastChild
+          if (!text || text.nodeType !== Node.TEXT_NODE) throw new Error("The current import step has no label")
 
           return Array.from((text.textContent ?? "").matchAll(/\S+/g)).flatMap((word) => {
             const range = document.createRange()
             range.setStart(text, word.index)
             range.setEnd(text, word.index + word[0].length)
 
-            return range.getClientRects().length > 1 ? [word[0]] : []
+            return range.getClientRects().length === 1 ? [] : [word[0]]
           })
         })
         expect(wrappedWords).toEqual([])
@@ -91,6 +91,20 @@ for (const width of [1440, 390]) {
       const grid = page.locator(".import-report-grid")
       await expect(grid.locator("dd")).toHaveText(["1", "7", "42", "0"])
       await expect(grid).toHaveCSS("display", "grid")
+      const reportSurface = await page.locator(".import-report").evaluate((element) => {
+        const style = getComputedStyle(element)
+
+        return [style.backgroundColor, style.borderRadius]
+      })
+      const summarySurfaces = await page.locator(".review-grid > span").evaluateAll((elements) =>
+        elements.map((element) => {
+          const style = getComputedStyle(element)
+
+          return [style.backgroundColor, style.borderRadius]
+        }),
+      )
+
+      expect(summarySurfaces).toEqual([reportSurface, reportSurface, reportSurface])
       await capture("dry-run")
       const warnings = Array.from({ length: 100 }, (_, index) => `Arquivo sintético ${index + 1} indisponível.`)
 
