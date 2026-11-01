@@ -2,6 +2,9 @@ import { expect, type Page, test } from "@playwright/test"
 import type { ImportReport } from "@touri/contracts"
 
 const statusUrl = "**/api/v1/imports/import-fixture"
+const sourceWarning = "Unknown synthetic warning /archive/synthetic-id"
+const translatedWarning =
+  "O arquivo de origem contém um item que não pôde ser importado. Confira a origem e tente novamente."
 
 test("legacy import waits for its report before showing real counts and cut-over", async ({ page }) => {
   await openReview(page)
@@ -41,7 +44,8 @@ test("legacy import failure keeps its warnings visible and permits retry", async
   await completeImport(page, "failed", getReport(false))
 
   await expect(page.getByRole("alert")).toBeVisible()
-  await expect(page.getByRole("alert")).toContainText("Arquivo sintético indisponível.")
+  await expect(page.getByRole("alert")).toContainText(translatedWarning)
+  await expect(page.getByRole("alert")).not.toContainText(sourceWarning)
   await expect(page.locator(".success-card")).toHaveCount(0)
   await expect(page.getByRole("button", { name: "Tentar de novo", exact: true })).toBeEnabled()
 
@@ -50,6 +54,8 @@ test("legacy import failure keeps its warnings visible and permits retry", async
 
   await expect(page.getByRole("heading", { name: "Importação concluída", exact: true })).toBeVisible()
   await expect(page.locator(".success-card")).toContainText("42 mensagens")
+  await expect(page.locator(".import-report")).toContainText(translatedWarning)
+  await expect(page.locator(".import-report")).not.toContainText(sourceWarning)
 })
 
 const openReview = async (page: Page): Promise<void> => {
@@ -80,7 +86,7 @@ const getReport = (dryRun: boolean): ImportReport => ({
   codexSessions: getCounts(0),
   memoryFiles: getCounts(0),
   droppedMessageKinds: {},
-  warnings: ["Arquivo sintético indisponível."],
+  warnings: [sourceWarning],
 })
 
 const getCounts = (created: number) => ({ created, updated: 0, unchanged: 0, skipped: 0 })
