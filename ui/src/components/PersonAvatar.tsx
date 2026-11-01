@@ -10,6 +10,10 @@ export const PersonAvatar = ({
   avatar?: OwnerAvatar | null | undefined
   size?: number
 }) => {
+  if (avatar === undefined)
+    return (
+      <BotAvatar bot={{ id: person.id, color: null, avatarSeed: person.avatarSeed }} size={size} state="idle" still />
+    )
   if (avatar?.kind === "image")
     return <img className="person-avatar" src={avatar.dataUrl} alt="" width={size} height={size} />
   if (avatar?.kind === "mascot") return <BotAvatar bot={{ id: person.id, ...avatar }} size={size} state="idle" still />

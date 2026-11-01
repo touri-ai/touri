@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test"
 import type { OwnerAvatar, RouteModule } from "@touri/contracts"
-import { bindDeviceSession } from "../../src/kernel/device-session"
+import { bindDeviceSession, type DeviceSession } from "../../src/kernel/device-session"
 import { init } from "../../src/store"
 import { testKernel } from "../kernel/test-kernel"
 
@@ -49,18 +49,7 @@ test.each([
 test.each(["member", "admin"] as const)("another %s cannot replace the owner's identity", async (role) => {
   const fixture = testKernel()
   fixtures.add(fixture)
-  const routes = new Map<string, RouteModule["routes"][number]>()
-  await init({
-    ...fixture.kernel,
-    registerRoutes: (module) => {
-      module.routes.forEach((route) => {
-        routes.set(`${route.method} ${route.path}`, route)
-      })
-      fixture.kernel.registerRoutes(module)
-    },
-  })
-  const route = routes.get("PATCH /settings")
-  if (!route) throw new Error("Missing settings route")
+  const route = await registerSettingsRoute(fixture)
   const signal = new AbortController().signal
   bindDeviceSession(signal, {
     deviceId: "test-device",
@@ -78,3 +67,73 @@ test.each(["member", "admin"] as const)("another %s cannot replace the owner's i
   expect(response.status).toBe(403)
   expect(fixture.kernel.services.use("store.settings")?.().ownerProfile?.name).toBe("")
 })
+
+test.each([
+  { active: () => true },
+  { active: () => false, person: { id: "owner", name: "Pessoa", email: null, avatarSeed: "owner", role: "admin" } },
+  {
+    active: () => true,
+    automation: "notices",
+    person: { id: "owner", name: "Pessoa", email: null, avatarSeed: "owner", role: "admin" },
+  },
+] satisfies Array<Omit<DeviceSession, "deviceId">>)(
+  "a session without an active human owner cannot change the profile: %j",
+  async (session) => {
+    const fixture = testKernel()
+    fixtures.add(fixture)
+    const route = await registerSettingsRoute(fixture)
+    const signal = new AbortController().signal
+    bindDeviceSession(signal, { deviceId: "test-device", ...session })
+
+    const response = await route.handler({
+      body: { ownerProfile: { name: "Changed", avatar: null } },
+      params: {},
+      query: {},
+      signal,
+    })
+
+    expect(response.status).toBe(403)
+    expect(fixture.kernel.services.use("store.settings")?.().ownerProfile?.name).toBe("")
+  },
+)
+
+test("an active owner device can update the profile", async () => {
+  const fixture = testKernel()
+  fixtures.add(fixture)
+  const route = await registerSettingsRoute(fixture)
+  const signal = new AbortController().signal
+  bindDeviceSession(signal, {
+    deviceId: "owner-device",
+    active: () => true,
+    person: { id: "owner", name: "Pessoa", email: null, avatarSeed: "owner", role: "admin" },
+  })
+
+  const response = await route.handler({
+    body: { ownerProfile: { name: "Pessoa Teste", avatar: null } },
+    params: {},
+    query: {},
+    signal,
+  })
+
+  expect(response.status).toBe(200)
+  expect(fixture.kernel.services.use("store.settings")?.().ownerProfile?.name).toBe("Pessoa Teste")
+})
+
+const registerSettingsRoute = async (
+  fixture: ReturnType<typeof testKernel>,
+): Promise<RouteModule["routes"][number]> => {
+  const routes = new Map<string, RouteModule["routes"][number]>()
+  await init({
+    ...fixture.kernel,
+    registerRoutes: (module) => {
+      module.routes.forEach((route) => {
+        routes.set(`${route.method} ${route.path}`, route)
+      })
+      fixture.kernel.registerRoutes(module)
+    },
+  })
+  const route = routes.get("PATCH /settings")
+  if (!route) throw new Error("Missing settings route")
+
+  return route
+}

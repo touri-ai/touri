@@ -4,6 +4,7 @@ import { expect, it, vi } from "vitest"
 import { VirtualMessageList } from "../src/components/ChatPanel"
 import { OwnerProfileSettings } from "../src/components/OwnerProfileSettings"
 import { PersonAvatar } from "../src/components/PersonAvatar"
+import { SettingsModal } from "../src/components/SettingsModal"
 
 const message: Message = {
   id: "owner-message",
@@ -85,4 +86,42 @@ it("Work preserves queued delivery and editing after acknowledgement", async () 
 
   await waitFor(() => expect(screen.queryByRole("textbox", { name: "Editar mensagem" })).toBeNull())
   expect(onEdit).toHaveBeenCalledWith("Mensagem revisada", null, [])
+})
+
+it("keeps profile editing inside the existing five preference sections", () => {
+  render(<SettingsModal settings={null} onClose={vi.fn()} onSave={vi.fn(async () => {})} />)
+
+  expect(screen.getAllByRole("tab")).toHaveLength(5)
+  fireEvent.click(screen.getByRole("button", { name: /^Perfil/ }))
+
+  expect(screen.getByRole("textbox", { name: "Nome do perfil" })).toBeVisible()
+})
+
+it("does not offer the owner's profile editor to another person", () => {
+  render(<SettingsModal settings={null} canEditOwnerProfile={false} onClose={vi.fn()} onSave={vi.fn(async () => {})} />)
+
+  expect(screen.queryByRole("button", { name: /^Perfil/ })).toBeNull()
+})
+
+it("saves a profile draft only after explicit confirmation", async () => {
+  const save = vi.fn(async () => {})
+  render(<SettingsModal settings={null} onClose={vi.fn()} onSave={save} />)
+  fireEvent.click(screen.getByRole("button", { name: /^Perfil/ }))
+
+  fireEvent.change(screen.getByRole("textbox", { name: "Nome do perfil" }), { target: { value: "Pessoa Teste" } })
+
+  expect(save).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole("button", { name: "Salvar preferências" }))
+  await waitFor(() =>
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerProfile: { name: "Pessoa Teste", avatar: null } }),
+    ),
+  )
+})
+
+it("preserves existing avatars outside the profile and Work message rows", () => {
+  const view = render(<PersonAvatar person={{ id: "owner", avatarSeed: "owner" }} />)
+
+  expect(view.container.querySelector(".tb-avatar")).toBeTruthy()
+  expect(view.container.querySelector(".person-initials")).toBeNull()
 })

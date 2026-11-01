@@ -6,7 +6,6 @@ import { t } from "../../i18n"
  * and the command palette indexes the same records, so a label can never drift between them.
  */
 export type AppSettingsSectionId =
-  | "profile"
   | "appearance"
   | "privacy"
   | "updates"
@@ -27,13 +26,6 @@ export type SectionDefinition<Id extends string> = {
 }
 
 export const APP_SETTINGS_SECTIONS: ReadonlyArray<SectionDefinition<AppSettingsSectionId>> = [
-  {
-    id: "profile",
-    label: t("Profile"),
-    description: t("Your name and avatar in conversations."),
-    icon: "appearance",
-    keywords: ["perfil", "nome", "avatar", "foto"],
-  },
   {
     id: "appearance",
     label: t("Aparência"),

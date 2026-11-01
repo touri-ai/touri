@@ -1350,8 +1350,8 @@ export type OnboardingStatus = {
 }
 
 export type OwnerAvatar =
-  | { kind: 'image'; dataUrl: string }
-  | { kind: 'mascot'; avatarSeed: string; avatarShape: AvatarShape | null; color: string | null }
+  | { kind: "image"; dataUrl: string }
+  | { kind: "mascot"; avatarSeed: string; avatarShape: AvatarShape | null; color: string | null }
 
 export type OwnerProfile = { name: string; avatar: OwnerAvatar | null }
 

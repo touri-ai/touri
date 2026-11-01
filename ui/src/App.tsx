@@ -1019,6 +1019,7 @@ const AppContent = ({ kernel }: AppProps) => {
 
   const settingsModal = modal === "settings" && (
     <SettingsModal
+      canEditOwnerProfile={currentPersonId === "owner"}
       api={api ?? undefined}
       invokeCommand={invokeCommand}
       doctor={data.doctor}

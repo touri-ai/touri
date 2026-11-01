@@ -50,6 +50,8 @@ const ServerModeSettings = lazy(() =>
 )
 
 type SettingsModalProps = {
+  canEditOwnerProfile?: boolean
+
   doctor?: DoctorReport | null
   doctorError?: string | null
   onRefreshDoctor?: () => Promise<void>
@@ -67,6 +69,7 @@ type SettingsModalProps = {
 }
 
 export const SettingsModal = ({
+  canEditOwnerProfile = true,
   settings,
   onClose,
   onSave,
@@ -127,7 +130,8 @@ export const SettingsModal = ({
     setError(null)
     try {
       await onSave({
-        ...(ownerProfile !== settings?.ownerProfile &&
+        ...(canEditOwnerProfile &&
+        ownerProfile !== settings?.ownerProfile &&
         (settings?.ownerProfile || ownerProfile.name || ownerProfile.avatar)
           ? { ownerProfile }
           : {}),
@@ -170,9 +174,6 @@ export const SettingsModal = ({
           <Suspense fallback={<SettingsPaneLoading />}>
             <ApiModelsSettings api={api} />
           </Suspense>
-        </SettingsPane>
-        <SettingsPane {...pane("profile")}>
-          <OwnerProfileSettings profile={ownerProfile} onChange={setOwnerProfile} />
         </SettingsPane>
         <SettingsPane {...pane("appearance")}>
           <SettingsGroup>
@@ -247,6 +248,11 @@ export const SettingsModal = ({
               </div>
             </div>
           </SettingsDisclosure>
+          {canEditOwnerProfile && (
+            <SettingsDisclosure title={t("Profile")} description={t("Your name and avatar in conversations.")}>
+              <OwnerProfileSettings profile={ownerProfile} onChange={setOwnerProfile} />
+            </SettingsDisclosure>
+          )}
         </SettingsPane>
         <SettingsPane {...pane("privacy")}>
           <p className="field-help">

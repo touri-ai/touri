@@ -1208,7 +1208,7 @@ const MessageBubbleRow = ({
             name: profile?.name || personSender?.name || t("Você"),
             avatarSeed: personSender?.avatarSeed ?? "owner",
           }}
-          avatar={profile?.avatar}
+          avatar={profile?.avatar ?? null}
         />
       )
     if (senderBot) return <BotAvatar bot={senderBot} size={28} state={mascotState} />

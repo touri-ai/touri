@@ -4,7 +4,7 @@ import { openGlobalPage, showBotAdvanced } from "./home-navigation"
 
 test.use({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" })
 
-const nativePreferencesTabs = ["Perfil", "Aparência", "Privacidade", "Atualizações", "Notificações", "Diagnóstico"]
+const nativePreferencesTabs = ["Aparência", "Privacidade", "Atualizações", "Notificações", "Diagnóstico"]
 
 test("bot identity stays simple and every advanced section remains reachable", async ({ page }) => {
   await page.goto("/test/e2e/r8-settings-harness.html")
@@ -79,6 +79,8 @@ test("app preferences disclose technical controls and preserve edits between sec
   await dialog.getByRole("combobox", { name: "Tema", exact: true }).focus()
   await page.keyboard.press("Tab")
   await expect(dialog.locator(".ds-disclosure-trigger").first()).toBeFocused()
+  await page.keyboard.press("Tab")
+  await expect(dialog.getByRole("button", { name: /^Perfil/ })).toBeFocused()
   await page.keyboard.press("Tab")
   await expect(dialog.getByRole("button", { name: "Cancelar", exact: true })).toBeFocused()
   const appearance = await new AxeBuilder({ page }).include(".modal-card").analyze()

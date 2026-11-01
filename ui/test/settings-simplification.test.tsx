@@ -167,7 +167,6 @@ it("keeps app sections short and technical settings within their disclosure", as
     />,
   )
   expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
-    "Perfil",
     "Aparência",
     "Privacidade",
     "Atualizações",
@@ -177,11 +176,6 @@ it("keeps app sections short and technical settings within their disclosure", as
   for (const section of APP_SETTINGS_SECTIONS) {
     await user.click(screen.getByRole("tab", { name: section.label }))
     const panel = screen.getByRole("tabpanel", { name: section.label })
-    if (section.id === "profile") {
-      expect(within(panel).getByRole("textbox", { name: "Nome do perfil" })).toBeVisible()
-      expect(within(panel).getByLabelText("Enviar foto do perfil")).toBeVisible()
-      continue
-    }
     if (section.id === "api-models") {
       expect(await within(panel).findByLabelText("Provedor da API")).toBeVisible()
       continue

@@ -2408,8 +2408,7 @@ export const init = async (
         handler: async ({ body, signal }) => {
           const record = requestRecord(body)
           if (!record) return errorResponse(400, "INVALID_ARGS", "Request body must be an object")
-          const person = deviceSession(signal)?.person
-          if (Object.hasOwn(record, "ownerProfile") && person && person.id !== "owner")
+          if (Object.hasOwn(record, "ownerProfile") && !isImportOwner(kernel, signal))
             return errorResponse(403, "FORBIDDEN", "Only the owner can change the owner profile")
           const validationError = validSettingsPatch(record)
           if (validationError) return errorResponse(400, "INVALID_ARGS", validationError)
