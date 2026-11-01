@@ -9,24 +9,24 @@ const test = base.extend<{ server: ImportServer }>({
   server: async ({}, use) => use(await createServerModeFixture()),
 })
 
+test.setTimeout(180_000)
 test.afterEach(async ({ server }) => server.dispose())
 
 for (const width of [1440, 390]) {
   for (const theme of ["dark", "light"] as const) {
     test(`legacy import app ${width} ${theme}`, async ({ page, server }, info) => {
-      test.setTimeout(180_000)
-      const counts = (created: number) => ({ created, updated: 0, unchanged: 0, skipped: 0 })
+      const getCounts = (created: number) => ({ created, updated: 0, unchanged: 0, skipped: 0 })
       const report = {
         importId: "import-fixture",
         origin: "synthetic-archive",
         dryRun: false,
-        bots: counts(1),
-        threads: counts(7),
-        messages: counts(42),
-        routines: counts(0),
-        attachments: counts(0),
-        codexSessions: counts(0),
-        memoryFiles: counts(0),
+        bots: getCounts(1),
+        threads: getCounts(7),
+        messages: getCounts(42),
+        routines: getCounts(0),
+        attachments: getCounts(0),
+        codexSessions: getCounts(0),
+        memoryFiles: getCounts(0),
         droppedMessageKinds: {},
         warnings: [],
       }

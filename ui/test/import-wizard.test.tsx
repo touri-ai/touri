@@ -140,8 +140,8 @@ it("shows a completed dry-run report and clears it while the real import runs", 
 
   expect(screen.getByRole("heading", { name: t("Review a safe dry run") })).toBeVisible()
   expect(screen.getByText(t("Import step", { step: 3 }))).toBeVisible()
-  expect(within(getReportView()).getByText("23", { selector: "b" })).toBeVisible()
-  expect(within(getReportView()).getByText("4", { selector: "b" })).toBeVisible()
+  expect(within(getReportView()).getByText("23", { selector: "dd" })).toBeVisible()
+  expect(within(getReportView()).getByText("4", { selector: "dd" })).toBeVisible()
   expect(screen.getByText("⚠ Routines will remain disabled.")).toBeVisible()
   expect(screen.queryByText(t("History is in touri"))).toBeNull()
   expect(notice).toHaveBeenCalledExactlyOnceWith(t("Dry run complete. Nothing was written."))
