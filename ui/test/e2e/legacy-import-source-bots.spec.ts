@@ -13,10 +13,11 @@ const test = base.extend<{ server: ImportServer; source: string }>({
   // biome-ignore lint/correctness/noEmptyPattern: The archive fixture has no dependencies.
   source: async ({}, use) => {
     const source = await mkdtemp(join(tmpdir(), "touri-legacy-source-"))
-    await cp(resolve(import.meta.dirname, "../../../sidecar/test/fixtures/legacy"), source, { recursive: true })
+    const archive = resolve(import.meta.dirname, "../../../sidecar/test/fixtures/legacy")
+    await cp(archive, source, { recursive: true })
     // Keep screenshots independent of the host workspace path.
     const botsPath = join(source, "bots.json")
-    const bots: Array<Record<string, unknown>> = JSON.parse(await readFile(botsPath, "utf8"))
+    const bots: Array<Record<string, unknown>> = JSON.parse(await readFile(join(archive, "bots.json"), "utf8"))
     await writeFile(botsPath, JSON.stringify(bots.map((bot) => ({ ...bot, cwd: null }))))
     await use(source)
   },
