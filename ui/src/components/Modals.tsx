@@ -210,7 +210,7 @@ export const ImportWizard = ({ bots, api, onClose, onNotice }: ImportWizardProps
           {[t("Source"), t("Choose bots"), t("Dry run"), t("Import"), t("Cut-over")].map((label, index) => (
             <span className={index === step ? "wizard-active" : index < step ? "wizard-done" : ""} key={label}>
               <i>{index + 1}</i>
-              {label}
+              <small className="wizard-step-label">{label}</small>
             </span>
           ))}
         </div>
