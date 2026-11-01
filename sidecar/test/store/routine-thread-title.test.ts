@@ -179,32 +179,37 @@ test("metadata uses indexed initial execution candidates and ignores changed tim
   expect(JSON.stringify(legacy)).not.toContain("routineTitle")
 })
 
-test.each([undefined, "planning"])("new routine threads publish presentation immediately (%s)", async (groupId) => {
-  const { db, kernel, makeThread } = await getFixture()
-  const previous = makeThread(groupId)
-  db.query("UPDATE bots SET automatic_conversation_mode = 'task' WHERE id = ?").run(previous.botId)
-  const engine = createRuntimeEngine({ kernel, maxConcurrentRuns: 0 })
-  cleanups.add(() => engine.shutdown())
-  await engine.ready
-  const published = Promise.withResolvers<Thread>()
-  const unsubscribe = kernel.subscribe(({ event }) => {
-    if (event.type === "thread.updated" && event.thread.routineTitle) published.resolve(event.thread)
-  })
-  cleanups.add(async () => {
-    unsubscribe()
-  })
-  const scheduledFor = Date.UTC(2026, 9, 24, 5)
+test.each([undefined, "planning"])(
+  "explicit per-run routine threads publish presentation immediately (%s)",
+  async (groupId) => {
+    const { db, kernel, makeThread } = await getFixture()
+    const previous = makeThread(groupId)
+    db.query("UPDATE bots SET automatic_conversation_mode = 'task' WHERE id = ?").run(previous.botId)
+    // Model an explicit per-run choice rather than relying on the database default.
+    db.query("UPDATE routines SET continuity = 'new-thread' WHERE id = ?").run(`routine-${previous.id}`)
+    const engine = createRuntimeEngine({ kernel, maxConcurrentRuns: 0 })
+    cleanups.add(() => engine.shutdown())
+    await engine.ready
+    const published = Promise.withResolvers<Thread>()
+    const unsubscribe = kernel.subscribe(({ event }) => {
+      if (event.type === "thread.updated" && event.thread.routineTitle) published.resolve(event.thread)
+    })
+    cleanups.add(async () => {
+      unsubscribe()
+    })
+    const scheduledFor = Date.UTC(2026, 9, 24, 5)
 
-  const result = engine.runRoutine({ routineId: `routine-${previous.id}`, triggerSource: "manual", scheduledFor })
-  if (!result.success && result.error !== "Group runtime unavailable") throw new Error(result.error)
+    const result = engine.runRoutine({ routineId: `routine-${previous.id}`, triggerSource: "manual", scheduledFor })
+    if (!result.success && result.error !== "Group runtime unavailable") throw new Error(result.error)
 
-  expect(await published.promise).toMatchObject({
-    title: "Checagem de QA no canal · 10/24/26, 2:00 AM",
-    routineTitle: {
-      sourceTitle: "Checagem de QA no canal · 10/24/26, 2:00 AM",
-      name: "Checagem de QA no canal",
-      scheduledFor,
-      timezone: "America/Sao_Paulo",
-    },
-  })
-})
+    expect(await published.promise).toMatchObject({
+      title: "Checagem de QA no canal · 10/24/26, 2:00 AM",
+      routineTitle: {
+        sourceTitle: "Checagem de QA no canal · 10/24/26, 2:00 AM",
+        name: "Checagem de QA no canal",
+        scheduledFor,
+        timezone: "America/Sao_Paulo",
+      },
+    })
+  },
+)
