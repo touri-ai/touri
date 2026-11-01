@@ -1050,7 +1050,7 @@ env: CLAUDE_CODE_ENABLE_TODO_TOOLS=1, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 
 ### Message threads
 
-- A human starts a thread from a completed human or bot message with **Iniciar thread / Start thread**. The action is available by hover/focus on desktop and without hover on touch devices. Unanchored new-conversation actions are removed from bot/channel menus and the command palette.
+- A human starts a thread from a saved human or bot message with **Iniciar thread / Start thread**. The action is available by hover/focus on desktop and without hover on touch devices. Unanchored new-conversation actions are removed from bot/channel menus and the command palette.
 - Authenticated `POST /threads/:id/start-thread` validates access to the parent conversation and the selected message. It creates one child per `(parent_thread_id, anchor_message_id)`, preserving the channel or private owner. Repeated clicks reuse that child; an archived child is restored by the same message action.
 - The child opens immediately with the selected message as context, preserving the author and copying only text and attachment parts. Tool outputs, approvals and permissions are never copied. Its title and return action identify the parent conversation. Human channel replies still require a leading @mention to dispatch a bot.
 - Parent messages show an openable reply count. Insert/delete triggers maintain `reply_count` for human and bot messages after the copied context; no transcript aggregation runs on the request path. Anchored children do not become independent routine activity cards.
