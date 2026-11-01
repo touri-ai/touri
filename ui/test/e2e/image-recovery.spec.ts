@@ -10,7 +10,7 @@ for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 })
     await page.goto("/test/e2e/image-recovery-harness.html?screen=library&state=denied")
     await page.getByRole("button", { name: /result.png.*KB/ }).click()
-    const error = before ? "Prévia indisponível. Clique para abrir a imagem." : "Imagem fora da pasta do bot"
+    const error = "Imagem fora da pasta do bot"
 
     await expect(page.getByText(error, { exact: true })).toBeVisible()
     await expect(page.getByText("/workspace/result.png", { exact: true })).toHaveCount(1)
@@ -54,7 +54,7 @@ for (const { width, theme, state } of scenarios) {
       expect(fontSizes.path).toBeLessThanOrEqual(fontSizes.caption)
       await expect(page.getByRole("button", { name: "Baixar imagem" })).toHaveCount(0)
     } else {
-      await expect(page.locator(".evidence-thumbnail span")).not.toHaveText("Carregando imagem…")
+      await expect(page.locator(".evidence-thumbnail")).not.toContainText("Carregando imagem…")
     }
     if (!before) {
       expect((await new AxeBuilder({ page }).include(".evidence-gallery").analyze()).violations).toEqual([])

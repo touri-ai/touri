@@ -113,12 +113,13 @@ finally: os.close(fd)`,
   0,
 )
 
-export const evidenceImageRoute = (kernel: Kernel, vm: VmRuntime, capture = false): RouteModule["routes"][number] => ({
+export const evidenceImageRoute = (kernel: Kernel, vm: VmRuntime, captureBot?: Bot): RouteModule["routes"][number] => ({
   method: "GET",
   path: "/bots/:id/images",
   handler: async ({ params, query, signal: requestSignal }) => {
-    const bot = kernel.services.use("store.api")?.getBot({ botId: params.id ?? "" })
-    if (!bot || bot.archivedAt) return { status: 404, json: { error: "Bot não encontrado" } }
+    const bot = captureBot ?? kernel.services.use("store.api")?.getBot({ botId: params.id ?? "" })
+    if (!bot || bot.archivedAt || bot.id !== params.id) return { status: 404, json: { error: "Bot não encontrado" } }
+    const capture = Boolean(captureBot)
     try {
       const db = kernel.db as Database
       const attachment = query.attachmentId

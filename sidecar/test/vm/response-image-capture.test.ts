@@ -1,9 +1,10 @@
 import { Database } from "bun:sqlite"
-import { afterEach, expect, test } from "bun:test"
+import { afterEach, expect, mock, test } from "bun:test"
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Bot, Kernel, MessagePart, VmRuntime } from "@touri/contracts"
+import { delegationCeiling } from "../../src/groups/security"
 import responseImagesSql from "../../src/kernel/migrations/response-image-references.sql" with { type: "text" }
 import { createServices } from "../../src/kernel/services"
 import { getResponseImagePaths, saveResponseImages } from "../../src/runtime/save-response-images"
@@ -118,4 +119,49 @@ test("restricted bot cannot capture outside its allowed folders", async () => {
   const parts: MessagePart[] = [{ type: "text", text: `![result](${source})` }]
 
   expect(await saveResponseImages({ kernel, database, bot, parts })).toEqual(parts)
+})
+
+test.each(["vm", "cloud"] as const)("%s capture retains the delegated permission ceiling", async (machine) => {
+  const root = await mkdtemp(join(tmpdir(), "touri-image-delegation-"))
+  const database = new Database(":memory:")
+  cleanups.push(async () => {
+    database.close()
+    await rm(root, { recursive: true, force: true })
+  })
+  database.exec(
+    "CREATE TABLE attachments(id TEXT PRIMARY KEY,path TEXT,mime TEXT,bytes INTEGER,origin_path TEXT,created_at INTEGER)",
+  )
+  const original = { id: "bot", machine, access: "full", projectId: null } as Bot
+  const bot = delegationCeiling({ ...original, access: "read-only" }, original)
+  const bytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0])
+  const exec = mock(async () => ({
+    success: true,
+    stdout: JSON.stringify({ size: bytes.length, data: bytes.toString("base64") }),
+  }))
+  const release = mock(async () => {})
+  const vm = {
+    states: () => [{ botId: bot.id, status: "running" }],
+    acquire: async () => release,
+    exec,
+  } as VmRuntime
+  const kernel = {
+    db: database,
+    paths: { appData: join(root, "data"), attachmentsDir: join(root, "data", "attachments") },
+    services: { use: (name: string) => (name === "vm.runtime" ? vm : { getBot: () => original }) },
+  } as Kernel
+  const denied: MessagePart[] = [{ type: "text", text: "![result](/private/result.png)" }]
+
+  const result = await saveResponseImages({ kernel, database, bot, parts: denied })
+
+  expect(result).toEqual(denied)
+  expect(exec).not.toHaveBeenCalled()
+  expect(database.query("SELECT * FROM attachments").all()).toEqual([])
+
+  const allowed: MessagePart[] = [{ type: "text", text: "![result](/workspace/result.png)" }]
+
+  const captured = await saveResponseImages({ kernel, database, bot, parts: allowed })
+
+  expect(captured[0]).toMatchObject({ images: [{ path: "/workspace/result.png", attachmentId: expect.any(String) }] })
+  expect(exec).toHaveBeenCalledTimes(1)
+  expect(release).toHaveBeenCalledTimes(1)
 })

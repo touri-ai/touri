@@ -93,7 +93,7 @@ const getResponseImage = async (
     return getWorkspaceImageAsync({ appData: kernel.paths.appData, bot, projectPath, path, capture: true })
   const vm = kernel.services.use("vm.runtime")
   if (!vm) throw new Error("Machine unavailable")
-  const result = await evidenceImageRoute(kernel, vm, true).handler({
+  const result = await evidenceImageRoute(kernel, vm, bot).handler({
     params: { id: bot.id },
     query: { path },
     body: null,
