@@ -33,7 +33,6 @@ import type { WorkspaceActions } from "../useWorkspace"
 import { ApiModelPicker } from "./ApiModelPicker"
 import { type AvatarChoice, AvatarPicker } from "./AvatarPicker"
 import { BotAccessSummary } from "./BotAccessSummary"
-import { BotAvatar } from "./BotAvatar"
 import { BotBrowserPicker } from "./BotBrowserPicker"
 import { BotFolderSettings } from "./BotFolderSettings"
 import { DeleteBotDialog } from "./DeleteBotDialog"
@@ -129,10 +128,9 @@ export const DoctorModal = ({
 
 type ImportWizardProps = { bots: Array<Bot>; api: UiApi; onClose: () => void; onNotice: (message: string) => void }
 
-export const ImportWizard = ({ bots, api, onClose, onNotice }: ImportWizardProps) => {
+export const ImportWizard = ({ api, onClose, onNotice }: ImportWizardProps) => {
   const [step, setStep] = useState(0)
   const [root, setRoot] = useState("")
-  const [selected, setSelected] = useState(() => bots.map((bot) => bot.id))
   const [importCodexSessions, setImportCodexSessions] = useState(false)
   const [report, setReport] = useState<ApiRoutes["GET /imports/:id"]["res"]["report"]>(null)
   const [busy, setBusy] = useState(false)
@@ -162,7 +160,7 @@ export const ImportWizard = ({ bots, api, onClose, onNotice }: ImportWizardProps
         api,
         {
           source: { kind: "local", root },
-          botIds: selected,
+          botIds: [],
           importCodexSessions,
           cwdMap: [],
           includeAttachments: true,
@@ -174,7 +172,18 @@ export const ImportWizard = ({ bots, api, onClose, onNotice }: ImportWizardProps
       if (lifetime.aborted) return
 
       setReport(status.report)
-      if (status.status === "failed") {
+      const counts = status.report && [
+        status.report.bots,
+        status.report.threads,
+        status.report.messages,
+        status.report.routines,
+        status.report.attachments,
+        status.report.codexSessions,
+        status.report.memoryFiles,
+      ]
+      const hasProcessedRecords = counts?.some((count) => count.created + count.updated + count.unchanged > 0)
+      const hasEmptyWarningReport = status.report && status.report.warnings.length > 0 && !hasProcessedRecords
+      if (status.status === "failed" || hasEmptyWarningReport) {
         setError(t("Import failed. Review the report and try again."))
         return
       }
@@ -233,27 +242,9 @@ export const ImportWizard = ({ bots, api, onClose, onNotice }: ImportWizardProps
         )}
         {step === 1 && (
           <div className="wizard-content">
-            <h3>{t("Select bots and map their workspaces")}</h3>
-            <div className="bot-picker">
-              {bots.map((bot) => (
-                <label className="picker-row" key={bot.id}>
-                  <input
-                    type="checkbox"
-                    checked={selected.includes(bot.id)}
-                    onChange={(event) =>
-                      setSelected((current) =>
-                        event.target.checked ? current.concat(bot.id) : current.filter((id) => id !== bot.id),
-                      )
-                    }
-                  />
-                  <BotAvatar bot={bot} size={32} />
-                  <span>
-                    <strong>{bot.name}</strong>
-                    <small>{t("existing local bot")}</small>
-                  </span>
-                  <em>{bot.provider}</em>
-                </label>
-              ))}
+            <h3>{t("Import bots from the source archive")}</h3>
+            <div className="info-callout">
+              {t("All bots in the source archive will be imported. Existing local bots do not filter the archive.")}
             </div>
             <label className="toggle-row import-warning">
               <span>
@@ -279,7 +270,7 @@ export const ImportWizard = ({ bots, api, onClose, onNotice }: ImportWizardProps
             <div className="review-grid">
               <span>
                 {t("Selected bots")}
-                <strong>{selected.length}</strong>
+                <strong>{t("All source bots")}</strong>
               </span>
               <span>
                 {t("Attachments")}
@@ -364,12 +355,7 @@ export const ImportWizard = ({ bots, api, onClose, onNotice }: ImportWizardProps
               <button type="button" className="button button-quiet" onClick={() => setStep(0)}>
                 {t("Back")}
               </button>
-              <button
-                type="button"
-                className="button button-dark"
-                disabled={selected.length === 0}
-                onClick={() => setStep(2)}
-              >
+              <button type="button" className="button button-dark" onClick={() => setStep(2)}>
                 {t("Review import")}
               </button>
             </>

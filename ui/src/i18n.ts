@@ -3063,6 +3063,10 @@ export const ptBR = {
   "Default source: local path. SSH import is available when the sidecar transport is connected.":
     "Informe o caminho local. A importação por SSH depende da conexão com o transporte remoto.",
   Continue: "Continuar",
+  "Import bots from the source archive": "Importar bots do arquivo de origem",
+  "All source bots": "Todos",
+  "All bots in the source archive will be imported. Existing local bots do not filter the archive.":
+    "Todos os bots do arquivo de origem serão importados. Os bots locais existentes não filtram o arquivo.",
   "Select bots and map their workspaces": "Escolha os bots e suas pastas",
   "existing local bot": "bot local existente",
   "Copy native Codex sessions": "Copiar sessões nativas do Codex",
