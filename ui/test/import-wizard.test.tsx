@@ -108,6 +108,32 @@ it("accepts an idempotent import with warnings when records are already present"
   expect(screen.queryByRole("alert")).toBeNull()
 })
 
+it.each([
+  [
+    "Source messages.db must be a regular file inside the source root",
+    "No history was found in this folder. Check the source path.",
+  ],
+  [
+    "Failed import staging retained at /tmp/synthetic-import/private-id until 2026-11-08T02:24:34.375Z",
+    "Temporary import files were kept for recovery.",
+  ],
+  ["Selected bot not found: synthetic-private-id", "A selected bot was not found in the source archive."],
+  [
+    "Unexpected failure /tmp/synthetic-import/private-id 2026-11-08T02:24:34.375Z",
+    "The source archive contains an item that could not be imported. Check the source and try again.",
+  ],
+])("localizes server warning without exposing diagnostics: %s", async (warning, message) => {
+  const fixture = getFixture()
+  fixture.getStatus.mockResolvedValue({ status: "failed", report: getReport({ warnings: [warning] }) })
+  openReview(fixture)
+
+  await clickRun(false)
+
+  expect(screen.getByRole("alert")).toHaveTextContent(t(message))
+  expect(screen.getByRole("alert")).not.toHaveTextContent(warning)
+  expect(screen.getByRole("alert")).not.toHaveTextContent(/private-id|2026-11|\/tmp\//)
+})
+
 it.each([false, true])("shows failure warnings and retries the same mode (dry run: %s)", async (dryRun) => {
   vi.useFakeTimers()
   const fixture = getFixture()
@@ -129,8 +155,14 @@ it.each([false, true])("shows failure warnings and retries the same mode (dry ru
   await act(async () => vi.advanceTimersByTimeAsync(1000))
 
   expect(screen.getByRole("alert")).toHaveTextContent(t("Import failed. Review the report and try again."))
-  expect(within(screen.getByRole("alert")).getByText("The source archive is incomplete.")).toBeVisible()
-  expect(within(screen.getByRole("alert")).getByText("No attachments were copied.")).toBeVisible()
+  expect(
+    within(screen.getByRole("alert")).getByText(
+      t("The source archive contains an item that could not be imported. Check the source and try again."),
+    ),
+  ).toBeVisible()
+  expect(
+    within(screen.getByRole("alert")).getByText(t("A source file could not be copied. Check the source archive.")),
+  ).toBeVisible()
   expect(screen.getByText(t("Import step", { step: 3 }))).toBeVisible()
   expect(screen.queryByText(t("Import finished"))).toBeNull()
   expect(screen.getByRole("button", { name: t("ob.retry") })).toBeEnabled()
@@ -190,7 +222,7 @@ it("shows a completed dry-run report and clears it while the real import runs", 
   expect(screen.getByText(t("Import step", { step: 3 }))).toBeVisible()
   expect(within(getReportView()).getByText("23", { selector: "dd" })).toBeVisible()
   expect(within(getReportView()).getByText("4", { selector: "dd" })).toBeVisible()
-  expect(screen.getByText("⚠ Routines will remain disabled.")).toBeVisible()
+  expect(screen.getByText(`⚠ ${t("Imported routines stay disabled.")}`)).toBeVisible()
   expect(screen.queryByText(t("History is in touri"))).toBeNull()
   expect(notice).toHaveBeenCalledExactlyOnceWith(t("Dry run complete. Nothing was written."))
 

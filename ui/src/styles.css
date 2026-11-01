@@ -4447,6 +4447,10 @@ button.brand-button:hover:not(:disabled) {
   gap: var(--space-12);
   padding: var(--space-16);
 }
+.import-report > p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
 .import-report-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

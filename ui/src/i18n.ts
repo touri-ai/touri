@@ -3084,6 +3084,21 @@ export const ptBR = {
   copy: "copiar",
   "history only": "somente histórico",
   "Checking…": "Verificando…",
+  "No history was found in this folder. Check the source path.":
+    "Não encontramos o histórico nesta pasta. Confira o caminho de origem.",
+  "Imported routines stay disabled.": "As rotinas importadas permanecem desativadas.",
+  "A selected bot was not found in the source archive.": "Um bot selecionado não foi encontrado no arquivo de origem.",
+  "Temporary import files were kept for recovery.":
+    "Os arquivos temporários da importação foram mantidos para recuperação.",
+  "A source file could not be copied. Check the source archive.":
+    "Um arquivo de origem não pôde ser copiado. Confira o arquivo de origem.",
+  "A source folder has no destination. Check the folder mappings.":
+    "Uma pasta de origem não tem destino. Confira o mapeamento das pastas.",
+  "Your local edits were kept.": "Suas alterações locais foram preservadas.",
+  "Sessions were not copied. Imported chats use a handoff summary.":
+    "As sessões não foram copiadas. As conversas importadas usam um resumo de continuidade.",
+  "The source archive contains an item that could not be imported. Check the source and try again.":
+    "O arquivo de origem contém um item que não pôde ser importado. Confira a origem e tente novamente.",
   "Run dry run": "Simular importação",
   "Import now": "Importar agora",
   "Import details": "Detalhes da importação",

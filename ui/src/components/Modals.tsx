@@ -332,6 +332,12 @@ export const ImportWizard = ({ api, onClose, onNotice }: ImportWizardProps) => {
       <footer className="import-wizard-footer">
         {step === 2 && error && (
           <div
+            onKeyDown={(event) => {
+              if (event.shiftKey || event.altKey || (event.key !== "Home" && event.key !== "End")) return
+
+              event.preventDefault()
+              event.currentTarget.scrollTop = event.key === "Home" ? 0 : event.currentTarget.scrollHeight
+            }}
             className="info-callout import-error"
             role="alert"
             // biome-ignore lint/a11y/noNoninteractiveTabindex: long warning lists need keyboard scrolling.
@@ -339,7 +345,7 @@ export const ImportWizard = ({ api, onClose, onNotice }: ImportWizardProps) => {
           >
             <strong>{error}</strong>
             {report?.warnings.map((warning) => (
-              <p key={warning}>{warning}</p>
+              <p key={warning}>{getImportWarning(warning)}</p>
             ))}
           </div>
         )}
@@ -398,6 +404,21 @@ export const ImportWizard = ({ api, onClose, onNotice }: ImportWizardProps) => {
   )
 }
 
+const getImportWarning = (warning: string): string => {
+  if (warning.startsWith("Source messages.db")) return t("No history was found in this folder. Check the source path.")
+  if (warning === "Routines will remain disabled.") return t("Imported routines stay disabled.")
+  if (warning.startsWith("Selected bot not found:")) return t("A selected bot was not found in the source archive.")
+  if (warning.startsWith("Failed import staging retained")) return t("Temporary import files were kept for recovery.")
+  if (warning.includes("attachment") || warning.includes("Allowlisted source file"))
+    return t("A source file could not be copied. Check the source archive.")
+  if (warning.includes("cwd mapping")) return t("A source folder has no destination. Check the folder mappings.")
+  if (warning.includes("local memory edit kept") || warning.includes("local SOUL.md edit kept"))
+    return t("Your local edits were kept.")
+  if (warning.includes("session copying is disabled"))
+    return t("Sessions were not copied. Imported chats use a handoff summary.")
+  return t("The source archive contains an item that could not be imported. Check the source and try again.")
+}
+
 const ImportReportView = ({
   report,
   showWarnings = true,
@@ -426,7 +447,7 @@ const ImportReportView = ({
           <dd>{report.routines.created}</dd>
         </div>
       </dl>
-      {showWarnings && report.warnings.map((warning) => <small key={warning}>⚠ {warning}</small>)}
+      {showWarnings && report.warnings.map((warning) => <p key={warning}>⚠ {getImportWarning(warning)}</p>)}
     </div>
   ) : null
 

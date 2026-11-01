@@ -2546,3 +2546,7 @@ Publisher rollout follows merge and deployment: configure each channel's member 
 - In Work, human and bot messages share a left-aligned avatar, name/time header and plain body. Consecutive messages retain grouping; delivery, editing, task state and virtualized history retain their existing behavior. Direct bot conversations keep their existing layout.
 - Preferences retain five sections. **Aparência → Perfil** / **Appearance → Profile** reveals the owner's name and avatar editor. It accepts PNG/JPEG/WebP files up to 5 MB, provides keyboard-operable crop/zoom controls, reuses the mascot editor, and can remove an avatar to restore initials. Saved raster avatars are limited to 100 KB; previews are resized to at most 1024 px and crop output to 256 × 256.
 - Profile changes are unsaved until **Salvar preferências** / **Save preferences**. They use the existing local settings JSON, with an optional contract field for older installations. Remote URLs and active image formats are rejected. Only the local authenticated app or an active human owner session may change this identity; other people, revoked sessions and automation cannot. Other people do not see the owner editor.
+
+### Import report messages
+
+Legacy import dialogs translate known server warnings into actionable pt-BR and English messages. Unknown warnings use a localized fallback; raw paths, identifiers and timestamps remain in import diagnostics and are never rendered in the dialog. Each warning occupies its own wrapping paragraph; Home and End scroll the focused warning list.
