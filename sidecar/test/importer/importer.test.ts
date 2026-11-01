@@ -455,6 +455,22 @@ test("the deprecated import route is a hidden alias of the legacy route", async 
   }
 })
 
+test("an unfiltered archive imports source bots despite an existing local bot with the same name", async () => {
+  await withImport(async ({ database, run }) => {
+    database
+      .query("INSERT INTO bots(id,name,provider,home_dir,created_at,updated_at) VALUES (?,?,?,?,?,?)")
+      .run("local-mark", "mark", "codex", "unused", 1, 1)
+
+    const result = await run({ botIds: [] })
+
+    expect(result.report.bots.created).toBe(3)
+    expect(result.report.threads.created).toBe(5)
+    expect(result.report.messages.created).toBe(11)
+    expect(result.report.warnings.some((warning) => warning.startsWith("Selected bot not found:"))).toBe(false)
+    expect(database.query("SELECT name FROM bots WHERE id = ?").get("local-mark")).toEqual({ name: "mark" })
+  })
+})
+
 test("dry run reports the fixture and leaves the database and target files unchanged", async () => {
   await withImport(async ({ database, root, run }) => {
     const result = await run({ dryRun: true })

@@ -1827,6 +1827,11 @@ Each imported text gets an FTS row.
 
 ### 7.4 Cut-over runbook (shown in the wizard's last step)
 
+The wizard imports every bot in the selected source archive using an empty `botIds` filter.
+Existing local bots never filter the source, including when a local bot has the same name or
+there are no local bots. Before review, the wizard explains this scope instead of listing local
+bots; the review summary confirms that all source bots will be imported.
+
 The legacy import wizard stays on review while its background job runs. It checks the returned
 job ID sequentially, waiting one second after each status response, with a 30-second deadline per
 request. An unavailable status read retries that same job and shows a translated waiting message.
@@ -1837,6 +1842,10 @@ Success requires both `succeeded` and a report. The success card uses the report
 and conversation counts; it never substitutes zero for a missing report. A completed dry run stays
 on review with its report. A failed job shows its available report and warnings plus an explicit
 retry in the same mode. Starting another attempt clears the previous report and error.
+
+A completed job with warnings and no created, updated or unchanged records in any report category
+also shows that recoverable failure, for both dry runs and imports. Already-present records count
+as processed, so an idempotent import with optional-file warnings can still succeed.
 
 The report separates translated labels from their counts. Wizard actions stay in a fixed footer;
 failure replaces the import action with retry. Long warning lists scroll within a bounded,
@@ -2234,7 +2243,7 @@ Rules for every WP:
   - Projects: connect/clone, git state, secrets (names and usage; value entry through `secret_save` IPC, never through the sidecar), process list with logs (virtualized tail), start/stop/restart, port chips.
   - Preview pane: hosts the WP1 child webview through `preview_*` commands, with a toolbar (4.4), hidden while modals are open.
   - Browser panel: tab list per bot, thumbnail, take over / hand back, the "Show agent browser" button, secret-request toast.
-  - Import wizard (section 7.4): source, bot picker with counts, cwd mapping, the Codex sessions checkbox with warning, dry-run report, import, cut-over checklist.
+  - Import wizard (section 7.4): source, all-source-bots scope, the Codex sessions checkbox with warning, dry-run report, import, cut-over checklist.
   - Settings: providers, telemetry, updates, tray, hotkey, browser executable.
   - Brand: touri wordmark and icon, `#dc2626`, DM Sans/DM Mono/Space Grotesk, light and dark themes.
 - **Consumes:**

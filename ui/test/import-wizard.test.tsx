@@ -43,7 +43,7 @@ it("waits for a running job before advancing with the actual imported counts", a
   expect(fixture.start).toHaveBeenCalledExactlyOnceWith(
     {
       source: { kind: "local", root: "/tmp/legacy-fixture" },
-      botIds: fixture.bots.map((bot) => bot.id),
+      botIds: [],
       importCodexSessions: false,
       cwdMap: [],
       includeAttachments: true,
@@ -58,6 +58,54 @@ it("waits for a running job before advancing with the actual imported counts", a
   await act(async () => vi.advanceTimersByTimeAsync(60_000))
 
   expect(fixture.getStatus).toHaveBeenCalledTimes(2)
+})
+
+it("imports the source archive even when no local bot exists", async () => {
+  const fixture = { ...getFixture(), bots: [] }
+  fixture.getStatus.mockResolvedValue({ status: "succeeded", report: getReport() })
+  openReview(fixture)
+
+  await clickRun(false)
+
+  expect(fixture.start.mock.calls[0]?.[0].botIds).toEqual([])
+  expect(screen.getByText(t("History is in touri"))).toBeVisible()
+})
+
+it.each([false, true])("rejects an empty warning report (dry run: %s)", async (dryRun) => {
+  const fixture = getFixture()
+  const report = getReport({ dryRun, warnings: ["Selected bot not found: synthetic-local-id"] })
+  fixture.getStatus.mockResolvedValue({
+    status: "succeeded",
+    report: { ...report, bots: getCounts(0), threads: getCounts(0), messages: getCounts(0) },
+  })
+  const { notice } = openReview(fixture)
+
+  await clickRun(dryRun)
+
+  expect(screen.getByRole("alert")).toBeVisible()
+  expect(screen.queryByText(t("History is in touri"))).toBeNull()
+  expect(screen.getByRole("button", { name: t("ob.retry") })).toBeEnabled()
+  expect(notice).not.toHaveBeenCalled()
+})
+
+it("accepts an idempotent import with warnings when records are already present", async () => {
+  const fixture = getFixture()
+  const report = getReport({ warnings: ["An optional attachment is unavailable."] })
+  fixture.getStatus.mockResolvedValue({
+    status: "succeeded",
+    report: {
+      ...report,
+      bots: { ...getCounts(0), unchanged: 1 },
+      threads: { ...getCounts(0), unchanged: 4 },
+      messages: { ...getCounts(0), unchanged: 23 },
+    },
+  })
+  openReview(fixture)
+
+  await clickRun(false)
+
+  expect(screen.getByText(t("History is in touri"))).toBeVisible()
+  expect(screen.queryByRole("alert")).toBeNull()
 })
 
 it.each([false, true])("shows failure warnings and retries the same mode (dry run: %s)", async (dryRun) => {
