@@ -29,3 +29,13 @@ test("thread creation uses a readable activity label", () => {
   expect(t("Iniciar thread", {}, "en")).toBe("Start thread")
   expect(t("Criar uma thread a partir da mensagem atual.", {}, "en")).toBe("Create a thread from the current message.")
 })
+
+test("thread recovery and tool feedback have Portuguese and English copy", () => {
+  expect(t("Conversa principal indisponível", {}, "en")).toBe("Main conversation unavailable")
+  expect(t("Use Iniciar thread em uma mensagem da conversa.", {}, "en")).toBe(
+    "Use Start thread on a message in the conversation.",
+  )
+  expect(t("Conversa em exclusão", {}, "en")).toBe("Conversation is being deleted")
+  expect(t("Thread criada: {title}", { title: "Planejamento" }, "en")).toBe("Thread created: Planejamento")
+  expect(localizeNotice("Thread criada: Planejamento")).toBe("Thread criada: Planejamento")
+})
