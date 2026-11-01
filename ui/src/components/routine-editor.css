@@ -204,3 +204,16 @@
     justify-self: start;
   }
 }
+
+.routine-editor .routine-thread-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.routine-editor .routine-thread-choice input {
+  flex: none;
+  width: auto;
+  margin: 0;
+}

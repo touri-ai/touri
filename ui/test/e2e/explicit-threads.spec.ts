@@ -59,7 +59,9 @@ for (const width of [1440, 390]) {
       await mkdir(directory, { recursive: true })
       await page.screenshot({ path: join(directory, `routine-explicit-${theme}-${width}.png`) })
       await editor.getByRole("button", { name: "Revisar rotina" }).click()
-      await expect(editor).toContainText("Nova thread a cada execução")
+      await expect(page.getByRole("dialog", { name: "Revisar rotina", exact: true })).toContainText(
+        "Nova thread a cada execução",
+      )
     })
   }
 }
