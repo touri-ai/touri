@@ -19,6 +19,10 @@ for (const width of [1440, 390]) {
       await expect(reply).toContainText("Podemos organizar")
       const directory = process.env.THREAD_EVIDENCE_DIR ?? testInfo.outputPath("evidence")
       await mkdir(directory, { recursive: true })
+      if (width === 1440) {
+        await page.mouse.move(0, 0)
+        await expect(message.getByRole("button", { name: "Iniciar thread" })).toHaveCSS("opacity", "0")
+      }
       await message.hover()
       await expect(message.getByRole("button", { name: "Iniciar thread" })).toBeVisible()
       await expect(reply.getByRole("button", { name: "Iniciar thread" })).toBeAttached()
@@ -77,7 +81,7 @@ test.describe("touch message thread", () => {
     const reply = page.locator('[data-message-row="thread-demo-reply"]')
     const action = reply.getByRole("button", { name: "Iniciar thread" })
 
-    await expect(reply.locator(".message-start-thread")).toHaveCSS("opacity", "1")
+    await expect(action).toHaveCSS("opacity", "1")
     await action.tap()
     await expect(page.locator('[data-message-row="context-thread-demo-reply"]')).toBeVisible()
     const composer = page.getByRole("textbox", { name: /Mensagem/ })
